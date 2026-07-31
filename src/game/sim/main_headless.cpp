@@ -1,0 +1,456 @@
+// EconSpace — headless galaxy server (track M, M3).
+//
+// Runs the SAME simulation as the game, but without rendering/window/input: real
+// agents (NpcShip) move and fight, the spawn director holds the population, and
+// macrodynamics change security/economy/territory control. This is the authoritative
+// server — no client (Game) sits on top yet, but the logic is one (Simulation).
+//
+// Run: econserver [ticks]   (default 3600 ticks = 60 s at SIM_DT=1/60).
+
+#include "sim/Protocol.h"
+#include "sim/Simulation.h"
+#include "net/Tcp.h"
+#include "net/Transport.h"
+#include "core/Faction.h"
+#include "entities/Combatant.h"
+#include "entities/Nebula.h"
+#include "entities/NpcShip.h"
+#include "entities/Ship.h"
+#include "entities/ShipType.h"
+#include "raylib.h"
+
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <memory>
+#include <string>
+#include <thread>
+
+// Set up the authoritative simulation for the server host: load the world, materialize
+// all systems, create the player ship in the start system.
+static void SetupHostSim(Simulation& sim, const std::string& dataDir)
+{
+    SetRandomSeed(0xC0FFEEu);
+    Factions::Load(dataDir + "factions.json");
+    sim.LoadUniverse(dataDir + "universe.json");
+    sim.Seed(0xC0FFEEu);
+    sim.InitGalaxy();
+    sim.MaterializeAllSystems(dataDir + "systems/");
+    sim.Activate(sim.Universe().startId);
+    sim.CreatePlayer(Vector2{ 0.0f, 3000.0f }, GetShipCatalog()[0].stats);
+}
+
+// One client input = ONE player tick. This is critical for client and server
+// prediction to match: the client predicts one StepPlayerShip per input, and the
+// server must step the same way (otherwise the ack numbers diverge from the step count
+// and the ship "jerks"). Applies movement/jump/loot/combat/mining for command c.
+// Returns true if the system changed. Account effects are not yet applied on the server
+// (M4f); NPCs do not target the player yet.
+static bool HostStepPlayer(Simulation& sim, const Proto::Command& c, bool& weaponOn,
+                           std::string& activeId, float dt, std::vector<Proto::TradeAck>& acks,
+                           std::vector<FireEvent>& fires)
+{
+    bool changed = false;
+
+    // Dock/undock (server-authoritative). While docked we do not step the player's
+    // physics (the ship is frozen at the station), but we still handle trade/undock.
+    if (c.dock && !sim.IsPlayerDocked())
+        sim.StepPlayerDock(sim.Active());
+    if (c.undock)
+        sim.StepPlayerUndock();
+
+    // Debug (F1): credit money to the server account.
+    if (c.debugMoney)
+        sim.Account().AddMoney(1000.0);
+
+    // Station trade/hangar: sell, refit, buy, pay off bounty. Account effects
+    // (money/skill/reputation/bounty) are applied by the core in account_ (server-authoritative).
+    if (sim.IsPlayerDocked())
+    {
+        if (c.sellType >= 0 && c.sellAmount > 0)
+        {
+            Simulation::PlayerSellResult r =
+                sim.StepPlayerSell(sim.Active(), c.sellType, c.sellAmount);
+            if (r.sold > 0)
+                acks.push_back(Proto::TradeAck{ c.sellType, r.sold, r.gross, r.revenue });
+        }
+        if (c.refitShip >= 0 && c.refitShip < (int)GetShipCatalog().size())
+            sim.RefitPlayer(GetShipCatalog()[c.refitShip].stats);  // switch to a bought ship
+        if (c.buyShip >= 0)
+            sim.BuyShip(c.buyShip);                                // purchase (deducts money)
+        if (c.payBountyFaction >= 0)
+            sim.PayBounty((FactionId)c.payBountyFaction);          // clear bounty
+        if (c.acceptOffer >= 0)
+            sim.AcceptMission(c.acceptOffer);                      // accept a mission from the board
+        if (c.completeMission >= 0)
+            sim.CompleteMission(c.completeMission);                // hand in a mission (reward to account)
+        return changed;  // at a station the ship neither moves nor fires
+    }
+
+    if (c.toggleWeapon)
+        weaponOn = !weaponOn;
+
+    sim.StepPlayerShip(c, 1.0f, dt);
+
+    if (c.jumpGateId != 0)
+    {
+        std::string dest = sim.JumpGateDestIfNear(sim.Active(), c.jumpGateId);
+        if (!dest.empty())
+        {
+            sim.ServerEnterSystem(dest, activeId);
+            activeId = sim.ActiveId();
+            changed = true;
+        }
+    }
+    if (c.lootId != 0)
+        sim.StepPlayerLoot(sim.Active(), c.lootId);
+
+    // Player fire: on a shot — a beam event into the snapshot (client draws it blue).
+    // Account effects (mission credit/reputation) are not yet applied on the server (3c-ii).
+    Simulation::PlayerCombatEvents ev;
+    if (sim.StepPlayerFire(sim.Active(), weaponOn, c.targetId, dt, &ev))
+        fires.push_back(FireEvent{ ev.shotFrom, ev.shotTo, FactionId::Independent, false, true });
+    sim.StepPlayerMining(sim.Active(), sim.Account().GetSkills().GetBonus(SkillType::Mining), dt);
+    return changed;
+}
+
+// World step (NPCs of all systems + maintenance) — on the server timer, independent of inputs.
+// The active system (where the player is) is stepped with the player involved: NPCs see him,
+// combat produces beams, damage to the player is authoritative; a fallen player respawns at a
+// station. Other systems get a background step. fires — active-system NPC shots (client draws beams).
+static void HostStepWorld(Simulation& sim, const std::string& activeId, float dt,
+                          std::vector<FireEvent>& fires)
+{
+    Combatant* player = sim.IsPlayerDocked() ? nullptr : (Combatant*)sim.PlayerShip();
+
+    // Cover: the player is in a nebula of the active system — NPCs cannot see him.
+    bool hidden = false;
+    if (player != nullptr)
+    {
+        Vector2 pp = sim.PlayerShip()->GetPosition();
+        for (auto& e : sim.Active().entities)
+            if (Nebula* neb = dynamic_cast<Nebula*>(e.get()))
+                if (neb->Contains(pp))
+                {
+                    hidden = true;
+                    break;
+                }
+    }
+    // Server-side predicate of hostility toward the player by account (M4f): pirates;
+    // factions where the player is wanted; factions with Hostile/Hated reputation. Police
+    // now react to a wanted player — the account lives on the server.
+    auto hostile = [&sim](const NpcShip* n) { return sim.AccountHostileToFaction(n->GetFaction()); };
+
+    for (auto& kv : sim.Systems())
+    {
+        if (player != nullptr && kv.first == activeId)
+            sim.StepActiveSystemAgents(kv.second, player, hidden, hostile, &fires, dt);
+        else
+            sim.StepSystemAgents(kv.second, dt);
+        kv.second.market.Update(dt);  // market price recovery (in single-player — UpdateAmbient)
+    }
+
+    if (player != nullptr && !sim.PlayerShip()->IsAlive())
+        sim.ServerRespawnPlayer();
+
+    // Account passive: piloting xp (in flight) + bounty decay.
+    sim.StepPlayerAccountTick(dt);
+
+    sim.MaintainWorld(dt, activeId, nullptr);
+}
+
+// Receives client inputs from the transport and applies EACH as one player tick
+// (HostStepPlayer). lastSeq — the highest processed input number (ack to the client).
+// Returns true if the layout must be resent (system change).
+static bool HostDrainInputs(ITransport& conn, Simulation& sim, bool& weaponOn,
+                            std::string& activeId, float dt, int& lastSeq,
+                            std::vector<Proto::TradeAck>& acks, std::vector<FireEvent>& fires)
+{
+    bool        layoutDirty = false;
+    std::string msg;
+    while (conn.Poll(msg))
+    {
+        if (Proto::MessageType(msg) != "cmd")
+            continue;
+        Proto::Command c;
+        if (!Proto::DecodeCommand(msg, c))
+            continue;
+        if (c.seq > lastSeq)
+            lastSeq = c.seq;
+        if (HostStepPlayer(sim, c, weaponOn, activeId, dt, acks, fires))
+            layoutDirty = true;
+    }
+    return layoutDirty;
+}
+
+// Real server: listens on a port, accepts one client, runs the authoritative
+// real-time loop (receive Command -> step the world -> send Snapshot; Layout on
+// entering/changing a system). Run: econserver host [port].
+static int RunHost(unsigned short port)
+{
+    std::string dataDir = SIM_DATA_DIR;
+    Simulation  sim;
+    SetupHostSim(sim, dataDir);
+
+    // Account persistence (M4f-3): load the player's progress next to the server.
+    // Only in the real server — hosttest/selftest stay clean (ephemeral).
+    std::string acctPath = std::string(GetApplicationDirectory()) + "account.json";
+    if (sim.LoadAccount(acctPath))
+        printf("Account loaded (money %.0f).\n", sim.Account().GetMoney());
+    else
+        printf("New account (money %.0f).\n", sim.Account().GetMoney());
+
+    if (!Net::Startup())
+    {
+        printf("host: WSAStartup FAIL\n");
+        return 1;
+    }
+    Net::TcpListener listener;
+    if (!listener.Listen(port))
+    {
+        printf("host: listen on port %d FAIL\n", port);
+        Net::Shutdown();
+        return 1;
+    }
+    printf("EconSpace server on port %d — waiting for client...\n", port);
+
+    std::unique_ptr<Net::TcpConnection> conn;
+    while (!conn)
+    {
+        conn = listener.Accept();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    printf("Client connected.\n");
+
+    std::string activeId = sim.ActiveId();
+    conn->Send(Proto::EncodeLayout(sim.BuildLayout(activeId)));     // initial layout
+    conn->Send(Proto::EncodeGalaxy(sim.BuildGalaxyState()));        // initial map statistics
+
+    bool        weaponOn = false;
+    int         lastSeq = 0;  // last processed input number (ack to the client)
+    bool        wasDocked = false;  // for account checkpoints when entering/leaving a station
+    const float dt = 1.0f / 60.0f;
+    using clock = std::chrono::steady_clock;
+    auto   prev = clock::now();
+    double acc = 0.0;
+    double galaxyAcc = 0.0;  // galaxy-snapshot broadcast timer (map statistics)
+
+    while (conn->Alive())
+    {
+        auto   now = clock::now();
+        double frame = std::chrono::duration<double>(now - prev).count();
+        prev = now;
+        acc += frame;
+        if (acc > 0.25)
+            acc = 0.25;
+
+        // Player: each received input = one tick (1:1 with client prediction).
+        // acks — trade acknowledgments, fires — shots (player+NPC) for this iteration;
+        // both are delivered to the client in the snapshot.
+        std::vector<Proto::TradeAck> acks;
+        std::vector<FireEvent>       fires;
+        bool layoutDirty =
+            HostDrainInputs(*conn, sim, weaponOn, activeId, dt, lastSeq, acks, fires);
+
+        // Account checkpoint on a dock-state change: on docking — commit what was earned
+        // in flight (loot/bounty), on undocking — the result of trade/mission hand-ins.
+        if (sim.IsPlayerDocked() != wasDocked)
+        {
+            wasDocked = sim.IsPlayerDocked();
+            sim.SaveAccount(acctPath);
+        }
+
+        // World (NPCs): on the server timer, independent of inputs.
+        while (acc >= dt)
+        {
+            HostStepWorld(sim, activeId, dt, fires);
+            acc -= dt;
+        }
+
+        if (layoutDirty)
+            conn->Send(Proto::EncodeLayout(sim.BuildLayout(activeId)));
+        Proto::Snapshot snap = sim.BuildSnapshot(activeId);
+        snap.player.lastInput = lastSeq;  // ack for client reconciliation
+        snap.tradeAcks = std::move(acks);
+        snap.fires = std::move(fires);
+        snap.messages = sim.DrainMessages();  // server notifications (docking denied, etc.)
+        conn->Send(Proto::EncodeSnapshot(snap));
+
+        // Galaxy snapshot — rarely (once a second): the statistics change slowly, and the
+        // message is large (all systems). The client's galaxy map lives off it.
+        galaxyAcc += frame;
+        if (galaxyAcc >= 1.0)
+        {
+            galaxyAcc = 0.0;
+            conn->Send(Proto::EncodeGalaxy(sim.BuildGalaxyState()));
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(4));
+    }
+
+    // Client disconnect — final checkpoint (captures progress earned in flight without a
+    // subsequent docking).
+    sim.SaveAccount(acctPath);
+    printf("Client disconnected. Account saved (money %.0f). Server stopped.\n",
+           sim.Account().GetMoney());
+    Net::Shutdown();
+    return 0;
+}
+
+// Host smoke test (no sockets): runs a host tick through LocalTransport. The client
+// sends a thrust command, the server steps the world and sends layout+snapshot; we
+// check that the layout arrived and the player moved. Run: econserver hosttest.
+static int HostSelftest()
+{
+    std::string dataDir = SIM_DATA_DIR;
+    Simulation  sim;
+    SetupHostSim(sim, dataDir);
+
+    LocalTransport link;
+    std::string    activeId = sim.ActiveId();
+    link.Server().Send(Proto::EncodeLayout(sim.BuildLayout(activeId)));
+
+    Proto::Command thrust;
+    thrust.thrust = true;
+    link.Client().Send(Proto::EncodeCommand(thrust));
+
+    Vector2 startPos = sim.PlayerShip()->GetPosition();
+
+    bool        weaponOn = false;
+    int         lastSeq = 0;
+    const float dt = 1.0f / 60.0f;
+    for (int i = 0; i < 120; i++)  // ~2 s of simulation
+    {
+        thrust.seq = i + 1;                              // client: numbered input
+        link.Client().Send(Proto::EncodeCommand(thrust));
+        std::vector<Proto::TradeAck> acks;
+        std::vector<FireEvent>       fires;
+        HostDrainInputs(link.Server(), sim, weaponOn, activeId, dt, lastSeq, acks, fires);  // 1 input=1 tick
+        HostStepWorld(sim, activeId, dt, fires);         // world
+        Proto::Snapshot snap = sim.BuildSnapshot(activeId);
+        snap.player.lastInput = lastSeq;
+        link.Server().Send(Proto::EncodeSnapshot(snap));
+    }
+
+    bool            gotLayout = false, gotSnap = false;
+    Proto::Snapshot lastSnap;
+    std::string     msg;
+    while (link.Client().Poll(msg))
+    {
+        std::string t = Proto::MessageType(msg);
+        if (t == "layout")
+            gotLayout = true;
+        else if (t == "snap" && Proto::DecodeSnapshot(msg, lastSnap))
+            gotSnap = true;
+    }
+    Vector2 endPos = sim.PlayerShip()->GetPosition();
+    bool    moved = (endPos.x != startPos.x || endPos.y != startPos.y);
+    bool    snapHasWorld = gotSnap && !lastSnap.entities.empty();
+
+    printf("Host selftest: layout %s, snapshot %s, player-moved %s\n",
+           gotLayout ? "OK" : "FAIL", snapHasWorld ? "OK" : "FAIL", moved ? "OK" : "FAIL");
+    return (gotLayout && snapHasWorld && moved) ? 0 : 1;
+}
+
+// Account persistence smoke test (no network, M4f-3): write the account to a file and
+// read it into a clean simulation, compare the fields. Run: econserver accttest.
+static int AccountSelftest()
+{
+    auto approx = [](double x, double y) { double d = x - y; return (d < 0 ? -d : d) < 1e-3; };
+    std::string path = std::string(GetApplicationDirectory()) + "accttest_tmp.json";
+
+    Simulation a;
+    a.Account().SetMoney(4242.0);
+    a.Account().SetReputation(FactionId::Pirates, -7.5f);
+    a.Account().SetBounty(FactionId::TradersGuild, 300.0);
+    a.Account().GetSkills().SetXp(SkillType::Mining, 555.0f);
+    a.SaveAccount(path);
+
+    Simulation b;  // clean account (money 500) — check that the load overwrote it
+    bool loaded = b.LoadAccount(path);
+    bool money = approx(b.Account().GetMoney(), 4242.0);
+    bool rep = approx(b.Account().GetReputation(FactionId::Pirates), -7.5);
+    bool bounty = approx(b.Account().GetBounty(FactionId::TradersGuild), 300.0);
+    bool skill = approx(b.Account().GetSkills().GetXp(SkillType::Mining), 555.0);
+    std::remove(path.c_str());
+
+    bool ok = loaded && money && rep && bounty && skill;
+    printf("Account selftest: load %s, money %s, rep %s, bounty %s, skill %s => %s\n",
+           loaded ? "OK" : "FAIL", money ? "OK" : "FAIL", rep ? "OK" : "FAIL",
+           bounty ? "OK" : "FAIL", skill ? "OK" : "FAIL", ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
+int main(int argc, char** argv)
+{
+    // Protocol/TCP regression tests moved to the `tests` target (ctest); here —
+    // only server modes and batch simulation.
+    if (argc > 1 && std::string(argv[1]) == "hosttest")
+        return HostSelftest();
+    if (argc > 1 && std::string(argv[1]) == "accttest")
+        return AccountSelftest();
+    if (argc > 1 && std::string(argv[1]) == "host")
+    {
+        unsigned short port = (argc > 2) ? (unsigned short)atoi(argv[2]) : 50800;
+        return RunHost(port);
+    }
+
+    std::string dataDir = SIM_DATA_DIR;
+
+    // Determinism: fix both the server RNG (Simulation) and the global raylib RNG
+    // (NpcShip uses it for patrols/timers) — valid without a window.
+    SetRandomSeed(0xC0FFEEu);
+
+    Factions::Load(dataDir + "factions.json");
+
+    Simulation sim;
+    sim.LoadUniverse(dataDir + "universe.json");
+    sim.Seed(0xC0FFEEu);
+    sim.InitGalaxy();
+    sim.MaterializeAllSystems(dataDir + "systems/");  // real entities of all systems
+
+    int         ticks = (argc > 1) ? atoi(argv[1]) : 3600;
+    const float dt = 1.0f / 60.0f;  // = SIM_DT: server tick as in the game
+
+    printf("EconSpace headless server — %d systems, %d ticks (real agents)\n",
+           (int)sim.Universe().systems.size(), ticks);
+
+    int printEvery = ticks / 20;
+    if (printEvery < 1)
+        printEvery = 1;
+
+    for (int i = 0; i < ticks; i++)
+    {
+        // The server simulates ALL systems (no player) + coarse world maintenance.
+        for (auto& kv : sim.Systems())
+            sim.StepSystemAgents(kv.second, dt);
+        sim.MaintainWorld(dt, "", nullptr);
+
+        if (i % printEvery == 0 || i == ticks - 1)
+        {
+            printf("\n[tick %d / t=%.1fs]\n", i, i * dt);
+            for (auto& kv : sim.Systems())
+            {
+                sim.RecountAgg(kv.second);  // fresh real numbers for printing
+                const SystemAggregate& a = kv.second.agg;
+                printf("  %-10s sec %.2f  pir %2d  pol %2d  trd %2d  econ %3.0f%%  ctrl %s\n",
+                       kv.first.c_str(), a.security, (int)a.pirates, (int)a.police,
+                       (int)a.traders, a.prosperity * 100.0f, FactionName(a.controller).c_str());
+            }
+        }
+    }
+
+    printf("\nGalactic news:\n");
+    if (sim.Events().empty())
+        printf("  (no territory changes)\n");
+    for (const std::string& e : sim.Events())
+        printf("  - %s\n", e.c_str());
+
+    // Pause so the window does not close when launched by double-click. When run
+    // from a terminal / with stdin redirected to EOF — exit immediately.
+    printf("\nPress Enter to exit...");
+    fflush(stdout);
+    getchar();
+
+    return 0;
+}

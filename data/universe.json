@@ -1,0 +1,48 @@
+{
+    "links": [
+        [
+            "core",
+            "verge"
+        ],
+        [
+            "core",
+            "reach"
+        ]
+    ],
+    "start": "core",
+    "systems": [
+        {
+            "file": "core.json",
+            "id": "core",
+            "map": [
+                0,
+                0
+            ],
+            "name": "Helios Core",
+            "owner": "TradersGuild",
+            "security": 1.0
+        },
+        {
+            "file": "reach.json",
+            "id": "reach",
+            "map": [
+                319,
+                -60
+            ],
+            "name": "Sigma Reach",
+            "owner": "Syndicate",
+            "security": 0.6
+        },
+        {
+            "file": "verge.json",
+            "id": "verge",
+            "map": [
+                -240,
+                180
+            ],
+            "name": "Tau Verge",
+            "owner": "Independent",
+            "security": 0.3
+        }
+    ]
+}

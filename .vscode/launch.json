@@ -1,0 +1,35 @@
+{
+    // Запуск и отладка. Жми F5 — проект соберётся и запустится под отладчиком.
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug EconSpace",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/game/econspace.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/bin/game",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "D:/msys64/mingw64/bin/gdb.exe",
+            // Перед запуском автоматически собрать проект.
+            "preLaunchTask": "Build"
+        },
+        {
+            "name": "Debug World Editor",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/editor/worldeditor.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/bin/editor",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "D:/msys64/mingw64/bin/gdb.exe",
+            "preLaunchTask": "Build"
+        }
+    ]
+}

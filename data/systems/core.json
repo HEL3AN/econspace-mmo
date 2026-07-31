@@ -1,0 +1,236 @@
+{
+    "asteroidFields": [
+        {
+            "name": "Inner Iron Belt",
+            "ore": 300,
+            "pos": [
+                4000,
+                -3000
+            ],
+            "resource": "Iron",
+            "size": 500
+        },
+        {
+            "name": "Meridian Ice Belt",
+            "ore": 280,
+            "pos": [
+                -8500,
+                -8500
+            ],
+            "resource": "Ice",
+            "size": 600
+        },
+        {
+            "name": "Frontier Iron Belt",
+            "ore": 300,
+            "pos": [
+                13500,
+                8500
+            ],
+            "resource": "Iron",
+            "size": 550
+        },
+        {
+            "name": "Outer Crystal Belt",
+            "ore": 200,
+            "pos": [
+                -18000,
+                6000
+            ],
+            "resource": "Crystal",
+            "size": 700
+        },
+        {
+            "name": "Fringe Crystal Belt",
+            "ore": 180,
+            "pos": [
+                16000,
+                -15000
+            ],
+            "resource": "Crystal",
+            "size": 650
+        }
+    ],
+    "derelicts": [
+        {
+            "name": "Wreck of the Meridian",
+            "pos": [
+                -19000,
+                -4000
+            ],
+            "reward": 1500,
+            "size": 40
+        },
+        {
+            "name": "Derelict Hauler",
+            "pos": [
+                20000,
+                5000
+            ],
+            "reward": 1200,
+            "size": 36
+        },
+        {
+            "name": "Shattered Frigate",
+            "pos": [
+                -15000,
+                -15000
+            ],
+            "reward": 1800,
+            "size": 40
+        },
+        {
+            "name": "Lost Probe",
+            "pos": [
+                6000,
+                20000
+            ],
+            "reward": 1000,
+            "size": 30
+        }
+    ],
+    "gates": [
+        {
+            "destination": "reach",
+            "name": "Gate to Sigma Reach",
+            "pos": [
+                23000,
+                0
+            ],
+            "size": 150
+        },
+        {
+            "destination": "verge",
+            "name": "Gate to Tau Verge",
+            "pos": [
+                -16000,
+                -17000
+            ],
+            "size": 150
+        }
+    ],
+    "nebulae": [
+        {
+            "name": "Veil Nebula",
+            "pos": [
+                -12000,
+                3000
+            ],
+            "radius": 3000
+        },
+        {
+            "name": "Ashen Cloud",
+            "pos": [
+                10000,
+                -12000
+            ],
+            "radius": 2500
+        }
+    ],
+    "planets": [
+        {
+            "angle": 0.3,
+            "deposit": "Iron",
+            "orbitRadius": 3000,
+            "orbitSpeed": 300,
+            "size": 140,
+            "type": "Oceanic"
+        },
+        {
+            "angle": 2.0,
+            "deposit": "Iron",
+            "orbitRadius": 6000,
+            "orbitSpeed": 340,
+            "size": 120,
+            "type": "Rocky"
+        },
+        {
+            "angle": 4.2,
+            "deposit": "Ice",
+            "orbitRadius": 9500,
+            "orbitSpeed": 380,
+            "size": 180,
+            "type": "Ice"
+        },
+        {
+            "angle": 5.6,
+            "deposit": "Crystal",
+            "orbitRadius": 13000,
+            "orbitSpeed": 420,
+            "size": 160,
+            "type": "Lava"
+        },
+        {
+            "angle": 1.2,
+            "deposit": "Iron",
+            "orbitRadius": 18000,
+            "orbitSpeed": 480,
+            "size": 280,
+            "type": "Gas"
+        },
+        {
+            "angle": 3.7,
+            "deposit": "Crystal",
+            "orbitRadius": 22000,
+            "orbitSpeed": 520,
+            "size": 150,
+            "type": "Rocky"
+        }
+    ],
+    "star": {
+        "size": 600,
+        "type": "Yellow"
+    },
+    "stations": [
+        {
+            "faction": "TradersGuild",
+            "name": "Aurora Hub",
+            "pos": [
+                3200,
+                800
+            ],
+            "role": "TradeHub",
+            "size": 90
+        },
+        {
+            "faction": "Independent",
+            "name": "Ironworks Yard",
+            "pos": [
+                -6500,
+                4000
+            ],
+            "role": "Shipyard",
+            "size": 80
+        },
+        {
+            "faction": "Independent",
+            "name": "Vyse Bastion",
+            "pos": [
+                5000,
+                -8000
+            ],
+            "role": "Military",
+            "size": 80
+        },
+        {
+            "faction": "Syndicate",
+            "name": "Prospect Station",
+            "pos": [
+                -9000,
+                -9000
+            ],
+            "role": "MiningOutpost",
+            "size": 70
+        },
+        {
+            "faction": "TradersGuild",
+            "name": "Frontier Post",
+            "pos": [
+                14000,
+                9000
+            ],
+            "role": "MiningOutpost",
+            "size": 70
+        }
+    ]
+}

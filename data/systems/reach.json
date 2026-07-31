@@ -1,0 +1,90 @@
+{
+    "asteroidFields": [
+        {
+            "name": "Reach Iron Belt",
+            "ore": 280,
+            "pos": [
+                -6000,
+                4000
+            ],
+            "resource": "Iron",
+            "size": 500
+        },
+        {
+            "name": "Reach Crystal Belt",
+            "ore": 190,
+            "pos": [
+                -15000,
+                8000
+            ],
+            "resource": "Crystal",
+            "size": 650
+        }
+    ],
+    "derelicts": [
+        {
+            "name": "Abandoned Refinery",
+            "pos": [
+                -17000,
+                -3000
+            ],
+            "reward": 1600,
+            "size": 40
+        }
+    ],
+    "gates": [
+        {
+            "destination": "core",
+            "name": "Gate to Helios Core",
+            "pos": [
+                12000,
+                -3000
+            ],
+            "size": 150
+        }
+    ],
+    "nebulae": [
+        {
+            "name": "Cobalt Drift",
+            "pos": [
+                9000,
+                -7000
+            ],
+            "radius": 2800
+        }
+    ],
+    "planets": [
+        {
+            "angle": 1.0,
+            "deposit": "Iron",
+            "orbitRadius": 4000,
+            "orbitSpeed": 320,
+            "size": 130,
+            "type": "Rocky"
+        },
+        {
+            "angle": 3.4,
+            "deposit": "Ice",
+            "orbitRadius": 9000,
+            "orbitSpeed": 400,
+            "size": 200,
+            "type": "Ice"
+        }
+    ],
+    "star": {
+        "size": 500,
+        "type": "Blue"
+    },
+    "stations": [
+        {
+            "faction": "Syndicate",
+            "name": "Reach Depot",
+            "pos": [
+                3000,
+                1200
+            ],
+            "role": "TradeHub",
+            "size": 80
+        }
+    ]
+}

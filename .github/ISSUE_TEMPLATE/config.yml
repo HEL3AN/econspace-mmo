@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Roadmap & project status
+    url: https://github.com/HEL3AN/econspace-mmo/blob/main/ROADMAP.md
+    about: See what's done and what's planned before opening a feature request.
+  - name: Architecture overview
+    url: https://github.com/HEL3AN/econspace-mmo/blob/main/ARCHITECTURE.md
+    about: How the client–server core, protocol, and netcode fit together.

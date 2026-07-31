@@ -1,0 +1,17 @@
+{
+    "factions": [
+        { "id": "Independent",  "name": "Independent",  "color": [200, 200, 200], "lawful": true,  "kind": "Independent" },
+        { "id": "TradersGuild", "name": "Traders Guild", "color": [0, 228, 48],   "lawful": true,  "kind": "Major" },
+        { "id": "Syndicate",    "name": "Syndicate",    "color": [230, 41, 55],   "lawful": true,  "kind": "Major" },
+        { "id": "Pirates",      "name": "Pirates",      "color": [255, 161, 0],   "lawful": false, "kind": "Pirate" }
+    ],
+    "relations": [
+        ["TradersGuild", "Pirates",   "War"],
+        ["Syndicate",    "Pirates",   "War"],
+        ["Independent",  "Pirates",   "Hostile"],
+        ["TradersGuild", "Syndicate", "Neutral"],
+        ["TradersGuild", "Independent", "Friendly"],
+        ["Syndicate",    "Independent", "Neutral"]
+    ],
+    "repTiers": { "hated": -50, "hostile": -10, "liked": 10, "allied": 50 }
+}

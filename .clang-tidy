@@ -1,0 +1,26 @@
+# Статический анализ для EconSpace (clang-tidy). Умеренный набор: ловим реальные
+# баги/UB и явные неэффективности, без шумных стилистических придирок.
+# Запуск всего проекта: cmake -DENABLE_CLANG_TIDY=ON ... && cmake --build build
+# Точечно по файлу:      clang-tidy -p build src/game/core/Game.cpp
+Checks: >
+  bugprone-*,
+  performance-*,
+  clang-analyzer-*,
+  misc-*,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-using,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -misc-non-private-member-variables-in-classes,
+  -misc-no-recursion,
+  -misc-use-anonymous-namespace,
+  -misc-include-cleaner,
+  -misc-const-correctness,
+  -clang-analyzer-optin.*
+
+# Предупреждения тидже НЕ ломают сборку (чистим постепенно), но видны в выводе.
+WarningsAsErrors: ''
+
+# Проверять только наш код, не сторонние заголовки (raylib/json/doctest).
+HeaderFilterRegex: 'src/(engine|game|editor)/.*'

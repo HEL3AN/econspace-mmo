@@ -1,0 +1,51 @@
+{
+    // Задачи сборки. Открой палитру (Ctrl+Shift+P) -> "Run Task"
+    // или просто жми Ctrl+Shift+B для задачи по умолчанию ("Build").
+    "version": "2.0.0",
+    "tasks": [
+        {
+            // Конфигурация: CMake генерирует файлы сборки в папку build.
+            // Нужна один раз и после изменений CMakeLists.txt.
+            "label": "Configure",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "-S", ".",
+                "-B", "build",
+                "-G", "MinGW Makefiles"
+            ],
+            "problemMatcher": []
+        },
+        {
+            // Сборка проекта. Это задача по умолчанию — срабатывает на Ctrl+Shift+B.
+            // dependsOn гарантирует, что Configure отработает перед сборкой.
+            "label": "Build",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build"],
+            "dependsOn": ["Configure"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            // problemMatcher показывает ошибки компилятора прямо в редакторе.
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            // Сборка + запуск игры.
+            "label": "Run",
+            "type": "shell",
+            "command": "${workspaceFolder}/build/bin/game/econspace.exe",
+            "dependsOn": ["Build"],
+            "problemMatcher": []
+        },
+        {
+            // Сборка + запуск редактора мира.
+            "label": "Run Editor",
+            "type": "shell",
+            "command": "${workspaceFolder}/build/bin/editor/worldeditor.exe",
+            "dependsOn": ["Build"],
+            "problemMatcher": []
+        }
+    ]
+}

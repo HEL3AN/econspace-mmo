@@ -1,0 +1,25 @@
+# Стиль форматирования C++ для EconSpace — см. CONVENTIONS.md.
+Language:        Cpp
+BasedOnStyle:    LLVM
+
+IndentWidth:     4
+TabWidth:        4
+UseTab:          Never
+ColumnLimit:     100
+
+# Скобки на своей строке (стиль Allman).
+BreakBeforeBraces: Allman
+
+# Звёздочка/амперсанд у типа: Entity* ptr, Vector2& ref.
+PointerAlignment: Left
+
+# Модификаторы доступа (public:/private:) на уровне класса.
+AccessModifierOffset: -4
+
+# Короткие тела разрешены на одной строке только для inline-методов класса.
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+
+# Порядок #include задаём вручную (см. CONVENTIONS.md) — не сортировать.
+SortIncludes:    false

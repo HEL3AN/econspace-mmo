@@ -1,0 +1,15 @@
+{
+    // Настройки IntelliSense (подсветка, подсказки, переход к определению).
+    "version": 4,
+    "configurations": [
+        {
+            "name": "MinGW",
+            // Карта проекта от CMake — отсюда берутся все пути к заголовкам.
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "compilerPath": "D:/msys64/mingw64/bin/g++.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-gcc-x64"
+        }
+    ]
+}
