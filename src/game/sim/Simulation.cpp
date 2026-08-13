@@ -23,8 +23,6 @@
 
 namespace
 {
-// Coarse cold-simulation step: system aggregates evolve not every frame, but once
-
 // NPC combat parameters (server combat/AI simulation).
 constexpr float PIRATE_WEAPON_RANGE = 230.0f;   // NPC fire range
 constexpr float PIRATE_WEAPON_DAMAGE = 7.0f;    // damage to the player
