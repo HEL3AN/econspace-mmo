@@ -9,7 +9,7 @@ You pilot a ship in a persistent, multi-system galaxy: mine, trade, run missions
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows%20(MinGW)-lightgrey.svg)
 ![Status: Prototype](https://img.shields.io/badge/status-prototype-orange.svg)
 
-> **Project status — honest version.** EconSpace is an engineering-driven **prototype**, not a finished game. The client–server architecture and netcode are solid and real; the *content* is not: sprites are placeholder shapes (no art yet), there is no audio, and the world is small. The server currently accepts **one** client at a time — multi-client is the next foundational piece, not an extra. A single-player code path still exists in the client as residue from an earlier stage of the project; it is scheduled for removal (issue #23) and is not part of the target design. See [ROADMAP.md](ROADMAP.md) for where it is and where it's going. Contributions are very welcome.
+> **Project status — honest version.** EconSpace is an engineering-driven **prototype**, not a finished game. The client–server architecture and netcode are solid and real; the *content* is not: sprites are placeholder shapes (no art yet), there is no audio, and the world is small. The server currently accepts **one** client at a time — multi-client is the next foundational piece, not an extra. See [ROADMAP.md](ROADMAP.md) for where it is and where it's going. Contributions are very welcome.
 
 ---
 
@@ -47,7 +47,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for how it all fits together.
 
 Everything in this section is **planned, not implemented**. It is here so contributors know what the project is aiming at, and so nobody builds against the old assumptions. Details and sequencing live in [ROADMAP.md](ROADMAP.md).
 
-- **An MMO, not a sandbox with an optional server.** The client always talks to an authoritative server. Multi-client (one session, ship, and account per connection, plus interest management) is foundational work, not a stretch goal. The leftover single-player path gets deleted (#23).
+- **An MMO, not a sandbox with an optional server.** The client always talks to an authoritative server. Multi-client (one session, ship, and account per connection, plus interest management) is foundational work, not a stretch goal.
 - **Glyphs as the primary look** (#36). ASCII/glyph presentation becomes the game's actual visual language rather than a debug view: it closes the art gap honestly, it lets players build structures without an artist in the loop, and the same projection is what an AI agent reads. Sprites stay possible as an alternative rendering backend instead of being the thing that blocks the project.
 - **AI agents as first-class players** (#42). The game will ship its own MCP server, `econagent`, written in C++ so the wire protocol has a single source of truth. An LLM agent (Claude Code, Claude Desktop) can then pilot a ship on high-level standing orders, and a human can play fleet commander rather than pilot.
 - **A player-mutable world** (#44). Players build deployables and structures that feed the macro simulation that already exists — prosperity, security, territory control.
