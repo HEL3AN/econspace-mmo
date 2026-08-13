@@ -161,6 +161,15 @@ public:
     // Server player combat: if the weapon is on and the target (targetId) is in range and
     // the cooldown is ready — applies damage, accumulates facts in ev. Returns true if there
     // was a shot this tick (the client draws a beam). The target is looked up in st by id.
+    // Shortest path across the gate graph, as system ids from `from` to `to` inclusive.
+    // Empty when there is no route, or when either end is unknown.
+    //
+    // avoidDanger weighs each hop by how dangerous the system is (low security, pirate
+    // pressure, a hostile controller) instead of counting hops. "Fastest" and "arrives"
+    // are different routes, and which one an agent wants depends on what it is carrying.
+    std::vector<std::string> PlanRoute(const std::string& from, const std::string& to,
+                                       bool avoidDanger) const;
+
     // --- Standing orders (strategic layer, #26) ---
     // Give an order, replacing whatever was running; returns its id. The order executes
     // over seconds on the server while the tactical loop keeps running at its own rate.

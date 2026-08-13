@@ -12,6 +12,7 @@ const char* KindName(Kind k)
         case Kind::Dock: return "dock";
         case Kind::Undock: return "undock";
         case Kind::Mine: return "mine";
+        case Kind::Route: return "route";
     }
     return "none";
 }
