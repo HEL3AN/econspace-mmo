@@ -139,79 +139,34 @@ void Game::Run()
         camera_.offset = { screenWidth_ / 2.0f, screenHeight_ / 2.0f };
 
         // Debug commands (work in any mode).
-        // Pause is a debug feature: it won't exist in the real-time game.
         if (IsKeyPressed(KEY_F11))
             ToggleBorderlessWindowed();
-        if (IsKeyPressed(KEY_F1))
+        if (IsKeyPressed(KEY_F1))  // account is on the server — credit via command
         {
-            if (networked_)  // account is on the server — credit via command
-            {
-                Proto::Command dc;
-                dc.debugMoney = true;
-                clientLink_->Send(Proto::EncodeCommand(dc));
-            }
-            else
-            {
-                player_.AddMoney(1000.0);
-            }
+            Proto::Command dc;
+            dc.debugMoney = true;
+            clientLink_->Send(Proto::EncodeCommand(dc));
         }
-        if (IsKeyPressed(KEY_F2))
-            paused_ = !paused_;
-        if (IsKeyPressed(KEY_F5))
-            SaveGame();
-        if (IsKeyPressed(KEY_F9))
-            LoadGame();
         if (flashTimer_ > 0.0f)
             flashTimer_ -= dt;
 
         // Input (edge triggers, UI, clicks) — once per frame. Continuous ship
         // control is also set here and read on every simulation step.
         if (mode_ == GameMode::Flying)
-        {
             HandleInput(dt);
-            // Single-player: send the command once per frame to the local server and clear the
-            // one-shot intents here. Network: the command is sent PER-TICK in the sim loop (with an
-            // input sequence number for prediction/reconciliation) — cleared there.
-            if (!networked_)
-            {
-                clientLink_->Send(Proto::EncodeCommand(cmd_));
-                cmd_.toggleStabilizer = cmd_.toggleMining = cmd_.toggleWeapon = false;
-                cmd_.dock = cmd_.undock = false;
-                cmd_.navMode = 0;
-                cmd_.jumpGateId = cmd_.lootId = 0;
-            }
-        }
 
         // The simulation runs at a fixed step, separate from the render rate.
         // The accumulator is clamped against the "spiral of death" on frame drops.
-        // In network mode the local server does NOT run — the world is computed by the
-        // remote econserver; the client only sends commands and draws received snapshots.
+        // The world itself is computed by econserver; the client only sends commands,
+        // predicts its own ship, and draws received snapshots.
         simAccumulator_ += dt;
         if (simAccumulator_ > 0.25f)
             simAccumulator_ = 0.25f;
         while (simAccumulator_ >= SIM_DT)
         {
-            if (!networked_)
+            if (mode_ == GameMode::Flying)
             {
-                if (mode_ == GameMode::Flying)
-                {
-                    ServerReceiveCommand();  // server: receive the player command from the transport
-                    if (!paused_)
-                        UpdateWorld(SIM_DT);
-                }
-                else
-                {
-                    // While the player is docked, the background world keeps living.
-                    UpdateAmbient(SIM_DT);
-                }
-                // M0: the server fully simulates ALL other systems (ships move and
-                // fight everywhere), plus coarse world maintenance (macro + director).
-                SimulateBackgroundSystems(SIM_DT);
-                WorldMaintenance(SIM_DT);
-            }
-            else if (mode_ == GameMode::Flying && !paused_)
-            {
-                // Network: CLIENT-SIDE PREDICTION of the own ship's movement. Number the input,
+                // CLIENT-SIDE PREDICTION of the own ship's movement. Number the input,
                 // push it into the unacked buffer, send it to the server, and immediately apply the same
                 // StepPlayerShip the server uses (pilotBonus=1 as on the server). The snapshot then
                 // replays the buffer over the authoritative state (BuildClientSnapshot). The world (NPCs)
@@ -231,22 +186,27 @@ void Game::Run()
             simAccumulator_ -= SIM_DT;
         }
 
-        // Client↔server boundary: single-player, the local server places the system
-        // snapshot (world + market + player) into the transport; over the network the snapshot
-        // comes from econserver. The client picks it up (BuildClientSnapshot). We build the
-        // snapshot both in flight and while docked; proxy-world reconciliation only in flight.
-        if (!networked_)
-            ServerPublishSnapshot();
+        // Client↔server boundary: the snapshot (world + market + player) comes from
+        // econserver and the client picks it up here. We build the snapshot both in
+        // flight and while docked; proxy-world reconciliation only in flight.
         BuildClientSnapshot();
         if (mode_ == GameMode::Flying)
             ReconcileClientWorld();
 
-        // Network: the camera follows the ship (synced from the snapshot); single-player,
-        // UpdateWorld does this in the simulation step.
+        // The camera follows the ship (position synced from the snapshot). In warp the
+        // speed is too high for a smooth catch-up — center hard so the ship doesn't
+        // leave the screen.
         if (networked_ && mode_ == GameMode::Flying)
         {
-            float follow = 1.0f - expf(-8.0f * dt);
-            camera_.target = Vector2Lerp(camera_.target, playerShip_->GetPosition(), follow);
+            if (playerShip_->IsWarping())
+            {
+                camera_.target = playerShip_->GetPosition();
+            }
+            else
+            {
+                float follow = 1.0f - expf(-8.0f * dt);
+                camera_.target = Vector2Lerp(camera_.target, playerShip_->GetPosition(), follow);
+            }
             BuildNetworkBeams();  // combat beams — from the snapshot (server computes combat)
 
             // Mining beam: the server reports mining in the snapshot — draw a beam to the nearest
@@ -408,186 +368,6 @@ void Game::HandleInput(float dt)
         if (nearbyStation_ != nullptr && IsKeyPressed(KEY_E))
             cmd_.dock = true;
     }
-}
-
-// Background world: planets on their orbits and the market. Always runs — both in flight
-// and while the player is docked at a station.
-void Game::UpdateAmbient(float dt)
-{
-    for (auto& e : Entities())
-        e->Update(dt);
-    ActiveMarket().Update(dt);
-
-    // The wanted level decays slowly: minor offenses are forgotten over time,
-    // serious ones accrue faster than they fade (full clearance — at the faction's station).
-    player_.DecayBounty(1.0 * dt);
-}
-
-void Game::UpdateWorld(float dt)
-{
-    bool warping = playerShip_->IsWarping();
-
-    // Client-side command effects (weapon toggle, docking) affect the client/UI state,
-    // not the ship physics — these will move to the server later (2b-ii/M4f).
-    if (serverCmd_.toggleWeapon && !warping)
-        weaponOn_ = !weaponOn_;
-    if (serverCmd_.dock && nearbyStation_ != nullptr && !warping)
-        Dock(nearbyStation_);
-
-    // Server: physical step of the player ship from the received command (movement axes,
-    // stabilizer/mining toggles, piloting bonus, physics update).
-    sim_.StepPlayerShip(serverCmd_, player_.GetSkills().GetBonus(SkillType::Piloting), dt);
-
-    // Jump through a gate (order): the server validates proximity and returns the
-    // destination; the client performs the system switch (layout is still local, not over the network).
-    if (serverCmd_.jumpGateId != 0)
-    {
-        std::string dest = sim_.JumpGateDestIfNear(sim_.Active(), serverCmd_.jumpGateId);
-        if (!dest.empty())
-            JumpTo(dest);
-    }
-    // Salvage a derelict (order): the server marks it searched and grants a reward, the client
-    // credits the money (account).
-    if (serverCmd_.lootId != 0)
-    {
-        double reward = sim_.StepPlayerLoot(sim_.Active(), serverCmd_.lootId);
-        if (reward > 0.0)
-        {
-            player_.AddMoney(reward);
-            FlashMessage(TextFormat("Salvaged %.0f cr", reward));
-        }
-    }
-
-    // One-shot intents applied this tick — clear them (axes hold until a new command).
-    serverCmd_.toggleStabilizer = serverCmd_.toggleMining = serverCmd_.toggleWeapon = false;
-    serverCmd_.dock = serverCmd_.undock = false;
-    serverCmd_.navMode = 0;
-    serverCmd_.jumpGateId = serverCmd_.lootId = 0;
-
-    // AI pass: each NPC decides whom to pursue or whom to flee from.
-    UpdateNpcAi();
-
-    UpdateAmbient(dt);
-
-    // Piloting experience accrues from time spent flying.
-    player_.GetSkills().AddXp(SkillType::Piloting, 4.0f * dt);
-
-    // Ore mining is server-side (extraction into the ship's cargo hold). The client passes the
-    // skill multiplier, grants XP for what's mined, and highlights the field with a beam (render).
-    Simulation::PlayerMiningResult mr =
-        sim_.StepPlayerMining(sim_.Active(), player_.GetSkills().GetBonus(SkillType::Mining), dt);
-    miningBeamField_ = dynamic_cast<AsteroidField*>(FindEntityById(mr.fieldId));
-    if (mr.minedUnits > 0)
-        player_.GetSkills().AddXp(SkillType::Mining, 3.0f * mr.minedUnits);
-
-    ResolveCombat(dt);
-
-    // The camera follows the ship. In warp the speed is too high for a smooth
-    // catch-up — center hard so the ship doesn't leave the screen.
-    if (playerShip_->IsWarping())
-    {
-        camera_.target = playerShip_->GetPosition();
-    }
-    else
-    {
-        float follow = 1.0f - expf(-8.0f * dt);
-        camera_.target = Vector2Lerp(camera_.target, playerShip_->GetPosition(), follow);
-    }
-}
-
-// Player fire at the selected target, and pirates firing at the player.
-void Game::ResolveCombat(float dt)
-{
-    beams_.clear();
-    Vector2 shipPos = playerShip_->GetPosition();
-
-    // --- Player fire at the selected target: server-side (Simulation deals damage and
-    // reports combat facts). The client draws the beam and applies account policy
-    // (reputation/bounty/mission credit — this is account data until M4f).
-    int                          targetId = selected_ != nullptr ? selected_->GetId() : 0;
-    Simulation::PlayerCombatEvents ce;
-    bool fired = sim_.StepPlayerFire(sim_.Active(), weaponOn_, targetId, dt, &ce);
-    if (fired && selected_ != nullptr)
-        beams_.push_back({ shipPos, selected_->GetPosition(), SKYBLUE });
-
-    // Attacking a lawful faction is a crime (reputation/wanted).
-    if (ce.hitLawful)
-    {
-        player_.AddReputation(ce.hitFaction, -0.4f);
-        player_.AddBounty(ce.hitFaction, 5.0);
-    }
-    // Consequences of a kill specifically by the player: mission credit for a pirate, or a serious
-    // crime for a lawful target (target credit goes only to the player).
-    if (ce.killedPirate)
-        missions_.OnPirateKilled();
-    if (ce.killedLawful)
-    {
-        player_.AddReputation(ce.killedFaction, -3.0f);
-        player_.AddBounty(ce.killedFaction, 50.0);
-    }
-
-    // Concealment: inside a nebula pirates lose the player and don't fire.
-    bool hidden = false;
-    for (auto& e : Entities())
-        if (Nebula* neb = dynamic_cast<Nebula*>(e.get()))
-            if (neb->Contains(shipPos))
-            {
-                hidden = true;
-                break;
-            }
-
-    // --- Combat NPC fire: the server core (Simulation) hits the nearest hostile
-    // target (NPC or player) via Combatant and returns fire events; the client
-    // turns them into beams of the right color. Hostility toward the player is a client-side
-    // predicate (reputation/wanted).
-    std::vector<FireEvent> fires;
-    sim_.StepNpcCombat(sim_.Active(), playerShip_, hidden,
-                       [this](const NpcShip* n) { return NpcHostileToPlayer(n); }, &fires);
-    for (const FireEvent& f : fires)
-        beams_.push_back({ f.from, f.to,
-                           f.targetIsPlayer ? ORANGE : Fade(FactionColor(f.shooterFaction), 0.85f) });
-
-    if (!playerShip_->IsAlive())
-        RespawnPlayer();
-
-    RemoveDeadNpcs();
-}
-
-// Removes destroyed NPCs from the world. Per-target consequences (mission
-// credit, reputation/wanted penalty) are applied in ResolveCombat at the moment of
-// the player's killing shot — here just cleaning up the list.
-void Game::RemoveDeadNpcs()
-{
-    auto isDead = [this](const std::unique_ptr<Entity>& e)
-    {
-        NpcShip* npc = dynamic_cast<NpcShip*>(e.get());
-        if (npc != nullptr && !npc->IsAlive())
-        {
-            if (selected_ == e.get())
-                selected_ = nullptr;  // the selected object is gone
-            return true;
-        }
-        return false;
-    };
-    Entities().erase(std::remove_if(Entities().begin(), Entities().end(), isDead),
-                    Entities().end());
-}
-
-// Player respawn: restore the ship at the first station; cargo is lost.
-void Game::RespawnPlayer()
-{
-    for (auto& e : Entities())
-    {
-        Station* st = dynamic_cast<Station*>(e.get());
-        if (st != nullptr)
-        {
-            playerShip_->Teleport(st->GetPosition());
-            break;
-        }
-    }
-    playerShip_->Repair();
-    playerShip_->ClearCargo();
-    playerShip_->DisengageAutopilot();
 }
 
 // All stations in the system — for generating missions (delivery targets, etc.).
@@ -781,9 +561,6 @@ void Game::LoadSystemById(const std::string& id, std::string fromId)
         sim_.Active().populated = true;
     }
 
-    // The server sends the new system's static layout into the transport — the client builds
-    // the proxy world from it (after materialization: statics already have stable ids).
-    ServerPublishLayout();
 }
 
 // Jump through a gate into system destId. Missions are cleared — they're tied to
@@ -825,27 +602,6 @@ void Game::HydrateNpcs()
 void Game::MaterializeAllSystems()
 {
     sim_.MaterializeAllSystems(dataDir_ + "systems/");
-}
-
-// M0: full simulation of all NON-active systems every step (the active one is ticked by
-// UpdateWorld/UpdateAmbient with the player). This way ships move and fight
-// across the whole world, not just near the player.
-void Game::SimulateBackgroundSystems(float dt)
-{
-    // Each non-active system is ticked by the server core (Simulation): AI + movement
-    // + combat + cleanup of the fallen. The active one is ticked by UpdateWorld (with the player).
-    for (auto& kv : sim_.Systems())
-        if (kv.first != sim_.ActiveId())
-            sim_.StepSystemAgents(kv.second, dt);
-}
-
-// Coarse world maintenance is delegated to the server core (Simulation): recomputing
-// populations + "pressure", macrodynamics, the spawn director across all systems.
-// We pass the active system and the player position — for player-avoidance spawning.
-void Game::WorldMaintenance(float dt)
-{
-    Vector2 pp = playerShip_->GetPosition();
-    sim_.MaintainWorld(dt, sim_.ActiveId(), &pp);
 }
 
 const WorldLoader::SystemInfo* Game::CurrentSystemInfo() const
@@ -911,58 +667,6 @@ Entity* Game::FindEntityById(int id) const
 
 // Builds the active-system snapshot: the world is built by the server (Simulation::BuildSnapshot),
 // the player state is added by the client (the player ship is still on the client, until M4f).
-// Server side of the boundary (M4d): receives the player command from the transport
-// (client→server). We take the axes from the latest command and OR-accumulate one-shot intents
-// across all incoming ones — so we don't lose a press if a frame passed without a simulation tick.
-void Game::ServerReceiveCommand()
-{
-    std::string msg;
-    while (link_.Server().Poll(msg))
-    {
-        Proto::Command c;
-        if (!Proto::DecodeCommand(msg, c))
-            continue;
-        serverCmd_.thrust = c.thrust;
-        serverCmd_.brake = c.brake;
-        serverCmd_.turn = c.turn;
-        serverCmd_.targetId = c.targetId;
-        // One-shot orders (navigation/jump/salvage): keep the given one, don't overwrite
-        // with zero — so an order isn't lost if a frame passed without a simulation tick.
-        if (c.navMode != 0)
-        {
-            serverCmd_.navMode = c.navMode;
-            serverCmd_.navTarget = c.navTarget;
-            serverCmd_.navStopDist = c.navStopDist;
-        }
-        if (c.jumpGateId != 0)
-            serverCmd_.jumpGateId = c.jumpGateId;
-        if (c.lootId != 0)
-            serverCmd_.lootId = c.lootId;
-        serverCmd_.toggleStabilizer |= c.toggleStabilizer;
-        serverCmd_.toggleMining |= c.toggleMining;
-        serverCmd_.toggleWeapon |= c.toggleWeapon;
-        serverCmd_.dock |= c.dock;
-        serverCmd_.undock |= c.undock;
-    }
-}
-
-// Server side of the boundary (M4d): serializes the active system's world snapshot and
-// places it into the transport. Single-player the server lives in this same process; at M4d-3
-// this becomes the econserver loop, sending the snapshot over TCP.
-void Game::ServerPublishSnapshot()
-{
-    link_.Server().Send(Proto::EncodeSnapshot(sim_.BuildSnapshot(sim_.ActiveId())));
-}
-
-// Server side: sends the active system's static layout (once on entering the
-// system). The client builds the proxy world from it, without peeking into the live sim_.
-void Game::ServerPublishLayout()
-{
-    if (networked_)
-        return;  // over the network the layout comes from the remote econserver
-    link_.Server().Send(Proto::EncodeLayout(sim_.BuildLayout(sim_.ActiveId())));
-}
-
 // Client: receives a new system's layout — remembers the static descriptions by id and
 // resets the proxies (they'll be rebuilt from the new layout + snapshot).
 void Game::ApplyLayout(const Proto::SystemLayout& lay)
@@ -1324,14 +1028,6 @@ void Game::ReconcileClientWorld()
                                           return true;
                                       }),
                        clientWorld_.end());
-}
-
-// The active system's AI pass delegates to the server core (Simulation), passing
-// the player as a combat agent and the client-side predicate of hostility toward them.
-void Game::UpdateNpcAi()
-{
-    sim_.StepNpcAi(sim_.Active(), playerShip_,
-                   [this](const NpcShip* n) { return NpcHostileToPlayer(n); });
 }
 
 Station* Game::FindStationByName(const std::string& name) const
@@ -2343,9 +2039,6 @@ void Game::DrawHud()
     }
 
     contextMenu_.Draw();  // over the windows
-
-    if (paused_)
-        Ui::Text("[ PAUSED ]", screenWidth_ / 2 - 50, 16, 20, ORANGE);
 
     // Current system and its security level (top center).
     if (const WorldLoader::SystemInfo* si = CurrentSystemInfo())
