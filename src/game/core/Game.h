@@ -49,9 +49,9 @@ struct BgStar
 class Game
 {
 public:
-    // connectHost empty — single-player (server in this same process via LocalTransport).
-    // Otherwise — network client: connects to an econserver host over TCP (host:port).
-    Game(const std::string& connectHost = "", unsigned short connectPort = 50800);
+    // Takes an already-established connection to an econserver host (main() dials it).
+    // There is no offline mode: without a connection there is no world to render.
+    explicit Game(std::unique_ptr<Net::TcpConnection> conn);
     ~Game();
 
     void Run();
