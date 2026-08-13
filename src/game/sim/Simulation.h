@@ -39,11 +39,6 @@ public:
     // Systems start "living" right away, before the player even visits.
     void InitGalaxy();
 
-    // Cold tick (AGGREGATE model): statistical evolution of system populations.
-    // HISTORICAL scaffolding (L2): both the game and `econserver` now run real
-    // agents (StepSystemAgents). Unused; kept in case of cold LOD.
-    void TickCold(float dt, const std::string& skipId);
-
     // M0 macro on REAL numbers: security/economy drift (from current populations,
     // which Game recounts into the aggregate), economy diffusion along gate lines,
     // and territory controller changes. Does NOT touch the population (it is real;
@@ -323,15 +318,12 @@ private:
     int                   playerDockedStationId_ = 0;    // docked station (0 — in flight)
 
     double       time_ = 0.0;           // total simulation time (seconds)
-    double       coldAccum_ = 0.0;      // accumulator of the cold-tick coarse interval
     double       maintAccum_ = 0.0;     // accumulator of coarse world maintenance (director)
     unsigned int rng_ = 0x1234567u;     // RNG state
 
     std::vector<std::string> events_;  // recent galaxy events (capped)
 
     void SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& info);
-    void StepAggregate(SystemAggregate& a);  // cold-rules step (historical, unused)
-    void StepMacro();                        // cold macrodynamics (historical, unused)
     std::string SystemName(const std::string& id) const;
     void        PushEvent(const std::string& msg);
 };
