@@ -27,7 +27,8 @@ enum class Kind
     MoveTo,  // fly to a point or an object and stop
     Dock,    // approach a station and dock with it
     Undock,  // leave the station
-    Mine     // approach a field and mine it
+    Mine,    // approach a field and mine it
+    Route    // travel to another system, gate by gate
 };
 
 enum class Status
@@ -46,6 +47,11 @@ struct Order
     float   stopDist = 120.0f;       // how close counts as arrived
     bool    useWarp = false;         // MoveTo: warp instead of cruising
     bool    untilFull = false;       // Mine: keep going until the hold is full
+
+    // Route only. destSystem is where to end up; avoidDanger weighs a safer path over a
+    // shorter one, which is the difference between a hauler and a courier that arrives.
+    std::string destSystem;
+    bool        avoidDanger = false;
 };
 
 // Hull fraction below which a running order gives up.

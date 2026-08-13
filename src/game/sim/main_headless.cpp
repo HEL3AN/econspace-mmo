@@ -573,9 +573,46 @@ static int OrderSelftest()
     bool aborted =
         sim.OrderStatus() == Orders::Status::Failed && sim.OrderDetail() == "manual control";
 
-    bool ok = idOk && arrived && rejected && aborted;
-    printf("Order selftest: id %s, move %s, bad-target %s, abort %s => %s\n", idOk ? "OK" : "FAIL",
-           arrived ? "OK" : "FAIL", rejected ? "OK" : "FAIL", aborted ? "OK" : "FAIL",
+    // 4) Route planning across the gate graph.
+    const std::string        startSys = sim.Universe().startId;
+    std::vector<std::string> self = sim.PlanRoute(startSys, startSys, false);
+    bool                     selfRoute = self.size() == 1 && self[0] == startSys;
+
+    // Every other system must be reachable from the start, and the path must begin and
+    // end where it was asked to.
+    bool allReachable = true;
+    for (const WorldLoader::SystemInfo& si : sim.Universe().systems)
+    {
+        std::vector<std::string> path = sim.PlanRoute(startSys, si.id, false);
+        if (path.empty() || path.front() != startSys || path.back() != si.id)
+            allReachable = false;
+    }
+    bool noRoute = sim.PlanRoute(startSys, "nowhere", false).empty();
+
+    // Planning around danger must still produce a valid path, not give up.
+    bool safeRouteOk = true;
+    for (const WorldLoader::SystemInfo& si : sim.Universe().systems)
+    {
+        std::vector<std::string> path = sim.PlanRoute(startSys, si.id, true);
+        if (path.empty() || path.back() != si.id)
+            safeRouteOk = false;
+    }
+
+    // 5) A route order to somewhere unreachable fails instead of hanging.
+    Orders::Order route;
+    route.kind = Orders::Kind::Route;
+    route.destSystem = "nowhere";
+    sim.GiveOrder(route);
+    sim.StepPlayerOrder(sim.Active(), dt);
+    bool routeRejected = sim.OrderStatus() == Orders::Status::Failed;
+
+    bool ok = idOk && arrived && rejected && aborted && selfRoute && allReachable && noRoute &&
+              safeRouteOk && routeRejected;
+    printf("Order selftest: id %s, move %s, bad-target %s, abort %s, route-self %s, "
+           "route-all %s, route-none %s, route-safe %s, route-reject %s => %s\n",
+           idOk ? "OK" : "FAIL", arrived ? "OK" : "FAIL", rejected ? "OK" : "FAIL",
+           aborted ? "OK" : "FAIL", selfRoute ? "OK" : "FAIL", allReachable ? "OK" : "FAIL",
+           noRoute ? "OK" : "FAIL", safeRouteOk ? "OK" : "FAIL", routeRejected ? "OK" : "FAIL",
            ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

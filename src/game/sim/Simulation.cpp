@@ -1543,6 +1543,71 @@ void Simulation::StepPlayerOrder(SystemState& st, float dt)
         return;
     }
 
+    // A route is a sequence of jumps. The path is recomputed on arrival in each system
+    // rather than planned once and followed blindly: the galaxy drifts underneath a long
+    // journey, and a route that was safe when it was planned may not be by the third hop.
+    if (order_.kind == Orders::Kind::Route)
+    {
+        if (activeId_ == order_.destSystem)
+        {
+            finish(Orders::Status::Done, "arrived in " + order_.destSystem);
+            return;
+        }
+        std::vector<std::string> path = PlanRoute(activeId_, order_.destSystem, order_.avoidDanger);
+        if (path.size() < 2)
+        {
+            finish(Orders::Status::Failed, "no route to " + order_.destSystem);
+            return;
+        }
+        const std::string& nextHop = path[1];
+
+        // The gate for this hop. Gates carry their destination, so the hop names the gate.
+        JumpGate* gate = nullptr;
+        for (auto& e : st.entities)
+        {
+            JumpGate* g = dynamic_cast<JumpGate*>(e.get());
+            if (g != nullptr && g->GetDestination() == nextHop)
+            {
+                gate = g;
+                break;
+            }
+        }
+        if (gate == nullptr)
+        {
+            finish(Orders::Status::Failed, "no gate to " + nextHop + " in this system");
+            return;
+        }
+
+        float gateDist = DistTo(*player_, gate->GetPosition());
+        if (gateDist > gate->GetSize() + 100.0f)
+        {
+            if (!orderNavIssued_)
+            {
+                Proto::Command nav;
+                nav.navMode = 2;  // warp: gates are far apart and an agent is paying for time
+                nav.navTarget = gate->GetPosition();
+                nav.navStopDist = gate->GetSize() + 60.0f;
+                Sim::StepPlayerShip(*player_, nav, 1.0f, dt);
+                orderNavIssued_ = true;
+                return;
+            }
+            Sim::StepPlayerShip(*player_, Proto::Command{}, 1.0f, dt);
+            return;
+        }
+
+        // At the gate: jump, then let the next tick plan from where we land.
+        player_->DisengageAutopilot();
+        std::string dest = JumpGateDestIfNear(st, gate->GetId());
+        if (dest.empty())
+        {
+            Sim::StepPlayerShip(*player_, Proto::Command{}, 1.0f, dt);
+            return;  // still closing the last few units
+        }
+        ServerEnterSystem(dest, activeId_);
+        orderNavIssued_ = false;
+        return;
+    }
+
     // Everything else acts on a place: an object by id, or a bare point.
     Entity* target = order_.targetId != 0 ? FindById(st, order_.targetId) : nullptr;
     if (order_.targetId != 0 && target == nullptr)
@@ -1635,4 +1700,90 @@ void Simulation::StepPlayerOrder(SystemState& st, float dt)
     }
 
     finish(Orders::Status::Failed, "unsupported order");
+}
+
+// --- Route planning (#30) ----------------------------------------------------
+//
+// A jump today is a single hop: the client names one gate and the server checks it is
+// close enough. "Fly to Verge" therefore meant planning the hops by hand, and for an
+// agent every extra hop is another round trip to a language model. This turns the whole
+// journey into one order.
+std::vector<std::string> Simulation::PlanRoute(const std::string& from, const std::string& to,
+                                               bool avoidDanger) const
+{
+    if (from.empty() || to.empty() || !HasSystem(from) || !HasSystem(to))
+        return {};
+    if (from == to)
+        return { from };
+
+    // What one hop into a system costs. Counting hops gives the short way; weighing danger
+    // gives the way a loaded hauler survives. Both are Dijkstra over the same small graph,
+    // so the difference is only this function.
+    auto cost = [this, avoidDanger](const std::string& id) -> double
+    {
+        if (!avoidDanger)
+            return 1.0;
+        auto it = systems_.find(id);
+        if (it == systems_.end())
+            return 1.0;
+        const SystemAggregate& a = it->second.agg;
+        // Low security and a pirate presence both make a system expensive to cross. The
+        // numbers only need to order routes sensibly, not to model risk exactly.
+        double danger = (1.0 - (double)a.security) * 4.0 + (double)a.pirates * 0.5;
+        return 1.0 + danger;
+    };
+
+    std::map<std::string, double>      best;
+    std::map<std::string, std::string> cameFrom;
+    // The galaxy is a handful of systems, so a linear scan for the next node is cheaper to
+    // read than a priority queue and indistinguishable in cost.
+    std::map<std::string, bool> settled;
+    for (const auto& kv : systems_)
+        best[kv.first] = 1e18;
+    best[from] = 0.0;
+
+    for (;;)
+    {
+        std::string cur;
+        double      curCost = 1e18;
+        for (const auto& kv : best)
+            if (!settled[kv.first] && kv.second < curCost)
+            {
+                cur = kv.first;
+                curCost = kv.second;
+            }
+        if (cur.empty())
+            break;  // nothing reachable left
+        if (cur == to)
+            break;
+        settled[cur] = true;
+
+        for (const std::string& n : Neighbors(cur))
+        {
+            if (settled[n])
+                continue;
+            double via = curCost + cost(n);
+            auto   it = best.find(n);
+            if (it != best.end() && via < it->second)
+            {
+                it->second = via;
+                cameFrom[n] = cur;
+            }
+        }
+    }
+
+    if (best[to] >= 1e18)
+        return {};  // unreachable: say so rather than returning a partial path
+
+    std::vector<std::string> path;
+    for (std::string at = to;; at = cameFrom[at])
+    {
+        path.push_back(at);
+        if (at == from)
+            break;
+        if (cameFrom.find(at) == cameFrom.end())
+            return {};
+    }
+    std::reverse(path.begin(), path.end());
+    return path;
 }
