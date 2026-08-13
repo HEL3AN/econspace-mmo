@@ -116,6 +116,23 @@ target_link_libraries(engine PUBLIC raylib nlohmann_json::nlohmann_json)
 # we clean them up gradually. Third-party raylib/json build as their own targets, untouched.
 target_compile_options(engine PUBLIC -Wall -Wextra)
 
+# --- Shared wire layer -----------------------------------------------------
+# Protocol + transport, compiled ONCE and linked by everything that speaks the wire:
+# the client, the server and the tests. These two files used to appear in three
+# copy-pasted source lists, and econagent (#42) would have made it four.
+add_library(netproto STATIC
+    src/game/sim/Protocol.cpp
+    src/game/net/Tcp.cpp
+)
+# PUBLIC: consumers include "sim/Protocol.h" and "net/Tcp.h" relative to src/game.
+target_include_directories(netproto PUBLIC ${CMAKE_SOURCE_DIR}/src/game)
+# engine, because Protocol.h uses core/Faction.h and raylib's Vector2/Color.
+target_link_libraries(netproto PUBLIC engine)
+# winsock, guarded here so the guard lives in one place when other platforms arrive (#12).
+if(WIN32)
+    target_link_libraries(netproto PUBLIC ws2_32)
+endif()
+
 # --- Game ------------------------------------------------------------------
 # The client does NOT link Simulation: the world lives on econserver. It shares only
 # the wire protocol and PlayerStep, which is the movement step it must run identically
@@ -124,8 +141,6 @@ add_executable(econspace
     src/game/main.cpp
     src/game/core/Game.cpp
     src/game/sim/PlayerStep.cpp
-    src/game/sim/Protocol.cpp
-    src/game/net/Tcp.cpp             # TCP client to econserver host (M4e)
     src/game/entities/Ship.cpp       # the predicted player ship + NPC proxies
     src/game/entities/ShipType.cpp   # hangar catalog
     src/game/entities/NpcShip.cpp
@@ -133,8 +148,7 @@ add_executable(econspace
     src/game/player/Skills.cpp
     src/game/missions/MissionSystem.cpp  # mission mirror from the snapshot
 )
-target_include_directories(econspace PRIVATE ${CMAKE_SOURCE_DIR}/src/game)
-target_link_libraries(econspace PRIVATE engine ws2_32)  # ws2_32 — winsock (TCP client)
+target_link_libraries(econspace PRIVATE engine netproto)  # netproto brings src/game + winsock
 set_target_properties(econspace PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/game)
 # Dev convenience: the game reads the world from the SOURCE data/ (like the editor),
@@ -149,8 +163,6 @@ add_executable(econserver
     src/game/sim/main_headless.cpp
     src/game/sim/Simulation.cpp
     src/game/sim/PlayerStep.cpp
-    src/game/sim/Protocol.cpp
-    src/game/net/Tcp.cpp             # TCP transport (winsock), M4d-3
     src/game/economy/Market.cpp
     src/game/entities/NpcShip.cpp
     src/game/entities/Ship.cpp       # Simulation owns the player's ship (M4d-2b)
@@ -159,8 +171,7 @@ add_executable(econserver
     src/game/player/Skills.cpp       # account skills (M4f)
     src/game/missions/MissionSystem.cpp  # player missions in Simulation (M4f-2)
 )
-target_include_directories(econserver PRIVATE ${CMAKE_SOURCE_DIR}/src/game)
-target_link_libraries(econserver PRIVATE engine ws2_32)  # ws2_32 — winsock (TCP)
+target_link_libraries(econserver PRIVATE engine netproto)  # netproto brings src/game + winsock
 set_target_properties(econserver PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/server)
 target_compile_definitions(econserver PRIVATE SIM_DATA_DIR="${CMAKE_SOURCE_DIR}/data/")
@@ -198,11 +209,8 @@ add_executable(tests
     tests/test_main.cpp
     tests/protocol_tests.cpp
     tests/net_tests.cpp
-    src/game/sim/Protocol.cpp
-    src/game/net/Tcp.cpp
 )
-target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/src/game)
-target_link_libraries(tests PRIVATE engine ws2_32 doctest::doctest)
+target_link_libraries(tests PRIVATE engine netproto doctest::doctest)
 set_target_properties(tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/tests)
 add_test(NAME unit COMMAND tests)
