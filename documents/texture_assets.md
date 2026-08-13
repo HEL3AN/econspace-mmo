@@ -3,6 +3,19 @@
 A reference for generating sprites (Nano Banana and the like) and assembling them in
 Photoshop. The project's style is **pixel art**.
 
+> **The rendering path already works — the only thing missing is the PNG files.**
+> `Tex::DrawSprite(...)` (`src/engine/render/Textures.h`) loads and caches PNGs from
+> `data/textures/` on demand, and every entity already calls it: see
+> `src/engine/entities/Star.cpp`, where the vector shape is drawn only when the sprite
+> is absent. Drop a correctly named file into `data/textures/` and it appears in-game
+> on the next run — no code changes, no rebuild.
+
+> **This is an optional path, not the critical one.** The project's primary
+> presentation is moving to glyph/ASCII rendering (issue #36); sprites become an
+> optional alternative rendering backend. The specification below stays valid for
+> anyone who wants that backend — nothing here is obsolete — but the game no longer
+> depends on these files existing.
+
 ## General Rules (important for all files)
 
 - **Format:** PNG with an alpha channel (PNG-32), **fully transparent background**.

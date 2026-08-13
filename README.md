@@ -1,21 +1,21 @@
 # EconSpace
 
-**A 2D EVE-like space-sim sandbox with an authoritative client–server core, built in C++ on top of [raylib](https://www.raylib.com/).**
+**A 2D EVE-like space MMO with an authoritative client–server core, built in C++ on top of [raylib](https://www.raylib.com/).**
 
-You pilot a ship in a persistent, multi-system galaxy: mine, trade, run missions, fight, and build reputation with factions — while the galaxy simulates itself around you on an authoritative server.
+You pilot a ship in a persistent, multi-system galaxy: mine, trade, run missions, fight, and build reputation with factions — while the galaxy simulates itself around you. The world lives on an authoritative server; the client renders snapshots and sends commands. There is no single-player mode — playing means running (or connecting to) a server.
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Language: C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows%20(MinGW)-lightgrey.svg)
 ![Status: Prototype](https://img.shields.io/badge/status-prototype-orange.svg)
 
-> **Project status — honest version.** EconSpace is an engineering-driven **prototype**, not a finished game. The client–server architecture and netcode are solid and real; the *content* is not: sprites are placeholder shapes (no art yet), there is no audio, and the world is small. See [ROADMAP.md](ROADMAP.md) for where it is and where it's going. Contributions — especially art, content, and gameplay depth — are very welcome.
+> **Project status — honest version.** EconSpace is an engineering-driven **prototype**, not a finished game. The client–server architecture and netcode are solid and real; the *content* is not: sprites are placeholder shapes (no art yet), there is no audio, and the world is small. The server currently accepts **one** client at a time — multi-client is the next foundational piece, not an extra. A single-player code path still exists in the client as residue from an earlier stage of the project; it is scheduled for removal (issue #23) and is not part of the target design. See [ROADMAP.md](ROADMAP.md) for where it is and where it's going. Contributions are very welcome.
 
 ---
 
 ## What's in it
 
-EconSpace runs its own game logic on top of raylib (windowing/render/input only). The same simulation runs locally (single-player) and headless (dedicated server), so single-player is literally "the server in the same process."
+EconSpace runs its own game logic on top of raylib (windowing/render/input only). The authoritative `Simulation` runs headless in `econserver`; the client is a renderer and an input source. There is one mode — connected play — and everything below already works today.
 
 **Gameplay**
 - Newtonian-ish flight, warp travel, autopilot, and a parallax starfield.
@@ -35,11 +35,24 @@ EconSpace runs its own game logic on top of raylib (windowing/render/input only)
 - A **headless server** (`econserver`) that runs the exact same simulation without a window.
 
 **Networking**
-- A `Command` / `Snapshot` / `SystemLayout` protocol over a swappable transport (`ITransport`): in-process loopback for single-player, TCP (winsock) for real networked play.
+- A `Command` / `Snapshot` / `SystemLayout` protocol over a swappable transport (`ITransport`): TCP (winsock) for play, plus an in-process `LocalTransport` used as a **test** seam by the `econserver hosttest` smoke test and the doctest suite.
 - Client-side prediction + server reconciliation with input replay for the player's own ship, and entity interpolation for everyone else (the classic [Gambetta](https://www.gabrielgambetta.com/client-server-game-architecture.html) model).
 - Server-authoritative combat, docking, trading, missions, and player accounts.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for how it all fits together.
+
+---
+
+## Where it's going
+
+Everything in this section is **planned, not implemented**. It is here so contributors know what the project is aiming at, and so nobody builds against the old assumptions. Details and sequencing live in [ROADMAP.md](ROADMAP.md).
+
+- **An MMO, not a sandbox with an optional server.** The client always talks to an authoritative server. Multi-client (one session, ship, and account per connection, plus interest management) is foundational work, not a stretch goal. The leftover single-player path gets deleted (#23).
+- **Glyphs as the primary look** (#36). ASCII/glyph presentation becomes the game's actual visual language rather than a debug view: it closes the art gap honestly, it lets players build structures without an artist in the loop, and the same projection is what an AI agent reads. Sprites stay possible as an alternative rendering backend instead of being the thing that blocks the project.
+- **AI agents as first-class players** (#42). The game will ship its own MCP server, `econagent`, written in C++ so the wire protocol has a single source of truth. An LLM agent (Claude Code, Claude Desktop) can then pilot a ship on high-level standing orders, and a human can play fleet commander rather than pilot.
+- **A player-mutable world** (#44). Players build deployables and structures that feed the macro simulation that already exists — prosperity, security, territory control.
+
+Today none of this is built: rendering is placeholder shapes, there is no agent API and no MCP server, and the world is read-only content authored in the editor.
 
 ---
 
@@ -54,16 +67,12 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for how it all fits together.
 cmake -S . -B build -G "MinGW Makefiles"   # configure (first build downloads & builds deps — slow)
 cmake --build build                        # build game + editor + server + tests
 
-./build/bin/game/econspace.exe             # run the game (client)
-./build/bin/editor/worldeditor.exe         # run the world editor
-./build/bin/server/econserver.exe          # headless galaxy simulation
-
 ctest --test-dir build --output-on-failure # run the unit tests (doctest)
 ```
 
 > On Windows, close the running game/editor window before rebuilding — Windows won't let you overwrite a running `.exe`. The `data/` folder is copied next to each executable on every build.
 
-### Play over the network
+**Play** — start a server, then connect a client to it. Both halves are required; the client is not a game on its own.
 
 ```sh
 # terminal 1 — start an authoritative server on a TCP port
@@ -73,7 +82,15 @@ ctest --test-dir build --output-on-failure # run the unit tests (doctest)
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800
 ```
 
-Single-player needs no server — it runs the same `Simulation` in-process over a loopback transport.
+The server accepts one client at a time for now. Run it on `127.0.0.1` for solo play, or on a reachable host to play over a network.
+
+**Other executables**
+
+```sh
+./build/bin/editor/worldeditor.exe         # visual world editor (systems, objects, galaxy links)
+./build/bin/server/econserver.exe          # batch headless simulation (no client, prints galaxy stats)
+./build/bin/server/econserver.exe hosttest # server-loop smoke test over the in-process transport
+```
 
 ---
 
@@ -111,7 +128,7 @@ The code is split into three modules — **engine** (shared static library), **g
 
 ## Contributing
 
-EconSpace is open source under the MIT license and contributions are welcome — code, world content (via the editor), art to replace the placeholder shapes, docs, and bug reports. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CONVENTIONS.md](CONVENTIONS.md) first, and see the [issue tracker](../../issues) for good places to start.
+EconSpace is open source under the MIT license and contributions are welcome — code, world content (via the editor), docs, and bug reports. [ROADMAP.md](ROADMAP.md) lists what help is most useful right now. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CONVENTIONS.md](CONVENTIONS.md) first, and see the [issue tracker](../../issues) for good places to start.
 
 ## License
 

@@ -1,6 +1,6 @@
 # Architecture
 
-EconSpace is built around one idea: **the server is the single source of truth, and the client only renders snapshots and sends commands.** The same simulation powers both single-player (server in-process) and networked play (remote server), so there is one game, not two.
+EconSpace is built around one idea: **the server is the single source of truth, and the client only renders snapshots and sends commands.** There is exactly one mode — a client connected to an authoritative server — so there is one game, not two. Everything below describes what exists today; [planned directions](#planned-directions-not-built-yet) are marked as such at the end.
 
 ## Modules
 
@@ -30,12 +30,14 @@ src/
 
 - The **server** (`Simulation`, `src/game/sim/`) owns the world, all agents, combat, the spawn director, macro-dynamics, the player ship, the player account, and missions. It advances on a fixed `SIM_DT = 1/60` tick, independent of the render frame rate.
 - The **client** (`Game`, `src/game/core/`) maps input to a `Command`, renders from a `Snapshot`, and never mutates authoritative state directly. In networked mode it doesn't even read a live world — it builds render proxies from a `SystemLayout` plus per-tick snapshots.
-- **Single-player** is the same seam over an in-process loopback transport; **networked** play is the same seam over TCP. Only the transport differs.
+- **Play is always over the seam**: client to authoritative server over TCP. Because the seam is a transport interface rather than a socket call, tests can drive the exact same server loop in one process without a network — that is the only other use of the seam, not a second game mode.
+
+> A single-player code path still exists in the client (`Game` with an empty `connectHost`) as residue from an earlier stage of the project. It is scheduled for removal (issue #23) and should not be treated as a supported mode or extended.
 
 ## Protocol & transport
 
-- **Protocol** (`src/game/sim/Protocol.*`): `Command` (client→server intents), `Snapshot` (server→client view of the player's system, including the player, entities, fire events, market, mission views, and account mirror), `SystemLayout` (static system geometry), and `GalaxyState` (periodic galaxy-wide stats for the map). Messages are versioned JSON (nlohmann/json).
-- **Transport** (`src/game/net/`): the `ITransport` interface (`Send` / `Poll`) hides the wire. `LocalTransport` is an in-process loopback (single-player/tests); `TcpTransport` is winsock TCP with length-prefixed framing. Swapping TCP for UDP/ENet later means a new `ITransport`, not rewritten game logic.
+- **Protocol** (`src/game/sim/Protocol.*`): `Command` (client→server intents), `Snapshot` (server→client view of the player's system, including the player, entities, fire events, market, mission views, and account mirror), `SystemLayout` (static system geometry), and `GalaxyState` (periodic galaxy-wide stats for the map). Messages are JSON (nlohmann/json), tagged with a type field (`"t"`). They carry **no version field yet** — decoding is permissive (`value(key, default)`), so a client built against an older protocol silently receives defaults instead of an error. Adding a version and a handshake is issue #15.
+- **Transport** (`src/game/net/`): the `ITransport` interface (`Send` / `Poll`) hides the wire. `LocalTransport` is an in-process loopback used **for testing** — the `econserver hosttest` server-loop smoke test and the doctest suite; `TcpTransport` is winsock TCP with length-prefixed framing. Swapping TCP for UDP/ENet later means a new `ITransport`, not rewritten game logic.
 
 ## Netcode
 
@@ -62,3 +64,15 @@ Beyond the player's system, the server simulates the whole galaxy at a lower lev
 ## Data-driven world
 
 The world is data, not code: `data/universe.json` indexes systems and links; `data/systems/*.json` describe each system's objects. Factions and their relations live in `data/factions.json`. The format is documented in [documents/world_format.md](documents/world_format.md), and the world editor writes exactly this format.
+
+## Planned directions (not built yet)
+
+None of the following exists in the codebase. It is recorded here so new work lands in the right shape and so nobody has to reverse-engineer the intent from issue threads. Sequencing lives in [ROADMAP.md](ROADMAP.md).
+
+**Standing orders — a strategic layer above the tactical tick.** The server today only understands per-tick `Command` input, which suits a human at 60 Hz and suits nothing else. The plan is a second layer on the server: durable, high-level orders ("mine this belt until the hold is full", "haul to that station", "defend this gate") that the server itself executes over seconds or minutes, reporting progress. The 60 Hz tactical loop stays exactly as it is; the order layer sits on top and issues into it. This is what makes an agent-driven or fleet-driven player viable — nobody, human or model, should have to stream thrust bits to play.
+
+**The agent seam — `econagent` (#42).** An AI agent becomes an ordinary player, not a special case in the server. `econagent` is planned as a **separate process** that is two things at once: an MCP server on stdio for the model, and a normal TCP game client to `econserver` — the same `Command`/`Snapshot` protocol every other client speaks. It is written in C++ and links the existing protocol code so the wire format keeps a single source of truth instead of drifting into a second, hand-maintained implementation. The server gains no knowledge of MCP. Companion pieces: a compact text projection of world state (what the model actually reads), an event journal with a blocking wait so an agent can sleep until something happens rather than poll, and MCP resources/prompts on top.
+
+**Presentation layer with pluggable backends (#36).** Rendering is currently entity types drawing themselves through raylib calls. The plan is to route drawing through a presentation layer that maps an entity's archetype to a visual, with the backend swappable: **glyph** (the primary look — ASCII/text, which is also close to what the agent projection needs), shapes (today's placeholders), and sprites as an optional backend for whoever wants to supply art. This also removes the artist as a hard dependency for player-built content, and gives the editor and the game one shared way to draw the same thing.
+
+**World mutation and `LayoutDelta` (#44).** `SystemLayout` is sent **once**, when the client enters a system; everything that changes afterwards travels as per-tick `Snapshot` entries for entities the client already knows about. That is exactly why the world cannot change shape today: there is no message that says "a structure now exists here" or "this one is gone". The planned fix is authoritative world mutation on the server plus a `LayoutDelta` message (added/removed/changed layout entries) alongside the existing snapshot stream, with construction, ownership, permissions, limits, and upkeep built on top, feeding the macro-dynamics that already run.
