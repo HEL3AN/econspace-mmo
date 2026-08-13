@@ -112,9 +112,17 @@ add_library(engine STATIC
 target_include_directories(engine PUBLIC ${CMAKE_SOURCE_DIR}/src/engine)
 target_link_libraries(engine PUBLIC raylib nlohmann_json::nlohmann_json)
 # Compiler warnings for OUR code (engine + everything that links it: game/
-# editor/server/tests). Not -Werror: warnings are visible but don't break the build —
-# we clean them up gradually. Third-party raylib/json build as their own targets, untouched.
+# editor/server/tests). Third-party raylib/json build as their own targets, untouched.
 target_compile_options(engine PUBLIC -Wall -Wextra)
+
+# -Werror is opt-in and CI turns it on. Local builds keep warnings visible but
+# non-fatal, so a work-in-progress edit is not blocked by an unused parameter, while
+# nothing warning-dirty can reach main. It rides on `engine` so it reaches everything
+# that links it and nothing that doesn't — raylib and json are untouched.
+option(WARNINGS_AS_ERRORS "Treat compiler warnings in our code as errors" OFF)
+if(WARNINGS_AS_ERRORS)
+    target_compile_options(engine PUBLIC -Werror)
+endif()
 
 # --- Shared wire layer -----------------------------------------------------
 # Protocol + transport, compiled ONCE and linked by everything that speaks the wire:
