@@ -1,4 +1,5 @@
 #include "core/Game.h"
+#include "sim/PlayerStep.h"
 
 #include "core/World.h"
 #include "core/WorldLoader.h"
@@ -31,7 +32,7 @@ static const float MENU_STEP = 46.0f;
 static const float MENU_TOP = 12.0f;
 
 // Player combat and mining are now server-side (Simulation::StepPlayerFire/StepPlayerMining);
-// the weapon range for rendering the targeting circle is Simulation::PLAYER_WEAPON_RANGE.
+// the weapon range for rendering the targeting circle is Sim::PLAYER_WEAPON_RANGE.
 
 // Simulation step: fixed, separate from the render rate (determinism,
 // server-friendliness). 1/60 matches the target FPS — behaves as before.
@@ -41,7 +42,6 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
 {
     // The connection is established by main() before the window opens, so it is
     // always live here — there is no offline mode to degrade into.
-    networked_ = true;
     clientLink_ = netConn_.get();
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);  // window can be resized by its edge
@@ -50,10 +50,10 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     SetTargetFPS(60);
     Ui::LoadAssets();
 
-    // The player ship is created and owned by Simulation (server agent, M4d-2b);
-    // the client holds a pointer for rendering/UI/account.
-    sim_.CreatePlayer(Vector2{ 0.0f, 3000.0f }, GetShipCatalog()[0].stats);
-    playerShip_ = sim_.PlayerShip();
+    // The authoritative ship lives on the server. This one is the client's prediction of
+    // it: the same Ship type, stepped with the same Sim::StepPlayerShip, corrected by
+    // every snapshot. Its starting position is a placeholder until the first snapshot.
+    playerShip_ = std::make_unique<Ship>(Vector2{ 0.0f, 3000.0f }, GetShipCatalog()[0].stats);
 
     camera_ = {};
     camera_.target = playerShip_->GetPosition();
@@ -69,21 +69,14 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     dataDir_ = std::string(GetApplicationDirectory()) + "data/";
 #endif
     Factions::Load(dataDir_ + "factions.json");  // faction properties/relations
-    sim_.LoadUniverse(dataDir_ + "universe.json");
-    sim_.Seed(0xC0FFEEu);    // deterministic simulation RNG
-    sim_.InitGalaxy();       // skeleton aggregates for all systems
-    MaterializeAllSystems(); // M0: populate ALL systems — the server simulates the whole world
-
-    // The player is an agent just like an NPC: it gets a stable id from the shared
-    // counter (after materializing the world so ids don't collide). Used as the
-    // player's descriptor at the client↔server boundary (commands/snapshots, M2; network, M4).
-    playerAgentId_ = sim_.NextAgentId();
+    universe_ = WorldLoader::LoadUniverse(dataDir_ + "universe.json");
 
     // The starting ship (index 0) is already owned by the player.
     ownedShips_.assign(GetShipCatalog().size(), false);
     ownedShips_[0] = true;
 
-    LoadSystemById(sim_.Universe().startId, "");
+    // No system is loaded here: which system we are in, and everything in it, arrives
+    // from the server as a SystemLayout followed by snapshots (ApplyLayout).
 
     SetupWindows();
 
@@ -105,21 +98,6 @@ Game::~Game()
     Tex::Unload();
     Ui::UnloadAssets();
     CloseWindow();
-}
-
-// Active-system accessors: all game code works with the world through these,
-// unaware that the state lives in sim_.
-std::vector<std::unique_ptr<Entity>>& Game::Entities()
-{
-    return sim_.Active().entities;
-}
-const std::vector<std::unique_ptr<Entity>>& Game::Entities() const
-{
-    return sim_.Active().entities;
-}
-Market& Game::ActiveMarket()
-{
-    return sim_.Active().market;
 }
 
 void Game::Run()
@@ -171,7 +149,7 @@ void Game::Run()
                 if (pendingInputs_.size() > 256)  // guard against growth if the server stalls
                     pendingInputs_.erase(pendingInputs_.begin());
                 clientLink_->Send(Proto::EncodeCommand(cmd_));
-                sim_.StepPlayerShip(cmd_, 1.0f, SIM_DT);
+                Sim::StepPlayerShip(*playerShip_, cmd_, 1.0f, SIM_DT);
                 // One-shot intents applied/sent this tick — clear them (axes are held).
                 cmd_.toggleStabilizer = cmd_.toggleMining = cmd_.toggleWeapon = false;
                 cmd_.dock = cmd_.undock = false;
@@ -191,11 +169,12 @@ void Game::Run()
         // The camera follows the ship (position synced from the snapshot). In warp the
         // speed is too high for a smooth catch-up — center hard so the ship doesn't
         // leave the screen.
-        if (networked_ && mode_ == GameMode::Flying)
+        if (mode_ == GameMode::Flying)
         {
-            if (playerShip_->IsWarping())
+            if (playerShip_->IsWarping() || cameraSnap_)
             {
                 camera_.target = playerShip_->GetPosition();
+                cameraSnap_ = false;
             }
             else
             {
@@ -263,8 +242,7 @@ void Game::HandleInput(float dt)
     if (IsKeyPressed(KEY_F))
     {
         cmd_.toggleWeapon = true;
-        if (networked_)
-            weaponOn_ = !weaponOn_;  // over the network, keep the indicator/reticle optimistic
+        weaponOn_ = !weaponOn_;  // optimistic: the snapshot confirms it
     }
 
     if (IsKeyPressed(KEY_T))
@@ -343,7 +321,7 @@ void Game::HandleInput(float dt)
     // server-authoritative: we send cmd_.dock, the server confirms via snapshot (see BuildClientSnapshot).
     nearbyStation_ = nullptr;
     {
-        const auto& src = networked_ ? clientWorld_ : Entities();
+        const auto& src = clientWorld_;
         for (auto& e : src)
         {
             Station* st = dynamic_cast<Station*>(e.get());
@@ -365,89 +343,13 @@ void Game::HandleInput(float dt)
     }
 }
 
-// All stations in the system — for generating missions (delivery targets, etc.).
-std::vector<Station*> Game::AllStations()
-{
-    std::vector<Station*> list;
-    for (auto& e : Entities())
-        if (Station* st = dynamic_cast<Station*>(e.get()))
-            list.push_back(st);
-    return list;
-}
-
-// Whether the mission can be turned in at the station we're currently docked at.
-bool Game::MissionCompletable(const Mission& m) const
-{
-    if (dockedStation_ == nullptr)
-        return false;
-    int dockId = dockedStation_->GetId();
-    switch (m.type)
-    {
-        case MissionType::Bounty:
-            return m.giverStationId == dockId && m.progress >= m.targetCount;
-        case MissionType::Mining:
-            return m.giverStationId == dockId &&
-                   playerShip_->GetCargoAmount(m.resource) >= m.targetCount;
-        case MissionType::Delivery:
-            return m.destStationId == dockId;
-    }
-    return false;
-}
-
-// Turns in a mission: grants the reward, deducts ore (for mining), removes it from the log.
-void Game::CompleteMission(int activeIndex)
-{
-    std::vector<Mission>& active = missions_.Active();
-    if (activeIndex < 0 || activeIndex >= (int)active.size())
-        return;
-
-    const Mission& m = active[activeIndex];
-    if (m.type == MissionType::Mining)
-        playerShip_->RemoveCargo(m.resource, m.targetCount);
-
-    player_.AddMoney(m.rewardMoney);
-    player_.AddReputation(m.faction, m.rewardRep);
-
-    active.erase(active.begin() + activeIndex);
-}
-
-void Game::Dock(Station* station)
-{
-    // Reputation-gated access: at the Hated tier the station refuses docking.
-    FactionId sf = station->GetFaction();
-    if (Factions::TierOf(player_.GetReputation(sf)) == RepTier::Hated)
-    {
-        FlashMessage("Docking denied: hostile reputation");
-        return;
-    }
-
-    mode_ = GameMode::Docked;
-    dockedStation_ = station;
-    playerShip_->DisengageAutopilot();
-    playerShip_->Stop();
-
-    // Mission board: rewards are better with high reputation with the station's faction.
-    float repMul = 1.0f;
-    switch (Factions::TierOf(player_.GetReputation(sf)))
-    {
-        case RepTier::Hostile: repMul = 0.8f; break;
-        case RepTier::Liked:   repMul = 1.15f; break;
-        case RepTier::Allied:  repMul = 1.3f; break;
-        default:               repMul = 1.0f; break;
-    }
-    missions_.GenerateOffers(station, AllStations(), repMul);
-}
-
 void Game::Undock()
 {
-    // Over the network, undocking is server-authoritative: send the order, the server clears the
-    // dock and confirms via snapshot. Locally we leave optimistically (instant response).
-    if (networked_)
-    {
-        Proto::Command c;
-        c.undock = true;
-        clientLink_->Send(Proto::EncodeCommand(c));
-    }
+    // Undocking is server-authoritative: send the order, the server clears the dock and
+    // confirms via snapshot. We leave optimistically so the response feels instant.
+    Proto::Command c;
+    c.undock = true;
+    clientLink_->Send(Proto::EncodeCommand(c));
     mode_ = GameMode::Flying;
     dockedStation_ = nullptr;
 }
@@ -491,118 +393,12 @@ void Game::ApplyTradeAcks(const Proto::Snapshot& s)
 // populate NPCs; repeat visit — just activate the saved state (objects and
 // NPCs in their places, as the player left them).
 // cppcheck-suppress passedByValue ; fromId is intentionally by value (see above)
-void Game::LoadSystemById(const std::string& id, std::string fromId)
-{
-    const WorldLoader::SystemInfo* info = nullptr;
-    for (const auto& s : sim_.Universe().systems)
-        if (s.id == id)
-        {
-            info = &s;
-            break;
-        }
-    if (info == nullptr)
-    {
-        TraceLog(LOG_WARNING, "Game: unknown system '%s'", id.c_str());
-        return;
-    }
-
-    sim_.Activate(id);  // the skeleton system was created in InitGalaxy; make it active
-
-    // Materialization (hydrate): if the system was cold (no objects) — load the
-    // static objects from JSON. NPCs are populated below from the aggregate.
-    if (sim_.Active().entities.empty())
-    {
-        std::string path = dataDir_ + "systems/" + info->file;
-        sim_.Active().entities = WorldLoader::LoadSystem(path);
-        sim_.Active().populated = false;
-    }
-
-    // Reset references tied to a specific system/frame.
-    selected_ = nullptr;
-    nearbyStation_ = nullptr;
-    miningBeamField_ = nullptr;
-    dockedStation_ = nullptr;
-    clientWorld_.clear();  // old system's proxies — will be rebuilt from the new system's snapshot
-    beams_.clear();
-    weaponOn_ = false;
-    radarInit_ = false;
-
-    // The arrival point after a jump — at the gate leading back to the departure system.
-    if (!fromId.empty())
-    {
-        Vector2 arrival = { 0.0f, 3000.0f };
-        for (auto& e : Entities())
-            if (JumpGate* g = dynamic_cast<JumpGate*>(e.get()))
-                if (g->GetDestination() == fromId)
-                {
-                    Vector2 gp = g->GetPosition();
-                    float   d = sqrtf(gp.x * gp.x + gp.y * gp.y);
-                    float   k = d > 1.0f ? (d - (g->GetSize() + 200.0f)) / d : 0.0f;
-                    arrival = { gp.x * k, gp.y * k };  // a bit inward from the gate
-                    break;
-                }
-        playerShip_->Teleport(arrival);
-        playerShip_->DisengageAutopilot();
-        playerShip_->CancelWarp();
-        camera_.target = arrival;
-    }
-
-    // Materialize NPCs from the system's aggregate (if not yet populated).
-    if (!sim_.Active().populated)
-    {
-        HydrateNpcs();
-        sim_.Active().populated = true;
-    }
-
-}
-
-// Jump through a gate into system destId. Missions are cleared — they're tied to
-// the departing system's stations (cross-system missions aren't supported yet).
-void Game::JumpTo(const std::string& destId)
-{
-    missions_.ClearOffers();  // active missions survive the jump (see ClearOffers)
-    std::string fromId = sim_.ActiveId();
-    // We do NOT fold the departing system: its ships stay in place so that on
-    // return they're the same NPCs, not a fresh respawn. We only sync the aggregate
-    // (for the map/macrodynamics) but keep the entities in memory (persistence).
-    if (sim_.HasActive())
-        sim_.RecountAgg(sim_.Active());
-    LoadSystemById(destId, fromId);
-}
-
-// Folds the active system into a cold aggregate: rewrites the current population into
-// aggregate counts and frees the objects (memory). A PLACEHOLDER for the future (cold-eviction
-// of "distant" systems in a large galaxy); currently NOT called on jump —
-// visited systems keep their ships in memory (persistence without respawn).
-void Game::DehydrateActive()
-{
-    if (!sim_.HasActive())
-        return;
-    SystemState& st = sim_.Active();
-    sim_.RecountAgg(st);
-    st.entities.clear();
-    st.populated = false;
-}
-
-// Materializing the active system's NPCs is delegated to the server core (Simulation).
-void Game::HydrateNpcs()
-{
-    sim_.HydrateSystem(sim_.Active());
-}
-
-// M0: at startup, materialize and populate ALL systems — the world lives as a whole, not
-// only where the player is. The logic is in Simulation (the same on client and server).
-void Game::MaterializeAllSystems()
-{
-    sim_.MaterializeAllSystems(dataDir_ + "systems/");
-}
-
 const WorldLoader::SystemInfo* Game::CurrentSystemInfo() const
 {
     // Over the network the current system comes from the server snapshot (the local sim_ isn't
     // activated on jumps, its ActiveId() would be stuck on the start system). The system list (Universe) is static.
-    const std::string& active = networked_ ? snapshot_.systemId : sim_.ActiveId();
-    for (const auto& s : sim_.Universe().systems)
+    const std::string& active = snapshot_.systemId;
+    for (const auto& s : universe_.systems)
         if (s.id == active)
             return &s;
     return nullptr;
@@ -621,38 +417,11 @@ bool Game::HostileToPlayerFaction(FactionId f) const
     return t == RepTier::Hostile || t == RepTier::Hated;
 }
 
-bool Game::NpcHostileToPlayer(const NpcShip* npc) const
-{
-    return HostileToPlayerFaction(npc->GetFaction());
-}
-
-std::vector<NpcShip*> Game::AliveNpcs()
-{
-    std::vector<NpcShip*> list;
-    for (auto& e : Entities())
-        if (NpcShip* n = dynamic_cast<NpcShip*>(e.get()))
-            if (n->IsAlive())
-                list.push_back(n);
-    return list;
-}
-
-// Active-system entity by stable id (for client actions: selection,
-// targeting, context menu — the snapshot carries the id, the action applies by it).
-// Over the network the client has no live sim_ — we search among the proxies (clientWorld_),
-// which are the ones rendered; single-player we take the live sim_ objects (missions hinge on the
-// identity of live Station*, the "Dock" context menu must receive exactly those).
 Entity* Game::FindEntityById(int id) const
 {
     if (id == 0)
         return nullptr;
-    if (networked_)
-    {
-        for (const auto& e : clientWorld_)
-            if (e->GetId() == id)
-                return e.get();
-        return nullptr;
-    }
-    for (const auto& e : Entities())
+    for (const auto& e : clientWorld_)
         if (e->GetId() == id)
             return e.get();
     return nullptr;
@@ -669,6 +438,21 @@ void Game::ApplyLayout(const Proto::SystemLayout& lay)
         layoutById_[el.id] = el;
     clientWorld_.clear();
     snapBuffer_.clear();  // another system's interpolation history isn't needed
+
+    // Everything that pointed into the old system dies with clientWorld_. selected_ and
+    // the station/field pointers must be dropped in the same breath, or they dangle and
+    // are dereferenced on the very next frame (HandleInput reads selected_->GetId()).
+    selected_ = nullptr;
+    nearbyStation_ = nullptr;
+    miningBeamField_ = nullptr;
+    dockedStation_ = nullptr;  // the snapshot re-establishes docking if we are docked
+    beams_.clear();
+    weaponOn_ = false;
+
+    // The view belongs to the old system's coordinates: re-center the radar, and snap the
+    // camera once the new position arrives instead of sliding across the gap.
+    radarInit_ = false;
+    cameraSnap_ = true;
 }
 
 void Game::BuildClientSnapshot()
@@ -698,12 +482,9 @@ void Game::BuildClientSnapshot()
             Proto::Snapshot s;
             if (!Proto::DecodeSnapshot(msg, s))
                 continue;
-            if (networked_)
-            {
-                ApplyTradeAcks(s);  // credit sales revenue (client account)
-                for (const std::string& m : s.messages)  // server notifications (M4f-4)
-                    FlashMessage(m);
-            }
+            ApplyTradeAcks(s);  // credit sales revenue (client account)
+            for (const std::string& m : s.messages)  // server notifications (M4f-4)
+                FlashMessage(m);
             incoming = std::move(s);
             gotSnap = true;
         }
@@ -711,24 +492,20 @@ void Game::BuildClientSnapshot()
     if (gotSnap)
     {
         snapshot_ = std::move(incoming);
-        // Network: a buffer of snapshots with arrival timestamps — for interpolating non-own
+        // A buffer of snapshots with arrival timestamps — for interpolating non-own
         // entities (entity interpolation, Gambetta). We draw them "in the past", smoothing
         // out snapshot jitter. The own ship is NOT touched by interpolation (prediction).
-        if (networked_)
-        {
-            snapBuffer_.push_back({ GetTime(), snapshot_.entities });
-            double cutoff = GetTime() - 0.5;  // keep ~0.5 s of history
-            while (snapBuffer_.size() > 2 && snapBuffer_.front().t < cutoff)
-                snapBuffer_.pop_front();
-            if (snapBuffer_.size() > 120)
-                snapBuffer_.pop_front();
-        }
+        snapBuffer_.push_back({ GetTime(), snapshot_.entities });
+        double cutoff = GetTime() - 0.5;  // keep ~0.5 s of history
+        while (snapBuffer_.size() > 2 && snapBuffer_.front().t < cutoff)
+            snapBuffer_.pop_front();
+        if (snapBuffer_.size() > 120)
+            snapBuffer_.pop_front();
     }
 
     Proto::PlayerView& p = snapshot_.player;
-    if (networked_)
     {
-        // Network: RECONCILIATION (Gambetta). The server sent the authoritative state and the
+        // RECONCILIATION (Gambetta). The server sent the authoritative state and the
         // sequence number of the last processed input (lastInput). We drop the acked inputs,
         // reset the ship to the server state, and REPLAY the remaining (unacked) inputs — the
         // result matches the current prediction, without snapping back to a stale position.
@@ -749,7 +526,7 @@ void Game::BuildClientSnapshot()
         playerShip_->SetStabilizerOn(p.stabilizer);
         playerShip_->SetMiningOn(p.mining);
         for (const Proto::Command& c : pendingInputs_)
-            sim_.StepPlayerShip(c, 1.0f, SIM_DT);
+            Sim::StepPlayerShip(*playerShip_, c, 1.0f, SIM_DT);
         p.weaponOn = weaponOn_;  // client-side weapon indicator
 
         // The account is a MIRROR of the server (M4f): money/reputation/wanted/skills arrive in
@@ -809,29 +586,6 @@ void Game::BuildClientSnapshot()
             mode_ = GameMode::Flying;
             dockedStation_ = nullptr;
         }
-    }
-    else
-    {
-        // Single-player: fill in the player view from the local ship and client fields.
-        p.pos = playerShip_->GetPosition();
-        p.vel = playerShip_->GetVelocity();
-        p.heading = playerShip_->GetHeading();
-        p.hull = playerShip_->GetHull();
-        p.maxHull = playerShip_->GetMaxHull();
-        p.shields = playerShip_->GetShields();
-        p.maxShields = playerShip_->GetMaxShields();
-        p.cargoUsed = playerShip_->GetCargoUsed();
-        p.cargoCap = playerShip_->GetCargoCapacity();
-        p.warpPhase = (int)playerShip_->GetWarpPhase();
-        p.stabilizer = playerShip_->IsStabilizerOn();
-        p.mining = playerShip_->IsMiningOn();
-        p.weaponOn = weaponOn_;
-        p.docked = (mode_ == GameMode::Docked);
-        p.nearbyStationId = nearbyStation_ != nullptr ? nearbyStation_->GetId() : 0;
-        // Cargo remaining by resource (for the station screen) — in AllResourceTypes order.
-        p.cargoByType.clear();
-        for (ResourceType rt : AllResourceTypes())
-            p.cargoByType.push_back(playerShip_->GetCargoAmount(rt));
     }
 }
 
@@ -943,18 +697,11 @@ void Game::ReconcileClientWorld()
             proxy = clientWorld_.back().get();
         }
 
-        if (!networked_)
-        {
-            proxy->SetPosition(es.pos);
-            if (NpcShip* n = dynamic_cast<NpcShip*>(proxy))
-                n->SetHeading(es.heading);
-        }
     }
 
-    // 2) Network: positions of non-own entities are taken "from the past", interpolating between two
+    // 2) Positions of non-own entities are taken "from the past", interpolating between two
     // buffer snapshots around renderTime. Smooths out snapshot jitter (the own
     // ship runs on prediction — it's not in clientWorld_).
-    if (networked_)
     {
         double            rt = GetTime() - 0.1;  // render delay ~100 ms
         const InterpSnap* a = nullptr;
@@ -1068,8 +815,8 @@ void Game::DrawWorld()
     // Destination-station markers for active delivery missions. We draw them only if
     // the destination station is in the CURRENT system (by id), and at its rendered
     // position — otherwise after a jump the marker would "hang" at the coordinates of a station
-    // from another system. World source: clientWorld_ over the network / Entities() single-player.
-    const auto& renderedWorld = networked_ ? clientWorld_ : Entities();
+    // from another system.
+    const auto& renderedWorld = clientWorld_;
     for (const Mission& m : missions_.Active())
     {
         if (m.type != MissionType::Delivery || m.destStationId == 0)
@@ -1113,7 +860,7 @@ void Game::DrawWorld()
     if (weaponOn_)
     {
         DrawCircleLines(playerShip_->GetPosition().x, playerShip_->GetPosition().y,
-                        Simulation::PLAYER_WEAPON_RANGE, Fade(SKYBLUE, 0.15f));
+                        Sim::PLAYER_WEAPON_RANGE, Fade(SKYBLUE, 0.15f));
     }
 
     // Weapon beams for this frame.
@@ -1648,18 +1395,18 @@ void Game::OpenContextMenu(Entity* target)
     // Type-specific actions.
     if (Station* st = dynamic_cast<Station*>(target))
     {
-        // Docking over the network is server-authoritative (M4e-3b); for now we don't show the "Dock"
-        // item over the network (just as nearest-station detection via E is disabled when networked).
-        if (!networked_)
-            items.push_back({ "Dock", [this, st]()
-                              {
-                                  float dx = st->GetPosition().x - playerShip_->GetPosition().x;
-                                  float dy = st->GetPosition().y - playerShip_->GetPosition().y;
-                                  if (sqrtf(dx * dx + dy * dy) <= st->GetSize() + DOCKING_RANGE)
-                                      Dock(st);
-                                  else  // far — first approach via autopilot
-                                      OrderAutopilot(st->GetPosition(), st->GetSize() + 60.0f);
-                              } });
+        // Docking is server-authoritative: in range we send the intent and the server
+        // decides (including the reputation gate); out of range we approach first, which
+        // is the whole point of the menu item — the E key only works once already close.
+        items.push_back({ "Dock", [this, st]()
+                          {
+                              float dx = st->GetPosition().x - playerShip_->GetPosition().x;
+                              float dy = st->GetPosition().y - playerShip_->GetPosition().y;
+                              if (sqrtf(dx * dx + dy * dy) <= st->GetSize() + DOCKING_RANGE)
+                                  cmd_.dock = true;
+                              else  // far — first approach via autopilot
+                                  OrderAutopilot(st->GetPosition(), st->GetSize() + 60.0f);
+                          } });
     }
     else if (AsteroidField* af = dynamic_cast<AsteroidField*>(target))
     {
@@ -1676,8 +1423,7 @@ void Game::OpenContextMenu(Entity* target)
                           {
                               selected_ = npc;
                               targetWin_->SetOpen(true);
-                              // Over the network, enable the weapon via command (if it was off).
-                              if (networked_ && !weaponOn_)
+                              if (!weaponOn_)
                                   cmd_.toggleWeapon = true;
                               weaponOn_ = true;
                           } });
@@ -1699,7 +1445,7 @@ void Game::OpenContextMenu(Entity* target)
     {
         std::string dest = g->GetDestination();
         std::string label = "Jump";
-        for (const auto& s : sim_.Universe().systems)
+        for (const auto& s : universe_.systems)
             if (s.id == dest)
             {
                 label = "Jump to " + s.name;
@@ -1929,17 +1675,10 @@ void Game::DrawStationScreen()
                     FlashMessage("Not enough credits to pay bounty");
                     return;
                 }
-                if (networked_)  // account on the server — pay via command
-                {
-                    Proto::Command c;
-                    c.payBountyFaction = (int)stationFaction;
-                    clientLink_->Send(Proto::EncodeCommand(c));
-                }
-                else
-                {
-                    player_.AddMoney(-bounty);
-                    player_.SetBounty(stationFaction, 0.0);
-                }
+                // The account is on the server — pay via command.
+                Proto::Command c;
+                c.payBountyFaction = (int)stationFaction;
+                clientLink_->Send(Proto::EncodeCommand(c));
                 FlashMessage("Bounty paid — record cleared");
             });
         payBtn.Process();
@@ -1975,33 +1714,12 @@ void Game::DrawStationScreen()
                            "Sell all",
                            [this, type, sellMul, cargo]()
                            {
-                               if (networked_)
-                               {
-                                   // Network: selling is an order to the server; ApplyTradeAcks
-                                   // credits the revenue on acknowledgement (server price).
-                                   Proto::Command c;
-                                   c.sellType = (int)type;
-                                   c.sellAmount = cargo;
-                                   clientLink_->Send(Proto::EncodeCommand(c));
-                                   return;
-                               }
-                               int amount = playerShip_->GetCargoAmount(type);
-                               // Single-player: selling is a server mutation (market + hold) in
-                               // the core; the client applies account effects to the revenue.
-                               Simulation::PlayerSellResult sr =
-                                   sim_.StepPlayerSell(sim_.Active(), (int)type, amount);
-                               if (sr.sold > 0)
-                               {
-                                   // The trading skill and reputation increase the revenue.
-                                   double revenue = sr.gross *
-                                       player_.GetSkills().GetBonus(SkillType::Trading) * sellMul;
-                                   player_.AddMoney(revenue);
-                                   player_.GetSkills().AddXp(SkillType::Trading,
-                                                             (float)(revenue * 0.05));
-                                   // Trading strengthens reputation with the station's faction.
-                                   player_.AddReputation(dockedStation_->GetFaction(),
-                                                         (float)(revenue * 0.002));
-                               }
+                               // Selling is an order to the server; ApplyTradeAcks credits
+                               // the revenue on acknowledgement (at the server's price).
+                               Proto::Command c;
+                               c.sellType = (int)type;
+                               c.sellAmount = cargo;
+                               clientLink_->Send(Proto::EncodeCommand(c));
                            });
             sellBtn.Process();
         }
@@ -2037,16 +1755,9 @@ void Game::DrawStationScreen()
             Button switchBtn(btnRect, "Switch",
                              [this, i]()
                              {
-                                 if (networked_)
-                                 {
-                                     Proto::Command c;
-                                     c.refitShip = (int)i;
-                                     clientLink_->Send(Proto::EncodeCommand(c));
-                                 }
-                                 else
-                                 {
-                                     sim_.RefitPlayer(GetShipCatalog()[i].stats);
-                                 }
+                                 Proto::Command c;
+                                 c.refitShip = (int)i;
+                                 clientLink_->Send(Proto::EncodeCommand(c));
                                  currentShipIndex_ = (int)i;
                              });
             switchBtn.Process();
@@ -2060,20 +1771,12 @@ void Game::DrawStationScreen()
                               double          price = st.price * buyMul;
                               if (!player_.CanAfford(price))  // player_ is a mirror (server money)
                                   return;
-                              if (networked_)
-                              {
-                                  // The purchase is server-authoritative: the server does the
-                                  // charge/refit (BuyShip); the mirror updates the money. Ownership/index —
-                                  // client-side display (optimistic).
-                                  Proto::Command c;
-                                  c.buyShip = (int)i;
-                                  clientLink_->Send(Proto::EncodeCommand(c));
-                              }
-                              else
-                              {
-                                  player_.AddMoney(-price);
-                                  sim_.RefitPlayer(st.stats);
-                              }
+                              // The purchase is server-authoritative: the server charges and
+                              // refits (BuyShip) and the mirror updates the money. Ownership and
+                              // index are client-side display only — see #5.
+                              Proto::Command c;
+                              c.buyShip = (int)i;
+                              clientLink_->Send(Proto::EncodeCommand(c));
                               ownedShips_[i] = true;
                               currentShipIndex_ = (int)i;
                           });
@@ -2120,16 +1823,10 @@ void Game::DrawMissionBoard(int x, int y, int w)
     }
     if (toAccept >= 0)
     {
-        if (networked_)  // accepting is a server mutation (missions are authoritative)
-        {
-            Proto::Command c;
-            c.acceptOffer = toAccept;
-            clientLink_->Send(Proto::EncodeCommand(c));
-        }
-        else
-        {
-            missions_.Accept(toAccept);
-        }
+        // Accepting is a server mutation (missions are authoritative).
+        Proto::Command c;
+        c.acceptOffer = toAccept;
+        clientLink_->Send(Proto::EncodeCommand(c));
     }
 
     // --- Turn-in: active missions completable at this station ---
@@ -2145,7 +1842,7 @@ void Game::DrawMissionBoard(int x, int y, int w)
         const Mission& m = active[i];
         // Over the network the server determines readiness (m.completable from the snapshot; the client
         // hold is a mirror, not always accurate). Single-player — a local check.
-        if (!(networked_ ? m.completable : MissionCompletable(m)))
+        if (!m.completable)
             continue;
         anyReady = true;
 
@@ -2169,16 +1866,10 @@ void Game::DrawMissionBoard(int x, int y, int w)
     }
     if (toComplete >= 0)
     {
-        if (networked_)  // turn-in is a server mutation (reward to the account on the server)
-        {
-            Proto::Command c;
-            c.completeMission = toComplete;
-            clientLink_->Send(Proto::EncodeCommand(c));
-        }
-        else
-        {
-            CompleteMission(toComplete);
-        }
+        // Turn-in is a server mutation (the reward lands in the server-side account).
+        Proto::Command c;
+        c.completeMission = toComplete;
+        clientLink_->Send(Proto::EncodeCommand(c));
     }
 
     Ui::Text(TextFormat("Active missions: %d", (int)missions_.Active().size()), x, rowY + 4,
@@ -2221,9 +1912,8 @@ void Game::DrawMissionsContent(Rectangle area)
                 break;
             case MissionType::Mining:
             {
-                // Cargo: over the network from the snapshot (playerShip_ isn't synced), otherwise local.
-                int cur = playerShip_->GetCargoAmount(m.resource);
-                if (networked_)
+                // Cargo comes from the snapshot: the predicted ship's hold is not synced.
+                int cur = 0;
                 {
                     int idx = 0;
                     for (ResourceType rt : AllResourceTypes())
@@ -2238,7 +1928,7 @@ void Game::DrawMissionsContent(Rectangle area)
                         idx++;
                     }
                 }
-                complete = networked_ ? m.completable : (cur >= m.targetCount);
+                complete = m.completable;
                 line = TextFormat("%s  %d / %d", ResourceName(m.resource).c_str(), cur,
                                   m.targetCount);
                 break;
@@ -2267,7 +1957,7 @@ void Game::DrawGalaxyMap()
     Ui::Text("drag to pan, wheel to zoom   ·   [G]/[Esc] close", MENU_BAR_W + 24, 58, 14,
              Ui::TEXT_DIM);
 
-    const std::vector<WorldLoader::SystemInfo>& systems = sim_.Universe().systems;
+    const std::vector<WorldLoader::SystemInfo>& systems = universe_.systems;
     if (systems.empty())
     {
         Ui::Text("No galaxy data", screenWidth_ / 2 - 60, screenHeight_ / 2, 16, Ui::TEXT_DIM);
@@ -2346,7 +2036,7 @@ void Game::DrawGalaxyMap()
     BeginScissorMode((int)area.x, (int)area.y, (int)area.width, (int)area.height);
 
     // Gate links.
-    for (const auto& l : sim_.Universe().links)
+    for (const auto& l : universe_.links)
     {
         Vector2 a, b;
         if (posById(l.a, a) && posById(l.b, b))
@@ -2355,7 +2045,7 @@ void Game::DrawGalaxyMap()
 
     // Current system: over the network — from the server snapshot (the client's local sim_ isn't active,
     // its ActiveId() would remain on the start system); single-player — sim_.ActiveId().
-    std::string activeSys = networked_ ? snapshot_.systemId : sim_.ActiveId();
+    std::string activeSys = snapshot_.systemId;
 
     // System nodes.
     for (const auto& s : systems)
@@ -2373,28 +2063,16 @@ void Game::DrawGalaxyMap()
         float     security = 0.0f, prosperity = 0.0f;
         int       pirates = 0;
         FactionId controller = FactionId::Independent;
-        if (networked_)
-        {
-            for (const Proto::GalaxySystemStat& g : galaxyState_.systems)
-                if (g.id == s.id)
-                {
-                    haveStats = true;
-                    security = g.security;
-                    pirates = g.pirates;
-                    prosperity = g.prosperity;
-                    controller = g.controller;
-                    break;
-                }
-        }
-        else if (auto sit = sim_.Systems().find(s.id); sit != sim_.Systems().end())
-        {
-            haveStats = true;
-            const SystemAggregate& a = sit->second.agg;
-            security = a.security;
-            pirates = (int)roundf(a.pirates);
-            prosperity = a.prosperity;
-            controller = a.controller;
-        }
+        for (const Proto::GalaxySystemStat& g : galaxyState_.systems)
+            if (g.id == s.id)
+            {
+                haveStats = true;
+                security = g.security;
+                pirates = g.pirates;
+                prosperity = g.prosperity;
+                controller = g.controller;
+                break;
+            }
         if (haveStats)
         {
             Color secCol = security >= 0.7f ? Color{ 120, 210, 130, 255 }
@@ -2416,9 +2094,8 @@ void Game::DrawGalaxyMap()
 
     EndScissorMode();
 
-    // Galactic news feed (system captures/reconquests). Source: over the network —
-    // the server's galaxy snapshot, single-player — the local event log.
-    const std::vector<std::string>& news = networked_ ? galaxyState_.events : sim_.Events();
+    // Galactic news feed (system captures/reconquests), from the server's galaxy snapshot.
+    const std::vector<std::string>& news = galaxyState_.events;
     if (!news.empty())
     {
         int nx = screenWidth_ - 320;
