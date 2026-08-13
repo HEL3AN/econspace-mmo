@@ -217,6 +217,8 @@ add_executable(tests
     tests/test_main.cpp
     tests/protocol_tests.cpp
     tests/net_tests.cpp
+    tests/observation_tests.cpp
+    src/game/sim/Observation.cpp   # shared with econagent (#42); tests are its only build today
 )
 target_link_libraries(tests PRIVATE engine netproto doctest::doctest)
 set_target_properties(tests PROPERTIES
