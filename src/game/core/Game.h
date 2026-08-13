@@ -58,12 +58,6 @@ public:
 
 private:
     void HandleInput(float dt);        // client: input → player command (cmd_)
-    void UpdateAmbient(float dt);  // background world: planets, market (always runs)
-    void UpdateWorld(float dt);    // flight part: ship, mining, camera
-    void UpdateNpcAi();            // AI pass for the active system (delegates to Simulation)
-    void ResolveCombat(float dt);  // player and NPC fire, damage
-    void RemoveDeadNpcs();         // removes destroyed NPCs from the world
-    void RespawnPlayer();          // respawn the player at a station
     void DrawWorld();
     void DrawStarfield();  // parallax star background (screen coordinates)
     void DrawHud();
@@ -106,8 +100,6 @@ private:
     // Agent simulation and the spawn director live in Simulation (server core, M3);
     // Game merely delegates and materializes the world at startup.
     void MaterializeAllSystems();              // load and populate all systems at startup
-    void SimulateBackgroundSystems(float dt);  // Simulation ticks the background systems
-    void WorldMaintenance(float dt);           // delegates to sim_.MaintainWorld
     const WorldLoader::SystemInfo* CurrentSystemInfo() const;  // record of the current system
     bool HostileToPlayerFaction(FactionId f) const;     // is the faction hostile to the player (reputation/wanted)
     bool NpcHostileToPlayer(const NpcShip* npc) const;  // is the NPC hostile to the player (by its faction)
@@ -115,9 +107,6 @@ private:
 
     // M4c: the client renders from the snapshot. The snapshot is built every frame
     // (world from the server + player state); windows/rendering read it, not the live objects directly.
-    void    ServerReceiveCommand();         // server: receives the player command from the transport
-    void    ServerPublishSnapshot();        // server: serializes the world snapshot into the transport
-    void    ServerPublishLayout();          // server: sends the static system layout into the transport
     void    BuildClientSnapshot();          // client: receives snapshot/layout from the transport + player view
     void    ApplyLayout(const Proto::SystemLayout& lay);  // client: accept the layout of a new system
     std::unique_ptr<Entity> MakeProxyFromLayout(const Proto::EntityLayout& el);  // proxy from layout
@@ -158,7 +147,6 @@ private:
     float simAccumulator_ = 0.0f;   // accumulator for the fixed simulation step
 
     Camera2D camera_;
-    bool     paused_ = false;
 
     std::vector<BgStar> bgStars_;  // parallax-background stars
 
@@ -182,13 +170,9 @@ private:
     std::vector<bool> ownedShips_;             // which ships the player owns
 
     Proto::Command  cmd_;        // client: the player's intent this frame (from input)
-    Proto::Command  serverCmd_;  // server: command received from the transport (applied to the ship)
     Proto::Snapshot snapshot_;   // snapshot of the player's system for rendering/UI (M4c)
-    // Client↔server transport. Single-player: in-process loop (link_), the server lives in
-    // this same process. Network (M4e): netConn_ — TCP to the econserver host, the local
-    // server is not started. clientLink_ — the end the client sends commands on and
-    // receives snapshots/layout from (points to link_.Client() or to netConn_).
-    LocalTransport                      link_;
+    // Client↔server transport: netConn_ is the TCP link to the econserver host, and
+    // clientLink_ is the end the client sends commands on and receives snapshots/layout from.
     bool                                networked_ = false;
     std::unique_ptr<Net::TcpConnection> netConn_;
     ITransport*                         clientLink_ = nullptr;
