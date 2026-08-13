@@ -1,0 +1,9 @@
+# Commits that only reformat code. `git blame` skips them so it keeps pointing at
+# whoever last changed the logic rather than at a whitespace pass.
+#
+# Enable locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub applies this file automatically.
+
+# Make .clang-format describe the style the code actually uses, and apply it (#22)
+e39135f230500405c53514e8ffe1e91a283a92ec

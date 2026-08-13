@@ -7,6 +7,33 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Style gate, in its own job so it reports independently of the build.
+  #
+  # It runs under MSYS2 rather than on a cheaper Ubuntu runner on purpose: clang-format
+  # output differs between major versions, so checking with a different build than
+  # contributors have locally would fail on code that is correctly formatted. Same
+  # toolchain here as in CONTRIBUTING.
+  lint:
+    name: Formatting
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up MSYS2 / clang-format
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-clang
+
+      - name: Check formatting
+        run: |
+          clang-format --version
+          find src tests \( -name '*.cpp' -o -name '*.h' \) -print0 \
+            | xargs -0 clang-format --dry-run --Werror
+
   build:
     name: Windows (MinGW / MSYS2)
     runs-on: windows-latest
@@ -20,15 +47,38 @@ jobs:
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
-          update: true
+          # No `update: true`: a full pacman upgrade on every run costs minutes and
+          # pins the build to whatever landed upstream today rather than to the
+          # packages we actually asked for.
           install: >-
             git
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-make
+            mingw-w64-x86_64-ccache
+
+      # raylib and nlohmann/json are fetched and compiled by CMake. They change only
+      # when the pinned versions in CMakeLists.txt change, so key the cache on that
+      # file: a dependency bump invalidates it, an ordinary commit does not.
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      # ccache covers our own sources. CMakeLists picks it up automatically when it is
+      # on PATH, so nothing else needs configuring.
+      - name: Cache compiled objects
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: ccache-${{ runner.os }}-
 
       - name: Configure
-        run: cmake -S . -B build -G "MinGW Makefiles"
+        # -Werror only in CI: warnings stay visible but non-fatal for local work, while
+        # nothing warning-dirty can reach main.
+        run: cmake -S . -B build -G "MinGW Makefiles" -DWARNINGS_AS_ERRORS=ON
 
       - name: Build
         run: cmake --build build
