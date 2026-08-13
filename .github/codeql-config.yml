@@ -1,0 +1,14 @@
+# CodeQL scope: our sources only.
+#
+# raylib and nlohmann/json are fetched and built by CMake into build*/_deps, so without
+# this filter every finding in third-party code would land in our security tab and bury
+# the ones we can act on.
+name: EconSpace CodeQL
+
+paths:
+  - src
+  - tests
+
+paths-ignore:
+  - build
+  - build-codeql

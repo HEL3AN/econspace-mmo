@@ -1,0 +1,15 @@
+# Dependabot keeps the GitHub Actions we pin (checkout, setup-msys2) up to date.
+#
+# It cannot see raylib or nlohmann/json: those come in through CMake FetchContent,
+# which is not a package manager Dependabot understands. Their versions are pinned
+# by hand in CMakeLists.txt and have to be bumped there deliberately.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+    labels:
+      - tech-debt
