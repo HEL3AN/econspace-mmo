@@ -452,7 +452,6 @@ void Game::ApplyLayout(const Proto::SystemLayout& lay)
     miningBeamField_ = nullptr;
     dockedStation_ = nullptr;  // the snapshot re-establishes docking if we are docked
     beams_.clear();
-    weaponOn_ = false;
 
     // The view belongs to the old system's coordinates: re-center the radar, and snap the
     // camera once the new position arrives instead of sliding across the gap.
@@ -549,7 +548,9 @@ void Game::BuildClientSnapshot()
         playerShip_->SetMiningOn(p.mining);
         for (const Proto::Command& c : pendingInputs_)
             Sim::StepPlayerShip(*playerShip_, c, 1.0f, SIM_DT);
-        p.weaponOn = weaponOn_;  // client-side weapon indicator
+        // Weapon state is server-owned; the local flag is only an optimistic echo of the
+        // toggle we sent, corrected here the same way the ship's position is.
+        weaponOn_ = p.weaponOn;
 
         // The account is a MIRROR of the server (M4f): money/reputation/wanted/skills arrive in
         // the snapshot, the client only displays them (mutations moved to the server via
