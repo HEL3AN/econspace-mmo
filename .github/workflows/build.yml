@@ -40,3 +40,4 @@ jobs:
         run: |
           ./build/bin/server/econserver.exe hosttest
           ./build/bin/server/econserver.exe accttest
+          ./build/bin/server/econserver.exe worldtest

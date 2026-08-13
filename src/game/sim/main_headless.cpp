@@ -26,15 +26,27 @@
 #include <string>
 #include <thread>
 
+// How often the galaxy is written to world.json while the server runs (seconds).
+static const double WORLD_SAVE_INTERVAL = 60.0;
+
 // Set up the authoritative simulation for the server host: load the world, materialize
 // all systems, create the player ship in the start system.
-static void SetupHostSim(Simulation& sim, const std::string& dataDir)
+//
+// worldPath non-empty: restore the galaxy from it if the file exists. LoadWorld does its
+// own Reset+InitGalaxy and restores only the aggregates (population, security, prosperity,
+// controllers) plus simulation time. Entities are never persisted, so materialization
+// happens afterwards either way. An empty worldPath keeps a run ephemeral (the self-tests).
+static void SetupHostSim(Simulation& sim, const std::string& dataDir,
+                         const std::string& worldPath = std::string())
 {
     SetRandomSeed(0xC0FFEEu);
     Factions::Load(dataDir + "factions.json");
     sim.LoadUniverse(dataDir + "universe.json");
     sim.Seed(0xC0FFEEu);
-    sim.InitGalaxy();
+    if (worldPath.empty() || !sim.LoadWorld(worldPath))
+        sim.InitGalaxy();
+    else
+        printf("World restored from %s (t=%.0fs).\n", worldPath.c_str(), sim.Time());
     sim.MaterializeAllSystems(dataDir + "systems/");
     sim.Activate(sim.Universe().startId);
     sim.CreatePlayer(Vector2{ 0.0f, 3000.0f }, GetShipCatalog()[0].stats);
@@ -189,8 +201,9 @@ static bool HostDrainInputs(ITransport& conn, Simulation& sim, bool& weaponOn,
 static int RunHost(unsigned short port)
 {
     std::string dataDir = SIM_DATA_DIR;
+    std::string worldPath = std::string(GetApplicationDirectory()) + "world.json";
     Simulation  sim;
-    SetupHostSim(sim, dataDir);
+    SetupHostSim(sim, dataDir, worldPath);
 
     // Account persistence (M4f-3): load the player's progress next to the server.
     // Only in the real server — hosttest/selftest stay clean (ephemeral).
@@ -229,6 +242,7 @@ static int RunHost(unsigned short port)
     bool        weaponOn = false;
     int         lastSeq = 0;  // last processed input number (ack to the client)
     bool        wasDocked = false;  // for account checkpoints when entering/leaving a station
+    double      worldSaveAcc = 0.0;  // world checkpoint timer
     const float dt = 1.0f / 60.0f;
     using clock = std::chrono::steady_clock;
     auto   prev = clock::now();
@@ -278,6 +292,16 @@ static int RunHost(unsigned short port)
 
         // Galaxy snapshot — rarely (once a second): the statistics change slowly, and the
         // message is large (all systems). The client's galaxy map lives off it.
+        // World checkpoint. The galaxy drifts continuously (security, prosperity,
+        // territory control), so unlike the account there is no natural commit point to
+        // hang this on: a timer is what keeps a crash from costing more than a minute.
+        worldSaveAcc += frame;
+        if (worldSaveAcc >= WORLD_SAVE_INTERVAL)
+        {
+            worldSaveAcc = 0.0;
+            sim.SaveWorld(worldPath);
+        }
+
         galaxyAcc += frame;
         if (galaxyAcc >= 1.0)
         {
@@ -291,7 +315,8 @@ static int RunHost(unsigned short port)
     // Client disconnect — final checkpoint (captures progress earned in flight without a
     // subsequent docking).
     sim.SaveAccount(acctPath);
-    printf("Client disconnected. Account saved (money %.0f). Server stopped.\n",
+    sim.SaveWorld(worldPath);
+    printf("Client disconnected. Account saved (money %.0f), world saved. Server stopped.\n",
            sim.Account().GetMoney());
     Net::Shutdown();
     return 0;
@@ -381,6 +406,47 @@ static int AccountSelftest()
     return ok ? 0 : 1;
 }
 
+// World persistence smoke test (no network): drift a system's aggregate, write the galaxy
+// to a file, read it back into a clean simulation and compare. Guards the property the
+// living galaxy depends on -- that a server restart does not reset the world.
+// Run: econserver worldtest.
+static int WorldSelftest()
+{
+    auto approx = [](double x, double y) { double d = x - y; return (d < 0 ? -d : d) < 1e-3; };
+    std::string dataDir = SIM_DATA_DIR;
+    std::string path = std::string(GetApplicationDirectory()) + "worldtest_tmp.json";
+
+    Simulation a;
+    a.LoadUniverse(dataDir + "universe.json");
+    a.InitGalaxy();
+    std::string sid = a.Universe().startId;
+    a.SetTime(1234.0);
+    a.Systems()[sid].agg.security = 0.25f;
+    a.Systems()[sid].agg.prosperity = 0.75f;
+    a.Systems()[sid].agg.pirates = 7.0f;
+    a.Systems()[sid].agg.controller = FactionId::Pirates;
+    a.SaveWorld(path);
+
+    Simulation b;  // fresh galaxy: the load must overwrite the defaults
+    b.LoadUniverse(dataDir + "universe.json");
+    bool loaded = b.LoadWorld(path);
+    bool haveSys = b.HasSystem(sid);
+    bool time = approx(b.Time(), 1234.0);
+    bool sec = haveSys && approx(b.Systems()[sid].agg.security, 0.25);
+    bool prosp = haveSys && approx(b.Systems()[sid].agg.prosperity, 0.75);
+    bool pir = haveSys && approx(b.Systems()[sid].agg.pirates, 7.0);
+    bool ctrl = haveSys && b.Systems()[sid].agg.controller == FactionId::Pirates;
+    std::remove(path.c_str());
+
+    bool ok = loaded && time && sec && prosp && pir && ctrl;
+    printf("World selftest: load %s, time %s, security %s, prosperity %s, pirates %s, "
+           "controller %s => %s\n",
+           loaded ? "OK" : "FAIL", time ? "OK" : "FAIL", sec ? "OK" : "FAIL",
+           prosp ? "OK" : "FAIL", pir ? "OK" : "FAIL", ctrl ? "OK" : "FAIL",
+           ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 int main(int argc, char** argv)
 {
     // Protocol/TCP regression tests moved to the `tests` target (ctest); here —
@@ -389,6 +455,8 @@ int main(int argc, char** argv)
         return HostSelftest();
     if (argc > 1 && std::string(argv[1]) == "accttest")
         return AccountSelftest();
+    if (argc > 1 && std::string(argv[1]) == "worldtest")
+        return WorldSelftest();
     if (argc > 1 && std::string(argv[1]) == "host")
     {
         unsigned short port = (argc > 2) ? (unsigned short)atoi(argv[2]) : 50800;
