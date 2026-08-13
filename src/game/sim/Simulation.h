@@ -3,6 +3,7 @@
 #include "core/WorldLoader.h"
 #include "sim/SystemState.h"
 #include "sim/Protocol.h"
+#include "sim/Orders.h"
 #include "sim/PlayerStep.h"
 #include "player/Player.h"
 #include "missions/MissionSystem.h"
@@ -160,6 +161,21 @@ public:
     // Server player combat: if the weapon is on and the target (targetId) is in range and
     // the cooldown is ready — applies damage, accumulates facts in ev. Returns true if there
     // was a shot this tick (the client draws a beam). The target is looked up in st by id.
+    // --- Standing orders (strategic layer, #26) ---
+    // Give an order, replacing whatever was running; returns its id. The order executes
+    // over seconds on the server while the tactical loop keeps running at its own rate.
+    int                  GiveOrder(const Orders::Order& o);
+    void                 AbortOrder(const std::string& why);
+    const Orders::Order& CurrentOrder() const { return order_; }
+    Orders::Status       OrderStatus() const { return orderStatus_; }
+    const std::string&   OrderDetail() const { return orderDetail_; }
+    int                  OrderId() const { return orderId_; }
+    bool                 HasRunningOrder() const { return orderStatus_ == Orders::Status::Running; }
+    // Advances the running order by one tick. It decides what this tick's command should
+    // be and drives the ship through the same path a client command takes, so predicted
+    // and ordered movement cannot diverge.
+    void StepPlayerOrder(SystemState& st, float dt);
+
     // Weapon state is server-owned, like docking: the client sends a toggle intent and
     // reads the truth back from the snapshot. Two independent copies would drift apart on
     // any dropped or duplicated command, leaving the reticle disagreeing with the guns.
@@ -320,6 +336,12 @@ private:
     Player account_{ 500.0 };               // player account (money/skills/reputation/wanted, M4f)
     std::vector<std::string> outMessages_;  // server notifications to the player (DrainMessages)
     MissionSystem            missions_;     // player missions (board+active, M4f-2)
+    Orders::Order            order_;        // standing order (#26)
+    Orders::Status           orderStatus_ = Orders::Status::Idle;
+    std::string              orderDetail_;  // why it finished or failed
+    int                      orderId_ = 0;  // id of the current order
+    int                      nextOrderId_ = 0;
+    bool                     orderNavIssued_ = false;       // nav order already given to the ship
     bool                     playerWeaponOn_ = false;       // weapon armed (server-owned)
     float                    playerFireTimer_ = 0.0f;       // player weapon cooldown
     float                    playerMiningProgress_ = 0.0f;  // accumulator of ore-unit fractions
