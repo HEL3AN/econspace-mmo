@@ -14,6 +14,16 @@
 namespace Proto
 {
 
+// Wire format version. Bump it whenever a message changes in a way an older build would
+// misread — a renamed or repurposed field, a changed unit, a changed meaning.
+//
+// Every message carries it and every Decode* rejects anything else. That check is the
+// whole point: per-field decoding is deliberately permissive (`value(key, default)`), so
+// without it a client built against an older protocol would silently receive defaults
+// instead of an error, and the failure would surface much later as a ship that does not
+// move or an account that reads zero.
+inline constexpr int PROTO_VERSION = 1;
+
 // --- Command: client -> server, every tick ---
 struct Command
 {
@@ -210,7 +220,12 @@ std::string EncodeGalaxy(const GalaxyState& s);
 bool        DecodeGalaxy(const std::string& s, GalaxyState& out);
 
 // Message type from the "t" field ("cmd"/"snap"/"layout"/"galaxy"); "" — broken/unknown.
-// For dispatching incoming transport messages on the client side.
+// For dispatching incoming transport messages on the client side. Reports the type
+// regardless of version, so a mismatch can be diagnosed rather than looking like garbage.
 std::string MessageType(const std::string& s);
+
+// Protocol version a message was written with; 0 if it is broken or carries none.
+// Use it to tell "the peer speaks a different version" apart from "the message is junk".
+int MessageVersion(const std::string& s);
 
 }  // namespace Proto

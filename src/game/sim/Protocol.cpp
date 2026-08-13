@@ -31,6 +31,24 @@ Color ToCol(const json& j, Color def = { 255, 255, 255, 255 })
     return def;
 }
 
+// Every message carries the wire version alongside its type; see PROTO_VERSION.
+void Stamp(json& j, const char* type)
+{
+    j["v"] = Proto::PROTO_VERSION;
+    j["t"] = type;
+}
+
+// Parses a message and checks the envelope. False means broken JSON, not an object, or
+// written by a different protocol version -- in all three cases the caller must not
+// trust the contents, because permissive per-field decoding would happily invent them.
+bool OpenEnvelope(const std::string& s, json& j)
+{
+    j = json::parse(s, nullptr, false);
+    if (j.is_discarded() || !j.is_object())
+        return false;
+    return j.value("v", 0) == Proto::PROTO_VERSION;
+}
+
 json MissionJson(const Proto::MissionView& m)
 {
     return { { "type", m.type },        { "fac", m.faction },          { "title", m.title },
@@ -64,7 +82,7 @@ namespace Proto
 std::string EncodeCommand(const Command& c)
 {
     json j;
-    j["t"] = "cmd";
+    Stamp(j, "cmd");
     j["seq"] = c.seq;
     j["thrust"] = c.thrust;
     j["turn"] = c.turn;
@@ -93,8 +111,8 @@ std::string EncodeCommand(const Command& c)
 
 bool DecodeCommand(const std::string& s, Command& out)
 {
-    json j = json::parse(s, nullptr, false);
-    if (j.is_discarded() || !j.is_object())
+    json j;
+    if (!OpenEnvelope(s, j))
         return false;
     out.seq = j.value("seq", 0);
     out.thrust = j.value("thrust", false);
@@ -125,7 +143,7 @@ bool DecodeCommand(const std::string& s, Command& out)
 std::string EncodeSnapshot(const Snapshot& s)
 {
     json j;
-    j["t"] = "snap";
+    Stamp(j, "snap");
     j["sys"] = s.systemId;
 
     const PlayerView& p = s.player;
@@ -203,8 +221,8 @@ std::string EncodeSnapshot(const Snapshot& s)
 
 bool DecodeSnapshot(const std::string& s, Snapshot& out)
 {
-    json j = json::parse(s, nullptr, false);
-    if (j.is_discarded() || !j.is_object())
+    json j;
+    if (!OpenEnvelope(s, j))
         return false;
 
     out.systemId = j.value("sys", std::string());
@@ -308,7 +326,7 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
 std::string EncodeLayout(const SystemLayout& s)
 {
     json j;
-    j["t"] = "layout";
+    Stamp(j, "layout");
     j["sys"] = s.systemId;
 
     json ents = json::array();
@@ -331,8 +349,8 @@ std::string EncodeLayout(const SystemLayout& s)
 
 bool DecodeLayout(const std::string& s, SystemLayout& out)
 {
-    json j = json::parse(s, nullptr, false);
-    if (j.is_discarded() || !j.is_object())
+    json j;
+    if (!OpenEnvelope(s, j))
         return false;
 
     out.systemId = j.value("sys", std::string());
@@ -361,7 +379,7 @@ bool DecodeLayout(const std::string& s, SystemLayout& out)
 std::string EncodeGalaxy(const GalaxyState& s)
 {
     json j;
-    j["t"] = "galaxy";
+    Stamp(j, "galaxy");
     json sys = json::array();
     for (const GalaxySystemStat& g : s.systems)
         sys.push_back({ { "id", g.id },
@@ -376,8 +394,8 @@ std::string EncodeGalaxy(const GalaxyState& s)
 
 bool DecodeGalaxy(const std::string& s, GalaxyState& out)
 {
-    json j = json::parse(s, nullptr, false);
-    if (j.is_discarded() || !j.is_object())
+    json j;
+    if (!OpenEnvelope(s, j))
         return false;
 
     out.systems.clear();
@@ -402,6 +420,14 @@ std::string MessageType(const std::string& s)
     if (j.is_discarded() || !j.is_object())
         return std::string();
     return j.value("t", std::string());
+}
+
+int MessageVersion(const std::string& s)
+{
+    json j = json::parse(s, nullptr, false);
+    if (j.is_discarded() || !j.is_object())
+        return 0;
+    return j.value("v", 0);
 }
 
 }  // namespace Proto
