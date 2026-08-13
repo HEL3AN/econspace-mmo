@@ -17,7 +17,7 @@ namespace Proto
 // --- Command: client -> server, every tick ---
 struct Command
 {
-    int   seq = 0;  // input number (for client prediction/reconciliation, M4e)
+    int seq = 0;  // input number (for client prediction/reconciliation, M4e)
     // Held control axes.
     bool  thrust = false;
     float turn = 0.0f;
@@ -29,24 +29,24 @@ struct Command
     bool dock = false;
     bool undock = false;
     // Combat target / navigation / jump.
-    int     targetId = 0;             // selected agent (0 — none)
+    int targetId = 0;  // selected agent (0 — none)
     // Navigation order (one-shot): mode 0 — none, 1 — autopilot, 2 — warp;
     // destination point and stop distance (autopilot) / drop distance (warp).
     int     navMode = 0;
     Vector2 navTarget = { 0.0f, 0.0f };
     float   navStopDist = 0.0f;
-    int     jumpGateId = 0;           // jump through gate by id (0 — none)
-    int     lootId = 0;               // loot derelict by id (0 — none)
+    int     jumpGateId = 0;  // jump through gate by id (0 — none)
+    int     lootId = 0;      // loot derelict by id (0 — none)
     // Station trade (server-authoritative, M4e-3b): sell resource / refit.
-    int     sellType = -1;            // ResourceType as int (-1 — no sale)
-    int     sellAmount = 0;           // amount to sell (server clamps to cargo)
-    int     refitShip = -1;           // switch to an ALREADY bought ship (index; -1 none)
+    int sellType = -1;   // ResourceType as int (-1 — no sale)
+    int sellAmount = 0;  // amount to sell (server clamps to cargo)
+    int refitShip = -1;  // switch to an ALREADY bought ship (index; -1 none)
     // Account actions (server-authoritative, M4f): buy ship / pay bounty / cheat.
-    int     buyShip = -1;             // buy ship by catalog index (-1 none)
-    int     payBountyFaction = -1;    // pay off bounty with a faction (id; -1 none)
-    bool    debugMoney = false;       // F1: grant debug money
-    int     acceptOffer = -1;         // accept mission offer by board index (-1 none)
-    int     completeMission = -1;     // hand in active mission by index (-1 none)
+    int  buyShip = -1;           // buy ship by catalog index (-1 none)
+    int  payBountyFaction = -1;  // pay off bounty with a faction (id; -1 none)
+    bool debugMoney = false;     // F1: grant debug money
+    int  acceptOffer = -1;       // accept mission offer by board index (-1 none)
+    int  completeMission = -1;   // hand in active mission by index (-1 none)
 };
 
 // Entity kind (render-independent; the client decides how to draw it).
@@ -87,22 +87,22 @@ struct PlayerView
     float   hull = 0.0f, maxHull = 0.0f, shields = 0.0f, maxShields = 0.0f;
     int     cargoUsed = 0, cargoCap = 0;
     int     dockedStationId = 0;  // docked station id (0 — in flight); server-authoritative
-    int     warpPhase = 0;  // 0 none, 1 aligning, 2 warp
+    int     warpPhase = 0;        // 0 none, 1 aligning, 2 warp
     // Server-authoritative navigation (warp/autopilot): the client mirrors it and keeps
     // no warp-timer scale of its own (otherwise "bar ready" and flight start diverge).
-    float   warpAlign = 0.0f;            // remaining warp spin-up timer
-    Vector2 warpTarget = { 0.0f, 0.0f };
-    float   warpDrop = 0.0f;             // warp exit distance
-    bool    autopilot = false;
-    Vector2 apTarget = { 0.0f, 0.0f };
-    float   apStop = 0.0f;               // autopilot stop distance
-    bool    stabilizer = true;
-    bool    mining = false;
-    bool    weaponOn = false;
-    bool    docked = false;
-    int     nearbyStationId = 0;
-    int     lastInput = 0;  // last input number the server processed (ack, M4e)
-    std::vector<int> cargoByType;  // remaining cargo per resource (AllResourceTypes order)
+    float            warpAlign = 0.0f;  // remaining warp spin-up timer
+    Vector2          warpTarget = { 0.0f, 0.0f };
+    float            warpDrop = 0.0f;  // warp exit distance
+    bool             autopilot = false;
+    Vector2          apTarget = { 0.0f, 0.0f };
+    float            apStop = 0.0f;  // autopilot stop distance
+    bool             stabilizer = true;
+    bool             mining = false;
+    bool             weaponOn = false;
+    bool             docked = false;
+    int              nearbyStationId = 0;
+    int              lastInput = 0;  // last input number the server processed (ack, M4e)
+    std::vector<int> cargoByType;    // remaining cargo per resource (AllResourceTypes order)
     // Player account (server-authoritative, M4f): the client shows it as a mirror.
     // reputation/bounty — per faction (index = FactionId), skillXp — Piloting/Mining/Trading.
     double              money = 0.0;
@@ -115,23 +115,23 @@ struct PlayerView
 // money/xp/reputation (account until M4f); the server computes gross (price sag).
 struct TradeAck
 {
-    int    type = 0;      // ResourceType as int
-    int    sold = 0;      // actually sold
-    double gross = 0.0;   // gross revenue at the server price
-    double revenue = 0.0; // net revenue the server credited to the account (for display)
+    int    type = 0;       // ResourceType as int
+    int    sold = 0;       // actually sold
+    double gross = 0.0;    // gross revenue at the server price
+    double revenue = 0.0;  // net revenue the server credited to the account (for display)
 };
 
 // Mission view in the snapshot (server-authoritative, M4f-2). Render-independent copy
 // of Mission: stations addressed by stable id, completable computed by the server.
 struct MissionView
 {
-    int         type = 0;         // MissionType as int
-    int         faction = 0;      // FactionId as int
+    int         type = 0;     // MissionType as int
+    int         faction = 0;  // FactionId as int
     std::string title;
     std::string description;
     int         giverStationId = 0;
     int         destStationId = 0;
-    int         resource = 0;     // ResourceType as int
+    int         resource = 0;  // ResourceType as int
     int         targetCount = 0;
     int         progress = 0;
     double      rewardMoney = 0.0;
@@ -147,10 +147,10 @@ struct Snapshot
     std::vector<EntitySnapshot> entities;
     std::vector<FireEvent>      fires;
     std::vector<std::string>    messages;
-    std::vector<float>          marketPrices;  // price per resource (AllResourceTypes order)
-    std::vector<TradeAck>       tradeAcks;     // one-shot trade acknowledgments (M4e-3b)
-    std::vector<MissionView>    missionOffers; // docked station board (empty outside dock)
-    std::vector<MissionView>    missionActive; // player's active missions (M4f-2)
+    std::vector<float>          marketPrices;   // price per resource (AllResourceTypes order)
+    std::vector<TradeAck>       tradeAcks;      // one-shot trade acknowledgments (M4e-3b)
+    std::vector<MissionView>    missionOffers;  // docked station board (empty outside dock)
+    std::vector<MissionView>    missionActive;  // player's active missions (M4f-2)
 };
 
 // Static description of a system entity, for building the client proxy WITHOUT
@@ -166,7 +166,7 @@ struct EntityLayout
     Color       color = { 255, 255, 255, 255 };
     std::string name;
     FactionId   faction = FactionId::Independent;
-    int         subType = 0;        // StarType/PlanetType/StationRole as int
+    int         subType = 0;         // StarType/PlanetType/StationRole as int
     float       orbitRadius = 0.0f;  // planet: orbit radius (for the ring)
     int         resource = -1;       // ResourceType: planet deposit / field ore (-1 none)
     double      reward = 0.0;        // derelict: loot reward

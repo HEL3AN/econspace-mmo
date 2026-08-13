@@ -90,13 +90,13 @@ static bool HostStepPlayer(Simulation& sim, const Proto::Command& c, bool& weapo
         if (c.refitShip >= 0 && c.refitShip < (int)GetShipCatalog().size())
             sim.RefitPlayer(GetShipCatalog()[c.refitShip].stats);  // switch to a bought ship
         if (c.buyShip >= 0)
-            sim.BuyShip(c.buyShip);                                // purchase (deducts money)
+            sim.BuyShip(c.buyShip);  // purchase (deducts money)
         if (c.payBountyFaction >= 0)
-            sim.PayBounty((FactionId)c.payBountyFaction);          // clear bounty
+            sim.PayBounty((FactionId)c.payBountyFaction);  // clear bounty
         if (c.acceptOffer >= 0)
-            sim.AcceptMission(c.acceptOffer);                      // accept a mission from the board
+            sim.AcceptMission(c.acceptOffer);  // accept a mission from the board
         if (c.completeMission >= 0)
-            sim.CompleteMission(c.completeMission);                // hand in a mission (reward to account)
+            sim.CompleteMission(c.completeMission);  // hand in a mission (reward to account)
         return changed;  // at a station the ship neither moves nor fires
     }
 
@@ -130,10 +130,10 @@ static bool HostStepPlayer(Simulation& sim, const Proto::Command& c, bool& weapo
 // World step (NPCs of all systems + maintenance) — on the server timer, independent of inputs.
 // The active system (where the player is) is stepped with the player involved: NPCs see him,
 // combat produces beams, damage to the player is authoritative; a fallen player respawns at a
-// station. Other systems get a background step. fires — active-system NPC shots (client draws beams).
-// clientOnline false: nobody is flying the ship. The pilot is treated as absent —
-// NPCs do not target them, and no respawn logic runs — while the rest of the galaxy
-// keeps living. The ship simply stops being stepped and stays where it was left.
+// station. Other systems get a background step. fires — active-system NPC shots (client draws
+// beams). clientOnline false: nobody is flying the ship. The pilot is treated as absent — NPCs do
+// not target them, and no respawn logic runs — while the rest of the galaxy keeps living. The ship
+// simply stops being stepped and stays where it was left.
 static void HostStepWorld(Simulation& sim, const std::string& activeId, float dt,
                           std::vector<FireEvent>& fires, bool clientOnline)
 {
@@ -156,7 +156,8 @@ static void HostStepWorld(Simulation& sim, const std::string& activeId, float dt
     // Server-side predicate of hostility toward the player by account (M4f): pirates;
     // factions where the player is wanted; factions with Hostile/Hated reputation. Police
     // now react to a wanted player — the account lives on the server.
-    auto hostile = [&sim](const NpcShip* n) { return sim.AccountHostileToFaction(n->GetFaction()); };
+    auto hostile = [&sim](const NpcShip* n)
+    { return sim.AccountHostileToFaction(n->GetFaction()); };
 
     for (auto& kv : sim.Systems())
     {
@@ -206,7 +207,7 @@ static bool HostDrainInputs(ITransport& conn, Simulation& sim, bool& weaponOn,
 // Ctrl+C / termination request. The handler only raises a flag; saving happens on the
 // way out of the main loop, where touching files is safe.
 static volatile std::sig_atomic_t g_stopRequested = 0;
-static void OnInterrupt(int)
+static void                       OnInterrupt(int)
 {
     g_stopRequested = 1;
 }
@@ -246,10 +247,11 @@ static int RunHost(unsigned short port)
     std::signal(SIGINT, OnInterrupt);
     std::signal(SIGTERM, OnInterrupt);
     printf("EconSpace server on port %d. The galaxy runs with or without a client; "
-           "Ctrl+C to stop.\n", port);
+           "Ctrl+C to stop.\n",
+           port);
 
     std::unique_ptr<Net::TcpConnection> conn;
-    std::string activeId = sim.ActiveId();
+    std::string                         activeId = sim.ActiveId();
 
     bool        weaponOn = false;
     int         lastSeq = 0;         // last processed input number (ack to the client)
@@ -296,8 +298,7 @@ static int RunHost(unsigned short port)
         bool                         layoutDirty = false;
         if (conn)
         {
-            layoutDirty =
-                HostDrainInputs(*conn, sim, weaponOn, activeId, dt, lastSeq, acks, fires);
+            layoutDirty = HostDrainInputs(*conn, sim, weaponOn, activeId, dt, lastSeq, acks, fires);
 
             // Account checkpoint on a dock-state change: on docking -- commit what was
             // earned in flight (loot/bounty), on undocking -- trade and mission hand-ins.
@@ -397,12 +398,13 @@ static int HostSelftest()
     const float dt = 1.0f / 60.0f;
     for (int i = 0; i < 120; i++)  // ~2 s of simulation
     {
-        thrust.seq = i + 1;                              // client: numbered input
+        thrust.seq = i + 1;  // client: numbered input
         link.Client().Send(Proto::EncodeCommand(thrust));
         std::vector<Proto::TradeAck> acks;
         std::vector<FireEvent>       fires;
-        HostDrainInputs(link.Server(), sim, weaponOn, activeId, dt, lastSeq, acks, fires);  // 1 input=1 tick
-        HostStepWorld(sim, activeId, dt, fires, true);   // world
+        HostDrainInputs(link.Server(), sim, weaponOn, activeId, dt, lastSeq, acks,
+                        fires);                         // 1 input=1 tick
+        HostStepWorld(sim, activeId, dt, fires, true);  // world
         Proto::Snapshot snap = sim.BuildSnapshot(activeId);
         snap.player.lastInput = lastSeq;
         link.Server().Send(Proto::EncodeSnapshot(snap));
@@ -423,8 +425,8 @@ static int HostSelftest()
     bool    moved = (endPos.x != startPos.x || endPos.y != startPos.y);
     bool    snapHasWorld = gotSnap && !lastSnap.entities.empty();
 
-    printf("Host selftest: layout %s, snapshot %s, player-moved %s\n",
-           gotLayout ? "OK" : "FAIL", snapHasWorld ? "OK" : "FAIL", moved ? "OK" : "FAIL");
+    printf("Host selftest: layout %s, snapshot %s, player-moved %s\n", gotLayout ? "OK" : "FAIL",
+           snapHasWorld ? "OK" : "FAIL", moved ? "OK" : "FAIL");
     return (gotLayout && snapHasWorld && moved) ? 0 : 1;
 }
 
@@ -432,7 +434,11 @@ static int HostSelftest()
 // read it into a clean simulation, compare the fields. Run: econserver accttest.
 static int AccountSelftest()
 {
-    auto approx = [](double x, double y) { double d = x - y; return (d < 0 ? -d : d) < 1e-3; };
+    auto approx = [](double x, double y)
+    {
+        double d = x - y;
+        return (d < 0 ? -d : d) < 1e-3;
+    };
     std::string path = std::string(GetApplicationDirectory()) + "accttest_tmp.json";
 
     Simulation a;
@@ -443,11 +449,11 @@ static int AccountSelftest()
     a.SaveAccount(path);
 
     Simulation b;  // clean account (money 500) — check that the load overwrote it
-    bool loaded = b.LoadAccount(path);
-    bool money = approx(b.Account().GetMoney(), 4242.0);
-    bool rep = approx(b.Account().GetReputation(FactionId::Pirates), -7.5);
-    bool bounty = approx(b.Account().GetBounty(FactionId::TradersGuild), 300.0);
-    bool skill = approx(b.Account().GetSkills().GetXp(SkillType::Mining), 555.0);
+    bool       loaded = b.LoadAccount(path);
+    bool       money = approx(b.Account().GetMoney(), 4242.0);
+    bool       rep = approx(b.Account().GetReputation(FactionId::Pirates), -7.5);
+    bool       bounty = approx(b.Account().GetBounty(FactionId::TradersGuild), 300.0);
+    bool       skill = approx(b.Account().GetSkills().GetXp(SkillType::Mining), 555.0);
     std::remove(path.c_str());
 
     bool ok = loaded && money && rep && bounty && skill;
@@ -463,7 +469,11 @@ static int AccountSelftest()
 // Run: econserver worldtest.
 static int WorldSelftest()
 {
-    auto approx = [](double x, double y) { double d = x - y; return (d < 0 ? -d : d) < 1e-3; };
+    auto approx = [](double x, double y)
+    {
+        double d = x - y;
+        return (d < 0 ? -d : d) < 1e-3;
+    };
     std::string dataDir = SIM_DATA_DIR;
     std::string path = std::string(GetApplicationDirectory()) + "worldtest_tmp.json";
 
@@ -500,8 +510,8 @@ static int WorldSelftest()
     printf("World selftest: clock %s, load %s, time %s, security %s, prosperity %s, "
            "pirates %s, controller %s => %s\n",
            ticked ? "OK" : "FAIL", loaded ? "OK" : "FAIL", time ? "OK" : "FAIL",
-           sec ? "OK" : "FAIL", prosp ? "OK" : "FAIL", pir ? "OK" : "FAIL",
-           ctrl ? "OK" : "FAIL", ok ? "PASS" : "FAIL");
+           sec ? "OK" : "FAIL", prosp ? "OK" : "FAIL", pir ? "OK" : "FAIL", ctrl ? "OK" : "FAIL",
+           ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
 
@@ -568,8 +578,8 @@ int main(int argc, char** argv)
                 sim.RecountAgg(kv.second);  // fresh real numbers for printing
                 const SystemAggregate& a = kv.second.agg;
                 printf("  %-10s sec %.2f  pir %2d  pol %2d  trd %2d  econ %3.0f%%  ctrl %s\n",
-                       kv.first.c_str(), a.security, (int)a.pirates, (int)a.police,
-                       (int)a.traders, a.prosperity * 100.0f, FactionName(a.controller).c_str());
+                       kv.first.c_str(), a.security, (int)a.pirates, (int)a.police, (int)a.traders,
+                       a.prosperity * 100.0f, FactionName(a.controller).c_str());
             }
         }
     }

@@ -13,12 +13,12 @@ namespace WorldLoader
 // A system's record in the galaxy index (data/universe.json).
 struct SystemInfo
 {
-    std::string id;            // short identifier (= a gate's destination)
-    std::string name;          // display name
-    std::string file;          // file name under data/systems/
-    Vector2     mapPos;        // position on the star map
+    std::string id;               // short identifier (= a gate's destination)
+    std::string name;             // display name
+    std::string file;             // file name under data/systems/
+    Vector2     mapPos;           // position on the star map
     float       security = 0.5f;  // security level 0..1 (1 = safe)
-    std::string owner;         // owning faction (id); empty — unclaimed system
+    std::string owner;            // owning faction (id); empty — unclaimed system
 };
 
 // A link between two systems (for drawing on the star map).
@@ -46,4 +46,4 @@ std::vector<std::unique_ptr<Entity>> LoadSystem(const std::string& path);
 // Builds entities from already-parsed JSON (for the editor — rebuild after
 // in-memory edits). Entity order matches the order in the JSON.
 std::vector<std::unique_ptr<Entity>> BuildSystem(const nlohmann::json& data);
-}
+}  // namespace WorldLoader

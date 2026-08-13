@@ -69,8 +69,7 @@ const Texture2D& Acquire(const char* name)
     if (it != cache.end())
         return it->second;
 
-    std::string path =
-        std::string(GetApplicationDirectory()) + "data/textures/" + name + ".png";
+    std::string path = std::string(GetApplicationDirectory()) + "data/textures/" + name + ".png";
 
     Texture2D tex{ 0, 0, 0, 0, 0 };
     if (FileExists(path.c_str()))
@@ -125,9 +124,9 @@ bool DrawSprite(const char* name, Vector2 pos, float size, float rotationDeg, Co
             return false;  // no atlas either — fall back to a shape
 
         // A small inset into the cell — in case of leftover divider lines.
-        float cw = (float)atlas.width / ATLAS_COLS;
-        float ch = (float)atlas.height / ATLAS_ROWS;
-        float inset = cw * 0.04f;
+        float     cw = (float)atlas.width / ATLAS_COLS;
+        float     ch = (float)atlas.height / ATLAS_ROWS;
+        float     inset = cw * 0.04f;
         Rectangle src{ cell.col * cw + inset, cell.row * ch + inset, cw - 2.0f * inset,
                        ch - 2.0f * inset };
         DrawTexturePro(atlas, src, dst, origin, rotationDeg, tint);

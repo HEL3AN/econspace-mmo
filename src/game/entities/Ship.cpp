@@ -4,10 +4,7 @@
 #include <cmath>
 
 Ship::Ship(Vector2 startPos, const ShipStats& stats)
-    : Entity(startPos, 16.0f, RAYWHITE),
-      stats_(stats),
-      heading_(0.0f),
-      velocity_({ 0.0f, 0.0f })
+    : Entity(startPos, 16.0f, RAYWHITE), stats_(stats), heading_(0.0f), velocity_({ 0.0f, 0.0f })
 {
 }
 
@@ -210,8 +207,7 @@ void Ship::Update(float dt)
             heading_ += ctrlTurn_ * stats_.turnSpeed * dt;
 
             if (ctrlThrust_ && !ctrlBrake_)
-                desiredVelocity_ = { cosf(heading_) * MaxSpeed(),
-                                     sinf(heading_) * MaxSpeed() };
+                desiredVelocity_ = { cosf(heading_) * MaxSpeed(), sinf(heading_) * MaxSpeed() };
             else
                 desiredVelocity_ = { 0.0f, 0.0f };
         }
@@ -281,8 +277,10 @@ void Ship::RunAutopilot(float dt)
     // The nose eases around toward the flight heading (cosmetic).
     float desired = atan2f(dirY, dirX);
     float diff = desired - heading_;
-    while (diff > PI) diff -= 2.0f * PI;
-    while (diff < -PI) diff += 2.0f * PI;
+    while (diff > PI)
+        diff -= 2.0f * PI;
+    while (diff < -PI)
+        diff += 2.0f * PI;
     float step = stats_.turnSpeed * dt;
     heading_ += (fabsf(diff) <= step) ? diff : (diff > 0 ? step : -step);
 }
@@ -351,9 +349,7 @@ void Ship::Draw() const
 
     // A point from the ship's frame (nose along +x) to world coordinates.
     auto toWorld = [&](float x, float y) -> Vector2
-    {
-        return { pos_.x + x * c - y * s, pos_.y + x * s + y * c };
-    };
+    { return { pos_.x + x * c - y * s, pos_.y + x * s + y * c }; };
 
     if (engineActive_)
     {

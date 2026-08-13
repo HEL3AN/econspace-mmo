@@ -33,12 +33,10 @@ Color ToCol(const json& j, Color def = { 255, 255, 255, 255 })
 
 json MissionJson(const Proto::MissionView& m)
 {
-    return { { "type", m.type },       { "fac", m.faction },
-             { "title", m.title },     { "desc", m.description },
-             { "giver", m.giverStationId }, { "dest", m.destStationId },
-             { "res", m.resource },    { "tc", m.targetCount },
-             { "prog", m.progress },   { "rm", m.rewardMoney },
-             { "rr", m.rewardRep },    { "done", m.completable } };
+    return { { "type", m.type },        { "fac", m.faction },          { "title", m.title },
+             { "desc", m.description }, { "giver", m.giverStationId }, { "dest", m.destStationId },
+             { "res", m.resource },     { "tc", m.targetCount },       { "prog", m.progress },
+             { "rm", m.rewardMoney },   { "rr", m.rewardRep },         { "done", m.completable } };
 }
 
 Proto::MissionView ToMission(const json& mj)
@@ -131,22 +129,34 @@ std::string EncodeSnapshot(const Snapshot& s)
     j["sys"] = s.systemId;
 
     const PlayerView& p = s.player;
-    j["player"] = { { "pos", V2(p.pos) },         { "vel", V2(p.vel) },
-                    { "hdg", p.heading },          { "hull", p.hull },
-                    { "maxHull", p.maxHull },      { "sh", p.shields },
-                    { "maxSh", p.maxShields },     { "cargo", p.cargoUsed },
-                    { "cargoCap", p.cargoCap },    { "warp", p.warpPhase },
-                    { "warpAlign", p.warpAlign },  { "warpTgt", V2(p.warpTarget) },
-                    { "warpDrop", p.warpDrop },    { "ap", p.autopilot },
-                    { "apTgt", V2(p.apTarget) },   { "apStop", p.apStop },
-                    { "stab", p.stabilizer },      { "mine", p.mining },
-                    { "weap", p.weaponOn },        { "docked", p.docked },
+    j["player"] = { { "pos", V2(p.pos) },
+                    { "vel", V2(p.vel) },
+                    { "hdg", p.heading },
+                    { "hull", p.hull },
+                    { "maxHull", p.maxHull },
+                    { "sh", p.shields },
+                    { "maxSh", p.maxShields },
+                    { "cargo", p.cargoUsed },
+                    { "cargoCap", p.cargoCap },
+                    { "warp", p.warpPhase },
+                    { "warpAlign", p.warpAlign },
+                    { "warpTgt", V2(p.warpTarget) },
+                    { "warpDrop", p.warpDrop },
+                    { "ap", p.autopilot },
+                    { "apTgt", V2(p.apTarget) },
+                    { "apStop", p.apStop },
+                    { "stab", p.stabilizer },
+                    { "mine", p.mining },
+                    { "weap", p.weaponOn },
+                    { "docked", p.docked },
                     { "dockId", p.dockedStationId },
                     { "nearStation", p.nearbyStationId },
                     { "lastInput", p.lastInput },
                     { "cargoT", p.cargoByType },
-                    { "money", p.money },          { "rep", p.reputation },
-                    { "bounty", p.bounty },        { "skillXp", p.skillXp } };
+                    { "money", p.money },
+                    { "rep", p.reputation },
+                    { "bounty", p.bounty },
+                    { "skillXp", p.skillXp } };
 
     json ents = json::array();
     for (const EntitySnapshot& e : s.entities)
@@ -176,10 +186,8 @@ std::string EncodeSnapshot(const Snapshot& s)
 
     json acks = json::array();
     for (const TradeAck& a : s.tradeAcks)
-        acks.push_back({ { "type", a.type },
-                         { "sold", a.sold },
-                         { "gross", a.gross },
-                         { "rev", a.revenue } });
+        acks.push_back(
+            { { "type", a.type }, { "sold", a.sold }, { "gross", a.gross }, { "rev", a.revenue } });
     j["trade"] = acks;
 
     json offers = json::array();

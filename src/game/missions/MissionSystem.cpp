@@ -12,7 +12,7 @@ void MissionSystem::GenerateOffers(Station* giver, const std::vector<Station*>& 
 
     // Weighted type pool biased by the station's role — each has its own character.
     std::vector<MissionType> pool;
-    auto add = [&](MissionType t, int weight)
+    auto                     add = [&](MissionType t, int weight)
     {
         for (int i = 0; i < weight; i++)
             pool.push_back(t);
@@ -28,14 +28,9 @@ void MissionSystem::GenerateOffers(Station* giver, const std::vector<Station*>& 
             if (canDeliver)
                 add(MissionType::Delivery, 3);
             break;
-        case StationRole::MiningOutpost:
-            add(MissionType::Mining, 3);
-            break;
-        case StationRole::Military:
-            add(MissionType::Bounty, 3);
-            break;
-        case StationRole::Shipyard:
-            break;  // shipyard — no bias, a bit of everything
+        case StationRole::MiningOutpost: add(MissionType::Mining, 3); break;
+        case StationRole::Military: add(MissionType::Bounty, 3); break;
+        case StationRole::Shipyard: break;  // shipyard — no bias, a bit of everything
     }
 
     for (int i = 0; i < 4; i++)

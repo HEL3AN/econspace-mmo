@@ -4,10 +4,7 @@
 
 AsteroidField::AsteroidField(Vector2 pos, float size, std::string name, ResourceType resource,
                              int ore)
-    : Entity(pos, size, GRAY),
-      name_(std::move(name)),
-      resource_(resource),
-      oreRemaining_(ore),
+    : Entity(pos, size, GRAY), name_(std::move(name)), resource_(resource), oreRemaining_(ore),
       oreMax_(ore)
 {
 }
@@ -32,8 +29,8 @@ void AsteroidField::Draw() const
     Color rock = Fade(GRAY, 0.3f + 0.7f * fill);
     for (int i = 0; i < 16; i++)
     {
-        float angle = i * 2.39996f;
-        float radius = size_ * (0.2f + 0.65f * ((i * 7 % 11) / 11.0f));
+        float   angle = i * 2.39996f;
+        float   radius = size_ * (0.2f + 0.65f * ((i * 7 % 11) / 11.0f));
         Vector2 p = { pos_.x + cosf(angle) * radius, pos_.y + sinf(angle) * radius };
         DrawCircleV(p, 3.0f + (i % 3), rock);
     }

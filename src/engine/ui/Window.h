@@ -23,7 +23,7 @@ public:
 
     void SetBounds(Rectangle bounds) { bounds_ = bounds; }  // reset position/size
 
-    bool ContainsMouse() const;        // mouse over the (open) window
+    bool ContainsMouse() const;  // mouse over the (open) window
     bool TitleBarHit(Vector2 m) const;
     bool CloseButtonHit(Vector2 m) const;
     void StartDrag(Vector2 m);

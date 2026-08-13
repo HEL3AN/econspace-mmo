@@ -7,7 +7,12 @@
 #include <map>
 
 // Warp jump phases: aligning to the target (spin-up), the jump itself, or no warp.
-enum class WarpPhase { None, Aligning, Warping };
+enum class WarpPhase
+{
+    None,
+    Aligning,
+    Warping
+};
 
 // Player ship. Flight physics; parameters (thrust, cargo, mining) come from the
 // ShipStats struct and change when switching to another ship (Refit).
@@ -48,7 +53,7 @@ public:
     bool IsStabilizerOn() const { return stabilizerOn_; }
     void SetStabilizerOn(bool on) { stabilizerOn_ = on; }  // network: sync from snapshot
 
-    void SetMiningOn(bool on) { miningOn_ = on; }          // network: sync from snapshot
+    void SetMiningOn(bool on) { miningOn_ = on; }  // network: sync from snapshot
 
     void Stop() { velocity_ = { 0.0f, 0.0f }; }
 
@@ -56,10 +61,18 @@ public:
     void SetPilotBonus(float bonus) { pilotBonus_ = bonus; }
 
     // Combat system: shields absorb damage first, then the hull.
-    void  TakeDamage(float amount) override;
-    bool  IsAlive() const override { return hull_ > 0.0f; }
-    void  Repair() { hull_ = maxHull_; shields_ = maxShields_; }
-    void  Teleport(Vector2 pos) { pos_ = pos; velocity_ = { 0.0f, 0.0f }; }
+    void TakeDamage(float amount) override;
+    bool IsAlive() const override { return hull_ > 0.0f; }
+    void Repair()
+    {
+        hull_ = maxHull_;
+        shields_ = maxShields_;
+    }
+    void Teleport(Vector2 pos)
+    {
+        pos_ = pos;
+        velocity_ = { 0.0f, 0.0f };
+    }
     void  ClearCargo() { cargo_.clear(); }
     float GetHull() const override { return hull_; }
     float GetMaxHull() const override { return maxHull_; }
@@ -94,8 +107,8 @@ public:
     // autopilot) from the server. Warp/AP are server-authoritative — the client has
     // no spin-up timer of its own, it mirrors the server's; this way "bar ready" and
     // the real flight start line up (the client used to have its own drifting warp timer).
-    void ApplyNavView(int warpPhase, float warpAlignTimer, Vector2 warpTarget, float warpDrop,
-                      bool apActive, Vector2 apTarget, float apStopDistance);
+    void    ApplyNavView(int warpPhase, float warpAlignTimer, Vector2 warpTarget, float warpDrop,
+                         bool apActive, Vector2 apTarget, float apStopDistance);
     float   GetSpeed() const;
     bool    IsAutopilotOn() const { return apActive_; }
     Vector2 GetAutopilotTarget() const { return apTarget_; }
@@ -150,9 +163,9 @@ private:
 
     // Warp state.
     static constexpr float WARP_ALIGN_TIME = 1.8f;  // spin-up duration
-    WarpPhase warpPhase_ = WarpPhase::None;
-    Vector2   warpTarget_ = { 0.0f, 0.0f };
-    float     warpDrop_ = 0.0f;
-    float     warpAlignTimer_ = 0.0f;
-    float     warpPrevDist_ = 0.0f;  // progress guard (prevents getting stuck)
+    WarpPhase              warpPhase_ = WarpPhase::None;
+    Vector2                warpTarget_ = { 0.0f, 0.0f };
+    float                  warpDrop_ = 0.0f;
+    float                  warpAlignTimer_ = 0.0f;
+    float                  warpPrevDist_ = 0.0f;  // progress guard (prevents getting stuck)
 };

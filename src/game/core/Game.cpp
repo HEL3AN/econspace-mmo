@@ -86,7 +86,7 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     {
         BgStar s;
         s.base = { (float)GetRandomValue(0, 2560), (float)GetRandomValue(0, 1440) };
-        s.depth = GetRandomValue(15, 70) / 100.0f;          // 0.15..0.70
+        s.depth = GetRandomValue(15, 70) / 100.0f;  // 0.15..0.70
         s.shade = (unsigned char)GetRandomValue(70, 180);
         bgStars_.push_back(s);
     }
@@ -140,10 +140,10 @@ void Game::Run()
             if (mode_ == GameMode::Flying)
             {
                 // CLIENT-SIDE PREDICTION of the own ship's movement. Number the input,
-                // push it into the unacked buffer, send it to the server, and immediately apply the same
-                // StepPlayerShip the server uses (pilotBonus=1 as on the server). The snapshot then
-                // replays the buffer over the authoritative state (BuildClientSnapshot). The world (NPCs)
-                // is not simulated — it arrives via snapshots.
+                // push it into the unacked buffer, send it to the server, and immediately apply the
+                // same StepPlayerShip the server uses (pilotBonus=1 as on the server). The snapshot
+                // then replays the buffer over the authoritative state (BuildClientSnapshot). The
+                // world (NPCs) is not simulated — it arrives via snapshots.
                 cmd_.seq = (int)++inputSeq_;
                 pendingInputs_.push_back(cmd_);
                 if (pendingInputs_.size() > 256)  // guard against growth if the server stalls
@@ -184,7 +184,8 @@ void Game::Run()
             BuildNetworkBeams();  // combat beams — from the snapshot (server computes combat)
 
             // Mining beam: the server reports mining in the snapshot — draw a beam to the nearest
-            // field within mining range (visual only; extraction is server-side). Radius as in the core (40).
+            // field within mining range (visual only; extraction is server-side). Radius as in the
+            // core (40).
             miningBeamField_ = nullptr;
             if (snapshot_.player.mining)
             {
@@ -276,8 +277,9 @@ void Game::HandleInput(float dt)
     if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT))
         cmd_.turn += 1.0f;
 
-    // Combat target — the selected object (by id). The server fires at it in StepPlayerFire (over the
-    // network this is the only target source; single-player, ResolveCombat reads selected_ directly).
+    // Combat target — the selected object (by id). The server fires at it in StepPlayerFire (over
+    // the network this is the only target source; single-player, ResolveCombat reads selected_
+    // directly).
     cmd_.targetId = selected_ != nullptr ? selected_->GetId() : 0;
 
     // Left click — select the object under the cursor (unless over the UI). Search the
@@ -318,7 +320,8 @@ void Game::HandleInput(float dt)
     // Nearest station within docking range; E — dock. Single-player, detection uses
     // the live sim_ (a live Station* is needed for missions/Dock); over the network, the
     // clientWorld_ proxies (the client has no live world). Docking itself over the network is
-    // server-authoritative: we send cmd_.dock, the server confirms via snapshot (see BuildClientSnapshot).
+    // server-authoritative: we send cmd_.dock, the server confirms via snapshot (see
+    // BuildClientSnapshot).
     nearbyStation_ = nullptr;
     {
         const auto& src = clientWorld_;
@@ -361,7 +364,7 @@ void Game::BuildNetworkBeams()
     beams_.clear();
     for (const FireEvent& f : snapshot_.fires)
     {
-        Color c = f.fromPlayer      ? SKYBLUE
+        Color c = f.fromPlayer       ? SKYBLUE
                   : f.targetIsPlayer ? ORANGE
                                      : Fade(FactionColor(f.shooterFaction), 0.85f);
         beams_.push_back({ f.from, f.to, c });
@@ -373,8 +376,9 @@ void Game::BuildNetworkBeams()
 // effects: trade-skill and reputation multipliers, XP, reputation gain with the faction.
 void Game::ApplyTradeAcks(const Proto::Snapshot& s)
 {
-    // M4f: the account is server-authoritative — the server already credited the revenue to account_,
-    // the client only shows the result (money is updated by the account mirror from the snapshot).
+    // M4f: the account is server-authoritative — the server already credited the revenue to
+    // account_, the client only shows the result (money is updated by the account mirror from the
+    // snapshot).
     for (const Proto::TradeAck& a : s.tradeAcks)
     {
         if (a.sold <= 0)
@@ -396,7 +400,8 @@ void Game::ApplyTradeAcks(const Proto::Snapshot& s)
 const WorldLoader::SystemInfo* Game::CurrentSystemInfo() const
 {
     // Over the network the current system comes from the server snapshot (the local sim_ isn't
-    // activated on jumps, its ActiveId() would be stuck on the start system). The system list (Universe) is static.
+    // activated on jumps, its ActiveId() would be stuck on the start system). The system list
+    // (Universe) is static.
     const std::string& active = snapshot_.systemId;
     for (const auto& s : universe_.systems)
         if (s.id == active)
@@ -482,7 +487,7 @@ void Game::BuildClientSnapshot()
             Proto::Snapshot s;
             if (!Proto::DecodeSnapshot(msg, s))
                 continue;
-            ApplyTradeAcks(s);  // credit sales revenue (client account)
+            ApplyTradeAcks(s);                       // credit sales revenue (client account)
             for (const std::string& m : s.messages)  // server notifications (M4f-4)
                 FlashMessage(m);
             incoming = std::move(s);
@@ -518,8 +523,8 @@ void Game::BuildClientSnapshot()
         // Warp/AP are server-authoritative: we mirror the server's warp scale and don't keep
         // our own. Applied BEFORE replay so unacked orders (which the server hasn't seen yet)
         // correctly "carry through" via prediction over the authoritative state.
-        playerShip_->ApplyNavView(p.warpPhase, p.warpAlign, p.warpTarget, p.warpDrop,
-                                  p.autopilot, p.apTarget, p.apStop);
+        playerShip_->ApplyNavView(p.warpPhase, p.warpAlign, p.warpTarget, p.warpDrop, p.autopilot,
+                                  p.apTarget, p.apStop);
         // Toggles (stabilizer/mining) are server-authoritative: restore from the snapshot
         // BEFORE replay, otherwise unacked toggle commands would flicker during replay
         // (like warp). Unacked toggles "carry through" via prediction below.
@@ -530,7 +535,8 @@ void Game::BuildClientSnapshot()
         p.weaponOn = weaponOn_;  // client-side weapon indicator
 
         // The account is a MIRROR of the server (M4f): money/reputation/wanted/skills arrive in
-        // the snapshot, the client only displays them (mutations moved to the server via commands/Step).
+        // the snapshot, the client only displays them (mutations moved to the server via
+        // commands/Step).
         player_.SetMoney(p.money);
         for (int i = 0; i < 4 && i < (int)p.reputation.size(); i++)
             player_.SetReputation((FactionId)i, p.reputation[i]);
@@ -543,8 +549,8 @@ void Game::BuildClientSnapshot()
             player_.GetSkills().SetXp(SkillType::Trading, p.skillXp[2]);
         }
 
-        // Missions are a MIRROR of the server (M4f-2): the board/active ones arrive in the snapshot,
-        // the client only displays them (accept/turn in — via commands).
+        // Missions are a MIRROR of the server (M4f-2): the board/active ones arrive in the
+        // snapshot, the client only displays them (accept/turn in — via commands).
         auto toMission = [](const Proto::MissionView& v)
         {
             Mission m;
@@ -570,8 +576,9 @@ void Game::BuildClientSnapshot()
         missions_.SetMirror(std::move(offers), std::move(active));
 
         // Server-authoritative docking: enter/leave station mode by snapshot.
-        // We take the station from the proxy by id (at docking time the client was in flight, so a proxy
-        // exists). Money/reputation/missions — the client account (missions over the network — later).
+        // We take the station from the proxy by id (at docking time the client was in flight, so a
+        // proxy exists). Money/reputation/missions — the client account (missions over the network
+        // — later).
         if (p.docked && mode_ == GameMode::Flying)
         {
             if (Station* s = dynamic_cast<Station*>(FindEntityById(p.dockedStationId)))
@@ -608,8 +615,8 @@ std::unique_ptr<Entity> Game::MakeProxyFromLayout(const Proto::EntityLayout& el)
                                           (StationRole)el.subType);
             break;
         case Proto::EntityKind::Field:
-            e = std::make_unique<AsteroidField>(el.pos, el.size, el.name,
-                                                (ResourceType)el.resource, 1000);
+            e = std::make_unique<AsteroidField>(el.pos, el.size, el.name, (ResourceType)el.resource,
+                                                1000);
             break;
         case Proto::EntityKind::Gate:
             e = std::make_unique<JumpGate>(el.pos, el.size, el.name, el.dest);
@@ -620,8 +627,7 @@ std::unique_ptr<Entity> Game::MakeProxyFromLayout(const Proto::EntityLayout& el)
         case Proto::EntityKind::Derelict:
             e = std::make_unique<Derelict>(el.pos, el.size, el.name, el.reward);
             break;
-        default:
-            return nullptr;
+        default: return nullptr;
     }
     if (e)
     {
@@ -655,7 +661,8 @@ static float LerpAngleShort(float a, float b, float t)
 // (by id), dynamics (NPCs) from the snapshot fields; vanished ones are removed. Positions of
 // non-own entities: single-player directly from the fresh snapshot; over the network — ENTITY
 // INTERPOLATION (drawn "in the past", interpolating between two buffered snapshots) for
-// smoothness. The client does NOT peek into the live sim_ (the world comes entirely from the network).
+// smoothness. The client does NOT peek into the live sim_ (the world comes entirely from the
+// network).
 void Game::ReconcileClientWorld()
 {
     // 1) Presence: create new proxies from the latest snapshot. Single-player we set the
@@ -696,7 +703,6 @@ void Game::ReconcileClientWorld()
             clientWorld_.push_back(std::move(p));
             proxy = clientWorld_.back().get();
         }
-
     }
 
     // 2) Positions of non-own entities are taken "from the past", interpolating between two
@@ -791,8 +797,10 @@ void Game::DrawStarfield()
     {
         float x = fmodf(s.base.x - camera_.target.x * s.depth, tileW);
         float y = fmodf(s.base.y - camera_.target.y * s.depth, tileH);
-        if (x < 0) x += tileW;
-        if (y < 0) y += tileH;
+        if (x < 0)
+            x += tileW;
+        if (y < 0)
+            y += tileH;
         if (x <= screenWidth_ && y <= screenHeight_)
             DrawPixel((int)x, (int)y, Color{ s.shade, s.shade, s.shade, 255 });
     }
@@ -835,9 +843,9 @@ void Game::DrawWorld()
     }
 
     // The selected target's ring — at the object's rendered position, not the
-    // snapshot: over the network the body is rendered via interpolation "in the past", and a ring from the
-    // fresh snapshot would run ahead. selected_ is a proxy (network) or a live object (single-player),
-    // its position matches what's drawn.
+    // snapshot: over the network the body is rendered via interpolation "in the past", and a ring
+    // from the fresh snapshot would run ahead. selected_ is a proxy (network) or a live object
+    // (single-player), its position matches what's drawn.
     if (selected_ != nullptr)
         DrawCircleLines(selected_->GetPosition().x, selected_->GetPosition().y,
                         selected_->GetSize() + 10.0f, WHITE);
@@ -923,7 +931,8 @@ void Game::SetupWindows()
     ResetWindowLayout();
 }
 
-// Arranges windows at their default positions (right-side ones relative to the current window width).
+// Arranges windows at their default positions (right-side ones relative to the current window
+// width).
 void Game::ResetWindowLayout()
 {
     float rx = (float)(screenWidth_ - 280);
@@ -932,8 +941,7 @@ void Game::ResetWindowLayout()
     overviewWin_->SetBounds(Rectangle{ rx, 224.0f, 264.0f, 400.0f });
     radarWin_->SetBounds(Rectangle{ 56.0f, 344.0f, 264.0f, 288.0f });
     missionsWin_->SetBounds(Rectangle{ rx, 360.0f, 264.0f, 264.0f });
-    settingsWin_->SetBounds(
-        Rectangle{ screenWidth_ / 2.0f - 150.0f, 100.0f, 300.0f, 300.0f });
+    settingsWin_->SetBounds(Rectangle{ screenWidth_ / 2.0f - 150.0f, 100.0f, 300.0f, 300.0f });
 }
 
 // Changes the window size; if fullscreen mode is active — exits it first.
@@ -969,7 +977,7 @@ void Game::DrawSettingsContent(Rectangle area)
     y += 22;
     for (const Res& r : modes)
     {
-        bool current = (screenWidth_ == r.w && screenHeight_ == r.h);
+        bool   current = (screenWidth_ == r.w && screenHeight_ == r.h);
         Button btn(Rectangle{ area.x, (float)y, area.width, 30.0f },
                    TextFormat("%d x %d%s", r.w, r.h, current ? "   *" : ""),
                    [this, r]() { ApplyResolution(r.w, r.h); });
@@ -982,8 +990,7 @@ void Game::DrawSettingsContent(Rectangle area)
     y += 22;
     bool   fs = IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE);
     Button fsBtn(Rectangle{ area.x, (float)y, area.width, 30.0f },
-                 fs ? "Fullscreen: ON" : "Fullscreen: off",
-                 []() { ToggleBorderlessWindowed(); });
+                 fs ? "Fullscreen: ON" : "Fullscreen: off", []() { ToggleBorderlessWindowed(); });
     fsBtn.Process();
     y += 42;
 
@@ -1003,7 +1010,7 @@ void Game::DrawRadarContent(Rectangle area)
     DrawRectangleLinesEx(r, 1.0f, Fade(Ui::PANEL_BORDER, 0.6f));
 
     Vector2 sp = snapshot_.player.pos;  // M4c: the radar reads the snapshot
-    if (!radarInit_)  // on first display, center on the player
+    if (!radarInit_)                    // on first display, center on the player
     {
         radarCenter_ = sp;
         radarInit_ = true;
@@ -1105,15 +1112,15 @@ void Game::DrawRadarContent(Rectangle area)
         Color col = GRAY;
         switch (e.kind)
         {
-            case Proto::EntityKind::Star:     col = GOLD; break;
-            case Proto::EntityKind::Planet:   col = SKYBLUE; break;
-            case Proto::EntityKind::Station:  col = Ui::ACCENT; break;
-            case Proto::EntityKind::Field:    col = ORANGE; break;
-            case Proto::EntityKind::Nebula:   col = Color{ 150, 90, 200, 255 }; break;
+            case Proto::EntityKind::Star: col = GOLD; break;
+            case Proto::EntityKind::Planet: col = SKYBLUE; break;
+            case Proto::EntityKind::Station: col = Ui::ACCENT; break;
+            case Proto::EntityKind::Field: col = ORANGE; break;
+            case Proto::EntityKind::Nebula: col = Color{ 150, 90, 200, 255 }; break;
             case Proto::EntityKind::Derelict: col = Color{ 130, 130, 120, 255 }; break;
-            case Proto::EntityKind::Gate:     col = Color{ 90, 200, 210, 255 }; break;
-            case Proto::EntityKind::Npc:      col = FactionColor(e.faction); break;
-            default:                          col = GRAY; break;
+            case Proto::EntityKind::Gate: col = Color{ 90, 200, 210, 255 }; break;
+            case Proto::EntityKind::Npc: col = FactionColor(e.faction); break;
+            default: col = GRAY; break;
         }
 
         DrawCircleV(p, 3.0f, col);
@@ -1179,8 +1186,7 @@ void Game::DrawOverviewContent(Rectangle area)
         float dy = e->pos.y - sp.y;
         Ui::Text(e->name.c_str(), (int)area.x + 4, y + 3, 14, Ui::TEXT);
         const char* d = TextFormat("%.0f", sqrtf(dx * dx + dy * dy));
-        Ui::Text(d, (int)(area.x + area.width) - Ui::TextWidth(d, 14) - 4, y + 3, 14,
-                 Ui::TEXT_DIM);
+        Ui::Text(d, (int)(area.x + area.width) - Ui::TextWidth(d, 14) - 4, y + 3, 14, Ui::TEXT_DIM);
 
         if (CheckCollisionPointRec(m, row))
         {
@@ -1299,8 +1305,8 @@ bool Game::HandleWindows()
 bool Game::HandleMenuBar()
 {
     Vector2 m = GetMousePosition();
-    bool    over = CheckCollisionPointRec(m, Rectangle{ 0.0f, 0.0f, MENU_BAR_W,
-                                                        (float)screenHeight_ });
+    bool    over =
+        CheckCollisionPointRec(m, Rectangle{ 0.0f, 0.0f, MENU_BAR_W, (float)screenHeight_ });
     if (!over || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
         return over;
 
@@ -1309,8 +1315,7 @@ bool Game::HandleMenuBar()
                        missionsWin_, nullptr,    settingsWin_ };
     for (int i = 0; i < 7; i++)
     {
-        Rectangle b{ (MENU_BAR_W - MENU_BTN) / 2.0f, MENU_TOP + i * MENU_STEP, MENU_BTN,
-                     MENU_BTN };
+        Rectangle b{ (MENU_BAR_W - MENU_BTN) / 2.0f, MENU_TOP + i * MENU_STEP, MENU_BTN, MENU_BTN };
         if (CheckCollisionPointRec(m, b))
         {
             if (wins[i] != nullptr)
@@ -1338,11 +1343,10 @@ void Game::DrawMenuBar()
 
     for (int i = 0; i < 7; i++)
     {
-        Rectangle b{ (MENU_BAR_W - MENU_BTN) / 2.0f, MENU_TOP + i * MENU_STEP, MENU_BTN,
-                     MENU_BTN };
-        bool  open = wins[i] ? wins[i]->IsOpen() : galaxyMapOpen_;  // MAP — not a window
-        bool  hover = CheckCollisionPointRec(m, b);
-        Color accent = (open || hover) ? Ui::ACCENT : Ui::TEXT_DIM;
+        Rectangle b{ (MENU_BAR_W - MENU_BTN) / 2.0f, MENU_TOP + i * MENU_STEP, MENU_BTN, MENU_BTN };
+        bool      open = wins[i] ? wins[i]->IsOpen() : galaxyMapOpen_;  // MAP — not a window
+        bool      hover = CheckCollisionPointRec(m, b);
+        Color     accent = (open || hover) ? Ui::ACCENT : Ui::TEXT_DIM;
 
         DrawRectangleRec(b, open ? Fade(Ui::ACCENT, 0.25f)
                                  : (hover ? Fade(Ui::ACCENT, 0.12f) : Ui::PANEL_BG));
@@ -1436,8 +1440,9 @@ void Game::OpenContextMenu(Entity* target)
                                   float dx = dr->GetPosition().x - playerShip_->GetPosition().x;
                                   float dy = dr->GetPosition().y - playerShip_->GetPosition().y;
                                   if (sqrtf(dx * dx + dy * dy) <= dr->GetSize() + 120.0f)
-                                      cmd_.lootId = dr->GetId();  // salvage order (server will verify)
-                                  else  // far — approach first
+                                      cmd_.lootId =
+                                          dr->GetId();  // salvage order (server will verify)
+                                  else                  // far — approach first
                                       OrderAutopilot(dr->GetPosition(), dr->GetSize() + 40.0f);
                               } });
     }
@@ -1457,7 +1462,7 @@ void Game::OpenContextMenu(Entity* target)
                               float dy = g->GetPosition().y - playerShip_->GetPosition().y;
                               if (sqrtf(dx * dx + dy * dy) <= g->GetSize() + 200.0f)
                                   cmd_.jumpGateId = g->GetId();  // jump order (server will verify)
-                              else  // far — warp to the gate
+                              else                               // far — warp to the gate
                                   OrderWarp(g->GetPosition(), g->GetSize() + 120.0f);
                           } });
     }
@@ -1470,15 +1475,13 @@ void Game::OpenContextMenuAt(Vector2 worldPoint)
 {
     std::vector<ContextMenu::Item> items;
 
-    items.push_back({ "Fly here", [this, worldPoint]()
-                      { OrderAutopilot(worldPoint, 18.0f); } });
+    items.push_back({ "Fly here", [this, worldPoint]() { OrderAutopilot(worldPoint, 18.0f); } });
 
     float dx = worldPoint.x - playerShip_->GetPosition().x;
     float dy = worldPoint.y - playerShip_->GetPosition().y;
     if (sqrtf(dx * dx + dy * dy) > 1800.0f)
     {
-        items.push_back({ "Warp here", [this, worldPoint]()
-                          { OrderWarp(worldPoint, 60.0f); } });
+        items.push_back({ "Warp here", [this, worldPoint]() { OrderWarp(worldPoint, 60.0f); } });
     }
 
     contextMenu_.Open(GetMousePosition(), std::move(items));
@@ -1506,8 +1509,9 @@ void Game::DrawStatusContent(Rectangle area)
     y += 22;
     Ui::Text(TextFormat("Money   %.0f", player_.GetMoney()), x, y, 16, GOLD);
     y += 22;
-    // Cargo — from the snapshot (over the network playerShip_'s hold isn't synced; the server collects
-    // ore into its own ship, the snapshot carries the current volume). Single-player the snapshot = player.
+    // Cargo — from the snapshot (over the network playerShip_'s hold isn't synced; the server
+    // collects ore into its own ship, the snapshot carries the current volume). Single-player the
+    // snapshot = player.
     Ui::Text(TextFormat("Cargo   %d / %d", snapshot_.player.cargoUsed, snapshot_.player.cargoCap),
              x, y, 16, Ui::TEXT);
     y += 24;
@@ -1548,9 +1552,8 @@ void Game::DrawHud()
     // Docking prompt.
     if (nearbyStation_ != nullptr)
     {
-        const char* prompt =
-            TextFormat("Press E to dock at %s", nearbyStation_->GetName().c_str());
-        int tw = Ui::TextWidth(prompt, 20);
+        const char* prompt = TextFormat("Press E to dock at %s", nearbyStation_->GetName().c_str());
+        int         tw = Ui::TextWidth(prompt, 20);
         Ui::Text(prompt, (screenWidth_ - tw) / 2, screenHeight_ - 56, 20, Ui::ACCENT);
     }
 
@@ -1582,9 +1585,9 @@ void Game::DrawHud()
     if (const WorldLoader::SystemInfo* si = CurrentSystemInfo())
     {
         float       sec = si->security;
-        const char* tier = sec >= 0.7f ? "High" : (sec >= 0.4f ? "Mid" : (sec >= 0.2f ? "Low" : "Null"));
-        Color       col = sec >= 0.7f ? LIME : (sec >= 0.4f ? Ui::ACCENT
-                                                            : (sec >= 0.2f ? ORANGE : RED));
+        const char* tier =
+            sec >= 0.7f ? "High" : (sec >= 0.4f ? "Mid" : (sec >= 0.2f ? "Low" : "Null"));
+        Color col = sec >= 0.7f ? LIME : (sec >= 0.4f ? Ui::ACCENT : (sec >= 0.2f ? ORANGE : RED));
         const char* line = TextFormat("%s   Security: %s (%.1f)", si->name.c_str(), tier, sec);
         Ui::Text(line, (screenWidth_ - Ui::TextWidth(line, 16)) / 2, 14, 16, col);
     }
@@ -1600,8 +1603,7 @@ void Game::DrawHud()
         Ui::Text(w, (screenWidth_ - Ui::TextWidth(w, 16)) / 2, 36, 16, RED);
     }
 
-    Ui::Text("[debug] F1: +money   F11: fullscreen", 56,
-             screenHeight_ - 26, 14, Ui::TEXT_DIM);
+    Ui::Text("[debug] F1: +money   F11: fullscreen", 56, screenHeight_ - 26, 14, Ui::TEXT_DIM);
 
     // Short notification (saved/loaded).
     if (flashTimer_ > 0.0f)
@@ -1641,9 +1643,18 @@ void Game::DrawStationScreen()
     float sellMul = 1.0f, buyMul = 1.0f;
     switch (stationTier)
     {
-        case RepTier::Hostile: sellMul = 0.85f; buyMul = 1.15f; break;
-        case RepTier::Liked:   sellMul = 1.10f; buyMul = 0.92f; break;
-        case RepTier::Allied:  sellMul = 1.20f; buyMul = 0.85f; break;
+        case RepTier::Hostile:
+            sellMul = 0.85f;
+            buyMul = 1.15f;
+            break;
+        case RepTier::Liked:
+            sellMul = 1.10f;
+            buyMul = 0.92f;
+            break;
+        case RepTier::Allied:
+            sellMul = 1.20f;
+            buyMul = 0.85f;
+            break;
         default: break;
     }
 
@@ -1654,8 +1665,7 @@ void Game::DrawStationScreen()
         const char*   skillsStr =
             TextFormat("Pilot %d    Mining %d    Trade %d", sk.GetLevel(SkillType::Piloting),
                        sk.GetLevel(SkillType::Mining), sk.GetLevel(SkillType::Trading));
-        Ui::Text(skillsStr, px + pw - Ui::TextWidth(skillsStr, 14) - 24, py + 40, 14,
-                 Ui::TEXT_DIM);
+        Ui::Text(skillsStr, px + pw - Ui::TextWidth(skillsStr, 14) - 24, py + 40, 14, Ui::TEXT_DIM);
     }
 
     // --- Wanted: pay this station's faction bounty to clear the WANTED status ---
@@ -1665,22 +1675,21 @@ void Game::DrawStationScreen()
         Ui::Text(TextFormat("WANTED by %s  ·  bounty %.0f cr", FactionName(stationFaction).c_str(),
                             bounty),
                  contentX, py + 62, 15, Color{ 230, 41, 55, 255 });
-        Button payBtn(
-            Rectangle{ (float)(contentX + 360), (float)(py + 58), 180.0f, 24.0f },
-            TextFormat("Pay bounty (%.0f)", bounty),
-            [this, stationFaction, bounty]()
-            {
-                if (!player_.CanAfford(bounty))
-                {
-                    FlashMessage("Not enough credits to pay bounty");
-                    return;
-                }
-                // The account is on the server — pay via command.
-                Proto::Command c;
-                c.payBountyFaction = (int)stationFaction;
-                clientLink_->Send(Proto::EncodeCommand(c));
-                FlashMessage("Bounty paid — record cleared");
-            });
+        Button payBtn(Rectangle{ (float)(contentX + 360), (float)(py + 58), 180.0f, 24.0f },
+                      TextFormat("Pay bounty (%.0f)", bounty),
+                      [this, stationFaction, bounty]()
+                      {
+                          if (!player_.CanAfford(bounty))
+                          {
+                              FlashMessage("Not enough credits to pay bounty");
+                              return;
+                          }
+                          // The account is on the server — pay via command.
+                          Proto::Command c;
+                          c.payBountyFaction = (int)stationFaction;
+                          clientLink_->Send(Proto::EncodeCommand(c));
+                          FlashMessage("Bounty paid — record cleared");
+                      });
         payBtn.Process();
     }
 
@@ -1698,15 +1707,14 @@ void Game::DrawStationScreen()
     int resIdx = 0;
     for (ResourceType type : AllResourceTypes())
     {
-        int cargo = resIdx < (int)snapshot_.player.cargoByType.size()
-                        ? snapshot_.player.cargoByType[resIdx]
-                        : 0;
-        float price = resIdx < (int)snapshot_.marketPrices.size()
-                          ? snapshot_.marketPrices[resIdx]
-                          : 0.0f;
-        Ui::Text(TextFormat("%-9s   price %.1f    cargo %d", ResourceName(type).c_str(), price,
-                            cargo),
-                 contentX, rowY + 7, 18, cargo > 0 ? Ui::TEXT : Ui::TEXT_DIM);
+        int   cargo = resIdx < (int)snapshot_.player.cargoByType.size()
+                          ? snapshot_.player.cargoByType[resIdx]
+                          : 0;
+        float price =
+            resIdx < (int)snapshot_.marketPrices.size() ? snapshot_.marketPrices[resIdx] : 0.0f;
+        Ui::Text(
+            TextFormat("%-9s   price %.1f    cargo %d", ResourceName(type).c_str(), price, cargo),
+            contentX, rowY + 7, 18, cargo > 0 ? Ui::TEXT : Ui::TEXT_DIM);
 
         if (cargo > 0)
         {
@@ -1729,10 +1737,10 @@ void Game::DrawStationScreen()
 
     // --- Hangar: buying ships ---
     const std::vector<ShipType>& catalog = GetShipCatalog();
-    int hangarY = rowY + 18;
+    int                          hangarY = rowY + 18;
     Ui::Text("HANGAR", contentX, hangarY, 20, Ui::TEXT);
-    Ui::Text(TextFormat("Current ship: %s", catalog[currentShipIndex_].name.c_str()),
-             contentX, hangarY + 28, 14, Ui::ACCENT);
+    Ui::Text(TextFormat("Current ship: %s", catalog[currentShipIndex_].name.c_str()), contentX,
+             hangarY + 28, 14, Ui::ACCENT);
 
     int shipY = hangarY + 56;
     for (size_t i = 0; i < catalog.size(); i++)
@@ -1785,9 +1793,8 @@ void Game::DrawStationScreen()
         shipY += 38;
     }
 
-    Button undockBtn(
-        Rectangle{ (float)contentX, (float)(py + ph - 60), 200.0f, 40.0f }, "Undock",
-        [this]() { Undock(); });
+    Button undockBtn(Rectangle{ (float)contentX, (float)(py + ph - 60), 200.0f, 40.0f }, "Undock",
+                     [this]() { Undock(); });
     undockBtn.Process();
 }
 
@@ -1815,8 +1822,8 @@ void Game::DrawMissionBoard(int x, int y, int w)
         Ui::Text(TextFormat("Reward  %.0f cr   rep +%.0f", m.rewardMoney, m.rewardRep), x + 10,
                  rowY + 49, 13, GOLD);
 
-        Button accept(Rectangle{ (float)(x + w - 96), (float)(rowY + 38), 86.0f, 26.0f },
-                      "Accept", [&toAccept, i]() { toAccept = (int)i; });
+        Button accept(Rectangle{ (float)(x + w - 96), (float)(rowY + 38), 86.0f, 26.0f }, "Accept",
+                      [&toAccept, i]() { toAccept = (int)i; });
         accept.Process();
 
         rowY += rowH;
@@ -1840,8 +1847,8 @@ void Game::DrawMissionBoard(int x, int y, int w)
     for (size_t i = 0; i < active.size(); i++)
     {
         const Mission& m = active[i];
-        // Over the network the server determines readiness (m.completable from the snapshot; the client
-        // hold is a mirror, not always accurate). Single-player — a local check.
+        // Over the network the server determines readiness (m.completable from the snapshot; the
+        // client hold is a mirror, not always accurate). Single-player — a local check.
         if (!m.completable)
             continue;
         anyReady = true;
@@ -1872,8 +1879,8 @@ void Game::DrawMissionBoard(int x, int y, int w)
         clientLink_->Send(Proto::EncodeCommand(c));
     }
 
-    Ui::Text(TextFormat("Active missions: %d", (int)missions_.Active().size()), x, rowY + 4,
-             14, Ui::TEXT_DIM);
+    Ui::Text(TextFormat("Active missions: %d", (int)missions_.Active().size()), x, rowY + 4, 14,
+             Ui::TEXT_DIM);
 }
 
 // Active mission log: the objective and current progress for each mission.
@@ -1929,8 +1936,8 @@ void Game::DrawMissionsContent(Rectangle area)
                     }
                 }
                 complete = m.completable;
-                line = TextFormat("%s  %d / %d", ResourceName(m.resource).c_str(), cur,
-                                  m.targetCount);
+                line =
+                    TextFormat("%s  %d / %d", ResourceName(m.resource).c_str(), cur, m.targetCount);
                 break;
             }
             case MissionType::Delivery:
@@ -2043,8 +2050,8 @@ void Game::DrawGalaxyMap()
             DrawLineEx(a, b, 1.5f, Fade(Ui::PANEL_BORDER, 0.9f));
     }
 
-    // Current system: over the network — from the server snapshot (the client's local sim_ isn't active,
-    // its ActiveId() would remain on the start system); single-player — sim_.ActiveId().
+    // Current system: over the network — from the server snapshot (the client's local sim_ isn't
+    // active, its ActiveId() would remain on the start system); single-player — sim_.ActiveId().
     std::string activeSys = snapshot_.systemId;
 
     // System nodes.
@@ -2075,12 +2082,12 @@ void Game::DrawGalaxyMap()
             }
         if (haveStats)
         {
-            Color secCol = security >= 0.7f ? Color{ 120, 210, 130, 255 }
+            Color secCol = security >= 0.7f   ? Color{ 120, 210, 130, 255 }
                            : security >= 0.4f ? GOLD
                                               : Color{ 230, 120, 60, 255 };
-            Ui::Text(TextFormat("sec %.2f  pir %d  econ %.0f%%", security, pirates,
-                                prosperity * 100.0f),
-                     (int)p.x + 14, (int)p.y + 10, 12, secCol);
+            Ui::Text(
+                TextFormat("sec %.2f  pir %d  econ %.0f%%", security, pirates, prosperity * 100.0f),
+                (int)p.x + 14, (int)p.y + 10, 12, secCol);
             // Territory controller (L3) — in the faction's color.
             Ui::Text(FactionName(controller).c_str(), (int)p.x + 14, (int)p.y + 24, 12,
                      FactionColor(controller));

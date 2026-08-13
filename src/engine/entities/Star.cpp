@@ -6,8 +6,8 @@ static Color ColorForStarType(StarType type)
     switch (type)
     {
         case StarType::Yellow: return YELLOW;
-        case StarType::Red:    return RED;
-        case StarType::Blue:   return SKYBLUE;
+        case StarType::Red: return RED;
+        case StarType::Blue: return SKYBLUE;
     }
     return WHITE;
 }

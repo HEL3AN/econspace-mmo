@@ -3,14 +3,9 @@
 #include <cmath>
 
 NpcShip::NpcShip(Vector2 pos, FactionId faction, NpcRole role, std::vector<Vector2> waypoints)
-    : Entity(pos, 10.0f, FactionColor(faction)),
-      faction_(faction),
-      role_(role),
-      waypoints_(std::move(waypoints)),
-      target_(pos),
-      speed_((float)GetRandomValue(120, 180)),
-      heading_(0.0f),
-      waitTimer_(0.0f)
+    : Entity(pos, 10.0f, FactionColor(faction)), faction_(faction), role_(role),
+      waypoints_(std::move(waypoints)), target_(pos), speed_((float)GetRandomValue(120, 180)),
+      heading_(0.0f), waitTimer_(0.0f)
 {
     PickNewTarget();
 }
@@ -121,10 +116,8 @@ void NpcShip::Draw() const
 {
     float c = cosf(heading_);
     float s = sinf(heading_);
-    auto toWorld = [&](float x, float y) -> Vector2
-    {
-        return { pos_.x + x * c - y * s, pos_.y + x * s + y * c };
-    };
+    auto  toWorld = [&](float x, float y) -> Vector2
+    { return { pos_.x + x * c - y * s, pos_.y + x * s + y * c }; };
 
     // The sprite is drawn nose-up, so add 90 degrees to the heading.
     if (!Tex::DrawSprite("ship", pos_, size_, heading_ * RAD2DEG + 90.0f, color_))
@@ -138,8 +131,8 @@ void NpcShip::Draw() const
     // Hull bar above a damaged ship.
     if (hull_ < maxHull_)
     {
-        float frac = hull_ / maxHull_;
-        float barW = size_ * 2.0f;
+        float   frac = hull_ / maxHull_;
+        float   barW = size_ * 2.0f;
         Vector2 barPos = { pos_.x - barW / 2, pos_.y - size_ - 8.0f };
         DrawRectangleV(barPos, { barW, 3.0f }, Fade(GRAY, 0.5f));
         DrawRectangleV(barPos, { barW * frac, 3.0f }, RED);
@@ -151,10 +144,10 @@ std::string NpcShip::GetName() const
     const char* roleName = "ship";
     switch (role_)
     {
-        case NpcRole::Trader:  roleName = "trader"; break;
-        case NpcRole::Miner:   roleName = "miner"; break;
-        case NpcRole::Police:  roleName = "patrol"; break;
-        case NpcRole::Pirate:  roleName = "raider"; break;
+        case NpcRole::Trader: roleName = "trader"; break;
+        case NpcRole::Miner: roleName = "miner"; break;
+        case NpcRole::Police: roleName = "patrol"; break;
+        case NpcRole::Pirate: roleName = "raider"; break;
         case NpcRole::Warship: roleName = "warship"; break;
     }
     return FactionName(faction_) + " " + roleName;

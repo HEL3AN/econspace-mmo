@@ -39,12 +39,12 @@ private:
     void DrawHud();
 
     // Object-creation palette (on the left) and deletion.
-    Rectangle                     PaletteRect() const;
-    void                          DrawPalette();
-    void                          DrawEntityPreview(Rectangle box, const std::string& category);
-    std::unique_ptr<Entity>       MakeEntity(const std::string& category, Vector2 pos) const;
-    void                          AddObject(const std::string& category, Vector2 pos);
-    void                          DeleteSelected();
+    Rectangle               PaletteRect() const;
+    void                    DrawPalette();
+    void                    DrawEntityPreview(Rectangle box, const std::string& category);
+    std::unique_ptr<Entity> MakeEntity(const std::string& category, Vector2 pos) const;
+    void                    AddObject(const std::string& category, Vector2 pos);
+    void                    DeleteSelected();
 
     Rectangle SaveButtonRect() const;
     void      SaveCurrentSystem();  // writes systemJson_ back to the system's source file
@@ -53,18 +53,18 @@ private:
     Rectangle ModeButtonRect() const;
     void      EnterGalaxyMode(bool on);
     void      HandleGalaxyInput();
-    void      DrawGalaxy();        // nodes and links in world coordinates
-    void      DrawGalaxyPanel();   // right-hand panel for the selected system
+    void      DrawGalaxy();       // nodes and links in world coordinates
+    void      DrawGalaxyPanel();  // right-hand panel for the selected system
     void      AddSystem();
     void      DeleteSystem(int index);
     void      ToggleLink(const std::string& a, const std::string& b);
     bool      HasLink(const std::string& a, const std::string& b) const;
     void      RefreshUniverseStruct();  // rebuild universe_ from universeJson_
     void      SaveUniverse();
-    void      OpenSystem(int index);    // leave the galaxy for the selected system
+    void      OpenSystem(int index);  // leave the galaxy for the selected system
     // Creates/removes a gate in system sysId's file leading to destId (positioned
     // toward destId on the galaxy map).
-    void      SyncGate(const std::string& sysId, const std::string& destId, bool add);
+    void SyncGate(const std::string& sysId, const std::string& destId, bool add);
 
     // Property panel for the selected object (on the right).
     Rectangle PanelRect() const;
@@ -89,11 +89,11 @@ private:
 
     // Galaxy mode.
     bool           galaxyMode_ = false;
-    nlohmann::json universeJson_;          // the galaxy index being edited
-    int            gSelected_ = -1;        // selected system (index)
+    nlohmann::json universeJson_;    // the galaxy index being edited
+    int            gSelected_ = -1;  // selected system (index)
     bool           universeDirty_ = false;
-    bool           gGrabbed_ = false;      // node pressed (potential drag)
-    bool           gDragging_ = false;     // node actually moving (threshold passed)
+    bool           gGrabbed_ = false;   // node pressed (potential drag)
+    bool           gDragging_ = false;  // node actually moving (threshold passed)
     Vector2        gGrabAnchor_ = { 0, 0 };
 
     // The selected system's links as an editable list (keys "0".."n" → partner id).

@@ -20,8 +20,8 @@ struct Mission
 {
     MissionType type = MissionType::Bounty;
     FactionId   faction = FactionId::Independent;  // issuer (the station's faction)
-    std::string title;        // short heading for lists
-    std::string description;  // what needs to be done
+    std::string title;                             // short heading for lists
+    std::string description;                       // what needs to be done
 
     // Stations by stable id (Entity::GetId), not by pointer: a mission must
     // survive the network (the client has no live server objects) and saving (M4f-2).
@@ -29,8 +29,8 @@ struct Mission
     int destStationId = 0;   // destination station (for Delivery)
 
     ResourceType resource = ResourceType::Iron;  // what to mine (for Mining)
-    int          targetCount = 0;  // how much to mine / kill
-    int          progress = 0;     // current progress (pirate kill counter)
+    int          targetCount = 0;                // how much to mine / kill
+    int          progress = 0;                   // current progress (pirate kill counter)
 
     double rewardMoney = 0.0;
     float  rewardRep = 0.0f;

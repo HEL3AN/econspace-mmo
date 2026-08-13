@@ -6,7 +6,7 @@ namespace
 Font g_font;
 bool g_loaded = false;
 bool g_custom = false;  // whether a custom font was loaded (it must be unloaded)
-}
+}  // namespace
 
 void Ui::LoadAssets()
 {

@@ -47,7 +47,7 @@ struct SystemAggregate
     float supPolice = 0.0f;
     float supPirates = 0.0f;
 
-    bool seeded = false;        // aggregate initialized with starting values
+    bool seeded = false;  // aggregate initialized with starting values
 };
 
 // State of a single star system inside the simulation. Level of detail:

@@ -24,24 +24,24 @@
 namespace
 {
 // NPC combat parameters (server combat/AI simulation).
-constexpr float PIRATE_WEAPON_RANGE = 230.0f;   // NPC fire range
-constexpr float PIRATE_WEAPON_DAMAGE = 7.0f;    // damage to the player
-constexpr float NPC_WEAPON_DAMAGE = 6.0f;       // NPC-vs-NPC damage
-constexpr float NPC_AGGRO_RANGE = 3500.0f;      // AI target detection radius
-constexpr float NPC_THREAT_RANGE = 2000.0f;     // distance at which peaceful ones flee
+constexpr float PIRATE_WEAPON_RANGE = 230.0f;  // NPC fire range
+constexpr float PIRATE_WEAPON_DAMAGE = 7.0f;   // damage to the player
+constexpr float NPC_WEAPON_DAMAGE = 6.0f;      // NPC-vs-NPC damage
+constexpr float NPC_AGGRO_RANGE = 3500.0f;     // AI target detection radius
+constexpr float NPC_THREAT_RANGE = 2000.0f;    // distance at which peaceful ones flee
 
 // Player combat/mining (server logic; weapon range — in Simulation::PLAYER_WEAPON_RANGE).
-constexpr float PLAYER_WEAPON_DAMAGE = 16.0f;   // player shot damage
-constexpr float PLAYER_FIRE_INTERVAL = 0.5f;    // cooldown between player shots
-constexpr float MINING_RANGE = 40.0f;           // margin on the field radius for mining
+constexpr float PLAYER_WEAPON_DAMAGE = 16.0f;  // player shot damage
+constexpr float PLAYER_FIRE_INTERVAL = 0.5f;   // cooldown between player shots
+constexpr float MINING_RANGE = 40.0f;          // margin on the field radius for mining
 
 // Spawn director. "Pressure": losses in a role raise the suppression of its spawn,
 // which then slowly recovers — the player/battles really change the population.
-constexpr float SUPPRESS_PER_KILL = 0.30f;      // suppression gain per 1 loss
-constexpr float SUPPRESS_DECAY = 0.97f;         // suppression falloff per coarse step (~2 s)
-constexpr float DANGER_SEC = 0.35f;             // below this the system is "unsafe" (ambushes)
+constexpr float SUPPRESS_PER_KILL = 0.30f;        // suppression gain per 1 loss
+constexpr float SUPPRESS_DECAY = 0.97f;           // suppression falloff per coarse step (~2 s)
+constexpr float DANGER_SEC = 0.35f;               // below this the system is "unsafe" (ambushes)
 constexpr float SPAWN_MIN_PLAYER_DIST = 2600.0f;  // do not spawn closer to the player
-constexpr float MAINT_STEP = 2.0f;              // coarse world maintenance period
+constexpr float MAINT_STEP = 2.0f;                // coarse world maintenance period
 
 float ClampF(float v, float lo, float hi)
 {
@@ -149,7 +149,7 @@ void Simulation::StepNpcAi(SystemState& st, Combatant* player,
 
 void Simulation::StepNpcCombat(SystemState& st, Combatant* player, bool playerHidden,
                                const std::function<bool(const NpcShip*)>& hostileToPlayer,
-                               std::vector<FireEvent>* fires)
+                               std::vector<FireEvent>*                    fires)
 {
     std::vector<NpcShip*> ships = AliveShips(st);
     for (NpcShip* npc : ships)
@@ -217,7 +217,8 @@ void Simulation::StepActiveSystemAgents(SystemState& st, Combatant* player, bool
     for (auto& e : st.entities)  // movement
         e->Update(dt);
 
-    StepNpcCombat(st, player, playerHidden, hostileToPlayer, fires);  // combat with the player, beams
+    StepNpcCombat(st, player, playerHidden, hostileToPlayer,
+                  fires);  // combat with the player, beams
 
     // Cleanup of the fallen.
     st.entities.erase(std::remove_if(st.entities.begin(), st.entities.end(),
@@ -422,7 +423,8 @@ double Simulation::StepPlayerLoot(SystemState& st, int derelictId)
                 return 0.0;
             dr->SetLooted();
             double reward = dr->GetReward();
-            account_.AddMoney(reward);  // in the network — authoritative; in single-player account_ is ignored
+            account_.AddMoney(
+                reward);  // in the network — authoritative; in single-player account_ is ignored
             return reward;
         }
     return 0.0;
@@ -446,7 +448,8 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(SystemState& st, int res
     // Net revenue into the server account: trading-skill multiplier + reputation of the
     // docked station's faction. In the network — authoritative; in single-player account_
     // is ignored (the client computes its own from r.gross). Station faction — by
-    // playerDockedStationId_ (server docking); in single-player it is 0, but the account_ branch is unused there.
+    // playerDockedStationId_ (server docking); in single-player it is 0, but the account_ branch is
+    // unused there.
     FactionId sf = FactionId::Independent;
     for (auto& e : st.entities)
         if (e->GetId() == playerDockedStationId_)
@@ -459,8 +462,8 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(SystemState& st, int res
     switch (Factions::TierOf(account_.GetReputation(sf)))
     {
         case RepTier::Hostile: sellMul = 0.85f; break;
-        case RepTier::Liked:   sellMul = 1.10f; break;
-        case RepTier::Allied:  sellMul = 1.20f; break;
+        case RepTier::Liked: sellMul = 1.10f; break;
+        case RepTier::Allied: sellMul = 1.20f; break;
         default: break;
     }
     double revenue = r.gross * account_.GetSkills().GetBonus(SkillType::Trading) * sellMul;
@@ -514,8 +517,8 @@ bool Simulation::BuyShip(int catalogIndex)
     switch (Factions::TierOf(account_.GetReputation(sf)))
     {
         case RepTier::Hostile: buyMul = 1.15f; break;
-        case RepTier::Liked:   buyMul = 0.92f; break;
-        case RepTier::Allied:  buyMul = 0.85f; break;
+        case RepTier::Liked: buyMul = 0.92f; break;
+        case RepTier::Allied: buyMul = 0.85f; break;
         default: break;
     }
     double price = catalog[catalogIndex].price * buyMul;
@@ -538,7 +541,7 @@ bool Simulation::AccountHostileToFaction(FactionId f) const
 
 void Simulation::GenerateDockOffers()
 {
-    Station* giver = nullptr;
+    Station*              giver = nullptr;
     std::vector<Station*> all;
     for (auto& e : Active().entities)
         if (Station* s = dynamic_cast<Station*>(e.get()))
@@ -555,8 +558,8 @@ void Simulation::GenerateDockOffers()
     switch (Factions::TierOf(account_.GetReputation(giver->GetFaction())))
     {
         case RepTier::Hostile: repMul = 0.8f; break;
-        case RepTier::Liked:   repMul = 1.15f; break;
-        case RepTier::Allied:  repMul = 1.3f; break;
+        case RepTier::Liked: repMul = 1.15f; break;
+        case RepTier::Allied: repMul = 1.3f; break;
         default: break;
     }
     missions_.GenerateOffers(giver, all, repMul);
@@ -573,8 +576,7 @@ bool Simulation::MissionCompletableNow(const Mission& m) const
         case MissionType::Mining:
             return m.giverStationId == playerDockedStationId_ &&
                    player_->GetCargoAmount(m.resource) >= m.targetCount;
-        case MissionType::Delivery:
-            return m.destStationId == playerDockedStationId_;
+        case MissionType::Delivery: return m.destStationId == playerDockedStationId_;
     }
     return false;
 }
@@ -694,7 +696,7 @@ void Simulation::InitGalaxy()
 // former role-based spawn, but in aggregate numbers).
 void Simulation::SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& info)
 {
-    float sec = info.security;
+    float            sec = info.security;
     SystemAggregate& a = st.agg;
     a.baseSecurity = sec;
     a.security = sec;
@@ -802,10 +804,10 @@ void Simulation::RecountAgg(SystemState& st)
         if (NpcShip* n = dynamic_cast<NpcShip*>(e.get()))
             switch (n->GetRole())
             {
-                case NpcRole::Trader:  tr++; break;
-                case NpcRole::Miner:   mi++; break;
-                case NpcRole::Police:  po++; break;
-                case NpcRole::Pirate:  pi++; break;
+                case NpcRole::Trader: tr++; break;
+                case NpcRole::Miner: mi++; break;
+                case NpcRole::Police: po++; break;
+                case NpcRole::Pirate: pi++; break;
                 case NpcRole::Warship: po++; break;  // combat factions — count as "police"
             }
     st.agg.traders = (float)tr;
@@ -913,10 +915,10 @@ void Simulation::TopUpSystem(SystemState& st, const Vector2* avoid)
             }
         }
 
-    int piratesTarget = (ctrl == FactionId::Pirates) ? 6
-                                                     : std::max(0, (int)roundf((0.7f - sec) * 8.0f));
-    int tradersTarget = (ctrl == FactionId::Pirates) ? 1 : (int)roundf(2.0f + sec * 4.0f);
-    int minersTarget = 2;
+    int piratesTarget =
+        (ctrl == FactionId::Pirates) ? 6 : std::max(0, (int)roundf((0.7f - sec) * 8.0f));
+    int       tradersTarget = (ctrl == FactionId::Pirates) ? 1 : (int)roundf(2.0f + sec * 4.0f);
+    int       minersTarget = 2;
     FactionId tradeFac = lawful ? ctrl : FactionId::Independent;
 
     // "Pressure": recent losses temporarily cut the target (recovers in MaintainWorld).
@@ -931,10 +933,10 @@ void Simulation::TopUpSystem(SystemState& st, const Vector2* avoid)
         if (NpcShip* n = dynamic_cast<NpcShip*>(e.get()))
             switch (n->GetRole())
             {
-                case NpcRole::Trader:  tr++; break;
-                case NpcRole::Miner:   mi++; break;
-                case NpcRole::Police:  po++; break;
-                case NpcRole::Pirate:  pi++; break;
+                case NpcRole::Trader: tr++; break;
+                case NpcRole::Miner: mi++; break;
+                case NpcRole::Police: po++; break;
+                case NpcRole::Pirate: pi++; break;
                 case NpcRole::Warship: po++; break;
             }
 
@@ -1166,7 +1168,8 @@ Proto::Snapshot Simulation::BuildSnapshot(const std::string& systemId) const
         snap.marketPrices.push_back((float)it->second.market.GetPrice(rt));
 
     // Physical view of the player ship (for the networked client — authoritative on the
-    // server; in single-player the client augments the view with its own weaponOn/docked/nearby fields).
+    // server; in single-player the client augments the view with its own weaponOn/docked/nearby
+    // fields).
     if (player_)
     {
         Proto::PlayerView& p = snap.player;
@@ -1307,7 +1310,7 @@ Proto::GalaxyState Simulation::BuildGalaxyState()
     for (auto& kv : systems_)
     {
         RecountAgg(kv.second);  // refresh the population from live entities
-        const SystemAggregate& a = kv.second.agg;
+        const SystemAggregate&  a = kv.second.agg;
         Proto::GalaxySystemStat g;
         g.id = kv.first;
         g.security = a.security;
@@ -1332,9 +1335,9 @@ void Simulation::SaveWorld(const std::string& path) const
     {
         const SystemAggregate& a = kv.second.agg;
         galaxy[kv.first] = { { "traders", a.traders },       { "miners", a.miners },
-                             { "police", a.police },          { "pirates", a.pirates },
-                             { "security", a.security },      { "baseSecurity", a.baseSecurity },
-                             { "prosperity", a.prosperity },  { "controller", (int)a.controller } };
+                             { "police", a.police },         { "pirates", a.pirates },
+                             { "security", a.security },     { "baseSecurity", a.baseSecurity },
+                             { "prosperity", a.prosperity }, { "controller", (int)a.controller } };
     }
     j["galaxy"] = galaxy;
 
