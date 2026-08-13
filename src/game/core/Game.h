@@ -3,10 +3,8 @@
 #include "raylib.h"
 #include "entities/Entity.h"
 #include "entities/Ship.h"
-#include "economy/Market.h"
 #include "missions/MissionSystem.h"
 #include "core/WorldLoader.h"
-#include "sim/Simulation.h"
 #include "sim/Protocol.h"
 #include "net/Transport.h"
 #include "net/Tcp.h"
@@ -64,10 +62,6 @@ private:
     void DrawStationScreen();
     void DrawMissionBoard(int x, int y, int w);  // mission board at the station
 
-    std::vector<Station*> AllStations();  // all stations in the system (for missions)
-    bool MissionCompletable(const Mission& m) const;  // can it be turned in at the current station
-    void CompleteMission(int activeIndex);            // reward, deduction, removal
-
     void SetupWindows();           // creates the UI windows
     void ResetWindowLayout();      // arranges windows at their default positions
     bool HandleWindows();          // window input; true — mouse captured by the UI
@@ -87,23 +81,10 @@ private:
     void DrawMissionsContent(Rectangle area);  // log of active missions
     void DrawGalaxyMap();                       // full-screen star map
 
-    void Dock(Station* station);
     void Undock();
 
-    // Multi-system: load a system by id and jump through a gate.
-    void LoadSystemById(const std::string& id, std::string fromId);
-    void JumpTo(const std::string& destId);
-    void HydrateNpcs();      // materializes the active system's NPCs from its aggregate
-    void DehydrateActive();  // folds the active system back into an aggregate (placeholder, not called)
-
-    // --- M0: the server simulates ALL systems continuously (not just the active one) ---
-    // Agent simulation and the spawn director live in Simulation (server core, M3);
-    // Game merely delegates and materializes the world at startup.
-    void MaterializeAllSystems();              // load and populate all systems at startup
     const WorldLoader::SystemInfo* CurrentSystemInfo() const;  // record of the current system
     bool HostileToPlayerFaction(FactionId f) const;     // is the faction hostile to the player (reputation/wanted)
-    bool NpcHostileToPlayer(const NpcShip* npc) const;  // is the NPC hostile to the player (by its faction)
-    std::vector<NpcShip*> AliveNpcs();  // living NPC ships in the active system
 
     // M4c: the client renders from the snapshot. The snapshot is built every frame
     // (world from the server + player state); windows/rendering read it, not the live objects directly.
@@ -115,27 +96,23 @@ private:
     void    ApplyTradeAcks(const Proto::Snapshot& s);  // net: credit revenue from the server's sale acks
     void    BuildNetworkBeams();            // net: combat beams from the snapshot (server computes combat)
 
-    // Save/load of the player's progress (savegame.json next to the exe).
     Station* StationById(int id) const;  // station by stable id (for missions)
     void     FlashMessage(const std::string& msg);  // short HUD notification
-
-    // World access — only through the simulation (sim_). The active-system accessors
-    // hide sim_.Active()... so code doesn't depend on how ownership is structured.
-    std::vector<std::unique_ptr<Entity>>& Entities();        // objects of the active system
-    const std::vector<std::unique_ptr<Entity>>& Entities() const;
-    Market& ActiveMarket();                                  // market of the active system
 
     int screenWidth_ = 1280;
     int screenHeight_ = 720;
 
-    Simulation sim_;  // authoritative galaxy simulation (owns the systems' state)
+    // Galaxy index (data/universe.json), loaded locally: system names, security, map
+    // positions and gate links. GalaxyState carries only per-system statistics, so the
+    // client still needs this file to label the map and the HUD.
+    WorldLoader::Universe universe_;
 
     Entity* selected_ = nullptr;
 
-    // Player ship: owned by Simulation (server agent, M4d-2b); the client holds
-    // a pointer for rendering/UI/account (camera, HUD, mining, missions).
-    Ship*         playerShip_ = nullptr;
-    int           playerAgentId_ = 0;  // stable id of the player agent (like NPCs; for M2/network)
+    // The client's PREDICTION of the player ship. The authoritative one lives on the
+    // server; this copy is stepped with the same Sim::StepPlayerShip and corrected by
+    // every snapshot, then unacknowledged inputs are replayed on top of it.
+    std::unique_ptr<Ship> playerShip_;
     Player        player_;
     MissionSystem missions_;
 
@@ -144,6 +121,7 @@ private:
     float simAccumulator_ = 0.0f;   // accumulator for the fixed simulation step
 
     Camera2D camera_;
+    bool     cameraSnap_ = true;  // snap instead of lerp on the next frame (system change)
 
     std::vector<BgStar> bgStars_;  // parallax-background stars
 
@@ -170,7 +148,6 @@ private:
     Proto::Snapshot snapshot_;   // snapshot of the player's system for rendering/UI (M4c)
     // Client↔server transport: netConn_ is the TCP link to the econserver host, and
     // clientLink_ is the end the client sends commands on and receives snapshots/layout from.
-    bool                                networked_ = false;
     std::unique_ptr<Net::TcpConnection> netConn_;
     ITransport*                         clientLink_ = nullptr;
     // Client prediction/reconciliation of the own ship (M4e, per Gambetta):

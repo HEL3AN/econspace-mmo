@@ -3,6 +3,7 @@
 #include "core/WorldLoader.h"
 #include "sim/SystemState.h"
 #include "sim/Protocol.h"
+#include "sim/PlayerStep.h"
 #include "player/Player.h"
 #include "missions/MissionSystem.h"
 #include <functional>
@@ -143,9 +144,9 @@ public:
     // docking stays client-side until M4f.
     void StepPlayerShip(const Proto::Command& cmd, float pilotBonus, float dt);
 
-    // Player weapon range (needed by both the server combat logic and the client render
-    // of the targeting circle) — a single source, so the values do not drift apart.
-    static constexpr float PLAYER_WEAPON_RANGE = 280.0f;
+    // Player weapon range lives in sim/PlayerStep.h — a single source shared with the
+    // client, which draws the targeting circle from it.
+    static constexpr float PLAYER_WEAPON_RANGE = Sim::PLAYER_WEAPON_RANGE;
 
     // Facts of the player's combat for the client account: the server applies damage and
     // reports what happened; the client credits reputation/bounty/mission credit (account until M4f).

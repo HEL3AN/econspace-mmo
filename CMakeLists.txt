@@ -117,19 +117,21 @@ target_link_libraries(engine PUBLIC raylib nlohmann_json::nlohmann_json)
 target_compile_options(engine PUBLIC -Wall -Wextra)
 
 # --- Game ------------------------------------------------------------------
+# The client does NOT link Simulation: the world lives on econserver. It shares only
+# the wire protocol and PlayerStep, which is the movement step it must run identically
+# to the server in order to predict its own ship.
 add_executable(econspace
     src/game/main.cpp
     src/game/core/Game.cpp
-    src/game/sim/Simulation.cpp
+    src/game/sim/PlayerStep.cpp
     src/game/sim/Protocol.cpp
     src/game/net/Tcp.cpp             # TCP client to econserver host (M4e)
-    src/game/entities/Ship.cpp
-    src/game/entities/ShipType.cpp
+    src/game/entities/Ship.cpp       # the predicted player ship + NPC proxies
+    src/game/entities/ShipType.cpp   # hangar catalog
     src/game/entities/NpcShip.cpp
-    src/game/player/Player.cpp
+    src/game/player/Player.cpp       # account mirror from the snapshot
     src/game/player/Skills.cpp
-    src/game/economy/Market.cpp
-    src/game/missions/MissionSystem.cpp
+    src/game/missions/MissionSystem.cpp  # mission mirror from the snapshot
 )
 target_include_directories(econspace PRIVATE ${CMAKE_SOURCE_DIR}/src/game)
 target_link_libraries(econspace PRIVATE engine ws2_32)  # ws2_32 — winsock (TCP client)
@@ -146,6 +148,7 @@ target_compile_definitions(econspace PRIVATE GAME_DATA_DIR="${CMAKE_SOURCE_DIR}/
 add_executable(econserver
     src/game/sim/main_headless.cpp
     src/game/sim/Simulation.cpp
+    src/game/sim/PlayerStep.cpp
     src/game/sim/Protocol.cpp
     src/game/net/Tcp.cpp             # TCP transport (winsock), M4d-3
     src/game/economy/Market.cpp
