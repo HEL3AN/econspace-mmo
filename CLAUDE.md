@@ -14,10 +14,9 @@ the world; the client renders snapshots and sends commands.
 These are decisions, not open questions. Plan on top of them.
 
 - **This is an MMO. Single-player is not a mode.** The client always connects to an
-  authoritative server. The single-player path still in the code is residue from an
-  earlier stage and is being deleted (#23) — never treat "works offline too" as a
-  constraint, and never propose designs that preserve offline parity. `LocalTransport`
-  survives only as a *test* transport.
+  authoritative server; it cannot even be constructed without a live connection. Never
+  treat "works offline too" as a constraint, and never propose designs that preserve
+  offline parity. `LocalTransport` survives only as a *test* transport.
 - **Glyph (ASCII) rendering is the primary look** (#36). Sprites are an optional
   alternative backend. Whether the windowed HUD survives alongside it is genuinely open.
 - **AI agents are first-class players** (#42). The game ships its own MCP server,
@@ -62,6 +61,11 @@ render), **`game`** (the client, the authoritative `Simulation`, and `econserver
 
 ## Things that will trip you up
 
+- **`Sim::StepPlayerShip` (`sim/PlayerStep.h`) has two callers on purpose** — the server
+  applies it authoritatively, the client applies it to predict its own ship and to replay
+  unacknowledged inputs. Changing it changes both sides at once, which is the point:
+  prediction breaks the moment they compute different results from the same input. The
+  client does not link `Simulation` at all.
 - **`Protocol.cpp` and `Tcp.cpp` are compiled three times over** — listed as sources in
   `econspace`, `econserver` and `tests` separately. Being extracted into a `netproto`
   library (#25); until then, a change to those source lists means editing three places.

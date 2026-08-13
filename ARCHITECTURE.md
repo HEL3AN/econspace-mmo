@@ -7,13 +7,13 @@ EconSpace is built around one idea: **the server is the single source of truth, 
 The code is three CMake targets:
 
 - **`engine`** — a static library with the shared core: world/entity model, factions, resources, textures (with shape fallback), and reusable UI widgets. It never depends on `game` or `editor`.
-- **`game`** — the executable `econspace`. Contains the game *client* (rendering, input, UI, camera) **and** the authoritative `Simulation` core **and** the headless server `econserver`.
+- **`game`** — two executables built from one source tree: the *client* `econspace` (rendering, input, UI, camera) and the authoritative server `econserver` (the `Simulation` core). The client does **not** link `Simulation`: it shares only the wire protocol and `sim/PlayerStep`, the movement step it must run identically to the server in order to predict its own ship.
 - **`editor`** — the executable `worldeditor`, a visual editor for systems and galaxy links. Links `engine`.
 
 ```
 src/
   engine/   core/ entities/ economy/ render/ ui/      (shared static lib)
-  game/     core/ (client)  sim/ (Simulation + protocol + server)
+  game/     core/ (client)  sim/ (Simulation + protocol + PlayerStep + server)
             entities/ player/ economy/ missions/ net/ (transport)
   editor/   the world editor
 ```
@@ -29,15 +29,19 @@ src/
 ```
 
 - The **server** (`Simulation`, `src/game/sim/`) owns the world, all agents, combat, the spawn director, macro-dynamics, the player ship, the player account, and missions. It advances on a fixed `SIM_DT = 1/60` tick, independent of the render frame rate.
-- The **client** (`Game`, `src/game/core/`) maps input to a `Command`, renders from a `Snapshot`, and never mutates authoritative state directly. In networked mode it doesn't even read a live world — it builds render proxies from a `SystemLayout` plus per-tick snapshots.
+- The **client** (`Game`, `src/game/core/`) maps input to a `Command`, renders from a `Snapshot`, and never mutates authoritative state directly. It does not read a live world at all — it builds render proxies from a `SystemLayout` plus per-tick snapshots. The only game state it owns is its *prediction* of its own ship.
 - **Play is always over the seam**: client to authoritative server over TCP. Because the seam is a transport interface rather than a socket call, tests can drive the exact same server loop in one process without a network — that is the only other use of the seam, not a second game mode.
-
-> A single-player code path still exists in the client (`Game` with an empty `connectHost`) as residue from an earlier stage of the project. It is scheduled for removal (issue #23) and should not be treated as a supported mode or extended.
 
 ## Protocol & transport
 
 - **Protocol** (`src/game/sim/Protocol.*`): `Command` (client→server intents), `Snapshot` (server→client view of the player's system, including the player, entities, fire events, market, mission views, and account mirror), `SystemLayout` (static system geometry), and `GalaxyState` (periodic galaxy-wide stats for the map). Messages are JSON (nlohmann/json), tagged with a type field (`"t"`). They carry **no version field yet** — decoding is permissive (`value(key, default)`), so a client built against an older protocol silently receives defaults instead of an error. Adding a version and a handshake is issue #15.
 - **Transport** (`src/game/net/`): the `ITransport` interface (`Send` / `Poll`) hides the wire. `LocalTransport` is an in-process loopback used **for testing** — the `econserver hosttest` server-loop smoke test and the doctest suite; `TcpTransport` is winsock TCP with length-prefixed framing. Swapping TCP for UDP/ENet later means a new `ITransport`, not rewritten game logic.
+
+### One movement step, two callers
+
+`Sim::StepPlayerShip` (`src/game/sim/PlayerStep.h`) is the player ship's physical step, and it exists as a single function precisely because **both** sides run it: the server applies it authoritatively, and the client applies the identical step to predict its own ship and to replay unacknowledged inputs. Prediction only works while the two compute the same result from the same input, so there must not be two implementations kept in step by hand. `PLAYER_WEAPON_RANGE` lives beside it for the same reason — the server decides whether a shot connects, the client draws the targeting circle.
+
+If you change how the player's ship moves, you are changing both sides at once. That is the point.
 
 ## Netcode
 
