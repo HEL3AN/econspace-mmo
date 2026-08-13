@@ -24,8 +24,6 @@
 namespace
 {
 // Coarse cold-simulation step: system aggregates evolve not every frame, but once
-// per COLD_STEP seconds of simulation — cheap and enough for "life" without the player.
-constexpr float COLD_STEP = 2.0f;
 
 // NPC combat parameters (server combat/AI simulation).
 constexpr float PIRATE_WEAPON_RANGE = 230.0f;   // NPC fire range
@@ -797,117 +795,6 @@ void Simulation::StepWorldMacro()
             }
         }
     }
-}
-
-// Inter-system macrodynamics (L3): the economy flows along gate lines, and control
-// over systems changes — pirate seizure on a collapse of law and reconquest by a
-// strong lawful neighbor.
-void Simulation::StepMacro()
-{
-    // 1. Economic link: prosperity diffuses between neighbors (trade).
-    for (const auto& l : universe_.links)
-    {
-        auto a = systems_.find(l.a);
-        auto b = systems_.find(l.b);
-        if (a == systems_.end() || b == systems_.end())
-            continue;
-        float dp = b->second.agg.prosperity - a->second.agg.prosperity;
-        a->second.agg.prosperity = ClampF(a->second.agg.prosperity + dp * 0.02f, 0.0f, 1.0f);
-        b->second.agg.prosperity = ClampF(b->second.agg.prosperity - dp * 0.02f, 0.0f, 1.0f);
-    }
-
-    // 2. Territorial flips.
-    for (auto& kv : systems_)
-    {
-        SystemAggregate& a = kv.second.agg;
-
-        // Pirate seizure: pirates dominate and security has collapsed.
-        if (a.controller != FactionId::Pirates && a.pirates > a.police * 2.0f + 2.0f &&
-            a.security < 0.25f)
-        {
-            a.controller = FactionId::Pirates;
-            a.baseSecurity = std::min(a.baseSecurity, 0.15f);  // dangerous for a long time
-            PushEvent("Pirates seized " + SystemName(kv.first));
-            continue;
-        }
-
-        // Reconquest: a strong lawful neighbor presses in on a pirate system.
-        if (a.controller == FactionId::Pirates)
-        {
-            for (const std::string& nid : Neighbors(kv.first))
-            {
-                auto n = systems_.find(nid);
-                if (n == systems_.end())
-                    continue;
-                const SystemAggregate& na = n->second.agg;
-                if (Factions::IsLawful(na.controller) && na.police >= 3.0f && na.security > 0.6f)
-                {
-                    // The neighbor presses in: reinforcements and order seep in, pirates thin out.
-                    a.police = ClampF(a.police + 0.8f, 0.0f, 6.0f);
-                    a.security = ClampF(a.security + 0.03f, 0.0f, 1.0f);
-                    a.pirates = ClampF(a.pirates - 0.5f, 0.0f, 12.0f);
-                    if (a.police > a.pirates && a.security > 0.4f)
-                    {
-                        a.controller = na.controller;
-                        a.baseSecurity = std::max(a.baseSecurity, 0.5f);
-                        PushEvent(SystemName(kv.first) + " liberated by " +
-                                  FactionName(na.controller));
-                    }
-                    break;
-                }
-            }
-        }
-    }
-}
-
-void Simulation::TickCold(float dt, const std::string& skipId)
-{
-    time_ += dt;
-    coldAccum_ += dt;
-    while (coldAccum_ >= COLD_STEP)
-    {
-        for (auto& kv : systems_)
-        {
-            if (kv.first == skipId)
-                continue;  // the active system is ticked by Game (full detail)
-            StepAggregate(kv.second.agg);
-            kv.second.lastTick = time_;
-        }
-        StepMacro();  // inter-system macrodynamics (economy, territory control)
-        coldAccum_ -= COLD_STEP;
-    }
-}
-
-// One step of cold rules: coupled "equations" of security, piracy, police, economy.
-// Slow drift — over minutes of play a system changes noticeably.
-void Simulation::StepAggregate(SystemAggregate& a)
-{
-    float jitter = (Rand01() - 0.5f) * 0.3f;
-
-    // Pirates grow in unsafe systems, die off under police pressure.
-    a.pirates = ClampF(a.pirates + (1.0f - a.security) * 1.3f - a.police * 0.5f + jitter,
-                       0.0f, 12.0f);
-
-    // Police tend toward the norm for the base security, reinforced under threat.
-    float policeTarget = a.baseSecurity * 4.0f + (a.pirates > a.police ? 1.0f : 0.0f);
-    a.police = ClampF(a.police + (policeTarget - a.police) * 0.10f, 0.0f, 6.0f);
-
-    // Security tends toward the base and depends on the police/pirate balance.
-    a.security = ClampF(a.security + (a.baseSecurity - a.security) * 0.05f +
-                            (a.police - a.pirates) * 0.02f,
-                        0.0f, 1.0f);
-
-    // Economy: grows from security and traders, falls from pirates.
-    a.prosperity = ClampF(a.prosperity + (a.security - 0.5f) * 0.02f +
-                              (a.traders - 3.0f) * 0.008f - a.pirates * 0.01f,
-                          0.0f, 1.0f);
-
-    // Traders tend toward a target from security and prosperity.
-    float traderTarget = 2.0f + a.security * 4.0f + a.prosperity * 3.0f;
-    a.traders = ClampF(a.traders + (traderTarget - a.traders) * 0.08f, 0.0f, 10.0f);
-
-    // Miners — from prosperity.
-    a.miners = ClampF(a.miners + (2.0f + a.prosperity * 2.0f - a.miners) * 0.05f, 0.0f, 6.0f);
 }
 
 void Simulation::RecountAgg(SystemState& st)
