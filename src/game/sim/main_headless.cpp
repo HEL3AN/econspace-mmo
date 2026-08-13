@@ -59,8 +59,8 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
 // and the ship "jerks"). Applies movement/jump/loot/combat/mining for command c.
 // Returns true if the system changed. Account effects are not yet applied on the server
 // (M4f); NPCs do not target the player yet.
-static bool HostStepPlayer(Simulation& sim, const Proto::Command& c, bool& weaponOn,
-                           std::string& activeId, float dt, std::vector<Proto::TradeAck>& acks,
+static bool HostStepPlayer(Simulation& sim, const Proto::Command& c, std::string& activeId,
+                           float dt, std::vector<Proto::TradeAck>& acks,
                            std::vector<FireEvent>& fires)
 {
     bool changed = false;
@@ -101,7 +101,7 @@ static bool HostStepPlayer(Simulation& sim, const Proto::Command& c, bool& weapo
     }
 
     if (c.toggleWeapon)
-        weaponOn = !weaponOn;
+        sim.ToggleWeapon();
 
     sim.StepPlayerShip(c, 1.0f, dt);
 
@@ -121,7 +121,7 @@ static bool HostStepPlayer(Simulation& sim, const Proto::Command& c, bool& weapo
     // Player fire: on a shot — a beam event into the snapshot (client draws it blue).
     // Account effects (mission credit/reputation) are not yet applied on the server (3c-ii).
     Simulation::PlayerCombatEvents ev;
-    if (sim.StepPlayerFire(sim.Active(), weaponOn, c.targetId, dt, &ev))
+    if (sim.StepPlayerFire(sim.Active(), c.targetId, dt, &ev))
         fires.push_back(FireEvent{ ev.shotFrom, ev.shotTo, FactionId::Independent, false, true });
     sim.StepPlayerMining(sim.Active(), sim.Account().GetSkills().GetBonus(SkillType::Mining), dt);
     return changed;
@@ -180,9 +180,9 @@ static void HostStepWorld(Simulation& sim, const std::string& activeId, float dt
 // Receives client inputs from the transport and applies EACH as one player tick
 // (HostStepPlayer). lastSeq — the highest processed input number (ack to the client).
 // Returns true if the layout must be resent (system change).
-static bool HostDrainInputs(ITransport& conn, Simulation& sim, bool& weaponOn,
-                            std::string& activeId, float dt, int& lastSeq,
-                            std::vector<Proto::TradeAck>& acks, std::vector<FireEvent>& fires)
+static bool HostDrainInputs(ITransport& conn, Simulation& sim, std::string& activeId, float dt,
+                            int& lastSeq, std::vector<Proto::TradeAck>& acks,
+                            std::vector<FireEvent>& fires)
 {
     bool        layoutDirty = false;
     std::string msg;
@@ -195,7 +195,7 @@ static bool HostDrainInputs(ITransport& conn, Simulation& sim, bool& weaponOn,
             continue;
         if (c.seq > lastSeq)
             lastSeq = c.seq;
-        if (HostStepPlayer(sim, c, weaponOn, activeId, dt, acks, fires))
+        if (HostStepPlayer(sim, c, activeId, dt, acks, fires))
             layoutDirty = true;
     }
     return layoutDirty;
@@ -253,7 +253,6 @@ static int RunHost(unsigned short port)
     std::unique_ptr<Net::TcpConnection> conn;
     std::string                         activeId = sim.ActiveId();
 
-    bool        weaponOn = false;
     int         lastSeq = 0;         // last processed input number (ack to the client)
     bool        wasDocked = false;   // for account checkpoints when entering/leaving a station
     double      worldSaveAcc = 0.0;  // world checkpoint timer
@@ -281,7 +280,6 @@ static int RunHost(unsigned short port)
             if (conn)
             {
                 lastSeq = 0;
-                weaponOn = false;
                 wasDocked = sim.IsPlayerDocked();
                 activeId = sim.ActiveId();
                 conn->Send(Proto::EncodeLayout(sim.BuildLayout(activeId)));
@@ -298,7 +296,7 @@ static int RunHost(unsigned short port)
         bool                         layoutDirty = false;
         if (conn)
         {
-            layoutDirty = HostDrainInputs(*conn, sim, weaponOn, activeId, dt, lastSeq, acks, fires);
+            layoutDirty = HostDrainInputs(*conn, sim, activeId, dt, lastSeq, acks, fires);
 
             // Account checkpoint on a dock-state change: on docking -- commit what was
             // earned in flight (loot/bounty), on undocking -- trade and mission hand-ins.
@@ -393,7 +391,6 @@ static int HostSelftest()
 
     Vector2 startPos = sim.PlayerShip()->GetPosition();
 
-    bool        weaponOn = false;
     int         lastSeq = 0;
     const float dt = 1.0f / 60.0f;
     for (int i = 0; i < 120; i++)  // ~2 s of simulation
@@ -402,7 +399,7 @@ static int HostSelftest()
         link.Client().Send(Proto::EncodeCommand(thrust));
         std::vector<Proto::TradeAck> acks;
         std::vector<FireEvent>       fires;
-        HostDrainInputs(link.Server(), sim, weaponOn, activeId, dt, lastSeq, acks,
+        HostDrainInputs(link.Server(), sim, activeId, dt, lastSeq, acks,
                         fires);                         // 1 input=1 tick
         HostStepWorld(sim, activeId, dt, fires, true);  // world
         Proto::Snapshot snap = sim.BuildSnapshot(activeId);

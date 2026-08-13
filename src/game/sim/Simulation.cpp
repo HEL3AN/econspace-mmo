@@ -270,12 +270,11 @@ void Simulation::StepPlayerShip(const Proto::Command& cmd, float pilotBonus, flo
         Sim::StepPlayerShip(*player_, cmd, pilotBonus, dt);
 }
 
-bool Simulation::StepPlayerFire(SystemState& st, bool weaponOn, int targetId, float dt,
-                                PlayerCombatEvents* ev)
+bool Simulation::StepPlayerFire(SystemState& st, int targetId, float dt, PlayerCombatEvents* ev)
 {
     if (playerFireTimer_ > 0.0f)
         playerFireTimer_ -= dt;
-    if (!weaponOn || !player_ || targetId == 0)
+    if (!playerWeaponOn_ || !player_ || targetId == 0)
         return false;
 
     // Target — an NPC of the active system by id.
@@ -1193,6 +1192,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const std::string& systemId) const
         p.dockedStationId = playerDockedStationId_;
         p.stabilizer = player_->IsStabilizerOn();
         p.mining = player_->IsMiningOn();
+        p.weaponOn = playerWeaponOn_;
         for (ResourceType rt : AllResourceTypes())
             p.cargoByType.push_back(player_->GetCargoAmount(rt));
 
