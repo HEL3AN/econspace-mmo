@@ -20,6 +20,7 @@
 #include "raylib.h"
 
 #include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -130,10 +131,14 @@ static bool HostStepPlayer(Simulation& sim, const Proto::Command& c, bool& weapo
 // The active system (where the player is) is stepped with the player involved: NPCs see him,
 // combat produces beams, damage to the player is authoritative; a fallen player respawns at a
 // station. Other systems get a background step. fires — active-system NPC shots (client draws beams).
+// clientOnline false: nobody is flying the ship. The pilot is treated as absent —
+// NPCs do not target them, and no respawn logic runs — while the rest of the galaxy
+// keeps living. The ship simply stops being stepped and stays where it was left.
 static void HostStepWorld(Simulation& sim, const std::string& activeId, float dt,
-                          std::vector<FireEvent>& fires)
+                          std::vector<FireEvent>& fires, bool clientOnline)
 {
-    Combatant* player = sim.IsPlayerDocked() ? nullptr : (Combatant*)sim.PlayerShip();
+    Combatant* player =
+        (!clientOnline || sim.IsPlayerDocked()) ? nullptr : (Combatant*)sim.PlayerShip();
 
     // Cover: the player is in a nebula of the active system — NPCs cannot see him.
     bool hidden = false;
@@ -198,6 +203,19 @@ static bool HostDrainInputs(ITransport& conn, Simulation& sim, bool& weaponOn,
 // Real server: listens on a port, accepts one client, runs the authoritative
 // real-time loop (receive Command -> step the world -> send Snapshot; Layout on
 // entering/changing a system). Run: econserver host [port].
+// Ctrl+C / termination request. The handler only raises a flag; saving happens on the
+// way out of the main loop, where touching files is safe.
+static volatile std::sig_atomic_t g_stopRequested = 0;
+static void OnInterrupt(int)
+{
+    g_stopRequested = 1;
+}
+
+// Real server: listens on a port and runs the authoritative real-time loop. The galaxy is
+// simulated whether or not anyone is connected -- that is the premise of a living world,
+// and it is what lets a player reconnect to a galaxy that moved on without them. A client
+// session is an episode inside that loop, not the loop itself.
+// Run: econserver host [port].
 static int RunHost(unsigned short port)
 {
     std::string dataDir = SIM_DATA_DIR;
@@ -206,7 +224,7 @@ static int RunHost(unsigned short port)
     SetupHostSim(sim, dataDir, worldPath);
 
     // Account persistence (M4f-3): load the player's progress next to the server.
-    // Only in the real server — hosttest/selftest stay clean (ephemeral).
+    // Only in the real server -- hosttest/selftest stay clean (ephemeral).
     std::string acctPath = std::string(GetApplicationDirectory()) + "account.json";
     if (sim.LoadAccount(acctPath))
         printf("Account loaded (money %.0f).\n", sim.Account().GetMoney());
@@ -225,23 +243,17 @@ static int RunHost(unsigned short port)
         Net::Shutdown();
         return 1;
     }
-    printf("EconSpace server on port %d — waiting for client...\n", port);
+    std::signal(SIGINT, OnInterrupt);
+    std::signal(SIGTERM, OnInterrupt);
+    printf("EconSpace server on port %d. The galaxy runs with or without a client; "
+           "Ctrl+C to stop.\n", port);
 
     std::unique_ptr<Net::TcpConnection> conn;
-    while (!conn)
-    {
-        conn = listener.Accept();
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    printf("Client connected.\n");
-
     std::string activeId = sim.ActiveId();
-    conn->Send(Proto::EncodeLayout(sim.BuildLayout(activeId)));     // initial layout
-    conn->Send(Proto::EncodeGalaxy(sim.BuildGalaxyState()));        // initial map statistics
 
     bool        weaponOn = false;
-    int         lastSeq = 0;  // last processed input number (ack to the client)
-    bool        wasDocked = false;  // for account checkpoints when entering/leaving a station
+    int         lastSeq = 0;         // last processed input number (ack to the client)
+    bool        wasDocked = false;   // for account checkpoints when entering/leaving a station
     double      worldSaveAcc = 0.0;  // world checkpoint timer
     const float dt = 1.0f / 60.0f;
     using clock = std::chrono::steady_clock;
@@ -249,7 +261,7 @@ static int RunHost(unsigned short port)
     double acc = 0.0;
     double galaxyAcc = 0.0;  // galaxy-snapshot broadcast timer (map statistics)
 
-    while (conn->Alive())
+    while (g_stopRequested == 0)
     {
         auto   now = clock::now();
         double frame = std::chrono::duration<double>(now - prev).count();
@@ -258,40 +270,79 @@ static int RunHost(unsigned short port)
         if (acc > 0.25)
             acc = 0.25;
 
+        // Take a waiting client, if any. Session state is reset here rather than at
+        // startup, so a reconnect does not inherit the previous session's input
+        // numbering or weapon toggle.
+        if (!conn)
+        {
+            conn = listener.Accept();
+            if (conn)
+            {
+                lastSeq = 0;
+                weaponOn = false;
+                wasDocked = sim.IsPlayerDocked();
+                activeId = sim.ActiveId();
+                conn->Send(Proto::EncodeLayout(sim.BuildLayout(activeId)));
+                conn->Send(Proto::EncodeGalaxy(sim.BuildGalaxyState()));
+                printf("Client connected.\n");
+            }
+        }
+
         // Player: each received input = one tick (1:1 with client prediction).
-        // acks — trade acknowledgments, fires — shots (player+NPC) for this iteration;
+        // acks -- trade acknowledgments, fires -- shots (player+NPC) for this iteration;
         // both are delivered to the client in the snapshot.
         std::vector<Proto::TradeAck> acks;
         std::vector<FireEvent>       fires;
-        bool layoutDirty =
-            HostDrainInputs(*conn, sim, weaponOn, activeId, dt, lastSeq, acks, fires);
-
-        // Account checkpoint on a dock-state change: on docking — commit what was earned
-        // in flight (loot/bounty), on undocking — the result of trade/mission hand-ins.
-        if (sim.IsPlayerDocked() != wasDocked)
+        bool                         layoutDirty = false;
+        if (conn)
         {
-            wasDocked = sim.IsPlayerDocked();
-            sim.SaveAccount(acctPath);
+            layoutDirty =
+                HostDrainInputs(*conn, sim, weaponOn, activeId, dt, lastSeq, acks, fires);
+
+            // Account checkpoint on a dock-state change: on docking -- commit what was
+            // earned in flight (loot/bounty), on undocking -- trade and mission hand-ins.
+            if (sim.IsPlayerDocked() != wasDocked)
+            {
+                wasDocked = sim.IsPlayerDocked();
+                sim.SaveAccount(acctPath);
+            }
         }
 
-        // World (NPCs): on the server timer, independent of inputs.
+        // World (NPCs): on the server timer, independent of inputs and of whether
+        // anyone is watching.
         while (acc >= dt)
         {
-            HostStepWorld(sim, activeId, dt, fires);
+            HostStepWorld(sim, activeId, dt, fires, conn != nullptr);
             acc -= dt;
         }
 
-        if (layoutDirty)
-            conn->Send(Proto::EncodeLayout(sim.BuildLayout(activeId)));
-        Proto::Snapshot snap = sim.BuildSnapshot(activeId);
-        snap.player.lastInput = lastSeq;  // ack for client reconciliation
-        snap.tradeAcks = std::move(acks);
-        snap.fires = std::move(fires);
-        snap.messages = sim.DrainMessages();  // server notifications (docking denied, etc.)
-        conn->Send(Proto::EncodeSnapshot(snap));
+        if (conn)
+        {
+            if (layoutDirty)
+                conn->Send(Proto::EncodeLayout(sim.BuildLayout(activeId)));
+            Proto::Snapshot snap = sim.BuildSnapshot(activeId);
+            snap.player.lastInput = lastSeq;  // ack for client reconciliation
+            snap.tradeAcks = std::move(acks);
+            snap.fires = std::move(fires);
+            snap.messages = sim.DrainMessages();  // server notifications (docking denied, etc.)
+            conn->Send(Proto::EncodeSnapshot(snap));
+        }
+        else
+        {
+            // Nobody to deliver them to; drop them rather than let the queue grow.
+            sim.DrainMessages();
+        }
 
-        // Galaxy snapshot — rarely (once a second): the statistics change slowly, and the
+        // Galaxy snapshot -- rarely (once a second): the statistics change slowly and the
         // message is large (all systems). The client's galaxy map lives off it.
+        galaxyAcc += frame;
+        if (galaxyAcc >= 1.0)
+        {
+            galaxyAcc = 0.0;
+            if (conn)
+                conn->Send(Proto::EncodeGalaxy(sim.BuildGalaxyState()));
+        }
+
         // World checkpoint. The galaxy drifts continuously (security, prosperity,
         // territory control), so unlike the account there is no natural commit point to
         // hang this on: a timer is what keeps a crash from costing more than a minute.
@@ -302,22 +353,22 @@ static int RunHost(unsigned short port)
             sim.SaveWorld(worldPath);
         }
 
-        galaxyAcc += frame;
-        if (galaxyAcc >= 1.0)
+        // A disconnect ends the session, not the server.
+        if (conn && !conn->Alive())
         {
-            galaxyAcc = 0.0;
-            conn->Send(Proto::EncodeGalaxy(sim.BuildGalaxyState()));
+            sim.SaveAccount(acctPath);
+            conn.reset();
+            printf("Client disconnected. Account saved (money %.0f); galaxy still running.\n",
+                   sim.Account().GetMoney());
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(4));
     }
 
-    // Client disconnect — final checkpoint (captures progress earned in flight without a
-    // subsequent docking).
-    sim.SaveAccount(acctPath);
+    if (conn)
+        sim.SaveAccount(acctPath);
     sim.SaveWorld(worldPath);
-    printf("Client disconnected. Account saved (money %.0f), world saved. Server stopped.\n",
-           sim.Account().GetMoney());
+    printf("\nShutting down. World and account saved.\n");
     Net::Shutdown();
     return 0;
 }
@@ -351,7 +402,7 @@ static int HostSelftest()
         std::vector<Proto::TradeAck> acks;
         std::vector<FireEvent>       fires;
         HostDrainInputs(link.Server(), sim, weaponOn, activeId, dt, lastSeq, acks, fires);  // 1 input=1 tick
-        HostStepWorld(sim, activeId, dt, fires);         // world
+        HostStepWorld(sim, activeId, dt, fires, true);   // world
         Proto::Snapshot snap = sim.BuildSnapshot(activeId);
         snap.player.lastInput = lastSeq;
         link.Server().Send(Proto::EncodeSnapshot(snap));
@@ -449,6 +500,14 @@ static int WorldSelftest()
 
 int main(int argc, char** argv)
 {
+    // Unbuffered stdout, set before anything writes to it. A long-running server is
+    // usually watched through a redirect or a pipe, where the default block buffering
+    // hides progress for minutes. Note _IOLBF is not an option here: the Microsoft C
+    // runtime silently treats line buffering as full buffering, so it would look like it
+    // worked and change nothing. The server logs a handful of lines, so dropping the
+    // buffer entirely costs nothing.
+    setvbuf(stdout, nullptr, _IONBF, 0);
+
     // Protocol/TCP regression tests moved to the `tests` target (ctest); here —
     // only server modes and batch simulation.
     if (argc > 1 && std::string(argv[1]) == "hosttest")
