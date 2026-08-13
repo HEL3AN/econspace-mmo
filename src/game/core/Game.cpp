@@ -37,29 +37,12 @@ static const float MENU_TOP = 12.0f;
 // server-friendliness). 1/60 matches the target FPS — behaves as before.
 static const float SIM_DT = 1.0f / 60.0f;
 
-Game::Game(const std::string& connectHost, unsigned short connectPort) : player_(500.0)
+Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(std::move(conn))
 {
-    // Network mode: connect to a remote econserver host over TCP. On failure
-    // fall back to single-player mode so the game still starts.
-    clientLink_ = &link_.Client();
-    if (!connectHost.empty())
-    {
-        if (Net::Startup())
-        {
-            netConn_ = Net::Dial(connectHost, connectPort);
-            if (netConn_)
-            {
-                networked_ = true;
-                clientLink_ = netConn_.get();
-                TraceLog(LOG_INFO, "Net: connected to %s:%u", connectHost.c_str(), connectPort);
-            }
-            else
-            {
-                TraceLog(LOG_WARNING, "Net: failed to connect to %s:%u — single-player mode",
-                         connectHost.c_str(), connectPort);
-            }
-        }
-    }
+    // The connection is established by main() before the window opens, so it is
+    // always live here — there is no offline mode to degrade into.
+    networked_ = true;
+    clientLink_ = netConn_.get();
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);  // window can be resized by its edge
     InitWindow(screenWidth_, screenHeight_, "EconSpace");
@@ -123,9 +106,7 @@ Game::Game(const std::string& connectHost, unsigned short connectPort) : player_
 
 Game::~Game()
 {
-    netConn_.reset();  // close the socket before unloading winsock
-    if (networked_)
-        Net::Shutdown();
+    netConn_.reset();  // close the socket; main() unloads winsock after we're gone
     Tex::Unload();
     Ui::UnloadAssets();
     CloseWindow();
