@@ -420,7 +420,14 @@ static int WorldSelftest()
     a.LoadUniverse(dataDir + "universe.json");
     a.InitGalaxy();
     std::string sid = a.Universe().startId;
-    a.SetTime(1234.0);
+
+    // Advance the clock the way the real server does, rather than setting it: this also
+    // guards that simulation time moves at all, which it silently did not before #57.
+    const float dt = 1.0f / 60.0f;
+    for (int i = 0; i < 120; i++)
+        a.MaintainWorld(dt, std::string(), nullptr);
+    bool ticked = approx(a.Time(), 2.0);
+
     a.Systems()[sid].agg.security = 0.25f;
     a.Systems()[sid].agg.prosperity = 0.75f;
     a.Systems()[sid].agg.pirates = 7.0f;
@@ -431,19 +438,19 @@ static int WorldSelftest()
     b.LoadUniverse(dataDir + "universe.json");
     bool loaded = b.LoadWorld(path);
     bool haveSys = b.HasSystem(sid);
-    bool time = approx(b.Time(), 1234.0);
+    bool time = approx(b.Time(), 2.0);
     bool sec = haveSys && approx(b.Systems()[sid].agg.security, 0.25);
     bool prosp = haveSys && approx(b.Systems()[sid].agg.prosperity, 0.75);
     bool pir = haveSys && approx(b.Systems()[sid].agg.pirates, 7.0);
     bool ctrl = haveSys && b.Systems()[sid].agg.controller == FactionId::Pirates;
     std::remove(path.c_str());
 
-    bool ok = loaded && time && sec && prosp && pir && ctrl;
-    printf("World selftest: load %s, time %s, security %s, prosperity %s, pirates %s, "
-           "controller %s => %s\n",
-           loaded ? "OK" : "FAIL", time ? "OK" : "FAIL", sec ? "OK" : "FAIL",
-           prosp ? "OK" : "FAIL", pir ? "OK" : "FAIL", ctrl ? "OK" : "FAIL",
-           ok ? "PASS" : "FAIL");
+    bool ok = ticked && loaded && time && sec && prosp && pir && ctrl;
+    printf("World selftest: clock %s, load %s, time %s, security %s, prosperity %s, "
+           "pirates %s, controller %s => %s\n",
+           ticked ? "OK" : "FAIL", loaded ? "OK" : "FAIL", time ? "OK" : "FAIL",
+           sec ? "OK" : "FAIL", prosp ? "OK" : "FAIL", pir ? "OK" : "FAIL",
+           ctrl ? "OK" : "FAIL", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
 

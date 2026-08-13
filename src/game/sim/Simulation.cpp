@@ -983,6 +983,10 @@ void Simulation::TopUpSystem(SystemState& st, const Vector2* avoid)
 
 void Simulation::MaintainWorld(float dt, const std::string& activeId, const Vector2* activeAvoid)
 {
+    // The simulation clock lives here because MaintainWorld is called once per tick by
+    // every driver of the world -- the host loop and the batch mode -- which makes it the
+    // one place elapsed time can accumulate without being counted twice or not at all.
+    time_ += dt;
     maintAccum_ += dt;
     while (maintAccum_ >= MAINT_STEP)
     {
