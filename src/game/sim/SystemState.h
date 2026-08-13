@@ -62,5 +62,4 @@ struct SystemState
     Market                               market;
     bool                                 populated = false;  // entities filled (hot)
     SystemAggregate                      agg;                // cold state (always)
-    double                               lastTick = 0.0;     // time of the last cold tick
 };
