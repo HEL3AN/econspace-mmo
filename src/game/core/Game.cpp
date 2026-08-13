@@ -97,11 +97,6 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
         s.shade = (unsigned char)GetRandomValue(70, 180);
         bgStars_.push_back(s);
     }
-
-    // If a save exists — continue from it. Over the network the account/world come from
-    // the server (M4f), so the local save isn't loaded (otherwise we'd pull a stale client account).
-    if (!networked_)
-        LoadGame();
 }
 
 Game::~Game()
@@ -441,8 +436,6 @@ void Game::Dock(Station* station)
         default:               repMul = 1.0f; break;
     }
     missions_.GenerateOffers(station, AllStations(), repMul);
-
-    SaveGame();  // autosave on docking
 }
 
 void Game::Undock()
@@ -809,7 +802,6 @@ void Game::BuildClientSnapshot()
                 mode_ = GameMode::Docked;
                 dockedStation_ = s;
                 FlashMessage(TextFormat("Docked at %s", s->GetName().c_str()));
-                SaveGame();  // autosave the account on docking
             }
         }
         else if (!p.docked && mode_ == GameMode::Docked)
@@ -1030,17 +1022,8 @@ void Game::ReconcileClientWorld()
                        clientWorld_.end());
 }
 
-Station* Game::FindStationByName(const std::string& name) const
-{
-    for (const auto& e : Entities())
-        if (Station* st = dynamic_cast<Station*>(e.get()))
-            if (st->GetName() == name)
-                return st;
-    return nullptr;
-}
-
-// Station by stable id (missions store an id, not a pointer). Searches the same place as
-// FindEntityById: the clientWorld_ proxies over the network / the live sim_ single-player.
+// Station by stable id (missions store an id, not a pointer). Searches the same place
+// as FindEntityById: the clientWorld_ proxies built from the server's layout.
 Station* Game::StationById(int id) const
 {
     return dynamic_cast<Station*>(FindEntityById(id));
@@ -1050,197 +1033,6 @@ void Game::FlashMessage(const std::string& msg)
 {
     flashMsg_ = msg;
     flashTimer_ = 2.5f;
-}
-
-// Saves the player's progress to savegame.json next to the exe.
-void Game::SaveGame()
-{
-    // Over the network the account and world belong to the server (M4f) — the client doesn't persist
-    // them, otherwise it would overwrite the savegame with a mirror of the server state. Server-side
-    // account persistence is a separate sub-step (the server is still ephemeral for now).
-    if (networked_)
-    {
-        FlashMessage("Online — progress is server-side");
-        return;
-    }
-
-    using nlohmann::json;
-    json j;
-    j["money"] = player_.GetMoney();
-    // Current system: over the network — from the server snapshot (the local sim_ is frozen at startup).
-    j["system"] = networked_ ? snapshot_.systemId : sim_.ActiveId();
-
-    json rep = json::array();
-    for (int i = 0; i < 4; i++)
-        rep.push_back(player_.GetReputation((FactionId)i));
-    j["reputation"] = rep;
-
-    json bounty = json::array();
-    for (int i = 0; i < 4; i++)
-        bounty.push_back(player_.GetBounty((FactionId)i));
-    j["bounty"] = bounty;
-
-    const Skills& sk = player_.GetSkills();
-    j["skills"] = { { "piloting", sk.GetXp(SkillType::Piloting) },
-                    { "mining", sk.GetXp(SkillType::Mining) },
-                    { "trading", sk.GetXp(SkillType::Trading) } };
-
-    json owned = json::array();
-    for (bool b : ownedShips_)
-        owned.push_back(b);
-    json cargo = json::object();
-    for (ResourceType t : AllResourceTypes())
-        cargo[ResourceName(t)] = playerShip_->GetCargoAmount(t);
-    Vector2 sp = playerShip_->GetPosition();
-    j["ship"] = { { "index", currentShipIndex_ },
-                  { "owned", owned },
-                  { "cargo", cargo },
-                  { "pos", { sp.x, sp.y } },
-                  { "heading", playerShip_->GetHeading() },
-                  { "agentId", playerAgentId_ } };
-
-    json missions = json::array();
-    for (const Mission& m : missions_.Active())
-    {
-        // Stations are saved by NAME (more stable than id across runs): the id is restored
-        // on load via FindStationByName.
-        Station* giverSt = StationById(m.giverStationId);
-        Station* destSt = StationById(m.destStationId);
-        missions.push_back({ { "type", (int)m.type },
-                             { "faction", (int)m.faction },
-                             { "title", m.title },
-                             { "description", m.description },
-                             { "giver", giverSt ? giverSt->GetName() : std::string() },
-                             { "dest", destSt ? destSt->GetName() : std::string() },
-                             { "resource", (int)m.resource },
-                             { "targetCount", m.targetCount },
-                             { "progress", m.progress },
-                             { "rewardMoney", m.rewardMoney },
-                             { "rewardRep", m.rewardRep } });
-    }
-    j["missions"] = missions;
-
-    // savegame.json — the player's ACCOUNT data (client). The WORLD state (galaxy) is
-    // persisted separately by the server into world.json (see below). Before writing the world
-    // we sync the active system's aggregate with its live population.
-    std::string dir = std::string(GetApplicationDirectory());
-    std::ofstream out(dir + "savegame.json");
-    if (!out.is_open())
-    {
-        FlashMessage("Save failed");
-        return;
-    }
-    out << j.dump(2) << "\n";
-
-    // The world uses server-side persistence (Simulation → world.json). OVER THE NETWORK the world
-    // belongs to the remote server: the local sim_ has been frozen since startup (nobody steps it),
-    // so we do NOT overwrite world.json with it — otherwise we'd clobber the authoritative state
-    // (especially if the client and econserver share a folder). We save only the account.
-    if (!networked_)
-    {
-        if (sim_.HasActive())
-            sim_.RecountAgg(sim_.Active());
-        sim_.SaveWorld(dir + "world.json");
-    }
-
-    FlashMessage("Game saved");
-}
-
-// Loads progress from savegame.json. Returns false if the file is missing/corrupt.
-bool Game::LoadGame()
-{
-    using nlohmann::json;
-    std::string   path = std::string(GetApplicationDirectory()) + "savegame.json";
-    std::ifstream in(path);
-    if (!in.is_open())
-        return false;
-    json j = json::parse(in, nullptr, false);
-    if (j.is_discarded())
-        return false;
-
-    player_.SetMoney(j.value("money", 500.0));
-    if (j.contains("reputation"))
-        for (int i = 0; i < 4 && i < (int)j["reputation"].size(); i++)
-            player_.SetReputation((FactionId)i, (float)j["reputation"][i]);
-    if (j.contains("bounty"))
-        for (int i = 0; i < 4 && i < (int)j["bounty"].size(); i++)
-            player_.SetBounty((FactionId)i, (double)j["bounty"][i]);
-    if (j.contains("skills"))
-    {
-        Skills& sk = player_.GetSkills();
-        sk.SetXp(SkillType::Piloting, (float)j["skills"].value("piloting", 0));
-        sk.SetXp(SkillType::Mining, (float)j["skills"].value("mining", 0));
-        sk.SetXp(SkillType::Trading, (float)j["skills"].value("trading", 0));
-    }
-
-    if (j.contains("ship"))
-    {
-        const json& s = j["ship"];
-        playerAgentId_ = s.value("agentId", playerAgentId_);  // stable player id
-        currentShipIndex_ = s.value("index", 0);
-        if (currentShipIndex_ < 0 || currentShipIndex_ >= (int)GetShipCatalog().size())
-            currentShipIndex_ = 0;
-        if (s.contains("owned"))
-            for (int i = 0; i < (int)ownedShips_.size() && i < (int)s["owned"].size(); i++)
-                ownedShips_[i] = s["owned"][i];
-        ownedShips_[currentShipIndex_] = true;
-        playerShip_->Refit(GetShipCatalog()[currentShipIndex_].stats);
-    }
-
-    // The WORLD state is restored by the server (Simulation) from world.json. If the file
-    // exists — we rebuild the world from it; otherwise the fresh world assembled in the
-    // constructor remains. The player id is reserved BEFORE materializing NPCs (no collisions).
-    if (sim_.LoadWorld(std::string(GetApplicationDirectory()) + "world.json"))
-    {
-        if (playerAgentId_ > 0)
-            sim_.ObserveAgentId(playerAgentId_);
-        MaterializeAllSystems();  // bring the whole world to life from the restored aggregates
-    }
-
-    // The player's system (fromId empty — the position is set from the save below).
-    std::string sysId = j.value("system", sim_.Universe().startId);
-    LoadSystemById(sysId, "");
-
-    if (j.contains("ship"))
-    {
-        const json& s = j["ship"];
-        Vector2     pos = { 0.0f, 0.0f };
-        if (s.contains("pos") && s["pos"].size() >= 2)
-            pos = { (float)s["pos"][0], (float)s["pos"][1] };
-        playerShip_->Teleport(pos);
-        playerShip_->SetHeading((float)s.value("heading", 0.0));
-        playerShip_->Repair();
-        playerShip_->ClearCargo();
-        if (s.contains("cargo"))
-            for (ResourceType t : AllResourceTypes())
-                playerShip_->AddCargo(t, s["cargo"].value(ResourceName(t), 0));
-        camera_.target = pos;
-    }
-
-    // Restore active missions (stations — by name in the current system).
-    missions_.Clear();
-    if (j.contains("missions"))
-        for (const json& mj : j["missions"])
-        {
-            Mission m;
-            m.type = (MissionType)mj.value("type", 0);
-            m.faction = (FactionId)mj.value("faction", 0);
-            m.title = mj.value("title", std::string());
-            m.description = mj.value("description", std::string());
-            Station* giverSt = FindStationByName(mj.value("giver", std::string()));
-            Station* destSt = FindStationByName(mj.value("dest", std::string()));
-            m.giverStationId = giverSt ? giverSt->GetId() : 0;
-            m.destStationId = destSt ? destSt->GetId() : 0;
-            m.resource = (ResourceType)mj.value("resource", 0);
-            m.targetCount = mj.value("targetCount", 0);
-            m.progress = mj.value("progress", 0);
-            m.rewardMoney = mj.value("rewardMoney", 0.0);
-            m.rewardRep = mj.value("rewardRep", 0.0f);
-            missions_.Active().push_back(m);
-        }
-
-    FlashMessage("Game loaded");
-    return true;
 }
 
 // Parallax background: stars in screen coordinates, offset from the camera position
@@ -2062,7 +1854,7 @@ void Game::DrawHud()
         Ui::Text(w, (screenWidth_ - Ui::TextWidth(w, 16)) / 2, 36, 16, RED);
     }
 
-    Ui::Text("[debug] F1: +money   F2: pause   F5: save   F9: load   F11: fullscreen", 56,
+    Ui::Text("[debug] F1: +money   F11: fullscreen", 56,
              screenHeight_ - 26, 14, Ui::TEXT_DIM);
 
     // Short notification (saved/loaded).
