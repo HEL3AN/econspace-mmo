@@ -12,8 +12,8 @@ The "Done" section below is what exists. Everything under the tracks is **planne
 - A large multi-system world (~25k units): warp, parallax background, planet types, station roles, nebulae/derelicts/jump gates, pirate spawns on the frontier.
 - Multi-system galaxy: `universe.json` + `systems/*.json`, working jump gates, full-screen star map.
 - A visual **world editor** (systems, objects, properties, galaxy links).
-- A texture store with a shape fallback (the sprites themselves are not drawn yet — see `documents/texture_assets.md`).
-- Save/load, with autosave on docking.
+- A texture store that draws sprites from `data/textures/` and falls back to vector shapes when a file is missing (no art has been contributed yet — see `documents/texture_assets.md`).
+- Server-side persistence: the player account, and the galaxy itself, survive a restart.
 
 **Factions & AI**
 - Data-driven factions and relations (`data/factions.json`).
