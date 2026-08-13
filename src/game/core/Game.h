@@ -116,9 +116,6 @@ private:
     void    BuildNetworkBeams();            // net: combat beams from the snapshot (server computes combat)
 
     // Save/load of the player's progress (savegame.json next to the exe).
-    void     SaveGame();
-    bool     LoadGame();
-    Station* FindStationByName(const std::string& name) const;  // for restoring missions
     Station* StationById(int id) const;  // station by stable id (for missions)
     void     FlashMessage(const std::string& msg);  // short HUD notification
 
