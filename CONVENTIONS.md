@@ -7,18 +7,39 @@ though a single person wrote it.
 
 ```
 src/
-  core/        main loop, world loading
-  entities/    game objects (Entity and its subclasses)
-  economy/     resources, market
-  ui/          interface elements
-  main.cpp     entry point
+  engine/      shared core (static library `engine`)
+    core/      world loading, factions
+    entities/  game objects (Entity and its subclasses)
+    economy/   resources
+    render/    texture store and drawing helpers
+    ui/        interface elements
+  game/        the client, the authoritative Simulation, and the headless server
+    core/      the client game loop
+    sim/       Simulation, wire protocol, headless server entry point
+    net/       transports (loopback, TCP)
+    entities/  ships
+    player/    the player account, skills
+    economy/   market
+    missions/  the mission system
+    main.cpp   client entry point
+  editor/      the visual world editor
 data/          game data (JSON), edited without recompiling
 documents/     project documentation
+tests/         doctest unit tests
 ```
 
+The code is split into three modules: `engine` (a static library) and the two
+executables that link it, `game` and `editor`. **`engine` never depends on `game` or
+`editor`** — anything shared belongs in `engine`, anything that knows about gameplay
+does not.
+
 - The `.h` and `.cpp` of a class live side by side, in the same folder.
-- `src` is the root for `#include`: paths like `#include "entities/Ship.h"`.
-- A new `.cpp` is added to `add_executable` in `CMakeLists.txt`.
+- `src/engine` is the include root for engine headers: paths like
+  `#include "entities/Entity.h"`. Within `game` and `editor`, their own module root
+  works the same way.
+- A new `.cpp` is added to the correct CMake target in `CMakeLists.txt` — `engine`
+  (`add_library`), `econspace`, `econserver`, or `worldeditor` (`add_executable`).
+  Code shared by more than one executable goes into `engine`.
 - One class — one file; the file name matches the class name.
 
 ## Naming
@@ -61,7 +82,8 @@ parameters — no need to guess when you're touching object state.
 
 ## Comments
 
-- Language — Russian.
+- Language — English, like everything else in the repository (code, comments, and
+  documentation).
 - They explain the **"why"**, not the "what": the code already shows what it does.
 - Only where the logic isn't obvious. Obvious code needs no comment.
 - Commented-out code is not kept in the repository.
@@ -73,5 +95,6 @@ In VS Code — format the document with `Shift+Alt+F` or on save.
 
 ## Commits
 
-- The message is in Russian, in the imperative mood, capturing the gist of the change.
-- Roadmap milestones: prefix `R#:` (e.g. `R3: docking with a station`).
+- The message is in English, in the imperative mood, capturing the gist of the change.
+- Roadmap milestones: prefix with the milestone id (e.g. `R3: docking with a station`,
+  `M4: TCP transport`).
