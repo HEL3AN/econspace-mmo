@@ -13,7 +13,7 @@ constexpr int N = 4;  // number of factions (= size of enum FactionId)
 std::string g_id[N] = { "Independent", "TradersGuild", "Syndicate", "Pirates" };
 std::string g_name[N] = { "Independent", "Traders Guild", "Syndicate", "Pirates" };
 Color       g_color[N] = { Color{ 200, 200, 200, 255 }, Color{ 0, 228, 48, 255 },
-                           Color{ 230, 41, 55, 255 },   Color{ 255, 161, 0, 255 } };
+                           Color{ 230, 41, 55, 255 }, Color{ 255, 161, 0, 255 } };
 bool        g_lawful[N] = { true, true, true, false };
 std::string g_kind[N] = { "Independent", "Major", "Major", "Pirate" };
 
@@ -186,11 +186,11 @@ std::string TierName(RepTier t)
 {
     switch (t)
     {
-        case RepTier::Hated:   return "Hated";
+        case RepTier::Hated: return "Hated";
         case RepTier::Hostile: return "Hostile";
         case RepTier::Neutral: return "Neutral";
-        case RepTier::Liked:   return "Liked";
-        case RepTier::Allied:  return "Allied";
+        case RepTier::Liked: return "Liked";
+        case RepTier::Allied: return "Allied";
     }
     return "Neutral";
 }
@@ -199,11 +199,11 @@ Color TierColor(RepTier t)
 {
     switch (t)
     {
-        case RepTier::Hated:   return Color{ 230, 41, 55, 255 };    // red
+        case RepTier::Hated: return Color{ 230, 41, 55, 255 };      // red
         case RepTier::Hostile: return Color{ 255, 161, 0, 255 };    // orange
         case RepTier::Neutral: return Color{ 200, 200, 200, 255 };  // gray
-        case RepTier::Liked:   return Color{ 120, 210, 130, 255 };  // light green
-        case RepTier::Allied:  return Color{ 0, 228, 48, 255 };     // green
+        case RepTier::Liked: return Color{ 120, 210, 130, 255 };    // light green
+        case RepTier::Allied: return Color{ 0, 228, 48, 255 };      // green
     }
     return WHITE;
 }

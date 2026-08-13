@@ -4,7 +4,14 @@
 #include "economy/Resource.h"
 
 // Planet type — affects appearance (color/sprite) and serves as a reference point.
-enum class PlanetType { Rocky, Gas, Ice, Lava, Oceanic };
+enum class PlanetType
+{
+    Rocky,
+    Gas,
+    Ice,
+    Lava,
+    Oceanic
+};
 
 std::string PlanetTypeName(PlanetType type);
 Color       PlanetTypeColor(PlanetType type);  // default color for the type
@@ -15,10 +22,10 @@ public:
     Planet(float orbitRadius, float orbitSpeed, float angle, float size, Color color,
            ResourceType deposit, PlanetType type);
 
-    void        Update(float dt) override;
-    void        Draw() const override;
+    void                    Update(float dt) override;
+    void                    Draw() const override;
     std::unique_ptr<Entity> Clone() const override { return std::make_unique<Planet>(*this); }
-    std::string GetName() const override { return "Planet"; }
+    std::string             GetName() const override { return "Planet"; }
 
     ResourceType GetDeposit() const { return deposit_; }
     PlanetType   GetPlanetType() const { return type_; }

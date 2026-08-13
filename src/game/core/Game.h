@@ -17,13 +17,17 @@
 #include <vector>
 #include <memory>
 
-class Station;        // used only as pointers
+class Station;  // used only as pointers
 class AsteroidField;
 class NpcShip;
-enum class NpcRole;   // NPC role (defined in entities/NpcShip.h)
+enum class NpcRole;  // NPC role (defined in entities/NpcShip.h)
 
 // Game mode: flying in space, or the docked-station screen.
-enum class GameMode { Flying, Docked };
+enum class GameMode
+{
+    Flying,
+    Docked
+};
 
 // A weapon beam for the current frame (for rendering).
 struct Beam
@@ -55,48 +59,53 @@ public:
     void Run();
 
 private:
-    void HandleInput(float dt);        // client: input → player command (cmd_)
+    void HandleInput(float dt);  // client: input → player command (cmd_)
     void DrawWorld();
     void DrawStarfield();  // parallax star background (screen coordinates)
     void DrawHud();
     void DrawStationScreen();
     void DrawMissionBoard(int x, int y, int w);  // mission board at the station
 
-    void SetupWindows();           // creates the UI windows
-    void ResetWindowLayout();      // arranges windows at their default positions
-    bool HandleWindows();          // window input; true — mouse captured by the UI
-    bool HandleMenuBar();          // menu bar input; true — mouse over the bar
-    void DrawMenuBar();            // vertical menu bar on the left
-    void ApplyResolution(int w, int h);        // changes the window size
-    void DrawSettingsContent(Rectangle area);  // contents of the settings window
-    void OpenContextMenu(Entity* target);     // right-click action menu on an object
+    void SetupWindows();                         // creates the UI windows
+    void ResetWindowLayout();                    // arranges windows at their default positions
+    bool HandleWindows();                        // window input; true — mouse captured by the UI
+    bool HandleMenuBar();                        // menu bar input; true — mouse over the bar
+    void DrawMenuBar();                          // vertical menu bar on the left
+    void ApplyResolution(int w, int h);          // changes the window size
+    void DrawSettingsContent(Rectangle area);    // contents of the settings window
+    void OpenContextMenu(Entity* target);        // right-click action menu on an object
     void OpenContextMenuAt(Vector2 worldPoint);  // right-click menu on empty space
     // Navigation orders (client → command; applied by the server in StepPlayerShip).
     void OrderAutopilot(Vector2 target, float stopDist);  // fly to a point
     void OrderWarp(Vector2 target, float dropDist);       // warp to a point
-    void DrawStatusContent(Rectangle area);    // contents of the status window
-    void DrawTargetContent(Rectangle area);    // contents of the selected-target window
-    void DrawOverviewContent(Rectangle area);  // list of objects in the system
-    void DrawRadarContent(Rectangle area);     // system radar minimap
-    void DrawMissionsContent(Rectangle area);  // log of active missions
-    void DrawGalaxyMap();                       // full-screen star map
+    void DrawStatusContent(Rectangle area);               // contents of the status window
+    void DrawTargetContent(Rectangle area);               // contents of the selected-target window
+    void DrawOverviewContent(Rectangle area);             // list of objects in the system
+    void DrawRadarContent(Rectangle area);                // system radar minimap
+    void DrawMissionsContent(Rectangle area);             // log of active missions
+    void DrawGalaxyMap();                                 // full-screen star map
 
     void Undock();
 
     const WorldLoader::SystemInfo* CurrentSystemInfo() const;  // record of the current system
-    bool HostileToPlayerFaction(FactionId f) const;     // is the faction hostile to the player (reputation/wanted)
+    bool                           HostileToPlayerFaction(
+        FactionId f) const;  // is the faction hostile to the player (reputation/wanted)
 
     // M4c: the client renders from the snapshot. The snapshot is built every frame
-    // (world from the server + player state); windows/rendering read it, not the live objects directly.
-    void    BuildClientSnapshot();          // client: receives snapshot/layout from the transport + player view
-    void    ApplyLayout(const Proto::SystemLayout& lay);  // client: accept the layout of a new system
-    std::unique_ptr<Entity> MakeProxyFromLayout(const Proto::EntityLayout& el);  // proxy from layout
-    Entity* FindEntityById(int id) const;   // live entity in the active system by id
-    void    ReconcileClientWorld();         // builds/updates the client's proxy entities from layout+snapshot
-    void    ApplyTradeAcks(const Proto::Snapshot& s);  // net: credit revenue from the server's sale acks
-    void    BuildNetworkBeams();            // net: combat beams from the snapshot (server computes combat)
+    // (world from the server + player state); windows/rendering read it, not the live objects
+    // directly.
+    void
+    BuildClientSnapshot();  // client: receives snapshot/layout from the transport + player view
+    void ApplyLayout(const Proto::SystemLayout& lay);  // client: accept the layout of a new system
+    std::unique_ptr<Entity>
+            MakeProxyFromLayout(const Proto::EntityLayout& el);  // proxy from layout
+    Entity* FindEntityById(int id) const;  // live entity in the active system by id
+    void ReconcileClientWorld();  // builds/updates the client's proxy entities from layout+snapshot
+    void
+    ApplyTradeAcks(const Proto::Snapshot& s);  // net: credit revenue from the server's sale acks
+    void BuildNetworkBeams();  // net: combat beams from the snapshot (server computes combat)
 
-    Station* StationById(int id) const;  // station by stable id (for missions)
+    Station* StationById(int id) const;             // station by stable id (for missions)
     void     FlashMessage(const std::string& msg);  // short HUD notification
 
     int screenWidth_ = 1280;
@@ -113,12 +122,12 @@ private:
     // server; this copy is stepped with the same Sim::StepPlayerShip and corrected by
     // every snapshot, then unacknowledged inputs are replayed on top of it.
     std::unique_ptr<Ship> playerShip_;
-    Player        player_;
-    MissionSystem missions_;
+    Player                player_;
+    MissionSystem         missions_;
 
     std::string dataDir_;  // folder with world data (universe/systems)
 
-    float simAccumulator_ = 0.0f;   // accumulator for the fixed simulation step
+    float simAccumulator_ = 0.0f;  // accumulator for the fixed simulation step
 
     Camera2D camera_;
     bool     cameraSnap_ = true;  // snap instead of lerp on the next frame (system change)
@@ -142,10 +151,10 @@ private:
     AsteroidField* miningBeamField_ = nullptr;  // field currently being mined
 
     int               currentShipIndex_ = 0;  // index of the current ship in the catalog
-    std::vector<bool> ownedShips_;             // which ships the player owns
+    std::vector<bool> ownedShips_;            // which ships the player owns
 
-    Proto::Command  cmd_;        // client: the player's intent this frame (from input)
-    Proto::Snapshot snapshot_;   // snapshot of the player's system for rendering/UI (M4c)
+    Proto::Command  cmd_;       // client: the player's intent this frame (from input)
+    Proto::Snapshot snapshot_;  // snapshot of the player's system for rendering/UI (M4c)
     // Client↔server transport: netConn_ is the TCP link to the econserver host, and
     // clientLink_ is the end the client sends commands on and receives snapshots/layout from.
     std::unique_ptr<Net::TcpConnection> netConn_;
@@ -153,22 +162,22 @@ private:
     // Client prediction/reconciliation of the own ship (M4e, per Gambetta):
     // inputs are numbered and kept until the server acks them, so unacked ones can be
     // replayed over the authoritative state (without snapping backward).
-    unsigned int                        inputSeq_ = 0;
-    std::vector<Proto::Command>         pendingInputs_;
+    unsigned int                inputSeq_ = 0;
+    std::vector<Proto::Command> pendingInputs_;
     // Client-side proxy world entities: rendered instead of the server's live objects.
     // Statics are built from the received layout, dynamics (NPCs) from the snapshot; positions
     // are updated from the snapshot by id (M4d-3c). The client does not clone the live sim_.
     std::vector<std::unique_ptr<Entity>> clientWorld_;
     std::map<int, Proto::EntityLayout>   layoutById_;  // static layout of the current system by id
-    Proto::GalaxyState                   galaxyState_;  // net: per-system stats for the galaxy map (M4e-3c)
+    Proto::GalaxyState galaxyState_;  // net: per-system stats for the galaxy map (M4e-3c)
     // Buffer of timestamped snapshots for interpolating non-own entities (M4e-2):
     // we draw them "in the past" (render delay), interpolating between two snapshots.
     struct InterpSnap
     {
-        double                           t;
+        double                             t;
         std::vector<Proto::EntitySnapshot> ents;
     };
-    std::deque<InterpSnap>               snapBuffer_;
+    std::deque<InterpSnap> snapBuffer_;
 
     // Combat (damage/cooldown are server-side; here only the weapon toggle and beam render).
     bool              weaponOn_ = false;
@@ -176,12 +185,12 @@ private:
 
     // UI. The order in windows_ sets the z-order (last — on top).
     std::vector<std::unique_ptr<Window>> windows_;
-    Window* statusWin_ = nullptr;
-    Window* targetWin_ = nullptr;
-    Window* overviewWin_ = nullptr;
-    Window* radarWin_ = nullptr;
-    Window* missionsWin_ = nullptr;
-    Window* settingsWin_ = nullptr;
+    Window*                              statusWin_ = nullptr;
+    Window*                              targetWin_ = nullptr;
+    Window*                              overviewWin_ = nullptr;
+    Window*                              radarWin_ = nullptr;
+    Window*                              missionsWin_ = nullptr;
+    Window*                              settingsWin_ = nullptr;
 
     bool galaxyMapOpen_ = false;  // full-screen galaxy map
 

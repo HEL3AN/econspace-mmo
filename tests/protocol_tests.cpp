@@ -86,8 +86,16 @@ TEST_CASE("snapshot round-trips through JSON")
         off.targetCount = 3;
         s.missionOffers.push_back(off);
     }
-    s.entities.push_back({ 5, Proto::EntityKind::Npc, { 1.0f, 2.0f }, 0.5f, 30.0f,
-                           FactionId::Pirates, 3, 0.75f, -1, "Pirate" });
+    s.entities.push_back({ 5,
+                           Proto::EntityKind::Npc,
+                           { 1.0f, 2.0f },
+                           0.5f,
+                           30.0f,
+                           FactionId::Pirates,
+                           3,
+                           0.75f,
+                           -1,
+                           "Pirate" });
     s.fires.push_back({ { 0.0f, 0.0f }, { 1.0f, 2.0f }, FactionId::Pirates, true, false });
     s.fires.push_back({ { 5.0f, 5.0f }, { 9.0f, 9.0f }, FactionId::Independent, false, true });
     s.messages.push_back("hello");

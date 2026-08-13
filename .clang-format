@@ -1,4 +1,10 @@
-# Стиль форматирования C++ для EconSpace — см. CONVENTIONS.md.
+# C++ formatting style for EconSpace — see CONVENTIONS.md.
+#
+# These options describe the style the codebase already uses. Several of them were
+# missing before, which meant clang-format disagreed with almost every file in the
+# repository over things nobody had chosen: trailing-comment spacing, case-label
+# indentation, braced-list spacing. If you change something here, run the formatter
+# over the whole tree in the same commit so the two never drift apart again.
 Language:        Cpp
 BasedOnStyle:    LLVM
 
@@ -7,19 +13,34 @@ TabWidth:        4
 UseTab:          Never
 ColumnLimit:     100
 
-# Скобки на своей строке (стиль Allman).
+# Braces on their own line (Allman style).
 BreakBeforeBraces: Allman
 
-# Звёздочка/амперсанд у типа: Entity* ptr, Vector2& ref.
+# Pointer/reference bound to the type: Entity* ptr, Vector2& ref.
 PointerAlignment: Left
 
-# Модификаторы доступа (public:/private:) на уровне класса.
+# Access modifiers (public:/private:) at class level.
 AccessModifierOffset: -4
 
-# Короткие тела разрешены на одной строке только для inline-методов класса.
+# Short bodies on one line only for inline class methods.
 AllowShortFunctionsOnASingleLine: InlineOnly
 AllowShortIfStatementsOnASingleLine: false
 AllowShortLoopsOnASingleLine: false
 
-# Порядок #include задаём вручную (см. CONVENTIONS.md) — не сортировать.
+# #include order is maintained by hand (see CONVENTIONS.md) — do not sort.
 SortIncludes:    false
+
+# Two spaces before a trailing comment, so end-of-line notes stand off the code.
+SpacesBeforeTrailingComments: 2
+
+# Consecutive declarations line up their names into a column — used throughout the
+# member lists in Game.h, Simulation.h and the server loop.
+AlignConsecutiveDeclarations: true
+
+# switch bodies indent their case labels, and a one-line case stays on one line:
+#     case StarType::Yellow: return YELLOW;
+IndentCaseLabels: true
+AllowShortCaseLabelsOnASingleLine: true
+
+# Braced initializers keep inner spaces: Vector2{ 0.0f, 3000.0f }.
+Cpp11BracedListStyle: false

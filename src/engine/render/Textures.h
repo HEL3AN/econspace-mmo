@@ -13,4 +13,4 @@ void Unload();  // unload all loaded textures; call before CloseWindow
 // and tinted with tint. Returns false if the texture is missing — then the
 // caller draws a fallback shape.
 bool DrawSprite(const char* name, Vector2 pos, float size, float rotationDeg, Color tint);
-}
+}  // namespace Tex

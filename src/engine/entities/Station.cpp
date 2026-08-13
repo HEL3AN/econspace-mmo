@@ -5,18 +5,16 @@ std::string StationRoleName(StationRole role)
 {
     switch (role)
     {
-        case StationRole::TradeHub:      return "Trade Hub";
+        case StationRole::TradeHub: return "Trade Hub";
         case StationRole::MiningOutpost: return "Mining Outpost";
-        case StationRole::Shipyard:      return "Shipyard";
-        case StationRole::Military:      return "Military";
+        case StationRole::Shipyard: return "Shipyard";
+        case StationRole::Military: return "Military";
     }
     return "Station";
 }
 
 Station::Station(Vector2 pos, float size, std::string name, FactionId faction, StationRole role)
-    : Entity(pos, size, FactionColor(faction)),
-      name_(std::move(name)),
-      faction_(faction),
+    : Entity(pos, size, FactionColor(faction)), name_(std::move(name)), faction_(faction),
       role_(role)
 {
 }

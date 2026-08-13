@@ -37,10 +37,7 @@ private:
     class Endpoint : public ITransport
     {
     public:
-        Endpoint(std::deque<std::string>& out, std::deque<std::string>& in)
-            : out_(out), in_(in)
-        {
-        }
+        Endpoint(std::deque<std::string>& out, std::deque<std::string>& in) : out_(out), in_(in) {}
 
         void Send(const std::string& msg) override { out_.push_back(msg); }
 

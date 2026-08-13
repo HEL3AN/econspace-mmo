@@ -7,13 +7,33 @@
 // reputation with each faction. Properties and relations are loaded from
 // data/factions.json (the enum order pins the indices); without the file,
 // reasonable defaults apply.
-enum class FactionId { Independent, TradersGuild, Syndicate, Pirates };
+enum class FactionId
+{
+    Independent,
+    TradersGuild,
+    Syndicate,
+    Pirates
+};
 
 // Stance between two factions (for combat/hostility logic).
-enum class Stance { War, Hostile, Neutral, Friendly, Ally };
+enum class Stance
+{
+    War,
+    Hostile,
+    Neutral,
+    Friendly,
+    Ally
+};
 
 // Player's reputation tier with a faction (by numeric thresholds from factions.json).
-enum class RepTier { Hated, Hostile, Neutral, Liked, Allied };
+enum class RepTier
+{
+    Hated,
+    Hostile,
+    Neutral,
+    Liked,
+    Allied
+};
 
 std::string FactionName(FactionId faction);
 Color       FactionColor(FactionId faction);

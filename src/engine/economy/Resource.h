@@ -4,7 +4,12 @@
 #include <vector>
 
 // Resource types in the game.
-enum class ResourceType { Iron, Ice, Crystal };
+enum class ResourceType
+{
+    Iron,
+    Ice,
+    Crystal
+};
 
 std::string  ResourceName(ResourceType type);
 ResourceType ResourceFromName(const std::string& name);

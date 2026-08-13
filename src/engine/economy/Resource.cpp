@@ -4,8 +4,8 @@ std::string ResourceName(ResourceType type)
 {
     switch (type)
     {
-        case ResourceType::Iron:    return "Iron";
-        case ResourceType::Ice:     return "Ice";
+        case ResourceType::Iron: return "Iron";
+        case ResourceType::Ice: return "Ice";
         case ResourceType::Crystal: return "Crystal";
     }
     return "Unknown";

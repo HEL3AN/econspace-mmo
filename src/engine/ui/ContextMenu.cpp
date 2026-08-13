@@ -6,7 +6,7 @@ namespace
 {
 constexpr float MENU_WIDTH = 172.0f;
 constexpr float ROW_HEIGHT = 26.0f;
-}
+}  // namespace
 
 void ContextMenu::Open(Vector2 pos, std::vector<Item> items)
 {

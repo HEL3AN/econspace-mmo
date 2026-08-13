@@ -63,7 +63,7 @@ public:
     // turns them into beams); playerHidden — the player is in a nebula.
     void StepNpcCombat(SystemState& st, Combatant* player, bool playerHidden,
                        const std::function<bool(const NpcShip*)>& hostileToPlayer,
-                       std::vector<FireEvent>* fires);
+                       std::vector<FireEvent>*                    fires);
 
     // Full background step of a system (no player): AI + movement + combat + cleanup of the fallen.
     void StepSystemAgents(SystemState& st, float dt);
@@ -100,7 +100,8 @@ public:
     // Recounts live NPCs by role into the system aggregate.
     void RecountAgg(SystemState& st);
     // Spawn director for one system: tops the population up to targets by security/controller,
-    // accounting for the "pressure" from losses. avoid — the player's position (active system) or null.
+    // accounting for the "pressure" from losses. avoid — the player's position (active system) or
+    // null.
     void TopUpSystem(SystemState& st, const Vector2* avoid);
     // Coarse world maintenance every ~2 s of simulation: recount + "pressure", macro,
     // spawn director across all systems. activeId/activeAvoid — for player-avoidance
@@ -131,8 +132,8 @@ public:
     // --- Player as a server agent (M4d-2b) ---
     // The simulation owns the player ship and steps its physics from the client command.
     // Creates the player ship (one per simulation; recreating resets the previous one).
-    void  CreatePlayer(Vector2 pos, const ShipStats& stats);
-    Ship* PlayerShip() { return player_.get(); }              // nullptr before CreatePlayer
+    void        CreatePlayer(Vector2 pos, const ShipStats& stats);
+    Ship*       PlayerShip() { return player_.get(); }  // nullptr before CreatePlayer
     const Ship* PlayerShip() const { return player_.get(); }
     // Server step of the player ship: applies the movement axes/toggles from the command,
     // the piloting bonus, and updates the physics. Combat/mining — via separate methods;
@@ -144,10 +145,11 @@ public:
     static constexpr float PLAYER_WEAPON_RANGE = Sim::PLAYER_WEAPON_RANGE;
 
     // Facts of the player's combat for the client account: the server applies damage and
-    // reports what happened; the client credits reputation/bounty/mission credit (account until M4f).
+    // reports what happened; the client credits reputation/bounty/mission credit (account until
+    // M4f).
     struct PlayerCombatEvents
     {
-        bool      hitLawful = false;     // hit a lawful target (a crime)
+        bool      hitLawful = false;  // hit a lawful target (a crime)
         FactionId hitFaction = FactionId::Independent;
         bool      killedPirate = false;  // killed a pirate (mission credit)
         bool      killedLawful = false;  // killed a lawful target (a serious crime)
@@ -188,8 +190,8 @@ public:
     struct PlayerSellResult
     {
         int    sold = 0;
-        double gross = 0.0;     // gross revenue at the market price (before multipliers)
-        double revenue = 0.0;   // net revenue credited to account_ (skill+reputation)
+        double gross = 0.0;    // gross revenue at the market price (before multipliers)
+        double revenue = 0.0;  // net revenue credited to account_ (skill+reputation)
     };
     PlayerSellResult StepPlayerSell(SystemState& st, int resourceType, int amount);
 
@@ -271,8 +273,8 @@ public:
     const std::vector<std::string>& Events() const { return events_; }
 
     // Deterministic simulation RNG (for reproducibility/server).
-    void Seed(unsigned int s) { rng_ = s ? s : 1u; }
-    int  RandRange(int lo, int hi);  // inclusive [lo, hi]
+    void  Seed(unsigned int s) { rng_ = s ? s : 1u; }
+    int   RandRange(int lo, int hi);  // inclusive [lo, hi]
     float Rand01();
 
     // System persistence: a system's state lives on after the player leaves.
@@ -304,26 +306,26 @@ public:
 
 private:
     WorldLoader::Universe              universe_;
-    std::map<std::string, SystemState> systems_;        // state by system id
+    std::map<std::string, SystemState> systems_;           // state by system id
     SystemState*                       active_ = nullptr;  // pointer is stable (std::map)
     std::string                        activeId_;
     int                                agentIdCounter_ = 0;
 
-    std::unique_ptr<Ship> player_;            // player ship (server agent, M4d-2b)
-    Player                account_{ 500.0 };  // player account (money/skills/reputation/wanted, M4f)
-    std::vector<std::string> outMessages_;    // server notifications to the player (DrainMessages)
-    MissionSystem         missions_;          // player missions (board+active, M4f-2)
-    float                 playerFireTimer_ = 0.0f;      // player weapon cooldown
-    float                 playerMiningProgress_ = 0.0f;  // accumulator of ore-unit fractions
-    int                   playerDockedStationId_ = 0;    // docked station (0 — in flight)
+    std::unique_ptr<Ship> player_;          // player ship (server agent, M4d-2b)
+    Player account_{ 500.0 };               // player account (money/skills/reputation/wanted, M4f)
+    std::vector<std::string> outMessages_;  // server notifications to the player (DrainMessages)
+    MissionSystem            missions_;     // player missions (board+active, M4f-2)
+    float                    playerFireTimer_ = 0.0f;       // player weapon cooldown
+    float                    playerMiningProgress_ = 0.0f;  // accumulator of ore-unit fractions
+    int                      playerDockedStationId_ = 0;    // docked station (0 — in flight)
 
-    double       time_ = 0.0;           // total simulation time (seconds)
-    double       maintAccum_ = 0.0;     // accumulator of coarse world maintenance (director)
-    unsigned int rng_ = 0x1234567u;     // RNG state
+    double       time_ = 0.0;        // total simulation time (seconds)
+    double       maintAccum_ = 0.0;  // accumulator of coarse world maintenance (director)
+    unsigned int rng_ = 0x1234567u;  // RNG state
 
     std::vector<std::string> events_;  // recent galaxy events (capped)
 
-    void SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& info);
+    void        SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& info);
     std::string SystemName(const std::string& id) const;
     void        PushEvent(const std::string& msg);
 };

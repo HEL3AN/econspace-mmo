@@ -22,8 +22,7 @@ Rectangle Window::ContentArea() const
 {
     float p = (float)Ui::PADDING;
     float t = (float)Ui::TITLE_HEIGHT;
-    return { bounds_.x + p, bounds_.y + t + p, bounds_.width - 2 * p,
-             bounds_.height - t - 2 * p };
+    return { bounds_.x + p, bounds_.y + t + p, bounds_.width - 2 * p, bounds_.height - t - 2 * p };
 }
 
 bool Window::ContainsMouse() const
@@ -81,7 +80,7 @@ void Window::Draw()
     Ui::Text(title_.c_str(), (int)bounds_.x + Ui::PADDING, (int)bounds_.y + 6, 16, Ui::TEXT);
 
     Rectangle cb = CloseButtonRect();
-    bool hover = CheckCollisionPointRec(GetMousePosition(), cb);
+    bool      hover = CheckCollisionPointRec(GetMousePosition(), cb);
     Ui::Text("x", (int)cb.x + 9, (int)cb.y + 6, 16, hover ? Ui::ACCENT : Ui::TEXT_DIM);
 
     if (content_)

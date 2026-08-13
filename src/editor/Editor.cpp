@@ -102,7 +102,7 @@ void Editor::LoadSystemAt(int index)
     activeField_.clear();
     openDropdown_.clear();
 
-    std::string path = dataDir_ + "systems/" + universe_.systems[index].file;
+    std::string   path = dataDir_ + "systems/" + universe_.systems[index].file;
     std::ifstream file(path);
     if (file.is_open())
     {
@@ -126,7 +126,7 @@ void Editor::RebuildEntities()
     handles_.clear();
     if (systemJson_.contains("star"))
         handles_.push_back({ "star", -1 });  // matches the star in BuildSystem
-    const char* arrays[] = { "planets", "stations", "asteroidFields",
+    const char* arrays[] = { "planets", "stations",  "asteroidFields",
                              "nebulae", "derelicts", "gates" };
     for (const char* key : arrays)
         if (systemJson_.contains(key))
@@ -267,8 +267,7 @@ void Editor::HandleInput()
         if (objectGrabbed_)
         {
             Vector2 m = GetMousePosition();
-            if (!objectDragging_ &&
-                fabsf(m.x - pressPos_.x) + fabsf(m.y - pressPos_.y) > 4.0f)
+            if (!objectDragging_ && fabsf(m.x - pressPos_.x) + fabsf(m.y - pressPos_.y) > 4.0f)
                 objectDragging_ = true;  // threshold passed — start dragging
             if (objectDragging_)
             {
@@ -290,7 +289,6 @@ void Editor::HandleInput()
         objectDragging_ = false;
         panning_ = false;
     }
-
 }
 
 void Editor::DrawWorld()
@@ -319,8 +317,7 @@ void Editor::DrawWorld()
     }
 
     // Ghost of the object being placed, under the cursor.
-    if (!placeCategory_.empty() &&
-        !CheckCollisionPointRec(GetMousePosition(), PaletteRect()))
+    if (!placeCategory_.empty() && !CheckCollisionPointRec(GetMousePosition(), PaletteRect()))
     {
         Vector2                 wp = GetScreenToWorld2D(GetMousePosition(), camera_);
         std::unique_ptr<Entity> ghost = MakeEntity(placeCategory_, wp);
@@ -341,9 +338,9 @@ void Editor::DrawHud()
     // Info and hints in the top-left corner.
     if (galaxyMode_)
     {
-        Ui::Text(TextFormat("GALAXY   systems: %d",
-                            (int)(universeJson_.contains("systems") ? universeJson_["systems"].size()
-                                                                    : 0)),
+        Ui::Text(TextFormat("GALAXY   systems: %d", (int)(universeJson_.contains("systems")
+                                                              ? universeJson_["systems"].size()
+                                                              : 0)),
                  16, 50, 16, Ui::TEXT);
         Ui::Text("drag: move  ·  click: select  ·  double-click: open system", 16, 74, 13,
                  Ui::TEXT_DIM);
@@ -367,8 +364,7 @@ void Editor::DrawHud()
         else if (selected_ >= 0)
             Ui::Text("drag: move  ·  Del: delete  ·  edit on the right", 16, 96, 13, Ui::TEXT_DIM);
         else
-            Ui::Text("click: select  ·  drag empty: pan  ·  wheel: zoom", 16, 96, 13,
-                     Ui::TEXT_DIM);
+            Ui::Text("click: select  ·  drag empty: pan  ·  wheel: zoom", 16, 96, 13, Ui::TEXT_DIM);
     }
 
     // Mode toggle button (System / Galaxy).
@@ -536,7 +532,13 @@ bool Editor::FieldRow(Rectangle r, const char* label, nlohmann::json& obj, const
     {
         double v = (obj.contains(key) && obj[key].is_number()) ? obj[key].get<double>() : 0.0;
         if (active)
-            try { v = std::stod(editBuffer_); } catch (...) {}
+            try
+            {
+                v = std::stod(editBuffer_);
+            }
+            catch (...)
+            {
+            }
 
         auto apply = [&](double nv)
         {
@@ -594,8 +596,9 @@ void Editor::DropdownRow(Rectangle r, const char* label, nlohmann::json& obj, co
         return val;
     };
 
-    std::string cur = (obj.contains(key) && obj[key].is_string()) ? obj[key].get<std::string>()
-                      : (opts.empty() ? std::string() : opts[0]);
+    std::string cur = (obj.contains(key) && obj[key].is_string())
+                          ? obj[key].get<std::string>()
+                          : (opts.empty() ? std::string() : opts[0]);
     Ui::Text(label, (int)r.x, (int)r.y + 5, 13, Ui::TEXT_DIM);
 
     Rectangle btn{ r.x + 110, r.y, r.width - 110, 24 };
@@ -654,7 +657,11 @@ void Editor::DrawPropertyPanel()
     float w = panel.width - 28.0f;
     bool  changed = false;
     auto  row = [&](float rh) -> Rectangle
-    { Rectangle r{ (float)x, (float)y, w, rh }; y += (int)rh + 8; return r; };
+    {
+        Rectangle r{ (float)x, (float)y, w, rh };
+        y += (int)rh + 8;
+        return r;
+    };
 
     if (h.category == "star")
     {
@@ -830,21 +837,20 @@ void Editor::DrawPalette()
         for (int i = 0; i < kPaletteN; i++)
         {
             const PaletteType& t = kPalette[i];
-            Rectangle row{ list.x + 6, list.y + 4 + i * kPaletteRowH, list.width - 12,
-                           kPaletteRowH - 8 };
-            bool active = (placeCategory_ == t.category);
-            bool hover = CheckCollisionPointRec(m, row);
-            DrawRectangleRec(row, active ? Fade(Ui::ACCENT, 0.22f)
-                                         : (hover ? Fade(Ui::ACCENT, 0.10f)
-                                                  : Fade(Ui::TITLE_BG, 0.6f)));
+            Rectangle          row{ list.x + 6, list.y + 4 + i * kPaletteRowH, list.width - 12,
+                                    kPaletteRowH - 8 };
+            bool               active = (placeCategory_ == t.category);
+            bool               hover = CheckCollisionPointRec(m, row);
+            DrawRectangleRec(row,
+                             active ? Fade(Ui::ACCENT, 0.22f)
+                                    : (hover ? Fade(Ui::ACCENT, 0.10f) : Fade(Ui::TITLE_BG, 0.6f)));
             DrawRectangleLinesEx(row, 1.0f, active ? Ui::ACCENT : Ui::PANEL_BORDER);
 
             Rectangle icon{ row.x + 4, row.y + 4, 42, row.height - 8 };
             DrawRectangleRec(icon, Fade(BLACK, 0.4f));
             DrawEntityPreview(icon, t.category);
 
-            Ui::Text(t.title, (int)icon.x + 52, (int)row.y + 7, 16,
-                     active ? Ui::ACCENT : Ui::TEXT);
+            Ui::Text(t.title, (int)icon.x + 52, (int)row.y + 7, 16, active ? Ui::ACCENT : Ui::TEXT);
             Ui::Text(t.desc, (int)icon.x + 52, (int)row.y + 26, 12, Ui::TEXT_DIM);
 
             if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
@@ -902,21 +908,31 @@ void Editor::AddObject(const std::string& category, Vector2 pos)
         float r = sqrtf(pos.x * pos.x + pos.y * pos.y);
         if (r < 500.0f)
             r = 4000.0f;
-        o = { { "orbitRadius", (int)roundf(r) }, { "orbitSpeed", 300 },
-              { "angle", atan2f(pos.y, pos.x) }, { "size", 120 },
-              { "type", "Rocky" },               { "deposit", "Iron" } };
+        o = { { "orbitRadius", (int)roundf(r) },
+              { "orbitSpeed", 300 },
+              { "angle", atan2f(pos.y, pos.x) },
+              { "size", 120 },
+              { "type", "Rocky" },
+              { "deposit", "Iron" } };
     }
     else if (category == "stations")
-        o = { { "name", "New Station" }, { "pos", { px, py } }, { "size", 80 },
-              { "faction", "Independent" }, { "role", "TradeHub" } };
+        o = { { "name", "New Station" },
+              { "pos", { px, py } },
+              { "size", 80 },
+              { "faction", "Independent" },
+              { "role", "TradeHub" } };
     else if (category == "asteroidFields")
-        o = { { "name", "New Belt" }, { "pos", { px, py } }, { "size", 400 },
-              { "resource", "Iron" }, { "ore", 200 } };
+        o = { { "name", "New Belt" },
+              { "pos", { px, py } },
+              { "size", 400 },
+              { "resource", "Iron" },
+              { "ore", 200 } };
     else if (category == "nebulae")
         o = { { "name", "New Nebula" }, { "pos", { px, py } }, { "radius", 2000 } };
     else if (category == "derelicts")
-        o = { { "name", "New Derelict" }, { "pos", { px, py } }, { "size", 30 },
-              { "reward", 500 } };
+        o = {
+            { "name", "New Derelict" }, { "pos", { px, py } }, { "size", 30 }, { "reward", 500 }
+        };
     else if (category == "gates")
         o = { { "name", "New Gate" },
               { "pos", { px, py } },
@@ -1080,9 +1096,9 @@ void Editor::HandleGalaxyInput()
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !overUi && universeJson_.contains("systems"))
     {
-        Vector2 wm = GetScreenToWorld2D(m, camera_);
-        int     hit = -1;
-        float   pick = 14.0f / camera_.zoom;
+        Vector2     wm = GetScreenToWorld2D(m, camera_);
+        int         hit = -1;
+        float       pick = 14.0f / camera_.zoom;
         const json& sys = universeJson_["systems"];
         for (int i = 0; i < (int)sys.size(); i++)
             if (CheckCollisionPointCircle(wm, MapPos(sys[i]), pick))
@@ -1164,8 +1180,16 @@ void Editor::DrawGalaxy()
             bool        fa = false, fb = false;
             for (const auto& s : sys)
             {
-                if (s.value("id", std::string()) == a) { pa = MapPos(s); fa = true; }
-                if (s.value("id", std::string()) == b) { pb = MapPos(s); fb = true; }
+                if (s.value("id", std::string()) == a)
+                {
+                    pa = MapPos(s);
+                    fa = true;
+                }
+                if (s.value("id", std::string()) == b)
+                {
+                    pb = MapPos(s);
+                    fb = true;
+                }
             }
             if (fa && fb)
                 DrawLineEx(pa, pb, 1.5f / camera_.zoom, Fade(Ui::PANEL_BORDER, 0.9f));
@@ -1222,7 +1246,11 @@ void Editor::DrawGalaxyPanel()
     json& obj = universeJson_["systems"][gSelected_];
     bool  changed = false;
     auto  row = [&](float rh) -> Rectangle
-    { Rectangle r{ (float)x, (float)y, w, rh }; y += (int)rh + 8; return r; };
+    {
+        Rectangle r{ (float)x, (float)y, w, rh };
+        y += (int)rh + 8;
+        return r;
+    };
 
     // Open the system in object-editing mode.
     if (!anyDropdownOpen_)
@@ -1353,8 +1381,8 @@ void Editor::DrawGalaxyPanel()
             names.push_back(s.value("name", oid));
         }
 
-        DropdownRow(Rectangle{ (float)x, (float)y, w - 30.0f, 24.0f }, "", gLinksJson_,
-                    key.c_str(), ids, names);
+        DropdownRow(Rectangle{ (float)x, (float)y, w - 30.0f, 24.0f }, "", gLinksJson_, key.c_str(),
+                    ids, names);
         Rectangle rb{ (float)x + w - 26.0f, (float)y, 24.0f, 24.0f };
         if (!anyDropdownOpen_)
         {
@@ -1372,8 +1400,7 @@ void Editor::DrawGalaxyPanel()
 
     if (!anyDropdownOpen_)
     {
-        Button addl(Rectangle{ (float)x, (float)y, w, 24.0f }, "+ link",
-                    [this]()
+        Button addl(Rectangle{ (float)x, (float)y, w, 24.0f }, "+ link", [this]()
                     { gLinksJson_[std::to_string((int)gLinksJson_.size())] = std::string(); });
         addl.Process();
     }

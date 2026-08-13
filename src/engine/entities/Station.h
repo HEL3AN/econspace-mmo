@@ -4,7 +4,13 @@
 #include "core/Faction.h"
 
 // Station role — determines its services and the bias of mission generation.
-enum class StationRole { TradeHub, MiningOutpost, Shipyard, Military };
+enum class StationRole
+{
+    TradeHub,
+    MiningOutpost,
+    Shipyard,
+    Military
+};
 
 std::string StationRoleName(StationRole role);
 
@@ -14,9 +20,9 @@ class Station : public Entity
 public:
     Station(Vector2 pos, float size, std::string name, FactionId faction, StationRole role);
 
-    void        Draw() const override;
+    void                    Draw() const override;
     std::unique_ptr<Entity> Clone() const override { return std::make_unique<Station>(*this); }
-    std::string GetName() const override { return name_; }
+    std::string             GetName() const override { return name_; }
 
     FactionId   GetFaction() const { return faction_; }
     StationRole GetRole() const { return role_; }

@@ -10,9 +10,9 @@ class Derelict : public Entity
 public:
     Derelict(Vector2 pos, float size, std::string name, double reward);
 
-    void        Draw() const override;
+    void                    Draw() const override;
     std::unique_ptr<Entity> Clone() const override { return std::make_unique<Derelict>(*this); }
-    std::string GetName() const override;
+    std::string             GetName() const override;
 
     bool   IsLooted() const { return looted_; }
     void   SetLooted() { looted_ = true; }

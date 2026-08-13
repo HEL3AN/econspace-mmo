@@ -150,11 +150,10 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
         {
             PlanetType type = PlanetTypeFromString(p.value("type", std::string("Rocky")));
             // Color is optional: if not set, the planet's default type color is used.
-            Color color =
-                p.contains("color") ? ColorFromJson(p["color"]) : PlanetTypeColor(type);
+            Color color = p.contains("color") ? ColorFromJson(p["color"]) : PlanetTypeColor(type);
             entities.push_back(std::make_unique<Planet>(
-                p.value("orbitRadius", 5000.0), p.value("orbitSpeed", 300.0),
-                p.value("angle", 0.0), p.value("size", 100.0), color,
+                p.value("orbitRadius", 5000.0), p.value("orbitSpeed", 300.0), p.value("angle", 0.0),
+                p.value("size", 100.0), color,
                 ResourceFromString(p.value("deposit", std::string("Iron"))), type));
         }
 
@@ -162,12 +161,10 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
     {
         for (const json& s : data["stations"])
         {
-            FactionId faction =
-                FactionFromString(s.value("faction", std::string("Independent")));
-            StationRole role =
-                StationRoleFromString(s.value("role", std::string("TradeHub")));
-            entities.push_back(std::make_unique<Station>(
-                Vec2FromJson(s["pos"]), (float)s["size"], s["name"], faction, role));
+            FactionId   faction = FactionFromString(s.value("faction", std::string("Independent")));
+            StationRole role = StationRoleFromString(s.value("role", std::string("TradeHub")));
+            entities.push_back(std::make_unique<Station>(Vec2FromJson(s["pos"]), (float)s["size"],
+                                                         s["name"], faction, role));
         }
     }
 
@@ -175,9 +172,9 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
     {
         for (const json& f : data["asteroidFields"])
         {
-            entities.push_back(std::make_unique<AsteroidField>(
-                Vec2FromJson(f["pos"]), (float)f["size"], f["name"],
-                ResourceFromString(f["resource"]), (int)f["ore"]));
+            entities.push_back(
+                std::make_unique<AsteroidField>(Vec2FromJson(f["pos"]), (float)f["size"], f["name"],
+                                                ResourceFromString(f["resource"]), (int)f["ore"]));
         }
     }
 
@@ -185,9 +182,8 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
     {
         for (const json& n : data["nebulae"])
         {
-            entities.push_back(std::make_unique<Nebula>(
-                Vec2FromJson(n["pos"]), (float)n["radius"],
-                n.value("name", std::string("Nebula"))));
+            entities.push_back(std::make_unique<Nebula>(Vec2FromJson(n["pos"]), (float)n["radius"],
+                                                        n.value("name", std::string("Nebula"))));
         }
     }
 
@@ -195,9 +191,9 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
     {
         for (const json& d : data["derelicts"])
         {
-            entities.push_back(std::make_unique<Derelict>(
-                Vec2FromJson(d["pos"]), (float)d.value("size", 16.0), d["name"],
-                (double)d.value("reward", 500.0)));
+            entities.push_back(std::make_unique<Derelict>(Vec2FromJson(d["pos"]),
+                                                          (float)d.value("size", 16.0), d["name"],
+                                                          (double)d.value("reward", 500.0)));
         }
     }
 
@@ -205,9 +201,9 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
     {
         for (const json& g : data["gates"])
         {
-            entities.push_back(std::make_unique<JumpGate>(
-                Vec2FromJson(g["pos"]), (float)g["size"], g["name"],
-                g.value("destination", std::string("Unknown"))));
+            entities.push_back(
+                std::make_unique<JumpGate>(Vec2FromJson(g["pos"]), (float)g["size"], g["name"],
+                                           g.value("destination", std::string("Unknown"))));
         }
     }
 

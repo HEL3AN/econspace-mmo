@@ -11,10 +11,22 @@
 //  Police  — patrol of a lawful faction, attacks pirates and wanted ships.
 //  Pirate  — raider, attacks traders and the player.
 //  Warship — faction combat ship (faction wars).
-enum class NpcRole { Trader, Miner, Police, Pirate, Warship };
+enum class NpcRole
+{
+    Trader,
+    Miner,
+    Police,
+    Pirate,
+    Warship
+};
 
 // Behavior state machine state (set by the AI pass in Game).
-enum class AiState { Patrol, Pursue, Flee };
+enum class AiState
+{
+    Patrol,
+    Pursue,
+    Flee
+};
 
 // NPC ship. Behavior is driven by role and a state machine: peaceful roles fly
 // between points and flee when threatened, combat roles pursue and attack hostile
@@ -26,9 +38,9 @@ class NpcShip : public Entity, public Combatant
 public:
     NpcShip(Vector2 pos, FactionId faction, NpcRole role, std::vector<Vector2> waypoints);
 
-    void        Update(float dt) override;
-    void        Draw() const override;
-    std::string GetName() const override;
+    void                    Update(float dt) override;
+    void                    Draw() const override;
+    std::string             GetName() const override;
     std::unique_ptr<Entity> Clone() const override { return std::make_unique<NpcShip>(*this); }
 
     // Combatant: position comes from Entity (shared pos_).
@@ -38,15 +50,15 @@ public:
     NpcRole   GetRole() const { return role_; }
     AiState   GetState() const { return state_; }
     bool      IsPirate() const { return faction_ == FactionId::Pirates; }
-    float     GetHeading() const { return heading_; }    // heading (for snapshots/render)
-    void      SetHeading(float h) { heading_ = h; }      // for proxy reconciliation
+    float     GetHeading() const { return heading_; }  // heading (for snapshots/render)
+    void      SetHeading(float h) { heading_ = h; }    // for proxy reconciliation
 
     // Stable agent id lives in the base Entity (GetId/SetId).
 
     // Restore state on load (hull from the save).
     void SetHull(float hull) { hull_ = (hull < 0.0f) ? 0.0f : (hull > maxHull_ ? maxHull_ : hull); }
     // Whether the ship is armed (fights). Peaceful roles only flee.
-    bool      IsCombatant() const
+    bool IsCombatant() const
     {
         return role_ == NpcRole::Police || role_ == NpcRole::Pirate || role_ == NpcRole::Warship;
     }
