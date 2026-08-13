@@ -471,6 +471,23 @@ void Game::BuildClientSnapshot()
     Proto::Snapshot incoming;
     while (clientLink_->Poll(msg))
     {
+        // A version mismatch would otherwise be invisible: every Decode* rejects the
+        // message, the client keeps rendering the last snapshot, and the game looks
+        // frozen for no stated reason. Say it once, plainly.
+        int ver = Proto::MessageVersion(msg);
+        if (ver != Proto::PROTO_VERSION)
+        {
+            if (!protocolMismatchReported_)
+            {
+                protocolMismatchReported_ = true;
+                TraceLog(LOG_ERROR, "Protocol mismatch: server speaks v%d, this client v%d", ver,
+                         Proto::PROTO_VERSION);
+                FlashMessage(TextFormat("Server protocol v%d, client v%d — update needed", ver,
+                                        Proto::PROTO_VERSION));
+            }
+            continue;
+        }
+
         std::string type = Proto::MessageType(msg);
         if (type == "layout")
         {

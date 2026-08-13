@@ -158,7 +158,8 @@ private:
     // Client↔server transport: netConn_ is the TCP link to the econserver host, and
     // clientLink_ is the end the client sends commands on and receives snapshots/layout from.
     std::unique_ptr<Net::TcpConnection> netConn_;
-    ITransport*                         clientLink_ = nullptr;
+    bool        protocolMismatchReported_ = false;  // say it once, not every frame
+    ITransport* clientLink_ = nullptr;
     // Client prediction/reconciliation of the own ship (M4e, per Gambetta):
     // inputs are numbered and kept until the server acks them, so unacked ones can be
     // replayed over the authoritative state (without snapping backward).

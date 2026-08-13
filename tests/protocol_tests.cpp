@@ -196,3 +196,54 @@ TEST_CASE("system layout round-trips through JSON")
     CHECK(r.entities[0].color.b == 200);
     CHECK(r.entities[0].subType == 4);
 }
+
+// The version check is what makes permissive per-field decoding safe: without it a
+// message from another build would decode into defaults instead of failing.
+TEST_CASE("protocol version is stamped and enforced")
+{
+    Proto::Command c;
+    c.seq = 42;
+    c.thrust = true;
+    std::string wire = Proto::EncodeCommand(c);
+
+    CHECK(Proto::MessageVersion(wire) == Proto::PROTO_VERSION);
+    CHECK(Proto::MessageType(wire) == "cmd");
+
+    Proto::Command ok;
+    REQUIRE(Proto::DecodeCommand(wire, ok));
+    CHECK(ok.seq == 42);
+
+    SUBCASE("a different version is rejected rather than silently defaulted")
+    {
+        std::string other = wire;
+        std::string from = "\"v\":" + std::to_string(Proto::PROTO_VERSION);
+        std::string to = "\"v\":" + std::to_string(Proto::PROTO_VERSION + 1);
+        size_t      at = other.find(from);
+        REQUIRE(at != std::string::npos);
+        other.replace(at, from.size(), to);
+
+        Proto::Command bad;
+        bad.seq = -1;
+        CHECK_FALSE(Proto::DecodeCommand(other, bad));
+        CHECK(bad.seq == -1);  // untouched: a rejected message must not write through
+
+        // The type still reads, so a mismatch can be diagnosed instead of looking like junk.
+        CHECK(Proto::MessageType(other) == "cmd");
+        CHECK(Proto::MessageVersion(other) == Proto::PROTO_VERSION + 1);
+    }
+
+    SUBCASE("a message with no version at all is rejected")
+    {
+        Proto::Snapshot snap;
+        CHECK_FALSE(Proto::DecodeSnapshot("{\"t\":\"snap\"}", snap));
+        CHECK(Proto::MessageVersion("{\"t\":\"snap\"}") == 0);
+    }
+
+    SUBCASE("broken input is still just broken")
+    {
+        Proto::Command bad;
+        CHECK_FALSE(Proto::DecodeCommand("not json", bad));
+        CHECK(Proto::MessageVersion("not json") == 0);
+        CHECK(Proto::MessageType("not json").empty());
+    }
+}
