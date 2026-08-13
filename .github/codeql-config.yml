@@ -1,8 +1,10 @@
 # CodeQL scope: our sources only.
 #
-# raylib and nlohmann/json are fetched and built by CMake into build*/_deps, so without
-# this filter every finding in third-party code would land in our security tab and bury
-# the ones we can act on.
+# NOTE: for a compiled language these path filters are a second line of defence, not the
+# mechanism. The extractor takes whatever it observes being compiled, so raylib landed in
+# the database despite this file — 100 alerts, none of them in our code. What actually
+# scopes the analysis is build order: the workflow builds the dependencies before CodeQL
+# starts watching, so only our sources are extracted. See #63.
 name: EconSpace CodeQL
 
 paths:

@@ -39,6 +39,16 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-make
 
+      # Build the dependencies BEFORE CodeQL is watching. For a compiled language the
+      # extractor takes whatever it observes being compiled, and raylib is part of our
+      # build — the first run produced 100 alerts, every one of them inside raylib's
+      # bundled third-party code and none in ours. Path filters do not prevent that;
+      # build order does.
+      - name: Pre-build dependencies (outside the CodeQL database)
+        run: |
+          cmake -S . -B build-codeql -G "MinGW Makefiles"
+          cmake --build build-codeql --target raylib
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
@@ -46,10 +56,10 @@ jobs:
           build-mode: manual
           config-file: ./.github/codeql-config.yml
 
-      - name: Build
-        run: |
-          cmake -S . -B build-codeql -G "MinGW Makefiles"
-          cmake --build build-codeql
+      # Dependencies are already built, so only our own sources compile here and only
+      # they land in the database.
+      - name: Build our sources
+        run: cmake --build build-codeql
 
       - name: Analyze
         uses: github/codeql-action/analyze@v3
