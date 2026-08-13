@@ -23,6 +23,7 @@
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <thread>
@@ -100,6 +101,11 @@ static bool HostStepPlayer(Simulation& sim, const Proto::Command& c, std::string
         return changed;  // at a station the ship neither moves nor fires
     }
 
+    // Manual control takes the ship back. This is the same rule the autopilot follows,
+    // and it is what lets a human grab the stick from an agent mid-order.
+    if (sim.HasRunningOrder() && (c.thrust || c.brake || c.turn != 0.0f || c.navMode != 0))
+        sim.AbortOrder("manual control");
+
     if (c.toggleWeapon)
         sim.ToggleWeapon();
 
@@ -170,6 +176,12 @@ static void HostStepWorld(Simulation& sim, const std::string& activeId, float dt
 
     if (player != nullptr && !sim.PlayerShip()->IsAlive())
         sim.ServerRespawnPlayer();
+
+    // Standing orders execute here rather than in the input path: an agent issues one
+    // order and then sends nothing, so if the order did not drive its own ticks the ship
+    // would simply sit there.
+    if (clientOnline)
+        sim.StepPlayerOrder(sim.Active(), dt);
 
     // Account passive: piloting xp (in flight) + bounty decay.
     sim.StepPlayerAccountTick(dt);
@@ -512,6 +524,62 @@ static int WorldSelftest()
     return ok ? 0 : 1;
 }
 
+// Standing-order smoke test (no network): give the ship an order, tick the server the way
+// the host loop does, and check it finishes on its own. This is the property agent play
+// rests on -- one order, no further input, the server does the flying.
+// Run: econserver ordertest.
+static int OrderSelftest()
+{
+    std::string dataDir = SIM_DATA_DIR;
+    Simulation  sim;
+    SetupHostSim(sim, dataDir);
+
+    const float dt = 1.0f / 60.0f;
+    auto        run = [&sim, dt](int maxTicks)
+    {
+        for (int i = 0; i < maxTicks && sim.HasRunningOrder(); i++)
+        {
+            sim.StepPlayerOrder(sim.Active(), dt);
+            sim.MaintainWorld(dt, sim.ActiveId(), nullptr);
+        }
+        return !sim.HasRunningOrder();
+    };
+
+    // 1) Fly to a point and stop there.
+    Vector2       start = sim.PlayerShip()->GetPosition();
+    Orders::Order move;
+    move.kind = Orders::Kind::MoveTo;
+    move.point = { start.x + 1200.0f, start.y };
+    move.stopDist = 150.0f;
+    int   id = sim.GiveOrder(move);
+    bool  moveFinished = run(60 * 120);  // up to two simulated minutes
+    float dx = sim.PlayerShip()->GetPosition().x - move.point.x;
+    float dy = sim.PlayerShip()->GetPosition().y - move.point.y;
+    bool  arrived = moveFinished && sim.OrderStatus() == Orders::Status::Done &&
+                    std::sqrt(dx * dx + dy * dy) <= move.stopDist * 1.5f;
+    bool  idOk = id > 0;
+
+    // 2) An order naming something that is not here must fail, not hang.
+    Orders::Order bogus;
+    bogus.kind = Orders::Kind::Dock;
+    bogus.targetId = 999999;
+    sim.GiveOrder(bogus);
+    sim.StepPlayerOrder(sim.Active(), dt);
+    bool rejected = sim.OrderStatus() == Orders::Status::Failed && !sim.OrderDetail().empty();
+
+    // 3) Manual control takes the ship back mid-order.
+    sim.GiveOrder(move);
+    sim.AbortOrder("manual control");
+    bool aborted =
+        sim.OrderStatus() == Orders::Status::Failed && sim.OrderDetail() == "manual control";
+
+    bool ok = idOk && arrived && rejected && aborted;
+    printf("Order selftest: id %s, move %s, bad-target %s, abort %s => %s\n", idOk ? "OK" : "FAIL",
+           arrived ? "OK" : "FAIL", rejected ? "OK" : "FAIL", aborted ? "OK" : "FAIL",
+           ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 int main(int argc, char** argv)
 {
     // Unbuffered stdout, set before anything writes to it. A long-running server is
@@ -530,6 +598,8 @@ int main(int argc, char** argv)
         return AccountSelftest();
     if (argc > 1 && std::string(argv[1]) == "worldtest")
         return WorldSelftest();
+    if (argc > 1 && std::string(argv[1]) == "ordertest")
+        return OrderSelftest();
     if (argc > 1 && std::string(argv[1]) == "host")
     {
         unsigned short port = (argc > 2) ? (unsigned short)atoi(argv[2]) : 50800;

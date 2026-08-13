@@ -171,6 +171,7 @@ add_executable(econserver
     src/game/sim/main_headless.cpp
     src/game/sim/Simulation.cpp
     src/game/sim/PlayerStep.cpp
+    src/game/sim/Orders.cpp
     src/game/economy/Market.cpp
     src/game/entities/NpcShip.cpp
     src/game/entities/Ship.cpp       # Simulation owns the player's ship (M4d-2b)
