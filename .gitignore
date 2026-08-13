@@ -15,7 +15,8 @@ world.json
 .cache/
 
 # Internal working notes (kept local, not part of the public repo).
-CLAUDE.md
+# CLAUDE.md is deliberately NOT here: it is operating context for AI assistants
+# working in this repository, and this project treats agents as contributors.
 documents/dev_journal_L.md
 documents/mmo_transition_plan.md
 documents/mmo_m4_plan.md
