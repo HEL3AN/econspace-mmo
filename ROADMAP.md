@@ -66,9 +66,9 @@ Make an AI agent a first-class player: the game speaks to a model the same way i
 
 ## Milestones
 
-Planned sequence, roughly in order:
+Tracked on the [milestones page](../../milestones); the sequence below is the plan.
 
-1. **Ground truth** — the docs tell the truth, the leftover single-player path is removed (#23), general hygiene. Cheap, and everything after it is easier.
+1. **Ground truth** — **done.** The single-player path is gone and the client is purely a renderer plus an input source (#23); the server outlives client sessions and persists the galaxy (#13, #48); the wire layer is one library rather than three copies (#25); the docs describe the project that exists (#24, #21). Along the way it turned up a use-after-free on system change (#46), an F9 that corrupted a connected session (#47), and a simulation clock that had never advanced (#57). CI now enforces formatting and a warning-clean build, and runs CodeQL (#22, #53, #63).
 2. **Agent MVP** — standing orders, the text projection, and `econagent` far enough that an agent plays end to end without a human at the controls.
 3. **Glyph world** — the presentation layer lands and glyphs become the default look.
 4. **Multiplayer core** — multi-client (#3): per-connection sessions with their own ship and account, plus interest management so players in a system see each other. This is **foundational, not optional** — it is what makes the rest an MMO rather than a simulator with one seat.
