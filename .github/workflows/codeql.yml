@@ -1,0 +1,55 @@
+name: codeql
+
+# Static security analysis of our C++ sources.
+#
+# CodeQL needs to watch a real compile, so this reuses the normal MSYS2/MinGW build
+# instead of autobuild — the project only builds with that toolchain. Third-party code
+# fetched by CMake (raylib, nlohmann/json) is filtered out in .github/codeql-config.yml,
+# so findings point at code we can actually fix.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  schedule:
+    # Weekly, so newly published queries reach an unchanged codebase too.
+    - cron: '31 4 * * 1'
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: Analyze C++
+    runs-on: windows-latest
+    permissions:
+      security-events: write
+      contents: read
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSYS2 / MinGW-w64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-make
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          build-mode: manual
+          config-file: ./.github/codeql-config.yml
+
+      - name: Build
+        run: |
+          cmake -S . -B build-codeql -G "MinGW Makefiles"
+          cmake --build build-codeql
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
