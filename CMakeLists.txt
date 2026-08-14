@@ -130,6 +130,7 @@ endif()
 # copy-pasted source lists, and econagent (#42) would have made it four.
 add_library(netproto STATIC
     src/game/sim/Protocol.cpp
+    src/game/sim/Events.cpp
     src/game/net/Tcp.cpp
 )
 # PUBLIC: consumers include "sim/Protocol.h" and "net/Tcp.h" relative to src/game.

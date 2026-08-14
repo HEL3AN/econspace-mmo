@@ -2,6 +2,7 @@
 
 #include "raylib.h"
 #include "core/Faction.h"
+#include "sim/Events.h"
 #include "sim/SystemState.h"  // FireEvent
 
 #include <string>
@@ -22,7 +23,7 @@ namespace Proto
 // without it a client built against an older protocol would silently receive defaults
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
-inline constexpr int PROTO_VERSION = 1;
+inline constexpr int PROTO_VERSION = 2;
 
 // --- Command: client -> server, every tick ---
 struct Command
@@ -156,7 +157,7 @@ struct Snapshot
     PlayerView                  player;
     std::vector<EntitySnapshot> entities;
     std::vector<FireEvent>      fires;
-    std::vector<std::string>    messages;
+    std::vector<Ev::Event>      events;         // journal entries the client has not seen (#29)
     std::vector<float>          marketPrices;   // price per resource (AllResourceTypes order)
     std::vector<TradeAck>       tradeAcks;      // one-shot trade acknowledgments (M4e-3b)
     std::vector<MissionView>    missionOffers;  // docked station board (empty outside dock)

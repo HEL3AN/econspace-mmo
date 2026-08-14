@@ -98,7 +98,7 @@ TEST_CASE("snapshot round-trips through JSON")
                            "Pirate" });
     s.fires.push_back({ { 0.0f, 0.0f }, { 1.0f, 2.0f }, FactionId::Pirates, true, false });
     s.fires.push_back({ { 5.0f, 5.0f }, { 9.0f, 9.0f }, FactionId::Independent, false, true });
-    s.messages.push_back("hello");
+    s.events.push_back(Ev::Event{ 7, Ev::Kind::Docked, "hello" });
     s.marketPrices = { 10.0f, 20.0f, 30.0f };
 
     Proto::Snapshot r;
@@ -114,8 +114,10 @@ TEST_CASE("snapshot round-trips through JSON")
     CHECK(r.fires[0].fromPlayer == false);
     CHECK(r.fires[1].fromPlayer);
     CHECK(r.fires[1].targetIsPlayer == false);
-    REQUIRE(r.messages.size() == 1);
-    CHECK(r.messages[0] == "hello");
+    REQUIRE(r.events.size() == 1);
+    CHECK(r.events[0].text == "hello");
+    CHECK(r.events[0].seq == 7);
+    CHECK(r.events[0].kind == Ev::Kind::Docked);
     REQUIRE(r.marketPrices.size() == 3);
     CHECK(r.marketPrices[1] == doctest::Approx(20.0f));
     REQUIRE(r.player.cargoByType.size() == 3);

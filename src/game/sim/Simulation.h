@@ -3,6 +3,7 @@
 #include "core/WorldLoader.h"
 #include "sim/SystemState.h"
 #include "sim/Protocol.h"
+#include "sim/Events.h"
 #include "sim/Orders.h"
 #include "sim/PlayerStep.h"
 #include "player/Player.h"
@@ -234,7 +235,12 @@ public:
     // the station id (0 — failed). While docked, the host freezes the player's physics.
     // Reputation admittance — on the client side (account). Undock releases the docking.
     int  StepPlayerDock(SystemState& st);
-    void StepPlayerUndock() { playerDockedStationId_ = 0; }
+    void StepPlayerUndock()
+    {
+        if (playerDockedStationId_ != 0)
+            RecordEvent(Ev::Kind::Undocked, "Undocked");
+        playerDockedStationId_ = 0;
+    }
     bool IsPlayerDocked() const { return playerDockedStationId_ != 0; }
     int  PlayerDockedStationId() const { return playerDockedStationId_; }
 
@@ -256,15 +262,14 @@ public:
     // reputation) — the server combat predicate (analog of the client HostileToPlayerFaction).
     bool AccountHostileToFaction(FactionId f) const;
 
-    // Queue of server notifications to the player (server->client): docking denied, etc.
-    // BuildSnapshot does not touch them — the host takes them via DrainMessages() and puts
-    // them into the snapshot; the client flushes each once. Unused in single-player.
-    std::vector<std::string> DrainMessages()
-    {
-        std::vector<std::string> out;
-        out.swap(outMessages_);
-        return out;
-    }
+    // --- Event journal (#29) ---
+    // Records something that happened to the player. Sequence numbers are assigned here,
+    // so a client can ask for everything after the last one it saw and cannot miss an
+    // entry because two snapshots were coalesced.
+    void RecordEvent(Ev::Kind kind, const std::string& text);
+    // Everything newer than `seq`. Pass 0 for the whole journal.
+    std::vector<Ev::Event> EventsSince(int seq) const;
+    int                    LastEventSeq() const { return nextEventSeq_; }
 
     // --- Player missions (server-authoritative, M4f-2) ---
     const MissionSystem& Missions() const { return missions_; }
@@ -341,20 +346,24 @@ private:
     std::string                        activeId_;
     int                                agentIdCounter_ = 0;
 
-    std::unique_ptr<Ship> player_;          // player ship (server agent, M4d-2b)
-    Player account_{ 500.0 };               // player account (money/skills/reputation/wanted, M4f)
-    std::vector<std::string> outMessages_;  // server notifications to the player (DrainMessages)
-    MissionSystem            missions_;     // player missions (board+active, M4f-2)
-    Orders::Order            order_;        // standing order (#26)
-    Orders::Status           orderStatus_ = Orders::Status::Idle;
-    std::string              orderDetail_;  // why it finished or failed
-    int                      orderId_ = 0;  // id of the current order
-    int                      nextOrderId_ = 0;
-    bool                     orderNavIssued_ = false;       // nav order already given to the ship
-    bool                     playerWeaponOn_ = false;       // weapon armed (server-owned)
-    float                    playerFireTimer_ = 0.0f;       // player weapon cooldown
-    float                    playerMiningProgress_ = 0.0f;  // accumulator of ore-unit fractions
-    int                      playerDockedStationId_ = 0;    // docked station (0 — in flight)
+    std::unique_ptr<Ship> player_;  // player ship (server agent, M4d-2b)
+    Player account_{ 500.0 };       // player account (money/skills/reputation/wanted, M4f)
+    // Journal of what happened to the player, capped so a long session cannot grow it
+    // without bound. Trimming from the front is safe: a client that has fallen further
+    // behind than the cap has lost its place anyway and must re-observe.
+    std::vector<Ev::Event> journal_;
+    int                    nextEventSeq_ = 0;
+    MissionSystem          missions_;  // player missions (board+active, M4f-2)
+    Orders::Order          order_;     // standing order (#26)
+    Orders::Status         orderStatus_ = Orders::Status::Idle;
+    std::string            orderDetail_;  // why it finished or failed
+    int                    orderId_ = 0;  // id of the current order
+    int                    nextOrderId_ = 0;
+    bool                   orderNavIssued_ = false;       // nav order already given to the ship
+    bool                   playerWeaponOn_ = false;       // weapon armed (server-owned)
+    float                  playerFireTimer_ = 0.0f;       // player weapon cooldown
+    float                  playerMiningProgress_ = 0.0f;  // accumulator of ore-unit fractions
+    int                    playerDockedStationId_ = 0;    // docked station (0 — in flight)
 
     double       time_ = 0.0;        // total simulation time (seconds)
     double       maintAccum_ = 0.0;  // accumulator of coarse world maintenance (director)

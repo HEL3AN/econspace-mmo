@@ -285,11 +285,13 @@ std::string Describe(const View& view, Detail detail)
     }
 
     // --- What just happened -------------------------------------------------
-    if (!snap.messages.empty())
+    if (!snap.events.empty())
     {
         out += "EVENTS\n";
-        for (const std::string& m : snap.messages)
-            out += "  " + m + "\n";
+        // The kind is printed next to the prose deliberately: an agent should branch on the
+        // kind, never parse the sentence. Showing both makes that obvious instead of implied.
+        for (const Ev::Event& e : snap.events)
+            out += Fmt("  [%d] %-14s %s\n", e.seq, Ev::KindName(e.kind), e.text.c_str());
     }
 
     if (detail == Detail::Full)
