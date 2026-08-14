@@ -51,6 +51,10 @@ struct BgStar
 class Game
 {
 public:
+    // The client's fixed step: prediction and input numbering both run on it, and it must
+    // match the server's SIM_DT or one input stops meaning one tick.
+    static constexpr float SIM_DT = 1.0f / 60.0f;
+
     // Takes an already-established connection to an econserver host (main() dials it).
     // There is no offline mode: without a connection there is no world to render.
     explicit Game(std::unique_ptr<Net::TcpConnection> conn);
