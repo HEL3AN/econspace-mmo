@@ -2,7 +2,8 @@
 #include "render/Textures.h"
 
 Derelict::Derelict(Vector2 pos, float size, std::string name, double reward)
-    : Entity(pos, size, Color{ 130, 130, 120, 255 }), name_(std::move(name)), reward_(reward)
+    : Entity(pos, size, Color{ 130, 130, 120, 255 }, EntityKind::Derelict), name_(std::move(name)),
+      reward_(reward)
 {
 }
 

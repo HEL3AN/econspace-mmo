@@ -65,7 +65,7 @@ std::vector<NpcShip*> AliveShips(SystemState& st)
 {
     std::vector<NpcShip*> ships;
     for (auto& e : st.entities)
-        if (NpcShip* n = dynamic_cast<NpcShip*>(e.get()))
+        if (NpcShip* n = e->GetKind() == EntityKind::Npc ? static_cast<NpcShip*>(e.get()) : nullptr)
             if (n->IsAlive())
                 ships.push_back(n);
     return ships;
@@ -202,7 +202,9 @@ void Simulation::StepSystemAgents(SystemState& st, float dt)
     st.entities.erase(std::remove_if(st.entities.begin(), st.entities.end(),
                                      [](const std::unique_ptr<Entity>& e)
                                      {
-                                         NpcShip* n = dynamic_cast<NpcShip*>(e.get());
+                                         NpcShip* n = e->GetKind() == EntityKind::Npc
+                                                          ? static_cast<NpcShip*>(e.get())
+                                                          : nullptr;
                                          return n != nullptr && !n->IsAlive();
                                      }),
                       st.entities.end());
@@ -224,7 +226,9 @@ void Simulation::StepActiveSystemAgents(SystemState& st, Combatant* player, bool
     st.entities.erase(std::remove_if(st.entities.begin(), st.entities.end(),
                                      [](const std::unique_ptr<Entity>& e)
                                      {
-                                         NpcShip* n = dynamic_cast<NpcShip*>(e.get());
+                                         NpcShip* n = e->GetKind() == EntityKind::Npc
+                                                          ? static_cast<NpcShip*>(e.get())
+                                                          : nullptr;
                                          return n != nullptr && !n->IsAlive();
                                      }),
                       st.entities.end());
@@ -236,7 +240,8 @@ void Simulation::ServerRespawnPlayer()
         return;
     RecordEvent(Ev::Kind::ShipDestroyed, "Ship destroyed; respawned with cargo lost");
     for (auto& e : Active().entities)
-        if (Station* st = dynamic_cast<Station*>(e.get()))
+        if (Station* st =
+                e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
         {
             player_->Teleport(st->GetPosition());
             break;
@@ -283,7 +288,7 @@ bool Simulation::StepPlayerFire(SystemState& st, int targetId, float dt, PlayerC
     for (auto& e : st.entities)
         if (e->GetId() == targetId)
         {
-            target = dynamic_cast<NpcShip*>(e.get());
+            target = e->GetKind() == EntityKind::Npc ? static_cast<NpcShip*>(e.get()) : nullptr;
             break;
         }
     if (target == nullptr || !target->IsAlive())
@@ -355,7 +360,8 @@ Simulation::PlayerMiningResult Simulation::StepPlayerMining(SystemState& st, flo
     Vector2 sp = player_->GetPosition();
     for (auto& e : st.entities)
     {
-        AsteroidField* field = dynamic_cast<AsteroidField*>(e.get());
+        AsteroidField* field =
+            e->GetKind() == EntityKind::Field ? static_cast<AsteroidField*>(e.get()) : nullptr;
         if (field == nullptr || !field->HasOre())
             continue;
 
@@ -413,7 +419,8 @@ double Simulation::StepPlayerLoot(SystemState& st, int derelictId)
     for (auto& e : st.entities)
         if (e->GetId() == derelictId)
         {
-            Derelict* dr = dynamic_cast<Derelict*>(e.get());
+            Derelict* dr =
+                e->GetKind() == EntityKind::Derelict ? static_cast<Derelict*>(e.get()) : nullptr;
             if (dr == nullptr || dr->IsLooted())
                 return 0.0;
             Vector2 sp = player_->GetPosition();
@@ -454,7 +461,8 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(SystemState& st, int res
     for (auto& e : st.entities)
         if (e->GetId() == playerDockedStationId_)
         {
-            if (Station* station = dynamic_cast<Station*>(e.get()))
+            if (Station* station =
+                    e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
                 sf = station->GetFaction();
             break;
         }
@@ -509,7 +517,8 @@ bool Simulation::BuyShip(int catalogIndex)
     for (auto& e : Active().entities)
         if (e->GetId() == playerDockedStationId_)
         {
-            if (Station* s = dynamic_cast<Station*>(e.get()))
+            if (Station* s =
+                    e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
                 sf = s->GetFaction();
             break;
         }
@@ -544,7 +553,8 @@ void Simulation::GenerateDockOffers()
     Station*              giver = nullptr;
     std::vector<Station*> all;
     for (auto& e : Active().entities)
-        if (Station* s = dynamic_cast<Station*>(e.get()))
+        if (Station* s =
+                e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
         {
             all.push_back(s);
             if (s->GetId() == playerDockedStationId_)
@@ -607,7 +617,8 @@ int Simulation::StepPlayerDock(SystemState& st)
     Vector2 pp = player_->GetPosition();
     for (auto& e : st.entities)
     {
-        Station* station = dynamic_cast<Station*>(e.get());
+        Station* station =
+            e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr;
         if (station == nullptr)
             continue;
         float dx = station->GetPosition().x - pp.x;
@@ -646,7 +657,8 @@ void Simulation::ServerEnterSystem(const std::string& destId, const std::string&
     Vector2 arrival = { 0.0f, 3000.0f };
     if (!fromId.empty())
         for (auto& e : Active().entities)
-            if (JumpGate* g = dynamic_cast<JumpGate*>(e.get()))
+            if (JumpGate* g =
+                    e->GetKind() == EntityKind::Gate ? static_cast<JumpGate*>(e.get()) : nullptr)
                 if (g->GetDestination() == fromId)
                 {
                     Vector2 gp = g->GetPosition();
@@ -802,7 +814,7 @@ void Simulation::RecountAgg(SystemState& st)
 {
     int tr = 0, mi = 0, po = 0, pi = 0;
     for (auto& e : st.entities)
-        if (NpcShip* n = dynamic_cast<NpcShip*>(e.get()))
+        if (NpcShip* n = e->GetKind() == EntityKind::Npc ? static_cast<NpcShip*>(e.get()) : nullptr)
             switch (n->GetRole())
             {
                 case NpcRole::Trader: tr++; break;
@@ -824,9 +836,10 @@ Simulation::SpawnNodes Simulation::GatherNodes(const SystemState& st) const
     SpawnNodes nd;
     for (const auto& e : st.entities)
     {
-        if (dynamic_cast<Station*>(e.get()) != nullptr)
+        if (e->GetKind() == EntityKind::Station)
             nd.stations.push_back(e->GetPosition());
-        else if (JumpGate* g = dynamic_cast<JumpGate*>(e.get()))
+        else if (JumpGate* g =
+                     e->GetKind() == EntityKind::Gate ? static_cast<JumpGate*>(e.get()) : nullptr)
         {
             Vector2 p = g->GetPosition();
             nd.gates.push_back(p);
@@ -838,7 +851,7 @@ Simulation::SpawnNodes Simulation::GatherNodes(const SystemState& st) const
                     nd.dangerGates.push_back(p);  // border with low-sec — ambush spot
             }
         }
-        else if (dynamic_cast<AsteroidField*>(e.get()) != nullptr)
+        else if (e->GetKind() == EntityKind::Field)
         {
             Vector2 p = e->GetPosition();
             nd.fields.push_back(p);
@@ -931,7 +944,7 @@ void Simulation::TopUpSystem(SystemState& st, const Vector2* avoid)
     // Current population by role.
     int tr = 0, mi = 0, po = 0, pi = 0;
     for (auto& e : st.entities)
-        if (NpcShip* n = dynamic_cast<NpcShip*>(e.get()))
+        if (NpcShip* n = e->GetKind() == EntityKind::Npc ? static_cast<NpcShip*>(e.get()) : nullptr)
             switch (n->GetRole())
             {
                 case NpcRole::Trader: tr++; break;
@@ -1039,7 +1052,8 @@ void Simulation::HydrateSystem(SystemState& st)
     {
         owner = FactionId::TradersGuild;
         for (auto& e : st.entities)
-            if (Station* s = dynamic_cast<Station*>(e.get()))
+            if (Station* s =
+                    e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
                 if (Factions::IsLawful(s->GetFaction()))
                 {
                     owner = s->GetFaction();
@@ -1132,7 +1146,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const std::string& systemId) const
         es.size = e->GetSize();
         es.name = e->GetName();
 
-        if (NpcShip* n = dynamic_cast<NpcShip*>(e.get()))
+        if (NpcShip* n = e->GetKind() == EntityKind::Npc ? static_cast<NpcShip*>(e.get()) : nullptr)
         {
             es.kind = Proto::EntityKind::Npc;
             es.faction = n->GetFaction();
@@ -1140,7 +1154,8 @@ Proto::Snapshot Simulation::BuildSnapshot(const std::string& systemId) const
             es.heading = n->GetHeading();
             es.hullFrac = n->GetMaxHull() > 0.0f ? n->GetHull() / n->GetMaxHull() : 0.0f;
         }
-        else if (Station* s = dynamic_cast<Station*>(e.get()))
+        else if (Station* s =
+                     e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
         {
             es.kind = Proto::EntityKind::Station;
             es.faction = s->GetFaction();
@@ -1149,16 +1164,18 @@ Proto::Snapshot Simulation::BuildSnapshot(const std::string& systemId) const
             es.kind = Proto::EntityKind::Star;
         else if (dynamic_cast<Planet*>(e.get()) != nullptr)
             es.kind = Proto::EntityKind::Planet;
-        else if (dynamic_cast<JumpGate*>(e.get()) != nullptr)
+        else if (e->GetKind() == EntityKind::Gate)
             es.kind = Proto::EntityKind::Gate;
-        else if (AsteroidField* af = dynamic_cast<AsteroidField*>(e.get()))
+        else if (AsteroidField* af = e->GetKind() == EntityKind::Field
+                                         ? static_cast<AsteroidField*>(e.get())
+                                         : nullptr)
         {
             es.kind = Proto::EntityKind::Field;
             es.ore = (int)af->GetResource();
         }
-        else if (dynamic_cast<Nebula*>(e.get()) != nullptr)
+        else if (e->GetKind() == EntityKind::Nebula)
             es.kind = Proto::EntityKind::Nebula;
-        else if (dynamic_cast<Derelict*>(e.get()) != nullptr)
+        else if (e->GetKind() == EntityKind::Derelict)
             es.kind = Proto::EntityKind::Derelict;
 
         snap.entities.push_back(es);
@@ -1253,7 +1270,7 @@ Proto::SystemLayout Simulation::BuildLayout(const std::string& systemId) const
     for (const auto& e : it->second.entities)
     {
         // NPCs — dynamics (created by the client from the snapshot), not in the static layout.
-        if (dynamic_cast<NpcShip*>(e.get()) != nullptr)
+        if (e->GetKind() == EntityKind::Npc)
             continue;
 
         Proto::EntityLayout el;
@@ -1275,27 +1292,33 @@ Proto::SystemLayout Simulation::BuildLayout(const std::string& systemId) const
             el.orbitRadius = p->GetOrbitRadius();
             el.resource = (int)p->GetDeposit();
         }
-        else if (Station* st = dynamic_cast<Station*>(e.get()))
+        else if (Station* st =
+                     e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
         {
             el.kind = Proto::EntityKind::Station;
             el.faction = st->GetFaction();
             el.subType = (int)st->GetRole();
         }
-        else if (AsteroidField* af = dynamic_cast<AsteroidField*>(e.get()))
+        else if (AsteroidField* af = e->GetKind() == EntityKind::Field
+                                         ? static_cast<AsteroidField*>(e.get())
+                                         : nullptr)
         {
             el.kind = Proto::EntityKind::Field;
             el.resource = (int)af->GetResource();
         }
-        else if (JumpGate* g = dynamic_cast<JumpGate*>(e.get()))
+        else if (JumpGate* g =
+                     e->GetKind() == EntityKind::Gate ? static_cast<JumpGate*>(e.get()) : nullptr)
         {
             el.kind = Proto::EntityKind::Gate;
             el.dest = g->GetDestination();
         }
-        else if (dynamic_cast<Nebula*>(e.get()) != nullptr)
+        else if (e->GetKind() == EntityKind::Nebula)
         {
             el.kind = Proto::EntityKind::Nebula;
         }
-        else if (Derelict* dr = dynamic_cast<Derelict*>(e.get()))
+        else if (Derelict* dr = e->GetKind() == EntityKind::Derelict
+                                    ? static_cast<Derelict*>(e.get())
+                                    : nullptr)
         {
             el.kind = Proto::EntityKind::Derelict;
             el.reward = dr->GetReward();
@@ -1576,7 +1599,8 @@ void Simulation::StepPlayerOrder(SystemState& st, float dt)
         JumpGate* gate = nullptr;
         for (auto& e : st.entities)
         {
-            JumpGate* g = dynamic_cast<JumpGate*>(e.get());
+            JumpGate* g =
+                e->GetKind() == EntityKind::Gate ? static_cast<JumpGate*>(e.get()) : nullptr;
             if (g != nullptr && g->GetDestination() == nextHop)
             {
                 gate = g;

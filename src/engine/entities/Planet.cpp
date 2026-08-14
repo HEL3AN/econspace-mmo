@@ -44,7 +44,8 @@ static const char* PlanetSprite(PlanetType type)
 
 Planet::Planet(float orbitRadius, float orbitSpeed, float angle, float size, Color color,
                ResourceType deposit, PlanetType type)
-    : Entity({ cosf(angle) * orbitRadius, sinf(angle) * orbitRadius }, size, color),
+    : Entity({ cosf(angle) * orbitRadius, sinf(angle) * orbitRadius }, size, color,
+             EntityKind::Planet),
       orbitRadius_(orbitRadius), orbitSpeed_(orbitSpeed), angle_(angle), deposit_(deposit),
       type_(type)
 {

@@ -3,7 +3,7 @@
 #include <cmath>
 
 Nebula::Nebula(Vector2 pos, float radius, std::string name)
-    : Entity(pos, radius, Color{ 150, 90, 200, 255 }), name_(std::move(name))
+    : Entity(pos, radius, Color{ 150, 90, 200, 255 }, EntityKind::Nebula), name_(std::move(name))
 {
 }
 

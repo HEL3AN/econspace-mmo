@@ -3,7 +3,7 @@
 #include <cmath>
 
 NpcShip::NpcShip(Vector2 pos, FactionId faction, NpcRole role, std::vector<Vector2> waypoints)
-    : Entity(pos, 10.0f, FactionColor(faction)), faction_(faction), role_(role),
+    : Entity(pos, 10.0f, FactionColor(faction), EntityKind::Npc), faction_(faction), role_(role),
       waypoints_(std::move(waypoints)), target_(pos), speed_((float)GetRandomValue(120, 180)),
       heading_(0.0f), waitTimer_(0.0f)
 {

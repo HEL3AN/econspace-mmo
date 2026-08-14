@@ -41,6 +41,7 @@ const char* KindName(Proto::EntityKind k)
         case Proto::EntityKind::Nebula: return "nebula";
         case Proto::EntityKind::Derelict: return "derelict";
         case Proto::EntityKind::Npc: return "ship";
+        case Proto::EntityKind::PlayerShip: return "your ship";
         case Proto::EntityKind::Unknown: break;
     }
     return "object";
