@@ -149,6 +149,8 @@ endif()
 add_executable(econspace
     src/game/main.cpp
     src/game/core/Game.cpp
+    src/game/core/GameNet.cpp
+    src/game/core/GameHud.cpp
     src/game/sim/PlayerStep.cpp
     src/game/entities/Ship.cpp       # the predicted player ship + NPC proxies
     src/game/entities/ShipType.cpp   # hangar catalog
