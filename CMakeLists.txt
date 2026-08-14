@@ -241,11 +241,23 @@ add_executable(tests
     tests/net_tests.cpp
     tests/observation_tests.cpp
     tests/economy_tests.cpp
+    tests/simulation_tests.cpp
     src/game/sim/Observation.cpp   # shared with econagent (#42)
-    src/game/economy/Market.cpp    # game rules under test, not just the wire (#10)
+    # The simulation itself is under test now, not only the wire (#10). That pulls in its
+    # dependency tree -- ships, NPCs, the mission system -- which is the price of testing
+    # the rules where they actually live rather than through a socket.
+    src/game/sim/Simulation.cpp
+    src/game/sim/PlayerStep.cpp
+    src/game/sim/Orders.cpp
+    src/game/economy/Market.cpp
+    src/game/entities/Ship.cpp
+    src/game/entities/ShipType.cpp
+    src/game/entities/NpcShip.cpp
+    src/game/missions/MissionSystem.cpp
     src/game/player/Player.cpp
     src/game/player/Skills.cpp
 )
+target_compile_definitions(tests PRIVATE TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/data/")
 target_link_libraries(tests PRIVATE engine netproto doctest::doctest)
 set_target_properties(tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/tests)
