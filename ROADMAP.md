@@ -35,20 +35,25 @@ The "Done" section below is what exists. Everything under the tracks is **planne
 
 ## Tracks
 
-Three epics carry the work from here. They are largely independent and can advance in parallel; the milestones below say how they interleave. Nothing in this section is implemented yet.
+Three epics carry the work from here. They are largely independent and can advance in parallel; the milestones below say how they interleave. Track A has shipped its first milestone; the other two are still ahead.
 
 ### Track A — Agent API (#42)
 
-Make an AI agent a first-class player: the game speaks to a model the same way it speaks to a human, over the same protocol.
+Make an AI agent a first-class player: the game speaks to a model the same way it speaks to a human, over the same protocol. **An agent can now play** — the first milestone of this track is done.
 
-- **Standing orders on the server** — durable, high-level orders (mine here, haul there, defend that gate) that the server executes over seconds, while the tactical loop keeps running at 60 Hz. Nobody should have to stream thrust bits to play.
-- **A compact text projection of world state** — what a model actually reads: the current system, nearby objects, the ship, the account, order progress.
-- **`econagent`, the MCP server** — a separate process that is an MCP server on stdio for the model and an ordinary TCP game client to `econserver`. Written in C++ and linked against the existing protocol code so the wire format stays a single source of truth.
-- **Event journal + blocking wait** — an agent sleeps until something happens instead of polling.
-- **Multi-jump route planning** — orders that cross systems, not just one.
-- **MCP resources and prompts** — the world as readable resources, plus prompts for common play patterns.
-- **Fleet command** — one operator directing several agent-piloted ships. The human stops being a pilot and becomes a commander.
-- **A scripted agent for tests** — a deterministic non-LLM driver so the agent seam is testable in CI.
+Built:
+
+- **Standing orders on the server** — durable, high-level orders the server executes over seconds while the tactical loop keeps running at 60 Hz. Nobody has to stream thrust bits to play. An order decides what the tick's command should be and drives it through the same step a human client drives, so an ordered ship behaves exactly like a flown one.
+- **A compact text projection of world state** — what a model reads instead of a snapshot: the system, the ship, what is nearby, hostiles first, and what just happened.
+- **Multi-jump route planning** — "fly to Verge" is one order, however many gates that takes, and it can weigh a safer path against a shorter one.
+- **An event journal** — sequenced and typed, so an agent can ask for everything since the last thing it saw and sleep until something happens rather than polling.
+- **`econagent`, the MCP server** — an MCP server on stdio for the model and an ordinary TCP game client to `econserver`, with nine tools, two resources and four ready-made plans. Written in C++ and linked against the existing protocol code, so the wire format has one implementation and cannot drift.
+- **A scripted agent** — the same tools driven by a fixed sequence, run in CI against a real server. No model, no key, no cost, and it still proves the part that can break.
+
+Still ahead:
+
+- **Fleet command** — one operator directing several agent-piloted ships. The human stops being a pilot and becomes a commander. Waits on multi-client (#3).
+- **Combat orders** — engage and disengage, which want the hostility predicates the server already computes.
 
 ### Track D — Data-driven world and ASCII presentation (#43)
 
@@ -69,7 +74,7 @@ Make an AI agent a first-class player: the game speaks to a model the same way i
 Tracked on the [milestones page](../../milestones); the sequence below is the plan.
 
 1. **Ground truth** — **done.** The single-player path is gone and the client is purely a renderer plus an input source (#23); the server outlives client sessions and persists the galaxy (#13, #48); the wire layer is one library rather than three copies (#25); the docs describe the project that exists (#24, #21). Along the way it turned up a use-after-free on system change (#46), an F9 that corrupted a connected session (#47), and a simulation clock that had never advanced (#57). CI now enforces formatting and a warning-clean build, and runs CodeQL (#22, #53, #63).
-2. **Agent MVP** — standing orders, the text projection, and `econagent` far enough that an agent plays end to end without a human at the controls.
+2. **Agent MVP** — **done.** An agent observes the world, gives an order, sleeps until it completes and acts on the result, entirely through MCP: standing orders (#26), the text projection (#27), the event journal (#29), route planning (#30), `econagent` itself (#28, #31) and a scripted run in CI (#33). The protocol gained a version and a handshake check along the way (#15), which is what makes an external bridge in any language possible later.
 3. **Glyph world** — the presentation layer lands and glyphs become the default look.
 4. **Multiplayer core** — multi-client (#3): per-connection sessions with their own ship and account, plus interest management so players in a system see each other. This is **foundational, not optional** — it is what makes the rest an MMO rather than a simulator with one seat.
 5. **Constructible galaxy** — world mutation, `LayoutDelta`, construction, and structures with real macro effects.
