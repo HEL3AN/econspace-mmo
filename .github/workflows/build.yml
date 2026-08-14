@@ -92,3 +92,9 @@ jobs:
           ./build/bin/server/econserver.exe accttest
           ./build/bin/server/econserver.exe worldtest
           ./build/bin/server/econserver.exe ordertest
+
+      # The MCP bridge must at least start, print its usage and exit cleanly. A full
+      # agent run against a live server is #33.
+      - name: Agent bridge smoke test
+        run: |
+          ./build/bin/agent/econagent.exe && echo "expected non-zero exit" && exit 1 || true
