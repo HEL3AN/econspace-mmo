@@ -35,8 +35,12 @@ ctest --test-dir build --output-on-failure
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800
 ./build/bin/editor/worldeditor.exe
 
+./build/bin/agent/econagent.exe connect 127.0.0.1 50800   # MCP server for an AI agent
+
 ./build/bin/server/econserver.exe hosttest          # server loop smoke test
 ./build/bin/server/econserver.exe accttest          # account persistence smoke test
+./build/bin/server/econserver.exe worldtest         # galaxy persistence + clock
+./build/bin/server/econserver.exe ordertest         # standing orders, routes, journal
 ```
 
 Windows/MinGW only for now — the transport is winsock and `ws2_32` is linked
@@ -45,9 +49,10 @@ you overwrite it.
 
 ## Structure and rules
 
-Three CMake targets: **`engine`** (static library — world, entities, factions, UI,
-render), **`game`** (the client, the authoritative `Simulation`, and `econserver`), and
-**`editor`**. `game` and `editor` link `engine`; **`engine` must never depend on either.**
+CMake targets: **`engine`** (static library — world, entities, factions, UI, render),
+**`netproto`** (the wire protocol and transport, compiled once and linked by everything
+that speaks it), the client **`econspace`**, the server **`econserver`**, the MCP bridge
+**`econagent`**, and **`worldeditor`**. **`engine` must never depend on any of them.**
 
 - Authority lives in `Simulation` (`src/game/sim/`), on a fixed `1/60` tick. The client
   never mutates authoritative state.
@@ -66,12 +71,13 @@ render), **`game`** (the client, the authoritative `Simulation`, and `econserver
   unacknowledged inputs. Changing it changes both sides at once, which is the point:
   prediction breaks the moment they compute different results from the same input. The
   client does not link `Simulation` at all.
-- **`Protocol.cpp` and `Tcp.cpp` are compiled three times over** — listed as sources in
-  `econspace`, `econserver` and `tests` separately. Being extracted into a `netproto`
-  library (#25); until then, a change to those source lists means editing three places.
-- **The protocol has no version field**, despite the docs calling it "versioned JSON".
-  Every `Decode*` uses `value(key, default)`, so a mismatch silently yields defaults
-  rather than an error (#15).
+- **`econagent` owns stdout.** It is the JSON-RPC channel; one stray `printf` or raylib
+  trace on it corrupts the stream and the client reports a parse error rather than the
+  line that caused it. All diagnostics go to stderr, and raylib's logger is redirected
+  there explicitly — this bit on the first end-to-end run.
+- **Bump `PROTO_VERSION` when a message changes meaning.** Decoding is deliberately
+  permissive per field, so without a version bump an older peer silently reads defaults
+  instead of failing.
 - **`SystemLayout` is sent once**, when a client enters a system. Anything that changes
   the static world mid-session is invisible until re-entry (#38).
 - **Comments referencing "M4f", "L2", "M0"** are historical milestone markers from the
