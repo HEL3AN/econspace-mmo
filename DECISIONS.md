@@ -8,6 +8,77 @@ Newest first. Each entry states the decision, why it was made, and what it costs
 
 ---
 
+## 2026-08-14 — An order decides the command; it never moves the ship
+
+**Decision.** The standing-order layer (#26) does not touch the ship. It decides what this
+tick's `Proto::Command` should be and drives that through `Sim::StepPlayerShip` — the same
+function a human client's command goes through.
+
+**Why.** The obvious implementation is for an order to set velocity and heading directly.
+That would give two implementations of "how a ship moves", and the moment they disagree,
+client prediction breaks for an ordered ship — the client predicts with one and the server
+runs the other. Routing orders through the shared step means an ordered ship and a flown
+ship are the same ship.
+
+**Cost.** Orders are slightly more roundabout to write: an approach is a nav order plus
+ticks, not a straight line. That is the correct trade.
+
+**Consequence.** Orders execute on the server's world tick rather than in the input path.
+An agent issues one order and then sends nothing; driven from the input path, the ship
+would simply sit there.
+
+---
+
+## 2026-08-14 — An order gives up while there is still a ship to give up with
+
+**Decision.** A running order fails and stops the ship below a quarter hull, reporting why.
+
+**Why.** An agent may be thirty seconds from its next decision, or may have crashed. An
+order that keeps flying a dying ship into whatever is killing it turns agent play into a
+lottery — the outcome depends on model latency rather than on the plan. This is part of
+the design, not a safety extra bolted on.
+
+**Cost.** An order can end for a reason the agent did not ask about, so every agent has to
+read outcomes rather than assume success. That is true of real orders too.
+
+---
+
+## 2026-08-14 — The agent sees exactly what a player sees
+
+**Decision.** The text projection (#27) is built from the snapshot, the layout and the
+local galaxy index — the same three inputs the renderer uses. Every MCP tool maps to a
+`Proto::Command` or a standing order that the server validates.
+
+**Why.** The alternative — letting the bridge read `Simulation` directly — is easier and
+would make the agent a cheat channel rather than a player. "AI agents are first-class
+players" only means something if an agent is bound by what a player is bound by.
+
+**Cost.** Some things an agent would find useful are not visible: which asteroid field the
+server thinks is being mined, for instance, is not in the snapshot. Adding them means
+adding them for every client, which is the right pressure.
+
+---
+
+## 2026-08-14 — Version the wire before the bridge exists
+
+**Decision.** `PROTO_VERSION` and a rejecting envelope check (#15) landed before
+`econagent`, not after.
+
+**Why.** Every `Decode*` reads fields with `value(key, default)`, so without an envelope
+check a mismatched peer decodes *successfully* into defaults. The failure then surfaces
+much later as a ship that will not move or an account reading zero, with nothing pointing
+at the cause. A bridge is exactly the kind of separately-built component that goes stale.
+
+**Proof it was worth it.** Two versions were consumed within a day: the event journal (#29)
+changed `Snapshot`, and order fields on the wire (#72) changed `Command`. Both would have
+been silent breakages.
+
+**Also.** It is what makes an external bridge in another language possible later without
+reintroducing a second source of truth for the format — such a bridge can now detect a
+mismatch instead of guessing.
+
+---
+
 ## 2026-08-13 — EconSpace is an MMO; single-player is not a mode
 
 **Decision.** The client always connects to an authoritative server. There is no offline
