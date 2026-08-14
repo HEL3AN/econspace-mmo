@@ -12,7 +12,10 @@ enum class SkillType
 class Skills
 {
 public:
-    static const int MAX_LEVEL = 10;
+    // constexpr, not const: a static const int declared in a header has no definition, so
+    // binding it to a reference (as a test assertion does) fails at link time. In C++17
+    // constexpr static members are implicitly inline, which supplies one.
+    static constexpr int MAX_LEVEL = 10;
 
     void  AddXp(SkillType skill, float amount);
     int   GetXp(SkillType skill) const;

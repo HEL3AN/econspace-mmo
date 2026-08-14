@@ -238,7 +238,11 @@ add_executable(tests
     tests/protocol_tests.cpp
     tests/net_tests.cpp
     tests/observation_tests.cpp
-    src/game/sim/Observation.cpp   # shared with econagent (#42); tests are its only build today
+    tests/economy_tests.cpp
+    src/game/sim/Observation.cpp   # shared with econagent (#42)
+    src/game/economy/Market.cpp    # game rules under test, not just the wire (#10)
+    src/game/player/Player.cpp
+    src/game/player/Skills.cpp
 )
 target_link_libraries(tests PRIVATE engine netproto doctest::doctest)
 set_target_properties(tests PROPERTIES
