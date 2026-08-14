@@ -503,9 +503,9 @@ void Game::BuildClientSnapshot()
             Proto::Snapshot s;
             if (!Proto::DecodeSnapshot(msg, s))
                 continue;
-            ApplyTradeAcks(s);                       // credit sales revenue (client account)
-            for (const std::string& m : s.messages)  // server notifications (M4f-4)
-                FlashMessage(m);
+            ApplyTradeAcks(s);                   // credit sales revenue (client account)
+            for (const Ev::Event& e : s.events)  // server journal (#29)
+                FlashMessage(e.text);
             incoming = std::move(s);
             gotSnap = true;
         }

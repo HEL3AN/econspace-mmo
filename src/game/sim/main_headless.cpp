@@ -266,6 +266,7 @@ static int RunHost(unsigned short port)
     std::string                         activeId = sim.ActiveId();
 
     int         lastSeq = 0;         // last processed input number (ack to the client)
+    int         lastEventSeq = 0;    // last journal entry delivered to this session
     bool        wasDocked = false;   // for account checkpoints when entering/leaving a station
     double      worldSaveAcc = 0.0;  // world checkpoint timer
     const float dt = 1.0f / 60.0f;
@@ -292,6 +293,7 @@ static int RunHost(unsigned short port)
             if (conn)
             {
                 lastSeq = 0;
+                lastEventSeq = sim.LastEventSeq();  // a new session starts from now
                 wasDocked = sim.IsPlayerDocked();
                 activeId = sim.ActiveId();
                 conn->Send(Proto::EncodeLayout(sim.BuildLayout(activeId)));
@@ -335,13 +337,11 @@ static int RunHost(unsigned short port)
             snap.player.lastInput = lastSeq;  // ack for client reconciliation
             snap.tradeAcks = std::move(acks);
             snap.fires = std::move(fires);
-            snap.messages = sim.DrainMessages();  // server notifications (docking denied, etc.)
+            // Everything the player has not seen yet; the client acknowledges by seq.
+            snap.events = sim.EventsSince(lastEventSeq);
+            if (!snap.events.empty())
+                lastEventSeq = snap.events.back().seq;
             conn->Send(Proto::EncodeSnapshot(snap));
-        }
-        else
-        {
-            // Nobody to deliver them to; drop them rather than let the queue grow.
-            sim.DrainMessages();
         }
 
         // Galaxy snapshot -- rarely (once a second): the statistics change slowly and the
@@ -606,14 +606,27 @@ static int OrderSelftest()
     sim.StepPlayerOrder(sim.Active(), dt);
     bool routeRejected = sim.OrderStatus() == Orders::Status::Failed;
 
+    // 6) The journal: every order outcome must leave an entry an agent can wait on, and
+    // "since seq" must not lose one.
+    int before = sim.LastEventSeq();
+    sim.GiveOrder(move);
+    sim.AbortOrder("manual control");
+    std::vector<Ev::Event> fresh = sim.EventsSince(before);
+    bool                   journalled =
+        fresh.size() == 1 && fresh[0].kind == Ev::Kind::OrderFailed && fresh[0].seq > before;
+    // Asking again from the new high-water mark must return nothing.
+    bool journalCursor = sim.EventsSince(sim.LastEventSeq()).empty();
+    // And asking from zero must still return the whole history.
+    bool journalHistory = sim.EventsSince(0).size() >= fresh.size();
+
     bool ok = idOk && arrived && rejected && aborted && selfRoute && allReachable && noRoute &&
-              safeRouteOk && routeRejected;
+              safeRouteOk && routeRejected && journalled && journalCursor && journalHistory;
     printf("Order selftest: id %s, move %s, bad-target %s, abort %s, route-self %s, "
-           "route-all %s, route-none %s, route-safe %s, route-reject %s => %s\n",
+           "route-all %s, route-none %s, route-safe %s, route-reject %s, journal %s => %s\n",
            idOk ? "OK" : "FAIL", arrived ? "OK" : "FAIL", rejected ? "OK" : "FAIL",
            aborted ? "OK" : "FAIL", selfRoute ? "OK" : "FAIL", allReachable ? "OK" : "FAIL",
            noRoute ? "OK" : "FAIL", safeRouteOk ? "OK" : "FAIL", routeRejected ? "OK" : "FAIL",
-           ok ? "PASS" : "FAIL");
+           (journalled && journalCursor && journalHistory) ? "OK" : "FAIL", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
 

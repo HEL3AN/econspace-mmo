@@ -199,7 +199,10 @@ std::string EncodeSnapshot(const Snapshot& s)
                           { "mine", f.fromPlayer } });
     j["fires"] = fires;
 
-    j["msgs"] = s.messages;
+    json evs = json::array();
+    for (const Ev::Event& e : s.events)
+        evs.push_back({ { "seq", e.seq }, { "kind", (int)e.kind }, { "text", e.text } });
+    j["events"] = evs;
     j["market"] = s.marketPrices;
 
     json acks = json::array();
@@ -292,10 +295,16 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
             out.fires.push_back(f);
         }
 
-    out.messages.clear();
-    if (j.contains("msgs") && j["msgs"].is_array())
-        for (const json& mj : j["msgs"])
-            out.messages.push_back(mj.get<std::string>());
+    out.events.clear();
+    if (j.contains("events") && j["events"].is_array())
+        for (const json& ej : j["events"])
+        {
+            Ev::Event e;
+            e.seq = ej.value("seq", 0);
+            e.kind = (Ev::Kind)ej.value("kind", 0);
+            e.text = ej.value("text", std::string());
+            out.events.push_back(std::move(e));
+        }
 
     out.marketPrices = j.value("market", std::vector<float>{});
 

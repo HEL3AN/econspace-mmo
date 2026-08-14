@@ -234,6 +234,7 @@ void Simulation::ServerRespawnPlayer()
 {
     if (!player_)
         return;
+    RecordEvent(Ev::Kind::ShipDestroyed, "Ship destroyed; respawned with cargo lost");
     for (auto& e : Active().entities)
         if (Station* st = dynamic_cast<Station*>(e.get()))
         {
@@ -619,12 +620,13 @@ int Simulation::StepPlayerDock(SystemState& st)
             FactionId sf = station->GetFaction();
             if (Factions::TierOf(account_.GetReputation(sf)) == RepTier::Hated)
             {
-                outMessages_.push_back("Docking denied: hostile reputation");
+                RecordEvent(Ev::Kind::Notice, "Docking denied: hostile reputation");
                 return 0;
             }
             player_->DisengageAutopilot();
             player_->Stop();
             playerDockedStationId_ = station->GetId();
+            RecordEvent(Ev::Kind::Docked, "Docked at " + station->GetName());
             GenerateDockOffers();  // fresh station mission board (M4f-2)
             return playerDockedStationId_;
         }
@@ -1501,6 +1503,7 @@ void Simulation::AbortOrder(const std::string& why)
         return;
     orderStatus_ = Orders::Status::Failed;
     orderDetail_ = why;
+    RecordEvent(Ev::Kind::OrderFailed, std::string(Orders::KindName(order_.kind)) + ": " + why);
     if (player_)
     {
         player_->DisengageAutopilot();
@@ -1523,6 +1526,10 @@ void Simulation::StepPlayerOrder(SystemState& st, float dt)
             player_->DisengageAutopilot();
             player_->SetMiningOn(false);
         }
+        // The journal entry is the point: it is what an agent sleeps on rather than
+        // polling the world to find out whether its order is done.
+        RecordEvent(s == Orders::Status::Done ? Ev::Kind::OrderDone : Ev::Kind::OrderFailed,
+                    std::string(Orders::KindName(order_.kind)) + ": " + detail);
     };
 
     // Give up while there is still a ship to give up with. An agent may be thirty seconds
@@ -1604,6 +1611,7 @@ void Simulation::StepPlayerOrder(SystemState& st, float dt)
             return;  // still closing the last few units
         }
         ServerEnterSystem(dest, activeId_);
+        RecordEvent(Ev::Kind::Jumped, "Jumped to " + dest);
         orderNavIssued_ = false;
         return;
     }
@@ -1786,4 +1794,31 @@ std::vector<std::string> Simulation::PlanRoute(const std::string& from, const st
     }
     std::reverse(path.begin(), path.end());
     return path;
+}
+
+// --- Event journal (#29) -----------------------------------------------------
+
+void Simulation::RecordEvent(Ev::Kind kind, const std::string& text)
+{
+    // Keep the last stretch of history only. An agent that has fallen further behind
+    // than this has lost its place regardless and needs a fresh observation, so holding
+    // older entries would cost memory to serve nobody.
+    constexpr size_t JOURNAL_CAP = 256;
+
+    Ev::Event e;
+    e.seq = ++nextEventSeq_;
+    e.kind = kind;
+    e.text = text;
+    journal_.push_back(std::move(e));
+    if (journal_.size() > JOURNAL_CAP)
+        journal_.erase(journal_.begin(), journal_.begin() + (journal_.size() - JOURNAL_CAP));
+}
+
+std::vector<Ev::Event> Simulation::EventsSince(int seq) const
+{
+    std::vector<Ev::Event> out;
+    for (const Ev::Event& e : journal_)
+        if (e.seq > seq)
+            out.push_back(e);
+    return out;
 }
