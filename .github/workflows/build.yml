@@ -93,8 +93,17 @@ jobs:
           ./build/bin/server/econserver.exe worldtest
           ./build/bin/server/econserver.exe ordertest
 
-      # The MCP bridge must at least start, print its usage and exit cleanly. A full
-      # agent run against a live server is #33.
-      - name: Agent bridge smoke test
+      # The agent seam, end to end, against a real server. Deliberately scripted rather
+      # than model-driven: a real model would cost money, need a key and answer
+      # differently every run, while this proves the part that can actually break --
+      # the bridge, the orders, the journal and the round trip.
+      - name: Agent selftest against a live server
         run: |
-          ./build/bin/agent/econagent.exe && echo "expected non-zero exit" && exit 1 || true
+          ./build/bin/agent/econagent.exe || true   # usage, non-zero exit
+          ./build/bin/server/econserver.exe host 50800 &
+          server_pid=$!
+          sleep 5
+          ./build/bin/agent/econagent.exe selftest 127.0.0.1 50800
+          status=$?
+          kill $server_pid 2>/dev/null || true
+          exit $status

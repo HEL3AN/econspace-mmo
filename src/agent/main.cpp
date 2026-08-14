@@ -274,6 +274,79 @@ std::vector<Tool> BuildTools()
 
 }  // namespace
 
+namespace
+{
+
+std::string RunTool(const std::vector<Tool>& tools, const std::string& name, const Rpc::Json& args)
+{
+    for (const Tool& t : tools)
+        if (name == t.name)
+            return t.run(args);
+    return "no such tool: " + name;
+}
+
+// Scripted agent: the same tools an LLM calls, driven by a fixed sequence.
+//
+// This is what keeps the agent seam honest in CI. Testing it with a real model would cost
+// money, need a key and give a different answer every run; testing it with the tools
+// called directly proves the part that can actually break -- the bridge, the orders, the
+// journal and the round trip through the server.
+// Run: econagent selftest <host> [port]   (a server must already be listening)
+int Selftest(const std::vector<Tool>& tools)
+{
+    auto note = [](const char* what, bool ok)
+    { std::fprintf(stderr, "  %-22s %s\n", what, ok ? "OK" : "FAIL"); };
+
+    // 1) The world is visible at all.
+    std::string world = RunTool(tools, "observe", Rpc::Json::object());
+    bool        observed =
+        world.find("SHIP") != std::string::npos && world.find("SYSTEM") != std::string::npos;
+    note("observe", observed);
+
+    // 2) Find something to fly to. Whatever station the report lists first will do; the
+    // point is that ids from observe are the ids orders accept.
+    int    stationId = 0;
+    size_t at = world.find(" station ");
+    if (at != std::string::npos)
+    {
+        size_t hash = world.rfind('#', at);
+        if (hash != std::string::npos)
+            stationId = std::atoi(world.c_str() + hash + 1);
+    }
+    note("station id from observe", stationId != 0);
+
+    // 3) Give an order and let the server fly it.
+    bool ordered = false, arrived = false;
+    if (stationId != 0)
+    {
+        std::string reply = RunTool(
+            tools, "move_to",
+            Rpc::Json{ { "target_id", stationId }, { "warp", true }, { "stop_distance", 400 } });
+        ordered = reply.find("accepted") != std::string::npos;
+        note("move_to accepted", ordered);
+
+        if (ordered)
+        {
+            std::string ev =
+                RunTool(tools, "wait_for_event", Rpc::Json{ { "timeout_seconds", 120 } });
+            arrived = ev.find("order_done") != std::string::npos;
+            note("order completed", arrived);
+        }
+    }
+
+    // 4) An order naming something absent must be refused, not silently swallowed.
+    std::string bogus = RunTool(tools, "dock", Rpc::Json{ { "station_id", 999999 } });
+    bool        refused = bogus.find("refused") != std::string::npos ||
+                          bogus.find("not in this system") != std::string::npos;
+    note("bad target refused", refused);
+
+    const bool ok = observed && stationId != 0 && ordered && arrived && refused;
+    std::fprintf(stderr, "Agent selftest: %s\n", ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
+}  // namespace
+
 int main(int argc, char** argv)
 {
     // stdout is the JSON-RPC channel and nothing else may touch it; diagnostics go to
@@ -281,14 +354,16 @@ int main(int argc, char** argv)
     setvbuf(stdout, nullptr, _IONBF, 0);
     SetTraceLogCallback(TraceToStderr);
 
-    if (argc < 3 || std::strcmp(argv[1], "connect") != 0)
+    const bool selftest = argc >= 3 && std::strcmp(argv[1], "selftest") == 0;
+    if (!selftest && (argc < 3 || std::strcmp(argv[1], "connect") != 0))
     {
         std::fprintf(stderr,
                      "econagent — EconSpace as an MCP server.\n"
-                     "  %s connect <host> [port]     port defaults to 50800\n"
+                     "  %s connect <host> [port]      serve MCP on stdio\n"
+                     "  %s selftest <host> [port]     scripted run, no model needed\n"
                      "\n"
                      "Start a server first:  econserver host 50800\n",
-                     argv[0]);
+                     argv[0], argv[0]);
         return 2;
     }
 
@@ -313,7 +388,10 @@ int main(int argc, char** argv)
     g_session.WaitUntil([] { return g_session.HasSnapshot(); }, 5.0);
 
     const std::vector<Tool> tools = BuildTools();
-    Rpc::Server             rpc;
+    if (selftest)
+        return Selftest(tools);
+
+    Rpc::Server rpc;
 
     rpc.On("initialize",
            [](const Rpc::Json&)
