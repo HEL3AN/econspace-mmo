@@ -93,6 +93,80 @@ Proto::Command OrderCommand(Orders::Kind kind)
     return c;
 }
 
+// The galaxy as a table: where the systems are relative to each other, how dangerous each
+// one is and who holds it. An agent planning a trade run needs this and it does not change
+// minute to minute, which is exactly what makes it a resource rather than a tool.
+std::string DescribeGalaxy()
+{
+    std::string out = "GALAXY\n";
+    for (const WorldLoader::SystemInfo& si : g_universe.systems)
+    {
+        std::string line = "  " + si.id + "  " + si.name;
+        for (const Proto::GalaxySystemStat& g : g_session.Galaxy().systems)
+            if (g.id == si.id)
+            {
+                char buf[160];
+                std::snprintf(buf, sizeof(buf),
+                              "   security %.2f  pirates %d  prosperity %.0f%%  held by %s",
+                              g.security, g.pirates, g.prosperity * 100.0f,
+                              FactionName(g.controller).c_str());
+                line += buf;
+                break;
+            }
+        if (si.id == g_session.Snapshot().systemId)
+            line += "   <- you are here";
+        out += line + "\n";
+    }
+
+    out += "GATES\n";
+    for (const WorldLoader::SystemLink& l : g_universe.links)
+        out += "  " + l.a + " <-> " + l.b + "\n";
+
+    if (!g_session.Galaxy().events.empty())
+    {
+        out += "NEWS\n";
+        for (const std::string& e : g_session.Galaxy().events)
+            out += "  " + e + "\n";
+    }
+    return out;
+}
+
+// Ready-made plans, offered by the client for a user to pick.
+struct Prompt
+{
+    const char* name;
+    const char* description;
+    const char* text;
+};
+
+const std::vector<Prompt>& Prompts()
+{
+    static const std::vector<Prompt> prompts = {
+        { "mining_run", "Fill the hold from an asteroid field and sell it at a station",
+          "Run a mining trip. Start with observe. Find an asteroid field and mine it with "
+          "until_full set, then wait_for_event until that order finishes. Then dock at a "
+          "station and sell what you mined. If something turns hostile while you are "
+          "mining, break off and dock instead — the ore is not worth the ship." },
+        { "trade_run", "Find a price difference between two systems and work it",
+          "Look for a profitable trade. Read the galaxy resource to see which systems "
+          "exist and how dangerous they are. Dock somewhere, note the market prices, then "
+          "travel_to_system to a neighbour and compare. Buy where a resource is cheap and "
+          "sell where it is dear. Prefer avoid_danger on the route when the hold is full — "
+          "cargo lost is worse than time lost." },
+        { "scout", "Visit each system and report what is there",
+          "Scout the galaxy. For every system in the galaxy resource, travel_to_system to "
+          "it, observe, and note the stations, asteroid fields and how much traffic and "
+          "hostility you see. Report a short summary per system at the end. Do not pick "
+          "fights; if a system looks dangerous, say so and move on." },
+        { "patrol", "Hold a system and deal with hostiles you can handle",
+          "Patrol the system you are in. Observe regularly. If hostiles appear, judge "
+          "whether you can take them from their hull and numbers, and disengage if not — "
+          "an order gives up below a quarter hull, but do not rely on that as a plan. "
+          "Dock to repair when you are hurt." },
+    };
+    return prompts;
+}
+
 // --- Tool registry ----------------------------------------------------------
 // Each entry is a name, a description a model reads to choose between them, a JSON Schema
 // for the arguments, and the implementation.
@@ -397,9 +471,90 @@ int main(int argc, char** argv)
            [](const Rpc::Json&)
            {
                return Rpc::Json{ { "protocolVersion", "2024-11-05" },
-                                 { "capabilities", { { "tools", Rpc::Json::object() } } },
+                                 { "capabilities",
+                                   { { "tools", Rpc::Json::object() },
+                                     { "resources", Rpc::Json::object() },
+                                     { "prompts", Rpc::Json::object() } } },
                                  { "serverInfo",
                                    { { "name", "econspace" }, { "version", "0.1.0" } } } };
+           });
+
+    // --- Resources ----------------------------------------------------------
+    // Pull-based, unlike tools: a long briefing costs tokens only when the agent decides
+    // it needs one. The system map is the same projection observe returns, which is the
+    // point -- there is one description of the world, not one per consumer.
+    rpc.On(
+        "resources/list",
+        [](const Rpc::Json&)
+        {
+            return Rpc::Json{
+                { "resources",
+                  Rpc::Json::array({ Rpc::Json{ { "uri", "econspace://system" },
+                                                { "name", "Current system" },
+                                                { "description",
+                                                  "Everything visible where the ship is, in full" },
+                                                { "mimeType", "text/plain" } },
+                                     Rpc::Json{ { "uri", "econspace://galaxy" },
+                                                { "name", "Galaxy" },
+                                                { "description",
+                                                  "Every system, its security, controller and gate "
+                                                  "links, plus recent galactic news" },
+                                                { "mimeType", "text/plain" } } }) }
+            };
+        });
+
+    rpc.On("resources/read",
+           [](const Rpc::Json& params)
+           {
+               const std::string uri = params.value("uri", std::string());
+               std::string       text;
+               if (uri == "econspace://system")
+               {
+                   RequireLive();
+                   text = g_session.Describe(Obs::Detail::Full, &g_universe);
+               }
+               else if (uri == "econspace://galaxy")
+               {
+                   RequireLive();
+                   text = DescribeGalaxy();
+               }
+               else
+               {
+                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "no such resource: " + uri };
+               }
+               return Rpc::Json{ { "contents",
+                                   Rpc::Json::array({ Rpc::Json{ { "uri", uri },
+                                                                 { "mimeType", "text/plain" },
+                                                                 { "text", text } } }) } };
+           });
+
+    // --- Prompts ------------------------------------------------------------
+    // Canned plans a user picks from their client. They double as the honest test of the
+    // tool surface: if a prompt here cannot be carried out with the tools above, the tools
+    // are incomplete.
+    rpc.On("prompts/list",
+           [](const Rpc::Json&)
+           {
+               Rpc::Json list = Rpc::Json::array();
+               for (const auto& p : Prompts())
+                   list.push_back({ { "name", p.name }, { "description", p.description } });
+               return Rpc::Json{ { "prompts", list } };
+           });
+
+    rpc.On("prompts/get",
+           [](const Rpc::Json& params)
+           {
+               const std::string name = params.value("name", std::string());
+               for (const auto& p : Prompts())
+                   if (name == p.name)
+                       return Rpc::Json{
+                           { "description", p.description },
+                           { "messages",
+                             Rpc::Json::array({ Rpc::Json{
+                                 { "role", "user" },
+                                 { "content", { { "type", "text" }, { "text", p.text } } } } }) }
+                       };
+               throw Rpc::Error{ Rpc::INVALID_PARAMS, "no such prompt: " + name };
            });
 
     rpc.On("tools/list",
