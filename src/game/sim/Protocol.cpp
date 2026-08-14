@@ -106,6 +106,14 @@ std::string EncodeCommand(const Command& c)
     j["dbgMoney"] = c.debugMoney;
     j["acceptM"] = c.acceptOffer;
     j["completeM"] = c.completeMission;
+    j["ordKind"] = c.orderKind;
+    j["ordTarget"] = c.orderTarget;
+    j["ordPoint"] = V2(c.orderPoint);
+    j["ordStop"] = c.orderStopDist;
+    j["ordWarp"] = c.orderWarp;
+    j["ordFull"] = c.orderUntilFull;
+    j["ordDest"] = c.orderDestSystem;
+    j["ordAbort"] = c.abortOrder;
     return j.dump();
 }
 
@@ -137,6 +145,14 @@ bool DecodeCommand(const std::string& s, Command& out)
     out.debugMoney = j.value("dbgMoney", false);
     out.acceptOffer = j.value("acceptM", -1);
     out.completeMission = j.value("completeM", -1);
+    out.orderKind = j.value("ordKind", 0);
+    out.orderTarget = j.value("ordTarget", 0);
+    out.orderPoint = j.contains("ordPoint") ? ToV2(j["ordPoint"]) : Vector2{ 0.0f, 0.0f };
+    out.orderStopDist = j.value("ordStop", 120.0f);
+    out.orderWarp = j.value("ordWarp", false);
+    out.orderUntilFull = j.value("ordFull", false);
+    out.orderDestSystem = j.value("ordDest", std::string());
+    out.abortOrder = j.value("ordAbort", false);
     return true;
 }
 
@@ -174,7 +190,11 @@ std::string EncodeSnapshot(const Snapshot& s)
                     { "money", p.money },
                     { "rep", p.reputation },
                     { "bounty", p.bounty },
-                    { "skillXp", p.skillXp } };
+                    { "skillXp", p.skillXp },
+                    { "ordKind", p.orderKind },
+                    { "ordStatus", p.orderStatus },
+                    { "ordId", p.orderId },
+                    { "ordDetail", p.orderDetail } };
 
     json ents = json::array();
     for (const EntitySnapshot& e : s.entities)
@@ -262,6 +282,10 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
         p.reputation = pj.value("rep", std::vector<float>{});
         p.bounty = pj.value("bounty", std::vector<double>{});
         p.skillXp = pj.value("skillXp", std::vector<float>{});
+        p.orderKind = pj.value("ordKind", 0);
+        p.orderStatus = pj.value("ordStatus", 0);
+        p.orderId = pj.value("ordId", 0);
+        p.orderDetail = pj.value("ordDetail", std::string());
     }
 
     out.entities.clear();

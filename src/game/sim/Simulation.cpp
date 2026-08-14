@@ -1195,6 +1195,10 @@ Proto::Snapshot Simulation::BuildSnapshot(const std::string& systemId) const
         p.stabilizer = player_->IsStabilizerOn();
         p.mining = player_->IsMiningOn();
         p.weaponOn = playerWeaponOn_;
+        p.orderKind = (int)order_.kind;
+        p.orderStatus = (int)orderStatus_;
+        p.orderId = orderId_;
+        p.orderDetail = orderDetail_;
         for (ResourceType rt : AllResourceTypes())
             p.cargoByType.push_back(player_->GetCargoAmount(rt));
 

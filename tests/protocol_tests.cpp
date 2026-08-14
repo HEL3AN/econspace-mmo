@@ -249,3 +249,56 @@ TEST_CASE("protocol version is stamped and enforced")
         CHECK(Proto::MessageType("not json").empty());
     }
 }
+
+// A standing order travels as an intent on the ordinary command: the server decides
+// whether it is possible. If these fields stop round-tripping, an agent silently loses
+// the ability to give orders at all.
+TEST_CASE("standing orders round-trip on the command")
+{
+    Proto::Command c;
+    c.orderKind = (int)Orders::Kind::Route;
+    c.orderTarget = 42;
+    c.orderPoint = { -300.0f, 900.0f };
+    c.orderStopDist = 250.0f;
+    c.orderWarp = true;
+    c.orderUntilFull = true;
+    c.orderDestSystem = "reach";
+    c.abortOrder = true;
+
+    Proto::Command r;
+    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), r));
+    CHECK(r.orderKind == (int)Orders::Kind::Route);
+    CHECK(r.orderTarget == 42);
+    CHECK(r.orderPoint.y == doctest::Approx(900.0f));
+    CHECK(r.orderStopDist == doctest::Approx(250.0f));
+    CHECK(r.orderWarp);
+    CHECK(r.orderUntilFull);
+    CHECK(r.orderDestSystem == "reach");
+    CHECK(r.abortOrder);
+
+    SUBCASE("a command with no order carries none")
+    {
+        Proto::Command plain, back;
+        REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(plain), back));
+        CHECK(back.orderKind == 0);
+        CHECK_FALSE(back.abortOrder);
+    }
+}
+
+TEST_CASE("the running order is reported back in the snapshot")
+{
+    // The journal says what finished; this says what is under way. Without it an agent has
+    // issued an order it cannot observe.
+    Proto::Snapshot s;
+    s.player.orderKind = (int)Orders::Kind::Mine;
+    s.player.orderStatus = (int)Orders::Status::Running;
+    s.player.orderId = 7;
+    s.player.orderDetail = "approaching";
+
+    Proto::Snapshot r;
+    REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(s), r));
+    CHECK(r.player.orderKind == (int)Orders::Kind::Mine);
+    CHECK(r.player.orderStatus == (int)Orders::Status::Running);
+    CHECK(r.player.orderId == 7);
+    CHECK(r.player.orderDetail == "approaching");
+}

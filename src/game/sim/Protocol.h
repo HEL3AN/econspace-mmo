@@ -3,6 +3,7 @@
 #include "raylib.h"
 #include "core/Faction.h"
 #include "sim/Events.h"
+#include "sim/Orders.h"
 #include "sim/SystemState.h"  // FireEvent
 
 #include <string>
@@ -23,7 +24,7 @@ namespace Proto
 // without it a client built against an older protocol would silently receive defaults
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
-inline constexpr int PROTO_VERSION = 2;
+inline constexpr int PROTO_VERSION = 3;
 
 // --- Command: client -> server, every tick ---
 struct Command
@@ -58,6 +59,18 @@ struct Command
     bool debugMoney = false;     // F1: grant debug money
     int  acceptOffer = -1;       // accept mission offer by board index (-1 none)
     int  completeMission = -1;   // hand in active mission by index (-1 none)
+
+    // Standing order (one-shot, #26/#72). The client sends an INTENT, exactly as it does
+    // for docking or trading: the server decides whether the order is possible and owns
+    // everything about running it. An agent can do nothing a human client could not.
+    int         orderKind = 0;  // Orders::Kind as int; 0 — no order this command
+    int         orderTarget = 0;
+    Vector2     orderPoint = { 0.0f, 0.0f };
+    float       orderStopDist = 120.0f;
+    bool        orderWarp = false;
+    bool        orderUntilFull = false;
+    std::string orderDestSystem;     // Route
+    bool        abortOrder = false;  // drop whatever is running
 };
 
 // Entity kind (render-independent; the client decides how to draw it).
@@ -101,19 +114,25 @@ struct PlayerView
     int     warpPhase = 0;        // 0 none, 1 aligning, 2 warp
     // Server-authoritative navigation (warp/autopilot): the client mirrors it and keeps
     // no warp-timer scale of its own (otherwise "bar ready" and flight start diverge).
-    float            warpAlign = 0.0f;  // remaining warp spin-up timer
-    Vector2          warpTarget = { 0.0f, 0.0f };
-    float            warpDrop = 0.0f;  // warp exit distance
-    bool             autopilot = false;
-    Vector2          apTarget = { 0.0f, 0.0f };
-    float            apStop = 0.0f;  // autopilot stop distance
-    bool             stabilizer = true;
-    bool             mining = false;
-    bool             weaponOn = false;
-    bool             docked = false;
-    int              nearbyStationId = 0;
-    int              lastInput = 0;  // last input number the server processed (ack, M4e)
-    std::vector<int> cargoByType;    // remaining cargo per resource (AllResourceTypes order)
+    float   warpAlign = 0.0f;  // remaining warp spin-up timer
+    Vector2 warpTarget = { 0.0f, 0.0f };
+    float   warpDrop = 0.0f;  // warp exit distance
+    bool    autopilot = false;
+    Vector2 apTarget = { 0.0f, 0.0f };
+    float   apStop = 0.0f;  // autopilot stop distance
+    bool    stabilizer = true;
+    bool    mining = false;
+    bool    weaponOn = false;
+    bool    docked = false;
+    int     nearbyStationId = 0;
+    int     lastInput = 0;  // last input number the server processed (ack, M4e)
+    // The running standing order, so a client can see what it asked for is under way.
+    // The journal (#29) reports outcomes; this reports what is in progress.
+    int              orderKind = 0;    // Orders::Kind as int
+    int              orderStatus = 0;  // Orders::Status as int
+    int              orderId = 0;
+    std::string      orderDetail;  // why it finished or failed
+    std::vector<int> cargoByType;  // remaining cargo per resource (AllResourceTypes order)
     // Player account (server-authoritative, M4f): the client shows it as a mirror.
     // reputation/bounty — per faction (index = FactionId), skillXp — Piloting/Mining/Trading.
     double              money = 0.0;

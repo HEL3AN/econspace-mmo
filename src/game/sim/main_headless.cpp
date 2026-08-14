@@ -106,6 +106,23 @@ static bool HostStepPlayer(Simulation& sim, const Proto::Command& c, std::string
     if (sim.HasRunningOrder() && (c.thrust || c.brake || c.turn != 0.0f || c.navMode != 0))
         sim.AbortOrder("manual control");
 
+    // A standing order arriving over the wire (#72). It is an intent like any other: the
+    // server validates it and owns the execution.
+    if (c.abortOrder)
+        sim.AbortOrder("aborted by client");
+    if (c.orderKind != 0)
+    {
+        Orders::Order o;
+        o.kind = (Orders::Kind)c.orderKind;
+        o.targetId = c.orderTarget;
+        o.point = c.orderPoint;
+        o.stopDist = c.orderStopDist;
+        o.useWarp = c.orderWarp;
+        o.untilFull = c.orderUntilFull;
+        o.destSystem = c.orderDestSystem;
+        sim.GiveOrder(o);
+    }
+
     if (c.toggleWeapon)
         sim.ToggleWeapon();
 
