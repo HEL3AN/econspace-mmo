@@ -186,6 +186,24 @@ set_target_properties(econserver PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/server)
 target_compile_definitions(econserver PRIVATE SIM_DATA_DIR="${CMAKE_SOURCE_DIR}/data/")
 
+# --- Agent bridge (MCP) ----------------------------------------------------
+# econagent wears two hats: an MCP server on stdio for a language model, and an ordinary
+# TCP game client to econserver. It links netproto for exactly the reason the bridge is
+# written in C++ at all -- so the wire format has one implementation and cannot drift.
+add_executable(econagent
+    src/agent/main.cpp
+    src/agent/Jsonrpc.cpp
+    src/agent/Session.cpp
+    src/game/sim/Observation.cpp   # the world as text, which is what a model reads
+    src/game/sim/Orders.cpp        # order kinds, shared with the server
+)
+target_include_directories(econagent PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(econagent PRIVATE engine netproto)
+set_target_properties(econagent PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/agent)
+# The galaxy index and factions are read locally, as the game client reads them.
+target_compile_definitions(econagent PRIVATE AGENT_DATA_DIR="${CMAKE_SOURCE_DIR}/data/")
+
 # --- World editor ----------------------------------------------------------
 add_executable(worldeditor
     src/editor/main.cpp
