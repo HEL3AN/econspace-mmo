@@ -62,9 +62,15 @@ void Game::DrawWorld()
     DrawCircleLines(0, 0, World::SYSTEM_RADIUS, Fade(Ui::PANEL_BORDER, 0.5f));
 
     // The world is drawn from the client proxies (reconciled from the snapshot), not from
-    // the server's live objects (M4c). The proxies reuse the entities' native Draw().
-    for (const auto& e : clientWorld_)
-        e->Draw();
+    // the server's live objects (M4c). Each proxy describes itself and the active backend
+    // decides what that becomes (#35) — the client no longer knows how a station looks.
+    {
+        std::vector<Render::Item> scene;
+        scene.reserve(clientWorld_.size());
+        for (const auto& e : clientWorld_)
+            scene.push_back(e->Describe());
+        Render::Present(std::move(scene), *backend_);
+    }
 
     // Destination-station markers for active delivery missions. We draw them only if
     // the destination station is in the CURRENT system (by id), and at its rendered
@@ -120,7 +126,8 @@ void Game::DrawWorld()
     for (const Beam& b : beams_)
         DrawLineEx(b.a, b.b, 2.5f, b.color);
 
-    playerShip_->Draw();
+    // Drawn last and on its own, so it stays on top of the beams and range rings above.
+    backend_->Draw(playerShip_->Describe());
 
     // Ship marker — only at far zoom, when the sprite collapses to a
     // dot. Semi-transparent "ping" rings spread out from the ship and fade;

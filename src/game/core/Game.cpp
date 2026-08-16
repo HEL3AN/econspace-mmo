@@ -112,6 +112,12 @@ void Game::Run()
         // Debug commands (work in any mode).
         if (IsKeyPressed(KEY_F11))
             ToggleBorderlessWindowed();
+        if (IsKeyPressed(KEY_F2))  // switch presentation: shapes ↔ glyphs
+        {
+            backend_ = (backend_ == &shapeBackend_) ? (Render::IBackend*)&glyphBackend_
+                                                    : (Render::IBackend*)&shapeBackend_;
+            FlashMessage(std::string("Rendering: ") + backend_->Name());
+        }
         if (IsKeyPressed(KEY_F1))  // account is on the server — credit via command
         {
             Proto::Command dc;

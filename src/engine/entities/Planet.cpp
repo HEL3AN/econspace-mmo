@@ -28,20 +28,8 @@ Color PlanetTypeColor(PlanetType type)
     return Color{ 150, 150, 150, 255 };
 }
 
-// Sprite name for a planet type (falls back to a shape if the file is missing).
-static const char* PlanetSprite(PlanetType type)
-{
-    switch (type)
-    {
-        case PlanetType::Rocky: return "planet_rocky";
-        case PlanetType::Gas: return "planet_gas";
-        case PlanetType::Ice: return "planet_ice";
-        case PlanetType::Lava: return "planet_lava";
-        case PlanetType::Oceanic: return "planet_oceanic";
-    }
-    return "planet";
-}
-
+// The sprite name used to live here, one switch per type. It is now a field on the
+// archetype, which is what lets a planet a player invents have a sprite at all.
 static const char* ArchetypeIdForPlanetType(PlanetType type)
 {
     switch (type)
@@ -65,16 +53,16 @@ Planet::Planet(float orbitRadius, float orbitSpeed, float angle, float size, Col
     SetArchetype(Archetypes::Find(ArchetypeIdForPlanetType(type)));
 }
 
+Render::Item Planet::Describe() const
+{
+    Render::Item it = Entity::Describe();
+    it.ring = orbitRadius_;  // the orbit guide; only a planet knows it has one
+    return it;
+}
+
 void Planet::Update(float dt)
 {
     float angularSpeed = orbitSpeed_ / orbitRadius_;
     angle_ += angularSpeed * dt;
     pos_ = { cosf(angle_) * orbitRadius_, sinf(angle_) * orbitRadius_ };
-}
-
-void Planet::Draw() const
-{
-    DrawCircleLines(0, 0, orbitRadius_, DARKGRAY);
-    if (!Tex::DrawSprite(PlanetSprite(type_), pos_, size_, 0.0f, color_))
-        Entity::Draw();
 }

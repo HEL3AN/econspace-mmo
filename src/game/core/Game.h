@@ -8,6 +8,7 @@
 #include "sim/Protocol.h"
 #include "net/Transport.h"
 #include "net/Tcp.h"
+#include "render/GlyphBackend.h"
 #include "player/Player.h"
 #include <string>
 #include "ui/Window.h"
@@ -137,6 +138,12 @@ private:
     bool     cameraSnap_ = true;  // snap instead of lerp on the next frame (system change)
 
     std::vector<BgStar> bgStars_;  // parallax-background stars
+
+    // How the world is presented (#35). Shapes are still the default; F2 switches to
+    // glyphs, which is what #36 will make the primary look once it has been lived with.
+    Render::GlyphBackend glyphBackend_;
+    Render::ShapeBackend shapeBackend_;
+    Render::IBackend*    backend_ = &shapeBackend_;
 
     // Radar state: zoom and absolute view center (does not follow the player).
     float   radarZoom_ = 1.0f;

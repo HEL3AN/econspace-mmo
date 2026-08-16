@@ -96,8 +96,9 @@ registry says *what it is and what it can do*, once, for every object of that ki
 | `name` | string | display name |
 | `kind` | string | one of `Star`, `Planet`, `Station`, `Field`, `Gate`, `Nebula`, `Derelict`, `Npc`, `PlayerShip` |
 | `glyph` | string | the character the ASCII presentation draws |
+| `sprite` | string | texture name in `data/textures/`; omit for shapes only |
 | `color` | [r, g, b, a] | 0..255; `a` defaults to 255 |
-| `layer` | int | draw order, lowest first |
+| `layer` | int | draw order, lowest first; the same number means the same thing in every backend |
 | `size` | number | default radius when the instance does not give its own |
 | `components` | object | what the object can do — see below |
 

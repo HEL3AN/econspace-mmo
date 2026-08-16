@@ -66,6 +66,7 @@ private:
 struct Visual
 {
     std::string glyph = "?";  // one character in the ASCII presentation
+    std::string sprite;       // texture name for the sprite backend; empty means shapes only
     Color       color = { 255, 255, 255, 255 };
     int         layer = 0;  // draw order, lowest first
 };

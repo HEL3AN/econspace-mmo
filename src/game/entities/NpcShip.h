@@ -39,7 +39,7 @@ public:
     NpcShip(Vector2 pos, FactionId faction, NpcRole role, std::vector<Vector2> waypoints);
 
     void                    Update(float dt) override;
-    void                    Draw() const override;
+    Render::Item            Describe() const override;
     std::string             GetName() const override;
     std::unique_ptr<Entity> Clone() const override { return std::make_unique<NpcShip>(*this); }
 

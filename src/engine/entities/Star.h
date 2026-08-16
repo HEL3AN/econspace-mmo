@@ -15,7 +15,6 @@ class Star : public Entity
 public:
     Star(Vector2 pos, float size, StarType type);
 
-    void                    Draw() const override;
     std::unique_ptr<Entity> Clone() const override { return std::make_unique<Star>(*this); }
     std::string             GetName() const override { return "Star"; }
 

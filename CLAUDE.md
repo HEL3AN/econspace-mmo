@@ -80,6 +80,14 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   instead of failing.
 - **`SystemLayout` is sent once**, when a client enters a system. Anything that changes
   the static world mid-session is invisible until re-entry (#38).
+- **Entities no longer draw themselves.** `Entity::Draw()` is gone; an entity returns a
+  `Render::Item` from `Describe()` and a backend draws it (#35). Adding a shape means
+  editing a backend, not a class. What an object *looks like* (glyph, sprite, colour,
+  layer) and what it *can do* (components) both come from `data/archetypes.json` — a new
+  kind of object needs no new C++ at all.
+- **Load `Archetypes` before building a world.** Entity constructors look themselves up
+  in the registry, so an entity built before the load has no components and no glyph —
+  it would silently be undockable and invisible rather than fail.
 - **Comments referencing "M4f", "L2", "M0"** are historical milestone markers from the
   living-galaxy and netcode tracks. They describe *when* something was built, not what is
   planned.

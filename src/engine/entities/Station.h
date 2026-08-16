@@ -20,7 +20,6 @@ class Station : public Entity
 public:
     Station(Vector2 pos, float size, std::string name, FactionId faction, StationRole role);
 
-    void                    Draw() const override;
     std::unique_ptr<Entity> Clone() const override { return std::make_unique<Station>(*this); }
     std::string             GetName() const override { return name_; }
 
