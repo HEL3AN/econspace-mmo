@@ -4,6 +4,7 @@
 #include "core/WorldLoader.h"
 #include "entities/Entity.h"
 #include "render/GlyphBackend.h"
+#include "core/Archetype.h"
 #include <nlohmann/json.hpp>
 #include <vector>
 #include <memory>
@@ -42,9 +43,9 @@ private:
     // Object-creation palette (on the left) and deletion.
     Rectangle               PaletteRect() const;
     void                    DrawPalette();
-    void                    DrawEntityPreview(Rectangle box, const std::string& category);
-    std::unique_ptr<Entity> MakeEntity(const std::string& category, Vector2 pos) const;
-    void                    AddObject(const std::string& category, Vector2 pos);
+    void                    DrawEntityPreview(Rectangle box, const std::string& archetypeId);
+    std::unique_ptr<Entity> MakeEntity(const std::string& archetypeId, Vector2 pos) const;
+    void                    AddObject(const std::string& archetypeId, Vector2 pos);
     void                    DeleteSelected();
 
     Rectangle SaveButtonRect() const;
@@ -136,8 +137,9 @@ private:
     std::string editBuffer_;
     int         caretPos_ = 0;
     bool        deleteRequested_ = false;  // delete the selected one after drawing the panel
-    std::string placeCategory_;            // placement mode: which type we place on click
+    std::string placeArchetype_;           // placement mode: the archetype id placed on click
     bool        paletteOpen_ = false;      // whether the creation palette is expanded
+    int         paletteScroll_ = 0;        // first visible row; the registry outgrows the screen
 
     // The open dropdown (field key) and its deferred rendering.
     std::string              openDropdown_;

@@ -273,3 +273,34 @@ player will see.
 to glyphs. Whether glyphs become the default — and what happens to the windowed HUD
 alongside them — is #36, and is a judgement about how the game feels that should be made
 after living with both, not while moving code.
+
+---
+
+## 2026-08-16 — The editor's palette is generated from the registry, not written down
+
+**Decision.** `worldeditor`'s creation palette comes from `Archetypes::All()`. An archetype
+declares a `world` block — the system-file category it belongs to and the value of that
+category's type key — and that is what makes it placeable. Nothing about the palette is
+hard-coded any more; the description under each entry is derived from the archetype's
+components rather than written by hand.
+
+**Why.** The editor held its own list of six object types, its own default sizes and its
+own descriptions, all of which had to be kept in step with the world by hand. The whole
+argument for data-driven archetypes (#34) is that a new kind of object costs no code, and
+an editor that still needs a code change to show one contradicts that at the first test.
+
+**Consequence.** The palette went from six entries to fifteen — every station role and
+every planet type is now its own entry, because they genuinely are different archetypes
+with different components. That no longer fits on screen, so the list scrolls. Silently
+clipping would have reintroduced exactly the failure this change removes: an archetype
+that exists but the editor never shows.
+
+**The `world` block is transitional.** It exists because system files still group objects
+by category rather than naming an archetype id. When they do (#34, remaining work), the
+block goes away and the mapping becomes the identity.
+
+**Parsing moved next to naming.** `PlanetTypeFromString` and `StationRoleFromString` were
+private to `WorldLoader.cpp` while their `…Name` counterparts were public. Having only one
+direction public is how a second copy of the other gets written; both now live beside the
+enum they belong to, and a test pins the round trip — if the editor's spelling and the
+loader's disagreed, every military station placed would silently load as a trade hub.

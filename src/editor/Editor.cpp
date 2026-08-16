@@ -19,27 +19,40 @@
 
 using nlohmann::json;
 
-// Descriptions of object types for the creation palette (shared by palette and hints).
 namespace
 {
-struct PaletteType
+// The creation palette comes from the archetype registry, not from a list kept here
+// (#37). Adding an archetype to data/archetypes.json puts it in the editor with no
+// editor change at all, which is the property that makes the world data-driven rather
+// than merely stored as data.
+std::vector<const Archetype*> PlaceableArchetypes()
 {
-    const char* category;
-    const char* title;
-    const char* desc;
-};
-const PaletteType kPalette[] = {
-    { "planets", "Planet", "orbit, type, deposit" },
-    { "stations", "Station", "faction, role, market" },
-    { "asteroidFields", "Asteroid Belt", "resource, ore" },
-    { "nebulae", "Nebula", "hides from pirates" },
-    { "derelicts", "Derelict", "lootable wreck" },
-    { "gates", "Jump Gate", "links to a system" },
-};
-const int   kPaletteN = (int)(sizeof(kPalette) / sizeof(kPalette[0]));
-const float kPaletteRowH = 54.0f;
-const float kPaletteW = 210.0f;
+    std::vector<const Archetype*> out;
+    for (const Archetype& a : Archetypes::All())
+        if (a.Placeable())
+            out.push_back(&a);
+    return out;
+}
+
+// What an archetype can do, as a line of palette text. Derived rather than written down,
+// so it cannot go stale the way the hand-written descriptions did.
+std::string ComponentSummary(const Archetype& a)
+{
+    std::string s;
+    for (Component c : AllComponents())
+        if (a.Has(c))
+        {
+            if (!s.empty())
+                s += ", ";
+            s += ComponentName(c);
+        }
+    return s.empty() ? std::string("scenery") : s;
+}
+
+const float kPaletteRowH = 40.0f;
+const float kPaletteW = 232.0f;
 const float kPaletteBtnH = 30.0f;
+const int   kPaletteMaxRows = 12;  // beyond this the list scrolls rather than leaving the screen
 }  // namespace
 
 Editor::Editor()
@@ -222,9 +235,9 @@ void Editor::HandleInput()
     bool overUi = overPanel || overPalette || overSave || overMode;
 
     // Cancel placement mode.
-    if (!placeCategory_.empty() &&
+    if (!placeArchetype_.empty() &&
         (IsKeyPressed(KEY_ESCAPE) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)))
-        placeCategory_.clear();
+        placeArchetype_.clear();
 
     // Delete the selected object (not while typing into a field).
     if (IsKeyPressed(KEY_DELETE) && selected_ >= 0 && activeField_.empty())
@@ -240,11 +253,11 @@ void Editor::HandleInput()
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !overUi)
     {
         Vector2 wm = GetScreenToWorld2D(GetMousePosition(), camera_);
-        if (!placeCategory_.empty())
+        if (!placeArchetype_.empty())
         {
             // Placement mode: place the object at the click point (we don't reset the
             // mode — several can be placed; exit with Esc / RMB).
-            AddObject(placeCategory_, wm);
+            AddObject(placeArchetype_, wm);
         }
         else
         {
@@ -330,10 +343,10 @@ void Editor::DrawWorld()
     }
 
     // Ghost of the object being placed, under the cursor.
-    if (!placeCategory_.empty() && !CheckCollisionPointRec(GetMousePosition(), PaletteRect()))
+    if (!placeArchetype_.empty() && !CheckCollisionPointRec(GetMousePosition(), PaletteRect()))
     {
         Vector2                 wp = GetScreenToWorld2D(GetMousePosition(), camera_);
-        std::unique_ptr<Entity> ghost = MakeEntity(placeCategory_, wp);
+        std::unique_ptr<Entity> ghost = MakeEntity(placeArchetype_, wp);
         if (ghost)
         {
             backend_->Draw(ghost->Describe());
@@ -365,13 +378,11 @@ void Editor::DrawHud()
                  Ui::TEXT);
         Ui::Text(TextFormat("Objects: %d", (int)entities_.size()), 16, 72, 14, Ui::TEXT_DIM);
 
-        if (!placeCategory_.empty())
+        if (!placeArchetype_.empty())
         {
-            const char* title = placeCategory_.c_str();
-            for (const PaletteType& t : kPalette)
-                if (placeCategory_ == t.category)
-                    title = t.title;
-            Ui::Text(TextFormat("Placing: %s", title), 16, 96, 14, Ui::ACCENT);
+            const Archetype* pa = Archetypes::Find(placeArchetype_);
+            Ui::Text(TextFormat("Placing: %s", pa ? pa->name.c_str() : placeArchetype_.c_str()), 16,
+                     96, 14, Ui::ACCENT);
             Ui::Text("click in space to place  ·  Esc / RMB to cancel", 16, 114, 13, Ui::TEXT_DIM);
         }
         else if (selected_ >= 0)
@@ -803,15 +814,18 @@ Rectangle Editor::PaletteRect() const
     Rectangle btn = PaletteButtonRect(screenHeight_);
     if (!paletteOpen_)
         return btn;
-    float listH = kPaletteN * kPaletteRowH;
+    int rows = (int)PlaceableArchetypes().size();
+    if (rows > kPaletteMaxRows)
+        rows = kPaletteMaxRows;
+    float listH = rows * kPaletteRowH;
     float top = btn.y - 6.0f - listH;
     return { btn.x, top, kPaletteW, (btn.y + btn.height) - top };
 }
 
 // Object preview: draw the real entity in a small box with the scale fitted.
-void Editor::DrawEntityPreview(Rectangle box, const std::string& category)
+void Editor::DrawEntityPreview(Rectangle box, const std::string& archetypeId)
 {
-    std::unique_ptr<Entity> e = MakeEntity(category, { 0.0f, 0.0f });
+    std::unique_ptr<Entity> e = MakeEntity(archetypeId, { 0.0f, 0.0f });
     if (!e)
         return;
     float s = e->GetSize();
@@ -842,33 +856,56 @@ void Editor::DrawPalette()
 
     if (paletteOpen_)
     {
-        float     listH = kPaletteN * kPaletteRowH;
-        Rectangle list{ btn.x, btn.y - 6.0f - listH, kPaletteW, listH };
+        const std::vector<const Archetype*> all = PlaceableArchetypes();
+        const int                           total = (int)all.size();
+        const int   shown = total < kPaletteMaxRows ? total : kPaletteMaxRows;
+        const float listH = shown * kPaletteRowH;
+        Rectangle   list{ btn.x, btn.y - 6.0f - listH, kPaletteW, listH };
         DrawRectangleRec(list, Ui::PANEL_BG);
         DrawRectangleLinesEx(list, 1.0f, Ui::PANEL_BORDER);
 
-        for (int i = 0; i < kPaletteN; i++)
+        // The registry can hold more archetypes than fit on screen, and will once players
+        // can build. Scroll rather than clip, so a new archetype is never simply absent.
+        const int maxScroll = total - shown;
+        if (CheckCollisionPointRec(m, list))
         {
-            const PaletteType& t = kPalette[i];
-            Rectangle          row{ list.x + 6, list.y + 4 + i * kPaletteRowH, list.width - 12,
-                                    kPaletteRowH - 8 };
-            bool               active = (placeCategory_ == t.category);
-            bool               hover = CheckCollisionPointRec(m, row);
+            float wheel = GetMouseWheelMove();
+            if (wheel != 0.0f)
+                paletteScroll_ -= (int)wheel;
+        }
+        if (paletteScroll_ > maxScroll)
+            paletteScroll_ = maxScroll;
+        if (paletteScroll_ < 0)
+            paletteScroll_ = 0;
+
+        for (int i = 0; i < shown; i++)
+        {
+            const Archetype& a = *all[(size_t)(i + paletteScroll_)];
+            Rectangle        row{ list.x + 6, list.y + 3 + i * kPaletteRowH, list.width - 12,
+                                  kPaletteRowH - 6 };
+            bool             active = (placeArchetype_ == a.id);
+            bool             hover = CheckCollisionPointRec(m, row);
             DrawRectangleRec(row,
                              active ? Fade(Ui::ACCENT, 0.22f)
                                     : (hover ? Fade(Ui::ACCENT, 0.10f) : Fade(Ui::TITLE_BG, 0.6f)));
             DrawRectangleLinesEx(row, 1.0f, active ? Ui::ACCENT : Ui::PANEL_BORDER);
 
-            Rectangle icon{ row.x + 4, row.y + 4, 42, row.height - 8 };
+            Rectangle icon{ row.x + 4, row.y + 3, 28, row.height - 6 };
             DrawRectangleRec(icon, Fade(BLACK, 0.4f));
-            DrawEntityPreview(icon, t.category);
+            DrawEntityPreview(icon, a.id);
 
-            Ui::Text(t.title, (int)icon.x + 52, (int)row.y + 7, 16, active ? Ui::ACCENT : Ui::TEXT);
-            Ui::Text(t.desc, (int)icon.x + 52, (int)row.y + 26, 12, Ui::TEXT_DIM);
+            Ui::Text(a.name.c_str(), (int)icon.x + 36, (int)row.y + 4, 15,
+                     active ? Ui::ACCENT : Ui::TEXT);
+            Ui::Text(ComponentSummary(a).c_str(), (int)icon.x + 36, (int)row.y + 21, 11,
+                     Ui::TEXT_DIM);
 
             if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-                placeCategory_ = active ? std::string() : t.category;  // repeat click cancels
+                placeArchetype_ = active ? std::string() : a.id;  // repeat click cancels
         }
+
+        if (maxScroll > 0)
+            Ui::Text(TextFormat("%d/%d", paletteScroll_ + shown, total),
+                     (int)(list.x + list.width - 42), (int)(list.y + listH - 15), 11, Ui::TEXT_DIM);
     }
 
     // The label button (always shown). A click collapses/expands.
@@ -881,75 +918,93 @@ void Editor::DrawPalette()
     {
         paletteOpen_ = !paletteOpen_;
         if (!paletteOpen_)
-            placeCategory_.clear();  // collapsed — cancel placement mode
+            placeArchetype_.clear();  // collapsed — cancel placement mode
     }
 }
 
-// Creates an entity of the category with default values at position pos
-// (for previews pos = {0,0}). Used for the ghost and the preview.
-std::unique_ptr<Entity> Editor::MakeEntity(const std::string& category, Vector2 pos) const
+// Creates an entity of the archetype with default values at position pos (for previews
+// pos = {0,0}). Used for the ghost and the palette preview.
+//
+// Size and subtype come from the archetype; only the C++ constructor to call still comes
+// from a switch here, and that is the part #34 deletes last.
+std::unique_ptr<Entity> Editor::MakeEntity(const std::string& archetypeId, Vector2 pos) const
 {
-    if (category == "planets")
+    const Archetype* a = Archetypes::Find(archetypeId);
+    if (a == nullptr)
+        return nullptr;
+    const float size = a->defaultSize > 0.0f ? a->defaultSize : 100.0f;
+
+    switch (a->kind)
     {
-        float r = sqrtf(pos.x * pos.x + pos.y * pos.y);
-        return std::make_unique<Planet>(r, 300.0f, atan2f(pos.y, pos.x), 120.0f,
-                                        PlanetTypeColor(PlanetType::Rocky), ResourceType::Iron,
-                                        PlanetType::Rocky);
+        case EntityKind::Planet:
+        {
+            float      r = sqrtf(pos.x * pos.x + pos.y * pos.y);
+            PlanetType type = PlanetTypeFromString(a->worldSubType);
+            return std::make_unique<Planet>(r, 300.0f, atan2f(pos.y, pos.x), size,
+                                            PlanetTypeColor(type), ResourceType::Iron, type);
+        }
+        case EntityKind::Station:
+            return std::make_unique<Station>(pos, size, "New " + a->name, FactionId::Independent,
+                                             StationRoleFromString(a->worldSubType));
+        case EntityKind::Field:
+            return std::make_unique<AsteroidField>(pos, size, "New Belt", ResourceType::Iron, 200);
+        case EntityKind::Nebula: return std::make_unique<Nebula>(pos, size, "New Nebula");
+        case EntityKind::Derelict:
+            return std::make_unique<Derelict>(pos, size, "New Derelict", 500.0);
+        case EntityKind::Gate: return std::make_unique<JumpGate>(pos, size, "New Gate", "");
+        case EntityKind::Star:
+        case EntityKind::Npc:
+        case EntityKind::PlayerShip:
+        case EntityKind::Unknown: return nullptr;  // not placed by hand; see Archetype::Placeable
     }
-    if (category == "stations")
-        return std::make_unique<Station>(pos, 80.0f, "New Station", FactionId::Independent,
-                                         StationRole::TradeHub);
-    if (category == "asteroidFields")
-        return std::make_unique<AsteroidField>(pos, 400.0f, "New Belt", ResourceType::Iron, 200);
-    if (category == "nebulae")
-        return std::make_unique<Nebula>(pos, 2000.0f, "New Nebula");
-    if (category == "derelicts")
-        return std::make_unique<Derelict>(pos, 30.0f, "New Derelict", 500.0);
-    if (category == "gates")
-        return std::make_unique<JumpGate>(pos, 150.0f, "New Gate", "");
     return nullptr;
 }
 
-// Adds an object of the category at position pos with default values and selects it.
-void Editor::AddObject(const std::string& category, Vector2 pos)
+// Adds an object of the archetype at position pos with default values and selects it.
+// The JSON written is the same the runtime reads -- that property is not negotiable, and
+// the archetype supplies the size and the type/role rather than a constant here.
+void Editor::AddObject(const std::string& archetypeId, Vector2 pos)
 {
-    int  px = (int)roundf(pos.x), py = (int)roundf(pos.y);
-    json o = json::object();
+    const Archetype* a = Archetypes::Find(archetypeId);
+    if (a == nullptr || !a->Placeable())
+        return;
+
+    const std::string category = a->worldCategory;
+    const int         px = (int)roundf(pos.x), py = (int)roundf(pos.y);
+    const int         size = (int)roundf(a->defaultSize > 0.0f ? a->defaultSize : 100.0f);
+    json              o = json::object();
 
     if (category == "planets")
     {
         float r = sqrtf(pos.x * pos.x + pos.y * pos.y);
         if (r < 500.0f)
             r = 4000.0f;
-        o = { { "orbitRadius", (int)roundf(r) },
-              { "orbitSpeed", 300 },
-              { "angle", atan2f(pos.y, pos.x) },
-              { "size", 120 },
-              { "type", "Rocky" },
-              { "deposit", "Iron" } };
+        o = { { "orbitRadius", (int)roundf(r) }, { "orbitSpeed", 300 },
+              { "angle", atan2f(pos.y, pos.x) }, { "size", size },
+              { "type", a->worldSubType },       { "deposit", "Iron" } };
     }
     else if (category == "stations")
-        o = { { "name", "New Station" },
+        o = { { "name", "New " + a->name },
               { "pos", { px, py } },
-              { "size", 80 },
+              { "size", size },
               { "faction", "Independent" },
-              { "role", "TradeHub" } };
+              { "role", a->worldSubType } };
     else if (category == "asteroidFields")
         o = { { "name", "New Belt" },
               { "pos", { px, py } },
-              { "size", 400 },
+              { "size", size },
               { "resource", "Iron" },
               { "ore", 200 } };
     else if (category == "nebulae")
-        o = { { "name", "New Nebula" }, { "pos", { px, py } }, { "radius", 2000 } };
+        o = { { "name", "New Nebula" }, { "pos", { px, py } }, { "radius", size } };
     else if (category == "derelicts")
         o = {
-            { "name", "New Derelict" }, { "pos", { px, py } }, { "size", 30 }, { "reward", 500 }
+            { "name", "New Derelict" }, { "pos", { px, py } }, { "size", size }, { "reward", 500 }
         };
     else if (category == "gates")
         o = { { "name", "New Gate" },
               { "pos", { px, py } },
-              { "size", 150 },
+              { "size", size },
               { "destination", universe_.systems.empty() ? "" : universe_.systems[0].id } };
     else
         return;
@@ -1028,7 +1083,7 @@ void Editor::EnterGalaxyMode(bool on)
     selected_ = -1;
     gSelected_ = -1;
     gLinksOwner_.clear();
-    placeCategory_.clear();
+    placeArchetype_.clear();
     activeField_.clear();
     openDropdown_.clear();
     panning_ = false;

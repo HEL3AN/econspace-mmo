@@ -25,6 +25,17 @@ static const char* ArchetypeIdForStationRole(StationRole role)
     return "station.trade_hub";
 }
 
+StationRole StationRoleFromString(const std::string& s)
+{
+    if (s == "MiningOutpost")
+        return StationRole::MiningOutpost;
+    if (s == "Shipyard")
+        return StationRole::Shipyard;
+    if (s == "Military")
+        return StationRole::Military;
+    return StationRole::TradeHub;
+}
+
 Station::Station(Vector2 pos, float size, std::string name, FactionId faction, StationRole role)
     : Entity(pos, size, FactionColor(faction), EntityKind::Station), name_(std::move(name)),
       faction_(faction), role_(role)

@@ -78,6 +78,23 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
         a.visual.color = ColorFromJson(j["color"], a.visual.color);
     a.defaultSize = j.value("size", 0.0f);
 
+    if (j.contains("world"))
+    {
+        const json& w = j["world"];
+        if (!w.is_object())
+        {
+            err = "archetype '" + a.id + "': world is not an object";
+            return false;
+        }
+        a.worldCategory = w.value("category", std::string());
+        a.worldSubType = w.value("subType", std::string());
+        if (a.worldCategory.empty())
+        {
+            err = "archetype '" + a.id + "': world block without a category";
+            return false;
+        }
+    }
+
     if (!j.contains("components"))
         return true;
     const json& cs = j["components"];

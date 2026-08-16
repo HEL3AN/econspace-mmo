@@ -5,6 +5,7 @@
 #include "entities/AsteroidField.h"
 #include "entities/Nebula.h"
 #include "entities/JumpGate.h"
+#include "entities/Planet.h"
 #include "entities/Star.h"
 #include "economy/Resource.h"
 #include <cstdio>
@@ -122,6 +123,62 @@ TEST_CASE("entities pick up their archetype on construction")
     Star sun({ 0.0f, 0.0f }, 600.0f, StarType::Yellow);
     REQUIRE(sun.GetArchetype() != nullptr);
     CHECK(sun.GetArchetype()->id == "star.yellow");
+}
+
+TEST_CASE("placeable archetypes carry enough to write the world file")
+{
+    REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
+
+    // The editor palette is generated from this set (#37). A regression here is not a
+    // crash — it is an object type quietly disappearing from the editor, or one that
+    // places but writes JSON the loader reads back as something else.
+    int placeable = 0;
+    for (const Archetype& a : Archetypes::All())
+    {
+        if (!a.Placeable())
+            continue;
+        placeable++;
+        CHECK(a.defaultSize > 0.0f);  // an object placed at size 0 is unselectable
+
+        // The category has to be one the loader actually reads.
+        const std::string& c = a.worldCategory;
+        CHECK((c == "planets" || c == "stations" || c == "asteroidFields" || c == "nebulae" ||
+               c == "derelicts" || c == "gates"));
+
+        // Categories with a type key need the value; the others must not invent one.
+        if (c == "planets")
+            CHECK(PlanetTypeName(PlanetTypeFromString(a.worldSubType)) != "Planet");
+        else if (c == "stations")
+            CHECK(StationRoleName(StationRoleFromString(a.worldSubType)) != "Station");
+        else
+            CHECK(a.worldSubType.empty());
+    }
+    CHECK(placeable >= 12);
+
+    SUBCASE("a subtype survives the round trip through the world file's spelling")
+    {
+        // The editor writes worldSubType into the JSON and the loader parses it back.
+        // If those two disagree, every military station placed becomes a trade hub.
+        const Archetype* mil = Archetypes::Find("station.military");
+        REQUIRE(mil != nullptr);
+        CHECK(StationRoleFromString(mil->worldSubType) == StationRole::Military);
+
+        const Archetype* ice = Archetypes::Find("planet.ice");
+        REQUIRE(ice != nullptr);
+        CHECK(PlanetTypeFromString(ice->worldSubType) == PlanetType::Ice);
+    }
+
+    SUBCASE("things that are not placed by hand say so")
+    {
+        // A star is one per system and a ship is not scenery. Both would otherwise show
+        // up in the palette and write a JSON category nothing reads.
+        for (const Archetype* a : Archetypes::OfKind(EntityKind::Star))
+            CHECK_FALSE(a->Placeable());
+        for (const Archetype* a : Archetypes::OfKind(EntityKind::PlayerShip))
+            CHECK_FALSE(a->Placeable());
+        for (const Archetype* a : Archetypes::OfKind(EntityKind::Npc))
+            CHECK_FALSE(a->Placeable());
+    }
 }
 
 TEST_CASE("a broken registry fails loudly instead of loading half a world")
