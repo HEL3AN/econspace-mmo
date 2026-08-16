@@ -11,6 +11,7 @@ Parsing — `src/core/WorldLoader.cpp`. Entities — `src/entities/`.
 ```
 data/
   universe.json        galaxy index: systems, links, starting system
+  archetypes.json      what each kind of object is and can do
   systems/
     <id>.json          one star system (objects)
   textures/            sprites (PNG), optional
@@ -60,6 +61,74 @@ After a build, `data/` is copied next to `econspace.exe` by the `copy_data` targ
 > Jumps are determined by the `destination` field of gates inside systems, whereas
 > `links` are only a map visualization. For consistency, add a corresponding `links`
 > entry for each gate pair.
+
+---
+
+## archetypes.json — what a kind of object is
+
+A system file says *where* an object is and which particular one it is. The archetype
+registry says *what it is and what it can do*, once, for every object of that kind.
+
+```json
+{
+    "archetypes": [
+        {
+            "id": "station.trade_hub",
+            "name": "Trade Hub",
+            "kind": "Station",
+            "glyph": "#",
+            "color": [200, 200, 210, 255],
+            "layer": 3,
+            "size": 90,
+            "components": {
+                "dockable": { "range": 90 },
+                "market": {},
+                "storage": { "capacity": 5000 }
+            }
+        }
+    ]
+}
+```
+
+| Field | Type | Description |
+|------|-----|----------|
+| `id` | string | unique; how world data and the editor refer to this archetype |
+| `name` | string | display name |
+| `kind` | string | one of `Star`, `Planet`, `Station`, `Field`, `Gate`, `Nebula`, `Derelict`, `Npc`, `PlayerShip` |
+| `glyph` | string | the character the ASCII presentation draws |
+| `color` | [r, g, b, a] | 0..255; `a` defaults to 255 |
+| `layer` | int | draw order, lowest first |
+| `size` | number | default radius when the instance does not give its own |
+| `components` | object | what the object can do — see below |
+
+### Components
+
+Simulation passes look for a component, not for a class: "everything dockable within
+range" rather than "everything that is a `Station`". An object gains a behaviour by
+declaring the component, without the pass being edited.
+
+| Component | Parameters | Meaning |
+|------|----------|--------|
+| `dockable` | `range` | a ship can dock; `range` is added to the object's radius |
+| `mineable` | `extractRate` | holds a deposit; units per second at skill 1 |
+| `market` | — | buys and sells resources |
+| `defensive` | `range`, `damage` | fires on hostiles; `damage` is per second |
+| `storage` | `capacity` | holds cargo that is not aboard a ship |
+| `jumpLink` | — | connects this system to another |
+| `hazard` | `radius`, `hidesShips` | changes conditions inside it; `radius` 0 means the object's own radius |
+| `salvageable` | — | pays out once to whoever reaches it first |
+| `buildable` | `cost`, `buildSeconds` | a player can construct one |
+
+Components carrying no parameters are still written as `{}` — presence is what matters.
+
+Some values deliberately live on the *instance* rather than on the archetype, because
+they vary between two objects of the same kind: where a gate leads, what a wreck pays
+out, how much ore a belt still holds.
+
+**A malformed registry is a hard failure, not a degraded load.** An unknown `kind`, an
+unknown component name, a duplicate `id` or a missing `id` aborts the load and leaves
+the previous registry in place. A typo would otherwise produce an object that silently
+does nothing.
 
 ---
 

@@ -92,6 +92,7 @@ endif()
 add_library(engine STATIC
     src/engine/core/WorldLoader.cpp
     src/engine/core/Faction.cpp
+    src/engine/core/Archetype.cpp    # what a kind of object is, as data (#34)
     src/engine/entities/Entity.cpp
     src/engine/entities/Star.cpp
     src/engine/entities/Planet.cpp
@@ -242,6 +243,7 @@ add_executable(tests
     tests/observation_tests.cpp
     tests/economy_tests.cpp
     tests/simulation_tests.cpp
+    tests/archetype_tests.cpp
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     # The simulation itself is under test now, not only the wire (#10). That pulls in its
     # dependency tree -- ships, NPCs, the mission system -- which is the price of testing

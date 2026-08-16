@@ -5,6 +5,7 @@
 Nebula::Nebula(Vector2 pos, float radius, std::string name)
     : Entity(pos, radius, Color{ 150, 90, 200, 255 }, EntityKind::Nebula), name_(std::move(name))
 {
+    SetArchetype(Archetypes::Find("nebula.cloud"));
 }
 
 bool Nebula::Contains(Vector2 p) const

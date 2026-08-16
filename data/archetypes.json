@@ -1,0 +1,195 @@
+{
+    "archetypes": [
+        {
+            "id": "star.yellow",
+            "name": "Yellow Star",
+            "kind": "Star",
+            "glyph": "*",
+            "color": [253, 249, 0, 255],
+            "layer": 0,
+            "size": 600,
+            "components": {}
+        },
+        {
+            "id": "star.red",
+            "name": "Red Star",
+            "kind": "Star",
+            "glyph": "*",
+            "color": [230, 41, 55, 255],
+            "layer": 0,
+            "size": 700,
+            "components": {}
+        },
+        {
+            "id": "star.blue",
+            "name": "Blue Star",
+            "kind": "Star",
+            "glyph": "*",
+            "color": [102, 191, 255, 255],
+            "layer": 0,
+            "size": 550,
+            "components": {}
+        },
+
+        {
+            "id": "planet.rocky",
+            "name": "Rocky Planet",
+            "kind": "Planet",
+            "glyph": "o",
+            "color": [150, 130, 110, 255],
+            "layer": 1,
+            "size": 140,
+            "components": {}
+        },
+        {
+            "id": "planet.gas",
+            "name": "Gas Giant",
+            "kind": "Planet",
+            "glyph": "O",
+            "color": [200, 160, 120, 255],
+            "layer": 1,
+            "size": 280,
+            "components": {}
+        },
+        {
+            "id": "planet.ice",
+            "name": "Ice Planet",
+            "kind": "Planet",
+            "glyph": "o",
+            "color": [180, 220, 240, 255],
+            "layer": 1,
+            "size": 160,
+            "components": {}
+        },
+        {
+            "id": "planet.lava",
+            "name": "Lava Planet",
+            "kind": "Planet",
+            "glyph": "o",
+            "color": [220, 90, 50, 255],
+            "layer": 1,
+            "size": 150,
+            "components": {}
+        },
+        {
+            "id": "planet.oceanic",
+            "name": "Oceanic Planet",
+            "kind": "Planet",
+            "glyph": "o",
+            "color": [70, 130, 200, 255],
+            "layer": 1,
+            "size": 140,
+            "components": {}
+        },
+
+        {
+            "id": "station.trade_hub",
+            "name": "Trade Hub",
+            "kind": "Station",
+            "glyph": "#",
+            "color": [200, 200, 210, 255],
+            "layer": 3,
+            "size": 90,
+            "components": {
+                "dockable": { "range": 90 },
+                "market": {},
+                "storage": { "capacity": 5000 }
+            }
+        },
+        {
+            "id": "station.mining_outpost",
+            "name": "Mining Outpost",
+            "kind": "Station",
+            "glyph": "#",
+            "color": [200, 200, 210, 255],
+            "layer": 3,
+            "size": 70,
+            "components": {
+                "dockable": { "range": 90 },
+                "market": {},
+                "storage": { "capacity": 3000 }
+            }
+        },
+        {
+            "id": "station.shipyard",
+            "name": "Shipyard",
+            "kind": "Station",
+            "glyph": "#",
+            "color": [200, 200, 210, 255],
+            "layer": 3,
+            "size": 80,
+            "components": {
+                "dockable": { "range": 90 },
+                "market": {},
+                "storage": { "capacity": 4000 }
+            }
+        },
+        {
+            "id": "station.military",
+            "name": "Military Station",
+            "kind": "Station",
+            "glyph": "#",
+            "color": [200, 200, 210, 255],
+            "layer": 3,
+            "size": 80,
+            "components": {
+                "dockable": { "range": 90 },
+                "market": {},
+                "storage": { "capacity": 3000 },
+                "defensive": { "range": 900, "damage": 12 }
+            }
+        },
+
+        {
+            "id": "field.asteroid",
+            "name": "Asteroid Field",
+            "kind": "Field",
+            "glyph": "%",
+            "color": [130, 130, 130, 255],
+            "layer": 2,
+            "size": 500,
+            "components": {
+                "mineable": { "extractRate": 1.0 }
+            }
+        },
+
+        {
+            "id": "nebula.cloud",
+            "name": "Nebula",
+            "kind": "Nebula",
+            "glyph": "~",
+            "color": [150, 90, 200, 255],
+            "layer": 0,
+            "size": 3000,
+            "components": {
+                "hazard": { "radius": 0, "hidesShips": true }
+            }
+        },
+
+        {
+            "id": "derelict.wreck",
+            "name": "Derelict",
+            "kind": "Derelict",
+            "glyph": "x",
+            "color": [130, 130, 120, 255],
+            "layer": 2,
+            "size": 40,
+            "components": {
+                "salvageable": {}
+            }
+        },
+
+        {
+            "id": "gate.jump",
+            "name": "Jump Gate",
+            "kind": "Gate",
+            "glyph": "0",
+            "color": [90, 200, 210, 255],
+            "layer": 2,
+            "size": 150,
+            "components": {
+                "jumpLink": {}
+            }
+        }
+    ]
+}

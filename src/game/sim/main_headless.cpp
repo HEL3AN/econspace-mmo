@@ -43,6 +43,10 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
 {
     SetRandomSeed(0xC0FFEEu);
     Factions::Load(dataDir + "factions.json");
+    // Must precede materialization: every entity constructor looks itself up here, and a
+    // world whose objects have no components is a world where nothing can be docked with.
+    if (!Archetypes::Load(dataDir + "archetypes.json"))
+        fprintf(stderr, "FATAL: %s\n", Archetypes::Error().c_str());
     sim.LoadUniverse(dataDir + "universe.json");
     sim.Seed(0xC0FFEEu);
     if (worldPath.empty() || !sim.LoadWorld(worldPath))
@@ -163,18 +167,28 @@ static void HostStepWorld(Simulation& sim, const std::string& activeId, float dt
     Combatant* player =
         (!clientOnline || sim.IsPlayerDocked()) ? nullptr : (Combatant*)sim.PlayerShip();
 
-    // Cover: the player is in a nebula of the active system — NPCs cannot see him.
+    // Cover: the player sits inside something that hides ships, so NPCs cannot see him.
+    // The nebula is the only such thing today, but the pass asks for the property rather
+    // than for the class (#34), so a jammer a player builds (#44) would hide him too.
     bool hidden = false;
     if (player != nullptr)
     {
         Vector2 pp = sim.PlayerShip()->GetPosition();
         for (auto& e : sim.Active().entities)
-            if (e->GetKind() == EntityKind::Nebula)
-                if (static_cast<const Nebula*>(e.get())->Contains(pp))
-                {
-                    hidden = true;
-                    break;
-                }
+        {
+            if (!e->Has(Component::Hazard) || !e->GetArchetype()->hazardHidesShips)
+                continue;
+            // radius 0 in the archetype means "as large as the object itself".
+            float r = e->GetArchetype()->hazardRadius > 0.0f ? e->GetArchetype()->hazardRadius
+                                                             : e->GetSize();
+            float dx = pp.x - e->GetPosition().x;
+            float dy = pp.y - e->GetPosition().y;
+            if (dx * dx + dy * dy <= r * r)
+            {
+                hidden = true;
+                break;
+            }
+        }
     }
     // Server-side predicate of hostility toward the player by account (M4f): pirates;
     // factions where the player is wanted; factions with Hostile/Hated reputation. Police
@@ -680,6 +694,8 @@ int main(int argc, char** argv)
     SetRandomSeed(0xC0FFEEu);
 
     Factions::Load(dataDir + "factions.json");
+    if (!Archetypes::Load(dataDir + "archetypes.json"))
+        fprintf(stderr, "FATAL: %s\n", Archetypes::Error().c_str());
 
     Simulation sim;
     sim.LoadUniverse(dataDir + "universe.json");

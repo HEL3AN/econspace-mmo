@@ -203,3 +203,39 @@ snapshot, which makes save schema versioning (#20) load-bearing.
 **Non-negotiable.** Ownership, permissions, limits and upkeep (#41) ship *with* tier-2
 structures, not afterwards. Upkeep and decay is the single most important rule: it keeps
 the galaxy self-cleaning instead of monotonically accumulating abandoned junk.
+
+---
+
+## 2026-08-16 — An archetype says what an object can do; the class says nothing
+
+**Decision.** Object types move into `data/archetypes.json`: an id, a display name, a
+kind, a glyph, and a set of **components** — dockable, mineable, market, defensive,
+storage, jumpLink, hazard, salvageable, buildable. Simulation passes query components.
+The class hierarchy stays for now and is migrated onto the registry pass by pass.
+
+**Why.** The hierarchy answers "what can this do?" by identity: a thing is dockable
+because it is a `Station`. Both new tracks break on that. A player cannot build a new
+kind of object (#44) if a new kind means a new class and a recompile, and an agent (#42)
+cannot reason about an object whose capabilities live in the C++ type system rather than
+in anything it can read.
+
+**What lives where.** The archetype describes a *kind* of object; the instance describes
+*which particular one*. Where a gate leads, what a wreck pays out and how much ore a belt
+still holds vary between two objects of the same kind, so they stay on the instance. This
+line is why the registry can be shared, immutable and loaded once per process.
+
+**Typed fields, not a property bag.** Component parameters are flat named fields rather
+than `map<string, double>`. A property bag would have been shorter and would have moved
+the guessing rather than removed it — the point of putting object types in data is that
+what a thing can do stops being something the reader has to infer.
+
+**A malformed registry is fatal.** Unknown kind, unknown component, duplicate or missing
+id: the load fails and the previous registry stays in place. This is deliberately the
+opposite of the wire protocol's permissive per-field decoding. A snapshot field arrives
+from a peer that may be older; an archetype file is content in this repository, and a
+typo in it would otherwise ship as an object that silently does nothing.
+
+**Cost.** Two vocabularies coexist until the migration finishes — an entity has both a
+kind and an archetype, and a few passes still narrow to a class for state the components
+do not describe yet (who owns a station, #41). That is the price of keeping the game
+runnable at every step of the largest refactor in the plan.

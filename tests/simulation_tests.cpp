@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "core/Archetype.h"
 #include "core/Faction.h"
 #include "entities/AsteroidField.h"
 #include "entities/NpcShip.h"
@@ -31,6 +32,9 @@ struct Fixture
     Fixture()
     {
         Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+        // Before InitGalaxy: entity constructors look themselves up in the registry, and
+        // passes like docking ask for a component rather than for a class (#34).
+        Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json");
         sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
         sim.Seed(1234u);
         sim.InitGalaxy();

@@ -65,6 +65,9 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     dataDir_ = std::string(GetApplicationDirectory()) + "data/";
 #endif
     Factions::Load(dataDir_ + "factions.json");  // faction properties/relations
+    // Before any entity exists: constructors look their archetype up in the registry.
+    if (!Archetypes::Load(dataDir_ + "archetypes.json"))
+        TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());
     universe_ = WorldLoader::LoadUniverse(dataDir_ + "universe.json");
 
     // The starting ship (index 0) is already owned by the player.
