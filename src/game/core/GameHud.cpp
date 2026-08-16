@@ -77,11 +77,10 @@ void Game::DrawWorld()
             continue;
         for (const auto& e : renderedWorld)
         {
-            Station* st = dynamic_cast<Station*>(e.get());
-            if (st == nullptr || st->GetId() != m.destStationId)
+            if (e->GetKind() != EntityKind::Station || e->GetId() != m.destStationId)
                 continue;
-            Vector2 p = st->GetPosition();
-            float   r = st->GetSize() + 16.0f;
+            Vector2 p = e->GetPosition();
+            float   r = e->GetSize() + 16.0f;
             DrawCircleLines(p.x, p.y, r, GOLD);
             DrawCircleLines(p.x, p.y, r + 4.0f, Fade(GOLD, 0.4f));
             break;
