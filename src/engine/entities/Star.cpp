@@ -28,11 +28,3 @@ Star::Star(Vector2 pos, float size, StarType type)
 {
     SetArchetype(Archetypes::Find(ArchetypeIdForStarType(type)));
 }
-
-void Star::Draw() const
-{
-    // Glow — a large translucent circle beneath the star's body.
-    DrawCircleV(pos_, size_ * 1.8f, Fade(color_, 0.15f));
-    if (!Tex::DrawSprite("star", pos_, size_, 0.0f, color_))
-        Entity::Draw();
-}

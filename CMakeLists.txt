@@ -103,6 +103,9 @@ add_library(engine STATIC
     src/engine/entities/JumpGate.cpp
     src/engine/economy/Resource.cpp
     src/engine/render/Textures.cpp
+    src/engine/render/Scene.cpp        # what an object looks like, apart from who draws it (#35)
+    src/engine/render/GlyphBackend.cpp
+    src/engine/render/TextBackend.cpp  # no raylib drawing calls: agents and tests are headless
     src/engine/ui/UiTheme.cpp
     src/engine/ui/Button.cpp
     src/engine/ui/Window.cpp
@@ -244,6 +247,7 @@ add_executable(tests
     tests/economy_tests.cpp
     tests/simulation_tests.cpp
     tests/archetype_tests.cpp
+    tests/render_tests.cpp
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     # The simulation itself is under test now, not only the wire (#10). That pulls in its
     # dependency tree -- ships, NPCs, the mission system -- which is the price of testing

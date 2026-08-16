@@ -72,6 +72,7 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
     }
 
     a.visual.glyph = j.value("glyph", std::string("?"));
+    a.visual.sprite = j.value("sprite", std::string());
     a.visual.layer = j.value("layer", 0);
     if (j.contains("color"))
         a.visual.color = ColorFromJson(j["color"], a.visual.color);

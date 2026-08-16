@@ -2,6 +2,7 @@
 
 #include "entities/EntityKind.h"
 #include "core/Archetype.h"
+#include "render/Scene.h"
 #include "raylib.h"
 #include <memory>
 #include <string>
@@ -17,7 +18,12 @@ public:
     virtual ~Entity() = default;
 
     virtual void Update(float dt);
-    virtual void Draw() const;
+
+    // Describes itself to a renderer instead of drawing itself (#35). The base fills in
+    // everything that comes from the entity and its archetype; a subclass overrides only
+    // to add what it alone knows — a planet's orbit, how much ore a belt has left, which
+    // way a ship is pointing.
+    virtual Render::Item Describe() const;
 
     virtual std::string GetName() const { return "Object"; }
 

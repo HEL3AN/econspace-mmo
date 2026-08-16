@@ -7,7 +7,16 @@ NpcShip::NpcShip(Vector2 pos, FactionId faction, NpcRole role, std::vector<Vecto
       waypoints_(std::move(waypoints)), target_(pos), speed_((float)GetRandomValue(120, 180)),
       heading_(0.0f), waitTimer_(0.0f)
 {
+    SetArchetype(Archetypes::Find("ship.npc"));
     PickNewTarget();
+}
+
+Render::Item NpcShip::Describe() const
+{
+    Render::Item it = Entity::Describe();
+    it.heading = heading_;
+    it.intensity = maxHull_ > 0.0f ? hull_ / maxHull_ : 1.0f;
+    return it;
 }
 
 void NpcShip::TakeDamage(float amount)
@@ -110,33 +119,6 @@ void NpcShip::Update(float dt)
         step = dist;
     pos_.x += dx / dist * step;
     pos_.y += dy / dist * step;
-}
-
-void NpcShip::Draw() const
-{
-    float c = cosf(heading_);
-    float s = sinf(heading_);
-    auto  toWorld = [&](float x, float y) -> Vector2
-    { return { pos_.x + x * c - y * s, pos_.y + x * s + y * c }; };
-
-    // The sprite is drawn nose-up, so add 90 degrees to the heading.
-    if (!Tex::DrawSprite("ship", pos_, size_, heading_ * RAD2DEG + 90.0f, color_))
-    {
-        Vector2 nose = toWorld(size_, 0.0f);
-        Vector2 left = toWorld(-size_ * 0.7f, size_ * 0.6f);
-        Vector2 right = toWorld(-size_ * 0.7f, -size_ * 0.6f);
-        DrawTriangle(nose, right, left, color_);
-    }
-
-    // Hull bar above a damaged ship.
-    if (hull_ < maxHull_)
-    {
-        float   frac = hull_ / maxHull_;
-        float   barW = size_ * 2.0f;
-        Vector2 barPos = { pos_.x - barW / 2, pos_.y - size_ - 8.0f };
-        DrawRectangleV(barPos, { barW, 3.0f }, Fade(GRAY, 0.5f));
-        DrawRectangleV(barPos, { barW * frac, 3.0f }, RED);
-    }
 }
 
 std::string NpcShip::GetName() const

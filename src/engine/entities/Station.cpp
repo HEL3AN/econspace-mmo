@@ -31,13 +31,3 @@ Station::Station(Vector2 pos, float size, std::string name, FactionId faction, S
 {
     SetArchetype(Archetypes::Find(ArchetypeIdForStationRole(role)));
 }
-
-void Station::Draw() const
-{
-    if (Tex::DrawSprite("station", pos_, size_, 0.0f, WHITE))
-        return;
-
-    DrawPolyLines(pos_, 6, size_, 0.0f, color_);
-    DrawPolyLines(pos_, 6, size_ * 0.6f, 30.0f, Fade(color_, 0.6f));
-    DrawCircleV(pos_, 3.0f, color_);
-}

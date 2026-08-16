@@ -10,7 +10,20 @@ void Entity::Update(float dt)
     (void)dt;  // the base object updates nothing
 }
 
-void Entity::Draw() const
+Render::Item Entity::Describe() const
 {
-    DrawCircleV(pos_, size_, color_);
+    Render::Item it;
+    it.id = id_;
+    it.kind = kind_;
+    it.pos = pos_;
+    it.size = size_;
+    it.color = color_;
+    it.label = GetName();
+    if (archetype_ != nullptr)
+    {
+        it.glyph = archetype_->visual.glyph;
+        it.sprite = archetype_->visual.sprite;
+        it.layer = archetype_->visual.layer;
+    }
+    return it;
 }

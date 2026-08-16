@@ -92,8 +92,8 @@ public:
     int  GetCargoUsed() const;
     int  GetCargoCapacity() const { return stats_.cargoCapacity; }
 
-    void Update(float dt) override;
-    void Draw() const override;
+    void         Update(float dt) override;
+    Render::Item Describe() const override;
 
     float   GetHeading() const { return heading_; }
     Vector2 GetVelocity() const { return velocity_; }

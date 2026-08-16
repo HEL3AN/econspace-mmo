@@ -7,6 +7,16 @@ Ship::Ship(Vector2 startPos, const ShipStats& stats)
     : Entity(startPos, 16.0f, RAYWHITE, EntityKind::PlayerShip), stats_(stats), heading_(0.0f),
       velocity_({ 0.0f, 0.0f })
 {
+    SetArchetype(Archetypes::Find("ship.player"));
+}
+
+Render::Item Ship::Describe() const
+{
+    Render::Item it = Entity::Describe();
+    it.heading = heading_;
+    it.thrusting = engineActive_;
+    it.intensity = maxHull_ > 0.0f ? hull_ / maxHull_ : 1.0f;
+    return it;
 }
 
 float Ship::GetSpeed() const
@@ -341,30 +351,4 @@ void Ship::ApplyNewtonFlight(float dt)
     velocity_.y *= drag;
 
     engineActive_ = ctrlThrust_;
-}
-
-void Ship::Draw() const
-{
-    float c = cosf(heading_);
-    float s = sinf(heading_);
-
-    // A point from the ship's frame (nose along +x) to world coordinates.
-    auto toWorld = [&](float x, float y) -> Vector2
-    { return { pos_.x + x * c - y * s, pos_.y + x * s + y * c }; };
-
-    if (engineActive_)
-    {
-        Vector2 tail = toWorld(-size_ * 0.7f, 0.0f);
-        Vector2 flame = toWorld(-size_ * 1.5f, 0.0f);
-        DrawLineEx(tail, flame, 4.0f, ORANGE);
-    }
-
-    // The sprite is drawn nose-up, so add 90 degrees to the heading.
-    if (Tex::DrawSprite("ship", pos_, size_, heading_ * RAD2DEG + 90.0f, color_))
-        return;
-
-    Vector2 nose = toWorld(size_, 0.0f);
-    Vector2 left = toWorld(-size_ * 0.7f, size_ * 0.6f);
-    Vector2 right = toWorld(-size_ * 0.7f, -size_ * 0.6f);
-    DrawTriangle(nose, right, left, color_);
 }

@@ -5,6 +5,7 @@
             "name": "Yellow Star",
             "kind": "Star",
             "glyph": "*",
+            "sprite": "star",
             "color": [253, 249, 0, 255],
             "layer": 0,
             "size": 600,
@@ -15,6 +16,7 @@
             "name": "Red Star",
             "kind": "Star",
             "glyph": "*",
+            "sprite": "star",
             "color": [230, 41, 55, 255],
             "layer": 0,
             "size": 700,
@@ -25,6 +27,7 @@
             "name": "Blue Star",
             "kind": "Star",
             "glyph": "*",
+            "sprite": "star",
             "color": [102, 191, 255, 255],
             "layer": 0,
             "size": 550,
@@ -36,6 +39,7 @@
             "name": "Rocky Planet",
             "kind": "Planet",
             "glyph": "o",
+            "sprite": "planet_rocky",
             "color": [150, 130, 110, 255],
             "layer": 1,
             "size": 140,
@@ -46,7 +50,8 @@
             "name": "Gas Giant",
             "kind": "Planet",
             "glyph": "O",
-            "color": [200, 160, 120, 255],
+            "sprite": "planet_gas",
+            "color": [210, 170, 110, 255],
             "layer": 1,
             "size": 280,
             "components": {}
@@ -56,7 +61,8 @@
             "name": "Ice Planet",
             "kind": "Planet",
             "glyph": "o",
-            "color": [180, 220, 240, 255],
+            "sprite": "planet_ice",
+            "color": [180, 210, 230, 255],
             "layer": 1,
             "size": 160,
             "components": {}
@@ -66,7 +72,8 @@
             "name": "Lava Planet",
             "kind": "Planet",
             "glyph": "o",
-            "color": [220, 90, 50, 255],
+            "sprite": "planet_lava",
+            "color": [200, 80, 50, 255],
             "layer": 1,
             "size": 150,
             "components": {}
@@ -76,6 +83,7 @@
             "name": "Oceanic Planet",
             "kind": "Planet",
             "glyph": "o",
+            "sprite": "planet_oceanic",
             "color": [70, 130, 200, 255],
             "layer": 1,
             "size": 140,
@@ -87,8 +95,9 @@
             "name": "Trade Hub",
             "kind": "Station",
             "glyph": "#",
+            "sprite": "station",
             "color": [200, 200, 210, 255],
-            "layer": 3,
+            "layer": 4,
             "size": 90,
             "components": {
                 "dockable": { "range": 90 },
@@ -101,8 +110,9 @@
             "name": "Mining Outpost",
             "kind": "Station",
             "glyph": "#",
+            "sprite": "station",
             "color": [200, 200, 210, 255],
-            "layer": 3,
+            "layer": 4,
             "size": 70,
             "components": {
                 "dockable": { "range": 90 },
@@ -115,8 +125,9 @@
             "name": "Shipyard",
             "kind": "Station",
             "glyph": "#",
+            "sprite": "station",
             "color": [200, 200, 210, 255],
-            "layer": 3,
+            "layer": 4,
             "size": 80,
             "components": {
                 "dockable": { "range": 90 },
@@ -129,8 +140,9 @@
             "name": "Military Station",
             "kind": "Station",
             "glyph": "#",
+            "sprite": "station",
             "color": [200, 200, 210, 255],
-            "layer": 3,
+            "layer": 4,
             "size": 80,
             "components": {
                 "dockable": { "range": 90 },
@@ -145,6 +157,7 @@
             "name": "Asteroid Field",
             "kind": "Field",
             "glyph": "%",
+            "sprite": "asteroids",
             "color": [130, 130, 130, 255],
             "layer": 2,
             "size": 500,
@@ -171,8 +184,9 @@
             "name": "Derelict",
             "kind": "Derelict",
             "glyph": "x",
+            "sprite": "derelict",
             "color": [130, 130, 120, 255],
-            "layer": 2,
+            "layer": 3,
             "size": 40,
             "components": {
                 "salvageable": {}
@@ -184,12 +198,36 @@
             "name": "Jump Gate",
             "kind": "Gate",
             "glyph": "0",
+            "sprite": "gate",
             "color": [90, 200, 210, 255],
-            "layer": 2,
+            "layer": 3,
             "size": 150,
             "components": {
                 "jumpLink": {}
             }
+        },
+
+        {
+            "id": "ship.npc",
+            "name": "Ship",
+            "kind": "Npc",
+            "glyph": "v",
+            "sprite": "ship",
+            "color": [200, 200, 200, 255],
+            "layer": 5,
+            "size": 14,
+            "components": {}
+        },
+        {
+            "id": "ship.player",
+            "name": "Your Ship",
+            "kind": "PlayerShip",
+            "glyph": "A",
+            "sprite": "ship",
+            "color": [255, 255, 255, 255],
+            "layer": 6,
+            "size": 16,
+            "components": {}
         }
     ]
 }

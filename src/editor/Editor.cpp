@@ -183,6 +183,9 @@ void Editor::Run()
         camera_.offset = { screenWidth_ / 2.0f, screenHeight_ / 2.0f };
 
         HandleInput();
+        if (IsKeyPressed(KEY_F2))  // shapes ↔ glyphs, the same key as in the game
+            backend_ = (backend_ == &shapeBackend_) ? (Render::IBackend*)&glyphBackend_
+                                                    : (Render::IBackend*)&shapeBackend_;
 
         BeginDrawing();
         ClearBackground(Color{ 8, 9, 14, 255 });
@@ -306,8 +309,16 @@ void Editor::DrawWorld()
     // Just the map boundary (we don't draw security zones/rings).
     DrawCircleLines(0, 0, World::SYSTEM_RADIUS, Fade(Ui::PANEL_BORDER, 0.5f));
 
-    for (const auto& e : entities_)
-        e->Draw();
+    // The editor presents the world through the same backend the game does (#35), so
+    // what it shows is what a player will see rather than a second drawing path that
+    // drifts from it.
+    {
+        std::vector<Render::Item> scene;
+        scene.reserve(entities_.size());
+        for (const auto& e : entities_)
+            scene.push_back(e->Describe());
+        Render::Present(std::move(scene), *backend_);
+    }
 
     // Highlight the selected object.
     if (selected_ >= 0 && selected_ < (int)entities_.size())
@@ -325,7 +336,7 @@ void Editor::DrawWorld()
         std::unique_ptr<Entity> ghost = MakeEntity(placeCategory_, wp);
         if (ghost)
         {
-            ghost->Draw();
+            backend_->Draw(ghost->Describe());
             DrawCircleLines(wp.x, wp.y, ghost->GetSize() + 12.0f, Fade(Ui::ACCENT, 0.7f));
         }
     }
@@ -814,7 +825,7 @@ void Editor::DrawEntityPreview(Rectangle box, const std::string& category)
 
     BeginScissorMode((int)box.x, (int)box.y, (int)box.width, (int)box.height);
     BeginMode2D(cam);
-    e->Draw();
+    backend_->Draw(e->Describe());
     EndMode2D();
     EndScissorMode();
 }

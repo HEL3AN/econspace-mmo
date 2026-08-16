@@ -23,7 +23,7 @@ public:
            ResourceType deposit, PlanetType type);
 
     void                    Update(float dt) override;
-    void                    Draw() const override;
+    Render::Item            Describe() const override;
     std::unique_ptr<Entity> Clone() const override { return std::make_unique<Planet>(*this); }
     std::string             GetName() const override { return "Planet"; }
 

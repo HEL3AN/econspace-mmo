@@ -7,14 +7,3 @@ JumpGate::JumpGate(Vector2 pos, float size, std::string name, std::string destin
 {
     SetArchetype(Archetypes::Find("gate.jump"));
 }
-
-void JumpGate::Draw() const
-{
-    if (Tex::DrawSprite("gate", pos_, size_, 0.0f, WHITE))
-        return;
-
-    // Gate ring with an inner glow.
-    DrawCircleV(pos_, size_ * 0.6f, Fade(color_, 0.15f));
-    DrawCircleLines(pos_.x, pos_.y, size_, color_);
-    DrawCircleLines(pos_.x, pos_.y, size_ * 0.85f, Fade(color_, 0.6f));
-}

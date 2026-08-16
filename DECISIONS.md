@@ -239,3 +239,37 @@ typo in it would otherwise ship as an object that silently does nothing.
 kind and an archetype, and a few passes still narrow to a class for state the components
 do not describe yet (who owns a station, #41). That is the price of keeping the game
 runnable at every step of the largest refactor in the plan.
+
+---
+
+## 2026-08-16 — An entity describes itself; a backend decides what that looks like
+
+**Decision.** `Entity::Draw()` is gone. An entity returns a `Render::Item` — position,
+size, colour, glyph, sprite, layer, and a few facts only it knows — and a backend turns
+that into pixels, characters or text. Three backends ship: **shapes** (the look the game
+had, moved out of the entity classes), **glyph**, and **text/grid**, which calls no
+raylib drawing function at all.
+
+**Why.** Drawing was baked into each class, so the same world could not be presented in
+two ways. Three consumers need exactly that: the player in glyphs (#36), an agent as
+compact text (#42), and tests with no window. Under the old shape, adding the glyph look
+would have meant a second `Draw()` per class and two paths to keep in step.
+
+**What this buys the constructible world.** An object a player invents needs no new art
+and no new drawing code: it has an archetype, the archetype has a glyph and a layer, and
+every backend can already draw it. That is the difference between #44 being feasible and
+being a rewrite.
+
+**Layer is data, not storage order.** `Present()` sorts by layer before dispatching, so
+"a station covers a nebula" means the same thing in every backend. Previously it meant
+"whichever entity happened to be later in the vector".
+
+**The editor draws through the same seam.** It had its own call to `Entity::Draw()`; it
+now builds a scene and presents it exactly as the game does, which is most of what #37
+asks for. An editor with a second drawing path is an editor that lies about what the
+player will see.
+
+**Cost, and what is deliberately not decided.** Shapes remain the default and F2 toggles
+to glyphs. Whether glyphs become the default — and what happens to the windowed HUD
+alongside them — is #36, and is a judgement about how the game feels that should be made
+after living with both, not while moving code.

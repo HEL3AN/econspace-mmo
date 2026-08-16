@@ -9,12 +9,12 @@ class AsteroidField : public Entity
 public:
     AsteroidField(Vector2 pos, float size, std::string name, ResourceType resource, int ore);
 
-    void                    Draw() const override;
     std::unique_ptr<Entity> Clone() const override
     {
         return std::make_unique<AsteroidField>(*this);
     }
-    std::string GetName() const override { return name_; }
+    Render::Item Describe() const override;
+    std::string  GetName() const override { return name_; }
 
     ResourceType GetResource() const { return resource_; }
     bool         HasOre() const { return oreRemaining_ > 0; }

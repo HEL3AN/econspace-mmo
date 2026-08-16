@@ -3,6 +3,7 @@
 #include "raylib.h"
 #include "core/WorldLoader.h"
 #include "entities/Entity.h"
+#include "render/GlyphBackend.h"
 #include <nlohmann/json.hpp>
 #include <vector>
 #include <memory>
@@ -111,7 +112,12 @@ private:
 
     nlohmann::json                       systemJson_;  // the model being edited
     std::vector<std::unique_ptr<Entity>> entities_;    // for rendering
-    std::vector<ObjHandle>               handles_;     // parallel to entities_
+    // The same presentation seam the game uses (#35). F2 switches; the editor showing a
+    // different picture from the game is exactly what #37 is about avoiding.
+    Render::GlyphBackend   glyphBackend_;
+    Render::ShapeBackend   shapeBackend_;
+    Render::IBackend*      backend_ = &shapeBackend_;
+    std::vector<ObjHandle> handles_;  // parallel to entities_
 
     int selected_ = -1;
 
