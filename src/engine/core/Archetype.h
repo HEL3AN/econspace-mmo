@@ -81,6 +81,20 @@ struct Archetype
     Visual visual;
     float  defaultSize = 0.0f;  // used when the instance does not give its own
 
+    // Where this archetype lives in a system file, and what it is called there.
+    // `worldCategory` is the JSON array ("stations", "gates", …); `worldSubType` is the
+    // value of that category's type key ("Military", "Ice"). An empty category means the
+    // archetype is not something an editor or a player places — a star is one per system,
+    // a ship is not scenery.
+    //
+    // This is a bridge, and it disappears when system files name archetypes by id
+    // directly (#34). Until then it is what lets the editor palette come from the
+    // registry rather than from a hard-coded list.
+    std::string worldCategory;
+    std::string worldSubType;
+
+    bool Placeable() const { return !worldCategory.empty(); }
+
     ComponentSet components;
 
     // Component parameters, flat and typed. A property bag of string→double would have

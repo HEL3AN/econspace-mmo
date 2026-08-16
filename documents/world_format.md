@@ -100,7 +100,23 @@ registry says *what it is and what it can do*, once, for every object of that ki
 | `color` | [r, g, b, a] | 0..255; `a` defaults to 255 |
 | `layer` | int | draw order, lowest first; the same number means the same thing in every backend |
 | `size` | number | default radius when the instance does not give its own |
+| `world` | object | where this archetype lives in a system file — see below |
 | `components` | object | what the object can do — see below |
+
+### `world` — how the archetype maps onto a system file
+
+```json
+"world": { "category": "stations", "subType": "Military" }
+```
+
+`category` is the array in `data/systems/<id>.json` this object is written to; `subType`
+is the value of that category's type key (`role` for stations, `type` for planets). An
+archetype **without** a `world` block is not something the editor places — a star is one
+per system, a ship is not scenery.
+
+The editor's creation palette is generated from every archetype that has a `world` block,
+so **adding an archetype puts it in the editor with no editor change at all**. This block
+is transitional: it disappears once system files name archetypes by id directly.
 
 ### Components
 

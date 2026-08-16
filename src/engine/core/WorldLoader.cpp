@@ -33,30 +33,6 @@ static ResourceType ResourceFromString(const std::string& s)
     return ResourceType::Iron;
 }
 
-static PlanetType PlanetTypeFromString(const std::string& s)
-{
-    if (s == "Gas")
-        return PlanetType::Gas;
-    if (s == "Ice")
-        return PlanetType::Ice;
-    if (s == "Lava")
-        return PlanetType::Lava;
-    if (s == "Oceanic")
-        return PlanetType::Oceanic;
-    return PlanetType::Rocky;
-}
-
-static StationRole StationRoleFromString(const std::string& s)
-{
-    if (s == "MiningOutpost")
-        return StationRole::MiningOutpost;
-    if (s == "Shipyard")
-        return StationRole::Shipyard;
-    if (s == "Military")
-        return StationRole::Military;
-    return StationRole::TradeHub;
-}
-
 static Vector2 Vec2FromJson(const json& arr)
 {
     return Vector2{ (float)arr[0], (float)arr[1] };

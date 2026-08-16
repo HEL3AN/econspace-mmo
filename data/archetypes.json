@@ -36,6 +36,7 @@
 
         {
             "id": "planet.rocky",
+            "world": { "category": "planets", "subType": "Rocky" },
             "name": "Rocky Planet",
             "kind": "Planet",
             "glyph": "o",
@@ -47,6 +48,7 @@
         },
         {
             "id": "planet.gas",
+            "world": { "category": "planets", "subType": "Gas" },
             "name": "Gas Giant",
             "kind": "Planet",
             "glyph": "O",
@@ -58,6 +60,7 @@
         },
         {
             "id": "planet.ice",
+            "world": { "category": "planets", "subType": "Ice" },
             "name": "Ice Planet",
             "kind": "Planet",
             "glyph": "o",
@@ -69,6 +72,7 @@
         },
         {
             "id": "planet.lava",
+            "world": { "category": "planets", "subType": "Lava" },
             "name": "Lava Planet",
             "kind": "Planet",
             "glyph": "o",
@@ -80,6 +84,7 @@
         },
         {
             "id": "planet.oceanic",
+            "world": { "category": "planets", "subType": "Oceanic" },
             "name": "Oceanic Planet",
             "kind": "Planet",
             "glyph": "o",
@@ -92,6 +97,7 @@
 
         {
             "id": "station.trade_hub",
+            "world": { "category": "stations", "subType": "TradeHub" },
             "name": "Trade Hub",
             "kind": "Station",
             "glyph": "#",
@@ -107,6 +113,7 @@
         },
         {
             "id": "station.mining_outpost",
+            "world": { "category": "stations", "subType": "MiningOutpost" },
             "name": "Mining Outpost",
             "kind": "Station",
             "glyph": "#",
@@ -122,6 +129,7 @@
         },
         {
             "id": "station.shipyard",
+            "world": { "category": "stations", "subType": "Shipyard" },
             "name": "Shipyard",
             "kind": "Station",
             "glyph": "#",
@@ -137,6 +145,7 @@
         },
         {
             "id": "station.military",
+            "world": { "category": "stations", "subType": "Military" },
             "name": "Military Station",
             "kind": "Station",
             "glyph": "#",
@@ -154,6 +163,7 @@
 
         {
             "id": "field.asteroid",
+            "world": { "category": "asteroidFields" },
             "name": "Asteroid Field",
             "kind": "Field",
             "glyph": "%",
@@ -168,6 +178,7 @@
 
         {
             "id": "nebula.cloud",
+            "world": { "category": "nebulae" },
             "name": "Nebula",
             "kind": "Nebula",
             "glyph": "~",
@@ -181,6 +192,7 @@
 
         {
             "id": "derelict.wreck",
+            "world": { "category": "derelicts" },
             "name": "Derelict",
             "kind": "Derelict",
             "glyph": "x",
@@ -195,6 +207,7 @@
 
         {
             "id": "gate.jump",
+            "world": { "category": "gates" },
             "name": "Jump Gate",
             "kind": "Gate",
             "glyph": "0",
