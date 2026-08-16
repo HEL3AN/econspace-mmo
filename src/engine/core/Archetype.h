@@ -63,12 +63,24 @@ private:
 // How an object looks, kept separate from who draws it (#35). A glyph backend, a text
 // backend and the existing shape/sprite path all read the same three fields; none of
 // them needs the object's C++ type.
+// How a glyph occupies space. This is the grammar of the ASCII look (#36), and it is
+// three values rather than one because a nebula three thousand units across is not the
+// same kind of thing as a ship sixteen units across, and drawing both as one character
+// scaled to fit makes the larger one unreadable.
+enum class GlyphStyle
+{
+    Point,       // one character, sized from the object — a star, a planet, a station
+    Region,      // an area: the character scattered around its extent — a nebula, a belt
+    Directional  // a character turned to face the way the object is heading — a ship
+};
+
 struct Visual
 {
     std::string glyph = "?";  // one character in the ASCII presentation
     std::string sprite;       // texture name for the sprite backend; empty means shapes only
     Color       color = { 255, 255, 255, 255 };
     int         layer = 0;  // draw order, lowest first
+    GlyphStyle  style = GlyphStyle::Point;
 };
 
 // One entry of the registry.

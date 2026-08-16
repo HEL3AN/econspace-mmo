@@ -12,7 +12,7 @@ The "Done" section below is what exists. Everything under the tracks is **planne
 - A large multi-system world (~25k units): warp, parallax background, planet types, station roles, nebulae/derelicts/jump gates, pirate spawns on the frontier.
 - Multi-system galaxy: `universe.json` + `systems/*.json`, working jump gates, full-screen star map.
 - A visual **world editor** (systems, objects, properties, galaxy links).
-- A texture store that draws sprites from `data/textures/` and falls back to vector shapes when a file is missing (no art has been contributed yet — see `documents/texture_assets.md`).
+- A **glyph presentation layer** with pluggable backends: glyphs (the game's look), shapes/sprites, and a headless text projection. A texture store still draws sprites from `data/textures/` for anyone who wants that backend — see `documents/texture_assets.md`.
 - Server-side persistence: the player account, and the galaxy itself, survive a restart.
 
 **Factions & AI**
@@ -59,7 +59,7 @@ Still ahead:
 
 - **Data-driven archetypes with components** replacing the C++ class hierarchy for world objects: what a thing *is* becomes data, so new content stops requiring new classes.
 - **A presentation layer with pluggable backends** — drawing goes through one seam instead of entities calling raylib themselves.
-- **Glyphs as the primary look** (#36) — ASCII/text is the game's actual visual language. It closes the art gap honestly, it lets players build structures without an artist, and it is close to the projection an agent reads. Sprites remain an optional backend.
+- **Glyphs as the primary look** (#36) — **done.** ASCII/text is the game's visual language. Glyph, colour and size carry class, allegiance and scale; shapes remain reachable with F2 as the alternative backend the sprite path hangs off.
 - **The editor on the same layer** — the world editor draws through the same presentation seam as the game, so authored content and played content cannot diverge.
 
 ### Track C — Player-mutable world (#44)
@@ -75,7 +75,7 @@ Tracked on the [milestones page](../../milestones); the sequence below is the pl
 
 1. **Ground truth** — **done.** The single-player path is gone and the client is purely a renderer plus an input source (#23); the server outlives client sessions and persists the galaxy (#13, #48); the wire layer is one library rather than three copies (#25); the docs describe the project that exists (#24, #21). Along the way it turned up a use-after-free on system change (#46), an F9 that corrupted a connected session (#47), and a simulation clock that had never advanced (#57). CI now enforces formatting and a warning-clean build, and runs CodeQL (#22, #53, #63).
 2. **Agent MVP** — **done.** An agent observes the world, gives an order, sleeps until it completes and acts on the result, entirely through MCP: standing orders (#26), the text projection (#27), the event journal (#29), route planning (#30), `econagent` itself (#28, #31) and a scripted run in CI (#33). The protocol gained a version and a handshake check along the way (#15), which is what makes an external bridge in any language possible later.
-3. **Glyph world** — the presentation layer lands and glyphs become the default look.
+3. **Glyph world** — **done.** "What is this?" is answered by a kind tag rather than RTTI (#19); object types and their components live in `data/archetypes.json` (#34); entities describe themselves and a backend draws them (#35); glyphs are the default look (#36); the editor draws through the same seam and generates its palette from the registry (#37).
 4. **Multiplayer core** — multi-client (#3): per-connection sessions with their own ship and account, plus interest management so players in a system see each other. This is **foundational, not optional** — it is what makes the rest an MMO rather than a simulator with one seat.
 5. **Constructible galaxy** — world mutation, `LayoutDelta`, construction, and structures with real macro effects.
 6. **Fleets & depth** — fleet command over agents, server-side ship ownership, economic and progression depth, scale work (sharding, larger galaxies).
@@ -85,7 +85,6 @@ Tracked on the [milestones page](../../milestones); the sequence below is the pl
 Contributions are still very welcome, and the useful work has shifted. The most valuable help right now:
 
 - **Multi-client server work** (#3) — sessions, per-connection state, interest management. The highest-leverage code in the project.
-- **The presentation layer and glyph backend** (#36, #43) — this unblocks both the visual identity and player-built content.
 - **`econagent` and the agent seam** (#42) — C++ MCP server work, and play-testing what an agent can and cannot actually do with the orders it is given.
 - **World mutation plumbing** (#44) — starting with `LayoutDelta` and the server-side mutation path.
 - **Content & depth** — more systems (via the editor), a real progression loop, economic depth.

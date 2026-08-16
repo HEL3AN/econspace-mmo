@@ -139,11 +139,11 @@ private:
 
     std::vector<BgStar> bgStars_;  // parallax-background stars
 
-    // How the world is presented (#35). Shapes are still the default; F2 switches to
-    // glyphs, which is what #36 will make the primary look once it has been lived with.
+    // How the world is presented (#35). Glyphs are the game's look (#36); shapes remain
+    // reachable with F2, as the alternative backend the sprite path hangs off.
     Render::GlyphBackend glyphBackend_;
     Render::ShapeBackend shapeBackend_;
-    Render::IBackend*    backend_ = &shapeBackend_;
+    Render::IBackend*    backend_ = &glyphBackend_;
 
     // Radar state: zoom and absolute view center (does not follow the player).
     float   radarZoom_ = 1.0f;

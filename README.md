@@ -9,7 +9,7 @@ You pilot a ship in a persistent, multi-system galaxy: mine, trade, run missions
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows%20(MinGW)-lightgrey.svg)
 ![Status: Prototype](https://img.shields.io/badge/status-prototype-orange.svg)
 
-> **Project status — honest version.** EconSpace is an engineering-driven **prototype**, not a finished game. The client–server architecture and netcode are solid and real; the *content* is not: sprites are placeholder shapes (no art yet), there is no audio, and the world is small. The server currently accepts **one** client at a time — multi-client is the next foundational piece, not an extra. See [ROADMAP.md](ROADMAP.md) for where it is and where it's going. Contributions are very welcome.
+> **Project status — honest version.** EconSpace is an engineering-driven **prototype**, not a finished game. The client–server architecture and netcode are solid and real; the *content* is not: there is no audio, and the world is small. The look is **glyphs** — that is the game's visual language, not a stand-in for missing art. The server currently accepts **one** client at a time — multi-client is the next foundational piece, not an extra. See [ROADMAP.md](ROADMAP.md) for where it is and where it's going. Contributions are very welcome.
 
 ---
 
@@ -30,8 +30,16 @@ EconSpace runs its own game logic on top of raylib (windowing/render/input only)
 - A "living galaxy": every system is simulated (system controllers, gate-line economy, territory captures, an event feed) — visible on the galaxy map.
 - Persistent systems and agents with stable ids.
 
+**Presentation**
+- **Glyphs are the look.** Every object is a character: the glyph says what class of thing it is, the colour says whose it is, the size is its actual size. Areas — nebulae, asteroid belts — are drawn as regions rather than one huge character, and ships turn to face where they are going.
+- Object types live in `data/archetypes.json`, so a new kind of object needs no new art and no new drawing code.
+- Rendering goes through one seam with pluggable backends: glyphs, shapes/sprites (F2), and a headless text projection that needs no window — which is how an AI agent and the test suite see the same world.
+
+**Agents**
+- `econagent`, an **MCP server written in C++**, so the wire protocol has a single source of truth. An LLM agent observes the world as text, gives a standing order, waits on an event journal, and acts on the result.
+
 **Tooling**
-- A visual **world editor** (`worldeditor`) for editing systems and galaxy links, saved to JSON.
+- A visual **world editor** (`worldeditor`) for editing systems and galaxy links, saved to JSON. It draws through the same presentation seam as the game, and its creation palette is generated from the archetype registry.
 - A **headless server** (`econserver`) that runs the exact same simulation without a window.
 
 **Networking**
@@ -48,11 +56,10 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for how it all fits together.
 Everything in this section is **planned, not implemented**. It is here so contributors know what the project is aiming at, and so nobody builds against the old assumptions. Details and sequencing live in [ROADMAP.md](ROADMAP.md).
 
 - **An MMO, not a sandbox with an optional server.** The client always talks to an authoritative server. Multi-client (one session, ship, and account per connection, plus interest management) is foundational work, not a stretch goal.
-- **Glyphs as the primary look** (#36). ASCII/glyph presentation becomes the game's actual visual language rather than a debug view: it closes the art gap honestly, it lets players build structures without an artist in the loop, and the same projection is what an AI agent reads. Sprites stay possible as an alternative rendering backend instead of being the thing that blocks the project.
-- **AI agents as first-class players** (#42). The game will ship its own MCP server, `econagent`, written in C++ so the wire protocol has a single source of truth. An LLM agent (Claude Code, Claude Desktop) can then pilot a ship on high-level standing orders, and a human can play fleet commander rather than pilot.
-- **A player-mutable world** (#44). Players build deployables and structures that feed the macro simulation that already exists — prosperity, security, territory control.
+- **A player-mutable world** (#44). Players build deployables and structures that feed the macro simulation that already exists — prosperity, security, territory control. The archetype registry and the glyph layer were built for this: a structure a player invents needs no artist and no recompile.
+- **Fleets** (#32). One commander, several agent-piloted ships.
 
-Today none of this is built: rendering is placeholder shapes, there is no agent API and no MCP server, and the world is read-only content authored in the editor.
+The world is still read-only content authored in the editor, and the server still accepts one client at a time.
 
 ---
 

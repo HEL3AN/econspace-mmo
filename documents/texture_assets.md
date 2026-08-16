@@ -3,18 +3,20 @@
 A reference for generating sprites (Nano Banana and the like) and assembling them in
 Photoshop. The project's style is **pixel art**.
 
-> **The rendering path already works — the only thing missing is the PNG files.**
-> `Tex::DrawSprite(...)` (`src/engine/render/Textures.h`) loads and caches PNGs from
-> `data/textures/` on demand, and every entity already calls it: see
-> `src/engine/entities/Star.cpp`, where the vector shape is drawn only when the sprite
-> is absent. Drop a correctly named file into `data/textures/` and it appears in-game
-> on the next run — no code changes, no rebuild.
+> **Glyphs are the game's look; sprites are an alternative backend.** That is settled
+> (#36) and not a placeholder arrangement. Nothing below is obsolete, and none of it is
+> on the critical path — the game does not depend on any of these files existing.
 
-> **This is an optional path, not the critical one.** The project's primary
-> presentation is moving to glyph/ASCII rendering (issue #36); sprites become an
-> optional alternative rendering backend. The specification below stays valid for
-> anyone who wants that backend — nothing here is obsolete — but the game no longer
-> depends on these files existing.
+> **The rendering path works — the only thing missing is the PNG files.**
+> `Render::ShapeBackend` (`src/engine/render/GlyphBackend.h`) calls
+> `Tex::DrawSprite(...)`, which loads and caches PNGs from `data/textures/` on demand
+> and falls back to a vector shape when one is absent. Press **F2** in the game or the
+> editor to switch to that backend. Drop a correctly named file into `data/textures/`
+> and it appears on the next run — no code changes, no rebuild.
+
+> **The sprite name comes from the archetype, not from C++.** `data/archetypes.json`
+> gives each archetype a `sprite` field. A new object type therefore needs no code to
+> get a sprite, exactly as it needs none to get a glyph.
 
 ## General Rules (important for all files)
 

@@ -24,6 +24,7 @@ Render::Item Entity::Describe() const
         it.glyph = archetype_->visual.glyph;
         it.sprite = archetype_->visual.sprite;
         it.layer = archetype_->visual.layer;
+        it.style = archetype_->visual.style;
     }
     return it;
 }

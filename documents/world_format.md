@@ -97,11 +97,35 @@ registry says *what it is and what it can do*, once, for every object of that ki
 | `kind` | string | one of `Star`, `Planet`, `Station`, `Field`, `Gate`, `Nebula`, `Derelict`, `Npc`, `PlayerShip` |
 | `glyph` | string | the character the ASCII presentation draws |
 | `sprite` | string | texture name in `data/textures/`; omit for shapes only |
+| `style` | string | `point` (default), `region` or `directional` — see below |
 | `color` | [r, g, b, a] | 0..255; `a` defaults to 255 |
 | `layer` | int | draw order, lowest first; the same number means the same thing in every backend |
 | `size` | number | default radius when the instance does not give its own |
 | `world` | object | where this archetype lives in a system file — see below |
 | `components` | object | what the object can do — see below |
+
+### `style` — the glyph grammar
+
+Glyphs are the game's primary look, and the grammar is deliberately narrow so a
+screenshot is readable at a glance:
+
+- **glyph** = what class of thing this is (a station is `#` whatever it trades in)
+- **colour** = whose it is (faction paint, star type, ore remaining)
+- **size** = how big it actually is, straight from the world
+
+What an object *can do* is deliberately **not** encoded in the character — that is what
+the overview panel and the component list are for. Otherwise a player-built structure
+would need a new letter, and needing new art per object type is what glyphs exist to
+avoid.
+
+| `style` | Drawn as | Used by |
+|------|---------|--------|
+| `point` | one character, sized from the object | star, planet, station, gate, derelict |
+| `region` | the character scattered around the extent | nebula, asteroid belt |
+| `directional` | the character turned to face the heading | ships |
+
+`region` exists because an area is not an object: a nebula three thousand units across,
+drawn as a single character scaled to fit, would cover everything inside it.
 
 ### `world` — how the archetype maps onto a system file
 

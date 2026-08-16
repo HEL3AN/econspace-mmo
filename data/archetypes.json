@@ -163,6 +163,7 @@
 
         {
             "id": "field.asteroid",
+            "style": "region",
             "world": { "category": "asteroidFields" },
             "name": "Asteroid Field",
             "kind": "Field",
@@ -178,6 +179,7 @@
 
         {
             "id": "nebula.cloud",
+            "style": "region",
             "world": { "category": "nebulae" },
             "name": "Nebula",
             "kind": "Nebula",
@@ -222,6 +224,7 @@
 
         {
             "id": "ship.npc",
+            "style": "directional",
             "name": "Ship",
             "kind": "Npc",
             "glyph": "v",
@@ -233,6 +236,7 @@
         },
         {
             "id": "ship.player",
+            "style": "directional",
             "name": "Your Ship",
             "kind": "PlayerShip",
             "glyph": "A",
