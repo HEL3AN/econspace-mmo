@@ -14,8 +14,8 @@ std::string StationRoleName(StationRole role)
 }
 
 Station::Station(Vector2 pos, float size, std::string name, FactionId faction, StationRole role)
-    : Entity(pos, size, FactionColor(faction)), name_(std::move(name)), faction_(faction),
-      role_(role)
+    : Entity(pos, size, FactionColor(faction), EntityKind::Station), name_(std::move(name)),
+      faction_(faction), role_(role)
 {
 }
 

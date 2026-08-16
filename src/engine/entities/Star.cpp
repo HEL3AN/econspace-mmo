@@ -13,7 +13,7 @@ static Color ColorForStarType(StarType type)
 }
 
 Star::Star(Vector2 pos, float size, StarType type)
-    : Entity(pos, size, ColorForStarType(type)), type_(type)
+    : Entity(pos, size, ColorForStarType(type), EntityKind::Star), type_(type)
 {
 }
 

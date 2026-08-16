@@ -2,6 +2,7 @@
 
 #include "raylib.h"
 #include "core/Faction.h"
+#include "entities/EntityKind.h"
 #include "sim/Events.h"
 #include "sim/Orders.h"
 #include "sim/SystemState.h"  // FireEvent
@@ -73,19 +74,10 @@ struct Command
     bool        abortOrder = false;  // drop whatever is running
 };
 
-// Entity kind (render-independent; the client decides how to draw it).
-enum class EntityKind
-{
-    Unknown,
-    Star,
-    Planet,
-    Station,
-    Field,
-    Gate,
-    Nebula,
-    Derelict,
-    Npc
-};
+// Entity kind. The wire uses the engine's enum rather than a parallel copy, so there is
+// no translation between "what the world says an object is" and "what the snapshot says",
+// and no chance of the two drifting apart.
+using EntityKind = ::EntityKind;
 
 // --- Snapshot: server -> client ---
 struct EntitySnapshot

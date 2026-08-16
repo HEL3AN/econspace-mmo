@@ -1,6 +1,7 @@
 #include "entities/Entity.h"
 
-Entity::Entity(Vector2 pos, float size, Color color) : pos_(pos), size_(size), color_(color)
+Entity::Entity(Vector2 pos, float size, Color color, EntityKind kind)
+    : pos_(pos), size_(size), color_(color), kind_(kind)
 {
 }
 

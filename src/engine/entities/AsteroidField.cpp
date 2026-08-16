@@ -4,8 +4,8 @@
 
 AsteroidField::AsteroidField(Vector2 pos, float size, std::string name, ResourceType resource,
                              int ore)
-    : Entity(pos, size, GRAY), name_(std::move(name)), resource_(resource), oreRemaining_(ore),
-      oreMax_(ore)
+    : Entity(pos, size, GRAY, EntityKind::Field), name_(std::move(name)), resource_(resource),
+      oreRemaining_(ore), oreMax_(ore)
 {
 }
 
