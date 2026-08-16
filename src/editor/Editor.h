@@ -117,7 +117,7 @@ private:
     // different picture from the game is exactly what #37 is about avoiding.
     Render::GlyphBackend   glyphBackend_;
     Render::ShapeBackend   shapeBackend_;
-    Render::IBackend*      backend_ = &shapeBackend_;
+    Render::IBackend*      backend_ = &glyphBackend_;
     std::vector<ObjHandle> handles_;  // parallel to entities_
 
     int selected_ = -1;

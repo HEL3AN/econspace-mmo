@@ -82,11 +82,30 @@ TEST_CASE("the shipped registry loads and covers every kind the world contains")
 
     SUBCASE("every archetype has a glyph, which is what the primary renderer needs")
     {
+        // Glyphs are the game's look (#36), not a fallback. An archetype without one is
+        // an object that cannot be drawn at all, so this is a completeness check rather
+        // than a style preference.
         for (const Archetype& a : Archetypes::All())
         {
             CHECK_FALSE(a.visual.glyph.empty());
             CHECK(a.visual.color.a > 0);  // fully transparent means invisible
         }
+    }
+
+    SUBCASE("the glyph grammar matches what the objects actually are")
+    {
+        // An area drawn as one character scaled to fit would put a 3000-unit `~` over
+        // everything inside it, so regions are marked as such in data rather than being
+        // special-cased by the backend.
+        REQUIRE(Archetypes::Find("nebula.cloud") != nullptr);
+        CHECK(Archetypes::Find("nebula.cloud")->visual.style == GlyphStyle::Region);
+        CHECK(Archetypes::Find("field.asteroid")->visual.style == GlyphStyle::Region);
+
+        // Ships turn; scenery does not.
+        CHECK(Archetypes::Find("ship.player")->visual.style == GlyphStyle::Directional);
+        CHECK(Archetypes::Find("ship.npc")->visual.style == GlyphStyle::Directional);
+        CHECK(Archetypes::Find("station.trade_hub")->visual.style == GlyphStyle::Point);
+        CHECK(Archetypes::Find("star.yellow")->visual.style == GlyphStyle::Point);
     }
 }
 
@@ -205,6 +224,12 @@ TEST_CASE("a broken registry fails loudly instead of loading half a world")
     SUBCASE("an unknown kind")
     {
         CHECK_FALSE(LoadInline(R"({"archetypes":[{"id":"x","kind":"Wormhole"}]})"));
+    }
+
+    SUBCASE("an unknown glyph style")
+    {
+        CHECK_FALSE(
+            LoadInline(R"({"archetypes":[{"id":"x","kind":"Station","style":"sparkle"}]})"));
     }
 
     SUBCASE("an unknown component — a typo would otherwise be an object that does nothing")

@@ -304,3 +304,39 @@ private to `WorldLoader.cpp` while their `…Name` counterparts were public. Hav
 direction public is how a second copy of the other gets written; both now live beside the
 enum they belong to, and a test pins the round trip — if the editor's spelling and the
 loader's disagreed, every military station placed would silently load as a trade hub.
+
+---
+
+## 2026-08-16 — Glyphs are the look, and the grammar is narrow on purpose
+
+**Decision.** The glyph backend is the default renderer in both the game and the editor.
+Shapes and sprites stay reachable with F2 as the alternative backend, not as a fallback
+waiting to be promoted.
+
+**The grammar.** Three channels, and only three:
+
+- **glyph** — what class of thing this is. A station is `#` whatever it trades in.
+- **colour** — whose it is: faction paint, star type, how much ore a belt has left.
+- **size** — how big it actually is, taken from the world rather than from a category.
+
+**What is deliberately not encoded.** Capability. It is tempting to give a shipyard its
+own letter, but then a structure a player invents needs a new letter assigned by hand —
+and needing new art per object type is exactly what glyphs are here to avoid. What an
+object can do is answered by the overview panel and the component list, both of which
+already read it from the archetype.
+
+**Areas are not objects.** A nebula three thousand units across, drawn as one character
+scaled to fit, would put a `~` over everything inside it. `GlyphStyle` therefore has
+three values — `point`, `region`, `directional` — and it is data on the archetype rather
+than a special case in the backend, so a player-built minefield can be a region without
+the renderer learning what a minefield is.
+
+**Ships turn.** A ship's heading is the most useful thing about it at a glance — whether
+it is coming at you. The glyph rotates rather than a separate marker being drawn beside
+it.
+
+**Still open, still deliberately.** What happens to the windowed HUD — status, target,
+overview, radar, missions, the galaxy map — over a glyph world. The panels are unchanged
+here. That judgement wants the glyph world actually on screen to react to, which is now
+possible, and it is a question about how the game feels rather than about how it is
+built.

@@ -7,6 +7,18 @@
 namespace Render
 {
 
+namespace
+{
+// Draws one glyph centred on a world point.
+void GlyphAt(const char* glyph, Vector2 centre, float height, Color c)
+{
+    Font    font = Ui::GetFont();
+    Vector2 extent = MeasureTextEx(font, glyph, height, 0.0f);
+    DrawTextEx(font, glyph, { centre.x - extent.x * 0.5f, centre.y - extent.y * 0.5f }, height,
+               0.0f, c);
+}
+}  // namespace
+
 void GlyphBackend::Draw(const Item& item)
 {
     Color c = item.color;
@@ -18,6 +30,62 @@ void GlyphBackend::Draw(const Item& item)
     if (item.ring > 0.0f)
         DrawCircleLines(0.0f, 0.0f, item.ring, Fade(c, 0.18f));
 
+    switch (item.style)
+    {
+        case GlyphStyle::Region: DrawRegion(item, c); return;
+        case GlyphStyle::Directional: DrawDirectional(item, c); return;
+        case GlyphStyle::Point: DrawPoint(item, c); return;
+    }
+}
+
+void GlyphBackend::DrawPoint(const Item& item, Color c)
+{
+    const float height = item.size * 2.0f * SCALE;
+    if (height < MIN_PIXELS)
+    {
+        DrawPixelV(item.pos, c);
+        return;
+    }
+    GlyphAt(item.glyph.empty() ? "?" : item.glyph.c_str(), item.pos, height, c);
+}
+
+// A nebula or a belt is an area, not an object. Drawing it as one character scaled to
+// three thousand units would put a `~` across the whole screen and hide everything
+// inside it; a ring of small marks says "this extends to here" and stays see-through.
+void GlyphBackend::DrawRegion(const Item& item, Color c)
+{
+    const char* glyph = item.glyph.empty() ? "?" : item.glyph.c_str();
+    const float height = item.size * REGION_GLYPH;
+    if (height < MIN_PIXELS)
+    {
+        DrawPixelV(item.pos, c);
+        return;
+    }
+
+    for (int i = 0; i < REGION_MARKS; i++)
+    {
+        const float angle = (float)i * (2.0f * PI / (float)REGION_MARKS);
+        GlyphAt(
+            glyph,
+            { item.pos.x + std::cos(angle) * item.size, item.pos.y + std::sin(angle) * item.size },
+            height, c);
+    }
+    // A sparse interior, so a region reads as filled rather than as a ring of debris.
+    // The arrangement is a fixed function of the index: a belt that shimmered between
+    // frames would look like motion where there is none.
+    for (int i = 0; i < 5; i++)
+    {
+        const float angle = (float)i * 2.39996f;
+        const float r = item.size * (0.25f + 0.5f * (float)((i * 7) % 11) / 11.0f);
+        GlyphAt(glyph, { item.pos.x + std::cos(angle) * r, item.pos.y + std::sin(angle) * r },
+                height, Fade(c, 0.55f));
+    }
+}
+
+// A ship's heading is the most useful thing about it at a glance — whether it is coming
+// at you. The glyph turns rather than a separate marker being drawn beside it.
+void GlyphBackend::DrawDirectional(const Item& item, Color c)
+{
     const float height = item.size * 2.0f * SCALE;
     if (height < MIN_PIXELS)
     {
@@ -28,8 +96,19 @@ void GlyphBackend::Draw(const Item& item)
     const char* glyph = item.glyph.empty() ? "?" : item.glyph.c_str();
     Font        font = Ui::GetFont();
     Vector2     extent = MeasureTextEx(font, glyph, height, 0.0f);
-    Vector2     at = { item.pos.x - extent.x * 0.5f, item.pos.y - extent.y * 0.5f };
-    DrawTextEx(font, glyph, at, height, 0.0f, c);
+    // The glyph is drawn nose-up, as the ship sprites are, so the heading gets a quarter
+    // turn added. Origin at the glyph's centre so it spins in place.
+    DrawTextPro(font, glyph, item.pos, { extent.x * 0.5f, extent.y * 0.5f },
+                item.heading * RAD2DEG + 90.0f, height, 0.0f, c);
+
+    // Hull bar over a damaged ship, unrotated so it stays readable.
+    if (item.intensity < 1.0f)
+    {
+        const float barW = item.size * 2.0f;
+        Vector2     barPos = { item.pos.x - barW / 2.0f, item.pos.y - item.size - 8.0f };
+        DrawRectangleV(barPos, { barW, 3.0f }, Fade(GRAY, 0.5f));
+        DrawRectangleV(barPos, { barW * item.intensity, 3.0f }, RED);
+    }
 }
 
 void ShapeBackend::Draw(const Item& item)

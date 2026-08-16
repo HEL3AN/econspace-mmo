@@ -1,6 +1,7 @@
 #pragma once
 
 #include "entities/EntityKind.h"
+#include "core/Archetype.h"
 #include "raylib.h"
 #include <string>
 #include <vector>
@@ -31,9 +32,10 @@ struct Item
     float   size = 0.0f;
     Color   color = { 255, 255, 255, 255 };
 
-    std::string glyph = "?";  // the ASCII presentation
-    std::string sprite;       // texture name; empty means this thing has no sprite
-    int         layer = 0;    // draw order, lowest first
+    std::string glyph = "?";                // the ASCII presentation
+    std::string sprite;                     // texture name; empty means this thing has no sprite
+    int         layer = 0;                  // draw order, lowest first
+    GlyphStyle  style = GlyphStyle::Point;  // how the glyph occupies the object's extent
 
     std::string label;  // display name, for backends that show one
 

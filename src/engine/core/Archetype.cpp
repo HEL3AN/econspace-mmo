@@ -74,6 +74,19 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
     a.visual.glyph = j.value("glyph", std::string("?"));
     a.visual.sprite = j.value("sprite", std::string());
     a.visual.layer = j.value("layer", 0);
+
+    const std::string style = j.value("style", std::string("point"));
+    if (style == "point")
+        a.visual.style = GlyphStyle::Point;
+    else if (style == "region")
+        a.visual.style = GlyphStyle::Region;
+    else if (style == "directional")
+        a.visual.style = GlyphStyle::Directional;
+    else
+    {
+        err = "archetype '" + a.id + "': unknown style '" + style + "'";
+        return false;
+    }
     if (j.contains("color"))
         a.visual.color = ColorFromJson(j["color"], a.visual.color);
     a.defaultSize = j.value("size", 0.0f);
