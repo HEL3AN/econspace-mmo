@@ -187,11 +187,11 @@ void Game::Run()
                 Vector2 pp = playerShip_->GetPosition();
                 for (auto& e : clientWorld_)
                 {
-                    AsteroidField* f = dynamic_cast<AsteroidField*>(e.get());
-                    if (f == nullptr)
+                    if (e->GetKind() != EntityKind::Field)
                         continue;
-                    float dx = f->GetPosition().x - pp.x;
-                    float dy = f->GetPosition().y - pp.y;
+                    AsteroidField* f = static_cast<AsteroidField*>(e.get());
+                    float          dx = f->GetPosition().x - pp.x;
+                    float          dy = f->GetPosition().y - pp.y;
                     if (sqrtf(dx * dx + dy * dy) <= f->GetSize() + 40.0f)
                     {
                         miningBeamField_ = f;
@@ -312,19 +312,18 @@ void Game::HandleInput(float dt)
             OpenContextMenuAt(worldMouse);
     }
 
-    // Nearest station within docking range; E — dock. Single-player, detection uses
-    // the live sim_ (a live Station* is needed for missions/Dock); over the network, the
-    // clientWorld_ proxies (the client has no live world). Docking itself over the network is
-    // server-authoritative: we send cmd_.dock, the server confirms via snapshot (see
-    // BuildClientSnapshot).
+    // Nearest station within docking range; E — dock. Detection runs over the clientWorld_
+    // proxies, the only world the client has. Docking itself is server-authoritative: we
+    // send cmd_.dock and the server confirms via snapshot (see BuildClientSnapshot), so a
+    // proxy being in range is a prompt, not a decision.
     nearbyStation_ = nullptr;
     {
         const auto& src = clientWorld_;
         for (auto& e : src)
         {
-            Station* st = dynamic_cast<Station*>(e.get());
-            if (st == nullptr)
+            if (e->GetKind() != EntityKind::Station)
                 continue;
+            Station* st = static_cast<Station*>(e.get());
 
             float dx = st->GetPosition().x - playerShip_->GetPosition().x;
             float dy = st->GetPosition().y - playerShip_->GetPosition().y;
@@ -381,7 +380,10 @@ bool Game::HostileToPlayerFaction(FactionId f) const
 
 Station* Game::StationById(int id) const
 {
-    return dynamic_cast<Station*>(FindEntityById(id));
+    Entity* e = FindEntityById(id);
+    if (e == nullptr || e->GetKind() != EntityKind::Station)
+        return nullptr;
+    return static_cast<Station*>(e);
 }
 
 void Game::FlashMessage(const std::string& msg)
@@ -429,75 +431,97 @@ void Game::OpenContextMenu(Entity* target)
                           { OrderWarp(target->GetPosition(), target->GetSize() + 70.0f); } });
     }
 
-    // Type-specific actions.
-    if (Station* st = dynamic_cast<Station*>(target))
+    // Kind-specific actions. Listed exhaustively rather than with a `default:` so that a
+    // new kind of object — the point of #44 — cannot quietly ship with an empty menu.
+    switch (target->GetKind())
     {
-        // Docking is server-authoritative: in range we send the intent and the server
-        // decides (including the reputation gate); out of range we approach first, which
-        // is the whole point of the menu item — the E key only works once already close.
-        items.push_back({ "Dock", [this, st]()
-                          {
-                              float dx = st->GetPosition().x - playerShip_->GetPosition().x;
-                              float dy = st->GetPosition().y - playerShip_->GetPosition().y;
-                              if (sqrtf(dx * dx + dy * dy) <= st->GetSize() + DOCKING_RANGE)
-                                  cmd_.dock = true;
-                              else  // far — first approach via autopilot
-                                  OrderAutopilot(st->GetPosition(), st->GetSize() + 60.0f);
-                          } });
-    }
-    else if (AsteroidField* af = dynamic_cast<AsteroidField*>(target))
-    {
-        items.push_back({ "Mine here", [this, af]()
-                          {
-                              OrderAutopilot(af->GetPosition(), af->GetSize() + 30.0f);
-                              if (!snapshot_.player.mining)  // enable mining via command
-                                  cmd_.toggleMining = true;
-                          } });
-    }
-    else if (NpcShip* npc = dynamic_cast<NpcShip*>(target))
-    {
-        items.push_back({ "Attack", [this, npc]()
-                          {
-                              selected_ = npc;
-                              targetWin_->SetOpen(true);
-                              if (!weaponOn_)
-                                  cmd_.toggleWeapon = true;
-                              weaponOn_ = true;
-                          } });
-    }
-    else if (Derelict* dr = dynamic_cast<Derelict*>(target))
-    {
-        if (!dr->IsLooted())
-            items.push_back({ "Investigate", [this, dr]()
+        case EntityKind::Station:
+        {
+            Station* st = static_cast<Station*>(target);
+            // Docking is server-authoritative: in range we send the intent and the server
+            // decides (including the reputation gate); out of range we approach first, which
+            // is the whole point of the menu item — the E key only works once already close.
+            items.push_back({ "Dock", [this, st]()
                               {
-                                  float dx = dr->GetPosition().x - playerShip_->GetPosition().x;
-                                  float dy = dr->GetPosition().y - playerShip_->GetPosition().y;
-                                  if (sqrtf(dx * dx + dy * dy) <= dr->GetSize() + 120.0f)
-                                      cmd_.lootId =
-                                          dr->GetId();  // salvage order (server will verify)
-                                  else                  // far — approach first
-                                      OrderAutopilot(dr->GetPosition(), dr->GetSize() + 40.0f);
+                                  float dx = st->GetPosition().x - playerShip_->GetPosition().x;
+                                  float dy = st->GetPosition().y - playerShip_->GetPosition().y;
+                                  if (sqrtf(dx * dx + dy * dy) <= st->GetSize() + DOCKING_RANGE)
+                                      cmd_.dock = true;
+                                  else  // far — first approach via autopilot
+                                      OrderAutopilot(st->GetPosition(), st->GetSize() + 60.0f);
                               } });
-    }
-    else if (JumpGate* g = dynamic_cast<JumpGate*>(target))
-    {
-        std::string dest = g->GetDestination();
-        std::string label = "Jump";
-        for (const auto& s : universe_.systems)
-            if (s.id == dest)
-            {
-                label = "Jump to " + s.name;
-                break;
-            }
-        items.push_back({ label, [this, g]()
-                          {
-                              float dx = g->GetPosition().x - playerShip_->GetPosition().x;
-                              float dy = g->GetPosition().y - playerShip_->GetPosition().y;
-                              if (sqrtf(dx * dx + dy * dy) <= g->GetSize() + 200.0f)
-                                  cmd_.jumpGateId = g->GetId();  // jump order (server will verify)
-                              else                               // far — warp to the gate
-                                  OrderWarp(g->GetPosition(), g->GetSize() + 120.0f);
-                          } });
+            break;
+        }
+        case EntityKind::Field:
+        {
+            AsteroidField* af = static_cast<AsteroidField*>(target);
+            items.push_back({ "Mine here", [this, af]()
+                              {
+                                  OrderAutopilot(af->GetPosition(), af->GetSize() + 30.0f);
+                                  if (!snapshot_.player.mining)  // enable mining via command
+                                      cmd_.toggleMining = true;
+                              } });
+            break;
+        }
+        case EntityKind::Npc:
+        {
+            NpcShip* npc = static_cast<NpcShip*>(target);
+            items.push_back({ "Attack", [this, npc]()
+                              {
+                                  selected_ = npc;
+                                  targetWin_->SetOpen(true);
+                                  if (!weaponOn_)
+                                      cmd_.toggleWeapon = true;
+                                  weaponOn_ = true;
+                              } });
+            break;
+        }
+        case EntityKind::Derelict:
+        {
+            Derelict* dr = static_cast<Derelict*>(target);
+            if (!dr->IsLooted())
+                items.push_back({ "Investigate", [this, dr]()
+                                  {
+                                      float dx = dr->GetPosition().x - playerShip_->GetPosition().x;
+                                      float dy = dr->GetPosition().y - playerShip_->GetPosition().y;
+                                      if (sqrtf(dx * dx + dy * dy) <= dr->GetSize() + 120.0f)
+                                          cmd_.lootId =
+                                              dr->GetId();  // salvage order (server will verify)
+                                      else                  // far — approach first
+                                          OrderAutopilot(dr->GetPosition(), dr->GetSize() + 40.0f);
+                                  } });
+            break;
+        }
+        case EntityKind::Gate:
+        {
+            JumpGate*   g = static_cast<JumpGate*>(target);
+            std::string dest = g->GetDestination();
+            std::string label = "Jump";
+            for (const auto& s : universe_.systems)
+                if (s.id == dest)
+                {
+                    label = "Jump to " + s.name;
+                    break;
+                }
+            items.push_back({ label, [this, g]()
+                              {
+                                  float dx = g->GetPosition().x - playerShip_->GetPosition().x;
+                                  float dy = g->GetPosition().y - playerShip_->GetPosition().y;
+                                  if (sqrtf(dx * dx + dy * dy) <= g->GetSize() + 200.0f)
+                                      cmd_.jumpGateId =
+                                          g->GetId();  // jump order (server will verify)
+                                  else                 // far — warp to the gate
+                                      OrderWarp(g->GetPosition(), g->GetSize() + 120.0f);
+                              } });
+            break;
+        }
+        // Scenery and the player's own ship: fly-to and warp-to, already added above, are all
+        // there is to do with them.
+        case EntityKind::Star:
+        case EntityKind::Planet:
+        case EntityKind::Nebula:
+        case EntityKind::PlayerShip:
+        case EntityKind::Unknown: break;
     }
 
     contextMenu_.Open(GetMousePosition(), std::move(items));

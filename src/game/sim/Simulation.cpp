@@ -399,12 +399,12 @@ std::string Simulation::JumpGateDestIfNear(SystemState& st, int gateId) const
     for (const auto& e : st.entities)
         if (e->GetId() == gateId)
         {
-            const JumpGate* g = dynamic_cast<const JumpGate*>(e.get());
-            if (g == nullptr)
+            if (e->GetKind() != EntityKind::Gate)
                 return std::string();
-            Vector2 sp = player_->GetPosition();
-            float   dx = g->GetPosition().x - sp.x;
-            float   dy = g->GetPosition().y - sp.y;
+            const JumpGate* g = static_cast<const JumpGate*>(e.get());
+            Vector2         sp = player_->GetPosition();
+            float           dx = g->GetPosition().x - sp.x;
+            float           dy = g->GetPosition().y - sp.y;
             if (std::sqrt(dx * dx + dy * dy) > g->GetSize() + 200.0f)
                 return std::string();
             return g->GetDestination();
@@ -1146,37 +1146,28 @@ Proto::Snapshot Simulation::BuildSnapshot(const std::string& systemId) const
         es.size = e->GetSize();
         es.name = e->GetName();
 
-        if (NpcShip* n = e->GetKind() == EntityKind::Npc ? static_cast<NpcShip*>(e.get()) : nullptr)
+        // The wire kind IS the world kind — one enum, so this is a copy, not a translation.
+        // Only the extra per-kind fields need a case.
+        es.kind = e->GetKind();
+        switch (e->GetKind())
         {
-            es.kind = Proto::EntityKind::Npc;
-            es.faction = n->GetFaction();
-            es.role = (int)n->GetRole();
-            es.heading = n->GetHeading();
-            es.hullFrac = n->GetMaxHull() > 0.0f ? n->GetHull() / n->GetMaxHull() : 0.0f;
+            case EntityKind::Npc:
+            {
+                const NpcShip* n = static_cast<const NpcShip*>(e.get());
+                es.faction = n->GetFaction();
+                es.role = (int)n->GetRole();
+                es.heading = n->GetHeading();
+                es.hullFrac = n->GetMaxHull() > 0.0f ? n->GetHull() / n->GetMaxHull() : 0.0f;
+                break;
+            }
+            case EntityKind::Station:
+                es.faction = static_cast<const Station*>(e.get())->GetFaction();
+                break;
+            case EntityKind::Field:
+                es.ore = (int)static_cast<const AsteroidField*>(e.get())->GetResource();
+                break;
+            default: break;
         }
-        else if (Station* s =
-                     e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
-        {
-            es.kind = Proto::EntityKind::Station;
-            es.faction = s->GetFaction();
-        }
-        else if (dynamic_cast<Star*>(e.get()) != nullptr)
-            es.kind = Proto::EntityKind::Star;
-        else if (dynamic_cast<Planet*>(e.get()) != nullptr)
-            es.kind = Proto::EntityKind::Planet;
-        else if (e->GetKind() == EntityKind::Gate)
-            es.kind = Proto::EntityKind::Gate;
-        else if (AsteroidField* af = e->GetKind() == EntityKind::Field
-                                         ? static_cast<AsteroidField*>(e.get())
-                                         : nullptr)
-        {
-            es.kind = Proto::EntityKind::Field;
-            es.ore = (int)af->GetResource();
-        }
-        else if (e->GetKind() == EntityKind::Nebula)
-            es.kind = Proto::EntityKind::Nebula;
-        else if (e->GetKind() == EntityKind::Derelict)
-            es.kind = Proto::EntityKind::Derelict;
 
         snap.entities.push_back(es);
     }
@@ -1280,52 +1271,44 @@ Proto::SystemLayout Simulation::BuildLayout(const std::string& systemId) const
         el.color = e->GetColor();
         el.name = e->GetName();
 
-        if (Star* s = dynamic_cast<Star*>(e.get()))
+        // No `default:` on purpose, unlike the snapshot above. There the kind is copied
+        // wholesale and the cases only add optional fields; here every kind has to be
+        // decided in or out of the static layout, and a new one silently dropped would be
+        // an entity the client never draws. Let the compiler ask the question.
+        el.kind = e->GetKind();
+        switch (e->GetKind())
         {
-            el.kind = Proto::EntityKind::Star;
-            el.subType = (int)s->GetStarType();
-        }
-        else if (Planet* p = dynamic_cast<Planet*>(e.get()))
-        {
-            el.kind = Proto::EntityKind::Planet;
-            el.subType = (int)p->GetPlanetType();
-            el.orbitRadius = p->GetOrbitRadius();
-            el.resource = (int)p->GetDeposit();
-        }
-        else if (Station* st =
-                     e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
-        {
-            el.kind = Proto::EntityKind::Station;
-            el.faction = st->GetFaction();
-            el.subType = (int)st->GetRole();
-        }
-        else if (AsteroidField* af = e->GetKind() == EntityKind::Field
-                                         ? static_cast<AsteroidField*>(e.get())
-                                         : nullptr)
-        {
-            el.kind = Proto::EntityKind::Field;
-            el.resource = (int)af->GetResource();
-        }
-        else if (JumpGate* g =
-                     e->GetKind() == EntityKind::Gate ? static_cast<JumpGate*>(e.get()) : nullptr)
-        {
-            el.kind = Proto::EntityKind::Gate;
-            el.dest = g->GetDestination();
-        }
-        else if (e->GetKind() == EntityKind::Nebula)
-        {
-            el.kind = Proto::EntityKind::Nebula;
-        }
-        else if (Derelict* dr = e->GetKind() == EntityKind::Derelict
-                                    ? static_cast<Derelict*>(e.get())
-                                    : nullptr)
-        {
-            el.kind = Proto::EntityKind::Derelict;
-            el.reward = dr->GetReward();
-        }
-        else
-        {
-            continue;  // unknown type — skip
+            case EntityKind::Star:
+                el.subType = (int)static_cast<const Star*>(e.get())->GetStarType();
+                break;
+            case EntityKind::Planet:
+            {
+                const Planet* p = static_cast<const Planet*>(e.get());
+                el.subType = (int)p->GetPlanetType();
+                el.orbitRadius = p->GetOrbitRadius();
+                el.resource = (int)p->GetDeposit();
+                break;
+            }
+            case EntityKind::Station:
+            {
+                const Station* st = static_cast<const Station*>(e.get());
+                el.faction = st->GetFaction();
+                el.subType = (int)st->GetRole();
+                break;
+            }
+            case EntityKind::Field:
+                el.resource = (int)static_cast<const AsteroidField*>(e.get())->GetResource();
+                break;
+            case EntityKind::Gate:
+                el.dest = static_cast<const JumpGate*>(e.get())->GetDestination();
+                break;
+            case EntityKind::Nebula: break;
+            case EntityKind::Derelict:
+                el.reward = static_cast<const Derelict*>(e.get())->GetReward();
+                break;
+            case EntityKind::Npc:         // dynamic — skipped above, listed so the switch is total
+            case EntityKind::PlayerShip:  // never a world entity
+            case EntityKind::Unknown: continue;
         }
 
         lay.entities.push_back(el);

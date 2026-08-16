@@ -169,8 +169,8 @@ static void HostStepWorld(Simulation& sim, const std::string& activeId, float dt
     {
         Vector2 pp = sim.PlayerShip()->GetPosition();
         for (auto& e : sim.Active().entities)
-            if (Nebula* neb = dynamic_cast<Nebula*>(e.get()))
-                if (neb->Contains(pp))
+            if (e->GetKind() == EntityKind::Nebula)
+                if (static_cast<const Nebula*>(e.get())->Contains(pp))
                 {
                     hidden = true;
                     break;

@@ -245,7 +245,7 @@ void Game::BuildClientSnapshot()
         // — later).
         if (p.docked && mode_ == GameMode::Flying)
         {
-            if (Station* s = dynamic_cast<Station*>(FindEntityById(p.dockedStationId)))
+            if (Station* s = StationById(p.dockedStationId))
             {
                 mode_ = GameMode::Docked;
                 dockedStation_ = s;
@@ -418,8 +418,8 @@ void Game::ReconcileClientWorld()
                 heading = cur->heading;
             }
             e->SetPosition(pos);
-            if (NpcShip* n = dynamic_cast<NpcShip*>(e.get()))
-                n->SetHeading(heading);
+            if (e->GetKind() == EntityKind::Npc)
+                static_cast<NpcShip*>(e.get())->SetHeading(heading);
         }
     }
 
