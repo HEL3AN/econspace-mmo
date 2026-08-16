@@ -56,6 +56,8 @@ Editor::Editor()
     dataDir_ = std::string(GetApplicationDirectory()) + "data/";
 #endif
     Factions::Load(dataDir_ + "factions.json");  // faction properties/relations
+    if (!Archetypes::Load(dataDir_ + "archetypes.json"))
+        TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());
     universe_ = WorldLoader::LoadUniverse(dataDir_ + "universe.json");
     {
         std::ifstream uf(dataDir_ + "universe.json");

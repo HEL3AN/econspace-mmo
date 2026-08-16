@@ -610,37 +610,41 @@ bool Simulation::CompleteMission(int activeIndex)
 
 int Simulation::StepPlayerDock(SystemState& st)
 {
-    static constexpr float DOCK_RANGE = 90.0f;  // margin on the station radius (as on the client)
     if (!player_ || player_->IsWarping())
         return 0;
 
     Vector2 pp = player_->GetPosition();
+    // Asks what is dockable rather than what is a Station (#34). The moment a player can
+    // build a dock (#44) it joins this pass by declaring the component, without this
+    // function being touched.
     for (auto& e : st.entities)
     {
-        Station* station =
-            e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr;
-        if (station == nullptr)
+        if (!e->Has(Component::Dockable))
             continue;
-        float dx = station->GetPosition().x - pp.x;
-        float dy = station->GetPosition().y - pp.y;
-        if (std::sqrt(dx * dx + dy * dy) <= station->GetSize() + DOCK_RANGE)
+        float dx = e->GetPosition().x - pp.x;
+        float dy = e->GetPosition().y - pp.y;
+        if (std::sqrt(dx * dx + dy * dy) > e->GetSize() + e->GetArchetype()->dockRange)
+            continue;
+
+        // Reputation admittance (M4f-4): at the Hated tier the owning station refuses;
+        // Hostile still admits. Reputation is authoritative here (account_) — the player
+        // is told via the snapshot. Who owns a dock is still Station-specific state, so
+        // this one narrowing stays until ownership becomes a component too (#41).
+        if (e->GetKind() == EntityKind::Station)
         {
-            // Reputation admittance (M4f-4): at the Hated tier the owner station refuses
-            // (same threshold as in single-player Game::Dock; Hostile still admits). Reputation
-            // is authoritative on the server (account_) — we notify the player via the snapshot.
-            FactionId sf = station->GetFaction();
+            FactionId sf = static_cast<Station*>(e.get())->GetFaction();
             if (Factions::TierOf(account_.GetReputation(sf)) == RepTier::Hated)
             {
                 RecordEvent(Ev::Kind::Notice, "Docking denied: hostile reputation");
                 return 0;
             }
-            player_->DisengageAutopilot();
-            player_->Stop();
-            playerDockedStationId_ = station->GetId();
-            RecordEvent(Ev::Kind::Docked, "Docked at " + station->GetName());
-            GenerateDockOffers();  // fresh station mission board (M4f-2)
-            return playerDockedStationId_;
         }
+        player_->DisengageAutopilot();
+        player_->Stop();
+        playerDockedStationId_ = e->GetId();
+        RecordEvent(Ev::Kind::Docked, "Docked at " + e->GetName());
+        GenerateDockOffers();  // fresh station mission board (M4f-2)
+        return playerDockedStationId_;
     }
     return 0;
 }

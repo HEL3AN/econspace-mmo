@@ -13,10 +13,23 @@ std::string StationRoleName(StationRole role)
     return "Station";
 }
 
+static const char* ArchetypeIdForStationRole(StationRole role)
+{
+    switch (role)
+    {
+        case StationRole::TradeHub: return "station.trade_hub";
+        case StationRole::MiningOutpost: return "station.mining_outpost";
+        case StationRole::Shipyard: return "station.shipyard";
+        case StationRole::Military: return "station.military";
+    }
+    return "station.trade_hub";
+}
+
 Station::Station(Vector2 pos, float size, std::string name, FactionId faction, StationRole role)
     : Entity(pos, size, FactionColor(faction), EntityKind::Station), name_(std::move(name)),
       faction_(faction), role_(role)
 {
+    SetArchetype(Archetypes::Find(ArchetypeIdForStationRole(role)));
 }
 
 void Station::Draw() const

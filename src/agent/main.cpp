@@ -446,6 +446,10 @@ int main(int argc, char** argv)
 
     std::string dataDir = AGENT_DATA_DIR;
     Factions::Load(dataDir + "factions.json");
+    // Read locally too: describing an object to a model means saying what it can do, and
+    // that lives in the archetype rather than in the snapshot.
+    if (!Archetypes::Load(dataDir + "archetypes.json"))
+        Rpc::Log("econagent: " + Archetypes::Error());
     // The galaxy index is local, exactly as it is for the game client: GalaxyState carries
     // per-system statistics but not names, map positions or links.
     g_universe = WorldLoader::LoadUniverse(dataDir + "universe.json");
