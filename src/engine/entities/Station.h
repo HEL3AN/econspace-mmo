@@ -13,6 +13,7 @@ enum class StationRole
 };
 
 std::string StationRoleName(StationRole role);
+StationRole StationRoleFromString(const std::string& s);
 
 // Space station: a hub with a screen (market, hangar). Belongs to a faction.
 class Station : public Entity
