@@ -80,6 +80,13 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   instead of failing.
 - **`SystemLayout` is sent once**, when a client enters a system. Anything that changes
   the static world mid-session is invisible until re-entry (#38).
+- **Saves carry a schema version and refuse a newer one** (#20). Field-by-field defaults
+  are right for a message from a peer and wrong for a save: a file from a later build would
+  load as a plausible-looking wrong account and then be written back over the real one. A
+  world file from the future stops the server; an account file from the future lets the
+  player in with a fresh account and is never saved over. Bump `Save::WORLD_VERSION` /
+  `Save::ACCOUNT_VERSION` when a field changes meaning — adding one an older reader can
+  ignore does not need a bump.
 - **The transport enforces its own limits** (#14). A frame length is four bytes the peer
   chose, so `TcpConnection` caps it and drops the connection rather than buffering; the
   send backlog is capped the same way. The host grants each client a budget of player

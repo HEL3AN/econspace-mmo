@@ -169,6 +169,7 @@ void Simulation::SaveWorld(const std::string& path) const
 {
     using nlohmann::json;
     json j;
+    j["version"] = Save::WORLD_VERSION;
     j["simTime"] = time_;
     json galaxy = json::object();
     for (const auto& kv : systems_)
@@ -186,15 +187,20 @@ void Simulation::SaveWorld(const std::string& path) const
         out << j.dump(2) << "\n";
 }
 
-bool Simulation::LoadWorld(const std::string& path)
+Save::Result Simulation::LoadWorld(const std::string& path)
 {
     using nlohmann::json;
     std::ifstream in(path);
     if (!in.is_open())
-        return false;
+        return Save::Result::Missing;
     json j = json::parse(in, nullptr, false);
     if (j.is_discarded() || !j.contains("galaxy") || !j["galaxy"].is_object())
-        return false;
+        return Save::Result::Corrupt;
+    // A file from a later build is refused rather than read leniently. Reading it would
+    // mean guessing at fields this build has never heard of, and the next checkpoint
+    // would write the guess back over the original.
+    if (j.value("version", Save::UNVERSIONED) > Save::WORLD_VERSION)
+        return Save::Result::TooNew;
 
     Reset();
     InitGalaxy();  // skeletons with default aggregates for all systems
@@ -216,7 +222,7 @@ bool Simulation::LoadWorld(const std::string& path)
         a.controller = (FactionId)gj.value("controller", (int)a.controller);
         a.seeded = true;
     }
-    return true;
+    return Save::Result::Ok;
 }
 
 void Simulation::Reset()

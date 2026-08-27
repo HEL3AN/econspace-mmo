@@ -59,7 +59,7 @@ Everything that affects game state is applied inside `Simulation` step methods a
 
 - **Player physics / combat / mining** — `StepPlayerShip` / `StepPlayerFire` / `StepPlayerMining`.
 - **Docking & trading** — `StepPlayerDock` / `StepPlayerUndock` / `StepPlayerSell` / `RefitPlayer` (server-authoritative, including reputation-gated docking).
-- **Account** — money, skills, reputation, and wanted levels live in `ClientSession::account`, one per connected player; effects are applied server-side and the client account is a read-only mirror of the snapshot. Persisted per name to `account_<name>.json`, together with where the player was — system, position, heading, cargo and active missions (#49) — so a reconnect resumes rather than restarts. Which ships an account owns is still missing (#5), and the file carries no schema version yet (#20).
+- **Account** — money, skills, reputation, and wanted levels live in `ClientSession::account`, one per connected player; effects are applied server-side and the client account is a read-only mirror of the snapshot. Persisted per name to `account_<name>.json`, together with where the player was — system, position, heading, cargo and active missions (#49) — so a reconnect resumes rather than restarts. The file carries a schema version and a newer one is refused rather than read leniently (#20). Which ships an account owns is still missing (#5).
 - **Missions** — the job board, acceptance, progress, and turn-in live in `Simulation::missions_`; missions address stations by stable id so they survive jumps.
 - **World** — persisted to `world.json`.
 
