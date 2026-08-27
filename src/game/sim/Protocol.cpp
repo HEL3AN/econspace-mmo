@@ -236,7 +236,9 @@ std::string EncodeSnapshot(const Snapshot& s)
                     { "ordKind", p.orderKind },
                     { "ordStatus", p.orderStatus },
                     { "ordId", p.orderId },
-                    { "ordDetail", p.orderDetail } };
+                    { "ordDetail", p.orderDetail },
+                    { "ships", p.ownedShips },
+                    { "ship", p.shipIndex } };
 
     // Only what this entity actually carries. Every field left at its decoding default is
     // a field the decoder will produce anyway, so writing it costs bytes and says nothing
@@ -339,6 +341,8 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
         p.orderStatus = pj.value("ordStatus", 0);
         p.orderId = pj.value("ordId", 0);
         p.orderDetail = pj.value("ordDetail", std::string());
+        p.ownedShips = pj.value("ships", std::vector<int>{});
+        p.shipIndex = pj.value("ship", 0);
     }
 
     out.entities.clear();

@@ -89,6 +89,8 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         p.maxHull = s.ship->GetMaxHull();
         p.shields = s.ship->GetShields();
         p.maxShields = s.ship->GetMaxShields();
+        p.ownedShips = s.ownedShips;
+        p.shipIndex = s.currentShip;
         p.cargoUsed = s.ship->GetCargoUsed();
         p.cargoCap = s.ship->GetCargoCapacity();
         p.warpPhase = (int)s.ship->GetWarpPhase();

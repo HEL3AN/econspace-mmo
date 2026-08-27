@@ -113,8 +113,8 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
             if (r.sold > 0)
                 acks.push_back(Proto::TradeAck{ c.sellType, r.sold, r.gross, r.revenue });
         }
-        if (c.refitShip >= 0 && c.refitShip < (int)GetShipCatalog().size())
-            sim.RefitPlayer(s, GetShipCatalog()[c.refitShip].stats);  // switch to a bought ship
+        if (c.refitShip >= 0)
+            sim.SwitchShip(s, c.refitShip);  // only to a ship this account owns (#5)
         if (c.buyShip >= 0)
             sim.BuyShip(s, c.buyShip);  // purchase (deducts money)
         if (c.payBountyFaction >= 0)

@@ -161,8 +161,10 @@ private:
     // Ore mining (extraction is server-side; here only the field for the beam render).
     AsteroidField* miningBeamField_ = nullptr;  // field currently being mined
 
-    int               currentShipIndex_ = 0;  // index of the current ship in the catalog
-    std::vector<bool> ownedShips_;            // which ships the player owns
+    // The hangar is server-owned (#5): these read the snapshot rather than remembering
+    // anything, so a purchase that the server refused does not show as a ship you have.
+    int  CurrentShipIndex() const { return snapshot_.player.shipIndex; }
+    bool OwnsShip(int catalogIndex) const;
 
     Proto::Command  cmd_;       // client: the player's intent this frame (from input)
     Proto::Snapshot snapshot_;  // snapshot of the player's system for rendering/UI (M4c)

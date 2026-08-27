@@ -471,3 +471,13 @@ void Game::ReconcileClientWorld()
 
 // Station by stable id (missions store an id, not a pointer). Searches the same place
 // as FindEntityById: the clientWorld_ proxies built from the server's layout.
+
+// What this account owns, as the server last said (#5). Not remembered locally: a client
+// that kept its own list would keep showing a ship the server refused to sell it.
+bool Game::OwnsShip(int catalogIndex) const
+{
+    for (int i : snapshot_.player.ownedShips)
+        if (i == catalogIndex)
+            return true;
+    return catalogIndex == 0;  // before the first snapshot, only the starter
+}

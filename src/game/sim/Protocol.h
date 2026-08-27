@@ -26,7 +26,7 @@ namespace Proto
 // without it a client built against an older protocol would silently receive defaults
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
-inline constexpr int PROTO_VERSION = 5;
+inline constexpr int PROTO_VERSION = 6;
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).
@@ -109,6 +109,11 @@ struct EntitySnapshot
 // Player ship state in the snapshot.
 struct PlayerView
 {
+    // The hangar, as the server sees it (#5). The client used to keep this itself, which
+    // meant it survived nothing and could be disagreed with.
+    std::vector<int> ownedShips;
+    int              shipIndex = 0;
+
     Vector2 pos = { 0.0f, 0.0f };
     Vector2 vel = { 0.0f, 0.0f };
     float   heading = 0.0f;
