@@ -177,6 +177,11 @@ target_compile_definitions(econspace PRIVATE GAME_DATA_DIR="${CMAKE_SOURCE_DIR}/
 add_executable(econserver
     src/game/sim/main_headless.cpp
     src/game/sim/Simulation.cpp
+    src/game/sim/Simulation_World.cpp     # galaxy, hydration, routes, persistence (#17)
+    src/game/sim/Simulation_Agents.cpp    # NPC AI, combat, spawn director, macro (#17)
+    src/game/sim/Simulation_Player.cpp    # the server-side player verbs and account (#17)
+    src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
+    src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/PlayerStep.cpp
     src/game/sim/Orders.cpp
     src/game/economy/Market.cpp
@@ -253,6 +258,11 @@ add_executable(tests
     # dependency tree -- ships, NPCs, the mission system -- which is the price of testing
     # the rules where they actually live rather than through a socket.
     src/game/sim/Simulation.cpp
+    src/game/sim/Simulation_World.cpp     # galaxy, hydration, routes, persistence (#17)
+    src/game/sim/Simulation_Agents.cpp    # NPC AI, combat, spawn director, macro (#17)
+    src/game/sim/Simulation_Player.cpp    # the server-side player verbs and account (#17)
+    src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
+    src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/PlayerStep.cpp
     src/game/sim/Orders.cpp
     src/game/economy/Market.cpp
