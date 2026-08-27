@@ -41,7 +41,7 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
     if (!s.ship)
         return;
     s.RecordEvent(Ev::Kind::ShipDestroyed, "Ship destroyed; respawned with cargo lost");
-    for (auto& e : Active().entities)
+    for (auto& e : SystemOf(s)->entities)
         if (Station* st =
                 e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
         {
@@ -55,13 +55,14 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
 
 // --- Player as a server agent (M4d-2b) ---
 
-ClientSession& Simulation::CreateSession(Vector2 pos, const ShipStats& stats)
+ClientSession& Simulation::CreateSession(const std::string& systemId, Vector2 pos,
+                                         const ShipStats& stats)
 {
     const int      id = ++sessionIdCounter_;
     ClientSession& s = sessions_[id];
     s.id = id;
     s.ship = std::make_unique<Ship>(pos, stats);
-    s.systemId = activeId_;
+    s.systemId = systemId;
     return s;
 }
 
@@ -330,7 +331,7 @@ bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
 
     // Price multiplier by the docked station's faction reputation (as on the client).
     FactionId sf = FactionId::Independent;
-    for (auto& e : Active().entities)
+    for (auto& e : SystemOf(s)->entities)
         if (e->GetId() == s.dockedStationId)
         {
             if (Station* s =
@@ -368,7 +369,7 @@ void Simulation::GenerateDockOffers(ClientSession& s)
 {
     Station*              giver = nullptr;
     std::vector<Station*> all;
-    for (auto& e : Active().entities)
+    for (auto& e : SystemOf(s)->entities)
         if (Station* sta =
                 e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
         {
@@ -470,14 +471,14 @@ void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId,
 {
     if (!HasSystem(destId))
         return;
-    Activate(destId);
+    s.systemId = destId;
     if (!s.ship)
         return;
 
     // Arrival point — at the gate leading back to the origin system (as on the client).
     Vector2 arrival = { 0.0f, 3000.0f };
     if (!fromId.empty())
-        for (auto& e : Active().entities)
+        for (auto& e : SystemOf(s)->entities)
             if (JumpGate* g =
                     e->GetKind() == EntityKind::Gate ? static_cast<JumpGate*>(e.get()) : nullptr)
                 if (g->GetDestination() == fromId)

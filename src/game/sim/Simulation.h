@@ -95,7 +95,7 @@ public:
     static std::vector<Vector2> PirateSpots(const SpawnNodes& nd);
     // Pirate spawn point: offset from a node; avoid!=nullptr — push it farther from that
     // point (the player's position in the active system) so it is not right in view.
-    Vector2 PirateSpawnPos(const std::vector<Vector2>& pool, const Vector2* avoid);
+    Vector2 PirateSpawnPos(const std::vector<Vector2>& pool, const std::vector<Vector2>& avoid);
 
     // Creates an NPC with a stable id and puts it into the system.
     void SpawnNpcInto(SystemState& st, Vector2 pos, FactionId faction, NpcRole role,
@@ -105,11 +105,11 @@ public:
     // Spawn director for one system: tops the population up to targets by security/controller,
     // accounting for the "pressure" from losses. avoid — the player's position (active system) or
     // null.
-    void TopUpSystem(SystemState& st, const Vector2* avoid);
+    void TopUpSystem(SystemState& st, const std::vector<Vector2>& avoid);
     // Coarse world maintenance every ~2 s of simulation: recount + "pressure", macro,
-    // spawn director across all systems. activeId/activeAvoid — for player-avoidance
-    // in the active system (in headless — empty id/nullptr).
-    void MaintainWorld(float dt, const std::string& activeId, const Vector2* activeAvoid);
+    // spawn director across all systems. Where players are is read from the sessions:
+    // pirates are not dropped on top of someone, in whichever systems people happen to be.
+    void MaintainWorld(float dt);
 
     // Materializes a system from its aggregate: spawn NPCs by role in suitable places.
     void HydrateSystem(SystemState& st);
@@ -136,9 +136,9 @@ public:
     // The simulation owns every connected player's ship and account, one ClientSession
     // each, and steps them from their own commands. The verbs below are the rules; which
     // player they act for is an argument, not a member.
-    ClientSession&       CreateSession(Vector2 pos, const ShipStats& stats);
-    void                 DestroySession(int id);
-    ClientSession*       Session(int id);  // nullptr if there is no such session
+    ClientSession& CreateSession(const std::string& systemId, Vector2 pos, const ShipStats& stats);
+    void           DestroySession(int id);
+    ClientSession* Session(int id);  // nullptr if there is no such session
     const ClientSession* Session(int id) const;
 
     std::map<int, ClientSession>&       Sessions() { return sessions_; }
@@ -301,18 +301,19 @@ public:
 
     // System persistence: a system's state lives on after the player leaves.
     bool HasSystem(const std::string& id) const { return systems_.count(id) > 0; }
-    // Makes an already existing system active (without recreating/populating it).
-    void Activate(const std::string& id);
     // Fully clears the galaxy (for loading a save).
     void Reset();
 
-    bool               HasActive() const { return active_ != nullptr; }
-    SystemState&       Active() { return *active_; }
-    const SystemState& Active() const { return *active_; }
-    const std::string& ActiveId() const { return activeId_; }
+    // A system by id, and the system a given player is in. There is no "active" system
+    // any more (#3): every system runs, and the only thing that distinguishes one is
+    // which players are standing in it. nullptr for an id the galaxy does not have.
+    SystemState*       SystemById(const std::string& id);
+    const SystemState* SystemById(const std::string& id) const;
+    SystemState*       SystemOf(const ClientSession& s) { return SystemById(s.systemId); }
+    const SystemState* SystemOf(const ClientSession& s) const { return SystemById(s.systemId); }
 
-    // The index record for the active system (id/name/security/owner) or nullptr.
-    const WorldLoader::SystemInfo* ActiveInfo() const;
+    // The index record for a system (id/name/security/owner) or nullptr.
+    const WorldLoader::SystemInfo* SystemInfoById(const std::string& id) const;
 
     // All systems (for save/load and background ticks).
     std::map<std::string, SystemState>&       Systems() { return systems_; }
@@ -328,9 +329,7 @@ public:
 
 private:
     WorldLoader::Universe              universe_;
-    std::map<std::string, SystemState> systems_;           // state by system id
-    SystemState*                       active_ = nullptr;  // pointer is stable (std::map)
-    std::string                        activeId_;
+    std::map<std::string, SystemState> systems_;  // state by system id
     int                                agentIdCounter_ = 0;
 
     // One per connected player (#3). A std::map because the verbs take a ClientSession&,

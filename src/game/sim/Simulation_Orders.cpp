@@ -105,13 +105,13 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
     // journey, and a route that was safe when it was planned may not be by the third hop.
     if (s.order.kind == Orders::Kind::Route)
     {
-        if (activeId_ == s.order.destSystem)
+        if (s.systemId == s.order.destSystem)
         {
             finish(Orders::Status::Done, "arrived in " + s.order.destSystem);
             return;
         }
         std::vector<std::string> path =
-            PlanRoute(activeId_, s.order.destSystem, s.order.avoidDanger);
+            PlanRoute(s.systemId, s.order.destSystem, s.order.avoidDanger);
         if (path.size() < 2)
         {
             finish(Orders::Status::Failed, "no route to " + s.order.destSystem);
@@ -162,7 +162,7 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             Sim::StepPlayerShip(*s.ship, Proto::Command{}, 1.0f, dt);
             return;  // still closing the last few units
         }
-        ServerEnterSystem(s, dest, activeId_);
+        ServerEnterSystem(s, dest, s.systemId);
         s.RecordEvent(Ev::Kind::Jumped, "Jumped to " + dest);
         s.orderNavIssued = false;
         return;

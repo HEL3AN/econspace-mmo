@@ -44,11 +44,11 @@ struct Fixture
         sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
         sim.Seed(1234u);
         sim.InitGalaxy();
-        sim.Activate(sim.Universe().startId);
-        return sim.CreateSession(Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+        return sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                 GetShipCatalog()[0].stats);
     }
 
-    SystemState& World() { return sim.Active(); }
+    SystemState& World() { return *sim.SystemOf(s); }
 };
 
 }  // namespace
@@ -234,7 +234,7 @@ TEST_CASE("the world clock advances with maintenance")
     const float dt = 1.0f / 60.0f;
     CHECK(f.sim.Time() == doctest::Approx(0.0));
     for (int i = 0; i < 120; i++)
-        f.sim.MaintainWorld(dt, std::string(), nullptr);
+        f.sim.MaintainWorld(dt);
     CHECK(f.sim.Time() == doctest::Approx(2.0));
 }
 

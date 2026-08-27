@@ -55,8 +55,8 @@ static ClientSession& SetupHostSim(Simulation& sim, const std::string& dataDir,
     else
         printf("World restored from %s (t=%.0fs).\n", worldPath.c_str(), sim.Time());
     sim.MaterializeAllSystems(dataDir + "systems/");
-    sim.Activate(sim.Universe().startId);
-    return sim.CreateSession(Vector2{ 0.0f, 3000.0f }, GetShipCatalog()[0].stats);
+    return sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 3000.0f },
+                             GetShipCatalog()[0].stats);
 }
 
 // One client input = ONE player tick. This is critical for client and server
@@ -65,16 +65,15 @@ static ClientSession& SetupHostSim(Simulation& sim, const std::string& dataDir,
 // and the ship "jerks"). Applies movement/jump/loot/combat/mining for command c.
 // Returns true if the system changed. Account effects are not yet applied on the server
 // (M4f); NPCs do not target the player yet.
-static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Command& c,
-                           std::string& activeId, float dt, std::vector<Proto::TradeAck>& acks,
-                           std::vector<FireEvent>& fires)
+static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Command& c, float dt,
+                           std::vector<Proto::TradeAck>& acks, std::vector<FireEvent>& fires)
 {
     bool changed = false;
 
     // Dock/undock (server-authoritative). While docked we do not step the player's
     // physics (the ship is frozen at the station), but we still handle trade/undock.
     if (c.dock && !s.IsDocked())
-        sim.StepPlayerDock(s, sim.Active());
+        sim.StepPlayerDock(s, *sim.SystemOf(s));
     if (c.undock)
         sim.StepPlayerUndock(s);
 
@@ -89,7 +88,7 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
         if (c.sellType >= 0 && c.sellAmount > 0)
         {
             Simulation::PlayerSellResult r =
-                sim.StepPlayerSell(s, sim.Active(), c.sellType, c.sellAmount);
+                sim.StepPlayerSell(s, *sim.SystemOf(s), c.sellType, c.sellAmount);
             if (r.sold > 0)
                 acks.push_back(Proto::TradeAck{ c.sellType, r.sold, r.gross, r.revenue });
         }
@@ -135,23 +134,23 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
 
     if (c.jumpGateId != 0)
     {
-        std::string dest = sim.JumpGateDestIfNear(s, sim.Active(), c.jumpGateId);
+        std::string dest = sim.JumpGateDestIfNear(s, *sim.SystemOf(s), c.jumpGateId);
         if (!dest.empty())
         {
-            sim.ServerEnterSystem(s, dest, activeId);
-            activeId = sim.ActiveId();
+            sim.ServerEnterSystem(s, dest, s.systemId);  // arrives at the gate back
             changed = true;
         }
     }
     if (c.lootId != 0)
-        sim.StepPlayerLoot(s, sim.Active(), c.lootId);
+        sim.StepPlayerLoot(s, *sim.SystemOf(s), c.lootId);
 
     // Player fire: on a shot — a beam event into the snapshot (client draws it blue).
     // Account effects (mission credit/reputation) are not yet applied on the server (3c-ii).
     Simulation::PlayerCombatEvents ev;
-    if (sim.StepPlayerFire(s, sim.Active(), c.targetId, dt, &ev))
+    if (sim.StepPlayerFire(s, *sim.SystemOf(s), c.targetId, dt, &ev))
         fires.push_back(FireEvent{ ev.shotFrom, ev.shotTo, FactionId::Independent, false, true });
-    sim.StepPlayerMining(s, sim.Active(), s.account.GetSkills().GetBonus(SkillType::Mining), dt);
+    sim.StepPlayerMining(s, *sim.SystemOf(s), s.account.GetSkills().GetBonus(SkillType::Mining),
+                         dt);
     return changed;
 }
 
@@ -162,7 +161,7 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
 // beams). clientOnline false: nobody is flying the ship. The pilot is treated as absent — NPCs do
 // not target them, and no respawn logic runs — while the rest of the galaxy keeps living. The ship
 // simply stops being stepped and stays where it was left.
-static void HostStepWorld(Simulation& sim, ClientSession& s, const std::string& activeId, float dt,
+static void HostStepWorld(Simulation& sim, ClientSession& s, float dt,
                           std::vector<FireEvent>& fires, bool clientOnline)
 {
     Combatant* player = (!clientOnline || s.IsDocked()) ? nullptr : (Combatant*)s.ship.get();
@@ -173,8 +172,8 @@ static void HostStepWorld(Simulation& sim, ClientSession& s, const std::string& 
     bool hidden = false;
     if (player != nullptr)
     {
-        Vector2 pp = s.ship.get()->GetPosition();
-        for (auto& e : sim.Active().entities)
+        Vector2 pp = s.ship->GetPosition();
+        for (auto& e : sim.SystemOf(s)->entities)
         {
             if (!e->Has(Component::Hazard) || !e->GetArchetype()->hazardHidesShips)
                 continue;
@@ -198,34 +197,34 @@ static void HostStepWorld(Simulation& sim, ClientSession& s, const std::string& 
 
     for (auto& kv : sim.Systems())
     {
-        if (player != nullptr && kv.first == activeId)
+        if (player != nullptr && kv.first == s.systemId)
             sim.StepActiveSystemAgents(kv.second, player, hidden, hostile, &fires, dt);
         else
             sim.StepSystemAgents(kv.second, dt);
         kv.second.market.Update(dt);  // market price recovery (in single-player — UpdateAmbient)
     }
 
-    if (player != nullptr && !s.ship.get()->IsAlive())
+    if (player != nullptr && !s.ship->IsAlive())
         sim.ServerRespawnPlayer(s);
 
     // Standing orders execute here rather than in the input path: an agent issues one
     // order and then sends nothing, so if the order did not drive its own ticks the ship
     // would simply sit there.
     if (clientOnline)
-        sim.StepPlayerOrder(s, sim.Active(), dt);
+        sim.StepPlayerOrder(s, *sim.SystemOf(s), dt);
 
     // Account passive: piloting xp (in flight) + bounty decay.
     sim.StepPlayerAccountTick(s, dt);
 
-    sim.MaintainWorld(dt, activeId, nullptr);
+    sim.MaintainWorld(dt);
 }
 
 // Receives client inputs from the transport and applies EACH as one player tick
 // (HostStepPlayer). lastSeq — the highest processed input number (ack to the client).
 // Returns true if the layout must be resent (system change).
-static bool HostDrainInputs(ITransport& conn, Simulation& sim, ClientSession& s,
-                            std::string& activeId, float dt, int& lastSeq,
-                            std::vector<Proto::TradeAck>& acks, std::vector<FireEvent>& fires)
+static bool HostDrainInputs(ITransport& conn, Simulation& sim, ClientSession& s, float dt,
+                            int& lastSeq, std::vector<Proto::TradeAck>& acks,
+                            std::vector<FireEvent>& fires)
 {
     bool        layoutDirty = false;
     std::string msg;
@@ -238,7 +237,7 @@ static bool HostDrainInputs(ITransport& conn, Simulation& sim, ClientSession& s,
             continue;
         if (c.seq > lastSeq)
             lastSeq = c.seq;
-        if (HostStepPlayer(sim, s, c, activeId, dt, acks, fires))
+        if (HostStepPlayer(sim, s, c, dt, acks, fires))
             layoutDirty = true;
     }
     return layoutDirty;
@@ -294,7 +293,6 @@ static int RunHost(unsigned short port)
            port);
 
     std::unique_ptr<Net::TcpConnection> conn;
-    std::string                         activeId = sim.ActiveId();
 
     int         lastSeq = 0;         // last processed input number (ack to the client)
     int         lastEventSeq = 0;    // last journal entry delivered to this session
@@ -326,8 +324,8 @@ static int RunHost(unsigned short port)
                 lastSeq = 0;
                 lastEventSeq = s.LastEventSeq();  // a new session starts from now
                 wasDocked = s.IsDocked();
-                activeId = sim.ActiveId();
-                conn->Send(Proto::EncodeLayout(sim.BuildLayout(activeId)));
+                s.systemId = s.systemId;
+                conn->Send(Proto::EncodeLayout(sim.BuildLayout(s.systemId)));
                 conn->Send(Proto::EncodeGalaxy(sim.BuildGalaxyState()));
                 printf("Client connected.\n");
             }
@@ -341,7 +339,7 @@ static int RunHost(unsigned short port)
         bool                         layoutDirty = false;
         if (conn)
         {
-            layoutDirty = HostDrainInputs(*conn, sim, s, activeId, dt, lastSeq, acks, fires);
+            layoutDirty = HostDrainInputs(*conn, sim, s, dt, lastSeq, acks, fires);
 
             // Account checkpoint on a dock-state change: on docking -- commit what was
             // earned in flight (loot/bounty), on undocking -- trade and mission hand-ins.
@@ -356,15 +354,15 @@ static int RunHost(unsigned short port)
         // anyone is watching.
         while (acc >= dt)
         {
-            HostStepWorld(sim, s, activeId, dt, fires, conn != nullptr);
+            HostStepWorld(sim, s, dt, fires, conn != nullptr);
             acc -= dt;
         }
 
         if (conn)
         {
             if (layoutDirty)
-                conn->Send(Proto::EncodeLayout(sim.BuildLayout(activeId)));
-            Proto::Snapshot snap = sim.BuildSnapshot(s, activeId);
+                conn->Send(Proto::EncodeLayout(sim.BuildLayout(s.systemId)));
+            Proto::Snapshot snap = sim.BuildSnapshot(s, s.systemId);
             snap.player.lastInput = lastSeq;  // ack for client reconciliation
             snap.tradeAcks = std::move(acks);
             snap.fires = std::move(fires);
@@ -425,14 +423,13 @@ static int HostSelftest()
     ClientSession& s = SetupHostSim(sim, dataDir);
 
     LocalTransport link;
-    std::string    activeId = sim.ActiveId();
-    link.Server().Send(Proto::EncodeLayout(sim.BuildLayout(activeId)));
+    link.Server().Send(Proto::EncodeLayout(sim.BuildLayout(s.systemId)));
 
     Proto::Command thrust;
     thrust.thrust = true;
     link.Client().Send(Proto::EncodeCommand(thrust));
 
-    Vector2 startPos = s.ship.get()->GetPosition();
+    Vector2 startPos = s.ship->GetPosition();
 
     int         lastSeq = 0;
     const float dt = 1.0f / 60.0f;
@@ -442,10 +439,10 @@ static int HostSelftest()
         link.Client().Send(Proto::EncodeCommand(thrust));
         std::vector<Proto::TradeAck> acks;
         std::vector<FireEvent>       fires;
-        HostDrainInputs(link.Server(), sim, s, activeId, dt, lastSeq, acks,
-                        fires);                            // 1 input=1 tick
-        HostStepWorld(sim, s, activeId, dt, fires, true);  // world
-        Proto::Snapshot snap = sim.BuildSnapshot(s, activeId);
+        HostDrainInputs(link.Server(), sim, s, dt, lastSeq, acks,
+                        fires);                  // 1 input=1 tick
+        HostStepWorld(sim, s, dt, fires, true);  // world
+        Proto::Snapshot snap = sim.BuildSnapshot(s, s.systemId);
         snap.player.lastInput = lastSeq;
         link.Server().Send(Proto::EncodeSnapshot(snap));
     }
@@ -461,7 +458,7 @@ static int HostSelftest()
         else if (t == "snap" && Proto::DecodeSnapshot(msg, lastSnap))
             gotSnap = true;
     }
-    Vector2 endPos = s.ship.get()->GetPosition();
+    Vector2 endPos = s.ship->GetPosition();
     bool    moved = (endPos.x != startPos.x || endPos.y != startPos.y);
     bool    snapHasWorld = gotSnap && !lastSnap.entities.empty();
 
@@ -484,7 +481,8 @@ static int AccountSelftest()
     // The account belongs to a session, so the test needs one on each side (#3). No
     // world is loaded: persistence must not depend on where the ship happens to be.
     Simulation     a;
-    ClientSession& as = a.CreateSession(Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+    ClientSession& as =
+        a.CreateSession(std::string(), Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
     as.account.SetMoney(4242.0);
     as.account.SetReputation(FactionId::Pirates, -7.5f);
     as.account.SetBounty(FactionId::TradersGuild, 300.0);
@@ -492,12 +490,13 @@ static int AccountSelftest()
     a.SaveAccount(as, path);
 
     Simulation     b;  // clean account (money 500) — check that the load overwrote it
-    ClientSession& bs = b.CreateSession(Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
-    bool           loaded = b.LoadAccount(bs, path);
-    bool           money = approx(bs.account.GetMoney(), 4242.0);
-    bool           rep = approx(bs.account.GetReputation(FactionId::Pirates), -7.5);
-    bool           bounty = approx(bs.account.GetBounty(FactionId::TradersGuild), 300.0);
-    bool           skill = approx(bs.account.GetSkills().GetXp(SkillType::Mining), 555.0);
+    ClientSession& bs =
+        b.CreateSession(std::string(), Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+    bool loaded = b.LoadAccount(bs, path);
+    bool money = approx(bs.account.GetMoney(), 4242.0);
+    bool rep = approx(bs.account.GetReputation(FactionId::Pirates), -7.5);
+    bool bounty = approx(bs.account.GetBounty(FactionId::TradersGuild), 300.0);
+    bool skill = approx(bs.account.GetSkills().GetXp(SkillType::Mining), 555.0);
     std::remove(path.c_str());
 
     bool ok = loaded && money && rep && bounty && skill;
@@ -530,7 +529,7 @@ static int WorldSelftest()
     // guards that simulation time moves at all, which it silently did not before #57.
     const float dt = 1.0f / 60.0f;
     for (int i = 0; i < 120; i++)
-        a.MaintainWorld(dt, std::string(), nullptr);
+        a.MaintainWorld(dt);
     bool ticked = approx(a.Time(), 2.0);
 
     a.Systems()[sid].agg.security = 0.25f;
@@ -574,22 +573,22 @@ static int OrderSelftest()
     {
         for (int i = 0; i < maxTicks && s.HasRunningOrder(); i++)
         {
-            sim.StepPlayerOrder(s, sim.Active(), dt);
-            sim.MaintainWorld(dt, sim.ActiveId(), nullptr);
+            sim.StepPlayerOrder(s, *sim.SystemOf(s), dt);
+            sim.MaintainWorld(dt);
         }
         return !s.HasRunningOrder();
     };
 
     // 1) Fly to a point and stop there.
-    Vector2       start = s.ship.get()->GetPosition();
+    Vector2       start = s.ship->GetPosition();
     Orders::Order move;
     move.kind = Orders::Kind::MoveTo;
     move.point = { start.x + 1200.0f, start.y };
     move.stopDist = 150.0f;
     int   id = sim.GiveOrder(s, move);
     bool  moveFinished = run(60 * 120);  // up to two simulated minutes
-    float dx = s.ship.get()->GetPosition().x - move.point.x;
-    float dy = s.ship.get()->GetPosition().y - move.point.y;
+    float dx = s.ship->GetPosition().x - move.point.x;
+    float dy = s.ship->GetPosition().y - move.point.y;
     bool  arrived = moveFinished && s.orderStatus == Orders::Status::Done &&
                     std::sqrt(dx * dx + dy * dy) <= move.stopDist * 1.5f;
     bool  idOk = id > 0;
@@ -599,7 +598,7 @@ static int OrderSelftest()
     bogus.kind = Orders::Kind::Dock;
     bogus.targetId = 999999;
     sim.GiveOrder(s, bogus);
-    sim.StepPlayerOrder(s, sim.Active(), dt);
+    sim.StepPlayerOrder(s, *sim.SystemOf(s), dt);
     bool rejected = s.orderStatus == Orders::Status::Failed && !s.orderDetail.empty();
 
     // 3) Manual control takes the ship back mid-order.
@@ -637,7 +636,7 @@ static int OrderSelftest()
     route.kind = Orders::Kind::Route;
     route.destSystem = "nowhere";
     sim.GiveOrder(s, route);
-    sim.StepPlayerOrder(s, sim.Active(), dt);
+    sim.StepPlayerOrder(s, *sim.SystemOf(s), dt);
     bool routeRejected = s.orderStatus == Orders::Status::Failed;
 
     // 6) The journal: every order outcome must leave an entry an agent can wait on, and
@@ -721,7 +720,7 @@ int main(int argc, char** argv)
         // The server simulates ALL systems (no player) + coarse world maintenance.
         for (auto& kv : sim.Systems())
             sim.StepSystemAgents(kv.second, dt);
-        sim.MaintainWorld(dt, "", nullptr);
+        sim.MaintainWorld(dt);
 
         if (i % printEvery == 0 || i == ticks - 1)
         {

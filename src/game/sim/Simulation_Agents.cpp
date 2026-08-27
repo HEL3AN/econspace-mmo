@@ -5,6 +5,7 @@
 // population aggregate the spawn director reads and writes.
 
 #include "sim/Simulation.h"
+#include "sim/ClientSession.h"
 
 #include "core/World.h"
 #include "entities/AsteroidField.h"
@@ -347,18 +348,30 @@ std::vector<Vector2> Simulation::PirateSpots(const SpawnNodes& nd)
     return hot;
 }
 
-Vector2 Simulation::PirateSpawnPos(const std::vector<Vector2>& pool, const Vector2* avoid)
+Vector2 Simulation::PirateSpawnPos(const std::vector<Vector2>& pool,
+                                   const std::vector<Vector2>& avoid)
 {
     Vector2 base = pool[RandRange(0, (int)pool.size() - 1)];
     Vector2 pos = base;
     for (int attempt = 0; attempt < 4; attempt++)
     {
         pos = { base.x + RandRange(-450, 450), base.y + RandRange(-450, 450) };
-        if (avoid == nullptr)
+        if (avoid.empty())
             break;  // no one to avoid (background/hydrate)
-        float dx = pos.x - avoid->x, dy = pos.y - avoid->y;
-        if (dx * dx + dy * dy >= SPAWN_MIN_PLAYER_DIST * SPAWN_MIN_PLAYER_DIST)
-            break;  // far enough from the player
+        // Far enough from EVERY player in the system: clearing one player's space by
+        // dropping the ambush into another's is not an improvement.
+        bool clear = true;
+        for (Vector2 a : avoid)
+        {
+            float dx = pos.x - a.x, dy = pos.y - a.y;
+            if (dx * dx + dy * dy < SPAWN_MIN_PLAYER_DIST * SPAWN_MIN_PLAYER_DIST)
+            {
+                clear = false;
+                break;
+            }
+        }
+        if (clear)
+            break;
     }
     return pos;
 }
@@ -374,7 +387,7 @@ void Simulation::SpawnNpcInto(SystemState& st, Vector2 pos, FactionId faction, N
 // Spawn director: tops up a system's population to targets by security/controller,
 // accounting for the "pressure" from losses. A pirate system loses trade/police; a strong
 // lawful neighbor sends reinforcements (police), which leads to reconquest.
-void Simulation::TopUpSystem(SystemState& st, const Vector2* avoid)
+void Simulation::TopUpSystem(SystemState& st, const std::vector<Vector2>& avoid)
 {
     SpawnNodes           nd = GatherNodes(st);
     std::vector<Vector2> lanes = nd.stations;
@@ -471,7 +484,7 @@ void Simulation::TopUpSystem(SystemState& st, const Vector2* avoid)
         }
 }
 
-void Simulation::MaintainWorld(float dt, const std::string& activeId, const Vector2* activeAvoid)
+void Simulation::MaintainWorld(float dt)
 {
     // The simulation clock lives here because MaintainWorld is called once per tick by
     // every driver of the world -- the host loop and the batch mode -- which makes it the
@@ -500,8 +513,12 @@ void Simulation::MaintainWorld(float dt, const std::string& activeId, const Vect
             a.supMiners *= SUPPRESS_DECAY;
             a.supPolice *= SUPPRESS_DECAY;
             a.supPirates *= SUPPRESS_DECAY;
-            // player-avoidance — only in the active system (where the player is).
-            const Vector2* avoid = (kv.first == activeId) ? activeAvoid : nullptr;
+            // Player-avoidance, per system: everyone standing in this one.
+            std::vector<Vector2> avoid;
+            for (const auto& sv : sessions_)
+                if (sv.second.systemId == kv.first && sv.second.ship &&
+                    sv.second.dockedStationId == 0)
+                    avoid.push_back(sv.second.ship->GetPosition());
             TopUpSystem(kv.second, avoid);
         }
         maintAccum_ -= MAINT_STEP;
