@@ -140,7 +140,7 @@ void Simulation::HydrateSystem(SystemState& st)
         int pirates = (int)roundf(agg.pirates);
         for (int i = 0; i < pirates; i++)
         {
-            Vector2              spot = PirateSpawnPos(hot, nullptr);
+            Vector2              spot = PirateSpawnPos(hot, {});
             std::vector<Vector2> patrol = { spot };
             SpawnNpcInto(st, spot, FactionId::Pirates, NpcRole::Pirate, patrol);
         }
@@ -219,28 +219,29 @@ bool Simulation::LoadWorld(const std::string& path)
     return true;
 }
 
-void Simulation::Activate(const std::string& id)
-{
-    auto it = systems_.find(id);
-    if (it == systems_.end())
-        return;
-    active_ = &it->second;  // pointer in std::map is stable
-    activeId_ = id;
-}
-
 void Simulation::Reset()
 {
     systems_.clear();
-    active_ = nullptr;
-    activeId_.clear();
     agentIdCounter_ = 0;
 }
 
-const WorldLoader::SystemInfo* Simulation::ActiveInfo() const
+SystemState* Simulation::SystemById(const std::string& id)
 {
-    for (const auto& s : universe_.systems)
-        if (s.id == activeId_)
-            return &s;
+    auto it = systems_.find(id);
+    return it == systems_.end() ? nullptr : &it->second;  // pointer in std::map is stable
+}
+
+const SystemState* Simulation::SystemById(const std::string& id) const
+{
+    auto it = systems_.find(id);
+    return it == systems_.end() ? nullptr : &it->second;
+}
+
+const WorldLoader::SystemInfo* Simulation::SystemInfoById(const std::string& id) const
+{
+    for (const auto& si : universe_.systems)
+        if (si.id == id)
+            return &si;
     return nullptr;
 }
 

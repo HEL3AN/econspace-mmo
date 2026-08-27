@@ -79,6 +79,24 @@ Proto::MissionView ToMission(const json& mj)
 namespace Proto
 {
 
+std::string EncodeHello(const Hello& h)
+{
+    json j;
+    Stamp(j, "hello");
+    j["acct"] = h.account;
+    return j.dump();
+}
+
+bool DecodeHello(const std::string& s, Hello& out)
+{
+    json j = json::parse(s, nullptr, false);
+    if (j.is_discarded() || !j.is_object() || j.value("t", std::string()) != "hello" ||
+        j.value("v", 0) != PROTO_VERSION)
+        return false;
+    out.account = j.value("acct", std::string());
+    return true;
+}
+
 std::string EncodeCommand(const Command& c)
 {
     json j;

@@ -433,8 +433,8 @@ int main(int argc, char** argv)
     {
         std::fprintf(stderr,
                      "econagent — EconSpace as an MCP server.\n"
-                     "  %s connect <host> [port]      serve MCP on stdio\n"
-                     "  %s selftest <host> [port]     scripted run, no model needed\n"
+                     "  %s connect <host> [port] [name]   serve MCP on stdio\n"
+                     "  %s selftest <host> [port] [name]  scripted run, no model needed\n"
                      "\n"
                      "Start a server first:  econserver host 50800\n",
                      argv[0], argv[0]);
@@ -443,6 +443,9 @@ int main(int argc, char** argv)
 
     const std::string    host = argv[2];
     const unsigned short port = (argc >= 4) ? (unsigned short)std::atoi(argv[3]) : 50800;
+    // The account this agent flies under. Its own by default: an agent and the human who
+    // started it are two players, and sharing one account would have them share a ship.
+    const std::string account = (argc >= 5) ? argv[4] : "agent";
 
     std::string dataDir = AGENT_DATA_DIR;
     Factions::Load(dataDir + "factions.json");
@@ -454,7 +457,7 @@ int main(int argc, char** argv)
     // per-system statistics but not names, map positions or links.
     g_universe = WorldLoader::LoadUniverse(dataDir + "universe.json");
 
-    if (!g_session.Connect(host, port))
+    if (!g_session.Connect(host, port, account))
     {
         std::fprintf(stderr, "econagent: could not connect to %s:%u\n", host.c_str(), port);
         return 1;

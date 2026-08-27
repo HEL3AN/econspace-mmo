@@ -5,6 +5,7 @@
 #include "sim/Protocol.h"
 #include "sim/Events.h"
 #include "sim/Orders.h"
+#include "sim/ClientSession.h"
 #include "sim/PlayerStep.h"
 #include "player/Player.h"
 #include "missions/MissionSystem.h"
@@ -54,34 +55,36 @@ public:
     // Are two NPCs hostile (faction relation matrix) — pure server logic.
     static bool NpcHostileToNpc(const NpcShip* a, const NpcShip* b);
 
+    // A player standing in a system, as the NPC passes see them. The caller builds one
+    // per session in the system: whose ship it is, and whether something is hiding it.
+    // Hostility is not passed in -- the account is server-side now, so the pass asks.
+    struct PlayerPresence
+    {
+        const ClientSession* session = nullptr;
+        Combatant*           ship = nullptr;
+        bool                 hidden = false;  // inside something that hides ships
+    };
+
     // System AI pass: combat roles pursue the nearest hostile target, peaceful ones
-    // flee. player!=nullptr adds the player as a target; hostileToPlayer — the client
-    // predicate of hostility toward the player (reputation/wanted; empty for background).
-    void StepNpcAi(SystemState& st, Combatant* player,
-                   const std::function<bool(const NpcShip*)>& hostileToPlayer);
+    // flee. Players in the system are targets like any other, each judged by their own
+    // account -- a pirate hunts the player it is hostile to, not "the player".
+    void StepNpcAi(SystemState& st, const std::vector<PlayerPresence>& players);
 
     // NPC combat: each ready combat NPC hits the nearest hostile target (NPC or player)
     // through the Combatant interface. fires!=nullptr — collect fire events (the client
-    // turns them into beams); playerHidden — the player is in a nebula.
-    void StepNpcCombat(SystemState& st, Combatant* player, bool playerHidden,
-                       const std::function<bool(const NpcShip*)>& hostileToPlayer,
-                       std::vector<FireEvent>*                    fires);
+    // turns them into beams). A hidden player is not shot at.
+    void StepNpcCombat(SystemState& st, const std::vector<PlayerPresence>& players,
+                       std::vector<FireEvent>* fires);
 
-    // Full background step of a system (no player): AI + movement + combat + cleanup of the fallen.
-    void StepSystemAgents(SystemState& st, float dt);
-
-    // Step of the ACTIVE system with the player involved (server-side, M4e-3c): AI sees
-    // the player, movement, NPC combat with the player as a target, collecting shots into
-    // fires (the client draws beams), cleanup of the fallen. hostileToPlayer — the server
-    // predicate of hostility to the player (by faction; reputation/wanted — account, until
-    // M4f). playerHidden — the player is in a nebula.
-    void StepActiveSystemAgents(SystemState& st, Combatant* player, bool playerHidden,
-                                const std::function<bool(const NpcShip*)>& hostileToPlayer,
-                                std::vector<FireEvent>* fires, float dt);
+    // One full step of a system: AI, movement, combat, cleanup of the fallen. `players`
+    // is whoever happens to be standing in it, which is usually nobody -- a system with
+    // no one in it is the normal case, not a lesser kind of step (#3).
+    void StepSystemAgents(SystemState& st, const std::vector<PlayerPresence>& players,
+                          std::vector<FireEvent>* fires, float dt);
 
     // Server-side player respawn: teleport to the first station of the active system,
     // repair, cargo loss (like the client RespawnPlayer). No undock needed.
-    void ServerRespawnPlayer();
+    void ServerRespawnPlayer(ClientSession& s);
 
     // --- Spawn director and coarse world maintenance (server core, M3) ---
     // System nodes for spawning by category. dangerGates — gates into dangerous
@@ -94,7 +97,7 @@ public:
     static std::vector<Vector2> PirateSpots(const SpawnNodes& nd);
     // Pirate spawn point: offset from a node; avoid!=nullptr — push it farther from that
     // point (the player's position in the active system) so it is not right in view.
-    Vector2 PirateSpawnPos(const std::vector<Vector2>& pool, const Vector2* avoid);
+    Vector2 PirateSpawnPos(const std::vector<Vector2>& pool, const std::vector<Vector2>& avoid);
 
     // Creates an NPC with a stable id and puts it into the system.
     void SpawnNpcInto(SystemState& st, Vector2 pos, FactionId faction, NpcRole role,
@@ -104,11 +107,11 @@ public:
     // Spawn director for one system: tops the population up to targets by security/controller,
     // accounting for the "pressure" from losses. avoid — the player's position (active system) or
     // null.
-    void TopUpSystem(SystemState& st, const Vector2* avoid);
+    void TopUpSystem(SystemState& st, const std::vector<Vector2>& avoid);
     // Coarse world maintenance every ~2 s of simulation: recount + "pressure", macro,
-    // spawn director across all systems. activeId/activeAvoid — for player-avoidance
-    // in the active system (in headless — empty id/nullptr).
-    void MaintainWorld(float dt, const std::string& activeId, const Vector2* activeAvoid);
+    // spawn director across all systems. Where players are is read from the sessions:
+    // pirates are not dropped on top of someone, in whichever systems people happen to be.
+    void MaintainWorld(float dt);
 
     // Materializes a system from its aggregate: spawn NPCs by role in suitable places.
     void HydrateSystem(SystemState& st);
@@ -119,7 +122,7 @@ public:
     // M4: builds the WORLD snapshot of a system (entities with id/kind/position, etc.) for
     // the client. Player state and fire events are added by the caller (the client owns the
     // player ship until M4f).
-    Proto::Snapshot BuildSnapshot(const std::string& systemId) const;
+    Proto::Snapshot BuildSnapshot(const ClientSession& s, const std::string& systemId) const;
 
     // M4d-3c: builds the static layout of a system (only stationary objects —
     // star/planets/stations/fields/gates/nebulae/derelicts) for building the
@@ -131,16 +134,21 @@ public:
     // client's galaxy map. Not const: refreshes the aggregates' population (RecountAgg).
     Proto::GalaxyState BuildGalaxyState();
 
-    // --- Player as a server agent (M4d-2b) ---
-    // The simulation owns the player ship and steps its physics from the client command.
-    // Creates the player ship (one per simulation; recreating resets the previous one).
-    void        CreatePlayer(Vector2 pos, const ShipStats& stats);
-    Ship*       PlayerShip() { return player_.get(); }  // nullptr before CreatePlayer
-    const Ship* PlayerShip() const { return player_.get(); }
-    // Server step of the player ship: applies the movement axes/toggles from the command,
-    // the piloting bonus, and updates the physics. Combat/mining — via separate methods;
-    // docking stays client-side until M4f.
-    void StepPlayerShip(const Proto::Command& cmd, float pilotBonus, float dt);
+    // --- Players as server agents (M4d-2b, #3) ---
+    // The simulation owns every connected player's ship and account, one ClientSession
+    // each, and steps them from their own commands. The verbs below are the rules; which
+    // player they act for is an argument, not a member.
+    ClientSession& CreateSession(const std::string& systemId, Vector2 pos, const ShipStats& stats);
+    void           DestroySession(int id);
+    ClientSession* Session(int id);  // nullptr if there is no such session
+    const ClientSession* Session(int id) const;
+
+    std::map<int, ClientSession>&       Sessions() { return sessions_; }
+    const std::map<int, ClientSession>& Sessions() const { return sessions_; }
+
+    // Server step of a player ship: applies the movement axes/toggles from the command,
+    // the piloting bonus, and updates the physics. Combat/mining — via separate methods.
+    void StepPlayerShip(ClientSession& s, const Proto::Command& cmd, float pilotBonus, float dt);
 
     // Player weapon range lives in sim/PlayerStep.h — a single source shared with the
     // client, which draws the targeting circle from it.
@@ -174,25 +182,19 @@ public:
     // --- Standing orders (strategic layer, #26) ---
     // Give an order, replacing whatever was running; returns its id. The order executes
     // over seconds on the server while the tactical loop keeps running at its own rate.
-    int                  GiveOrder(const Orders::Order& o);
-    void                 AbortOrder(const std::string& why);
-    const Orders::Order& CurrentOrder() const { return order_; }
-    Orders::Status       OrderStatus() const { return orderStatus_; }
-    const std::string&   OrderDetail() const { return orderDetail_; }
-    int                  OrderId() const { return orderId_; }
-    bool                 HasRunningOrder() const { return orderStatus_ == Orders::Status::Running; }
+    int  GiveOrder(ClientSession& s, const Orders::Order& o);
+    void AbortOrder(ClientSession& s, const std::string& why);
     // Advances the running order by one tick. It decides what this tick's command should
     // be and drives the ship through the same path a client command takes, so predicted
     // and ordered movement cannot diverge.
-    void StepPlayerOrder(SystemState& st, float dt);
+    void StepPlayerOrder(ClientSession& s, SystemState& st, float dt);
 
     // Weapon state is server-owned, like docking: the client sends a toggle intent and
     // reads the truth back from the snapshot. Two independent copies would drift apart on
     // any dropped or duplicated command, leaving the reticle disagreeing with the guns.
-    void ToggleWeapon() { playerWeaponOn_ = !playerWeaponOn_; }
-    bool IsWeaponOn() const { return playerWeaponOn_; }
-
-    bool StepPlayerFire(SystemState& st, int targetId, float dt, PlayerCombatEvents* ev);
+    // The bit itself lives on the session (ClientSession::ToggleWeapon).
+    bool StepPlayerFire(ClientSession& s, SystemState& st, int targetId, float dt,
+                        PlayerCombatEvents* ev);
 
     // Result of the server player mining for a tick.
     struct PlayerMiningResult
@@ -202,17 +204,18 @@ public:
     };
     // Server player mining: if the module is on and there is ore in range — extracts it
     // into the ship's cargo. miningBonus — the skill multiplier (account, passed by the client).
-    PlayerMiningResult StepPlayerMining(SystemState& st, float miningBonus, float dt);
+    PlayerMiningResult StepPlayerMining(ClientSession& s, SystemState& st, float miningBonus,
+                                        float dt);
 
     // Jump: if the gate (gateId) is in the system and the player is near — returns the
     // destination system id, otherwise "". The system change itself is done by the client
     // (layout still local); the server only validates proximity to the gate.
-    std::string JumpGateDestIfNear(SystemState& st, int gateId) const;
+    std::string JumpGateDestIfNear(const ClientSession& s, SystemState& st, int gateId) const;
 
     // Loot a derelict (derelictId): if near and not looted — marks it looted (a server
     // world mutation) and returns the reward; otherwise 0. The money is credited by the
     // client (account).
-    double StepPlayerLoot(SystemState& st, int derelictId);
+    double StepPlayerLoot(ClientSession& s, SystemState& st, int derelictId);
 
     // Sell cargo on the system market (server mutation: market + cargo). amount is clamped
     // to cargo. Returns what was actually sold and the gross revenue at the current price
@@ -224,68 +227,54 @@ public:
         double gross = 0.0;    // gross revenue at the market price (before multipliers)
         double revenue = 0.0;  // net revenue credited to account_ (skill+reputation)
     };
-    PlayerSellResult StepPlayerSell(SystemState& st, int resourceType, int amount);
+    PlayerSellResult StepPlayerSell(ClientSession& s, SystemState& st, int resourceType,
+                                    int amount);
 
     // Refit the player ship to different stats (station hangar). A server mutation of the
     // ship; ship ownership/money/index — on the client side (account).
-    void RefitPlayer(const ShipStats& stats);
+    void RefitPlayer(ClientSession& s, const ShipStats& stats);
 
     // Server-authoritative docking (M4e-3b). StepPlayerDock finds the nearest station of
     // st within docking range and (if the player is not warping) fixes the docking, returning
     // the station id (0 — failed). While docked, the host freezes the player's physics.
     // Reputation admittance — on the client side (account). Undock releases the docking.
-    int  StepPlayerDock(SystemState& st);
-    void StepPlayerUndock()
+    int  StepPlayerDock(ClientSession& s, SystemState& st);
+    void StepPlayerUndock(ClientSession& s)
     {
-        if (playerDockedStationId_ != 0)
-            RecordEvent(Ev::Kind::Undocked, "Undocked");
-        playerDockedStationId_ = 0;
+        if (s.dockedStationId != 0)
+            s.RecordEvent(Ev::Kind::Undocked, "Undocked");
+        s.dockedStationId = 0;
     }
-    bool IsPlayerDocked() const { return playerDockedStationId_ != 0; }
-    int  PlayerDockedStationId() const { return playerDockedStationId_; }
 
     // --- Player account (server-authoritative, M4f) ---
-    // Money/skills/reputation/wanted. Action effects are applied inside the server
-    // Step methods directly in account_; the client shows it as a mirror (snapshot). In
-    // single-player the account is still owned by the client (Game::player_), account_ is
-    // unused — so the effects inside Step in single-player are applied to it for nothing.
-    Player&       Account() { return account_; }
-    const Player& Account() const { return account_; }
+    // Money/skills/reputation/wanted live on the session (ClientSession::account) and are
+    // applied inside these server steps; the client shows a mirror of them taken from the
+    // snapshot. The journal of what happened is per session too.
+    //
     // Passive per tick: piloting xp (in flight, not docked) + bounty decay.
-    void StepPlayerAccountTick(float dt);
+    void StepPlayerAccountTick(ClientSession& s, float dt);
     // Pay off a bounty with a faction (deducts the bounty from money, zeroes the wanted level).
-    void PayBounty(FactionId faction);
+    void PayBounty(ClientSession& s, FactionId faction);
     // Buy a ship by catalog index: price accounting for the docked station's reputation;
     // if affordable — deducts and refits. true — the purchase succeeded.
-    bool BuyShip(int catalogIndex);
-    // Whether a faction is hostile to the player by account (pirates; wanted; Hostile/Hated
-    // reputation) — the server combat predicate (analog of the client HostileToPlayerFaction).
-    bool AccountHostileToFaction(FactionId f) const;
-
-    // --- Event journal (#29) ---
-    // Records something that happened to the player. Sequence numbers are assigned here,
-    // so a client can ask for everything after the last one it saw and cannot miss an
-    // entry because two snapshots were coalesced.
-    void RecordEvent(Ev::Kind kind, const std::string& text);
-    // Everything newer than `seq`. Pass 0 for the whole journal.
-    std::vector<Ev::Event> EventsSince(int seq) const;
-    int                    LastEventSeq() const { return nextEventSeq_; }
+    bool BuyShip(ClientSession& s, int catalogIndex);
+    // Whether a faction is hostile to this player by account (pirates; wanted;
+    // Hostile/Hated reputation) — the server combat predicate.
+    bool AccountHostileToFaction(const ClientSession& s, FactionId f) const;
 
     // --- Player missions (server-authoritative, M4f-2) ---
-    const MissionSystem& Missions() const { return missions_; }
     // Generates the offer board at the docked station (called from StepPlayerDock).
-    void GenerateDockOffers();
-    void AcceptMission(int offerIndex) { missions_.Accept(offerIndex); }
-    // Server-side mission hand-in: checks the condition, credits rewards to account_,
+    void GenerateDockOffers(ClientSession& s);
+    // Server-side mission hand-in: checks the condition, credits rewards to the account,
     // removes cargo (Mining), deletes from the log. true — handed in.
-    bool CompleteMission(int activeIndex);
-    // Hand-in condition at the current docked station (account/cargo/docking — server-side).
-    bool MissionCompletableNow(const Mission& m) const;
+    bool CompleteMission(ClientSession& s, int activeIndex);
+    // Hand-in condition at the station this player is docked at.
+    bool MissionCompletableNow(const ClientSession& s, const Mission& m) const;
 
     // Server-side active-system change (for the headless host on a jump): makes destId
     // active and teleports the player to the gate leading back to fromId (as the arrival
     // point). Systems are already materialized, so no hydrate is needed.
-    void ServerEnterSystem(const std::string& destId, const std::string& fromId);
+    void ServerEnterSystem(ClientSession& s, const std::string& destId, const std::string& fromId);
 
     double Time() const { return time_; }
     void   SetTime(double t) { time_ = t; }
@@ -301,8 +290,8 @@ public:
     // server account_ is ephemeral — a server restart zeroes the progress. Key format is
     // the same as the client savegame.json. Ship type is not included yet (the server has
     // no ownership list — a separate sub-step).
-    void SaveAccount(const std::string& path) const;
-    bool LoadAccount(const std::string& path);  // false — file missing/broken
+    void SaveAccount(const ClientSession& s, const std::string& path) const;
+    bool LoadAccount(ClientSession& s, const std::string& path);  // false — missing/broken
 
     // Feed of galactic events (system seizures/reconquests) — for showing to the player.
     const std::vector<std::string>& Events() const { return events_; }
@@ -314,18 +303,19 @@ public:
 
     // System persistence: a system's state lives on after the player leaves.
     bool HasSystem(const std::string& id) const { return systems_.count(id) > 0; }
-    // Makes an already existing system active (without recreating/populating it).
-    void Activate(const std::string& id);
     // Fully clears the galaxy (for loading a save).
     void Reset();
 
-    bool               HasActive() const { return active_ != nullptr; }
-    SystemState&       Active() { return *active_; }
-    const SystemState& Active() const { return *active_; }
-    const std::string& ActiveId() const { return activeId_; }
+    // A system by id, and the system a given player is in. There is no "active" system
+    // any more (#3): every system runs, and the only thing that distinguishes one is
+    // which players are standing in it. nullptr for an id the galaxy does not have.
+    SystemState*       SystemById(const std::string& id);
+    const SystemState* SystemById(const std::string& id) const;
+    SystemState*       SystemOf(const ClientSession& s) { return SystemById(s.systemId); }
+    const SystemState* SystemOf(const ClientSession& s) const { return SystemById(s.systemId); }
 
-    // The index record for the active system (id/name/security/owner) or nullptr.
-    const WorldLoader::SystemInfo* ActiveInfo() const;
+    // The index record for a system (id/name/security/owner) or nullptr.
+    const WorldLoader::SystemInfo* SystemInfoById(const std::string& id) const;
 
     // All systems (for save/load and background ticks).
     std::map<std::string, SystemState>&       Systems() { return systems_; }
@@ -341,29 +331,13 @@ public:
 
 private:
     WorldLoader::Universe              universe_;
-    std::map<std::string, SystemState> systems_;           // state by system id
-    SystemState*                       active_ = nullptr;  // pointer is stable (std::map)
-    std::string                        activeId_;
+    std::map<std::string, SystemState> systems_;  // state by system id
     int                                agentIdCounter_ = 0;
 
-    std::unique_ptr<Ship> player_;  // player ship (server agent, M4d-2b)
-    Player account_{ 500.0 };       // player account (money/skills/reputation/wanted, M4f)
-    // Journal of what happened to the player, capped so a long session cannot grow it
-    // without bound. Trimming from the front is safe: a client that has fallen further
-    // behind than the cap has lost its place anyway and must re-observe.
-    std::vector<Ev::Event> journal_;
-    int                    nextEventSeq_ = 0;
-    MissionSystem          missions_;  // player missions (board+active, M4f-2)
-    Orders::Order          order_;     // standing order (#26)
-    Orders::Status         orderStatus_ = Orders::Status::Idle;
-    std::string            orderDetail_;  // why it finished or failed
-    int                    orderId_ = 0;  // id of the current order
-    int                    nextOrderId_ = 0;
-    bool                   orderNavIssued_ = false;       // nav order already given to the ship
-    bool                   playerWeaponOn_ = false;       // weapon armed (server-owned)
-    float                  playerFireTimer_ = 0.0f;       // player weapon cooldown
-    float                  playerMiningProgress_ = 0.0f;  // accumulator of ore-unit fractions
-    int                    playerDockedStationId_ = 0;    // docked station (0 — in flight)
+    // One per connected player (#3). A std::map because the verbs take a ClientSession&,
+    // and a session must not move under one while the world is being stepped.
+    std::map<int, ClientSession> sessions_;
+    int                          sessionIdCounter_ = 0;
 
     double       time_ = 0.0;        // total simulation time (seconds)
     double       maintAccum_ = 0.0;  // accumulator of coarse world maintenance (director)

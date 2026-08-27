@@ -302,3 +302,22 @@ TEST_CASE("the running order is reported back in the snapshot")
     CHECK(r.player.orderId == 7);
     CHECK(r.player.orderDetail == "approaching");
 }
+
+TEST_CASE("a hello names the account, and a mismatched one is refused")
+{
+    Proto::Hello h;
+    h.account = "alice";
+    const std::string wire = Proto::EncodeHello(h);
+    CHECK(Proto::MessageType(wire) == "hello");
+    CHECK(Proto::MessageVersion(wire) == Proto::PROTO_VERSION);
+
+    Proto::Hello back;
+    REQUIRE(Proto::DecodeHello(wire, back));
+    CHECK(back.account == "alice");
+
+    // Wrong type and wrong version are both refused rather than read as an empty name:
+    // an anonymous session would be one the server cannot save progress for.
+    Proto::Command c;
+    CHECK_FALSE(Proto::DecodeHello(Proto::EncodeCommand(c), back));
+    CHECK_FALSE(Proto::DecodeHello("{\"t\":\"hello\",\"v\":1,\"acct\":\"bob\"}", back));
+}

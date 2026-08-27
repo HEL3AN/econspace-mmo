@@ -5,6 +5,7 @@
 // messages. Keeping it apart is what makes a protocol change reviewable on its own.
 
 #include "sim/Simulation.h"
+#include "sim/ClientSession.h"
 
 #include "core/World.h"
 #include "entities/AsteroidField.h"
@@ -21,7 +22,7 @@
 
 // World snapshot of a system for the client: each entity -> id/kind/position/size and
 // (for NPCs) faction/role/heading/hull fraction. The player and shots are added by the client.
-Proto::Snapshot Simulation::BuildSnapshot(const std::string& systemId) const
+Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::string& systemId) const
 {
     Proto::Snapshot snap;
     snap.systemId = systemId;
@@ -70,52 +71,52 @@ Proto::Snapshot Simulation::BuildSnapshot(const std::string& systemId) const
     // Physical view of the player ship (for the networked client — authoritative on the
     // server; in single-player the client augments the view with its own weaponOn/docked/nearby
     // fields).
-    if (player_)
+    if (s.ship)
     {
         Proto::PlayerView& p = snap.player;
-        p.pos = player_->GetPosition();
-        p.vel = player_->GetVelocity();
-        p.heading = player_->GetHeading();
-        p.hull = player_->GetHull();
-        p.maxHull = player_->GetMaxHull();
-        p.shields = player_->GetShields();
-        p.maxShields = player_->GetMaxShields();
-        p.cargoUsed = player_->GetCargoUsed();
-        p.cargoCap = player_->GetCargoCapacity();
-        p.warpPhase = (int)player_->GetWarpPhase();
-        p.warpAlign = player_->GetWarpAlignTimer();
-        p.warpTarget = player_->GetWarpTarget();
-        p.warpDrop = player_->GetWarpDrop();
-        p.autopilot = player_->IsAutopilotOn();
-        p.apTarget = player_->GetAutopilotTarget();
-        p.apStop = player_->GetAutopilotStopDistance();
-        p.docked = (playerDockedStationId_ != 0);
-        p.dockedStationId = playerDockedStationId_;
-        p.stabilizer = player_->IsStabilizerOn();
-        p.mining = player_->IsMiningOn();
-        p.weaponOn = playerWeaponOn_;
-        p.orderKind = (int)order_.kind;
-        p.orderStatus = (int)orderStatus_;
-        p.orderId = orderId_;
-        p.orderDetail = orderDetail_;
+        p.pos = s.ship->GetPosition();
+        p.vel = s.ship->GetVelocity();
+        p.heading = s.ship->GetHeading();
+        p.hull = s.ship->GetHull();
+        p.maxHull = s.ship->GetMaxHull();
+        p.shields = s.ship->GetShields();
+        p.maxShields = s.ship->GetMaxShields();
+        p.cargoUsed = s.ship->GetCargoUsed();
+        p.cargoCap = s.ship->GetCargoCapacity();
+        p.warpPhase = (int)s.ship->GetWarpPhase();
+        p.warpAlign = s.ship->GetWarpAlignTimer();
+        p.warpTarget = s.ship->GetWarpTarget();
+        p.warpDrop = s.ship->GetWarpDrop();
+        p.autopilot = s.ship->IsAutopilotOn();
+        p.apTarget = s.ship->GetAutopilotTarget();
+        p.apStop = s.ship->GetAutopilotStopDistance();
+        p.docked = (s.dockedStationId != 0);
+        p.dockedStationId = s.dockedStationId;
+        p.stabilizer = s.ship->IsStabilizerOn();
+        p.mining = s.ship->IsMiningOn();
+        p.weaponOn = s.weaponOn;
+        p.orderKind = (int)s.order.kind;
+        p.orderStatus = (int)s.orderStatus;
+        p.orderId = s.orderId;
+        p.orderDetail = s.orderDetail;
         for (ResourceType rt : AllResourceTypes())
-            p.cargoByType.push_back(player_->GetCargoAmount(rt));
+            p.cargoByType.push_back(s.ship->GetCargoAmount(rt));
 
         // Player account (server-authoritative, M4f): the client shows it as a mirror.
-        p.money = account_.GetMoney();
+        p.money = s.account.GetMoney();
         for (int i = 0; i < 4; i++)
         {
-            p.reputation.push_back(account_.GetReputation((FactionId)i));
-            p.bounty.push_back(account_.GetBounty((FactionId)i));
+            p.reputation.push_back(s.account.GetReputation((FactionId)i));
+            p.bounty.push_back(s.account.GetBounty((FactionId)i));
         }
-        p.skillXp = { (float)account_.GetSkills().GetXp(SkillType::Piloting),
-                      (float)account_.GetSkills().GetXp(SkillType::Mining),
-                      (float)account_.GetSkills().GetXp(SkillType::Trading) };
+        p.skillXp = { (float)s.account.GetSkills().GetXp(SkillType::Piloting),
+                      (float)s.account.GetSkills().GetXp(SkillType::Mining),
+                      (float)s.account.GetSkills().GetXp(SkillType::Trading) };
     }
 
     // Missions (M4f-2): the board — only when docked, active ones — always. completable
     // is computed by the server (account/cargo/docking are authoritative).
-    auto toView = [this](const Mission& m)
+    auto toView = [this, &s](const Mission& m)
     {
         Proto::MissionView v;
         v.type = (int)m.type;
@@ -129,13 +130,13 @@ Proto::Snapshot Simulation::BuildSnapshot(const std::string& systemId) const
         v.progress = m.progress;
         v.rewardMoney = m.rewardMoney;
         v.rewardRep = m.rewardRep;
-        v.completable = MissionCompletableNow(m);
+        v.completable = MissionCompletableNow(s, m);
         return v;
     };
-    if (IsPlayerDocked())
-        for (const Mission& m : missions_.Offers())
+    if (s.IsDocked())
+        for (const Mission& m : s.missions.Offers())
             snap.missionOffers.push_back(toView(m));
-    for (const Mission& m : missions_.Active())
+    for (const Mission& m : s.missions.Active())
         snap.missionActive.push_back(toView(m));
 
     return snap;
