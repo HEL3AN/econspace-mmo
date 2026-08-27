@@ -505,6 +505,7 @@ void Simulation::SaveAccount(const ClientSession& s, const std::string& path) co
 {
     using nlohmann::json;
     json j;
+    j["version"] = Save::ACCOUNT_VERSION;
     j["money"] = s.account.GetMoney();
 
     json rep = json::array();
@@ -561,15 +562,19 @@ void Simulation::SaveAccount(const ClientSession& s, const std::string& path) co
         out << j.dump(2) << "\n";
 }
 
-bool Simulation::LoadAccount(ClientSession& s, const std::string& path)
+Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
 {
     using nlohmann::json;
     std::ifstream in(path);
     if (!in.is_open())
-        return false;
+        return Save::Result::Missing;
     json j = json::parse(in, nullptr, false);
-    if (j.is_discarded())
-        return false;
+    if (j.is_discarded() || !j.is_object())
+        return Save::Result::Corrupt;
+    // Refused, not read: a later build may store money or cargo differently, and loading
+    // it here would hand the player a plausible-looking wrong account -- then save it.
+    if (j.value("version", Save::UNVERSIONED) > Save::ACCOUNT_VERSION)
+        return Save::Result::TooNew;
 
     s.account.SetMoney(j.value("money", 500.0));
     if (j.contains("reputation"))
@@ -643,5 +648,5 @@ bool Simulation::LoadAccount(ClientSession& s, const std::string& path)
         // docked at and is regenerated on the next dock.
         s.missions.SetMirror({}, std::move(active));
     }
-    return true;
+    return Save::Result::Ok;
 }

@@ -8,6 +8,7 @@
 // Run: econserver [ticks]   (default 3600 ticks = 60 s at SIM_DT=1/60).
 
 #include "sim/Protocol.h"
+#include "sim/SaveSchema.h"
 #include "sim/Simulation.h"
 #include "sim/ClientSession.h"
 #include "net/Tcp.h"
@@ -52,10 +53,21 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
         fprintf(stderr, "FATAL: %s\n", Archetypes::Error().c_str());
     sim.LoadUniverse(dataDir + "universe.json");
     sim.Seed(0xC0FFEEu);
-    if (worldPath.empty() || !sim.LoadWorld(worldPath))
-        sim.InitGalaxy();
-    else
+    const Save::Result world = worldPath.empty() ? Save::Result::Missing : sim.LoadWorld(worldPath);
+    if (world == Save::Result::TooNew)
+    {
+        // Refusing to start beats starting a different galaxy: the checkpoint timer would
+        // write this build's idea of the world over the one that is there (#20).
+        fprintf(stderr,
+                "FATAL: %s was written by a newer build (this one speaks world schema v%d).\n"
+                "Move it aside or upgrade the server; it has NOT been modified.\n",
+                worldPath.c_str(), Save::WORLD_VERSION);
+        exit(1);
+    }
+    if (world == Save::Result::Ok)
         printf("World restored from %s (t=%.0fs).\n", worldPath.c_str(), sim.Time());
+    else
+        sim.InitGalaxy();
     sim.MaterializeAllSystems(dataDir + "systems/");
 }
 
@@ -303,6 +315,7 @@ struct HostClient
     int                                 lastSeq = 0;       // last input acked back
     int                                 lastEventSeq = 0;  // last journal entry delivered
     bool                                wasDocked = false;
+    bool                                accountReadOnly = false;  // their file is newer (#20)
     double                              silentFor = 0.0;  // seconds connected without a hello
 
     // How many player ticks this client may still be granted. One received command is one
@@ -491,7 +504,18 @@ static int RunHost(unsigned short port)
                     hc.account = h.account;
                     s.ship->SetPilotName(h.account);     // what other players see (#4)
                     hc.lastEventSeq = s.LastEventSeq();  // a new session starts from now
-                    if (sim.LoadAccount(s, AccountPath(h.account)))
+                    const Save::Result acct = sim.LoadAccount(s, AccountPath(h.account));
+                    if (acct == Save::Result::TooNew)
+                    {
+                        // They can play, but their file is left exactly as it is. Handing
+                        // a player a fresh account and then saving it over the real one is
+                        // the failure this whole check exists to prevent (#20).
+                        hc.accountReadOnly = true;
+                        printf("%s: account file is from a newer build; joining with a "
+                               "fresh account and NOT saving over it.\n",
+                               h.account.c_str());
+                    }
+                    else if (acct == Save::Result::Ok)
                         printf("%s joined (money %.0f).\n", h.account.c_str(),
                                s.account.GetMoney());
                     else
@@ -535,7 +559,8 @@ static int RunHost(unsigned short port)
                 if (s->IsDocked() != hc.wasDocked)
                 {
                     hc.wasDocked = s->IsDocked();
-                    sim.SaveAccount(*s, AccountPath(hc.account));
+                    if (!hc.accountReadOnly)
+                        sim.SaveAccount(*s, AccountPath(hc.account));
                 }
         }
 
@@ -624,9 +649,15 @@ static int RunHost(unsigned short port)
             }
             if (ClientSession* s = sim.Session(hc.sessionId))
             {
-                sim.SaveAccount(*s, AccountPath(hc.account));
-                printf("%s left. Account saved (money %.0f); galaxy still running.\n",
-                       hc.account.c_str(), s->account.GetMoney());
+                if (hc.accountReadOnly)
+                    printf("%s left. Account NOT saved: their file is from a newer build.\n",
+                           hc.account.c_str());
+                else
+                {
+                    sim.SaveAccount(*s, AccountPath(hc.account));
+                    printf("%s left. Account saved (money %.0f); galaxy still running.\n",
+                           hc.account.c_str(), s->account.GetMoney());
+                }
                 sim.DestroySession(hc.sessionId);
             }
             else
@@ -641,7 +672,8 @@ static int RunHost(unsigned short port)
 
     for (HostClient& hc : clients)
         if (ClientSession* s = sim.Session(hc.sessionId))
-            sim.SaveAccount(*s, AccountPath(hc.account));
+            if (!hc.accountReadOnly)
+                sim.SaveAccount(*s, AccountPath(hc.account));
     sim.SaveWorld(worldPath);
     printf("\nShutting down. World and accounts saved.\n");
     Net::Shutdown();
@@ -731,7 +763,7 @@ static int AccountSelftest()
     Simulation     b;  // clean account (money 500) — check that the load overwrote it
     ClientSession& bs =
         b.CreateSession(std::string(), Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
-    bool loaded = b.LoadAccount(bs, path);
+    bool loaded = b.LoadAccount(bs, path) == Save::Result::Ok;
     bool money = approx(bs.account.GetMoney(), 4242.0);
     bool rep = approx(bs.account.GetReputation(FactionId::Pirates), -7.5);
     bool bounty = approx(bs.account.GetBounty(FactionId::TradersGuild), 300.0);
@@ -787,7 +819,7 @@ static int WorldSelftest()
 
     Simulation b;  // fresh galaxy: the load must overwrite the defaults
     b.LoadUniverse(dataDir + "universe.json");
-    bool loaded = b.LoadWorld(path);
+    bool loaded = b.LoadWorld(path) == Save::Result::Ok;
     bool haveSys = b.HasSystem(sid);
     bool time = approx(b.Time(), 2.0);
     bool sec = haveSys && approx(b.Systems()[sid].agg.security, 0.25);

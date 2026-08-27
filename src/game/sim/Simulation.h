@@ -6,6 +6,7 @@
 #include "sim/Events.h"
 #include "sim/Orders.h"
 #include "sim/ClientSession.h"
+#include "sim/SaveSchema.h"
 #include "sim/PlayerStep.h"
 #include "player/Player.h"
 #include "missions/MissionSystem.h"
@@ -283,15 +284,18 @@ public:
     // separate world.json file. Does not touch entities — after LoadWorld the caller
     // materializes the world (MaterializeAllSystems). The player account is NOT included.
     void SaveWorld(const std::string& path) const;
-    bool LoadWorld(const std::string& path);  // false — file missing/broken
+    // Save::Result::TooNew means the file was written by a later build: it is left alone
+    // and nothing is loaded, because reading it with this build's rules would turn an
+    // unknown field into a default and then write that back (#20).
+    Save::Result LoadWorld(const std::string& path);
 
     // Player ACCOUNT persistence (server-side, M4f-3): money/skills/reputation/wanted
     // into a separate account.json (the world has its own world.json). Without this the
     // server account_ is ephemeral — a server restart zeroes the progress. Key format is
     // the same as the client savegame.json. Ship type is not included yet (the server has
     // no ownership list — a separate sub-step).
-    void SaveAccount(const ClientSession& s, const std::string& path) const;
-    bool LoadAccount(ClientSession& s, const std::string& path);  // false — missing/broken
+    void         SaveAccount(const ClientSession& s, const std::string& path) const;
+    Save::Result LoadAccount(ClientSession& s, const std::string& path);
 
     // Feed of galactic events (system seizures/reconquests) — for showing to the player.
     const std::vector<std::string>& Events() const { return events_; }

@@ -14,6 +14,7 @@
 #include "entities/ShipType.h"
 #include "entities/Station.h"
 #include "sim/ClientSession.h"
+#include "sim/SaveSchema.h"
 #include "missions/Mission.h"
 #include "sim/Orders.h"
 #include "sim/Simulation.h"
@@ -345,7 +346,7 @@ TEST_CASE("an account remembers where the player was, not just what they own")
 
     ClientSession& back = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
                                               GetShipCatalog()[0].stats);
-    REQUIRE(f.sim.LoadAccount(back, path));
+    REQUIRE(f.sim.LoadAccount(back, path) == Save::Result::Ok);
     std::remove(path.c_str());
 
     CHECK(back.systemId == nbrs[0]);
@@ -370,7 +371,7 @@ TEST_CASE("an account remembers where the player was, not just what they own")
         }
         ClientSession& lost = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
                                                   GetShipCatalog()[0].stats);
-        REQUIRE(f.sim.LoadAccount(lost, bad));
+        REQUIRE(f.sim.LoadAccount(lost, bad) == Save::Result::Ok);
         std::remove(bad.c_str());
         CHECK(lost.systemId == f.sim.Universe().startId);
         CHECK(f.sim.SystemOf(lost) != nullptr);
@@ -435,4 +436,72 @@ TEST_CASE("players in the same system are in each other's snapshots")
         Proto::Snapshot theirs = f.sim.BuildSnapshot(other, other.systemId);
         CHECK(FindPlayer(theirs, f.s.ship->GetId()) == nullptr);
     }
+}
+
+TEST_CASE("a save from a newer build is refused, not read leniently")
+{
+    // Every field is read with a default, which is right for a message from a peer and
+    // exactly wrong for a save (#20): a file written by a build that stores something
+    // differently would load "successfully" as a plausible wrong account, and the next
+    // checkpoint would write that back over the real one.
+    Fixture           f;
+    const std::string path = "account_version_tmp.json";
+
+    f.s.account.SetMoney(9999.0);
+    f.sim.SaveAccount(f.s, path);
+
+    ClientSession& fresh = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                               GetShipCatalog()[0].stats);
+    CHECK(f.sim.LoadAccount(fresh, path) == Save::Result::Ok);
+    CHECK(fresh.account.GetMoney() == doctest::Approx(9999.0));
+
+    SUBCASE("a version this build has never heard of")
+    {
+        std::string text;
+        {
+            std::ifstream in(path);
+            text.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        }
+        const std::string bumped =
+            text.replace(text.find("\"version\": 1"), 12,
+                         "\"version\": " + std::to_string(Save::ACCOUNT_VERSION + 1));
+        {
+            std::ofstream out(path);
+            out << bumped;
+        }
+
+        ClientSession& other = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                                   GetShipCatalog()[0].stats);
+        CHECK(f.sim.LoadAccount(other, path) == Save::Result::TooNew);
+        // Nothing was taken from it -- not even the fields this build does understand.
+        CHECK(other.account.GetMoney() != doctest::Approx(9999.0));
+    }
+
+    SUBCASE("a file written before versions existed is still readable")
+    {
+        // Those files are a strict subset of version 1, so refusing them would throw away
+        // real progress to no purpose.
+        {
+            std::ofstream out(path);
+            out << R"({"money":1234.0})";
+        }
+        ClientSession& old = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                                 GetShipCatalog()[0].stats);
+        CHECK(f.sim.LoadAccount(old, path) == Save::Result::Ok);
+        CHECK(old.account.GetMoney() == doctest::Approx(1234.0));
+    }
+
+    SUBCASE("a missing file and a corrupt one are told apart")
+    {
+        ClientSession& none = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                                  GetShipCatalog()[0].stats);
+        CHECK(f.sim.LoadAccount(none, "no_such_account_file.json") == Save::Result::Missing);
+        {
+            std::ofstream out(path);
+            out << "{ not json";
+        }
+        CHECK(f.sim.LoadAccount(none, path) == Save::Result::Corrupt);
+    }
+
+    std::remove(path.c_str());
 }
