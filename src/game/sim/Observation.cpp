@@ -41,7 +41,7 @@ const char* KindName(Proto::EntityKind k)
         case Proto::EntityKind::Nebula: return "nebula";
         case Proto::EntityKind::Derelict: return "derelict";
         case Proto::EntityKind::Npc: return "ship";
-        case Proto::EntityKind::PlayerShip: return "your ship";
+        case Proto::EntityKind::PlayerShip: return "pilot";
         case Proto::EntityKind::Unknown: break;
     }
     return "object";
@@ -123,6 +123,15 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
         // No "HOSTILE" suffix: the section heading above already says it, and every
         // repeated word is a token an agent pays for.
         extra = Fmt("  %s  hull %d%%", FactionName(e.faction).c_str(), (int)(e.hullFrac * 100.0f));
+    }
+    if (e.kind == Proto::EntityKind::PlayerShip)
+    {
+        // Another player (#4). Worth saying plainly: an agent that reads "pilot" as
+        // scenery is one that does not know it is sharing the system with someone who
+        // decides things for themselves.
+        if (name.empty())
+            name = "another pilot";
+        extra = Fmt("  player  hull %d%%", (int)(e.hullFrac * 100.0f));
     }
 
     std::string line =

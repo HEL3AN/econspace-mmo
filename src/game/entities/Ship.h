@@ -5,6 +5,7 @@
 #include "entities/ShipType.h"
 #include "economy/Resource.h"
 #include <map>
+#include <string>
 
 // Warp jump phases: aligning to the target (spin-up), the jump itself, or no warp.
 enum class WarpPhase
@@ -26,6 +27,12 @@ public:
 
     // Combatant: position comes from Entity (shared pos_).
     Vector2 GetPosition() const override { return pos_; }
+
+    // Whose ship this is. The server sets it from the account name when a player joins,
+    // and it travels in the snapshot so other players see a name rather than a shape
+    // (#4). Empty on the client's own ship: it does not need to be told who it is.
+    void        SetPilotName(const std::string& n) { pilotName_ = n; }
+    std::string GetName() const override { return pilotName_.empty() ? "Ship" : pilotName_; }
 
     // Control intents for the current frame (turn: -1 left, +1 right).
     void SetControls(bool thrust, float turn, bool brake);
@@ -75,6 +82,9 @@ public:
     }
     void  ClearCargo() { cargo_.clear(); }
     float GetHull() const override { return hull_; }
+    // For a proxy of another player's ship: the hull comes from the snapshot, and it is
+    // what the glyph dims by (#4). NpcShip has the same setter for the same reason.
+    void  SetHull(float h) { hull_ = h; }
     float GetMaxHull() const override { return maxHull_; }
     float GetShields() const { return shields_; }
     float GetMaxShields() const { return maxShields_; }
@@ -168,4 +178,6 @@ private:
     float                  warpDrop_ = 0.0f;
     float                  warpAlignTimer_ = 0.0f;
     float                  warpPrevDist_ = 0.0f;  // progress guard (prevents getting stuck)
+
+    std::string pilotName_;  // account name, for other players' snapshots (#4)
 };

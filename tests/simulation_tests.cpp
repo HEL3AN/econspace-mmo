@@ -377,3 +377,62 @@ TEST_CASE("an account remembers where the player was, not just what they own")
         CHECK(lost.account.GetMoney() == doctest::Approx(100.0));  // the rest still loaded
     }
 }
+
+TEST_CASE("players in the same system are in each other's snapshots")
+{
+    Fixture        f;
+    ClientSession& other =
+        f.sim.CreateSession(f.s.systemId, Vector2{ 400.0f, 0.0f }, GetShipCatalog()[0].stats);
+    other.ship->SetPilotName("bob");
+
+    auto FindPlayer = [](const Proto::Snapshot& snap, int id) -> const Proto::EntitySnapshot*
+    {
+        for (const Proto::EntitySnapshot& es : snap.entities)
+            if (es.id == id && es.kind == EntityKind::PlayerShip)
+                return &es;
+        return nullptr;
+    };
+
+    Proto::Snapshot              mine = f.sim.BuildSnapshot(f.s, f.s.systemId);
+    const Proto::EntitySnapshot* seen = FindPlayer(mine, other.ship->GetId());
+    REQUIRE(seen != nullptr);
+    CHECK(seen->name == "bob");
+    CHECK(seen->pos.x == doctest::Approx(400.0f));
+
+    // Not oneself: the client predicts its own ship, and a proxy of it would fight the
+    // prediction for the wheel.
+    CHECK(FindPlayer(mine, f.s.ship->GetId()) == nullptr);
+
+    SUBCASE("ids do not collide with the world's")
+    {
+        // Both come from the same counter, which is what lets a player be selected like
+        // any other object. Two objects sharing an id would be one object to the client.
+        for (const auto& e : f.World().entities)
+            CHECK(e->GetId() != other.ship->GetId());
+    }
+
+    SUBCASE("a docked player is not in the sky")
+    {
+        auto station = std::make_unique<Station>(Vector2{ 400.0f, 0.0f }, 60.0f, "Depot",
+                                                 FactionId::TradersGuild, StationRole::TradeHub);
+        station->SetId(77);
+        f.World().entities.push_back(std::move(station));
+        REQUIRE(f.sim.StepPlayerDock(other, f.World()) == 77);
+
+        Proto::Snapshot after = f.sim.BuildSnapshot(f.s, f.s.systemId);
+        CHECK(FindPlayer(after, other.ship->GetId()) == nullptr);
+    }
+
+    SUBCASE("a player in another system is not visible")
+    {
+        const std::vector<std::string> nbrs = f.sim.Neighbors(f.s.systemId);
+        REQUIRE_FALSE(nbrs.empty());
+        other.systemId = nbrs[0];
+        Proto::Snapshot elsewhere = f.sim.BuildSnapshot(f.s, f.s.systemId);
+        CHECK(FindPlayer(elsewhere, other.ship->GetId()) == nullptr);
+
+        // And from over there, the first player is the one out of sight.
+        Proto::Snapshot theirs = f.sim.BuildSnapshot(other, other.systemId);
+        CHECK(FindPlayer(theirs, f.s.ship->GetId()) == nullptr);
+    }
+}

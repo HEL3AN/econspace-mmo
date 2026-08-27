@@ -344,7 +344,18 @@ void Game::ReconcileClientWorld()
         if (proxy == nullptr)
         {
             std::unique_ptr<Entity> p;
-            if (es.kind == Proto::EntityKind::Npc)
+            if (es.kind == Proto::EntityKind::PlayerShip)
+            {
+                // Another player (#4). A Ship rather than an NpcShip, so it describes
+                // itself with the player glyph and carries the pilot's name; its stats do
+                // not matter here -- everything drawn about it comes from the snapshot.
+                auto other = std::make_unique<Ship>(es.pos, GetShipCatalog()[0].stats);
+                other->SetHeading(es.heading);
+                other->SetHull(es.hullFrac * other->GetMaxHull());
+                other->SetPilotName(es.name);
+                p = std::move(other);
+            }
+            else if (es.kind == Proto::EntityKind::Npc)
             {
                 // NPC — snapshot dynamics: built from faction/role, hull for the indicator.
                 auto n = std::make_unique<NpcShip>(es.pos, es.faction, (NpcRole)es.role,
@@ -366,6 +377,20 @@ void Game::ReconcileClientWorld()
             p->SetPosition(es.pos);
             clientWorld_.push_back(std::move(p));
             proxy = clientWorld_.back().get();
+        }
+
+        // Damage is not only a number in the target panel: the glyph dims with the hull
+        // (#35). Refreshing it every snapshot rather than only at creation is what makes
+        // a fight visible -- otherwise a ship stays as bright as it was when it appeared.
+        if (proxy->GetKind() == EntityKind::Npc)
+        {
+            NpcShip* n = static_cast<NpcShip*>(proxy);
+            n->SetHull(es.hullFrac * n->GetMaxHull());
+        }
+        else if (proxy->GetKind() == EntityKind::PlayerShip)
+        {
+            Ship* sh = static_cast<Ship*>(proxy);
+            sh->SetHull(es.hullFrac * sh->GetMaxHull());
         }
     }
 
@@ -420,6 +445,8 @@ void Game::ReconcileClientWorld()
             e->SetPosition(pos);
             if (e->GetKind() == EntityKind::Npc)
                 static_cast<NpcShip*>(e.get())->SetHeading(heading);
+            else if (e->GetKind() == EntityKind::PlayerShip)
+                static_cast<Ship*>(e.get())->SetHeading(heading);  // other players turn too
         }
     }
 

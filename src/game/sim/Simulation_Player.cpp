@@ -62,6 +62,9 @@ ClientSession& Simulation::CreateSession(const std::string& systemId, Vector2 po
     ClientSession& s = sessions_[id];
     s.id = id;
     s.ship = std::make_unique<Ship>(pos, stats);
+    // From the same counter as stations and NPCs, so a player's ship can be named in a
+    // snapshot and selected like anything else without colliding with the world (#4).
+    s.ship->SetId(NextAgentId());
     s.systemId = systemId;
     return s;
 }
