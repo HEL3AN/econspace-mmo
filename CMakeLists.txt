@@ -177,6 +177,11 @@ target_compile_definitions(econspace PRIVATE GAME_DATA_DIR="${CMAKE_SOURCE_DIR}/
 add_executable(econserver
     src/game/sim/main_headless.cpp
     src/game/sim/Simulation.cpp
+    src/game/sim/Simulation_World.cpp     # galaxy, hydration, routes, persistence (#17)
+    src/game/sim/Simulation_Agents.cpp    # NPC AI, combat, spawn director, macro (#17)
+    src/game/sim/Simulation_Player.cpp    # the server-side player verbs and account (#17)
+    src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
+    src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/PlayerStep.cpp
     src/game/sim/Orders.cpp
     src/game/economy/Market.cpp
@@ -214,6 +219,10 @@ target_compile_definitions(econagent PRIVATE AGENT_DATA_DIR="${CMAKE_SOURCE_DIR}
 add_executable(worldeditor
     src/editor/main.cpp
     src/editor/Editor.cpp
+    src/editor/Editor_Panel.cpp     # the property editor for the selected object (#17)
+    src/editor/Editor_Palette.cpp   # creating objects from the archetype registry (#17)
+    src/editor/Editor_Galaxy.cpp    # the map view and its panel (#17)
+    src/editor/Editor_Universe.cpp  # everything that changes universe.json (#17)
 )
 target_include_directories(worldeditor PRIVATE ${CMAKE_SOURCE_DIR}/src/editor)
 target_link_libraries(worldeditor PRIVATE engine)
@@ -253,6 +262,11 @@ add_executable(tests
     # dependency tree -- ships, NPCs, the mission system -- which is the price of testing
     # the rules where they actually live rather than through a socket.
     src/game/sim/Simulation.cpp
+    src/game/sim/Simulation_World.cpp     # galaxy, hydration, routes, persistence (#17)
+    src/game/sim/Simulation_Agents.cpp    # NPC AI, combat, spawn director, macro (#17)
+    src/game/sim/Simulation_Player.cpp    # the server-side player verbs and account (#17)
+    src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
+    src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/PlayerStep.cpp
     src/game/sim/Orders.cpp
     src/game/economy/Market.cpp

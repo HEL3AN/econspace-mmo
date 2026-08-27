@@ -232,3 +232,29 @@ TEST_CASE("the world clock advances with maintenance")
         f.sim.MaintainWorld(dt, std::string(), nullptr);
     CHECK(f.sim.Time() == doctest::Approx(2.0));
 }
+
+TEST_CASE("a dock order flies the ship in and docks it")
+{
+    Fixture f;
+    auto    station = std::make_unique<Station>(Vector2{ 4000.0f, 0.0f }, 60.0f, "Depot",
+                                                FactionId::TradersGuild, StationRole::TradeHub);
+    station->SetId(42);
+    f.World().entities.push_back(std::move(station));
+
+    Orders::Order dock;
+    dock.kind = Orders::Kind::Dock;
+    dock.targetId = 42;
+    REQUIRE(f.sim.GiveOrder(dock) > 0);
+
+    const float dt = 1.0f / 60.0f;
+    for (int i = 0; i < 60 * 120 && f.sim.HasRunningOrder(); i++)  // two simulated minutes
+        f.sim.StepPlayerOrder(f.World(), dt);
+
+    // The failure this pins is the quiet one. The executor stops the ship at whatever
+    // distance it believes a dock admits at; if that is further than the dock really
+    // admits, the ship parks just outside the door and the order finishes having docked
+    // nothing. Asking the dock for its own range is what keeps the two agreed.
+    CHECK_FALSE(f.sim.HasRunningOrder());
+    CHECK(f.sim.OrderStatus() == Orders::Status::Done);
+    CHECK(f.sim.IsPlayerDocked());
+}
