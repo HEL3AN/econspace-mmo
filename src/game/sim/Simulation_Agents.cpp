@@ -71,8 +71,7 @@ bool Simulation::NpcHostileToNpc(const NpcShip* a, const NpcShip* b)
     return s == Stance::Hostile || s == Stance::War;
 }
 
-void Simulation::StepNpcAi(SystemState& st, Combatant* player,
-                           const std::function<bool(const NpcShip*)>& hostileToPlayer)
+void Simulation::StepNpcAi(SystemState& st, const std::vector<PlayerPresence>& players)
 {
     std::vector<NpcShip*> ships = AliveShips(st);
     for (NpcShip* n : ships)
@@ -84,13 +83,16 @@ void Simulation::StepNpcAi(SystemState& st, Combatant* player,
             float   bestD = NPC_AGGRO_RANGE;
             Vector2 bestPos{};
             bool    found = false;
-            if (player != nullptr && hostileToPlayer && hostileToPlayer(n))
+            for (const PlayerPresence& p : players)
             {
-                float d = Dist(player->GetPosition(), npos);
+                if (p.ship == nullptr || p.session == nullptr ||
+                    !AccountHostileToFaction(*p.session, n->GetFaction()))
+                    continue;
+                float d = Dist(p.ship->GetPosition(), npos);
                 if (d < bestD)
                 {
                     bestD = d;
-                    bestPos = player->GetPosition();
+                    bestPos = p.ship->GetPosition();
                     found = true;
                 }
             }
@@ -140,9 +142,8 @@ void Simulation::StepNpcAi(SystemState& st, Combatant* player,
     }
 }
 
-void Simulation::StepNpcCombat(SystemState& st, Combatant* player, bool playerHidden,
-                               const std::function<bool(const NpcShip*)>& hostileToPlayer,
-                               std::vector<FireEvent>*                    fires)
+void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence>& players,
+                               std::vector<FireEvent>* fires)
 {
     std::vector<NpcShip*> ships = AliveShips(st);
     for (NpcShip* npc : ships)
@@ -153,67 +154,53 @@ void Simulation::StepNpcCombat(SystemState& st, Combatant* player, bool playerHi
         Vector2    npos = npc->GetPosition();
         float      bestD = PIRATE_WEAPON_RANGE;
         Combatant* target = nullptr;
-        bool       targetIsPlayer = false;
+        int        targetSession = 0;  // 0 means the target is an NPC
 
-        auto consider = [&](Combatant* c, bool isPlayer)
+        auto consider = [&](Combatant* c, int sessionId)
         {
             float d = Dist(c->GetPosition(), npos);
             if (d <= bestD)
             {
                 bestD = d;
                 target = c;
-                targetIsPlayer = isPlayer;
+                targetSession = sessionId;
             }
         };
 
-        if (player != nullptr && !playerHidden && hostileToPlayer && hostileToPlayer(npc))
-            consider(player, true);
+        for (const PlayerPresence& p : players)
+            if (p.ship != nullptr && p.session != nullptr && !p.hidden &&
+                AccountHostileToFaction(*p.session, npc->GetFaction()))
+                consider(p.ship, p.session->id);
         for (NpcShip* other : ships)
             if (other != npc && other->IsAlive() && NpcHostileToNpc(npc, other))
-                consider(other, false);
+                consider(other, 0);
 
         if (target == nullptr)
             continue;
 
-        target->TakeDamage(targetIsPlayer ? PIRATE_WEAPON_DAMAGE : NPC_WEAPON_DAMAGE);
+        target->TakeDamage(targetSession != 0 ? PIRATE_WEAPON_DAMAGE : NPC_WEAPON_DAMAGE);
         npc->ResetFireTimer();
         if (fires != nullptr)
-            fires->push_back({ npos, target->GetPosition(), npc->GetFaction(), targetIsPlayer });
+        {
+            FireEvent fe;
+            fe.from = npos;
+            fe.to = target->GetPosition();
+            fe.shooterFaction = npc->GetFaction();
+            fe.targetSessionId = targetSession;
+            fires->push_back(fe);
+        }
     }
 }
 
-void Simulation::StepSystemAgents(SystemState& st, float dt)
+void Simulation::StepSystemAgents(SystemState& st, const std::vector<PlayerPresence>& players,
+                                  std::vector<FireEvent>* fires, float dt)
 {
-    StepNpcAi(st, nullptr, {});  // AI without the player
+    StepNpcAi(st, players);
 
     for (auto& e : st.entities)  // movement
         e->Update(dt);
 
-    StepNpcCombat(st, nullptr, false, {}, nullptr);  // NPC-vs-NPC combat, no events
-
-    // Cleanup of the fallen.
-    st.entities.erase(std::remove_if(st.entities.begin(), st.entities.end(),
-                                     [](const std::unique_ptr<Entity>& e)
-                                     {
-                                         NpcShip* n = e->GetKind() == EntityKind::Npc
-                                                          ? static_cast<NpcShip*>(e.get())
-                                                          : nullptr;
-                                         return n != nullptr && !n->IsAlive();
-                                     }),
-                      st.entities.end());
-}
-
-void Simulation::StepActiveSystemAgents(SystemState& st, Combatant* player, bool playerHidden,
-                                        const std::function<bool(const NpcShip*)>& hostileToPlayer,
-                                        std::vector<FireEvent>* fires, float dt)
-{
-    StepNpcAi(st, player, hostileToPlayer);  // AI sees the player (pursuit/flight)
-
-    for (auto& e : st.entities)  // movement
-        e->Update(dt);
-
-    StepNpcCombat(st, player, playerHidden, hostileToPlayer,
-                  fires);  // combat with the player, beams
+    StepNpcCombat(st, players, fires);
 
     // Cleanup of the fallen.
     st.entities.erase(std::remove_if(st.entities.begin(), st.entities.end(),

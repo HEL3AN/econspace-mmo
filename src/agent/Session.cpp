@@ -8,12 +8,19 @@
 namespace Agent
 {
 
-bool Session::Connect(const std::string& host, unsigned short port)
+bool Session::Connect(const std::string& host, unsigned short port, const std::string& account)
 {
     if (!Net::Startup())
         return false;
     conn_ = Net::Dial(host, port);
-    return conn_ != nullptr;
+    if (!conn_)
+        return false;
+    // An agent is a player like any other, so it introduces itself the same way: the
+    // server has no player behind the socket until this arrives (#3, #42).
+    Proto::Hello hello;
+    hello.account = account;
+    conn_->Send(Proto::EncodeHello(hello));
+    return true;
 }
 
 void Session::Pump()

@@ -17,6 +17,12 @@ struct FireEvent
     FactionId shooterFaction;
     bool      targetIsPlayer = false;  // target is the player (client colors the beam ORANGE)
     bool      fromPlayer = false;      // the player fired (client colors the beam SKYBLUE)
+
+    // Server-side only; never encoded. Which player each end of the beam is, if any.
+    // The two flags above are written per recipient when a snapshot is built, so a shot
+    // is "mine" or "at me" for exactly the player it concerns and for nobody else (#3).
+    int shooterSessionId = 0;
+    int targetSessionId = 0;
 };
 
 // Cold aggregate of a system: cheap statistical state that ALWAYS exists (even for

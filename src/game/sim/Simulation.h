@@ -55,30 +55,32 @@ public:
     // Are two NPCs hostile (faction relation matrix) — pure server logic.
     static bool NpcHostileToNpc(const NpcShip* a, const NpcShip* b);
 
+    // A player standing in a system, as the NPC passes see them. The caller builds one
+    // per session in the system: whose ship it is, and whether something is hiding it.
+    // Hostility is not passed in -- the account is server-side now, so the pass asks.
+    struct PlayerPresence
+    {
+        const ClientSession* session = nullptr;
+        Combatant*           ship = nullptr;
+        bool                 hidden = false;  // inside something that hides ships
+    };
+
     // System AI pass: combat roles pursue the nearest hostile target, peaceful ones
-    // flee. player!=nullptr adds the player as a target; hostileToPlayer — the client
-    // predicate of hostility toward the player (reputation/wanted; empty for background).
-    void StepNpcAi(SystemState& st, Combatant* player,
-                   const std::function<bool(const NpcShip*)>& hostileToPlayer);
+    // flee. Players in the system are targets like any other, each judged by their own
+    // account -- a pirate hunts the player it is hostile to, not "the player".
+    void StepNpcAi(SystemState& st, const std::vector<PlayerPresence>& players);
 
     // NPC combat: each ready combat NPC hits the nearest hostile target (NPC or player)
     // through the Combatant interface. fires!=nullptr — collect fire events (the client
-    // turns them into beams); playerHidden — the player is in a nebula.
-    void StepNpcCombat(SystemState& st, Combatant* player, bool playerHidden,
-                       const std::function<bool(const NpcShip*)>& hostileToPlayer,
-                       std::vector<FireEvent>*                    fires);
+    // turns them into beams). A hidden player is not shot at.
+    void StepNpcCombat(SystemState& st, const std::vector<PlayerPresence>& players,
+                       std::vector<FireEvent>* fires);
 
-    // Full background step of a system (no player): AI + movement + combat + cleanup of the fallen.
-    void StepSystemAgents(SystemState& st, float dt);
-
-    // Step of the ACTIVE system with the player involved (server-side, M4e-3c): AI sees
-    // the player, movement, NPC combat with the player as a target, collecting shots into
-    // fires (the client draws beams), cleanup of the fallen. hostileToPlayer — the server
-    // predicate of hostility to the player (by faction; reputation/wanted — account, until
-    // M4f). playerHidden — the player is in a nebula.
-    void StepActiveSystemAgents(SystemState& st, Combatant* player, bool playerHidden,
-                                const std::function<bool(const NpcShip*)>& hostileToPlayer,
-                                std::vector<FireEvent>* fires, float dt);
+    // One full step of a system: AI, movement, combat, cleanup of the fallen. `players`
+    // is whoever happens to be standing in it, which is usually nobody -- a system with
+    // no one in it is the normal case, not a lesser kind of step (#3).
+    void StepSystemAgents(SystemState& st, const std::vector<PlayerPresence>& players,
+                          std::vector<FireEvent>* fires, float dt);
 
     // Server-side player respawn: teleport to the first station of the active system,
     // repair, cargo loss (like the client RespawnPlayer). No undock needed.

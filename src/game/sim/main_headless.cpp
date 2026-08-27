@@ -23,8 +23,10 @@
 #include <chrono>
 #include <csignal>
 #include <cstdio>
+#include <cctype>
 #include <cstdlib>
 #include <cmath>
+#include <map>
 #include <memory>
 #include <string>
 #include <thread>
@@ -39,8 +41,8 @@ static const double WORLD_SAVE_INTERVAL = 60.0;
 // own Reset+InitGalaxy and restores only the aggregates (population, security, prosperity,
 // controllers) plus simulation time. Entities are never persisted, so materialization
 // happens afterwards either way. An empty worldPath keeps a run ephemeral (the self-tests).
-static ClientSession& SetupHostSim(Simulation& sim, const std::string& dataDir,
-                                   const std::string& worldPath = std::string())
+static void SetupHostSim(Simulation& sim, const std::string& dataDir,
+                         const std::string& worldPath = std::string())
 {
     SetRandomSeed(0xC0FFEEu);
     Factions::Load(dataDir + "factions.json");
@@ -55,6 +57,12 @@ static ClientSession& SetupHostSim(Simulation& sim, const std::string& dataDir,
     else
         printf("World restored from %s (t=%.0fs).\n", worldPath.c_str(), sim.Time());
     sim.MaterializeAllSystems(dataDir + "systems/");
+}
+
+// A player in the start system. The server makes one per connection; the self-tests make
+// exactly one and fly it themselves.
+static ClientSession& SetupHostPlayer(Simulation& sim)
+{
     return sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 3000.0f },
                              GetShipCatalog()[0].stats);
 }
@@ -66,7 +74,8 @@ static ClientSession& SetupHostSim(Simulation& sim, const std::string& dataDir,
 // Returns true if the system changed. Account effects are not yet applied on the server
 // (M4f); NPCs do not target the player yet.
 static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Command& c, float dt,
-                           std::vector<Proto::TradeAck>& acks, std::vector<FireEvent>& fires)
+                           std::vector<Proto::TradeAck>&                  acks,
+                           std::map<std::string, std::vector<FireEvent>>& fires)
 {
     bool changed = false;
 
@@ -148,73 +157,92 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     // Account effects (mission credit/reputation) are not yet applied on the server (3c-ii).
     Simulation::PlayerCombatEvents ev;
     if (sim.StepPlayerFire(s, *sim.SystemOf(s), c.targetId, dt, &ev))
-        fires.push_back(FireEvent{ ev.shotFrom, ev.shotTo, FactionId::Independent, false, true });
+    {
+        FireEvent fe;
+        fe.from = ev.shotFrom;
+        fe.to = ev.shotTo;
+        fe.shooterFaction = FactionId::Independent;
+        fe.shooterSessionId = s.id;  // "mine" for this player and nobody else
+        fires[s.systemId].push_back(fe);
+    }
     sim.StepPlayerMining(s, *sim.SystemOf(s), s.account.GetSkills().GetBonus(SkillType::Mining),
                          dt);
     return changed;
 }
 
-// World step (NPCs of all systems + maintenance) — on the server timer, independent of inputs.
-// The active system (where the player is) is stepped with the player involved: NPCs see him,
-// combat produces beams, damage to the player is authoritative; a fallen player respawns at a
-// station. Other systems get a background step. fires — active-system NPC shots (client draws
-// beams). clientOnline false: nobody is flying the ship. The pilot is treated as absent — NPCs do
-// not target them, and no respawn logic runs — while the rest of the galaxy keeps living. The ship
-// simply stops being stepped and stays where it was left.
-static void HostStepWorld(Simulation& sim, ClientSession& s, float dt,
-                          std::vector<FireEvent>& fires, bool clientOnline)
+// Is this player inside something that hides ships? The nebula is the only such thing
+// today, but the test asks for the property rather than for the class (#34), so a jammer
+// a player builds (#44) would hide them too.
+static bool HiddenInCover(Simulation& sim, const ClientSession& s)
 {
-    Combatant* player = (!clientOnline || s.IsDocked()) ? nullptr : (Combatant*)s.ship.get();
-
-    // Cover: the player sits inside something that hides ships, so NPCs cannot see him.
-    // The nebula is the only such thing today, but the pass asks for the property rather
-    // than for the class (#34), so a jammer a player builds (#44) would hide him too.
-    bool hidden = false;
-    if (player != nullptr)
+    const SystemState* st = sim.SystemOf(s);
+    if (st == nullptr || !s.ship)
+        return false;
+    Vector2 pp = s.ship->GetPosition();
+    for (const auto& e : st->entities)
     {
-        Vector2 pp = s.ship->GetPosition();
-        for (auto& e : sim.SystemOf(s)->entities)
-        {
-            if (!e->Has(Component::Hazard) || !e->GetArchetype()->hazardHidesShips)
-                continue;
-            // radius 0 in the archetype means "as large as the object itself".
-            float r = e->GetArchetype()->hazardRadius > 0.0f ? e->GetArchetype()->hazardRadius
-                                                             : e->GetSize();
-            float dx = pp.x - e->GetPosition().x;
-            float dy = pp.y - e->GetPosition().y;
-            if (dx * dx + dy * dy <= r * r)
-            {
-                hidden = true;
-                break;
-            }
-        }
+        if (!e->Has(Component::Hazard) || !e->GetArchetype()->hazardHidesShips)
+            continue;
+        // radius 0 in the archetype means "as large as the object itself".
+        float r =
+            e->GetArchetype()->hazardRadius > 0.0f ? e->GetArchetype()->hazardRadius : e->GetSize();
+        float dx = pp.x - e->GetPosition().x;
+        float dy = pp.y - e->GetPosition().y;
+        if (dx * dx + dy * dy <= r * r)
+            return true;
     }
-    // Server-side predicate of hostility toward the player by account (M4f): pirates;
-    // factions where the player is wanted; factions with Hostile/Hated reputation. Police
-    // now react to a wanted player — the account lives on the server.
-    auto hostile = [&sim, &s](const NpcShip* n)
-    { return sim.AccountHostileToFaction(s, n->GetFaction()); };
+    return false;
+}
 
+// World step (every system + maintenance) — on the server timer, independent of inputs.
+//
+// Every system is stepped the same way; the only difference between them is who happens
+// to be standing in one (#3). NPCs see those players, shoot at them, and the beams are
+// collected per system so each client is told about its own sky. A system with nobody in
+// it keeps living, which is the premise of the whole galaxy.
+static void HostStepWorld(Simulation& sim, float dt,
+                          std::map<std::string, std::vector<FireEvent>>& fires)
+{
+    // Who is standing where. A docked player is not in space: NPCs cannot see or shoot
+    // them, which is what makes a station a refuge.
+    std::map<std::string, std::vector<Simulation::PlayerPresence>> present;
+    for (auto& kv : sim.Sessions())
+    {
+        ClientSession& s = kv.second;
+        if (!s.ship || s.IsDocked())
+            continue;
+        Simulation::PlayerPresence p;
+        p.session = &s;
+        p.ship = (Combatant*)s.ship.get();
+        p.hidden = HiddenInCover(sim, s);
+        present[s.systemId].push_back(p);
+    }
+
+    static const std::vector<Simulation::PlayerPresence> kEmpty;
     for (auto& kv : sim.Systems())
     {
-        if (player != nullptr && kv.first == s.systemId)
-            sim.StepActiveSystemAgents(kv.second, player, hidden, hostile, &fires, dt);
-        else
-            sim.StepSystemAgents(kv.second, dt);
-        kv.second.market.Update(dt);  // market price recovery (in single-player — UpdateAmbient)
+        auto                                           it = present.find(kv.first);
+        const std::vector<Simulation::PlayerPresence>& players =
+            (it == present.end()) ? kEmpty : it->second;
+        sim.StepSystemAgents(kv.second, players, players.empty() ? nullptr : &fires[kv.first], dt);
+        kv.second.market.Update(dt);  // market price recovery
     }
 
-    if (player != nullptr && !s.ship->IsAlive())
-        sim.ServerRespawnPlayer(s);
+    for (auto& kv : sim.Sessions())
+    {
+        ClientSession& s = kv.second;
+        if (s.ship && !s.ship->IsAlive())
+            sim.ServerRespawnPlayer(s);
 
-    // Standing orders execute here rather than in the input path: an agent issues one
-    // order and then sends nothing, so if the order did not drive its own ticks the ship
-    // would simply sit there.
-    if (clientOnline)
-        sim.StepPlayerOrder(s, *sim.SystemOf(s), dt);
+        // Standing orders execute here rather than in the input path: an agent issues one
+        // order and then sends nothing, so if the order did not drive its own ticks the
+        // ship would simply sit there.
+        if (SystemState* st = sim.SystemOf(s))
+            sim.StepPlayerOrder(s, *st, dt);
 
-    // Account passive: piloting xp (in flight) + bounty decay.
-    sim.StepPlayerAccountTick(s, dt);
+        // Account passive: piloting xp (in flight) + bounty decay.
+        sim.StepPlayerAccountTick(s, dt);
+    }
 
     sim.MaintainWorld(dt);
 }
@@ -222,24 +250,28 @@ static void HostStepWorld(Simulation& sim, ClientSession& s, float dt,
 // Receives client inputs from the transport and applies EACH as one player tick
 // (HostStepPlayer). lastSeq — the highest processed input number (ack to the client).
 // Returns true if the layout must be resent (system change).
+static bool HostApplyCommand(const std::string& msg, Simulation& sim, ClientSession& s, float dt,
+                             int& lastSeq, std::vector<Proto::TradeAck>& acks,
+                             std::map<std::string, std::vector<FireEvent>>& fires)
+{
+    Proto::Command c;
+    if (!Proto::DecodeCommand(msg, c))
+        return false;
+    if (c.seq > lastSeq)
+        lastSeq = c.seq;
+    return HostStepPlayer(sim, s, c, dt, acks, fires);
+}
+
 static bool HostDrainInputs(ITransport& conn, Simulation& sim, ClientSession& s, float dt,
                             int& lastSeq, std::vector<Proto::TradeAck>& acks,
-                            std::vector<FireEvent>& fires)
+                            std::map<std::string, std::vector<FireEvent>>& fires)
 {
     bool        layoutDirty = false;
     std::string msg;
     while (conn.Poll(msg))
-    {
-        if (Proto::MessageType(msg) != "cmd")
-            continue;
-        Proto::Command c;
-        if (!Proto::DecodeCommand(msg, c))
-            continue;
-        if (c.seq > lastSeq)
-            lastSeq = c.seq;
-        if (HostStepPlayer(sim, s, c, dt, acks, fires))
+        if (Proto::MessageType(msg) == "cmd" &&
+            HostApplyCommand(msg, sim, s, dt, lastSeq, acks, fires))
             layoutDirty = true;
-    }
     return layoutDirty;
 }
 
@@ -259,20 +291,65 @@ static void                       OnInterrupt(int)
 // and it is what lets a player reconnect to a galaxy that moved on without them. A client
 // session is an episode inside that loop, not the loop itself.
 // Run: econserver host [port].
+// One connected client: the socket, the player it drives, and the bookkeeping that
+// belongs to the connection rather than to the player -- what has been acknowledged and
+// what has been delivered. A client exists before its player does: until the hello
+// arrives the server has a socket and nobody behind it.
+struct HostClient
+{
+    std::unique_ptr<Net::TcpConnection> conn;
+    int                                 sessionId = 0;  // 0 until the hello arrives
+    std::string                         account;
+    int                                 lastSeq = 0;       // last input acked back
+    int                                 lastEventSeq = 0;  // last journal entry delivered
+    bool                                wasDocked = false;
+    double                              silentFor = 0.0;  // seconds connected without a hello
+};
+
+// How long a socket may stay connected without saying who it is. A client that opens a
+// connection and never introduces itself is not a player; without a limit, sockets like
+// that accumulate for as long as the server runs.
+static const double HELLO_TIMEOUT = 10.0;
+
+// A name that is safe both as an identity and as a file name. Rejecting is better than
+// mangling: two names differing only in punctuation would otherwise share one account
+// file, which is one player spending another's money.
+static bool ValidAccountName(const std::string& n)
+{
+    if (n.empty() || n.size() > 32)
+        return false;
+    for (char c : n)
+        if (!std::isalnum((unsigned char)c) && c != '_' && c != '-')
+            return false;
+    return true;
+}
+
+// Progress is stored per account name (#3). There was one account.json when there could
+// only be one player; with two connected it would be one file two people write.
+static std::string AccountPath(const std::string& account)
+{
+    return std::string(GetApplicationDirectory()) + "account_" + account + ".json";
+}
+
+// The same beams, told to one player. Whether a shot is "mine" or "at me" is a fact about
+// the recipient, not about the shot, so it is written here rather than where it happened.
+static std::vector<FireEvent> FiresFor(const std::vector<FireEvent>& all, int sessionId)
+{
+    std::vector<FireEvent> out = all;
+    for (FireEvent& f : out)
+    {
+        f.fromPlayer = (f.shooterSessionId != 0 && f.shooterSessionId == sessionId);
+        f.targetIsPlayer = (f.targetSessionId != 0 && f.targetSessionId == sessionId);
+    }
+    return out;
+}
+
 static int RunHost(unsigned short port)
 {
-    std::string    dataDir = SIM_DATA_DIR;
-    std::string    worldPath = std::string(GetApplicationDirectory()) + "world.json";
-    Simulation     sim;
-    ClientSession& s = SetupHostSim(sim, dataDir, worldPath);
-
-    // Account persistence (M4f-3): load the player's progress next to the server.
-    // Only in the real server -- hosttest/selftest stay clean (ephemeral).
-    std::string acctPath = std::string(GetApplicationDirectory()) + "account.json";
-    if (sim.LoadAccount(s, acctPath))
-        printf("Account loaded (money %.0f).\n", s.account.GetMoney());
-    else
-        printf("New account (money %.0f).\n", s.account.GetMoney());
+    std::string dataDir = SIM_DATA_DIR;
+    std::string worldPath = std::string(GetApplicationDirectory()) + "world.json";
+    Simulation  sim;
+    SetupHostSim(sim, dataDir, worldPath);
 
     if (!Net::Startup())
     {
@@ -288,15 +365,12 @@ static int RunHost(unsigned short port)
     }
     std::signal(SIGINT, OnInterrupt);
     std::signal(SIGTERM, OnInterrupt);
-    printf("EconSpace server on port %d. The galaxy runs with or without a client; "
+    printf("EconSpace server on port %d. The galaxy runs with or without players; "
            "Ctrl+C to stop.\n",
            port);
 
-    std::unique_ptr<Net::TcpConnection> conn;
+    std::vector<HostClient> clients;
 
-    int         lastSeq = 0;         // last processed input number (ack to the client)
-    int         lastEventSeq = 0;    // last journal entry delivered to this session
-    bool        wasDocked = false;   // for account checkpoints when entering/leaving a station
     double      worldSaveAcc = 0.0;  // world checkpoint timer
     const float dt = 1.0f / 60.0f;
     using clock = std::chrono::steady_clock;
@@ -313,64 +387,104 @@ static int RunHost(unsigned short port)
         if (acc > 0.25)
             acc = 0.25;
 
-        // Take a waiting client, if any. Session state is reset here rather than at
-        // startup, so a reconnect does not inherit the previous session's input
-        // numbering or weapon toggle.
-        if (!conn)
+        // Everyone waiting, not one per iteration: two clients arriving in the same
+        // millisecond is the ordinary case, not a race to be lost.
+        while (std::unique_ptr<Net::TcpConnection> c = listener.Accept())
         {
-            conn = listener.Accept();
-            if (conn)
-            {
-                lastSeq = 0;
-                lastEventSeq = s.LastEventSeq();  // a new session starts from now
-                wasDocked = s.IsDocked();
-                s.systemId = s.systemId;
-                conn->Send(Proto::EncodeLayout(sim.BuildLayout(s.systemId)));
-                conn->Send(Proto::EncodeGalaxy(sim.BuildGalaxyState()));
-                printf("Client connected.\n");
-            }
+            HostClient hc;
+            hc.conn = std::move(c);
+            clients.push_back(std::move(hc));
+            printf("Client connected; waiting for hello.\n");
         }
 
-        // Player: each received input = one tick (1:1 with client prediction).
-        // acks -- trade acknowledgments, fires -- shots (player+NPC) for this iteration;
-        // both are delivered to the client in the snapshot.
-        std::vector<Proto::TradeAck> acks;
-        std::vector<FireEvent>       fires;
-        bool                         layoutDirty = false;
-        if (conn)
+        // Inputs. Each received command is one player tick (1:1 with client prediction),
+        // and each client's trade acknowledgments are its own.
+        std::map<std::string, std::vector<FireEvent>> fires;  // beams, by system
+        std::map<int, std::vector<Proto::TradeAck>>   acks;   // by session
+        std::map<int, bool>                           layoutDirty;
+
+        for (HostClient& hc : clients)
         {
-            layoutDirty = HostDrainInputs(*conn, sim, s, dt, lastSeq, acks, fires);
+            if (!hc.conn)
+                continue;
+            if (hc.sessionId == 0)
+                hc.silentFor += frame;
+            std::string msg;
+            while (hc.conn->Poll(msg))
+            {
+                const std::string type = Proto::MessageType(msg);
+                if (type == "hello")
+                {
+                    Proto::Hello h;
+                    if (hc.sessionId != 0 || !Proto::DecodeHello(msg, h) ||
+                        !ValidAccountName(h.account))
+                    {
+                        printf("Rejected a hello (bad name, wrong version, or a second one "
+                               "on the same connection).\n");
+                        // Dropping the socket is the whole answer: the protocol has no error
+                        // message, and a client that cannot say who it is has nothing to
+                        // be told.
+                        hc.conn.reset();
+                        break;
+                    }
+                    ClientSession& s = SetupHostPlayer(sim);
+                    hc.sessionId = s.id;
+                    hc.account = h.account;
+                    hc.lastEventSeq = s.LastEventSeq();  // a new session starts from now
+                    if (sim.LoadAccount(s, AccountPath(h.account)))
+                        printf("%s joined (money %.0f).\n", h.account.c_str(),
+                               s.account.GetMoney());
+                    else
+                        printf("%s joined, new account (money %.0f).\n", h.account.c_str(),
+                               s.account.GetMoney());
+                    hc.wasDocked = s.IsDocked();
+                    hc.conn->Send(Proto::EncodeLayout(sim.BuildLayout(s.systemId)));
+                    hc.conn->Send(Proto::EncodeGalaxy(sim.BuildGalaxyState()));
+                    continue;
+                }
+                // Anything else before the hello is from a client that has not said who it
+                // is; there is no player to apply it to.
+                ClientSession* s = sim.Session(hc.sessionId);
+                if (type != "cmd" || s == nullptr)
+                    continue;
+                if (HostApplyCommand(msg, sim, *s, dt, hc.lastSeq, acks[hc.sessionId], fires))
+                    layoutDirty[hc.sessionId] = true;
+            }
 
             // Account checkpoint on a dock-state change: on docking -- commit what was
             // earned in flight (loot/bounty), on undocking -- trade and mission hand-ins.
-            if (s.IsDocked() != wasDocked)
-            {
-                wasDocked = s.IsDocked();
-                sim.SaveAccount(s, acctPath);
-            }
+            if (ClientSession* s = sim.Session(hc.sessionId))
+                if (s->IsDocked() != hc.wasDocked)
+                {
+                    hc.wasDocked = s->IsDocked();
+                    sim.SaveAccount(*s, AccountPath(hc.account));
+                }
         }
 
-        // World (NPCs): on the server timer, independent of inputs and of whether
-        // anyone is watching.
+        // World (NPCs): on the server timer, independent of inputs and of whether anyone
+        // is watching.
         while (acc >= dt)
         {
-            HostStepWorld(sim, s, dt, fires, conn != nullptr);
+            HostStepWorld(sim, dt, fires);
             acc -= dt;
         }
 
-        if (conn)
+        for (HostClient& hc : clients)
         {
-            if (layoutDirty)
-                conn->Send(Proto::EncodeLayout(sim.BuildLayout(s.systemId)));
-            Proto::Snapshot snap = sim.BuildSnapshot(s, s.systemId);
-            snap.player.lastInput = lastSeq;  // ack for client reconciliation
-            snap.tradeAcks = std::move(acks);
-            snap.fires = std::move(fires);
-            // Everything the player has not seen yet; the client acknowledges by seq.
-            snap.events = s.EventsSince(lastEventSeq);
+            ClientSession* s = sim.Session(hc.sessionId);
+            if (s == nullptr)
+                continue;
+            if (layoutDirty[hc.sessionId])
+                hc.conn->Send(Proto::EncodeLayout(sim.BuildLayout(s->systemId)));
+            Proto::Snapshot snap = sim.BuildSnapshot(*s, s->systemId);
+            snap.player.lastInput = hc.lastSeq;  // ack for client reconciliation
+            snap.tradeAcks = std::move(acks[hc.sessionId]);
+            snap.fires = FiresFor(fires[s->systemId], s->id);
+            // Everything this player has not seen yet; the client acknowledges by seq.
+            snap.events = s->EventsSince(hc.lastEventSeq);
             if (!snap.events.empty())
-                lastEventSeq = snap.events.back().seq;
-            conn->Send(Proto::EncodeSnapshot(snap));
+                hc.lastEventSeq = snap.events.back().seq;
+            hc.conn->Send(Proto::EncodeSnapshot(snap));
         }
 
         // Galaxy snapshot -- rarely (once a second): the statistics change slowly and the
@@ -379,12 +493,17 @@ static int RunHost(unsigned short port)
         if (galaxyAcc >= 1.0)
         {
             galaxyAcc = 0.0;
-            if (conn)
-                conn->Send(Proto::EncodeGalaxy(sim.BuildGalaxyState()));
+            if (!clients.empty())
+            {
+                const std::string g = Proto::EncodeGalaxy(sim.BuildGalaxyState());
+                for (HostClient& hc : clients)
+                    if (hc.sessionId != 0)
+                        hc.conn->Send(g);
+            }
         }
 
         // World checkpoint. The galaxy drifts continuously (security, prosperity,
-        // territory control), so unlike the account there is no natural commit point to
+        // territory control), so unlike an account there is no natural commit point to
         // hang this on: a timer is what keeps a crash from costing more than a minute.
         worldSaveAcc += frame;
         if (worldSaveAcc >= WORLD_SAVE_INTERVAL)
@@ -393,22 +512,37 @@ static int RunHost(unsigned short port)
             sim.SaveWorld(worldPath);
         }
 
-        // A disconnect ends the session, not the server.
-        if (conn && !conn->Alive())
+        // A disconnect ends one session, not the server and not anyone else's game.
+        for (size_t i = 0; i < clients.size();)
         {
-            sim.SaveAccount(s, acctPath);
-            conn.reset();
-            printf("Client disconnected. Account saved (money %.0f); galaxy still running.\n",
-                   s.account.GetMoney());
+            HostClient& hc = clients[i];
+            if (hc.conn && hc.conn->Alive() && (hc.sessionId != 0 || hc.silentFor < HELLO_TIMEOUT))
+            {
+                i++;
+                continue;
+            }
+            if (ClientSession* s = sim.Session(hc.sessionId))
+            {
+                sim.SaveAccount(*s, AccountPath(hc.account));
+                printf("%s left. Account saved (money %.0f); galaxy still running.\n",
+                       hc.account.c_str(), s->account.GetMoney());
+                sim.DestroySession(hc.sessionId);
+            }
+            else
+            {
+                printf("A client left before saying hello.\n");
+            }
+            clients.erase(clients.begin() + (long)i);
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(4));
     }
 
-    if (conn)
-        sim.SaveAccount(s, acctPath);
+    for (HostClient& hc : clients)
+        if (ClientSession* s = sim.Session(hc.sessionId))
+            sim.SaveAccount(*s, AccountPath(hc.account));
     sim.SaveWorld(worldPath);
-    printf("\nShutting down. World and account saved.\n");
+    printf("\nShutting down. World and accounts saved.\n");
     Net::Shutdown();
     return 0;
 }
@@ -418,9 +552,10 @@ static int RunHost(unsigned short port)
 // check that the layout arrived and the player moved. Run: econserver hosttest.
 static int HostSelftest()
 {
-    std::string    dataDir = SIM_DATA_DIR;
-    Simulation     sim;
-    ClientSession& s = SetupHostSim(sim, dataDir);
+    std::string dataDir = SIM_DATA_DIR;
+    Simulation  sim;
+    SetupHostSim(sim, dataDir);
+    ClientSession& s = SetupHostPlayer(sim);
 
     LocalTransport link;
     link.Server().Send(Proto::EncodeLayout(sim.BuildLayout(s.systemId)));
@@ -437,11 +572,10 @@ static int HostSelftest()
     {
         thrust.seq = i + 1;  // client: numbered input
         link.Client().Send(Proto::EncodeCommand(thrust));
-        std::vector<Proto::TradeAck> acks;
-        std::vector<FireEvent>       fires;
-        HostDrainInputs(link.Server(), sim, s, dt, lastSeq, acks,
-                        fires);                  // 1 input=1 tick
-        HostStepWorld(sim, s, dt, fires, true);  // world
+        std::vector<Proto::TradeAck>                  acks;
+        std::map<std::string, std::vector<FireEvent>> fires;
+        HostDrainInputs(link.Server(), sim, s, dt, lastSeq, acks, fires);  // 1 input=1 tick
+        HostStepWorld(sim, dt, fires);                                     // world
         Proto::Snapshot snap = sim.BuildSnapshot(s, s.systemId);
         snap.player.lastInput = lastSeq;
         link.Server().Send(Proto::EncodeSnapshot(snap));
@@ -564,9 +698,10 @@ static int WorldSelftest()
 // Run: econserver ordertest.
 static int OrderSelftest()
 {
-    std::string    dataDir = SIM_DATA_DIR;
-    Simulation     sim;
-    ClientSession& s = SetupHostSim(sim, dataDir);
+    std::string dataDir = SIM_DATA_DIR;
+    Simulation  sim;
+    SetupHostSim(sim, dataDir);
+    ClientSession& s = SetupHostPlayer(sim);
 
     const float dt = 1.0f / 60.0f;
     auto        run = [&sim, &s, dt](int maxTicks)
@@ -719,7 +854,7 @@ int main(int argc, char** argv)
     {
         // The server simulates ALL systems (no player) + coarse world maintenance.
         for (auto& kv : sim.Systems())
-            sim.StepSystemAgents(kv.second, dt);
+            sim.StepSystemAgents(kv.second, {}, nullptr, dt);
         sim.MaintainWorld(dt);
 
         if (i % printEvery == 0 || i == ticks - 1)

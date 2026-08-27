@@ -263,3 +263,52 @@ TEST_CASE("a dock order flies the ship in and docks it")
     CHECK(f.s.orderStatus == Orders::Status::Done);
     CHECK(f.s.IsDocked());
 }
+
+TEST_CASE("two players in one galaxy are two players")
+{
+    // The whole point of #3. Before sessions existed this test could not be written: a
+    // second player would have flown the first one's ship and spent their money.
+    Fixture        f;
+    ClientSession& other = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 900.0f, 0.0f },
+                                               GetShipCatalog()[0].stats);
+
+    CHECK(other.id != f.s.id);
+    CHECK(other.ship.get() != f.s.ship.get());
+
+    SUBCASE("money is not shared")
+    {
+        const double before = other.account.GetMoney();
+        f.s.account.AddMoney(1000.0);
+        CHECK(other.account.GetMoney() == doctest::Approx(before));
+    }
+
+    SUBCASE("one player docking leaves the other in flight")
+    {
+        auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
+                                                 FactionId::TradersGuild, StationRole::TradeHub);
+        station->SetId(91);
+        f.World().entities.push_back(std::move(station));
+
+        CHECK(f.sim.StepPlayerDock(f.s, f.World()) == 91);
+        CHECK(f.s.IsDocked());
+        CHECK_FALSE(other.IsDocked());  // 900 units away, and a different player besides
+    }
+
+    SUBCASE("the journal is per player, not per world")
+    {
+        f.s.RecordEvent(Ev::Kind::Notice, "something happened to me");
+        CHECK(f.s.EventsSince(0).size() == 1);
+        CHECK(other.EventsSince(0).empty());  // not news to anyone else
+    }
+
+    SUBCASE("each player is in a system of their own choosing")
+    {
+        // Two players in different systems is the case that made "the active system" a
+        // property of the world untenable.
+        const std::vector<std::string> nbrs = f.sim.Neighbors(f.s.systemId);
+        REQUIRE_FALSE(nbrs.empty());
+        other.systemId = nbrs[0];
+        CHECK(f.sim.SystemOf(other) != f.sim.SystemOf(f.s));
+        CHECK(f.sim.SystemOf(other) != nullptr);
+    }
+}

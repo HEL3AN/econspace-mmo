@@ -25,9 +25,20 @@ namespace Proto
 // without it a client built against an older protocol would silently receive defaults
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
-inline constexpr int PROTO_VERSION = 3;
+inline constexpr int PROTO_VERSION = 4;
 
 // --- Command: client -> server, every tick ---
+// The first thing a client says, before any command: who it is (#3).
+//
+// Until it arrives the server has a socket and no player. It cannot invent one: with
+// several clients connected there is no such thing as "the account", and the progress a
+// returning player expects is stored under a name. A name is not proof of identity --
+// authentication is a separate problem, and this is the hook it will hang on.
+struct Hello
+{
+    std::string account;  // [A-Za-z0-9_-], 1..32 characters; the server rejects the rest
+};
+
 struct Command
 {
     int seq = 0;  // input number (for client prediction/reconciliation, M4e)
@@ -222,6 +233,8 @@ struct GalaxyState
 };
 
 // JSON serialization. Decode* return false on a broken/unsuitable message.
+std::string EncodeHello(const Hello& h);
+bool        DecodeHello(const std::string& s, Hello& out);
 std::string EncodeCommand(const Command& c);
 bool        DecodeCommand(const std::string& s, Command& out);
 std::string EncodeSnapshot(const Snapshot& s);
