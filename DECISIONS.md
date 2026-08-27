@@ -4,7 +4,8 @@ A dated log of direction calls, with the reasoning behind each. The point is tha
 settled question stays settled: if you want to revisit one, argue against the reasoning
 recorded here rather than re-deriving the decision from scratch.
 
-Newest first. Each entry states the decision, why it was made, and what it costs.
+Appended as they are made, so the file reads in the order the project actually went.
+Each entry states the decision, why it was made, and what it costs.
 
 ---
 
@@ -340,3 +341,38 @@ overview, radar, missions, the galaxy map — over a glyph world. The panels are
 here. That judgement wants the glyph world actually on screen to react to, which is now
 possible, and it is a question about how the game feels rather than about how it is
 built.
+
+---
+
+## 2026-08-27 — One class, several translation units, named after what they decide
+
+**Decision.** `Simulation` and `Editor` each stay a single class with a single header, and
+their implementations are spread over files named for the rules they hold (#17):
+`Simulation_World`, `Simulation_Agents`, `Simulation_Player`, `Simulation_Orders`,
+`Simulation_Snapshot`; `Editor_Palette`, `Editor_Panel`, `Editor_Galaxy`,
+`Editor_Universe`. The base file keeps only the spine.
+
+**Why not split the class instead.** The tempting move is to carve out `NpcDirector`,
+`PlayerSession`, `SnapshotBuilder` and so on. Every one of them would need most of
+`Simulation`'s private state, so the split would be paid for in accessors and back
+pointers — the same coupling, now spelled out across four headers instead of one. The
+files were unreadable because of their length, not because the class was wrong, and
+length is the thing a translation unit split actually fixes.
+
+**What it costs.** A reader can no longer find a method by opening one file, and a
+constant used by two of them has nowhere obvious to live. The second cost is real and
+showed up immediately: `MINING_RANGE` is read by the mining verb and by the Mine order.
+It moved to `SimTuning.h`, which exists for exactly that case and says so — a constant
+used in one unit stays next to the rule it tunes.
+
+**What fell out of the move.** `ORDER_DOCK_RANGE = 90.0f` in the order executor, carrying
+a comment promising it matched what docking enforces. It did, by coincidence: every dock
+in `data/archetypes.json` declares 90. The executor now asks the target for its own
+`dockRange`, because the first player-built dock with a different one (#44) would
+otherwise be approached to the wrong distance and refused entry, with nothing failing
+anywhere. Duplication like this is what a 1800-line file hides.
+
+**How the move was checked.** Function by function, comparing each body against the
+previous file: 54 of 56 in `Simulation` byte-identical and all 33 in `Editor`, with the
+two exceptions being the changes described above. A refactor that claims "no behaviour
+change" should be able to demonstrate it rather than assert it.

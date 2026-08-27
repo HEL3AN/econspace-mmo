@@ -29,6 +29,8 @@ src/
 ```
 
 - The **server** (`Simulation`, `src/game/sim/`) owns the world, all agents, combat, the spawn director, macro-dynamics, the player ship, the player account, and missions. It advances on a fixed `SIM_DT = 1/60` tick, independent of the render frame rate.
+
+  `Simulation` is one class spread over several translation units, named after what each decides (#17). `Simulation.cpp` holds only its spine — lifetime, the world RNG, the event journal — and the rules live in `Simulation_World` (the galaxy, hydration, routes, persistence), `Simulation_Agents` (NPC behaviour, combat, the spawn director, the macro step), `Simulation_Player` (the server-side player verbs, the account, missions), `Simulation_Orders` (the standing-order executor) and `Simulation_Snapshot` (authoritative state translated into wire messages). `Simulation.h` remains the single declaration of the class's surface. `Editor` is split the same way: `Editor_Palette`, `Editor_Panel`, `Editor_Galaxy` and `Editor_Universe`.
 - The **client** (`Game`, `src/game/core/`) maps input to a `Command`, renders from a `Snapshot`, and never mutates authoritative state directly. It does not read a live world at all — it builds render proxies from a `SystemLayout` plus per-tick snapshots. The only game state it owns is its *prediction* of its own ship.
 - **Play is always over the seam**: client to authoritative server over TCP. Because the seam is a transport interface rather than a socket call, tests can drive the exact same server loop in one process without a network — that is the only other use of the seam, not a second game mode.
 
