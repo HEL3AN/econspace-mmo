@@ -621,6 +621,10 @@ static int AccountSelftest()
     as.account.SetReputation(FactionId::Pirates, -7.5f);
     as.account.SetBounty(FactionId::TradersGuild, 300.0);
     as.account.GetSkills().SetXp(SkillType::Mining, 555.0f);
+    // What a returning player expects to find (#49): the hold as they left it, and the
+    // ship where they left it rather than back at the start.
+    as.ship->AddCargo(AllResourceTypes()[0], 9);
+    as.ship->Teleport(Vector2{ 777.0f, -333.0f });
     a.SaveAccount(as, path);
 
     Simulation     b;  // clean account (money 500) — check that the load overwrote it
@@ -631,12 +635,20 @@ static int AccountSelftest()
     bool rep = approx(bs.account.GetReputation(FactionId::Pirates), -7.5);
     bool bounty = approx(bs.account.GetBounty(FactionId::TradersGuild), 300.0);
     bool skill = approx(bs.account.GetSkills().GetXp(SkillType::Mining), 555.0);
+    bool cargo = bs.ship->GetCargoAmount(AllResourceTypes()[0]) == 9;
+    // No galaxy is loaded here, so the saved system id is not one this simulation has and
+    // the position is deliberately NOT restored -- putting a ship in a system that does
+    // not exist is worse than putting it back at the start. The doctest suite covers the
+    // restored case, where a galaxy is loaded.
+    bool placeSafe = bs.ship->GetPosition().x == 0.0f && bs.ship->GetPosition().y == 0.0f;
     std::remove(path.c_str());
 
-    bool ok = loaded && money && rep && bounty && skill;
-    printf("Account selftest: load %s, money %s, rep %s, bounty %s, skill %s => %s\n",
+    bool ok = loaded && money && rep && bounty && skill && cargo && placeSafe;
+    printf("Account selftest: load %s, money %s, rep %s, bounty %s, skill %s, cargo %s, "
+           "place %s => %s\n",
            loaded ? "OK" : "FAIL", money ? "OK" : "FAIL", rep ? "OK" : "FAIL",
-           bounty ? "OK" : "FAIL", skill ? "OK" : "FAIL", ok ? "PASS" : "FAIL");
+           bounty ? "OK" : "FAIL", skill ? "OK" : "FAIL", cargo ? "OK" : "FAIL",
+           placeSafe ? "OK" : "FAIL", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
 

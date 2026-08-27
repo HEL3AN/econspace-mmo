@@ -1,6 +1,8 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <cstdio>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -12,6 +14,7 @@
 #include "entities/ShipType.h"
 #include "entities/Station.h"
 #include "sim/ClientSession.h"
+#include "missions/Mission.h"
 #include "sim/Orders.h"
 #include "sim/Simulation.h"
 
@@ -310,5 +313,67 @@ TEST_CASE("two players in one galaxy are two players")
         other.systemId = nbrs[0];
         CHECK(f.sim.SystemOf(other) != f.sim.SystemOf(f.s));
         CHECK(f.sim.SystemOf(other) != nullptr);
+    }
+}
+
+TEST_CASE("an account remembers where the player was, not just what they own")
+{
+    // Until a session per connection existed (#3) the one player never went away, so
+    // losing this on disconnect was invisible. It is the first thing a returning player
+    // notices now (#49).
+    Fixture f;
+    f.s.ship->Teleport({ 1234.0f, -567.0f });
+    f.s.ship->SetHeading(1.25f);
+    REQUIRE(f.s.ship->AddCargo(AllResourceTypes()[0], 7));
+
+    Mission m;
+    m.type = MissionType::Bounty;
+    m.giverStationId = 33;  // by id, the way a mission survives a jump
+    m.targetCount = 5;
+    m.progress = 2;
+    m.rewardMoney = 900.0;
+    f.s.missions.SetMirror({}, { m });
+
+    // Somewhere other than where a fresh session starts, so "restored" cannot pass by
+    // accident.
+    const std::vector<std::string> nbrs = f.sim.Neighbors(f.s.systemId);
+    REQUIRE_FALSE(nbrs.empty());
+    f.s.systemId = nbrs[0];
+
+    const std::string path = "account_place_tmp.json";
+    f.sim.SaveAccount(f.s, path);
+
+    ClientSession& back = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                              GetShipCatalog()[0].stats);
+    REQUIRE(f.sim.LoadAccount(back, path));
+    std::remove(path.c_str());
+
+    CHECK(back.systemId == nbrs[0]);
+    CHECK(back.ship->GetPosition().x == doctest::Approx(1234.0f));
+    CHECK(back.ship->GetPosition().y == doctest::Approx(-567.0f));
+    CHECK(back.ship->GetHeading() == doctest::Approx(1.25f));
+    CHECK(back.ship->GetCargoAmount(AllResourceTypes()[0]) == 7);
+
+    REQUIRE(back.missions.Active().size() == 1);
+    CHECK(back.missions.Active()[0].giverStationId == 33);
+    CHECK(back.missions.Active()[0].progress == 2);  // progress, not just the mission
+    CHECK(back.missions.Offers().empty());           // the board belongs to a station
+
+    SUBCASE("a system the galaxy no longer has leaves the player somewhere real")
+    {
+        // An edited universe or an older save. Trusting the name would put a player in a
+        // system that does not exist, which is a crash rather than a lost position.
+        const std::string bad = "account_bad_tmp.json";
+        {
+            std::ofstream out(bad);
+            out << R"({"money":100,"place":{"system":"nowhere","pos":[9.0,9.0]}})";
+        }
+        ClientSession& lost = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                                  GetShipCatalog()[0].stats);
+        REQUIRE(f.sim.LoadAccount(lost, bad));
+        std::remove(bad.c_str());
+        CHECK(lost.systemId == f.sim.Universe().startId);
+        CHECK(f.sim.SystemOf(lost) != nullptr);
+        CHECK(lost.account.GetMoney() == doctest::Approx(100.0));  // the rest still loaded
     }
 }

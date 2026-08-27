@@ -519,6 +519,40 @@ void Simulation::SaveAccount(const ClientSession& s, const std::string& path) co
                     { "mining", sk.GetXp(SkillType::Mining) },
                     { "trading", sk.GetXp(SkillType::Trading) } };
 
+    // Where the player was and what they were carrying (#49). Until sessions existed the
+    // one player never went away, so losing this on disconnect was invisible; with a
+    // session per connection it is the first thing a returning player notices.
+    if (s.ship)
+    {
+        j["place"] = { { "system", s.systemId },
+                       { "pos", json::array({ s.ship->GetPosition().x, s.ship->GetPosition().y }) },
+                       { "heading", s.ship->GetHeading() } };
+
+        json cargo = json::array();
+        for (ResourceType r : AllResourceTypes())
+            if (int n = s.ship->GetCargoAmount(r))
+                cargo.push_back({ { "resource", ResourceName(r) }, { "amount", n } });
+        j["cargo"] = cargo;
+    }
+
+    // Missions address stations by stable id on purpose -- that is what lets one survive
+    // a jump -- so ids are what gets written. A name would have to be resolved against a
+    // galaxy that may have been edited since.
+    json missions = json::array();
+    for (const Mission& m : s.missions.Active())
+        missions.push_back({ { "type", (int)m.type },
+                             { "faction", (int)m.faction },
+                             { "title", m.title },
+                             { "description", m.description },
+                             { "giver", m.giverStationId },
+                             { "dest", m.destStationId },
+                             { "resource", ResourceName(m.resource) },
+                             { "target", m.targetCount },
+                             { "progress", m.progress },
+                             { "rewardMoney", m.rewardMoney },
+                             { "rewardRep", m.rewardRep } });
+    j["missions"] = missions;
+
     std::ofstream out(path);
     if (out.is_open())
         out << j.dump(2) << "\n";
@@ -547,6 +581,64 @@ bool Simulation::LoadAccount(ClientSession& s, const std::string& path)
         sk.SetXp(SkillType::Piloting, (float)j["skills"].value("piloting", 0));
         sk.SetXp(SkillType::Mining, (float)j["skills"].value("mining", 0));
         sk.SetXp(SkillType::Trading, (float)j["skills"].value("trading", 0));
+    }
+
+    // Where they were (#49). A saved system that the galaxy no longer has -- an edited
+    // universe, an older save -- leaves the player wherever the session was created
+    // rather than in a system that does not exist.
+    if (s.ship && j.contains("place") && j["place"].is_object())
+    {
+        const auto& pl = j["place"];
+        std::string sys = pl.value("system", std::string());
+        if (!sys.empty() && HasSystem(sys))
+        {
+            s.systemId = sys;
+            if (pl.contains("pos") && pl["pos"].is_array() && pl["pos"].size() >= 2)
+                s.ship->Teleport({ (float)pl["pos"][0], (float)pl["pos"][1] });
+            s.ship->SetHeading((float)pl.value("heading", 0.0));
+        }
+    }
+
+    // Cargo is refilled through AddCargo rather than written in, so a hold that shrank
+    // between sessions -- a smaller ship, a changed catalog -- drops the overflow instead
+    // of carrying more than it can.
+    if (s.ship && j.contains("cargo") && j["cargo"].is_array())
+    {
+        s.ship->ClearCargo();
+        for (const auto& c : j["cargo"])
+        {
+            if (!c.is_object())
+                continue;
+            const int amount = c.value("amount", 0);
+            if (amount > 0)
+                s.ship->AddCargo(ResourceFromName(c.value("resource", std::string())), amount);
+        }
+    }
+
+    if (j.contains("missions") && j["missions"].is_array())
+    {
+        std::vector<Mission> active;
+        for (const auto& mj : j["missions"])
+        {
+            if (!mj.is_object())
+                continue;
+            Mission m;
+            m.type = (MissionType)mj.value("type", 0);
+            m.faction = (FactionId)mj.value("faction", 0);
+            m.title = mj.value("title", std::string());
+            m.description = mj.value("description", std::string());
+            m.giverStationId = mj.value("giver", 0);
+            m.destStationId = mj.value("dest", 0);
+            m.resource = ResourceFromName(mj.value("resource", std::string()));
+            m.targetCount = mj.value("target", 0);
+            m.progress = mj.value("progress", 0);
+            m.rewardMoney = mj.value("rewardMoney", 0.0);
+            m.rewardRep = mj.value("rewardRep", 0.0f);
+            active.push_back(std::move(m));
+        }
+        // The offer board is not restored: it belongs to the station the player was
+        // docked at and is regenerated on the next dock.
+        s.missions.SetMirror({}, std::move(active));
     }
     return true;
 }
