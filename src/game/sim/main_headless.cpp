@@ -430,6 +430,7 @@ static int RunHost(unsigned short port)
                     ClientSession& s = SetupHostPlayer(sim);
                     hc.sessionId = s.id;
                     hc.account = h.account;
+                    s.ship->SetPilotName(h.account);     // what other players see (#4)
                     hc.lastEventSeq = s.LastEventSeq();  // a new session starts from now
                     if (sim.LoadAccount(s, AccountPath(h.account)))
                         printf("%s joined (money %.0f).\n", h.account.c_str(),

@@ -139,6 +139,29 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
     for (const Mission& m : s.missions.Active())
         snap.missionActive.push_back(toView(m));
 
+    // Other players standing in this system (#4). Their ships belong to sessions rather
+    // than to the system, so they are appended here rather than found in the loop above.
+    // The recipient is left out on purpose: the client predicts its own ship, and a proxy
+    // of it would fight the prediction for the wheel.
+    for (const auto& kv : sessions_)
+    {
+        const ClientSession& other = kv.second;
+        if (other.id == s.id || !other.ship || other.systemId != systemId || other.IsDocked())
+            continue;  // docked is not "in space": a station is cover from being seen
+
+        Proto::EntitySnapshot es;
+        es.id = other.ship->GetId();
+        es.kind = EntityKind::PlayerShip;
+        es.pos = other.ship->GetPosition();
+        es.heading = other.ship->GetHeading();
+        es.size = other.ship->GetSize();
+        es.name = other.ship->GetName();
+        es.hullFrac = other.ship->GetMaxHull() > 0.0f
+                          ? other.ship->GetHull() / other.ship->GetMaxHull()
+                          : 1.0f;
+        snap.entities.push_back(es);
+    }
+
     return snap;
 }
 
