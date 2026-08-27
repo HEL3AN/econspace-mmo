@@ -1,25 +1,22 @@
-# Session handoff — 2026-08-16
+# Session handoff — 2026-08-27
 
 Where the work stopped and what to pick up next. Delete this file once M2 is closed and
 the next milestone is under way.
 
 ## State
 
-Nothing is in flight. `main` is green: warning-clean build, 32 doctest cases / 525
+Nothing is in flight. `main` is green: warning-clean build, 33 doctest cases / 529
 assertions, all four `econserver` self-tests, and `econagent selftest` against a live
 server.
 
-**M2 "Glyph world" is done bar two issues.** Merged this session: **#81** (entity kind
+**M2 "Glyph world" is done bar one issue.** Merged over the last two sessions: **#81** (entity kind
 tag), **#82 / #19** (all RTTI dispatch gone), **#83** (archetype registry), **#84 / #35**
 (presentation layer), **#86 / #37** (editor on the same layer, palette generated from the
-registry), **#87 / #36** (glyphs as the game's look).
+registry), **#87 / #36** (glyphs as the game's look), **#17** (`Simulation` and `Editor`
+each split into translation units named after what they decide).
 
 ## Next up
 
-- **#17 — split `Simulation.cpp` and `Editor.cpp`.** The only mechanical M2 issue left.
-  Both grew again this session. Use the method from the `Game` split (#11): separate
-  translation units of one class, and diff the function inventory before and after — that
-  check caught an over-deletion last time.
 - **#34 is deliberately still open**, and the progress comment on the issue says exactly
   what remains. The short version: `data/systems/*.json` still groups objects by category
   instead of naming an archetype id; the mining, market, salvage and jump passes still
@@ -35,7 +32,7 @@ registry), **#87 / #36** (glyphs as the game's look).
 - The `world` block in `data/archetypes.json` is a transitional bridge to the world format
   and is documented as such. It disappears when system files name archetypes by id.
 - Two archetype switches are deliberately total, with no `default:` — the layout builder in
-  `Simulation.cpp` and the context menu in `Game.cpp`. Omitting a kind there is an entity
+  `Simulation_Snapshot.cpp` and the context menu in `Game.cpp`. Omitting a kind there is an entity
   the client never draws, or a right-click menu with nothing in it.
 - `documents/world_format.md` is the contract for `data/`. Anything added to an archetype
   belongs in its table.
