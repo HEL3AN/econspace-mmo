@@ -35,8 +35,18 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         Proto::EntitySnapshot es;
         es.id = e->GetId();
         es.pos = e->GetPosition();
-        es.size = e->GetSize();
-        es.name = e->GetName();
+
+        // Size and name are left out on purpose for anything the SystemLayout describes
+        // (#16). A station's name and radius do not change, the client was told them on
+        // entry, and re-sending them thirty times a second is the largest single thing
+        // this message was spending its bytes on. Proto::CompleteFromLayout puts them
+        // back on the receiving side, so nothing downstream knows the difference.
+        const bool inLayout = e->GetKind() != EntityKind::Npc;
+        if (!inLayout)
+        {
+            es.size = e->GetSize();
+            es.name = e->GetName();
+        }
 
         // The wire kind IS the world kind — one enum, so this is a copy, not a translation.
         // Only the extra per-kind fields need a case.
@@ -52,12 +62,10 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
                 es.hullFrac = n->GetMaxHull() > 0.0f ? n->GetHull() / n->GetMaxHull() : 0.0f;
                 break;
             }
-            case EntityKind::Station:
-                es.faction = static_cast<const Station*>(e.get())->GetFaction();
-                break;
-            case EntityKind::Field:
-                es.ore = (int)static_cast<const AsteroidField*>(e.get())->GetResource();
-                break;
+            // Station faction and field ore are in the layout too, and neither changes
+            // while a client is in the system (#16, #38).
+            case EntityKind::Station: break;
+            case EntityKind::Field: break;
             default: break;
         }
 

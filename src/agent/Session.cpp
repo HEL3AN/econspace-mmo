@@ -51,6 +51,8 @@ void Session::Pump()
             Proto::Snapshot s;
             if (!Proto::DecodeSnapshot(msg, s))
                 continue;
+            // Names, sizes and ore live in the layout, not in every tick (#16).
+            Proto::CompleteFromLayout(s, layout_);
             // Journal entries accumulate here rather than being replaced: two snapshots may
             // arrive between two tool calls, and dropping the first would lose exactly the
             // event the agent is waiting on.

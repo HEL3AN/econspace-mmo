@@ -2,6 +2,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cmath>
+
 namespace
 {
 using nlohmann::json;
@@ -9,6 +11,28 @@ using nlohmann::json;
 json V2(Vector2 v)
 {
     return json::array({ v.x, v.y });
+}
+
+// Positions and headings are sent to a precision a player could see, not to the last bit
+// of a float (#16). A hundredth of a world unit is far below one pixel at any zoom, and
+// the shorter number is the whole point: JSON pays for every digit.
+//
+// The rounding is done and kept in double. Rounding a float and letting JSON widen it
+// writes the float's exact value back out -- 2615.79 becomes "2615.7900390625", which is
+// longer than what it replaced. This was measured, not assumed.
+double Round2(float v)
+{
+    return std::round((double)v * 100.0) / 100.0;
+}
+
+double Round3(float v)
+{
+    return std::round((double)v * 1000.0) / 1000.0;
+}
+
+json V2Rounded(Vector2 v)
+{
+    return json::array({ Round2(v.x), Round2(v.y) });
 }
 
 Vector2 ToV2(const json& j, Vector2 def = { 0.0f, 0.0f })
@@ -214,18 +238,29 @@ std::string EncodeSnapshot(const Snapshot& s)
                     { "ordId", p.orderId },
                     { "ordDetail", p.orderDetail } };
 
+    // Only what this entity actually carries. Every field left at its decoding default is
+    // a field the decoder will produce anyway, so writing it costs bytes and says nothing
+    // (#16). What a station is called or how big it is comes from the layout instead.
     json ents = json::array();
     for (const EntitySnapshot& e : s.entities)
-        ents.push_back({ { "id", e.id },
-                         { "kind", (int)e.kind },
-                         { "pos", V2(e.pos) },
-                         { "hdg", e.heading },
-                         { "size", e.size },
-                         { "fac", (int)e.faction },
-                         { "role", e.role },
-                         { "hullFrac", e.hullFrac },
-                         { "ore", e.ore },
-                         { "name", e.name } });
+    {
+        json ej = { { "id", e.id }, { "kind", (int)e.kind }, { "pos", V2Rounded(e.pos) } };
+        if (e.heading != 0.0f)
+            ej["hdg"] = Round3(e.heading);
+        if (e.size != 0.0f)
+            ej["size"] = Round2(e.size);
+        if (e.faction != FactionId::Independent)
+            ej["fac"] = (int)e.faction;
+        if (e.role != -1)
+            ej["role"] = e.role;
+        if (e.hullFrac != 1.0f)
+            ej["hullFrac"] = Round3(e.hullFrac);
+        if (e.ore != -1)
+            ej["ore"] = e.ore;
+        if (!e.name.empty())
+            ej["name"] = e.name;
+        ents.push_back(std::move(ej));
+    }
     j["ents"] = ents;
 
     json fires = json::array();
@@ -479,6 +514,25 @@ int MessageVersion(const std::string& s)
     if (j.is_discarded() || !j.is_object())
         return 0;
     return j.value("v", 0);
+}
+
+void CompleteFromLayout(Snapshot& s, const std::map<int, EntityLayout>& layout)
+{
+    for (EntitySnapshot& e : s.entities)
+    {
+        auto it = layout.find(e.id);
+        if (it == layout.end())
+            continue;  // an NPC or another player: nothing static to fill in
+        const EntityLayout& l = it->second;
+        if (e.name.empty())
+            e.name = l.name;
+        if (e.size == 0.0f)
+            e.size = l.size;
+        if (e.faction == FactionId::Independent)
+            e.faction = l.faction;
+        if (e.ore == -1)
+            e.ore = l.resource;
+    }
 }
 
 }  // namespace Proto

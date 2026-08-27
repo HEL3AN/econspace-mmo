@@ -321,3 +321,82 @@ TEST_CASE("a hello names the account, and a mismatched one is refused")
     CHECK_FALSE(Proto::DecodeHello(Proto::EncodeCommand(c), back));
     CHECK_FALSE(Proto::DecodeHello("{\"t\":\"hello\",\"v\":1,\"acct\":\"bob\"}", back));
 }
+
+TEST_CASE("a snapshot leaves out what the layout already says")
+{
+    // #16: the static half of an entity was re-sent thirty times a second despite living
+    // in the SystemLayout the client is given on entry. The wire drops it; the receiving
+    // side puts it back, so nothing downstream has to know.
+    Proto::Snapshot s;
+    s.systemId = "core";
+
+    Proto::EntitySnapshot station;  // as the server now builds it
+    station.id = 8;
+    station.kind = EntityKind::Station;
+    station.pos = { 100.0f, 200.0f };
+    s.entities.push_back(station);
+
+    Proto::EntitySnapshot npc;  // an NPC is in no layout, so it carries its own facts
+    npc.id = 20;
+    npc.kind = EntityKind::Npc;
+    npc.pos = { 0.0f, 0.0f };
+    npc.faction = FactionId::Pirates;
+    npc.role = 3;
+    npc.name = "pirate";
+    npc.size = 14.0f;
+    s.entities.push_back(npc);
+
+    const std::string wire = Proto::EncodeSnapshot(s);
+    CHECK(wire.find("Aurora Hub") == std::string::npos);  // never went out
+
+    Proto::Snapshot back;
+    REQUIRE(Proto::DecodeSnapshot(wire, back));
+    REQUIRE(back.entities.size() == 2);
+    CHECK(back.entities[0].name.empty());  // not on the wire...
+    CHECK(back.entities[0].size == doctest::Approx(0.0f));
+
+    std::map<int, Proto::EntityLayout> layout;
+    Proto::EntityLayout                el;
+    el.id = 8;
+    el.kind = EntityKind::Station;
+    el.name = "Aurora Hub";
+    el.size = 90.0f;
+    el.faction = FactionId::TradersGuild;
+    layout[8] = el;
+
+    Proto::CompleteFromLayout(back, layout);
+    CHECK(back.entities[0].name == "Aurora Hub");  // ...and back afterwards
+    CHECK(back.entities[0].size == doctest::Approx(90.0f));
+    CHECK(back.entities[0].faction == FactionId::TradersGuild);
+
+    // An entity the layout does not describe is left exactly as it arrived.
+    CHECK(back.entities[1].name == "pirate");
+    CHECK(back.entities[1].faction == FactionId::Pirates);
+    CHECK(back.entities[1].role == 3);
+    CHECK(back.entities[1].size == doctest::Approx(14.0f));
+}
+
+TEST_CASE("positions are sent to a precision a player could see")
+{
+    // Rounding a float and letting JSON widen it writes the float's exact value back out:
+    // 2615.79 became "2615.7900390625", longer than what it replaced (#16).
+    Proto::Snapshot       s;
+    Proto::EntitySnapshot e;
+    e.id = 1;
+    e.kind = EntityKind::Npc;
+    e.pos = { 2615.79f, -1234.5678f };
+    e.heading = 1.23456f;
+    s.entities.push_back(e);
+
+    const std::string wire = Proto::EncodeSnapshot(s);
+    CHECK(wire.find("2615.7900390625") == std::string::npos);
+    CHECK(wire.find("2615.79") != std::string::npos);
+
+    Proto::Snapshot back;
+    REQUIRE(Proto::DecodeSnapshot(wire, back));
+    REQUIRE(back.entities.size() == 1);
+    // Close enough that nothing can see the difference, which is the whole claim.
+    CHECK(back.entities[0].pos.x == doctest::Approx(2615.79f).epsilon(0.001));
+    CHECK(back.entities[0].pos.y == doctest::Approx(-1234.5678f).epsilon(0.001));
+    CHECK(back.entities[0].heading == doctest::Approx(1.23456f).epsilon(0.001));
+}

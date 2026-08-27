@@ -149,6 +149,9 @@ void Game::BuildClientSnapshot()
             Proto::Snapshot s;
             if (!Proto::DecodeSnapshot(msg, s))
                 continue;
+            // The static half of each entity is not on the wire; it is in the layout we
+            // were sent on entry (#16).
+            Proto::CompleteFromLayout(s, layoutById_);
             ApplyTradeAcks(s);                   // credit sales revenue (client account)
             for (const Ev::Event& e : s.events)  // server journal (#29)
                 FlashMessage(e.text);

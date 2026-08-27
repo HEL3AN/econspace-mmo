@@ -358,6 +358,46 @@ static std::vector<FireEvent> FiresFor(const std::vector<FireEvent>& all, int se
     return out;
 }
 
+// What the server is actually sending, because #16 asks for numbers before cuts. Printed
+// periodically while anyone is connected: an optimization argued from a guess is how the
+// wrong thing gets optimized.
+struct NetStats
+{
+    double snapshots = 0.0;  // bytes
+    double layouts = 0.0;
+    double galaxies = 0.0;
+    int    snapCount = 0;
+    double window = 0.0;  // seconds since the last report
+
+    void Report(size_t clients)
+    {
+        const double total = snapshots + layouts + galaxies;
+        if (window <= 0.0 || total <= 0.0)
+            return;
+        const double perSec = total / window;
+        printf("net: %zu client(s), %.1f KB/s out (%.1f KB/s each) -- snapshots %.0f%%, "
+               "galaxy %.0f%%, layout %.0f%%; %.0f B per snapshot\n",
+               clients, perSec / 1024.0, clients ? perSec / 1024.0 / (double)clients : 0.0,
+               100.0 * snapshots / total, 100.0 * galaxies / total, 100.0 * layouts / total,
+               snapCount ? snapshots / snapCount : 0.0);
+        snapshots = layouts = galaxies = 0.0;
+        snapCount = 0;
+        window = 0.0;
+    }
+};
+
+static const double NET_REPORT_INTERVAL = 10.0;
+
+// How often each client is sent a snapshot. Not once per loop iteration, which is what it
+// used to be -- that made the send rate an accident of how fast the loop happened to spin,
+// and it was spinning far faster than anything could be seen (#16).
+//
+// The client renders the world 100 ms in the past and interpolates between the two
+// snapshots around that time, precisely so updates can be sparse. Twenty a second puts
+// them 50 ms apart, comfortably inside that window. The simulation still runs at 60 Hz;
+// what changed is how often the result is described, not how often it is computed.
+static const double SNAPSHOT_INTERVAL = 1.0 / 20.0;
+
 static int RunHost(unsigned short port)
 {
     std::string dataDir = SIM_DATA_DIR;
@@ -385,6 +425,8 @@ static int RunHost(unsigned short port)
 
     std::vector<HostClient> clients;
 
+    NetStats    net;
+    double      snapshotAcc = 0.0;   // time since the last round of snapshots
     double      worldSaveAcc = 0.0;  // world checkpoint timer
     const float dt = 1.0f / 60.0f;
     using clock = std::chrono::steady_clock;
@@ -456,8 +498,12 @@ static int RunHost(unsigned short port)
                         printf("%s joined, new account (money %.0f).\n", h.account.c_str(),
                                s.account.GetMoney());
                     hc.wasDocked = s.IsDocked();
-                    hc.conn->Send(Proto::EncodeLayout(sim.BuildLayout(s.systemId)));
-                    hc.conn->Send(Proto::EncodeGalaxy(sim.BuildGalaxyState()));
+                    const std::string lay = Proto::EncodeLayout(sim.BuildLayout(s.systemId));
+                    const std::string gal = Proto::EncodeGalaxy(sim.BuildGalaxyState());
+                    net.layouts += (double)lay.size();
+                    net.galaxies += (double)gal.size();
+                    hc.conn->Send(lay);
+                    hc.conn->Send(gal);
                     continue;
                 }
                 // Anything else before the hello is from a client that has not said who it
@@ -501,13 +547,26 @@ static int RunHost(unsigned short port)
             acc -= dt;
         }
 
+        snapshotAcc += frame;
+        const bool sendSnapshots = snapshotAcc >= SNAPSHOT_INTERVAL;
+        if (sendSnapshots)
+            snapshotAcc = 0.0;
+
         for (HostClient& hc : clients)
         {
             ClientSession* s = sim.Session(hc.sessionId);
             if (s == nullptr)
                 continue;
+            // A layout is not on the snapshot clock: it answers "you are somewhere else
+            // now", and waiting 50 ms to say so would draw the old system for a moment.
             if (layoutDirty[hc.sessionId])
-                hc.conn->Send(Proto::EncodeLayout(sim.BuildLayout(s->systemId)));
+            {
+                const std::string lay = Proto::EncodeLayout(sim.BuildLayout(s->systemId));
+                net.layouts += (double)lay.size();
+                hc.conn->Send(lay);
+            }
+            if (!sendSnapshots)
+                continue;
             Proto::Snapshot snap = sim.BuildSnapshot(*s, s->systemId);
             snap.player.lastInput = hc.lastSeq;  // ack for client reconciliation
             snap.tradeAcks = std::move(acks[hc.sessionId]);
@@ -516,7 +575,10 @@ static int RunHost(unsigned short port)
             snap.events = s->EventsSince(hc.lastEventSeq);
             if (!snap.events.empty())
                 hc.lastEventSeq = snap.events.back().seq;
-            hc.conn->Send(Proto::EncodeSnapshot(snap));
+            const std::string enc = Proto::EncodeSnapshot(snap);
+            net.snapshots += (double)enc.size();
+            net.snapCount++;
+            hc.conn->Send(enc);
         }
 
         // Galaxy snapshot -- rarely (once a second): the statistics change slowly and the
@@ -530,9 +592,16 @@ static int RunHost(unsigned short port)
                 const std::string g = Proto::EncodeGalaxy(sim.BuildGalaxyState());
                 for (HostClient& hc : clients)
                     if (hc.sessionId != 0)
+                    {
+                        net.galaxies += (double)g.size();
                         hc.conn->Send(g);
+                    }
             }
         }
+
+        net.window += frame;
+        if (net.window >= NET_REPORT_INTERVAL && !clients.empty())
+            net.Report(clients.size());
 
         // World checkpoint. The galaxy drifts continuously (security, prosperity,
         // territory control), so unlike an account there is no natural commit point to
