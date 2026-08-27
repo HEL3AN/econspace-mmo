@@ -34,6 +34,16 @@ public:
 
     bool Alive() const { return alive_; }  // false — connection closed/dropped
 
+    // Limits, enforced here rather than left to the peer's good manners (#14). A frame
+    // header is four bytes the sender chose; believing it is how a single packet turns
+    // into an out-of-memory kill. The send cap is the other direction: a client that
+    // stops reading must not make the server buffer snapshots for it forever.
+    //
+    // The values are generous next to real traffic -- a full GalaxyState is a few tens of
+    // kilobytes -- so hitting one means something is wrong, not that the game grew.
+    static constexpr size_t MAX_FRAME_BYTES = 4u * 1024u * 1024u;
+    static constexpr size_t MAX_SEND_BACKLOG = 8u * 1024u * 1024u;
+
 private:
     void Pump();  // non-blocking send from outBuf_ and receive into inBuf_
 

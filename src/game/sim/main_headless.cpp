@@ -304,7 +304,21 @@ struct HostClient
     int                                 lastEventSeq = 0;  // last journal entry delivered
     bool                                wasDocked = false;
     double                              silentFor = 0.0;  // seconds connected without a hello
+
+    // How many player ticks this client may still be granted. One received command is one
+    // tick of movement, so without a budget a client that sends faster than the simulation
+    // runs simply moves faster than everyone else -- a speed hack, not merely a flood
+    // (#14). An honest client sends exactly one per SIM_DT, so it never runs out.
+    double tickBudget = 0.0;
+    bool   throttleReported = false;
 };
+
+// The rate a client may spend ticks at, and how many it may bank. The burst covers an
+// honest client catching up after a frame hitch; beyond that the sender is outrunning the
+// simulation and the extra inputs are refused rather than queued -- the client already
+// replays unacknowledged inputs, so refusing is a correction, not a loss.
+static const double TICKS_PER_SECOND = 60.0;
+static const double MAX_TICK_BURST = 8.0;
 
 // How long a socket may stay connected without saying who it is. A client that opens a
 // connection and never introduces itself is not a player; without a limit, sockets like
@@ -409,6 +423,9 @@ static int RunHost(unsigned short port)
                 continue;
             if (hc.sessionId == 0)
                 hc.silentFor += frame;
+            hc.tickBudget += frame * TICKS_PER_SECOND;
+            if (hc.tickBudget > MAX_TICK_BURST)
+                hc.tickBudget = MAX_TICK_BURST;
             std::string msg;
             while (hc.conn->Poll(msg))
             {
@@ -448,6 +465,20 @@ static int RunHost(unsigned short port)
                 ClientSession* s = sim.Session(hc.sessionId);
                 if (type != "cmd" || s == nullptr)
                     continue;
+                if (hc.tickBudget < 1.0)
+                {
+                    // Not acknowledged either: the client replays what the server has not
+                    // confirmed, so the input comes back rather than being lost.
+                    if (!hc.throttleReported)
+                    {
+                        hc.throttleReported = true;
+                        printf("%s is sending commands faster than the simulation runs; "
+                               "the extra ones are ignored.\n",
+                               hc.account.c_str());
+                    }
+                    continue;
+                }
+                hc.tickBudget -= 1.0;
                 if (HostApplyCommand(msg, sim, *s, dt, hc.lastSeq, acks[hc.sessionId], fires))
                     layoutDirty[hc.sessionId] = true;
             }

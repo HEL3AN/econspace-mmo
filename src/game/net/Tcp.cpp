@@ -47,6 +47,16 @@ TcpConnection::~TcpConnection()
 
 void TcpConnection::Send(const std::string& msg)
 {
+    if (!alive_)
+        return;
+    // A peer that has stopped reading is a peer we cannot serve. Dropping it is kinder to
+    // everyone else than growing a send buffer until the process dies (#14).
+    if (outBuf_.size() + msg.size() + 4 > MAX_SEND_BACKLOG)
+    {
+        alive_ = false;
+        outBuf_.clear();
+        return;
+    }
     uint32_t len = htonl((uint32_t)msg.size());
     outBuf_.append((const char*)&len, 4);
     outBuf_.append(msg);
@@ -89,6 +99,14 @@ void TcpConnection::Pump()
         if (n > 0)
         {
             inBuf_.append(buf, (size_t)n);
+            // A frame that never completes is still a frame being buffered. Without this
+            // a peer can stream bytes under one oversized header until memory runs out.
+            if (inBuf_.size() > MAX_FRAME_BYTES + 4)
+            {
+                alive_ = false;
+                inBuf_.clear();
+                break;
+            }
         }
         else if (n == 0)
         {
@@ -113,6 +131,14 @@ bool TcpConnection::Poll(std::string& out)
     uint32_t len;
     std::memcpy(&len, inBuf_.data(), 4);
     len = ntohl(len);
+    // The length is four bytes the peer chose. Refusing an absurd one is the difference
+    // between a dropped connection and a dead server (#14).
+    if ((size_t)len > MAX_FRAME_BYTES)
+    {
+        alive_ = false;
+        inBuf_.clear();
+        return false;
+    }
     if (inBuf_.size() < 4 + (size_t)len)
         return false;  // frame hasn't fully arrived yet
     out.assign(inBuf_.data() + 4, (size_t)len);
