@@ -2,6 +2,7 @@
 
 #include "raylib.h"
 #include "core/Faction.h"
+#include <map>
 #include "entities/EntityKind.h"
 #include "sim/Events.h"
 #include "sim/Orders.h"
@@ -25,7 +26,7 @@ namespace Proto
 // without it a client built against an older protocol would silently receive defaults
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
-inline constexpr int PROTO_VERSION = 4;
+inline constexpr int PROTO_VERSION = 5;
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).
@@ -233,6 +234,13 @@ struct GalaxyState
 };
 
 // JSON serialization. Decode* return false on a broken/unsuitable message.
+// Fills in what the per-tick snapshot deliberately leaves out (#16). A star does not
+// move, change name or change owner, so re-sending those thirty times a second is paying
+// for the same bytes over and over -- they are in the SystemLayout the client already
+// holds. Both clients call this on every snapshot they accept, so downstream code sees a
+// complete EntitySnapshot and does not need to know about the arrangement.
+void CompleteFromLayout(Snapshot& s, const std::map<int, EntityLayout>& layout);
+
 std::string EncodeHello(const Hello& h);
 bool        DecodeHello(const std::string& s, Hello& out);
 std::string EncodeCommand(const Command& c);
