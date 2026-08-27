@@ -9,7 +9,7 @@
 // logic doesn't depend on what's underneath — an in-process loopback
 // (single-player) or the network. Implementations:
 //   LocalTransport — in-process loopback channel (single-player/debug);
-//   TcpTransport   — network (winsock), arriving in M4d-3.
+//   TcpTransport   — network (winsock on Windows, Berkeley sockets elsewhere).
 // Swapping TCP for UDP/ENet is a new ITransport implementation, no logic changes.
 struct ITransport
 {

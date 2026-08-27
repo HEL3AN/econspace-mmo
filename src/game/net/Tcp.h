@@ -7,14 +7,16 @@
 
 // TCP implementation of the client<->server transport (track M, M4d-3). Messages
 // are framed with a length prefix (uint32, network byte order) over the TCP byte
-// stream. Sockets are non-blocking; I/O is pumped in Poll/Send. The SOCKET type is
-// hidden in the .cpp (stored as unsigned long long) so the header doesn't pull in
-// <winsock2.h>.
+// stream. Sockets are non-blocking; I/O is pumped in Poll/Send. The platform's socket
+// type is hidden in the .cpp (stored as unsigned long long) so the header pulls in
+// neither <winsock2.h> nor <sys/socket.h> -- which is also what let the second platform
+// be added without touching anything that includes this (#12).
 namespace Net
 {
 
-// Per-process winsock init/teardown (call once each). Startup before any sockets,
-// Shutdown on exit.
+// Per-process socket-library init/teardown (call once each). Startup before any sockets,
+// Shutdown on exit. Winsock needs both; on POSIX they do nothing, and callers should not
+// have to know which platform they are on.
 bool Startup();
 void Shutdown();
 

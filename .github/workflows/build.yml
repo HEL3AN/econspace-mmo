@@ -107,3 +107,63 @@ jobs:
           status=$?
           kill $server_pid 2>/dev/null || true
           exit $status
+
+  # The second platform, and the reason the transport was portable at all (#12). Without
+  # a runner that actually compiles it, "should work on Linux" is a claim nobody checks --
+  # and the winsock calls it replaced were invisible from Windows.
+  linux:
+    name: Linux (GCC)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # raylib needs the X11/GL development headers even for a build that never opens a
+      # window: the server links it for its timing and file-path helpers.
+      - name: Install raylib's build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ccache libasound2-dev libgl1-mesa-dev libglu1-mesa-dev libwayland-dev \
+            libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxkbcommon-dev \
+            libxrandr-dev
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Cache compiled objects
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: ccache-${{ runner.os }}-
+
+      - name: Configure
+        run: cmake -S . -B build -DWARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Server smoke tests
+        run: |
+          ./build/bin/server/econserver hosttest
+          ./build/bin/server/econserver accttest
+          ./build/bin/server/econserver worldtest
+          ./build/bin/server/econserver ordertest
+
+      # The same end-to-end check the Windows job runs. A socket layer that compiles and
+      # a socket layer that talks are different claims.
+      - name: Agent selftest against a live server
+        run: |
+          ./build/bin/server/econserver host 50800 &
+          server_pid=$!
+          sleep 5
+          ./build/bin/agent/econagent selftest 127.0.0.1 50800
+          status=$?
+          kill $server_pid 2>/dev/null || true
+          exit $status

@@ -43,9 +43,10 @@ ctest --test-dir build --output-on-failure
 ./build/bin/server/econserver.exe ordertest         # standing orders, routes, journal
 ```
 
-Windows/MinGW only for now — the transport is winsock and `ws2_32` is linked
-unconditionally (#12). Close a running executable before rebuilding; Windows will not let
-you overwrite it.
+Windows/MinGW and Linux/GCC, both built by CI (#12). The transport picks winsock or
+Berkeley sockets at compile time; `ws2_32` is linked only on Windows. On Windows, close a
+running executable before rebuilding — it will not let you overwrite it. On Linux the
+binaries have no `.exe` suffix.
 
 ## Structure and rules
 
