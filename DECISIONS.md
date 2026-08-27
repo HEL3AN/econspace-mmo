@@ -376,3 +376,40 @@ anywhere. Duplication like this is what a 1800-line file hides.
 previous file: 54 of 56 in `Simulation` byte-identical and all 33 in `Editor`, with the
 two exceptions being the changes described above. A refactor that claims "no behaviour
 change" should be able to demonstrate it rather than assert it.
+
+---
+
+## 2026-08-27 — A player is a session the server holds, not a member of the world
+
+**Decision.** Everything that belongs to one player — the ship, the account, the missions,
+the standing order, the dock/weapon/mining state, the event journal, and the system they
+are standing in — lives in a `ClientSession`. `Simulation` owns the sessions and keeps
+owning the world; every player verb takes the session it acts for (#3).
+
+**Why not a `PlayerSession` class with the rules inside it.** Docking, mining and NPC
+aggro are rules about the world, and a session that owned them would need the world's
+private state to run. The split that works is the other one: the world keeps the rules,
+the session keeps the state they act on.
+
+**There is no active system any more.** `Simulation` used to have one, and the world step
+ran that system "with the player" and the rest "without". Two players in different systems
+makes that unstateable, so a session carries its own system id and every system is stepped
+identically — the only thing that distinguishes one is who happens to be standing in it. A
+system with nobody in it is the normal case, not a lesser kind of step.
+
+**Identity comes from the client, and is not proof of anything.** A `Hello` names the
+account; progress is stored under that name. Authentication is a separate problem and this
+is the hook it will hang on. Names are restricted to what is safe as a file name and
+*refused* rather than mangled: two names differing only in punctuation would otherwise
+share one account file, which is one player spending another's money.
+
+**What this deliberately does not do.** Players cannot see each other. Each client is sent
+its own system's beams and entities, and another player's ship is not among them — that is
+#4, and it is a rendering and interest-management question rather than a question of who
+owns what. It looks odd and it is the honest scope line: the server is genuinely
+multi-player before the client is.
+
+**What it costs.** Every player verb grew an argument, and the tests and the host loop
+were rewritten around that. The compensation is that the compiler now refuses code that
+assumes there is one player, which is exactly the assumption that was everywhere.
+

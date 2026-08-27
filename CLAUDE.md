@@ -32,10 +32,10 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 
 ./build/bin/server/econserver.exe host 50800        # authoritative server
-./build/bin/game/econspace.exe connect 127.0.0.1 50800
+./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot   # name = account
 ./build/bin/editor/worldeditor.exe
 
-./build/bin/agent/econagent.exe connect 127.0.0.1 50800   # MCP server for an AI agent
+./build/bin/agent/econagent.exe connect 127.0.0.1 50800 agent  # MCP server for an AI agent
 
 ./build/bin/server/econserver.exe hosttest          # server loop smoke test
 ./build/bin/server/econserver.exe accttest          # account persistence smoke test
@@ -80,6 +80,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   instead of failing.
 - **`SystemLayout` is sent once**, when a client enters a system. Anything that changes
   the static world mid-session is invisible until re-entry (#38).
+- **Per-player state lives in `ClientSession`, not in `Simulation`** (#3). The ship, the
+  account, the missions, the standing order and the event journal belong to a session, and
+  every player verb takes the session it acts for. There is no "active system" either: a
+  session carries the system it is in, and every system is stepped the same way. Anything
+  reintroduced as a member of `Simulation` is shared by every player on the server.
 - **Entities no longer draw themselves.** `Entity::Draw()` is gone; an entity returns a
   `Render::Item` from `Describe()` and a backend draws it (#35). Adding a shape means
   editing a backend, not a class. What an object *looks like* (glyph, sprite, colour,

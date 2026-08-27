@@ -21,8 +21,10 @@ each split into translation units named after what they decide).
   what remains. The short version: `data/systems/*.json` still groups objects by category
   instead of naming an archetype id; the mining, market, salvage and jump passes still
   narrow to a class; the hierarchy is deleted last, not first.
-- Then **M3 Multiplayer core**, starting with **#3** (multi-client). That is the
-  foundational one — the server still accepts a single client at a time.
+- **M3 Multiplayer core** is under way. **#3** is done: the server accepts several
+  clients, each with its own `ClientSession` and its own account file. The obvious next
+  one is **#4** (players see each other in the same system) — until then two people can
+  fly the same galaxy without either appearing in the other's sky.
 
 ## Things to know before touching this code
 

@@ -36,7 +36,7 @@ src/
 
 ## Protocol & transport
 
-- **Protocol** (`src/game/sim/Protocol.*`): `Command` (client→server intents), `Snapshot` (server→client view of the player's system, including the player, entities, fire events, market, mission views, and account mirror), `SystemLayout` (static system geometry), and `GalaxyState` (periodic galaxy-wide stats for the map). Messages are JSON (nlohmann/json), tagged with a type field (`"t"`). They carry **no version field yet** — decoding is permissive (`value(key, default)`), so a client built against an older protocol silently receives defaults instead of an error. Adding a version and a handshake is issue #15.
+- **Protocol** (`src/game/sim/Protocol.*`): `Command` (client→server intents), `Snapshot` (server→client view of the player's system, including the player, entities, fire events, market, mission views, and account mirror), `SystemLayout` (static system geometry), and `GalaxyState` (periodic galaxy-wide stats for the map). A client opens with `Hello`, which names the account it plays under — until that arrives the server has a socket and no player behind it (#3). Messages are JSON (nlohmann/json), tagged with a type field (`"t"`) and stamped with `PROTO_VERSION`. Every decoder refuses a message from another version, because decoding is permissive per field (`value(key, default)`) and without the check a peer built against an older protocol would silently read defaults instead of failing — bump `PROTO_VERSION` whenever a message changes meaning.
 - **Transport** (`src/game/net/`): the `ITransport` interface (`Send` / `Poll`) hides the wire. `LocalTransport` is an in-process loopback used **for testing** — the `econserver hosttest` server-loop smoke test and the doctest suite; `TcpTransport` is winsock TCP with length-prefixed framing. Swapping TCP for UDP/ENet later means a new `ITransport`, not rewritten game logic.
 
 ### One movement step, two callers
@@ -59,7 +59,7 @@ Everything that affects game state is applied inside `Simulation` step methods a
 
 - **Player physics / combat / mining** — `StepPlayerShip` / `StepPlayerFire` / `StepPlayerMining`.
 - **Docking & trading** — `StepPlayerDock` / `StepPlayerUndock` / `StepPlayerSell` / `RefitPlayer` (server-authoritative, including reputation-gated docking).
-- **Account** — money, skills, reputation, and wanted levels live in `Simulation::account_`; effects are applied server-side and the client account is a read-only mirror of the snapshot. Persisted to `account.json`.
+- **Account** — money, skills, reputation, and wanted levels live in `ClientSession::account`, one per connected player; effects are applied server-side and the client account is a read-only mirror of the snapshot. Persisted per name to `account_<name>.json`.
 - **Missions** — the job board, acceptance, progress, and turn-in live in `Simulation::missions_`; missions address stations by stable id so they survive jumps.
 - **World** — persisted to `world.json`.
 

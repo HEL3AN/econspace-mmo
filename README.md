@@ -59,7 +59,7 @@ Everything in this section is **planned, not implemented**. It is here so contri
 - **A player-mutable world** (#44). Players build deployables and structures that feed the macro simulation that already exists — prosperity, security, territory control. The archetype registry and the glyph layer were built for this: a structure a player invents needs no artist and no recompile.
 - **Fleets** (#32). One commander, several agent-piloted ships.
 
-The world is still read-only content authored in the editor, and the server still accepts one client at a time.
+The world is still read-only content authored in the editor. The server accepts several clients, though they do not yet see each other in space (#4).
 
 ---
 
@@ -89,7 +89,7 @@ ctest --test-dir build --output-on-failure # run the unit tests (doctest)
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800
 ```
 
-The server accepts one client at a time for now. Run it on `127.0.0.1` for solo play, or on a reachable host to play over a network.
+Several clients can connect at once; each names the account it plays under (`connect <host> <port> <name>`, default `pilot`) and the server keeps their progress apart. They do not see each other in space yet — that is #4. Run it on `127.0.0.1` for solo play, or on a reachable host to play over a network.
 
 **Other executables**
 
