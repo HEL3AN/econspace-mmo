@@ -239,11 +239,15 @@ struct GalaxyState
 };
 
 // JSON serialization. Decode* return false on a broken/unsuitable message.
-// Fills in what the per-tick snapshot deliberately leaves out (#16). A star does not
-// move, change name or change owner, so re-sending those thirty times a second is paying
-// for the same bytes over and over -- they are in the SystemLayout the client already
-// holds. Both clients call this on every snapshot they accept, so downstream code sees a
-// complete EntitySnapshot and does not need to know about the arrangement.
+// Fills in what the per-tick snapshot deliberately leaves out (#16, #97). A star does not
+// move, change name or change owner, so a snapshot carries neither those fields nor, for
+// anything that does not move at all, the entity itself -- all of it is in the
+// SystemLayout the client was given on entry.
+//
+// Both clients call this on every snapshot they accept, and afterwards the entity list is
+// the whole system again. That is the point: the arrangement lives here, and nothing
+// downstream -- proxies, the overview, the target panel, an agent's observation -- has to
+// know that half its world arrived an hour ago.
 void CompleteFromLayout(Snapshot& s, const std::map<int, EntityLayout>& layout);
 
 std::string EncodeHello(const Hello& h);
