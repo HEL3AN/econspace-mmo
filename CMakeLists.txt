@@ -253,6 +253,7 @@ add_executable(tests
     tests/test_main.cpp
     tests/protocol_tests.cpp
     tests/net_tests.cpp
+    tests/raw_socket.cpp           # a peer that ignores the framing rules (#14)
     tests/observation_tests.cpp
     tests/economy_tests.cpp
     tests/simulation_tests.cpp

@@ -80,6 +80,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   instead of failing.
 - **`SystemLayout` is sent once**, when a client enters a system. Anything that changes
   the static world mid-session is invisible until re-entry (#38).
+- **The transport enforces its own limits** (#14). A frame length is four bytes the peer
+  chose, so `TcpConnection` caps it and drops the connection rather than buffering; the
+  send backlog is capped the same way. The host grants each client a budget of player
+  ticks, because one command is one tick of movement and a client that sends faster than
+  the simulation runs would simply move faster than everyone else.
 - **Per-player state lives in `ClientSession`, not in `Simulation`** (#3). The ship, the
   account, the missions, the standing order and the event journal belong to a session, and
   every player verb takes the session it acts for. There is no "active system" either: a
