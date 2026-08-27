@@ -110,7 +110,7 @@ TcpConnection::TcpConnection(unsigned long long sock) : sock_(sock)
 
 TcpConnection::~TcpConnection()
 {
-    if ((socket_t)sock_ != INVALID_SOCKET)
+    if ((socket_t)sock_ != INVALID_SOCK)
         CloseSocket((socket_t)sock_);
 }
 
@@ -219,14 +219,14 @@ bool TcpConnection::Poll(std::string& out)
 
 TcpListener::~TcpListener()
 {
-    if ((socket_t)sock_ != INVALID_SOCKET)
+    if ((socket_t)sock_ != INVALID_SOCK)
         CloseSocket((socket_t)sock_);
 }
 
 bool TcpListener::Listen(unsigned short port)
 {
     socket_t s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (s == INVALID_SOCKET)
+    if (s == INVALID_SOCK)
         return false;
 
     int yes = 1;
@@ -250,10 +250,10 @@ bool TcpListener::Listen(unsigned short port)
 
 std::unique_ptr<TcpConnection> TcpListener::Accept()
 {
-    if ((socket_t)sock_ == INVALID_SOCKET)
+    if ((socket_t)sock_ == INVALID_SOCK)
         return nullptr;
     socket_t c = accept((socket_t)sock_, nullptr, nullptr);
-    if (c == INVALID_SOCKET)
+    if (c == INVALID_SOCK)
         return nullptr;
     return std::make_unique<TcpConnection>((unsigned long long)c);
 }
@@ -263,7 +263,7 @@ std::unique_ptr<TcpConnection> TcpListener::Accept()
 std::unique_ptr<TcpConnection> Dial(const std::string& host, unsigned short port)
 {
     socket_t s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (s == INVALID_SOCKET)
+    if (s == INVALID_SOCK)
         return nullptr;
 
     sockaddr_in addr;

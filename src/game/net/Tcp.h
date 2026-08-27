@@ -66,7 +66,10 @@ public:
     std::unique_ptr<TcpConnection> Accept();
 
 private:
-    unsigned long long sock_ = ~0ull;  // INVALID_SOCKET
+    // All ones is the invalid socket on both platforms once cast back: winsock's
+    // INVALID_SOCKET is (SOCKET)~0, and (int)~0ull is -1, which is what a failed POSIX
+    // socket() returns. That coincidence is why this header can stay platform-free.
+    unsigned long long sock_ = ~0ull;
 };
 
 // Client connection to host:port (host is an IPv4 literal, e.g. "127.0.0.1").
