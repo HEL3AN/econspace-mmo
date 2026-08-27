@@ -6,6 +6,7 @@
 // through the same file as the world and the NPCs.
 
 #include "sim/Simulation.h"
+#include "sim/ClientSession.h"
 #include "sim/PlayerStep.h"
 #include "sim/SimTuning.h"
 
@@ -35,43 +36,67 @@ constexpr float PLAYER_WEAPON_DAMAGE = 16.0f;  // player shot damage
 constexpr float PLAYER_FIRE_INTERVAL = 0.5f;   // cooldown between player shots
 }  // namespace
 
-void Simulation::ServerRespawnPlayer()
+void Simulation::ServerRespawnPlayer(ClientSession& s)
 {
-    if (!player_)
+    if (!s.ship)
         return;
-    RecordEvent(Ev::Kind::ShipDestroyed, "Ship destroyed; respawned with cargo lost");
+    s.RecordEvent(Ev::Kind::ShipDestroyed, "Ship destroyed; respawned with cargo lost");
     for (auto& e : Active().entities)
         if (Station* st =
                 e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
         {
-            player_->Teleport(st->GetPosition());
+            s.ship->Teleport(st->GetPosition());
             break;
         }
-    player_->Repair();
-    player_->ClearCargo();
-    player_->DisengageAutopilot();
+    s.ship->Repair();
+    s.ship->ClearCargo();
+    s.ship->DisengageAutopilot();
 }
 
 // --- Player as a server agent (M4d-2b) ---
 
-void Simulation::CreatePlayer(Vector2 pos, const ShipStats& stats)
+ClientSession& Simulation::CreateSession(Vector2 pos, const ShipStats& stats)
 {
-    player_ = std::make_unique<Ship>(pos, stats);
+    const int      id = ++sessionIdCounter_;
+    ClientSession& s = sessions_[id];
+    s.id = id;
+    s.ship = std::make_unique<Ship>(pos, stats);
+    s.systemId = activeId_;
+    return s;
 }
 
-void Simulation::StepPlayerShip(const Proto::Command& cmd, float pilotBonus, float dt)
+void Simulation::DestroySession(int id)
+{
+    sessions_.erase(id);
+}
+
+ClientSession* Simulation::Session(int id)
+{
+    auto it = sessions_.find(id);
+    return it == sessions_.end() ? nullptr : &it->second;
+}
+
+const ClientSession* Simulation::Session(int id) const
+{
+    auto it = sessions_.find(id);
+    return it == sessions_.end() ? nullptr : &it->second;
+}
+
+void Simulation::StepPlayerShip(ClientSession& s, const Proto::Command& cmd, float pilotBonus,
+                                float dt)
 {
     // The step itself is shared with the client's prediction (sim/PlayerStep.h) — one
     // implementation, so predicted and authoritative movement cannot drift apart.
-    if (player_)
-        Sim::StepPlayerShip(*player_, cmd, pilotBonus, dt);
+    if (s.ship)
+        Sim::StepPlayerShip(*s.ship, cmd, pilotBonus, dt);
 }
 
-bool Simulation::StepPlayerFire(SystemState& st, int targetId, float dt, PlayerCombatEvents* ev)
+bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId, float dt,
+                                PlayerCombatEvents* ev)
 {
-    if (playerFireTimer_ > 0.0f)
-        playerFireTimer_ -= dt;
-    if (!playerWeaponOn_ || !player_ || targetId == 0)
+    if (s.fireTimer > 0.0f)
+        s.fireTimer -= dt;
+    if (!s.weaponOn || !s.ship || targetId == 0)
         return false;
 
     // Target — an NPC of the active system by id.
@@ -85,14 +110,14 @@ bool Simulation::StepPlayerFire(SystemState& st, int targetId, float dt, PlayerC
     if (target == nullptr || !target->IsAlive())
         return false;
 
-    Vector2 shipPos = player_->GetPosition();
+    Vector2 shipPos = s.ship->GetPosition();
     float   dx = target->GetPosition().x - shipPos.x;
     float   dy = target->GetPosition().y - shipPos.y;
-    if (std::sqrt(dx * dx + dy * dy) > PLAYER_WEAPON_RANGE || playerFireTimer_ > 0.0f)
+    if (std::sqrt(dx * dx + dy * dy) > PLAYER_WEAPON_RANGE || s.fireTimer > 0.0f)
         return false;
 
     target->TakeDamage(PLAYER_WEAPON_DAMAGE);
-    playerFireTimer_ = PLAYER_FIRE_INTERVAL;
+    s.fireTimer = PLAYER_FIRE_INTERVAL;
 
     if (ev != nullptr)
     {
@@ -101,9 +126,9 @@ bool Simulation::StepPlayerFire(SystemState& st, int targetId, float dt, PlayerC
     }
 
     // Account effects: attacking a lawful target is a crime; a kill is mission credit
-    // (pirate) or a serious crime (lawful). Applied directly to the server account_ (in
-    // the network — authoritative; in single-player account_ is ignored, the client applies
-    // its own player_ from ev). We still fill ev (single-player/mission client).
+    // (pirate) or a serious crime (lawful). Applied directly to the server s.account (in
+    // the network — authoritative; in single-player s.account is ignored, the client applies
+    // its own s.ship from ev). We still fill ev (single-player/mission client).
     FactionId tf = target->GetFaction();
     if (Factions::IsLawful(tf))
     {
@@ -112,8 +137,8 @@ bool Simulation::StepPlayerFire(SystemState& st, int targetId, float dt, PlayerC
             ev->hitLawful = true;
             ev->hitFaction = tf;
         }
-        account_.AddReputation(tf, -0.4f);
-        account_.AddBounty(tf, 5.0);
+        s.account.AddReputation(tf, -0.4f);
+        s.account.AddBounty(tf, 5.0);
     }
     if (!target->IsAlive())
     {
@@ -122,9 +147,9 @@ bool Simulation::StepPlayerFire(SystemState& st, int targetId, float dt, PlayerC
             if (ev != nullptr)
                 ev->killedPirate = true;
             // Mission credit for the pirate into the server missions (in the network —
-            // authoritative; in single-player missions_ is empty — progress goes into the
+            // authoritative; in single-player s.missions is empty — progress goes into the
             // client MissionSystem via ev).
-            missions_.OnPirateKilled();
+            s.missions.OnPirateKilled();
         }
         else if (Factions::IsLawful(tf))
         {
@@ -133,22 +158,21 @@ bool Simulation::StepPlayerFire(SystemState& st, int targetId, float dt, PlayerC
                 ev->killedLawful = true;
                 ev->killedFaction = tf;
             }
-            account_.AddReputation(tf, -3.0f);
-            account_.AddBounty(tf, 50.0);
+            s.account.AddReputation(tf, -3.0f);
+            s.account.AddBounty(tf, 50.0);
         }
     }
     return true;
 }
 
-Simulation::PlayerMiningResult Simulation::StepPlayerMining(SystemState& st, float miningBonus,
-                                                            float dt)
+Simulation::PlayerMiningResult Simulation::StepPlayerMining(ClientSession& s, SystemState& st,
+                                                            float miningBonus, float dt)
 {
     PlayerMiningResult r;
-    if (!player_ || !player_->IsMiningOn() ||
-        player_->GetCargoUsed() >= player_->GetCargoCapacity())
+    if (!s.ship || !s.ship->IsMiningOn() || s.ship->GetCargoUsed() >= s.ship->GetCargoCapacity())
         return r;
 
-    Vector2 sp = player_->GetPosition();
+    Vector2 sp = s.ship->GetPosition();
     for (auto& e : st.entities)
     {
         AsteroidField* field =
@@ -164,28 +188,29 @@ Simulation::PlayerMiningResult Simulation::StepPlayerMining(SystemState& st, flo
         r.fieldId = field->GetId();
 
         // The mining skill (passed by the client as a multiplier) speeds up extraction.
-        float rate = player_->GetStats().miningRate * miningBonus;
-        playerMiningProgress_ += rate * dt;
-        while (playerMiningProgress_ >= 1.0f)
+        float rate = s.ship->GetStats().miningRate * miningBonus;
+        s.miningProgress += rate * dt;
+        while (s.miningProgress >= 1.0f)
         {
-            playerMiningProgress_ -= 1.0f;
+            s.miningProgress -= 1.0f;
             int got = field->Extract(1);
-            if (got <= 0 || !player_->AddCargo(field->GetResource(), got))
+            if (got <= 0 || !s.ship->AddCargo(field->GetResource(), got))
                 break;
             r.minedUnits += got;
         }
         break;
     }
     // Mining xp into the server account (in the network — authoritative; in single-player
-    // ignored — the client credits its own player_ from r.minedUnits).
+    // ignored — the client credits its own s.ship from r.minedUnits).
     if (r.minedUnits > 0)
-        account_.GetSkills().AddXp(SkillType::Mining, 3.0f * (float)r.minedUnits);
+        s.account.GetSkills().AddXp(SkillType::Mining, 3.0f * (float)r.minedUnits);
     return r;
 }
 
-std::string Simulation::JumpGateDestIfNear(SystemState& st, int gateId) const
+std::string Simulation::JumpGateDestIfNear(const ClientSession& s, SystemState& st,
+                                           int gateId) const
 {
-    if (!player_ || gateId == 0)
+    if (!s.ship || gateId == 0)
         return std::string();
     for (const auto& e : st.entities)
         if (e->GetId() == gateId)
@@ -193,7 +218,7 @@ std::string Simulation::JumpGateDestIfNear(SystemState& st, int gateId) const
             if (e->GetKind() != EntityKind::Gate)
                 return std::string();
             const JumpGate* g = static_cast<const JumpGate*>(e.get());
-            Vector2         sp = player_->GetPosition();
+            Vector2         sp = s.ship->GetPosition();
             float           dx = g->GetPosition().x - sp.x;
             float           dy = g->GetPosition().y - sp.y;
             if (std::sqrt(dx * dx + dy * dy) > g->GetSize() + 200.0f)
@@ -203,9 +228,9 @@ std::string Simulation::JumpGateDestIfNear(SystemState& st, int gateId) const
     return std::string();
 }
 
-double Simulation::StepPlayerLoot(SystemState& st, int derelictId)
+double Simulation::StepPlayerLoot(ClientSession& s, SystemState& st, int derelictId)
 {
-    if (!player_ || derelictId == 0)
+    if (!s.ship || derelictId == 0)
         return 0.0;
     for (auto& e : st.entities)
         if (e->GetId() == derelictId)
@@ -214,43 +239,43 @@ double Simulation::StepPlayerLoot(SystemState& st, int derelictId)
                 e->GetKind() == EntityKind::Derelict ? static_cast<Derelict*>(e.get()) : nullptr;
             if (dr == nullptr || dr->IsLooted())
                 return 0.0;
-            Vector2 sp = player_->GetPosition();
+            Vector2 sp = s.ship->GetPosition();
             float   dx = dr->GetPosition().x - sp.x;
             float   dy = dr->GetPosition().y - sp.y;
             if (std::sqrt(dx * dx + dy * dy) > dr->GetSize() + 120.0f)
                 return 0.0;
             dr->SetLooted();
             double reward = dr->GetReward();
-            account_.AddMoney(
-                reward);  // in the network — authoritative; in single-player account_ is ignored
+            s.account.AddMoney(
+                reward);  // in the network — authoritative; in single-player s.account is ignored
             return reward;
         }
     return 0.0;
 }
 
-Simulation::PlayerSellResult Simulation::StepPlayerSell(SystemState& st, int resourceType,
-                                                        int amount)
+Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, SystemState& st,
+                                                        int resourceType, int amount)
 {
     PlayerSellResult r;
-    if (!player_)
+    if (!s.ship)
         return r;
     ResourceType type = (ResourceType)resourceType;
-    int          have = player_->GetCargoAmount(type);
+    int          have = s.ship->GetCargoAmount(type);
     int          sold = amount < have ? amount : have;
     if (sold <= 0)
         return r;
     r.gross = st.market.Sell(type, sold);  // revenue at the current price + price sag
-    player_->RemoveCargo(type, sold);
+    s.ship->RemoveCargo(type, sold);
     r.sold = sold;
 
     // Net revenue into the server account: trading-skill multiplier + reputation of the
-    // docked station's faction. In the network — authoritative; in single-player account_
+    // docked station's faction. In the network — authoritative; in single-player s.account
     // is ignored (the client computes its own from r.gross). Station faction — by
-    // playerDockedStationId_ (server docking); in single-player it is 0, but the account_ branch is
+    // s.dockedStationId (server docking); in single-player it is 0, but the s.account branch is
     // unused there.
     FactionId sf = FactionId::Independent;
     for (auto& e : st.entities)
-        if (e->GetId() == playerDockedStationId_)
+        if (e->GetId() == s.dockedStationId)
         {
             if (Station* station =
                     e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
@@ -258,55 +283,55 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(SystemState& st, int res
             break;
         }
     float sellMul = 1.0f;
-    switch (Factions::TierOf(account_.GetReputation(sf)))
+    switch (Factions::TierOf(s.account.GetReputation(sf)))
     {
         case RepTier::Hostile: sellMul = 0.85f; break;
         case RepTier::Liked: sellMul = 1.10f; break;
         case RepTier::Allied: sellMul = 1.20f; break;
         default: break;
     }
-    double revenue = r.gross * account_.GetSkills().GetBonus(SkillType::Trading) * sellMul;
-    account_.AddMoney(revenue);
-    account_.GetSkills().AddXp(SkillType::Trading, (float)(revenue * 0.05));
-    account_.AddReputation(sf, (float)(revenue * 0.002));
+    double revenue = r.gross * s.account.GetSkills().GetBonus(SkillType::Trading) * sellMul;
+    s.account.AddMoney(revenue);
+    s.account.GetSkills().AddXp(SkillType::Trading, (float)(revenue * 0.05));
+    s.account.AddReputation(sf, (float)(revenue * 0.002));
     r.revenue = revenue;
     return r;
 }
 
-void Simulation::RefitPlayer(const ShipStats& stats)
+void Simulation::RefitPlayer(ClientSession& s, const ShipStats& stats)
 {
-    if (player_)
-        player_->Refit(stats);
+    if (s.ship)
+        s.ship->Refit(stats);
 }
 
-void Simulation::StepPlayerAccountTick(float dt)
+void Simulation::StepPlayerAccountTick(ClientSession& s, float dt)
 {
     // Piloting xp accrues in flight (not docked); the wanted level decays slowly.
-    if (!IsPlayerDocked())
-        account_.GetSkills().AddXp(SkillType::Piloting, 4.0f * dt);
-    account_.DecayBounty(1.0 * dt);
+    if (!s.IsDocked())
+        s.account.GetSkills().AddXp(SkillType::Piloting, 4.0f * dt);
+    s.account.DecayBounty(1.0 * dt);
 }
 
-void Simulation::PayBounty(FactionId faction)
+void Simulation::PayBounty(ClientSession& s, FactionId faction)
 {
-    double b = account_.GetBounty(faction);
-    if (b > 0.0 && account_.CanAfford(b))
+    double b = s.account.GetBounty(faction);
+    if (b > 0.0 && s.account.CanAfford(b))
     {
-        account_.AddMoney(-b);
-        account_.SetBounty(faction, 0.0);
+        s.account.AddMoney(-b);
+        s.account.SetBounty(faction, 0.0);
     }
 }
 
-bool Simulation::BuyShip(int catalogIndex)
+bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
 {
     const std::vector<ShipType>& catalog = GetShipCatalog();
-    if (!player_ || catalogIndex < 0 || catalogIndex >= (int)catalog.size())
+    if (!s.ship || catalogIndex < 0 || catalogIndex >= (int)catalog.size())
         return false;
 
     // Price multiplier by the docked station's faction reputation (as on the client).
     FactionId sf = FactionId::Independent;
     for (auto& e : Active().entities)
-        if (e->GetId() == playerDockedStationId_)
+        if (e->GetId() == s.dockedStationId)
         {
             if (Station* s =
                     e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
@@ -314,7 +339,7 @@ bool Simulation::BuyShip(int catalogIndex)
             break;
         }
     float buyMul = 1.0f;
-    switch (Factions::TierOf(account_.GetReputation(sf)))
+    switch (Factions::TierOf(s.account.GetReputation(sf)))
     {
         case RepTier::Hostile: buyMul = 1.15f; break;
         case RepTier::Liked: buyMul = 0.92f; break;
@@ -322,89 +347,89 @@ bool Simulation::BuyShip(int catalogIndex)
         default: break;
     }
     double price = catalog[catalogIndex].price * buyMul;
-    if (!account_.CanAfford(price))
+    if (!s.account.CanAfford(price))
         return false;
-    account_.AddMoney(-price);
-    player_->Refit(catalog[catalogIndex].stats);
+    s.account.AddMoney(-price);
+    s.ship->Refit(catalog[catalogIndex].stats);
     return true;
 }
 
-bool Simulation::AccountHostileToFaction(FactionId f) const
+bool Simulation::AccountHostileToFaction(const ClientSession& s, FactionId f) const
 {
     if (f == FactionId::Pirates)
         return true;
-    if (account_.IsWanted(f))
+    if (s.account.IsWanted(f))
         return true;
-    RepTier t = Factions::TierOf(account_.GetReputation(f));
+    RepTier t = Factions::TierOf(s.account.GetReputation(f));
     return t == RepTier::Hostile || t == RepTier::Hated;
 }
 
-void Simulation::GenerateDockOffers()
+void Simulation::GenerateDockOffers(ClientSession& s)
 {
     Station*              giver = nullptr;
     std::vector<Station*> all;
     for (auto& e : Active().entities)
-        if (Station* s =
+        if (Station* sta =
                 e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
         {
-            all.push_back(s);
-            if (s->GetId() == playerDockedStationId_)
-                giver = s;
+            all.push_back(sta);
+            if (sta->GetId() == s.dockedStationId)
+                giver = sta;
         }
     if (giver == nullptr)
         return;
 
     // Reward multiplier by the station faction's reputation (as on the client in Dock).
     float repMul = 1.0f;
-    switch (Factions::TierOf(account_.GetReputation(giver->GetFaction())))
+    switch (Factions::TierOf(s.account.GetReputation(giver->GetFaction())))
     {
         case RepTier::Hostile: repMul = 0.8f; break;
         case RepTier::Liked: repMul = 1.15f; break;
         case RepTier::Allied: repMul = 1.3f; break;
         default: break;
     }
-    missions_.GenerateOffers(giver, all, repMul);
+    s.missions.GenerateOffers(giver, all, repMul);
 }
 
-bool Simulation::MissionCompletableNow(const Mission& m) const
+bool Simulation::MissionCompletableNow(const ClientSession& s, const Mission& m) const
 {
-    if (playerDockedStationId_ == 0 || !player_)
+    if (s.dockedStationId == 0 || !s.ship)
         return false;
     switch (m.type)
     {
         case MissionType::Bounty:
-            return m.giverStationId == playerDockedStationId_ && m.progress >= m.targetCount;
+            return m.giverStationId == s.dockedStationId && m.progress >= m.targetCount;
         case MissionType::Mining:
-            return m.giverStationId == playerDockedStationId_ &&
-                   player_->GetCargoAmount(m.resource) >= m.targetCount;
-        case MissionType::Delivery: return m.destStationId == playerDockedStationId_;
+            return m.giverStationId == s.dockedStationId &&
+                   s.ship->GetCargoAmount(m.resource) >= m.targetCount;
+        case MissionType::Delivery: return m.destStationId == s.dockedStationId;
     }
     return false;
 }
 
-bool Simulation::CompleteMission(int activeIndex)
+bool Simulation::CompleteMission(ClientSession& s, int activeIndex)
 {
-    std::vector<Mission>& active = missions_.Active();
+    std::vector<Mission>& active = s.missions.Active();
     if (activeIndex < 0 || activeIndex >= (int)active.size())
         return false;
     const Mission& m = active[activeIndex];
-    if (!MissionCompletableNow(m))
+    if (!MissionCompletableNow(s, m))
         return false;
 
-    if (m.type == MissionType::Mining && player_)
-        player_->RemoveCargo(m.resource, m.targetCount);
-    account_.AddMoney(m.rewardMoney);
-    account_.AddReputation(m.faction, m.rewardRep);
+    if (m.type == MissionType::Mining && s.ship)
+        s.ship->RemoveCargo(m.resource, m.targetCount);
+    s.account.AddMoney(m.rewardMoney);
+    s.account.AddReputation(m.faction, m.rewardRep);
     active.erase(active.begin() + activeIndex);
     return true;
 }
 
-int Simulation::StepPlayerDock(SystemState& st)
+int Simulation::StepPlayerDock(ClientSession& s, SystemState& st)
 {
-    if (!player_ || player_->IsWarping())
+    if (!s.ship || s.ship->IsWarping())
         return 0;
 
-    Vector2 pp = player_->GetPosition();
+    Vector2 pp = s.ship->GetPosition();
     // Asks what is dockable rather than what is a Station (#34). The moment a player can
     // build a dock (#44) it joins this pass by declaring the component, without this
     // function being touched.
@@ -418,34 +443,35 @@ int Simulation::StepPlayerDock(SystemState& st)
             continue;
 
         // Reputation admittance (M4f-4): at the Hated tier the owning station refuses;
-        // Hostile still admits. Reputation is authoritative here (account_) — the player
+        // Hostile still admits. Reputation is authoritative here (s.account) — the player
         // is told via the snapshot. Who owns a dock is still Station-specific state, so
         // this one narrowing stays until ownership becomes a component too (#41).
         if (e->GetKind() == EntityKind::Station)
         {
             FactionId sf = static_cast<Station*>(e.get())->GetFaction();
-            if (Factions::TierOf(account_.GetReputation(sf)) == RepTier::Hated)
+            if (Factions::TierOf(s.account.GetReputation(sf)) == RepTier::Hated)
             {
-                RecordEvent(Ev::Kind::Notice, "Docking denied: hostile reputation");
+                s.RecordEvent(Ev::Kind::Notice, "Docking denied: hostile reputation");
                 return 0;
             }
         }
-        player_->DisengageAutopilot();
-        player_->Stop();
-        playerDockedStationId_ = e->GetId();
-        RecordEvent(Ev::Kind::Docked, "Docked at " + e->GetName());
-        GenerateDockOffers();  // fresh station mission board (M4f-2)
-        return playerDockedStationId_;
+        s.ship->DisengageAutopilot();
+        s.ship->Stop();
+        s.dockedStationId = e->GetId();
+        s.RecordEvent(Ev::Kind::Docked, "Docked at " + e->GetName());
+        GenerateDockOffers(s);  // fresh station mission board (M4f-2)
+        return s.dockedStationId;
     }
     return 0;
 }
 
-void Simulation::ServerEnterSystem(const std::string& destId, const std::string& fromId)
+void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId,
+                                   const std::string& fromId)
 {
     if (!HasSystem(destId))
         return;
     Activate(destId);
-    if (!player_)
+    if (!s.ship)
         return;
 
     // Arrival point — at the gate leading back to the origin system (as on the client).
@@ -462,32 +488,32 @@ void Simulation::ServerEnterSystem(const std::string& destId, const std::string&
                     arrival = { gp.x * k, gp.y * k };
                     break;
                 }
-    player_->Teleport(arrival);
-    player_->DisengageAutopilot();
-    player_->CancelWarp();
-    playerDockedStationId_ = 0;  // the jump releases the docking
-    missions_.ClearOffers();     // clear the board of the station we left; active missions
-                                 // survive the jump (they address stations by id) — otherwise
-                                 // Bounty/Delivery into another system would be uncompletable
+    s.ship->Teleport(arrival);
+    s.ship->DisengageAutopilot();
+    s.ship->CancelWarp();
+    s.dockedStationId = 0;     // the jump releases the docking
+    s.missions.ClearOffers();  // clear the board of the station we left; active missions
+                               // survive the jump (they address stations by id) — otherwise
+                               // Bounty/Delivery into another system would be uncompletable
 }
 
-void Simulation::SaveAccount(const std::string& path) const
+void Simulation::SaveAccount(const ClientSession& s, const std::string& path) const
 {
     using nlohmann::json;
     json j;
-    j["money"] = account_.GetMoney();
+    j["money"] = s.account.GetMoney();
 
     json rep = json::array();
     for (int i = 0; i < 4; i++)
-        rep.push_back(account_.GetReputation((FactionId)i));
+        rep.push_back(s.account.GetReputation((FactionId)i));
     j["reputation"] = rep;
 
     json bounty = json::array();
     for (int i = 0; i < 4; i++)
-        bounty.push_back(account_.GetBounty((FactionId)i));
+        bounty.push_back(s.account.GetBounty((FactionId)i));
     j["bounty"] = bounty;
 
-    const Skills& sk = account_.GetSkills();
+    const Skills& sk = s.account.GetSkills();
     j["skills"] = { { "piloting", sk.GetXp(SkillType::Piloting) },
                     { "mining", sk.GetXp(SkillType::Mining) },
                     { "trading", sk.GetXp(SkillType::Trading) } };
@@ -497,7 +523,7 @@ void Simulation::SaveAccount(const std::string& path) const
         out << j.dump(2) << "\n";
 }
 
-bool Simulation::LoadAccount(const std::string& path)
+bool Simulation::LoadAccount(ClientSession& s, const std::string& path)
 {
     using nlohmann::json;
     std::ifstream in(path);
@@ -507,16 +533,16 @@ bool Simulation::LoadAccount(const std::string& path)
     if (j.is_discarded())
         return false;
 
-    account_.SetMoney(j.value("money", 500.0));
+    s.account.SetMoney(j.value("money", 500.0));
     if (j.contains("reputation"))
         for (int i = 0; i < 4 && i < (int)j["reputation"].size(); i++)
-            account_.SetReputation((FactionId)i, (float)j["reputation"][i]);
+            s.account.SetReputation((FactionId)i, (float)j["reputation"][i]);
     if (j.contains("bounty"))
         for (int i = 0; i < 4 && i < (int)j["bounty"].size(); i++)
-            account_.SetBounty((FactionId)i, (double)j["bounty"][i]);
+            s.account.SetBounty((FactionId)i, (double)j["bounty"][i]);
     if (j.contains("skills"))
     {
-        Skills& sk = account_.GetSkills();
+        Skills& sk = s.account.GetSkills();
         sk.SetXp(SkillType::Piloting, (float)j["skills"].value("piloting", 0));
         sk.SetXp(SkillType::Mining, (float)j["skills"].value("mining", 0));
         sk.SetXp(SkillType::Trading, (float)j["skills"].value("trading", 0));

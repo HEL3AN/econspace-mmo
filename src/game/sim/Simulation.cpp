@@ -1,4 +1,4 @@
-// Simulation's spine: lifetime, the world RNG and the event journal.
+// Simulation's spine: lifetime, the world RNG and the galaxy news feed.
 //
 // The rules themselves live in the sibling translation units of the same class (#17):
 // Simulation_World, Simulation_Agents, Simulation_Player, Simulation_Orders and
@@ -43,31 +43,4 @@ void Simulation::PushEvent(const std::string& msg)
     events_.push_back(msg);
     if (events_.size() > 8)
         events_.erase(events_.begin());  // keep the last 8
-}
-
-// --- Event journal (#29) -----------------------------------------------------
-
-void Simulation::RecordEvent(Ev::Kind kind, const std::string& text)
-{
-    // Keep the last stretch of history only. An agent that has fallen further behind
-    // than this has lost its place regardless and needs a fresh observation, so holding
-    // older entries would cost memory to serve nobody.
-    constexpr size_t JOURNAL_CAP = 256;
-
-    Ev::Event e;
-    e.seq = ++nextEventSeq_;
-    e.kind = kind;
-    e.text = text;
-    journal_.push_back(std::move(e));
-    if (journal_.size() > JOURNAL_CAP)
-        journal_.erase(journal_.begin(), journal_.begin() + (journal_.size() - JOURNAL_CAP));
-}
-
-std::vector<Ev::Event> Simulation::EventsSince(int seq) const
-{
-    std::vector<Ev::Event> out;
-    for (const Ev::Event& e : journal_)
-        if (e.seq > seq)
-            out.push_back(e);
-    return out;
 }

@@ -11,6 +11,7 @@
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
 #include "entities/Station.h"
+#include "sim/ClientSession.h"
 #include "sim/Orders.h"
 #include "sim/Simulation.h"
 
@@ -27,9 +28,14 @@ namespace
 // controls exactly what is in the system it is exercising.
 struct Fixture
 {
-    Simulation sim;
+    Simulation     sim;
+    ClientSession& s;  // the one player these tests fly
 
-    Fixture()
+    Fixture() : s(MakeSim()) {}
+
+    // The world has to exist before a session can be put in it, and a reference member
+    // must be bound in the initializer list -- so the setup lives here.
+    ClientSession& MakeSim()
     {
         Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
         // Before InitGalaxy: entity constructors look themselves up in the registry, and
@@ -39,7 +45,7 @@ struct Fixture
         sim.Seed(1234u);
         sim.InitGalaxy();
         sim.Activate(sim.Universe().startId);
-        sim.CreatePlayer(Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+        return sim.CreateSession(Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
     }
 
     SystemState& World() { return sim.Active(); }
@@ -61,37 +67,37 @@ TEST_CASE("the player only fires at a target in range, with the weapon on")
 
     SUBCASE("weapon off means no shot, however close the target")
     {
-        CHECK_FALSE(f.sim.StepPlayerFire(f.World(), 77, dt, &ev));
+        CHECK_FALSE(f.sim.StepPlayerFire(f.s, f.World(), 77, dt, &ev));
         CHECK(target->GetHull() == doctest::Approx(target->GetMaxHull()));
     }
 
     SUBCASE("weapon on and in range hits")
     {
-        f.sim.ToggleWeapon();
-        CHECK(f.sim.StepPlayerFire(f.World(), 77, dt, &ev));
+        f.s.ToggleWeapon();
+        CHECK(f.sim.StepPlayerFire(f.s, f.World(), 77, dt, &ev));
         CHECK(target->GetHull() < target->GetMaxHull());
     }
 
     SUBCASE("out of range is not a hit")
     {
-        f.sim.ToggleWeapon();
+        f.s.ToggleWeapon();
         target->SetPosition({ Sim::PLAYER_WEAPON_RANGE * 3.0f, 0.0f });
-        CHECK_FALSE(f.sim.StepPlayerFire(f.World(), 77, dt, &ev));
+        CHECK_FALSE(f.sim.StepPlayerFire(f.s, f.World(), 77, dt, &ev));
         CHECK(target->GetHull() == doctest::Approx(target->GetMaxHull()));
     }
 
     SUBCASE("a cooldown separates shots")
     {
-        f.sim.ToggleWeapon();
-        REQUIRE(f.sim.StepPlayerFire(f.World(), 77, dt, &ev));
+        f.s.ToggleWeapon();
+        REQUIRE(f.sim.StepPlayerFire(f.s, f.World(), 77, dt, &ev));
         // The very next tick is inside the cooldown, so the second shot must not land.
-        CHECK_FALSE(f.sim.StepPlayerFire(f.World(), 77, dt, &ev));
+        CHECK_FALSE(f.sim.StepPlayerFire(f.s, f.World(), 77, dt, &ev));
     }
 
     SUBCASE("no target means no shot")
     {
-        f.sim.ToggleWeapon();
-        CHECK_FALSE(f.sim.StepPlayerFire(f.World(), 0, dt, &ev));
+        f.s.ToggleWeapon();
+        CHECK_FALSE(f.sim.StepPlayerFire(f.s, f.World(), 0, dt, &ev));
     }
 }
 
@@ -107,28 +113,28 @@ TEST_CASE("mining fills the hold from a field in range")
 
     SUBCASE("the mining module has to be on")
     {
-        Simulation::PlayerMiningResult r = f.sim.StepPlayerMining(f.World(), 1.0f, dt);
+        Simulation::PlayerMiningResult r = f.sim.StepPlayerMining(f.s, f.World(), 1.0f, dt);
         CHECK(r.fieldId == 0);
         CHECK(r.minedUnits == 0);
     }
 
     SUBCASE("with it on, ore accumulates into the hold")
     {
-        f.sim.PlayerShip()->SetMiningOn(true);
+        f.s.ship->SetMiningOn(true);
         int mined = 0;
         for (int i = 0; i < 600; i++)  // ten simulated seconds
-            mined += f.sim.StepPlayerMining(f.World(), 1.0f, dt).minedUnits;
+            mined += f.sim.StepPlayerMining(f.s, f.World(), 1.0f, dt).minedUnits;
         CHECK(mined > 0);
-        CHECK(f.sim.PlayerShip()->GetCargoUsed() == mined);
+        CHECK(f.s.ship->GetCargoUsed() == mined);
     }
 
     SUBCASE("a full hold stops mining rather than losing the ore silently")
     {
-        f.sim.PlayerShip()->SetMiningOn(true);
+        f.s.ship->SetMiningOn(true);
         for (int i = 0; i < 60000; i++)  // long enough to fill anything
-            f.sim.StepPlayerMining(f.World(), 4.0f, dt);
-        const int cap = f.sim.PlayerShip()->GetCargoCapacity();
-        CHECK(f.sim.PlayerShip()->GetCargoUsed() == cap);
+            f.sim.StepPlayerMining(f.s, f.World(), 4.0f, dt);
+        const int cap = f.s.ship->GetCargoCapacity();
+        CHECK(f.s.ship->GetCargoUsed() == cap);
     }
 }
 
@@ -140,19 +146,19 @@ TEST_CASE("docking is refused at range and granted up close")
     station->SetId(33);
     f.World().entities.push_back(std::move(station));
 
-    CHECK(f.sim.StepPlayerDock(f.World()) == 0);  // far away
-    CHECK_FALSE(f.sim.IsPlayerDocked());
+    CHECK(f.sim.StepPlayerDock(f.s, f.World()) == 0);  // far away
+    CHECK_FALSE(f.s.IsDocked());
 
-    f.sim.PlayerShip()->Teleport({ 5000.0f, 0.0f });
-    CHECK(f.sim.StepPlayerDock(f.World()) == 33);
-    CHECK(f.sim.IsPlayerDocked());
+    f.s.ship->Teleport({ 5000.0f, 0.0f });
+    CHECK(f.sim.StepPlayerDock(f.s, f.World()) == 33);
+    CHECK(f.s.IsDocked());
 
     SUBCASE("undocking releases it and is recorded")
     {
-        const int before = f.sim.LastEventSeq();
-        f.sim.StepPlayerUndock();
-        CHECK_FALSE(f.sim.IsPlayerDocked());
-        CHECK(f.sim.EventsSince(before).size() == 1);
+        const int before = f.s.LastEventSeq();
+        f.sim.StepPlayerUndock(f.s);
+        CHECK_FALSE(f.s.IsDocked());
+        CHECK(f.s.EventsSince(before).size() == 1);
     }
 }
 
@@ -166,37 +172,36 @@ TEST_CASE("a hostile reputation closes the station door")
 
     // Hated is the tier that refuses; Hostile still admits. Pinning both directions keeps
     // a threshold change from silently locking players out or letting everyone in.
-    f.sim.Account().SetReputation(FactionId::TradersGuild, -100.0f);
-    REQUIRE(Factions::TierOf(f.sim.Account().GetReputation(FactionId::TradersGuild)) ==
-            RepTier::Hated);
-    CHECK(f.sim.StepPlayerDock(f.World()) == 0);
-    CHECK_FALSE(f.sim.IsPlayerDocked());
+    f.s.account.SetReputation(FactionId::TradersGuild, -100.0f);
+    REQUIRE(Factions::TierOf(f.s.account.GetReputation(FactionId::TradersGuild)) == RepTier::Hated);
+    CHECK(f.sim.StepPlayerDock(f.s, f.World()) == 0);
+    CHECK_FALSE(f.s.IsDocked());
 
-    f.sim.Account().SetReputation(FactionId::TradersGuild, 0.0f);
-    CHECK(f.sim.StepPlayerDock(f.World()) == 34);
+    f.s.account.SetReputation(FactionId::TradersGuild, 0.0f);
+    CHECK(f.sim.StepPlayerDock(f.s, f.World()) == 34);
 }
 
 TEST_CASE("selling moves ore out of the hold and money into the account")
 {
     Fixture            f;
     const ResourceType ore = AllResourceTypes()[0];
-    f.sim.PlayerShip()->AddCargo(ore, 10);
-    REQUIRE(f.sim.PlayerShip()->GetCargoAmount(ore) == 10);
+    f.s.ship->AddCargo(ore, 10);
+    REQUIRE(f.s.ship->GetCargoAmount(ore) == 10);
 
-    const double                 before = f.sim.Account().GetMoney();
-    Simulation::PlayerSellResult r = f.sim.StepPlayerSell(f.World(), (int)ore, 10);
+    const double                 before = f.s.account.GetMoney();
+    Simulation::PlayerSellResult r = f.sim.StepPlayerSell(f.s, f.World(), (int)ore, 10);
 
     CHECK(r.sold == 10);
     CHECK(r.gross > 0.0);
-    CHECK(f.sim.PlayerShip()->GetCargoAmount(ore) == 0);
-    CHECK(f.sim.Account().GetMoney() > before);
+    CHECK(f.s.ship->GetCargoAmount(ore) == 0);
+    CHECK(f.s.account.GetMoney() > before);
 
     SUBCASE("selling more than you carry sells what you have, not what you asked for")
     {
-        f.sim.PlayerShip()->AddCargo(ore, 3);
-        Simulation::PlayerSellResult over = f.sim.StepPlayerSell(f.World(), (int)ore, 999);
+        f.s.ship->AddCargo(ore, 3);
+        Simulation::PlayerSellResult over = f.sim.StepPlayerSell(f.s, f.World(), (int)ore, 999);
         CHECK(over.sold == 3);
-        CHECK(f.sim.PlayerShip()->GetCargoAmount(ore) == 0);
+        CHECK(f.s.ship->GetCargoAmount(ore) == 0);
     }
 }
 
@@ -244,17 +249,17 @@ TEST_CASE("a dock order flies the ship in and docks it")
     Orders::Order dock;
     dock.kind = Orders::Kind::Dock;
     dock.targetId = 42;
-    REQUIRE(f.sim.GiveOrder(dock) > 0);
+    REQUIRE(f.sim.GiveOrder(f.s, dock) > 0);
 
     const float dt = 1.0f / 60.0f;
-    for (int i = 0; i < 60 * 120 && f.sim.HasRunningOrder(); i++)  // two simulated minutes
-        f.sim.StepPlayerOrder(f.World(), dt);
+    for (int i = 0; i < 60 * 120 && f.s.HasRunningOrder(); i++)  // two simulated minutes
+        f.sim.StepPlayerOrder(f.s, f.World(), dt);
 
     // The failure this pins is the quiet one. The executor stops the ship at whatever
     // distance it believes a dock admits at; if that is further than the dock really
     // admits, the ship parks just outside the door and the order finishes having docked
     // nothing. Asking the dock for its own range is what keeps the two agreed.
-    CHECK_FALSE(f.sim.HasRunningOrder());
-    CHECK(f.sim.OrderStatus() == Orders::Status::Done);
-    CHECK(f.sim.IsPlayerDocked());
+    CHECK_FALSE(f.s.HasRunningOrder());
+    CHECK(f.s.orderStatus == Orders::Status::Done);
+    CHECK(f.s.IsDocked());
 }
