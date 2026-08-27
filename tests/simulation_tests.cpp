@@ -505,3 +505,71 @@ TEST_CASE("a save from a newer build is refused, not read leniently")
 
     std::remove(path.c_str());
 }
+
+TEST_CASE("a ship has to be bought before it can be flown")
+{
+    Fixture f;
+    REQUIRE(GetShipCatalog().size() > 1);
+    const int better = 1;
+
+    CHECK(f.s.Owns(0));  // the starter, and only the starter
+    CHECK_FALSE(f.s.Owns(better));
+
+    SUBCASE("switching to a ship you do not own is refused")
+    {
+        // This is the hole the issue closes, not just the persistence: the server used to
+        // take a catalog index from the client and refit to it, so any ship was free.
+        const float before = f.s.ship->GetStats().maxSpeed;
+        CHECK_FALSE(f.sim.SwitchShip(f.s, better));
+        CHECK(f.s.currentShip == 0);
+        CHECK(f.s.ship->GetStats().maxSpeed == doctest::Approx(before));
+    }
+
+    SUBCASE("buying one records it and flies it")
+    {
+        f.s.account.SetMoney(GetShipCatalog()[better].price * 2.0);
+        REQUIRE(f.sim.BuyShip(f.s, better));
+        CHECK(f.s.Owns(better));
+        CHECK(f.s.currentShip == better);
+
+        // And switching back to the starter still works: you keep what you paid for.
+        CHECK(f.sim.SwitchShip(f.s, 0));
+        CHECK(f.s.currentShip == 0);
+        CHECK(f.s.Owns(better));
+    }
+
+    SUBCASE("a hangar survives a reconnect")
+    {
+        f.s.account.SetMoney(GetShipCatalog()[better].price * 2.0);
+        REQUIRE(f.sim.BuyShip(f.s, better));
+
+        const std::string path = "account_ships_tmp.json";
+        f.sim.SaveAccount(f.s, path);
+
+        ClientSession& back = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                                  GetShipCatalog()[0].stats);
+        REQUIRE(f.sim.LoadAccount(back, path) == Save::Result::Ok);
+        std::remove(path.c_str());
+
+        CHECK(back.Owns(better));
+        CHECK(back.currentShip == better);
+        // Flying it, not merely owning it: the stats have to come back too.
+        CHECK(back.ship->GetStats().maxSpeed ==
+              doctest::Approx(GetShipCatalog()[better].stats.maxSpeed));
+    }
+
+    SUBCASE("an account from before this existed owns the starter, not nothing")
+    {
+        const std::string path = "account_noships_tmp.json";
+        {
+            std::ofstream out(path);
+            out << R"({"version":1,"money":700.0})";
+        }
+        ClientSession& old = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                                 GetShipCatalog()[0].stats);
+        REQUIRE(f.sim.LoadAccount(old, path) == Save::Result::Ok);
+        std::remove(path.c_str());
+        CHECK(old.Owns(0));
+        CHECK(old.currentShip == 0);
+    }
+}

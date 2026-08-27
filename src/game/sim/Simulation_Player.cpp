@@ -66,6 +66,8 @@ ClientSession& Simulation::CreateSession(const std::string& systemId, Vector2 po
     // snapshot and selected like anything else without colliding with the world (#4).
     s.ship->SetId(NextAgentId());
     s.systemId = systemId;
+    s.ownedShips = { 0 };  // everyone starts owning the starter (#5)
+    s.currentShip = 0;
     return s;
 }
 
@@ -302,10 +304,16 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, System
     return r;
 }
 
-void Simulation::RefitPlayer(ClientSession& s, const ShipStats& stats)
+bool Simulation::SwitchShip(ClientSession& s, int catalogIndex)
 {
-    if (s.ship)
-        s.ship->Refit(stats);
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    if (!s.ship || catalogIndex < 0 || catalogIndex >= (int)catalog.size())
+        return false;
+    if (!s.Owns(catalogIndex))
+        return false;  // not theirs; the client asking nicely does not make it so
+    s.ship->Refit(catalog[catalogIndex].stats);
+    s.currentShip = catalogIndex;
+    return true;
 }
 
 void Simulation::StepPlayerAccountTick(ClientSession& s, float dt)
@@ -354,7 +362,10 @@ bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
     if (!s.account.CanAfford(price))
         return false;
     s.account.AddMoney(-price);
+    if (!s.Owns(catalogIndex))
+        s.ownedShips.push_back(catalogIndex);
     s.ship->Refit(catalog[catalogIndex].stats);
+    s.currentShip = catalogIndex;
     return true;
 }
 
@@ -539,6 +550,9 @@ void Simulation::SaveAccount(const ClientSession& s, const std::string& path) co
         j["cargo"] = cargo;
     }
 
+    j["ships"] = s.ownedShips;
+    j["ship"] = s.currentShip;
+
     // Missions address stations by stable id on purpose -- that is what lets one survive
     // a jump -- so ids are what gets written. A name would have to be resolved against a
     // galaxy that may have been edited since.
@@ -606,6 +620,28 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
             s.ship->SetHeading((float)pl.value("heading", 0.0));
         }
     }
+
+    // The hangar (#5). An account written before this existed has no list, and defaults
+    // to the starter -- which is what such an account was, since nothing else was kept.
+    // No schema bump for that reason: an older reader ignores these keys and a newer one
+    // defaults them, which is the case the version deliberately does not cover (#20).
+    if (j.contains("ships") && j["ships"].is_array())
+    {
+        s.ownedShips.clear();
+        for (const auto& v : j["ships"])
+            if (v.is_number_integer())
+            {
+                const int idx = v.get<int>();
+                if (idx >= 0 && idx < (int)GetShipCatalog().size() && !s.Owns(idx))
+                    s.ownedShips.push_back(idx);
+            }
+        if (s.ownedShips.empty())
+            s.ownedShips.push_back(0);
+    }
+    const int wanted = j.value("ship", 0);
+    s.currentShip = s.Owns(wanted) ? wanted : s.ownedShips.front();
+    if (s.ship)
+        s.ship->Refit(GetShipCatalog()[s.currentShip].stats);
 
     // Cargo is refilled through AddCargo rather than written in, so a hold that shrank
     // between sessions -- a smaller ship, a changed catalog -- drops the overflow instead

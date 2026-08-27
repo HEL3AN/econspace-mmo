@@ -233,7 +233,10 @@ public:
 
     // Refit the player ship to different stats (station hangar). A server mutation of the
     // ship; ship ownership/money/index — on the client side (account).
-    void RefitPlayer(ClientSession& s, const ShipStats& stats);
+    // Switch to another ship this account owns. Refuses one it does not: the stats are
+    // looked up from the catalog here rather than taken from the caller, so "refit me to
+    // the best ship" is a request the server can say no to (#5).
+    bool SwitchShip(ClientSession& s, int catalogIndex);
 
     // Server-authoritative docking (M4e-3b). StepPlayerDock finds the nearest station of
     // st within docking range and (if the player is not warping) fixes the docking, returning

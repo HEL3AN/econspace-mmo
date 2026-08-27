@@ -863,14 +863,14 @@ void Game::DrawStationScreen()
     const std::vector<ShipType>& catalog = GetShipCatalog();
     int                          hangarY = rowY + 18;
     Ui::Text("HANGAR", contentX, hangarY, 20, Ui::TEXT);
-    Ui::Text(TextFormat("Current ship: %s", catalog[currentShipIndex_].name.c_str()), contentX,
+    Ui::Text(TextFormat("Current ship: %s", catalog[CurrentShipIndex()].name.c_str()), contentX,
              hangarY + 28, 14, Ui::ACCENT);
 
     int shipY = hangarY + 56;
     for (size_t i = 0; i < catalog.size(); i++)
     {
         const ShipType& t = catalog[i];
-        bool            current = ((int)i == currentShipIndex_);
+        bool            current = ((int)i == CurrentShipIndex());
 
         Ui::Text(TextFormat("%-9s   speed %.0f   cargo %d   mining %.1f", t.name.c_str(),
                             t.stats.maxSpeed, t.stats.cargoCapacity, t.stats.miningRate),
@@ -881,7 +881,7 @@ void Game::DrawStationScreen()
         {
             Ui::Text("CURRENT", contentX + 540, shipY + 7, 16, Color{ 120, 210, 130, 255 });
         }
-        else if (ownedShips_[i])
+        else if (OwnsShip((int)i))
         {
             // Ship already owned — switching is free.
             Button switchBtn(btnRect, "Switch",
@@ -890,7 +890,6 @@ void Game::DrawStationScreen()
                                  Proto::Command c;
                                  c.refitShip = (int)i;
                                  clientLink_->Send(Proto::EncodeCommand(c));
-                                 currentShipIndex_ = (int)i;
                              });
             switchBtn.Process();
         }
@@ -903,14 +902,14 @@ void Game::DrawStationScreen()
                               double          price = st.price * buyMul;
                               if (!player_.CanAfford(price))  // player_ is a mirror (server money)
                                   return;
-                              // The purchase is server-authoritative: the server charges and
-                              // refits (BuyShip) and the mirror updates the money. Ownership and
-                              // index are client-side display only — see #5.
+                              // The purchase is server-authoritative: the server charges,
+                              // records the ship as owned and refits (BuyShip); the
+                              // snapshot brings all three back (#5).
                               Proto::Command c;
                               c.buyShip = (int)i;
                               clientLink_->Send(Proto::EncodeCommand(c));
-                              ownedShips_[i] = true;
-                              currentShipIndex_ = (int)i;
+                              // No local bookkeeping: the next snapshot says whether the
+                              // server agreed, and that is the only answer worth showing.
                           });
             buyBtn.Process();
         }

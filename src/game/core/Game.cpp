@@ -70,10 +70,6 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
         TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());
     universe_ = WorldLoader::LoadUniverse(dataDir_ + "universe.json");
 
-    // The starting ship (index 0) is already owned by the player.
-    ownedShips_.assign(GetShipCatalog().size(), false);
-    ownedShips_[0] = true;
-
     // No system is loaded here: which system we are in, and everything in it, arrives
     // from the server as a SystemLayout followed by snapshots (ApplyLayout).
 

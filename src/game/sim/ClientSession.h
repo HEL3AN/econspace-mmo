@@ -6,6 +6,7 @@
 #include "missions/MissionSystem.h"
 
 #include <memory>
+#include <vector>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,21 @@ struct ClientSession
     std::unique_ptr<Ship> ship;              // the player's ship, owned by the server
     Player                account{ 500.0 };  // money, skills, reputation, wanted levels
     MissionSystem         missions;          // the board at the docked station, and the log
+
+    // Which ships this account owns, as catalog indices, and which one it is flying
+    // (#5). The server holds them because it is the server that charges for a ship: a
+    // client that owned this list could switch to anything in the catalog for nothing,
+    // which is exactly what it could do before.
+    std::vector<int> ownedShips;
+    int              currentShip = 0;
+
+    bool Owns(int catalogIndex) const
+    {
+        for (int i : ownedShips)
+            if (i == catalogIndex)
+                return true;
+        return false;
+    }
 
     // Where this player is. Systems other than this one keep running; what makes this one
     // different is only that the NPCs in it can see this ship.
