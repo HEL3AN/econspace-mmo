@@ -50,7 +50,7 @@ jobs:
           cmake --build build-codeql --target raylib
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: c-cpp
           build-mode: manual
@@ -62,4 +62,4 @@ jobs:
         run: cmake --build build-codeql
 
       - name: Analyze
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
