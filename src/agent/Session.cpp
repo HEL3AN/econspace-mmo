@@ -46,6 +46,19 @@ void Session::Pump()
         }
 
         const std::string type = Proto::MessageType(msg);
+        if (type == "bye")
+        {
+            // The server is ending this on purpose. Keep the reason: "the connection is
+            // closed" is true of a crash too, and an agent that cannot tell the two apart
+            // will retry a login that is going to be displaced again.
+            Proto::Bye b;
+            if (Proto::DecodeBye(msg, b))
+            {
+                byeReason_ = b.reason;
+                Rpc::Log("econagent: server ended the session: " + b.reason);
+            }
+            continue;
+        }
         if (type == "snap")
         {
             Proto::Snapshot s;

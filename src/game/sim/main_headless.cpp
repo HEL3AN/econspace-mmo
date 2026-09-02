@@ -316,6 +316,7 @@ struct HostClient
     int                                 lastEventSeq = 0;  // last journal entry delivered
     bool                                wasDocked = false;
     bool                                accountReadOnly = false;  // their file is newer (#20)
+    bool                                evicted = false;  // displaced by a later login (#105)
     double                              silentFor = 0.0;  // seconds connected without a hello
 
     // How many player ticks this client may still be granted. One received command is one
@@ -499,6 +500,39 @@ static int RunHost(unsigned short port)
                         hc.conn.reset();
                         break;
                     }
+                    // One account, one session (#105). Two connections claiming the same
+                    // name used to get a ship each and the whole balance each, and
+                    // whichever left last wrote its copy over the other's.
+                    //
+                    // The newcomer wins. Without a credential (#106) either choice can be
+                    // abused by a stranger, and this is the one that always lets the real
+                    // owner back in after a crash instead of locking them out of their own
+                    // account until a dead socket times out.
+                    for (HostClient& other : clients)
+                    {
+                        if (&other == &hc || other.sessionId == 0 || other.account != h.account)
+                            continue;
+                        if (ClientSession* os = sim.Session(other.sessionId))
+                        {
+                            // Saved before it is taken away: what they earned up to this
+                            // moment is theirs, and the new session loads that file next.
+                            if (!other.accountReadOnly)
+                                sim.SaveAccount(*os, AccountPath(other.account));
+                            sim.DestroySession(other.sessionId);
+                        }
+                        // Say why before going. Send pumps synchronously, so on any socket
+                        // that is not already backed up this reaches them; if it does not,
+                        // they see a plain disconnect -- which is all they used to see.
+                        Proto::Bye bye;
+                        bye.reason = "Signed in from somewhere else";
+                        if (other.conn)
+                            other.conn->Send(Proto::EncodeBye(bye));
+                        other.sessionId = 0;
+                        other.evicted = true;
+                        printf("%s signed in again; the earlier connection was displaced.\n",
+                               h.account.c_str());
+                    }
+
                     ClientSession& s = SetupHostPlayer(sim);
                     hc.sessionId = s.id;
                     hc.account = h.account;
@@ -642,7 +676,8 @@ static int RunHost(unsigned short port)
         for (size_t i = 0; i < clients.size();)
         {
             HostClient& hc = clients[i];
-            if (hc.conn && hc.conn->Alive() && (hc.sessionId != 0 || hc.silentFor < HELLO_TIMEOUT))
+            if (hc.conn && hc.conn->Alive() && !hc.evicted &&
+                (hc.sessionId != 0 || hc.silentFor < HELLO_TIMEOUT))
             {
                 i++;
                 continue;
@@ -659,6 +694,10 @@ static int RunHost(unsigned short port)
                            hc.account.c_str(), s->account.GetMoney());
                 }
                 sim.DestroySession(hc.sessionId);
+            }
+            else if (hc.evicted)
+            {
+                printf("The displaced connection for %s closed.\n", hc.account.c_str());
             }
             else
             {

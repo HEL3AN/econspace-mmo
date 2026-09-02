@@ -144,6 +144,17 @@ void Game::BuildClientSnapshot()
         {
             Proto::DecodeGalaxy(msg, galaxyState_);  // per-system stats for the map
         }
+        else if (type == "bye")
+        {
+            // Said out loud rather than left as a silent disconnect: being displaced from
+            // your own account looks exactly like a crash otherwise (#105).
+            Proto::Bye b;
+            if (Proto::DecodeBye(msg, b))
+            {
+                TraceLog(LOG_WARNING, "Server ended the session: %s", b.reason.c_str());
+                FlashMessage(b.reason);
+            }
+        }
         else if (type == "snap")
         {
             Proto::Snapshot s;

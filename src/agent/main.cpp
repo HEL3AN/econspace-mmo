@@ -59,6 +59,9 @@ void RequireLive()
     g_session.Pump();
     if (!g_session.ProtocolError().empty())
         throw Rpc::Error{ Rpc::INTERNAL_ERROR, "protocol mismatch: " + g_session.ProtocolError() };
+    if (!g_session.ByeReason().empty())
+        throw Rpc::Error{ Rpc::INTERNAL_ERROR,
+                          "the server ended this session: " + g_session.ByeReason() };
     if (!g_session.Alive())
         throw Rpc::Error{ Rpc::INTERNAL_ERROR, "connection to the server is closed" };
 }
