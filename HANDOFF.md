@@ -1,41 +1,69 @@
-# Session handoff — 2026-08-27
+# Session handoff — 2026-09-03
 
-Where the work stopped and what to pick up next. Delete this file once M2 is closed and
-the next milestone is under way.
+Where the work stands and what to pick up. Keep this current; it is the first thing to read.
 
 ## State
 
-Nothing is in flight. `main` is green: warning-clean build, 33 doctest cases / 529
-assertions, all four `econserver` self-tests, and `econagent selftest` against a live
-server.
+Nothing is in flight. `main` is green on both platforms: warning-clean build, unit suite,
+all four `econserver` self-tests, `econagent selftest` against a live server, and a
+two-client step that also checks a wrong secret is refused.
 
-**M2 "Glyph world" is done bar one issue.** Merged over the last two sessions: **#81** (entity kind
-tag), **#82 / #19** (all RTTI dispatch gone), **#83** (archetype registry), **#84 / #35**
-(presentation layer), **#86 / #37** (editor on the same layer, palette generated from the
-registry), **#87 / #36** (glyphs as the game's look), **#17** (`Simulation` and `Editor`
-each split into translation units named after what they decide).
+**M3 "Multiplayer core" is closed** — 15 issues. Each connection has its own
+`ClientSession` (#3); players see each other in a system (#4); an account remembers where
+it was, what it carried, which missions it took and which ships it owns (#49, #5), refuses
+a save from a newer build (#20), has a secret it proves with a nonce rather than sending
+(#106), and can only be played by one connection at a time (#105). The transport stopped
+believing its peer (#14), a snapshot costs a tenth of what it did (#16, #97), and the
+server builds and plays on Linux as well as Windows (#12).
 
-## Next up
+## Next up: M6 — The look
 
-- **#34 is deliberately still open**, and the progress comment on the issue says exactly
-  what remains. The short version: `data/systems/*.json` still groups objects by category
-  instead of naming an archetype id; the mining, market, salvage and jump passes still
-  narrow to a class; the hierarchy is deleted last, not first.
-- **M3 Multiplayer core** is under way. **#3** is done: the server accepts several
-  clients, each with its own `ClientSession` and its own account file. The obvious next
-  one is **#4** (players see each other in the same system) — until then two people can
-  fly the same galaxy without either appearing in the other's sky.
+The visual direction was settled on 2026-09-03 after playing the build. Glyphs are no
+longer the primary look; generated art replaces them. `DECISIONS.md` has the reasoning and
+what it costs. Work in this order — the order is part of the decision:
+
+1. **#118 gallery** — every archetype on one screen with live parameters. First because a
+   look is tuned by eye, and the loop today is build, serve, connect, fly, look.
+2. **#119 lighting** — a *list* of lights per system, built from the `SystemLayout` the
+   client already holds, so no protocol change. Two-star systems and glowing player
+   structures are wanted, so it is a list from the start.
+3. **#120 screen treatment** — bloom, pixels, scanlines, noise; tunable and switchable in
+   game, separately for the HUD. Before silhouettes on purpose: it changes the most for the
+   least, on the shapes that already exist.
+4. **#121 materials** — a shader per object fed by `Render::Item` state (`intensity`,
+   `heading`, `thrusting`) and the scene's lights.
+5. **#122 silhouettes** — shapes from `archetypes.json`, replacing `ShapeBackend`'s switch
+   on `EntityKind`, whose `Unknown` case is why a player-invented object is a circle.
+6. **#123** — glyphs become a sensor screen over `GridBackend`, which already does that
+   correctly and is used by nothing.
+7. **#117** — colour in the world stops meaning allegiance; allegiance moves to the
+   instruments, where it is per-observer and therefore correct.
+
+**No GPU in CI.** None of M6 is covered by a test. A shader that will not compile is a
+runtime, driver-specific fact: log it loudly, fall back to drawing without the chain, keep
+playing. The server and the unit tests must never need a shader.
+
+## Also open
+
+- **#34** — the last of M2, deliberately staged. `data/systems/*.json` still groups objects
+  by category instead of naming an archetype id, which is what a player-built object will
+  need in order to be written to a file at all (#39). Its progress comment lists the rest.
+- **M4 construction** — #38 (world mutation and `LayoutDelta`) first; #97 made it
+  load-bearing, because a layout-backed object can no longer disappear on a client.
+- **M5** — #109 among others: an agent still cannot take a mission or buy a ship.
 
 ## Things to know before touching this code
 
 - `Archetypes::Load()` must run **before** any entity is constructed. Entity constructors
-  look themselves up in the registry, so an entity built earlier has no components and no
-  glyph — silently undockable and invisible rather than failing.
-- The `world` block in `data/archetypes.json` is a transitional bridge to the world format
-  and is documented as such. It disappears when system files name archetypes by id.
+  look themselves up in the registry, so one built earlier has no components and no glyph —
+  silently undockable and invisible rather than failing.
+- Numbers that both sides need live in `sim/PlayerStep.h` — `SIM_DT`,
+  `MAX_CATCHUP_SECONDS`, `PLAYER_WEAPON_RANGE`. Each of them was two copies once, and each
+  time the copies drifted it looked like a gameplay bug (#115).
+- Every reach — docking, mining, salvage, a gate — belongs to the object being reached and
+  comes from its archetype, never a constant beside the rule (#34, #17).
 - Two archetype switches are deliberately total, with no `default:` — the layout builder in
-  `Simulation_Snapshot.cpp` and the context menu in `Game.cpp`. Omitting a kind there is an entity
-  the client never draws, or a right-click menu with nothing in it.
+  `Simulation_Snapshot.cpp` and the context menu in `Game.cpp`.
 - `documents/world_format.md` is the contract for `data/`. Anything added to an archetype
   belongs in its table.
 
@@ -45,12 +73,10 @@ each split into translation units named after what they decide).
 - `gh` is not on `PATH`. Prepend `C:\Program Files\GitHub CLI`.
 - Close `econserver` / `econspace` / `econagent` / `worldeditor` before rebuilding —
   Windows will not let the linker overwrite a running executable.
-- Never run `gh run watch` or anything else that blocks in the foreground; poll once with
-  `gh pr checks <n>`. `Analyze C++` (CodeQL) takes about ten minutes, so a PR is not
-  mergeable for at least that long.
-- PowerShell's `Set-Content` writes CRLF. Normalise anything written that way, or git
-  reports the whole file as changed.
-- **Do not stack pull requests.** Merging a base PR with `--delete-branch` closes the one
-  stacked on it, and GitHub will neither reopen nor retarget a closed PR — it has to be
-  recreated from scratch, losing its number and its description. That happened this
-  session (#85 → #86). Wait for CI on a PR before branching the next piece of work off it.
+- Never run `gh run watch` or anything else that blocks; poll once with `gh pr checks <n>`.
+  `Analyze C++` (CodeQL) takes about eleven minutes, so a PR is not mergeable before then.
+- Heredocs mangle `\n` and `\"` inside inline Python. Write scripts to the scratchpad with
+  the Write tool and run them by path.
+- **Do not stack pull requests.** Merging a base with `--delete-branch` closes the one
+  stacked on it, and GitHub will neither reopen nor retarget a closed PR (#85 → #86).
+  Parallel branches off `main` are fine; branches off an unmerged branch are not.
