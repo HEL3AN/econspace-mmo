@@ -5,6 +5,7 @@
 #include "entities/Ship.h"
 #include "missions/MissionSystem.h"
 #include "core/WorldLoader.h"
+#include "sim/PlayerStep.h"
 #include "sim/Protocol.h"
 #include "net/Transport.h"
 #include "net/Tcp.h"
@@ -53,8 +54,9 @@ class Game
 {
 public:
     // The client's fixed step: prediction and input numbering both run on it, and it must
-    // match the server's SIM_DT or one input stops meaning one tick.
-    static constexpr float SIM_DT = 1.0f / 60.0f;
+    // match the server's SIM_DT or one input stops meaning one tick -- so it is not a
+    // second copy of the number, it is the same one.
+    static constexpr float SIM_DT = Sim::SIM_DT;
 
     // Takes an already-established connection to an econserver host (main() dials it).
     // There is no offline mode: without a connection there is no world to render.

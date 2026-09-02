@@ -339,12 +339,21 @@ struct HostClient
     bool   throttleReported = false;
 };
 
-// The rate a client may spend ticks at, and how many it may bank. The burst covers an
-// honest client catching up after a frame hitch; beyond that the sender is outrunning the
-// simulation and the extra inputs are refused rather than queued -- the client already
-// replays unacknowledged inputs, so refusing is a correction, not a loss.
-static const double TICKS_PER_SECOND = 60.0;
-static const double MAX_TICK_BURST = 8.0;
+// The rate a client may spend ticks at, and how many it may bank. Beyond the burst the
+// sender is outrunning the simulation and the extra inputs are refused rather than queued
+// -- the client already replays unacknowledged inputs, so refusing is a correction, not a
+// loss.
+//
+// The two numbers bound different things, and only the rate is a cheat gate. Sustained
+// speed is what a speed hack needs; a burst is what an honest client produces while its
+// window is still opening, and measuring one startup showed the old allowance of eight
+// being spent before the first frame was drawn (#115).
+//
+// So the burst is a whole second of ticks. Someone who saves it up and spends it at once
+// gains one second of movement, once, and is then held to real time forever -- which is
+// not an exploit worth throttling every real player to prevent.
+static const double TICKS_PER_SECOND = 1.0 / (double)Sim::SIM_DT;
+static const double MAX_TICK_BURST = TICKS_PER_SECOND;
 
 // How long a socket may stay connected without saying who it is. A client that opens a
 // connection and never introduces itself is not a player; without a limit, sockets like
