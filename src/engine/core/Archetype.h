@@ -115,6 +115,9 @@ struct Archetype
     // something the reader has to infer.
     float  dockRange = 0.0f;          // Dockable: added to the object's radius
     float  extractRate = 0.0f;        // Mineable: units per second at skill 1
+    float  extractRange = 0.0f;       // Mineable: added to the object's radius
+    float  salvageRange = 0.0f;       // Salvageable: added to the object's radius
+    float  jumpRange = 0.0f;          // JumpLink: added to the object's radius
     float  weaponRange = 0.0f;        // Defensive
     float  weaponDamage = 0.0f;       // Defensive: per second
     float  storageCapacity = 0.0f;    // Storage

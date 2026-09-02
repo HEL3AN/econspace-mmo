@@ -8,7 +8,6 @@
 #include "sim/Simulation.h"
 #include "sim/ClientSession.h"
 #include "sim/PlayerStep.h"
-#include "sim/SimTuning.h"
 
 #include "core/World.h"
 #include "economy/Resource.h"
@@ -29,9 +28,10 @@
 
 namespace
 {
-// Player combat (server logic). The ranges are shared and live elsewhere: the weapon's
-// in Sim::PLAYER_WEAPON_RANGE, which the client also draws, and the mining laser's in
-// Sim::MINING_RANGE, which the standing-order executor also reads.
+// Player combat (server logic). The weapon's range is not here: it is in
+// Sim::PLAYER_WEAPON_RANGE, shared because the client draws the targeting circle from it.
+// Every other reach -- docking, mining, salvage, a gate -- belongs to the object being
+// reached and comes from its archetype (#34).
 constexpr float PLAYER_WEAPON_DAMAGE = 16.0f;  // player shot damage
 constexpr float PLAYER_FIRE_INTERVAL = 0.5f;   // cooldown between player shots
 }  // namespace
@@ -181,6 +181,12 @@ Simulation::PlayerMiningResult Simulation::StepPlayerMining(ClientSession& s, Sy
     Vector2 sp = s.ship->GetPosition();
     for (auto& e : st.entities)
     {
+        // Asks what can be mined, and from how far, rather than what is an AsteroidField
+        // (#34). Reading the ore itself still needs the class: how much is left is
+        // per-instance state, and moving that off the class is the last step of #34, not
+        // this one.
+        if (!e->Has(Component::Mineable))
+            continue;
         AsteroidField* field =
             e->GetKind() == EntityKind::Field ? static_cast<AsteroidField*>(e.get()) : nullptr;
         if (field == nullptr || !field->HasOre())
@@ -188,7 +194,7 @@ Simulation::PlayerMiningResult Simulation::StepPlayerMining(ClientSession& s, Sy
 
         float dx = field->GetPosition().x - sp.x;
         float dy = field->GetPosition().y - sp.y;
-        if (std::sqrt(dx * dx + dy * dy) > field->GetSize() + Sim::MINING_RANGE)
+        if (std::sqrt(dx * dx + dy * dy) > field->GetSize() + e->GetArchetype()->extractRange)
             continue;
 
         r.fieldId = field->GetId();
@@ -221,13 +227,16 @@ std::string Simulation::JumpGateDestIfNear(const ClientSession& s, SystemState& 
     for (const auto& e : st.entities)
         if (e->GetId() == gateId)
         {
-            if (e->GetKind() != EntityKind::Gate)
+            // Anything that links somewhere, at whatever distance it says it works from
+            // (#34). Where it leads stays on the instance -- two gates of one kind lead
+            // to different places, which is why that is not archetype data.
+            if (!e->Has(Component::JumpLink))
                 return std::string();
             const JumpGate* g = static_cast<const JumpGate*>(e.get());
             Vector2         sp = s.ship->GetPosition();
             float           dx = g->GetPosition().x - sp.x;
             float           dy = g->GetPosition().y - sp.y;
-            if (std::sqrt(dx * dx + dy * dy) > g->GetSize() + 200.0f)
+            if (std::sqrt(dx * dx + dy * dy) > g->GetSize() + e->GetArchetype()->jumpRange)
                 return std::string();
             return g->GetDestination();
         }
@@ -241,6 +250,10 @@ double Simulation::StepPlayerLoot(ClientSession& s, SystemState& st, int derelic
     for (auto& e : st.entities)
         if (e->GetId() == derelictId)
         {
+            // Salvageable, from the distance it declares (#34). What it pays out and
+            // whether it has been taken already are per-instance.
+            if (!e->Has(Component::Salvageable))
+                return 0.0;
             Derelict* dr =
                 e->GetKind() == EntityKind::Derelict ? static_cast<Derelict*>(e.get()) : nullptr;
             if (dr == nullptr || dr->IsLooted())
@@ -248,7 +261,7 @@ double Simulation::StepPlayerLoot(ClientSession& s, SystemState& st, int derelic
             Vector2 sp = s.ship->GetPosition();
             float   dx = dr->GetPosition().x - sp.x;
             float   dy = dr->GetPosition().y - sp.y;
-            if (std::sqrt(dx * dx + dy * dy) > dr->GetSize() + 120.0f)
+            if (std::sqrt(dx * dx + dy * dy) > dr->GetSize() + e->GetArchetype()->salvageRange)
                 return 0.0;
             dr->SetLooted();
             double reward = dr->GetReward();
@@ -265,6 +278,19 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, System
     PlayerSellResult r;
     if (!s.ship)
         return r;
+    // Selling needs somewhere that trades. Every station has a market today, so this
+    // refuses nothing yet -- it starts refusing the moment a player builds a dock that is
+    // not also a market (#44), which is the point of the component being real (#34).
+    bool trades = false;
+    for (const auto& e : st.entities)
+        if (e->GetId() == s.dockedStationId && e->Has(Component::Market))
+        {
+            trades = true;
+            break;
+        }
+    if (!trades)
+        return r;
+
     ResourceType type = (ResourceType)resourceType;
     int          have = s.ship->GetCargoAmount(type);
     int          sold = amount < have ? amount : have;

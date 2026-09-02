@@ -76,8 +76,19 @@ TEST_CASE("the shipped registry loads and covers every kind the world contains")
         CHECK(Archetypes::With(Component::Mineable).size() >= 1);
         CHECK(Archetypes::With(Component::JumpLink).size() >= 1);
 
+        // A component that says what can be done but not from how far is a component the
+        // simulation cannot act on: the pass would compare against zero and never match.
         for (const Archetype* a : Archetypes::With(Component::Dockable))
-            CHECK(a->dockRange > 0.0f);  // dockable with no range would never match
+            CHECK(a->dockRange > 0.0f);
+        for (const Archetype* a : Archetypes::With(Component::Mineable))
+        {
+            CHECK(a->extractRange > 0.0f);
+            CHECK(a->extractRate > 0.0f);
+        }
+        for (const Archetype* a : Archetypes::With(Component::Salvageable))
+            CHECK(a->salvageRange > 0.0f);
+        for (const Archetype* a : Archetypes::With(Component::JumpLink))
+            CHECK(a->jumpRange > 0.0f);
     }
 
     SUBCASE("every archetype has a glyph, which is what the primary renderer needs")

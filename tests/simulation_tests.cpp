@@ -8,7 +8,10 @@
 
 #include "core/Archetype.h"
 #include "core/Faction.h"
+#include "core/Archetype.h"
 #include "entities/AsteroidField.h"
+#include "entities/Derelict.h"
+#include "entities/JumpGate.h"
 #include "entities/NpcShip.h"
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
@@ -192,6 +195,14 @@ TEST_CASE("selling moves ore out of the hold and money into the account")
     f.s.ship->AddCargo(ore, 10);
     REQUIRE(f.s.ship->GetCargoAmount(ore) == 10);
 
+    // Docked at something that trades. The market is a component now, and asking for one
+    // is what makes it mean anything (#34).
+    auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
+                                             FactionId::TradersGuild, StationRole::TradeHub);
+    station->SetId(64);
+    f.World().entities.push_back(std::move(station));
+    REQUIRE(f.sim.StepPlayerDock(f.s, f.World()) == 64);
+
     const double                 before = f.s.account.GetMoney();
     Simulation::PlayerSellResult r = f.sim.StepPlayerSell(f.s, f.World(), (int)ore, 10);
 
@@ -206,6 +217,18 @@ TEST_CASE("selling moves ore out of the hold and money into the account")
         Simulation::PlayerSellResult over = f.sim.StepPlayerSell(f.s, f.World(), (int)ore, 999);
         CHECK(over.sold == 3);
         CHECK(f.s.ship->GetCargoAmount(ore) == 0);
+    }
+
+    SUBCASE("there is nobody to sell to in open space")
+    {
+        // The client only offers the trade screen while docked, so this was never
+        // reachable by playing -- but it was reachable by asking, and the server is the
+        // thing that decides.
+        f.sim.StepPlayerUndock(f.s);
+        f.s.ship->AddCargo(ore, 5);
+        Simulation::PlayerSellResult adrift = f.sim.StepPlayerSell(f.s, f.World(), (int)ore, 5);
+        CHECK(adrift.sold == 0);
+        CHECK(f.s.ship->GetCargoAmount(ore) == 5);  // still aboard
     }
 }
 
@@ -571,5 +594,91 @@ TEST_CASE("a ship has to be bought before it can be flown")
         std::remove(path.c_str());
         CHECK(old.Owns(0));
         CHECK(old.currentShip == 0);
+    }
+}
+
+TEST_CASE("how far a thing can be used is the thing's business, not the code's")
+{
+    // Every one of these reaches used to be a literal in the pass that enforced it -- 40
+    // for mining, 120 for salvage, 200 for a gate. They are archetype data now (#34), so
+    // these tests read the range from the same place the simulation does: what is pinned
+    // is the wiring, not the number, and a player-built object with its own reach (#44)
+    // gets the same treatment without touching any of this.
+    Fixture f;
+
+    SUBCASE("a wreck is looted from the distance it declares")
+    {
+        Derelict probe({ 0.0f, 0.0f }, 40.0f, "Wreck", 500.0);
+        REQUIRE(probe.GetArchetype() != nullptr);
+        const float reach = probe.GetSize() + probe.GetArchetype()->salvageRange;
+
+        const float x = 5000.0f;  // the ship starts at the origin, so x is the gap
+        auto wreck = std::make_unique<Derelict>(Vector2{ x, 0.0f }, 40.0f, "Old Hauler", 500.0);
+        wreck->SetId(71);
+        f.World().entities.push_back(std::move(wreck));
+
+        f.s.ship->Teleport({ x - (reach + 50.0f), 0.0f });
+        CHECK(f.sim.StepPlayerLoot(f.s, f.World(), 71) == doctest::Approx(0.0));  // too far
+
+        f.s.ship->Teleport({ x - (reach - 5.0f), 0.0f });
+        CHECK(f.sim.StepPlayerLoot(f.s, f.World(), 71) == doctest::Approx(500.0));
+        CHECK(f.sim.StepPlayerLoot(f.s, f.World(), 71) == doctest::Approx(0.0));  // once only
+    }
+
+    SUBCASE("a gate answers only from the distance it declares")
+    {
+        JumpGate probe({ 0.0f, 0.0f }, 150.0f, "Gate", "reach");
+        REQUIRE(probe.GetArchetype() != nullptr);
+        const float reach = probe.GetSize() + probe.GetArchetype()->jumpRange;
+
+        const float x = 5000.0f;
+        auto        gate =
+            std::make_unique<JumpGate>(Vector2{ x, 0.0f }, 150.0f, "Gate to Sigma Reach", "reach");
+        gate->SetId(72);
+        f.World().entities.push_back(std::move(gate));
+
+        f.s.ship->Teleport({ x - (reach + 100.0f), 0.0f });
+        CHECK(f.sim.JumpGateDestIfNear(f.s, f.World(), 72).empty());
+        f.s.ship->Teleport({ x - (reach - 10.0f), 0.0f });
+        CHECK(f.sim.JumpGateDestIfNear(f.s, f.World(), 72) == "reach");
+    }
+
+    SUBCASE("a belt is mined from the distance it declares")
+    {
+        AsteroidField probe({ 0.0f, 0.0f }, 30.0f, "Belt", AllResourceTypes()[0], 1000);
+        REQUIRE(probe.GetArchetype() != nullptr);
+        const float reach = probe.GetSize() + probe.GetArchetype()->extractRange;
+
+        const float x = 5000.0f;
+        auto        belt = std::make_unique<AsteroidField>(Vector2{ x, 0.0f }, 30.0f, "Belt",
+                                                           AllResourceTypes()[0], 1000);
+        belt->SetId(73);
+        f.World().entities.push_back(std::move(belt));
+        f.s.ship->SetMiningOn(true);
+
+        const float dt = 1.0f / 60.0f;
+        int         mined = 0;
+        f.s.ship->Teleport({ x - (reach + 100.0f), 0.0f });
+        for (int i = 0; i < 600; i++)
+            mined += f.sim.StepPlayerMining(f.s, f.World(), 1.0f, dt).minedUnits;
+        CHECK(mined == 0);  // out of reach
+
+        f.s.ship->Teleport({ x - (reach - 5.0f), 0.0f });
+        for (int i = 0; i < 600; i++)
+            mined += f.sim.StepPlayerMining(f.s, f.World(), 1.0f, dt).minedUnits;
+        CHECK(mined > 0);
+    }
+
+    SUBCASE("an object without the component is not a target for the verb at all")
+    {
+        // A station is not salvage and does not lead anywhere, and neither pass should
+        // need to know what a station is to say so.
+        auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
+                                                 FactionId::TradersGuild, StationRole::TradeHub);
+        station->SetId(74);
+        f.World().entities.push_back(std::move(station));
+
+        CHECK(f.sim.StepPlayerLoot(f.s, f.World(), 74) == doctest::Approx(0.0));
+        CHECK(f.sim.JumpGateDestIfNear(f.s, f.World(), 74).empty());
     }
 }

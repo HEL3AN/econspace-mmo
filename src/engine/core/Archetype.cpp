@@ -145,7 +145,12 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
         switch (c)
         {
             case Component::Dockable: a.dockRange = p.value("range", a.dockRange); break;
-            case Component::Mineable: a.extractRate = p.value("extractRate", a.extractRate); break;
+            case Component::Mineable:
+                a.extractRate = p.value("extractRate", a.extractRate);
+                a.extractRange = p.value("range", a.extractRange);
+                break;
+            case Component::Salvageable: a.salvageRange = p.value("range", a.salvageRange); break;
+            case Component::JumpLink: a.jumpRange = p.value("range", a.jumpRange); break;
             case Component::Defensive:
                 a.weaponRange = p.value("range", a.weaponRange);
                 a.weaponDamage = p.value("damage", a.weaponDamage);
@@ -162,11 +167,8 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
                 a.buildSeconds = p.value("buildSeconds", a.buildSeconds);
                 break;
             // No archetype-level parameters. What varies about a market is per system,
-            // and where a gate leads or what a wreck pays out is per instance — those
-            // belong to the object, not to the kind of object.
-            case Component::Market:
-            case Component::JumpLink:
-            case Component::Salvageable: break;
+            // not per kind of station.
+            case Component::Market: break;
         }
     }
     return true;

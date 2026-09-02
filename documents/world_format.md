@@ -151,14 +151,19 @@ declaring the component, without the pass being edited.
 | Component | Parameters | Meaning |
 |------|----------|--------|
 | `dockable` | `range` | a ship can dock; `range` is added to the object's radius |
-| `mineable` | `extractRate` | holds a deposit; units per second at skill 1 |
+| `mineable` | `extractRate`, `range` | holds a deposit; `extractRate` is units per second at skill 1 |
 | `market` | — | buys and sells resources |
 | `defensive` | `range`, `damage` | fires on hostiles; `damage` is per second |
 | `storage` | `capacity` | holds cargo that is not aboard a ship |
-| `jumpLink` | — | connects this system to another |
+| `jumpLink` | `range` | connects this system to another |
 | `hazard` | `radius`, `hidesShips` | changes conditions inside it; `radius` 0 means the object's own radius |
-| `salvageable` | — | pays out once to whoever reaches it first |
+| `salvageable` | `range` | pays out once to whoever reaches it first |
 | `buildable` | `cost`, `buildSeconds` | a player can construct one |
+
+Every `range` is added to the object's own radius, and every verb that reaches for
+something reads it from the object being reached rather than from a constant beside the
+rule. That is what lets a player-built dock, belt or gate work at its own distance without
+the docking, mining or jump pass being edited (#44).
 
 Components carrying no parameters are still written as `{}` — presence is what matters.
 
