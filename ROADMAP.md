@@ -80,7 +80,8 @@ Tracked on the [milestones page](../../milestones); the sequence below is the pl
 
    A review of that work then turned up what stood between a demo and a service, and closed it: one account could be played by two connections at once, each with the whole balance (#105); an account name was a claim rather than a credential (#106); nothing in CI had ever connected two clients, which is why neither was caught by a test (#107); and the comments still described the single-player architecture all of it replaced (#108). What a server still lacks before it can face strangers is transport encryption — everything but the secret travels in the clear — and any rule at all about players fighting (#94).
 5. **Constructible galaxy** — world mutation, `LayoutDelta`, construction, and structures with real macro effects.
-6. **Fleets & depth** — fleet command over agents, agents that can take a mission or buy a ship (#109), economic and progression depth, scale work (sharding, larger galaxies).
+6. **The look** — the visual direction settled by playing it: generated art rather than glyphs. Lighting from a system's own stars, a material that shades a simple silhouette, silhouettes described in data, and a screen treatment — bloom, pixels, scanlines, noise — that can be tuned and switched off in game. The point is a world players can build in: an object nobody drew is dressed by the same passes as everything else. Glyphs keep the one job they are good at, a sensor grid.
+7. **Fleets & depth** — fleet command over agents, agents that can take a mission or buy a ship (#109), economic and progression depth, scale work (sharding, larger galaxies).
 
 ## Help wanted
 

@@ -413,3 +413,61 @@ multi-player before the client is.
 were rewritten around that. The compensation is that the compiler now refuses code that
 assumes there is one player, which is exactly the assumption that was everywhere.
 
+---
+
+## 2026-09-03 — The look is generated, not drawn; glyphs were the wrong answer to the right question
+
+**What is reversed.** Two entries above are overturned by this one. "Glyphs are the look,
+and the grammar is narrow on purpose" (2026-08-13, #36) made the glyph backend the primary
+renderer. "Colour — whose it is" made allegiance one of its three channels. Both are wrong,
+for different reasons, and both were found by running the game rather than by thinking
+about it.
+
+**Glyphs.** The implementation scales a character to the object's radius in world units, so
+a 90-unit station is a `#` 288 units tall. That is not a text mode; it is a sprite atlas
+whose sprites happen to be letters. Two ideas had been merged under one word: a glyph as a
+*look*, and a grid as a *model of space*. Dwarf Fortress is the second — a cell is the unit
+of space and everything quantises to it — and nothing here quantises anything, nor should
+it, because the flight is continuous and prediction, docking and orders all rest on that.
+
+Continuous space has scale; a text mode does not. That contradiction is why the third
+channel — size taken from the world — is exactly what stops it being the thing it was
+imitating.
+
+Glyphs keep a place, a smaller and truer one: a projection of the world onto a fixed grid,
+which is a sensor readout rather than a picture. `GridBackend` already does that correctly
+and is used by nothing (#123).
+
+**Colour.** Allegiance is not a property of an object. It is a property of an object *and
+who is looking at it* — the same trade hub is a friend to one player and a target to
+another, and since #3 both are in the system at once looking at the same pixels. A colour
+baked into the object cannot be right for both. It also spends the palette: if red means
+hostile, nothing that would look good in red may have it. Allegiance moves to the
+instruments — radar, overview, target panel, the glyph sensor view — where a reading that
+depends on the observer is correct (#117).
+
+**What replaces it.** Generated art: lighting from the system's own stars, a material that
+shades a simple silhouette, and silhouettes described in data rather than compiled in. Over
+the top, a screen treatment in the spirit of Duskers — bloom, pixels, scanlines, noise —
+switchable and tunable in game.
+
+**Why this answers the question glyphs were answering.** The requirement has not changed:
+a world players can build (#44) needs objects nobody drew to have a look. Glyphs satisfied
+that by giving up on looking good. Generated art satisfies it differently — most of the
+impression lives in the treatment and the lighting, which apply to everything equally, so a
+structure a player invents is dressed by the same pass as a station that shipped with the
+game. A hand-made sprite still wins where one exists; the generator covers the rest.
+
+**The order of work is part of the decision.** The gallery first (#118), because a look is
+tuned by eye and the current loop costs a minute per look. Then lighting (#119) and the
+treatment (#120), which change the most for the least and can be judged on the shapes that
+already exist. Materials (#121) after that, and silhouettes (#122) last — simple shapes
+under good light beat elaborate ones under bad, and designing shapes before knowing what
+flatters them is how the elaborate ones happen.
+
+**What it costs.** Shaders are the one place where compiling is not working: the failures
+are at runtime and depend on the driver. There is no GPU in CI, so none of this is covered
+by a test, and the code has to keep running when a shader will not compile — loudly, and
+without the chain. That is a real reduction in how much the test suite protects, and it is
+accepted deliberately: the alternative is a look nobody can judge.
+
