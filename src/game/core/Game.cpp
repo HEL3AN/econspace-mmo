@@ -133,8 +133,9 @@ void Game::Run()
         // The world itself is computed by econserver; the client only sends commands,
         // predicts its own ship, and draws received snapshots.
         simAccumulator_ += dt;
-        if (simAccumulator_ > 0.25f)
-            simAccumulator_ = 0.25f;
+        // The server accepts a burst this large and no larger; see Sim::MAX_CATCHUP_SECONDS.
+        if (simAccumulator_ > Sim::MAX_CATCHUP_SECONDS)
+            simAccumulator_ = Sim::MAX_CATCHUP_SECONDS;
         while (simAccumulator_ >= SIM_DT)
         {
             if (mode_ == GameMode::Flying)
