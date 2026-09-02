@@ -104,5 +104,7 @@ TEST_CASE("the real registry survives a round trip through the writer")
     std::string t = original;
     REQUIRE(ArchetypeEdit::SetField(t, "star.yellow", "color", "[253, 249, 0, 255]"));
     REQUIRE(ArchetypeEdit::SetField(t, "star.yellow", "size", "600"));
+    REQUIRE(ArchetypeEdit::SetField(t, "star.yellow", "light",
+                                    "{ \"radius\": 62000, \"intensity\": 1.00 }"));
     CHECK(t == original);
 }

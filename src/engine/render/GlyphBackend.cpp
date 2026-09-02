@@ -17,11 +17,94 @@ void GlyphAt(const char* glyph, Vector2 centre, float height, Color c)
     DrawTextEx(font, glyph, { centre.x - extent.x * 0.5f, centre.y - extent.y * 0.5f }, height,
                0.0f, c);
 }
+
+// A surface's colour under a light sample: its own colour dimmed to the ambient floor and
+// lifted back by however much light reaches it, then tinted by the colour of that light.
+//
+// The object keeps its own hue when unlit, which is the point of the ambient floor -- a
+// game that is honestly black is a game nobody can read, and this is a space sim where
+// most of the screen is far from any star.
+Color Lit(Color base, const Lighting& lg, const Lighting::Sample& s)
+{
+    if (lg.Empty())
+        return base;
+
+    const float k = lg.ambient + (1.0f - lg.ambient) * s.strength;
+    float       r = base.r * k, g = base.g * k, b = base.b * k;
+
+    // The tint multiplies rather than replaces, so a red star reddens what it lights
+    // without turning a blue hull red, and it fades out with the light itself.
+    const float m = 0.6f * s.strength;
+    r = r * (1.0f - m) + r * (s.tint.r / 255.0f) * m;
+    g = g * (1.0f - m) + g * (s.tint.g / 255.0f) * m;
+    b = b * (1.0f - m) + b * (s.tint.b / 255.0f) * m;
+
+    return { (unsigned char)r, (unsigned char)g, (unsigned char)b, base.a };
+}
+
+bool HasDirection(const Lighting::Sample& s)
+{
+    return s.dir.x != 0.0f || s.dir.y != 0.0f;
+}
+
+// A thing that is itself a light is never shaded by one. Shading a star by the light it
+// emits is how a sun ends up looking like a moon, and reading it off the item rather than
+// off EntityKind means a beacon a player builds gets the same exemption for free.
+bool Emissive(const Item& it)
+{
+    return it.lightRadius > 0.0f && it.lightIntensity > 0.0f;
+}
+
+// The arc where the light grazes a round silhouette. Cheap, and it does more for reading
+// an object as solid than anything else here.
+//
+// Only for silhouettes that actually are round. A rim traced at the radius of a triangle
+// is a crescent floating in empty space beside the ship, which is what it looked like the
+// first time this was drawn. Shapes that are not discs get their rim when they get real
+// silhouettes (#122).
+void RimArc(Vector2 pos, float size, const Lighting& lg, const Lighting::Sample& s,
+            float arcDegrees, float thickness)
+{
+    if (lg.Empty() || s.strength <= 0.01f || !HasDirection(s))
+        return;
+    const float a = std::atan2(s.dir.y, s.dir.x) * RAD2DEG;
+    const Color rim{ s.tint.r, s.tint.g, s.tint.b,
+                     (unsigned char)(210.0f * std::min(1.0f, s.strength)) };
+    DrawRing(pos, size * (1.0f - thickness), size, a - arcDegrees, a + arcDegrees, 24, rim);
+}
+
+// A round body with a lit side. Three offset discs and a rim rather than a shader: #121
+// replaces the drawing, and what #119 is for is knowing where the light is.
+void ShadeDisc(Vector2 pos, float size, Color base, const Lighting& lg, const Lighting::Sample& s)
+{
+    if (lg.Empty() || !HasDirection(s) || s.strength <= 0.01f)
+    {
+        DrawCircleV(pos, size, Lit(base, lg, s));
+        return;
+    }
+
+    Lighting::Sample unlit = s;
+    unlit.strength = 0.0f;
+    DrawCircleV(pos, size, Lit(base, lg, unlit));
+
+    // Each step is smaller, brighter and more opaque than the last, so the lit side
+    // arrives at the full brightness the light actually delivers and the terminator is a
+    // ramp rather than an edge. Faint steps here were the first attempt, and they made a
+    // lit planet darker overall than an unlit one -- which is worse than no lighting.
+    for (int i = 1; i <= 3; i++)
+    {
+        const float      t = i / 4.0f;
+        Lighting::Sample step = s;
+        step.strength = s.strength * (0.45f + 0.55f * t);
+        DrawCircleV({ pos.x + s.dir.x * size * 0.42f * t, pos.y + s.dir.y * size * 0.42f * t },
+                    size * (1.0f - 0.55f * t), Fade(Lit(base, lg, step), 0.55f + 0.4f * t));
+    }
+}
 }  // namespace
 
 void GlyphBackend::Draw(const Item& item)
 {
-    Color c = item.color;
+    Color c = Emissive(item) ? item.color : Lit(item.color, lighting_, lighting_.At(item.pos));
     if (item.intensity < 1.0f)
         c = Fade(c, 0.35f + 0.65f * item.intensity);
 
@@ -113,7 +196,11 @@ void GlyphBackend::DrawDirectional(const Item& item, Color c)
 
 void ShapeBackend::Draw(const Item& item)
 {
-    Color c = item.color;
+    // What the light does to this object, asked once. An object is small next to the
+    // distance to its star, so one sample at its centre is the whole of the difference.
+    const Lighting::Sample light = lighting_.At(item.pos);
+
+    Color c = Emissive(item) ? item.color : Lit(item.color, lighting_, light);
     if (item.intensity < 1.0f)
         c = Fade(c, 0.35f + 0.65f * item.intensity);
 
@@ -130,7 +217,15 @@ void ShapeBackend::Draw(const Item& item)
 
         case EntityKind::Planet:
             if (!Tex::DrawSprite(item.sprite.c_str(), item.pos, item.size, 0.0f, c))
-                DrawCircleV(item.pos, item.size, c);
+                ShadeDisc(item.pos, item.size, item.color, lighting_, light);
+            RimArc(item.pos, item.size, lighting_, light, RIM_ARC, RIM_THICKNESS);
+            return;
+
+        case EntityKind::Unknown:
+            // Whatever a player invented. It gets the same light as everything else,
+            // which is the whole argument for lighting over drawing (#44).
+            ShadeDisc(item.pos, item.size, item.color, lighting_, light);
+            RimArc(item.pos, item.size, lighting_, light, RIM_ARC, RIM_THICKNESS);
             return;
 
         case EntityKind::Station:
@@ -205,11 +300,11 @@ void ShapeBackend::Draw(const Item& item)
 
             // The sprite is drawn nose-up, so the heading gets a quarter turn added.
             if (!Tex::DrawSprite(item.sprite.c_str(), item.pos, item.size,
-                                 item.heading * RAD2DEG + 90.0f, item.color))
+                                 item.heading * RAD2DEG + 90.0f, c))
             {
                 DrawTriangle(toWorld(item.size, 0.0f),
                              toWorld(-item.size * 0.7f, -item.size * 0.6f),
-                             toWorld(-item.size * 0.7f, item.size * 0.6f), item.color);
+                             toWorld(-item.size * 0.7f, item.size * 0.6f), c);
             }
 
             // Hull bar over a damaged ship. Not drawn for an intact one — a bar over
@@ -223,8 +318,6 @@ void ShapeBackend::Draw(const Item& item)
             }
             return;
         }
-
-        case EntityKind::Unknown: DrawCircleV(item.pos, item.size, c); return;
     }
 }
 

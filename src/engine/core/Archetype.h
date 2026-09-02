@@ -81,6 +81,13 @@ struct Visual
     Color       color = { 255, 255, 255, 255 };
     int         layer = 0;  // draw order, lowest first
     GlyphStyle  style = GlyphStyle::Point;
+
+    // What this object lights, if anything (#119). A star is the obvious case and a
+    // beacon a player builds is the point: saying it here rather than testing for
+    // EntityKind::Star means a new kind of light needs no renderer change, which is the
+    // same bargain the rest of the archetype makes. Zero radius means it emits nothing.
+    float lightRadius = 0.0f;     // world units at which its light has fallen to nothing
+    float lightIntensity = 0.0f;  // brightness at the source
 };
 
 // One entry of the registry.

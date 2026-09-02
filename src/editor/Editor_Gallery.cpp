@@ -133,6 +133,11 @@ void Editor::OpenGallery()
     EnterGalleryMode(true);
 }
 
+void Editor::UseShapes()
+{
+    backend_ = &shapeBackend_;
+}
+
 void Editor::EnterGalleryMode(bool on)
 {
     mode_ = on ? Mode::Gallery : Mode::System;
@@ -169,6 +174,41 @@ int Editor::GalleryHit(Vector2 p) const
         if (CheckCollisionPointRec(p, GalleryCardRect(i)))
             return i;
     return -1;
+}
+
+// A card has no system around it, so the light is made up -- but made up in the same
+// shape the world produces: a Render::Light at a distance, which is what the game builds
+// from its stars. Tuning against anything else would be tuning against a different thing.
+Render::Lighting Editor::GalleryLighting(Vector2 at, float size) const
+{
+    Render::Lighting lg;
+    lg.ambient = galleryAmbient_;
+    if (!galleryLit_)
+        return lg;  // empty means unlit, which is full colour -- the old picture
+
+    // Placed just outside the object, with the intensity solved backwards from the
+    // falloff so the strength slider means what it says: at 1.00 the object is fully lit
+    // whatever its size. A slider that reads 1.00 over a half-lit object is a slider that
+    // has to be re-learned every time it is used.
+    const float dist = size * 3.0f;
+    const float reach = dist * 4.0f;
+    const float t = 1.0f - dist / reach;
+    const float compensate = 1.0f / (t * t);
+
+    lg.lights.push_back({ { at.x + std::cos(galleryLightAngle_) * dist,
+                            at.y + std::sin(galleryLightAngle_) * dist },
+                          Color{ 255, 244, 214, 255 },
+                          galleryLightStrength_ * compensate,
+                          reach });
+    if (gallerySecondLight_)
+    {
+        const float a2 = galleryLightAngle_ + PI * 0.8f;
+        lg.lights.push_back({ { at.x + std::cos(a2) * dist, at.y + std::sin(a2) * dist },
+                              Color{ 150, 190, 255, 255 },
+                              galleryLightStrength_ * compensate * 0.55f,
+                              reach });
+    }
+    return lg;
 }
 
 Render::Item Editor::GalleryItem(const Archetype& a, Vector2 pos, float size) const
@@ -253,7 +293,10 @@ void Editor::DrawGallery()
 
         BeginClip(Clip(grid, box));
         BeginMode2D(cam);
-        backend_->Draw(GalleryItem(a, { 0.0f, 0.0f }, size));
+        // Through Present rather than Draw, so the card is lit by the same path the world
+        // is -- and so a card can never inherit the lights of whatever drew last.
+        Render::Present({ GalleryItem(a, { 0.0f, 0.0f }, size) },
+                        GalleryLighting({ 0.0f, 0.0f }, size), *backend_);
         EndMode2D();
         EndScissorMode();
 
@@ -285,6 +328,21 @@ void Editor::DrawGalleryPanel()
     y += 26.0f;
 
     Toggle({ x, y, w, 24.0f }, "True scale (compare sizes)", galleryTrueScale_);
+    y += 30.0f;
+
+    // The lighting section (#119). Flat colour is what makes a simple shape read as a
+    // toy; these are the knobs that decide whether it stops doing that.
+    Ui::Text("LIGHT", (int)x, (int)y, 12, Ui::ACCENT);
+    y += 20.0f;
+    Toggle({ x, y, w, 24.0f }, galleryLit_ ? "lit" : "unlit (flat colour)", galleryLit_);
+    y += 30.0f;
+    Slider({ x, y, w, 28.0f }, "angle", galleryLightAngle_, 0.0f, 2.0f * PI, "%.2f");
+    y += 32.0f;
+    Slider({ x, y, w, 28.0f }, "strength", galleryLightStrength_, 0.0f, 1.0f, "%.2f");
+    y += 32.0f;
+    Slider({ x, y, w, 28.0f }, "ambient floor", galleryAmbient_, 0.0f, 1.0f, "%.2f");
+    y += 32.0f;
+    Toggle({ x, y, w, 24.0f }, "second star (cooler, opposite)", gallerySecondLight_);
     y += 34.0f;
 
     // The half of a look that is not what the object is but what is happening to it.
@@ -348,6 +406,24 @@ void Editor::DrawGalleryPanel()
     {
         a->visual.layer = (int)lroundf(layer);
         NoteLookEdit(a->id, "layer");
+    }
+    y += 34.0f;
+
+    // What this archetype emits (#119). Here rather than in the JSON by hand because how
+    // far a star reaches is the single number that decides whether a system reads as lit
+    // or as a dark map with a lamp in the middle, and it is only decidable by looking.
+    float lightR = a->visual.lightRadius;
+    if (Slider({ x, y, w, 28.0f }, "light reach", lightR, 0.0f, 90000.0f, "%.0f"))
+    {
+        a->visual.lightRadius = roundf(lightR / 1000.0f) * 1000.0f;
+        NoteLookEdit(a->id, "light");
+    }
+    y += 32.0f;
+    float lightI = a->visual.lightIntensity;
+    if (Slider({ x, y, w, 28.0f }, "light intensity", lightI, 0.0f, 2.0f, "%.2f"))
+    {
+        a->visual.lightIntensity = lightI;
+        NoteLookEdit(a->id, "light");
     }
     y += 38.0f;
 
@@ -425,6 +501,15 @@ static std::string LookFieldJson(const Archetype& a, const std::string& key)
         return std::to_string(a.visual.layer);
     if (key == "size")
         return std::to_string((long long)llroundf(a.defaultSize));
+    if (key == "light")
+    {
+        std::ostringstream os;
+        // A fixed two decimals rather than %g, so the text a save produces is the text
+        // the file already holds and re-saving an unchanged light changes nothing.
+        os << "{ \"radius\": " << (long long)llroundf(a.visual.lightRadius)
+           << ", \"intensity\": " << TextFormat("%.2f", (double)a.visual.lightIntensity) << " }";
+        return os.str();
+    }
     if (key == "color")
     {
         std::ostringstream os;

@@ -91,7 +91,9 @@ void Editor::DrawEntityPreview(Rectangle box, const std::string& archetypeId)
 
     BeginScissorMode((int)box.x, (int)box.y, (int)box.width, (int)box.height);
     BeginMode2D(cam);
-    backend_->Draw(e->Describe());
+    // Through Present with no lights: an icon has no star near it, and without saying so
+    // it would be lit by whatever the system view set last (#119).
+    Render::Present({ e->Describe() }, *backend_);
     EndMode2D();
     EndScissorMode();
 }

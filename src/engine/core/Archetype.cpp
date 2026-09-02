@@ -87,6 +87,12 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
         err = "archetype '" + a.id + "': unknown style '" + style + "'";
         return false;
     }
+    if (j.contains("light") && j["light"].is_object())
+    {
+        a.visual.lightRadius = j["light"].value("radius", 0.0f);
+        a.visual.lightIntensity = j["light"].value("intensity", 1.0f);
+    }
+
     if (j.contains("color"))
         a.visual.color = ColorFromJson(j["color"], a.visual.color);
     a.defaultSize = j.value("size", 0.0f);

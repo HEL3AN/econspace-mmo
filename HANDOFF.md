@@ -8,6 +8,11 @@ Nothing is in flight. `main` is green on both platforms: warning-clean build, un
 all four `econserver` self-tests, `econagent selftest` against a live server, and a
 two-client step that also checks a wrong secret is refused.
 
+**M6 is two issues in.** The gallery (#118) and the lighting (#119) are done and the
+milestone resumes at **#120, the screen treatment**. Everything M6 touches is judged by
+looking, so start by looking: `worldeditor gallery shapes` puts the whole registry on one
+screen under the current light.
+
 **M3 "Multiplayer core" is closed** — 15 issues. Each connection has its own
 `ClientSession` (#3); players see each other in a system (#4); an account remembers where
 it was, what it carried, which missions it took and which ships it owns (#49, #5), refuses
@@ -29,12 +34,22 @@ what it costs. Work in this order — the order is part of the decision:
    **in place**: `ArchetypeEdit::SetField` replaces one value in the file text and leaves
    every other byte alone, because a parse-edit-dump turns a two-character change into a
    two-hundred-line diff. That part *is* unit-tested even though the picture is not.
-2. **#119 lighting** — a *list* of lights per system, built from the `SystemLayout` the
-   client already holds, so no protocol change. Two-star systems and glowing player
-   structures are wanted, so it is a list from the start.
-3. **#120 screen treatment** — bloom, pixels, scanlines, noise; tunable and switchable in
-   game, separately for the HUD. Before silhouettes on purpose: it changes the most for the
-   least, on the shapes that already exist.
+2. ~~**#119 lighting**~~ — **done**. A light is an archetype field (`"light": { "radius",
+   "intensity" }`), not a test for `EntityKind::Star`: two-star systems work today and a
+   beacon a player builds becomes a light with no renderer change. `Render::Lighting`
+   holds the list and answers "what reaches this point"; falloff goes to **zero** at the
+   radius rather than inverse-square, so a star across the system cannot decide which way
+   something near you is lit. No lights means *unlit* — full colour — not black. The
+   gallery tunes it against a synthetic source and saves the star's reach back to data.
+3. **#120 screen treatment — next.** Bloom, pixels, scanlines, noise; tunable and
+   switchable in game, separately for the HUD. Before silhouettes on purpose: it changes
+   the most for the least, on the shapes that already exist. The ambient floor belongs on
+   that settings surface too — it is a look decision that currently has no home in game.
+
+   Note what M6 has cost so far and keep paying it: **every number in the look was set by
+   eye, not derived** — the ambient floor, how far a star reaches, how hard the terminator
+   ramps. They are the owner's call. Anything new that is tuned this way belongs in the
+   gallery's panel and in a data file it can write, not in a constant.
 4. **#121 materials** — a shader per object fed by `Render::Item` state (`intensity`,
    `heading`, `thrusting`) and the scene's lights.
 5. **#122 silhouettes** — shapes from `archetypes.json`, replacing `ShapeBackend`'s switch
@@ -74,6 +89,13 @@ playing. The server and the unit tests must never need a shader.
 - `Render::FromArchetype` is the only mapping from an archetype's `Visual` to a
   `Render::Item`; `Entity::Describe()` goes through it and so does the gallery. A second
   mapping is how a tool starts showing a picture the game does not.
+- **A backend outlives the scene it drew.** `Present` states the lighting every time,
+  including when there is none, because otherwise a preview drawn beside a system view is
+  lit by that system's star. Anything calling `IBackend::Draw` directly inherits the last
+  lights set — the palette icon and the gallery card go through `Present` for that reason.
+- A rim highlight needs a **round** silhouette. Traced at the radius of a triangle it is a
+  crescent floating in empty space beside the ship; that is what it looked like the first
+  time. Shapes that are not discs get theirs with real silhouettes (#122).
 
 ## Environment
 

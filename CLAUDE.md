@@ -117,6 +117,13 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   every player verb takes the session it acts for. There is no "active system" either: a
   session carries the system it is in, and every system is stepped the same way. Anything
   reintroduced as a member of `Simulation` is shared by every player on the server.
+- **A light is a property of an object, not of a system** (#119). Anything whose archetype
+  has a `light` lights the system it is in, so two stars work and a beacon a player builds
+  needs no renderer change. The falloff reaches **zero** at the radius on purpose — an
+  inverse square never does, and a star on the far side of a system would then decide which
+  way something near you is lit. An empty light list means *unlit*, which is full colour,
+  not black; every caller that draws straight into a backend must state its own lighting,
+  because a backend keeps the last one it was given.
 - **Entities no longer draw themselves.** `Entity::Draw()` is gone; an entity returns a
   `Render::Item` from `Describe()` and a backend draws it (#35). Adding a shape means
   editing a backend, not a class. What an object *looks like* (glyph, sprite, colour,

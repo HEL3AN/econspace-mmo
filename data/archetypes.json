@@ -9,6 +9,7 @@
             "color": [253, 249, 0, 255],
             "layer": 0,
             "size": 600,
+            "light": { "radius": 62000, "intensity": 1.00 },
             "components": {}
         },
         {
@@ -20,6 +21,7 @@
             "color": [230, 41, 55, 255],
             "layer": 0,
             "size": 700,
+            "light": { "radius": 48000, "intensity": 0.90 },
             "components": {}
         },
         {
@@ -31,6 +33,7 @@
             "color": [102, 191, 255, 255],
             "layer": 0,
             "size": 550,
+            "light": { "radius": 78000, "intensity": 1.10 },
             "components": {}
         },
 

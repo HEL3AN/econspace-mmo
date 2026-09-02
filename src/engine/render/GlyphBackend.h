@@ -26,6 +26,10 @@ class GlyphBackend : public IBackend
 public:
     const char* Name() const override { return "glyph"; }
 
+    // A character has no lit side, but it does have a colour, and a readout of a system
+    // lit by a red giant should not be the same white it would be under a blue star.
+    void SetLighting(const Lighting& l) override { lighting_ = l; }
+
     void Draw(const Item& item) override;
 
     // Glyph height as a fraction of the object's diameter. A character's ink fills
@@ -44,6 +48,8 @@ private:
     void DrawPoint(const Item& item, Color c);
     void DrawRegion(const Item& item, Color c);
     void DrawDirectional(const Item& item, Color c);
+
+    Lighting lighting_;  // empty means unlit, which is full colour
 };
 
 // The vector-shape and sprite look the game shipped with, moved out of the entity
@@ -55,7 +61,17 @@ class ShapeBackend : public IBackend
 public:
     const char* Name() const override { return "shapes"; }
 
+    void SetLighting(const Lighting& l) override { lighting_ = l; }
+
     void Draw(const Item& item) override;
+
+    // How far around the light direction the rim highlight reaches, and how thick it is
+    // as a fraction of the object's radius. A rim is what tells a disc from a sticker.
+    static constexpr float RIM_ARC = 62.0f;
+    static constexpr float RIM_THICKNESS = 0.09f;
+
+private:
+    Lighting lighting_;  // a copy: a backend outlives the scene that handed it over
 };
 
 }  // namespace Render

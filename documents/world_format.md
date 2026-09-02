@@ -100,6 +100,7 @@ registry says *what it is and what it can do*, once, for every object of that ki
 | `style` | string | `point` (default), `region` or `directional` — see below |
 | `color` | [r, g, b, a] | 0..255; `a` defaults to 255 |
 | `layer` | int | draw order, lowest first; the same number means the same thing in every backend |
+| `light` | object | **optional** — this object lights the system: `radius` (world units at which its light has fallen to nothing) and `intensity` (default 1.0). Omit it and the object emits nothing. See below |
 | `size` | number | default radius when the instance does not give its own |
 | `world` | object | where this archetype lives in a system file — see below |
 | `components` | object | what the object can do — see below |
@@ -109,6 +110,35 @@ editor's gallery (`worldeditor gallery`, or F3), which shows every archetype at 
 writes the changed values straight back into this file. It edits the text in place rather
 than reformatting it, so what lands in the diff is the value that changed and nothing
 else. Everything else in an archetype is still edited by hand.
+
+### `light` — what lights a system
+
+A system's lighting is built from the objects in it, not from a field on the system (#119).
+Anything whose archetype has a `light` is a light: the three stars carry one, and a beacon
+a player builds becomes one the moment its archetype says so — no renderer change, which is
+the same bargain the rest of the archetype makes.
+
+That it is a **list** matters. A system with two stars is something this format can already
+describe, and an object between two equal stars has no dark side at all. Objects light from
+the strongest few sources; a light past its radius contributes nothing rather than a little,
+so a star on the far side of a system cannot decide which way something near you is lit.
+
+```json
+"light": { "radius": 62000, "intensity": 1.00 }
+```
+
+A reach well past `SYSTEM_RADIUS` (25 000) is normal: the falloff is quadratic, so a star
+that only just covers its system leaves the outskirts almost unlit. These numbers were set
+by looking at a whole system in the editor, not derived.
+
+Ambient light is a floor, not a property of the data: nothing is ever drawn fully black,
+because a space sim that is honestly black is unreadable, and this one is played zoomed out
+where an object is a few pixels and its dark side is most of them. A system whose star has
+no `light` is drawn unlit — at full colour — rather than dark.
+
+The gallery edits `light` like any other look field and writes it back here, because how
+far a star reaches is the one number that decides whether a system reads as lit or as a
+dark map with a lamp in the middle, and that is only decidable by looking.
 
 ### `style` — the glyph grammar
 
