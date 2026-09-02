@@ -22,8 +22,13 @@ The visual direction was settled on 2026-09-03 after playing the build. Glyphs a
 longer the primary look; generated art replaces them. `DECISIONS.md` has the reasoning and
 what it costs. Work in this order — the order is part of the decision:
 
-1. **#118 gallery** — every archetype on one screen with live parameters. First because a
-   look is tuned by eye, and the loop today is build, serve, connect, fly, look.
+1. ~~**#118 gallery**~~ — **done**. `worldeditor gallery` (or F3 from any view) shows every
+   archetype at once, drawn through the same backend the game uses, with the state that
+   changes a look — intensity, heading, thrusting — on sliders, and the archetype's own
+   look fields editable beside it. Ctrl+S writes them back into `data/archetypes.json`
+   **in place**: `ArchetypeEdit::SetField` replaces one value in the file text and leaves
+   every other byte alone, because a parse-edit-dump turns a two-character change into a
+   two-hundred-line diff. That part *is* unit-tested even though the picture is not.
 2. **#119 lighting** — a *list* of lights per system, built from the `SystemLayout` the
    client already holds, so no protocol change. Two-star systems and glowing player
    structures are wanted, so it is a list from the start.
@@ -66,6 +71,9 @@ playing. The server and the unit tests must never need a shader.
   `Simulation_Snapshot.cpp` and the context menu in `Game.cpp`.
 - `documents/world_format.md` is the contract for `data/`. Anything added to an archetype
   belongs in its table.
+- `Render::FromArchetype` is the only mapping from an archetype's `Visual` to a
+  `Render::Item`; `Entity::Describe()` goes through it and so does the gallery. A second
+  mapping is how a tool starts showing a picture the game does not.
 
 ## Environment
 

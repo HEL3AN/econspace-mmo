@@ -60,6 +60,12 @@ public:
     virtual void End() {}
 };
 
+// The one place an archetype's Visual becomes an Item. An entity calls this from
+// Describe() and then overrides what only the instance knows; the gallery (#118) has no
+// entity to ask and calls it directly. Having one mapping is what stops the tool used to
+// judge a look from showing something the game would not.
+Item FromArchetype(const Archetype& a, Vector2 pos, float size);
+
 // Draws a scene: sorts by layer, then hands every item to the backend between Begin and
 // End. Sorting here rather than in each backend is what makes `layer` mean the same
 // thing in all of them.

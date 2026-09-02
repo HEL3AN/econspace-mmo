@@ -144,6 +144,13 @@ bool Load(const std::string& path);
 // world data is a content error, and silently substituting a default would hide it.
 const Archetype* Find(const std::string& id);
 
+// The same lookup, writable. Everything except the world editor reads the registry, and
+// this is the one caller that edits it: a look is tuned by moving a number and watching
+// the picture change (#118), and entities borrow their archetype by pointer, so an edit
+// here shows up everywhere at once without rebuilding anything. It does not touch the
+// file -- see ArchetypeEdit for that.
+Archetype* Mutable(const std::string& id);
+
 // Every archetype declaring the given component.
 std::vector<const Archetype*> With(Component c);
 

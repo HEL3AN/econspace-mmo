@@ -265,6 +265,14 @@ const Archetype* Find(const std::string& id)
     return nullptr;
 }
 
+Archetype* Mutable(const std::string& id)
+{
+    for (Archetype& a : g_archetypes)
+        if (a.id == id)
+            return &a;
+    return nullptr;
+}
+
 std::vector<const Archetype*> With(Component c)
 {
     std::vector<const Archetype*> out;

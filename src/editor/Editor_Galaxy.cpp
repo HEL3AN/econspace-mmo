@@ -25,7 +25,7 @@ Rectangle Editor::ModeButtonRect() const
 
 void Editor::EnterGalaxyMode(bool on)
 {
-    galaxyMode_ = on;
+    mode_ = on ? Mode::Galaxy : Mode::System;
     selected_ = -1;
     gSelected_ = -1;
     gLinksOwner_.clear();

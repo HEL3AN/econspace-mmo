@@ -171,31 +171,49 @@ void Editor::Run()
         if (IsKeyPressed(KEY_F2))  // shapes ↔ glyphs, the same key as in the game
             backend_ = (backend_ == &shapeBackend_) ? (Render::IBackend*)&glyphBackend_
                                                     : (Render::IBackend*)&shapeBackend_;
+        if (IsKeyPressed(KEY_F3))  // the gallery, from wherever you are
+            EnterGalleryMode(mode_ != Mode::Gallery);
 
         BeginDrawing();
         ClearBackground(Color{ 8, 9, 14, 255 });
-        DrawWorld();
-        DrawHud();
-        DrawPalette();
-        DrawPropertyPanel();
+        if (mode_ == Mode::Gallery)
+        {
+            DrawGallery();
+            DrawHud();
+            DrawGalleryPanel();
+        }
+        else
+        {
+            DrawWorld();
+            DrawHud();
+            DrawPalette();
+            DrawPropertyPanel();
+        }
         EndDrawing();
     }
 }
 
 void Editor::HandleInput()
 {
-    // Ctrl+S saving works in both modes.
+    // Ctrl+S saves whatever the current view edits.
     if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_S))
     {
-        if (galaxyMode_)
+        if (mode_ == Mode::Galaxy)
             SaveUniverse();
+        else if (mode_ == Mode::Gallery)
+            SaveArchetypes();
         else
             SaveCurrentSystem();
     }
 
-    if (galaxyMode_)
+    if (mode_ == Mode::Galaxy)
     {
         HandleGalaxyInput();
+        return;
+    }
+    if (mode_ == Mode::Gallery)
+    {
+        HandleGalleryInput();
         return;
     }
 
@@ -283,7 +301,7 @@ void Editor::HandleInput()
 
 void Editor::DrawWorld()
 {
-    if (galaxyMode_)
+    if (mode_ == Mode::Galaxy)
     {
         DrawGalaxy();
         return;

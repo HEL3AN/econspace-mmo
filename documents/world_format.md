@@ -104,10 +104,17 @@ registry says *what it is and what it can do*, once, for every object of that ki
 | `world` | object | where this archetype lives in a system file — see below |
 | `components` | object | what the object can do — see below |
 
+The look fields — `glyph`, `style`, `color`, `layer`, `size` — are editable in the world
+editor's gallery (`worldeditor gallery`, or F3), which shows every archetype at once and
+writes the changed values straight back into this file. It edits the text in place rather
+than reformatting it, so what lands in the diff is the value that changed and nothing
+else. Everything else in an archetype is still edited by hand.
+
 ### `style` — the glyph grammar
 
-Glyphs are the game's primary look, and the grammar is deliberately narrow so a
-screenshot is readable at a glance:
+Glyphs were the game's primary look until 2026-09-03 and are being demoted to a sensor
+view (#123); the grammar below is what they still draw, and it is deliberately narrow so a
+readout is legible at a glance:
 
 - **glyph** = what class of thing this is (a station is `#` whatever it trades in)
 - **colour** = whose it is (faction paint, star type, ore remaining)
