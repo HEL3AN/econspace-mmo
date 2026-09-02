@@ -3,7 +3,6 @@
 #include "sim/Simulation.h"
 #include "sim/ClientSession.h"
 #include "sim/PlayerStep.h"
-#include "sim/SimTuning.h"
 
 #include "core/Archetype.h"
 #include "entities/Entity.h"
@@ -190,7 +189,13 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
         arrive = size + (a != nullptr ? a->dockRange : 0.0f);
     }
     else if (s.order.kind == Orders::Kind::Mine)
-        arrive = size + Sim::MINING_RANGE;
+    {
+        // The belt's own reach, asked of the belt, for the same reason the dock's is
+        // asked of the dock: a constant here parks the ship outside a range that data
+        // decides (#34).
+        const Archetype* a = target != nullptr ? target->GetArchetype() : nullptr;
+        arrive = size + (a != nullptr ? a->extractRange : 0.0f);
+    }
 
     float dist = DistTo(*s.ship, dest);
 

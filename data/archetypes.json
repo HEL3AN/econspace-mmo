@@ -173,7 +173,7 @@
             "layer": 2,
             "size": 500,
             "components": {
-                "mineable": { "extractRate": 1.0 }
+                "mineable": { "extractRate": 1.0, "range": 40 }
             }
         },
 
@@ -203,7 +203,7 @@
             "layer": 3,
             "size": 40,
             "components": {
-                "salvageable": {}
+                "salvageable": { "range": 120 }
             }
         },
 
@@ -218,7 +218,7 @@
             "layer": 3,
             "size": 150,
             "components": {
-                "jumpLink": {}
+                "jumpLink": { "range": 200 }
             }
         },
 
