@@ -682,3 +682,35 @@ TEST_CASE("how far a thing can be used is the thing's business, not the code's")
         CHECK(f.sim.JumpGateDestIfNear(f.s, f.World(), 74).empty());
     }
 }
+
+TEST_CASE("an order whose destination is already reached finishes at once")
+{
+    // The agent selftest flies to a station and, on a second run of the same account,
+    // starts where it left off -- inside the stop distance it is about to ask for. An
+    // order that neither moves nor finishes would leave it waiting for an event that
+    // never comes.
+    Fixture f;
+    auto    station = std::make_unique<Station>(Vector2{ 100.0f, 0.0f }, 60.0f, "Depot",
+                                                FactionId::TradersGuild, StationRole::TradeHub);
+    station->SetId(88);
+    f.World().entities.push_back(std::move(station));
+
+    Orders::Order o;
+    o.kind = Orders::Kind::MoveTo;
+    o.targetId = 88;
+    o.stopDist = 400.0f;  // the ship is at the origin, 100 units away: already there
+    REQUIRE(f.sim.GiveOrder(f.s, o) > 0);
+
+    const float dt = 1.0f / 60.0f;
+    for (int i = 0; i < 120 && f.s.HasRunningOrder(); i++)
+        f.sim.StepPlayerOrder(f.s, f.World(), dt);
+
+    CHECK_FALSE(f.s.HasRunningOrder());
+    CHECK(f.s.orderStatus == Orders::Status::Done);
+    // And it says so in the journal, which is what an agent sleeps on.
+    bool told = false;
+    for (const Ev::Event& e : f.s.EventsSince(0))
+        if (e.kind == Ev::Kind::OrderDone)
+            told = true;
+    CHECK(told);
+}

@@ -2,24 +2,31 @@
 
 #include "agent/Jsonrpc.h"
 
+#include "sim/Auth.h"
+
 #include <chrono>
 #include <thread>
 
 namespace Agent
 {
 
-bool Session::Connect(const std::string& host, unsigned short port, const std::string& account)
+bool Session::Connect(const std::string& host, unsigned short port, const std::string& account,
+                      const std::string& secret)
 {
     if (!Net::Startup())
         return false;
     conn_ = Net::Dial(host, port);
     if (!conn_)
         return false;
-    // An agent is a player like any other, so it introduces itself the same way: the
-    // server has no player behind the socket until this arrives (#3, #42).
-    Proto::Hello hello;
-    hello.account = account;
-    conn_->Send(Proto::EncodeHello(hello));
+    // An agent is a player like any other, so it logs in the same way and through the
+    // same code (#3, #42, #106).
+    std::string why;
+    if (!Auth::ClientHandshake(*conn_, account, secret, 10.0, why))
+    {
+        byeReason_ = why;
+        Rpc::Log("econagent: could not log in: " + why);
+        return false;
+    }
     return true;
 }
 

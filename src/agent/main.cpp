@@ -9,7 +9,7 @@
 // language would have to reimplement Protocol.cpp, and a second implementation of the wire
 // format is a second source of truth. Linking netproto means the format cannot drift.
 //
-// Run:  econagent connect <host> [port]
+// Run:  econagent connect <host> <port> <name> <secret>
 // Wire it to a client:
 //   claude mcp add econspace -- <path>/econagent.exe connect 127.0.0.1 50800
 
@@ -73,6 +73,10 @@ double NumberOr(const Rpc::Json& args, const char* key, double fallback)
 
 // Sends an order and reports what the server made of it. The wait is short on purpose:
 // long enough for the server to acknowledge, not long enough to be mistaken for the order
+// The last journal entry handed to the model. Separate from the session's own cursor,
+// which only tracks what has been received (#113).
+int g_reportedEventSeq = 0;
+
 // itself finishing -- that is what wait_for_event is for.
 std::string GiveOrder(const Proto::Command& cmd, const std::string& what)
 {
@@ -309,9 +313,14 @@ std::vector<Tool> BuildTools()
           Obj({ { "timeout_seconds", Num("give up after this long (default 60, max 300)") } }),
           [](const Rpc::Json& args)
           {
+              // What the model has been shown, which is not the same as what has
+              // arrived (#113). RequireLive pumps the socket, so reading the session's
+              // cursor here would put every event that came in first behind it -- and an
+              // order that finished quickly would be waited out and then reported as
+              // "nothing happened".
+              const int since = g_reportedEventSeq;
               RequireLive();
-              const int since = g_session.LastEventSeq();
-              double    timeout = NumberOr(args, "timeout_seconds", 60.0);
+              double timeout = NumberOr(args, "timeout_seconds", 60.0);
               if (timeout > 300.0)
                   timeout = 300.0;  // an agent should not be able to hold a session forever
               g_session.WaitUntil([&] { return g_session.LastEventSeq() > since; }, timeout);
@@ -319,6 +328,7 @@ std::vector<Tool> BuildTools()
               std::vector<Ev::Event> fresh = g_session.EventsSince(since);
               if (fresh.empty())
                   return std::string("nothing happened within the timeout");
+              g_reportedEventSeq = fresh.back().seq;
               std::string out;
               for (const Ev::Event& e : fresh)
                   out += "[" + std::to_string(e.seq) + "] " + Ev::KindName(e.kind) + ": " + e.text +
@@ -358,7 +368,19 @@ std::string RunTool(const std::vector<Tool>& tools, const std::string& name, con
 {
     for (const Tool& t : tools)
         if (name == t.name)
-            return t.run(args);
+        {
+            // Over MCP an Rpc::Error becomes an error reply; here there is nobody to reply
+            // to, and letting it escape ends the process with std::terminate instead of a
+            // failed check. A refused login is exactly this case (#106).
+            try
+            {
+                return t.run(args);
+            }
+            catch (const Rpc::Error& e)
+            {
+                return "error: " + e.message;
+            }
+        }
     return "no such tool: " + name;
 }
 
@@ -436,8 +458,8 @@ int main(int argc, char** argv)
     {
         std::fprintf(stderr,
                      "econagent — EconSpace as an MCP server.\n"
-                     "  %s connect <host> [port] [name]   serve MCP on stdio\n"
-                     "  %s selftest <host> [port] [name]  scripted run, no model needed\n"
+                     "  %s connect <host> <port> <name> <secret>   serve MCP on stdio\n"
+                     "  %s selftest <host> <port> <name> <secret>  scripted run\n"
                      "\n"
                      "Start a server first:  econserver host 50800\n",
                      argv[0], argv[0]);
@@ -448,7 +470,16 @@ int main(int argc, char** argv)
     const unsigned short port = (argc >= 4) ? (unsigned short)std::atoi(argv[3]) : 50800;
     // The account this agent flies under. Its own by default: an agent and the human who
     // started it are two players, and sharing one account would have them share a ship.
+    // Who this agent plays as, and what proves it (#3, #106). Both or neither: naming an
+    // account without its secret is a login nobody can check, and quietly falling back to
+    // a well-known one would hand that account to anyone who read this file.
+    if (argc == 5)
+    {
+        std::fprintf(stderr, "econagent: an account name needs its secret too.\n");
+        return 2;
+    }
     const std::string account = (argc >= 5) ? argv[4] : "agent";
+    const std::string secret = (argc >= 6) ? argv[5] : "agent-local";
 
     std::string dataDir = AGENT_DATA_DIR;
     Factions::Load(dataDir + "factions.json");
@@ -460,7 +491,7 @@ int main(int argc, char** argv)
     // per-system statistics but not names, map positions or links.
     g_universe = WorldLoader::LoadUniverse(dataDir + "universe.json");
 
-    if (!g_session.Connect(host, port, account))
+    if (!g_session.Connect(host, port, account, secret))
     {
         std::fprintf(stderr, "econagent: could not connect to %s:%u\n", host.c_str(), port);
         return 1;

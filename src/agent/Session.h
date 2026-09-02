@@ -23,7 +23,8 @@ class Session
 public:
     // Dials the host. False means no connection; the caller reports it and exits, because
     // there is no offline mode to fall back to.
-    bool Connect(const std::string& host, unsigned short port, const std::string& account);
+    bool Connect(const std::string& host, unsigned short port, const std::string& account,
+                 const std::string& secret);
     bool Alive() const { return conn_ && conn_->Alive(); }
 
     // Drains whatever has arrived. Cheap; call it often.

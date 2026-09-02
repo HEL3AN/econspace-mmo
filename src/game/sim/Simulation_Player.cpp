@@ -576,6 +576,9 @@ void Simulation::SaveAccount(const ClientSession& s, const std::string& path) co
         j["cargo"] = cargo;
     }
 
+    if (!s.authStored.empty())
+        j["auth"] = { { "salt", s.authSalt }, { "stored", s.authStored } };
+
     j["ships"] = s.ownedShips;
     j["ship"] = s.currentShip;
 
@@ -645,6 +648,12 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
                 s.ship->Teleport({ (float)pl["pos"][0], (float)pl["pos"][1] });
             s.ship->SetHeading((float)pl.value("heading", 0.0));
         }
+    }
+
+    if (j.contains("auth") && j["auth"].is_object())
+    {
+        s.authSalt = j["auth"].value("salt", std::string());
+        s.authStored = j["auth"].value("stored", std::string());
     }
 
     // The hangar (#5). An account written before this existed has no list, and defaults

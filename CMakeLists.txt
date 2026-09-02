@@ -56,6 +56,18 @@ if(_raylib_inc)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_raylib_inc}")
 endif()
 
+# --- PicoSHA2: header-only SHA-256 -------------------------------------------
+# Needed so an account can prove it is itself (#106). Vendored through FetchContent like
+# everything else and pinned to a tag: a hash function that changes under you would lock
+# every player out at once. Header-only and MIT.
+FetchContent_Declare(
+    picosha2
+    GIT_REPOSITORY https://github.com/okdshin/PicoSHA2.git
+    GIT_TAG        v1.0.1
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(picosha2)
+
 # --- doctest: header-only framework for unit tests (the `tests` target, below) --
 # Its CMake declares an old policy minimum — newer CMake fails without this.
 # The define only affects this sub-build (raylib/json are already configured above).
@@ -135,10 +147,13 @@ endif()
 add_library(netproto STATIC
     src/game/sim/Protocol.cpp
     src/game/sim/Events.cpp
+    src/game/sim/Auth.cpp        # proving an account is itself (#106) -- both sides need it
     src/game/net/Tcp.cpp
 )
 # PUBLIC: consumers include "sim/Protocol.h" and "net/Tcp.h" relative to src/game.
 target_include_directories(netproto PUBLIC ${CMAKE_SOURCE_DIR}/src/game)
+# PicoSHA2 ships a header and no target; SYSTEM so its warnings are not ours.
+target_include_directories(netproto SYSTEM PRIVATE ${picosha2_SOURCE_DIR})
 # engine, because Protocol.h uses core/Faction.h and raylib's Vector2/Color.
 target_link_libraries(netproto PUBLIC engine)
 # winsock, guarded here so the guard lives in one place when other platforms arrive (#12).
@@ -252,6 +267,7 @@ enable_testing()
 add_executable(tests
     tests/test_main.cpp
     tests/protocol_tests.cpp
+    tests/auth_tests.cpp
     tests/net_tests.cpp
     tests/raw_socket.cpp           # a peer that ignores the framing rules (#14)
     tests/observation_tests.cpp

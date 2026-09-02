@@ -121,6 +121,48 @@ bool DecodeHello(const std::string& s, Hello& out)
     return true;
 }
 
+std::string EncodeChallenge(const Challenge& c)
+{
+    json j;
+    Stamp(j, "chal");
+    j["nonce"] = c.nonce;
+    j["salt"] = c.salt;
+    j["new"] = c.isNew;
+    return j.dump();
+}
+
+bool DecodeChallenge(const std::string& s, Challenge& out)
+{
+    json j = json::parse(s, nullptr, false);
+    if (j.is_discarded() || !j.is_object() || j.value("t", std::string()) != "chal" ||
+        j.value("v", 0) != PROTO_VERSION)
+        return false;
+    out.nonce = j.value("nonce", std::string());
+    out.salt = j.value("salt", std::string());
+    out.isNew = j.value("new", false);
+    return true;
+}
+
+std::string EncodeAuth(const Auth& a)
+{
+    json j;
+    Stamp(j, "auth");
+    j["proof"] = a.proof;
+    j["stored"] = a.stored;
+    return j.dump();
+}
+
+bool DecodeAuth(const std::string& s, Auth& out)
+{
+    json j = json::parse(s, nullptr, false);
+    if (j.is_discarded() || !j.is_object() || j.value("t", std::string()) != "auth" ||
+        j.value("v", 0) != PROTO_VERSION)
+        return false;
+    out.proof = j.value("proof", std::string());
+    out.stored = j.value("stored", std::string());
+    return true;
+}
+
 std::string EncodeBye(const Bye& b)
 {
     json j;

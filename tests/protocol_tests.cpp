@@ -488,3 +488,32 @@ TEST_CASE("the server can end a session and say why")
     CHECK_FALSE(Proto::DecodeBye(Proto::EncodeCommand(c), back));
     CHECK_FALSE(Proto::DecodeBye("{\"t\":\"bye\",\"v\":1,\"why\":\"x\"}", back));
 }
+
+TEST_CASE("the login exchange survives the wire")
+{
+    // The three messages a login is made of (#106). Each is refused across a version gap
+    // for the same reason every other message is: reading one leniently would turn a
+    // failed login into a successful-looking one.
+    Proto::Challenge c;
+    c.nonce = "0123456789abcdef0123456789abcdef";
+    c.salt = "fedcba9876543210fedcba9876543210";
+    c.isNew = true;
+
+    Proto::Challenge cb;
+    REQUIRE(Proto::DecodeChallenge(Proto::EncodeChallenge(c), cb));
+    CHECK(cb.nonce == c.nonce);
+    CHECK(cb.salt == c.salt);
+    CHECK(cb.isNew);
+
+    Proto::Auth a;
+    a.proof = "beef";
+    a.stored = "cafe";
+    Proto::Auth ab;
+    REQUIRE(Proto::DecodeAuth(Proto::EncodeAuth(a), ab));
+    CHECK(ab.proof == "beef");
+    CHECK(ab.stored == "cafe");
+
+    CHECK_FALSE(Proto::DecodeAuth(Proto::EncodeChallenge(c), ab));
+    CHECK_FALSE(Proto::DecodeChallenge(Proto::EncodeAuth(a), cb));
+    CHECK_FALSE(Proto::DecodeChallenge("{\"t\":\"chal\",\"v\":1}", cb));
+}
