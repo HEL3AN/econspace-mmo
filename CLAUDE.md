@@ -17,8 +17,16 @@ These are decisions, not open questions. Plan on top of them.
   authoritative server; it cannot even be constructed without a live connection. Never
   treat "works offline too" as a constraint, and never propose designs that preserve
   offline parity. `LocalTransport` survives only as a *test* transport.
-- **Glyph (ASCII) rendering is the primary look** (#36). Sprites are an optional
-  alternative backend. Whether the windowed HUD survives alongside it is genuinely open.
+- **The look is generated, not drawn** (M6). Objects are lit by the system's own stars,
+  shaded by a material, and built from silhouettes described in data, under a screen
+  treatment that can be tuned and switched off in game. A hand-made sprite wins where one
+  exists; the generator covers everything else, which is what a world players can build
+  needs. **Glyphs are no longer the primary look** (#123): they become a sensor screen over
+  a fixed grid, which is the one thing they are genuinely good at.
+- **Colour in the world view is an art decision, not a faction tag** (#117). Allegiance
+  depends on who is looking — the same station is a friend to one player and a target to
+  another — so it belongs to the instruments (radar, overview, target panel, sensor view),
+  never to the object.
 - **AI agents are first-class players** (#42). The game ships its own MCP server,
   `econagent`, written in C++ so the wire protocol stays a single source of truth.
 - **The world becomes player-mutable** (#44), and player structures feed the existing
