@@ -100,7 +100,7 @@ void Editor::DrawEntityPreview(Rectangle box, const std::string& archetypeId)
 // upward. Each card is a preview, a name, a description. A click enters placement mode.
 void Editor::DrawPalette()
 {
-    if (galaxyMode_)
+    if (mode_ == Mode::Galaxy)
         return;  // in galaxy mode there's no object palette
 
     Vector2   m = GetMousePosition();

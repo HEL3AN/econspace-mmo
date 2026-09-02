@@ -5,6 +5,21 @@
 namespace Render
 {
 
+Item FromArchetype(const Archetype& a, Vector2 pos, float size)
+{
+    Item it;
+    it.kind = a.kind;
+    it.pos = pos;
+    it.size = size > 0.0f ? size : a.defaultSize;
+    it.color = a.visual.color;
+    it.glyph = a.visual.glyph;
+    it.sprite = a.visual.sprite;
+    it.layer = a.visual.layer;
+    it.style = a.visual.style;
+    it.label = a.name;
+    return it;
+}
+
 void Present(std::vector<Item> items, IBackend& backend)
 {
     // Stable, so that two items on the same layer keep the order the world gave them.

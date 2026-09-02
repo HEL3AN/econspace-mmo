@@ -12,19 +12,17 @@ void Entity::Update(float dt)
 
 Render::Item Entity::Describe() const
 {
+    // The archetype supplies the look; the instance overrides what only it knows. The
+    // colour is the instance's on purpose -- faction paint and planet type are chosen per
+    // object, and the archetype's colour is the default they start from.
     Render::Item it;
+    if (archetype_ != nullptr)
+        it = Render::FromArchetype(*archetype_, pos_, size_);
     it.id = id_;
     it.kind = kind_;
     it.pos = pos_;
     it.size = size_;
     it.color = color_;
     it.label = GetName();
-    if (archetype_ != nullptr)
-    {
-        it.glyph = archetype_->visual.glyph;
-        it.sprite = archetype_->visual.sprite;
-        it.layer = archetype_->visual.layer;
-        it.style = archetype_->visual.style;
-    }
     return it;
 }

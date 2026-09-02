@@ -42,6 +42,7 @@ ctest --test-dir build --output-on-failure
 ./build/bin/server/econserver.exe host 50800        # authoritative server
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2   # account + secret
 ./build/bin/editor/worldeditor.exe
+./build/bin/editor/worldeditor.exe gallery           # every archetype at once, for tuning a look (F3)
 
 ./build/bin/agent/econagent.exe connect 127.0.0.1 50800 agent hunter2  # MCP for an agent
 

@@ -9,6 +9,8 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <map>
+#include <set>
 
 // World editor: a standalone app for visually editing data/.
 // The source of truth is the system JSON in memory (systemJson_); the entities
@@ -21,6 +23,10 @@ public:
     ~Editor();
 
     void Run();
+
+    // Opens straight into the gallery (#118). `worldeditor gallery` is how a look gets
+    // tuned, and the tool for judging one should not make you cross a star system first.
+    void OpenGallery();
 
 private:
     // Reference to a JSON element: array category and index (star uses index=-1).
@@ -68,6 +74,34 @@ private:
     // toward destId on the galaxy map).
     void SyncGate(const std::string& sysId, const std::string& destId, bool add);
 
+    // Gallery mode: every archetype in the registry on one screen (#118). A look is
+    // judged by eye, and the loop it replaces was build, serve, connect, fly, look.
+    Rectangle GalleryButtonRect() const;
+    void      EnterGalleryMode(bool on);
+    void      HandleGalleryInput();
+    void      DrawGallery();       // the grid of cards
+    void      DrawGalleryPanel();  // state sliders, and the look of the selected archetype
+    Rectangle GalleryCardRect(int index) const;
+    int       GalleryHit(Vector2 p) const;  // card under a point, or -1
+    // What the state sliders say is happening to this object right now. Built through the
+    // same Render::FromArchetype the game's entities go through, so the gallery cannot
+    // show a picture the world would not.
+    Render::Item GalleryItem(const Archetype& a, Vector2 pos, float size) const;
+    // Writes the edited look fields back into data/archetypes.json, in place.
+    void SaveArchetypes();
+    // Records that a key of an archetype was changed, so the save touches only those.
+    void NoteLookEdit(const std::string& id, const std::string& key);
+
+    int   gallerySelected_ = -1;
+    float galleryScroll_ = 0.0f;      // pixels the card grid is scrolled by
+    bool  galleryTrueScale_ = false;  // one scale for all cards, so sizes compare
+    float galleryIntensity_ = 1.0f;   // hull left, ore left, a wreck already looted
+    float galleryHeading_ = 0.0f;     // radians, for the things that point somewhere
+    bool  galleryThrusting_ = false;
+    bool  archetypesDirty_ = false;
+    // Archetype id -> the look keys edited since the last save.
+    std::map<std::string, std::set<std::string>> lookEdits_;
+
     // Property panel for the selected object (on the right).
     Rectangle PanelRect() const;
     void      DrawPropertyPanel();
@@ -89,8 +123,17 @@ private:
     int                   currentSystem_ = 0;
     bool                  dirty_ = false;  // there are unsaved edits to the system
 
+    // Which of the three views is up. An enum rather than a flag per view, because two
+    // flags can both be true and there is no such screen.
+    enum class Mode
+    {
+        System,  // one star system, the objects in it
+        Galaxy,  // universe.json: the nodes and the links between them
+        Gallery  // every archetype at once, for judging a look (#118)
+    };
+    Mode mode_ = Mode::System;
+
     // Galaxy mode.
-    bool           galaxyMode_ = false;
     nlohmann::json universeJson_;    // the galaxy index being edited
     int            gSelected_ = -1;  // selected system (index)
     bool           universeDirty_ = false;

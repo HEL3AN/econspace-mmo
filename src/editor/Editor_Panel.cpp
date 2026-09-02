@@ -22,7 +22,14 @@ void Editor::DrawHud()
     Ui::Text("WORLD EDITOR", 16, 14, 26, Ui::ACCENT);
 
     // Info and hints in the top-left corner.
-    if (galaxyMode_)
+    if (mode_ == Mode::Gallery)
+    {
+        Ui::Text(TextFormat("GALLERY   archetypes: %d", (int)Archetypes::All().size()), 16, 50, 16,
+                 Ui::TEXT);
+        Ui::Text("click: select  ·  wheel: scroll  ·  F2: backend  ·  edit on the right", 16, 74,
+                 13, Ui::TEXT_DIM);
+    }
+    else if (mode_ == Mode::Galaxy)
     {
         Ui::Text(TextFormat("GALAXY   systems: %d", (int)(universeJson_.contains("systems")
                                                               ? universeJson_["systems"].size()
@@ -51,18 +58,35 @@ void Editor::DrawHud()
             Ui::Text("click: select  ·  drag empty: pan  ·  wheel: zoom", 16, 96, 13, Ui::TEXT_DIM);
     }
 
-    // Mode toggle button (System / Galaxy).
-    Rectangle mb = ModeButtonRect();
-    bool      overMb = CheckCollisionPointRec(GetMousePosition(), mb);
-    DrawRectangleRec(mb, overMb ? Fade(Ui::ACCENT, 0.2f) : Ui::TITLE_BG);
-    DrawRectangleLinesEx(mb, 1.0f, Ui::PANEL_BORDER);
-    Ui::Text(galaxyMode_ ? "→ System view" : "→ Galaxy map", (int)mb.x + 10, (int)mb.y + 8, 14,
-             Ui::TEXT);
-    if (overMb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-        EnterGalaxyMode(!galaxyMode_);
+    // Mode toggle button (System / Galaxy). The gallery is not a place in the world, so
+    // it does not sit on this toggle; it has its own button beside it.
+    if (mode_ != Mode::Gallery)
+    {
+        Rectangle mb = ModeButtonRect();
+        bool      overMb = CheckCollisionPointRec(GetMousePosition(), mb);
+        DrawRectangleRec(mb, overMb ? Fade(Ui::ACCENT, 0.2f) : Ui::TITLE_BG);
+        DrawRectangleLinesEx(mb, 1.0f, Ui::PANEL_BORDER);
+        Ui::Text((mode_ == Mode::Galaxy) ? "→ System view" : "→ Galaxy map", (int)mb.x + 10,
+                 (int)mb.y + 8, 14, Ui::TEXT);
+        if (overMb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+            EnterGalaxyMode(mode_ != Mode::Galaxy);
+    }
+
+    Rectangle gb = GalleryButtonRect();
+    bool      overGb = CheckCollisionPointRec(GetMousePosition(), gb);
+    DrawRectangleRec(gb, overGb ? Fade(Ui::ACCENT, 0.2f) : Ui::TITLE_BG);
+    DrawRectangleLinesEx(gb, 1.0f, (mode_ == Mode::Gallery) ? Ui::ACCENT : Ui::PANEL_BORDER);
+    Ui::Text((mode_ == Mode::Gallery) ? "→ Back" : "→ Gallery", (int)gb.x + 10, (int)gb.y + 8, 14,
+             (mode_ == Mode::Gallery) ? Ui::ACCENT : Ui::TEXT);
+    if (overGb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+        EnterGalleryMode(mode_ != Mode::Gallery);
 
     // Save button (top center) with an indicator of unsaved edits.
-    bool      d = galaxyMode_ ? universeDirty_ : dirty_;
+    bool d = dirty_;
+    if (mode_ == Mode::Galaxy)
+        d = universeDirty_;
+    else if (mode_ == Mode::Gallery)
+        d = archetypesDirty_;
     Rectangle sb = SaveButtonRect();
     bool      overSb = CheckCollisionPointRec(GetMousePosition(), sb);
     DrawRectangleRec(sb, overSb ? Fade(Ui::ACCENT, 0.2f) : Ui::TITLE_BG);
@@ -71,8 +95,10 @@ void Editor::DrawHud()
              d ? Ui::ACCENT : Ui::TEXT_DIM);
     if (overSb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
     {
-        if (galaxyMode_)
+        if (mode_ == Mode::Galaxy)
             SaveUniverse();
+        else if (mode_ == Mode::Gallery)
+            SaveArchetypes();
         else
             SaveCurrentSystem();
     }
@@ -312,7 +338,7 @@ void Editor::DropdownRow(Rectangle r, const char* label, nlohmann::json& obj, co
 // Property panel for the selected object: the set of fields depends on its category.
 void Editor::DrawPropertyPanel()
 {
-    if (galaxyMode_)
+    if (mode_ == Mode::Galaxy)
     {
         DrawGalaxyPanel();
         return;

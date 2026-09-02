@@ -105,6 +105,7 @@ add_library(engine STATIC
     src/engine/core/WorldLoader.cpp
     src/engine/core/Faction.cpp
     src/engine/core/Archetype.cpp    # what a kind of object is, as data (#34)
+    src/engine/core/ArchetypeEdit.cpp  # writing a tuned look back without reformatting (#118)
     src/engine/entities/Entity.cpp
     src/engine/entities/Star.cpp
     src/engine/entities/Planet.cpp
@@ -239,6 +240,7 @@ add_executable(worldeditor
     src/editor/Editor_Palette.cpp   # creating objects from the archetype registry (#17)
     src/editor/Editor_Galaxy.cpp    # the map view and its panel (#17)
     src/editor/Editor_Universe.cpp  # everything that changes universe.json (#17)
+    src/editor/Editor_Gallery.cpp   # every archetype at once, for judging a look (#118)
 )
 target_include_directories(worldeditor PRIVATE ${CMAKE_SOURCE_DIR}/src/editor)
 target_link_libraries(worldeditor PRIVATE engine)
@@ -274,6 +276,7 @@ add_executable(tests
     tests/economy_tests.cpp
     tests/simulation_tests.cpp
     tests/archetype_tests.cpp
+    tests/archetype_edit_tests.cpp
     tests/render_tests.cpp
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     # The simulation itself is under test now, not only the wire (#10). That pulls in its
