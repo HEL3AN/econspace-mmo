@@ -58,7 +58,7 @@ Everything in this section is **planned, not implemented**. It is here so contri
 - **A player-mutable world** (#44). Players build deployables and structures that feed the macro simulation that already exists — prosperity, security, territory control. The archetype registry and the glyph layer were built for this: a structure a player invents needs no artist and no recompile.
 - **Fleets** (#32). One commander, several agent-piloted ships.
 
-The world is still read-only content authored in the editor. Several people can share a galaxy: each connection has its own ship and account, they see one another in a system, and progress survives a reconnect. Nobody can shoot anybody yet — whether they should be able to, where, and at what cost is #94 — and an account name is still a claim rather than a credential (#106).
+The world is still read-only content authored in the editor. Several people can share a galaxy: each connection has its own ship and account, they see one another in a system, and progress survives a reconnect. It is not yet a server to leave running for strangers: an account name is a claim rather than a credential (#106), and one account can currently be played by two connections at once (#105). Nobody can shoot anybody either — whether they should be able to, where, and at what cost is #94.
 
 ---
 
