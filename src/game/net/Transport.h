@@ -7,8 +7,8 @@
 // Client<->server message transport (track M, M4d). An abstraction over the
 // delivery of string messages (JSON commands/snapshots) so the command/snapshot
 // logic doesn't depend on what's underneath — an in-process loopback
-// (single-player) or the network. Implementations:
-//   LocalTransport — in-process loopback channel (single-player/debug);
+// in-process or over the network. Implementations:
+//   LocalTransport — in-process loopback channel, used by the server's own smoke tests;
 //   TcpTransport   — network (winsock on Windows, Berkeley sockets elsewhere).
 // Swapping TCP for UDP/ENet is a new ITransport implementation, no logic changes.
 struct ITransport
@@ -20,7 +20,8 @@ struct ITransport
 
 // In-process loopback transport: two ends (client and server) with crossed
 // queues. Send on one end is delivered to Poll on the other — no network and no
-// stream copying, for single-player (client and server in the same process).
+// stream copying, for a client and a server living in one process -- which is a test
+// arrangement now, not a way to play (#23).
 class LocalTransport
 {
 public:

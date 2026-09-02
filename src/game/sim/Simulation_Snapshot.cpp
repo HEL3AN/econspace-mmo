@@ -92,9 +92,8 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
     for (ResourceType rt : AllResourceTypes())
         snap.marketPrices.push_back((float)it->second.market.GetPrice(rt));
 
-    // Physical view of the player ship (for the networked client — authoritative on the
-    // server; in single-player the client augments the view with its own weaponOn/docked/nearby
-    // fields).
+    // Physical view of the player's ship. Everything here is authoritative: the client
+    // predicts its own movement between snapshots and is corrected by this.
     if (s.ship)
     {
         Proto::PlayerView& p = snap.player;

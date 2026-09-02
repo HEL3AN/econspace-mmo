@@ -132,9 +132,9 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
     }
 
     // Account effects: attacking a lawful target is a crime; a kill is mission credit
-    // (pirate) or a serious crime (lawful). Applied directly to the server s.account (in
-    // the network — authoritative; in single-player s.account is ignored, the client applies
-    // its own s.ship from ev). We still fill ev (single-player/mission client).
+    // (pirate) or a serious crime (lawful). Applied to the session's account, which is the
+    // only one there is. `ev` is filled as well, because the client draws the consequences
+    // -- a beam, a flash, a notice -- from facts rather than by recomputing them.
     FactionId tf = target->GetFaction();
     if (Factions::IsLawful(tf))
     {
@@ -152,9 +152,7 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
         {
             if (ev != nullptr)
                 ev->killedPirate = true;
-            // Mission credit for the pirate into the server missions (in the network —
-            // authoritative; in single-player s.missions is empty — progress goes into the
-            // client MissionSystem via ev).
+            // Mission credit for the pirate, into this session's mission log.
             s.missions.OnPirateKilled();
         }
         else if (Factions::IsLawful(tf))
@@ -212,8 +210,8 @@ Simulation::PlayerMiningResult Simulation::StepPlayerMining(ClientSession& s, Sy
         }
         break;
     }
-    // Mining xp into the server account (in the network — authoritative; in single-player
-    // ignored — the client credits its own s.ship from r.minedUnits).
+    // Mining xp into this session's account. The client sees the new total in the next
+    // snapshot rather than crediting a copy of its own.
     if (r.minedUnits > 0)
         s.account.GetSkills().AddXp(SkillType::Mining, 3.0f * (float)r.minedUnits);
     return r;
@@ -265,8 +263,7 @@ double Simulation::StepPlayerLoot(ClientSession& s, SystemState& st, int derelic
                 return 0.0;
             dr->SetLooted();
             double reward = dr->GetReward();
-            s.account.AddMoney(
-                reward);  // in the network — authoritative; in single-player s.account is ignored
+            s.account.AddMoney(reward);
             return reward;
         }
     return 0.0;
@@ -300,11 +297,8 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, System
     s.ship->RemoveCargo(type, sold);
     r.sold = sold;
 
-    // Net revenue into the server account: trading-skill multiplier + reputation of the
-    // docked station's faction. In the network — authoritative; in single-player s.account
-    // is ignored (the client computes its own from r.gross). Station faction — by
-    // s.dockedStationId (server docking); in single-player it is 0, but the s.account branch is
-    // unused there.
+    // Net revenue into this session's account: trading-skill multiplier and the
+    // reputation of the station's faction, found by the id docking recorded.
     FactionId sf = FactionId::Independent;
     for (auto& e : st.entities)
         if (e->GetId() == s.dockedStationId)

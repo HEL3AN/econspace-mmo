@@ -292,11 +292,10 @@ public:
     // unknown field into a default and then write that back (#20).
     Save::Result LoadWorld(const std::string& path);
 
-    // Player ACCOUNT persistence (server-side, M4f-3): money/skills/reputation/wanted
-    // into a separate account.json (the world has its own world.json). Without this the
-    // server account_ is ephemeral — a server restart zeroes the progress. Key format is
-    // the same as the client savegame.json. Ship type is not included yet (the server has
-    // no ownership list — a separate sub-step).
+    // Account persistence, one file per account name (the world has its own world.json).
+    // Money, skills, reputation and wanted levels; where the player was and what they were
+    // carrying (#49); which ships they own and which one they are flying (#5). Without it
+    // a session would begin from nothing every time somebody connected.
     void         SaveAccount(const ClientSession& s, const std::string& path) const;
     Save::Result LoadAccount(ClientSession& s, const std::string& path);
 

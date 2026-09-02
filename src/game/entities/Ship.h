@@ -109,9 +109,9 @@ public:
     Vector2 GetVelocity() const { return velocity_; }
     void    SetHeading(float h) { heading_ = h; }  // for loading a save
 
-    // Network client (M4e): apply the authoritative ship view from the server so
-    // the camera/renderer/HUD reading this object reflect the remote state. Unused
-    // in single-player (ship physics is computed by Simulation::StepPlayerShip).
+    // Apply the authoritative ship view from the server, so the camera, the renderer and
+    // the HUD reading this object reflect what the server says rather than what the client
+    // predicted.
     void ApplyView(Vector2 pos, float heading, Vector2 vel, float hull, float shields);
     // Network client (M4e): apply the authoritative navigation state (warp/
     // autopilot) from the server. Warp/AP are server-authoritative — the client has

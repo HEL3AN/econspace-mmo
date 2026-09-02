@@ -114,9 +114,6 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
 - **Comments referencing "M4f", "L2", "M0"** are historical milestone markers from the
   living-galaxy and netcode tracks. They describe *when* something was built, not what is
   planned.
-- **Some code is dead scaffolding and says so** — `TickCold`, `StepAggregate`, `StepMacro`
-  (note: the live method is `StepWorldMacro`, an easy trap), `DehydrateActive`. Being
-  removed in #18.
 
 ## Planning
 

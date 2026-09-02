@@ -180,7 +180,7 @@ private:
     std::vector<Proto::Command> pendingInputs_;
     // Client-side proxy world entities: rendered instead of the server's live objects.
     // Statics are built from the received layout, dynamics (NPCs) from the snapshot; positions
-    // are updated from the snapshot by id (M4d-3c). The client does not clone the live sim_.
+    // are updated from the snapshot by id (M4d-3c). There is no local simulation to clone.
     std::vector<std::unique_ptr<Entity>> clientWorld_;
     std::map<int, Proto::EntityLayout>   layoutById_;  // static layout of the current system by id
     Proto::GalaxyState galaxyState_;  // net: per-system stats for the galaxy map (M4e-3c)
