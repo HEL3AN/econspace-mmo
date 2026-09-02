@@ -522,8 +522,10 @@ int MessageVersion(const std::string& s)
 
 void CompleteFromLayout(Snapshot& s, const std::map<int, EntityLayout>& layout)
 {
+    std::map<int, bool> present;
     for (EntitySnapshot& e : s.entities)
     {
+        present[e.id] = true;
         auto it = layout.find(e.id);
         if (it == layout.end())
             continue;  // an NPC or another player: nothing static to fill in
@@ -536,6 +538,26 @@ void CompleteFromLayout(Snapshot& s, const std::map<int, EntityLayout>& layout)
             e.faction = l.faction;
         if (e.ore == -1)
             e.ore = l.resource;
+    }
+
+    // Anything in the layout that the snapshot did not mention is standing exactly where
+    // it was standing when the layout was sent -- a station, a gate, a belt (#97). It is
+    // rebuilt here rather than sent, because sending it again every tick was describing a
+    // world that had not changed.
+    for (const auto& kv : layout)
+    {
+        if (present.count(kv.first))
+            continue;
+        const EntityLayout& l = kv.second;
+        EntitySnapshot      e;
+        e.id = l.id;
+        e.kind = l.kind;
+        e.pos = l.pos;
+        e.size = l.size;
+        e.name = l.name;
+        e.faction = l.faction;
+        e.ore = l.resource;
+        s.entities.push_back(std::move(e));
     }
 }
 

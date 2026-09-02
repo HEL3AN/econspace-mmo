@@ -400,3 +400,71 @@ TEST_CASE("positions are sent to a precision a player could see")
     CHECK(back.entities[0].pos.y == doctest::Approx(-1234.5678f).epsilon(0.001));
     CHECK(back.entities[0].heading == doctest::Approx(1.23456f).epsilon(0.001));
 }
+
+TEST_CASE("an object that cannot move is not described again every tick")
+{
+    // #97: a station is where the layout said it was. Sending that twenty times a second
+    // was describing a world that had not changed. The wire carries only what moves; the
+    // receiving side rebuilds the rest, so the entity list is the whole system again.
+    Proto::Snapshot s;
+    s.systemId = "core";
+
+    Proto::EntitySnapshot npc;  // the only thing actually moving here
+    npc.id = 20;
+    npc.kind = EntityKind::Npc;
+    npc.pos = { 500.0f, 0.0f };
+    npc.name = "pirate";
+    s.entities.push_back(npc);
+
+    const std::string wire = Proto::EncodeSnapshot(s);
+
+    Proto::Snapshot back;
+    REQUIRE(Proto::DecodeSnapshot(wire, back));
+    REQUIRE(back.entities.size() == 1);  // nothing static went over the wire
+
+    std::map<int, Proto::EntityLayout> layout;
+    Proto::EntityLayout                station;
+    station.id = 8;
+    station.kind = EntityKind::Station;
+    station.pos = { 100.0f, 200.0f };
+    station.size = 90.0f;
+    station.name = "Aurora Hub";
+    station.faction = FactionId::TradersGuild;
+    layout[8] = station;
+
+    Proto::EntityLayout belt;
+    belt.id = 13;
+    belt.kind = EntityKind::Field;
+    belt.pos = { -400.0f, 0.0f };
+    belt.name = "Inner Iron Belt";
+    belt.resource = 0;
+    layout[13] = belt;
+
+    Proto::CompleteFromLayout(back, layout);
+
+    REQUIRE(back.entities.size() == 3);
+    auto Find = [&](int id) -> const Proto::EntitySnapshot*
+    {
+        for (const Proto::EntitySnapshot& e : back.entities)
+            if (e.id == id)
+                return &e;
+        return nullptr;
+    };
+    const Proto::EntitySnapshot* st = Find(8);
+    REQUIRE(st != nullptr);
+    CHECK(st->name == "Aurora Hub");
+    CHECK(st->pos.x == doctest::Approx(100.0f));
+    CHECK(st->size == doctest::Approx(90.0f));
+    CHECK(st->faction == FactionId::TradersGuild);
+    CHECK(Find(13) != nullptr);
+    CHECK(Find(13)->ore == 0);   // a belt still says what it holds
+    CHECK(Find(20) != nullptr);  // and the NPC is untouched
+
+    SUBCASE("completing twice does not duplicate anything")
+    {
+        // Snapshots arrive continuously; a rebuild that grew the list each time would be
+        // a leak that looked like a busy system.
+        Proto::CompleteFromLayout(back, layout);
+        CHECK(back.entities.size() == 3);
+    }
+}
