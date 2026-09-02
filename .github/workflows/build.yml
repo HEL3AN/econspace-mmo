@@ -61,7 +61,7 @@ jobs:
       # when the pinned versions in CMakeLists.txt change, so key the cache on that
       # file: a dependency bump invalidates it, an ordinary commit does not.
       - name: Cache fetched dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/_deps
           key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
@@ -69,7 +69,7 @@ jobs:
       # ccache covers our own sources. CMakeLists picks it up automatically when it is
       # on PATH, so nothing else needs configuring.
       - name: Cache compiled objects
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.ccache
           key: ccache-${{ runner.os }}-${{ github.sha }}
@@ -166,13 +166,13 @@ jobs:
             libxrandr-dev
 
       - name: Cache fetched dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/_deps
           key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Cache compiled objects
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ccache
           key: ccache-${{ runner.os }}-${{ github.sha }}
