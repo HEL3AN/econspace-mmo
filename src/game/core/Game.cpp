@@ -278,7 +278,7 @@ void Game::HandleInput(float dt)
         cmd_.turn += 1.0f;
 
     // Combat target — the selected object (by id). The server fires at it in StepPlayerFire (over
-    // the network this is the only target source; single-player, ResolveCombat reads selected_
+    // the only target source: the server decides what a shot hits
     // directly).
     cmd_.targetId = selected_ != nullptr ? selected_->GetId() : 0;
 
@@ -360,9 +360,8 @@ void Game::Undock()
 // player — orange, others — the shooter's faction color. Ephemeral (rebuilt each frame).
 const WorldLoader::SystemInfo* Game::CurrentSystemInfo() const
 {
-    // Over the network the current system comes from the server snapshot (the local sim_ isn't
-    // activated on jumps, its ActiveId() would be stuck on the start system). The system list
-    // (Universe) is static.
+    // Which system the player is in comes from the snapshot; the client has no simulation
+    // to ask. The system list itself (Universe) is static content, read locally.
     const std::string& active = snapshot_.systemId;
     for (const auto& s : universe_.systems)
         if (s.id == active)

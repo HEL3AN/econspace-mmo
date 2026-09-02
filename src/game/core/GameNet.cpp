@@ -59,15 +59,7 @@ void Game::ApplyTradeAcks(const Proto::Snapshot& s)
     }
 }
 
-// Makes system id active. fromId — the system we jumped from (empty at
-// startup): the arrival point is chosen at the gate leading back there.
-// fromId is taken BY VALUE: it's called with sim_.ActiveId(), which is overwritten
-// below, so a reference would become dangling.
-//
-// L1: systems are persistent. First visit — load the static objects and
-// populate NPCs; repeat visit — just activate the saved state (objects and
-// NPCs in their places, as the player left them).
-// cppcheck-suppress passedByValue ; fromId is intentionally by value (see above)
+// The proxy for an entity the server has told us about, or nullptr.
 Entity* Game::FindEntityById(int id) const
 {
     if (id == 0)
@@ -152,7 +144,7 @@ void Game::BuildClientSnapshot()
             // The static half of each entity is not on the wire; it is in the layout we
             // were sent on entry (#16).
             Proto::CompleteFromLayout(s, layoutById_);
-            ApplyTradeAcks(s);                   // credit sales revenue (client account)
+            ApplyTradeAcks(s);                   // say what was sold; the money is the server's
             for (const Ev::Event& e : s.events)  // server journal (#29)
                 FlashMessage(e.text);
             incoming = std::move(s);
@@ -326,10 +318,10 @@ static float LerpAngleShort(float a, float b, float t)
 
 // Reconciles the client's proxy world from the received data: statics are built from the layout
 // (by id), dynamics (NPCs) from the snapshot fields; vanished ones are removed. Positions of
-// non-own entities: single-player directly from the fresh snapshot; over the network — ENTITY
-// INTERPOLATION (drawn "in the past", interpolating between two buffered snapshots) for
-// smoothness. The client does NOT peek into the live sim_ (the world comes entirely from the
-// network).
+// non-own entities: ENTITY INTERPOLATION -- drawn "in the past", interpolating between two
+// buffered snapshots, which is what lets the server describe the world twenty times a
+// second instead of sixty (#16). The world comes entirely from the network; there is no
+// local simulation to peek into.
 void Game::ReconcileClientWorld()
 {
     // 1) Presence: create new proxies from the latest snapshot. Single-player we set the

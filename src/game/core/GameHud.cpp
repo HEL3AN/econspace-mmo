@@ -93,10 +93,9 @@ void Game::DrawWorld()
         }
     }
 
-    // The selected target's ring — at the object's rendered position, not the
-    // snapshot: over the network the body is rendered via interpolation "in the past", and a ring
-    // from the fresh snapshot would run ahead. selected_ is a proxy (network) or a live object
-    // (single-player), its position matches what's drawn.
+    // The selected target's ring — at the object's rendered position, not the snapshot:
+    // the body is drawn by interpolation "in the past", and a ring from the fresh snapshot
+    // would run ahead of it. selected_ is a proxy, so its position is what was drawn.
     if (selected_ != nullptr)
         DrawCircleLines(selected_->GetPosition().x, selected_->GetPosition().y,
                         selected_->GetSize() + 10.0f, WHITE);
@@ -824,8 +823,8 @@ void Game::DrawStationScreen()
     if (boardW >= 220)
         DrawMissionBoard(px + pw - boardW - 24, py + 84, boardW);
 
-    // --- Market: selling mined ore from the hold. Prices and cargo are read from the snapshot
-    // (data comes from the server), not from the live sim_/ship directly. ---
+    // --- Market: selling mined ore from the hold. Prices and cargo come from the
+    // snapshot, which is the only place the client has them. ---
     Ui::Text("MARKET", contentX, py + 84, 20, Ui::TEXT);
     int rowY = py + 116;
     int resIdx = 0;
@@ -1173,8 +1172,8 @@ void Game::DrawGalaxyMap()
             DrawLineEx(a, b, 1.5f, Fade(Ui::PANEL_BORDER, 0.9f));
     }
 
-    // Current system: over the network — from the server snapshot (the client's local sim_ isn't
-    // active, its ActiveId() would remain on the start system); single-player — sim_.ActiveId().
+    // Which system the player is in, according to the server. The client has no
+    // simulation of its own to ask (#3).
     std::string activeSys = snapshot_.systemId;
 
     // System nodes.
@@ -1187,8 +1186,8 @@ void Game::DrawGalaxyMap()
             DrawCircleLines((int)p.x, (int)p.y, 16.0f, Fade(Ui::ACCENT, 0.6f));
         Ui::Text(s.name.c_str(), (int)p.x + 14, (int)p.y - 8, 16, cur ? Ui::ACCENT : Ui::TEXT);
 
-        // Live summary: security/pirates/economy/controller. Source — over the network the
-        // server's galaxy snapshot (galaxyState_), single-player the local aggregates.
+        // Live summary: security/pirates/economy/controller, from the server's galaxy
+        // snapshot (galaxyState_).
         bool      haveStats = false;
         float     security = 0.0f, prosperity = 0.0f;
         int       pirates = 0;
