@@ -55,11 +55,10 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for how it all fits together.
 
 Everything in this section is **planned, not implemented**. It is here so contributors know what the project is aiming at, and so nobody builds against the old assumptions. Details and sequencing live in [ROADMAP.md](ROADMAP.md).
 
-- **An MMO, not a sandbox with an optional server.** The client always talks to an authoritative server. Multi-client (one session, ship, and account per connection, plus interest management) is foundational work, not a stretch goal.
 - **A player-mutable world** (#44). Players build deployables and structures that feed the macro simulation that already exists — prosperity, security, territory control. The archetype registry and the glyph layer were built for this: a structure a player invents needs no artist and no recompile.
 - **Fleets** (#32). One commander, several agent-piloted ships.
 
-The world is still read-only content authored in the editor. The server accepts several clients, though they do not yet see each other in space (#4).
+The world is still read-only content authored in the editor. Several people can share a galaxy: each connection has its own ship and account, they see one another in a system, and progress survives a reconnect. Nobody can shoot anybody yet — whether they should be able to, where, and at what cost is #94 — and an account name is still a claim rather than a credential (#106).
 
 ---
 
