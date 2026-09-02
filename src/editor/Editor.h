@@ -28,6 +28,10 @@ public:
     // tuned, and the tool for judging one should not make you cross a star system first.
     void OpenGallery();
 
+    // Starts on the shape backend instead of glyphs. F2 still switches; this is for
+    // opening straight into the one you meant to look at.
+    void UseShapes();
+
 private:
     // Reference to a JSON element: array category and index (star uses index=-1).
     struct ObjHandle
@@ -91,6 +95,17 @@ private:
     void SaveArchetypes();
     // Records that a key of an archetype was changed, so the save touches only those.
     void NoteLookEdit(const std::string& id, const std::string& key);
+
+    // The gallery's own light (#119). A card has no system around it, so lighting is
+    // tuned against a synthetic source whose angle and reach are on sliders -- which is
+    // the whole reason the gallery came first in this milestone.
+    Render::Lighting GalleryLighting(Vector2 at, float size) const;
+
+    bool  galleryLit_ = true;
+    float galleryLightAngle_ = 2.4f;     // radians, where the light comes from
+    float galleryLightStrength_ = 1.0f;  // 0..1 at the object
+    float galleryAmbient_ = 0.38f;       // the floor nothing goes below
+    bool  gallerySecondLight_ = false;   // a second star, opposite and cooler
 
     int   gallerySelected_ = -1;
     float galleryScroll_ = 0.0f;      // pixels the card grid is scrolled by

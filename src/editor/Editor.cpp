@@ -315,12 +315,17 @@ void Editor::DrawWorld()
     // The editor presents the world through the same backend the game does (#35), so
     // what it shows is what a player will see rather than a second drawing path that
     // drifts from it.
+    //
+    // Lit by the system's own star, exactly as the game lights it (#119) -- the lights
+    // outlive the scene here because the placement ghost below is lit by them too.
+    Render::Lighting lights;
     {
         std::vector<Render::Item> scene;
         scene.reserve(entities_.size());
         for (const auto& e : entities_)
             scene.push_back(e->Describe());
-        Render::Present(std::move(scene), *backend_);
+        lights = Render::LightsFrom(scene);
+        Render::Present(std::move(scene), lights, *backend_);
     }
 
     // Highlight the selected object.
@@ -339,7 +344,9 @@ void Editor::DrawWorld()
         std::unique_ptr<Entity> ghost = MakeEntity(placeArchetype_, wp);
         if (ghost)
         {
-            backend_->Draw(ghost->Describe());
+            // Lit like the system it is about to be placed in, not like the last thing
+            // drawn: the ghost is a preview of the world, so it uses the world's lights.
+            Render::Present({ ghost->Describe() }, lights, *backend_);
             DrawCircleLines(wp.x, wp.y, ghost->GetSize() + 12.0f, Fade(Ui::ACCENT, 0.7f));
         }
     }

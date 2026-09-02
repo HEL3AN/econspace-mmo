@@ -2,6 +2,7 @@
 
 #include "entities/EntityKind.h"
 #include "core/Archetype.h"
+#include "render/Lighting.h"
 #include "raylib.h"
 #include <string>
 #include <vector>
@@ -39,6 +40,11 @@ struct Item
 
     std::string label;  // display name, for backends that show one
 
+    // What this item lights, from its archetype (#119). Carried on the item rather than
+    // looked up, because the thing that builds the light list has items and nothing else.
+    float lightRadius = 0.0f;
+    float lightIntensity = 0.0f;
+
     float heading = 0.0f;    // radians; 0 for things that do not point anywhere
     float intensity = 1.0f;  // 0..1 — ore left in a belt, hull left on a ship, a looted wreck
     float ring = 0.0f;       // guide circle radius (a planet's orbit); 0 draws none
@@ -55,6 +61,11 @@ public:
 
     virtual const char* Name() const = 0;
 
+    // The lights of the scene about to be drawn (#119). A backend with no use for them
+    // ignores it: a text projection has no lit side. Given before Begin, and given empty
+    // when the caller has no lights, which means "draw unlit" rather than "draw black".
+    virtual void SetLighting(const Lighting&) {}
+
     virtual void Begin() {}
     virtual void Draw(const Item& item) = 0;
     virtual void End() {}
@@ -70,5 +81,10 @@ Item FromArchetype(const Archetype& a, Vector2 pos, float size);
 // End. Sorting here rather than in each backend is what makes `layer` mean the same
 // thing in all of them.
 void Present(std::vector<Item> items, IBackend& backend);
+
+// The same, lit. Separate from the plain overload rather than a defaulted argument so the
+// callers that genuinely have no lights -- the tests, the agent -- say so by calling the
+// other one.
+void Present(std::vector<Item> items, const Lighting& lighting, IBackend& backend);
 
 }  // namespace Render

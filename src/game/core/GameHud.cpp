@@ -69,7 +69,11 @@ void Game::DrawWorld()
         scene.reserve(clientWorld_.size());
         for (const auto& e : clientWorld_)
             scene.push_back(e->Describe());
-        Render::Present(std::move(scene), *backend_);
+        // The system lights itself (#119): the stars are already in the scene, because
+        // they are in the layout the server sent on entry, so nothing new crosses the
+        // wire. A system with two of them is lit by two of them.
+        const Render::Lighting lights = Render::LightsFrom(scene);
+        Render::Present(std::move(scene), lights, *backend_);
     }
 
     // Destination-station markers for active delivery missions. We draw them only if
