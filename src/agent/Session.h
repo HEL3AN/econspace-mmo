@@ -53,6 +53,9 @@ public:
     std::string Describe(Obs::Detail detail, const WorldLoader::Universe* universe) const;
 
     const std::string& ProtocolError() const { return protocolError_; }
+    // Why the server ended this session, if it said (#105). Empty otherwise -- a socket
+    // that simply died says nothing, and pretending to know why would be worse.
+    const std::string& ByeReason() const { return byeReason_; }
 
 private:
     std::unique_ptr<Net::TcpConnection> conn_;
@@ -63,6 +66,7 @@ private:
     int                                 lastEventSeq_ = 0;
     bool                                haveSnapshot_ = false;
     std::string                         protocolError_;
+    std::string                         byeReason_;
 };
 
 }  // namespace Agent

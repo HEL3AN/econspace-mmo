@@ -121,6 +121,24 @@ bool DecodeHello(const std::string& s, Hello& out)
     return true;
 }
 
+std::string EncodeBye(const Bye& b)
+{
+    json j;
+    Stamp(j, "bye");
+    j["why"] = b.reason;
+    return j.dump();
+}
+
+bool DecodeBye(const std::string& s, Bye& out)
+{
+    json j = json::parse(s, nullptr, false);
+    if (j.is_discarded() || !j.is_object() || j.value("t", std::string()) != "bye" ||
+        j.value("v", 0) != PROTO_VERSION)
+        return false;
+    out.reason = j.value("why", std::string());
+    return true;
+}
+
 std::string EncodeCommand(const Command& c)
 {
     json j;

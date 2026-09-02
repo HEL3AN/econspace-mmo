@@ -468,3 +468,23 @@ TEST_CASE("an object that cannot move is not described again every tick")
         CHECK(back.entities.size() == 3);
     }
 }
+
+TEST_CASE("the server can end a session and say why")
+{
+    // Before this the only way to refuse anyone was to drop the socket, which a client
+    // cannot tell apart from a crash or a cable (#105).
+    Proto::Bye b;
+    b.reason = "Signed in from somewhere else";
+    const std::string wire = Proto::EncodeBye(b);
+    CHECK(Proto::MessageType(wire) == "bye");
+
+    Proto::Bye back;
+    REQUIRE(Proto::DecodeBye(wire, back));
+    CHECK(back.reason == "Signed in from somewhere else");
+
+    // Not confused with anything else on the wire, and refused across a version gap for
+    // the same reason every other message is.
+    Proto::Command c;
+    CHECK_FALSE(Proto::DecodeBye(Proto::EncodeCommand(c), back));
+    CHECK_FALSE(Proto::DecodeBye("{\"t\":\"bye\",\"v\":1,\"why\":\"x\"}", back));
+}

@@ -26,7 +26,7 @@ namespace Proto
 // without it a client built against an older protocol would silently receive defaults
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
-inline constexpr int PROTO_VERSION = 6;
+inline constexpr int PROTO_VERSION = 7;
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).
@@ -38,6 +38,18 @@ inline constexpr int PROTO_VERSION = 6;
 struct Hello
 {
     std::string account;  // [A-Za-z0-9_-], 1..32 characters; the server rejects the rest
+};
+
+// The server ending a session on purpose, and saying why (#105).
+//
+// Until this existed the only way to refuse anyone was to drop the socket, which the
+// client cannot tell apart from a crash, a cable, or a server that fell over. A player
+// displaced from their own account deserves to be told that is what happened rather than
+// left guessing -- and refusing a login for any other reason (#106) needs the same
+// channel.
+struct Bye
+{
+    std::string reason;  // shown to the player as-is; short, and in plain words
 };
 
 struct Command
@@ -252,6 +264,8 @@ void CompleteFromLayout(Snapshot& s, const std::map<int, EntityLayout>& layout);
 
 std::string EncodeHello(const Hello& h);
 bool        DecodeHello(const std::string& s, Hello& out);
+std::string EncodeBye(const Bye& b);
+bool        DecodeBye(const std::string& s, Bye& out);
 std::string EncodeCommand(const Command& c);
 bool        DecodeCommand(const std::string& s, Command& out);
 std::string EncodeSnapshot(const Snapshot& s);

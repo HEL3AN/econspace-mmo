@@ -88,6 +88,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   player in with a fresh account and is never saved over. Bump `Save::WORLD_VERSION` /
   `Save::ACCOUNT_VERSION` when a field changes meaning — adding one an older reader can
   ignore does not need a bump.
+- **One account, one session** (#105). A second `Hello` for a name that is already playing
+  displaces the earlier connection: its account is saved first, then it is told why with a
+  `Bye` and dropped. `Bye` is the only way the server can end something on purpose and say
+  so — dropping the socket is indistinguishable from a crash — so a future refusal (#106)
+  belongs on that message too.
 - **The transport enforces its own limits** (#14). A frame length is four bytes the peer
   chose, so `TcpConnection` caps it and drops the connection rather than buffering; the
   send backlog is capped the same way. The host grants each client a budget of player

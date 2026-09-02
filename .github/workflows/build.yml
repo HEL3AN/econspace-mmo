@@ -108,6 +108,38 @@ jobs:
           kill $server_pid 2>/dev/null || true
           exit $status
 
+      # Two clients at once, which nothing checked until #107 -- and that is why one
+      # account being playable by two connections at the same time (#105) reached main.
+      # Deliberately over sockets rather than in-process: the hello handler, the per-name
+      # account files and the transport are exactly the parts that only exist there.
+      - name: Two clients at once
+        run: |
+          set -e
+          ./build/bin/server/econserver.exe host 50801 > mc.log 2>&1 &
+          server_pid=$!
+          sleep 5
+
+          # Two people sharing a galaxy. Each has to complete its own scripted run.
+          ./build/bin/agent/econagent.exe selftest 127.0.0.1 50801 alice &
+          alice=$!
+          ./build/bin/agent/econagent.exe selftest 127.0.0.1 50801 bob &
+          bob=$!
+          wait $alice
+          wait $bob
+
+          # One account, one session: a second login for a name displaces the first, and
+          # the newcomer still plays normally afterwards.
+          sleep 30 | ./build/bin/agent/econagent.exe connect 127.0.0.1 50801 carol >/dev/null 2>&1 &
+          holder=$!
+          sleep 3
+          ./build/bin/agent/econagent.exe selftest 127.0.0.1 50801 carol
+          kill $holder 2>/dev/null || true
+
+          kill $server_pid 2>/dev/null || true
+          sleep 1
+          cat mc.log
+          grep -q "displaced" mc.log
+
   # The second platform, and the reason the transport was portable at all (#12). Without
   # a runner that actually compiles it, "should work on Linux" is a claim nobody checks --
   # and the winsock calls it replaced were invisible from Windows.
@@ -167,3 +199,35 @@ jobs:
           status=$?
           kill $server_pid 2>/dev/null || true
           exit $status
+
+      # Two clients at once, which nothing checked until #107 -- and that is why one
+      # account being playable by two connections at the same time (#105) reached main.
+      # Deliberately over sockets rather than in-process: the hello handler, the per-name
+      # account files and the transport are exactly the parts that only exist there.
+      - name: Two clients at once
+        run: |
+          set -e
+          ./build/bin/server/econserver host 50801 > mc.log 2>&1 &
+          server_pid=$!
+          sleep 5
+
+          # Two people sharing a galaxy. Each has to complete its own scripted run.
+          ./build/bin/agent/econagent selftest 127.0.0.1 50801 alice &
+          alice=$!
+          ./build/bin/agent/econagent selftest 127.0.0.1 50801 bob &
+          bob=$!
+          wait $alice
+          wait $bob
+
+          # One account, one session: a second login for a name displaces the first, and
+          # the newcomer still plays normally afterwards.
+          sleep 30 | ./build/bin/agent/econagent connect 127.0.0.1 50801 carol >/dev/null 2>&1 &
+          holder=$!
+          sleep 3
+          ./build/bin/agent/econagent selftest 127.0.0.1 50801 carol
+          kill $holder 2>/dev/null || true
+
+          kill $server_pid 2>/dev/null || true
+          sleep 1
+          cat mc.log
+          grep -q "displaced" mc.log
