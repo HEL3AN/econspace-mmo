@@ -7,6 +7,7 @@
 //
 // Run: econserver [ticks]   (default 3600 ticks = 60 s at SIM_DT=1/60).
 
+#include "sim/Auth.h"
 #include "sim/Protocol.h"
 #include "sim/SaveSchema.h"
 #include "sim/Simulation.h"
@@ -21,7 +22,10 @@
 #include "entities/ShipType.h"
 #include "raylib.h"
 
+#include <nlohmann/json.hpp>
+
 #include <chrono>
+#include <fstream>
 #include <csignal>
 #include <cstdio>
 #include <cctype>
@@ -317,7 +321,15 @@ struct HostClient
     bool                                wasDocked = false;
     bool                                accountReadOnly = false;  // their file is newer (#20)
     bool                                evicted = false;  // displaced by a later login (#105)
-    double                              silentFor = 0.0;  // seconds connected without a hello
+
+    // The login in progress (#106). A name has been claimed and a challenge sent; none of
+    // it means anything until the proof arrives.
+    std::string pendingAccount;
+    std::string nonce;          // this connection's, single use
+    std::string challengeSalt;  // the salt the client was told to use
+    std::string fileStored;     // what the account file holds, for an account that exists
+    bool        isNewAccount = false;
+    double      silentFor = 0.0;  // seconds connected without a hello
 
     // How many player ticks this client may still be granted. One received command is one
     // tick of movement, so without a budget a client that sends faster than the simulation
@@ -350,6 +362,22 @@ static bool ValidAccountName(const std::string& n)
         if (!std::isalnum((unsigned char)c) && c != '_' && c != '-')
             return false;
     return true;
+}
+
+// What an account file says its secret is, if it says anything. False for a file that is
+// not there and for one written before secrets existed (#106) -- in both cases the next
+// login sets it, which is a migration hole that closes itself as accounts are used.
+static bool ReadStoredAuth(const std::string& path, std::string& salt, std::string& stored)
+{
+    std::ifstream in(path);
+    if (!in.is_open())
+        return false;
+    nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
+    if (j.is_discarded() || !j.is_object() || !j.contains("auth") || !j["auth"].is_object())
+        return false;
+    salt = j["auth"].value("salt", std::string());
+    stored = j["auth"].value("stored", std::string());
+    return !salt.empty() && !stored.empty();
 }
 
 // Progress is stored per account name (#3). There was one account.json when there could
@@ -489,25 +517,72 @@ static int RunHost(unsigned short port)
                 if (type == "hello")
                 {
                     Proto::Hello h;
-                    if (hc.sessionId != 0 || !Proto::DecodeHello(msg, h) ||
-                        !ValidAccountName(h.account))
+                    if (hc.sessionId != 0 || !hc.pendingAccount.empty() ||
+                        !Proto::DecodeHello(msg, h) || !ValidAccountName(h.account))
                     {
                         printf("Rejected a hello (bad name, wrong version, or a second one "
                                "on the same connection).\n");
-                        // Dropping the socket is the whole answer: the protocol has no error
-                        // message, and a client that cannot say who it is has nothing to
-                        // be told.
+                        // Dropping the socket is the whole answer: a client that cannot
+                        // say who it is has nothing to be told.
                         hc.conn.reset();
                         break;
                     }
+                    // A name is a claim, not a login (#106). Nothing is created here and
+                    // nobody is disturbed: the challenge goes out, and everything that
+                    // costs anyone anything waits for the proof.
+                    hc.pendingAccount = h.account;
+                    hc.nonce = Auth::MakeNonce();
+
+                    Proto::Challenge chal;
+                    chal.nonce = hc.nonce;
+                    const std::string path = AccountPath(h.account);
+                    hc.isNewAccount = !ReadStoredAuth(path, chal.salt, hc.fileStored);
+                    if (hc.isNewAccount)
+                        chal.salt = Auth::MakeSalt();  // this login will set the secret
+                    chal.isNew = hc.isNewAccount;
+                    hc.challengeSalt = chal.salt;
+                    hc.conn->Send(Proto::EncodeChallenge(chal));
+                    continue;
+                }
+                if (type == "auth")
+                {
+                    Proto::Auth a;
+                    if (hc.sessionId != 0 || hc.pendingAccount.empty() ||
+                        !Proto::DecodeAuth(msg, a))
+                    {
+                        hc.conn.reset();
+                        break;
+                    }
+                    // A new account is taken at its word once -- there is nothing to check
+                    // it against yet -- but the proof still has to match the value being
+                    // registered, so a client that gets this wrong is caught rather than
+                    // creating an account nobody can log into afterwards.
+                    const std::string against = hc.isNewAccount ? a.stored : hc.fileStored;
+                    const bool        shaped = against.size() == 64;
+                    if (!shaped || a.proof != Auth::Proof(hc.nonce, against))
+                    {
+                        // One guess per connection: a wrong answer ends it, so guessing
+                        // costs a fresh socket every time.
+                        Proto::Bye bye;
+                        bye.reason = hc.isNewAccount ? "Could not create that account"
+                                                     : "Wrong secret for that account";
+                        hc.conn->Send(Proto::EncodeBye(bye));
+                        printf("%s: refused (%s).\n", hc.pendingAccount.c_str(),
+                               hc.isNewAccount ? "bad registration" : "wrong secret");
+                        hc.conn.reset();
+                        break;
+                    }
+                    const Proto::Hello h{ hc.pendingAccount };
+
                     // One account, one session (#105). Two connections claiming the same
                     // name used to get a ship each and the whole balance each, and
                     // whichever left last wrote its copy over the other's.
                     //
-                    // The newcomer wins. Without a credential (#106) either choice can be
-                    // abused by a stranger, and this is the one that always lets the real
-                    // owner back in after a crash instead of locking them out of their own
-                    // account until a dead socket times out.
+                    // The newcomer wins, and only once it has proved itself: displacing on
+                    // the claim alone would have handed anyone a way to kick anyone (#106).
+                    // Between refusing and displacing, this is the one that always lets the
+                    // real owner back in after a crash instead of locking them out of their
+                    // own account until a dead socket times out.
                     for (HostClient& other : clients)
                     {
                         if (&other == &hc || other.sessionId == 0 || other.account != h.account)
@@ -555,6 +630,18 @@ static int RunHost(unsigned short port)
                     else
                         printf("%s joined, new account (money %.0f).\n", h.account.c_str(),
                                s.account.GetMoney());
+
+                    // Set after the load, not before: an account file with no secret in it
+                    // (one written before #106) would otherwise overwrite what was just
+                    // registered with nothing.
+                    if (hc.isNewAccount)
+                    {
+                        s.authSalt = hc.challengeSalt;
+                        s.authStored = a.stored;
+                        if (acct == Save::Result::Ok)
+                            printf("%s: an account that had no secret now has one.\n",
+                                   h.account.c_str());
+                    }
                     hc.wasDocked = s.IsDocked();
                     const std::string lay = Proto::EncodeLayout(sim.BuildLayout(s.systemId));
                     const std::string gal = Proto::EncodeGalaxy(sim.BuildGalaxyState());

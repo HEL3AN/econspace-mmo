@@ -32,10 +32,10 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 
 ./build/bin/server/econserver.exe host 50800        # authoritative server
-./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot   # name = account
+./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2   # account + secret
 ./build/bin/editor/worldeditor.exe
 
-./build/bin/agent/econagent.exe connect 127.0.0.1 50800 agent  # MCP server for an AI agent
+./build/bin/agent/econagent.exe connect 127.0.0.1 50800 agent hunter2  # MCP for an agent
 
 ./build/bin/server/econserver.exe hosttest          # server loop smoke test
 ./build/bin/server/econserver.exe accttest          # account persistence smoke test
@@ -88,6 +88,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   player in with a fresh account and is never saved over. Bump `Save::WORLD_VERSION` /
   `Save::ACCOUNT_VERSION` when a field changes meaning — adding one an older reader can
   ignore does not need a bump.
+- **A login is a challenge and an answer, not a name** (#106). The server sends a nonce
+  and the salt; the client replies with `H(nonce ‖ H(salt ‖ secret))`, so the secret itself
+  never crosses the wire after the account is created. There is no transport encryption, so
+  that is the only thing protected — and a wrong answer ends the connection, which is what
+  keeps guessing expensive.
 - **One account, one session** (#105). A second `Hello` for a name that is already playing
   displaces the earlier connection: its account is saved first, then it is told why with a
   `Bye` and dropped. `Bye` is the only way the server can end something on purpose and say

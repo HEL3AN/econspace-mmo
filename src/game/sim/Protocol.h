@@ -26,7 +26,7 @@ namespace Proto
 // without it a client built against an older protocol would silently receive defaults
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
-inline constexpr int PROTO_VERSION = 7;
+inline constexpr int PROTO_VERSION = 8;
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).
@@ -47,6 +47,27 @@ struct Hello
 // displaced from their own account deserves to be told that is what happened rather than
 // left guessing -- and refusing a login for any other reason (#106) needs the same
 // channel.
+// The server's half of the handshake (#106): a nonce for this connection, and the salt
+// the account's secret is stored under. `isNew` says there is no such account yet, in
+// which case the salt is a fresh one and this login creates it.
+struct Challenge
+{
+    std::string nonce;
+    std::string salt;
+    bool        isNew = false;
+};
+
+// The client's answer: proof that it knows the secret, good for this nonce only.
+//
+// `stored` is sent on registration and never again. It is the one moment the value a
+// server keeps crosses the wire, which is a real weakness of doing this without transport
+// encryption -- and the alternative, sending the secret itself on every login, is worse.
+struct Auth
+{
+    std::string proof;
+    std::string stored;
+};
+
 struct Bye
 {
     std::string reason;  // shown to the player as-is; short, and in plain words
@@ -266,6 +287,10 @@ std::string EncodeHello(const Hello& h);
 bool        DecodeHello(const std::string& s, Hello& out);
 std::string EncodeBye(const Bye& b);
 bool        DecodeBye(const std::string& s, Bye& out);
+std::string EncodeChallenge(const Challenge& c);
+bool        DecodeChallenge(const std::string& s, Challenge& out);
+std::string EncodeAuth(const Auth& a);
+bool        DecodeAuth(const std::string& s, Auth& out);
 std::string EncodeCommand(const Command& c);
 bool        DecodeCommand(const std::string& s, Command& out);
 std::string EncodeSnapshot(const Snapshot& s);

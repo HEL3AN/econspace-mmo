@@ -49,6 +49,12 @@ struct ClientSession
         return false;
     }
 
+    // How this account proves it is itself (#106). The salt is public; the stored value
+    // is what a proof is checked against. Both are written to the account file, and the
+    // secret they came from is never here.
+    std::string authSalt;
+    std::string authStored;
+
     // Where this player is. Systems other than this one keep running; what makes this one
     // different is only that the NPCs in it can see this ship.
     std::string systemId;
