@@ -26,5 +26,5 @@ static const char* ArchetypeIdForStarType(StarType type)
 Star::Star(Vector2 pos, float size, StarType type)
     : Entity(pos, size, ColorForStarType(type), EntityKind::Star), type_(type)
 {
-    SetArchetype(Archetypes::Find(ArchetypeIdForStarType(type)));
+    SetArchetype(ArchetypeIdForStarType(type));
 }

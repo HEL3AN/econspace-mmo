@@ -7,7 +7,7 @@ NpcShip::NpcShip(Vector2 pos, FactionId faction, NpcRole role, std::vector<Vecto
       waypoints_(std::move(waypoints)), target_(pos), speed_((float)GetRandomValue(120, 180)),
       heading_(0.0f), waitTimer_(0.0f)
 {
-    SetArchetype(Archetypes::Find("ship.npc"));
+    SetArchetype("ship.npc");
     PickNewTarget();
 }
 

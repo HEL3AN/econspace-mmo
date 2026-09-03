@@ -7,7 +7,7 @@ Ship::Ship(Vector2 startPos, const ShipStats& stats)
     : Entity(startPos, 16.0f, RAYWHITE, EntityKind::PlayerShip), stats_(stats), heading_(0.0f),
       velocity_({ 0.0f, 0.0f })
 {
-    SetArchetype(Archetypes::Find("ship.player"));
+    SetArchetype("ship.player");
 }
 
 Render::Item Ship::Describe() const

@@ -40,5 +40,5 @@ Station::Station(Vector2 pos, float size, std::string name, FactionId faction, S
     : Entity(pos, size, FactionColor(faction), EntityKind::Station), name_(std::move(name)),
       faction_(faction), role_(role)
 {
-    SetArchetype(Archetypes::Find(ArchetypeIdForStationRole(role)));
+    SetArchetype(ArchetypeIdForStationRole(role));
 }

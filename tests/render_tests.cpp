@@ -141,3 +141,41 @@ TEST_CASE("layers decide what covers what, in every backend at once")
         CHECK(grid.At(4, 4) == ' ');
     }
 }
+
+// #127: the player's own ship shipped for months with no archetype at all, because the
+// client built it before Archetypes::Load ran. Nothing failed -- it simply drew as the
+// fallback glyph, and the one object affected was the one nobody inspects.
+//
+// The ordering itself lives in a constructor and cannot be reached from here. What can be
+// reached is the thing that made it invisible: an entity whose archetype is missing looks
+// exactly like one that never wanted an archetype. So this pins the two states apart.
+TEST_CASE("an entity built without the registry has no look, and that is distinguishable")
+{
+    LoadRegistry();
+
+    Station withRegistry({ 0.0f, 0.0f }, 90.0f, "Hub", FactionId::Independent,
+                         StationRole::TradeHub);
+    REQUIRE(withRegistry.GetArchetype() != nullptr);
+    CHECK(withRegistry.Describe().glyph == "#");
+
+    SUBCASE("every archetype an entity constructor asks for actually exists")
+    {
+        // The other half of #127: a null archetype can also mean a typo in an id, and one
+        // of these ids being wrong would be just as silent. They are checked here rather
+        // than trusted, because they are string literals spread across nine files.
+        const char* ids[] = { "field.asteroid",    "derelict.wreck",
+                              "gate.jump",         "nebula.cloud",
+                              "star.yellow",       "star.red",
+                              "star.blue",         "planet.rocky",
+                              "planet.gas",        "planet.ice",
+                              "planet.lava",       "planet.oceanic",
+                              "station.trade_hub", "station.mining_outpost",
+                              "station.shipyard",  "station.military",
+                              "ship.player",       "ship.npc" };
+        for (const char* id : ids)
+        {
+            INFO("archetype id: ", id);
+            CHECK(Archetypes::Find(id) != nullptr);
+        }
+    }
+}

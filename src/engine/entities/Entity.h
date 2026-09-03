@@ -44,7 +44,12 @@ public:
     // not been loaded or names no archetype for this object, which is why every caller
     // asks through Has() rather than dereferencing.
     const Archetype* GetArchetype() const { return archetype_; }
-    void             SetArchetype(const Archetype* a) { archetype_ = a; }
+
+    // Looks the archetype up by id and remembers it. Takes the id rather than a pointer so
+    // that a miss can say *what* was missing: a null archetype is otherwise completely
+    // silent, and an object with no glyph and no components looks like one nobody
+    // finished rather than like a bug (#127).
+    void SetArchetype(const std::string& id);
 
     // The question simulation passes actually want to ask. "Everything dockable within
     // range" survives a player inventing a new kind of dock; "everything that is a

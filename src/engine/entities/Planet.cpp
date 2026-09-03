@@ -63,7 +63,7 @@ Planet::Planet(float orbitRadius, float orbitSpeed, float angle, float size, Col
       orbitRadius_(orbitRadius), orbitSpeed_(orbitSpeed), angle_(angle), deposit_(deposit),
       type_(type)
 {
-    SetArchetype(Archetypes::Find(ArchetypeIdForPlanetType(type)));
+    SetArchetype(ArchetypeIdForPlanetType(type));
 }
 
 Render::Item Planet::Describe() const
