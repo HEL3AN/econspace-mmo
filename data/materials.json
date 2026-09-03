@@ -6,6 +6,7 @@
             "bindings": {
                 "centre": "item.screenPos",
                 "radius": "item.screenSize",
+                "axis": "item.axis",
                 "lightDir": "light.dir",
                 "lightTint": "light.tint",
                 "lightAmount": "light.strength",

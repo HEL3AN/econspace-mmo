@@ -38,6 +38,7 @@ enum class Source
     ItemSize,        // float, world units
     ItemScreenPos,   // vec2, pixels -- where the object's centre landed
     ItemScreenSize,  // float, pixels -- its radius after the camera
+    ItemAxis,        // vec2 -- which way an elongated part runs; zero means it is round
 
     LightDir,       // vec2, unit vector toward the strongest light (#119)
     LightTint,      // vec4, 0..1 -- the colour of the light arriving
@@ -82,6 +83,7 @@ struct MaterialInputs
     float            ambient = 0.0f;
     Vector2          screenPos = { 0.0f, 0.0f };
     float            screenSize = 0.0f;
+    Vector2          axis = { 0.0f, 0.0f };
     float            time = 0.0f;
 };
 

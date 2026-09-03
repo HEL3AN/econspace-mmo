@@ -24,6 +24,7 @@ uniform vec4 colDiffuse;
 
 uniform vec2  centre;       // item.screenPos -- pixels, origin at the bottom left
 uniform float radius;       // item.screenSize -- pixels
+uniform vec2  axis;         // item.axis -- which way an elongated part runs; zero if round
 uniform vec2  lightDir;     // light.dir -- unit vector toward the light, zero if none
 uniform vec4  lightTint;    // light.tint
 uniform float lightAmount;  // light.strength, 0..1
@@ -50,6 +51,16 @@ void main()
     // object smaller than a pixel) falls back to flat, which is correct: there is no
     // surface left to shade.
     vec2 local = (radius > 0.5) ? (gl_FragCoord.xy - centre) / radius : vec2(0.0);
+
+    // An elongated part is a cylinder, not a small sphere. Only the distance *across* its
+    // axis bends the surface; measuring along it as well lights an arm as a ball and puts
+    // both of its ends in shadow, which is exactly what a truss did.
+    if (dot(axis, axis) > 0.0001)
+    {
+        vec2 across = vec2(-axis.y, axis.x);
+        local = across * dot(local, across);
+    }
+
     float r = min(length(local), 1.0);
 
     // Facing: 1 where the surface points at the light, 0 where it points away. The z term

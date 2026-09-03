@@ -24,6 +24,7 @@ const NamedSource SOURCES[] = {
     { Source::ItemSize, "item.size" },
     { Source::ItemScreenPos, "item.screenPos" },
     { Source::ItemScreenSize, "item.screenSize" },
+    { Source::ItemAxis, "item.axis" },
     { Source::LightDir, "light.dir" },
     { Source::LightTint, "light.tint" },
     { Source::LightStrength, "light.strength" },
@@ -131,6 +132,7 @@ UniformValue Resolve(const Binding& b, const MaterialInputs& in)
         case Source::ItemSize: return One(haveItem ? in.item->size : 0.0f);
         case Source::ItemScreenPos: return Two(in.screenPos.x, in.screenPos.y);
         case Source::ItemScreenSize: return One(in.screenSize);
+        case Source::ItemAxis: return Two(in.axis.x, in.axis.y);
 
         case Source::LightDir: return Two(in.light.dir.x, in.light.dir.y);
         case Source::LightTint: return Four(in.light.tint);

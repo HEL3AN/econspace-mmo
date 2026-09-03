@@ -211,6 +211,40 @@ TEST_CASE("a composition reaches as far as its furthest part, not as far as its 
     }
 }
 
+TEST_CASE("a part is shaded at its own cross section, not at its own length")
+{
+    // A material shades by distance from a centre, so an arm two radii long and a tenth
+    // wide has to be lit as a thin cylinder. Given half its length it would be lit as a
+    // ball two radii across, and the whole arm would sit inside one soft highlight.
+    const Render::Shape s = Parse(R"([
+        { "form": "disc", "radius": 0.5 },
+        { "form": "capsule", "at": [1.0, 0.0], "length": 2.0, "width": 0.1 },
+        { "form": "ring", "radius": 1.5, "width": 0.08 }
+    ])");
+
+    const std::vector<Render::Piece> p = Render::Compose(s, { 0, 0 }, 100.0f, 0.0f, 1, 1.0f);
+    REQUIRE(p.size() == 3);
+
+    CHECK(Render::ShadeRadius(p[0]) == doctest::Approx(50.0f));   // a disc is its radius
+    CHECK(Render::ShadeRadius(p[1]) == doctest::Approx(5.0f));    // an arm is its half-width
+    CHECK(Render::ShadeRadius(p[2]) == doctest::Approx(150.0f));  // a ring is its radius
+
+    SUBCASE("and every shipped part has one, or it is shaded as a point")
+    {
+        REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+        for (const Archetype& a : Archetypes::All())
+        {
+            if (a.visual.shape.Empty())
+                continue;
+            INFO("archetype: ", a.id);
+            for (const Render::Piece& piece :
+                 Render::Compose(a.visual.shape, { 0, 0 },
+                                 a.defaultSize > 0.0f ? a.defaultSize : 100.0f, 0.0f, 1, 1.0f))
+                CHECK(Render::ShadeRadius(piece) > 0.0f);
+        }
+    }
+}
+
 TEST_CASE("the shapes that ship are ones the game can read")
 {
     // A composition lives in archetypes.json, so a typo in it is a broken build that

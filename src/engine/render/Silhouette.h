@@ -116,6 +116,22 @@ struct Piece
     float   length = 0.0f;         // world
 };
 
+// How large a piece is *for shading*, which is not the same as how far it reaches.
+//
+// A material shades by distance from a centre, so what it wants is the piece's cross
+// section: an arm two radii long and a tenth wide is lit like a thin cylinder, not like a
+// ball two radii across. Round forms give their radius; elongated ones give half their
+// width, because that is the direction the surface actually turns in.
+float ShadeRadius(const Piece& p);
+
+// Which way an elongated piece runs, as a unit vector. Zero for the round forms, which
+// have no axis and are lit as what they are.
+//
+// A material needs this because a long thin part is not a small sphere. Lit radially, an
+// arm two radii long gets one bright band across its middle and both ends in shadow --
+// which is what a truss looked like the first time parts were shaded individually.
+Vector2 Axis(const Piece& p);
+
 // Reads a shape from an archetype's `shape` array. Returns false and says why on anything
 // it does not recognise: unlike a screen-treatment pass, a part that quietly vanishes
 // leaves an object missing a piece, and nobody would know which file to look in.
