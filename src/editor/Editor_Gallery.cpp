@@ -243,10 +243,15 @@ void Editor::DrawGallery()
         const Rectangle box{ card.x + 6.0f, card.y + 6.0f, card.width - 12.0f, 92.0f };
         const float     size = a.defaultSize > 0.0f ? a.defaultSize : 100.0f;
 
+        // Fitted to what the object actually reaches, not to its radius: a docking ring at
+        // 1.55 radii is the point of a docking ring, and a card that framed the radius
+        // would cut it off (#122).
+        const float reach = size * Render::Extent(a.visual.shape);
+
         Camera2D cam{};
         cam.offset = { box.x + box.width / 2.0f, box.y + box.height / 2.0f };
         cam.target = { 0.0f, 0.0f };
-        cam.zoom = (fminf(box.width, box.height) * 0.42f) / (galleryTrueScale_ ? largest : size);
+        cam.zoom = (fminf(box.width, box.height) * 0.42f) / (galleryTrueScale_ ? largest : reach);
 
         BeginClip(Clip(grid, box));
         BeginMode2D(cam);

@@ -46,6 +46,12 @@ struct Item
     // Which material shades it (#121), from its archetype. Empty draws it plain.
     std::string material;
 
+    // What it is made of (#122). Borrowed from the process-wide archetype registry, on the
+    // same terms as `Entity::archetype_`: valid until the next Archetypes::Load, which
+    // every executable calls once before building a world. Not copied, because a scene is
+    // rebuilt every frame and a shape is a vector nobody is changing.
+    const Shape* shape = nullptr;
+
     // What this item lights, from its archetype (#119). Carried on the item rather than
     // looked up, because the thing that builds the light list has items and nothing else.
     float lightRadius = 0.0f;

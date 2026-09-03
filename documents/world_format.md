@@ -100,6 +100,7 @@ registry says *what it is and what it can do*, once, for every object of that ki
 | `style` | string | `point` (default), `region` or `directional` — see below |
 | `color` | [r, g, b, a] | 0..255; `a` defaults to 255 |
 | `layer` | int | draw order, lowest first; the same number means the same thing in every backend |
+| `shape` | array | **optional** — what the object is made of, as a list of parts. Omit it and the backend falls back to the figure it used to compile in for this kind. See below |
 | `material` | string | **optional** — the material that shades it, by id from `data/materials.json`. Omit it and the object is drawn plain |
 | `light` | object | **optional** — this object lights the system: `radius` (world units at which its light has fallen to nothing) and `intensity` (default 1.0). Omit it and the object emits nothing. See below |
 | `size` | number | default radius when the instance does not give its own |
@@ -140,6 +141,67 @@ no `light` is drawn unlit — at full colour — rather than dark.
 The gallery edits `light` like any other look field and writes it back here, because how
 far a star reaches is the one number that decides whether a system reads as lit or as a
 dark map with a lamp in the middle, and that is only decidable by looking.
+
+### `shape` — what an object is made of
+
+An object is a **composition**, not a figure (#122). A trade hub is a hexagonal core, a
+ring, three arms with pads on them, a mast and a row of lamps — and none of that appears in
+C++.
+
+```json
+"shape": [
+    {"form": "polygon", "sides": 6, "radius": 0.55, "role": "hull"},
+    {"form": "capsule", "at": [0.85, 0.0], "repeat": 3, "length": 0.75, "width": 0.14,
+     "role": "hull", "jitterAngle": 4},
+    {"form": "ring", "radius": 1.55, "width": 0.08, "role": "trim", "minPixels": 34},
+    {"form": "disc", "at": [1.55, 0.0], "repeat": 6, "radius": 0.055, "role": "light",
+     "minPixels": 60}
+]
+```
+
+**Every measurement is a fraction of the object's own radius**, so a shape is written once
+and works at any size — a ninety-unit station and a sixteen-unit ship use the same grammar.
+
+| Field | Type | Description |
+|------|-----|----------|
+| `form` | string | `disc`, `ring`, `polygon`, `capsule`, `chevron`, `bar`, `lattice` |
+| `role` | string | `hull` (the object's colour), `panel` (darker), `trim` (lighter), `light` (emissive, never shaded), `antenna` (thin and dim) |
+| `at` | [x, y] | offset from the centre, in radii |
+| `angle` | number | the part's own rotation, degrees |
+| `radius` | number | `disc`, `ring`, `polygon` |
+| `width` | number | ring thickness; the across-measure of the elongated forms |
+| `length` | number | `capsule`, `chevron`, `bar`, `lattice` |
+| `sides` | int | `polygon` |
+| `filled` | bool | `polygon`: solid or outline |
+| `count` | int | `lattice`: how many struts |
+| `repeat` | int | drawn n times, each turned a further 360/n about the centre |
+| `mirror` | bool | drawn again, reflected across the object's own axis |
+| `minPixels` | number | this part appears only once the object is at least this many pixels across |
+| `jitterAngle` | number | degrees the seed may turn this part |
+| `jitterScale` | number | fraction the seed may resize it |
+
+**The vocabulary is narrow on purpose, and that is the feature.** Seven primitives with
+strict proportions produce a family of objects that looks intentional; an open-ended set of
+arbitrary shapes reads as programmer art. Like a font: few strokes, many letters.
+
+**`repeat` and `mirror` are different symmetries.** `repeat` turns about the centre, which
+is what a station is: arms, lamps, pads, vents. `mirror` reflects, which is what a ship is:
+a pair of wings is not a wing rotated half a turn — that puts the second one in front of
+the nose.
+
+**Detail arrives with distance.** `minPixels` keeps a hundred parts from being resolved
+into eight pixels on the system map, where the result is a smudge rather than a small
+object.
+
+**Two of the same thing differ.** `jitterAngle` and `jitterScale` are perturbed from the
+object's id, so two trade hubs are not identical and neither shimmers between frames —
+repeated identical assets are the other way procedural art gives itself away.
+
+**A shape may reach past its radius**, and a docking ring at 1.55 is the point of a docking
+ring. Anything framing an object asks `Render::Extent` rather than assuming.
+
+Stars, nebulae and belts deliberately have no shape: a star is a light rather than a
+structure, and a region is not a surface. They keep the figure the backend draws for them.
 
 ### `material` — a shader and what feeds it
 

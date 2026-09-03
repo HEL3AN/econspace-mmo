@@ -255,8 +255,130 @@ void ShapeBackend::Draw(const Item& item)
     // The switch is a separate call so that the material is always ended, whichever of
     // the ten returns below is taken. Leaving a shader bound is not a visible bug where it
     // happens -- it is a visible bug in whatever is drawn next.
-    DrawShape(item, c, shaded, light);
+    if (!DrawComposition(item, c, light))
+        DrawShape(item, c, shaded, light);
     EndMaterial();
+}
+
+// A part's colour is its relationship to the object's, never a colour of its own. An
+// object's colour belongs to the object (#117), and a shape written once has to work
+// whatever colour it is given.
+static Color ForRole(Role role, Color c)
+{
+    switch (role)
+    {
+        case Role::Hull: return c;
+        case Role::Panel:
+            return { (unsigned char)(c.r * 0.55f), (unsigned char)(c.g * 0.55f),
+                     (unsigned char)(c.b * 0.55f), c.a };
+        case Role::Trim:
+            return { (unsigned char)(c.r + (255 - c.r) * 0.45f),
+                     (unsigned char)(c.g + (255 - c.g) * 0.45f),
+                     (unsigned char)(c.b + (255 - c.b) * 0.45f), c.a };
+        case Role::Antenna: return Fade(c, 0.55f);
+        case Role::Light: return c;  // handled apart: a light is not shaded at all
+    }
+    return c;
+}
+
+void ShapeBackend::DrawPiece(const Piece& p, Color c)
+{
+    const float a = p.angle * DEG2RAD;
+    const float cs = std::cos(a), sn = std::sin(a);
+    // Along the part's own axis, and across it. Every elongated form is written in these
+    // two so that one rotation is applied in one place.
+    const Vector2 along{ cs, sn };
+    const Vector2 across{ -sn, cs };
+    const Vector2 tip{ p.pos.x + along.x * p.length * 0.5f, p.pos.y + along.y * p.length * 0.5f };
+    const Vector2 tail{ p.pos.x - along.x * p.length * 0.5f, p.pos.y - along.y * p.length * 0.5f };
+
+    switch (p.form)
+    {
+        case Form::Disc: DrawCircleV(p.pos, p.radius, c); return;
+
+        case Form::Ring: DrawRing(p.pos, p.radius - p.width, p.radius, 0.0f, 360.0f, 48, c); return;
+
+        case Form::Polygon:
+            if (p.filled)
+                DrawPoly(p.pos, p.sides, p.radius, p.angle, c);
+            else
+                DrawPolyLinesEx(p.pos, p.sides, p.radius, p.angle, fmaxf(1.0f, p.width), c);
+            return;
+
+        case Form::Capsule:
+            DrawLineEx(tail, tip, fmaxf(1.0f, p.width), c);
+            DrawCircleV(tip, p.width * 0.5f, c);
+            DrawCircleV(tail, p.width * 0.5f, c);
+            return;
+
+        case Form::Chevron:
+            // Vertices counter-clockwise in screen space, which with y pointing down means
+            // tip, then the far corner, then the near one. Wound the other way raylib
+            // culls the triangle and the part simply is not there -- which is what every
+            // ship looked like the first time this ran.
+            DrawTriangle(
+                tip, { tail.x - across.x * p.width * 0.5f, tail.y - across.y * p.width * 0.5f },
+                { tail.x + across.x * p.width * 0.5f, tail.y + across.y * p.width * 0.5f }, c);
+            return;
+
+        case Form::Bar:
+            DrawRectanglePro({ p.pos.x, p.pos.y, p.length, p.width },
+                             { p.length * 0.5f, p.width * 0.5f }, p.angle, c);
+            return;
+
+        case Form::Lattice:
+        {
+            // A truss: the two rails, and struts crossing between them. Cheap, and it is
+            // the one part that reads as "built" rather than "moulded".
+            const Vector2 offs{ across.x * p.width * 0.5f, across.y * p.width * 0.5f };
+            DrawLineEx({ tail.x + offs.x, tail.y + offs.y }, { tip.x + offs.x, tip.y + offs.y },
+                       1.5f, c);
+            DrawLineEx({ tail.x - offs.x, tail.y - offs.y }, { tip.x - offs.x, tip.y - offs.y },
+                       1.5f, c);
+            for (int i = 0; i < p.count; i++)
+            {
+                const float   t0 = (float)i / (float)p.count;
+                const float   t1 = (float)(i + 1) / (float)p.count;
+                const Vector2 a0{ tail.x + (tip.x - tail.x) * t0 + offs.x,
+                                  tail.y + (tip.y - tail.y) * t0 + offs.y };
+                const Vector2 b0{ tail.x + (tip.x - tail.x) * t1 - offs.x,
+                                  tail.y + (tip.y - tail.y) * t1 - offs.y };
+                DrawLineEx(a0, b0, 1.2f, c);
+            }
+            return;
+        }
+    }
+}
+
+bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sample& light)
+{
+    if (item.shape == nullptr || item.shape->Empty())
+        return false;
+
+    // The id seeds the variation, so two trade hubs differ and neither shimmers between
+    // frames. An object with no id yet -- a gallery card, a placement ghost -- gets the
+    // unperturbed shape, which is the right thing to be looking at while tuning one.
+    const std::vector<Piece> pieces =
+        Compose(*item.shape, item.pos, item.size, item.heading, item.id, view_.zoom);
+
+    // Lights last and outside the material: a lamp is not lit by the star, it is a light,
+    // and shading one is how a beacon ends up dark on its own night side.
+    for (const Piece& p : pieces)
+        if (p.role != Role::Light)
+            DrawPiece(p, ForRole(p.role, c));
+
+    bool anyLight = false;
+    for (const Piece& p : pieces)
+        anyLight = anyLight || p.role == Role::Light;
+    if (anyLight)
+    {
+        EndMaterial();
+        for (const Piece& p : pieces)
+            if (p.role == Role::Light)
+                DrawPiece(p, Fade(item.color, 0.25f + 0.75f * item.intensity));
+    }
+    (void)light;
+    return true;
 }
 
 void ShapeBackend::DrawShape(const Item& item, Color c, bool shaded, const Lighting::Sample& light)
