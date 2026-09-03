@@ -64,6 +64,20 @@ outward from the wormhole and worsens with distance (#143), systems that are unk
 somebody goes there (#144), names that exist only once somebody gives them (#145), what the
 generator leaves behind (#146), and the pins that keep hand-authored content alive (#147).
 
+### M9 — The scale of a system
+
+A station was 5.6 times a ship and a planet was nine, and those numbers were never chosen —
+they fell out of having one speed, so everything had to be within a minute of flying. A
+system becomes forty times bigger (a million units), a station towers over a ship, and
+travel stops being a matter of pointing at what you can see.
+
+Travel by list rather than by sight (#157) and a camera that belongs to the player (#158)
+come first, because the scale change (#159) makes the game worse without them. Then warp
+tuned for the new distances (#160), and the life that #136 gave to stations extended to
+planets and regions (#161).
+
+**Before M7**, because the generator will bake in whatever scale exists when it is written.
+
 ### M8 — The builder
 
 A player designs a *type* and builds it. The parts editor becomes a tool in the client

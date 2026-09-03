@@ -29,6 +29,13 @@ These are decisions, not open questions. Plan on top of them.
   never to the object.
 - **AI agents are first-class players** (#42). The game ships its own MCP server,
   `econagent`, written in C++ so the wire protocol stays a single source of truth.
+- **A system is a million units across, and you travel by choosing from a list** (M9).
+  Scale was a hostage of travel time -- one speed meant everything had to be within a
+  minute of flying. Warp already exists and is server-authoritative; what was missing is
+  the interaction, taken from EVE: the overview is the instrument and a selection carries
+  actions. A player who never looks out of the window can still fly the ship. **A million
+  and not ten** because positions are `float`: at 1e6 the gap between representable values
+  is 0.06 of a unit, at 1e7 it is a whole one and a ship at the edge would jitter.
 - **The world is generated, and hand-written content is the exception on top** (M7). The
   server generates a region from a seed and sends each client the `SystemLayout` it already
   sends, so nothing about the wire changes. `data/systems/*.json` becomes a set of pins

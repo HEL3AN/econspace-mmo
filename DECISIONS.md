@@ -542,3 +542,63 @@ generated one: pin a system, place what matters, name what should be named. The 
 covers everything else, which is the same bargain the look already makes — a hand-made
 sprite wins where one exists.
 
+---
+
+## 2026-09-04 — A system is forty times bigger, and you travel by choosing from a list
+
+**What was wrong.** A station was 5.6 times the size of a ship and a planet was nine. Those
+numbers were never chosen; they fell out of something else. The game has one speed, so
+everything has to be within a minute of flying, so a system has to be small, so its objects
+have to be small. Scale was a hostage of travel time.
+
+Noticed by the owner while simply looking at the game: a ship almost the size of a planet.
+
+**What it becomes.** Roughly forty times the room, with the ratios between the things a
+player actually interacts with made honest:
+
+| | before | after | to a ship |
+|---|---|---|---|
+| ship | 16 | 16 | 1x |
+| derelict | 40 | 45 | 3x |
+| station | 70-90 | 500-700 | 30-45x |
+| gate | 150 | 900 | 56x |
+| belt | 500 | 6000 | - |
+| planet | 140-280 | 12000-36000 | 750-2250x |
+| star | 550-700 | 150000 | 9400x |
+| system radius | 25 000 | 1 000 000 | - |
+
+A planet is still about five hundred times smaller relative to a ship than it is in life.
+That compression is deliberate and permanent: nobody makes a playable game at true
+astronomical scale, and the part that has to be honest is the part a player judges by eye
+-- a station towering over a ship, a gate you approach rather than arrive at.
+
+**Why one million and not ten.** Positions are `float`. At a million units the gap between
+representable values is about 0.06 -- a four-hundredth of a sixteen-unit ship, invisible. At
+ten million it is a whole unit, and a ship at the edge of a system would visibly jitter.
+Each system has its own coordinate space, so this bounds a system rather than the galaxy.
+
+**Travel is the real work, and warp is not the missing piece.** Warp already exists and is
+already server-authoritative: `navMode 2`, an alignment phase, the jump, and a drop at a
+chosen distance. What does not exist is a way to *use* it that makes sense. Today you find a
+thing by looking at it, which means zooming out to see it, on a camera that is tied to the
+ship. At forty times the distance that stops being clumsy and becomes impossible.
+
+The model taken from EVE, and it is the right one: **you travel by choosing from a list, not
+by pointing at what you can see.** The overview is the instrument -- every object in the
+system, with its distance, sortable -- and a selection carries actions: approach, orbit at a
+range, keep at a range, warp to at a range, dock, jump. A player who never looks out of the
+window can still fly the ship. Looking out of the window is then for the parts that deserve
+it, which is also what makes the art worth having.
+
+The camera has to stop belonging to the ship's neighbourhood as well. Locked and close is
+right for a fight and wrong for everything else.
+
+**Why now, before M7.** The generator will bake in whatever scale exists when it is written.
+Changing it afterwards means redoing every placement rule and re-judging all of it by eye.
+
+**What is already ready for it.** Most of M6, as it turns out. `minPixels` was written so
+detail appears with distance, which is exactly what a forty-times-larger system needs.
+Lighting and materials are scale-free. A composition is written in fractions of an object's
+radius, so a station grows five times without one edit to its shape. And bigger objects are
+finally *room* for detail -- at ninety units across there was nowhere to put any.
+
