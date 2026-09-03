@@ -2,11 +2,41 @@
     "enabled": true,
     "treatHud": false,
     "chain": [
-        { "pass": "bloom", "enabled": true, "amount": 0.85, "scale": 2.2 },
-        { "pass": "pixelate", "enabled": true, "amount": 1.0, "scale": 2.0 },
-        { "pass": "scanlines", "enabled": true, "amount": 0.3, "scale": 2.0 },
-        { "pass": "noise", "enabled": true, "amount": 0.1, "scale": 1.0 },
-        { "pass": "fringe", "enabled": true, "amount": 0.3, "scale": 1.0 },
-        { "pass": "vignette", "enabled": true, "amount": 0.5, "scale": 1.0 }
+        {
+            "pass": "bloom",
+            "enabled": true,
+            "amount": 0.852,
+            "scale": 5.967
+        },
+        {
+            "pass": "pixelate",
+            "enabled": true,
+            "amount": 0.479,
+            "scale": 1.371
+        },
+        {
+            "pass": "noise",
+            "enabled": true,
+            "amount": 0.067,
+            "scale": 0.685
+        },
+        {
+            "pass": "scanlines",
+            "enabled": true,
+            "amount": 0.162,
+            "scale": 2.0
+        },
+        {
+            "pass": "vignette",
+            "enabled": true,
+            "amount": 0.5,
+            "scale": 1.0
+        },
+        {
+            "pass": "fringe",
+            "enabled": true,
+            "amount": 0.3,
+            "scale": 1.0
+        }
     ]
 }

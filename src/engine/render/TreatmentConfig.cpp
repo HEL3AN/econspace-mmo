@@ -1,9 +1,14 @@
 #include "render/TreatmentConfig.h"
 
 #include <nlohmann/json.hpp>
+#include <cmath>
 #include <fstream>
 
 using nlohmann::json;
+// Reading takes a plain json; writing takes an ordered one, so the file the game produces
+// has its members in the order a person would write them rather than alphabetically --
+// `pass` first, because it is the only thing that identifies an entry (#130).
+using nlohmann::ordered_json;
 
 namespace Render
 {
@@ -140,18 +145,30 @@ bool LoadTreatment(const std::string& path, TreatmentConfig& out, std::string& e
     return true;
 }
 
+// A knob a human set by dragging, at the precision a human can mean.
+//
+// These are floats, and nlohmann widens a float to a double before printing it -- so a
+// value the slider produced arrives in the file as 0.8521126508712769. Three decimals is
+// already finer than the slider can express, and the other fourteen digits would be noise
+// in every diff of this file from here on. The same widening cost this project real
+// bandwidth once before (#97).
+static double Rounded(float v)
+{
+    return std::round((double)v * 1000.0) / 1000.0;
+}
+
 bool SaveTreatment(const std::string& path, const TreatmentConfig& cfg, std::string& error)
 {
     error.clear();
-    json j;
+    ordered_json j;
     j["enabled"] = cfg.enabled;
     j["treatHud"] = cfg.treatHud;
-    j["chain"] = json::array();
+    j["chain"] = ordered_json::array();
     for (const Pass& p : cfg.chain)
-        j["chain"].push_back({ { "pass", PassName(p.kind) },
-                               { "enabled", p.enabled },
-                               { "amount", p.amount },
-                               { "scale", p.scale } });
+        j["chain"].push_back(ordered_json{ { "pass", PassName(p.kind) },
+                                           { "enabled", p.enabled },
+                                           { "amount", Rounded(p.amount) },
+                                           { "scale", Rounded(p.scale) } });
 
     std::ofstream file(path);
     if (!file.is_open())
