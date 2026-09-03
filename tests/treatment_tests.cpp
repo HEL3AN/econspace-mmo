@@ -101,6 +101,64 @@ TEST_CASE("the chain survives being written and read back")
     std::remove(path.c_str());
 }
 
+TEST_CASE("the file the game writes is one a person can read and diff")
+{
+    // #130: these are floats, and nlohmann widens a float to a double before printing it,
+    // so one drag of a slider used to land in the file as 0.8521126508712769.
+    Render::TreatmentConfig cfg = Render::TreatmentConfig::Default();
+    cfg.chain[0].amount = 0.8521126508712769f;
+    cfg.chain[0].scale = 5.966549396514893f;
+
+    const std::string path = TempPath("treatment_readable.json");
+    std::string       error;
+    REQUIRE(Render::SaveTreatment(path, cfg, error));
+
+    std::ifstream      in(path);
+    std::ostringstream buf;
+    buf << in.rdbuf();
+    const std::string text = buf.str();
+    in.close();
+
+    CHECK(text.find("0.852") != std::string::npos);
+    CHECK(text.find("0.8521126") == std::string::npos);  // and not a digit more
+    CHECK(text.find("5.967") != std::string::npos);
+
+    // `pass` identifies the entry, so it comes first rather than sorting into the middle
+    // of an alphabetised object.
+    const size_t pass = text.find("\"pass\"");
+    const size_t amount = text.find("\"amount\"");
+    REQUIRE(pass != std::string::npos);
+    REQUIRE(amount != std::string::npos);
+    CHECK(pass < amount);
+
+    SUBCASE("and rounding does not change what the game draws with")
+    {
+        Render::TreatmentConfig back;
+        REQUIRE(Render::LoadTreatment(path, back, error));
+        CHECK(back.chain[0].amount == doctest::Approx(0.852f).epsilon(0.001));
+        CHECK(back.chain[0].scale == doctest::Approx(5.967f).epsilon(0.001));
+    }
+
+    SUBCASE("saving what was just loaded changes nothing")
+    {
+        // Otherwise every visit to the settings screen churns the file, which is the same
+        // property the archetype writer needed (#118).
+        Render::TreatmentConfig back;
+        REQUIRE(Render::LoadTreatment(path, back, error));
+        const std::string again = TempPath("treatment_readable2.json");
+        REQUIRE(Render::SaveTreatment(again, back, error));
+
+        std::ifstream      in2(again);
+        std::ostringstream buf2;
+        buf2 << in2.rdbuf();
+        in2.close();
+        CHECK(buf2.str() == text);
+        std::remove(again.c_str());
+    }
+
+    std::remove(path.c_str());
+}
+
 TEST_CASE("a broken look file loses as little as it can")
 {
     std::string             error;
