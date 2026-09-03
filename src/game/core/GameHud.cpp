@@ -6,6 +6,7 @@
 //
 // Part of the Game class; see Game.cpp.
 #include "core/Game.h"
+#include "render/TreatmentPanel.h"
 #include "sim/PlayerStep.h"
 
 #include "core/World.h"
@@ -1241,4 +1242,27 @@ void Game::DrawGalaxyMap()
             ny += 18;
         }
     }
+}
+
+// The screen treatment's settings, over everything and never treated themselves (#120).
+// A panel seen through the effect it is adjusting is a panel you cannot read while
+// adjusting it.
+void Game::DrawTreatmentSettings()
+{
+    const float w = 320.0f;
+    const float h = Render::TreatmentPanelHeight(treatment_) + 24.0f;
+    Rectangle   panel{ (float)screenWidth_ - w - 16.0f, 60.0f, w,
+                       fminf(h, (float)screenHeight_ - 80.0f) };
+
+    DrawRectangleRec(panel, Ui::PANEL_BG);
+    DrawRectangleLinesEx(panel, 1.0f, Ui::PANEL_BORDER);
+
+    BeginScissorMode((int)panel.x, (int)panel.y, (int)panel.width, (int)panel.height);
+    Render::DrawTreatmentPanel(
+        { panel.x + 12.0f, panel.y + 12.0f, panel.width - 24.0f, panel.height - 24.0f },
+        treatment_);
+    EndScissorMode();
+
+    Ui::Text("F10 closes and saves", (int)panel.x + 12, (int)(panel.y + panel.height - 16.0f), 10,
+             Ui::TEXT_DIM);
 }

@@ -16,6 +16,8 @@
 #include "Editor.h"
 
 #include "core/ArchetypeEdit.h"
+#include "render/TreatmentPanel.h"
+#include "ui/Controls.h"
 #include "ui/UiTheme.h"
 #include "raymath.h"
 #include <cmath>
@@ -60,37 +62,6 @@ const char* StyleName(GlyphStyle s)
     return "point";
 }
 
-// A number on a track. There is no slider in Ui yet and this is the first screen that
-// wants one; it moves here when a second screen does.
-bool Slider(Rectangle r, const char* label, float& value, float lo, float hi, const char* fmt)
-{
-    Ui::Text(label, (int)r.x, (int)r.y, 12, Ui::TEXT_DIM);
-    Ui::Text(TextFormat(fmt, value), (int)(r.x + r.width - 54), (int)r.y, 12, Ui::TEXT);
-
-    Rectangle track{ r.x, r.y + 16.0f, r.width, 8.0f };
-    DrawRectangleRec(track, Fade(Ui::TITLE_BG, 0.9f));
-    DrawRectangleLinesEx(track, 1.0f, Ui::PANEL_BORDER);
-
-    const float t = (hi > lo) ? Clamp((value - lo) / (hi - lo), 0.0f, 1.0f) : 0.0f;
-    DrawRectangleRec({ track.x, track.y, track.width * t, track.height }, Fade(Ui::ACCENT, 0.55f));
-    DrawCircleV({ track.x + track.width * t, track.y + track.height / 2.0f }, 5.0f, Ui::ACCENT);
-
-    // Grabbing anywhere on the row, not only on the handle: a five-pixel target is a
-    // fight, and this is a control meant to be swept back and forth.
-    Rectangle grab{ r.x, r.y + 8.0f, r.width, 20.0f };
-    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), grab))
-    {
-        const float nt = Clamp((GetMousePosition().x - track.x) / track.width, 0.0f, 1.0f);
-        const float nv = lo + nt * (hi - lo);
-        if (nv != value)
-        {
-            value = nv;
-            return true;
-        }
-    }
-    return false;
-}
-
 // raylib's scissor does not nest: EndScissorMode turns clipping off rather than
 // restoring the outer rectangle. So every clipped draw states its own rectangle, already
 // intersected with the grid it lives in.
@@ -107,20 +78,6 @@ void BeginClip(Rectangle r)
     BeginScissorMode((int)r.x, (int)r.y, (int)r.width, (int)r.height);
 }
 
-bool Toggle(Rectangle r, const char* label, bool& value)
-{
-    const bool over = CheckCollisionPointRec(GetMousePosition(), r);
-    DrawRectangleRec(r, value ? Fade(Ui::ACCENT, 0.22f)
-                              : (over ? Fade(Ui::ACCENT, 0.10f) : Fade(Ui::TITLE_BG, 0.8f)));
-    DrawRectangleLinesEx(r, 1.0f, value ? Ui::ACCENT : Ui::PANEL_BORDER);
-    Ui::Text(label, (int)r.x + 8, (int)r.y + 5, 13, value ? Ui::ACCENT : Ui::TEXT);
-    if (over && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-    {
-        value = !value;
-        return true;
-    }
-    return false;
-}
 }  // namespace
 
 Rectangle Editor::GalleryButtonRect() const
@@ -327,22 +284,22 @@ void Editor::DrawGalleryPanel()
     Ui::Text(TextFormat("%s   [F2]", backend_->Name()), (int)x + 90, (int)y, 13, Ui::ACCENT);
     y += 26.0f;
 
-    Toggle({ x, y, w, 24.0f }, "True scale (compare sizes)", galleryTrueScale_);
+    Ui::Toggle({ x, y, w, 24.0f }, "True scale (compare sizes)", galleryTrueScale_);
     y += 30.0f;
 
     // The lighting section (#119). Flat colour is what makes a simple shape read as a
     // toy; these are the knobs that decide whether it stops doing that.
     Ui::Text("LIGHT", (int)x, (int)y, 12, Ui::ACCENT);
     y += 20.0f;
-    Toggle({ x, y, w, 24.0f }, galleryLit_ ? "lit" : "unlit (flat colour)", galleryLit_);
+    Ui::Toggle({ x, y, w, 24.0f }, galleryLit_ ? "lit" : "unlit (flat colour)", galleryLit_);
     y += 30.0f;
-    Slider({ x, y, w, 28.0f }, "angle", galleryLightAngle_, 0.0f, 2.0f * PI, "%.2f");
+    Ui::Slider({ x, y, w, 28.0f }, "angle", galleryLightAngle_, 0.0f, 2.0f * PI, "%.2f");
     y += 32.0f;
-    Slider({ x, y, w, 28.0f }, "strength", galleryLightStrength_, 0.0f, 1.0f, "%.2f");
+    Ui::Slider({ x, y, w, 28.0f }, "strength", galleryLightStrength_, 0.0f, 1.0f, "%.2f");
     y += 32.0f;
-    Slider({ x, y, w, 28.0f }, "ambient floor", galleryAmbient_, 0.0f, 1.0f, "%.2f");
+    Ui::Slider({ x, y, w, 28.0f }, "ambient floor", galleryAmbient_, 0.0f, 1.0f, "%.2f");
     y += 32.0f;
-    Toggle({ x, y, w, 24.0f }, "second star (cooler, opposite)", gallerySecondLight_);
+    Ui::Toggle({ x, y, w, 24.0f }, "second star (cooler, opposite)", gallerySecondLight_);
     y += 34.0f;
 
     // The half of a look that is not what the object is but what is happening to it.
@@ -350,12 +307,12 @@ void Editor::DrawGalleryPanel()
     // a healthy object never shows.
     Ui::Text("STATE", (int)x, (int)y, 12, Ui::ACCENT);
     y += 20.0f;
-    Slider({ x, y, w, 28.0f }, "intensity (hull, ore, loot)", galleryIntensity_, 0.0f, 1.0f,
-           "%.2f");
+    Ui::Slider({ x, y, w, 28.0f }, "intensity (hull, ore, loot)", galleryIntensity_, 0.0f, 1.0f,
+               "%.2f");
     y += 34.0f;
-    Slider({ x, y, w, 28.0f }, "heading", galleryHeading_, 0.0f, 2.0f * PI, "%.2f");
+    Ui::Slider({ x, y, w, 28.0f }, "heading", galleryHeading_, 0.0f, 2.0f * PI, "%.2f");
     y += 34.0f;
-    Toggle({ x, y, w, 24.0f }, "thrusting", galleryThrusting_);
+    Ui::Toggle({ x, y, w, 24.0f }, "thrusting", galleryThrusting_);
     y += 38.0f;
 
     const std::vector<Archetype>& all = Archetypes::All();
@@ -378,11 +335,11 @@ void Editor::DrawGalleryPanel()
     // in the file is the three numbers, and a picker would hide them.
     float r = a->visual.color.r, g = a->visual.color.g, b = a->visual.color.b;
     bool  colorChanged = false;
-    colorChanged |= Slider({ x, y, w - 34.0f, 28.0f }, "red", r, 0.0f, 255.0f, "%.0f");
+    colorChanged |= Ui::Slider({ x, y, w - 34.0f, 28.0f }, "red", r, 0.0f, 255.0f, "%.0f");
     y += 32.0f;
-    colorChanged |= Slider({ x, y, w - 34.0f, 28.0f }, "green", g, 0.0f, 255.0f, "%.0f");
+    colorChanged |= Ui::Slider({ x, y, w - 34.0f, 28.0f }, "green", g, 0.0f, 255.0f, "%.0f");
     y += 32.0f;
-    colorChanged |= Slider({ x, y, w - 34.0f, 28.0f }, "blue", b, 0.0f, 255.0f, "%.0f");
+    colorChanged |= Ui::Slider({ x, y, w - 34.0f, 28.0f }, "blue", b, 0.0f, 255.0f, "%.0f");
     DrawRectangleRec({ x + w - 28.0f, y - 64.0f, 28.0f, 92.0f }, a->visual.color);
     DrawRectangleLinesEx({ x + w - 28.0f, y - 64.0f, 28.0f, 92.0f }, 1.0f, Ui::PANEL_BORDER);
     y += 34.0f;
@@ -394,7 +351,7 @@ void Editor::DrawGalleryPanel()
     }
 
     float size = a->defaultSize;
-    if (Slider({ x, y, w, 28.0f }, "size (world units)", size, 4.0f, 1200.0f, "%.0f"))
+    if (Ui::Slider({ x, y, w, 28.0f }, "size (world units)", size, 4.0f, 1200.0f, "%.0f"))
     {
         a->defaultSize = roundf(size);
         NoteLookEdit(a->id, "size");
@@ -402,7 +359,7 @@ void Editor::DrawGalleryPanel()
     y += 34.0f;
 
     float layer = (float)a->visual.layer;
-    if (Slider({ x, y, w, 28.0f }, "layer (draw order)", layer, -4.0f, 8.0f, "%.0f"))
+    if (Ui::Slider({ x, y, w, 28.0f }, "layer (draw order)", layer, -4.0f, 8.0f, "%.0f"))
     {
         a->visual.layer = (int)lroundf(layer);
         NoteLookEdit(a->id, "layer");
@@ -413,14 +370,14 @@ void Editor::DrawGalleryPanel()
     // far a star reaches is the single number that decides whether a system reads as lit
     // or as a dark map with a lamp in the middle, and it is only decidable by looking.
     float lightR = a->visual.lightRadius;
-    if (Slider({ x, y, w, 28.0f }, "light reach", lightR, 0.0f, 90000.0f, "%.0f"))
+    if (Ui::Slider({ x, y, w, 28.0f }, "light reach", lightR, 0.0f, 90000.0f, "%.0f"))
     {
         a->visual.lightRadius = roundf(lightR / 1000.0f) * 1000.0f;
         NoteLookEdit(a->id, "light");
     }
     y += 32.0f;
     float lightI = a->visual.lightIntensity;
-    if (Slider({ x, y, w, 28.0f }, "light intensity", lightI, 0.0f, 2.0f, "%.2f"))
+    if (Ui::Slider({ x, y, w, 28.0f }, "light intensity", lightI, 0.0f, 2.0f, "%.2f"))
     {
         a->visual.lightIntensity = lightI;
         NoteLookEdit(a->id, "light");
@@ -573,4 +530,25 @@ void Editor::SaveArchetypes()
     lookEdits_.clear();
     archetypesDirty_ = false;
     TraceLog(LOG_INFO, "Gallery: saved %s", path.c_str());
+}
+
+// The treatment's settings, drawn over everything and never treated (#120). The same
+// panel the game shows, so a look tuned here is the look tuned there.
+void Editor::DrawTreatmentSettings()
+{
+    const float w = 320.0f;
+    const float h = Render::TreatmentPanelHeight(treatment_) + 24.0f;
+    Rectangle   panel{ 16.0f, 60.0f, w, fminf(h, (float)screenHeight_ - 80.0f) };
+
+    DrawRectangleRec(panel, Ui::PANEL_BG);
+    DrawRectangleLinesEx(panel, 1.0f, Ui::PANEL_BORDER);
+
+    BeginScissorMode((int)panel.x, (int)panel.y, (int)panel.width, (int)panel.height);
+    Render::DrawTreatmentPanel(
+        { panel.x + 12.0f, panel.y + 12.0f, panel.width - 24.0f, panel.height - 24.0f },
+        treatment_);
+    EndScissorMode();
+
+    Ui::Text("F10 closes and saves", (int)panel.x + 12, (int)(panel.y + panel.height - 16.0f), 10,
+             Ui::TEXT_DIM);
 }

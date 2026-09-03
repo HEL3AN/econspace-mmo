@@ -4,6 +4,7 @@
 #include "core/WorldLoader.h"
 #include "entities/Entity.h"
 #include "render/GlyphBackend.h"
+#include "render/Treatment.h"
 #include "core/Archetype.h"
 #include <nlohmann/json.hpp>
 #include <vector>
@@ -95,6 +96,13 @@ private:
     void SaveArchetypes();
     // Records that a key of an archetype was changed, so the save touches only those.
     void NoteLookEdit(const std::string& id, const std::string& key);
+
+    // The screen treatment (#120), applied to the cards and not to the panels: the
+    // gallery is where the treatment is tuned, and a settings screen seen through the
+    // effect it is adjusting cannot be read while adjusting it.
+    Render::Treatment treatment_;
+    bool              treatmentPanelOpen_ = false;
+    void              DrawTreatmentSettings();
 
     // The gallery's own light (#119). A card has no system around it, so lighting is
     // tuned against a synthetic source whose angle and reach are on sliders -- which is

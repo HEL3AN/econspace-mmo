@@ -44,6 +44,7 @@ Editor::Editor()
     if (!Archetypes::Load(dataDir_ + "archetypes.json"))
         TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());
     universe_ = WorldLoader::LoadUniverse(dataDir_ + "universe.json");
+    treatment_.Load(dataDir_);  // the pass chain and its shaders (#120)
     {
         std::ifstream uf(dataDir_ + "universe.json");
         if (uf.is_open())
@@ -173,14 +174,30 @@ void Editor::Run()
                                                     : (Render::IBackend*)&shapeBackend_;
         if (IsKeyPressed(KEY_F3))  // the gallery, from wherever you are
             EnterGalleryMode(mode_ != Mode::Gallery);
+        if (IsKeyPressed(KEY_F10))  // the treatment's settings, the same key as in the game
+        {
+            treatmentPanelOpen_ = !treatmentPanelOpen_;
+            if (!treatmentPanelOpen_)
+            {
+                std::string error;
+                if (!treatment_.Save(error))
+                    TraceLog(LOG_WARNING, "Treatment: %s", error.c_str());
+            }
+        }
 
         BeginDrawing();
         ClearBackground(Color{ 8, 9, 14, 255 });
         if (mode_ == Mode::Gallery)
         {
+            // The cards go through the chain; everything that is a tool is drawn after it
+            // and stays literal. That is the same rule the game follows with its HUD.
+            treatment_.Begin(screenWidth_, screenHeight_);
             DrawGallery();
+            treatment_.End();
             DrawHud();
             DrawGalleryPanel();
+            if (treatmentPanelOpen_)
+                DrawTreatmentSettings();
         }
         else
         {

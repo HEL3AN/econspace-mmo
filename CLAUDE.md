@@ -43,6 +43,7 @@ ctest --test-dir build --output-on-failure
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2   # account + secret
 ./build/bin/editor/worldeditor.exe
 ./build/bin/editor/worldeditor.exe gallery           # every archetype at once, for tuning a look (F3)
+./build/bin/editor/worldeditor.exe gallery shapes    # ...on the shape backend (F2 switches; F10 = screen treatment)
 
 ./build/bin/agent/econagent.exe connect 127.0.0.1 50800 agent hunter2  # MCP for an agent
 
@@ -117,6 +118,12 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   every player verb takes the session it acts for. There is no "active system" either: a
   session carries the system it is in, and every system is stepped the same way. Anything
   reintroduced as a member of `Simulation` is shared by every player on the server.
+- **A shader failing is a runtime fact, not a build error** (#120). Whether one compiles
+  depends on the player's driver. `Render::Treatment` drops the pass, says why in the
+  settings screen as well as the log, and keeps playing; with no passes at all it draws
+  straight to the screen. Never make the game require a shader — the server and the tests
+  load none, and there is no GPU on a CI runner, so nothing about the chain is covered by
+  a test except `TreatmentConfig`, which is why that half is a separate file.
 - **A light is a property of an object, not of a system** (#119). Anything whose archetype
   has a `light` lights the system it is in, so two stars work and a beacon a player builds
   needs no renderer change. The falloff reaches **zero** at the radius on purpose — an
