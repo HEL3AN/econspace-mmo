@@ -10,6 +10,7 @@
 #include "net/Transport.h"
 #include "net/Tcp.h"
 #include "render/GlyphBackend.h"
+#include "render/Treatment.h"
 #include "player/Player.h"
 #include <string>
 #include "ui/Window.h"
@@ -146,6 +147,14 @@ private:
     Render::GlyphBackend glyphBackend_;
     Render::ShapeBackend shapeBackend_;
     Render::IBackend*    backend_ = &glyphBackend_;
+
+    // The screen treatment (#120). The world goes through it; the HUD does too only if the
+    // player says so, because it carries numbers they fly by. F10 opens its settings, and
+    // closing them writes the file -- a look someone tuned and lost on exit is a look they
+    // will not tune twice.
+    Render::Treatment treatment_;
+    bool              treatmentPanelOpen_ = false;
+    void              DrawTreatmentSettings();
 
     // Radar state: zoom and absolute view center (does not follow the player).
     float   radarZoom_ = 1.0f;

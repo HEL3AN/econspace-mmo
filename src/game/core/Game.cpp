@@ -69,6 +69,7 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     if (!Archetypes::Load(dataDir_ + "archetypes.json"))
         TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());
     universe_ = WorldLoader::LoadUniverse(dataDir_ + "universe.json");
+    treatment_.Load(dataDir_);  // shaders and the pass chain (#120); safe if neither exists
 
     // No system is loaded here: which system we are in, and everything in it, arrives
     // from the server as a SystemLayout followed by snapshots (ApplyLayout).
@@ -113,6 +114,18 @@ void Game::Run()
             backend_ = (backend_ == &shapeBackend_) ? (Render::IBackend*)&glyphBackend_
                                                     : (Render::IBackend*)&shapeBackend_;
             FlashMessage(std::string("Rendering: ") + backend_->Name());
+        }
+        if (IsKeyPressed(KEY_F10))  // the screen treatment's settings (#120)
+        {
+            treatmentPanelOpen_ = !treatmentPanelOpen_;
+            if (!treatmentPanelOpen_)
+            {
+                // Written on close rather than on every slider frame: this is a file, and
+                // a slider being dragged is sixty writes a second.
+                std::string error;
+                if (!treatment_.Save(error))
+                    TraceLog(LOG_WARNING, "Treatment: %s", error.c_str());
+            }
         }
         if (IsKeyPressed(KEY_F1))  // account is on the server — credit via command
         {
@@ -209,15 +222,41 @@ void Game::Run()
 
         BeginDrawing();
         ClearBackground(BLACK);
-        if (mode_ == GameMode::Flying)
+
+        // Everything between Begin and End goes through the chain. The HUD is drawn
+        // inside or outside it depending on the setting, because it carries numbers people
+        // fly by and a pixelated fuel gauge is a worse game (#120). When the treatment is
+        // off or unavailable, Begin and End do nothing and this is the old draw order.
+        const bool treatHud = treatment_.Config().treatHud;
+        const bool flying = (mode_ == GameMode::Flying);
+        // The station screen is interface, not world, so it goes through the chain only if
+        // the player asked for the interface to be treated. Otherwise the chain would be
+        // running over an empty scene and laying grain behind a menu.
+        const bool useChain = flying || treatHud;
+
+        if (useChain)
+            treatment_.Begin(screenWidth_, screenHeight_);
+        if (flying)
         {
             DrawWorld();
-            DrawHud();
+            if (treatHud)
+                DrawHud();
         }
         else
         {
             DrawStationScreen();
         }
+        if (useChain)
+            treatment_.End();
+
+        if (flying && !treatHud)
+            DrawHud();
+
+        // Above everything, and never treated: a settings screen seen through the effect
+        // it is adjusting is a settings screen you cannot read while adjusting it.
+        if (treatmentPanelOpen_)
+            DrawTreatmentSettings();
+
         EndDrawing();
     }
 }

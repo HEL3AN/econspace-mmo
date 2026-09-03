@@ -1,0 +1,12 @@
+{
+    "enabled": true,
+    "treatHud": false,
+    "chain": [
+        { "pass": "bloom", "enabled": true, "amount": 0.85, "scale": 2.2 },
+        { "pass": "pixelate", "enabled": true, "amount": 1.0, "scale": 2.0 },
+        { "pass": "scanlines", "enabled": true, "amount": 0.3, "scale": 2.0 },
+        { "pass": "noise", "enabled": true, "amount": 0.1, "scale": 1.0 },
+        { "pass": "fringe", "enabled": true, "amount": 0.3, "scale": 1.0 },
+        { "pass": "vignette", "enabled": true, "amount": 0.5, "scale": 1.0 }
+    ]
+}

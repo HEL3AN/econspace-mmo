@@ -1,0 +1,13 @@
+Full-screen passes for the screen treatment (#120).
+
+Every one of these is handed the same four uniforms, and uses the ones it has a use for:
+
+  amount      0..1, how much of the effect. Zero is off; one is the effect as designed.
+  scale       the pass's own second knob -- glow reach, pixel size, line pitch. What it
+              means is written at the top of each file and shown in the settings screen.
+  resolution  the render target in pixels.
+  time        seconds, for anything that moves.
+
+raylib supplies the vertex stage and binds the incoming image as `texture0`, so these are
+fragment shaders only. GLSL 330 -- the desktop backend. A shader that will not compile on
+a particular driver is dropped and reported; the game keeps playing without that pass.

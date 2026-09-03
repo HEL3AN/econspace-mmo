@@ -327,3 +327,55 @@ have gates pointing to each other.
   (docking/mining/weapons) are relative to `size`.
 - The editor must keep both files consistent: system ids in `universe.json` ↔ gate
   `destination`s ↔ `links` entries.
+
+## `look.json` — the screen treatment
+
+`data/look.json` says what the world is put through after it is drawn (#120): an ordered
+chain of full-screen passes, each with two knobs.
+
+```json
+{
+    "enabled": true,
+    "treatHud": false,
+    "chain": [
+        { "pass": "bloom", "enabled": true, "amount": 0.85, "scale": 2.2 },
+        { "pass": "pixelate", "enabled": true, "amount": 1.0, "scale": 2.0 }
+    ]
+}
+```
+
+| Field | Type | Description |
+|------|-----|----------|
+| `enabled` | bool | the whole treatment; false draws the raw picture |
+| `treatHud` | bool | whether the interface goes through the chain with the world |
+| `chain` | array | the passes, **in the order they run** |
+
+| Pass field | Type | Description |
+|------|-----|----------|
+| `pass` | string | `bloom`, `pixelate`, `scanlines`, `noise`, `fringe`, `vignette` |
+| `enabled` | bool | skip this pass without losing where it sat in the order |
+| `amount` | number | 0..1 — how much of the effect. Zero is off, one is the effect as designed |
+| `scale` | number | the pass's own second knob; what it means is written at the top of its shader and shown in the settings screen |
+
+**The order is a decision, not a detail.** Bloom before pixelation gives soft fat pixels;
+after it gives hard pixel edges that glow. They are different games to look at, so the
+order is data and is reorderable in game rather than being a sequence of calls.
+
+**`treatHud` is a game decision, not a technical one.** Duskers can pixelate everything
+because everything there *is* the terminal. Here the HUD carries numbers people fly by, and
+a pixelated fuel gauge is a worse game — so it defaults to false.
+
+The file is written by the game (F10 opens the settings, closing them saves), so unlike
+`archetypes.json` it is machine-formatted and nobody hand-edits it.
+
+### `data/shaders/`
+
+One fragment shader per pass, named after it. Each is handed `amount`, `scale`,
+`resolution` and `time`, and uses the ones it has a use for; `bloom.fs` additionally gets
+`scene`, the picture before any pass, because it is the only one that composites against
+what came before it.
+
+**A missing or uncompilable shader is not an error.** Whether a shader compiles is a
+property of the player's driver, not of the build. The pass is dropped, the reason is
+logged and shown in the settings screen, and the game keeps playing. If none load, the
+world is drawn straight to the screen. The server and the unit tests never load one.

@@ -8,10 +8,11 @@ Nothing is in flight. `main` is green on both platforms: warning-clean build, un
 all four `econserver` self-tests, `econagent selftest` against a live server, and a
 two-client step that also checks a wrong secret is refused.
 
-**M6 is two issues in.** The gallery (#118) and the lighting (#119) are done and the
-milestone resumes at **#120, the screen treatment**. Everything M6 touches is judged by
-looking, so start by looking: `worldeditor gallery shapes` puts the whole registry on one
-screen under the current light.
+**M6 is three issues in.** The gallery (#118), the lighting (#119) and the screen
+treatment (#120) are done; the milestone resumes at **#121, materials**. Everything M6
+touches is judged by looking, so start by looking: `worldeditor gallery shapes` puts the
+whole registry on one screen under the current light and the current treatment, and F10
+opens the treatment's settings.
 
 **M3 "Multiplayer core" is closed** — 15 issues. Each connection has its own
 `ClientSession` (#3); players see each other in a system (#4); an account remembers where
@@ -41,15 +42,21 @@ what it costs. Work in this order — the order is part of the decision:
    radius rather than inverse-square, so a star across the system cannot decide which way
    something near you is lit. No lights means *unlit* — full colour — not black. The
    gallery tunes it against a synthetic source and saves the star's reach back to data.
-3. **#120 screen treatment — next.** Bloom, pixels, scanlines, noise; tunable and
-   switchable in game, separately for the HUD. Before silhouettes on purpose: it changes
-   the most for the least, on the shapes that already exist. The ambient floor belongs on
-   that settings surface too — it is a look decision that currently has no home in game.
+3. ~~**#120 screen treatment**~~ — **done**. The world is drawn into a texture and put
+   through an ordered chain of full-screen passes from `data/look.json`: bloom, pixelate,
+   scanlines, noise, fringe, vignette. **F10** opens its settings in the game *and* in the
+   gallery — one panel, drawn by both — and closing them writes the file. The order is
+   reorderable because it is a decision: bloom before pixelation gives soft fat pixels,
+   after it gives hard pixel edges that glow.
+
+   The ambient floor from #119 still has no home in that panel; it is a look decision that
+   is still a compiled default. Worth folding in when something else touches the settings.
 
    Note what M6 has cost so far and keep paying it: **every number in the look was set by
    eye, not derived** — the ambient floor, how far a star reaches, how hard the terminator
-   ramps. They are the owner's call. Anything new that is tuned this way belongs in the
-   gallery's panel and in a data file it can write, not in a constant.
+   ramps, every `amount` and `scale` in the chain. They are the owner's call. Anything new
+   that is tuned this way belongs in a panel and in a data file it can write, not in a
+   constant.
 4. **#121 materials** — a shader per object fed by `Render::Item` state (`intensity`,
    `heading`, `thrusting`) and the scene's lights.
 5. **#122 silhouettes** — shapes from `archetypes.json`, replacing `ShapeBackend`'s switch
@@ -93,6 +100,10 @@ playing. The server and the unit tests must never need a shader.
   including when there is none, because otherwise a preview drawn beside a system view is
   lit by that system's star. Anything calling `IBackend::Draw` directly inherits the last
   lights set — the palette icon and the gallery card go through `Present` for that reason.
+- **A shader that will not compile is a property of the machine, not of the build.** There
+  is no GPU on a CI runner, so `Render::Treatment` is untestable by construction — which is
+  why `TreatmentConfig` is a separate file holding everything that decides what the picture
+  will be. That half is tested; the picture is not.
 - A rim highlight needs a **round** silhouette. Traced at the radius of a triangle it is a
   crescent floating in empty space beside the ship; that is what it looked like the first
   time. Shapes that are not discs get theirs with real silhouettes (#122).

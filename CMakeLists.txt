@@ -118,10 +118,14 @@ add_library(engine STATIC
     src/engine/render/Textures.cpp
     src/engine/render/Scene.cpp        # what an object looks like, apart from who draws it (#35)
     src/engine/render/Lighting.cpp     # where a system's light comes from, and how much (#119)
+    src/engine/render/TreatmentConfig.cpp  # the pass chain as data -- the testable half (#120)
+    src/engine/render/Treatment.cpp        # ...and the half that talks to the GPU
+    src/engine/render/TreatmentPanel.cpp   # its settings, drawn by the game and the editor
     src/engine/render/GlyphBackend.cpp
     src/engine/render/TextBackend.cpp  # no raylib drawing calls: agents and tests are headless
     src/engine/ui/UiTheme.cpp
     src/engine/ui/Button.cpp
+    src/engine/ui/Controls.cpp         # sliders and toggles, wanted by more than one screen
     src/engine/ui/Window.cpp
     src/engine/ui/ContextMenu.cpp
 )
@@ -280,6 +284,7 @@ add_executable(tests
     tests/archetype_edit_tests.cpp
     tests/render_tests.cpp
     tests/lighting_tests.cpp
+    tests/treatment_tests.cpp
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     # The simulation itself is under test now, not only the wire (#10). That pulls in its
     # dependency tree -- ships, NPCs, the mission system -- which is the price of testing
