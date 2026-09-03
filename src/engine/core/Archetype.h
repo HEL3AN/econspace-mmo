@@ -1,6 +1,7 @@
 #pragma once
 
 #include "entities/EntityKind.h"
+#include "render/Silhouette.h"
 #include "raylib.h"
 #include <string>
 #include <vector>
@@ -88,6 +89,10 @@ struct Visual
     // same bargain the rest of the archetype makes. Zero radius means it emits nothing.
     float lightRadius = 0.0f;     // world units at which its light has fallen to nothing
     float lightIntensity = 0.0f;  // brightness at the source
+
+    // What it is made of (#122): a composition of parts, not one figure. Empty means the
+    // backend falls back to the shape it used to compile in for this EntityKind.
+    Render::Shape shape;
 
     // Which material shades it (#121), by id from data/materials.json. Empty means the
     // object is drawn plain, which is what everything did before materials existed and

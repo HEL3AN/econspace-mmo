@@ -118,6 +118,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   every player verb takes the session it acts for. There is no "active system" either: a
   session carries the system it is in, and every system is stepped the same way. Anything
   reintroduced as a member of `Simulation` is shared by every player on the server.
+- **An object is a composition, and it is written in data** (#122). Seven primitives with
+  roles, offsets, rotational `repeat` and bilateral `mirror` -- different symmetries, and
+  using `repeat: 2` for a pair of wings puts the second one in front of the nose. The
+  vocabulary is narrow on purpose: an open-ended set of arbitrary shapes reads as
+  programmer art. An unknown form is a **load error**, not a skipped part.
 - **A material is a shader plus bindings, and an object never knows either** (#121). An
   archetype names a material; a material maps uniform names to sources -- a field of the
   `Render::Item`, the scene's light, the clock, or a constant. The backend resolves them

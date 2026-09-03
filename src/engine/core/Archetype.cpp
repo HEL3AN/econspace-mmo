@@ -89,6 +89,16 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
     }
     a.visual.material = j.value("material", std::string());
 
+    if (j.contains("shape"))
+    {
+        std::string why;
+        if (!Render::ParseShape(j["shape"], a.visual.shape, why))
+        {
+            err = "archetype '" + a.id + "': " + why;
+            return false;
+        }
+    }
+
     if (j.contains("light") && j["light"].is_object())
     {
         a.visual.lightRadius = j["light"].value("radius", 0.0f);

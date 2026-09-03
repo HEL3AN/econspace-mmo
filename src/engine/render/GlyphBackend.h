@@ -84,6 +84,12 @@ private:
     // where it happens; it is a visible bug in whatever is drawn next.
     void DrawShape(const Item& item, Color c, bool shaded, const Lighting::Sample& light);
 
+    // The composition an archetype describes (#122), in place of the switch above. Returns
+    // false when the object has no shape in data, which is every object that has not been
+    // given one yet -- and those keep the shape that used to be compiled in.
+    bool DrawComposition(const Item& item, Color c, const Lighting::Sample& light);
+    void DrawPiece(const Piece& p, Color c);
+
     Lighting         lighting_;  // a copy: a backend outlives the scene that handed it over
     Camera2D         view_{};
     MaterialLibrary* materials_ = nullptr;  // borrowed; null draws everything plain

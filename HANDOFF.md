@@ -8,8 +8,10 @@ Nothing is in flight. `main` is green on both platforms: warning-clean build, un
 all four `econserver` self-tests, `econagent selftest` against a live server, and a
 two-client step that also checks a wrong secret is refused.
 
-**M6 is four issues in.** The gallery (#118), the lighting (#119), the screen treatment
-(#120) and materials (#121) are done; the milestone resumes at **#122, silhouettes**. Everything M6
+**M6 is five issues in.** The gallery (#118), the lighting (#119), the screen treatment
+(#120), materials (#121) and silhouettes (#122) are done; the milestone resumes at
+**#123, demoting glyphs to a sensor screen**, then **#117** colour semantics. **#133**
+(a composition for an object nobody drew) is the remaining piece of #122. Everything M6
 touches is judged by looking, so start by looking: `worldeditor gallery shapes` puts the
 whole registry on one screen under the current light and the current treatment, and F10
 opens the treatment's settings.
@@ -67,8 +69,14 @@ what it costs. Work in this order — the order is part of the decision:
    the bottom and everything else counts it from the top, so **both** the screen position
    and the light direction are flipped there, together. Flipping one without the other
    lights an object from the mirror image of where its star is.
-5. **#122 silhouettes** — shapes from `archetypes.json`, replacing `ShapeBackend`'s switch
-   on `EntityKind`, whose `Unknown` case is why a player-invented object is a circle.
+5. ~~**#122 silhouettes**~~ — **done for the shipped archetypes.** Thirteen of the
+   eighteen are now compositions written in `archetypes.json` -- seven primitives, roles,
+   rotational `repeat` and bilateral `mirror`, detail by `minPixels`, variation seeded
+   from the object's id. Stars and regions deliberately keep their figure: a star is a
+   light rather than a structure.
+
+   **`EntityKind::Unknown` is still a circle** -- deriving a composition for an object
+   nobody wrote one for is **#133**, split out so one pull request did not do two things.
 6. **#123** — glyphs become a sensor screen over `GridBackend`, which already does that
    correctly and is used by nothing.
 7. **#117** — colour in the world stops meaning allegiance; allegiance moves to the
@@ -112,6 +120,10 @@ playing. The server and the unit tests must never need a shader.
   is no GPU on a CI runner, so `Render::Treatment` is untestable by construction — which is
   why `TreatmentConfig` is a separate file holding everything that decides what the picture
   will be. That half is tested; the picture is not.
+- **raylib culls a clockwise triangle.** `DrawTriangle` wants its vertices
+  counter-clockwise *in screen space*, where y points down. Wound the other way the part
+  is simply not there, which is what every ship looked like the first time a chevron was
+  drawn.
 - A rim highlight needs a **round** silhouette. Traced at the radius of a triangle it is a
   crescent floating in empty space beside the ship; that is what it looked like the first
   time. Shapes that are not discs get theirs with real silhouettes (#122).

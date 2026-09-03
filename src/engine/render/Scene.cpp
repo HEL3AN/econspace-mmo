@@ -19,6 +19,7 @@ Item FromArchetype(const Archetype& a, Vector2 pos, float size)
     it.lightRadius = a.visual.lightRadius;
     it.lightIntensity = a.visual.lightIntensity;
     it.material = a.visual.material;
+    it.shape = &a.visual.shape;
     it.label = a.name;
     return it;
 }
