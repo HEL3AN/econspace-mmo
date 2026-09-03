@@ -10,6 +10,7 @@
 #include "net/Transport.h"
 #include "net/Tcp.h"
 #include "render/GlyphBackend.h"
+#include "render/MaterialLibrary.h"
 #include "render/Treatment.h"
 #include "player/Player.h"
 #include <string>
@@ -152,6 +153,10 @@ private:
     // player says so, because it carries numbers they fly by. F10 opens its settings, and
     // closing them writes the file -- a look someone tuned and lost on exit is a look they
     // will not tune twice.
+    // The shaders a material names (#121). Shared by the backends; null on a machine
+    // whose driver refused them, which draws everything the way it drew before.
+    Render::MaterialLibrary materials_;
+
     Render::Treatment treatment_;
     bool              treatmentPanelOpen_ = false;
     void              DrawTreatmentSettings();

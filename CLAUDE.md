@@ -118,6 +118,12 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   every player verb takes the session it acts for. There is no "active system" either: a
   session carries the system it is in, and every system is stepped the same way. Anything
   reintroduced as a member of `Simulation` is shared by every player on the server.
+- **A material is a shader plus bindings, and an object never knows either** (#121). An
+  archetype names a material; a material maps uniform names to sources -- a field of the
+  `Render::Item`, the scene's light, the clock, or a constant. The backend resolves them
+  per item. Unlike a screen-treatment pass, an **unknown source is a load error**: losing a
+  pass makes the picture plainer, losing a uniform makes a material draw something actively
+  wrong and do it silently.
 - **A shader failing is a runtime fact, not a build error** (#120). Whether one compiles
   depends on the player's driver. `Render::Treatment` drops the pass, says why in the
   settings screen as well as the log, and keeps playing; with no passes at all it draws

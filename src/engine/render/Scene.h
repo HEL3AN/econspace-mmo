@@ -3,6 +3,7 @@
 #include "entities/EntityKind.h"
 #include "core/Archetype.h"
 #include "render/Lighting.h"
+#include "render/Material.h"
 #include "raylib.h"
 #include <string>
 #include <vector>
@@ -22,6 +23,8 @@
 namespace Render
 {
 
+class MaterialLibrary;
+
 // One drawable thing, in world coordinates. Everything a backend could reasonably need
 // and nothing about how it will be drawn.
 struct Item
@@ -39,6 +42,9 @@ struct Item
     GlyphStyle  style = GlyphStyle::Point;  // how the glyph occupies the object's extent
 
     std::string label;  // display name, for backends that show one
+
+    // Which material shades it (#121), from its archetype. Empty draws it plain.
+    std::string material;
 
     // What this item lights, from its archetype (#119). Carried on the item rather than
     // looked up, because the thing that builds the light list has items and nothing else.
@@ -66,6 +72,13 @@ public:
     // when the caller has no lights, which means "draw unlit" rather than "draw black".
     virtual void SetLighting(const Lighting&) {}
 
+    // How the world is being looked at, and the materials that may be used (#121). A
+    // material shades a fragment by where it fell relative to the object, so it needs the
+    // camera to know where the object landed. A backend that draws no materials -- the
+    // text projection, anything headless -- ignores both.
+    virtual void SetView(const Camera2D&) {}
+    virtual void SetMaterials(MaterialLibrary*) {}
+
     virtual void Begin() {}
     virtual void Draw(const Item& item) = 0;
     virtual void End() {}
@@ -86,5 +99,10 @@ void Present(std::vector<Item> items, IBackend& backend);
 // callers that genuinely have no lights -- the tests, the agent -- say so by calling the
 // other one.
 void Present(std::vector<Item> items, const Lighting& lighting, IBackend& backend);
+
+// The same, told how the world is being looked at, which is what a material needs in order
+// to place itself on screen (#121).
+void Present(std::vector<Item> items, const Lighting& lighting, const Camera2D& view,
+             IBackend& backend);
 
 }  // namespace Render

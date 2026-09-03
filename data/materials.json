@@ -1,0 +1,18 @@
+{
+    "materials": [
+        {
+            "id": "hull",
+            "shader": "hull",
+            "bindings": {
+                "centre": "item.screenPos",
+                "radius": "item.screenSize",
+                "lightDir": "light.dir",
+                "lightTint": "light.tint",
+                "lightAmount": "light.strength",
+                "ambient": "light.ambient",
+                "damage": "item.intensity",
+                "time": "clock.time"
+            }
+        }
+    ]
+}

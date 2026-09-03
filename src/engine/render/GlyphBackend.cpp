@@ -194,19 +194,73 @@ void GlyphBackend::DrawDirectional(const Item& item, Color c)
     }
 }
 
+bool ShapeBackend::BeginMaterial(const Item& item, const Lighting::Sample& light)
+{
+    if (materials_ == nullptr || item.material.empty())
+        return false;
+    const Material* m = Materials::Find(item.material);
+    if (m == nullptr)
+        return false;
+
+    MaterialInputs in;
+    in.item = &item;
+    in.light = light;
+    in.ambient = lighting_.ambient;
+    in.time = (float)GetTime();
+    in.screenPos = GetWorldToScreen2D(item.pos, view_);
+    // A radius in pixels, taken from the camera rather than assumed: the same object is
+    // eight pixels across on the system map and four hundred in the gallery, and a shader
+    // that guessed would be right in exactly one of those.
+    in.screenSize = item.size * view_.zoom;
+    // OpenGL counts gl_FragCoord from the bottom; raylib counts screen y from the top, and
+    // so does everything in Lighting. Both conversions happen here, once, rather than in
+    // every shader -- and they have to happen together: flipping the position without the
+    // light direction lights the object from the mirror image of where the star is, which
+    // is exactly what it did the first time this ran.
+    in.screenPos.y = (float)GetScreenHeight() - in.screenPos.y;
+    in.light.dir.y = -in.light.dir.y;
+
+    return materials_->Begin(*m, in);
+}
+
+void ShapeBackend::EndMaterial()
+{
+    if (materials_ != nullptr)
+        materials_->End();
+}
+
 void ShapeBackend::Draw(const Item& item)
 {
     // What the light does to this object, asked once. An object is small next to the
     // distance to its star, so one sample at its centre is the whole of the difference.
     const Lighting::Sample light = lighting_.At(item.pos);
 
-    Color c = Emissive(item) ? item.color : Lit(item.color, lighting_, light);
-    if (item.intensity < 1.0f)
+    // A material shades the fragments itself, so the colour handed to the primitive stays
+    // the object's own and the CPU-side dimming is left off: doing both would darken twice.
+    const bool shaded = BeginMaterial(item, light);
+
+    Color c = (shaded || Emissive(item)) ? item.color : Lit(item.color, lighting_, light);
+    if (!shaded && item.intensity < 1.0f)
         c = Fade(c, 0.35f + 0.65f * item.intensity);
 
     if (item.ring > 0.0f)
+    {
+        // The orbit guide is a property of where a thing is, not of the thing, so it is
+        // never part of what a material shades.
+        EndMaterial();
         DrawCircleLines(0.0f, 0.0f, item.ring, DARKGRAY);
+        BeginMaterial(item, light);
+    }
 
+    // The switch is a separate call so that the material is always ended, whichever of
+    // the ten returns below is taken. Leaving a shader bound is not a visible bug where it
+    // happens -- it is a visible bug in whatever is drawn next.
+    DrawShape(item, c, shaded, light);
+    EndMaterial();
+}
+
+void ShapeBackend::DrawShape(const Item& item, Color c, bool shaded, const Lighting::Sample& light)
+{
     switch (item.kind)
     {
         case EntityKind::Star:
@@ -216,16 +270,22 @@ void ShapeBackend::Draw(const Item& item)
             return;
 
         case EntityKind::Planet:
-            if (!Tex::DrawSprite(item.sprite.c_str(), item.pos, item.size, 0.0f, c))
-                ShadeDisc(item.pos, item.size, item.color, lighting_, light);
-            RimArc(item.pos, item.size, lighting_, light, RIM_ARC, RIM_THICKNESS);
-            return;
-
         case EntityKind::Unknown:
-            // Whatever a player invented. It gets the same light as everything else,
-            // which is the whole argument for lighting over drawing (#44).
-            ShadeDisc(item.pos, item.size, item.color, lighting_, light);
-            RimArc(item.pos, item.size, lighting_, light, RIM_ARC, RIM_THICKNESS);
+            // Unknown is whatever a player invented; it is drawn exactly like a planet,
+            // which is the whole argument for shading over drawing (#44).
+            if (shaded)
+            {
+                // One plain disc. The shader decides which side is lit, where the
+                // terminator falls and where the rim sits -- the offset circles below are
+                // what this looked like before there was a shader to ask.
+                DrawCircleV(item.pos, item.size, c);
+            }
+            else
+            {
+                if (!Tex::DrawSprite(item.sprite.c_str(), item.pos, item.size, 0.0f, c))
+                    ShadeDisc(item.pos, item.size, item.color, lighting_, light);
+                RimArc(item.pos, item.size, lighting_, light, RIM_ARC, RIM_THICKNESS);
+            }
             return;
 
         case EntityKind::Station:
