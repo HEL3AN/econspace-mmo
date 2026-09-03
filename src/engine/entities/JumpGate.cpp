@@ -5,5 +5,5 @@ JumpGate::JumpGate(Vector2 pos, float size, std::string name, std::string destin
     : Entity(pos, size, Color{ 90, 200, 210, 255 }, EntityKind::Gate), name_(std::move(name)),
       destination_(std::move(destination))
 {
-    SetArchetype(Archetypes::Find("gate.jump"));
+    SetArchetype("gate.jump");
 }

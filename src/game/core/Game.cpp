@@ -46,6 +46,22 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     SetTargetFPS(60);
     Ui::LoadAssets();
 
+    // Galaxy index and starting system. In a dev build we read the source data/
+    // (the same path the editor writes to), otherwise a copy next to the exe.
+#ifdef GAME_DATA_DIR
+    dataDir_ = GAME_DATA_DIR;
+#else
+    dataDir_ = std::string(GetApplicationDirectory()) + "data/";
+#endif
+    Factions::Load(dataDir_ + "factions.json");  // faction properties/relations
+    // Before any entity exists -- and the player's own ship is one. It used to be built
+    // seventeen lines above this call, under this same comment, which made it the one
+    // object in the client with no archetype: no glyph, no sprite, no components (#127).
+    if (!Archetypes::Load(dataDir_ + "archetypes.json"))
+        TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());
+    universe_ = WorldLoader::LoadUniverse(dataDir_ + "universe.json");
+    treatment_.Load(dataDir_);  // shaders and the pass chain (#120); safe if neither exists
+
     // The authoritative ship lives on the server. This one is the client's prediction of
     // it: the same Ship type, stepped with the same Sim::StepPlayerShip, corrected by
     // every snapshot. Its starting position is a placeholder until the first snapshot.
@@ -56,20 +72,6 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     camera_.offset = { screenWidth_ / 2.0f, screenHeight_ / 2.0f };
     camera_.rotation = 0.0f;
     camera_.zoom = 1.0f;
-
-    // Galaxy index and starting system. In a dev build we read the source data/
-    // (the same path the editor writes to), otherwise a copy next to the exe.
-#ifdef GAME_DATA_DIR
-    dataDir_ = GAME_DATA_DIR;
-#else
-    dataDir_ = std::string(GetApplicationDirectory()) + "data/";
-#endif
-    Factions::Load(dataDir_ + "factions.json");  // faction properties/relations
-    // Before any entity exists: constructors look their archetype up in the registry.
-    if (!Archetypes::Load(dataDir_ + "archetypes.json"))
-        TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());
-    universe_ = WorldLoader::LoadUniverse(dataDir_ + "universe.json");
-    treatment_.Load(dataDir_);  // shaders and the pass chain (#120); safe if neither exists
 
     // No system is loaded here: which system we are in, and everything in it, arrives
     // from the server as a SystemLayout followed by snapshots (ApplyLayout).

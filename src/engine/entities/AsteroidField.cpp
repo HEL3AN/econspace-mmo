@@ -7,7 +7,7 @@ AsteroidField::AsteroidField(Vector2 pos, float size, std::string name, Resource
     : Entity(pos, size, GRAY, EntityKind::Field), name_(std::move(name)), resource_(resource),
       oreRemaining_(ore), oreMax_(ore)
 {
-    SetArchetype(Archetypes::Find("field.asteroid"));
+    SetArchetype("field.asteroid");
 }
 
 Render::Item AsteroidField::Describe() const
