@@ -128,6 +128,10 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   every player verb takes the session it acts for. There is no "active system" either: a
   session carries the system it is in, and every system is stepped the same way. Anything
   reintroduced as a member of `Simulation` is shared by every player on the server.
+- **Anything that moves is `f(time, seed)`** (#136), never integrated per frame. A part
+  whose angle accumulated would drift between clients and two players would see the same
+  station turned differently; as written nothing about motion crosses the wire. The turn is
+  wrapped, because a float counting degrees for a week has no precision left.
 - **An object is a composition, and it is written in data** (#122). Seven primitives with
   roles, offsets, rotational `repeat` and bilateral `mirror` -- different symmetries, and
   using `repeat: 2` for a pair of wings puts the second one in front of the nose. The

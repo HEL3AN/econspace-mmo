@@ -381,8 +381,16 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
     // The id seeds the variation, so two trade hubs differ and neither shimmers between
     // frames. An object with no id yet -- a gallery card, a placement ghost -- gets the
     // unperturbed shape, which is the right thing to be looking at while tuning one.
-    const std::vector<Piece> pieces =
-        Compose(*item.shape, item.pos, item.size, item.heading, item.id, view_.zoom);
+    Pose pose;
+    pose.pos = item.pos;
+    pose.size = item.size;
+    pose.heading = item.heading;
+    pose.seed = item.id;
+    pose.pixelsPerUnit = view_.zoom;
+    pose.time = (float)GetTime();
+    pose.thrusting = item.thrusting;
+
+    const std::vector<Piece> pieces = Compose(*item.shape, pose);
 
     for (const Piece& p : pieces)
     {
@@ -390,7 +398,10 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         // up dark on its own night side.
         if (p.role == Role::Light)
         {
-            DrawPiece(p, Fade(item.color, 0.25f + 0.75f * item.intensity));
+            // A light dims with damage and with its own blink, and is never shaded: a lamp
+            // is not lit by the star, it *is* a light, and shading one is how a beacon ends
+            // up dark on its own night side.
+            DrawPiece(p, Fade(item.color, (0.25f + 0.75f * item.intensity) * p.brightness));
             continue;
         }
 

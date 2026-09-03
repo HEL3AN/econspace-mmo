@@ -93,6 +93,14 @@ struct Part
     // of its size. Two trade hubs should differ without either stopping being a trade hub.
     float jitterAngle = 0.0f;
     float jitterScale = 0.0f;
+
+    // Movement (#136). All of it is a function of the clock and the part's seed, never of
+    // anything accumulated per frame: a part whose angle is integrated drifts between
+    // clients, and two players would see the same station turned differently. As written,
+    // every client computes the same answer from the same time without a byte on the wire.
+    float spin = 0.0f;            // degrees per second about the object's centre
+    float blink = 0.0f;           // seconds per cycle; 0 is a steady light
+    bool  onlyThrusting = false;  // drawn only while the object's engine is burning
 };
 
 struct Shape
@@ -114,6 +122,10 @@ struct Piece
     float   radius = 0.0f;         // world
     float   width = 0.0f;          // world
     float   length = 0.0f;         // world
+
+    // 0..1, from a blinking light's place in its cycle. One for everything steady, so a
+    // backend can multiply by it unconditionally.
+    float brightness = 1.0f;
 };
 
 // How large a piece is *for shading*, which is not the same as how far it reaches.
@@ -143,17 +155,29 @@ bool ParseShape(const nlohmann::json& j, Shape& out, std::string& error);
 // ask rather than assume. Returns 1 for an empty shape.
 float Extent(const Shape& s);
 
-// Places a shape on an object: applies the repeats, the object's own heading, its size and
-// position, drops the parts too small to be worth drawing, and perturbs what the shape
-// allows to be perturbed.
-//
-// `pixelsPerUnit` is the camera's zoom -- the same object is eight pixels across on the
-// system map and four hundred in the gallery, and the parts that are worth drawing are not
-// the same in both.
-//
-// `seed` should be stable for an object across frames, or its jitter becomes a shimmer.
-// The entity id is the right thing to pass.
-std::vector<Piece> Compose(const Shape& s, Vector2 pos, float size, float heading, int seed,
-                           float pixelsPerUnit);
+// Everything about the object that placing its shape depends on. A struct rather than
+// eight positional arguments, because the list grew twice and will grow again.
+struct Pose
+{
+    Vector2 pos = { 0.0f, 0.0f };
+    float   size = 1.0f;
+    float   heading = 0.0f;  // radians
+
+    // Stable for an object across frames, or its jitter becomes a shimmer. The entity id
+    // is the right thing to pass.
+    int seed = 0;
+
+    // The camera's zoom. The same object is eight pixels across on the system map and four
+    // hundred in the gallery, and the parts worth drawing are not the same in both.
+    float pixelsPerUnit = 1.0f;
+
+    float time = 0.0f;        // seconds, for anything that moves (#136)
+    bool  thrusting = false;  // whether the object's engine is burning
+};
+
+// Places a shape on an object: applies the repeats and the mirror, the object's own
+// heading, its size and position, whatever the clock is doing to it, drops the parts too
+// small or too still to be worth drawing, and perturbs what the shape allows.
+std::vector<Piece> Compose(const Shape& s, const Pose& pose);
 
 }  // namespace Render
