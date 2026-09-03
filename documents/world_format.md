@@ -236,6 +236,7 @@ bool, or one to four numbers). The sources:
 | `item.size` | float | world units |
 | `item.screenPos` | vec2 | where its centre landed, in pixels |
 | `item.screenSize` | float | its radius after the camera, in pixels |
+| `item.axis` | vec2 | which way an elongated part runs; zero means it is round |
 | `light.dir` | vec2 | unit vector toward the strongest light |
 | `light.tint` | vec4 | the colour of the light arriving |
 | `light.strength` | float | 0..1 |
@@ -245,6 +246,12 @@ bool, or one to four numbers). The sources:
 **An unknown source is a load error**, unlike an unknown pass in `look.json`, which is
 skipped. Losing a pass makes the picture plainer; losing a uniform makes a material draw
 something actively wrong, and it would do it in silence.
+
+A material is bound **per part** of a composition rather than per object (#135): each part
+gets its own centre, its own cross section and its own axis, so an arm is lit as an arm
+rather than as the slice of a sphere it happens to be standing in. A part narrower than a
+few pixels is drawn flat instead — below that there is no surface left to shade, and a rail
+two pixels wide is *entirely* the part of a cylinder that turns away from the viewer.
 
 The shader lives at `data/shaders/materials/<shader>.fs` and works out where a fragment sits
 on the object from `gl_FragCoord` and the object's centre and radius in pixels — so it sits

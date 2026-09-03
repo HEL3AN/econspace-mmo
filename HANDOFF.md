@@ -120,6 +120,9 @@ playing. The server and the unit tests must never need a shader.
   is no GPU on a CI runner, so `Render::Treatment` is untestable by construction — which is
   why `TreatmentConfig` is a separate file holding everything that decides what the picture
   will be. That half is tested; the picture is not.
+- **Nothing in a composition may be measured in raw world units.** Truss rails were `1.5f`
+  and went sub-pixel the moment a card framed a larger object, so the trusses stopped being
+  drawn at all. Every measurement comes from the part's own size.
 - **raylib culls a clockwise triangle.** `DrawTriangle` wants its vertices
   counter-clockwise *in screen space*, where y points down. Wound the other way the part
   is simply not there, which is what every ship looked like the first time a chevron was

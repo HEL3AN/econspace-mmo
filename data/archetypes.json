@@ -171,7 +171,7 @@
             "material": "hull",
             "shape": [
                 {"form": "polygon", "sides": 5, "radius": 0.5, "role": "hull"},
-                {"form": "lattice", "at": [0.95, 0.0], "repeat": 2, "length": 1.1, "width": 0.3, "count": 5, "role": "antenna", "minPixels": 44},
+                {"form": "lattice", "at": [0.95, 0.0], "repeat": 2, "length": 1.1, "width": 0.3, "count": 5, "role": "panel", "minPixels": 44},
                 {"form": "bar", "at": [1.45, 0.0], "repeat": 2, "length": 0.28, "width": 0.55, "role": "panel", "jitterScale": 0.1, "minPixels": 34},
                 {"form": "disc", "at": [0.0, 0.7], "radius": 0.3, "role": "panel", "minPixels": 40},
                 {"form": "disc", "at": [0.0, 0.95], "radius": 0.06, "role": "light", "minPixels": 60},
@@ -196,8 +196,8 @@
             "material": "hull",
             "shape": [
                 {"form": "bar", "length": 1.5, "width": 0.5, "role": "hull"},
-                {"form": "lattice", "at": [0.0, 0.72], "length": 2.0, "width": 0.42, "count": 7, "role": "antenna", "minPixels": 44},
-                {"form": "lattice", "at": [0.0, -0.72], "length": 2.0, "width": 0.42, "count": 7, "role": "antenna", "minPixels": 44},
+                {"form": "lattice", "at": [0.0, 0.72], "length": 2.0, "width": 0.42, "count": 7, "role": "panel", "minPixels": 44},
+                {"form": "lattice", "at": [0.0, -0.72], "length": 2.0, "width": 0.42, "count": 7, "role": "panel", "minPixels": 44},
                 {"form": "bar", "at": [-0.95, 0.0], "length": 0.3, "width": 1.7, "role": "panel", "minPixels": 34},
                 {"form": "bar", "at": [0.95, 0.0], "length": 0.3, "width": 1.7, "role": "panel", "minPixels": 34},
                 {"form": "disc", "at": [0.0, 0.95], "repeat": 2, "radius": 0.06, "role": "light", "minPixels": 60},

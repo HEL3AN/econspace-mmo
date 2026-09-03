@@ -73,10 +73,18 @@ public:
     static constexpr float RIM_ARC = 62.0f;
     static constexpr float RIM_THICKNESS = 0.09f;
 
+    // Narrower than this on screen and a part is drawn flat rather than shaded (#135).
+    static constexpr float MIN_SHADED_PIXELS = 3.0f;
+
 private:
     // True when a material took the object over. It then draws one plain primitive and the
     // shader does the shading, instead of the offset discs and rim arcs this backend fakes
     // it with (#119) -- those exist precisely because there was no shader yet.
+    // Turns the item's material on for what follows, positioned on `at` with radius
+    // `size` in world units. A composition passes each piece's own centre and cross
+    // section (#135); an uncomposed object passes its own.
+    bool BeginMaterialAt(const Item& item, const Lighting::Sample& light, Vector2 at, float size,
+                         Vector2 axis = { 0.0f, 0.0f });
     bool BeginMaterial(const Item& item, const Lighting::Sample& light);
     void EndMaterial();
     // The shapes themselves, split off so that whichever of its ten returns is taken, the

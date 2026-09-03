@@ -123,6 +123,10 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   using `repeat: 2` for a pair of wings puts the second one in front of the nose. The
   vocabulary is narrow on purpose: an open-ended set of arbitrary shapes reads as
   programmer art. An unknown form is a **load error**, not a skipped part.
+- **A material is bound per part, not per object** (#135). One sphere at the centre is the
+  truth about a planet and a lie about a station. An elongated part is lit as a cylinder
+  from `item.axis`; without that, an arm two radii long gets a bright band across its
+  middle and both ends in shadow.
 - **A material is a shader plus bindings, and an object never knows either** (#121). An
   archetype names a material; a material maps uniform names to sources -- a field of the
   `Render::Item`, the scene's light, the clock, or a constant. The backend resolves them

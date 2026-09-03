@@ -196,6 +196,12 @@ void GlyphBackend::DrawDirectional(const Item& item, Color c)
 
 bool ShapeBackend::BeginMaterial(const Item& item, const Lighting::Sample& light)
 {
+    return BeginMaterialAt(item, light, item.pos, item.size);
+}
+
+bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& light, Vector2 at,
+                                   float size, Vector2 axis)
+{
     if (materials_ == nullptr || item.material.empty())
         return false;
     const Material* m = Materials::Find(item.material);
@@ -207,11 +213,11 @@ bool ShapeBackend::BeginMaterial(const Item& item, const Lighting::Sample& light
     in.light = light;
     in.ambient = lighting_.ambient;
     in.time = (float)GetTime();
-    in.screenPos = GetWorldToScreen2D(item.pos, view_);
+    in.screenPos = GetWorldToScreen2D(at, view_);
     // A radius in pixels, taken from the camera rather than assumed: the same object is
     // eight pixels across on the system map and four hundred in the gallery, and a shader
     // that guessed would be right in exactly one of those.
-    in.screenSize = item.size * view_.zoom;
+    in.screenSize = size * view_.zoom;
     // OpenGL counts gl_FragCoord from the bottom; raylib counts screen y from the top, and
     // so does everything in Lighting. Both conversions happen here, once, rather than in
     // every shader -- and they have to happen together: flipping the position without the
@@ -219,6 +225,7 @@ bool ShapeBackend::BeginMaterial(const Item& item, const Lighting::Sample& light
     // is exactly what it did the first time this ran.
     in.screenPos.y = (float)GetScreenHeight() - in.screenPos.y;
     in.light.dir.y = -in.light.dir.y;
+    in.axis = { axis.x, -axis.y };
 
     return materials_->Begin(*m, in);
 }
@@ -234,6 +241,18 @@ void ShapeBackend::Draw(const Item& item)
     // What the light does to this object, asked once. An object is small next to the
     // distance to its star, so one sample at its centre is the whole of the difference.
     const Lighting::Sample light = lighting_.At(item.pos);
+
+    // A composition is shaded a part at a time (#135), so it never begins an object-level
+    // material: one sphere at the object's centre is the truth about a planet and a lie
+    // about a station, where an arm two radii out was being shaded by whatever slice of
+    // that sphere it happened to be standing in.
+    if (item.shape != nullptr && !item.shape->Empty())
+    {
+        if (item.ring > 0.0f)
+            DrawCircleLines(0.0f, 0.0f, item.ring, DARKGRAY);
+        DrawComposition(item, item.color, light);
+        return;
+    }
 
     // A material shades the fragments itself, so the colour handed to the primitive stays
     // the object's own and the CPU-side dimming is left off: doing both would darken twice.
@@ -255,8 +274,7 @@ void ShapeBackend::Draw(const Item& item)
     // The switch is a separate call so that the material is always ended, whichever of
     // the ten returns below is taken. Leaving a shader bound is not a visible bug where it
     // happens -- it is a visible bug in whatever is drawn next.
-    if (!DrawComposition(item, c, light))
-        DrawShape(item, c, shaded, light);
+    DrawShape(item, c, shaded, light);
     EndMaterial();
 }
 
@@ -331,10 +349,15 @@ void ShapeBackend::DrawPiece(const Piece& p, Color c)
             // A truss: the two rails, and struts crossing between them. Cheap, and it is
             // the one part that reads as "built" rather than "moulded".
             const Vector2 offs{ across.x * p.width * 0.5f, across.y * p.width * 0.5f };
+            // Thickness from the truss's own width, like every other measurement in the
+            // grammar. Fixed world units were sub-pixel the moment a card framed a larger
+            // object, and the trusses simply stopped being drawn.
+            const float rail = fmaxf(1.0f, p.width * 0.10f);
+            const float strut = fmaxf(1.0f, p.width * 0.08f);
             DrawLineEx({ tail.x + offs.x, tail.y + offs.y }, { tip.x + offs.x, tip.y + offs.y },
-                       1.5f, c);
+                       rail, c);
             DrawLineEx({ tail.x - offs.x, tail.y - offs.y }, { tip.x - offs.x, tip.y - offs.y },
-                       1.5f, c);
+                       rail, c);
             for (int i = 0; i < p.count; i++)
             {
                 const float   t0 = (float)i / (float)p.count;
@@ -343,7 +366,7 @@ void ShapeBackend::DrawPiece(const Piece& p, Color c)
                                   tail.y + (tip.y - tail.y) * t0 + offs.y };
                 const Vector2 b0{ tail.x + (tip.x - tail.x) * t1 - offs.x,
                                   tail.y + (tip.y - tail.y) * t1 - offs.y };
-                DrawLineEx(a0, b0, 1.2f, c);
+                DrawLineEx(a0, b0, strut, c);
             }
             return;
         }
@@ -361,21 +384,37 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
     const std::vector<Piece> pieces =
         Compose(*item.shape, item.pos, item.size, item.heading, item.id, view_.zoom);
 
-    // Lights last and outside the material: a lamp is not lit by the star, it is a light,
-    // and shading one is how a beacon ends up dark on its own night side.
     for (const Piece& p : pieces)
-        if (p.role != Role::Light)
-            DrawPiece(p, ForRole(p.role, c));
-
-    bool anyLight = false;
-    for (const Piece& p : pieces)
-        anyLight = anyLight || p.role == Role::Light;
-    if (anyLight)
     {
-        EndMaterial();
-        for (const Piece& p : pieces)
-            if (p.role == Role::Light)
-                DrawPiece(p, Fade(item.color, 0.25f + 0.75f * item.intensity));
+        // A lamp is not lit by the star, it is a light. Shading one is how a beacon ends
+        // up dark on its own night side.
+        if (p.role == Role::Light)
+        {
+            DrawPiece(p, Fade(item.color, 0.25f + 0.75f * item.intensity));
+            continue;
+        }
+
+        // Sampled where the piece is rather than where the object is. The difference is
+        // nothing for a station beside a star and everything for a structure large enough
+        // that its far side is meaningfully further away -- which is what players will
+        // build (#44).
+        const Lighting::Sample pieceLight = lighting_.At(p.pos);
+
+        // Below a few pixels across there is no surface left to shade, and shading it
+        // anyway is worse than not: a rail two pixels wide is *entirely* the part of a
+        // cylinder that turns away from the viewer, so it comes out the darkest thing on
+        // screen. The same argument as minPixels, one level down.
+        const float shadePixels = ShadeRadius(p) * view_.zoom;
+        const bool  shaded = shadePixels >= MIN_SHADED_PIXELS &&
+                             BeginMaterialAt(item, pieceLight, p.pos, ShadeRadius(p), Axis(p));
+
+        // With a shader the colour stays the object's own and the shading is done in the
+        // fragment; without one it is dimmed here. Doing both would darken twice.
+        const Color base = shaded ? c : Lit(c, lighting_, pieceLight);
+        DrawPiece(p, ForRole(p.role, base));
+
+        if (shaded)
+            EndMaterial();
     }
     (void)light;
     return true;

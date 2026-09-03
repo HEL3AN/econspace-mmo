@@ -88,6 +88,40 @@ bool RoleFromName(const std::string& s, Role& out)
     return false;
 }
 
+float ShadeRadius(const Piece& p)
+{
+    switch (p.form)
+    {
+        case Form::Disc:
+        case Form::Ring:
+        case Form::Polygon: return p.radius;
+        case Form::Capsule:
+        case Form::Chevron:
+        case Form::Bar:
+        case Form::Lattice: return p.width * 0.5f;
+    }
+    return p.radius;
+}
+
+Vector2 Axis(const Piece& p)
+{
+    switch (p.form)
+    {
+        case Form::Disc:
+        case Form::Ring:
+        case Form::Polygon: return { 0.0f, 0.0f };
+        case Form::Capsule:
+        case Form::Chevron:
+        case Form::Bar:
+        case Form::Lattice:
+        {
+            const float a = p.angle * DEG2RAD;
+            return { std::cos(a), std::sin(a) };
+        }
+    }
+    return { 0.0f, 0.0f };
+}
+
 bool ParseShape(const json& j, Shape& out, std::string& error)
 {
     error.clear();
