@@ -278,6 +278,101 @@ TEST_CASE("a part can belong to the engine, and is absent when the engine is not
     CHECK(Render::Compose(s, p).size() == 2);
 }
 
+TEST_CASE("an orbiting part goes round the body, behind it and in front of it")
+{
+    // Found by looking (#161): once a planet's surface discs started moving they read as
+    // moons. Making them moons is better than what was intended, and the whole of the
+    // depth effect is draw order.
+    const Render::Shape s = Parse(R"([
+        { "form": "disc", "radius": 1.0 },
+        { "form": "disc", "radius": 0.1, "orbitRadius": 1.6, "orbitPeriod": 40.0,
+          "orbitTilt": 0.3 }
+    ])");
+
+    Render::Pose p = At({ 0, 0 }, 100.0f, 0.0f, 5, 1.0f);
+
+    // A whole lap, sampled. It has to go both in front of and behind the body, or it is a
+    // ring rather than an orbit.
+    bool behind = false, front = false;
+    for (int i = 0; i < 40; i++)
+    {
+        p.time = (float)i;
+        for (const Render::Piece& piece : Render::Compose(s, p))
+        {
+            if (piece.depth < -0.5f)
+                behind = true;
+            if (piece.depth > 0.5f)
+                front = true;
+        }
+    }
+    CHECK(behind);
+    CHECK(front);
+
+    SUBCASE("and what is behind is drawn before the body, so the body hides it")
+    {
+        // The entire trick. Compose returns pieces back to front; a backend draws them in
+        // order and never has to know why.
+        for (int i = 0; i < 40; i++)
+        {
+            p.time = (float)i;
+            const std::vector<Render::Piece> pieces = Render::Compose(s, p);
+            REQUIRE(pieces.size() == 2);
+            CHECK(pieces[0].depth <= pieces[1].depth);
+        }
+    }
+
+    SUBCASE("it stays on its ellipse, flattened by the tilt")
+    {
+        float maxAcross = 0.0f, maxUpDown = 0.0f;
+        for (int i = 0; i < 80; i++)
+        {
+            p.time = (float)i * 0.5f;
+            for (const Render::Piece& piece : Render::Compose(s, p))
+                if (piece.radius < 50.0f)  // the moon, not the body
+                {
+                    maxAcross = std::fmax(maxAcross, std::fabs(piece.pos.x));
+                    maxUpDown = std::fmax(maxUpDown, std::fabs(piece.pos.y));
+                }
+        }
+        CHECK(maxAcross == doctest::Approx(160.0f).epsilon(0.1));
+        // Squashed by (1 - tilt): an orbit seen edge-on is a line, and one seen from above
+        // never passes behind anything.
+        CHECK(maxUpDown == doctest::Approx(160.0f * 0.7f).epsilon(0.15));
+    }
+
+    SUBCASE("nearer is bigger, which is what stops it reading as a sprite under a circle")
+    {
+        float nearR = 0.0f, farR = 1e9f;
+        for (int i = 0; i < 80; i++)
+        {
+            p.time = (float)i * 0.5f;
+            for (const Render::Piece& piece : Render::Compose(s, p))
+                if (piece.radius < 50.0f)
+                {
+                    nearR = std::fmax(nearR, piece.radius);
+                    farR = std::fmin(farR, piece.radius);
+                }
+        }
+        CHECK(nearR > farR);
+    }
+
+    SUBCASE("several of them are spread around the lap rather than stacked")
+    {
+        const Render::Shape many = Parse(R"([
+            { "form": "disc", "radius": 1.0 },
+            { "form": "disc", "radius": 0.08, "repeat": 3, "orbitRadius": 1.5 }
+        ])");
+        p.time = 3.0f;
+        const std::vector<Render::Piece> pieces = Render::Compose(many, p);
+        REQUIRE(pieces.size() == 4);
+        // No two moons in the same place; three moons on top of each other is one moon.
+        for (size_t i = 0; i < pieces.size(); i++)
+            for (size_t j = i + 1; j < pieces.size(); j++)
+                if (pieces[i].radius < 50.0f && pieces[j].radius < 50.0f)
+                    CHECK(Dist(pieces[i].pos, pieces[j].pos) > 1.0f);
+    }
+}
+
 TEST_CASE("a composition reaches as far as its furthest part, not as far as its radius")
 {
     // A shape is written around a radius of one but need not stay inside it. Anything

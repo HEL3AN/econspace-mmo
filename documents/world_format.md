@@ -180,6 +180,10 @@ and works at any size — a ninety-unit station and a sixteen-unit ship use the 
 | `jitterAngle` | number | degrees the seed may turn this part |
 | `jitterScale` | number | fraction the seed may resize it |
 | `alpha` | number | 0..1, how solid this part is; a corona is a glow rather than a ring |
+| `orbitRadius` | number | in radii; non-zero makes this part **orbit** the body instead of sitting on it, and `at` is then ignored |
+| `orbitPeriod` | number | seconds for one lap |
+| `orbitPhase` | number | 0..1, where in the lap it starts |
+| `orbitTilt` | number | 0 is edge-on (a line across the body), 1 is seen from above; in between is where it passes behind |
 | `spin` | number | degrees per second this part turns about the object's centre |
 | `blink` | number | seconds per cycle for a `light`; 0 is steady |
 | `onlyThrusting` | bool | the part exists only while the object's engine is burning |
@@ -200,6 +204,15 @@ object.
 **Two of the same thing differ.** `jitterAngle` and `jitterScale` are perturbed from the
 object's id, so two trade hubs are not identical and neither shimmers between frames —
 repeated identical assets are the other way procedural art gives itself away.
+
+**A part belongs either to the body or to the space around it.** A surface feature sits on
+the sphere and turns with it. An **orbiting** part travels around the object, passes behind
+it and in front of it, and the whole of that depth is draw order: `Compose` returns pieces
+sorted back to front, so the body hides what is behind it and covers nothing in front. A
+backend draws them in order and never has to know why.
+
+This is draw order, not occlusion. A part larger than the body, or one orbiting closer than
+the body's own radius, will pop rather than slide — keep an orbit outside the body.
 
 **A part turns only if it is a surface feature.** A crater, a storm or a lava crack belongs
 to the surface and goes round with it. A latitude band or a polar cap does not: rotating
