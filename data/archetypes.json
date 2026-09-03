@@ -70,7 +70,7 @@
                 {"form": "disc", "radius": 1.0, "role": "hull"},
                 {"form": "disc", "at": [-0.35, -0.3], "radius": 0.22, "role": "panel", "jitterScale": 0.25, "minPixels": 40, "spin": 1.6},
                 {"form": "disc", "at": [0.3, 0.35], "radius": 0.15, "role": "panel", "jitterScale": 0.3, "minPixels": 40, "spin": 1.6},
-                {"form": "disc", "at": [0.5, -0.4], "radius": 0.1, "role": "panel", "jitterScale": 0.35, "minPixels": 90, "spin": 1.6}
+                {"form": "disc", "radius": 0.11, "role": "trim", "orbitRadius": 1.5, "orbitPeriod": 34.0, "orbitTilt": 0.3, "minPixels": 60}
             ],
             "components": {}
         },
@@ -90,7 +90,8 @@
                 {"form": "bar", "at": [0.0, -0.45], "length": 1.7, "width": 0.16, "role": "panel", "minPixels": 40},
                 {"form": "bar", "at": [0.0, 0.1], "length": 1.95, "width": 0.22, "role": "trim", "minPixels": 40},
                 {"form": "bar", "at": [0.0, 0.55], "length": 1.5, "width": 0.13, "role": "panel", "minPixels": 60},
-                {"form": "disc", "at": [0.35, -0.12], "radius": 0.17, "role": "trim", "spin": 4.0, "minPixels": 60}
+                {"form": "disc", "at": [0.35, -0.12], "radius": 0.17, "role": "trim", "spin": 4.0, "minPixels": 60},
+                {"form": "disc", "radius": 0.075, "role": "trim", "repeat": 3, "orbitRadius": 1.45, "orbitPeriod": 41.0, "orbitTilt": 0.28, "jitterScale": 0.3, "minPixels": 50}
             ],
             "components": {}
         },
@@ -108,7 +109,8 @@
             "shape": [
                 {"form": "disc", "radius": 1.0, "role": "hull"},
                 {"form": "disc", "at": [0.0, -0.72], "radius": 0.42, "role": "trim", "minPixels": 40},
-                {"form": "disc", "at": [0.0, 0.78], "radius": 0.33, "role": "trim", "minPixels": 40}
+                {"form": "disc", "at": [0.0, 0.78], "radius": 0.33, "role": "trim", "minPixels": 40},
+                {"form": "disc", "radius": 0.09, "role": "trim", "repeat": 2, "orbitRadius": 1.7, "orbitPeriod": 52.0, "orbitTilt": 0.22, "minPixels": 60}
             ],
             "components": {}
         },
@@ -146,7 +148,7 @@
                 {"form": "disc", "radius": 1.0, "role": "hull"},
                 {"form": "disc", "at": [-0.3, 0.25], "radius": 0.3, "role": "trim", "jitterScale": 0.2, "minPixels": 40, "spin": 1.8},
                 {"form": "disc", "at": [0.45, -0.2], "radius": 0.2, "role": "trim", "jitterScale": 0.25, "minPixels": 40, "spin": 1.8},
-                {"form": "disc", "at": [0.1, 0.6], "radius": 0.14, "role": "panel", "minPixels": 90, "spin": 1.8}
+                {"form": "disc", "radius": 0.14, "role": "trim", "orbitRadius": 1.65, "orbitPeriod": 63.0, "orbitTilt": 0.34, "minPixels": 60}
             ],
             "components": {}
         },

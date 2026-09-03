@@ -103,6 +103,21 @@ struct Part
     // colour belongs to the object, so every part of it would go translucent together.
     float alpha = 1.0f;
 
+    // An orbiting part travels around the body rather than sitting on it (#165): a moon,
+    // a ring shepherd, a station's tender. Set `orbitRadius` and it stops being a surface
+    // feature and becomes something in the space around the object.
+    //
+    // The whole of the depth effect is draw order: on the far half of the orbit the part is
+    // drawn before the body and hidden by it, on the near half after it and in front. A
+    // flat scene reads as depth for the price of one comparison.
+    float orbitRadius = 0.0f;   // in radii; zero means this part does not orbit
+    float orbitPeriod = 60.0f;  // seconds for one lap
+    float orbitPhase = 0.0f;    // 0..1, where in the lap it starts
+    // How far the orbital plane is tilted out of edge-on. 0 is a line straight across the
+    // body, 1 is a circle seen from above -- and at 1 the part never passes behind
+    // anything, so the interesting values are in between.
+    float orbitTilt = 0.35f;
+
     float spin = 0.0f;            // degrees per second about the object's centre
     float blink = 0.0f;           // seconds per cycle; 0 is a steady light
     bool  onlyThrusting = false;  // drawn only while the object's engine is burning
@@ -134,6 +149,11 @@ struct Piece
     // into one number because a backend does the same thing with both -- one field to
     // multiply by unconditionally rather than two it has to remember to combine.
     float brightness = 1.0f;
+
+    // Where this piece sits front to back: negative is behind the body, positive in front,
+    // zero for everything that is simply part of it. Compose returns pieces already sorted
+    // by it, so a backend draws them in order and never has to know why.
+    float depth = 0.0f;
 };
 
 // How large a piece is *for shading*, which is not the same as how far it reaches.
