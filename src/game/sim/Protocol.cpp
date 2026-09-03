@@ -198,6 +198,13 @@ std::string EncodeCommand(const Command& c)
     j["navMode"] = c.navMode;
     j["nav"] = V2(c.navTarget);
     j["navStop"] = c.navStopDist;
+    // Only written when a hold is being ordered: a command is sent sixty times a
+    // second and two more fields on every one of them is real bandwidth (#16).
+    if (c.navHoldId != 0)
+    {
+        j["navHold"] = c.navHoldId;
+        j["navRange"] = Round2(c.navRange);
+    }
     j["gate"] = c.jumpGateId;
     j["loot"] = c.lootId;
     j["sellType"] = c.sellType;
@@ -237,6 +244,8 @@ bool DecodeCommand(const std::string& s, Command& out)
     out.navMode = j.value("navMode", 0);
     out.navTarget = j.contains("nav") ? ToV2(j["nav"]) : Vector2{ 0.0f, 0.0f };
     out.navStopDist = j.value("navStop", 0.0f);
+    out.navHoldId = j.value("navHold", 0);
+    out.navRange = j.value("navRange", 0.0f);
     out.jumpGateId = j.value("gate", 0);
     out.lootId = j.value("loot", 0);
     out.sellType = j.value("sellType", -1);
@@ -281,6 +290,9 @@ std::string EncodeSnapshot(const Snapshot& s)
                     { "ap", p.autopilot },
                     { "apTgt", V2(p.apTarget) },
                     { "apStop", p.apStop },
+                    { "hold", p.holdMode },
+                    { "holdId", p.holdTargetId },
+                    { "holdR", Round2(p.holdRange) },
                     { "stab", p.stabilizer },
                     { "mine", p.mining },
                     { "weap", p.weaponOn },
@@ -385,6 +397,9 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
         p.autopilot = pj.value("ap", false);
         p.apTarget = pj.contains("apTgt") ? ToV2(pj["apTgt"]) : Vector2{ 0.0f, 0.0f };
         p.apStop = pj.value("apStop", 0.0f);
+        p.holdMode = pj.value("hold", 0);
+        p.holdTargetId = pj.value("holdId", 0);
+        p.holdRange = pj.value("holdR", 0.0f);
         p.stabilizer = pj.value("stab", true);
         p.mining = pj.value("mine", false);
         p.weaponOn = pj.value("weap", false);

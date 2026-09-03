@@ -91,10 +91,34 @@ const ClientSession* Simulation::Session(int id) const
 void Simulation::StepPlayerShip(ClientSession& s, const Proto::Command& cmd, float pilotBonus,
                                 float dt)
 {
+    if (!s.ship)
+        return;
+
+    // A standing hold follows something that moves, so the step has to be told where that
+    // something is now (#157). The server resolves it from the live entity; the client
+    // resolves the same id from its own proxy.
+    Vector2        holdPos{ 0.0f, 0.0f };
+    const Vector2* holdPtr = nullptr;
+    const int      holdId = s.ship->GetHoldTargetId();
+    if (s.ship->GetHoldMode() != HoldMode::None && holdId != 0)
+    {
+        if (const SystemState* st = SystemOf(s))
+            for (const auto& e : st->entities)
+                if (e->GetId() == holdId)
+                {
+                    holdPos = e->GetPosition();
+                    holdPtr = &holdPos;
+                    break;
+                }
+        // A target that is gone -- destroyed, or in another system now -- releases the
+        // hold rather than leaving the ship steering at a stale point forever.
+        if (holdPtr == nullptr)
+            s.ship->ReleaseHold();
+    }
+
     // The step itself is shared with the client's prediction (sim/PlayerStep.h) — one
     // implementation, so predicted and authoritative movement cannot drift apart.
-    if (s.ship)
-        Sim::StepPlayerShip(*s.ship, cmd, pilotBonus, dt);
+    Sim::StepPlayerShip(*s.ship, cmd, pilotBonus, dt, holdPtr);
 }
 
 bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId, float dt,

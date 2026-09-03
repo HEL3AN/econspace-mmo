@@ -132,6 +132,10 @@ playing. The server and the unit tests must never need a shader.
   is no GPU on a CI runner, so `Render::Treatment` is untestable by construction — which is
   why `TreatmentConfig` is a separate file holding everything that decides what the picture
   will be. That half is tested; the picture is not.
+- **A hold ends only when the ship is told to do something else.** There is no stop
+  command: orbit and keep-at-range are standing, and manual control, an autopilot order or
+  a warp all release them. Anything new that steers the ship must release the hold too, or
+  it will be fighting one.
 - **`Render::Compose` takes a `Pose`**, not eight positional arguments. The list grew twice
   before it became a struct; add to the struct rather than to the signature.
 - **Nothing in a composition may be measured in raw world units.** Truss rails were `1.5f`

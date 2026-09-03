@@ -7,6 +7,16 @@
 #include <map>
 #include <string>
 
+// Holding station on something (#157). Not a one-shot order like the autopilot: it is a
+// standing behaviour that keeps running until it is released, because that is what flying
+// a fight or waiting at a gate actually is.
+enum class HoldMode
+{
+    None,
+    Orbit,  // circle it at a distance
+    Keep    // hold the distance without circling
+};
+
 // Warp jump phases: aligning to the target (spin-up), the jump itself, or no warp.
 enum class WarpPhase
 {
@@ -40,6 +50,23 @@ public:
     // Autopilot: fly to target and stop at stopDistance.
     void EngageAutopilot(Vector2 target, float stopDistance);
     void DisengageAutopilot() { apActive_ = false; }
+
+    // Holding station on an object at a distance (#157). The target is an id rather than a
+    // point because the whole purpose is to follow something that moves; the position is
+    // supplied each tick by whoever is running the step, since a Ship cannot look an entity
+    // up.
+    void     EngageHold(HoldMode mode, int targetId, float range);
+    void     ReleaseHold();
+    HoldMode GetHoldMode() const { return holdMode_; }
+    int      GetHoldTargetId() const { return holdTargetId_; }
+    float    GetHoldRange() const { return holdRange_; }
+    // Aims the autopilot at where the ship should be a moment from now. Called once a tick
+    // while a hold is running and the target's position is known.
+    void UpdateHold(Vector2 targetPos);
+
+    // How far ahead on the circle an orbiting ship aims. Large enough that it keeps moving
+    // rather than converging on a point, small enough that it does not spiral outward.
+    static constexpr float ORBIT_LEAD_DEGREES = 28.0f;
 
     // Warp jump: fast travel to target, dropping out at dropDistance.
     void      EngageWarp(Vector2 target, float dropDistance);
@@ -118,7 +145,8 @@ public:
     // no spin-up timer of its own, it mirrors the server's; this way "bar ready" and
     // the real flight start line up (the client used to have its own drifting warp timer).
     void    ApplyNavView(int warpPhase, float warpAlignTimer, Vector2 warpTarget, float warpDrop,
-                         bool apActive, Vector2 apTarget, float apStopDistance);
+                         bool apActive, Vector2 apTarget, float apStopDistance, int holdMode,
+                         int holdTargetId, float holdRange);
     float   GetSpeed() const;
     bool    IsAutopilotOn() const { return apActive_; }
     Vector2 GetAutopilotTarget() const { return apTarget_; }
@@ -166,10 +194,13 @@ private:
     std::map<ResourceType, int> cargo_;
 
     // Autopilot state.
-    bool    apActive_ = false;
-    bool    apArrived_ = false;
-    Vector2 apTarget_ = { 0.0f, 0.0f };
-    float   apStopDistance_ = 0.0f;
+    bool     apActive_ = false;
+    bool     apArrived_ = false;
+    Vector2  apTarget_ = { 0.0f, 0.0f };
+    HoldMode holdMode_ = HoldMode::None;
+    int      holdTargetId_ = 0;
+    float    holdRange_ = 0.0f;
+    float    apStopDistance_ = 0.0f;
 
     // Warp state.
     static constexpr float WARP_ALIGN_TIME = 1.8f;  // spin-up duration

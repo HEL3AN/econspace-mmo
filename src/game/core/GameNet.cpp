@@ -192,14 +192,14 @@ void Game::BuildClientSnapshot()
         // our own. Applied BEFORE replay so unacked orders (which the server hasn't seen yet)
         // correctly "carry through" via prediction over the authoritative state.
         playerShip_->ApplyNavView(p.warpPhase, p.warpAlign, p.warpTarget, p.warpDrop, p.autopilot,
-                                  p.apTarget, p.apStop);
+                                  p.apTarget, p.apStop, p.holdMode, p.holdTargetId, p.holdRange);
         // Toggles (stabilizer/mining) are server-authoritative: restore from the snapshot
         // BEFORE replay, otherwise unacked toggle commands would flicker during replay
         // (like warp). Unacked toggles "carry through" via prediction below.
         playerShip_->SetStabilizerOn(p.stabilizer);
         playerShip_->SetMiningOn(p.mining);
         for (const Proto::Command& c : pendingInputs_)
-            Sim::StepPlayerShip(*playerShip_, c, 1.0f, SIM_DT);
+            Sim::StepPlayerShip(*playerShip_, c, 1.0f, SIM_DT, HoldTargetPos());
         // Weapon state is server-owned; the local flag is only an optimistic echo of the
         // toggle we sent, corrected here the same way the ship's position is.
         weaponOn_ = p.weaponOn;
@@ -483,4 +483,24 @@ bool Game::OwnsShip(int catalogIndex) const
         if (i == catalogIndex)
             return true;
     return catalogIndex == 0;  // before the first snapshot, only the starter
+}
+
+// See Game.h: the position of whatever the ship is holding station on, from this client's
+// own proxies. The server answers the same question from the live entity, and the two
+// differ by the render delay -- deliberately, and only for a control loop that cannot see
+// the difference (#157).
+const Vector2* Game::HoldTargetPos() const
+{
+    if (!playerShip_ || playerShip_->GetHoldMode() == HoldMode::None)
+        return nullptr;
+    const int id = playerShip_->GetHoldTargetId();
+    if (id == 0)
+        return nullptr;
+    for (const auto& e : clientWorld_)
+        if (e->GetId() == id)
+        {
+            holdTargetPos_ = e->GetPosition();
+            return &holdTargetPos_;
+        }
+    return nullptr;
 }

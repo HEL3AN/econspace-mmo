@@ -115,6 +115,11 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         p.autopilot = s.ship->IsAutopilotOn();
         p.apTarget = s.ship->GetAutopilotTarget();
         p.apStop = s.ship->GetAutopilotStopDistance();
+        p.holdMode = s.ship->GetHoldMode() == HoldMode::Orbit
+                         ? 1
+                         : (s.ship->GetHoldMode() == HoldMode::Keep ? 2 : 0);
+        p.holdTargetId = s.ship->GetHoldTargetId();
+        p.holdRange = s.ship->GetHoldRange();
         p.docked = (s.dockedStationId != 0);
         p.dockedStationId = s.dockedStationId;
         p.stabilizer = s.ship->IsStabilizerOn();
