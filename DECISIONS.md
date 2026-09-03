@@ -471,3 +471,74 @@ by a test, and the code has to keep running when a shader will not compile — l
 without the chain. That is a real reduction in how much the test suite protects, and it is
 accepted deliberately: the alternative is a look nobody can judge.
 
+---
+
+## 2026-09-04 — The world is generated, and the game starts at the moment it is found
+
+**What changes.** Until now the world was written and generation was the fallback for what
+nobody drew. That is inverted. **The world is generated; what is written by hand is the
+exception laid on top of it.** `data/systems/*.json` stops being the source of truth and
+becomes a set of pins.
+
+This was not a preference about content. It came out of noticing that the owner and I had
+been working from opposite premises for weeks without either of us seeing it, because both
+premises produce the same immediate work — a shape grammar, lighting, materials are needed
+either way. They diverge on the step after.
+
+**Why the architecture was already ready.** The server owns the world and a client is sent
+a `SystemLayout` when it enters a system. Where the server got that layout — parsed from a
+file, or generated from a seed — is invisible to every client. Generating the world is a
+replacement for one function, not a change to the wire. The presentation work of M6 is the
+other half: the silhouette grammar (#122) never knew what a station was, so it is already
+the language a generator will speak, and a structure a player builds is described in the
+same vocabulary as one the world produced. That is what "systemically part of the world"
+has to mean concretely.
+
+**The lore is not decoration here; it is what makes the generation honest.** The game
+begins at the moment a wormhole opens into an unexplored region. Nothing beyond it has a
+name, because nobody has been there. A world that is unknown by premise does not have to
+apologise for being generated, and the thing that would otherwise be the strongest argument
+against a procedural galaxy — that authored content cannot refer to places that might not
+exist — stops applying. A mission cannot say "fly to Aurora Hub" until somebody has found
+Aurora Hub and called it that. **That is a feature.** Exploration becomes an activity with
+stakes rather than the act of filling in a map that was already decided.
+
+It also settles what the players are for. The region's history is the record of what they
+did to it: which systems were found, who claimed them, what got built, what was lost. The
+macro layer that already tracks prosperity, security and control stops being flavour and
+becomes the score.
+
+**What it costs, and none of it is optional.**
+
+- **Determinism becomes load-bearing.** The same seed must produce the same galaxy after a
+  server restart, or structures players built are standing in space that no longer exists.
+  The seed joins the save and gets a schema version, and changing the generator's rules
+  becomes a migration — something this project has never had to do.
+- **Naming moves into the simulation.** A designation until somebody claims it, a name
+  after. That is world state, it is per-region rather than per-player, and it has to
+  survive a restart.
+- **Quality is the real risk, not feasibility.** Rules produce variety easily and quality
+  rarely. The discipline is the one that worked for the shape grammar: a narrow vocabulary,
+  strict proportions, and judging by eye — plus one thing that was not needed before, a
+  screen that shows *fifty generated systems at once*. A generator is judged on its
+  hundredth output. A single good example proves nothing, because a single good example can
+  be arranged.
+
+**The in-game builder is a product, not a panel.** A player designs a *type* — parts,
+roles, symmetry, in the same grammar — and then builds it. The gallery panel used to tune
+compositions by eye is the prototype of that tool, currently living in the world editor and
+serving one person.
+
+The idea that makes the builder systemic rather than cosmetic is that the rule connecting
+shape and capability runs **both ways**. Deriving a shape from what an object does (#137) is
+one direction. A design's parts deciding what it can do is the other: attach a dock and it
+is dockable, attach a hold and it stores, attach a turret and it defends — and the cost and
+the build time follow from what is on it. A player cannot draw a pretty thing that does
+nothing, and cannot build a capable thing that looks like nothing. The look and the rules
+are the same statement read from two ends.
+
+**What is deliberately kept.** Hand-authored content survives as a layer above the
+generated one: pin a system, place what matters, name what should be named. The generator
+covers everything else, which is the same bargain the look already makes — a hand-made
+sprite wins where one exists.
+

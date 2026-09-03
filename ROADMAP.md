@@ -1,6 +1,8 @@
 # Roadmap
 
-This is an honest snapshot of where EconSpace is and where it's headed. The project deliberately invested in a correct **client–server architecture first**. That part is real. The target is an **MMO** — one authoritative server, many players, no single-player mode — with a glyph-based presentation, AI agents as ordinary players, and a world players can build in.
+This is an honest snapshot of where EconSpace is and where it's headed. The project deliberately invested in a correct **client–server architecture first**. That part is real. The target is an **MMO** — one authoritative server, many players, no single-player mode — with generated art, AI agents as ordinary players, and a world players design and build in.
+
+**The premise, settled on 2026-09-04:** the game begins at the moment a wormhole opens into an unexplored region. The world beyond it is **generated from a seed**, nothing has a name until somebody goes there and names it, and what the region becomes is the record of what players did to it. Hand-written content is a layer on top of the generated one, not the other way round. See [DECISIONS.md](DECISIONS.md).
 
 The "Done" section below is what exists. Everything under the tracks is **planned**.
 
@@ -32,6 +34,48 @@ The "Done" section below is what exists. Everything under the tracks is **planne
 - The player is a server-side agent; movement uses client-side prediction + reconciliation (own ship) and interpolation (others).
 - `econserver host [port]` + `econspace connect <host> [port]`: real authoritative play over TCP.
 - Server-authoritative selection, docking, trading, combat (beams/damage/death/respawn), a live galaxy snapshot, **player accounts** (money/skills/reputation/wanted, persisted to `account.json`), **missions on the server**, and reputation-gated docking.
+
+## Milestones
+
+**M0–M3 are done.** M3 closed the multiplayer core: a session per connection, players seeing
+each other, accounts that persist and prove themselves, a transport that stopped trusting
+its peer, and CI that builds and plays on two platforms.
+
+### M6 — The look *(five of seven done)*
+
+Generated art replaces glyphs. The gallery (#118) put every archetype on one screen so a
+look could be judged by eye; lighting (#119) made a system light itself from its own stars;
+the screen treatment (#120) put the world through a tunable chain of full-screen passes;
+materials (#121) gave a flat disc a sphere's terminator and damage that reads without a
+health bar; silhouettes (#122) made an object a **composition** described in data rather
+than a figure compiled into the renderer.
+
+Left: demoting glyphs to a sensor screen (#123), and colour ceasing to mean allegiance
+(#117). Then the follow-ups the first play-through asked for — per-part lighting (#135),
+motion (#136), shape derived from capability (#137), damage that removes parts (#138), and
+variation that changes a silhouette rather than nudging it (#139).
+
+### M7 — A region nobody has mapped
+
+The world stops being written and starts being generated. In order: the seed and its place
+in the save (#140), a screen that shows fifty systems at once because a generator is judged
+on its hundredth output (#141), the rules that fill one system (#142), a region that grows
+outward from the wormhole and worsens with distance (#143), systems that are unknown until
+somebody goes there (#144), names that exist only once somebody gives them (#145), what the
+generator leaves behind (#146), and the pins that keep hand-authored content alive (#147).
+
+### M8 — The builder
+
+A player designs a *type* and builds it. The parts editor becomes a tool in the client
+(#148); what a design can do follows from what is on it (#149) — the rule of #137 read
+backwards, and what makes the builder systemic rather than decorative; cost and build time
+follow from the same parts (#150); the design is data the server validates, stores and
+shares (#151); building it in the world (#152); and a structure changing the region it
+stands in (#153), which is where the macro simulation stops being flavour and becomes the
+score.
+
+M8 depends on M4's construction track (#38 in particular): a structure appearing mid-session
+is exactly what `SystemLayout` being sent once makes invisible today.
 
 ## Tracks
 
