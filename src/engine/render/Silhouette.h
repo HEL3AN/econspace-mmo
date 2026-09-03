@@ -98,6 +98,11 @@ struct Part
     // anything accumulated per frame: a part whose angle is integrated drifts between
     // clients, and two players would see the same station turned differently. As written,
     // every client computes the same answer from the same time without a byte on the wire.
+    // How solid this part is, 0..1. A corona is a glow rather than a ring and a nebula is
+    // a place rather than a disc, and neither is expressible with a colour alone -- the
+    // colour belongs to the object, so every part of it would go translucent together.
+    float alpha = 1.0f;
+
     float spin = 0.0f;            // degrees per second about the object's centre
     float blink = 0.0f;           // seconds per cycle; 0 is a steady light
     bool  onlyThrusting = false;  // drawn only while the object's engine is burning
@@ -125,6 +130,9 @@ struct Piece
 
     // 0..1, from a blinking light's place in its cycle. One for everything steady, so a
     // backend can multiply by it unconditionally.
+    // 0..1: the part's own solidity and, if it blinks, where it is in its cycle. Folded
+    // into one number because a backend does the same thing with both -- one field to
+    // multiply by unconditionally rather than two it has to remember to combine.
     float brightness = 1.0f;
 };
 

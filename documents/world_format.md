@@ -179,6 +179,7 @@ and works at any size — a ninety-unit station and a sixteen-unit ship use the 
 | `minPixels` | number | this part appears only once the object is at least this many pixels across |
 | `jitterAngle` | number | degrees the seed may turn this part |
 | `jitterScale` | number | fraction the seed may resize it |
+| `alpha` | number | 0..1, how solid this part is; a corona is a glow rather than a ring |
 | `spin` | number | degrees per second this part turns about the object's centre |
 | `blink` | number | seconds per cycle for a `light`; 0 is steady |
 | `onlyThrusting` | bool | the part exists only while the object's engine is burning |
@@ -199,6 +200,11 @@ object.
 **Two of the same thing differ.** `jitterAngle` and `jitterScale` are perturbed from the
 object's id, so two trade hubs are not identical and neither shimmers between frames —
 repeated identical assets are the other way procedural art gives itself away.
+
+**A part turns only if it is a surface feature.** A crater, a storm or a lava crack belongs
+to the surface and goes round with it. A latitude band or a polar cap does not: rotating
+one in two dimensions turns it into a stripe sweeping across the planet, which was the
+first thing that went wrong when planets were given a spin.
 
 **Everything that moves is a function of the clock and the seed** — never of anything
 accumulated per frame. A part whose angle were integrated would drift between clients, and
