@@ -517,3 +517,44 @@ TEST_CASE("the login exchange survives the wire")
     CHECK_FALSE(Proto::DecodeChallenge(Proto::EncodeAuth(a), cb));
     CHECK_FALSE(Proto::DecodeChallenge("{\"t\":\"chal\",\"v\":1}", cb));
 }
+
+// #157: a standing hold -- orbit or keep at range -- is an order that does not finish, and
+// unlike the autopilot it follows something that moves. Both halves of it cross the wire:
+// the order out, and the state back, because the client has to have the state in order to
+// replay unacknowledged inputs on top of a snapshot.
+TEST_CASE("a standing hold survives the wire, and costs nothing when nobody asked for one")
+{
+    Proto::Command c;
+    c.navMode = 3;  // orbit
+    c.navHoldId = 4242;
+    c.navRange = 850.0f;
+
+    Proto::Command back;
+    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
+    CHECK(back.navMode == 3);
+    CHECK(back.navHoldId == 4242);
+    CHECK(back.navRange == doctest::Approx(850.0f));
+
+    SUBCASE("an ordinary command does not pay for the fields it is not using")
+    {
+        // A command goes out sixty times a second, and #16 and #97 were both about exactly
+        // this: what a message carries when it has nothing to say.
+        const std::string idle = Proto::EncodeCommand(Proto::Command{});
+        CHECK(idle.find("navHold") == std::string::npos);
+        CHECK(idle.find("navRange") == std::string::npos);
+    }
+
+    SUBCASE("the state comes back, or the client cannot replay its own inputs")
+    {
+        Proto::Snapshot s;
+        s.player.holdMode = 2;  // keep at range
+        s.player.holdTargetId = 77;
+        s.player.holdRange = 1200.0f;
+
+        Proto::Snapshot got;
+        REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(s), got));
+        CHECK(got.player.holdMode == 2);
+        CHECK(got.player.holdTargetId == 77);
+        CHECK(got.player.holdRange == doctest::Approx(1200.0f));
+    }
+}

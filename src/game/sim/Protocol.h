@@ -26,7 +26,7 @@ namespace Proto
 // without it a client built against an older protocol would silently receive defaults
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
-inline constexpr int PROTO_VERSION = 8;
+inline constexpr int PROTO_VERSION = 9;
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).
@@ -88,13 +88,19 @@ struct Command
     bool undock = false;
     // Combat target / navigation / jump.
     int targetId = 0;  // selected agent (0 — none)
-    // Navigation order (one-shot): mode 0 — none, 1 — autopilot, 2 — warp;
-    // destination point and stop distance (autopilot) / drop distance (warp).
+    // Navigation order. Modes 1 and 2 are one-shot -- fly there, or warp there, and stop.
+    // Modes 3 and 4 are standing: hold station on an object until released, which is what
+    // flying a fight or waiting at a gate actually is (#157).
+    //   0 none, 1 autopilot, 2 warp, 3 orbit, 4 keep at range
     int     navMode = 0;
     Vector2 navTarget = { 0.0f, 0.0f };
     float   navStopDist = 0.0f;
-    int     jumpGateId = 0;  // jump through gate by id (0 — none)
-    int     lootId = 0;      // loot derelict by id (0 — none)
+    // For the standing modes: what to hold station on, and at what distance. An id rather
+    // than a point, because the point of it is to follow something that moves.
+    int   navHoldId = 0;
+    float navRange = 0.0f;
+    int   jumpGateId = 0;  // jump through gate by id (0 — none)
+    int   lootId = 0;      // loot derelict by id (0 — none)
     // Station trade (server-authoritative, M4e-3b): sell resource / refit.
     int sellType = -1;   // ResourceType as int (-1 — no sale)
     int sellAmount = 0;  // amount to sell (server clamps to cargo)
@@ -162,12 +168,18 @@ struct PlayerView
     bool    autopilot = false;
     Vector2 apTarget = { 0.0f, 0.0f };
     float   apStop = 0.0f;  // autopilot stop distance
-    bool    stabilizer = true;
-    bool    mining = false;
-    bool    weaponOn = false;
-    bool    docked = false;
-    int     nearbyStationId = 0;
-    int     lastInput = 0;  // last input number the server processed (ack, M4e)
+    // The standing hold, if any (#157). Mirrored like the warp and the autopilot: the
+    // client has to have it in order to replay unacknowledged inputs on top of a snapshot,
+    // and it is what the HUD reports the ship is doing.
+    int   holdMode = 0;  // 0 none, 1 orbit, 2 keep at range
+    int   holdTargetId = 0;
+    float holdRange = 0.0f;
+    bool  stabilizer = true;
+    bool  mining = false;
+    bool  weaponOn = false;
+    bool  docked = false;
+    int   nearbyStationId = 0;
+    int   lastInput = 0;  // last input number the server processed (ack, M4e)
     // The running standing order, so a client can see what it asked for is under way.
     // The journal (#29) reports outcomes; this reports what is in progress.
     int              orderKind = 0;    // Orders::Kind as int

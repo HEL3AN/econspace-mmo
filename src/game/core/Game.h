@@ -158,8 +158,18 @@ private:
     Render::MaterialLibrary materials_;
 
     Render::Treatment treatment_;
-    bool              treatmentPanelOpen_ = false;
-    void              DrawTreatmentSettings();
+
+    // Where the object the ship is holding station on (#157) currently is, from the
+    // client's own proxies -- or null if it is holding station on nothing, or on something
+    // this client cannot see. Interpolated, so it lags the server's answer by the render
+    // delay; that is what the comment on StepPlayerShip is about.
+    const Vector2* HoldTargetPos() const;
+    // Standing orders: hold station on an object at a distance until released (#157).
+    void            OrderHold(int mode, int targetId, float range);
+    void            ReleaseHold();
+    mutable Vector2 holdTargetPos_ = { 0.0f, 0.0f };
+    bool            treatmentPanelOpen_ = false;
+    void            DrawTreatmentSettings();
 
     // Radar state: zoom and absolute view center (does not follow the player).
     float   radarZoom_ = 1.0f;

@@ -87,6 +87,12 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
 
 ## Things that will trip you up
 
+- **A standing hold is the one place prediction tolerates a difference** (#157). Orbit and
+  keep-at-range follow something that *moves*, so the step is told where the target is:
+  the server from the live entity, the client from its interpolated proxy. The two differ
+  by the render delay, deliberately — a hold is a slow control loop aiming at a ring
+  hundreds of units across and cannot see it. Nothing that decides a hit is ever computed
+  from an interpolated position.
 - **`Sim::StepPlayerShip` (`sim/PlayerStep.h`) has two callers on purpose** — the server
   applies it authoritatively, the client applies it to predict its own ship and to replay
   unacknowledged inputs. Changing it changes both sides at once, which is the point:

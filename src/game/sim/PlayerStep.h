@@ -35,8 +35,20 @@ inline constexpr float SIM_DT = 1.0f / 60.0f;
 inline constexpr float MAX_CATCHUP_SECONDS = 0.25f;
 
 // Applies a client command to the ship: movement toggles, manual control (which cancels
-// autopilot and warp), a one-shot navigation order, the piloting bonus, and the physics
-// update for dt.
-void StepPlayerShip(Ship& ship, const Proto::Command& cmd, float pilotBonus, float dt);
+// autopilot, warp and any standing hold), a navigation order, the piloting bonus, and the
+// physics update for dt.
+//
+// `holdTargetPos` is where the object the ship is holding station on currently is, or null
+// if it is holding station on nothing. Both sides resolve it themselves -- the server from
+// the live entity, the client from its interpolated proxy -- so the two will differ by
+// roughly the render delay.
+//
+// That is deliberate and it is the one place this file tolerates a difference. A hold is a
+// slow control loop aiming at a ring hundreds of units across; a tenth of a second of lag
+// in where the ring is cannot be seen, and reconciliation removes what little there is. It
+// would not be acceptable for anything that decides a hit, which is why nothing that
+// decides a hit is computed from an interpolated position.
+void StepPlayerShip(Ship& ship, const Proto::Command& cmd, float pilotBonus, float dt,
+                    const Vector2* holdTargetPos = nullptr);
 
 }  // namespace Sim

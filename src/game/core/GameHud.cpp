@@ -440,10 +440,22 @@ void Game::DrawOverviewContent(Rectangle area)
         if (e->id != 0 && e->id == selId)
             DrawRectangleRec(row, Fade(Ui::ACCENT, 0.22f));
 
-        float dx = e->pos.x - sp.x;
-        float dy = e->pos.y - sp.y;
-        Ui::Text(e->name.c_str(), (int)area.x + 4, y + 3, 14, Ui::TEXT);
-        const char* d = TextFormat("%.0f", sqrtf(dx * dx + dy * dy));
+        float       dx = e->pos.x - sp.x;
+        float       dy = e->pos.y - sp.y;
+        const float dist = sqrtf(dx * dx + dy * dy);
+
+        // Marked when the ship is holding station on it, because a standing order with no
+        // visible sign of running is an order a player cannot trust (#157).
+        const bool held = (playerShip_ && e->id != 0 && playerShip_->GetHoldTargetId() == e->id &&
+                           playerShip_->GetHoldMode() != HoldMode::None);
+        if (held)
+            DrawRectangleRec(row, Fade(Ui::ACCENT, 0.12f));
+
+        Ui::Text(e->name.c_str(), (int)area.x + 4, y + 3, 14, held ? Ui::ACCENT : Ui::TEXT);
+        // Thousands past ten thousand: a system is about to be forty times larger (M9) and
+        // a column of seven-digit numbers is a column nobody reads.
+        const char* d =
+            dist >= 10000.0f ? TextFormat("%.0fk", dist / 1000.0f) : TextFormat("%.0f", dist);
         Ui::Text(d, (int)(area.x + area.width) - Ui::TextWidth(d, 14) - 4, y + 3, 14, Ui::TEXT_DIM);
 
         if (CheckCollisionPointRec(m, row))

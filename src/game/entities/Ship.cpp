@@ -66,7 +66,8 @@ void Ship::ApplyView(Vector2 pos, float heading, Vector2 vel, float hull, float 
 }
 
 void Ship::ApplyNavView(int warpPhase, float warpAlignTimer, Vector2 warpTarget, float warpDrop,
-                        bool apActive, Vector2 apTarget, float apStopDistance)
+                        bool apActive, Vector2 apTarget, float apStopDistance, int holdMode,
+                        int holdTargetId, float holdRange)
 {
     warpPhase_ = (WarpPhase)warpPhase;
     warpAlignTimer_ = warpAlignTimer;
@@ -77,6 +78,10 @@ void Ship::ApplyNavView(int warpPhase, float warpAlignTimer, Vector2 warpTarget,
     apArrived_ = false;
     apTarget_ = apTarget;
     apStopDistance_ = apStopDistance;
+    holdMode_ =
+        (holdMode == 1) ? HoldMode::Orbit : (holdMode == 2 ? HoldMode::Keep : HoldMode::None);
+    holdTargetId_ = holdTargetId;
+    holdRange_ = holdRange;
 }
 
 void Ship::TakeDamage(float amount)
@@ -110,6 +115,58 @@ void Ship::EngageAutopilot(Vector2 target, float stopDistance)
     apArrived_ = false;
     apTarget_ = target;
     apStopDistance_ = stopDistance;
+}
+
+void Ship::EngageHold(HoldMode mode, int targetId, float range)
+{
+    holdMode_ = mode;
+    holdTargetId_ = targetId;
+    holdRange_ = range < 1.0f ? 1.0f : range;
+    apActive_ = false;  // the hold drives the autopilot from now on
+    CancelWarp();
+}
+
+void Ship::ReleaseHold()
+{
+    holdMode_ = HoldMode::None;
+    holdTargetId_ = 0;
+}
+
+void Ship::UpdateHold(Vector2 targetPos)
+{
+    if (holdMode_ == HoldMode::None)
+        return;
+
+    float dx = pos_.x - targetPos.x;
+    float dy = pos_.y - targetPos.y;
+    float dist = sqrtf(dx * dx + dy * dy);
+    if (dist < 0.001f)
+    {
+        // Sitting exactly on top of it: pick a direction rather than dividing by zero. Any
+        // direction is as good as any other and the next tick will have a real one.
+        dx = 1.0f;
+        dy = 0.0f;
+        dist = 1.0f;
+    }
+    float ux = dx / dist, uy = dy / dist;
+
+    if (holdMode_ == HoldMode::Orbit)
+    {
+        // Aim at a point further round the circle than the ship currently is, so it keeps
+        // moving instead of converging. Aiming *at* the ring would stop the ship on it.
+        const float a = ORBIT_LEAD_DEGREES * DEG2RAD;
+        const float cs = cosf(a), sn = sinf(a);
+        const float rx = ux * cs - uy * sn;
+        const float ry = ux * sn + uy * cs;
+        ux = rx;
+        uy = ry;
+    }
+
+    // Fly to the ring and stop there. For an orbit the aim point keeps moving ahead, so
+    // arriving never happens and the ship circles; for a keep it does, and stopping is
+    // exactly right.
+    EngageAutopilot({ targetPos.x + ux * holdRange_, targetPos.y + uy * holdRange_ },
+                    holdRange_ * 0.08f);
 }
 
 void Ship::EngageWarp(Vector2 target, float dropDistance)

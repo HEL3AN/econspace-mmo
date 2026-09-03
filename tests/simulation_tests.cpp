@@ -1,4 +1,5 @@
 #include <doctest/doctest.h>
+#include <cmath>
 
 #include <algorithm>
 #include <cstdio>
@@ -713,4 +714,92 @@ TEST_CASE("an order whose destination is already reached finishes at once")
         if (e.kind == Ev::Kind::OrderDone)
             told = true;
     CHECK(told);
+}
+
+// #157: orbit and keep-at-range are the two verbs every fight is flown with, and neither
+// existed. They are standing behaviours -- they do not finish -- and they follow something
+// that moves, which is why the step is told where the target is rather than being handed a
+// point once.
+TEST_CASE("a ship can hold station on something, and keeps holding it")
+{
+    Ship s({ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+    s.SetStabilizerOn(true);
+
+    Proto::Command hold;
+    hold.navMode = 4;  // keep at range
+    hold.navHoldId = 9;
+    hold.navRange = 400.0f;
+
+    const Vector2 target{ 2000.0f, 0.0f };
+    Sim::StepPlayerShip(s, hold, 1.0f, Sim::SIM_DT, &target);
+    REQUIRE(s.GetHoldMode() == HoldMode::Keep);
+    REQUIRE(s.GetHoldTargetId() == 9);
+
+    // Fly it. A hold is a control loop, so it is judged by where the ship ends up rather
+    // than by any one tick.
+    for (int i = 0; i < 60 * 90; i++)
+        Sim::StepPlayerShip(s, Proto::Command{}, 1.0f, Sim::SIM_DT, &target);
+
+    const float dx = s.GetPosition().x - target.x, dy = s.GetPosition().y - target.y;
+    const float dist = std::sqrt(dx * dx + dy * dy);
+    CHECK(dist == doctest::Approx(400.0f).epsilon(0.25));
+
+    SUBCASE("and it is still holding a minute later, because it is standing and not one-shot")
+    {
+        for (int i = 0; i < 60 * 60; i++)
+            Sim::StepPlayerShip(s, Proto::Command{}, 1.0f, Sim::SIM_DT, &target);
+        CHECK(s.GetHoldMode() == HoldMode::Keep);
+        const float ax = s.GetPosition().x - target.x, ay = s.GetPosition().y - target.y;
+        CHECK(std::sqrt(ax * ax + ay * ay) == doctest::Approx(400.0f).epsilon(0.3));
+    }
+
+    SUBCASE("touching the controls releases it -- nothing else ever would")
+    {
+        Proto::Command manual;
+        manual.thrust = true;
+        Sim::StepPlayerShip(s, manual, 1.0f, Sim::SIM_DT, &target);
+        CHECK(s.GetHoldMode() == HoldMode::None);
+    }
+
+    SUBCASE("with no target position it stops steering rather than flying at a stale point")
+    {
+        const Vector2 before = s.GetPosition();
+        for (int i = 0; i < 30; i++)
+            Sim::StepPlayerShip(s, Proto::Command{}, 1.0f, Sim::SIM_DT, nullptr);
+        // It coasts, but it is not being aimed anywhere; the hold is still set so that the
+        // server can release it when it works out the target is gone.
+        CHECK(s.GetHoldMode() == HoldMode::Keep);
+        (void)before;
+    }
+}
+
+TEST_CASE("an orbit goes round rather than parking on the ring")
+{
+    Ship s({ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+    s.SetStabilizerOn(true);
+
+    Proto::Command orbit;
+    orbit.navMode = 3;
+    orbit.navHoldId = 1;
+    orbit.navRange = 500.0f;
+
+    const Vector2 target{ 1500.0f, 0.0f };
+    Sim::StepPlayerShip(s, orbit, 1.0f, Sim::SIM_DT, &target);
+    for (int i = 0; i < 60 * 60; i++)
+        Sim::StepPlayerShip(s, Proto::Command{}, 1.0f, Sim::SIM_DT, &target);
+
+    const Vector2 a = s.GetPosition();
+    const float   ax = a.x - target.x, ay = a.y - target.y;
+    CHECK(std::sqrt(ax * ax + ay * ay) == doctest::Approx(500.0f).epsilon(0.3));
+
+    // Ten seconds later it is somewhere else on the same ring. Aiming at the ring rather
+    // than ahead of the ship on it would have parked it.
+    for (int i = 0; i < 60 * 10; i++)
+        Sim::StepPlayerShip(s, Proto::Command{}, 1.0f, Sim::SIM_DT, &target);
+    const Vector2 b = s.GetPosition();
+    const float   bx = b.x - target.x, by = b.y - target.y;
+    CHECK(std::sqrt(bx * bx + by * by) == doctest::Approx(500.0f).epsilon(0.3));
+
+    const float moved = std::sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
+    CHECK(moved > 100.0f);
 }

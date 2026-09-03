@@ -169,7 +169,7 @@ void Game::Run()
                 if (pendingInputs_.size() > 256)  // guard against growth if the server stalls
                     pendingInputs_.erase(pendingInputs_.begin());
                 clientLink_->Send(Proto::EncodeCommand(cmd_));
-                Sim::StepPlayerShip(*playerShip_, cmd_, 1.0f, SIM_DT);
+                Sim::StepPlayerShip(*playerShip_, cmd_, 1.0f, SIM_DT, HoldTargetPos());
                 // One-shot intents applied/sent this tick — clear them (axes are held).
                 cmd_.toggleStabilizer = cmd_.toggleMining = cmd_.toggleWeapon = false;
                 cmd_.dock = cmd_.undock = false;
@@ -457,6 +457,29 @@ void Game::OrderWarp(Vector2 target, float dropDist)
     cmd_.navStopDist = dropDist;
 }
 
+// Standing hold: orbit (mode 3) or keep at range (mode 4). Unlike Approach and Warp these
+// do not finish -- they run until something releases them, which is what flying a fight or
+// waiting beside a gate actually is (#157).
+void Game::OrderHold(int mode, int targetId, float range)
+{
+    cmd_.navMode = mode;
+    cmd_.navHoldId = targetId;
+    cmd_.navRange = range;
+}
+
+void Game::ReleaseHold()
+{
+    // There is no "stop" command: a hold ends when the ship is told to do something else,
+    // and an autopilot order to where it already is says exactly that.
+    OrderAutopilot(playerShip_->GetPosition(), 1.0f);
+}
+
+// The distances a hold is offered at, as multiples of the target's own radius. Written
+// against the object rather than in absolute units so the same menu is sensible beside a
+// sixteen-unit ship and a station forty times larger -- and so it survives the system
+// growing (M9) without every number in it becoming wrong.
+static const float HOLD_RANGES[] = { 2.0f, 5.0f, 12.0f };
+
 // Builds the context menu for an object: common actions plus actions
 // depending on the target's type (station, field, NPC).
 void Game::OpenContextMenu(Entity* target)
@@ -472,13 +495,34 @@ void Game::OpenContextMenu(Entity* target)
     items.push_back({ "Approach", [this, target]()
                       { OrderAutopilot(target->GetPosition(), target->GetSize() + 70.0f); } });
 
-    // Warp — only if the target is far enough (Approach suffices up close).
+    // The two standing behaviours. Every fight is flown as one of these and there was no
+    // way to ask for either of them.
+    const int   tid = target->GetId();
+    const float base = target->GetSize();
+    if (tid != 0)
+    {
+        for (float mult : HOLD_RANGES)
+        {
+            const float range = base * mult;
+            items.push_back({ TextFormat("Orbit at %.0f", range),
+                              [this, tid, range]() { OrderHold(3, tid, range); } });
+        }
+        items.push_back({ TextFormat("Keep at %.0f", base * HOLD_RANGES[1]),
+                          [this, tid, base]() { OrderHold(4, tid, base * HOLD_RANGES[1]); } });
+    }
+
+    // Warp — only if the target is far enough (Approach suffices up close). The drop
+    // distance is offered rather than assumed: arriving on top of a station and arriving
+    // far enough out to look at it first are different intentions.
     float wdx = target->GetPosition().x - playerShip_->GetPosition().x;
     float wdy = target->GetPosition().y - playerShip_->GetPosition().y;
     if (sqrtf(wdx * wdx + wdy * wdy) > 1800.0f)
     {
         items.push_back({ "Warp to", [this, target]()
                           { OrderWarp(target->GetPosition(), target->GetSize() + 70.0f); } });
+        items.push_back({ TextFormat("Warp to, %.0f out", base * HOLD_RANGES[2]),
+                          [this, target, base]()
+                          { OrderWarp(target->GetPosition(), base * HOLD_RANGES[2]); } });
     }
 
     // Kind-specific actions. Listed exhaustively rather than with a `default:` so that a
