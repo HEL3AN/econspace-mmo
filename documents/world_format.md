@@ -179,6 +179,9 @@ and works at any size — a ninety-unit station and a sixteen-unit ship use the 
 | `minPixels` | number | this part appears only once the object is at least this many pixels across |
 | `jitterAngle` | number | degrees the seed may turn this part |
 | `jitterScale` | number | fraction the seed may resize it |
+| `spin` | number | degrees per second this part turns about the object's centre |
+| `blink` | number | seconds per cycle for a `light`; 0 is steady |
+| `onlyThrusting` | bool | the part exists only while the object's engine is burning |
 
 **The vocabulary is narrow on purpose, and that is the feature.** Seven primitives with
 strict proportions produce a family of objects that looks intentional; an open-ended set of
@@ -196,6 +199,15 @@ object.
 **Two of the same thing differ.** `jitterAngle` and `jitterScale` are perturbed from the
 object's id, so two trade hubs are not identical and neither shimmers between frames —
 repeated identical assets are the other way procedural art gives itself away.
+
+**Everything that moves is a function of the clock and the seed** — never of anything
+accumulated per frame. A part whose angle were integrated would drift between clients, and
+two players would see the same station turned differently. As written, every client
+computes the same answer from the same time and nothing about motion crosses the wire.
+
+A blink takes its **phase** from the part's own seed, so six lamps on a ring are a sequence
+rather than a pulse; in step they read as a screensaver. A blink never reaches zero, because
+a lamp that goes out reads as a part that has fallen off.
 
 **A shape may reach past its radius**, and a docking ring at 1.55 is the point of a docking
 ring. Anything framing an object asks `Render::Extent` rather than assuming.

@@ -166,6 +166,9 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
         p.minPixels = e.value("minPixels", p.minPixels);
         p.jitterAngle = e.value("jitterAngle", p.jitterAngle);
         p.jitterScale = e.value("jitterScale", p.jitterScale);
+        p.spin = e.value("spin", p.spin);
+        p.blink = e.value("blink", p.blink);
+        p.onlyThrusting = e.value("onlyThrusting", p.onlyThrusting);
         s.parts.push_back(p);
     }
 
@@ -199,21 +202,26 @@ float Extent(const Shape& s)
     return reach;
 }
 
-std::vector<Piece> Compose(const Shape& s, Vector2 pos, float size, float heading, int seed,
-                           float pixelsPerUnit)
+std::vector<Piece> Compose(const Shape& s, const Pose& pose)
 {
     std::vector<Piece> out;
-    if (s.Empty() || size <= 0.0f)
+    if (s.Empty() || pose.size <= 0.0f)
         return out;
+
+    const Vector2 pos = pose.pos;
+    const float   size = pose.size;
+    const int     seed = pose.seed;
 
     // How large the object actually is on screen, which is what decides how much of it is
     // worth assembling.
-    const float pixels = size * 2.0f * pixelsPerUnit;
+    const float pixels = size * 2.0f * pose.pixelsPerUnit;
 
     for (size_t i = 0; i < s.parts.size(); i++)
     {
         const Part& p = s.parts[i];
         if (p.minPixels > 0.0f && pixels < p.minPixels)
+            continue;
+        if (p.onlyThrusting && !pose.thrusting)
             continue;
 
         const int repeat = p.repeat < 1 ? 1 : p.repeat;
@@ -224,13 +232,29 @@ std::vector<Piece> Compose(const Shape& s, Vector2 pos, float size, float headin
             // the object.
             const int salt = (int)i * 977 + r * 31;
 
-            const float spin = (360.0f / (float)repeat) * (float)r;
+            // Where this repeat sits, plus however far the clock has turned the part.
+            // Wrapped so the number stays small however long the server has been up:
+            // a float that has been counting degrees for a week has no precision left.
+            const float step = (360.0f / (float)repeat) * (float)r;
+            const float turned = std::fmod(p.spin * pose.time, 360.0f);
+            const float spin = step + turned;
             const float wobble = p.jitterAngle * Signed(seed, salt);
             const float scale = 1.0f + p.jitterScale * Signed(seed, salt + 7);
 
+            // A light's place in its cycle. The phase comes from the part's own seed, so
+            // six lamps on a ring are a sequence rather than a pulse -- lights in step read
+            // as a screensaver.
+            float brightness = 1.0f;
+            if (p.blink > 0.0f)
+            {
+                const float phase = Hash01(seed, salt + 13);
+                const float t = std::fmod(pose.time / p.blink + phase, 1.0f);
+                brightness = 0.25f + 0.75f * (0.5f + 0.5f * std::cos(t * 2.0f * PI));
+            }
+
             // The part's offset is turned by its repeat step and then by the object's own
             // heading, so a ship's parts follow its nose.
-            const float turn = (spin + wobble) * DEG2RAD + heading;
+            const float turn = (spin + wobble) * DEG2RAD + pose.heading;
             const float cs = std::cos(turn), sn = std::sin(turn);
 
             // Once, or twice reflected across the object's own axis.
@@ -248,10 +272,11 @@ std::vector<Piece> Compose(const Shape& s, Vector2 pos, float size, float headin
                 piece.count = p.count < 1 ? 1 : p.count;
                 piece.pos = { pos.x + (ax * cs - ay * sn) * size,
                               pos.y + (ax * sn + ay * cs) * size };
-                piece.angle = p.angle * flip + spin + wobble + heading * RAD2DEG;
+                piece.angle = p.angle * flip + spin + wobble + pose.heading * RAD2DEG;
                 piece.radius = p.radius * size * scale;
                 piece.width = p.width * size * scale;
                 piece.length = p.length * size * scale;
+                piece.brightness = brightness;
                 out.push_back(piece);
             }
         }

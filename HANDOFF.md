@@ -132,6 +132,8 @@ playing. The server and the unit tests must never need a shader.
   is no GPU on a CI runner, so `Render::Treatment` is untestable by construction — which is
   why `TreatmentConfig` is a separate file holding everything that decides what the picture
   will be. That half is tested; the picture is not.
+- **`Render::Compose` takes a `Pose`**, not eight positional arguments. The list grew twice
+  before it became a struct; add to the struct rather than to the signature.
 - **Nothing in a composition may be measured in raw world units.** Truss rails were `1.5f`
   and went sub-pixel the moment a card framed a larger object, so the trusses stopped being
   drawn at all. Every measurement comes from the part's own size.

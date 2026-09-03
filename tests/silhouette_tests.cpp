@@ -27,6 +27,19 @@ float Dist(Vector2 a, Vector2 b)
 {
     return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
 }
+
+// The pose these tests care about: where, how big, which way, whose seed, at what zoom.
+// The clock and the engine are separate because only the motion cases touch them.
+Render::Pose At(Vector2 pos, float size, float heading, int seed, float zoom)
+{
+    Render::Pose p;
+    p.pos = pos;
+    p.size = size;
+    p.heading = heading;
+    p.seed = seed;
+    p.pixelsPerUnit = zoom;
+    return p;
+}
 }  // namespace
 
 TEST_CASE("every form and role is named the same way in data and in code")
@@ -76,7 +89,7 @@ TEST_CASE("a shape is written in fractions and comes out in world units")
     ])");
 
     const std::vector<Render::Piece> p =
-        Render::Compose(s, { 100.0f, 50.0f }, 90.0f, 0.0f, 1, 1.0f);
+        Render::Compose(s, At({ 100.0f, 50.0f }, 90.0f, 0.0f, 1, 1.0f));
     REQUIRE(p.size() == 2);
 
     CHECK(p[0].radius == doctest::Approx(90.0f));  // one radius
@@ -92,7 +105,8 @@ TEST_CASE("a repeated part is turned about the centre, not copied on top of itse
         { "form": "capsule", "at": [1.0, 0.0], "repeat": 3, "length": 0.5, "width": 0.2 }
     ])");
 
-    const std::vector<Render::Piece> p = Render::Compose(s, { 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f);
+    const std::vector<Render::Piece> p =
+        Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f));
     REQUIRE(p.size() == 3);
 
     // All the same distance out, none in the same place, a third of a turn apart.
@@ -108,9 +122,9 @@ TEST_CASE("the object's heading turns the whole composition, so a ship's parts f
     const Render::Shape s = Parse(R"([{ "form": "chevron", "at": [1.0, 0.0], "length": 0.4 }])");
 
     const std::vector<Render::Piece> ahead =
-        Render::Compose(s, { 0.0f, 0.0f }, 10.0f, 0.0f, 1, 1.0f);
+        Render::Compose(s, At({ 0.0f, 0.0f }, 10.0f, 0.0f, 1, 1.0f));
     const std::vector<Render::Piece> turned =
-        Render::Compose(s, { 0.0f, 0.0f }, 10.0f, (float)M_PI / 2.0f, 1, 1.0f);
+        Render::Compose(s, At({ 0.0f, 0.0f }, 10.0f, (float)M_PI / 2.0f, 1, 1.0f));
 
     REQUIRE(ahead.size() == 1);
     REQUIRE(turned.size() == 1);
@@ -131,10 +145,10 @@ TEST_CASE("detail appears with distance, and disappearing is the point")
 
     // A ninety-unit station on the system map, a few pixels across: the core only. A
     // hundred parts resolved into eight pixels is a smudge, not a small object.
-    CHECK(Render::Compose(s, { 0.0f, 0.0f }, 90.0f, 0.0f, 1, 0.03f).size() == 1);
+    CHECK(Render::Compose(s, At({ 0.0f, 0.0f }, 90.0f, 0.0f, 1, 0.03f)).size() == 1);
 
     // The same station up close: the lamps arrive.
-    CHECK(Render::Compose(s, { 0.0f, 0.0f }, 90.0f, 0.0f, 1, 1.0f).size() == 7);
+    CHECK(Render::Compose(s, At({ 0.0f, 0.0f }, 90.0f, 0.0f, 1, 1.0f)).size() == 7);
 }
 
 TEST_CASE("two of the same thing differ, and neither of them shimmers")
@@ -144,8 +158,8 @@ TEST_CASE("two of the same thing differ, and neither of them shimmers")
           "jitterAngle": 6.0, "jitterScale": 0.1 }
     ])");
 
-    const std::vector<Render::Piece> a = Render::Compose(s, { 0, 0 }, 100.0f, 0.0f, 7, 1.0f);
-    const std::vector<Render::Piece> b = Render::Compose(s, { 0, 0 }, 100.0f, 0.0f, 8, 1.0f);
+    const std::vector<Render::Piece> a = Render::Compose(s, At({ 0, 0 }, 100.0f, 0.0f, 7, 1.0f));
+    const std::vector<Render::Piece> b = Render::Compose(s, At({ 0, 0 }, 100.0f, 0.0f, 8, 1.0f));
     REQUIRE(a.size() == 3);
     REQUIRE(b.size() == 3);
 
@@ -161,7 +175,7 @@ TEST_CASE("two of the same thing differ, and neither of them shimmers")
     {
         // Jitter that changes between frames is not variation, it is a shimmer.
         const std::vector<Render::Piece> again =
-            Render::Compose(s, { 0, 0 }, 100.0f, 0.0f, 7, 1.0f);
+            Render::Compose(s, At({ 0, 0 }, 100.0f, 0.0f, 7, 1.0f));
         for (size_t i = 0; i < a.size(); i++)
         {
             CHECK(again[i].pos.x == doctest::Approx(a[i].pos.x));
@@ -183,6 +197,85 @@ TEST_CASE("two of the same thing differ, and neither of them shimmers")
         for (const Render::Piece& piece : a)
             CHECK(piece.length <= doctest::Approx(0.5f * 100.0f * 1.1f));
     }
+}
+
+TEST_CASE("motion is a function of the clock and the seed, never of anything accumulated")
+{
+    // The whole reason it is written this way: every client computes the same answer from
+    // the same time without a byte on the wire. A part whose angle were integrated per
+    // frame would drift, and two players would see the same station turned differently.
+    const Render::Shape ring = Parse(R"([{ "form": "ring", "radius": 1.0, "spin": 90.0 }])");
+
+    Render::Pose p = At({ 0, 0 }, 100.0f, 0.0f, 1, 1.0f);
+    p.time = 1.0f;
+    const float atOne = Render::Compose(ring, p)[0].angle;
+    p.time = 2.0f;
+    const float atTwo = Render::Compose(ring, p)[0].angle;
+    CHECK(atTwo - atOne == doctest::Approx(90.0f));  // ninety degrees a second
+
+    SUBCASE("the same moment always gives the same answer")
+    {
+        p.time = 1.0f;
+        CHECK(Render::Compose(ring, p)[0].angle == doctest::Approx(atOne));
+    }
+
+    SUBCASE("and it is still finite after a week of uptime")
+    {
+        // A float that has been counting degrees for a week has no precision left, so the
+        // turn is wrapped rather than accumulated.
+        p.time = 7.0f * 24.0f * 3600.0f;
+        CHECK(std::fabs(Render::Compose(ring, p)[0].angle) <= 360.0f);
+    }
+}
+
+TEST_CASE("a light blinks on its own phase, so a row of them is a sequence and not a pulse")
+{
+    const Render::Shape lamps = Parse(R"([
+        { "form": "disc", "at": [1.0, 0.0], "repeat": 6, "radius": 0.05,
+          "role": "light", "blink": 2.0 }
+    ])");
+
+    Render::Pose p = At({ 0, 0 }, 100.0f, 0.0f, 3, 1.0f);
+    p.time = 0.4f;
+    const std::vector<Render::Piece> lit = Render::Compose(lamps, p);
+    REQUIRE(lit.size() == 6);
+
+    bool differ = false;
+    for (size_t i = 1; i < lit.size(); i++)
+        differ = differ || std::fabs(lit[i].brightness - lit[0].brightness) > 0.01f;
+    CHECK(differ);  // in step they would read as a screensaver
+
+    SUBCASE("a part that does not blink is simply at full")
+    {
+        const Render::Shape steady = Parse(R"([{ "form": "disc", "radius": 1.0 }])");
+        CHECK(Render::Compose(steady, p)[0].brightness == doctest::Approx(1.0f));
+    }
+
+    SUBCASE("and a blink never goes out entirely")
+    {
+        // A lamp that reaches zero reads as a part that has fallen off.
+        for (float t = 0.0f; t < 4.0f; t += 0.13f)
+        {
+            p.time = t;
+            for (const Render::Piece& piece : Render::Compose(lamps, p))
+                CHECK(piece.brightness > 0.2f);
+        }
+    }
+}
+
+TEST_CASE("a part can belong to the engine, and is absent when the engine is not burning")
+{
+    const Render::Shape s = Parse(R"([
+        { "form": "chevron", "length": 2.0, "width": 1.0 },
+        { "form": "chevron", "at": [-1.2, 0.0], "angle": 180, "length": 0.8, "width": 0.4,
+          "role": "light", "onlyThrusting": true }
+    ])");
+
+    Render::Pose p = At({ 0, 0 }, 16.0f, 0.0f, 1, 1.0f);
+    p.thrusting = false;
+    CHECK(Render::Compose(s, p).size() == 1);
+    p.thrusting = true;
+    CHECK(Render::Compose(s, p).size() == 2);
 }
 
 TEST_CASE("a composition reaches as far as its furthest part, not as far as its radius")
@@ -222,7 +315,7 @@ TEST_CASE("a part is shaded at its own cross section, not at its own length")
         { "form": "ring", "radius": 1.5, "width": 0.08 }
     ])");
 
-    const std::vector<Render::Piece> p = Render::Compose(s, { 0, 0 }, 100.0f, 0.0f, 1, 1.0f);
+    const std::vector<Render::Piece> p = Render::Compose(s, At({ 0, 0 }, 100.0f, 0.0f, 1, 1.0f));
     REQUIRE(p.size() == 3);
 
     CHECK(Render::ShadeRadius(p[0]) == doctest::Approx(50.0f));   // a disc is its radius
@@ -237,9 +330,9 @@ TEST_CASE("a part is shaded at its own cross section, not at its own length")
             if (a.visual.shape.Empty())
                 continue;
             INFO("archetype: ", a.id);
-            for (const Render::Piece& piece :
-                 Render::Compose(a.visual.shape, { 0, 0 },
-                                 a.defaultSize > 0.0f ? a.defaultSize : 100.0f, 0.0f, 1, 1.0f))
+            for (const Render::Piece& piece : Render::Compose(
+                     a.visual.shape,
+                     At({ 0, 0 }, a.defaultSize > 0.0f ? a.defaultSize : 100.0f, 0.0f, 1, 1.0f)))
                 CHECK(Render::ShadeRadius(piece) > 0.0f);
         }
     }
@@ -262,9 +355,9 @@ TEST_CASE("the shapes that ship are ones the game can read")
         // The point of the milestone: an object is a composition, not one figure.
         CHECK(a.visual.shape.parts.size() >= 2);
 
-        const std::vector<Render::Piece> pieces =
-            Render::Compose(a.visual.shape, { 0.0f, 0.0f },
-                            a.defaultSize > 0.0f ? a.defaultSize : 100.0f, 0.0f, 1, 1.0f);
+        const std::vector<Render::Piece> pieces = Render::Compose(
+            a.visual.shape,
+            At({ 0.0f, 0.0f }, a.defaultSize > 0.0f ? a.defaultSize : 100.0f, 0.0f, 1, 1.0f));
         CHECK_FALSE(pieces.empty());
         for (const Render::Piece& p : pieces)
         {
