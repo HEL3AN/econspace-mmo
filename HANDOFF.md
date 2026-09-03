@@ -8,8 +8,8 @@ Nothing is in flight. `main` is green on both platforms: warning-clean build, un
 all four `econserver` self-tests, `econagent selftest` against a live server, and a
 two-client step that also checks a wrong secret is refused.
 
-**M6 is three issues in.** The gallery (#118), the lighting (#119) and the screen
-treatment (#120) are done; the milestone resumes at **#121, materials**. Everything M6
+**M6 is four issues in.** The gallery (#118), the lighting (#119), the screen treatment
+(#120) and materials (#121) are done; the milestone resumes at **#122, silhouettes**. Everything M6
 touches is judged by looking, so start by looking: `worldeditor gallery shapes` puts the
 whole registry on one screen under the current light and the current treatment, and F10
 opens the treatment's settings.
@@ -57,8 +57,16 @@ what it costs. Work in this order — the order is part of the decision:
    ramps, every `amount` and `scale` in the chain. They are the owner's call. Anything new
    that is tuned this way belongs in a panel and in a data file it can write, not in a
    constant.
-4. **#121 materials** — a shader per object fed by `Render::Item` state (`intensity`,
-   `heading`, `thrusting`) and the scene's lights.
+4. ~~**#121 materials**~~ — **done**. An archetype names a material; a material is a
+   shader plus bindings from `data/materials.json`, each mapping a uniform to a source
+   (`item.intensity`, `light.dir`, `clock.time`, or a constant). The `hull` shader gives a
+   sphere normal, a curved terminator, a rim and damage that reads without a health bar --
+   which is what lets the silhouettes underneath stay simple enough for #122.
+
+   Watch the coordinate flip in `ShapeBackend::BeginMaterial`: `gl_FragCoord` counts y from
+   the bottom and everything else counts it from the top, so **both** the screen position
+   and the light direction are flipped there, together. Flipping one without the other
+   lights an object from the mirror image of where its star is.
 5. **#122 silhouettes** — shapes from `archetypes.json`, replacing `ShapeBackend`'s switch
    on `EntityKind`, whose `Unknown` case is why a player-invented object is a circle.
 6. **#123** — glyphs become a sensor screen over `GridBackend`, which already does that

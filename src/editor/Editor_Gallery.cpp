@@ -253,7 +253,7 @@ void Editor::DrawGallery()
         // Through Present rather than Draw, so the card is lit by the same path the world
         // is -- and so a card can never inherit the lights of whatever drew last.
         Render::Present({ GalleryItem(a, { 0.0f, 0.0f }, size) },
-                        GalleryLighting({ 0.0f, 0.0f }, size), *backend_);
+                        GalleryLighting({ 0.0f, 0.0f }, size), cam, *backend_);
         EndMode2D();
         EndScissorMode();
 
@@ -414,6 +414,27 @@ void Editor::DrawGalleryPanel()
     }
     y = gr.y + 38.0f;
 
+    // Which material shades it (#121). A row of buttons rather than a text field: the set
+    // is small, the ids are exact, and a typo here is silent -- the object just draws plain.
+    Ui::Text("material", (int)x, (int)y + 5, 12, Ui::TEXT_DIM);
+    {
+        Rectangle mr{ x + 70.0f, y, 62.0f, 26.0f };
+        auto      pick = [&](const std::string& id, const char* label)
+        {
+            const bool on = (a->visual.material == id);
+            if (Ui::SmallButton(mr, label, on) && !on)
+            {
+                a->visual.material = id;
+                NoteLookEdit(a->id, "material");
+            }
+            mr.x += mr.width + 4.0f;
+        };
+        pick("", "none");
+        for (const Render::Material& m : Render::Materials::All())
+            pick(m.id, m.id.c_str());
+    }
+    y += 34.0f;
+
     Ui::Text("style", (int)x, (int)y + 5, 12, Ui::TEXT_DIM);
     Rectangle        sr{ x + 60.0f, y, (w - 60.0f) / 3.0f - 4.0f, 26.0f };
     const GlyphStyle styles[] = { GlyphStyle::Point, GlyphStyle::Region, GlyphStyle::Directional };
@@ -458,6 +479,8 @@ static std::string LookFieldJson(const Archetype& a, const std::string& key)
         return std::to_string(a.visual.layer);
     if (key == "size")
         return std::to_string((long long)llroundf(a.defaultSize));
+    if (key == "material")
+        return "\"" + a.visual.material + "\"";
     if (key == "light")
     {
         std::ostringstream os;

@@ -88,6 +88,11 @@ struct Visual
     // same bargain the rest of the archetype makes. Zero radius means it emits nothing.
     float lightRadius = 0.0f;     // world units at which its light has fallen to nothing
     float lightIntensity = 0.0f;  // brightness at the source
+
+    // Which material shades it (#121), by id from data/materials.json. Empty means the
+    // object is drawn plain, which is what everything did before materials existed and
+    // what everything still does on a machine whose driver refused the shader.
+    std::string material;
 };
 
 // One entry of the registry.

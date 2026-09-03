@@ -106,5 +106,6 @@ TEST_CASE("the real registry survives a round trip through the writer")
     REQUIRE(ArchetypeEdit::SetField(t, "star.yellow", "size", "600"));
     REQUIRE(ArchetypeEdit::SetField(t, "star.yellow", "light",
                                     "{ \"radius\": 62000, \"intensity\": 1.00 }"));
+    REQUIRE(ArchetypeEdit::SetField(t, "station.trade_hub", "material", "\"hull\""));
     CHECK(t == original);
 }

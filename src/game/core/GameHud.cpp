@@ -74,7 +74,9 @@ void Game::DrawWorld()
         // they are in the layout the server sent on entry, so nothing new crosses the
         // wire. A system with two of them is lit by two of them.
         const Render::Lighting lights = Render::LightsFrom(scene);
-        Render::Present(std::move(scene), lights, *backend_);
+        // The camera goes with them: a material shades a fragment by where it fell
+        // relative to the object, so it has to know where the object landed (#121).
+        Render::Present(std::move(scene), lights, camera_, *backend_);
     }
 
     // Destination-station markers for active delivery missions. We draw them only if

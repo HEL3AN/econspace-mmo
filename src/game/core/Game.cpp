@@ -60,6 +60,10 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     if (!Archetypes::Load(dataDir_ + "archetypes.json"))
         TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());
     universe_ = WorldLoader::LoadUniverse(dataDir_ + "universe.json");
+    if (!Render::Materials::Load(dataDir_ + "materials.json"))
+        TraceLog(LOG_WARNING, "Materials: %s", Render::Materials::Error().c_str());
+    materials_.Load(dataDir_);  // one shader per material (#121)
+    shapeBackend_.SetMaterials(&materials_);
     treatment_.Load(dataDir_);  // shaders and the pass chain (#120); safe if neither exists
 
     // The authoritative ship lives on the server. This one is the client's prediction of

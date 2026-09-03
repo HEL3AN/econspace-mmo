@@ -100,6 +100,7 @@ registry says *what it is and what it can do*, once, for every object of that ki
 | `style` | string | `point` (default), `region` or `directional` — see below |
 | `color` | [r, g, b, a] | 0..255; `a` defaults to 255 |
 | `layer` | int | draw order, lowest first; the same number means the same thing in every backend |
+| `material` | string | **optional** — the material that shades it, by id from `data/materials.json`. Omit it and the object is drawn plain |
 | `light` | object | **optional** — this object lights the system: `radius` (world units at which its light has fallen to nothing) and `intensity` (default 1.0). Omit it and the object emits nothing. See below |
 | `size` | number | default radius when the instance does not give its own |
 | `world` | object | where this archetype lives in a system file — see below |
@@ -139,6 +140,56 @@ no `light` is drawn unlit — at full colour — rather than dark.
 The gallery edits `light` like any other look field and writes it back here, because how
 far a star reaches is the one number that decides whether a system reads as lit or as a
 dark map with a lamp in the middle, and that is only decidable by looking.
+
+### `material` — a shader and what feeds it
+
+`data/materials.json` names materials; an archetype names one of them (#121). A material is
+a shader plus a list of **bindings**: uniform name on one side, where its value comes from
+on the other.
+
+```json
+{
+    "id": "hull",
+    "shader": "hull",
+    "bindings": {
+        "centre": "item.screenPos",
+        "radius": "item.screenSize",
+        "lightDir": "light.dir",
+        "damage": "item.intensity",
+        "time": "clock.time",
+        "grit": 0.35
+    }
+}
+```
+
+A binding's value is either a **source name** (a string) or a **constant** (a number, a
+bool, or one to four numbers). The sources:
+
+| Source | Type | What it is |
+|------|-----|----------|
+| `item.color` | vec4 | the object's own colour, 0..1 |
+| `item.intensity` | float | hull left, ore left, how looted a wreck is |
+| `item.heading` | float | radians |
+| `item.thrusting` | float | 0 or 1 |
+| `item.size` | float | world units |
+| `item.screenPos` | vec2 | where its centre landed, in pixels |
+| `item.screenSize` | float | its radius after the camera, in pixels |
+| `light.dir` | vec2 | unit vector toward the strongest light |
+| `light.tint` | vec4 | the colour of the light arriving |
+| `light.strength` | float | 0..1 |
+| `light.ambient` | float | the floor |
+| `clock.time` | float | seconds |
+
+**An unknown source is a load error**, unlike an unknown pass in `look.json`, which is
+skipped. Losing a pass makes the picture plainer; losing a uniform makes a material draw
+something actively wrong, and it would do it in silence.
+
+The shader lives at `data/shaders/materials/<shader>.fs` and works out where a fragment sits
+on the object from `gl_FragCoord` and the object's centre and radius in pixels — so it sits
+on top of whatever primitive the backend drew, a disc or a hexagon or a triangle, rather
+than needing geometry of its own. As with the screen treatment, a shader that will not
+compile costs that material and nothing else: the object is drawn the way it was drawn
+before materials existed.
 
 ### `style` — the glyph grammar
 

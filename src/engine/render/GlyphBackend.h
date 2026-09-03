@@ -1,5 +1,6 @@
 #pragma once
 
+#include "render/MaterialLibrary.h"
 #include "render/Scene.h"
 
 namespace Render
@@ -62,6 +63,8 @@ public:
     const char* Name() const override { return "shapes"; }
 
     void SetLighting(const Lighting& l) override { lighting_ = l; }
+    void SetView(const Camera2D& v) override { view_ = v; }
+    void SetMaterials(MaterialLibrary* m) override { materials_ = m; }
 
     void Draw(const Item& item) override;
 
@@ -71,7 +74,19 @@ public:
     static constexpr float RIM_THICKNESS = 0.09f;
 
 private:
-    Lighting lighting_;  // a copy: a backend outlives the scene that handed it over
+    // True when a material took the object over. It then draws one plain primitive and the
+    // shader does the shading, instead of the offset discs and rim arcs this backend fakes
+    // it with (#119) -- those exist precisely because there was no shader yet.
+    bool BeginMaterial(const Item& item, const Lighting::Sample& light);
+    void EndMaterial();
+    // The shapes themselves, split off so that whichever of its ten returns is taken, the
+    // material is still ended by the caller. A shader left bound is not a visible bug
+    // where it happens; it is a visible bug in whatever is drawn next.
+    void DrawShape(const Item& item, Color c, bool shaded, const Lighting::Sample& light);
+
+    Lighting         lighting_;  // a copy: a backend outlives the scene that handed it over
+    Camera2D         view_{};
+    MaterialLibrary* materials_ = nullptr;  // borrowed; null draws everything plain
 };
 
 }  // namespace Render

@@ -44,6 +44,10 @@ Editor::Editor()
     if (!Archetypes::Load(dataDir_ + "archetypes.json"))
         TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());
     universe_ = WorldLoader::LoadUniverse(dataDir_ + "universe.json");
+    if (!Render::Materials::Load(dataDir_ + "materials.json"))
+        TraceLog(LOG_WARNING, "Materials: %s", Render::Materials::Error().c_str());
+    materials_.Load(dataDir_);  // one shader per material (#121)
+    shapeBackend_.SetMaterials(&materials_);
     treatment_.Load(dataDir_);  // the pass chain and its shaders (#120)
     {
         std::ifstream uf(dataDir_ + "universe.json");
@@ -342,7 +346,7 @@ void Editor::DrawWorld()
         for (const auto& e : entities_)
             scene.push_back(e->Describe());
         lights = Render::LightsFrom(scene);
-        Render::Present(std::move(scene), lights, *backend_);
+        Render::Present(std::move(scene), lights, camera_, *backend_);
     }
 
     // Highlight the selected object.
@@ -363,7 +367,7 @@ void Editor::DrawWorld()
         {
             // Lit like the system it is about to be placed in, not like the last thing
             // drawn: the ghost is a preview of the world, so it uses the world's lights.
-            Render::Present({ ghost->Describe() }, lights, *backend_);
+            Render::Present({ ghost->Describe() }, lights, camera_, *backend_);
             DrawCircleLines(wp.x, wp.y, ghost->GetSize() + 12.0f, Fade(Ui::ACCENT, 0.7f));
         }
     }

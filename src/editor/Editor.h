@@ -4,6 +4,7 @@
 #include "core/WorldLoader.h"
 #include "entities/Entity.h"
 #include "render/GlyphBackend.h"
+#include "render/MaterialLibrary.h"
 #include "render/Treatment.h"
 #include "core/Archetype.h"
 #include <nlohmann/json.hpp>
@@ -100,9 +101,10 @@ private:
     // The screen treatment (#120), applied to the cards and not to the panels: the
     // gallery is where the treatment is tuned, and a settings screen seen through the
     // effect it is adjusting cannot be read while adjusting it.
-    Render::Treatment treatment_;
-    bool              treatmentPanelOpen_ = false;
-    void              DrawTreatmentSettings();
+    Render::MaterialLibrary materials_;  // the shaders a material names (#121)
+    Render::Treatment       treatment_;
+    bool                    treatmentPanelOpen_ = false;
+    void                    DrawTreatmentSettings();
 
     // The gallery's own light (#119). A card has no system around it, so lighting is
     // tuned against a synthetic source whose angle and reach are on sliders -- which is

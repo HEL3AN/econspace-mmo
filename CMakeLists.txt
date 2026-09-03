@@ -118,6 +118,8 @@ add_library(engine STATIC
     src/engine/render/Textures.cpp
     src/engine/render/Scene.cpp        # what an object looks like, apart from who draws it (#35)
     src/engine/render/Lighting.cpp     # where a system's light comes from, and how much (#119)
+    src/engine/render/Material.cpp         # a shader plus what feeds it -- the data half (#121)
+    src/engine/render/MaterialLibrary.cpp  # ...and the half that compiles and binds
     src/engine/render/TreatmentConfig.cpp  # the pass chain as data -- the testable half (#120)
     src/engine/render/Treatment.cpp        # ...and the half that talks to the GPU
     src/engine/render/TreatmentPanel.cpp   # its settings, drawn by the game and the editor
@@ -285,6 +287,7 @@ add_executable(tests
     tests/render_tests.cpp
     tests/lighting_tests.cpp
     tests/treatment_tests.cpp
+    tests/material_tests.cpp
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     # The simulation itself is under test now, not only the wire (#10). That pulls in its
     # dependency tree -- ships, NPCs, the mission system -- which is the price of testing
