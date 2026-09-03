@@ -166,6 +166,7 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
         p.minPixels = e.value("minPixels", p.minPixels);
         p.jitterAngle = e.value("jitterAngle", p.jitterAngle);
         p.jitterScale = e.value("jitterScale", p.jitterScale);
+        p.alpha = e.value("alpha", p.alpha);
         p.spin = e.value("spin", p.spin);
         p.blink = e.value("blink", p.blink);
         p.onlyThrusting = e.value("onlyThrusting", p.onlyThrusting);
@@ -244,12 +245,12 @@ std::vector<Piece> Compose(const Shape& s, const Pose& pose)
             // A light's place in its cycle. The phase comes from the part's own seed, so
             // six lamps on a ring are a sequence rather than a pulse -- lights in step read
             // as a screensaver.
-            float brightness = 1.0f;
+            float brightness = p.alpha;
             if (p.blink > 0.0f)
             {
                 const float phase = Hash01(seed, salt + 13);
                 const float t = std::fmod(pose.time / p.blink + phase, 1.0f);
-                brightness = 0.25f + 0.75f * (0.5f + 0.5f * std::cos(t * 2.0f * PI));
+                brightness = p.alpha * (0.25f + 0.75f * (0.5f + 0.5f * std::cos(t * 2.0f * PI)));
             }
 
             // The part's offset is turned by its repeat step and then by the object's own

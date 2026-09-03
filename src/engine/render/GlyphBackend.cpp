@@ -392,16 +392,20 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
 
     const std::vector<Piece> pieces = Compose(*item.shape, pose);
 
+    // An object that is itself a light is never shaded by one -- the same rule the
+    // uncomposed path follows. Without it a star would be shaded by the light it emits,
+    // which is how a sun ends up looking like a moon (#119).
+    const bool emissive = Emissive(item);
+
     for (const Piece& p : pieces)
     {
-        // A lamp is not lit by the star, it is a light. Shading one is how a beacon ends
-        // up dark on its own night side.
-        if (p.role == Role::Light)
+        // A light dims with damage and with its own blink, and is never shaded: a lamp is
+        // not lit by the star, it *is* a light, and shading one is how a beacon ends up
+        // dark on its own night side.
+        if (p.role == Role::Light || emissive)
         {
-            // A light dims with damage and with its own blink, and is never shaded: a lamp
-            // is not lit by the star, it *is* a light, and shading one is how a beacon ends
-            // up dark on its own night side.
-            DrawPiece(p, Fade(item.color, (0.25f + 0.75f * item.intensity) * p.brightness));
+            DrawPiece(p, Fade(ForRole(p.role, item.color),
+                              (0.25f + 0.75f * item.intensity) * p.brightness));
             continue;
         }
 
@@ -421,7 +425,12 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
 
         // With a shader the colour stays the object's own and the shading is done in the
         // fragment; without one it is dimmed here. Doing both would darken twice.
-        const Color base = shaded ? c : Lit(c, lighting_, pieceLight);
+        Color base = shaded ? c : Lit(c, lighting_, pieceLight);
+        // A part's own solidity and whatever the clock is doing to it, in one number, and
+        // it applies to any role rather than only to a lamp: a nebula breathes and a belt
+        // glitters through the same field.
+        if (p.brightness < 1.0f)
+            base = Fade(base, p.brightness);
         DrawPiece(p, ForRole(p.role, base));
 
         if (shaded)
