@@ -2,6 +2,18 @@
 
 Where the work stands and what to pick up. Keep this current; it is the first thing to read.
 
+## Direction, settled 2026-09-04
+
+**The world is generated; hand-written content is the exception on top.** The game begins
+when a wormhole opens into an unexplored region, and nothing beyond has a name until
+somebody goes there. Read the 2026-09-04 entry in `DECISIONS.md` before planning anything
+that touches the world — it inverts the premise the repository was built on, and the
+architecture already supports it: the server sends a `SystemLayout` on entry, so where that
+layout came from is invisible on the wire.
+
+Two milestones carry it: **M7** (#140–#147) generates the region, **M8** (#148–#153) lets a
+player design a type and build it. M8 waits on M4's construction track.
+
 ## State
 
 Nothing is in flight. `main` is green on both platforms: warning-clean build, unit suite,

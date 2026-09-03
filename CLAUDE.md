@@ -29,8 +29,18 @@ These are decisions, not open questions. Plan on top of them.
   never to the object.
 - **AI agents are first-class players** (#42). The game ships its own MCP server,
   `econagent`, written in C++ so the wire protocol stays a single source of truth.
+- **The world is generated, and hand-written content is the exception on top** (M7). The
+  server generates a region from a seed and sends each client the `SystemLayout` it already
+  sends, so nothing about the wire changes. `data/systems/*.json` becomes a set of pins
+  rather than the source of truth. The seed is part of the save, and changing the
+  generator's rules is a migration.
+- **The game begins when a wormhole opens into an unexplored region.** Nothing beyond it
+  has a name until somebody goes there and names it. This is why the generation is honest
+  rather than a compromise, and why exploration is an activity rather than map-filling.
 - **The world becomes player-mutable** (#44), and player structures feed the existing
-  macro simulation.
+  macro simulation. Players design *types* in the same grammar the generator uses (M8), and
+  a design's parts decide what it can do -- the rule that derives a shape from an object's
+  components (#137), read in the other direction.
 
 ## Build and run
 
