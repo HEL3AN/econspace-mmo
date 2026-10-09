@@ -161,6 +161,18 @@ jobs:
           kill $holder 2>/dev/null || true
           grep -q "displaced" mc.log
 
+          # A brand-new account has no file until its first save. While its first session
+          # is still playing, a login with another secret must be refused, not registered
+          # over it (#201).
+          sleep 30 | agent connect 127.0.0.1 50801 dave dave-secret >/dev/null 2>&1 &
+          dave=$!
+          wait_for "dave joined"
+          if agent selftest 127.0.0.1 50801 dave someone-elses-secret; then
+            echo "a new account was taken over during its first session"
+            exit 1
+          fi
+          kill $dave 2>/dev/null || true
+
   # The second platform, and the reason the transport was portable at all (#12). Without
   # a runner that actually compiles it, "should work on Linux" is a claim nobody checks --
   # and the winsock calls it replaced were invisible from Windows.
@@ -273,6 +285,18 @@ jobs:
           fi
           kill $holder 2>/dev/null || true
           grep -q "displaced" mc.log
+
+          # A brand-new account has no file until its first save. While its first session
+          # is still playing, a login with another secret must be refused, not registered
+          # over it (#201).
+          sleep 30 | agent connect 127.0.0.1 50801 dave dave-secret >/dev/null 2>&1 &
+          dave=$!
+          wait_for "dave joined"
+          if agent selftest 127.0.0.1 50801 dave someone-elses-secret; then
+            echo "a new account was taken over during its first session"
+            exit 1
+          fi
+          kill $dave 2>/dev/null || true
 
       # The example in examples/agents is documentation that executes. It runs against a
       # real server here so that it cannot rot: if a tool changes and the example stops
