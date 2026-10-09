@@ -4,9 +4,11 @@
 
 You pilot a ship in a persistent, multi-system galaxy: mine, trade, run missions, fight, and build reputation with factions — while the galaxy simulates itself around you. The world lives on an authoritative server; the client renders snapshots and sends commands. There is no single-player mode — playing means running (or connecting to) a server.
 
+[![Build](https://github.com/HEL3AN/econspace-mmo/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/HEL3AN/econspace-mmo/actions/workflows/build.yml)
+[![CodeQL](https://github.com/HEL3AN/econspace-mmo/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/HEL3AN/econspace-mmo/actions/workflows/codeql.yml)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Language: C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
-![Platform: Windows](https://img.shields.io/badge/platform-Windows%20(MinGW)-lightgrey.svg)
+![Platforms: Windows | Linux](https://img.shields.io/badge/platforms-Windows%20(MinGW)%20%7C%20Linux%20(GCC)-lightgrey.svg)
 ![Status: Prototype](https://img.shields.io/badge/status-prototype-orange.svg)
 
 > **Project status — honest version.** EconSpace is an engineering-driven **prototype**, not a finished game. The client–server architecture and netcode are solid and real; the *content* is not: there is no audio, and the world is small. The look is **glyphs** — that is the game's visual language, not a stand-in for missing art. The server currently accepts **one** client at a time — multi-client is the next foundational piece, not an extra. See [ROADMAP.md](ROADMAP.md) for where it is and where it's going. Contributions are very welcome.

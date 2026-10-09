@@ -10,13 +10,19 @@
 - [ ] Art / assets
 - [ ] Docs
 - [ ] Refactor / tooling
+- [ ] Agent / MCP server
 
 ## Checklist
 
-- [ ] Builds cleanly (`cmake --build build`) with no new `-Wall -Wextra` warnings.
-- [ ] `ctest --test-dir build` passes (and relevant smoke tests: `econserver hosttest` / `accttest`).
+- [ ] Builds cleanly (`cmake --build build`) with no new `-Wall -Wextra` warnings. CI builds with `-Werror`.
+- [ ] `ctest --test-dir build --output-on-failure` passes.
+- [ ] The server smoke tests pass: `econserver hosttest`, `accttest`, `worldtest`, `ordertest`.
+- [ ] If the wire changed: `PROTO_VERSION` is bumped and `econagent selftest` passes against a live server.
+- [ ] If a save format changed meaning: `Save::WORLD_VERSION` / `Save::ACCOUNT_VERSION` is bumped.
+- [ ] If anything visual changed: it was **looked at** (`worldeditor gallery shapes` or the game), and a screenshot is below. No test can see a picture.
+- [ ] If `data/` changed: `documents/world_format.md` describes it.
 - [ ] Follows [CONVENTIONS.md](../CONVENTIONS.md); comments and docs are in English.
-- [ ] `engine` still doesn't depend on `game` / `editor`.
+- [ ] `engine` still doesn't depend on any other target.
 
 ## Notes
 

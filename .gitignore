@@ -6,18 +6,21 @@
 *.o
 *.obj
 
-# Save files — created at runtime by the game/server, not needed in the repo.
+# Save files -- written at runtime by the server next to its executable. A player's
+# account is account_<name>.json since accounts became per-player (#49); ignored by
+# pattern so that running a server from anywhere inside the repository cannot put
+# someone's save one `git add .` away from the history.
 savegame.json
 account.json
+account_*.json
 world.json
 
 # clangd index cache (IDE) — local, generated, not needed in the repo.
 .cache/
 
-# Internal working notes (kept local, not part of the public repo).
-# CLAUDE.md is deliberately NOT here: it is operating context for AI assistants
+# Private working notes: keep them in documents/private/ and they stay local. A
+# directory rather than a list of filenames, because a list of names in a public file
+# advertises what is being kept out of it.
+# CLAUDE.md is deliberately NOT ignored: it is operating context for AI assistants
 # working in this repository, and this project treats agents as contributors.
-documents/dev_journal_L.md
-documents/mmo_transition_plan.md
-documents/mmo_m4_plan.md
-documents/living_galaxy_next.md
+documents/private/
