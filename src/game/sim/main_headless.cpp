@@ -562,6 +562,26 @@ static int RunHost(unsigned short port, bool isPublic)
                     chal.nonce = hc.nonce;
                     const std::string path = AccountPath(h.account);
                     hc.isNewAccount = !ReadStoredAuth(path, chal.salt, hc.fileStored);
+                    // A name that is playing is an account, file or not (#201). A new
+                    // account has no file until its first save, and a second login in that
+                    // window used to register a secret of its own and displace the owner.
+                    // The live session holds what the account is, so the newcomer has to
+                    // answer against that.
+                    if (hc.isNewAccount)
+                        for (const HostClient& other : clients)
+                        {
+                            const ClientSession* os =
+                                other.sessionId != 0 && other.account == h.account
+                                    ? sim.Session(other.sessionId)
+                                    : nullptr;
+                            if (os != nullptr && os->authStored.size() == 64)
+                            {
+                                chal.salt = os->authSalt;
+                                hc.fileStored = os->authStored;
+                                hc.isNewAccount = false;
+                                break;
+                            }
+                        }
                     if (hc.isNewAccount)
                         chal.salt = Auth::MakeSalt();  // this login will set the secret
                     chal.isNew = hc.isNewAccount;
@@ -726,7 +746,9 @@ static int RunHost(unsigned short port, bool isPublic)
         for (HostClient& hc : clients)
         {
             ClientSession* s = sim.Session(hc.sessionId);
-            if (s == nullptr)
+            // A connection dropped this frame -- a second hello, a malformed message --
+            // still has its session until the cleanup below; it has no socket (#202).
+            if (s == nullptr || !hc.conn)
                 continue;
             // A layout is not on the snapshot clock: it answers "you are somewhere else
             // now", and waiting 50 ms to say so would draw the old system for a moment.
@@ -762,7 +784,7 @@ static int RunHost(unsigned short port, bool isPublic)
             {
                 const std::string g = Proto::EncodeGalaxy(sim.BuildGalaxyState());
                 for (HostClient& hc : clients)
-                    if (hc.sessionId != 0)
+                    if (hc.sessionId != 0 && hc.conn)
                     {
                         net.galaxies += (double)g.size();
                         hc.conn->Send(g);
