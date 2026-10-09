@@ -150,6 +150,12 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   using `repeat: 2` for a pair of wings puts the second one in front of the nose. The
   vocabulary is narrow on purpose: an open-ended set of arbitrary shapes reads as
   programmer art. An unknown form is a **load error**, not a skipped part.
+- **A planet's surface is on the sphere** (#166). A part with `lat`/`lon` is projected:
+  carried across the face by the planet's turn, foreshortened at the limb, hidden round
+  the back, and lit as the body rather than as itself. A `band` is the visible part of a
+  latitude strip, solved exactly per screen column, so it never needs clipping. Turning a
+  feature about the disc's centre like a wheel -- what surfaces did before -- is not what
+  a planet does.
 - **A material is bound per part, not per object** (#135). One sphere at the centre is the
   truth about a planet and a lie about a station. An elongated part is lit as a cylinder
   from `item.axis`; without that, an arm two radii long gets a bright band across its

@@ -373,6 +373,187 @@ TEST_CASE("an orbiting part goes round the body, behind it and in front of it")
     }
 }
 
+TEST_CASE("a surface feature lives on the sphere: across the face, round the back, foreshortened")
+{
+    // #166. A planet turns about an axis lying nearly in the picture, so its features
+    // travel *across* the disc and round the back -- not about the disc's centre like a
+    // wheel, which is what they did before and is not what a planet does.
+    const Render::Shape s = Parse(R"({ "tilt": 0, "parts": [
+        { "form": "disc", "radius": 1.0 },
+        { "form": "disc", "lat": 0, "lon": 0, "radius": 0.1, "spin": 10.0 }
+    ]})");
+
+    Render::Pose p = At({ 0, 0 }, 100.0f, 0.0f, 1, 1.0f);
+
+    // A whole turn, sampled. Visible for roughly half of it and gone for the rest.
+    int seen = 0, hidden = 0;
+    for (int i = 0; i < 36; i++)
+    {
+        p.time = (float)i;  // 10 degrees a second, so 36 samples are one turn
+        const std::vector<Render::Piece> pieces = Render::Compose(s, p);
+        if (pieces.size() == 2)
+            seen++;
+        else
+            hidden++;
+    }
+    CHECK(seen > 10);
+    CHECK(hidden > 10);
+
+    SUBCASE("it stays on the disc and moves across it, not round it")
+    {
+        for (int i = 0; i < 36; i++)
+        {
+            p.time = (float)i;
+            for (const Render::Piece& piece : Render::Compose(s, p))
+                if (piece.surface)
+                {
+                    CHECK(Dist(piece.pos, { 0, 0 }) <= 100.0f + 0.01f);
+                    // On the equator with no tilt: it slides along the horizontal diameter.
+                    CHECK(std::fabs(piece.pos.y) < 0.01f);
+                }
+        }
+    }
+
+    SUBCASE("facing the viewer it is round; near the limb it is an ellipse")
+    {
+        float mostSquashed = 1.0f, leastSquashed = 0.0f;
+        for (int i = 0; i < 72; i++)
+        {
+            p.time = (float)i * 0.5f;
+            for (const Render::Piece& piece : Render::Compose(s, p))
+                if (piece.surface)
+                {
+                    mostSquashed = std::fmin(mostSquashed, piece.squash);
+                    leastSquashed = std::fmax(leastSquashed, piece.squash);
+                }
+        }
+        CHECK(leastSquashed > 0.95f);
+        CHECK(mostSquashed < 0.4f);
+    }
+
+    SUBCASE("it is lit as the body it is part of, not as a small planet of its own")
+    {
+        p.time = 0.0f;
+        for (const Render::Piece& piece : Render::Compose(s, p))
+            if (piece.surface)
+            {
+                CHECK(piece.bodyRadius == doctest::Approx(100.0f));
+                CHECK(piece.bodyPos.x == doctest::Approx(0.0f));
+            }
+    }
+}
+
+TEST_CASE("a latitude band is projected, so it narrows to the poles and never leaves the body")
+{
+    // A band drawn as a bar crosses the limb and reads as a stripe painted on a circle. A
+    // band projected from a latitude is widest at the equator, shrinks toward the poles on
+    // its own, and is bounded by the limb because nothing is ever outside it.
+    Render::Pose p = At({ 0, 0 }, 100.0f, 0.0f, 1, 1.0f);
+
+    auto bandOf = [&](const char* text)
+    {
+        const Render::Shape s = Parse(text);
+        for (const Render::Piece& piece : Render::Compose(s, p))
+            if (piece.form == Render::Form::Band)
+                return piece;
+        return Render::Piece{};
+    };
+
+    const Render::Piece equator =
+        bandOf(R"({ "tilt": 20, "parts": [{ "form": "band", "lat": 0, "width": 10 }] })");
+    const Render::Piece high =
+        bandOf(R"({ "tilt": 20, "parts": [{ "form": "band", "lat": 60, "width": 10 }] })");
+    REQUIRE_FALSE(equator.strip.empty());
+    REQUIRE_FALSE(high.strip.empty());
+
+    float equatorWide = 0.0f, highWide = 0.0f;
+    for (const Vector2& v : equator.strip)
+    {
+        CHECK(Dist(v, { 0, 0 }) <= 100.0f + 0.05f);  // inside the body
+        equatorWide = std::fmax(equatorWide, std::fabs(v.x));
+    }
+    for (const Vector2& v : high.strip)
+    {
+        CHECK(Dist(v, { 0, 0 }) <= 100.0f + 0.05f);
+        highWide = std::fmax(highWide, std::fabs(v.x));
+    }
+    CHECK(equatorWide == doctest::Approx(100.0f).epsilon(0.02));  // reaches the limb
+    CHECK(highWide < equatorWide * 0.6f);  // a sixty-degree band is cos(60) as wide
+
+    SUBCASE("north is up: a northern band sits above a southern one")
+    {
+        const Render::Piece south =
+            bandOf(R"({ "tilt": 20, "parts": [{ "form": "band", "lat": -40, "width": 10 }] })");
+        float highY = 0.0f, southY = 0.0f;
+        for (const Vector2& v : high.strip)
+            highY += v.y;
+        for (const Vector2& v : south.strip)
+            southY += v.y;
+        CHECK(highY / (float)high.strip.size() < southY / (float)south.strip.size());
+    }
+
+    SUBCASE("tipped toward the viewer the band bows; edge-on it is a straight chord")
+    {
+        const Render::Piece flat =
+            bandOf(R"({ "tilt": 0, "parts": [{ "form": "band", "lat": 0, "width": 10 }] })");
+        float lo = 1e9f, hi = -1e9f;
+        for (const Vector2& v : flat.strip)
+        {
+            lo = std::fmin(lo, v.y);
+            hi = std::fmax(hi, v.y);
+        }
+        // Edge-on, a ten-degree band is a straight slab exactly 2*sin(5 deg) of the radius
+        // tall, wherever along it you measure.
+        CHECK(hi - lo == doctest::Approx(200.0f * std::sin(5.0f * DEG2RAD)).epsilon(0.01));
+
+        float tlo = 1e9f, thi = -1e9f;
+        for (const Vector2& v : equator.strip)
+        {
+            tlo = std::fmin(tlo, v.y);
+            thi = std::fmax(thi, v.y);
+        }
+        CHECK(thi - tlo > hi - lo);  // the same band, tipped, spans more height: it curves
+    }
+
+    SUBCASE("a band does not move when the planet turns -- its storms do")
+    {
+        p.time = 0.0f;
+        const Render::Piece a = bandOf(
+            R"({ "tilt": 20, "parts": [{ "form": "band", "lat": 10, "width": 8, "spin": 30 }] })");
+        p.time = 5.0f;
+        const Render::Piece b = bandOf(
+            R"({ "tilt": 20, "parts": [{ "form": "band", "lat": 10, "width": 8, "spin": 30 }] })");
+        REQUIRE(a.strip.size() == b.strip.size());
+        for (size_t k = 0; k < a.strip.size(); k++)
+            CHECK(Dist(a.strip[k], b.strip[k]) < 0.001f);
+    }
+
+    SUBCASE("a polar cap tipped away is mostly hidden, tipped toward the viewer it is not")
+    {
+        const Render::Piece north =
+            bandOf(R"({ "tilt": 25, "parts": [{ "form": "band", "lat": 80, "width": 20 }] })");
+        const Render::Piece south =
+            bandOf(R"({ "tilt": 25, "parts": [{ "form": "band", "lat": -80, "width": 20 }] })");
+        CHECK(north.strip.size() > south.strip.size());
+    }
+}
+
+TEST_CASE("a shape may carry properties of the body, and a bare list still works")
+{
+    Render::Shape s;
+    std::string   error;
+    REQUIRE(Render::ParseShape(
+        nlohmann::json::parse(R"({ "tilt": 33, "parts": [{ "form": "disc" }] })"), s, error));
+    CHECK(s.axisTilt == doctest::Approx(33.0f));
+    CHECK(s.parts.size() == 1);
+
+    REQUIRE(Render::ParseShape(nlohmann::json::parse(R"([{ "form": "disc" }])"), s, error));
+    CHECK(s.parts.size() == 1);
+
+    CHECK_FALSE(Render::ParseShape(nlohmann::json::parse(R"({ "tilt": 10 })"), s, error));
+    CHECK(error.find("parts") != std::string::npos);
+}
+
 TEST_CASE("a composition reaches as far as its furthest part, not as far as its radius")
 {
     // A shape is written around a radius of one but need not stay inside it. Anything

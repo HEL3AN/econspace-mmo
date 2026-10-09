@@ -42,12 +42,9 @@ verbs, #161 life for the things nobody built, #165 orbiting parts.
 
 ## Next up
 
-1. **#166 — a planet's surface should look like a surface.** Bands are rectangles and
-   craters are circles of constant size wherever they sit; both read as flat shapes laid on
-   a flat shape. A latitude band on a ball is a **lens**, half-width `sqrt(1 - y²)` of the
-   radius — no clipping and no new maths, only the right shape. A crater near the limb
-   foreshortens into an ellipse. One multiply, and it is most of what makes a sphere look
-   spherical.
+1. ~~**#166 — a planet's surface**~~ — **done**. Surface parts carry latitude and
+   longitude and are projected onto the sphere; bands are computed per screen column; a
+   body has an axis tilt that makes its bands curve.
 2. **#158 — the camera is the player's, not the ship's.** Zoom from a hull to a whole
    system, pan away and snap back, and do something sensible during warp.
 3. **#159 — the scale change itself.** A million units instead of twenty-five thousand; a

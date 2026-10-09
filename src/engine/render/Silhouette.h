@@ -37,7 +37,8 @@ enum class Form
     Capsule,  // a thick rounded bar -- arms, masts, booms
     Chevron,  // a triangle -- noses, fins, thrust
     Bar,      // a rectangle -- panels, plating
-    Lattice   // a run of cross-struts between two points -- trusses
+    Lattice,  // a run of cross-struts between two points -- trusses
+    Band      // a latitude band on a sphere -- a gas giant's belts, an ice cap (#166)
 };
 
 const char* FormName(Form f);
@@ -94,10 +95,6 @@ struct Part
     float jitterAngle = 0.0f;
     float jitterScale = 0.0f;
 
-    // Movement (#136). All of it is a function of the clock and the part's seed, never of
-    // anything accumulated per frame: a part whose angle is integrated drifts between
-    // clients, and two players would see the same station turned differently. As written,
-    // every client computes the same answer from the same time without a byte on the wire.
     // How solid this part is, 0..1. A corona is a glow rather than a ring and a nebula is
     // a place rather than a disc, and neither is expressible with a colour alone -- the
     // colour belongs to the object, so every part of it would go translucent together.
@@ -118,6 +115,27 @@ struct Part
     // anything, so the interesting values are in between.
     float orbitTilt = 0.35f;
 
+    // On the sphere rather than on the disc (#166). A surface part has a latitude and a
+    // longitude instead of an offset: it is projected onto the body, squashed as it nears
+    // the limb, hidden while it is on the far side, and carried round by `spin` -- which
+    // for a surface part is how fast the planet turns, in degrees of longitude a second.
+    //
+    // This replaces turning a crater about the disc's centre like a wheel, which is what
+    // a planet's surface did before and is not what a planet does. A planet turns about an
+    // axis lying nearly in the picture, so its features travel *across* it and round the
+    // back. That is the same trick as a moon passing behind the body (#165), and it is most
+    // of what makes a disc read as a ball.
+    //
+    // A part is on the surface when its data gives `lat` or `lon`. A `band` is always on
+    // the surface: it is a latitude, `lat` is its middle and `width` is in degrees.
+    bool  surface = false;
+    float lat = 0.0f;  // degrees, north positive
+    float lon = 0.0f;  // degrees, 0 facing the viewer
+
+    // Movement (#136). All of it is a function of the clock and the part's seed, never of
+    // anything accumulated per frame: a part whose angle is integrated drifts between
+    // clients, and two players would see the same station turned differently. As written,
+    // every client computes the same answer from the same time without a byte on the wire.
     float spin = 0.0f;            // degrees per second about the object's centre
     float blink = 0.0f;           // seconds per cycle; 0 is a steady light
     bool  onlyThrusting = false;  // drawn only while the object's engine is burning
@@ -126,7 +144,15 @@ struct Part
 struct Shape
 {
     std::vector<Part> parts;
-    bool              Empty() const { return parts.empty(); }
+
+    // How far the body's north pole is tipped toward the viewer, in degrees. It is a
+    // property of the body rather than of a part -- every feature on one planet shares
+    // its axis -- and it is what makes a latitude band *curve*. Seen exactly edge-on a
+    // band is a straight chord and the planet reads as a disc with stripes; tipped a
+    // little, the bands bow, and it reads as a ball.
+    float axisTilt = 18.0f;
+
+    bool Empty() const { return parts.empty(); }
 };
 
 // A part placed in the world: everything the backend needs, with no fractions left in it.
@@ -143,8 +169,6 @@ struct Piece
     float   width = 0.0f;          // world
     float   length = 0.0f;         // world
 
-    // 0..1, from a blinking light's place in its cycle. One for everything steady, so a
-    // backend can multiply by it unconditionally.
     // 0..1: the part's own solidity and, if it blinks, where it is in its cycle. Folded
     // into one number because a backend does the same thing with both -- one field to
     // multiply by unconditionally rather than two it has to remember to combine.
@@ -154,6 +178,24 @@ struct Piece
     // zero for everything that is simply part of it. Compose returns pieces already sorted
     // by it, so a backend draws them in order and never has to know why.
     float depth = 0.0f;
+
+    // How much a round piece is flattened toward the body's centre, 1 for not at all. A
+    // crater facing the viewer is a circle; one near the limb is seen at a slant and is an
+    // ellipse whose short axis points at the centre -- that one multiply is most of what
+    // makes a textured sphere look spherical (#166). `angle` gives the short axis's
+    // direction.
+    float squash = 1.0f;
+
+    // Lies on the body's surface, so it is lit as the body: with the body's centre and
+    // radius rather than its own. A crater is a mark on a planet, not a small planet of
+    // its own sitting in front of it.
+    bool    surface = false;
+    Vector2 bodyPos = { 0.0f, 0.0f };
+    float   bodyRadius = 0.0f;
+
+    // A band is not a primitive: it is the visible part of a latitude strip, projected.
+    // Stored as a strip -- upper edge and lower edge alternating -- in world coordinates.
+    std::vector<Vector2> strip;
 };
 
 // How large a piece is *for shading*, which is not the same as how far it reaches.
