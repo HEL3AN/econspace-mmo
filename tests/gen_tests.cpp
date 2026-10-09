@@ -82,7 +82,7 @@ TEST_CASE("the rules have not changed without saying so")
     const uint64_t h = Fnv1a(Dump(Gen::GenerateRegion(Params(1))));
     MESSAGE("region hash for seed 1: " << h);
     CHECK(Gen::GENERATOR_VERSION == 2);
-    CHECK(h == 18147451084883590342ull);
+    CHECK(h == 3838237967524308935ull);
 }
 
 TEST_CASE("every system can be reached from home, and every link has a gate on both ends")

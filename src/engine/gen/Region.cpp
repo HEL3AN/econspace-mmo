@@ -418,12 +418,27 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
                                 { "angle", rng.Range(0, 65535) * (TWO_PI / 65536.0) },
                                 { "deposit", DepositOf(type) } });
             bands.push_back({ r, (double)size });
-            r += size + rng.Range(70, 150) * 1000.0;
+            // The gaps tighten when the planets still to come would not fit otherwise: the
+            // survey (#141) found six-planet systems cut off at the edge and counted as five.
+            const int    left = want - i - 1;
+            const double room = EDGE - (r + size);
+            double       gap = rng.Range(70, 150) * 1000.0;
+            if (left > 0 && (gap + 40000.0) * left > room)
+                gap = std::max(30000.0, room / left - 40000.0);
+            r += size + gap;
         }
         sys["planets"] = planets;
     }
 
+    // Stars take room too: a binary's two stand off the middle, and nothing is placed in
+    // either of them.
     std::vector<Disc> taken;
+    if (sys.contains("star"))
+        taken.push_back({ 0.0, 0.0, sys["star"]["size"].get<double>() });
+    if (sys.contains("stars"))
+        for (const json& s : sys["stars"])
+            taken.push_back(
+                { s["pos"][0].get<double>(), s["pos"][1].get<double>(), s["size"].get<double>() });
 
     // Gates first: each faces the system it leads to, and their bearings are not free.
     {
@@ -543,7 +558,9 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
         }
         else
         {
-            const int chance = character == Character::Barren ? 15 : 25 + 12 * n.depth;
+            // Rarer than the survey (#141) found them: a wreck in three systems of four was
+            // scenery, not a find. A graveyard is where wrecks are.
+            const int chance = character == Character::Barren ? 10 : 8 + 6 * n.depth;
             const int count = rng.Chance(chance) ? rng.Range(1, 2) : 0;
             for (int i = 0; i < count; i++)
             {
