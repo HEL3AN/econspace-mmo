@@ -453,6 +453,8 @@ baked into the object cannot be right for both. It also spends the palette: if r
 hostile, nothing that would look good in red may have it. Allegiance moves to the
 instruments — radar, overview, target panel, the glyph sensor view — where a reading that
 depends on the observer is correct (#117).
+Done: an entity's world colour is its archetype's; the radar and the overview mark
+hostile in red, as the player looking sees it; other ships' fire is one neutral colour.
 
 **What replaces it.** Generated art: lighting from the system's own stars, a material that
 shades a simple silhouette, and silhouettes described in data rather than compiled in. Over

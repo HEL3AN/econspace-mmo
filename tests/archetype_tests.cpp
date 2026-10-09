@@ -260,3 +260,25 @@ TEST_CASE("a broken registry fails loudly instead of loading half a world")
     CHECK(Archetypes::All().size() == before);
     CHECK(Archetypes::Find("station.trade_hub") != nullptr);
 }
+
+TEST_CASE("colour in the world is the archetype's, not the owner's (#117)")
+{
+    REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
+
+    // The same kind of station under two flags. Allegiance depends on who is looking, so a
+    // colour that carried it would be wrong for one of the two players looking at it; the
+    // world view shows what the thing is, and the instruments say whose side it is on.
+    Station guild({ 0.0f, 0.0f }, 700.0f, "Hub", FactionId::TradersGuild, StationRole::TradeHub);
+    Station pirate({ 0.0f, 0.0f }, 700.0f, "Den", FactionId::Pirates, StationRole::TradeHub);
+    const Render::Item a = guild.Describe(), b = pirate.Describe();
+    CHECK(a.color.r == b.color.r);
+    CHECK(a.color.g == b.color.g);
+    CHECK(a.color.b == b.color.b);
+
+    // And it is the colour the archetype names -- the one the gallery edits and saves,
+    // which used to change nothing in the game.
+    const Color art = guild.GetArchetype()->visual.color;
+    CHECK(a.color.r == art.r);
+    CHECK(a.color.g == art.g);
+    CHECK(a.color.b == art.b);
+}

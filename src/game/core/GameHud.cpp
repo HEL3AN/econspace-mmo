@@ -36,6 +36,8 @@
 static const float MENU_BAR_W = 46.0f;
 static const float MENU_BTN = 36.0f;
 static const float MENU_STEP = 46.0f;
+// Hostile, as the instruments say it: the overview, the radar (#117).
+static const Color HOSTILE = { 230, 90, 80, 255 };
 static const float MENU_TOP = 12.0f;
 
 void Game::DrawStarfield()
@@ -375,12 +377,18 @@ void Game::DrawRadarContent(Rectangle area)
         {
             case Proto::EntityKind::Star: col = GOLD; break;
             case Proto::EntityKind::Planet: col = SKYBLUE; break;
-            case Proto::EntityKind::Station: col = Ui::ACCENT; break;
+            case Proto::EntityKind::Station:
+                col = HostileToPlayerFaction(e.faction) ? HOSTILE : Ui::ACCENT;
+                break;
             case Proto::EntityKind::Field: col = ORANGE; break;
             case Proto::EntityKind::Nebula: col = Color{ 150, 90, 200, 255 }; break;
             case Proto::EntityKind::Derelict: col = Color{ 130, 130, 120, 255 }; break;
             case Proto::EntityKind::Gate: col = Color{ 90, 200, 210, 255 }; break;
-            case Proto::EntityKind::Npc: col = FactionColor(e.faction); break;
+            // The radar is an instrument, so allegiance is allowed here -- as this player
+            // sees it: hostile is red, the rest wear their faction (#117).
+            case Proto::EntityKind::Npc:
+                col = HostileToPlayerFaction(e.faction) ? HOSTILE : FactionColor(e.faction);
+                break;
             default: col = GRAY; break;
         }
 
@@ -494,8 +502,7 @@ void Game::DrawOverviewContent(Rectangle area)
 
         // Hostiles in red, because this list is where allegiance belongs: the instrument, not
         // the world view (#117).
-        const Color nameCol =
-            r.hostile ? Color{ 230, 90, 80, 255 } : (held ? Ui::ACCENT : Ui::TEXT);
+        const Color nameCol = r.hostile ? HOSTILE : (held ? Ui::ACCENT : Ui::TEXT);
         // Clipped short of the type column, ending in "..": a name that runs into the next
         // column reads as one word with the type.
         std::string name = r.name;
