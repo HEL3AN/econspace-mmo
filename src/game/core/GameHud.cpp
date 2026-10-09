@@ -7,6 +7,7 @@
 // Part of the Game class; see Game.cpp.
 #include "core/Game.h"
 #include "render/TreatmentPanel.h"
+#include "sim/Overview.h"
 #include "sim/PlayerStep.h"
 
 #include "core/World.h"
@@ -170,7 +171,9 @@ void Game::SetupWindows()
     targetWin_ = windows_.back().get();
     targetWin_->SetContent([this](Rectangle a) { DrawTargetContent(a); });
 
-    windows_.push_back(std::make_unique<Window>("OVERVIEW", stub, false));
+    // Open from the start: it is the instrument a player flies by (#157), and a player who
+    // has to know a key exists before they can navigate has not been told how to play.
+    windows_.push_back(std::make_unique<Window>("OVERVIEW", stub, true));
     overviewWin_ = windows_.back().get();
     overviewWin_->SetContent([this](Rectangle a) { DrawOverviewContent(a); });
 
@@ -408,73 +411,131 @@ void Game::DrawRadarContent(Rectangle area)
 // List of system objects, sorted by distance; click — select.
 void Game::DrawOverviewContent(Rectangle area)
 {
-    // Read from the snapshot (M4c), not from the live objects. Selection/menu on click map
-    // back to the live entity by id (the action applies to the live object).
-    Vector2 sp = snapshot_.player.pos;
+    // The overview is the instrument a player flies by (#157): pick a thing from the list,
+    // then choose what to do about it with a right click. What goes in it and in what order
+    // is decided by Overview::Build, which a test can hold; this only draws it. Read from the
+    // snapshot (M4c), not from the live objects; a click maps back to the proxy by id.
+    const Vector2 sp = snapshot_.player.pos;
+    const Vector2 m = GetMousePosition();
+    const bool    clicked = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+    const bool    rclicked = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
+    const int     rowH = 20;
+    float         y = area.y;
 
-    std::vector<const Proto::EntitySnapshot*> list;
-    list.reserve(snapshot_.entities.size());
-    for (const auto& e : snapshot_.entities)
-        list.push_back(&e);
-    std::sort(list.begin(), list.end(),
-              [sp](const Proto::EntitySnapshot* a, const Proto::EntitySnapshot* b)
-              {
-                  float ax = a->pos.x - sp.x, ay = a->pos.y - sp.y;
-                  float bx = b->pos.x - sp.x, by = b->pos.y - sp.y;
-                  return (ax * ax + ay * ay) < (bx * bx + by * by);
-              });
+    // --- Tabs -------------------------------------------------------------------------
+    {
+        float x = area.x;
+        for (Overview::Filter f : Overview::AllFilters())
+        {
+            const char* label = Overview::Label(f);
+            const float w = (float)Ui::TextWidth(label, 13) + 14.0f;
+            Rectangle   tab{ x, y, w, 20.0f };
+            const bool  on = (overviewFilter_ == f);
+            const bool  over = CheckCollisionPointRec(m, tab);
+            DrawRectangleRec(tab, on ? Fade(Ui::ACCENT, 0.25f)
+                                     : (over ? Fade(Ui::ACCENT, 0.10f) : Fade(Ui::TITLE_BG, 0.6f)));
+            Ui::Text(label, (int)x + 7, (int)y + 3, 13, on ? Ui::ACCENT : Ui::TEXT_DIM);
+            if (over && clicked)
+                overviewFilter_ = f;
+            x += w + 3.0f;
+        }
+        y += 24.0f;
+    }
 
-    Vector2 m = GetMousePosition();
-    bool    clicked = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
-    bool    rclicked = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
-    int     rowH = 20;
-    int     y = (int)area.y;
-    int     selId = selected_ != nullptr ? selected_->GetId() : 0;
+    // --- Column headers: click to sort --------------------------------------------------
+    {
+        struct Col
+        {
+            const char*    label;
+            Overview::Sort sort;
+            float          x;
+        };
+        const Col cols[] = { { "name", Overview::Sort::Name, area.x + 4.0f },
+                             { "type", Overview::Sort::Kind, area.x + area.width * 0.58f },
+                             { "dist", Overview::Sort::Distance, area.x + area.width - 40.0f } };
+        for (const Col& c : cols)
+        {
+            const bool on = (overviewSort_ == c.sort);
+            Rectangle  hit{ c.x - 2.0f, y, 52.0f, 16.0f };
+            Ui::Text(TextFormat("%s%s", c.label, on ? " v" : ""), (int)c.x, (int)y, 11,
+                     on ? Ui::ACCENT : Ui::TEXT_DIM);
+            if (clicked && CheckCollisionPointRec(m, hit))
+                overviewSort_ = c.sort;
+        }
+        y += 16.0f;
+        DrawLineEx({ area.x, y }, { area.x + area.width, y }, 1.0f, Fade(Ui::PANEL_BORDER, 0.6f));
+        y += 3.0f;
+    }
 
-    for (const Proto::EntitySnapshot* e : list)
+    // --- Rows -------------------------------------------------------------------------
+    const std::vector<Overview::Row> rows = Overview::Build(
+        snapshot_.entities, sp, overviewFilter_, overviewSort_,
+        [this](const Proto::EntitySnapshot& e)
+        { return e.kind == Proto::EntityKind::Npc && HostileToPlayerFaction(e.faction); });
+
+    const int selId = selected_ != nullptr ? selected_->GetId() : 0;
+    for (const Overview::Row& r : rows)
     {
         if (y + rowH > area.y + area.height)
             break;  // doesn't fit — truncate the list
+        const Proto::EntitySnapshot& e = *r.entity;
+        Rectangle                    row{ area.x, y, area.width, (float)rowH };
 
-        Rectangle row{ area.x, (float)y, area.width, (float)rowH };
-        if (e->id != 0 && e->id == selId)
-            DrawRectangleRec(row, Fade(Ui::ACCENT, 0.22f));
-
-        float       dx = e->pos.x - sp.x;
-        float       dy = e->pos.y - sp.y;
-        const float dist = sqrtf(dx * dx + dy * dy);
-
-        // Marked when the ship is holding station on it, because a standing order with no
-        // visible sign of running is an order a player cannot trust (#157).
-        const bool held = (playerShip_ && e->id != 0 && playerShip_->GetHoldTargetId() == e->id &&
+        // Marked when the ship is holding station on it: a standing order with no visible
+        // sign of running is an order a player cannot trust.
+        const bool held = (playerShip_ && e.id != 0 && playerShip_->GetHoldTargetId() == e.id &&
                            playerShip_->GetHoldMode() != HoldMode::None);
-        if (held)
+        if (e.id != 0 && e.id == selId)
+            DrawRectangleRec(row, Fade(Ui::ACCENT, 0.22f));
+        else if (held)
             DrawRectangleRec(row, Fade(Ui::ACCENT, 0.12f));
+        else if (CheckCollisionPointRec(m, row))
+            DrawRectangleRec(row, Fade(Ui::ACCENT, 0.06f));
 
-        Ui::Text(e->name.c_str(), (int)area.x + 4, y + 3, 14, held ? Ui::ACCENT : Ui::TEXT);
-        // Thousands past ten thousand: a system is about to be forty times larger (M9) and
-        // a column of seven-digit numbers is a column nobody reads.
-        const char* d =
-            dist >= 10000.0f ? TextFormat("%.0fk", dist / 1000.0f) : TextFormat("%.0f", dist);
-        Ui::Text(d, (int)(area.x + area.width) - Ui::TextWidth(d, 14) - 4, y + 3, 14, Ui::TEXT_DIM);
+        // Hostiles in red, because this list is where allegiance belongs: the instrument, not
+        // the world view (#117).
+        const Color nameCol =
+            r.hostile ? Color{ 230, 90, 80, 255 } : (held ? Ui::ACCENT : Ui::TEXT);
+        // Clipped short of the type column, ending in "..": a name that runs into the next
+        // column reads as one word with the type.
+        std::string name = r.name;
+        const int   nameRoom = (int)(area.width * 0.58f) - 10;
+        if (Ui::TextWidth(name.c_str(), 14) > nameRoom)
+        {
+            while (!name.empty() && Ui::TextWidth((name + "..").c_str(), 14) > nameRoom)
+                name.pop_back();
+            name += "..";
+        }
+        Ui::Text(name.c_str(), (int)area.x + 4, (int)y + 3, 14, nameCol);
+        Ui::Text(r.kind.c_str(), (int)(area.x + area.width * 0.58f), (int)y + 4, 12, Ui::TEXT_DIM);
+        // Thousands past ten thousand: a column of seven-digit numbers is one nobody reads.
+        const char* d = r.distance >= 10000.0f ? TextFormat("%.0fk", r.distance / 1000.0f)
+                                               : TextFormat("%.0f", r.distance);
+        Ui::Text(d, (int)(area.x + area.width) - Ui::TextWidth(d, 14) - 4, (int)y + 3, 14,
+                 Ui::TEXT_DIM);
 
         if (CheckCollisionPointRec(m, row))
         {
             if (clicked)
             {
-                selected_ = FindEntityById(e->id);
+                selected_ = FindEntityById(e.id);
                 if (selected_ != nullptr)
                     targetWin_->SetOpen(true);
             }
-            else if (rclicked)  // RMB — action menu for the object
+            else if (rclicked)  // the actions on this thing: approach, orbit, warp, dock...
             {
-                selected_ = FindEntityById(e->id);
+                selected_ = FindEntityById(e.id);
                 if (selected_ != nullptr)
                     OpenContextMenu(selected_);
             }
         }
         y += rowH;
     }
+
+    if (rows.empty())
+        Ui::Text(overviewFilter_ == Overview::Filter::Hostile ? "nothing hostile in sight"
+                                                              : "nothing here",
+                 (int)area.x + 4, (int)y + 4, 12, Ui::TEXT_DIM);
 }
 
 void Game::DrawTargetContent(Rectangle area)

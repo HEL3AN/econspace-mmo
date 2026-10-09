@@ -12,6 +12,7 @@
 #include "render/GlyphBackend.h"
 #include "render/MaterialLibrary.h"
 #include "render/CameraRig.h"
+#include "sim/Overview.h"
 #include "render/Treatment.h"
 #include "player/Player.h"
 #include <string>
@@ -235,9 +236,12 @@ private:
     Window*                              statusWin_ = nullptr;
     Window*                              targetWin_ = nullptr;
     Window*                              overviewWin_ = nullptr;
-    Window*                              radarWin_ = nullptr;
-    Window*                              missionsWin_ = nullptr;
-    Window*                              settingsWin_ = nullptr;
+    // The overview's tab and sort (#157), kept across frames and windows being reopened.
+    Overview::Filter overviewFilter_ = Overview::Filter::All;
+    Overview::Sort   overviewSort_ = Overview::Sort::Distance;
+    Window*          radarWin_ = nullptr;
+    Window*          missionsWin_ = nullptr;
+    Window*          settingsWin_ = nullptr;
 
     bool galaxyMapOpen_ = false;  // full-screen galaxy map
 
