@@ -223,7 +223,7 @@ TcpListener::~TcpListener()
         CloseSocket((socket_t)sock_);
 }
 
-bool TcpListener::Listen(unsigned short port)
+bool TcpListener::Listen(unsigned short port, Exposure exposure)
 {
     socket_t s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (s == INVALID_SOCK)
@@ -235,7 +235,7 @@ bool TcpListener::Listen(unsigned short port)
     sockaddr_in addr;
     std::memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_addr.s_addr = htonl(exposure == Exposure::Public ? INADDR_ANY : INADDR_LOOPBACK);
     addr.sin_port = htons(port);
 
     if (bind(s, (sockaddr*)&addr, sizeof(addr)) != 0 || listen(s, 4) != 0)

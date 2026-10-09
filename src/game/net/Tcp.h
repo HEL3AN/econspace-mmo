@@ -61,7 +61,16 @@ class TcpListener
 public:
     ~TcpListener();
 
-    bool Listen(unsigned short port);
+    // Who may connect (#187). Loopback unless asked: a listener on a public interface is
+    // what Windows' firewall stops and asks about, once per executable path, and an
+    // unanswered prompt stalls an unattended server. It is also the safer default for a
+    // protocol with no transport encryption.
+    enum class Exposure
+    {
+        Loopback,  // this machine only
+        Public     // every interface
+    };
+    bool Listen(unsigned short port, Exposure exposure = Exposure::Loopback);
     // Accept a connection; nullptr if none is queued.
     std::unique_ptr<TcpConnection> Accept();
 

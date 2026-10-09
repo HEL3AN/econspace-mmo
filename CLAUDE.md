@@ -57,7 +57,8 @@ cmake -S . -B build -G "MinGW Makefiles"   # first build fetches and builds rayl
 cmake --build build
 ctest --test-dir build --output-on-failure
 
-./build/bin/server/econserver.exe host 50800        # authoritative server
+./build/bin/server/econserver.exe host 50800        # authoritative server, this machine only
+./build/bin/server/econserver.exe host 50800 --public   # ...reachable from other machines (#187)
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2   # account + secret
 ./build/bin/editor/worldeditor.exe
 ./build/bin/editor/worldeditor.exe gallery           # every archetype at once, for tuning a look (F3)
