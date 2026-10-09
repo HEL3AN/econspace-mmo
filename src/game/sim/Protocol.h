@@ -265,6 +265,10 @@ struct EntityLayout
     int         resource = -1;       // ResourceType: planet deposit / field ore (-1 none)
     double      reward = 0.0;        // derelict: loot reward
     std::string dest;                // gate: destination system id
+    // The archetype id (#195). What an object can do is its components (#34), and a client
+    // or an agent that knows the archetype can ask the registry instead of guessing from
+    // the kind -- which a dock a player builds (#44) would not match.
+    std::string archetype;
 };
 
 // Full static "layout" of a system — what the client builds the world proxy from.

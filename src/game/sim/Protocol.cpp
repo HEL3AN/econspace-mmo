@@ -518,7 +518,8 @@ std::string EncodeLayout(const SystemLayout& s)
                          { "orbit", e.orbitRadius },
                          { "res", e.resource },
                          { "reward", e.reward },
-                         { "dest", e.dest } });
+                         { "dest", e.dest },
+                         { "arch", e.archetype } });
     j["ents"] = ents;
     return j.dump();
 }
@@ -547,6 +548,7 @@ bool DecodeLayout(const std::string& s, SystemLayout& out)
             e.resource = ej.value("res", -1);
             e.reward = ej.value("reward", 0.0);
             e.dest = ej.value("dest", std::string());
+            e.archetype = ej.value("arch", std::string());
             out.entities.push_back(e);
         }
     return true;

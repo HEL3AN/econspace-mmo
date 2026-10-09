@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "core/Archetype.h"
 #include "sim/Observation.h"
 
 #include <string>
@@ -175,4 +176,38 @@ TEST_CASE("missing state degrades to fewer lines, not to a failure")
     std::string out = Obs::Describe(v, Obs::Detail::Full);
     CHECK(Has(out, "SYSTEM"));
     CHECK(Has(out, "SHIP"));
+}
+
+TEST_CASE("dockable is the archetype's component, not the kind's (#195)")
+{
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+
+    // A wreck someone fitted out as a dock, and a station shell with no dock at all. Both
+    // stand in for what a player will build (#44): the kind says nothing, the archetype
+    // says everything.
+    Proto::Snapshot s = BaseSnapshot();
+    s.entities.push_back(Ent(7, Proto::EntityKind::Derelict, { 0.0f, -500.0f }, "Fitted Hulk"));
+    s.entities.push_back(Ent(8, Proto::EntityKind::Station, { 0.0f, 500.0f }, "Empty Shell"));
+
+    std::map<int, Proto::EntityLayout> layout;
+    layout[7].id = 7;
+    layout[7].kind = Proto::EntityKind::Derelict;
+    layout[7].archetype = "station.trade_hub";  // has the dockable component
+    layout[8].id = 8;
+    layout[8].kind = Proto::EntityKind::Station;
+    layout[8].archetype = "derelict.wreck";  // does not
+
+    Obs::View v;
+    v.snapshot = &s;
+    v.layout = &layout;
+    const std::string out = Obs::Describe(v, Obs::Detail::Brief);
+
+    auto lineOf = [&](const char* name)
+    {
+        const size_t at = out.find(name);
+        REQUIRE(at != std::string::npos);
+        return out.substr(at, out.find('\n', at) - at);
+    };
+    CHECK(Has(lineOf("Fitted Hulk"), "dockable"));
+    CHECK_FALSE(Has(lineOf("Empty Shell"), "dockable"));
 }
