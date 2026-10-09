@@ -1,5 +1,6 @@
 #include "sim/Observation.h"
 
+#include "core/Archetype.h"
 #include "core/Faction.h"
 #include "economy/Resource.h"
 
@@ -116,7 +117,20 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
     }
     if (e.kind == Proto::EntityKind::Field && e.ore >= 0)
         extra = "  " + ResourceName((ResourceType)e.ore);
-    if (e.kind == Proto::EntityKind::Station)
+    // Dockable is a component, asked of the archetype the layout names (#195) -- the same
+    // question the server's docking pass asks (#34), so a dock a player builds (#44) is one
+    // here too. Without a layout to ask, a station is assumed to be one, as it always was.
+    bool dockable = e.kind == Proto::EntityKind::Station;
+    if (layout != nullptr)
+    {
+        auto it = layout->find(e.id);
+        if (it != layout->end() && !it->second.archetype.empty())
+        {
+            const Archetype* a = Archetypes::Find(it->second.archetype);
+            dockable = a != nullptr && a->components.Has(Component::Dockable);
+        }
+    }
+    if (dockable)
         extra = e.id == p.dockedStationId ? "  DOCKED HERE" : "  dockable";
     if (e.kind == Proto::EntityKind::Npc)
     {

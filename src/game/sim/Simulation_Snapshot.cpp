@@ -215,6 +215,7 @@ Proto::SystemLayout Simulation::BuildLayout(const std::string& systemId) const
         el.size = e->GetSize();
         el.color = e->GetColor();
         el.name = e->GetName();
+        el.archetype = e->GetArchetype() != nullptr ? e->GetArchetype()->id : std::string();
 
         // No `default:` on purpose, unlike the snapshot above. There the kind is copied
         // wholesale and the cases only add optional fields; here every kind has to be
