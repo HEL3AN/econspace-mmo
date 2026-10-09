@@ -458,6 +458,28 @@ struct NetStats
 
 static const double NET_REPORT_INTERVAL = 10.0;
 
+// The galaxy index goes to one client: at login, before its first layout, so by the time
+// it is told which system it is in it already knows what that system is called (#206).
+// Counted with the galaxy statistics -- it is the same kind of message, only rarer.
+static void SendUniverse(HostClient& hc, const Simulation& sim, NetStats& net)
+{
+    const std::string u = Proto::EncodeUniverse(sim.Universe());
+    net.galaxies += (double)u.size();
+    hc.conn->Send(u);
+}
+
+// ...and to everyone logged in, whenever the index changes. Nothing changes it yet; a
+// generated region (#140) and a player discovering a system (#144) are what will call this,
+// and #144 is also where "everyone gets the same index" turns into "each player gets what
+// they know". [[maybe_unused]] only until that first caller lands.
+[[maybe_unused]] static void BroadcastUniverse(std::vector<HostClient>& clients,
+                                               const Simulation& sim, NetStats& net)
+{
+    for (HostClient& hc : clients)
+        if (hc.sessionId != 0 && hc.conn)
+            SendUniverse(hc, sim, net);
+}
+
 // How often each client is sent a snapshot. Not once per loop iteration, which is what it
 // used to be -- that made the send rate an accident of how fast the loop happened to spin,
 // and it was spinning far faster than anything could be seen (#16).
@@ -694,6 +716,7 @@ static int RunHost(unsigned short port, bool isPublic)
                                    h.account.c_str());
                     }
                     hc.wasDocked = s.IsDocked();
+                    SendUniverse(hc, sim, net);  // the index first: the layout names a system
                     const std::string lay = Proto::EncodeLayout(sim.BuildLayout(s.systemId));
                     const std::string gal = Proto::EncodeGalaxy(sim.BuildGalaxyState());
                     net.layouts += (double)lay.size();

@@ -55,7 +55,7 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     SetTargetFPS(60);
     Ui::LoadAssets();
 
-    // Galaxy index and starting system. In a dev build we read the source data/
+    // Presentation data: factions, archetypes, materials. In a dev build we read the source data/
     // (the same path the editor writes to), otherwise a copy next to the exe.
 #ifdef GAME_DATA_DIR
     dataDir_ = GAME_DATA_DIR;
@@ -68,7 +68,7 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     // object in the client with no archetype: no glyph, no sprite, no components (#127).
     if (!Archetypes::Load(dataDir_ + "archetypes.json"))
         TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());
-    universe_ = WorldLoader::LoadUniverse(dataDir_ + "universe.json");
+    // No galaxy index here: the server sends it at login (#206), before the first layout.
     if (!Render::Materials::Load(dataDir_ + "materials.json"))
         TraceLog(LOG_WARNING, "Materials: %s", Render::Materials::Error().c_str());
     materials_.Load(dataDir_);  // one shader per material (#121)
@@ -435,7 +435,8 @@ void Game::Undock()
 const WorldLoader::SystemInfo* Game::CurrentSystemInfo() const
 {
     // Which system the player is in comes from the snapshot; the client has no simulation
-    // to ask. The system list itself (Universe) is static content, read locally.
+    // to ask. The system list itself (Universe) is the one the server sent at login (#206);
+    // until it arrives this finds nothing, and callers already handle that.
     const std::string& active = snapshot_.systemId;
     for (const auto& s : universe_.systems)
         if (s.id == active)

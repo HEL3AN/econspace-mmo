@@ -128,7 +128,15 @@ void Game::BuildClientSnapshot()
         }
 
         std::string type = Proto::MessageType(msg);
-        if (type == "layout")
+        if (type == "universe")
+        {
+            // The galaxy index (#206): replaced whole, because it is sent whole -- at login
+            // and again whenever the server's index changes.
+            WorldLoader::Universe u;
+            if (Proto::DecodeUniverse(msg, u))
+                universe_ = std::move(u);
+        }
+        else if (type == "layout")
         {
             Proto::SystemLayout lay;
             if (Proto::DecodeLayout(msg, lay))

@@ -21,7 +21,10 @@ data/
 ```
 
 After a build, `data/` is copied next to `econspace.exe` by the `copy_data` target
-(on every build). The game loads `universe.json`, then the starting system.
+(on every build). The server loads `universe.json`, then the systems. Clients and
+`econagent` never read it: the server sends them the index at login as a `universe`
+message (#206), without the `file` names, so a system that exists only on the server is
+on their map too.
 
 ## Coordinate System and Scale
 

@@ -48,8 +48,7 @@ void TraceToStderr(int level, const char* text, va_list args)
     std::fputc('\n', stderr);
 }
 
-Agent::Session        g_session;
-WorldLoader::Universe g_universe;
+Agent::Session g_session;
 
 // MCP wants tool results as a list of content blocks. Everything here answers with text,
 // because text is what a model reads and what a human debugging this can read too.
@@ -112,7 +111,7 @@ Proto::Command OrderCommand(Orders::Kind kind)
 std::string DescribeGalaxy()
 {
     std::string out = "GALAXY\n";
-    for (const WorldLoader::SystemInfo& si : g_universe.systems)
+    for (const WorldLoader::SystemInfo& si : g_session.Universe().systems)
     {
         std::string line = "  " + si.id + "  " + si.name;
         for (const Proto::GalaxySystemStat& g : g_session.Galaxy().systems)
@@ -132,7 +131,7 @@ std::string DescribeGalaxy()
     }
 
     out += "GATES\n";
-    for (const WorldLoader::SystemLink& l : g_universe.links)
+    for (const WorldLoader::SystemLink& l : g_session.Universe().links)
         out += "  " + l.a + " <-> " + l.b + "\n";
 
     if (!g_session.Galaxy().events.empty())
@@ -270,8 +269,7 @@ std::vector<Tool> BuildTools()
               RequireLive();
               const std::string d =
                   args.value("detail", std::string("brief")) == "full" ? "full" : "brief";
-              return g_session.Describe(d == "full" ? Obs::Detail::Full : Obs::Detail::Brief,
-                                        &g_universe);
+              return g_session.Describe(d == "full" ? Obs::Detail::Full : Obs::Detail::Brief);
           } });
 
     tools.push_back({ "move_to",
@@ -637,9 +635,8 @@ int main(int argc, char** argv)
     // that lives in the archetype rather than in the snapshot.
     if (!Archetypes::Load(dataDir + "archetypes.json"))
         Rpc::Log("econagent: " + Archetypes::Error());
-    // The galaxy index is local, exactly as it is for the game client: GalaxyState carries
-    // per-system statistics but not names, map positions or links.
-    g_universe = WorldLoader::LoadUniverse(dataDir + "universe.json");
+    // The galaxy index is NOT read here: the server sends it at login, exactly as it does
+    // to the game client (#206), and the session keeps it.
 
     if (selftest)
     {
@@ -691,7 +688,7 @@ int main(int argc, char** argv)
                if (uri == "econspace://system")
                {
                    RequireLive();
-                   text = g_session.Describe(Obs::Detail::Full, &g_universe);
+                   text = g_session.Describe(Obs::Detail::Full);
                }
                else if (uri == "econspace://galaxy")
                {
