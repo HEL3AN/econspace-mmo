@@ -218,7 +218,20 @@ INFO: Materials: 1 of 2 have a shader
 ```
 
 The relay is drawn the way it was before it had a material, and everything on `hull` is
-untouched. A **missing** `.fs` file is treated the same way, but only shows in that last count.
+untouched. A shader that compiles but will not **link** -- a function declared and never
+defined, say -- is caught the same way, though raylib hands back its default shader rather than
+nothing ([#190](https://github.com/HEL3AN/econspace-mmo/issues/190)):
+
+```text
+WARNING: SHADER: [ID 5] Link error: ERROR: Undefined function call: "undefinedHelper(f1;)".  Function not found.
+WARNING: SHADER: Failed to load custom shader code, using default shader
+WARNING: Material 'hull': shader would not link -- drawing plain
+INFO: Materials: 0 of 1 have a shader
+```
+
+A **missing** `.fs` file is named too (`Material 'glint': no shader at ... -- drawing plain`).
+Every one of these is also listed in the F10 panel, under *materials drawn plain* --
+`worldeditor gallery shapes settings` opens straight onto it.
 
 **Two failures that say nothing at all:** an archetype whose `material` names an id that is not
 in `materials.json` is drawn plain, and so is one with the field misspelled. If an object will

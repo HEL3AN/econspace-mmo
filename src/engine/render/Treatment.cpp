@@ -1,5 +1,6 @@
 #include "render/Treatment.h"
 
+#include "rlgl.h"
 #include <algorithm>
 
 namespace Render
@@ -42,17 +43,27 @@ void Treatment::Load(const std::string& dataDir)
         if (!FileExists(path.c_str()))
         {
             problems_.push_back(std::string(PassName(k)) + ": no " + path);
+            TraceLog(LOG_WARNING, "Treatment: %s has no shader at %s -- pass dropped", PassName(k),
+                     path.c_str());
             continue;
         }
 
         // The default vertex shader is raylib's own; only the fragment stage differs.
         Shader s = LoadShader(nullptr, path.c_str());
+        // This is the case the whole class exists for. It is a property of the machine,
+        // not of the build, so it is reported and stepped over. A shader that compiles
+        // and then fails to link comes back as raylib's *default* shader rather than as
+        // nothing, so it has to be compared against that too (#190): kept, it would be a
+        // pass that silently draws the picture unchanged.
+        const char* failed = nullptr;
         if (s.id == 0 || s.locs == nullptr)
+            failed = "would not compile";
+        else if (s.id == rlGetShaderIdDefault())
+            failed = "would not link";
+        if (failed != nullptr)
         {
-            // This is the case the whole class exists for. It is a property of the
-            // machine, not of the build, so it is reported and stepped over.
-            problems_.push_back(std::string(PassName(k)) + ": shader would not compile");
-            TraceLog(LOG_WARNING, "Treatment: %s would not compile -- pass dropped", PassName(k));
+            problems_.push_back(std::string(PassName(k)) + ": shader " + failed);
+            TraceLog(LOG_WARNING, "Treatment: %s %s -- pass dropped", PassName(k), failed);
             continue;
         }
 

@@ -1,5 +1,7 @@
 #include "render/MaterialLibrary.h"
 
+#include "rlgl.h"
+
 namespace Render
 {
 
@@ -18,15 +20,25 @@ void MaterialLibrary::Load(const std::string& dataDir)
         if (!FileExists(path.c_str()))
         {
             problems_.push_back(m.id + ": no " + path);
+            TraceLog(LOG_WARNING, "Material '%s': no shader at %s -- drawing plain", m.id.c_str(),
+                     path.c_str());
             continue;
         }
 
         Shader s = LoadShader(nullptr, path.c_str());
+        // A shader that compiles but will not link comes back as raylib's default shader,
+        // not as nothing (#190). Counted as loaded, the object would be drawn flat and
+        // unlit by the default shader, with the log saying every material had one.
+        const char* failed = nullptr;
         if (s.id == 0 || s.locs == nullptr)
+            failed = "would not compile";
+        else if (s.id == rlGetShaderIdDefault())
+            failed = "would not link";
+        if (failed != nullptr)
         {
-            problems_.push_back(m.id + ": shader would not compile");
-            TraceLog(LOG_WARNING, "Material '%s': shader would not compile -- drawing plain",
-                     m.id.c_str());
+            problems_.push_back(m.id + ": shader " + failed);
+            TraceLog(LOG_WARNING, "Material '%s': shader %s -- drawing plain", m.id.c_str(),
+                     failed);
             continue;
         }
 
