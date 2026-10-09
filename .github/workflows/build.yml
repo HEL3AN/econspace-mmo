@@ -262,3 +262,57 @@ jobs:
           status=$?
           kill $server_pid 2>/dev/null || true
           exit $status
+
+  # macOS (#178). The transport has carried a macOS branch since #12 -- SO_NOSIGPIPE on the
+  # socket where Linux passes MSG_NOSIGNAL per send -- and raylib and GLSL 330 core both work
+  # there, so this job is mostly about Apple Clang, which is strict about different things
+  # than GCC. What it cannot check is the picture: a runner has no display. "Builds and
+  # passes" is true here; "looks right on a Mac" needs somebody with a Mac.
+  macos:
+    name: macOS (Apple Clang)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake -S . -B build -DWARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Server smoke tests
+        run: |
+          ./build/bin/server/econserver hosttest
+          ./build/bin/server/econserver accttest
+          ./build/bin/server/econserver worldtest
+          ./build/bin/server/econserver ordertest
+
+      - name: Agent selftest against a live server
+        run: |
+          ./build/bin/server/econserver host 50800 &
+          server_pid=$!
+          sleep 5
+          ./build/bin/agent/econagent selftest 127.0.0.1 50800
+          status=$?
+          kill $server_pid 2>/dev/null || true
+          exit $status
+
+      - name: The example bot plays
+        run: |
+          ./build/bin/server/econserver host 50802 > bot-server.log 2>&1 &
+          server_pid=$!
+          sleep 5
+          python3 examples/agents/mining_bot.py ./build/bin/agent/econagent 127.0.0.1 50802
+          status=$?
+          kill $server_pid 2>/dev/null || true
+          exit $status
