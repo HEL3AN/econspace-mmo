@@ -173,7 +173,8 @@ And what every part may carry:
 | `lat`, `lon` | — | giving either puts the part on a sphere, below |
 
 Size defaults are `radius` 1, `width` 0.1, `length` 1, `sides` 6, `count` 3. An unknown `form`
-or `role` refuses the whole archetype file; an unknown *field* is silently ignored.
+or `role` refuses the whole archetype file, and so does an unknown *field*
+([#191](https://github.com/HEL3AN/econspace-mmo/issues/191)).
 
 **The vocabulary is narrow on purpose.** A few primitives with strict proportions make a family
 of objects that looks intentional; an open-ended set of arbitrary shapes reads as programmer

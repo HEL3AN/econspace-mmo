@@ -220,9 +220,17 @@ INFO: Materials: 1 of 2 have a shader
 The relay is drawn the way it was before it had a material, and everything on `hull` is
 untouched. A **missing** `.fs` file is treated the same way, but only shows in that last count.
 
-**Two failures that say nothing at all:** an archetype whose `material` names an id that is not
-in `materials.json` is drawn plain, and so is one with the field misspelled. If an object will
-not take a material, check those two first.
+**An archetype naming a material that does not exist** is drawn plain, and the client and the
+editor say which when they load
+([#191](https://github.com/HEL3AN/econspace-mmo/issues/191)):
+
+```text
+ERROR: Materials: archetype 'station.relay' names material 'glnit', which is not defined -- drawing it plain
+```
+
+It cannot be an archetype load error, because the server and the tests never load materials;
+the test suite cross-checks the shipped files instead. A misspelled `material` *field* is
+refused when the archetypes load, like any other unknown field.
 
 ---
 

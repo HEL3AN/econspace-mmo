@@ -1,5 +1,6 @@
 #include "render/Silhouette.h"
 
+#include "core/JsonKeys.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cmath>
@@ -234,6 +235,8 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
     const json* parts = &j;
     if (j.is_object())
     {
+        if (!OnlyKnownKeys(j, { "tilt", "parts" }, error))
+            return false;
         s.axisTilt = j.value("tilt", s.axisTilt);
         if (!j.contains("parts"))
         {
@@ -255,6 +258,16 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
             error = "a part is an object";
             return false;
         }
+        // A misspelled field would be read as absent and draw the default (#191), which
+        // for a part is the kind of wrong nobody notices until it is the only one left.
+        if (!OnlyKnownKeys(
+                e, { "form",   "role",        "at",          "sides",       "angle",
+                     "radius", "width",       "length",      "count",       "filled",
+                     "repeat", "mirror",      "minPixels",   "jitterAngle", "jitterScale",
+                     "alpha",  "orbitRadius", "orbitPeriod", "orbitPhase",  "orbitTilt",
+                     "lat",    "lon",         "spin",        "blink",       "onlyThrusting" },
+                error))
+            return false;
         Part p;
         if (!FormFromName(e.value("form", std::string("disc")), p.form))
         {

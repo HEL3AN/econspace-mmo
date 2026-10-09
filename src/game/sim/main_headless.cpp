@@ -53,8 +53,14 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
     Factions::Load(dataDir + "factions.json");
     // Must precede materialization: every entity constructor looks itself up here, and a
     // world whose objects have no components is a world where nothing can be docked with.
+    //
+    // So a registry that will not load stops the server rather than serving an undockable,
+    // invisible world to everyone who connects (#191).
     if (!Archetypes::Load(dataDir + "archetypes.json"))
+    {
         fprintf(stderr, "FATAL: %s\n", Archetypes::Error().c_str());
+        exit(1);
+    }
     sim.LoadUniverse(dataDir + "universe.json");
     sim.Seed(0xC0FFEEu);
     const Save::Result world = worldPath.empty() ? Save::Result::Missing : sim.LoadWorld(worldPath);
@@ -1145,7 +1151,10 @@ int main(int argc, char** argv)
 
     Factions::Load(dataDir + "factions.json");
     if (!Archetypes::Load(dataDir + "archetypes.json"))
+    {
         fprintf(stderr, "FATAL: %s\n", Archetypes::Error().c_str());
+        return 1;
+    }
 
     Simulation sim;
     sim.LoadUniverse(dataDir + "universe.json");

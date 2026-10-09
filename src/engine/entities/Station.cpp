@@ -25,15 +25,26 @@ static const char* ArchetypeIdForStationRole(StationRole role)
     return "station.trade_hub";
 }
 
+bool ParseStationRole(const std::string& s, StationRole& out)
+{
+    if (s == "TradeHub")
+        out = StationRole::TradeHub;
+    else if (s == "MiningOutpost")
+        out = StationRole::MiningOutpost;
+    else if (s == "Shipyard")
+        out = StationRole::Shipyard;
+    else if (s == "Military")
+        out = StationRole::Military;
+    else
+        return false;
+    return true;
+}
+
 StationRole StationRoleFromString(const std::string& s)
 {
-    if (s == "MiningOutpost")
-        return StationRole::MiningOutpost;
-    if (s == "Shipyard")
-        return StationRole::Shipyard;
-    if (s == "Military")
-        return StationRole::Military;
-    return StationRole::TradeHub;
+    StationRole role = StationRole::TradeHub;
+    ParseStationRole(s, role);
+    return role;
 }
 
 Station::Station(Vector2 pos, float size, std::string name, FactionId faction, StationRole role)

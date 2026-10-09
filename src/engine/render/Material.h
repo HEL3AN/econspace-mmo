@@ -106,6 +106,12 @@ const Material* Find(const std::string& id);
 const std::vector<Material>& All();
 
 const std::string& Error();
+
+// Every archetype in the registry that names a material this registry does not define,
+// one line each, naming both. Such an object draws plain -- exactly what it did before
+// materials existed -- so nothing on screen would ever say it was a typo (#191). The
+// check cannot live in Archetypes::Load: the server and the tests load no materials.
+std::vector<std::string> UnknownInArchetypes();
 }  // namespace Materials
 
 }  // namespace Render

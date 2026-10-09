@@ -1,5 +1,6 @@
 #include "render/Material.h"
 
+#include "core/Archetype.h"
 #include "render/Scene.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -232,6 +233,16 @@ const std::vector<Material>& All()
 const std::string& Error()
 {
     return g_error;
+}
+
+std::vector<std::string> UnknownInArchetypes()
+{
+    std::vector<std::string> out;
+    for (const Archetype& a : Archetypes::All())
+        if (!a.visual.material.empty() && Find(a.visual.material) == nullptr)
+            out.push_back("archetype '" + a.id + "' names material '" + a.visual.material +
+                          "', which is not defined -- drawing it plain");
+    return out;
 }
 
 }  // namespace Materials

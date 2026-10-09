@@ -124,7 +124,11 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
     if (data.contains("planets"))
         for (const json& p : data["planets"])
         {
-            PlanetType type = PlanetTypeFromString(p.value("type", std::string("Rocky")));
+            const std::string typeName = p.value("type", std::string("Rocky"));
+            PlanetType        type = PlanetType::Rocky;
+            if (!ParsePlanetType(typeName, type))
+                TraceLog(LOG_WARNING, "WorldLoader: planet has unknown type '%s' -- built as Rocky",
+                         typeName.c_str());
             // Color is optional: if not set, the planet's default type color is used.
             Color color = p.contains("color") ? ColorFromJson(p["color"]) : PlanetTypeColor(type);
             entities.push_back(std::make_unique<Planet>(
@@ -137,8 +141,15 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
     {
         for (const json& s : data["stations"])
         {
-            FactionId   faction = FactionFromString(s.value("faction", std::string("Independent")));
-            StationRole role = StationRoleFromString(s.value("role", std::string("TradeHub")));
+            FactionId faction = FactionFromString(s.value("faction", std::string("Independent")));
+            const std::string roleName = s.value("role", std::string("TradeHub"));
+            StationRole       role = StationRole::TradeHub;
+            // Still built, so one typo does not empty a system -- but said by name, since
+            // the station it becomes is a different station (#191).
+            if (!ParseStationRole(roleName, role))
+                TraceLog(LOG_WARNING,
+                         "WorldLoader: station '%s' has unknown role '%s' -- built as TradeHub",
+                         s.value("name", std::string("?")).c_str(), roleName.c_str());
             entities.push_back(std::make_unique<Station>(Vec2FromJson(s["pos"]), (float)s["size"],
                                                          s["name"], faction, role));
         }

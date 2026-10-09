@@ -303,6 +303,7 @@ add_executable(tests
     tests/lighting_tests.cpp
     tests/treatment_tests.cpp
     tests/material_tests.cpp
+    tests/load_mistake_tests.cpp   # content mistakes that used to load as something else (#191)
     tests/silhouette_tests.cpp
     tests/camera_tests.cpp
     tests/overview_tests.cpp
