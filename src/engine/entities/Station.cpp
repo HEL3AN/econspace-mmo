@@ -37,8 +37,8 @@ StationRole StationRoleFromString(const std::string& s)
 }
 
 Station::Station(Vector2 pos, float size, std::string name, FactionId faction, StationRole role)
-    : Entity(pos, size, FactionColor(faction), EntityKind::Station), name_(std::move(name)),
-      faction_(faction), role_(role)
+    : Entity(pos, size, LIGHTGRAY, EntityKind::Station), name_(std::move(name)), faction_(faction),
+      role_(role)
 {
     SetArchetype(ArchetypeIdForStationRole(role));
 }

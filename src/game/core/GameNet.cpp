@@ -35,9 +35,11 @@ void Game::BuildNetworkBeams()
     beams_.clear();
     for (const FireEvent& f : snapshot_.fires)
     {
+        // Relative to the one looking, which is what may colour the world: your own fire and
+        // fire at you. Everyone else's is one colour, not their faction's (#117).
         Color c = f.fromPlayer       ? SKYBLUE
                   : f.targetIsPlayer ? ORANGE
-                                     : Fade(FactionColor(f.shooterFaction), 0.85f);
+                                     : Fade(Color{ 255, 220, 170, 255 }, 0.7f);
         beams_.push_back({ f.from, f.to, c });
     }
 }

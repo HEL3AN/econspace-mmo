@@ -38,17 +38,21 @@ void Entity::Update(float dt)
 
 Render::Item Entity::Describe() const
 {
-    // The archetype supplies the look; the instance overrides what only it knows. The
-    // colour is the instance's on purpose -- faction paint and planet type are chosen per
-    // object, and the archetype's colour is the default they start from.
+    // The archetype supplies the look, colour included: colour in the world view is an art
+    // decision about what a thing is (#117). It used to be the instance's, which meant a
+    // station wore its faction -- and allegiance depends on who is looking, so one colour
+    // was wrong for half the players in the system. Allegiance lives in the instruments
+    // now (radar, overview, target panel). The instance's colour is only the fallback for
+    // an entity with no archetype.
     Render::Item it;
     if (archetype_ != nullptr)
         it = Render::FromArchetype(*archetype_, pos_, size_);
+    else
+        it.color = color_;
     it.id = id_;
     it.kind = kind_;
     it.pos = pos_;
     it.size = size_;
-    it.color = color_;
     it.label = GetName();
     return it;
 }
