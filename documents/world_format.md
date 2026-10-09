@@ -6,6 +6,9 @@ files.
 
 Parsing — `src/engine/core/WorldLoader.cpp`. Entities — `src/engine/entities/`.
 
+This is the reference. To add something step by step — an archetype, its shape, a material,
+a screen pass — start with the worked how-tos in [docs/howto/](../docs/howto/README.md).
+
 ## File Layout
 
 ```

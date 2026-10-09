@@ -25,6 +25,7 @@ The repository has several documents at the top. Each owns one thing:
 | [ARCHITECTURE.md](ARCHITECTURE.md) | how the code fits together |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | how to work here — build on each platform, tests, style, pull requests |
 | [docs/agents/](docs/agents/) | **how to build your own bot** on the game's MCP server |
+| [docs/howto/](docs/howto/) | **how to add a new kind of object** — an archetype, its shape, a material, a screen pass — worked by example |
 | [documents/world_format.md](documents/world_format.md) | the contract for everything in `data/` — archetypes, shapes, materials, the screen treatment |
 | [ROADMAP.md](ROADMAP.md) | where it is going, milestone by milestone |
 | [DECISIONS.md](DECISIONS.md) | *why* things are the way they are — append-only, newest at the bottom |
@@ -161,6 +162,7 @@ src/
   editor/          the world editor and the gallery
 tests/             the doctest suite
 docs/agents/       building your own bot
+docs/howto/        adding a new kind of object, by example
 documents/         the data format, and design notes (older ones are marked historical)
 ```
 

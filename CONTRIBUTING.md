@@ -5,7 +5,7 @@ Thanks for your interest! EconSpace is an open-source, engineering-driven space-
 ## Ways to help
 
 - **Bots** — build one on the game's MCP server and tell us what it could not do. Start with [docs/agents/](docs/agents/README.md).
-- **World content** — new kinds of object, composed from parts in `data/archetypes.json` and judged in the gallery (`worldeditor gallery shapes`); systems and galaxy links with the editor. The format is [`documents/world_format.md`](documents/world_format.md).
+- **World content** — new kinds of object, composed from parts in `data/archetypes.json` and judged in the gallery (`worldeditor gallery shapes`); systems and galaxy links with the editor. Start with the worked how-tos in [docs/howto/](docs/howto/README.md); the format they rest on is [`documents/world_format.md`](documents/world_format.md).
 - **Art** — welcome, though no longer what the project is blocked on: an object's look is generated from its archetype, and a hand-made sprite wins wherever one exists. See [`documents/texture_assets.md`](documents/texture_assets.md).
 - **Gameplay & code** — see the [issue tracker](../../issues) and [ROADMAP.md](ROADMAP.md).
 - **Docs** — improvements to the design docs in [`documents/`](documents/) and the top-level guides.
