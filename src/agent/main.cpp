@@ -23,12 +23,15 @@
 
 #include "raylib.h"
 
+#include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -65,7 +68,8 @@ void RequireLive()
         throw Rpc::Error{ Rpc::INTERNAL_ERROR,
                           "the server ended this session: " + g_session.ByeReason() };
     if (!g_session.Alive())
-        throw Rpc::Error{ Rpc::INTERNAL_ERROR, "connection to the server is closed" };
+        throw Rpc::Error{ Rpc::INTERNAL_ERROR,
+                          "connection to the server is closed: " + g_session.CloseReason() };
 }
 
 double NumberOr(const Rpc::Json& args, const char* key, double fallback)
@@ -474,6 +478,35 @@ Rpc::Json PromptsList(bool withText)
     return list;
 }
 
+// What the selftest is doing right now, for the watchdog to name if it never finishes.
+std::atomic<const char*> g_phase{ "starting" };
+
+// A self-test that can hang is a broken self-test: in CI it holds the job until somebody
+// cancels it, and the log it leaves says nothing about where it stopped. Every wait in the
+// script has its own timeout, so this should never fire -- it is there for what those
+// cannot cover (a call that blocks inside the OS, a process that will not exit), and when
+// it does fire it says what it was waiting for and exits non-zero.
+//
+// The budget is the sum of the script's own waits with room to spare: connect 10 s, login
+// 10 s, first snapshot 5 s, two order acknowledgements of 2 s and the flight of 120 s.
+constexpr double SELFTEST_BUDGET_SECONDS = 240.0;
+
+void StartSelftestWatchdog()
+{
+    std::thread(
+        []
+        {
+            std::this_thread::sleep_for(std::chrono::duration<double>(SELFTEST_BUDGET_SECONDS));
+            // Read without a lock on purpose: this is a last word before exiting, and a
+            // torn read of a status string is better than a watchdog that can deadlock.
+            std::fprintf(stderr, "Agent selftest: FAIL -- still %s after %.0f s, giving up\n",
+                         g_phase.load(), SELFTEST_BUDGET_SECONDS);
+            std::fflush(stderr);
+            std::_Exit(3);
+        })
+        .detach();
+}
+
 // Scripted agent: the same tools an LLM calls, driven by a fixed sequence.
 //
 // This is what keeps the agent seam honest in CI. Testing it with a real model would cost
@@ -487,6 +520,7 @@ int Selftest(const std::vector<Tool>& tools)
     { std::fprintf(stderr, "  %-22s %s\n", what, ok ? "OK" : "FAIL"); };
 
     // 1) The world is visible at all.
+    g_phase = "observing";
     std::string world = RunTool(tools, "observe", Rpc::Json::object());
     bool        observed =
         world.find("SHIP") != std::string::npos && world.find("SYSTEM") != std::string::npos;
@@ -508,6 +542,7 @@ int Selftest(const std::vector<Tool>& tools)
     bool ordered = false, arrived = false;
     if (stationId != 0)
     {
+        g_phase = "giving a move_to order";
         std::string reply = RunTool(
             tools, "move_to",
             Rpc::Json{ { "target_id", stationId }, { "warp", true }, { "stop_distance", 400 } });
@@ -516,6 +551,7 @@ int Selftest(const std::vector<Tool>& tools)
 
         if (ordered)
         {
+            g_phase = "waiting for the order to complete";
             std::string ev =
                 RunTool(tools, "wait_for_event", Rpc::Json{ { "timeout_seconds", 120 } });
             arrived = ev.find("order_done") != std::string::npos;
@@ -524,13 +560,21 @@ int Selftest(const std::vector<Tool>& tools)
     }
 
     // 4) An order naming something absent must be refused, not silently swallowed.
+    g_phase = "waiting for a bad order to be refused";
     std::string bogus = RunTool(tools, "dock", Rpc::Json{ { "station_id", 999999 } });
     bool        refused = bogus.find("refused") != std::string::npos ||
                           bogus.find("not in this system") != std::string::npos;
     note("bad target refused", refused);
 
     const bool ok = observed && stationId != 0 && ordered && arrived && refused;
+    // A failure that is really a lost connection should say so, rather than leave a list of
+    // FAILs to be read as five separate bugs.
+    if (!ok && !g_session.ByeReason().empty())
+        std::fprintf(stderr, "  the server ended the session: %s\n", g_session.ByeReason().c_str());
+    else if (!ok && !g_session.Alive())
+        std::fprintf(stderr, "  the connection closed: %s\n", g_session.CloseReason().c_str());
     std::fprintf(stderr, "Agent selftest: %s\n", ok ? "PASS" : "FAIL");
+    g_phase = "exiting";
     return ok ? 0 : 1;
 }
 
@@ -597,6 +641,11 @@ int main(int argc, char** argv)
     // per-system statistics but not names, map positions or links.
     g_universe = WorldLoader::LoadUniverse(dataDir + "universe.json");
 
+    if (selftest)
+    {
+        StartSelftestWatchdog();
+        g_phase = "connecting and logging in";
+    }
     if (!g_session.Connect(host, port, account, secret))
     {
         std::fprintf(stderr, "econagent: could not connect to %s:%u\n", host.c_str(), port);
@@ -606,6 +655,7 @@ int main(int argc, char** argv)
 
     // Give the server a moment to send the opening layout and snapshot, so the first
     // observe has a world in it rather than "no world state yet".
+    g_phase = "waiting for the first snapshot";
     g_session.WaitUntil([] { return g_session.HasSnapshot(); }, 5.0);
 
     const std::vector<Tool> tools = BuildTools();

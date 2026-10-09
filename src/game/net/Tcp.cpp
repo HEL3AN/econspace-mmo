@@ -9,12 +9,14 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
 
 #include <cstdint>
 #include <cstring>
+#include <string>
 
 namespace Net
 {
@@ -44,6 +46,11 @@ void SetNonBlocking(socket_t s)
     u_long mode = 1;
     ioctlsocket(s, FIONBIO, &mode);
 }
+// A non-blocking connect that has started but not finished.
+bool ConnectPending(int e)
+{
+    return e == WSAEWOULDBLOCK;
+}
 // Windows never raises a signal for writing to a dead socket; send returns an error.
 constexpr int SEND_FLAGS = 0;
 #else
@@ -62,6 +69,10 @@ bool WouldBlock(int e)
 void CloseSocket(socket_t s)
 {
     close(s);
+}
+bool ConnectPending(int e)
+{
+    return e == EINPROGRESS;
 }
 void SetNonBlocking(socket_t s)
 {
@@ -122,7 +133,7 @@ void TcpConnection::Send(const std::string& msg)
     // everyone else than growing a send buffer until the process dies (#14).
     if (outBuf_.size() + msg.size() + 4 > MAX_SEND_BACKLOG)
     {
-        alive_ = false;
+        Fail("send backlog over the cap: the peer stopped reading");
         outBuf_.clear();
         return;
     }
@@ -148,14 +159,15 @@ void TcpConnection::Pump()
         }
         else if (n == 0)
         {
-            alive_ = false;
+            Fail("send accepted nothing");
             break;
         }
         else
         {
-            if (WouldBlock(LastError()))
+            const int e = LastError();
+            if (WouldBlock(e))
                 break;  // socket buffer full — send the rest later
-            alive_ = false;
+            Fail("send failed (error " + std::to_string(e) + ")");
             break;
         }
     }
@@ -172,24 +184,32 @@ void TcpConnection::Pump()
             // a peer can stream bytes under one oversized header until memory runs out.
             if (inBuf_.size() > MAX_FRAME_BYTES + 4)
             {
-                alive_ = false;
+                Fail("incoming frame over the cap");
                 inBuf_.clear();
                 break;
             }
         }
         else if (n == 0)
         {
-            alive_ = false;
+            Fail("peer closed the connection");
             break;
         }
         else
         {
-            if (WouldBlock(LastError()))
+            const int e = LastError();
+            if (WouldBlock(e))
                 break;  // no data yet
-            alive_ = false;
+            Fail("recv failed (error " + std::to_string(e) + ")");
             break;
         }
     }
+}
+
+void TcpConnection::Fail(const std::string& why)
+{
+    if (alive_)
+        closeReason_ = why;  // the first cause, not whatever failed after it
+    alive_ = false;
 }
 
 bool TcpConnection::Poll(std::string& out)
@@ -204,7 +224,7 @@ bool TcpConnection::Poll(std::string& out)
     // between a dropped connection and a dead server (#14).
     if ((size_t)len > MAX_FRAME_BYTES)
     {
-        alive_ = false;
+        Fail("frame header over the cap (" + std::to_string(len) + " bytes)");
         inBuf_.clear();
         return false;
     }
@@ -260,7 +280,8 @@ std::unique_ptr<TcpConnection> TcpListener::Accept()
 
 // --- Dial ------------------------------------------------------------------
 
-std::unique_ptr<TcpConnection> Dial(const std::string& host, unsigned short port)
+std::unique_ptr<TcpConnection> Dial(const std::string& host, unsigned short port,
+                                    double timeoutSeconds)
 {
     socket_t s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (s == INVALID_SOCK)
@@ -276,12 +297,38 @@ std::unique_ptr<TcpConnection> Dial(const std::string& host, unsigned short port
         return nullptr;
     }
 
-    // Blocking connect (localhost is fast); the socket becomes non-blocking in
-    // the TcpConnection constructor.
+    // Non-blocking connect, waited on with a deadline. A blocking one leaves the wait to
+    // the operating system, and a caller that has promised to give up after N seconds
+    // cannot keep that promise from inside a call it does not control.
+    SetNonBlocking(s);
     if (connect(s, (sockaddr*)&addr, sizeof(addr)) != 0)
     {
-        CloseSocket(s);
-        return nullptr;
+        const int e = LastError();
+        if (!ConnectPending(e))
+        {
+            CloseSocket(s);
+            return nullptr;
+        }
+        fd_set writable, failed;
+        FD_ZERO(&writable);
+        FD_ZERO(&failed);
+        FD_SET(s, &writable);
+        FD_SET(s, &failed);  // winsock reports a refused connect here, not as writable
+        timeval tv;
+        tv.tv_sec = (long)timeoutSeconds;
+        tv.tv_usec = (long)((timeoutSeconds - (double)tv.tv_sec) * 1e6);
+        if (select((int)s + 1, nullptr, &writable, &failed, &tv) <= 0 || !FD_ISSET(s, &writable))
+        {
+            CloseSocket(s);
+            return nullptr;
+        }
+        int       err = 0;
+        socklen_t len = sizeof(err);
+        if (getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&err, &len) != 0 || err != 0)
+        {
+            CloseSocket(s);
+            return nullptr;
+        }
     }
     return std::make_unique<TcpConnection>((unsigned long long)s);
 }

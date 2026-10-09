@@ -57,6 +57,9 @@ public:
     // Why the server ended this session, if it said (#105). Empty otherwise -- a socket
     // that simply died says nothing, and pretending to know why would be worse.
     const std::string& ByeReason() const { return byeReason_; }
+    // What the transport saw when the connection died ("peer closed the connection",
+    // "recv failed (error 10054)"). Empty while it is alive.
+    std::string CloseReason() const { return conn_ ? conn_->CloseReason() : std::string(); }
 
 private:
     std::unique_ptr<Net::TcpConnection> conn_;

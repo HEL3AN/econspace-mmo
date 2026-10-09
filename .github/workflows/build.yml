@@ -120,33 +120,45 @@ jobs:
           set -e
           ./build/bin/server/econserver.exe host 50801 > mc.log 2>&1 &
           server_pid=$!
-          sleep 5
+          # However this ends -- a failed check under set -e included -- stop the server
+          # and show its log. A step that dies without the server's side of the story is
+          # the one nobody can diagnose afterwards.
+          trap 'kill $server_pid 2>/dev/null || true; echo "--- server log ---"; cat mc.log' EXIT
+          # Wait for what the server says, never for a fixed time: a sleep is a guess about
+          # how fast this runner is today, and a guess that is wrong once is a flaky step.
+          wait_for() {
+            for _ in $(seq 1 150); do grep -q "$1" mc.log && return 0; sleep 0.2; done
+            echo "timed out waiting for the server to log: $1"; return 1
+          }
+          # Every client is bounded twice: by its own watchdog (econagent selftest gives
+          # up and names what it was waiting for), and here, for a process that will not
+          # exit at all.
+          agent() { timeout -k 10 300 ./build/bin/agent/econagent.exe "$@"; }
+          wait_for "EconSpace server on port"
 
           # Two people sharing a galaxy. Each has to complete its own scripted run.
-          ./build/bin/agent/econagent.exe selftest 127.0.0.1 50801 alice alice-secret &
+          agent selftest 127.0.0.1 50801 alice alice-secret &
           alice=$!
-          ./build/bin/agent/econagent.exe selftest 127.0.0.1 50801 bob bob-secret &
+          agent selftest 127.0.0.1 50801 bob bob-secret &
           bob=$!
           wait $alice
           wait $bob
 
           # One account, one session: a second login for a name displaces the first, and
-          # the newcomer still plays normally afterwards.
-          sleep 30 | ./build/bin/agent/econagent.exe connect 127.0.0.1 50801 carol carol-secret >/dev/null 2>&1 &
+          # the newcomer still plays normally afterwards. The second login waits until the
+          # first has actually joined -- after a fixed three seconds it sometimes had not,
+          # and then the "first" displaced the second and the check failed.
+          sleep 30 | agent connect 127.0.0.1 50801 carol carol-secret >/dev/null 2>&1 &
           holder=$!
-          sleep 3
-          ./build/bin/agent/econagent.exe selftest 127.0.0.1 50801 carol carol-secret
+          wait_for "carol joined"
+          agent selftest 127.0.0.1 50801 carol carol-secret
 
           # And the secret is not decoration: the wrong one is refused (#106).
-          if ./build/bin/agent/econagent.exe selftest 127.0.0.1 50801 carol not-the-secret; then
+          if agent selftest 127.0.0.1 50801 carol not-the-secret; then
             echo "a wrong secret was accepted"
             exit 1
           fi
           kill $holder 2>/dev/null || true
-
-          kill $server_pid 2>/dev/null || true
-          sleep 1
-          cat mc.log
           grep -q "displaced" mc.log
 
   # The second platform, and the reason the transport was portable at all (#12). Without
@@ -221,33 +233,45 @@ jobs:
           set -e
           ./build/bin/server/econserver host 50801 > mc.log 2>&1 &
           server_pid=$!
-          sleep 5
+          # However this ends -- a failed check under set -e included -- stop the server
+          # and show its log. A step that dies without the server's side of the story is
+          # the one nobody can diagnose afterwards.
+          trap 'kill $server_pid 2>/dev/null || true; echo "--- server log ---"; cat mc.log' EXIT
+          # Wait for what the server says, never for a fixed time: a sleep is a guess about
+          # how fast this runner is today, and a guess that is wrong once is a flaky step.
+          wait_for() {
+            for _ in $(seq 1 150); do grep -q "$1" mc.log && return 0; sleep 0.2; done
+            echo "timed out waiting for the server to log: $1"; return 1
+          }
+          # Every client is bounded twice: by its own watchdog (econagent selftest gives
+          # up and names what it was waiting for), and here, for a process that will not
+          # exit at all.
+          agent() { timeout -k 10 300 ./build/bin/agent/econagent "$@"; }
+          wait_for "EconSpace server on port"
 
           # Two people sharing a galaxy. Each has to complete its own scripted run.
-          ./build/bin/agent/econagent selftest 127.0.0.1 50801 alice alice-secret &
+          agent selftest 127.0.0.1 50801 alice alice-secret &
           alice=$!
-          ./build/bin/agent/econagent selftest 127.0.0.1 50801 bob bob-secret &
+          agent selftest 127.0.0.1 50801 bob bob-secret &
           bob=$!
           wait $alice
           wait $bob
 
           # One account, one session: a second login for a name displaces the first, and
-          # the newcomer still plays normally afterwards.
-          sleep 30 | ./build/bin/agent/econagent connect 127.0.0.1 50801 carol carol-secret >/dev/null 2>&1 &
+          # the newcomer still plays normally afterwards. The second login waits until the
+          # first has actually joined -- after a fixed three seconds it sometimes had not,
+          # and then the "first" displaced the second and the check failed.
+          sleep 30 | agent connect 127.0.0.1 50801 carol carol-secret >/dev/null 2>&1 &
           holder=$!
-          sleep 3
-          ./build/bin/agent/econagent selftest 127.0.0.1 50801 carol carol-secret
+          wait_for "carol joined"
+          agent selftest 127.0.0.1 50801 carol carol-secret
 
           # And the secret is not decoration: the wrong one is refused (#106).
-          if ./build/bin/agent/econagent selftest 127.0.0.1 50801 carol not-the-secret; then
+          if agent selftest 127.0.0.1 50801 carol not-the-secret; then
             echo "a wrong secret was accepted"
             exit 1
           fi
           kill $holder 2>/dev/null || true
-
-          kill $server_pid 2>/dev/null || true
-          sleep 1
-          cat mc.log
           grep -q "displaced" mc.log
 
       # The example in examples/agents is documentation that executes. It runs against a

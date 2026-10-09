@@ -8,6 +8,7 @@
 
 #include "raw_socket.h"
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -101,5 +102,51 @@ TEST_CASE("a frame header the peer made up does not become memory the server all
 
     CHECK_FALSE(server->Alive());    // dropped rather than buffered
     CHECK_FALSE(server->Poll(out));  // and nothing was handed up as a message
+    CHECK_FALSE(server->CloseReason().empty());
     RawSocket::Close(raw);
+}
+
+TEST_CASE("a connection that dies says why")
+{
+    // A dropped connection that says nothing is what made a hung CI run undiagnosable:
+    // the server's log could only say "a client left". The transport knows whether the
+    // peer hung up or the socket failed, and keeps that for the log.
+    REQUIRE(Net::Startup());
+    const unsigned short port = 50792;
+
+    Net::TcpListener listener;
+    REQUIRE(listener.Listen(port));
+
+    std::unique_ptr<Net::TcpConnection> client = Net::Dial("127.0.0.1", port);
+    REQUIRE(client);
+    std::unique_ptr<Net::TcpConnection> server;
+    for (int i = 0; i < 100000 && !server; i++)
+        server = listener.Accept();
+    REQUIRE(server);
+    CHECK(client->CloseReason().empty());  // nothing to explain while it is alive
+
+    server.reset();  // the peer hangs up
+    std::string out;
+    for (int i = 0; i < 100000 && client->Alive(); i++)
+        client->Poll(out);
+
+    CHECK_FALSE(client->Alive());
+    CHECK_FALSE(client->CloseReason().empty());
+}
+
+TEST_CASE("dialing a port nobody answers on gives up within its deadline")
+{
+    // The connect used to block for as long as the operating system chose to wait. A
+    // caller's own deadline cannot be kept from inside a call it does not control, so the
+    // deadline belongs to Dial itself.
+    REQUIRE(Net::Startup());
+    const unsigned short port = 50793;  // nothing listens here
+
+    const auto                          start = std::chrono::steady_clock::now();
+    std::unique_ptr<Net::TcpConnection> c = Net::Dial("127.0.0.1", port, 1.0);
+    const double                        took =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+
+    CHECK_FALSE(c);
+    CHECK(took < 5.0);
 }
