@@ -309,6 +309,7 @@ add_executable(tests
     tests/overview_tests.cpp
     tests/warp_tests.cpp
     tests/warp_path_tests.cpp
+    tests/clock_tests.cpp
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     # The simulation itself is under test now, not only the wire (#10). That pulls in its

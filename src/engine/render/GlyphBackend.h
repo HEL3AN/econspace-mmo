@@ -65,6 +65,13 @@ public:
     void SetLighting(const Lighting& l) override { lighting_ = l; }
     void SetView(const Camera2D& v) override { view_ = v; }
     void SetMaterials(MaterialLibrary* m) override { materials_ = m; }
+    void SetClock(double seconds) override { clock_ = seconds; }
+
+    // A shader's time is a float, and a float counting seconds since the server started
+    // has no precision left within days. Wrapped here: 16384 s keeps it to a couple of
+    // milliseconds, and the seam once every four and a half hours is a shader's problem
+    // only if its period does not divide it.
+    static constexpr double SHADER_TIME_WRAP = 16384.0;
 
     void Draw(const Item& item) override;
 
@@ -77,6 +84,7 @@ public:
     static constexpr float MIN_SHADED_PIXELS = 3.0f;
 
 private:
+    double clock_ = 0.0;  // seconds; set before every scene (Present)
     // True when a material took the object over. It then draws one plain primitive and the
     // shader does the shading, instead of the offset discs and rim arcs this backend fakes
     // it with (#119) -- those exist precisely because there was no shader yet.

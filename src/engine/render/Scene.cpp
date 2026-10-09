@@ -38,7 +38,7 @@ static Camera2D NoView()
 }
 
 void Present(std::vector<Item> items, const Lighting& lighting, const Camera2D& view,
-             IBackend& backend)
+             IBackend& backend, double clock)
 {
     // Stable, so that two items on the same layer keep the order the world gave them.
     // Without that a backend would reshuffle overlapping objects between frames.
@@ -51,6 +51,7 @@ void Present(std::vector<Item> items, const Lighting& lighting, const Camera2D& 
     // system would get.
     backend.SetView(view);
     backend.SetLighting(lighting);
+    backend.SetClock(clock >= 0.0 ? clock : GetTime());
 
     backend.Begin();
     for (const Item& it : items)

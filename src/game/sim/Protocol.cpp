@@ -279,6 +279,7 @@ std::string EncodeSnapshot(const Snapshot& s)
     json j;
     Stamp(j, "snap");
     j["sys"] = s.systemId;
+    j["time"] = s.time;
 
     const PlayerView& p = s.player;
     j["player"] = { { "pos", V2(p.pos) },
@@ -385,6 +386,7 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
         return false;
 
     out.systemId = j.value("sys", std::string());
+    out.time = j.value("time", 0.0);
 
     if (j.contains("player") && j["player"].is_object())
     {

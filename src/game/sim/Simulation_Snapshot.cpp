@@ -26,6 +26,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
 {
     Proto::Snapshot snap;
     snap.systemId = systemId;
+    snap.time = time_;
     auto it = systems_.find(systemId);
     if (it == systems_.end())
         return snap;

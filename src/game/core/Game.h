@@ -13,6 +13,7 @@
 #include "render/MaterialLibrary.h"
 #include "render/CameraRig.h"
 #include "sim/Overview.h"
+#include "sim/WorldClock.h"
 #include "render/Treatment.h"
 #include "player/Player.h"
 #include <string>
@@ -167,11 +168,12 @@ private:
     // Accumulated from the camera's motion on screen rather than computed from its world
     // position (#160): at a million units a position-based sky raced past whenever the
     // whole system was in view, and jumped whenever the zoom changed.
-    Vector2 skyScroll_ = { 0.0f, 0.0f };
-    Vector2 skyLastTarget_ = { 0.0f, 0.0f };
-    bool    skyPrimed_ = false;
-    Vector2 startWarpTarget_ = { 0.0f, 0.0f };
-    int     startWarpFrames_ = -1;  // counts down to the --warp order; -1 when there is none
+    Vector2    skyScroll_ = { 0.0f, 0.0f };
+    Vector2    skyLastTarget_ = { 0.0f, 0.0f };
+    bool       skyPrimed_ = false;
+    Vector2    startWarpTarget_ = { 0.0f, 0.0f };
+    int        startWarpFrames_ = -1;  // counts down to the --warp order; -1 when there is none
+    WorldClock worldClock_;            // the server's clock, eased (#192)
 
     // How the world is presented (#35). Glyphs are the game's look (#36); shapes remain
     // reachable with F2, as the alternative backend the sprite path hangs off.

@@ -51,6 +51,7 @@ TEST_CASE("snapshot round-trips through JSON")
 {
     Proto::Snapshot s;
     s.systemId = "core";
+    s.time = 604800.125;  // a week of server time, to the millisecond (#192)
     s.player.hull = 80.0f;
     s.player.maxHull = 100.0f;
     s.player.weaponOn = true;
@@ -104,6 +105,7 @@ TEST_CASE("snapshot round-trips through JSON")
     Proto::Snapshot r;
     REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(s), r));
     CHECK(r.systemId == "core");
+    CHECK(r.time == 604800.125);  // a double on the wire: a float would be 0.06 s coarse
     CHECK(r.player.hull == doctest::Approx(80.0f));
     CHECK(r.player.weaponOn);
     REQUIRE(r.entities.size() == 1);
