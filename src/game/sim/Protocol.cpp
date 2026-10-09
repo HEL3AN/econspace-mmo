@@ -198,6 +198,8 @@ std::string EncodeCommand(const Command& c)
     j["navMode"] = c.navMode;
     j["nav"] = V2(c.navTarget);
     j["navStop"] = c.navStopDist;
+    if (c.navViaSet)  // only on the one command that orders a bent warp
+        j["navVia"] = V2(c.navVia);
     // Only written when a hold is being ordered: a command is sent sixty times a
     // second and two more fields on every one of them is real bandwidth (#16).
     if (c.navHoldId != 0)
@@ -246,6 +248,8 @@ bool DecodeCommand(const std::string& s, Command& out)
     out.navMode = j.value("navMode", 0);
     out.navTarget = j.contains("nav") ? ToV2(j["nav"]) : Vector2{ 0.0f, 0.0f };
     out.navStopDist = j.value("navStop", 0.0f);
+    out.navViaSet = j.contains("navVia");
+    out.navVia = out.navViaSet ? ToV2(j["navVia"]) : Vector2{ 0.0f, 0.0f };
     out.navHoldId = j.value("navHold", 0);
     out.navRange = j.value("navRange", 0.0f);
     out.jumpGateId = j.value("gate", 0);
@@ -314,6 +318,8 @@ std::string EncodeSnapshot(const Snapshot& s)
                     { "ordDetail", p.orderDetail },
                     { "ships", p.ownedShips },
                     { "ship", p.shipIndex } };
+    if (p.warpViaSet)  // only during the first leg of a bent warp
+        j["player"]["warpVia"] = V2(p.warpVia);
 
     // Only what this entity actually carries. Every field left at its decoding default is
     // a field the decoder will produce anyway, so writing it costs bytes and says nothing
@@ -397,6 +403,8 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
         p.warpAlign = pj.value("warpAlign", 0.0f);
         p.warpTarget = pj.contains("warpTgt") ? ToV2(pj["warpTgt"]) : Vector2{ 0.0f, 0.0f };
         p.warpDrop = pj.value("warpDrop", 0.0f);
+        p.warpViaSet = pj.contains("warpVia");
+        p.warpVia = p.warpViaSet ? ToV2(pj["warpVia"]) : Vector2{ 0.0f, 0.0f };
         p.autopilot = pj.value("ap", false);
         p.apTarget = pj.contains("apTgt") ? ToV2(pj["apTgt"]) : Vector2{ 0.0f, 0.0f };
         p.apStop = pj.value("apStop", 0.0f);

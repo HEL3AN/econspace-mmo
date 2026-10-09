@@ -182,6 +182,7 @@ add_executable(econspace
     src/game/core/GameHud.cpp
     src/game/sim/Overview.cpp      # what the overview lists and in what order (#157)
     src/game/sim/PlayerStep.cpp
+    src/game/sim/WarpPath.cpp
     src/game/entities/Ship.cpp       # the predicted player ship + NPC proxies
     src/game/entities/ShipType.cpp   # hangar catalog
     src/game/entities/NpcShip.cpp
@@ -210,6 +211,7 @@ add_executable(econserver
     src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
     src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/PlayerStep.cpp
+    src/game/sim/WarpPath.cpp
     src/game/sim/Orders.cpp
     src/game/economy/Market.cpp
     src/game/entities/NpcShip.cpp
@@ -294,6 +296,8 @@ add_executable(tests
     tests/silhouette_tests.cpp
     tests/camera_tests.cpp
     tests/overview_tests.cpp
+    tests/warp_tests.cpp
+    tests/warp_path_tests.cpp
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     # The simulation itself is under test now, not only the wire (#10). That pulls in its
@@ -307,6 +311,7 @@ add_executable(tests
     src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
     src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/PlayerStep.cpp
+    src/game/sim/WarpPath.cpp
     src/game/sim/Orders.cpp
     src/game/economy/Market.cpp
     src/game/entities/Ship.cpp

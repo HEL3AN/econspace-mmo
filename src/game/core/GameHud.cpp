@@ -41,16 +41,42 @@ static const float MENU_TOP = 12.0f;
 void Game::DrawStarfield()
 {
     const float tileW = 2560.0f, tileH = 1440.0f;
+
+    // The camera's motion this frame, in screen pixels. A jump of more than a screen is a
+    // cut -- a new system, a recentre -- and the sky neither scrolls nor streaks across it.
+    Vector2 move = { (camera_.target.x - skyLastTarget_.x) * camera_.zoom,
+                     (camera_.target.y - skyLastTarget_.y) * camera_.zoom };
+    if (!skyPrimed_ || fabsf(move.x) > tileW || fabsf(move.y) > tileH)
+        move = { 0.0f, 0.0f };
+    skyPrimed_ = true;
+    skyLastTarget_ = camera_.target;
+    skyScroll_.x = fmodf(skyScroll_.x + move.x, tileW * 100.0f);  // bounded, and a whole
+    skyScroll_.y = fmodf(skyScroll_.y + move.y, tileH * 100.0f);  // number of tiles
+
     for (const BgStar& s : bgStars_)
     {
-        float x = fmodf(s.base.x - camera_.target.x * s.depth, tileW);
-        float y = fmodf(s.base.y - camera_.target.y * s.depth, tileH);
+        float x = fmodf(s.base.x - skyScroll_.x * s.depth, tileW);
+        float y = fmodf(s.base.y - skyScroll_.y * s.depth, tileH);
         if (x < 0)
             x += tileW;
         if (y < 0)
             y += tileH;
-        if (x <= screenWidth_ && y <= screenHeight_)
-            DrawPixel((int)x, (int)y, Color{ s.shade, s.shade, s.shade, 255 });
+        if (x > screenWidth_ || y > screenHeight_)
+            continue;
+        const Color c{ s.shade, s.shade, s.shade, 255 };
+
+        // Moving faster than a few pixels a frame, a point becomes a streak along the way it
+        // came: in warp the sky shows the speed instead of strobing. Capped, so a star never
+        // becomes a line across the screen.
+        const float sx = move.x * s.depth, sy = move.y * s.depth;
+        const float len = sqrtf(sx * sx + sy * sy);
+        if (len < 3.0f)
+        {
+            DrawPixel((int)x, (int)y, c);
+            continue;
+        }
+        const float k = std::min(len, 140.0f) / len;
+        DrawLineEx({ x, y }, { x + sx * k, y + sy * k }, 1.0f, Fade(c, 0.75f));
     }
 }
 

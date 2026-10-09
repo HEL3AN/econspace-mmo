@@ -3,6 +3,7 @@
 #include "sim/Simulation.h"
 #include "sim/ClientSession.h"
 #include "sim/PlayerStep.h"
+#include "sim/WarpPath.h"
 
 #include "core/Archetype.h"
 #include "core/World.h"
@@ -34,6 +35,17 @@ float DistTo(const Ship& s, Vector2 p)
     float dx = p.x - s.GetPosition().x;
     float dy = p.y - s.GetPosition().y;
     return std::sqrt(dx * dx + dy * dy);
+}
+
+// A warp order goes around a star or a planet, not through it (#160) -- the same bend a
+// client chooses for its own warps, from the same rule.
+void BendAroundBodies(Proto::Command& nav, Vector2 from, const SystemState& st)
+{
+    std::vector<WarpPath::Body> bodies;
+    for (const auto& e : st.entities)
+        if (e->GetKind() == EntityKind::Star || e->GetKind() == EntityKind::Planet)
+            bodies.push_back({ e->GetPosition(), e->GetSize() });
+    nav.navViaSet = WarpPath::Via(from, nav.navTarget, bodies, nav.navVia);
 }
 }  // namespace
 
@@ -146,6 +158,7 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
                 nav.navMode = 2;  // warp: gates are far apart and an agent is paying for time
                 nav.navTarget = gate->GetPosition();
                 nav.navStopDist = gate->GetSize() + 60.0f;
+                BendAroundBodies(nav, s.ship->GetPosition(), st);
                 Sim::StepPlayerShip(*s.ship, nav, 1.0f, dt);
                 s.orderNavIssued = true;
                 return;
@@ -214,6 +227,8 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             nav.navMode = (s.order.useWarp || dist > World::WARP_WORTH_IT) ? 2 : 1;
             nav.navTarget = dest;
             nav.navStopDist = arrive * 0.8f;  // aim inside the range, not at its edge
+            if (nav.navMode == 2)
+                BendAroundBodies(nav, s.ship->GetPosition(), st);
             Sim::StepPlayerShip(*s.ship, nav, 1.0f, dt);
             s.orderNavIssued = true;
             return;

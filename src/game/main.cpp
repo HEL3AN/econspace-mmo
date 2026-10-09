@@ -1,6 +1,6 @@
 // EconSpace — entry point. All logic lives in the Game class.
-//   econspace connect <host> <port> <name> <secret> [--zoom Z] [--shapes] — connect to an
-//   econserver host
+//   econspace connect <host> <port> <name> <secret> [--zoom Z] [--shapes] [--warp X Y] — connect to
+//   an econserver host
 //
 // Connecting is mandatory: the world lives on an authoritative server and the
 // client is a renderer plus an input source. The connection is established here,
@@ -23,6 +23,7 @@ static int Usage(const char* exe)
                  "      the secret is this account's; the first login sets it\n"
                  "      --zoom Z   start the camera at zoom Z (1 = a unit is a pixel)\n"
                  "      --shapes   start on the shape backend (F2 switches)\n"
+                 "      --warp X Y warp to the point (X, Y) two seconds after joining\n"
                  "\n"
                  "Start a server first:\n"
                  "  econserver host 50800\n",
@@ -43,11 +44,19 @@ int main(int argc, char** argv)
     const std::string secret = argv[5];
     float             startZoom = 0.0f;  // 0: the default
     bool              shapes = false;
+    bool              warp = false;
+    Vector2           warpTo = { 0.0f, 0.0f };
     for (int i = 6; i < argc; i++)
         if (std::strcmp(argv[i], "--zoom") == 0 && i + 1 < argc)
             startZoom = (float)std::atof(argv[++i]);
         else if (std::strcmp(argv[i], "--shapes") == 0)
             shapes = true;
+        else if (std::strcmp(argv[i], "--warp") == 0 && i + 2 < argc)
+        {
+            warpTo = { (float)std::atof(argv[i + 1]), (float)std::atof(argv[i + 2]) };
+            warp = true;
+            i += 2;
+        }
 
     if (!Net::Startup())
     {
@@ -83,6 +92,8 @@ int main(int argc, char** argv)
             game.SetStartZoom(startZoom);
         if (shapes)
             game.StartOnShapes();
+        if (warp)
+            game.StartWithWarp(warpTo);
         game.Run();
     }  // the socket closes with Game, before winsock is unloaded
 

@@ -112,6 +112,8 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         p.warpAlign = s.ship->GetWarpAlignTimer();
         p.warpTarget = s.ship->GetWarpTarget();
         p.warpDrop = s.ship->GetWarpDrop();
+        p.warpViaSet = s.ship->HasWarpVia();
+        p.warpVia = s.ship->GetWarpVia();
         p.autopilot = s.ship->IsAutopilotOn();
         p.apTarget = s.ship->GetAutopilotTarget();
         p.apStop = s.ship->GetAutopilotStopDistance();
