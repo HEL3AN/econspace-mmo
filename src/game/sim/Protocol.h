@@ -26,7 +26,7 @@ namespace Proto
 // without it a client built against an older protocol would silently receive defaults
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
-inline constexpr int PROTO_VERSION = 9;
+inline constexpr int PROTO_VERSION = 10;
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).
@@ -121,8 +121,12 @@ struct Command
     float       orderStopDist = 120.0f;
     bool        orderWarp = false;
     bool        orderUntilFull = false;
-    std::string orderDestSystem;     // Route
-    bool        abortOrder = false;  // drop whatever is running
+    std::string orderDestSystem;  // Route
+    // Route: weigh a safer path over the short one. The server could always plan one; until
+    // #171 nothing on the wire could ask it to, so `travel_to_system`'s avoid_danger was
+    // accepted, advertised to models in a prompt, and silently dropped.
+    bool orderAvoidDanger = false;
+    bool abortOrder = false;  // drop whatever is running
 };
 
 // Entity kind. The wire uses the engine's enum rather than a parallel copy, so there is
