@@ -87,6 +87,7 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
       - name: Server smoke tests
+        timeout-minutes: 10  # a hung socket fails the run instead of holding it for hours
         run: |
           ./build/bin/server/econserver.exe hosttest
           ./build/bin/server/econserver.exe accttest
@@ -98,6 +99,7 @@ jobs:
       # differently every run, while this proves the part that can actually break --
       # the bridge, the orders, the journal and the round trip.
       - name: Agent selftest against a live server
+        timeout-minutes: 10  # a hung socket fails the run instead of holding it for hours
         run: |
           ./build/bin/agent/econagent.exe || true   # usage, non-zero exit
           ./build/bin/server/econserver.exe host 50800 &
@@ -113,6 +115,7 @@ jobs:
       # Deliberately over sockets rather than in-process: the hello handler, the per-name
       # account files and the transport are exactly the parts that only exist there.
       - name: Two clients at once
+        timeout-minutes: 10  # a hung socket fails the run instead of holding it for hours
         run: |
           set -e
           ./build/bin/server/econserver.exe host 50801 > mc.log 2>&1 &
@@ -188,6 +191,7 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
       - name: Server smoke tests
+        timeout-minutes: 10  # a hung socket fails the run instead of holding it for hours
         run: |
           ./build/bin/server/econserver hosttest
           ./build/bin/server/econserver accttest
@@ -197,6 +201,7 @@ jobs:
       # The same end-to-end check the Windows job runs. A socket layer that compiles and
       # a socket layer that talks are different claims.
       - name: Agent selftest against a live server
+        timeout-minutes: 10  # a hung socket fails the run instead of holding it for hours
         run: |
           ./build/bin/server/econserver host 50800 &
           server_pid=$!
@@ -211,6 +216,7 @@ jobs:
       # Deliberately over sockets rather than in-process: the hello handler, the per-name
       # account files and the transport are exactly the parts that only exist there.
       - name: Two clients at once
+        timeout-minutes: 10  # a hung socket fails the run instead of holding it for hours
         run: |
           set -e
           ./build/bin/server/econserver host 50801 > mc.log 2>&1 &
@@ -254,6 +260,7 @@ jobs:
         run: python3 tools/gen_agent_reference.py ./build/bin/agent/econagent --check
 
       - name: The example bot plays
+        timeout-minutes: 10  # a hung socket fails the run instead of holding it for hours
         run: |
           ./build/bin/server/econserver host 50802 > bot-server.log 2>&1 &
           server_pid=$!
