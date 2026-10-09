@@ -25,9 +25,8 @@ sleep 8 && powershell -File tools/capture-window.ps1 -Out system.png
 ```
 
 `--zoom Z` starts the camera at a zoom (1 means one world unit is one pixel; 0.0005 shows a
-whole system) and `--shapes` starts on the shape backend that F2 switches to. Launch the
-binaries from a shell that has MinGW on its `PATH`, such as Git Bash or MSYS2. Started from
-plain PowerShell they stop with a missing `libstdc++-6.dll` dialog.
+whole system) and `--shapes` starts on the shape backend that F2 switches to. The binaries
+carry MinGW's runtime inside them, so they start from any shell or from Explorer.
 
 A new tool is welcome here when it saves more time than it costs to keep working — and when
 it does, give it a CI step so it keeps working.
