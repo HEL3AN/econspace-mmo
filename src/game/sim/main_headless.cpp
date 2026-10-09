@@ -450,7 +450,7 @@ static const double NET_REPORT_INTERVAL = 10.0;
 // what changed is how often the result is described, not how often it is computed.
 static const double SNAPSHOT_INTERVAL = 1.0 / 20.0;
 
-static int RunHost(unsigned short port)
+static int RunHost(unsigned short port, bool isPublic)
 {
     std::string dataDir = SIM_DATA_DIR;
     std::string worldPath = std::string(GetApplicationDirectory()) + "world.json";
@@ -463,7 +463,8 @@ static int RunHost(unsigned short port)
         return 1;
     }
     Net::TcpListener listener;
-    if (!listener.Listen(port))
+    if (!listener.Listen(port, isPublic ? Net::TcpListener::Exposure::Public
+                                        : Net::TcpListener::Exposure::Loopback))
     {
         printf("host: listen on port %d FAIL\n", port);
         Net::Shutdown();
@@ -471,9 +472,11 @@ static int RunHost(unsigned short port)
     }
     std::signal(SIGINT, OnInterrupt);
     std::signal(SIGTERM, OnInterrupt);
-    printf("EconSpace server on port %d. The galaxy runs with or without players; "
+    printf("EconSpace server on port %d, %s. The galaxy runs with or without players; "
            "Ctrl+C to stop.\n",
-           port);
+           port,
+           isPublic ? "open to other machines"
+                    : "this machine only (add --public to let other machines connect)");
 
     std::vector<HostClient> clients;
 
@@ -1102,7 +1105,12 @@ int main(int argc, char** argv)
     if (argc > 1 && std::string(argv[1]) == "host")
     {
         unsigned short port = (argc > 2) ? (unsigned short)atoi(argv[2]) : 50800;
-        return RunHost(port);
+        // Loopback unless asked (#187): other machines can connect only with --public.
+        bool isPublic = false;
+        for (int i = 3; i < argc; i++)
+            if (std::string(argv[i]) == "--public")
+                isPublic = true;
+        return RunHost(port, isPublic);
     }
 
     std::string dataDir = SIM_DATA_DIR;
