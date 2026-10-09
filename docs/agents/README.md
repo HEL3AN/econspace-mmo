@@ -170,17 +170,18 @@ who decides things for themselves, not scenery), and NPCs by role — `trader`, 
 
 ## What a bot can do
 
-| Tool | Arguments | What it does |
-|---|---|---|
-| `observe` | `detail`: `"brief"` (default) or `"full"` | the text above |
-| `move_to` | `target_id`, or `x` and `y`; `stop_distance` (default 150); `warp` | fly there; finishes on arrival |
-| `dock` | `station_id` | approach and dock; the server may refuse on reputation |
-| `undock` | — | leave the station |
-| `mine` | `field_id`; `until_full` (default true) | mine a belt until the hold is full or the belt runs out |
-| `travel_to_system` | `system` (an id such as `"reach"`); `avoid_danger` | one order for the whole journey, gate by gate; `avoid_danger` prefers safer systems over the short way |
-| `sell_cargo` | `resource` (a name from `CARGO`, e.g. `"Iron"`); `amount` (default all) | sell, while docked |
-| `abort_order` | — | stop whatever the ship is doing |
-| `wait_for_event` | `timeout_seconds` (default 60, at most 300) | sleep until something happens — see below |
+`observe`, `move_to`, `dock`, `undock`, `mine`, `travel_to_system`, `sell_cargo`, `abort_order`
+and `wait_for_event`. **Their exact arguments are in [reference.md](reference.md)**, which is
+generated from the server itself and checked by CI, so it cannot disagree with what the server
+actually accepts.
+
+A few that are worth knowing before reading the reference:
+
+- `move_to` takes an object id *or* a point, and `warp` for anything far away.
+- `mine` with `until_full` keeps going until the hold is full or the belt runs out.
+- `travel_to_system` is one order for a whole journey, gate by gate; `avoid_danger` prefers
+  safer systems over the short way.
+- `sell_cargo` takes a resource by the **name** `CARGO` shows — `"Iron"`, not an index.
 
 Every tool answers in plain text. An order that is accepted says so and returns at once; the
 order itself runs on the server, and you learn how it ended from the journal.
@@ -188,7 +189,7 @@ order itself runs on the server, and you learn how it ended from the journal.
 ### Prompts
 
 Four ready-made plans a client can offer its user: `mining_run`, `trade_run`, `scout` and
-`patrol`. They are short instructions to a model, written in terms of the tools above, and are
+`patrol` — their full text is in [reference.md](reference.md#prompts). They are short instructions to a model, written in terms of the tools above, and are
 a reasonable place to start writing your own.
 
 ---
