@@ -151,7 +151,9 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   roles, offsets, rotational `repeat` and bilateral `mirror` -- different symmetries, and
   using `repeat: 2` for a pair of wings puts the second one in front of the nose. The
   vocabulary is narrow on purpose: an open-ended set of arbitrary shapes reads as
-  programmer art. An unknown form is a **load error**, not a skipped part.
+  programmer art. An unknown form is a **load error**, not a skipped part -- and so is an
+  unknown *field*, in a part or anywhere else in an archetype (#191): read with
+  `value(key, default)`, a misspelling is indistinguishable from an absence.
 - **A planet's surface is on the sphere** (#166). A part with `lat`/`lon` is projected:
   carried across the face by the planet's turn, foreshortened at the limb, hidden round
   the back, and lit as the body rather than as itself. A `band` is the visible part of a

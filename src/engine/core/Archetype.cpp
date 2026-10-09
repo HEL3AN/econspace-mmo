@@ -1,5 +1,8 @@
 #include "core/Archetype.h"
 
+#include "core/JsonKeys.h"
+#include "entities/Planet.h"
+#include "entities/Station.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 
@@ -63,6 +66,16 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
         err = "archetype without an id";
         return false;
     }
+    // A misspelled field would otherwise be read as absent and take its default, which
+    // is the same silent wrong object an unknown component is (#191).
+    if (!OnlyKnownKeys(j,
+                       { "id", "name", "kind", "glyph", "sprite", "layer", "style", "material",
+                         "shape", "light", "color", "size", "world", "components" },
+                       err))
+    {
+        err = "archetype '" + a.id + "': " + err;
+        return false;
+    }
     a.name = j.value("name", a.id);
     a.kind = KindFromString(j.value("kind", std::string()));
     if (a.kind == EntityKind::Unknown)
@@ -101,6 +114,11 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
 
     if (j.contains("light") && j["light"].is_object())
     {
+        if (!OnlyKnownKeys(j["light"], { "radius", "intensity" }, err))
+        {
+            err = "archetype '" + a.id + "': light: " + err;
+            return false;
+        }
         a.visual.lightRadius = j["light"].value("radius", 0.0f);
         a.visual.lightIntensity = j["light"].value("intensity", 1.0f);
     }
@@ -117,11 +135,57 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
             err = "archetype '" + a.id + "': world is not an object";
             return false;
         }
+        if (!OnlyKnownKeys(w, { "category", "subType" }, err))
+        {
+            err = "archetype '" + a.id + "': world: " + err;
+            return false;
+        }
         a.worldCategory = w.value("category", std::string());
         a.worldSubType = w.value("subType", std::string());
         if (a.worldCategory.empty())
         {
             err = "archetype '" + a.id + "': world block without a category";
+            return false;
+        }
+
+        // The editor writes the subtype into a system file and the world loader reads it
+        // back. Read back, a role it does not know is a trade hub and a planet type it
+        // does not know is rocky -- so every object placed from this archetype would turn
+        // into something else, with nothing anywhere to say so (#191).
+        const std::string& c = a.worldCategory;
+        const std::string& sub = a.worldSubType;
+        if (c == "stations")
+        {
+            StationRole role;
+            if (!ParseStationRole(sub, role))
+            {
+                err = "archetype '" + a.id + "': world.subType '" + sub +
+                      "' is not a station role (TradeHub, MiningOutpost, Shipyard, Military)";
+                return false;
+            }
+        }
+        else if (c == "planets")
+        {
+            PlanetType type;
+            if (!ParsePlanetType(sub, type))
+            {
+                err = "archetype '" + a.id + "': world.subType '" + sub +
+                      "' is not a planet type (Rocky, Gas, Ice, Lava, Oceanic)";
+                return false;
+            }
+        }
+        else if (c == "asteroidFields" || c == "nebulae" || c == "derelicts" || c == "gates")
+        {
+            if (!sub.empty())
+            {
+                err = "archetype '" + a.id + "': category '" + c + "' has no subType";
+                return false;
+            }
+        }
+        else
+        {
+            err =
+                "archetype '" + a.id + "': world.category '" + c + "' is not one a system file has";
             return false;
         }
     }
@@ -157,6 +221,27 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
         if (!p.is_object())
         {
             err = "archetype '" + a.id + "': component '" + it.key() + "' is not an object";
+            return false;
+        }
+
+        // Every parameter a component reads, by name. A component with none takes an
+        // empty list, so `"market": { "spread": 2 }` is refused rather than ignored.
+        std::vector<const char*> params;
+        switch (c)
+        {
+            case Component::Dockable:
+            case Component::Salvageable:
+            case Component::JumpLink: params = { "range" }; break;
+            case Component::Mineable: params = { "extractRate", "range" }; break;
+            case Component::Defensive: params = { "range", "damage" }; break;
+            case Component::Storage: params = { "capacity" }; break;
+            case Component::Hazard: params = { "radius", "hidesShips" }; break;
+            case Component::Buildable: params = { "cost", "buildSeconds" }; break;
+            case Component::Market: break;
+        }
+        if (!OnlyKnownKeys(p, params, err))
+        {
+            err = "archetype '" + a.id + "': component '" + it.key() + "': " + err;
             return false;
         }
 

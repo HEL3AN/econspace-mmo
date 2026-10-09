@@ -12,6 +12,14 @@ void MaterialLibrary::Load(const std::string& dataDir)
 {
     Unload();
 
+    // Said here because this is the one place every client and the editor pass through
+    // with both registries loaded.
+    for (const std::string& p : Materials::UnknownInArchetypes())
+    {
+        problems_.push_back(p);
+        TraceLog(LOG_ERROR, "Materials: %s", p.c_str());
+    }
+
     for (const Material& m : Materials::All())
     {
         const std::string path = dataDir + "shaders/materials/" + m.shader + ".fs";

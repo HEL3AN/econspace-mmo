@@ -15,17 +15,28 @@ std::string PlanetTypeName(PlanetType type)
     return "Planet";
 }
 
+bool ParsePlanetType(const std::string& s, PlanetType& out)
+{
+    if (s == "Rocky")
+        out = PlanetType::Rocky;
+    else if (s == "Gas")
+        out = PlanetType::Gas;
+    else if (s == "Ice")
+        out = PlanetType::Ice;
+    else if (s == "Lava")
+        out = PlanetType::Lava;
+    else if (s == "Oceanic")
+        out = PlanetType::Oceanic;
+    else
+        return false;
+    return true;
+}
+
 PlanetType PlanetTypeFromString(const std::string& s)
 {
-    if (s == "Gas")
-        return PlanetType::Gas;
-    if (s == "Ice")
-        return PlanetType::Ice;
-    if (s == "Lava")
-        return PlanetType::Lava;
-    if (s == "Oceanic")
-        return PlanetType::Oceanic;
-    return PlanetType::Rocky;
+    PlanetType type = PlanetType::Rocky;
+    ParsePlanetType(s, type);
+    return type;
 }
 
 Color PlanetTypeColor(PlanetType type)

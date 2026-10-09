@@ -107,7 +107,7 @@ registry says *what it is and what it can do*, once, for every object of that ki
 | `color` | [r, g, b, a] | 0..255; `a` defaults to 255 |
 | `layer` | int | draw order, lowest first; the same number means the same thing in every backend |
 | `shape` | array | **optional** — what the object is made of, as a list of parts. Omit it and the backend falls back to the figure it used to compile in for this kind. See below |
-| `material` | string | **optional** — the material that shades it, by id from `data/materials.json`. Omit it and the object is drawn plain |
+| `material` | string | **optional** — the material that shades it, by id from `data/materials.json`. Omit it and the object is drawn plain. An id `materials.json` does not define also draws plain, and the client and editor log it by name at startup |
 | `light` | object | **optional** — this object lights the system: `radius` (world units at which its light has fallen to nothing) and `intensity` (default 1.0). Omit it and the object emits nothing. See below |
 | `size` | number | default radius when the instance does not give its own |
 | `world` | object | where this archetype lives in a system file — see below |
@@ -396,8 +396,13 @@ out, how much ore a belt still holds.
 
 **A malformed registry is a hard failure, not a degraded load.** An unknown `kind`, an
 unknown component name, a duplicate `id` or a missing `id` aborts the load and leaves
-the previous registry in place. A typo would otherwise produce an object that silently
-does nothing.
+the previous registry in place. So does a field the reader does not know -- at the top
+level, in `light`, in `world`, in a component's parameters or in a part of the `shape` --
+because a misspelled field would otherwise be read as absent and take its default. So
+does a `world.category` no system file has, and a `world.subType` the world loader would
+read back as something else: an unknown station role becomes a trade hub, an unknown
+planet type becomes rocky (#191). A typo would otherwise produce an object that silently
+does nothing. `econserver` refuses to start on a registry that will not load.
 
 ---
 
@@ -505,8 +510,9 @@ have gates pointing to each other.
 
 ## Notes for the Editor
 
-- Unknown enum strings safely fall back to the default value (a broken
-  `type`/`role`/`faction` does not break loading).
+- Unknown enum strings fall back to the default value (a broken
+  `type`/`role`/`faction` does not break loading). An unknown station `role` or planet
+  `type` is logged by name, because the object it becomes is a different object.
 - Broken JSON in a system → empty entity lists (silently). Check the game's output
   (TraceLog) when debugging.
 - Object sizes scale with the system's scale; inter-object distances

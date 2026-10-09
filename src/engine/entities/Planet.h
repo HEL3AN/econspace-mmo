@@ -16,7 +16,9 @@ enum class PlanetType
 std::string PlanetTypeName(PlanetType type);
 // Parsing lives beside naming: both are the mapping between the enum and the world file,
 // and having only one of them public is how a second copy of the other gets written.
+// Falls back to Rocky; ParsePlanetType says when it had to (#191).
 PlanetType PlanetTypeFromString(const std::string& s);
+bool       ParsePlanetType(const std::string& s, PlanetType& out);
 Color      PlanetTypeColor(PlanetType type);  // default color for the type
 
 class Planet : public Entity
