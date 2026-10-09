@@ -1,6 +1,7 @@
 #include "render/Silhouette.h"
 
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <cmath>
 
 using nlohmann::json;
@@ -167,6 +168,10 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
         p.jitterAngle = e.value("jitterAngle", p.jitterAngle);
         p.jitterScale = e.value("jitterScale", p.jitterScale);
         p.alpha = e.value("alpha", p.alpha);
+        p.orbitRadius = e.value("orbitRadius", p.orbitRadius);
+        p.orbitPeriod = e.value("orbitPeriod", p.orbitPeriod);
+        p.orbitPhase = e.value("orbitPhase", p.orbitPhase);
+        p.orbitTilt = e.value("orbitTilt", p.orbitTilt);
         p.spin = e.value("spin", p.spin);
         p.blink = e.value("blink", p.blink);
         p.onlyThrusting = e.value("onlyThrusting", p.onlyThrusting);
@@ -278,10 +283,53 @@ std::vector<Piece> Compose(const Shape& s, const Pose& pose)
                 piece.width = p.width * size * scale;
                 piece.length = p.length * size * scale;
                 piece.brightness = brightness;
+
+                // An orbiting part ignores `at` entirely: where it is comes from where it
+                // has got to in its lap, which is the point of it.
+                if (p.orbitRadius > 0.0f)
+                {
+                    const float period = p.orbitPeriod > 0.01f ? p.orbitPeriod : 60.0f;
+                    // Every repeat and every mirror is spread evenly around the lap, so
+                    // three moons are three moons rather than three moons on top of one
+                    // another.
+                    const float spread = (float)(r * sides + m) / (float)(repeat * sides);
+                    const float lap = std::fmod(
+                        pose.time / period + p.orbitPhase + spread + Hash01(seed, salt + 29), 1.0f);
+                    const float a = lap * 2.0f * PI;
+
+                    // The ellipse an inclined circular orbit traces. `front` is +1 at the
+                    // nearest point and -1 at the furthest, and it is both the draw order
+                    // and how much nearer the part is.
+                    const float across = std::cos(a);
+                    const float front = std::sin(a);
+                    const float ox = across * p.orbitRadius;
+                    const float oy = -front * p.orbitRadius * (1.0f - p.orbitTilt);
+
+                    const float ch = std::cos(pose.heading), sh = std::sin(pose.heading);
+                    piece.pos = { pos.x + (ox * ch - oy * sh) * size,
+                                  pos.y + (ox * sh + oy * ch) * size };
+                    piece.angle = p.angle + pose.heading * RAD2DEG;
+                    piece.depth = front;
+
+                    // Nearer is bigger and further is dimmer. Without the first the
+                    // illusion reads as a sprite sliding under a circle; without the
+                    // second the far side looks as lit as the near one, which it is not.
+                    const float near = 1.0f + 0.18f * front;
+                    piece.radius *= near;
+                    piece.width *= near;
+                    piece.length *= near;
+                    piece.brightness *= 0.72f + 0.28f * (0.5f + 0.5f * front);
+                }
+
                 out.push_back(piece);
             }
         }
     }
+    // Back to front, so the body hides what is behind it and covers nothing in front.
+    // Stable, so parts that share a depth -- everything that is simply part of the object
+    // -- keep the order the shape was written in.
+    std::stable_sort(out.begin(), out.end(),
+                     [](const Piece& a, const Piece& b) { return a.depth < b.depth; });
     return out;
 }
 
