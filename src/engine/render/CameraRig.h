@@ -43,6 +43,9 @@ public:
     // A change of system: no glide, because there is nothing between here and there to see.
     void Snap(Vector2 shipPos);
 
+    // A zoom set outright, clamped to the range: a starting view from the command line.
+    void SetZoom(float zoom);
+
     void Update(float dt, Vector2 shipPos, bool warping);
 
     bool            Following() const { return following_; }

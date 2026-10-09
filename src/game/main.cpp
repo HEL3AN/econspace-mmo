@@ -1,5 +1,5 @@
 // EconSpace — entry point. All logic lives in the Game class.
-//   econspace connect <host> <port> <name> <secret> — connect to an econserver host
+//   econspace connect <host> <port> <name> <secret> [--zoom Z] — connect to an econserver host
 //
 // Connecting is mandatory: the world lives on an authoritative server and the
 // client is a renderer plus an input source. The connection is established here,
@@ -20,6 +20,7 @@ static int Usage(const char* exe)
                  "EconSpace — connect to a server:\n"
                  "  %s connect <host> <port> <name> <secret>\n"
                  "      the secret is this account's; the first login sets it\n"
+                 "      --zoom Z   start the camera at zoom Z (1 = a unit is a pixel)\n"
                  "\n"
                  "Start a server first:\n"
                  "  econserver host 50800\n",
@@ -38,6 +39,10 @@ int main(int argc, char** argv)
     // server challenges, and the client answers with something good for one connection.
     const std::string account = argv[4];
     const std::string secret = argv[5];
+    float             startZoom = 0.0f;  // 0: the default
+    for (int i = 6; i + 1 < argc; i++)
+        if (std::strcmp(argv[i], "--zoom") == 0)
+            startZoom = (float)std::atof(argv[++i]);
 
     if (!Net::Startup())
     {
@@ -69,6 +74,8 @@ int main(int argc, char** argv)
 
     {
         Game game(std::move(conn));
+        if (startZoom > 0.0f)
+            game.SetStartZoom(startZoom);
         game.Run();
     }  // the socket closes with Game, before winsock is unloaded
 

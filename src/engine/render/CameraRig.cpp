@@ -72,6 +72,12 @@ void CameraRig::Snap(Vector2 shipPos)
     camera_.zoom = zoomNow_ * warpPull_;
 }
 
+void CameraRig::SetZoom(float zoom)
+{
+    zoomGoal_ = zoomNow_ = std::clamp(zoom, MIN_ZOOM, MAX_ZOOM);
+    camera_.zoom = zoomNow_ * warpPull_;
+}
+
 void CameraRig::Update(float dt, Vector2 shipPos, bool warping)
 {
     // The zoom glides in proportion rather than in absolute steps, for the same reason the
