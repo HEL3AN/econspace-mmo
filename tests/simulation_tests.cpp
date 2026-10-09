@@ -292,6 +292,32 @@ TEST_CASE("a dock order flies the ship in and docks it")
     CHECK(f.s.IsDocked());
 }
 
+TEST_CASE("a dock order across the system warps there, and docks once out of warp (#159)")
+{
+    // A station a third of the system away. At sublight that is a twenty-minute flight, so
+    // an order that is not told to warp has to decide to; and a ship in warp sweeps
+    // through the outer part of the dock's range before it drops out, where the dock
+    // refuses it -- an order that acted the moment it was in range failed right there.
+    Fixture f;
+    auto    station = std::make_unique<Station>(Vector2{ 300000.0f, 0.0f }, 600.0f, "Far Depot",
+                                                FactionId::TradersGuild, StationRole::TradeHub);
+    station->SetId(43);
+    f.World().entities.push_back(std::move(station));
+
+    Orders::Order dock;
+    dock.kind = Orders::Kind::Dock;
+    dock.targetId = 43;
+    REQUIRE_FALSE(dock.useWarp);
+    REQUIRE(f.sim.GiveOrder(f.s, dock) > 0);
+
+    const float dt = 1.0f / 60.0f;
+    for (int i = 0; i < 60 * 60 && f.s.HasRunningOrder(); i++)  // one simulated minute
+        f.sim.StepPlayerOrder(f.s, f.World(), dt);
+
+    CHECK(f.s.orderStatus == Orders::Status::Done);
+    CHECK(f.s.IsDocked());
+}
+
 TEST_CASE("two players in one galaxy are two players")
 {
     // The whole point of #3. Before sessions existed this test could not be written: a

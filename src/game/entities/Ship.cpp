@@ -210,7 +210,9 @@ void Ship::CancelWarp()
 // drops out at warpDrop_.
 void Ship::RunWarp(float dt)
 {
-    static const float WARP_SPEED = 5000.0f;
+    // A crossing of a million-unit system in seconds (#159). Flat for now; how warp
+    // accelerates and slows is #160.
+    static const float WARP_SPEED = 120000.0f;
 
     float dx = warpTarget_.x - pos_.x;
     float dy = warpTarget_.y - pos_.y;

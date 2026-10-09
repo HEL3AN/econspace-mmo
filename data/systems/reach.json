@@ -4,32 +4,32 @@
             "name": "Reach Iron Belt",
             "ore": 280,
             "pos": [
-                -6000,
-                4000
+                -353500,
+                235700
             ],
             "resource": "Iron",
-            "size": 500
+            "size": 6000
         },
         {
             "name": "Reach Crystal Belt",
             "ore": 190,
             "pos": [
-                -15000,
-                8000
+                -655600,
+                349600
             ],
             "resource": "Crystal",
-            "size": 650
+            "size": 7800
         }
     ],
     "derelicts": [
         {
             "name": "Abandoned Refinery",
             "pos": [
-                -17000,
-                -3000
+                -740100,
+                -130600
             ],
             "reward": 1600,
-            "size": 40
+            "size": 45
         }
     ],
     "gates": [
@@ -37,42 +37,42 @@
             "destination": "core",
             "name": "Gate to Helios Core",
             "pos": [
-                12000,
-                -3000
+                574800,
+                -143700
             ],
-            "size": 150
+            "size": 900
         }
     ],
     "nebulae": [
         {
             "name": "Cobalt Drift",
             "pos": [
-                9000,
-                -7000
+                442900,
+                -344500
             ],
-            "radius": 2800
+            "radius": 33600
         }
     ],
     "planets": [
         {
             "angle": 1.0,
             "deposit": "Iron",
-            "orbitRadius": 4000,
+            "orbitRadius": 320000,
             "orbitSpeed": 320,
-            "size": 130,
+            "size": 13500,
             "type": "Rocky"
         },
         {
             "angle": 3.4,
             "deposit": "Ice",
-            "orbitRadius": 9000,
+            "orbitRadius": 483000,
             "orbitSpeed": 400,
-            "size": 200,
+            "size": 24000,
             "type": "Ice"
         }
     ],
     "star": {
-        "size": 500,
+        "size": 125000,
         "type": "Blue"
     },
     "stations": [
@@ -80,11 +80,11 @@
             "faction": "Syndicate",
             "name": "Reach Depot",
             "pos": [
-                3000,
-                1200
+                269800,
+                107900
             ],
             "role": "TradeHub",
-            "size": 80
+            "size": 600
         }
     ]
 }
