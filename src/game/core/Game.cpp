@@ -76,6 +76,8 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     camera_.offset = { screenWidth_ / 2.0f, screenHeight_ / 2.0f };
     camera_.rotation = 0.0f;
     camera_.zoom = 1.0f;
+    rig_.SetViewport((float)screenWidth_, (float)screenHeight_);
+    rig_.Snap(playerShip_->GetPosition());
 
     // No system is loaded here: which system we are in, and everything in it, arrives
     // from the server as a SystemLayout followed by snapshots (ApplyLayout).
@@ -110,7 +112,7 @@ void Game::Run()
         // Pick up the current window size (it may have been resized with the mouse).
         screenWidth_ = GetScreenWidth();
         screenHeight_ = GetScreenHeight();
-        camera_.offset = { screenWidth_ / 2.0f, screenHeight_ / 2.0f };
+        rig_.SetViewport((float)screenWidth_, (float)screenHeight_);
 
         // Debug commands (work in any mode).
         if (IsKeyPressed(KEY_F11))
@@ -186,21 +188,18 @@ void Game::Run()
         if (mode_ == GameMode::Flying)
             ReconcileClientWorld();
 
-        // The camera follows the ship (position synced from the snapshot). In warp the
-        // speed is too high for a smooth catch-up — center hard so the ship doesn't
-        // leave the screen.
+        // The camera is the player's (#158): it follows the ship until they look away, and
+        // pulls back while the ship is in warp. A change of system snaps it, because there
+        // is nothing between the old position and the new one to glide across.
         if (mode_ == GameMode::Flying)
         {
-            if (playerShip_->IsWarping() || cameraSnap_)
+            if (cameraSnap_)
             {
-                camera_.target = playerShip_->GetPosition();
+                rig_.Snap(playerShip_->GetPosition());
                 cameraSnap_ = false;
             }
-            else
-            {
-                float follow = 1.0f - expf(-8.0f * dt);
-                camera_.target = Vector2Lerp(camera_.target, playerShip_->GetPosition(), follow);
-            }
+            rig_.Update(dt, playerShip_->GetPosition(), playerShip_->IsWarping());
+            camera_ = rig_.Camera();
             BuildNetworkBeams();  // combat beams — from the snapshot (server computes combat)
 
             // Mining beam: the server reports mining in the snapshot — draw a beam to the nearest
@@ -309,9 +308,23 @@ void Game::HandleInput(float dt)
     if (galaxyMapOpen_ && IsKeyPressed(KEY_ESCAPE))
         galaxyMapOpen_ = false;
 
+    // Over a window, the wheel and the drag go to the window (the radar has its own).
     float wheel = GetMouseWheelMove();
-    if (wheel != 0.0f && !overUi)  // over a window, the wheel goes to the window (e.g. radar)
-        camera_.zoom = Clamp(camera_.zoom * (1.0f + wheel * 0.12f), 0.04f, 2.5f);
+    if (wheel != 0.0f && !overUi)
+        rig_.Zoom(wheel, GetMousePosition());
+
+    // Middle button looks away; C comes back. Left and right are already select and the
+    // context menu, and looking around is not worth taking either of them.
+    if (IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE) && !overUi)
+        panLast_ = GetMousePosition();
+    if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) && !overUi)
+    {
+        const Vector2 m = GetMousePosition();
+        rig_.Pan({ m.x - panLast_.x, m.y - panLast_.y });
+        panLast_ = m;
+    }
+    if (IsKeyPressed(KEY_C))
+        rig_.Recenter();
 
     // Held control axes: W — thrust, S — brake, A/D — turn. Written into the
     // command; the server applies it to the ship in the tick (Simulation::StepPlayerShip).

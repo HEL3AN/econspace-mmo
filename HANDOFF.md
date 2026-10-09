@@ -45,8 +45,10 @@ verbs, #161 life for the things nobody built, #165 orbiting parts.
 1. ~~**#166 — a planet's surface**~~ — **done**. Surface parts carry latitude and
    longitude and are projected onto the sphere; bands are computed per screen column; a
    body has an axis tilt that makes its bands curve.
-2. **#158 — the camera is the player's, not the ship's.** Zoom from a hull to a whole
-   system, pan away and snap back, and do something sensible during warp.
+2. ~~**#158 — the camera is the player's**~~ — **done**. `Render::CameraRig`: wheel zooms
+   (about the ship while following, about the cursor once free), middle-drag looks away,
+   **C** comes back, warp pulls back without touching the chosen zoom, and a scale bar sits
+   bottom right. Input arrives as arguments, so it is tested without a window.
 3. **#159 — the scale change itself.** A million units instead of twenty-five thousand; a
    station thirty to forty-five times a ship. **Not before #157 and #158 are finished**: at
    forty times the distance, finding things by looking at them is impossible, and the scale

@@ -11,6 +11,7 @@
 #include "net/Tcp.h"
 #include "render/GlyphBackend.h"
 #include "render/MaterialLibrary.h"
+#include "render/CameraRig.h"
 #include "render/Treatment.h"
 #include "player/Player.h"
 #include <string>
@@ -138,8 +139,14 @@ private:
 
     float simAccumulator_ = 0.0f;  // accumulator for the fixed simulation step
 
-    Camera2D camera_;
-    bool     cameraSnap_ = true;  // snap instead of lerp on the next frame (system change)
+    // The player's camera (#158). `camera_` is what it produced this frame -- kept as a plain
+    // Camera2D because every draw call and every screen-to-world conversion already takes
+    // one, and they have no business knowing how it was decided.
+    Render::CameraRig rig_;
+    Camera2D          camera_;
+    bool    cameraSnap_ = true;  // snap instead of glide on the next frame (system change)
+    Vector2 panLast_ = { 0.0f, 0.0f };
+    void    DrawScaleBar();
 
     std::vector<BgStar> bgStars_;  // parallax-background stars
 

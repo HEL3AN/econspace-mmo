@@ -681,8 +681,32 @@ void Game::DrawStatusContent(Rectangle area)
         Ui::Text("autopilot  ON", x, y, 14, GREEN);
 }
 
+// A scale bar, bottom right, and a reminder of how to get back when the camera has been
+// taken off the ship. In a system a million units across (#159) a player cannot tell what
+// they are looking at without the first, and cannot find their ship without the second.
+void Game::DrawScaleBar()
+{
+    const Render::ScaleBar bar = Render::ScaleBarFor(camera_.zoom, 160.0f);
+    if (bar.pixels <= 0.0f)
+        return;
+    const float x1 = (float)screenWidth_ - 28.0f, x0 = x1 - bar.pixels;
+    const float y = (float)screenHeight_ - 30.0f;
+    DrawLineEx({ x0, y }, { x1, y }, 2.0f, Ui::TEXT_DIM);
+    DrawLineEx({ x0, y - 5.0f }, { x0, y + 5.0f }, 2.0f, Ui::TEXT_DIM);
+    DrawLineEx({ x1, y - 5.0f }, { x1, y + 5.0f }, 2.0f, Ui::TEXT_DIM);
+
+    const float w = bar.worldLength;
+    const char* label = w >= 1000.0f ? TextFormat("%gk", w / 1000.0f) : TextFormat("%g", w);
+    Ui::Text(label, (int)(x0 + (bar.pixels - Ui::TextWidth(label, 13)) * 0.5f), (int)y - 20, 13,
+             Ui::TEXT_DIM);
+
+    if (!rig_.Following())
+        Ui::Text("camera free  ·  [C] back to ship", (int)x0 - 120, (int)y + 8, 11, Ui::ACCENT);
+}
+
 void Game::DrawHud()
 {
+    DrawScaleBar();
     for (auto& w : windows_)
         w->Draw();
 
