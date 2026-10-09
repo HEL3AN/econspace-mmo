@@ -247,6 +247,12 @@ jobs:
       # The example in examples/agents is documentation that executes. It runs against a
       # real server here so that it cannot rot: if a tool changes and the example stops
       # working, this goes red, instead of a newcomer finding out on their first evening.
+      # The bot reference is generated from the binary (#172). A tool changed without its
+      # documentation fails here -- and so does a tool schema a strict MCP client would not
+      # accept, which is how this check found that every schema had been malformed.
+      - name: The agent reference matches the agent
+        run: python3 tools/gen_agent_reference.py ./build/bin/agent/econagent --check
+
       - name: The example bot plays
         run: |
           ./build/bin/server/econserver host 50802 > bot-server.log 2>&1 &
