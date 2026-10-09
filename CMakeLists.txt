@@ -116,6 +116,7 @@ add_library(engine STATIC
     src/engine/core/Archetype.cpp    # what a kind of object is, as data (#34)
     src/engine/core/ArchetypeEdit.cpp  # writing a tuned look back without reformatting (#118)
     src/engine/gen/Region.cpp        # the region beyond the wormhole, from a seed (#140)
+    src/engine/gen/Survey.cpp        # many generated systems judged at once (#141)
     src/engine/entities/Entity.cpp
     src/engine/entities/Star.cpp
     src/engine/entities/Planet.cpp
@@ -273,6 +274,7 @@ add_executable(worldeditor
     src/editor/Editor_Galaxy.cpp    # the map view and its panel (#17)
     src/editor/Editor_Universe.cpp  # everything that changes universe.json (#17)
     src/editor/Editor_Gallery.cpp   # every archetype at once, for judging a look (#118)
+    src/editor/Editor_Survey.cpp    # many generated systems at once, for judging rules (#141)
 )
 target_include_directories(worldeditor PRIVATE ${CMAKE_SOURCE_DIR}/src/editor)
 target_link_libraries(worldeditor PRIVATE engine)
@@ -318,6 +320,7 @@ add_executable(tests
     tests/camera_tests.cpp
     tests/overview_tests.cpp
     tests/gen_tests.cpp
+    tests/survey_tests.cpp         # what the survey screen flags (#141)
     tests/warp_tests.cpp
     tests/warp_path_tests.cpp
     tests/clock_tests.cpp

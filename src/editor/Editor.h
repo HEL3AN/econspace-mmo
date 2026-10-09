@@ -7,6 +7,7 @@
 #include "render/MaterialLibrary.h"
 #include "render/Treatment.h"
 #include "core/Archetype.h"
+#include "gen/Survey.h"
 #include <nlohmann/json.hpp>
 #include <vector>
 #include <memory>
@@ -38,6 +39,11 @@ public:
     // that failed on this machine is named (#120, #190). Synthetic key presses do not reach
     // a raylib window, so this is how a screenshot of that panel is taken.
     void OpenTreatmentSettings() { treatmentPanelOpen_ = true; }
+
+    // Opens straight into the survey (#141): the regions of consecutive seeds from `seed`,
+    // every system on one screen. `card` (>= 0) opens that card enlarged, which is how a
+    // screenshot of one is taken without a click.
+    void OpenSurvey(uint64_t seed, int card = -1);
 
 private:
     // Reference to a JSON element: array category and index (star uses index=-1).
@@ -103,6 +109,37 @@ private:
     // Records that a key of an archetype was changed, so the save touches only those.
     void NoteLookEdit(const std::string& id, const std::string& key);
 
+    // Survey mode (#141): many generated systems at once, so a rule is judged on its
+    // distribution rather than its best case. The counting is Gen::Analyse (no window);
+    // this half draws it.
+    struct SurveyCard
+    {
+        Gen::SurveySystem         system;
+        std::vector<Render::Item> items;   // described once, when the batch is generated
+        std::vector<std::string>  labels;  // parallel to items, for the enlarged view
+    };
+    Rectangle SurveyButtonRect() const;
+    void      EnterSurveyMode(bool on);
+    void      RegenerateSurvey();  // generates the batch of seeds from surveySeed_
+    void      HandleSurveyInput();
+    // The grid, or the enlarged card over it. Drawn twice: the pictures inside the screen
+    // treatment, then the labels and flags after it, so a tool stays literal (as the HUD).
+    void      DrawSurvey(bool labels);
+    void      DrawSurveyPanel();  // the distributions
+    Rectangle SurveyGridRect() const;
+    Rectangle SurveyCardRect(int index) const;
+    int       SurveyHit(Vector2 p) const;
+    // One system fitted into `box`. `detail` is the enlarged view: names on everything.
+    void DrawSurveySystem(const SurveyCard& card, Rectangle box, bool detail, bool labels);
+
+    std::vector<SurveyCard> surveyCards_;
+    Gen::SurveyResult       survey_;
+    uint64_t                surveySeed_ = 1;     // the first seed of the batch
+    int                     surveyRegions_ = 3;  // seeds per batch; a region is 18 systems
+    int                     surveySelected_ = -1;
+    float                   surveyScroll_ = 0.0f;
+    bool                    surveyMarkers_ = true;  // M: belts, wrecks, gates marked
+
     // The screen treatment (#120), applied to the cards and not to the panels: the
     // gallery is where the treatment is tuned, and a settings screen seen through the
     // effect it is adjusting cannot be read while adjusting it.
@@ -157,9 +194,10 @@ private:
     // flags can both be true and there is no such screen.
     enum class Mode
     {
-        System,  // one star system, the objects in it
-        Galaxy,  // universe.json: the nodes and the links between them
-        Gallery  // every archetype at once, for judging a look (#118)
+        System,   // one star system, the objects in it
+        Galaxy,   // universe.json: the nodes and the links between them
+        Gallery,  // every archetype at once, for judging a look (#118)
+        Survey    // many generated systems at once, for judging the rules (#141)
     };
     Mode mode_ = Mode::System;
 

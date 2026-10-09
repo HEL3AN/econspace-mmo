@@ -29,6 +29,14 @@ void Editor::DrawHud()
         Ui::Text("click: select  ·  wheel: scroll  ·  F2: backend  ·  edit on the right", 16, 74,
                  13, Ui::TEXT_DIM);
     }
+    else if (mode_ == Mode::Survey)
+    {
+        Ui::Text(TextFormat("SURVEY   %d generated systems", (int)surveyCards_.size()), 16, 50, 16,
+                 Ui::TEXT);
+        Ui::Text("click: enlarge  ·  wheel: scroll  ·  hover: outline its twins  ·  PgDn/PgUp: "
+                 "seeds  ·  F2: backend",
+                 16, 74, 13, Ui::TEXT_DIM);
+    }
     else if (mode_ == Mode::Galaxy)
     {
         Ui::Text(TextFormat("GALAXY   systems: %d", (int)(universeJson_.contains("systems")
@@ -60,7 +68,7 @@ void Editor::DrawHud()
 
     // Mode toggle button (System / Galaxy). The gallery is not a place in the world, so
     // it does not sit on this toggle; it has its own button beside it.
-    if (mode_ != Mode::Gallery)
+    if (mode_ != Mode::Gallery && mode_ != Mode::Survey)
     {
         Rectangle mb = ModeButtonRect();
         bool      overMb = CheckCollisionPointRec(GetMousePosition(), mb);
@@ -80,6 +88,19 @@ void Editor::DrawHud()
              (mode_ == Mode::Gallery) ? Ui::ACCENT : Ui::TEXT);
     if (overGb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
         EnterGalleryMode(mode_ != Mode::Gallery);
+
+    // The survey (#141) sits beside the gallery for the same reason: it is not a place.
+    Rectangle svb = SurveyButtonRect();
+    bool      overSvb = CheckCollisionPointRec(GetMousePosition(), svb);
+    DrawRectangleRec(svb, overSvb ? Fade(Ui::ACCENT, 0.2f) : Ui::TITLE_BG);
+    DrawRectangleLinesEx(svb, 1.0f, (mode_ == Mode::Survey) ? Ui::ACCENT : Ui::PANEL_BORDER);
+    Ui::Text((mode_ == Mode::Survey) ? "Back  [F4]" : "Survey  [F4]", (int)svb.x + 12,
+             (int)svb.y + 8, 13, (mode_ == Mode::Survey) ? Ui::ACCENT : Ui::TEXT);
+    if (overSvb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+        EnterSurveyMode(mode_ != Mode::Survey);
+
+    if (mode_ == Mode::Survey)
+        return;  // nothing to save: a generated system has no file
 
     // Save button (top center) with an indicator of unsaved edits.
     bool d = dirty_;
