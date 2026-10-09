@@ -13,6 +13,15 @@ project(EconSpace LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# A Windows build runs from anywhere: MinGW's own runtime (libgcc, libstdc++, winpthread) is
+# linked in rather than looked for next to the executable. Without this an .exe started from
+# Explorer, from PowerShell or from any shell without MSYS2 on its PATH stops at a
+# "libgcc_s_seh-1.dll was not found" dialog -- which a player double-clicking the game
+# would meet first, and which blocks an unattended run until someone clicks OK.
+if(MINGW)
+    add_link_options(-static-libgcc -static-libstdc++ -static)
+endif()
+
 # Generate build/compile_commands.json — a project "map" for the editor
 # (VS Code uses it to resolve #include and hints correctly; clang-tidy needs it too).
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
