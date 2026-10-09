@@ -20,6 +20,7 @@ using System.Runtime.InteropServices;
 public class EconCapture {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
 }
 "@
@@ -31,7 +32,9 @@ if ($windows.Count -eq 0) {
 }
 $h = $windows[0].MainWindowHandle
 
-# Brought to the front first: CopyFromScreen copies whatever is on top.
+# Asked of the window itself (PrintWindow), not copied off the screen: a screen copy takes
+# whatever is on top, and a terminal or an editor is usually on top. The foreground request
+# only helps a window that has not drawn yet.
 [EconCapture]::SetForegroundWindow($h) | Out-Null
 Start-Sleep -Milliseconds $SettleMs
 
@@ -39,7 +42,10 @@ $r = New-Object EconCapture+RECT
 [EconCapture]::GetWindowRect($h, [ref]$r) | Out-Null
 $bmp = New-Object System.Drawing.Bitmap(($r.R - $r.L), ($r.B - $r.T))
 $g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.CopyFromScreen($r.L, $r.T, 0, 0, $bmp.Size)
+$hdc = $g.GetHdc()
+$ok = [EconCapture]::PrintWindow($h, $hdc, 2)  # 2 = PW_RENDERFULLCONTENT, for GPU-drawn windows
+$g.ReleaseHdc($hdc)
+if (-not $ok) { $g.CopyFromScreen($r.L, $r.T, 0, 0, $bmp.Size) }
 $bmp.Save($Out, [System.Drawing.Imaging.ImageFormat]::Png)
 $g.Dispose()
 $bmp.Dispose()

@@ -169,6 +169,8 @@ void Simulation::AttachRegion(uint64_t seed, const std::string& systemsDir)
     params.seed = seed;
     params.homeId = home->id;
     params.homeMap = home->mapPos;
+    for (const auto& info : universe_.systems)
+        params.knownMap.push_back(info.mapPos);
     params.homeSystem = homeDoc.is_discarded() ? nullptr : &homeDoc;
     Gen::Region region = Gen::GenerateRegion(params);
 

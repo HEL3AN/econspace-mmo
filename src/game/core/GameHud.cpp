@@ -1306,15 +1306,37 @@ void Game::DrawGalaxyMap()
     // simulation of its own to ask (#3).
     std::string activeSys = snapshot_.systemId;
 
+    // How close each system's nearest neighbour is on screen. With a region beyond the
+    // wormhole (#140) the map holds twenty systems, and three lines of text under each one
+    // is a smear: a crowded system shows its details only while it is the one you are in
+    // or the one under the cursor, and the wheel brings the rest back.
+    auto nearestOnScreen = [&](const WorldLoader::SystemInfo& s)
+    {
+        float best = 1e9f;
+        for (const auto& o : systems)
+            if (&o != &s)
+            {
+                const float dx = (o.mapPos.x - s.mapPos.x) * scale;
+                const float dy = (o.mapPos.y - s.mapPos.y) * scale;
+                best = fminf(best, sqrtf(dx * dx + dy * dy));
+            }
+        return best;
+    };
+
     // System nodes.
     for (const auto& s : systems)
     {
-        Vector2 p = toScreen(s.mapPos);
-        bool    cur = (s.id == activeSys);
+        Vector2     p = toScreen(s.mapPos);
+        bool        cur = (s.id == activeSys);
+        const bool  hovered = CheckCollisionPointCircle(m, p, 12.0f);
+        const float room = nearestOnScreen(s);
+        const bool  detail = cur || hovered || room >= 110.0f;
+        const bool  named = cur || hovered || room >= 45.0f;
         DrawCircleV(p, cur ? 10.0f : 7.0f, cur ? Ui::ACCENT : Ui::TEXT_DIM);
         if (cur)
             DrawCircleLines((int)p.x, (int)p.y, 16.0f, Fade(Ui::ACCENT, 0.6f));
-        Ui::Text(s.name.c_str(), (int)p.x + 14, (int)p.y - 8, 16, cur ? Ui::ACCENT : Ui::TEXT);
+        if (named)
+            Ui::Text(s.name.c_str(), (int)p.x + 14, (int)p.y - 8, 16, cur ? Ui::ACCENT : Ui::TEXT);
 
         // Live summary: security/pirates/economy/controller, from the server's galaxy
         // snapshot (galaxyState_).
@@ -1332,7 +1354,10 @@ void Game::DrawGalaxyMap()
                 controller = g.controller;
                 break;
             }
-        if (haveStats)
+        if (haveStats && !detail)
+            // Crowded: the controller only as the ring's colour.
+            DrawCircleLines((int)p.x, (int)p.y, 10.0f, Fade(FactionColor(controller), 0.7f));
+        else if (haveStats)
         {
             Color secCol = security >= 0.7f   ? Color{ 120, 210, 130, 255 }
                            : security >= 0.4f ? GOLD

@@ -34,6 +34,9 @@ struct RegionParams
     int         systems = 18;  // how many systems the region has
     std::string homeId;        // the system the wormhole opens from
     Vector2     homeMap = { 0.0f, 0.0f };
+    // Known systems already on the galaxy map: the region grows away from them rather
+    // than on top of them.
+    std::vector<Vector2> knownMap;
     // The home system's document, so the wormhole is not placed in a planet's path.
     // May be null: then only the system's edge is respected.
     const nlohmann::json* homeSystem = nullptr;

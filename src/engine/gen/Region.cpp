@@ -195,9 +195,27 @@ void PlaceOnMap(const RegionParams& params, std::vector<Node>& nodes)
     static const double DIRS[8][2] = { { 1, 0 },  { H, -H }, { 0, -1 }, { -H, -H },
                                        { -1, 0 }, { -H, H }, { 0, 1 },  { H, H } };
     Rng                 rng(Key(params.seed, MAP));
-    const int           d = rng.Range(0, 7);
-    const double        dx = DIRS[d][0], dy = DIRS[d][1];
-    const double        px = -dy, py = dx;  // across the bearing
+    // The bearing that keeps the region furthest from what is already mapped; among equals,
+    // the seed decides. No angle is computed, so no sin/cos.
+    const int first = rng.Range(0, 7);
+    int       d = first;
+    double    best = -1.0;
+    for (int i = 0; i < 8; i++)
+    {
+        const int    c = (first + i) % 8;
+        const double cx = params.homeMap.x + DIRS[c][0] * 500.0;
+        const double cy = params.homeMap.y + DIRS[c][1] * 500.0;
+        double       nearest = 1e18;
+        for (const Vector2& k : params.knownMap)
+            nearest = std::min(nearest, (cx - k.x) * (cx - k.x) + (cy - k.y) * (cy - k.y));
+        if (nearest > best + 1.0)
+        {
+            best = nearest;
+            d = c;
+        }
+    }
+    const double dx = DIRS[d][0], dy = DIRS[d][1];
+    const double px = -dy, py = dx;  // across the bearing
 
     std::map<int, int> perRing;
     for (const Node& n : nodes)
@@ -205,9 +223,10 @@ void PlaceOnMap(const RegionParams& params, std::vector<Node>& nodes)
     std::map<int, int> seen;
     for (Node& n : nodes)
     {
-        const int    k = seen[n.depth]++;
-        const double along = 180.0 + 150.0 * (n.depth - 1) + rng.Range(-25, 25);
-        const double across = (k - (perRing[n.depth] - 1) * 0.5) * 140.0 + rng.Range(-30, 30);
+        const int k = seen[n.depth]++;
+        // Spaced for the galaxy map's labels: a name and a line of statistics under it.
+        const double along = 240.0 + 210.0 * (n.depth - 1) + rng.Range(-30, 30);
+        const double across = (k - (perRing[n.depth] - 1) * 0.5) * 230.0 + rng.Range(-35, 35);
         n.mapX = Round(params.homeMap.x + dx * along + px * across, 1.0);
         n.mapY = Round(params.homeMap.y + dy * along + py * across, 1.0);
     }
