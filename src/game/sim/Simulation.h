@@ -39,6 +39,18 @@ public:
     void                         LoadUniverse(const std::string& path);
     const WorldLoader::Universe& Universe() const { return universe_; }
 
+    // The region beyond the wormhole (#140): generated from `seed` and hung off the start
+    // system by one wormhole gate. Call after LoadUniverse and before InitGalaxy/LoadWorld
+    // -- its systems have to be in the index before anything is made for them. Reads the
+    // start system's own file, so the wormhole is not placed in a planet's path.
+    void     AttachRegion(uint64_t seed, const std::string& systemsDir);
+    bool     HasRegion() const { return hasRegion_; }
+    uint64_t RegionSeed() const { return regionSeed_; }
+
+    // The seed and rules a saved world was generated with, read without loading it. False
+    // when the file is missing or has none (a save from before #140).
+    static bool ReadWorldSeed(const std::string& path, uint64_t& seed, int& generator);
+
     // Creates cold aggregates for ALL galaxy systems (call after LoadUniverse).
     // Systems start "living" right away, before the player even visits.
     void InitGalaxy();
@@ -343,7 +355,11 @@ public:
 
 private:
     WorldLoader::Universe              universe_;
-    std::map<std::string, SystemState> systems_;  // state by system id
+    bool                               hasRegion_ = false;
+    uint64_t                           regionSeed_ = 0;
+    std::map<std::string, std::string> regionDocs_;  // generated system documents, as JSON (#140)
+    std::string                        wormhole_;    // the gate added to the start system, as JSON
+    std::map<std::string, SystemState> systems_;     // state by system id
     int                                agentIdCounter_ = 0;
 
     // One per connected player (#3). A std::map because the verbs take a ClientSession&,

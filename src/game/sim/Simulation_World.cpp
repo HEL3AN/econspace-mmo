@@ -12,6 +12,7 @@
 #include "entities/Ship.h"
 #include "entities/Station.h"
 
+#include "gen/Region.h"
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -149,6 +150,64 @@ void Simulation::HydrateSystem(SystemState& st)
     }
 }
 
+void Simulation::AttachRegion(uint64_t seed, const std::string& systemsDir)
+{
+    const WorldLoader::SystemInfo* home = nullptr;
+    for (const auto& info : universe_.systems)
+        if (info.id == universe_.startId)
+            home = &info;
+    if (home == nullptr || hasRegion_)
+        return;
+
+    nlohmann::json homeDoc;
+    {
+        std::ifstream in(systemsDir + home->file);
+        if (in.is_open())
+            homeDoc = nlohmann::json::parse(in, nullptr, false);
+    }
+    Gen::RegionParams params;
+    params.seed = seed;
+    params.homeId = home->id;
+    params.homeMap = home->mapPos;
+    for (const auto& info : universe_.systems)
+        params.knownMap.push_back(info.mapPos);
+    params.homeSystem = homeDoc.is_discarded() ? nullptr : &homeDoc;
+    Gen::Region region = Gen::GenerateRegion(params);
+
+    for (const auto& s : region.systems)
+    {
+        WorldLoader::SystemInfo info;
+        info.id = s["id"];
+        info.name = s["name"];
+        info.mapPos = { s["map"][0].get<float>(), s["map"][1].get<float>() };
+        info.security = s["security"];
+        info.owner = s["owner"];
+        universe_.systems.push_back(info);  // no file: it lives in regionDocs_
+    }
+    for (const auto& l : region.links)
+        universe_.links.push_back({ l[0].get<std::string>(), l[1].get<std::string>() });
+    // Kept as text: the header stays free of the JSON library, and a document is parsed
+    // once, when its system is built.
+    for (const auto& kv : region.documents)
+        regionDocs_[kv.first] = kv.second.dump();
+    wormhole_ = region.wormhole.dump();
+    regionSeed_ = seed;
+    hasRegion_ = true;
+}
+
+bool Simulation::ReadWorldSeed(const std::string& path, uint64_t& seed, int& generator)
+{
+    std::ifstream in(path);
+    if (!in.is_open())
+        return false;
+    const nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
+    if (j.is_discarded() || !j.contains("seed"))
+        return false;
+    seed = j["seed"].get<uint64_t>();
+    generator = j.value("generator", 0);
+    return true;
+}
+
 void Simulation::MaterializeAllSystems(const std::string& systemsDir)
 {
     for (const auto& info : universe_.systems)
@@ -156,7 +215,24 @@ void Simulation::MaterializeAllSystems(const std::string& systemsDir)
         SystemState& st = systems_[info.id];  // created by InitGalaxy (aggregate already exists)
         st.id = info.id;
         if (st.entities.empty())
-            st.entities = WorldLoader::LoadSystem(systemsDir + info.file);
+        {
+            auto doc = regionDocs_.find(info.id);
+            if (doc != regionDocs_.end())
+                st.entities =
+                    WorldLoader::BuildSystem(nlohmann::json::parse(doc->second));  // (#140)
+            else if (hasRegion_ && info.id == universe_.startId)
+            {
+                // The start system as written, plus the wormhole's mouth.
+                std::ifstream  in(systemsDir + info.file);
+                nlohmann::json home = nlohmann::json::parse(in, nullptr, false);
+                if (home.is_discarded())
+                    home = nlohmann::json::object();
+                home["gates"].push_back(nlohmann::json::parse(wormhole_));
+                st.entities = WorldLoader::BuildSystem(home);
+            }
+            else
+                st.entities = WorldLoader::LoadSystem(systemsDir + info.file);
+        }
         if (!st.populated)
         {
             HydrateSystem(st);
@@ -173,6 +249,12 @@ void Simulation::SaveWorld(const std::string& path) const
     json j;
     j["version"] = Save::WORLD_VERSION;
     j["simTime"] = time_;
+    // The region is not saved: it is remade from these two (#140).
+    if (hasRegion_)
+    {
+        j["seed"] = regionSeed_;
+        j["generator"] = Gen::GENERATOR_VERSION;
+    }
     json galaxy = json::object();
     for (const auto& kv : systems_)
     {

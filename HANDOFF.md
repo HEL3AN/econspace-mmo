@@ -62,7 +62,13 @@ nobody built, #165 orbiting parts.
    speed, slows in proportion to what is left, caps at 250 000: a hop is ~6 s, the whole
    system ~13 s. Bends once around a star or planet in its way (`sim/WarpPath.h`). The sky
    scrolls by screen motion and streaks in warp. `--warp X Y` orders one at start.
-6. Then #179 (high-DPI), and the M6 leftovers (#123, #117).
+6. ~~#117 colour is the archetype's~~ done; #179 (high-DPI) waits for a scaled display to
+   verify on; #123 (glyphs as a sensor screen) is the last M6 piece.
+7. **M7 has started.** #140 (done): the region beyond the wormhole comes from a seed
+   (`src/engine/gen/`), hangs off the start system by one wormhole gate, and is remade
+   from the seed in `world.json` on every start. `econserver host PORT --seed N` makes a
+   new galaxy reproducible. Next: #141 (fifty systems on one screen, to judge the rules),
+   then #142 (the system rules proper) and #143 (the region's shape) tuned against it.
 
 Also queued: **#137** shape derived from what an object does (it supersedes the closed
 #133), **#138** damage that removes parts, **#139** variation that changes a silhouette

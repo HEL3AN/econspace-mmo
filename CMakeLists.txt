@@ -106,6 +106,7 @@ add_library(engine STATIC
     src/engine/core/Faction.cpp
     src/engine/core/Archetype.cpp    # what a kind of object is, as data (#34)
     src/engine/core/ArchetypeEdit.cpp  # writing a tuned look back without reformatting (#118)
+    src/engine/gen/Region.cpp        # the region beyond the wormhole, from a seed (#140)
     src/engine/entities/Entity.cpp
     src/engine/entities/Star.cpp
     src/engine/entities/Planet.cpp
@@ -307,6 +308,7 @@ add_executable(tests
     tests/silhouette_tests.cpp
     tests/camera_tests.cpp
     tests/overview_tests.cpp
+    tests/gen_tests.cpp
     tests/warp_tests.cpp
     tests/warp_path_tests.cpp
     tests/clock_tests.cpp
