@@ -178,6 +178,31 @@
             ] },
             "components": {}
         },
+        {
+            "id": "planet.rogue",
+            "name": "Rogue World",
+            "kind": "Planet",
+            "glyph": "o",
+            "sprite": "planet_ice",
+            "color": [74, 80, 100, 255],
+            "layer": 1,
+            "size": 14000,
+            "material": "hull",
+            "shape": { "tilt": 34, "parts": [
+                {"form": "disc", "radius": 1.0, "role": "hull"},
+                {"form": "band", "lat": 80, "width": 20, "role": "trim", "alpha": 0.4, "minPixels": 30},
+                {"form": "band", "lat": -82, "width": 16, "role": "trim", "alpha": 0.35, "minPixels": 30},
+                {"form": "disc", "lat": 30, "lon": 0, "radius": 0.15, "role": "panel", "alpha": 0.7, "spin": 1.5, "minPixels": 40},
+                {"form": "disc", "lat": -8, "lon": 60, "radius": 0.12, "role": "panel", "alpha": 0.8, "spin": 1.5, "minPixels": 40},
+                {"form": "disc", "lat": -40, "lon": 150, "radius": 0.14, "role": "panel", "alpha": 0.7, "spin": 1.5, "minPixels": 40},
+                {"form": "disc", "lat": 10, "lon": 220, "radius": 0.15, "role": "panel", "alpha": 0.8, "spin": 1.5, "minPixels": 40},
+                {"form": "disc", "lat": 45, "lon": 290, "radius": 0.1, "role": "panel", "alpha": 0.7, "spin": 1.5, "minPixels": 60},
+                {"form": "disc", "lat": 38, "lon": 20, "radius": 0.08, "role": "panel", "alpha": 0.7, "spin": 1.5, "minPixels": 60},
+                {"form": "disc", "lat": -22, "lon": 175, "radius": 0.07, "role": "panel", "alpha": 0.8, "spin": 1.5, "minPixels": 60},
+                {"form": "disc", "lat": -2, "lon": 320, "radius": 0.07, "role": "trim", "spin": 1.5, "minPixels": 60}
+            ] },
+            "components": {}
+        },
 
         {
             "id": "station.trade_hub",
@@ -302,6 +327,29 @@
                 "mineable": { "extractRate": 1.0, "range": 40 }
             }
         },
+        {
+            "id": "field.motherlode",
+            "style": "region",
+            "name": "Motherlode",
+            "kind": "Field",
+            "glyph": "%",
+            "sprite": "asteroids",
+            "color": [140, 190, 215, 255],
+            "layer": 2,
+            "size": 6000,
+            "shape": [
+                {"form": "disc", "at": [0.88, 0.0], "repeat": 13, "radius": 0.04, "role": "hull", "spin": 0.7, "jitterAngle": 14, "jitterScale": 0.5},
+                {"form": "chevron", "at": [0.8, 0.0], "repeat": 7, "angle": 90, "length": 0.08, "width": 0.035, "role": "trim", "spin": 0.9, "jitterAngle": 25, "jitterScale": 0.4, "minPixels": 30},
+                {"form": "disc", "at": [0.72, 0.0], "repeat": 11, "radius": 0.034, "role": "panel", "spin": 1.1, "jitterAngle": 16, "jitterScale": 0.5, "minPixels": 30},
+                {"form": "polygon", "sides": 4, "at": [0.62, 0.0], "repeat": 6, "radius": 0.03, "role": "trim", "spin": 1.4, "jitterAngle": 30, "jitterScale": 0.4, "minPixels": 50},
+                {"form": "disc", "at": [0.52, 0.0], "repeat": 9, "radius": 0.028, "role": "hull", "spin": 1.7, "jitterAngle": 20, "jitterScale": 0.5, "minPixels": 50},
+                {"form": "disc", "at": [0.34, 0.0], "repeat": 6, "radius": 0.022, "role": "trim", "spin": 2.4, "jitterAngle": 30, "jitterScale": 0.6, "minPixels": 90},
+                {"form": "disc", "at": [0.8, 0.0], "repeat": 5, "radius": 0.012, "role": "light", "spin": 0.9, "jitterAngle": 30, "blink": 3.1, "minPixels": 50}
+            ],
+            "components": {
+                "mineable": { "extractRate": 1.5, "range": 80 }
+            }
+        },
 
         {
             "id": "nebula.cloud",
@@ -345,6 +393,75 @@
                 "salvageable": { "range": 120 }
             }
         },
+        {
+            "id": "derelict.leviathan",
+            "name": "Leviathan Wreck",
+            "kind": "Derelict",
+            "glyph": "X",
+            "sprite": "derelict",
+            "color": [125, 118, 106, 255],
+            "layer": 3,
+            "size": 520,
+            "material": "hull",
+            "shape": [
+                {"form": "bar", "at": [0.05, 0.0], "angle": -3, "length": 0.8, "width": 0.46, "role": "hull", "spin": -0.25},
+                {"form": "bar", "at": [0.08, 0.12], "angle": -3, "length": 0.56, "width": 0.11, "role": "panel", "minPixels": 34, "spin": -0.25},
+                {"form": "bar", "at": [0.02, -0.13], "angle": -3, "length": 0.46, "width": 0.08, "role": "panel", "minPixels": 44, "spin": -0.25},
+                {"form": "capsule", "at": [0.08, -0.01], "angle": -3, "length": 0.66, "width": 0.035, "role": "trim", "minPixels": 50, "spin": -0.25},
+                {"form": "chevron", "at": [0.87, -0.12], "angle": -14, "length": 0.66, "width": 0.55, "role": "hull", "spin": -0.25},
+                {"form": "disc", "at": [0.8, -0.1], "radius": 0.085, "role": "panel", "minPixels": 44, "spin": -0.25},
+                {"form": "capsule", "at": [-0.31, 0.0], "angle": 87, "length": 0.6, "width": 0.035, "role": "antenna", "minPixels": 40, "spin": -0.25},
+                {"form": "capsule", "at": [-0.23, 0.01], "angle": 84, "length": 0.54, "width": 0.035, "role": "antenna", "minPixels": 40, "spin": -0.25},
+                {"form": "lattice", "at": [-0.5, 0.05], "angle": 10, "length": 0.32, "width": 0.16, "count": 3, "role": "panel", "minPixels": 30, "spin": -0.25},
+                {"form": "bar", "at": [-0.95, 0.24], "angle": 22, "length": 0.4, "width": 0.5, "role": "hull", "spin": -0.25},
+                {"form": "bar", "at": [-0.93, 0.25], "angle": 22, "length": 0.24, "width": 0.3, "role": "panel", "minPixels": 44, "spin": -0.25},
+                {"form": "disc", "at": [-1.18, 0.285], "radius": 0.09, "role": "panel", "minPixels": 30, "spin": -0.25},
+                {"form": "disc", "at": [-1.09, 0.05], "radius": 0.09, "role": "panel", "minPixels": 30, "spin": -0.25},
+                {"form": "capsule", "at": [-0.74, 0.17], "angle": 32, "length": 0.14, "width": 0.05, "role": "antenna", "minPixels": 44, "spin": -0.25},
+                {"form": "chevron", "at": [0.4, -0.44], "angle": 120, "length": 0.24, "width": 0.18, "role": "hull", "jitterAngle": 8, "minPixels": 30, "spin": -0.25},
+                {"form": "bar", "at": [0.3, 0.46], "angle": 35, "length": 0.2, "width": 0.07, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 34, "spin": -0.25},
+                {"form": "bar", "at": [-0.4, -0.38], "angle": -50, "length": 0.16, "width": 0.06, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 34, "spin": -0.25},
+                {"form": "bar", "at": [-0.6, 0.6], "angle": 70, "length": 0.14, "width": 0.06, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 50, "spin": -0.25},
+                {"form": "bar", "at": [1.0, 0.36], "angle": 10, "length": 0.12, "width": 0.05, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 50, "spin": -0.25}
+            ],
+            "components": {
+                "salvageable": { "range": 400 }
+            }
+        },
+        {
+            "id": "derelict.station_hulk",
+            "name": "Station Hulk",
+            "kind": "Derelict",
+            "glyph": "#",
+            "sprite": "derelict",
+            "color": [125, 127, 134, 255],
+            "layer": 3,
+            "size": 600,
+            "material": "hull",
+            "shape": [
+                {"form": "polygon", "sides": 6, "radius": 0.55, "role": "hull"},
+                {"form": "polygon", "sides": 6, "radius": 0.4, "role": "panel", "angle": 30, "minPixels": 50},
+                {"form": "disc", "at": [0.18, 0.22], "radius": 0.13, "role": "panel", "minPixels": 50},
+                {"form": "capsule", "at": [0.85, 0.0], "length": 0.75, "width": 0.14, "role": "hull"},
+                {"form": "capsule", "at": [-0.35, 0.606], "angle": 120, "length": 0.45, "width": 0.14, "role": "hull"},
+                {"form": "bar", "at": [-0.31, -0.537], "angle": 240, "length": 0.2, "width": 0.16, "role": "panel", "minPixels": 34},
+                {"form": "disc", "at": [1.3, 0.0], "radius": 0.22, "role": "panel", "minPixels": 40},
+                {"form": "disc", "at": [-0.95, 1.05], "radius": 0.18, "role": "panel", "jitterScale": 0.1, "minPixels": 40},
+                {"form": "capsule", "at": [1.526, 0.269], "angle": 100, "length": 1.0, "width": 0.08, "role": "trim", "minPixels": 34},
+                {"form": "capsule", "at": [0.996, 1.187], "angle": 140, "length": 0.9, "width": 0.08, "role": "trim", "minPixels": 34},
+                {"form": "capsule", "at": [-1.472, 0.85], "angle": 236, "length": 0.8, "width": 0.08, "role": "trim", "minPixels": 34},
+                {"form": "capsule", "at": [-1.497, -0.401], "angle": 285, "length": 1.0, "width": 0.08, "role": "trim", "minPixels": 34},
+                {"form": "capsule", "at": [0.53, -1.457], "angle": 20, "length": 0.95, "width": 0.08, "role": "trim", "minPixels": 34},
+                {"form": "capsule", "at": [1.27, -0.889], "angle": 55, "length": 0.6, "width": 0.08, "role": "trim", "minPixels": 34},
+                {"form": "capsule", "at": [0.08, -0.7], "angle": 75, "length": 0.3, "width": 0.05, "role": "antenna", "minPixels": 70},
+                {"form": "chevron", "at": [-0.72, -0.95], "angle": 200, "length": 0.22, "width": 0.16, "role": "hull", "jitterAngle": 6, "minPixels": 40},
+                {"form": "bar", "at": [0.55, 0.62], "angle": 40, "length": 0.14, "width": 0.06, "role": "panel", "jitterAngle": 8, "minPixels": 50},
+                {"form": "disc", "at": [1.526, 0.269], "radius": 0.05, "role": "light", "alpha": 0.6, "blink": 6.0, "minPixels": 60}
+            ],
+            "components": {
+                "salvageable": { "range": 300 }
+            }
+        },
 
         {
             "id": "gate.jump",
@@ -365,6 +482,29 @@
             ],
             "components": {
                 "jumpLink": { "range": 200 }
+            }
+        },
+        {
+            "id": "gate.ancient",
+            "name": "Ancient Gate",
+            "kind": "Gate",
+            "glyph": "0",
+            "sprite": "gate",
+            "color": [190, 165, 115, 255],
+            "layer": 3,
+            "size": 1300,
+            "material": "hull",
+            "shape": [
+                {"form": "ring", "radius": 1.0, "width": 0.2, "role": "hull"},
+                {"form": "polygon", "sides": 7, "radius": 1.28, "filled": false, "width": 0.04, "role": "trim", "minPixels": 34, "spin": 1.5},
+                {"form": "bar", "at": [1.2, 0.0], "repeat": 3, "length": 0.45, "width": 0.18, "role": "panel"},
+                {"form": "chevron", "at": [0.86, 0.0], "repeat": 9, "angle": 180, "length": 0.12, "width": 0.1, "role": "trim", "minPixels": 40, "spin": -4.0},
+                {"form": "ring", "radius": 0.68, "width": 0.025, "role": "trim", "alpha": 0.6, "minPixels": 50},
+                {"form": "disc", "radius": 0.66, "role": "light", "alpha": 0.12, "blink": 11.0, "minPixels": 40},
+                {"form": "disc", "at": [1.47, 0.0], "repeat": 3, "radius": 0.05, "role": "light", "minPixels": 50, "blink": 4.5}
+            ],
+            "components": {
+                "jumpLink": { "range": 300 }
             }
         },
 
