@@ -805,22 +805,14 @@ void Game::DrawStationScreen()
                         Factions::TierName(stationTier).c_str(), (int)stationRep),
              contentX, py + 39, 14, Factions::TierColor(stationTier));
 
-    // Price multipliers from reputation: high reputation makes selling and buying more favorable.
-    float sellMul = 1.0f, buyMul = 1.0f;
+    // Reputation makes buying a ship cheaper. Selling needs no multiplier here: the server
+    // prices a sale, and the revenue arrives with its acknowledgement.
+    float buyMul = 1.0f;
     switch (stationTier)
     {
-        case RepTier::Hostile:
-            sellMul = 0.85f;
-            buyMul = 1.15f;
-            break;
-        case RepTier::Liked:
-            sellMul = 1.10f;
-            buyMul = 0.92f;
-            break;
-        case RepTier::Allied:
-            sellMul = 1.20f;
-            buyMul = 0.85f;
-            break;
+        case RepTier::Hostile: buyMul = 1.15f; break;
+        case RepTier::Liked: buyMul = 0.92f; break;
+        case RepTier::Allied: buyMul = 0.85f; break;
         default: break;
     }
 
@@ -886,7 +878,7 @@ void Game::DrawStationScreen()
         {
             Button sellBtn(Rectangle{ (float)(contentX + 420), (float)rowY, 130.0f, 30.0f },
                            "Sell all",
-                           [this, type, sellMul, cargo]()
+                           [this, type, cargo]()
                            {
                                // Selling is an order to the server; ApplyTradeAcks credits
                                // the revenue on acknowledgement (at the server's price).
