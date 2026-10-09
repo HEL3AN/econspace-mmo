@@ -58,7 +58,11 @@ nobody built, #165 orbiting parts.
    what a planet would sweep was moved out of its path (DECISIONS.md has the details).
    Standing orders and NPCs warp any leg past 20 000; old account saves arrive beside a
    station. `econspace ... --zoom Z --shapes` starts at a given view, for screenshots.
-5. Then **#160** warp tuned for the new distances, and the M6 leftovers (#123, #117).
+5. ~~**#160 — warp for the new distances**~~ — **done**. Accelerates by a share of its
+   speed, slows in proportion to what is left, caps at 250 000: a hop is ~6 s, the whole
+   system ~13 s. Bends once around a star or planet in its way (`sim/WarpPath.h`). The sky
+   scrolls by screen motion and streaks in warp. `--warp X Y` orders one at start.
+6. Then #179 (high-DPI), and the M6 leftovers (#123, #117).
 
 Also queued: **#137** shape derived from what an object does (it supersedes the closed
 #133), **#138** damage that removes parts, **#139** variation that changes a silhouette

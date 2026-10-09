@@ -26,7 +26,7 @@ namespace Proto
 // without it a client built against an older protocol would silently receive defaults
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
-inline constexpr int PROTO_VERSION = 10;
+inline constexpr int PROTO_VERSION = 11;  // 11: a warp can bend around a body (#160)
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).
@@ -95,6 +95,10 @@ struct Command
     int     navMode = 0;
     Vector2 navTarget = { 0.0f, 0.0f };
     float   navStopDist = 0.0f;
+    // A warp's bend point, if it has one: around a body rather than through it (#160).
+    // Chosen by whoever orders the warp, so both sides fly the same two legs.
+    bool    navViaSet = false;
+    Vector2 navVia = { 0.0f, 0.0f };
     // For the standing modes: what to hold station on, and at what distance. An id rather
     // than a point, because the point of it is to follow something that moves.
     int   navHoldId = 0;
@@ -168,7 +172,9 @@ struct PlayerView
     // no warp-timer scale of its own (otherwise "bar ready" and flight start diverge).
     float   warpAlign = 0.0f;  // remaining warp spin-up timer
     Vector2 warpTarget = { 0.0f, 0.0f };
-    float   warpDrop = 0.0f;  // warp exit distance
+    float   warpDrop = 0.0f;     // warp exit distance
+    bool    warpViaSet = false;  // still on the first leg of a bent warp (#160)
+    Vector2 warpVia = { 0.0f, 0.0f };
     bool    autopilot = false;
     Vector2 apTarget = { 0.0f, 0.0f };
     float   apStop = 0.0f;  // autopilot stop distance

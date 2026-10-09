@@ -1,6 +1,7 @@
 #include "entities/Ship.h"
 #include "core/World.h"
 #include "render/Textures.h"
+#include <algorithm>
 #include <cmath>
 
 Ship::Ship(Vector2 startPos, const ShipStats& stats)
@@ -66,13 +67,15 @@ void Ship::ApplyView(Vector2 pos, float heading, Vector2 vel, float hull, float 
 }
 
 void Ship::ApplyNavView(int warpPhase, float warpAlignTimer, Vector2 warpTarget, float warpDrop,
-                        bool apActive, Vector2 apTarget, float apStopDistance, int holdMode,
-                        int holdTargetId, float holdRange)
+                        bool warpHasVia, Vector2 warpVia, bool apActive, Vector2 apTarget,
+                        float apStopDistance, int holdMode, int holdTargetId, float holdRange)
 {
     warpPhase_ = (WarpPhase)warpPhase;
     warpAlignTimer_ = warpAlignTimer;
     warpTarget_ = warpTarget;
     warpDrop_ = warpDrop;
+    warpHasVia_ = warpHasVia;
+    warpVia_ = warpVia;
     warpPrevDist_ = 1e9f;  // reset the stuck guard: the client only coasts in
     apActive_ = apActive;
     apArrived_ = false;
@@ -169,7 +172,7 @@ void Ship::UpdateHold(Vector2 targetPos)
                     holdRange_ * 0.08f);
 }
 
-void Ship::EngageWarp(Vector2 target, float dropDistance)
+void Ship::EngageWarp(Vector2 target, float dropDistance, bool hasVia, Vector2 via)
 {
     // Don't allow a target outside the system boundary — warp couldn't reach it.
     float d2 = target.x * target.x + target.y * target.y;
@@ -185,6 +188,8 @@ void Ship::EngageWarp(Vector2 target, float dropDistance)
     warpPhase_ = WarpPhase::Aligning;
     warpTarget_ = target;
     warpDrop_ = dropDistance;
+    warpHasVia_ = hasVia;
+    warpVia_ = via;
     warpAlignTimer_ = WARP_ALIGN_TIME;  // spin-up before the jump (alignment)
     warpPrevDist_ = 1e9f;
 }
@@ -210,15 +215,31 @@ void Ship::CancelWarp()
 // drops out at warpDrop_.
 void Ship::RunWarp(float dt)
 {
-    // A crossing of a million-unit system in seconds (#159). Flat for now; how warp
-    // accelerates and slows is #160.
-    static const float WARP_SPEED = 120000.0f;
+    // The turn: once the bend point is within this tick's step, the second leg begins.
+    // Turning at the step rather than stopping on the point keeps the speed through the
+    // corner; the overshoot is one tick, far inside the clearance it was placed with.
+    if (warpHasVia_ && warpPhase_ == WarpPhase::Warping)
+    {
+        const float vx = warpVia_.x - pos_.x, vy = warpVia_.y - pos_.y;
+        const float step = sqrtf(velocity_.x * velocity_.x + velocity_.y * velocity_.y) * dt;
+        if (sqrtf(vx * vx + vy * vy) <= std::max(step, 1.0f))
+        {
+            warpHasVia_ = false;
+            warpPrevDist_ = 1e9f;  // a new leg: its distance starts over
+        }
+    }
+    const Vector2 aim = warpHasVia_ ? warpVia_ : warpTarget_;
+    // What is left of the whole flight, both legs, which is what the slowing is measured on.
+    const float legAfter = warpHasVia_
+                               ? sqrtf((warpTarget_.x - warpVia_.x) * (warpTarget_.x - warpVia_.x) +
+                                       (warpTarget_.y - warpVia_.y) * (warpTarget_.y - warpVia_.y))
+                               : 0.0f;
 
-    float dx = warpTarget_.x - pos_.x;
-    float dy = warpTarget_.y - pos_.y;
+    float dx = aim.x - pos_.x;
+    float dy = aim.y - pos_.y;
     float dist = sqrtf(dx * dx + dy * dy);
 
-    if (dist <= warpDrop_)
+    if (!warpHasVia_ && dist <= warpDrop_)
     {
         warpPhase_ = WarpPhase::None;  // drop out of warp
         velocity_ = { 0.0f, 0.0f };
@@ -249,11 +270,15 @@ void Ship::RunWarp(float dt)
     }
     warpPrevDist_ = dist;
 
-    // Jump: cap the speed so we don't overshoot the drop-out point in one frame.
-    float speed = WARP_SPEED;
-    float maxBeforeDrop = (dist - warpDrop_) / dt;
-    if (speed > maxBeforeDrop)
-        speed = maxBeforeDrop;
+    // Faster by a share of the current speed while far, slower in proportion to what is
+    // left while near, never past the cap -- and never past the drop-out point in one tick.
+    const float remaining = dist + legAfter - warpDrop_;
+    float       speed = sqrtf(velocity_.x * velocity_.x + velocity_.y * velocity_.y);
+    speed = speed < WARP_ENTRY_SPEED ? WARP_ENTRY_SPEED : speed * (1.0f + WARP_ACCEL * dt);
+    speed = std::min(speed, std::max(WARP_ACCEL * remaining, WARP_EXIT_SPEED));
+    speed = std::min(speed, WARP_MAX_SPEED);
+    if (!warpHasVia_)
+        speed = std::min(speed, remaining / dt);
     velocity_ = { dirX * speed, dirY * speed };
     engineActive_ = true;
 }

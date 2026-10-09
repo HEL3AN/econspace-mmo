@@ -35,7 +35,7 @@ void StepPlayerShip(Ship& s, const Proto::Command& cmd, float pilotBonus, float 
     else if (cmd.navMode == 2)
     {
         s.ReleaseHold();
-        s.EngageWarp(cmd.navTarget, cmd.navStopDist);
+        s.EngageWarp(cmd.navTarget, cmd.navStopDist, cmd.navViaSet, cmd.navVia);
     }
     else if (cmd.navMode == 3 || cmd.navMode == 4)
     {

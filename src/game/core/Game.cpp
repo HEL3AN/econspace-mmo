@@ -6,6 +6,7 @@
 // station screen. See GameNet.cpp and GameHud.cpp.
 #include "core/Game.h"
 #include "sim/PlayerStep.h"
+#include "sim/WarpPath.h"
 
 #include "core/Archetype.h"
 #include "core/World.h"
@@ -278,6 +279,12 @@ void Game::HandleInput(float dt)
 {
     (void)dt;
 
+    if (startWarpFrames_ > 0 && --startWarpFrames_ == 0)
+    {
+        OrderWarp(startWarpTarget_, 500.0f);
+        startWarpFrames_ = -1;
+    }
+
     // The context menu is handled first — it sits above the whole UI.
     // We call all handlers explicitly so short-circuit || doesn't skip them.
     bool overMenu = contextMenu_.Update();
@@ -463,8 +470,6 @@ void Game::FlashMessage(const std::string& msg)
     flashTimer_ = 2.5f;
 }
 
-// Parallax background: stars in screen coordinates, offset from the camera position
-// proportionally to depth; farther layers move slower than nearer ones.
 void Game::OrderAutopilot(Vector2 target, float stopDist)
 {
     cmd_.navMode = 1;
@@ -476,6 +481,14 @@ void Game::OrderWarp(Vector2 target, float dropDist)
     cmd_.navMode = 2;
     cmd_.navTarget = target;
     cmd_.navStopDist = dropDist;
+
+    // Around a star or a planet rather than through it (#160). The bend point travels in
+    // the command, so the server flies the same two legs this client predicts.
+    std::vector<WarpPath::Body> bodies;
+    for (const auto& e : clientWorld_)
+        if (e->GetKind() == EntityKind::Star || e->GetKind() == EntityKind::Planet)
+            bodies.push_back({ e->GetPosition(), e->GetSize() });
+    cmd_.navViaSet = WarpPath::Via(playerShip_->GetPosition(), target, bodies, cmd_.navVia);
 }
 
 // Standing hold: orbit (mode 3) or keep at range (mode 4). Unlike Approach and Warp these

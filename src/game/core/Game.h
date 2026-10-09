@@ -71,6 +71,13 @@ public:
     void SetStartZoom(float zoom) { rig_.SetZoom(zoom); }
     // Start on the shape backend (--shapes), the one F2 switches to.
     void StartOnShapes() { backend_ = &shapeBackend_; }
+    // Order a warp to a point shortly after joining (--warp X Y): for watching a warp, and
+    // screenshotting one, without a hand on the controls.
+    void StartWithWarp(Vector2 target)
+    {
+        startWarpTarget_ = target;
+        startWarpFrames_ = 120;  // two seconds: the first snapshots have placed the ship
+    }
     ~Game();
 
     void Run();
@@ -156,6 +163,15 @@ private:
     void    DrawScaleBar();
 
     std::vector<BgStar> bgStars_;  // parallax-background stars
+    // How far the sky has scrolled, in screen pixels, and where the camera was last frame.
+    // Accumulated from the camera's motion on screen rather than computed from its world
+    // position (#160): at a million units a position-based sky raced past whenever the
+    // whole system was in view, and jumped whenever the zoom changed.
+    Vector2 skyScroll_ = { 0.0f, 0.0f };
+    Vector2 skyLastTarget_ = { 0.0f, 0.0f };
+    bool    skyPrimed_ = false;
+    Vector2 startWarpTarget_ = { 0.0f, 0.0f };
+    int     startWarpFrames_ = -1;  // counts down to the --warp order; -1 when there is none
 
     // How the world is presented (#35). Glyphs are the game's look (#36); shapes remain
     // reachable with F2, as the alternative backend the sprite path hangs off.

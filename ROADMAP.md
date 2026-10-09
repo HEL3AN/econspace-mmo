@@ -61,7 +61,7 @@ Left: glyphs become a **sensor screen** over a fixed grid, the one job they are 
 
 A station was 5.6 times a ship and a planet was nine — numbers nobody chose, which fell out of the game having one speed, so everything had to be within a minute of flying. A system becomes forty times bigger (a million units), a station towers over a ship, and travel stops being a matter of pointing at what you can see.
 
-Done: orbit and keep at range (#157, first half), the player's camera (#158), life for planets and regions (#161), orbiting parts (#165), surfaces on a sphere (#166). Left: the overview's sorting and filtering (#157), **the scale change itself** (#159), and warp tuned for the new distances (#160).
+Done: orbit and keep at range (#157, first half), the player's camera (#158), life for planets and regions (#161), orbiting parts (#165), surfaces on a sphere (#166). The overview's sorting and filtering (#157), **the scale change itself** (#159) and warp for the new distances (#160) are done too. Left: correct materials on high-DPI displays (#179).
 
 **Before M7**, because the generator will bake in whatever scale exists when it is written.
 

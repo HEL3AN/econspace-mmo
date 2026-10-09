@@ -193,8 +193,9 @@ void Game::BuildClientSnapshot()
         // Warp/AP are server-authoritative: we mirror the server's warp scale and don't keep
         // our own. Applied BEFORE replay so unacked orders (which the server hasn't seen yet)
         // correctly "carry through" via prediction over the authoritative state.
-        playerShip_->ApplyNavView(p.warpPhase, p.warpAlign, p.warpTarget, p.warpDrop, p.autopilot,
-                                  p.apTarget, p.apStop, p.holdMode, p.holdTargetId, p.holdRange);
+        playerShip_->ApplyNavView(p.warpPhase, p.warpAlign, p.warpTarget, p.warpDrop, p.warpViaSet,
+                                  p.warpVia, p.autopilot, p.apTarget, p.apStop, p.holdMode,
+                                  p.holdTargetId, p.holdRange);
         // Toggles (stabilizer/mining) are server-authoritative: restore from the snapshot
         // BEFORE replay, otherwise unacked toggle commands would flicker during replay
         // (like warp). Unacked toggles "carry through" via prediction below.

@@ -69,7 +69,10 @@ public:
     static constexpr float ORBIT_LEAD_DEGREES = 28.0f;
 
     // Warp jump: fast travel to target, dropping out at dropDistance.
-    void      EngageWarp(Vector2 target, float dropDistance);
+    // `via`, when given, is a point the warp turns at on the way -- around a body rather
+    // than through it (#160, WarpPath.h). Whoever orders the warp chooses it.
+    void      EngageWarp(Vector2 target, float dropDistance, bool hasVia = false,
+                         Vector2 via = { 0.0f, 0.0f });
     void      CancelWarp();  // aborts warp and clamps speed back to normal max
     bool      IsWarping() const { return warpPhase_ != WarpPhase::None; }
     WarpPhase GetWarpPhase() const { return warpPhase_; }
@@ -145,8 +148,8 @@ public:
     // no spin-up timer of its own, it mirrors the server's; this way "bar ready" and
     // the real flight start line up (the client used to have its own drifting warp timer).
     void    ApplyNavView(int warpPhase, float warpAlignTimer, Vector2 warpTarget, float warpDrop,
-                         bool apActive, Vector2 apTarget, float apStopDistance, int holdMode,
-                         int holdTargetId, float holdRange);
+                         bool warpHasVia, Vector2 warpVia, bool apActive, Vector2 apTarget,
+                         float apStopDistance, int holdMode, int holdTargetId, float holdRange);
     float   GetSpeed() const;
     bool    IsAutopilotOn() const { return apActive_; }
     Vector2 GetAutopilotTarget() const { return apTarget_; }
@@ -154,6 +157,8 @@ public:
     float   GetWarpAlignTimer() const { return warpAlignTimer_; }
     Vector2 GetWarpTarget() const { return warpTarget_; }
     float   GetWarpDrop() const { return warpDrop_; }
+    bool    HasWarpVia() const { return warpHasVia_; }
+    Vector2 GetWarpVia() const { return warpVia_; }
     float   GetAutopilotStopDistance() const { return apStopDistance_; }
 
 private:
@@ -202,13 +207,28 @@ private:
     float    holdRange_ = 0.0f;
     float    apStopDistance_ = 0.0f;
 
+public:
+    // The warp profile (#160). A warp accelerates by a fixed share of its speed every second
+    // and slows in proportion to what is left, so its length costs little time: a hop
+    // between neighbouring stations and a crossing of the whole system differ by seconds,
+    // which is what makes a system feel like one place. Multiplication only, per fixed
+    // tick -- no exp() -- so a client built by one compiler predicts exactly what a server
+    // built by another computes.
+    static constexpr float WARP_ALIGN_TIME = 1.8f;      // spin-up: the window to interrupt
+    static constexpr float WARP_ACCEL = 1.2f;           // share of speed gained per second
+    static constexpr float WARP_ENTRY_SPEED = 2000.0f;  // the speed a warp starts from
+    static constexpr float WARP_MAX_SPEED = 250000.0f;
+    static constexpr float WARP_EXIT_SPEED = 1500.0f;  // the slowest the last stretch gets
+
+private:
     // Warp state.
-    static constexpr float WARP_ALIGN_TIME = 1.8f;  // spin-up duration
-    WarpPhase              warpPhase_ = WarpPhase::None;
-    Vector2                warpTarget_ = { 0.0f, 0.0f };
-    float                  warpDrop_ = 0.0f;
-    float                  warpAlignTimer_ = 0.0f;
-    float                  warpPrevDist_ = 0.0f;  // progress guard (prevents getting stuck)
+    WarpPhase warpPhase_ = WarpPhase::None;
+    Vector2   warpTarget_ = { 0.0f, 0.0f };
+    float     warpDrop_ = 0.0f;
+    float     warpAlignTimer_ = 0.0f;
+    float     warpPrevDist_ = 0.0f;  // progress guard (prevents getting stuck)
+    bool      warpHasVia_ = false;   // still on the first leg, heading for warpVia_
+    Vector2   warpVia_ = { 0.0f, 0.0f };
 
     std::string pilotName_;  // account name, for other players' snapshots (#4)
 };
