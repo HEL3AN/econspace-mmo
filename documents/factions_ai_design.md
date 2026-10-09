@@ -1,5 +1,10 @@
 # Factions and AI — Design Document
 
+> **Historical.** This is a design document from an earlier stage of the project, kept for
+> the reasoning in it. Parts of it describe plans that were since built differently or
+> reversed — [ARCHITECTURE.md](../ARCHITECTURE.md) describes what exists, and
+> [DECISIONS.md](../DECISIONS.md) records what changed and why.
+
 This document describes the target faction and AI system for EconSpace. It is a
 **design**, not an implementation. The code implementation is split into stages F1–F6
 (see the end). The aim is a future MMO: data lives in JSON, behavior is deterministic

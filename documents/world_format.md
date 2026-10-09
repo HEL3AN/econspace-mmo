@@ -4,7 +4,7 @@ Specification for the game world's JSON data. This is the contract between the g
 and the future **visual world editor**: the editor reads and writes exactly these
 files.
 
-Parsing — `src/core/WorldLoader.cpp`. Entities — `src/entities/`.
+Parsing — `src/engine/core/WorldLoader.cpp`. Entities — `src/engine/entities/`.
 
 ## File Layout
 
@@ -23,7 +23,7 @@ After a build, `data/` is copied next to `econspace.exe` by the `copy_data` targ
 ## Coordinate System and Scale
 
 - Units are game "units". The origin `(0,0)` is the center of the system (the star).
-- Constants — `src/core/World.h`:
+- Constants — `src/engine/core/World.h`:
   - `SYSTEM_RADIUS = 25000` — soft boundary: the ship is not let out beyond it.
   - `CORE_RADIUS = 9000`, `MID_RADIUS = 18000` — ring thresholds (see below).
 - Objects farther than `MID_RADIUS` from the center are "hot spots": belts beyond this

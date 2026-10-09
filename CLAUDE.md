@@ -29,7 +29,8 @@ These are decisions, not open questions. Plan on top of them.
   never to the object.
 - **AI agents are first-class players** (#42). The game ships its own MCP server,
   `econagent`, written in C++ so the wire protocol stays a single source of truth.
-- **A system is a million units across, and you travel by choosing from a list** (M9).
+- **A system is becoming a million units across, and you travel by choosing from a list**
+  (M9). Until #159 lands, the code still says `SYSTEM_RADIUS = 25000`.
   Scale was a hostage of travel time -- one speed meant everything had to be within a
   minute of flying. Warp already exists and is server-authoritative; what was missing is
   the interaction, taken from EVE: the overview is the instrument and a selection carries
@@ -193,6 +194,8 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
 
 ## Planning
 
-Work is organized into milestones M0–M5 and three track epics: **#42** agents/MCP,
-**#43** data-driven world and glyph presentation, **#44** the player-mutable world.
-Check the milestone an issue belongs to before proposing sequencing.
+Work is organized into milestones (M4–M10 are open; the order is in
+[ROADMAP.md](ROADMAP.md)) and three track epics: **#42** agents/MCP, **#43** the
+data-driven world and its generated presentation, **#44** the player-mutable world. Check
+the milestone an issue belongs to before proposing sequencing. Ideas proposed by an agent
+carry the `proposal` label and are not built until the owner says yes.

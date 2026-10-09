@@ -3,9 +3,10 @@
 A reference for generating sprites (Nano Banana and the like) and assembling them in
 Photoshop. The project's style is **pixel art**.
 
-> **Glyphs are the game's look; sprites are an alternative backend.** That is settled
-> (#36) and not a placeholder arrangement. Nothing below is obsolete, and none of it is
-> on the critical path — the game does not depend on any of these files existing.
+> **The look is generated from data; a sprite is an optional override.** An object's
+> appearance comes from its archetype — a composition of parts, lit and shaded (M6) — and
+> a hand-made sprite wins wherever one exists. Nothing below is obsolete, and none of it is
+> on the critical path: the game does not depend on any of these files existing.
 
 > **The rendering path works — the only thing missing is the PNG files.**
 > `Render::ShapeBackend` (`src/engine/render/GlyphBackend.h`) calls

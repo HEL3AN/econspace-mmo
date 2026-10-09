@@ -1,5 +1,10 @@
 # Living Galaxy / Server Backend — Transition Design
 
+> **Historical.** This is a design document from an earlier stage of the project, kept for
+> the reasoning in it. Parts of it describe plans that were since built differently or
+> reversed — [ARCHITECTURE.md](../ARCHITECTURE.md) describes what exists, and
+> [DECISIONS.md](../DECISIONS.md) records what changed and why.
+
 > A transition from "the player = the center of the logic" to "the player = one of the
 > agents of an authoritative world simulation". We are preparing the server
 > infrastructure: the galaxy lives on its own, independent of the player's presence and

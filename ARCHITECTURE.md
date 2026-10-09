@@ -4,18 +4,23 @@ EconSpace is built around one idea: **the server is the single source of truth, 
 
 ## Modules
 
-The code is three CMake targets:
+The code is seven CMake targets:
 
-- **`engine`** — a static library with the shared core: world/entity model, factions, resources, textures (with shape fallback), and reusable UI widgets. It never depends on `game` or `editor`.
-- **`game`** — two executables built from one source tree: the *client* `econspace` (rendering, input, UI, camera) and the authoritative server `econserver` (the `Simulation` core). The client does **not** link `Simulation`: it shares only the wire protocol and `sim/PlayerStep`, the movement step it must run identically to the server in order to predict its own ship.
-- **`editor`** — the executable `worldeditor`, a visual editor for systems and galaxy links. Links `engine`.
+- **`engine`** — a static library with the shared core: the world and entity model, archetypes, factions, resources, the presentation seam and everything that draws through it, and reusable UI widgets. **It depends on none of the others.**
+- **`netproto`** — the wire protocol, the event journal, the login and the TCP transport, compiled once and linked by everything that speaks the wire.
+- **`econspace`** — the client: rendering, input, UI, camera. It does **not** link `Simulation`; it shares only the protocol and `sim/PlayerStep`, the movement step it must run identically to the server in order to predict its own ship.
+- **`econserver`** — the authoritative server, running the `Simulation` headless, with its smoke tests built in.
+- **`econagent`** — the MCP server for AI agents, which is also an ordinary game client (`src/agent/`). See [docs/agents/](docs/agents/README.md).
+- **`worldeditor`** — the world editor and the gallery.
+- **`tests`** — the doctest suite, which links the simulation itself rather than testing it only through a socket.
 
 ```
 src/
-  engine/   core/ entities/ economy/ render/ ui/      (shared static lib)
-  game/     core/ (client)  sim/ (Simulation + protocol + PlayerStep + server)
+  engine/   core/ entities/ economy/ render/ ui/      (shared static library)
+  game/     core/ (client)  sim/ (Simulation, protocol, PlayerStep, server)
             entities/ player/ economy/ missions/ net/ (transport)
-  editor/   the world editor
+  agent/    econagent, the MCP server
+  editor/   the world editor and the gallery
 ```
 
 ## The client–server seam
@@ -71,14 +76,22 @@ Beyond the player's system, the server simulates the whole galaxy at a lower lev
 
 The world is data, not code: `data/universe.json` indexes systems and links; `data/systems/*.json` describe each system's objects. Factions and their relations live in `data/factions.json`. The format is documented in [documents/world_format.md](documents/world_format.md), and the world editor writes exactly this format.
 
+## Agents and standing orders
+
+**Standing orders — a strategic layer above the tactical tick.** A human streams a `Command` sixty times a second; nothing else should have to. The server also understands durable, high-level orders — "mine this belt until the hold is full", "fly to that station", "travel to Verge" — and carries them out over seconds or minutes. An order decides what each tick's command should be and drives it through the same step a human client drives, so an ordered ship behaves exactly like a flown one. Progress and outcomes arrive as typed events in a per-session journal.
+
+**The agent seam — `econagent` (#42).** An AI agent is an ordinary player, not a special case in the server. `econagent` is a **separate process** that is two things at once: an MCP server on stdio for the model, and a normal TCP game client to `econserver`, speaking the same `Command`/`Snapshot` protocol as every other client. It is written in C++ and links the protocol code, so the wire format has a single implementation rather than a second, hand-maintained one. The server knows nothing about MCP. On top: a compact text projection of the world (what a model actually reads), a blocking wait on the event journal so an agent sleeps until something happens rather than polling, and MCP resources and prompts. **How to build on it: [docs/agents/](docs/agents/README.md).**
+
+## Presentation
+
+**One seam, several backends (#35).** An entity no longer draws itself: it returns a `Render::Item` from `Describe()` and a backend turns items into pixels, characters or lines of text. `Render::FromArchetype` is the one place a `Visual` becomes an `Item`, so a tool that draws an archetype without an entity — the gallery — cannot show a picture the world would not. The backends today are shapes, glyphs and text (the last with no raylib calls, for agents and tests). A scene carries a `Render::Lighting` beside its items (#119) — a *list* of lights derived from the objects in the system, because two-star systems and player-built beacons are both wanted; a backend that has no use for it ignores it. Over the finished frame sits `Render::Treatment` (#120): the world is drawn into a texture and put through an ordered chain of full-screen passes described in `data/look.json`. Its data half (`TreatmentConfig`) is deliberately a separate file from its GPU half, because a CI runner has no graphics card and the data half is the part a test can hold. `Render::Material` and `MaterialLibrary` are split the same way for the same reason (#121): an archetype names a material, a material maps shader uniforms to sources on the item and in the scene, and the backend resolves them per object — so an object stays as ignorant of shaders as it already is of backends. `Render::Silhouette` completes the set (#122): an object's *shape* is a composition of parts described in its archetype rather than a figure compiled into the backend, so a new kind of object needs no new drawing code at all. **Glyphs are no longer the primary look**; see the 2026-09-03 entry in [DECISIONS.md](DECISIONS.md) and milestone M6. What survives from the original reasoning is the part that mattered: a player-built object needs no new drawing code, because its look comes from its archetype.
+
 ## Planned directions (not built yet)
 
-None of the following exists in the codebase. It is recorded here so new work lands in the right shape and so nobody has to reverse-engineer the intent from issue threads. Sequencing lives in [ROADMAP.md](ROADMAP.md).
+None of the following exists in the codebase. It is recorded here so new work lands in the right shape. Sequencing lives in [ROADMAP.md](ROADMAP.md).
 
-**Standing orders — a strategic layer above the tactical tick.** The server today only understands per-tick `Command` input, which suits a human at 60 Hz and suits nothing else. The plan is a second layer on the server: durable, high-level orders ("mine this belt until the hold is full", "haul to that station", "defend this gate") that the server itself executes over seconds or minutes, reporting progress. The 60 Hz tactical loop stays exactly as it is; the order layer sits on top and issues into it. This is what makes an agent-driven or fleet-driven player viable — nobody, human or model, should have to stream thrust bits to play.
+**A system a million units across (M9).** Scale has been a hostage of travel time: one speed meant everything had to be within a minute of flying. Systems become forty times larger, and travel is chosen from the overview's list rather than pointed at. Positions stay `float`, which is why a million and not ten: at 1e6 the gap between representable values is about 0.06 of a unit.
 
-**The agent seam — `econagent` (#42).** An AI agent becomes an ordinary player, not a special case in the server. `econagent` is planned as a **separate process** that is two things at once: an MCP server on stdio for the model, and a normal TCP game client to `econserver` — the same `Command`/`Snapshot` protocol every other client speaks. It is written in C++ and links the existing protocol code so the wire format keeps a single source of truth instead of drifting into a second, hand-maintained implementation. The server gains no knowledge of MCP. Companion pieces: a compact text projection of world state (what the model actually reads), an event journal with a blocking wait so an agent can sleep until something happens rather than poll, and MCP resources/prompts on top.
-
-**Presentation layer with pluggable backends (#35, #36).** An entity no longer draws itself: it returns a `Render::Item` from `Describe()` and a backend turns items into pixels, characters or lines of text. `Render::FromArchetype` is the one place a `Visual` becomes an `Item`, so a tool that draws an archetype without an entity — the gallery — cannot show a picture the world would not. The backends today are shapes, glyphs and text (the last with no raylib calls, for agents and tests). A scene carries a `Render::Lighting` beside its items (#119) — a *list* of lights derived from the objects in the system, because two-star systems and player-built beacons are both wanted; a backend that has no use for it ignores it. Over the finished frame sits `Render::Treatment` (#120): the world is drawn into a texture and put through an ordered chain of full-screen passes described in `data/look.json`. Its data half (`TreatmentConfig`) is deliberately a separate file from its GPU half, because a CI runner has no graphics card and the data half is the part a test can hold. `Render::Material` and `MaterialLibrary` are split the same way for the same reason (#121): an archetype names a material, a material maps shader uniforms to sources on the item and in the scene, and the backend resolves them per object — so an object stays as ignorant of shaders as it already is of backends. `Render::Silhouette` completes the set (#122): an object's *shape* is a composition of parts described in its archetype rather than a figure compiled into the backend, so a new kind of object needs no new drawing code at all. **Glyphs are no longer the primary look**; see the 2026-09-03 entry in [DECISIONS.md](DECISIONS.md) and milestone M6. What survives from the original reasoning is the part that mattered: a player-built object needs no new drawing code, because its look comes from its archetype.
+**A generated region (M7).** The server generates the region from a seed and sends each client the `SystemLayout` it already sends, so nothing about the wire changes. The seed joins the save; changing the generator's rules becomes a migration.
 
 **World mutation and `LayoutDelta` (#44).** `SystemLayout` is sent **once**, when the client enters a system; everything that changes afterwards travels as per-tick `Snapshot` entries for entities the client already knows about. That is exactly why the world cannot change shape today: there is no message that says "a structure now exists here" or "this one is gone". The planned fix is authoritative world mutation on the server plus a `LayoutDelta` message (added/removed/changed layout entries) alongside the existing snapshot stream, with construction, ownership, permissions, limits, and upkeep built on top, feeding the macro-dynamics that already run.
