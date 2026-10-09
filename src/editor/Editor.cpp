@@ -71,7 +71,7 @@ Editor::Editor()
     camera_.target = { 0.0f, 0.0f };
     camera_.offset = { screenWidth_ / 2.0f, screenHeight_ / 2.0f };
     camera_.rotation = 0.0f;
-    camera_.zoom = 0.03f;
+    camera_.zoom = 0.00035f;  // a whole million-unit system (#159)
 
     if (!universe_.systems.empty())
         LoadSystemAt(currentSystem_);
@@ -256,7 +256,7 @@ void Editor::HandleInput()
 
     float wheel = GetMouseWheelMove();
     if (wheel != 0.0f && !overUi)
-        camera_.zoom = Clamp(camera_.zoom * (1.0f + wheel * 0.12f), 0.01f, 2.0f);
+        camera_.zoom = Clamp(camera_.zoom * (1.0f + wheel * 0.12f), 0.0003f, 2.0f);
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
         activeField_.clear();  // drop field focus (FieldRow restores it on a click in the field)

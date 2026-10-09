@@ -7,6 +7,7 @@
 #include "core/Game.h"
 #include "sim/PlayerStep.h"
 
+#include "core/Archetype.h"
 #include "core/World.h"
 #include "core/WorldLoader.h"
 #include "entities/Star.h"
@@ -29,7 +30,14 @@
 #include <algorithm>
 #include <fstream>
 
-static const float DOCKING_RANGE = 90.0f;  // margin added to the station radius for docking
+// How close counts as docking range is the station's own reach, from its archetype -- the
+// rule the server applies. A constant here was a second copy that would have stopped
+// agreeing the moment stations grew (#159).
+static float DockReach(const Entity& st)
+{
+    const Archetype* a = st.GetArchetype();
+    return st.GetSize() + (a != nullptr ? a->dockRange : 0.0f);
+}
 
 // Player combat and mining are now server-side (Simulation::StepPlayerFire/StepPlayerMining);
 // the weapon range for rendering the targeting circle is Sim::PLAYER_WEAPON_RANGE.
@@ -391,7 +399,7 @@ void Game::HandleInput(float dt)
 
             float dx = st->GetPosition().x - playerShip_->GetPosition().x;
             float dy = st->GetPosition().y - playerShip_->GetPosition().y;
-            if (sqrtf(dx * dx + dy * dy) <= st->GetSize() + DOCKING_RANGE)
+            if (sqrtf(dx * dx + dy * dy) <= DockReach(*st))
             {
                 nearbyStation_ = st;
                 break;
@@ -552,7 +560,7 @@ void Game::OpenContextMenu(Entity* target)
                               {
                                   float dx = st->GetPosition().x - playerShip_->GetPosition().x;
                                   float dy = st->GetPosition().y - playerShip_->GetPosition().y;
-                                  if (sqrtf(dx * dx + dy * dy) <= st->GetSize() + DOCKING_RANGE)
+                                  if (sqrtf(dx * dx + dy * dy) <= DockReach(*st))
                                       cmd_.dock = true;
                                   else  // far — first approach via autopilot
                                       OrderAutopilot(st->GetPosition(), st->GetSize() + 60.0f);

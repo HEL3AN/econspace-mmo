@@ -575,6 +575,23 @@ player actually interacts with made honest:
 | star | 550-700 | 150000 | 9400x |
 | system radius | 25 000 | 1 000 000 | - |
 
+**As built (#159)**, where the arithmetic above met the data:
+
+- *Distances are mapped outward from the star, not multiplied.* The star grows 250 times
+  and the system 40, so a plain multiple would have put the inner planets inside the star.
+  Everything keeps its order and its bearing from the star; the nearest orbit now starts
+  sixty thousand units clear of the star's surface.
+- *Nothing static sits in a planet's path.* A planet grows a hundred times while its orbit
+  grows thirty, so a station that used to sit beside an orbit would now be swept by the
+  planet every year. Anything inside a planet's band was moved radially out of it.
+- *An orbit keeps its linear speed,* so a year is now one to three hours rather than one to
+  four minutes. A planet a player warps to has to still be roughly where it was.
+- *Anything that flies itself warps a long leg* -- a standing order, an NPC -- past
+  `World::WARP_WORTH_IT` (20 000). At sublight the next station is half an hour away.
+- *A saved position is from a different world*, so `ACCOUNT_VERSION` became 2 and an older
+  account keeps everything but its place, and arrives beside a station.
+- Ranges between ships did not change: ships did not grow.
+
 A planet is still about five hundred times smaller relative to a ship than it is in life.
 That compression is deliberate and permanent: nobody makes a playable game at true
 astronomical scale, and the part that has to be honest is the part a player judges by eye

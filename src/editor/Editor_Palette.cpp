@@ -231,8 +231,8 @@ void Editor::AddObject(const std::string& archetypeId, Vector2 pos)
     if (category == "planets")
     {
         float r = sqrtf(pos.x * pos.x + pos.y * pos.y);
-        if (r < 500.0f)
-            r = 4000.0f;
+        if (r < 160000.0f)  // inside the star (#159)
+            r = 350000.0f;
         o = { { "orbitRadius", (int)roundf(r) }, { "orbitSpeed", 300 },
               { "angle", atan2f(pos.y, pos.x) }, { "size", size },
               { "type", a->worldSubType },       { "deposit", "Iron" } };

@@ -103,9 +103,9 @@ TEST_CASE("the real registry survives a round trip through the writer")
     // opened, and a real change would be lost in the noise.
     std::string t = original;
     REQUIRE(ArchetypeEdit::SetField(t, "star.yellow", "color", "[253, 249, 0, 255]"));
-    REQUIRE(ArchetypeEdit::SetField(t, "star.yellow", "size", "600"));
+    REQUIRE(ArchetypeEdit::SetField(t, "star.yellow", "size", "150000"));
     REQUIRE(ArchetypeEdit::SetField(t, "star.yellow", "light",
-                                    "{ \"radius\": 62000, \"intensity\": 1.00 }"));
+                                    "{ \"radius\": 2480000, \"intensity\": 1.00 }"));
     REQUIRE(ArchetypeEdit::SetField(t, "station.trade_hub", "material", "\"hull\""));
     CHECK(t == original);
 }

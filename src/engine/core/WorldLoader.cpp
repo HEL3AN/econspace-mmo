@@ -117,7 +117,7 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
     {
         const json& starJson = data["star"];
         StarType    starType = StarTypeFromString(starJson.value("type", std::string("Yellow")));
-        float       starSize = (float)starJson.value("size", 400.0);
+        float       starSize = (float)starJson.value("size", 150000.0);
         entities.push_back(std::make_unique<Star>(Vector2{ 0.0f, 0.0f }, starSize, starType));
     }
 
@@ -128,8 +128,8 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
             // Color is optional: if not set, the planet's default type color is used.
             Color color = p.contains("color") ? ColorFromJson(p["color"]) : PlanetTypeColor(type);
             entities.push_back(std::make_unique<Planet>(
-                p.value("orbitRadius", 5000.0), p.value("orbitSpeed", 300.0), p.value("angle", 0.0),
-                p.value("size", 100.0), color,
+                p.value("orbitRadius", 350000.0), p.value("orbitSpeed", 300.0),
+                p.value("angle", 0.0), p.value("size", 15000.0), color,
                 ResourceFromString(p.value("deposit", std::string("Iron"))), type));
         }
 
@@ -168,7 +168,7 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
         for (const json& d : data["derelicts"])
         {
             entities.push_back(std::make_unique<Derelict>(Vec2FromJson(d["pos"]),
-                                                          (float)d.value("size", 16.0), d["name"],
+                                                          (float)d.value("size", 45.0), d["name"],
                                                           (double)d.value("reward", 500.0)));
         }
     }

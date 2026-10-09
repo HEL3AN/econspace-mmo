@@ -5,6 +5,7 @@
 #include "sim/PlayerStep.h"
 
 #include "core/Archetype.h"
+#include "core/World.h"
 #include "entities/Entity.h"
 #include "entities/JumpGate.h"
 #include "entities/Ship.h"
@@ -200,13 +201,17 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
     float dist = DistTo(*s.ship, dest);
 
     // While out of range, fly there. The nav order is issued once: re-issuing it every
-    // tick would restart the warp spin-up forever.
-    if (dist > arrive)
+    // tick would restart the warp spin-up forever. A ship still in warp is not there yet
+    // even inside the range: it crosses the outer part of it before dropping out, and a
+    // dock refuses a ship in warp.
+    if (dist > arrive || s.ship->IsWarping())
     {
         if (!s.orderNavIssued)
         {
             Proto::Command nav;
-            nav.navMode = s.order.useWarp ? 2 : 1;
+            // Asked for, or simply too far to fly: across a million-unit system an order
+            // that keeps to sublight never arrives in a session (#159).
+            nav.navMode = (s.order.useWarp || dist > World::WARP_WORTH_IT) ? 2 : 1;
             nav.navTarget = dest;
             nav.navStopDist = arrive * 0.8f;  // aim inside the range, not at its edge
             Sim::StepPlayerShip(*s.ship, nav, 1.0f, dt);

@@ -135,7 +135,7 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
     }
 
     std::string line =
-        Fmt("  #%-4d %-8s %-22s %6.0fu %-2s%s", e.id, kind, name.c_str(), s.dist,
+        Fmt("  #%-4d %-8s %-22s %7.0fu %-2s%s", e.id, kind, name.c_str(), s.dist,
             Obs::Compass(e.pos.x - p.pos.x, e.pos.y - p.pos.y).c_str(), extra.c_str());
     while (!line.empty() && line.back() == ' ')  // column padding, not content
         line.pop_back();

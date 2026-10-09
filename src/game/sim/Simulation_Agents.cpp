@@ -342,7 +342,7 @@ Vector2 Simulation::PirateSpawnPos(const std::vector<Vector2>& pool,
     Vector2 pos = base;
     for (int attempt = 0; attempt < 4; attempt++)
     {
-        pos = { base.x + RandRange(-450, 450), base.y + RandRange(-450, 450) };
+        pos = { base.x + RandRange(-3000, 3000), base.y + RandRange(-3000, 3000) };
         if (avoid.empty())
             break;  // no one to avoid (background/hydrate)
         // Far enough from EVERY player in the system: clearing one player's space by

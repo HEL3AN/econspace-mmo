@@ -65,6 +65,12 @@ public:
     // Takes an already-established connection to an econserver host (main() dials it).
     // There is no offline mode: without a connection there is no world to render.
     explicit Game(std::unique_ptr<Net::TcpConnection> conn);
+
+    // Where the camera starts (--zoom): for looking at a scale without a wheel, which is
+    // also how a screenshot of one is taken -- synthetic input does not reach the window.
+    void SetStartZoom(float zoom) { rig_.SetZoom(zoom); }
+    // Start on the shape backend (--shapes), the one F2 switches to.
+    void StartOnShapes() { backend_ = &shapeBackend_; }
     ~Game();
 
     void Run();

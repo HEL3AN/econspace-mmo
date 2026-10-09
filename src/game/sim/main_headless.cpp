@@ -79,8 +79,8 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
 // exactly one and fly it themselves.
 static ClientSession& SetupHostPlayer(Simulation& sim)
 {
-    return sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 3000.0f },
-                             GetShipCatalog()[0].stats);
+    const std::string& start = sim.Universe().startId;
+    return sim.CreateSession(start, sim.SafeArrival(start), GetShipCatalog()[0].stats);
 }
 
 // One client input = ONE player tick. This is critical for client and server

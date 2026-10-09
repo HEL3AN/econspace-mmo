@@ -1,4 +1,5 @@
 #include "entities/NpcShip.h"
+#include "core/World.h"
 #include "render/Textures.h"
 #include <cmath>
 
@@ -114,7 +115,15 @@ void NpcShip::Update(float dt)
     }
 
     heading_ = atan2f(dy, dx);
-    float step = speed_ * dt;
+    // A long leg is crossed at warp, as a player would (#159): at 150 units a second the
+    // next station is half an hour away and the lanes would be empty. The last stretch is
+    // flown, so an NPC arrives the way a player sees one arrive.
+    constexpr float WARP_FROM = World::WARP_WORTH_IT;
+    constexpr float WARP_DROP = 3000.0f;
+    constexpr float NPC_WARP_SPEED = 60000.0f;
+    float           step = (dist > WARP_FROM ? NPC_WARP_SPEED : speed_) * dt;
+    if (dist > WARP_FROM && step > dist - WARP_DROP)
+        step = dist - WARP_DROP;
     if (step > dist)
         step = dist;
     pos_.x += dx / dist * step;

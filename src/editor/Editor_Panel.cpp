@@ -384,7 +384,7 @@ void Editor::DrawPropertyPanel()
         DropdownRow(row(24), "deposit", obj, "deposit", { "Iron", "Ice", "Crystal" });
         changed |= FieldRow(row(24), "size", obj, "size", true, true, 10);
         changed |= FieldRow(row(24), "orbitSpeed", obj, "orbitSpeed", true, true, 20);
-        changed |= FieldRow(row(24), "orbitRadius", obj, "orbitRadius", true, true, 200);
+        changed |= FieldRow(row(24), "orbitRadius", obj, "orbitRadius", true, true, 5000);
     }
     else if (h.category == "stations")
     {
@@ -415,7 +415,7 @@ void Editor::DrawPropertyPanel()
     else if (h.category == "nebulae")
     {
         changed |= FieldRow(row(24), "name", obj, "name", false, false);
-        changed |= FieldRow(row(24), "radius", obj, "radius", true, true, 200);
+        changed |= FieldRow(row(24), "radius", obj, "radius", true, true, 1000);
     }
     else if (h.category == "derelicts")
     {

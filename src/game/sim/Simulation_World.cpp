@@ -118,7 +118,9 @@ void Simulation::HydrateSystem(SystemState& st)
         {
             Vector2              spot = pick(nd.fields);
             std::vector<Vector2> near = { spot };
-            Vector2 start = { spot.x + RandRange(-200, 200), spot.y + RandRange(-200, 200) };
+            // Scattered over the belt, which is six thousand units across (#159), not on its
+            // centre.
+            Vector2 start = { spot.x + RandRange(-3000, 3000), spot.y + RandRange(-3000, 3000) };
             SpawnNpcInto(st, start, FactionId::Independent, NpcRole::Miner, near);
         }
     }

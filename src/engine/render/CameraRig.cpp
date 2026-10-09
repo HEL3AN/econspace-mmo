@@ -1,5 +1,6 @@
 #include "render/CameraRig.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace Render
@@ -69,6 +70,12 @@ void CameraRig::Snap(Vector2 shipPos)
     anchored_ = false;
     camera_.target = shipPos;
     zoomNow_ = zoomGoal_;
+    camera_.zoom = zoomNow_ * warpPull_;
+}
+
+void CameraRig::SetZoom(float zoom)
+{
+    zoomGoal_ = zoomNow_ = std::clamp(zoom, MIN_ZOOM, MAX_ZOOM);
     camera_.zoom = zoomNow_ * warpPull_;
 }
 
