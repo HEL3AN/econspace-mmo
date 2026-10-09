@@ -48,6 +48,8 @@ SystemSummary Summarize(const json& doc)
         return s;
     if (doc.contains("star") && doc["star"].is_object())
         s.star = doc["star"].value("type", std::string());
+    else if (doc.contains("stars") && doc["stars"].is_array() && !doc["stars"].empty())
+        s.star = "Binary";  // two of them (#142): a kind of system of its own on the chart
     if (doc.contains("character") && doc["character"].is_string())
         s.character = doc["character"].get<std::string>();
 
