@@ -164,7 +164,7 @@ and works at any size — a ninety-unit station and a sixteen-unit ship use the 
 
 | Field | Type | Description |
 |------|-----|----------|
-| `form` | string | `disc`, `ring`, `polygon`, `capsule`, `chevron`, `bar`, `lattice` |
+| `form` | string | `disc`, `ring`, `polygon`, `capsule`, `chevron`, `bar`, `lattice`, `band` |
 | `role` | string | `hull` (the object's colour), `panel` (darker), `trim` (lighter), `light` (emissive, never shaded), `antenna` (thin and dim) |
 | `at` | [x, y] | offset from the centre, in radii |
 | `angle` | number | the part's own rotation, degrees |
@@ -180,6 +180,7 @@ and works at any size — a ninety-unit station and a sixteen-unit ship use the 
 | `jitterAngle` | number | degrees the seed may turn this part |
 | `jitterScale` | number | fraction the seed may resize it |
 | `alpha` | number | 0..1, how solid this part is; a corona is a glow rather than a ring |
+| `lat`, `lon` | number | degrees; giving either puts the part **on the sphere** instead of on the disc (see below) |
 | `orbitRadius` | number | in radii; non-zero makes this part **orbit** the body instead of sitting on it, and `at` is then ignored |
 | `orbitPeriod` | number | seconds for one lap |
 | `orbitPhase` | number | 0..1, where in the lap it starts |
@@ -213,6 +214,34 @@ backend draws them in order and never has to know why.
 
 This is draw order, not occlusion. A part larger than the body, or one orbiting closer than
 the body's own radius, will pop rather than slide — keep an orbit outside the body.
+
+**A planet's surface is on a sphere, not on a disc** (#166). A part that gives `lat` or
+`lon` is projected onto the body: it travels across the face as the planet turns (`spin`
+is then degrees of longitude a second), is squashed into an ellipse near the limb, and is
+simply absent while it is round the back. A `band` is always on the sphere: `lat` is its
+middle and `width` is in **degrees** of latitude. It is computed, not drawn — the visible
+part of a latitude strip — so it narrows to nothing at the poles and never crosses the limb.
+
+A body can say how far its north pole is tipped toward the viewer. That makes the shape an
+object rather than a bare list:
+
+```json
+"shape": { "tilt": 20, "parts": [
+    {"form": "disc", "radius": 1.0, "role": "hull"},
+    {"form": "band", "lat": -6, "width": 14, "role": "panel"},
+    {"form": "disc", "lat": -16, "lon": 40, "radius": 0.15, "role": "trim", "spin": 9.0}
+]}
+```
+
+The tilt is what makes a band **curve**. Exactly edge-on, latitudes are straight chords and
+the planet reads as a disc with stripes; tipped a little, they bow, and it reads as a ball.
+It belongs to the body rather than to a part because every feature on one planet shares one
+axis. A shape with no axis — a station — stays a bare list.
+
+A surface feature is lit **as the body**, with the body's centre and radius, so it falls into
+the planet's terminator; shaded as itself, a crater would carry a small lit side of its own
+into the night. A band does not move when the planet turns, and that is right — a gas
+giant's belts are the same all the way round, and it is its *storms* that go by.
 
 **A part turns only if it is a surface feature.** A crater, a storm or a lava crack belongs
 to the surface and goes round with it. A latitude band or a polar cap does not: rotating

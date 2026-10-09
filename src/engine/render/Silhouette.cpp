@@ -19,7 +19,7 @@ struct NamedForm
 const NamedForm FORMS[] = {
     { Form::Disc, "disc" },       { Form::Ring, "ring" },       { Form::Polygon, "polygon" },
     { Form::Capsule, "capsule" }, { Form::Chevron, "chevron" }, { Form::Bar, "bar" },
-    { Form::Lattice, "lattice" },
+    { Form::Lattice, "lattice" }, { Form::Band, "band" },
 };
 
 struct NamedRole
@@ -49,6 +49,104 @@ float Signed(int seed, int salt)
 {
     return Hash01(seed, salt) * 2.0f - 1.0f;
 }
+
+// --- the sphere (#166) -----------------------------------------------------------------
+//
+// One convention, used by both directions below and stated once: the body's north pole is
+// tipped `tilt` toward the viewer, screen y points down, and a point is visible when it
+// faces the viewer (z > 0). Body coordinates first, then a turn about the screen's x axis.
+
+struct OnSphere
+{
+    float x, y;  // on screen, in units of the body's radius
+    float z;     // how squarely it faces the viewer: 1 dead ahead, 0 on the limb, <0 behind
+};
+
+OnSphere Project(float latDeg, float lonDeg, float tiltDeg)
+{
+    const float phi = latDeg * DEG2RAD, lam = lonDeg * DEG2RAD, i = tiltDeg * DEG2RAD;
+    const float bx = std::cos(phi) * std::sin(lam);
+    const float by = std::sin(phi);
+    const float bz = std::cos(phi) * std::cos(lam);
+    const float vy = by * std::cos(i) - bz * std::sin(i);
+    const float vz = by * std::sin(i) + bz * std::cos(i);
+    return { bx, -vy, vz };
+}
+
+// The visible part of a latitude band, as quads in units of the body's radius.
+//
+// Computed rather than drawn, and computed column by column because a band is nearly
+// horizontal: a column crosses it almost square-on, so a modest number of them traces its
+// edges cleanly, where rows would run nearly parallel to an edge and step along it.
+//
+// In one column at screen x the visible arc has radius rho = sqrt(1 - x^2). Parametrised by
+// theta from the bottom of the column (-90) to the top (+90), the point's height in body
+// coordinates is rho * sin(theta + tilt): it rises to rho and then, past the pole, falls a
+// little. So a band is at most two runs per column -- the near side, and over the top the
+// sliver of the far polar region a tipped planet shows -- and each is solved exactly with an
+// arcsine. Nothing is clipped, because nothing is ever outside the limb to begin with.
+void BandQuads(float latLo, float latHi, float tiltDeg, int columns, std::vector<Vector2>& out)
+{
+    const float i = tiltDeg * DEG2RAD;
+    const float s1 = std::sin(latLo * DEG2RAD), s2 = std::sin(latHi * DEG2RAD);
+
+    struct Run
+    {
+        bool  on = false;
+        float y0 = 0.0f, y1 = 0.0f;
+    };
+    // Two runs per column: [0] the rising branch, [1] the falling one.
+    std::vector<Run> prev(2), cur(2);
+    float            prevX = 0.0f;
+
+    for (int k = 0; k <= columns; k++)
+    {
+        // Spaced by angle rather than evenly in x, so the columns crowd toward the limb,
+        // which is exactly where a band's ends curve hardest.
+        const float t = -0.5f * PI + PI * (float)k / (float)columns;
+        const float x = std::sin(t);
+        const float rho = std::cos(t);
+
+        cur[0] = cur[1] = Run{};
+        if (rho > 1e-4f)
+        {
+            const float a1 = std::fmax(-1.0f, std::fmin(1.0f, s1 / rho));
+            const float a2 = std::fmax(-1.0f, std::fmin(1.0f, s2 / rho));
+            const float uLo = i - 0.5f * PI, uHi = i + 0.5f * PI;  // u = theta + tilt
+            const float rise0 = std::asin(a1), rise1 = std::asin(a2);
+            const float fall0 = PI - std::asin(a2), fall1 = PI - std::asin(a1);
+            const float spans[2][2] = { { rise0, rise1 }, { fall0, fall1 } };
+            for (int b = 0; b < 2; b++)
+            {
+                const float u0 = std::fmax(spans[b][0], uLo);
+                const float u1 = std::fmin(spans[b][1], uHi);
+                if (u1 - u0 <= 1e-5f)
+                    continue;
+                // y = -rho * sin(theta), theta = u - tilt.
+                cur[b] = { true, -rho * std::sin(u0 - i), -rho * std::sin(u1 - i) };
+            }
+        }
+
+        if (k > 0)
+            for (int b = 0; b < 2; b++)
+                if (prev[b].on && cur[b].on)
+                {
+                    out.push_back({ prevX, prev[b].y0 });
+                    out.push_back({ prevX, prev[b].y1 });
+                    out.push_back({ x, cur[b].y1 });
+                    out.push_back({ x, cur[b].y0 });
+                }
+        prev = cur;
+        prevX = x;
+    }
+}
+
+float Smooth01(float e0, float e1, float v)
+{
+    const float t = std::fmax(0.0f, std::fmin(1.0f, (v - e0) / (e1 - e0)));
+    return t * t * (3.0f - 2.0f * t);
+}
+
 }  // namespace
 
 const char* FormName(Form f)
@@ -96,6 +194,7 @@ float ShadeRadius(const Piece& p)
         case Form::Disc:
         case Form::Ring:
         case Form::Polygon: return p.radius;
+        case Form::Band: return p.bodyRadius;
         case Form::Capsule:
         case Form::Chevron:
         case Form::Bar:
@@ -110,7 +209,8 @@ Vector2 Axis(const Piece& p)
     {
         case Form::Disc:
         case Form::Ring:
-        case Form::Polygon: return { 0.0f, 0.0f };
+        case Form::Polygon:
+        case Form::Band: return { 0.0f, 0.0f };
         case Form::Capsule:
         case Form::Chevron:
         case Form::Bar:
@@ -126,14 +226,29 @@ Vector2 Axis(const Piece& p)
 bool ParseShape(const json& j, Shape& out, std::string& error)
 {
     error.clear();
-    if (!j.is_array())
+
+    // Either a bare list of parts, which is what every shape was until the body had
+    // properties of its own, or an object carrying the list beside them. The bare form
+    // stays valid because a station has no axis and should not have to say so.
+    Shape       s;
+    const json* parts = &j;
+    if (j.is_object())
+    {
+        s.axisTilt = j.value("tilt", s.axisTilt);
+        if (!j.contains("parts"))
+        {
+            error = "a shape object needs \"parts\"";
+            return false;
+        }
+        parts = &j["parts"];
+    }
+    if (!parts->is_array())
     {
         error = "a shape is an array of parts";
         return false;
     }
 
-    Shape s;
-    for (const json& e : j)
+    for (const json& e : *parts)
     {
         if (!e.is_object())
         {
@@ -172,6 +287,9 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
         p.orbitPeriod = e.value("orbitPeriod", p.orbitPeriod);
         p.orbitPhase = e.value("orbitPhase", p.orbitPhase);
         p.orbitTilt = e.value("orbitTilt", p.orbitTilt);
+        p.surface = p.form == Form::Band || e.contains("lat") || e.contains("lon");
+        p.lat = e.value("lat", p.lat);
+        p.lon = e.value("lon", p.lon);
         p.spin = e.value("spin", p.spin);
         p.blink = e.value("blink", p.blink);
         p.onlyThrusting = e.value("onlyThrusting", p.onlyThrusting);
@@ -198,10 +316,17 @@ float Extent(const Shape& s)
             case Form::Disc:
             case Form::Ring:
             case Form::Polygon: own = p.radius; break;
+            case Form::Band: own = 1.0f; break;
             case Form::Capsule:
             case Form::Chevron:
             case Form::Bar:
             case Form::Lattice: own = std::fmax(p.length, p.width) * 0.5f; break;
+        }
+        // A surface part sits on the unit sphere whatever its `at` says.
+        if (p.surface)
+        {
+            reach = std::fmax(reach, 1.0f);
+            continue;
         }
         reach = std::fmax(reach, (from + own) * (1.0f + p.jitterScale));
     }
@@ -283,6 +408,72 @@ std::vector<Piece> Compose(const Shape& s, const Pose& pose)
                 piece.width = p.width * size * scale;
                 piece.length = p.length * size * scale;
                 piece.brightness = brightness;
+
+                // On the sphere rather than on the disc (#166). The planet's own turn
+                // carries a surface part across the face and round the back, so where it is
+                // comes from latitude, longitude and the clock -- and on the far side it is
+                // simply not there.
+                if (p.surface)
+                {
+                    piece.surface = true;
+                    piece.bodyPos = pos;
+                    piece.bodyRadius = size;
+                    piece.pos = pos;
+                    piece.angle = pose.heading * RAD2DEG;
+                    piece.depth = 0.0f;
+
+                    // A mirror reflects across the equator; a repeat is spread evenly round
+                    // the planet in longitude.
+                    const float lat = p.lat * flip;
+
+                    if (p.form == Form::Band)
+                    {
+                        // A band is the same all the way round, so the planet's turn does not
+                        // move it -- which is true of real ones, and is why a gas giant's
+                        // *storms* go round and its belts do not.
+                        const float          half = 0.5f * std::fabs(p.width);
+                        std::vector<Vector2> unit;
+                        const int            columns = pixels > 200.0f ? 64 : 36;
+                        BandQuads(std::fmax(-90.0f, lat - half), std::fmin(90.0f, lat + half),
+                                  s.axisTilt, columns, unit);
+                        if (unit.empty())
+                            continue;
+                        const float ch = std::cos(pose.heading), sh = std::sin(pose.heading);
+                        piece.strip.reserve(unit.size());
+                        for (const Vector2& u : unit)
+                            piece.strip.push_back({ pos.x + (u.x * ch - u.y * sh) * size,
+                                                    pos.y + (u.x * sh + u.y * ch) * size });
+                        piece.radius = size;
+                        out.push_back(piece);
+                        continue;
+                    }
+
+                    // Where this object's surface starts, seeded per object, so two rocky
+                    // planets do not wear their craters in the same places. One offset for
+                    // the whole body, so the craters keep their places relative to each other.
+                    const float    turned = std::fmod(p.spin * pose.time, 360.0f);
+                    const float    lon = p.lon + 360.0f * Hash01(seed, 4241) +
+                                         360.0f * (float)r / (float)repeat + turned;
+                    const OnSphere sp = Project(lat, lon, s.axisTilt);
+                    if (sp.z <= 0.0f)
+                        continue;  // round the back
+
+                    const float ch = std::cos(pose.heading), sh = std::sin(pose.heading);
+                    piece.pos = { pos.x + (sp.x * ch - sp.y * sh) * size,
+                                  pos.y + (sp.x * sh + sp.y * ch) * size };
+
+                    // Seen at a slant near the limb: an ellipse whose short axis points at the
+                    // centre of the body and is shortened by how obliquely it is seen.
+                    piece.squash = sp.z;
+                    piece.angle = std::atan2(sp.y, sp.x) * RAD2DEG + pose.heading * RAD2DEG;
+
+                    // And faded as it goes over, so it slides off the edge rather than
+                    // popping. The window grows with the feature, because a large crater
+                    // would otherwise stick out past the limb while it is still visible.
+                    piece.brightness *= Smooth01(0.0f, std::fmax(0.12f, 2.2f * p.radius), sp.z);
+                    out.push_back(piece);
+                    continue;
+                }
 
                 // An orbiting part ignores `at` entirely: where it is comes from where it
                 // has got to in its lap, which is the point of it.

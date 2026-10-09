@@ -66,12 +66,19 @@
             "layer": 1,
             "size": 140,
             "material": "hull",
-            "shape": [
+            "shape": { "tilt": 16, "parts": [
                 {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"form": "disc", "at": [-0.35, -0.3], "radius": 0.22, "role": "panel", "jitterScale": 0.25, "minPixels": 40, "spin": 1.6},
-                {"form": "disc", "at": [0.3, 0.35], "radius": 0.15, "role": "panel", "jitterScale": 0.3, "minPixels": 40, "spin": 1.6},
+                {"form": "disc", "lat": 22, "lon": 0, "radius": 0.2, "role": "panel", "spin": 5.0, "minPixels": 40},
+                {"form": "disc", "lat": -18, "lon": 70, "radius": 0.14, "role": "panel", "spin": 5.0, "minPixels": 40},
+                {"form": "disc", "lat": 48, "lon": 150, "radius": 0.11, "role": "panel", "spin": 5.0, "minPixels": 60},
+                {"form": "disc", "lat": -40, "lon": 210, "radius": 0.17, "role": "panel", "spin": 5.0, "minPixels": 40},
+                {"form": "disc", "lat": 5, "lon": 280, "radius": 0.09, "role": "trim", "spin": 5.0, "minPixels": 80},
+                {"form": "disc", "lat": -8, "lon": 110, "radius": 0.12, "role": "panel", "spin": 5.0, "minPixels": 40},
+                {"form": "disc", "lat": 30, "lon": 250, "radius": 0.15, "role": "panel", "spin": 5.0, "minPixels": 40},
+                {"form": "disc", "lat": -55, "lon": 320, "radius": 0.1, "role": "panel", "spin": 5.0, "minPixels": 60},
+                {"form": "disc", "lat": 62, "lon": 40, "radius": 0.08, "role": "panel", "spin": 5.0, "minPixels": 80},
                 {"form": "disc", "radius": 0.11, "role": "trim", "orbitRadius": 1.5, "orbitPeriod": 34.0, "orbitTilt": 0.3, "minPixels": 60}
-            ],
+            ] },
             "components": {}
         },
         {
@@ -85,14 +92,18 @@
             "layer": 1,
             "size": 280,
             "material": "hull",
-            "shape": [
+            "shape": { "tilt": 20, "parts": [
                 {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"form": "bar", "at": [0.0, -0.45], "length": 1.7, "width": 0.16, "role": "panel", "minPixels": 40},
-                {"form": "bar", "at": [0.0, 0.1], "length": 1.95, "width": 0.22, "role": "trim", "minPixels": 40},
-                {"form": "bar", "at": [0.0, 0.55], "length": 1.5, "width": 0.13, "role": "panel", "minPixels": 60},
-                {"form": "disc", "at": [0.35, -0.12], "radius": 0.17, "role": "trim", "spin": 4.0, "minPixels": 60},
+                {"form": "band", "lat": 52, "width": 10, "role": "panel", "minPixels": 30},
+                {"form": "band", "lat": 30, "width": 12, "role": "panel", "minPixels": 30},
+                {"form": "band", "lat": 14, "width": 8, "role": "trim", "minPixels": 40},
+                {"form": "band", "lat": -6, "width": 14, "role": "panel", "minPixels": 30},
+                {"form": "band", "lat": -26, "width": 9, "role": "trim", "minPixels": 40},
+                {"form": "band", "lat": -46, "width": 12, "role": "panel", "minPixels": 30},
+                {"form": "disc", "lat": -16, "lon": 40, "radius": 0.15, "role": "trim", "spin": 9.0, "minPixels": 60},
+                {"form": "disc", "lat": 22, "lon": 200, "radius": 0.07, "role": "panel", "spin": 6.5, "minPixels": 90},
                 {"form": "disc", "radius": 0.075, "role": "trim", "repeat": 3, "orbitRadius": 1.45, "orbitPeriod": 41.0, "orbitTilt": 0.28, "jitterScale": 0.3, "minPixels": 50}
-            ],
+            ] },
             "components": {}
         },
         {
@@ -106,12 +117,14 @@
             "layer": 1,
             "size": 160,
             "material": "hull",
-            "shape": [
+            "shape": { "tilt": 22, "parts": [
                 {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"form": "disc", "at": [0.0, -0.72], "radius": 0.42, "role": "trim", "minPixels": 40},
-                {"form": "disc", "at": [0.0, 0.78], "radius": 0.33, "role": "trim", "minPixels": 40},
+                {"form": "band", "lat": 78, "width": 24, "role": "trim", "minPixels": 30},
+                {"form": "band", "lat": -80, "width": 20, "role": "trim", "minPixels": 30},
+                {"form": "band", "lat": 30, "width": 6, "role": "panel", "alpha": 0.5, "minPixels": 60},
+                {"form": "disc", "lat": -10, "lon": 90, "radius": 0.12, "role": "panel", "alpha": 0.6, "spin": 3.0, "minPixels": 60},
                 {"form": "disc", "radius": 0.09, "role": "trim", "repeat": 2, "orbitRadius": 1.7, "orbitPeriod": 52.0, "orbitTilt": 0.22, "minPixels": 60}
-            ],
+            ] },
             "components": {}
         },
         {
@@ -125,12 +138,15 @@
             "layer": 1,
             "size": 150,
             "material": "hull",
-            "shape": [
+            "shape": { "tilt": 12, "parts": [
                 {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"form": "capsule", "at": [-0.2, 0.15], "angle": 35, "length": 0.9, "width": 0.09, "role": "light", "jitterAngle": 20, "minPixels": 40, "spin": 2.2},
-                {"form": "capsule", "at": [0.35, -0.3], "angle": -50, "length": 0.6, "width": 0.07, "role": "light", "jitterAngle": 25, "minPixels": 40, "spin": 2.2},
-                {"form": "disc", "at": [-0.5, -0.45], "radius": 0.12, "role": "light", "jitterScale": 0.3, "minPixels": 90, "spin": 2.2}
-            ],
+                {"form": "disc", "lat": 15, "lon": 0, "radius": 0.13, "role": "light", "spin": 4.0, "minPixels": 40},
+                {"form": "disc", "lat": -25, "lon": 55, "radius": 0.09, "role": "light", "spin": 4.0, "minPixels": 40},
+                {"form": "disc", "lat": 40, "lon": 130, "radius": 0.08, "role": "light", "spin": 4.0, "minPixels": 60},
+                {"form": "disc", "lat": -5, "lon": 200, "radius": 0.15, "role": "light", "spin": 4.0, "minPixels": 40},
+                {"form": "disc", "lat": -45, "lon": 290, "radius": 0.07, "role": "light", "spin": 4.0, "minPixels": 80},
+                {"form": "band", "lat": -60, "width": 14, "role": "panel", "minPixels": 40}
+            ] },
             "components": {}
         },
         {
@@ -144,12 +160,22 @@
             "layer": 1,
             "size": 140,
             "material": "hull",
-            "shape": [
+            "shape": { "tilt": 20, "parts": [
                 {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"form": "disc", "at": [-0.3, 0.25], "radius": 0.3, "role": "trim", "jitterScale": 0.2, "minPixels": 40, "spin": 1.8},
-                {"form": "disc", "at": [0.45, -0.2], "radius": 0.2, "role": "trim", "jitterScale": 0.25, "minPixels": 40, "spin": 1.8},
+                {"form": "disc", "lat": 20, "lon": 0, "radius": 0.24, "role": "panel", "spin": 4.0, "minPixels": 40},
+                {"form": "disc", "lat": 35, "lon": 22, "radius": 0.16, "role": "panel", "spin": 4.0, "minPixels": 40},
+                {"form": "disc", "lat": 5, "lon": 18, "radius": 0.13, "role": "panel", "spin": 4.0, "minPixels": 60},
+                {"form": "disc", "lat": -30, "lon": 160, "radius": 0.2, "role": "panel", "spin": 4.0, "minPixels": 40},
+                {"form": "disc", "lat": -15, "lon": 178, "radius": 0.12, "role": "panel", "spin": 4.0, "minPixels": 60},
+                {"form": "disc", "lat": 45, "lon": 255, "radius": 0.19, "role": "panel", "spin": 4.0, "minPixels": 40},
+                {"form": "disc", "lat": 30, "lon": 275, "radius": 0.12, "role": "panel", "spin": 4.0, "minPixels": 60},
+                {"form": "disc", "lat": -5, "lon": 95, "radius": 0.15, "role": "panel", "spin": 4.0, "minPixels": 40},
+                {"form": "disc", "lat": -40, "lon": 300, "radius": 0.11, "role": "panel", "spin": 4.0, "minPixels": 60},
+                {"form": "band", "lat": 82, "width": 16, "role": "trim", "minPixels": 30},
+                {"form": "band", "lat": -84, "width": 12, "role": "trim", "minPixels": 30},
+                {"form": "band", "lat": 10, "width": 5, "role": "trim", "alpha": 0.35, "minPixels": 60},
                 {"form": "disc", "radius": 0.14, "role": "trim", "orbitRadius": 1.65, "orbitPeriod": 63.0, "orbitTilt": 0.34, "minPixels": 60}
-            ],
+            ] },
             "components": {}
         },
 

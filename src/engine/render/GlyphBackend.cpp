@@ -299,6 +299,37 @@ static Color ForRole(Role role, Color c)
     return c;
 }
 
+// A triangle in whichever winding raylib will keep. It culls clockwise triangles in screen
+// space, and a projected shape -- an ellipse turned to face the limb, a band traced column by
+// column -- does not know in advance which way round its corners come out.
+static void DrawTriangleAnyWay(Vector2 a, Vector2 b, Vector2 c, Color col)
+{
+    const float cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+    if (cross > 0.0f)
+        DrawTriangle(a, c, b, col);
+    else
+        DrawTriangle(a, b, c, col);
+}
+
+// An ellipse with its short axis along `angleDeg`. A crater near a planet's limb is seen at
+// a slant (#166); raylib's own ellipse is axis-aligned and cannot turn to face the centre.
+static void DrawEllipseFacing(Vector2 centre, float longR, float shortR, float angleDeg, Color col)
+{
+    const int   segments = 28;
+    const float a = angleDeg * DEG2RAD;
+    const float cs = std::cos(a), sn = std::sin(a);
+    Vector2     prev{};
+    for (int k = 0; k <= segments; k++)
+    {
+        const float   t = 2.0f * PI * (float)k / (float)segments;
+        const float   u = std::cos(t) * shortR, v = std::sin(t) * longR;  // u along the short axis
+        const Vector2 pt{ centre.x + u * cs - v * sn, centre.y + u * sn + v * cs };
+        if (k > 0)
+            DrawTriangleAnyWay(centre, prev, pt, col);
+        prev = pt;
+    }
+}
+
 void ShapeBackend::DrawPiece(const Piece& p, Color c)
 {
     const float a = p.angle * DEG2RAD;
@@ -312,7 +343,22 @@ void ShapeBackend::DrawPiece(const Piece& p, Color c)
 
     switch (p.form)
     {
-        case Form::Disc: DrawCircleV(p.pos, p.radius, c); return;
+        case Form::Disc:
+            if (p.squash < 0.995f)
+                DrawEllipseFacing(p.pos, p.radius, p.radius * std::fmax(0.02f, p.squash), p.angle,
+                                  c);
+            else
+                DrawCircleV(p.pos, p.radius, c);
+            return;
+
+        case Form::Band:
+            // Already projected: quads, four corners each, traced across the face.
+            for (size_t k = 0; k + 3 < p.strip.size(); k += 4)
+            {
+                DrawTriangleAnyWay(p.strip[k], p.strip[k + 1], p.strip[k + 2], c);
+                DrawTriangleAnyWay(p.strip[k], p.strip[k + 2], p.strip[k + 3], c);
+            }
+            return;
 
         case Form::Ring: DrawRing(p.pos, p.radius - p.width, p.radius, 0.0f, 360.0f, 48, c); return;
 
@@ -413,15 +459,21 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         // nothing for a station beside a star and everything for a structure large enough
         // that its far side is meaningfully further away -- which is what players will
         // build (#44).
-        const Lighting::Sample pieceLight = lighting_.At(p.pos);
+        // A mark on a planet is lit as the planet: with the body's centre and radius, so it
+        // falls into the same terminator. Shaded as itself, a crater would carry a small
+        // lit side of its own on the planet's night side (#166).
+        const Vector2          shadeAt = p.surface ? p.bodyPos : p.pos;
+        const float            shadeR = p.surface ? p.bodyRadius : ShadeRadius(p);
+        const Vector2          shadeAxis = p.surface ? Vector2{ 0.0f, 0.0f } : Axis(p);
+        const Lighting::Sample pieceLight = lighting_.At(shadeAt);
 
         // Below a few pixels across there is no surface left to shade, and shading it
         // anyway is worse than not: a rail two pixels wide is *entirely* the part of a
         // cylinder that turns away from the viewer, so it comes out the darkest thing on
         // screen. The same argument as minPixels, one level down.
-        const float shadePixels = ShadeRadius(p) * view_.zoom;
+        const float shadePixels = shadeR * view_.zoom;
         const bool  shaded = shadePixels >= MIN_SHADED_PIXELS &&
-                             BeginMaterialAt(item, pieceLight, p.pos, ShadeRadius(p), Axis(p));
+                             BeginMaterialAt(item, pieceLight, shadeAt, shadeR, shadeAxis);
 
         // With a shader the colour stays the object's own and the shading is done in the
         // fragment; without one it is dimmed here. Doing both would darken twice.
