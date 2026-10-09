@@ -562,8 +562,14 @@ Vector2 Simulation::SafeArrival(const std::string& systemId) const
                 const Vector2    p = e->GetPosition();
                 return { p.x, p.y + e->GetSize() + reach * 0.5f };
             }
-    // No station: out of the middle, where a star would be.
-    return { 0.0f, World::SYSTEM_RADIUS * 0.1f };
+    // No station -- a system beyond the wormhole has none (#140): clear of the star, which
+    // is a hundred and fifty thousand units across, not a fixed distance that is inside it.
+    float clear = World::SYSTEM_RADIUS * 0.1f;
+    if (sys != nullptr)
+        for (const auto& e : sys->entities)
+            if (e->GetKind() == EntityKind::Star)
+                clear = std::max(clear, e->GetSize() + 60000.0f);
+    return { 0.0f, clear };
 }
 
 void Simulation::SaveAccount(const ClientSession& s, const std::string& path) const

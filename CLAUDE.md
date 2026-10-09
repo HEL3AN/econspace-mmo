@@ -113,6 +113,13 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   no `exp()`, so two compilers agree -- and its bend around a star or a planet
   (`sim/WarpPath.h`) travels in the command and in the snapshot. Anything a warp needs that
   a snapshot does not carry is a prediction that will be wrong at 250 000 units a second.
+- **The region is generated, and the generator must give the same answer everywhere**
+  (#140). `src/engine/gen/` writes the same JSON the loaders read, from a seed saved in
+  `world.json`; the region itself is never saved, it is remade. So: randomness only from
+  `Gen::Rng` keyed by *what* is generated (never by order), no `sin`/`cos`/`exp`, no
+  `std::` distributions, no unordered containers. A golden hash in `gen_tests.cpp` runs on
+  three compilers in CI; when a rule changes the output, bump `Gen::GENERATOR_VERSION` --
+  a world saved under other rules is then refused rather than silently remade differently.
 - **`econagent` owns stdout.** It is the JSON-RPC channel; one stray `printf` or raylib
   trace on it corrupts the stream and the client reports a parse error rather than the
   line that caused it. All diagnostics go to stderr, and raylib's logger is redirected

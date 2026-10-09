@@ -11,6 +11,7 @@
 #include "core/Faction.h"
 #include "core/Archetype.h"
 #include "entities/AsteroidField.h"
+#include "gen/Region.h"
 #include "entities/Derelict.h"
 #include "entities/JumpGate.h"
 #include "entities/NpcShip.h"
@@ -861,4 +862,63 @@ TEST_CASE("an orbit goes round rather than parking on the ring")
 
     const float moved = std::sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
     CHECK(moved > 100.0f);
+}
+
+TEST_CASE("the region hangs off the start system by a wormhole, and its seed is saved (#140)")
+{
+    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+
+    Simulation sim;
+    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    const size_t handWritten = sim.Universe().systems.size();
+    sim.AttachRegion(424242, systems);
+    REQUIRE(sim.HasRegion());
+    CHECK(sim.Universe().systems.size() > handWritten);
+    sim.InitGalaxy();
+    sim.MaterializeAllSystems(systems);
+
+    // The start system keeps everything it was written with, plus the wormhole.
+    const std::string  start = sim.Universe().startId;
+    const SystemState* home = sim.SystemById(start);
+    REQUIRE(home != nullptr);
+    std::string entry;
+    for (const auto& e : home->entities)
+        if (e->GetKind() == EntityKind::Gate && e->GetName() == "Wormhole")
+            entry = static_cast<JumpGate*>(e.get())->GetDestination();
+    REQUIRE_FALSE(entry.empty());
+
+    // And the far side leads back.
+    const SystemState* far = sim.SystemById(entry);
+    REQUIRE(far != nullptr);
+    bool back = false;
+    for (const auto& e : far->entities)
+        if (e->GetKind() == EntityKind::Gate &&
+            static_cast<JumpGate*>(e.get())->GetDestination() == start)
+            back = true;
+    CHECK(back);
+
+    // A system out there has no station to arrive beside, and the arrival must still not be
+    // inside its star.
+    for (const auto& info : sim.Universe().systems)
+    {
+        const Vector2 at = sim.SafeArrival(info.id);
+        for (const auto& e : sim.SystemById(info.id)->entities)
+            if (e->GetKind() == EntityKind::Star)
+            {
+                CAPTURE(info.id);
+                CHECK(std::sqrt(at.x * at.x + at.y * at.y) > e->GetSize());
+            }
+    }
+
+    // The region is not saved, only what remakes it.
+    const std::string path = "world_seed_tmp.json";
+    sim.SaveWorld(path);
+    uint64_t seed = 0;
+    int      rules = 0;
+    REQUIRE(Simulation::ReadWorldSeed(path, seed, rules));
+    CHECK(seed == 424242u);
+    CHECK(rules == Gen::GENERATOR_VERSION);
+    std::remove(path.c_str());
 }
