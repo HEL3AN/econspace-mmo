@@ -82,7 +82,7 @@ TEST_CASE("the rules have not changed without saying so")
     const uint64_t h = Fnv1a(Dump(Gen::GenerateRegion(Params(1))));
     MESSAGE("region hash for seed 1: " << h);
     CHECK(Gen::GENERATOR_VERSION == 2);
-    CHECK(h == 3838237967524308935ull);
+    CHECK(h == 17574935309492413989ull);
 }
 
 TEST_CASE("every system can be reached from home, and every link has a gate on both ends")
@@ -195,4 +195,44 @@ TEST_CASE("an object can say which archetype of its kind it is (#142)")
         CHECK(d->GetArchetype()->kind == EntityKind::Derelict);
     }
     CHECK(e[1]->GetArchetype()->id == "derelict.wreck");
+}
+
+TEST_CASE("rare finds are rare, unique in a region, and found by somebody (#211)")
+{
+    const char* FINDS[] = { "derelict.leviathan", "field.motherlode", "derelict.station_hulk",
+                            "planet.rogue", "gate.ancient" };
+    std::map<std::string, int> regionsWith;
+    const int                  seeds = 60;
+    for (uint64_t seed = 1; seed <= (uint64_t)seeds; seed++)
+    {
+        const Gen::Region          r = Gen::GenerateRegion(Params(seed));
+        std::map<std::string, int> count;
+        for (const auto& kv : r.documents)
+            for (const char* group : { "derelicts", "asteroidFields", "planets", "gates" })
+                for (const auto& o : kv.second[group])
+                    if (o.contains("archetype"))
+                        count[o["archetype"].get<std::string>()]++;
+        for (const char* f : FINDS)
+        {
+            CAPTURE(seed);
+            CAPTURE(f);
+            // One of each at most -- an ancient gate is one gate with two mouths.
+            CHECK(count[f] <= (std::string(f) == "gate.ancient" ? 2 : 1));
+            if (count[f] > 0)
+                regionsWith[f]++;
+        }
+        // An ancient gate is a way from deep in the region straight back to the first ring.
+        for (const auto& kv : r.documents)
+            for (const auto& g : kv.second["gates"])
+                if (g.value("archetype", "") == std::string("gate.ancient"))
+                    CHECK((Gen::DepthOf(kv.first) == 1 ||
+                           Gen::DepthOf(g["destination"].get<std::string>()) == 1));
+    }
+    for (const char* f : FINDS)
+    {
+        CAPTURE(f);
+        MESSAGE(std::string(f) << " in " << regionsWith[f] << " of " << seeds << " regions");
+        CHECK(regionsWith[f] >= seeds / 5);       // somebody finds one
+        CHECK(regionsWith[f] <= seeds * 9 / 10);  // and not everybody
+    }
 }

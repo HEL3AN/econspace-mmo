@@ -29,6 +29,7 @@ enum Purpose : uint64_t
     GATES = 15,
     WORMHOLE = 16,
     CHARACTER = 17,
+    FINDS = 18,
 };
 
 struct Band  // the ring a planet sweeps
@@ -581,6 +582,193 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
     return sys;
 }
 
+// ---- Rare finds (#211) -----------------------------------------------------------------
+//
+// Unique things, at most one of each per region, so a find is a story players tell rather
+// than loot that drops twice. Each is an archetype of an ordinary kind (#213) put in a
+// system through the per-object "archetype" field (#142); the seed decides it, so everyone
+// on a server is hunting the same leviathan.
+
+std::vector<Disc> TakenOf(const json& sys)
+{
+    std::vector<Disc> taken;
+    if (sys.contains("star"))
+        taken.push_back({ 0.0, 0.0, sys["star"]["size"].get<double>() });
+    if (sys.contains("stars"))
+        for (const json& s : sys["stars"])
+            taken.push_back(
+                { s["pos"][0].get<double>(), s["pos"][1].get<double>(), s["size"].get<double>() });
+    for (const char* group : { "gates", "asteroidFields", "derelicts" })
+        if (sys.contains(group))
+            for (const json& o : sys[group])
+                taken.push_back({ o["pos"][0].get<double>(), o["pos"][1].get<double>(),
+                                  o["size"].get<double>() });
+    return taken;
+}
+
+// Which system gets it: deeper is likelier, and a barren system -- the one that otherwise has
+// least reason to be entered -- is three times as likely as its depth alone would make it.
+const Node* PickHost(Rng& rng, const std::vector<Node>& nodes, const Region& region, int minDepth)
+{
+    std::vector<int> weights;
+    int              total = 0;
+    for (const Node& n : nodes)
+    {
+        int w = n.depth >= minDepth ? n.depth * n.depth : 0;
+        if (w > 0 && region.documents.at(n.id).value("character", "") == std::string("barren"))
+            w *= 3;
+        weights.push_back(w);
+        total += w;
+    }
+    if (total == 0)
+        return nullptr;
+    int roll = rng.Range(0, total - 1);
+    for (size_t i = 0; i < nodes.size(); i++)
+    {
+        if (roll < weights[i])
+            return &nodes[i];
+        roll -= weights[i];
+    }
+    return nullptr;
+}
+
+void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Region& region)
+{
+    enum Find : uint64_t
+    {
+        LEVIATHAN = 1,
+        MOTHERLODE,
+        HULK,
+        ROGUE,
+        ANCIENT_GATE,
+    };
+    auto stream = [&](Find f) { return Rng(Key(params.seed, FINDS, (uint64_t)f)); };
+
+    // Something to salvage, big.
+    {
+        static const char* NAMES[] = { "The Grey Leviathan", "The Sleeper", "Old Colossus",
+                                       "The Drowned Giant" };
+        Rng                rng = stream(LEVIATHAN);
+        if (rng.Chance(45))
+            if (const Node* n = PickHost(rng, nodes, region, 3))
+            {
+                json&             sys = region.documents[n->id];
+                std::vector<Disc> taken = TakenOf(sys);
+                json              pos;
+                if (Place(rng, 250000.0, 820000.0, 520.0, BandsOf(sys), taken, pos))
+                    sys["derelicts"].push_back({ { "name", NAMES[rng.Range(0, 3)] },
+                                                 { "pos", pos },
+                                                 { "size", 520 },
+                                                 { "reward", 12000 + 1500 * n->depth },
+                                                 { "archetype", "derelict.leviathan" } });
+            }
+    }
+
+    // A belt worth the whole trip.
+    {
+        static const char* NAMES[] = { "Saint Vey's Motherlode", "The Glass Vein",
+                                       "Heartstone Field", "The Bright Seam" };
+        Rng                rng = stream(MOTHERLODE);
+        if (rng.Chance(55))
+            if (const Node* n = PickHost(rng, nodes, region, 2))
+            {
+                json&             sys = region.documents[n->id];
+                std::vector<Disc> taken = TakenOf(sys);
+                json              pos;
+                if (Place(rng, 260000.0, 840000.0, 6000.0, BandsOf(sys), taken, pos))
+                    sys["asteroidFields"].push_back({ { "name", NAMES[rng.Range(0, 3)] },
+                                                      { "pos", pos },
+                                                      { "size", 6000 },
+                                                      { "resource", "Crystal" },
+                                                      { "ore", 2400 + 200 * n->depth },
+                                                      { "archetype", "field.motherlode" } });
+            }
+    }
+
+    // Somebody lived here once -- and somebody may again (#44).
+    {
+        static const char* NAMES[] = { "Last Light Station", "Station Absent", "The Quiet Hub",
+                                       "Outpost Nine" };
+        Rng                rng = stream(HULK);
+        if (rng.Chance(45))
+            if (const Node* n = PickHost(rng, nodes, region, 2))
+            {
+                json&             sys = region.documents[n->id];
+                std::vector<Disc> taken = TakenOf(sys);
+                json              pos;
+                if (Place(rng, 250000.0, 820000.0, 600.0, BandsOf(sys), taken, pos))
+                    sys["derelicts"].push_back({ { "name", NAMES[rng.Range(0, 3)] },
+                                                 { "pos", pos },
+                                                 { "size", 600 },
+                                                 { "reward", 8000 + 1000 * n->depth },
+                                                 { "archetype", "derelict.station_hulk" } });
+            }
+    }
+
+    // A world without a sun of its own, at the edge, with a deposit worth the cold.
+    {
+        static const char* NAMES[] = { "Wanderer", "Nightfall", "The Orphan", "Coldheart" };
+        Rng                rng = stream(ROGUE);
+        if (rng.Chance(55))
+            if (const Node* n = PickHost(rng, nodes, region, 2))
+            {
+                json&  sys = region.documents[n->id];
+                double outer = 0.0;
+                for (const json& pl : sys["planets"])
+                    outer =
+                        std::max(outer, pl["orbitRadius"].get<double>() + pl["size"].get<double>());
+                const double r = 800000.0;  // clear of the gates at 880 000 and beyond
+                // Added after everything else, so its path must miss what is already there:
+                // the same rule every planet keeps (Clear), applied the other way round.
+                bool clear = outer + 14000.0 + 60000.0 < r;
+                for (const Disc& d : TakenOf(sys))
+                    if (std::fabs(std::sqrt(d.x * d.x + d.y * d.y) - r) <
+                        14000.0 + d.size + CLEARANCE)
+                        clear = false;
+                if (clear)
+                    sys["planets"].push_back(
+                        { { "name", NAMES[rng.Range(0, 3)] },
+                          { "type", "Rocky" },
+                          { "size", 14000 },
+                          { "orbitRadius", (int64_t)r },
+                          { "orbitSpeed", 60 },  // barely held
+                          { "angle", rng.Range(0, 65535) * (TWO_PI / 65536.0) },
+                          { "deposit", "Crystal" },
+                          { "archetype", "planet.rogue" } });
+            }
+    }
+
+    // An old way through: from somewhere deep straight back to the first ring.
+    {
+        Rng         rng = stream(ANCIENT_GATE);
+        const Node* deep = rng.Chance(30) ? PickHost(rng, nodes, region, 4) : nullptr;
+        const Node* near = nodes.empty() ? nullptr : &nodes.front();  // ring 1
+        if (deep != nullptr && near != nullptr && deep->id != near->id)
+        {
+            region.links.push_back(json::array({ near->id, deep->id }));
+            for (const Node* side : { near, deep })
+            {
+                const Node*       other = side == near ? deep : near;
+                json&             sys = region.documents[side->id];
+                std::vector<Disc> taken = TakenOf(sys);
+                double            dx = other->mapX - side->mapX, dy = other->mapY - side->mapY;
+                const double      l = std::sqrt(dx * dx + dy * dy);
+                dx = l > 0.0 ? dx / l : 1.0;
+                dy = l > 0.0 ? dy / l : 0.0;
+                json pos;
+                if (!Place(rng, 880000.0, 950000.0, 1300.0, BandsOf(sys), taken, pos, dx, dy))
+                    Place(rng, 880000.0, 960000.0, 1300.0, BandsOf(sys), taken, pos);
+                PlaceAnyway(pos, dx, dy, 940000.0);
+                sys["gates"].push_back({ { "name", "Ancient Gate" },
+                                         { "pos", pos },
+                                         { "size", 1300 },
+                                         { "destination", other->id },
+                                         { "archetype", "gate.ancient" } });
+            }
+        }
+    }
+}
+
 }  // namespace
 
 int DepthOf(const std::string& id)
@@ -613,6 +801,7 @@ Region GenerateRegion(const RegionParams& params)
                                    { "owner", pirates ? "Pirates" : "" } });
         region.documents[n.id] = GenerateSystem(params, n, nodes, region.links, &home);
     }
+    PlaceFinds(params, nodes, region);
 
     // The wormhole's mouth in the home system: at the edge, facing the region, out of the
     // path of the home system's own planets.
