@@ -14,8 +14,9 @@ namespace Auth
 namespace
 {
 
-// How many times the secret is re-hashed before it is stored. It costs a client about a
-// hundredth of a second per login and multiplies the work of guessing offline by the same
+// How many times the secret is re-hashed before it is stored. It costs a client a fraction
+// of a second per login -- this file is always compiled optimized, see CMakeLists.txt;
+// unoptimized it took seconds -- and multiplies the work of guessing offline by the same
 // factor. The number is part of the stored format: changing it invalidates every existing
 // account, so it moves only with a migration.
 constexpr int STRETCH_ROUNDS = 100000;

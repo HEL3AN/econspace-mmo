@@ -361,6 +361,18 @@ static const double MAX_TICK_BURST = TICKS_PER_SECOND;
 // that accumulate for as long as the server runs.
 static const double HELLO_TIMEOUT = 10.0;
 
+// How long a client that has said who it is may take to answer the challenge. Longer than
+// the hello limit because answering is real work the server asked for: the secret is
+// stretched a hundred thousand times (sim/Auth.cpp), which takes seconds on a slow or
+// loaded machine. Holding both to ten seconds dropped a client mid-login while a second
+// one was hashing next to it on the same CPU -- and it looked like a lost message.
+static const double LOGIN_TIMEOUT = 30.0;
+
+static double LoginLimit(const std::string& pendingAccount)
+{
+    return pendingAccount.empty() ? HELLO_TIMEOUT : LOGIN_TIMEOUT;
+}
+
 // A name that is safe both as an identity and as a file name. Rejecting is better than
 // mangling: two names differing only in punctuation would otherwise share one account
 // file, which is one player spending another's money.
@@ -777,7 +789,7 @@ static int RunHost(unsigned short port, bool isPublic)
         {
             HostClient& hc = clients[i];
             if (hc.conn && hc.conn->Alive() && !hc.evicted &&
-                (hc.sessionId != 0 || hc.silentFor < HELLO_TIMEOUT))
+                (hc.sessionId != 0 || hc.silentFor < LoginLimit(hc.pendingAccount)))
             {
                 i++;
                 continue;
@@ -799,9 +811,21 @@ static int RunHost(unsigned short port, bool isPublic)
             {
                 printf("The displaced connection for %s closed.\n", hc.account.c_str());
             }
+            else if (hc.conn && hc.conn->Alive())
+            {
+                // Still connected, but not logged in within the limit. Which half it got
+                // through is what tells a client that never spoke from a lost answer.
+                if (hc.pendingAccount.empty())
+                    printf("A client said nothing for %.0f s and was dropped.\n", HELLO_TIMEOUT);
+                else
+                    printf("%s: no answer to the login challenge within %.0f s; dropped.\n",
+                           hc.pendingAccount.c_str(), LOGIN_TIMEOUT);
+            }
             else
             {
-                printf("A client left before saying hello.\n");
+                printf("A client left before logging in%s%s (%s).\n",
+                       hc.pendingAccount.empty() ? "" : " as ", hc.pendingAccount.c_str(),
+                       hc.conn ? hc.conn->CloseReason().c_str() : "refused");
             }
             clients.erase(clients.begin() + (long)i);
         }

@@ -35,6 +35,10 @@ public:
     bool Poll(std::string& out) override;
 
     bool Alive() const { return alive_; }  // false — connection closed/dropped
+    // Why it stopped being alive, in words, for the log: "peer closed", "recv failed
+    // (10054)", "send backlog over the cap". Empty while alive. A dropped connection that
+    // says nothing is exactly what made a hung CI run impossible to diagnose.
+    const std::string& CloseReason() const { return closeReason_; }
 
     // Limits, enforced here rather than left to the peer's good manners (#14). A frame
     // header is four bytes the sender chose; believing it is how a single packet turns
@@ -48,11 +52,13 @@ public:
 
 private:
     void Pump();  // non-blocking send from outBuf_ and receive into inBuf_
+    void Fail(const std::string& why);
 
     unsigned long long sock_;
     std::string        inBuf_;   // received bytes (accumulating frames)
     std::string        outBuf_;  // bytes to send (if the socket is busy)
     bool               alive_ = true;
+    std::string        closeReason_;
 };
 
 // Listening socket: accepts incoming connections non-blockingly.
@@ -82,7 +88,10 @@ private:
 };
 
 // Client connection to host:port (host is an IPv4 literal, e.g. "127.0.0.1").
-// nullptr on error.
-std::unique_ptr<TcpConnection> Dial(const std::string& host, unsigned short port);
+// nullptr on error, or when nothing answers within `timeoutSeconds`. The connect itself is
+// bounded rather than left to the operating system, whose idea of how long to wait for a
+// SYN that is never answered is anything from two seconds to minutes.
+std::unique_ptr<TcpConnection> Dial(const std::string& host, unsigned short port,
+                                    double timeoutSeconds = 10.0);
 
 }  // namespace Net

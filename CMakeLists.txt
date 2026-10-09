@@ -164,6 +164,14 @@ add_library(netproto STATIC
 target_include_directories(netproto PUBLIC ${CMAKE_SOURCE_DIR}/src/game)
 # PicoSHA2 ships a header and no target; SYSTEM so its warnings are not ours.
 target_include_directories(netproto SYSTEM PRIVATE ${picosha2_SOURCE_DIR})
+# The login stretch is a hundred thousand SHA-256 rounds, and it is meant to cost a client a
+# fraction of a second. Unoptimized -- which is what a build with no CMAKE_BUILD_TYPE is,
+# CI's included -- it took seconds, two clients logging in at once took longer still, and a
+# server that drops a login after a limit then dropped one. Always optimized: nobody steps
+# through a hash in a debugger.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set_source_files_properties(src/game/sim/Auth.cpp PROPERTIES COMPILE_OPTIONS -O2)
+endif()
 # engine, because Protocol.h uses core/Faction.h and raylib's Vector2/Color.
 target_link_libraries(netproto PUBLIC engine)
 # winsock, guarded here so the guard lives in one place when other platforms arrive (#12).
@@ -236,7 +244,9 @@ add_executable(econagent
     src/game/sim/Orders.cpp        # order kinds, shared with the server
 )
 target_include_directories(econagent PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(econagent PRIVATE engine netproto)
+# The selftest's watchdog is a thread: a self-test must not be able to hang.
+find_package(Threads REQUIRED)
+target_link_libraries(econagent PRIVATE engine netproto Threads::Threads)
 set_target_properties(econagent PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/agent)
 # The galaxy index and factions are read locally, as the game client reads them.

@@ -15,16 +15,20 @@ bool Session::Connect(const std::string& host, unsigned short port, const std::s
 {
     if (!Net::Startup())
         return false;
-    conn_ = Net::Dial(host, port);
+    conn_ = Net::Dial(host, port, 10.0);
     if (!conn_)
+    {
+        Rpc::Log("econagent: nothing accepted the connection within 10 s");
         return false;
+    }
     // An agent is a player like any other, so it logs in the same way and through the
     // same code (#3, #42, #106).
     std::string why;
     if (!Auth::ClientHandshake(*conn_, account, secret, 10.0, why))
     {
         byeReason_ = why;
-        Rpc::Log("econagent: could not log in: " + why);
+        Rpc::Log("econagent: could not log in: " + why +
+                 (conn_->Alive() ? std::string() : " (" + conn_->CloseReason() + ")"));
         return false;
     }
     return true;
