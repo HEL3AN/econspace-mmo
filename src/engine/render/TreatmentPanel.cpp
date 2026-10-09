@@ -18,17 +18,19 @@ float PassBlockHeight(bool expanded)
 }
 }  // namespace
 
-float TreatmentPanelHeight(const Treatment& t)
+float TreatmentPanelHeight(const Treatment& t, const MaterialLibrary* materials)
 {
     float h = ROW * 2.0f + TOGGLE * 2.0f + 16.0f;  // title, availability, two master toggles
     for (const Pass& p : t.Config().chain)
         h += PassBlockHeight(p.enabled);
     h += ROW * (float)t.Problems().size();
-    h += TOGGLE;  // the reset row
+    if (materials != nullptr && !materials->Problems().empty())
+        h += ROW * (float)(materials->Problems().size() + 1);  // a heading, then each
+    h += TOGGLE;                                               // the reset row
     return h;
 }
 
-bool DrawTreatmentPanel(Rectangle area, Treatment& t)
+bool DrawTreatmentPanel(Rectangle area, Treatment& t, const MaterialLibrary* materials)
 {
     TreatmentConfig& cfg = t.Config();
     bool             changed = false;
@@ -54,6 +56,25 @@ bool DrawTreatmentPanel(Rectangle area, Treatment& t)
         Ui::Text(TextFormat("%d passes in the chain", (int)cfg.chain.size()), (int)x, (int)y, 11,
                  Ui::TEXT_DIM);
         y += ROW;
+    }
+
+    // Every shader that failed on this machine, by name, at the top: the panel is taller
+    // than a small window and is clipped at the bottom, and this is the part that explains
+    // why the picture looks the way it does (#190).
+    for (const std::string& problem : t.Problems())
+    {
+        Ui::Text(problem.c_str(), (int)x, (int)y, 10, Ui::TEXT);
+        y += ROW;
+    }
+    if (materials != nullptr && !materials->Problems().empty())
+    {
+        Ui::Text("materials drawn plain:", (int)x, (int)y, 11, Ui::TEXT_DIM);
+        y += ROW;
+        for (const std::string& problem : materials->Problems())
+        {
+            Ui::Text(problem.c_str(), (int)x, (int)y, 10, Ui::TEXT);
+            y += ROW;
+        }
     }
 
     changed |=
@@ -112,12 +133,6 @@ bool DrawTreatmentPanel(Rectangle area, Treatment& t)
             y += SLIDER;
         }
         y += PASS_GAP;
-    }
-
-    for (const std::string& problem : t.Problems())
-    {
-        Ui::Text(problem.c_str(), (int)x, (int)y, 10, Ui::TEXT_DIM);
-        y += ROW;
     }
 
     if (Ui::SmallButton({ x, y, 120.0f, 22.0f }, "reset to default"))

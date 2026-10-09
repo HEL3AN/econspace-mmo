@@ -177,7 +177,9 @@ INFO: Treatment: 6 of 7 passes loaded
 ```
 
 The gallery is back in colour with the other six passes, and F10 lists the pass as
-*phosphor (unavailable)*, with the reason under the chain. If **no** pass loads, the world is
+*phosphor (unavailable)*, with the reason at the top of the panel. A shader that compiles but
+fails to **link** says `would not link` instead, and a missing file says where it looked
+([#190](https://github.com/HEL3AN/econspace-mmo/issues/190)). If **no** pass loads, the world is
 drawn straight to the screen.
 
 That is not leniency. **Whether a shader compiles is a property of the player's machine, not of

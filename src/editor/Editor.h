@@ -34,6 +34,11 @@ public:
     // opening straight into the one you meant to look at.
     void UseShapes();
 
+    // Opens with the screen treatment's settings showing (F10), which is where a shader
+    // that failed on this machine is named (#120, #190). Synthetic key presses do not reach
+    // a raylib window, so this is how a screenshot of that panel is taken.
+    void OpenTreatmentSettings() { treatmentPanelOpen_ = true; }
+
 private:
     // Reference to a JSON element: array category and index (star uses index=-1).
     struct ObjHandle

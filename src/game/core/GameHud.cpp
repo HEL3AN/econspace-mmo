@@ -1374,7 +1374,7 @@ void Game::DrawGalaxyMap()
 void Game::DrawTreatmentSettings()
 {
     const float w = 320.0f;
-    const float h = Render::TreatmentPanelHeight(treatment_) + 24.0f;
+    const float h = Render::TreatmentPanelHeight(treatment_, &materials_) + 24.0f;
     Rectangle   panel{ (float)screenWidth_ - w - 16.0f, 60.0f, w,
                        fminf(h, (float)screenHeight_ - 80.0f) };
 
@@ -1383,8 +1383,8 @@ void Game::DrawTreatmentSettings()
 
     BeginScissorMode((int)panel.x, (int)panel.y, (int)panel.width, (int)panel.height);
     Render::DrawTreatmentPanel(
-        { panel.x + 12.0f, panel.y + 12.0f, panel.width - 24.0f, panel.height - 24.0f },
-        treatment_);
+        { panel.x + 12.0f, panel.y + 12.0f, panel.width - 24.0f, panel.height - 24.0f }, treatment_,
+        &materials_);
     EndScissorMode();
 
     Ui::Text("F10 closes and saves", (int)panel.x + 12, (int)(panel.y + panel.height - 16.0f), 10,
