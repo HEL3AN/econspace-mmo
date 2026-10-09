@@ -1,4 +1,4 @@
-# Базовые настройки редактора — см. CONVENTIONS.md.
+# Editor defaults for every file in the repository -- see CONVENTIONS.md.
 root = true
 
 [*]

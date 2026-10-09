@@ -1,0 +1,22 @@
+# How GitHub groups merged pull requests into release notes, by label. This is the
+# changelog: rather than a CHANGELOG.md that has to be kept in step by hand, a release
+# drafts its own notes from what was merged since the last one.
+changelog:
+  exclude:
+    labels: [duplicate, invalid, wontfix]
+    authors: [dependabot]
+  categories:
+    - title: Gameplay and world
+      labels: [world-building, content, enhancement]
+    - title: The look
+      labels: [renderer, art]
+    - title: Agents and the MCP server
+      labels: [agent, ai]
+    - title: Multiplayer and networking
+      labels: [networking]
+    - title: Fixes
+      labels: [bug]
+    - title: For contributors
+      labels: [community, documentation, tooling, tech-debt]
+    - title: Everything else
+      labels: ["*"]
