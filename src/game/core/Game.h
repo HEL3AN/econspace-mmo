@@ -78,6 +78,9 @@ public:
         startWarpTarget_ = target;
         startWarpFrames_ = 120;  // two seconds: the first snapshots have placed the ship
     }
+    // Start with the galaxy map open (--map): for seeing the index the server sent without
+    // a hand on the keyboard.
+    void StartOnMap() { galaxyMapOpen_ = true; }
     ~Game();
 
     void Run();
@@ -135,9 +138,11 @@ private:
     int screenWidth_ = 1280;
     int screenHeight_ = 720;
 
-    // Galaxy index (data/universe.json), loaded locally: system names, security, map
-    // positions and gate links. GalaxyState carries only per-system statistics, so the
-    // client still needs this file to label the map and the HUD.
+    // Galaxy index: system names, security, map positions and gate links. The server sends
+    // it as a "universe" message at login, before the first layout, and again whenever it
+    // changes (#206) -- a generated region exists only on the server, so the client's own
+    // data/universe.json would not know it. Empty until that message arrives; everything
+    // that reads it must cope. GalaxyState carries only per-system statistics.
     WorldLoader::Universe universe_;
 
     Entity* selected_ = nullptr;

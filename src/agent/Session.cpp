@@ -104,6 +104,13 @@ void Session::Pump()
         {
             Proto::DecodeGalaxy(msg, galaxy_);
         }
+        else if (type == "universe")
+        {
+            // Replaced whole: it is sent whole, at login and whenever it changes (#206).
+            WorldLoader::Universe u;
+            if (Proto::DecodeUniverse(msg, u))
+                universe_ = std::move(u);
+        }
     }
 }
 
@@ -140,12 +147,12 @@ std::vector<Ev::Event> Session::EventsSince(int seq) const
     return out;
 }
 
-std::string Session::Describe(Obs::Detail detail, const WorldLoader::Universe* universe) const
+std::string Session::Describe(Obs::Detail detail) const
 {
     Obs::View v;
     v.snapshot = haveSnapshot_ ? &snapshot_ : nullptr;
     v.layout = &layout_;
-    v.universe = universe;
+    v.universe = &universe_;
     v.galaxy = &galaxy_;
     return Obs::Describe(v, detail);
 }

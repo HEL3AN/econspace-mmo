@@ -592,6 +592,55 @@ bool DecodeGalaxy(const std::string& s, GalaxyState& out)
     return true;
 }
 
+std::string EncodeUniverse(const WorldLoader::Universe& u)
+{
+    json j;
+    Stamp(j, "universe");
+    json sys = json::array();
+    for (const WorldLoader::SystemInfo& si : u.systems)
+        sys.push_back({ { "id", si.id },
+                        { "name", si.name },
+                        { "pos", V2(si.mapPos) },
+                        { "sec", si.security },
+                        { "owner", si.owner } });
+    json links = json::array();
+    for (const WorldLoader::SystemLink& l : u.links)
+        links.push_back(json::array({ l.a, l.b }));
+    j["sys"] = sys;
+    j["links"] = links;
+    j["start"] = u.startId;
+    return j.dump();
+}
+
+bool DecodeUniverse(const std::string& s, WorldLoader::Universe& out)
+{
+    json j;
+    if (!OpenEnvelope(s, j) || j.value("t", std::string()) != "universe")
+        return false;
+
+    out = WorldLoader::Universe{};
+    if (j.contains("sys") && j["sys"].is_array())
+        for (const json& sj : j["sys"])
+        {
+            if (!sj.is_object())
+                continue;
+            WorldLoader::SystemInfo si;
+            si.id = sj.value("id", std::string());
+            si.name = sj.value("name", std::string());
+            si.mapPos = ToV2(sj.value("pos", json::array()));
+            si.security = sj.value("sec", 0.5f);
+            si.owner = sj.value("owner", std::string());
+            out.systems.push_back(si);
+        }
+    if (j.contains("links") && j["links"].is_array())
+        for (const json& lj : j["links"])
+            if (lj.is_array() && lj.size() >= 2 && lj[0].is_string() && lj[1].is_string())
+                out.links.push_back(
+                    WorldLoader::SystemLink{ lj[0].get<std::string>(), lj[1].get<std::string>() });
+    out.startId = j.value("start", std::string());
+    return true;
+}
+
 std::string MessageType(const std::string& s)
 {
     json j = json::parse(s, nullptr, false);

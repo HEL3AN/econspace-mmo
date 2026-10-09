@@ -579,3 +579,61 @@ TEST_CASE("a route order that asks for the safe way still asks for it after the 
         CHECK(Proto::EncodeCommand(Proto::Command{}).find("ordSafe") == std::string::npos);
     }
 }
+
+// #206: the galaxy index comes from the server, because a generated region (#140) exists
+// nowhere else. Everything the client and econagent read from it has to survive the wire.
+TEST_CASE("the galaxy index survives the wire, without the server's file names")
+{
+    WorldLoader::Universe u;
+    u.systems.push_back({ "sol", "Sol", "sol.json", { 10.5f, -20.0f }, 0.9f, "federation" });
+    u.systems.push_back({ "vega", "Vega", "vega.json", { 300.0f, 40.25f }, 0.1f, "" });
+    u.links.push_back({ "sol", "vega" });
+    u.startId = "sol";
+
+    const std::string wire = Proto::EncodeUniverse(u);
+    CHECK(Proto::MessageType(wire) == "universe");
+    CHECK(Proto::MessageVersion(wire) == Proto::PROTO_VERSION);
+
+    WorldLoader::Universe r;
+    REQUIRE(Proto::DecodeUniverse(wire, r));
+    REQUIRE(r.systems.size() == 2);
+    CHECK(r.systems[0].id == "sol");
+    CHECK(r.systems[0].name == "Sol");
+    CHECK(r.systems[0].mapPos.x == doctest::Approx(10.5f));
+    CHECK(r.systems[0].mapPos.y == doctest::Approx(-20.0f));
+    CHECK(r.systems[0].security == doctest::Approx(0.9f));
+    CHECK(r.systems[0].owner == "federation");
+    CHECK(r.systems[1].id == "vega");
+    CHECK(r.systems[1].mapPos.y == doctest::Approx(40.25f));
+    CHECK(r.systems[1].owner.empty());
+    REQUIRE(r.links.size() == 1);
+    CHECK(r.links[0].a == "sol");
+    CHECK(r.links[0].b == "vega");
+    CHECK(r.startId == "sol");
+
+    SUBCASE("where the server keeps a system is its own business")
+    {
+        CHECK(wire.find("sol.json") == std::string::npos);
+        CHECK(wire.find("vega.json") == std::string::npos);
+        CHECK(r.systems[0].file.empty());
+    }
+
+    SUBCASE("a decode replaces the index rather than adding to it")
+    {
+        REQUIRE(Proto::DecodeUniverse(wire, r));
+        CHECK(r.systems.size() == 2);
+        CHECK(r.links.size() == 1);
+    }
+
+    SUBCASE("refused across a version gap, and not confused with another message")
+    {
+        std::string       other = wire;
+        const std::string from = "\"v\":" + std::to_string(Proto::PROTO_VERSION);
+        const size_t      at = other.find(from);
+        REQUIRE(at != std::string::npos);
+        other.replace(at, from.size(), "\"v\":" + std::to_string(Proto::PROTO_VERSION + 1));
+        CHECK_FALSE(Proto::DecodeUniverse(other, r));
+        CHECK_FALSE(Proto::DecodeUniverse(Proto::EncodeGalaxy(Proto::GalaxyState{}), r));
+        CHECK_FALSE(Proto::DecodeUniverse("not json", r));
+    }
+}

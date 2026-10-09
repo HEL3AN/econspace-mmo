@@ -2,6 +2,7 @@
 
 #include "raylib.h"
 #include "core/Faction.h"
+#include "core/WorldLoader.h"  // Universe, the galaxy index
 #include <map>
 #include "entities/EntityKind.h"
 #include "sim/Events.h"
@@ -26,7 +27,7 @@ namespace Proto
 // without it a client built against an older protocol would silently receive defaults
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
-inline constexpr int PROTO_VERSION = 11;  // 11: a warp can bend around a body (#160)
+inline constexpr int PROTO_VERSION = 12;  // 12: the galaxy index comes from the server (#206)
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).
@@ -326,7 +327,16 @@ bool        DecodeLayout(const std::string& s, SystemLayout& out);
 std::string EncodeGalaxy(const GalaxyState& s);
 bool        DecodeGalaxy(const std::string& s, GalaxyState& out);
 
-// Message type from the "t" field ("cmd"/"snap"/"layout"/"galaxy"); "" — broken/unknown.
+// The galaxy index (#206): which systems exist, their names, map positions, security and
+// owners, the links between them and where a new player starts. The server sends it at
+// login, before the first layout, and again whenever the index changes -- a generated
+// region (#140) exists only on the server, so a client reading its own data folder would
+// never see it. `SystemInfo::file` is the server's business and is not sent; a decoded
+// index has it empty.
+std::string EncodeUniverse(const WorldLoader::Universe& u);
+bool        DecodeUniverse(const std::string& s, WorldLoader::Universe& out);
+
+// Message type from the "t" field ("cmd"/"snap"/"layout"/"galaxy"/"universe"); "" — broken/unknown.
 // For dispatching incoming transport messages on the client side. Reports the type
 // regardless of version, so a mismatch can be diagnosed rather than looking like garbage.
 std::string MessageType(const std::string& s);

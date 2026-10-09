@@ -43,7 +43,11 @@ public:
     const Proto::Snapshot&                    Snapshot() const { return snapshot_; }
     const std::map<int, Proto::EntityLayout>& Layout() const { return layout_; }
     const Proto::GalaxyState&                 Galaxy() const { return galaxy_; }
-    bool                                      HasSnapshot() const { return haveSnapshot_; }
+    // The galaxy index as the server sent it (#206): names, map positions and links. Not
+    // read from data/universe.json -- a generated region exists only on the server. Empty
+    // until the login completes; the server sends it before the first layout.
+    const WorldLoader::Universe& Universe() const { return universe_; }
+    bool                         HasSnapshot() const { return haveSnapshot_; }
 
     // Journal entries newer than `seq`, accumulated across snapshots so nothing is lost
     // between two calls.
@@ -51,7 +55,7 @@ public:
     int                    LastEventSeq() const { return lastEventSeq_; }
 
     // A situation report from the current state; see sim/Observation.h.
-    std::string Describe(Obs::Detail detail, const WorldLoader::Universe* universe) const;
+    std::string Describe(Obs::Detail detail) const;
 
     const std::string& ProtocolError() const { return protocolError_; }
     // Why the server ended this session, if it said (#105). Empty otherwise -- a socket
@@ -66,6 +70,7 @@ private:
     Proto::Snapshot                     snapshot_;
     std::map<int, Proto::EntityLayout>  layout_;
     Proto::GalaxyState                  galaxy_;
+    WorldLoader::Universe               universe_;
     std::vector<Ev::Event>              journal_;
     int                                 lastEventSeq_ = 0;
     bool                                haveSnapshot_ = false;
