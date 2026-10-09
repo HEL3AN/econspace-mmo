@@ -80,8 +80,17 @@ rather than loaded half.
 | `world` | | Where this kind lives in a system file. See [Making the game build one](#making-the-game-build-one). |
 | `components` | | What it can do. Next section. |
 
-**A misspelled field is ignored, not reported.** `"matrial": "hull"` loads without a word and
-the object is simply unshaded. If an edit seems to do nothing, check the spelling first.
+**A misspelled field refuses the file.** `"matrial": "hull"` stops the load with
+
+```text
+archetype 'station.relay': unknown field 'matrial'
+```
+
+and the same goes for a field inside `light`, `world`, a component or a part of the `shape`
+([#191](https://github.com/HEL3AN/econspace-mmo/issues/191)). Read leniently, a misspelling is
+indistinguishable from an absence: the field would take its default and the edit would seem to
+do nothing. `econserver` refuses to start on a registry that will not load; the client and the
+editor log the reason and keep the previous one.
 
 **Colour in the game is the instance's, not the archetype's — today.** The gallery and the
 editor's previews draw the archetype's `color`. In the game, an object is drawn in the colour
@@ -156,9 +165,16 @@ written to and what that array calls its type:
 "world": { "category": "stations", "subType": "Relay" }
 ```
 
-With only that, the relay is in the editor's palette — and **placing one is a trap**: the editor
-writes `"role": "Relay"`, the loader does not know that role, falls back to a trade hub, and the
-object comes back as `station.trade_hub`. The tests do not catch it.
+With only that, the registry **refuses to load**:
+
+```text
+archetype 'station.relay': world.subType 'Relay' is not a station role (TradeHub, MiningOutpost, Shipyard, Military)
+```
+
+It used to load, and placing one was a trap: the editor wrote `"role": "Relay"`, the world loader
+did not know that role, fell back to a trade hub, and the object came back as
+`station.trade_hub` ([#191](https://github.com/HEL3AN/econspace-mmo/issues/191)). A system file
+naming an unknown role still loads, but the loader says so by name.
 
 **The code half**, for a new station role (the compiler's `-Wswitch` warnings find the switches
 for you):
