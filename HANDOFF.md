@@ -37,8 +37,9 @@ screen treatment (#120), materials (#121), silhouettes as compositions (#122), p
 lighting (#135), motion (#136).
 
 **M9 "The scale of a system"** is the live milestone, and it comes **before M7** because the
-generator will bake in whatever scale exists when it is written. Done in it: #157's standing
-verbs, #161 life for the things nobody built, #165 orbiting parts.
+generator will bake in whatever scale exists when it is written. Done in it: #157 the
+overview as the instrument (standing verbs, then tabs and sorting), #161 life for the things
+nobody built, #165 orbiting parts.
 
 ## Next up
 
@@ -49,11 +50,14 @@ verbs, #161 life for the things nobody built, #165 orbiting parts.
    (about the ship while following, about the cursor once free), middle-drag looks away,
    **C** comes back, warp pulls back without touching the chosen zoom, and a scale bar sits
    bottom right. Input arrives as arguments, so it is tested without a window.
-3. **#159 — the scale change itself.** A million units instead of twenty-five thousand; a
+3. ~~**#157 — the overview you fly by**~~ — **done**. `Overview::Build` decides the rows
+   (tabs All/Go/Ships/Places/Hostile, sort by name/type/distance, hostiles first, ties by
+   id) and is tested without a window; the window only draws it and is open by default.
+4. **#159 — the scale change itself.** A million units instead of twenty-five thousand; a
    station thirty to forty-five times a ship. **Not before #157 and #158 are finished**: at
    forty times the distance, finding things by looking at them is impossible, and the scale
-   change on its own makes the game worse.
-4. Then **#160** warp tuned for the new distances, and the M6 leftovers (#123, #117).
+   change on its own makes the game worse. Both are done now; this is next.
+5. Then **#160** warp tuned for the new distances, and the M6 leftovers (#123, #117).
 
 Also queued: **#137** shape derived from what an object does (it supersedes the closed
 #133), **#138** damage that removes parts, **#139** variation that changes a silhouette

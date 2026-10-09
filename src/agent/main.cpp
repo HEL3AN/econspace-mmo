@@ -18,10 +18,12 @@
 
 #include "core/Faction.h"
 #include "core/WorldLoader.h"
+#include "economy/Resource.h"
 #include "sim/Orders.h"
 
 #include "raylib.h"
 
+#include <cctype>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -157,8 +159,9 @@ const std::vector<Prompt>& Prompts()
         { "trade_run", "Find a price difference between two systems and work it",
           "Look for a profitable trade. Read the galaxy resource to see which systems "
           "exist and how dangerous they are. Dock somewhere, note the market prices, then "
-          "travel_to_system to a neighbour and compare. Buy where a resource is cheap and "
-          "sell where it is dear. Prefer avoid_danger on the route when the hold is full — "
+          "travel_to_system to a neighbour and compare. There is no buy tool yet, so the "
+          "cargo to trade is cargo you mine: mine where a resource is plentiful and sell "
+          "it where it is dear. Prefer avoid_danger on the route when the hold is full — "
           "cargo lost is worse than time lost." },
         { "scout", "Visit each system and report what is there",
           "Scout the galaxy. For every system in the galaxy resource, travel_to_system to "
@@ -188,7 +191,14 @@ struct Tool
 Rpc::Json Obj(std::initializer_list<std::pair<const std::string, Rpc::Json>> props,
               std::vector<std::string>                                       required = {})
 {
-    Rpc::Json schema{ { "type", "object" }, { "properties", Rpc::Json(props) } };
+    // Built key by key, on purpose. `Rpc::Json(props)` on a list of pairs gives an *array* of
+    // [name, schema] pairs, not an object -- which is not JSON Schema, so every tool shipped
+    // an input schema a strict MCP client could not read the argument names from. It went
+    // unnoticed until the reference generator (#172) tried to read the schemas itself.
+    Rpc::Json properties = Rpc::Json::object();
+    for (const auto& kv : props)
+        properties[kv.first] = kv.second;
+    Rpc::Json schema{ { "type", "object" }, { "properties", properties } };
     if (!required.empty())
         schema["required"] = required;
     return schema;
@@ -205,6 +215,41 @@ Rpc::Json Str(const char* desc)
 Rpc::Json Bool(const char* desc)
 {
     return Rpc::Json{ { "type", "boolean" }, { "description", desc } };
+}
+
+// Which resource a tool call means. By name, because that is what observe shows: the
+// description used to say "index, as shown by observe" while observe showed names, so a
+// bot had no way to learn what to pass (#171). Matched exactly, ignoring case, and refused
+// otherwise -- ResourceFromName quietly turns any unknown name into Iron, and a bot asking
+// to sell Gold must not sell its iron instead. A number is still accepted for scripts
+// written against the old description.
+int ResourceArg(const Rpc::Json& args)
+{
+    if (!args.contains("resource"))
+        throw Rpc::Error{ Rpc::INVALID_PARAMS, "resource is required" };
+    const Rpc::Json& r = args["resource"];
+    if (r.is_number())
+        return r.get<int>();
+    if (!r.is_string())
+        throw Rpc::Error{ Rpc::INVALID_PARAMS, "resource is a name, e.g. 'Iron'" };
+
+    auto lower = [](std::string s)
+    {
+        for (char& ch : s)
+            ch = (char)std::tolower((unsigned char)ch);
+        return s;
+    };
+    const std::string want = lower(r.get<std::string>());
+    const auto&       types = AllResourceTypes();
+    std::string       known;
+    for (size_t i = 0; i < types.size(); i++)
+    {
+        if (lower(ResourceName(types[i])) == want)
+            return (int)i;
+        known += (known.empty() ? "" : ", ") + ResourceName(types[i]);
+    }
+    throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                      "no resource called '" + r.get<std::string>() + "'; known: " + known };
 }
 
 std::vector<Tool> BuildTools()
@@ -290,6 +335,7 @@ std::vector<Tool> BuildTools()
                           Proto::Command c = OrderCommand(Orders::Kind::Route);
                           c.orderDestSystem = args.value("system", std::string());
                           c.orderWarp = true;
+                          c.orderAvoidDanger = args.value("avoid_danger", false);
                           if (c.orderDestSystem.empty())
                               throw Rpc::Error{ Rpc::INVALID_PARAMS, "system is required" };
                           return GiveOrder(c, "travel_to_system");
@@ -339,7 +385,8 @@ std::vector<Tool> BuildTools()
     tools.push_back({ "sell_cargo",
                       "Sell cargo at the station you are docked at. Sells everything of "
                       "that resource unless an amount is given.",
-                      Obj({ { "resource", Num("resource index, as shown by observe") },
+                      Obj({ { "resource", Str("resource name as observe lists it under "
+                                              "CARGO, e.g. 'Iron'") },
                             { "amount", Num("how much (default: all of it)") } },
                           { "resource" }),
                       [](const Rpc::Json& args)
@@ -349,7 +396,7 @@ std::vector<Tool> BuildTools()
                               throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                                 "not docked; dock at a station first" };
                           Proto::Command c;
-                          c.sellType = (int)NumberOr(args, "resource", -1);
+                          c.sellType = ResourceArg(args);
                           c.sellAmount = (int)NumberOr(args, "amount", 100000.0);
                           g_session.Send(c);
                           g_session.WaitUntil([] { return false; }, 0.5);  // let the ack land
@@ -384,13 +431,56 @@ std::string RunTool(const std::vector<Tool>& tools, const std::string& name, con
     return "no such tool: " + name;
 }
 
+// --- What the server offers, as data ------------------------------------
+// The answers to tools/list, resources/list and prompts/list, built in one place. The RPC
+// handlers return them, and so does `econagent describe`, which is what the reference in
+// docs/agents/ is generated from (#172) -- so a tool that changes changes its documentation
+// in the same build, and CI fails if the committed copy says otherwise.
+
+Rpc::Json ToolsList(const std::vector<Tool>& tools)
+{
+    Rpc::Json list = Rpc::Json::array();
+    for (const Tool& t : tools)
+        list.push_back(
+            { { "name", t.name }, { "description", t.description }, { "inputSchema", t.schema } });
+    return list;
+}
+
+Rpc::Json ResourcesList()
+{
+    return Rpc::Json::array(
+        { Rpc::Json{ { "uri", "econspace://system" },
+                     { "name", "Current system" },
+                     { "description", "Everything visible where the ship is, in full" },
+                     { "mimeType", "text/plain" } },
+          Rpc::Json{ { "uri", "econspace://galaxy" },
+                     { "name", "Galaxy" },
+                     { "description",
+                       "Every system, its security, controller and gate links, plus recent "
+                       "galactic news" },
+                     { "mimeType", "text/plain" } } });
+}
+
+Rpc::Json PromptsList(bool withText)
+{
+    Rpc::Json list = Rpc::Json::array();
+    for (const auto& p : Prompts())
+    {
+        Rpc::Json e{ { "name", p.name }, { "description", p.description } };
+        if (withText)
+            e["text"] = p.text;
+        list.push_back(e);
+    }
+    return list;
+}
+
 // Scripted agent: the same tools an LLM calls, driven by a fixed sequence.
 //
 // This is what keeps the agent seam honest in CI. Testing it with a real model would cost
 // money, need a key and give a different answer every run; testing it with the tools
 // called directly proves the part that can actually break -- the bridge, the orders, the
 // journal and the round trip through the server.
-// Run: econagent selftest <host> [port]   (a server must already be listening)
+// Run: econagent selftest <host> <port> <name> <secret>   (a server must already be listening)
 int Selftest(const std::vector<Tool>& tools)
 {
     auto note = [](const char* what, bool ok)
@@ -453,6 +543,20 @@ int main(int argc, char** argv)
     setvbuf(stdout, nullptr, _IONBF, 0);
     SetTraceLogCallback(TraceToStderr);
 
+    // What this server offers, as JSON, without connecting to anything (#172). It is the
+    // source the reference in docs/agents/ is generated from.
+    if (argc >= 2 && std::strcmp(argv[1], "describe") == 0)
+    {
+        const std::vector<Tool> tools = BuildTools();
+        const Rpc::Json         all{ { "protocolVersion", "2024-11-05" },
+                                     { "tools", ToolsList(tools) },
+                                     { "resources", ResourcesList() },
+                                     { "prompts", PromptsList(true) } };
+        std::fputs(all.dump(2).c_str(), stdout);
+        std::fputs("\n", stdout);
+        return 0;
+    }
+
     const bool selftest = argc >= 3 && std::strcmp(argv[1], "selftest") == 0;
     if (!selftest && (argc < 3 || std::strcmp(argv[1], "connect") != 0))
     {
@@ -460,9 +564,11 @@ int main(int argc, char** argv)
                      "econagent — EconSpace as an MCP server.\n"
                      "  %s connect <host> <port> <name> <secret>   serve MCP on stdio\n"
                      "  %s selftest <host> <port> <name> <secret>  scripted run\n"
+                     "  %s describe                                 the tools, resources and "
+                     "prompts, as JSON\n"
                      "\n"
                      "Start a server first:  econserver host 50800\n",
-                     argv[0], argv[0]);
+                     argv[0], argv[0], argv[0]);
         return 2;
     }
 
@@ -524,25 +630,8 @@ int main(int argc, char** argv)
     // Pull-based, unlike tools: a long briefing costs tokens only when the agent decides
     // it needs one. The system map is the same projection observe returns, which is the
     // point -- there is one description of the world, not one per consumer.
-    rpc.On(
-        "resources/list",
-        [](const Rpc::Json&)
-        {
-            return Rpc::Json{
-                { "resources",
-                  Rpc::Json::array({ Rpc::Json{ { "uri", "econspace://system" },
-                                                { "name", "Current system" },
-                                                { "description",
-                                                  "Everything visible where the ship is, in full" },
-                                                { "mimeType", "text/plain" } },
-                                     Rpc::Json{ { "uri", "econspace://galaxy" },
-                                                { "name", "Galaxy" },
-                                                { "description",
-                                                  "Every system, its security, controller and gate "
-                                                  "links, plus recent galactic news" },
-                                                { "mimeType", "text/plain" } } }) }
-            };
-        });
+    rpc.On("resources/list",
+           [](const Rpc::Json&) { return Rpc::Json{ { "resources", ResourcesList() } }; });
 
     rpc.On("resources/read",
            [](const Rpc::Json& params)
@@ -574,13 +663,7 @@ int main(int argc, char** argv)
     // tool surface: if a prompt here cannot be carried out with the tools above, the tools
     // are incomplete.
     rpc.On("prompts/list",
-           [](const Rpc::Json&)
-           {
-               Rpc::Json list = Rpc::Json::array();
-               for (const auto& p : Prompts())
-                   list.push_back({ { "name", p.name }, { "description", p.description } });
-               return Rpc::Json{ { "prompts", list } };
-           });
+           [](const Rpc::Json&) { return Rpc::Json{ { "prompts", PromptsList(false) } }; });
 
     rpc.On("prompts/get",
            [](const Rpc::Json& params)
@@ -599,15 +682,7 @@ int main(int argc, char** argv)
            });
 
     rpc.On("tools/list",
-           [&tools](const Rpc::Json&)
-           {
-               Rpc::Json list = Rpc::Json::array();
-               for (const Tool& t : tools)
-                   list.push_back({ { "name", t.name },
-                                    { "description", t.description },
-                                    { "inputSchema", t.schema } });
-               return Rpc::Json{ { "tools", list } };
-           });
+           [&tools](const Rpc::Json&) { return Rpc::Json{ { "tools", ToolsList(tools) } }; });
 
     rpc.On("tools/call",
            [&tools](const Rpc::Json& params)

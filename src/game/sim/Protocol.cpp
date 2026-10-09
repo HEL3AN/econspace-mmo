@@ -222,6 +222,8 @@ std::string EncodeCommand(const Command& c)
     j["ordWarp"] = c.orderWarp;
     j["ordFull"] = c.orderUntilFull;
     j["ordDest"] = c.orderDestSystem;
+    if (c.orderAvoidDanger)  // only when asked: a command goes out sixty times a second
+        j["ordSafe"] = true;
     j["ordAbort"] = c.abortOrder;
     return j.dump();
 }
@@ -263,6 +265,7 @@ bool DecodeCommand(const std::string& s, Command& out)
     out.orderWarp = j.value("ordWarp", false);
     out.orderUntilFull = j.value("ordFull", false);
     out.orderDestSystem = j.value("ordDest", std::string());
+    out.orderAvoidDanger = j.value("ordSafe", false);
     out.abortOrder = j.value("ordAbort", false);
     return true;
 }

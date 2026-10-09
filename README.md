@@ -8,7 +8,7 @@ You fly a ship in a persistent galaxy: mine, trade, run missions, fight, build r
 [![CodeQL](https://github.com/HEL3AN/econspace-mmo/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/HEL3AN/econspace-mmo/actions/workflows/codeql.yml)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Language: C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
-![Platforms: Windows | Linux](https://img.shields.io/badge/platforms-Windows%20(MinGW)%20%7C%20Linux%20(GCC)-lightgrey.svg)
+![Platforms: Windows | Linux | macOS](https://img.shields.io/badge/platforms-Windows%20(MinGW)%20%7C%20Linux%20(GCC)%20%7C%20macOS%20(Clang)-lightgrey.svg)
 ![Status: Prototype](https://img.shields.io/badge/status-prototype-orange.svg)
 
 > **Status — the honest version.** EconSpace is a working **prototype**, not a finished game. The client–server core, the netcode, multiplayer, accounts and the agent interface are real and tested. The look is new and moving fast. Content is thin and there is no audio. The direction is set — see [Where it is going](#where-it-is-going) — and contributions are welcome, from people and from agents.
@@ -66,7 +66,7 @@ The repository has several documents at the top. Each owns one thing:
 ## Build
 
 **Requirements**
-- A C++17 compiler: **MinGW-w64 g++** on Windows (from [MSYS2](https://www.msys2.org/)), **GCC** on Linux.
+- A C++17 compiler: **MinGW-w64 g++** on Windows (from [MSYS2](https://www.msys2.org/)), **GCC** on Linux, **Apple Clang** (Xcode command-line tools) on macOS.
 - CMake 3.16 or later.
 - On Linux, raylib's build dependencies: `sudo apt install libasound2-dev libgl1-mesa-dev libglu1-mesa-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxkbcommon-dev libxrandr-dev`.
 - Internet on the first build: raylib 5.5, nlohmann/json 3.11.3, doctest and PicoSHA2 are fetched automatically.
@@ -78,6 +78,8 @@ ctest --test-dir build --output-on-failure   # the unit suite
 ```
 
 On Windows, close a running executable before rebuilding — Windows will not let it be overwritten. On Linux the binaries have no `.exe` suffix.
+
+**macOS** builds and passes the tests in CI on every change, but nobody on the team plays on a Mac, so what the game *looks* like there has not been seen. Use the default generator (`cmake -S . -B build`, no `-G`). If you run it, a screenshot in an issue is the most useful thing you can send — Retina displays in particular are expected to misplace the screen treatment until #179.
 
 ## Play
 
