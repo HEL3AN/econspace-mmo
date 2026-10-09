@@ -53,10 +53,11 @@ nobody built, #165 orbiting parts.
 3. ~~**#157 — the overview you fly by**~~ — **done**. `Overview::Build` decides the rows
    (tabs All/Go/Ships/Places/Hostile, sort by name/type/distance, hostiles first, ties by
    id) and is tested without a window; the window only draws it and is open by default.
-4. **#159 — the scale change itself.** A million units instead of twenty-five thousand; a
-   station thirty to forty-five times a ship. **Not before #157 and #158 are finished**: at
-   forty times the distance, finding things by looking at them is impossible, and the scale
-   change on its own makes the game worse. Both are done now; this is next.
+4. ~~**#159 — the scale change itself**~~ — **done**. A million units; a station 30-45
+   times a ship. Distances were mapped outward from the star rather than multiplied, and
+   what a planet would sweep was moved out of its path (DECISIONS.md has the details).
+   Standing orders and NPCs warp any leg past 20 000; old account saves arrive beside a
+   station. `econspace ... --zoom Z --shapes` starts at a given view, for screenshots.
 5. Then **#160** warp tuned for the new distances, and the M6 leftovers (#123, #117).
 
 Also queued: **#137** shape derived from what an object does (it supersedes the closed

@@ -1,5 +1,6 @@
 #include "render/CameraRig.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace Render

@@ -69,6 +69,8 @@ public:
     // Where the camera starts (--zoom): for looking at a scale without a wheel, which is
     // also how a screenshot of one is taken -- synthetic input does not reach the window.
     void SetStartZoom(float zoom) { rig_.SetZoom(zoom); }
+    // Start on the shape backend (--shapes), the one F2 switches to.
+    void StartOnShapes() { backend_ = &shapeBackend_; }
     ~Game();
 
     void Run();

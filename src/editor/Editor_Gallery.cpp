@@ -356,7 +356,7 @@ void Editor::DrawGalleryPanel()
     }
 
     float size = a->defaultSize;
-    if (Ui::Slider({ x, y, w, 28.0f }, "size (world units)", size, 4.0f, 1200.0f, "%.0f"))
+    if (Ui::Slider({ x, y, w, 28.0f }, "size (world units)", size, 4.0f, 200000.0f, "%.0f"))
     {
         a->defaultSize = roundf(size);
         NoteLookEdit(a->id, "size");
@@ -375,7 +375,7 @@ void Editor::DrawGalleryPanel()
     // far a star reaches is the single number that decides whether a system reads as lit
     // or as a dark map with a lamp in the middle, and it is only decidable by looking.
     float lightR = a->visual.lightRadius;
-    if (Ui::Slider({ x, y, w, 28.0f }, "light reach", lightR, 0.0f, 90000.0f, "%.0f"))
+    if (Ui::Slider({ x, y, w, 28.0f }, "light reach", lightR, 0.0f, 4000000.0f, "%.0f"))
     {
         a->visual.lightRadius = roundf(lightR / 1000.0f) * 1000.0f;
         NoteLookEdit(a->id, "light");

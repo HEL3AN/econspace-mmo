@@ -24,8 +24,11 @@ After a build, `data/` is copied next to `econspace.exe` by the `copy_data` targ
 
 - Units are game "units". The origin `(0,0)` is the center of the system (the star).
 - Constants — `src/engine/core/World.h`:
-  - `SYSTEM_RADIUS = 25000` — soft boundary: the ship is not let out beyond it.
-  - `CORE_RADIUS = 9000`, `MID_RADIUS = 18000` — ring thresholds (see below).
+  - `SYSTEM_RADIUS = 1000000` — soft boundary: the ship is not let out beyond it. A million
+    and not more because positions are `float` (#159).
+  - `MID_RADIUS = 775000` — beyond it a belt is a pirate haunt (see below).
+  - `WARP_WORTH_IT = 20000` — a leg longer than this is crossed at warp by standing orders
+    and NPCs.
 - Objects farther than `MID_RADIUS` from the center are "hot spots": belts beyond this
   threshold spawn pirates (see `Game::PopulateNpcs`).
 - A planet's `orbitSpeed` is a linear speed; the angular speed = `orbitSpeed / orbitRadius`.
@@ -126,10 +129,10 @@ the strongest few sources; a light past its radius contributes nothing rather th
 so a star on the far side of a system cannot decide which way something near you is lit.
 
 ```json
-"light": { "radius": 62000, "intensity": 1.00 }
+"light": { "radius": 2480000, "intensity": 1.00 }
 ```
 
-A reach well past `SYSTEM_RADIUS` (25 000) is normal: the falloff is quadratic, so a star
+A reach well past `SYSTEM_RADIUS` (1 000 000) is normal: the falloff is quadratic, so a star
 that only just covers its system leaves the outskirts almost unlit. These numbers were set
 by looking at a whole system in the editor, not derived.
 
@@ -452,7 +455,7 @@ The star's position is always `(0,0)`.
 | `resource` | string | `Iron`, `Ice`, `Crystal` |
 | `ore` | int | ore reserve |
 
-> Belts farther than `MID_RADIUS` (18000) from the center — with pirates.
+> Belts farther than `MID_RADIUS` (775 000) from the center — with pirates.
 
 ### nebulae[]
 | Field | Type | Description |
