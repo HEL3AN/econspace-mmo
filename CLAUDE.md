@@ -64,6 +64,7 @@ ctest --test-dir build --output-on-failure
 ./build/bin/editor/worldeditor.exe gallery           # every archetype at once, for tuning a look (F3)
 ./build/bin/editor/worldeditor.exe gallery shapes    # ...on the shape backend (F2 switches; F10 = screen treatment)
 ./build/bin/editor/worldeditor.exe gallery shapes settings  # ...with F10's panel open: every shader that failed, by name
+./build/bin/editor/worldeditor.exe survey 1 shapes   # ~50 generated systems from seeds 1.., flagged empty/thin/twin (F4)
 
 ./build/bin/agent/econagent.exe connect 127.0.0.1 50800 agent hunter2  # MCP for an agent
 

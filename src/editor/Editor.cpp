@@ -178,6 +178,8 @@ void Editor::Run()
                                                     : (Render::IBackend*)&shapeBackend_;
         if (IsKeyPressed(KEY_F3))  // the gallery, from wherever you are
             EnterGalleryMode(mode_ != Mode::Gallery);
+        if (IsKeyPressed(KEY_F4))  // the survey of generated systems (#141)
+            EnterSurveyMode(mode_ != Mode::Survey);
         if (IsKeyPressed(KEY_F10))  // the treatment's settings, the same key as in the game
         {
             treatmentPanelOpen_ = !treatmentPanelOpen_;
@@ -203,6 +205,18 @@ void Editor::Run()
             if (treatmentPanelOpen_)
                 DrawTreatmentSettings();
         }
+        else if (mode_ == Mode::Survey)
+        {
+            // The systems through the chain, the labels and flags after it, as the gallery.
+            treatment_.Begin(screenWidth_, screenHeight_);
+            DrawSurvey(false);
+            treatment_.End();
+            DrawSurvey(true);
+            DrawHud();
+            DrawSurveyPanel();
+            if (treatmentPanelOpen_)
+                DrawTreatmentSettings();
+        }
         else
         {
             DrawWorld();
@@ -223,8 +237,8 @@ void Editor::HandleInput()
             SaveUniverse();
         else if (mode_ == Mode::Gallery)
             SaveArchetypes();
-        else
-            SaveCurrentSystem();
+        else if (mode_ == Mode::System)
+            SaveCurrentSystem();  // the survey writes nothing: a generated system has no file
     }
 
     if (mode_ == Mode::Galaxy)
@@ -235,6 +249,11 @@ void Editor::HandleInput()
     if (mode_ == Mode::Gallery)
     {
         HandleGalleryInput();
+        return;
+    }
+    if (mode_ == Mode::Survey)
+    {
+        HandleSurveyInput();
         return;
     }
 

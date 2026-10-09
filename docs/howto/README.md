@@ -14,10 +14,12 @@ builds a single example from nothing and ends with you looking at it in the gall
 | 2 | [Compose its look](compose-a-look.md) | the archetype's `shape` | no |
 | 3 | [Give it a material](give-it-a-material.md) | `data/materials.json`, `data/shaders/materials/*.fs` | no |
 | 4 | [Add a screen pass](add-a-screen-pass.md) | `data/shaders/*.fs`, `data/look.json`, one enum | yes, three lines |
+| 5 | [Tune the generator](tune-the-generator.md) | the rules in `src/engine/gen/` | yes -- the rules are code |
 
 They are written in that order and build on each other: the example is a small **relay
 station**, first as a bare entry, then with a shape, then with its own material. The screen
-pass stands on its own.
+pass stands on its own, and so does the generator: it is about the rules that place things,
+judged on fifty systems at once.
 
 ---
 
@@ -42,6 +44,7 @@ Things worth knowing before you start:
 - **Run it from a terminal and read what it prints.** Every load problem is a log line, and
   most of them are nowhere else: `Archetypes: ...`, `Materials: ...`, `Treatment: ...`.
 - **Keys:** **F2** switches shapes and glyphs, **F3** switches the gallery and the system view,
+  **F4** opens the survey of generated systems ([tune the generator](tune-the-generator.md)),
   **F10** opens the screen treatment's settings (and *saves* `data/look.json` when it closes),
   **Esc** leaves the gallery. Click a card to select it.
 - **The panel on the right edits the selected archetype's look** — colour, size, layer, light,
