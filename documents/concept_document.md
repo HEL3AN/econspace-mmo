@@ -1,5 +1,12 @@
 # EconSpace — Concept Document
 
+> **Partly superseded.** Two of its decisions were later reversed, and this document has
+> not been rewritten around them: the look is **generated art, not glyphs** (2026-09-03),
+> and the **world is generated** with hand-written content on top (2026-09-04). See
+> [DECISIONS.md](../DECISIONS.md). Its description of the code's modules also predates the
+> current CMake targets; [ARCHITECTURE.md](../ARCHITECTURE.md) is current. The rest — the
+> genre, the MMO, agents as players — stands.
+>
 > Status: working draft (v0.5). This is a living document — updated as the project evolves.
 > v0.4 — genre change: from a management strategy game to a space simulator (EVE-like).
 > v0.5 — genre change: from a single-player offline game to an MMO (an authoritative

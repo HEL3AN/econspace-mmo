@@ -1,156 +1,102 @@
 # Roadmap
 
-This is an honest snapshot of where EconSpace is and where it's headed. The project deliberately invested in a correct **client–server architecture first**. That part is real. The target is an **MMO** — one authoritative server, many players, no single-player mode — with generated art, AI agents as ordinary players, and a world players design and build in.
+An honest snapshot of where EconSpace is and where it is going. The project invested in a correct **client–server architecture first**, and that part is real. The target is an **MMO** — one authoritative server, many players, no single-player mode — with generated art, AI agents as ordinary players, and a world players design and build in.
 
-**The premise, settled on 2026-09-04:** the game begins at the moment a wormhole opens into an unexplored region. The world beyond it is **generated from a seed**, nothing has a name until somebody goes there and names it, and what the region becomes is the record of what players did to it. Hand-written content is a layer on top of the generated one, not the other way round. See [DECISIONS.md](DECISIONS.md).
+**The premise, settled on 2026-09-04:** the game begins at the moment a wormhole opens into an unexplored region. The world beyond it is **generated from a seed**, nothing has a name until somebody goes there and names it, and what the region becomes is the record of what players did to it. Hand-written content is a layer on top of the generated one, not the other way round. The reasoning is in [DECISIONS.md](DECISIONS.md).
 
-The "Done" section below is what exists. Everything under the tracks is **planned**.
+[Done](#done) is what exists. [Milestones](#milestones) is the plan, in order. Live progress is on the [milestones page](https://github.com/HEL3AN/econspace-mmo/milestones).
+
+---
 
 ## Done
 
-**Core sandbox**
-- Windowed UI, menu panel, adaptive window / fullscreen, settings.
-- Missions (clear / mine / deliver): job board, journal, rewards.
-- A large multi-system world (~25k units): warp, parallax background, planet types, station roles, nebulae/derelicts/jump gates, pirate spawns on the frontier.
-- Multi-system galaxy: `universe.json` + `systems/*.json`, working jump gates, full-screen star map.
-- A visual **world editor** (systems, objects, properties, galaxy links).
-- A **glyph presentation layer** with pluggable backends: glyphs (the game's look), shapes/sprites, and a headless text projection. A texture store still draws sprites from `data/textures/` for anyone who wants that backend — see `documents/texture_assets.md`.
-- Server-side persistence: the player account, and the galaxy itself, survive a restart.
+**Playing**
+- Flight with a stabilizer, autopilot, server-authoritative warp, and the standing behaviours a fight is flown with: orbit and keep at range (#157).
+- A multi-system galaxy (`universe.json` + `systems/*.json`) joined by jump gates, with a full-screen star map. Systems are currently about twenty-five thousand units across; M9 makes them forty times larger.
+- Mining, a station market with price impact and recovery, ship refits, missions (bounty, mining, delivery) with a job board and a journal.
+- A camera that belongs to the player: zoom from a hull to a system, look away and come back, a scale bar (#158).
 
-**Factions & AI**
-- Data-driven factions and relations (`data/factions.json`).
-- Reputation and effects: tiers, station prices/access, mission rewards, NPC hostility by reputation/wanted level, crimes → wanted/bounty.
-- NPC roles (trader/miner/police/pirate/warship) and a behavior state machine; generalized combat; role-based spawning by system security and owner.
+**Factions and AI**
+- Data-driven factions and relations (`data/factions.json`); reputation tiers, station prices and access, wanted levels and bounties.
+- NPC roles — trader, miner, police, pirate, warship — with a behaviour state machine, shared combat, and spawning by system security and owner.
 
-**Living galaxy / server backend**
-- An authoritative `Simulation` / `SystemState` with a fixed tick decoupled from rendering.
-- Persistent systems and stable agent ids; whole-galaxy save.
-- Macro-dynamics: system controllers, a gate-line economy, territory captures/reclaims, an event feed shown on the map.
-- A headless simulation seam that grew into the `econserver` dedicated server.
+**The server and the living galaxy**
+- An authoritative `Simulation` on a fixed `1/60` tick, running headless in `econserver`.
+- Persistent systems and agents with stable ids; the whole galaxy and every account survive a restart, and refuse a save from a newer build (#20).
+- Macro-dynamics: system controllers, a gate-line economy, territory captures, an event feed on the map.
 
-**Client–server / networking (track M)**
-- The full simulation (agents, spawn director, macro, persistence) lives in `Simulation`; `econserver` runs the exact same logic headless.
-- A `Command` / `Snapshot` / `SystemLayout` / `GalaxyState` protocol over a swappable `ITransport` (`TcpTransport` winsock for play, `LocalTransport` loopback for tests).
-- The player is a server-side agent; movement uses client-side prediction + reconciliation (own ship) and interpolation (others).
-- `econserver host [port]` + `econspace connect <host> [port]`: real authoritative play over TCP.
-- Server-authoritative selection, docking, trading, combat (beams/damage/death/respawn), a live galaxy snapshot, **player accounts** (money/skills/reputation/wanted, persisted to `account.json`), **missions on the server**, and reputation-gated docking.
+**Multiplayer**
+- Many players on one server, each with their own session, ship, account and missions (#3); players see each other (#4); progress survives a reconnect (#49, #5).
+- Accounts are named and prove themselves with a challenge rather than sending a secret (#106); one account plays in one place at a time (#105).
+- A snapshot carries only what changed, twenty times a second (#16, #97); the transport refuses what a peer should not be able to make it do (#14).
+- Built and played in CI on Windows and on Linux (#12), including two clients at once (#107).
+
+**Agents**
+- Standing orders the server carries out over seconds or minutes; a text projection of the world; multi-jump routes; an event journal to sleep on.
+- `econagent`, an MCP server written in C++ that is also an ordinary game client: nine tools, two resources, four prompts — and a guide for building your own bot, with an example CI runs (#171).
+
+**The look** — generated, not drawn (M6)
+- Every object is a composition of parts described in `data/archetypes.json` (#122), lit by its system's own stars (#119), shaded per part by a material (#121, #135).
+- It moves: rings turn, lamps blink out of step, engines burn (#136); moons pass behind their planets (#165); planets turn on their axes with surfaces projected onto a sphere (#166); stars, belts and nebulae live too (#161).
+- A screen treatment — bloom, pixels, scanlines, grain, fringe, vignette — tunable, reorderable and switchable in game (#120).
+- A gallery that shows every kind of object at once, lit and treated as the game draws them, with the look editable live and saved back into the data (#118).
+
+**Earlier milestones, for the record**
+- **Ground truth.** The single-player path removed; the client a renderer plus an input source (#23); the server outlives client sessions and persists the galaxy (#13, #48); the wire layer one library (#25). It found a use-after-free on system change (#46) and a simulation clock that had never advanced (#57) on the way.
+- **Agent MVP.** An agent observes, orders, sleeps until done and acts on the result, entirely through MCP (#26–#33); the protocol gained a version and a handshake (#15).
+- **Data-driven world.** A kind tag rather than RTTI (#19); object types and their components in data (#34); entities describe themselves and a backend draws them (#35); the editor draws through the same seam (#37). Glyphs were the default look here (#36) — a decision later reversed (see M6).
+- **Multiplayer core (M3).** Everything under *Multiplayer* above. A review of it then found and closed what stood between a demo and a service: one account playable twice at once (#105), a name that was a claim rather than a credential (#106), and no test that had ever connected two clients (#107).
+
+---
 
 ## Milestones
 
-**M0–M3 are done.** M3 closed the multiplayer core: a session per connection, players seeing
-each other, accounts that persist and prove themselves, a transport that stopped trusting
-its peer, and CI that builds and plays on two platforms.
+In the order they are meant to be done.
 
-### M6 — The look *(five of seven done)*
+### M6 — The look *(eight of ten done)*
 
-Generated art replaces glyphs. The gallery (#118) put every archetype on one screen so a
-look could be judged by eye; lighting (#119) made a system light itself from its own stars;
-the screen treatment (#120) put the world through a tunable chain of full-screen passes;
-materials (#121) gave a flat disc a sphere's terminator and damage that reads without a
-health bar; silhouettes (#122) made an object a **composition** described in data rather
-than a figure compiled into the renderer.
+Left: glyphs become a **sensor screen** over a fixed grid, the one job they are genuinely good at (#123), and colour stops meaning allegiance in the world view, because allegiance depends on who is looking (#117). Queued behind them: shape derived from what an object does (#137), damage that takes parts off (#138), and variation that changes a silhouette rather than nudging it (#139).
 
-Left: demoting glyphs to a sensor screen (#123), and colour ceasing to mean allegiance
-(#117). Then the follow-ups the first play-through asked for — per-part lighting (#135),
-motion (#136), shape derived from capability (#137), damage that removes parts (#138), and
-variation that changes a silhouette rather than nudging it (#139).
+### M9 — The scale of a system *(in progress)*
 
-### M7 — A region nobody has mapped
+A station was 5.6 times a ship and a planet was nine — numbers nobody chose, which fell out of the game having one speed, so everything had to be within a minute of flying. A system becomes forty times bigger (a million units), a station towers over a ship, and travel stops being a matter of pointing at what you can see.
 
-The world stops being written and starts being generated. In order: the seed and its place
-in the save (#140), a screen that shows fifty systems at once because a generator is judged
-on its hundredth output (#141), the rules that fill one system (#142), a region that grows
-outward from the wormhole and worsens with distance (#143), systems that are unknown until
-somebody goes there (#144), names that exist only once somebody gives them (#145), what the
-generator leaves behind (#146), and the pins that keep hand-authored content alive (#147).
-
-### M9 — The scale of a system
-
-A station was 5.6 times a ship and a planet was nine, and those numbers were never chosen —
-they fell out of having one speed, so everything had to be within a minute of flying. A
-system becomes forty times bigger (a million units), a station towers over a ship, and
-travel stops being a matter of pointing at what you can see.
-
-Travel by list rather than by sight (#157) and a camera that belongs to the player (#158)
-come first, because the scale change (#159) makes the game worse without them. Then warp
-tuned for the new distances (#160), and the life that #136 gave to stations extended to
-planets and regions (#161).
+Done: orbit and keep at range (#157, first half), the player's camera (#158), life for planets and regions (#161), orbiting parts (#165), surfaces on a sphere (#166). Left: the overview's sorting and filtering (#157), **the scale change itself** (#159), and warp tuned for the new distances (#160).
 
 **Before M7**, because the generator will bake in whatever scale exists when it is written.
 
+### M10 — Open to others *(in progress)*
+
+A developer or an agent can land in the repository, understand how it works, and build their own bot or content without reading the source first. Documents that tell one story (#170), a guide to building bots (#171), a tool reference generated from the server so it cannot drift (#172), how-tos for adding content (#173), and repository hygiene (#174).
+
+### M7 — A region nobody has mapped
+
+The world stops being written and starts being generated. In order: the seed and its place in the save (#140), a screen that shows fifty systems at once, because a generator is judged on its hundredth output (#141), the rules that fill one system (#142), a region that grows outward from the wormhole and worsens with distance (#143), systems unknown until somebody goes there (#144), names that exist only once somebody gives them (#145), what the generator leaves behind (#146), and the pins that keep hand-authored content alive (#147).
+
+### M4 — Constructible galaxy
+
+World mutation and `LayoutDelta` (#38–#41), and the rules about players fighting (#94). Today `SystemLayout` is sent once, on entering a system, so there is no message that says a structure now exists — that is the concrete blocker for everything players build.
+
 ### M8 — The builder
 
-A player designs a *type* and builds it. The parts editor becomes a tool in the client
-(#148); what a design can do follows from what is on it (#149) — the rule of #137 read
-backwards, and what makes the builder systemic rather than decorative; cost and build time
-follow from the same parts (#150); the design is data the server validates, stores and
-shares (#151); building it in the world (#152); and a structure changing the region it
-stands in (#153), which is where the macro simulation stops being flavour and becomes the
-score.
+A player designs a *type* and builds it. The parts editor becomes a tool in the client (#148); what a design can do follows from what is on it (#149) — the rule of #137 read backwards, and what makes the builder systemic rather than decorative; cost and build time follow from the same parts (#150); the design is data the server validates, stores and shares (#151); building it (#152); and a structure changing the region it stands in (#153), where the macro simulation stops being flavour and becomes the score. Waits on M4.
 
-M8 depends on M4's construction track (#38 in particular): a structure appearing mid-session
-is exactly what `SystemLayout` being sent once makes invisible today.
+### M5 — Fleets and depth
 
-## Tracks
+Fleet command over agent-piloted ships, agents that can take a mission, buy and fight (#109), and economic and progression depth.
 
-Three epics carry the work from here. They are largely independent and can advance in parallel; the milestones below say how they interleave. Track A has shipped its first milestone; the other two are still ahead.
-
-### Track A — Agent API (#42)
-
-Make an AI agent a first-class player: the game speaks to a model the same way it speaks to a human, over the same protocol. **An agent can now play** — the first milestone of this track is done.
-
-Built:
-
-- **Standing orders on the server** — durable, high-level orders the server executes over seconds while the tactical loop keeps running at 60 Hz. Nobody has to stream thrust bits to play. An order decides what the tick's command should be and drives it through the same step a human client drives, so an ordered ship behaves exactly like a flown one.
-- **A compact text projection of world state** — what a model reads instead of a snapshot: the system, the ship, what is nearby, hostiles first, and what just happened.
-- **Multi-jump route planning** — "fly to Verge" is one order, however many gates that takes, and it can weigh a safer path against a shorter one.
-- **An event journal** — sequenced and typed, so an agent can ask for everything since the last thing it saw and sleep until something happens rather than polling.
-- **`econagent`, the MCP server** — an MCP server on stdio for the model and an ordinary TCP game client to `econserver`, with nine tools, two resources and four ready-made plans. Written in C++ and linked against the existing protocol code, so the wire format has one implementation and cannot drift.
-- **A scripted agent** — the same tools driven by a fixed sequence, run in CI against a real server. No model, no key, no cost, and it still proves the part that can break.
-
-Still ahead:
-
-- **Fleet command** — one operator directing several agent-piloted ships. The human stops being a pilot and becomes a commander. Waits on multi-client (#3).
-- **Combat orders** — engage and disengage, which want the hostility predicates the server already computes.
-
-### Track D — Data-driven world and ASCII presentation (#43)
-
-- **Data-driven archetypes with components** replacing the C++ class hierarchy for world objects: what a thing *is* becomes data, so new content stops requiring new classes.
-- **A presentation layer with pluggable backends** — drawing goes through one seam instead of entities calling raylib themselves.
-- **Glyphs as the primary look** (#36) — **done.** ASCII/text is the game's visual language. Glyph, colour and size carry class, allegiance and scale; shapes remain reachable with F2 as the alternative backend the sprite path hangs off.
-- **The editor on the same layer** — the world editor draws through the same presentation seam as the game, so authored content and played content cannot diverge.
-
-### Track C — Player-mutable world (#44)
-
-- **Authoritative world mutation + `LayoutDelta`** — today `SystemLayout` is sent once on entering a system, which is the concrete blocker: there is no message that says a structure now exists. This is the piece everything else in the track waits on.
-- **Blueprints and construction** — deployables and structures players actually build.
-- **Structures feeding the macro simulation** — what players build changes prosperity, security, and territory control, which the server already simulates.
-- **Ownership, permissions, limits, upkeep** — so a buildable world does not become an unbounded one.
-
-## Milestones
-
-Tracked on the [milestones page](../../milestones); the sequence below is the plan.
-
-1. **Ground truth** — **done.** The single-player path is gone and the client is purely a renderer plus an input source (#23); the server outlives client sessions and persists the galaxy (#13, #48); the wire layer is one library rather than three copies (#25); the docs describe the project that exists (#24, #21). Along the way it turned up a use-after-free on system change (#46), an F9 that corrupted a connected session (#47), and a simulation clock that had never advanced (#57). CI now enforces formatting and a warning-clean build, and runs CodeQL (#22, #53, #63).
-2. **Agent MVP** — **done.** An agent observes the world, gives an order, sleeps until it completes and acts on the result, entirely through MCP: standing orders (#26), the text projection (#27), the event journal (#29), route planning (#30), `econagent` itself (#28, #31) and a scripted run in CI (#33). The protocol gained a version and a handshake check along the way (#15), which is what makes an external bridge in any language possible later.
-3. **Glyph world** — **done.** "What is this?" is answered by a kind tag rather than RTTI (#19); object types and their components live in `data/archetypes.json` (#34); entities describe themselves and a backend draws them (#35); glyphs are the default look (#36); the editor draws through the same seam and generates its palette from the registry (#37).
-4. **Multiplayer core** — **the mechanism is built; it is not yet a server you can leave running.** Every connection gets a `ClientSession` of its own: ship, account, missions, standing order, journal, and the system it is standing in (#3). Players see each other in a system, and the NPCs there judge each of them separately (#4). An account remembers where it was, what it was carrying and which ships it owns, and refuses a save from a build it does not understand (#49, #5, #20). The wire costs a tenth of what it did — a snapshot describes only what changed, twenty times a second instead of once per loop (#16, #97). The transport stopped believing the peer on the other end (#14), and the server builds and runs on Linux as well as Windows (#12).
-
-   A review of that work then turned up what stood between a demo and a service, and closed it: one account could be played by two connections at once, each with the whole balance (#105); an account name was a claim rather than a credential (#106); nothing in CI had ever connected two clients, which is why neither was caught by a test (#107); and the comments still described the single-player architecture all of it replaced (#108). What a server still lacks before it can face strangers is transport encryption — everything but the secret travels in the clear — and any rule at all about players fighting (#94).
-5. **Constructible galaxy** — world mutation, `LayoutDelta`, construction, and structures with real macro effects.
-6. **The look** — the visual direction settled by playing it: generated art rather than glyphs. Lighting from a system's own stars, a material that shades a simple silhouette, silhouettes described in data, and a screen treatment — bloom, pixels, scanlines, noise — that can be tuned and switched off in game. The point is a world players can build in: an object nobody drew is dressed by the same passes as everything else. Glyphs keep the one job they are good at, a sensor grid.
-7. **Fleets & depth** — fleet command over agents, agents that can take a mission or buy a ship (#109), economic and progression depth, scale work (sharding, larger galaxies).
+---
 
 ## Help wanted
 
-Contributions are still very welcome, and the useful work has shifted. The most valuable help right now:
+The most useful help right now:
 
-- **Multi-client server work** (#3) — sessions, per-connection state, interest management. The highest-leverage code in the project.
-- **`econagent` and the agent seam** (#42) — C++ MCP server work, and play-testing what an agent can and cannot actually do with the orders it is given.
-- **World mutation plumbing** (#44) — starting with `LayoutDelta` and the server-side mutation path.
-- **Content & depth** — more systems (via the editor), a real progression loop, economic depth.
-- **Audio** — there is still none.
+- **Bots.** Build one on `econagent` and tell us what it could not do — [docs/agents/](docs/agents/README.md). What an agent finds impossible is the agent interface's to-do list (#109).
+- **The agent interface** (#109) — orbit, buying, missions and combat for bots; C++ MCP work.
+- **World mutation** (M4) — starting with `LayoutDelta` and the server-side mutation path.
+- **Content** — new kinds of object, composed in data and judged in the gallery.
+- **Audio** — there is none.
 
-Sprite art is no longer on the critical path: glyphs are the primary look, and sprites become an optional backend. Art is welcome, but it is not what the project is blocked on.
+Art is welcome but is no longer what the project is blocked on: an object's look is generated from its archetype, and a hand-made sprite wins wherever one exists.
 
-If any of that interests you, see [CONTRIBUTING.md](CONTRIBUTING.md) and the [issue tracker](../../issues).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [issue tracker](https://github.com/HEL3AN/econspace-mmo/issues).

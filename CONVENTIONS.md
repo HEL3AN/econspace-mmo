@@ -22,23 +22,27 @@ src/
     economy/   market
     missions/  the mission system
     main.cpp   client entry point
-  editor/      the visual world editor
-data/          game data (JSON), edited without recompiling
-documents/     project documentation
+  agent/       econagent, the MCP server for AI agents
+  editor/      the visual world editor and the gallery
+data/          game data (JSON, shaders), edited without recompiling
+docs/          guides -- building a bot is docs/agents/
+documents/     the data format and design notes
+examples/      example bots, run by CI
 tests/         doctest unit tests
 ```
 
-The code is split into three modules: `engine` (a static library) and the two
-executables that link it, `game` and `editor`. **`engine` never depends on `game` or
-`editor`** — anything shared belongs in `engine`, anything that knows about gameplay
-does not.
+`engine` is a static library linked by everything else; `netproto` is the wire layer,
+compiled once; the executables are `econspace`, `econserver`, `econagent` and
+`worldeditor`. **`engine` never depends on any of them** — anything shared belongs in
+`engine`, anything that knows about gameplay does not.
 
 - The `.h` and `.cpp` of a class live side by side, in the same folder.
 - `src/engine` is the include root for engine headers: paths like
   `#include "entities/Entity.h"`. Within `game` and `editor`, their own module root
   works the same way.
 - A new `.cpp` is added to the correct CMake target in `CMakeLists.txt` — `engine`
-  (`add_library`), `econspace`, `econserver`, or `worldeditor` (`add_executable`).
+  or `netproto` (`add_library`), `econspace`, `econserver`, `econagent`, `worldeditor`
+  or `tests` (`add_executable`).
   Code shared by more than one executable goes into `engine`.
 - One class — one file; the file name matches the class name.
 

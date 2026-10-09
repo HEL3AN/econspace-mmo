@@ -102,6 +102,10 @@ doctest suite). It is no longer a game mode.
 
 ## 2026-08-13 — Glyph (ASCII) rendering is the primary look
 
+> **Superseded** by [2026-09-03 — The look is generated, not drawn](#2026-09-03--the-look-is-generated-not-drawn-glyphs-were-the-wrong-answer-to-the-right-question).
+> Kept because the record is append-only and the reasoning is what the reversal answers.
+
+
 **Decision.** The world is drawn as glyphs. Sprites become an optional alternative
 backend, not the thing the project is waiting on.
 
@@ -309,6 +313,10 @@ loader's disagreed, every military station placed would silently load as a trade
 ---
 
 ## 2026-08-16 — Glyphs are the look, and the grammar is narrow on purpose
+
+> **Superseded** by [2026-09-03 — The look is generated, not drawn](#2026-09-03--the-look-is-generated-not-drawn-glyphs-were-the-wrong-answer-to-the-right-question).
+> Kept because the record is append-only and the reasoning is what the reversal answers.
+
 
 **Decision.** The glyph backend is the default renderer in both the game and the editor.
 Shapes and sprites stay reachable with F2 as the alternative backend, not as a fallback

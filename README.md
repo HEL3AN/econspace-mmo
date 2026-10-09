@@ -1,8 +1,8 @@
 # EconSpace
 
-**A 2D EVE-like space MMO with an authoritative client–server core, built in C++ on top of [raylib](https://www.raylib.com/).**
+**A 2D space MMO in the spirit of EVE, built in C++ on top of [raylib](https://www.raylib.com/) — where an AI agent is an ordinary player, and the world is generated rather than drawn.**
 
-You pilot a ship in a persistent, multi-system galaxy: mine, trade, run missions, fight, and build reputation with factions — while the galaxy simulates itself around you. The world lives on an authoritative server; the client renders snapshots and sends commands. There is no single-player mode — playing means running (or connecting to) a server.
+You fly a ship in a persistent galaxy: mine, trade, run missions, fight, build reputation with factions — while every system keeps simulating around you. The world lives on an authoritative server; the client renders what the server sends and sends back what you do. There is no single-player mode: playing means running a server, or connecting to one.
 
 [![Build](https://github.com/HEL3AN/econspace-mmo/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/HEL3AN/econspace-mmo/actions/workflows/build.yml)
 [![CodeQL](https://github.com/HEL3AN/econspace-mmo/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/HEL3AN/econspace-mmo/actions/workflows/codeql.yml)
@@ -11,137 +11,167 @@ You pilot a ship in a persistent, multi-system galaxy: mine, trade, run missions
 ![Platforms: Windows | Linux | macOS](https://img.shields.io/badge/platforms-Windows%20(MinGW)%20%7C%20Linux%20(GCC)%20%7C%20macOS%20(Clang)-lightgrey.svg)
 ![Status: Prototype](https://img.shields.io/badge/status-prototype-orange.svg)
 
-> **Project status — honest version.** EconSpace is an engineering-driven **prototype**, not a finished game. The client–server architecture and netcode are solid and real; the *content* is not: there is no audio, and the world is small. The look is **glyphs** — that is the game's visual language, not a stand-in for missing art. The server currently accepts **one** client at a time — multi-client is the next foundational piece, not an extra. See [ROADMAP.md](ROADMAP.md) for where it is and where it's going. Contributions are very welcome.
+> **Status — the honest version.** EconSpace is a working **prototype**, not a finished game. The client–server core, the netcode, multiplayer, accounts and the agent interface are real and tested. The look is new and moving fast. Content is thin and there is no audio. The direction is set — see [Where it is going](#where-it-is-going) — and contributions are welcome, from people and from agents.
 
 ---
 
-## What's in it
+## Start here
 
-EconSpace runs its own game logic on top of raylib (windowing/render/input only). The authoritative `Simulation` runs headless in `econserver`; the client is a renderer and an input source. There is one mode — connected play — and everything below already works today.
+The repository has several documents at the top. Each owns one thing:
 
-**Gameplay**
-- Newtonian-ish flight, warp travel, autopilot, and a parallax starfield.
-- Mining, a station market (buy/sell with price impact and recovery), and ship refits.
-- Weapons and combat shared by the player and NPCs (anyone can fight anyone).
-- Missions: bounty, mining, and delivery — with a station job board and a journal.
-- Factions, reputation tiers, wanted levels/bounties, and role-based NPC AI (trader, miner, police, pirate, warship).
-- A multi-system galaxy connected by jump gates, with a full-screen star map.
-
-**Simulation & world**
-- An authoritative `Simulation` core with a fixed `1/60` tick, decoupled from rendering.
-- A "living galaxy": every system is simulated (system controllers, gate-line economy, territory captures, an event feed) — visible on the galaxy map.
-- Persistent systems and agents with stable ids.
-
-**Presentation**
-- **Glyphs are the look.** Every object is a character: the glyph says what class of thing it is, the colour says whose it is, the size is its actual size. Areas — nebulae, asteroid belts — are drawn as regions rather than one huge character, and ships turn to face where they are going.
-- Object types live in `data/archetypes.json`, so a new kind of object needs no new art and no new drawing code.
-- Rendering goes through one seam with pluggable backends: glyphs, shapes/sprites (F2), and a headless text projection that needs no window — which is how an AI agent and the test suite see the same world.
-
-**Agents**
-- `econagent`, an **MCP server written in C++**, so the wire protocol has a single source of truth. An LLM agent observes the world as text, gives a standing order, waits on an event journal, and acts on the result.
-
-**Tooling**
-- A visual **world editor** (`worldeditor`) for editing systems and galaxy links, saved to JSON. It draws through the same presentation seam as the game, and its creation palette is generated from the archetype registry.
-- A **headless server** (`econserver`) that runs the exact same simulation without a window.
-
-**Networking**
-- A `Command` / `Snapshot` / `SystemLayout` protocol over a swappable transport (`ITransport`): TCP (winsock) for play, plus an in-process `LocalTransport` used as a **test** seam by the `econserver hosttest` smoke test and the doctest suite.
-- Client-side prediction + server reconciliation with input replay for the player's own ship, and entity interpolation for everyone else (the classic [Gambetta](https://www.gabrielgambetta.com/client-server-game-architecture.html) model).
-- Server-authoritative combat, docking, trading, missions, and player accounts.
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for how it all fits together.
+| Read | When you want |
+|---|---|
+| **this README** | what EconSpace is, what works today, how to build and play |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | how the code fits together |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | how to work here — build on each platform, tests, style, pull requests |
+| [docs/agents/](docs/agents/) | **how to build your own bot** on the game's MCP server |
+| [documents/world_format.md](documents/world_format.md) | the contract for everything in `data/` — archetypes, shapes, materials, the screen treatment |
+| [ROADMAP.md](ROADMAP.md) | where it is going, milestone by milestone |
+| [DECISIONS.md](DECISIONS.md) | *why* things are the way they are — append-only, newest at the bottom |
+| [CLAUDE.md](CLAUDE.md), [HANDOFF.md](HANDOFF.md) | operating notes for AI agents working *in* this repository |
 
 ---
 
-## Where it's going
+## What works today
 
-Everything in this section is **planned, not implemented**. It is here so contributors know what the project is aiming at, and so nobody builds against the old assumptions. Details and sequencing live in [ROADMAP.md](ROADMAP.md).
+**Playing**
+- Newtonian flight with a stabilizer, autopilot, server-authoritative **warp**, and standing behaviours: **orbit** and **keep at range** a chosen object.
+- Mining, a station market with price impact and recovery, ship refits.
+- Combat shared by players and NPCs, missions (bounty, mining, delivery), factions, reputation tiers, wanted levels and bounties, and role-based NPC AI — traders, miners, police, pirates, warships.
+- A multi-system galaxy joined by jump gates, with a full-screen star map.
 
-- **A player-mutable world** (#44). Players build deployables and structures that feed the macro simulation that already exists — prosperity, security, territory control. The archetype registry and the glyph layer were built for this: a structure a player invents needs no artist and no recompile.
-- **Fleets** (#32). One commander, several agent-piloted ships.
+**Playing together**
+- Many players on one server. Each connection has its own ship, account and missions; players see one another in a system; progress survives a reconnect.
+- Accounts are named and have a secret. The first login sets it, and the secret never crosses the wire again: the server sends a challenge and the client answers it.
+- One account, one session — logging in elsewhere displaces the earlier connection, saving it first.
 
-The world is still read-only content authored in the editor. Several people can share a galaxy: each connection has its own ship and account, they see one another in a system, and progress survives a reconnect. An account is named and has a secret; the first login sets it, and the secret itself never crosses the wire after that (#106). There is no transport encryption, so everything else does. Nobody can shoot anybody — whether they should be able to, where, and at what cost is #94.
+**The world simulates itself**
+- An authoritative simulation on a fixed `1/60` tick, decoupled from rendering, running headless in `econserver`.
+- A living galaxy: system controllers, a gate-line economy, territory captures, an event feed — all of it persisted.
+
+**The look** — generated, not drawn
+- Every object is a **composition described in data**: a trade hub is a core, three arms with pads, a docking ring, lamps and a mast — and none of that is in C++.
+- Lit by the system's **own stars** (two stars light a system twice), shaded by **materials** per part, and moving: rings turn, lamps blink out of step, engines burn, moons pass behind their planets, planets turn on their axes.
+- A tunable **screen treatment** over the top — bloom, pixels, scanlines, grain, fringe, vignette — which you can reorder, retune or switch off in game (**F10**).
+
+**Agents are players**
+- `econagent` is an **MCP server written in C++** that is also an ordinary game client. A language model observes the world as text, gives standing orders, sleeps on an event journal and acts on what happened — by exactly the rules a human plays by. See [docs/agents/](docs/agents/).
+
+**Tools**
+- `worldeditor` — a visual editor for systems and galaxy links, and a **gallery** that shows every kind of object at once, lit and treated exactly as the game draws them, with their look editable live.
+- `econserver` — the same simulation, headless, with smoke tests built in.
 
 ---
 
-## Build & run
+## Build
 
 **Requirements**
-- A C++17 compiler — MinGW-w64 g++ (from [MSYS2](https://www.msys2.org/)) on Windows, GCC on Linux, Apple Clang (Xcode command-line tools) on macOS.
-- CMake 3.16+.
-- Internet on the first build: [raylib](https://github.com/raysan5/raylib) 5.5 and [nlohmann/json](https://github.com/nlohmann/json) 3.11.3 are fetched and built automatically via CMake `FetchContent`.
+- A C++17 compiler: **MinGW-w64 g++** on Windows (from [MSYS2](https://www.msys2.org/)), **GCC** on Linux, **Apple Clang** (Xcode command-line tools) on macOS.
+- CMake 3.16 or later.
+- On Linux, raylib's build dependencies: `sudo apt install libasound2-dev libgl1-mesa-dev libglu1-mesa-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxkbcommon-dev libxrandr-dev`.
+- Internet on the first build: raylib 5.5, nlohmann/json 3.11.3, doctest and PicoSHA2 are fetched automatically.
 
 ```sh
-cmake -S . -B build -G "MinGW Makefiles"   # configure (first build downloads & builds deps — slow)
-cmake --build build                        # build game + editor + server + tests
-
-ctest --test-dir build --output-on-failure # run the unit tests (doctest)
+cmake -S . -B build -G "MinGW Makefiles"     # on Linux: cmake -S . -B build
+cmake --build build                          # every target; the first build is slow
+ctest --test-dir build --output-on-failure   # the unit suite
 ```
 
-> **macOS** builds and passes the tests in CI on every change, but nobody on the team plays on a Mac, so what the game *looks* like there has not been seen. Use the default generator (`cmake -S . -B build`, no `-G`). If you run it, a screenshot in an issue is the most useful thing you can send — Retina displays in particular are expected to misplace the screen treatment until #179.
+On Windows, close a running executable before rebuilding — Windows will not let it be overwritten. On Linux the binaries have no `.exe` suffix.
 
-> On Windows, close the running game/editor window before rebuilding — Windows won't let you overwrite a running `.exe`. The `data/` folder is copied next to each executable on every build.
+**macOS** builds and passes the tests in CI on every change, but nobody on the team plays on a Mac, so what the game *looks* like there has not been seen. Use the default generator (`cmake -S . -B build`, no `-G`). If you run it, a screenshot in an issue is the most useful thing you can send — Retina displays in particular are expected to misplace the screen treatment until #179.
 
-**Play** — start a server, then connect a client to it. Both halves are required; the client is not a game on its own.
+## Play
+
+Two halves, both required: a server, and a client connected to it.
 
 ```sh
-# terminal 1 — start an authoritative server on a TCP port
+# terminal 1 — an authoritative server
 ./build/bin/server/econserver.exe host 50800
 
-# terminal 2 — connect a client to it
-./build/bin/game/econspace.exe connect 127.0.0.1 50800
+# terminal 2 — a client, under an account name and its secret (the first login sets the secret)
+./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2
 ```
 
-Several clients can connect at once; each names the account it plays under (`connect <host> <port> <name>`, default `pilot`) and the server keeps their progress apart. They do not see each other in space yet — that is #4. Run it on `127.0.0.1` for solo play, or on a reachable host to play over a network.
+Run more clients under other names and they share the galaxy. Use a reachable host instead of `127.0.0.1` to play over a network.
 
-**Other executables**
+**An agent instead of a human:**
 
 ```sh
-./build/bin/editor/worldeditor.exe         # visual world editor (systems, objects, galaxy links)
-./build/bin/server/econserver.exe          # batch headless simulation (no client, prints galaxy stats)
-./build/bin/server/econserver.exe hosttest # server-loop smoke test over the in-process transport
+./build/bin/agent/econagent.exe connect 127.0.0.1 50800 agent its-secret
+```
+
+That process speaks MCP on stdio. To hand it to Claude Code: `claude mcp add econspace -- <path>/econagent.exe connect 127.0.0.1 50800 agent its-secret`. The full guide is [docs/agents/](docs/agents/).
+
+**Everything else**
+
+```sh
+./build/bin/editor/worldeditor.exe                 # the world editor
+./build/bin/editor/worldeditor.exe gallery shapes  # every kind of object at once (F2 backend, F10 treatment)
+
+./build/bin/server/econserver.exe hosttest         # smoke tests: the server loop,
+./build/bin/server/econserver.exe accttest         #   account persistence,
+./build/bin/server/econserver.exe worldtest        #   galaxy persistence and the clock,
+./build/bin/server/econserver.exe ordertest        #   standing orders, routes and the event journal
 ```
 
 ---
 
 ## Controls
 
-| Key | Action | | Key | Action |
-|-----|--------|-|-----|--------|
-| `W` / `S` | Thrust / brake | | `E` | Dock |
-| `A` / `D` | Turn | | `X` | Stabilizer |
-| Mouse wheel | Zoom | | `M` | Mine |
-| Left click | Select object | | `F` | Fire weapon |
-| Right click | Context menu / autopilot to point | | | |
-| `T` | Target window | | `F5` / `F9` | Save / load |
-| `O` | Overview window | | `F1` | Debug: +money |
-| `R` | Radar window | | `F2` | Pause |
-| `G` | Galaxy star map | | `F11` | Fullscreen |
+| | Flying | | | Windows and view |
+|---|---|-|---|---|
+| `W` / `S` | thrust / brake | | `O` | overview — every object, by distance |
+| `A` / `D` | turn | | `T` | target |
+| `X` | stabilizer on / off | | `R` | radar |
+| `E` | dock, when beside a station | | `J` | missions |
+| `M` | mining on / off | | `G` | galaxy map |
+| `F` | weapon on / off | | wheel | zoom, from a hull to a whole system |
+| left click | select | | middle-drag | look away from the ship |
+| right click | actions on an object — approach, **orbit**, **keep at range**, warp, dock, jump, mine | | `C` | camera back to the ship |
+| | | | `F2` | shapes ⇄ glyphs |
+| | | | `F10` | screen treatment settings |
+| `F1` | debug: add money | | `F11` | fullscreen |
+
+The right-click menu works on a row of the overview too. That is the intended way to fly: choose a thing from the list and choose what to do about it, rather than hunting for it on screen.
+
+---
+
+## Where it is going
+
+Planned, not built. Details and order are in [ROADMAP.md](ROADMAP.md); the reasoning is in [DECISIONS.md](DECISIONS.md).
+
+- **A system forty times bigger** (M9). Systems become a million units across, a station towers over a ship, and travel is chosen from a list — EVE's overview — rather than pointed at.
+- **A generated region** (M7). The game begins when a wormhole opens into an unexplored region. The world beyond is generated from a seed; nothing has a name until somebody goes there and names it; what the region becomes is the record of what players did to it.
+- **A builder** (M8). Players design their own *types* of structure from the same parts the world is built from — and a design's parts decide what it can do.
+- **Open to others** (M10). Documentation and examples so that a developer or an agent can land here and build on it quickly.
 
 ---
 
 ## Repository layout
 
 ```
-data/                 the game world as JSON (systems, galaxy index) — not hard-coded
+data/              the world as data: archetypes, systems, galaxy, factions, materials, shaders
 src/
-  engine/             shared core (static lib): world, entities, factions, UI, render
-  game/               the game client + the authoritative Simulation + headless server
-  editor/             the visual world editor
-tests/                doctest unit tests (protocol / TCP round-trips)
-documents/            design docs (concept, world format, factions/AI, living galaxy, assets)
+  engine/          shared core (static library): world, entities, factions, render, UI
+  game/            the client, the authoritative Simulation and the server
+    sim/           Simulation, the wire protocol, the shared player step
+    net/           the TCP transport
+  agent/           econagent, the MCP server
+  editor/          the world editor and the gallery
+tests/             the doctest suite
+docs/agents/       building your own bot
+documents/         the data format, and design notes (older ones are marked historical)
 ```
 
-The code is split into three modules — **engine** (shared static library), **game**, and **editor**. `game` and `editor` link `engine`; `engine` never depends on them.
+CMake targets: **`engine`** (static library), **`netproto`** (the wire protocol and transport, compiled once), the client **`econspace`**, the server **`econserver`**, the MCP server **`econagent`**, **`worldeditor`**, and **`tests`**. `engine` depends on none of the others.
 
 ---
 
 ## Contributing
 
-EconSpace is open source under the MIT license and contributions are welcome — code, world content (via the editor), docs, and bug reports. [ROADMAP.md](ROADMAP.md) lists what help is most useful right now. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CONVENTIONS.md](CONVENTIONS.md) first, and see the [issue tracker](../../issues) for good places to start.
+Contributions are welcome — code, world content, documentation, bug reports, and bots. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Issues labelled [`good first issue`](../../issues?q=is%3Aopen+label%3A%22good+first+issue%22) and [`community`](../../issues?q=is%3Aopen+label%3Acommunity) are good places to begin.
 
-## License
+Found a security problem? Please report it privately — see [SECURITY.md](SECURITY.md).
 
-[MIT](LICENSE) © 2026 HEL3AN and EconSpace contributors.
-
-Third-party dependencies keep their own licenses: raylib (zlib/libpng) and nlohmann/json (MIT).
+Licensed under the [MIT license](LICENSE).
