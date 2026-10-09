@@ -13,7 +13,9 @@ namespace Save
 // readers can ignore, and newer readers can default, does not need a bump -- that is what
 // the permissive reader is for.
 inline constexpr int WORLD_VERSION = 1;
-inline constexpr int ACCOUNT_VERSION = 1;
+// 2: a ship's position is in a system a million units across (#159). An older one is
+//    read for everything else, and the ship is placed beside a station.
+inline constexpr int ACCOUNT_VERSION = 2;
 
 // A file with no version at all: everything written before this existed. Those files are
 // a strict subset of version 1, so they are read as-is rather than migrated.

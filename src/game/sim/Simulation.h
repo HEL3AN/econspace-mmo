@@ -280,6 +280,12 @@ public:
     // point). Systems are already materialized, so no hydrate is needed.
     void ServerEnterSystem(ClientSession& s, const std::string& destId, const std::string& fromId);
 
+    // Where a ship that has no better place to be appears in a system: beside its first
+    // station, inside docking reach, so a new player's first choice is to dock or to
+    // fly. A fixed point would do until the bodies grow (#159) -- then any constant lands
+    // inside a star somewhere.
+    Vector2 SafeArrival(const std::string& systemId) const;
+
     double Time() const { return time_; }
     void   SetTime(double t) { time_ = t; }
 

@@ -41,13 +41,7 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
     if (!s.ship)
         return;
     s.RecordEvent(Ev::Kind::ShipDestroyed, "Ship destroyed; respawned with cargo lost");
-    for (auto& e : SystemOf(s)->entities)
-        if (Station* st =
-                e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
-        {
-            s.ship->Teleport(st->GetPosition());
-            break;
-        }
+    s.ship->Teleport(SafeArrival(s.systemId));
     s.ship->Repair();
     s.ship->ClearCargo();
     s.ship->DisengageAutopilot();
@@ -534,7 +528,7 @@ void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId,
         return;
 
     // Arrival point — at the gate leading back to the origin system (as on the client).
-    Vector2 arrival = { 0.0f, 3000.0f };
+    Vector2 arrival = SafeArrival(destId);
     if (!fromId.empty())
         for (auto& e : SystemOf(s)->entities)
             if (JumpGate* g =
@@ -554,6 +548,22 @@ void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId,
     s.missions.ClearOffers();  // clear the board of the station we left; active missions
                                // survive the jump (they address stations by id) — otherwise
                                // Bounty/Delivery into another system would be uncompletable
+}
+
+Vector2 Simulation::SafeArrival(const std::string& systemId) const
+{
+    const SystemState* sys = SystemById(systemId);
+    if (sys != nullptr)
+        for (const auto& e : sys->entities)
+            if (e->GetKind() == EntityKind::Station)
+            {
+                const Archetype* a = e->GetArchetype();
+                const float      reach = a != nullptr ? a->dockRange : 0.0f;
+                const Vector2    p = e->GetPosition();
+                return { p.x, p.y + e->GetSize() + reach * 0.5f };
+            }
+    // No station: out of the middle, where a star would be.
+    return { 0.0f, World::SYSTEM_RADIUS * 0.1f };
 }
 
 void Simulation::SaveAccount(const ClientSession& s, const std::string& path) const
@@ -634,7 +644,8 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
         return Save::Result::Corrupt;
     // Refused, not read: a later build may store money or cargo differently, and loading
     // it here would hand the player a plausible-looking wrong account -- then save it.
-    if (j.value("version", Save::UNVERSIONED) > Save::ACCOUNT_VERSION)
+    const int version = j.value("version", Save::UNVERSIONED);
+    if (version > Save::ACCOUNT_VERSION)
         return Save::Result::TooNew;
 
     s.account.SetMoney(j.value("money", 500.0));
@@ -662,8 +673,12 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
         if (!sys.empty() && HasSystem(sys))
         {
             s.systemId = sys;
-            if (pl.contains("pos") && pl["pos"].is_array() && pl["pos"].size() >= 2)
+            // A position from before #159 is in a system forty times smaller, where every
+            // body has since moved and grown; kept, it would put the ship inside a star.
+            if (version >= 2 && pl.contains("pos") && pl["pos"].is_array() && pl["pos"].size() >= 2)
                 s.ship->Teleport({ (float)pl["pos"][0], (float)pl["pos"][1] });
+            else
+                s.ship->Teleport(SafeArrival(sys));
             s.ship->SetHeading((float)pl.value("heading", 0.0));
         }
     }

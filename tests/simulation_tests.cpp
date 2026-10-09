@@ -486,8 +486,10 @@ TEST_CASE("a save from a newer build is refused, not read leniently")
             std::ifstream in(path);
             text.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
         }
+        const std::string now = "\"version\": " + std::to_string(Save::ACCOUNT_VERSION);
+        REQUIRE(text.find(now) != std::string::npos);
         const std::string bumped =
-            text.replace(text.find("\"version\": 1"), 12,
+            text.replace(text.find(now), now.size(),
                          "\"version\": " + std::to_string(Save::ACCOUNT_VERSION + 1));
         {
             std::ofstream out(path);
@@ -513,6 +515,37 @@ TEST_CASE("a save from a newer build is refused, not read leniently")
                                                  GetShipCatalog()[0].stats);
         CHECK(f.sim.LoadAccount(old, path) == Save::Result::Ok);
         CHECK(old.account.GetMoney() == doctest::Approx(1234.0));
+    }
+
+    SUBCASE("a position from before the system grew is not trusted (#159)")
+    {
+        // Version 1 positions are in a system forty times smaller. Everything else in the
+        // file still means what it did; the place in the system does not.
+        const std::string sys = f.sim.Universe().startId;
+        {
+            std::ofstream out(path);
+            out << R"({"version":1,"money":1234.0,"place":{"system":")" << sys
+                << R"(","pos":[0.0,3000.0],"heading":0}})";
+        }
+        ClientSession& old =
+            f.sim.CreateSession(sys, Vector2{ 1.0f, 1.0f }, GetShipCatalog()[0].stats);
+        CHECK(f.sim.LoadAccount(old, path) == Save::Result::Ok);
+        CHECK(old.account.GetMoney() == doctest::Approx(1234.0));
+        CHECK(old.systemId == sys);
+        CHECK(old.ship->GetPosition().x == doctest::Approx(f.sim.SafeArrival(sys).x));
+        CHECK(old.ship->GetPosition().y == doctest::Approx(f.sim.SafeArrival(sys).y));
+
+        // ...and a current one is.
+        {
+            std::ofstream out(path);
+            out << R"({"version":)" << Save::ACCOUNT_VERSION << R"(,"place":{"system":")" << sys
+                << R"(","pos":[123.0,-456.0],"heading":0}})";
+        }
+        ClientSession& now =
+            f.sim.CreateSession(sys, Vector2{ 1.0f, 1.0f }, GetShipCatalog()[0].stats);
+        CHECK(f.sim.LoadAccount(now, path) == Save::Result::Ok);
+        CHECK(now.ship->GetPosition().x == doctest::Approx(123.0f));
+        CHECK(now.ship->GetPosition().y == doctest::Approx(-456.0f));
     }
 
     SUBCASE("a missing file and a corrupt one are told apart")
