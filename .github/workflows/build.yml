@@ -243,3 +243,16 @@ jobs:
           sleep 1
           cat mc.log
           grep -q "displaced" mc.log
+
+      # The example in examples/agents is documentation that executes. It runs against a
+      # real server here so that it cannot rot: if a tool changes and the example stops
+      # working, this goes red, instead of a newcomer finding out on their first evening.
+      - name: The example bot plays
+        run: |
+          ./build/bin/server/econserver host 50802 > bot-server.log 2>&1 &
+          server_pid=$!
+          sleep 5
+          timeout 300 python3 examples/agents/mining_bot.py ./build/bin/agent/econagent 127.0.0.1 50802
+          status=$?
+          kill $server_pid 2>/dev/null || true
+          exit $status

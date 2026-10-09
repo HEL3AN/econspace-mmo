@@ -18,10 +18,12 @@
 
 #include "core/Faction.h"
 #include "core/WorldLoader.h"
+#include "economy/Resource.h"
 #include "sim/Orders.h"
 
 #include "raylib.h"
 
+#include <cctype>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -157,8 +159,9 @@ const std::vector<Prompt>& Prompts()
         { "trade_run", "Find a price difference between two systems and work it",
           "Look for a profitable trade. Read the galaxy resource to see which systems "
           "exist and how dangerous they are. Dock somewhere, note the market prices, then "
-          "travel_to_system to a neighbour and compare. Buy where a resource is cheap and "
-          "sell where it is dear. Prefer avoid_danger on the route when the hold is full — "
+          "travel_to_system to a neighbour and compare. There is no buy tool yet, so the "
+          "cargo to trade is cargo you mine: mine where a resource is plentiful and sell "
+          "it where it is dear. Prefer avoid_danger on the route when the hold is full — "
           "cargo lost is worse than time lost." },
         { "scout", "Visit each system and report what is there",
           "Scout the galaxy. For every system in the galaxy resource, travel_to_system to "
@@ -205,6 +208,41 @@ Rpc::Json Str(const char* desc)
 Rpc::Json Bool(const char* desc)
 {
     return Rpc::Json{ { "type", "boolean" }, { "description", desc } };
+}
+
+// Which resource a tool call means. By name, because that is what observe shows: the
+// description used to say "index, as shown by observe" while observe showed names, so a
+// bot had no way to learn what to pass (#171). Matched exactly, ignoring case, and refused
+// otherwise -- ResourceFromName quietly turns any unknown name into Iron, and a bot asking
+// to sell Gold must not sell its iron instead. A number is still accepted for scripts
+// written against the old description.
+int ResourceArg(const Rpc::Json& args)
+{
+    if (!args.contains("resource"))
+        throw Rpc::Error{ Rpc::INVALID_PARAMS, "resource is required" };
+    const Rpc::Json& r = args["resource"];
+    if (r.is_number())
+        return r.get<int>();
+    if (!r.is_string())
+        throw Rpc::Error{ Rpc::INVALID_PARAMS, "resource is a name, e.g. 'Iron'" };
+
+    auto lower = [](std::string s)
+    {
+        for (char& ch : s)
+            ch = (char)std::tolower((unsigned char)ch);
+        return s;
+    };
+    const std::string want = lower(r.get<std::string>());
+    const auto&       types = AllResourceTypes();
+    std::string       known;
+    for (size_t i = 0; i < types.size(); i++)
+    {
+        if (lower(ResourceName(types[i])) == want)
+            return (int)i;
+        known += (known.empty() ? "" : ", ") + ResourceName(types[i]);
+    }
+    throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                      "no resource called '" + r.get<std::string>() + "'; known: " + known };
 }
 
 std::vector<Tool> BuildTools()
@@ -290,6 +328,7 @@ std::vector<Tool> BuildTools()
                           Proto::Command c = OrderCommand(Orders::Kind::Route);
                           c.orderDestSystem = args.value("system", std::string());
                           c.orderWarp = true;
+                          c.orderAvoidDanger = args.value("avoid_danger", false);
                           if (c.orderDestSystem.empty())
                               throw Rpc::Error{ Rpc::INVALID_PARAMS, "system is required" };
                           return GiveOrder(c, "travel_to_system");
@@ -339,7 +378,8 @@ std::vector<Tool> BuildTools()
     tools.push_back({ "sell_cargo",
                       "Sell cargo at the station you are docked at. Sells everything of "
                       "that resource unless an amount is given.",
-                      Obj({ { "resource", Num("resource index, as shown by observe") },
+                      Obj({ { "resource", Str("resource name as observe lists it under "
+                                              "CARGO, e.g. 'Iron'") },
                             { "amount", Num("how much (default: all of it)") } },
                           { "resource" }),
                       [](const Rpc::Json& args)
@@ -349,7 +389,7 @@ std::vector<Tool> BuildTools()
                               throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                                 "not docked; dock at a station first" };
                           Proto::Command c;
-                          c.sellType = (int)NumberOr(args, "resource", -1);
+                          c.sellType = ResourceArg(args);
                           c.sellAmount = (int)NumberOr(args, "amount", 100000.0);
                           g_session.Send(c);
                           g_session.WaitUntil([] { return false; }, 0.5);  // let the ack land
@@ -390,7 +430,7 @@ std::string RunTool(const std::vector<Tool>& tools, const std::string& name, con
 // money, need a key and give a different answer every run; testing it with the tools
 // called directly proves the part that can actually break -- the bridge, the orders, the
 // journal and the round trip through the server.
-// Run: econagent selftest <host> [port]   (a server must already be listening)
+// Run: econagent selftest <host> <port> <name> <secret>   (a server must already be listening)
 int Selftest(const std::vector<Tool>& tools)
 {
     auto note = [](const char* what, bool ok)

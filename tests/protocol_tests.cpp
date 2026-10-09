@@ -558,3 +558,24 @@ TEST_CASE("a standing hold survives the wire, and costs nothing when nobody aske
         CHECK(got.player.holdRange == doctest::Approx(1200.0f));
     }
 }
+
+// #171: a route order can ask for the safe way. The server could always plan one, and
+// econagent's travel_to_system advertised the option to models -- but nothing on the wire
+// carried it, so it was accepted and silently dropped.
+TEST_CASE("a route order that asks for the safe way still asks for it after the wire")
+{
+    Proto::Command c;
+    c.orderKind = 1;
+    c.orderDestSystem = "verge";
+    c.orderAvoidDanger = true;
+
+    Proto::Command back;
+    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
+    CHECK(back.orderDestSystem == "verge");
+    CHECK(back.orderAvoidDanger);
+
+    SUBCASE("and a command that does not ask does not pay for the field")
+    {
+        CHECK(Proto::EncodeCommand(Proto::Command{}).find("ordSafe") == std::string::npos);
+    }
+}

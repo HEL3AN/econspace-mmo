@@ -149,6 +149,7 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
         o.useWarp = c.orderWarp;
         o.untilFull = c.orderUntilFull;
         o.destSystem = c.orderDestSystem;
+        o.avoidDanger = c.orderAvoidDanger;
         sim.GiveOrder(s, o);
     }
 
