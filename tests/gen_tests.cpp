@@ -81,8 +81,8 @@ TEST_CASE("the rules have not changed without saying so")
     // old rules are then refused) and update the value here.
     const uint64_t h = Fnv1a(Dump(Gen::GenerateRegion(Params(1))));
     MESSAGE("region hash for seed 1: " << h);
-    CHECK(Gen::GENERATOR_VERSION == 1);
-    CHECK(h == 5521574516284770651ull);
+    CHECK(Gen::GENERATOR_VERSION == 2);
+    CHECK(h == 18147451084883590342ull);
 }
 
 TEST_CASE("every system can be reached from home, and every link has a gate on both ends")
@@ -146,8 +146,15 @@ TEST_CASE("nothing generated sits in a planet's path or past the system's edge")
                         const double R = p["orbitRadius"], ps = p["size"];
                         CHECK(std::fabs(d - R) >= ps + size);
                     }
-                    // and not inside the star
-                    CHECK(d > sys["star"]["size"].get<double>() + size);
+                    // and not inside a star -- one in the middle, or a binary's two
+                    if (sys.contains("star"))
+                        CHECK(d > sys["star"]["size"].get<double>() + size);
+                    if (sys.contains("stars"))
+                        for (const auto& s : sys["stars"])
+                        {
+                            const double sx = s["pos"][0], sy = s["pos"][1];
+                            CHECK(std::hypot(x - sx, y - sy) > s["size"].get<double>() + size);
+                        }
                 }
         }
     }
@@ -165,4 +172,27 @@ TEST_CASE("a generated system is a system the game can build")
         for (const auto& e : entities)
             CHECK(e->GetArchetype() != nullptr);  // every kind it used is a real one
     }
+}
+
+TEST_CASE("an object can say which archetype of its kind it is (#142)")
+{
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const nlohmann::json sys = nlohmann::json::parse(R"({
+        "derelicts": [
+            { "name": "Plain", "pos": [100, 0], "size": 40, "reward": 100 },
+            { "name": "Named", "pos": [200, 0], "size": 40, "reward": 100, "archetype": "derelict.wreck" },
+            { "name": "Typo", "pos": [300, 0], "size": 40, "reward": 100, "archetype": "derelict.nonesuch" },
+            { "name": "Wrong kind", "pos": [400, 0], "size": 40, "reward": 100, "archetype": "gate.jump" }
+        ]
+    })");
+    const auto           e = WorldLoader::BuildSystem(sys);
+    REQUIRE(e.size() == 4);
+    for (const auto& d : e)
+    {
+        // Every one is built -- a typo does not empty a system -- and every one ends up an
+        // archetype of its own kind, never a gate's look on a wreck.
+        REQUIRE(d->GetArchetype() != nullptr);
+        CHECK(d->GetArchetype()->kind == EntityKind::Derelict);
+    }
+    CHECK(e[1]->GetArchetype()->id == "derelict.wreck");
 }

@@ -28,6 +28,7 @@ enum Purpose : uint64_t
     DERELICTS = 14,
     GATES = 15,
     WORMHOLE = 16,
+    CHARACTER = 17,
 };
 
 struct Band  // the ring a planet sweeps
@@ -232,10 +233,75 @@ void PlaceOnMap(const RegionParams& params, std::vector<Node>& nodes)
     }
 }
 
-// ---- One system (#142 refines it) ------------------------------------------------------
+// ---- One system (#142) ------------------------------------------------------------------
+//
+// A system has a character, rolled first, and every part of it asks: a belt cluster has
+// belts where an ordinary system has planets, a graveyard has wrecks, a barren system has
+// next to nothing -- and the best odds of something rare (#211). Variety comes from the
+// character, not from noise in every number: a player who has seen two graveyards knows
+// what a third one is for.
 
-const char* PlanetTypeAt(Rng& rng, double fraction)
+enum class Character
 {
+    Ordinary,
+    Binary,
+    BeltCluster,
+    Shrouded,
+    Graveyard,
+    Giants,
+    Frozen,
+    Barren,
+};
+
+const char* CharacterName(Character c)
+{
+    switch (c)
+    {
+        case Character::Ordinary: return "ordinary";
+        case Character::Binary: return "binary";
+        case Character::BeltCluster: return "belt cluster";
+        case Character::Shrouded: return "shrouded";
+        case Character::Graveyard: return "graveyard";
+        case Character::Giants: return "giants";
+        case Character::Frozen: return "frozen";
+        case Character::Barren: return "barren";
+    }
+    return "ordinary";
+}
+
+// Weighted by depth: ordinary near the wormhole, stranger and more dangerous further out.
+Character PickCharacter(Rng& rng, int depth)
+{
+    const int d = depth - 1;
+    const int weights[] = {
+        std::max(8, 34 - 5 * d),  // ordinary
+        10,                       // binary
+        12,                       // belt cluster
+        std::min(16, 3 + 3 * d),  // shrouded
+        std::min(15, 2 + 3 * d),  // graveyard
+        10,                       // giants
+        8,                        // frozen
+        std::min(18, 6 + 2 * d),  // barren
+    };
+    int total = 0;
+    for (int w : weights)
+        total += w;
+    int roll = rng.Range(0, total - 1);
+    for (int i = 0; i < 8; i++)
+    {
+        if (roll < weights[i])
+            return (Character)i;
+        roll -= weights[i];
+    }
+    return Character::Ordinary;
+}
+
+const char* PlanetTypeAt(Rng& rng, double fraction, Character c)
+{
+    if (c == Character::Frozen)
+        return rng.Chance(80) ? "Ice" : "Oceanic";
+    if (c == Character::Barren)
+        return rng.Chance(30) ? "Lava" : "Rocky";
     if (fraction < 0.35)
         return rng.Chance(45) ? "Lava" : "Rocky";
     if (fraction < 0.6)
@@ -263,34 +329,86 @@ const char* DepositOf(const std::string& type)
     return "Iron";
 }
 
+json Star(Rng& rng, const char* type)
+{
+    const std::string t = type;
+    const double      base = t == "Yellow" ? 150000.0 : (t == "Red" ? 137500.0 : 125000.0);
+    return { { "type", t }, { "size", (int64_t)Round(base * rng.Between(0.85, 1.15), 100.0) } };
+}
+
 json GenerateSystem(const RegionParams& params, const Node& n, const std::vector<Node>& nodes,
                     const json& links, const Node* homeAsNode)
 {
     const uint64_t key = (uint64_t)n.index + 1000;  // never collides with a purpose
     json           sys;
 
-    // The star.
+    Character character;
     {
-        Rng          rng(Key(params.seed, key, STAR));
-        const int    roll = rng.Range(0, 99);
-        const char*  type = roll < 50 ? "Yellow" : (roll < 80 ? "Red" : "Blue");
-        const double base = roll < 50 ? 150000.0 : (roll < 80 ? 137500.0 : 125000.0);
-        sys["star"] = { { "type", type },
-                        { "size", (int64_t)Round(base * rng.Between(0.85, 1.15), 100.0) } };
+        Rng rng(Key(params.seed, key, CHARACTER));
+        character = PickCharacter(rng, n.depth);
     }
-    const double starSize = sys["star"]["size"].get<double>();
+    sys["character"] = CharacterName(character);
 
-    // Planets, typed by how far out they are: rock and lava close in, ice and gas far out.
+    // The star -- or two. How far out the stars reach is where the planets may start.
+    double starReach = 0.0;
+    {
+        Rng         rng(Key(params.seed, key, STAR));
+        const int   roll = rng.Range(0, 99);
+        const char* type = roll < 50 ? "Yellow" : (roll < 80 ? "Red" : "Blue");
+        if (character == Character::Barren || character == Character::Frozen)
+            type = "Red";  // dim, old, cold
+        if (character == Character::Giants)
+            type = "Yellow";
+        if (character == Character::Binary)
+        {
+            // Two smaller stars either side of the middle, lighting everything from two
+            // directions (#119). The second is a different colour more often than not.
+            json         a = Star(rng, type);
+            json         b = Star(rng, rng.Chance(65) ? (roll < 50 ? "Red" : "Yellow") : type);
+            const double sa = a["size"].get<double>() * 0.7, sb = b["size"].get<double>() * 0.7;
+            a["size"] = (int64_t)Round(sa, 100.0);
+            b["size"] = (int64_t)Round(sb, 100.0);
+            double ux, uy;
+            RandomDirection(rng, ux, uy);
+            const double half = std::max(sa, sb) + 70000.0;  // two discs, not one blob
+            a["pos"] =
+                json::array({ (int64_t)Round(ux * half, 100.0), (int64_t)Round(uy * half, 100.0) });
+            b["pos"] = json::array(
+                { (int64_t)Round(-ux * half, 100.0), (int64_t)Round(-uy * half, 100.0) });
+            sys["stars"] = json::array({ a, b });
+            starReach = half + std::max(sa, sb);
+        }
+        else
+        {
+            sys["star"] = Star(rng, type);
+            starReach = sys["star"]["size"].get<double>();
+        }
+    }
+
+    // Planets, typed by how far out they are -- unless the character says otherwise.
     std::vector<Band> bands;
     {
-        Rng       rng(Key(params.seed, key, PLANETS));
-        json      planets = json::array();
-        const int want = rng.Range(2, 6);
-        double    r = starSize + rng.Range(60, 90) * 1000.0;
+        Rng  rng(Key(params.seed, key, PLANETS));
+        json planets = json::array();
+        int  want = rng.Range(2, 6);
+        switch (character)
+        {
+            case Character::Binary: want = rng.Range(1, 4); break;
+            case Character::BeltCluster: want = rng.Range(1, 3); break;
+            case Character::Shrouded:
+            case Character::Graveyard: want = rng.Range(2, 4); break;
+            case Character::Giants: want = rng.Range(2, 3); break;
+            case Character::Barren: want = rng.Range(1, 3); break;
+            default: break;
+        }
+        double r = starReach + rng.Range(60, 90) * 1000.0;
+        int    giants = character == Character::Giants ? rng.Range(1, 2) : 0;
         for (int i = 0; i < want; i++)
         {
-            const std::string type = PlanetTypeAt(rng, r / EDGE);
-            const int         size = PlanetSize(rng, type);
+            // In a system of giants the outer planets are gas, whatever the distance says.
+            const bool        giant = giants > 0 && want - i <= giants;
+            const std::string type = giant ? "Gas" : PlanetTypeAt(rng, r / EDGE, character);
+            const int         size = giant ? rng.Range(32, 36) * 1000 : PlanetSize(rng, type);
             if (r + size > EDGE)
                 break;
             planets.push_back({ { "type", type },
@@ -345,15 +463,21 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
 
     // Belts: what a miner crosses the wormhole for. Crystal grows more likely further out.
     {
-        Rng       rng(Key(params.seed, key, BELTS));
-        json      belts = json::array();
-        const int count = rng.Range(1, 2) + (n.depth >= 3 && rng.Chance(40) ? 1 : 0);
+        Rng  rng(Key(params.seed, key, BELTS));
+        json belts = json::array();
+        int  count = rng.Range(1, 2) + (n.depth >= 3 && rng.Chance(40) ? 1 : 0);
+        if (character == Character::BeltCluster)
+            count = rng.Range(3, 5);
+        else if (character == Character::Barren)
+            count = rng.Chance(50) ? 1 : 0;
         for (int i = 0; i < count; i++)
         {
             const int   roll = rng.Range(0, 99);
             const char* res = roll < 15 + 12 * n.depth ? "Crystal" : (roll < 60 ? "Iron" : "Ice");
-            const int   size = rng.Range(50, 75) * 100;
-            json        pos;
+            if (character == Character::Frozen)
+                res = roll < 75 ? "Ice" : "Crystal";
+            const int size = rng.Range(50, 75) * 100;
+            json      pos;
             if (!Place(rng, 260000.0, 840000.0, size, bands, taken, pos))
                 continue;
             belts.push_back(
@@ -361,44 +485,77 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
                   { "pos", pos },
                   { "size", size },
                   { "resource", res },
-                  { "ore", rng.Range(200, 400) + 40 * n.depth } });
+                  { "ore", rng.Range(200, 400) + 40 * n.depth +
+                               (character == Character::BeltCluster ? 100 : 0) } });
         }
         sys["asteroidFields"] = belts;
     }
 
-    // A cloud, sometimes.
+    // A cloud, sometimes -- and in a shrouded system one that covers half of it, where a
+    // ship cannot be seen and an ambush can (the nebula's hazard hides ships).
     {
-        Rng  rng(Key(params.seed, key, NEBULA));
-        json nebulae = json::array();
-        if (rng.Chance(35))
+        Rng        rng(Key(params.seed, key, NEBULA));
+        json       nebulae = json::array();
+        const bool shroud = character == Character::Shrouded;
+        if (shroud || rng.Chance(25))
         {
-            const int         radius = rng.Range(28, 40) * 1000;
-            json              pos;
+            const int radius = shroud ? rng.Range(160, 240) * 1000 : rng.Range(28, 40) * 1000;
+            json      pos;
             std::vector<Disc> none;  // a cloud may drift over anything
-            if (Place(rng, 300000.0, 840000.0 - radius, 0.0, {}, none, pos))
-                nebulae.push_back(
-                    { { "name", n.designation + " Cloud" }, { "pos", pos }, { "radius", radius } });
+            const double      lo = shroud ? 250000.0 : 300000.0;
+            if (Place(rng, lo, 900000.0 - radius, 0.0, {}, none, pos))
+                nebulae.push_back({ { "name", n.designation + (shroud ? " Shroud" : " Cloud") },
+                                    { "pos", pos },
+                                    { "radius", radius } });
         }
         sys["nebulae"] = nebulae;
     }
 
-    // Something already here: more of them, and richer, further from home (#146 refines).
+    // Something already here: more of them, and richer, further from home (#146). A
+    // graveyard is a battle: a dozen wrecks around the place it was fought.
     {
         static const char* NAMES[] = { "Unmarked Wreck", "Silent Hulk", "Broken Survey Ship",
                                        "Lost Prospector", "Gutted Freighter" };
+        static const char* BATTLE[] = { "Burnt-out Frigate", "Split Cruiser", "Holed Escort",
+                                        "Gutted Gunship", "Drifting Bridge" };
         Rng                rng(Key(params.seed, key, DERELICTS));
         json               wrecks = json::array();
-        const int          count = rng.Chance(25 + 12 * n.depth) ? rng.Range(1, 2) : 0;
-        for (int i = 0; i < count; i++)
+        if (character == Character::Graveyard)
         {
-            const int size = rng.Range(30, 50);
-            json      pos;
-            if (!Place(rng, 200000.0, 850000.0, size, bands, taken, pos))
-                continue;
-            wrecks.push_back({ { "name", NAMES[rng.Range(0, 4)] },
-                               { "pos", pos },
-                               { "size", size },
-                               { "reward", 1000 + 500 * n.depth + rng.Range(0, 8) * 100 } });
+            json centre;
+            if (Place(rng, 250000.0, 800000.0, 40000.0, bands, taken, centre))
+            {
+                const double cx = centre[0], cy = centre[1];
+                const int    count = rng.Range(6, 11);
+                for (int i = 0; i < count; i++)
+                {
+                    double ux, uy;
+                    RandomDirection(rng, ux, uy);
+                    const double r = rng.Between(2000.0, 38000.0);
+                    wrecks.push_back(
+                        { { "name", BATTLE[rng.Range(0, 4)] },
+                          { "pos", json::array({ (int64_t)Round(cx + ux * r, 100.0),
+                                                 (int64_t)Round(cy + uy * r, 100.0) }) },
+                          { "size", rng.Range(35, 55) },
+                          { "reward", 700 + 300 * n.depth + rng.Range(0, 6) * 100 } });
+                }
+            }
+        }
+        else
+        {
+            const int chance = character == Character::Barren ? 15 : 25 + 12 * n.depth;
+            const int count = rng.Chance(chance) ? rng.Range(1, 2) : 0;
+            for (int i = 0; i < count; i++)
+            {
+                const int size = rng.Range(30, 50);
+                json      pos;
+                if (!Place(rng, 200000.0, 850000.0, size, bands, taken, pos))
+                    continue;
+                wrecks.push_back({ { "name", NAMES[rng.Range(0, 4)] },
+                                   { "pos", pos },
+                                   { "size", size },
+                                   { "reward", 1000 + 500 * n.depth + rng.Range(0, 8) * 100 } });
+            }
         }
         sys["derelicts"] = wrecks;
     }

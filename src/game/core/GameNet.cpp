@@ -6,6 +6,7 @@
 //
 // Part of the Game class; see Game.cpp.
 #include "core/Game.h"
+#include "core/Archetype.h"
 #include "sim/PlayerStep.h"
 
 #include "core/World.h"
@@ -315,6 +316,16 @@ std::unique_ptr<Entity> Game::MakeProxyFromLayout(const Proto::EntityLayout& el)
     {
         e->SetId(el.id);
         e->SetPosition(el.pos);
+        // The archetype the server built it as (#195), which may not be its kind's usual
+        // one: a leviathan among the derelicts (#142, #211). Without this the client would
+        // draw every rare find as the ordinary thing of its kind.
+        if (!el.archetype.empty() && e->GetArchetype() != nullptr &&
+            e->GetArchetype()->id != el.archetype)
+        {
+            const Archetype* a = Archetypes::Find(el.archetype);
+            if (a != nullptr && a->kind == e->GetKind())
+                e->SetArchetype(el.archetype);
+        }
     }
     return e;
 }

@@ -1,4 +1,5 @@
 #include "core/WorldLoader.h"
+#include "core/Archetype.h"
 
 #include "entities/Star.h"
 #include "entities/Planet.h"
@@ -105,6 +106,27 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::LoadSystem(const std::string& 
     return BuildSystem(data);
 }
 
+// An object may say which archetype of its kind it is (#142): a derelict that is a leviathan,
+// a belt that is a motherlode (#211), later a station a player designed (#44). Without the
+// field an object is its kind's ordinary archetype, as it always was. A name that is not an
+// archetype -- or is one of another kind, a gate in the derelicts list -- is said by name and
+// ignored, so one typo neither empties a system nor quietly builds the wrong thing.
+static void ApplyArchetype(Entity& e, const json& o)
+{
+    if (!o.is_object() || !o.contains("archetype") || !o["archetype"].is_string())
+        return;
+    const std::string id = o["archetype"];
+    const Archetype*  a = Archetypes::Find(id);
+    if (a == nullptr || a->kind != e.GetKind())
+    {
+        TraceLog(LOG_WARNING, "WorldLoader: '%s' names archetype '%s', which %s -- built as usual",
+                 o.value("name", std::string("an object")).c_str(), id.c_str(),
+                 a == nullptr ? "does not exist" : "is a different kind of thing");
+        return;
+    }
+    e.SetArchetype(id);
+}
+
 // Builds entities from already-parsed JSON. Order: star, planets, stations,
 // asteroid fields, nebulae, derelicts, gates — the editor relies on it (entity
 // indices correspond to JSON elements).
@@ -119,7 +141,18 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
         StarType    starType = StarTypeFromString(starJson.value("type", std::string("Yellow")));
         float       starSize = (float)starJson.value("size", 150000.0);
         entities.push_back(std::make_unique<Star>(Vector2{ 0.0f, 0.0f }, starSize, starType));
+        ApplyArchetype(*entities.back(), starJson);
     }
+    // Or several, each where it says (#142): a binary lights a system from two sides
+    // (#119), and nothing else about a star assumes it is alone.
+    if (data.contains("stars") && data["stars"].is_array())
+        for (const json& s : data["stars"])
+        {
+            const StarType type = StarTypeFromString(s.value("type", std::string("Yellow")));
+            const Vector2  at = s.contains("pos") ? Vec2FromJson(s["pos"]) : Vector2{ 0.0f, 0.0f };
+            entities.push_back(std::make_unique<Star>(at, (float)s.value("size", 150000.0), type));
+            ApplyArchetype(*entities.back(), s);
+        }
 
     if (data.contains("planets"))
         for (const json& p : data["planets"])
@@ -135,6 +168,7 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
                 p.value("orbitRadius", 350000.0), p.value("orbitSpeed", 300.0),
                 p.value("angle", 0.0), p.value("size", 15000.0), color,
                 ResourceFromString(p.value("deposit", std::string("Iron"))), type));
+            ApplyArchetype(*entities.back(), p);
         }
 
     if (data.contains("stations"))
@@ -152,6 +186,7 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
                          s.value("name", std::string("?")).c_str(), roleName.c_str());
             entities.push_back(std::make_unique<Station>(Vec2FromJson(s["pos"]), (float)s["size"],
                                                          s["name"], faction, role));
+            ApplyArchetype(*entities.back(), s);
         }
     }
 
@@ -162,6 +197,7 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
             entities.push_back(
                 std::make_unique<AsteroidField>(Vec2FromJson(f["pos"]), (float)f["size"], f["name"],
                                                 ResourceFromString(f["resource"]), (int)f["ore"]));
+            ApplyArchetype(*entities.back(), f);
         }
     }
 
@@ -171,6 +207,7 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
         {
             entities.push_back(std::make_unique<Nebula>(Vec2FromJson(n["pos"]), (float)n["radius"],
                                                         n.value("name", std::string("Nebula"))));
+            ApplyArchetype(*entities.back(), n);
         }
     }
 
@@ -181,6 +218,7 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
             entities.push_back(std::make_unique<Derelict>(Vec2FromJson(d["pos"]),
                                                           (float)d.value("size", 45.0), d["name"],
                                                           (double)d.value("reward", 500.0)));
+            ApplyArchetype(*entities.back(), d);
         }
     }
 
@@ -191,6 +229,7 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
             entities.push_back(
                 std::make_unique<JumpGate>(Vec2FromJson(g["pos"]), (float)g["size"], g["name"],
                                            g.value("destination", std::string("Unknown"))));
+            ApplyArchetype(*entities.back(), g);
         }
     }
 

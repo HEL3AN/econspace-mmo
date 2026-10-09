@@ -568,7 +568,12 @@ Vector2 Simulation::SafeArrival(const std::string& systemId) const
     if (sys != nullptr)
         for (const auto& e : sys->entities)
             if (e->GetKind() == EntityKind::Star)
-                clear = std::max(clear, e->GetSize() + 60000.0f);
+            {
+                // A binary's stars stand either side of the middle (#142): clear of the
+                // furthest edge of any of them.
+                const Vector2 s = e->GetPosition();
+                clear = std::max(clear, sqrtf(s.x * s.x + s.y * s.y) + e->GetSize() + 60000.0f);
+            }
     return { 0.0f, clear };
 }
 
