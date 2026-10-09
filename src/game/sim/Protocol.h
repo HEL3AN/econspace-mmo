@@ -236,7 +236,11 @@ struct MissionView
 // Snapshot of the player's system — what the client draws.
 struct Snapshot
 {
-    std::string                 systemId;
+    std::string systemId;
+    // The world's clock, in seconds (#192). Everything that moves is a function of time
+    // (#136), and with each client's own clock two players saw one station turned two
+    // ways; with this they share the phase as well as the rate.
+    double                      time = 0.0;
     PlayerView                  player;
     std::vector<EntitySnapshot> entities;
     std::vector<FireEvent>      fires;

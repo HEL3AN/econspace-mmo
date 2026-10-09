@@ -105,7 +105,8 @@ void Game::DrawWorld()
         const Render::Lighting lights = Render::LightsFrom(scene);
         // The camera goes with them: a material shades a fragment by where it fell
         // relative to the object, so it has to know where the object landed (#121).
-        Render::Present(std::move(scene), lights, camera_, *backend_);
+        // On the world's clock, so this station turns as it does for everyone else (#192).
+        Render::Present(std::move(scene), lights, camera_, *backend_, worldClock_.Now(GetTime()));
     }
 
     // Destination-station markers for active delivery missions. We draw them only if

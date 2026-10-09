@@ -167,6 +167,7 @@ void Game::BuildClientSnapshot()
     if (gotSnap)
     {
         snapshot_ = std::move(incoming);
+        worldClock_.Observe(snapshot_.time, GetTime());
         // A buffer of snapshots with arrival timestamps — for interpolating non-own
         // entities (entity interpolation, Gambetta). We draw them "in the past", smoothing
         // out snapshot jitter. The own ship is NOT touched by interpolation (prediction).

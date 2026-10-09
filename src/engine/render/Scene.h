@@ -85,6 +85,11 @@ public:
     virtual void SetView(const Camera2D&) {}
     virtual void SetMaterials(MaterialLibrary*) {}
 
+    // The time anything that moves is a function of (#136, #192): the world's clock in the
+    // game, so two players see one station turned the same way; the local clock anywhere
+    // that has no world, like the gallery.
+    virtual void SetClock(double) {}
+
     virtual void Begin() {}
     virtual void Draw(const Item& item) = 0;
     virtual void End() {}
@@ -108,7 +113,9 @@ void Present(std::vector<Item> items, const Lighting& lighting, IBackend& backen
 
 // The same, told how the world is being looked at, which is what a material needs in order
 // to place itself on screen (#121).
+// `clock` is the world's time in seconds when there is a world (#192); left out, it is the
+// local clock.
 void Present(std::vector<Item> items, const Lighting& lighting, const Camera2D& view,
-             IBackend& backend);
+             IBackend& backend, double clock = -1.0);
 
 }  // namespace Render

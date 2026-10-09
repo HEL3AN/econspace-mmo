@@ -241,8 +241,10 @@ struct Pose
     // hundred in the gallery, and the parts worth drawing are not the same in both.
     float pixelsPerUnit = 1.0f;
 
-    float time = 0.0f;        // seconds, for anything that moves (#136)
-    bool  thrusting = false;  // whether the object's engine is burning
+    // Seconds, for anything that moves (#136). A double: it is the world's clock (#192),
+    // and a float counting a week of seconds is a quarter of a second coarse.
+    double time = 0.0;
+    bool   thrusting = false;  // whether the object's engine is burning
 };
 
 // Places a shape on an object: applies the repeats and the mirror, the object's own

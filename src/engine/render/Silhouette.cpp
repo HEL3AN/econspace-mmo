@@ -380,7 +380,7 @@ std::vector<Piece> Compose(const Shape& s, const Pose& pose)
             // Wrapped so the number stays small however long the server has been up:
             // a float that has been counting degrees for a week has no precision left.
             const float step = (360.0f / (float)repeat) * (float)r;
-            const float turned = std::fmod(p.spin * pose.time, 360.0f);
+            const float turned = (float)std::fmod((double)p.spin * pose.time, 360.0);
             const float spin = step + turned;
             const float wobble = p.jitterAngle * Signed(seed, salt);
             const float scale = 1.0f + p.jitterScale * Signed(seed, salt + 7);
@@ -392,7 +392,7 @@ std::vector<Piece> Compose(const Shape& s, const Pose& pose)
             if (p.blink > 0.0f)
             {
                 const float phase = Hash01(seed, salt + 13);
-                const float t = std::fmod(pose.time / p.blink + phase, 1.0f);
+                const float t = (float)std::fmod(pose.time / p.blink + phase, 1.0);
                 brightness = p.alpha * (0.25f + 0.75f * (0.5f + 0.5f * std::cos(t * 2.0f * PI)));
             }
 
@@ -464,7 +464,7 @@ std::vector<Piece> Compose(const Shape& s, const Pose& pose)
                     // Where this object's surface starts, seeded per object, so two rocky
                     // planets do not wear their craters in the same places. One offset for
                     // the whole body, so the craters keep their places relative to each other.
-                    const float    turned = std::fmod(p.spin * pose.time, 360.0f);
+                    const float    turned = (float)std::fmod((double)p.spin * pose.time, 360.0);
                     const float    lon = p.lon + 360.0f * Hash01(seed, 4241) +
                                          360.0f * (float)r / (float)repeat + turned;
                     const OnSphere sp = Project(lat, lon, s.axisTilt);
@@ -497,8 +497,8 @@ std::vector<Piece> Compose(const Shape& s, const Pose& pose)
                     // three moons are three moons rather than three moons on top of one
                     // another.
                     const float spread = (float)(r * sides + m) / (float)(repeat * sides);
-                    const float lap = std::fmod(
-                        pose.time / period + p.orbitPhase + spread + Hash01(seed, salt + 29), 1.0f);
+                    const float lap = (float)std::fmod(
+                        pose.time / period + p.orbitPhase + spread + Hash01(seed, salt + 29), 1.0);
                     const float a = lap * 2.0f * PI;
 
                     // The ellipse an inclined circular orbit traces. `front` is +1 at the

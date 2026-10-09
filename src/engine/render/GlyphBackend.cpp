@@ -212,7 +212,7 @@ bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& lig
     in.item = &item;
     in.light = light;
     in.ambient = lighting_.ambient;
-    in.time = (float)GetTime();
+    in.time = (float)std::fmod(clock_, SHADER_TIME_WRAP);
     in.screenPos = GetWorldToScreen2D(at, view_);
     // A radius in pixels, taken from the camera rather than assumed: the same object is
     // eight pixels across on the system map and four hundred in the gallery, and a shader
@@ -433,7 +433,7 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
     pose.heading = item.heading;
     pose.seed = item.id;
     pose.pixelsPerUnit = view_.zoom;
-    pose.time = (float)GetTime();
+    pose.time = clock_;
     pose.thrusting = item.thrusting;
 
     const std::vector<Piece> pieces = Compose(*item.shape, pose);
