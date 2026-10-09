@@ -8,7 +8,7 @@ You pilot a ship in a persistent, multi-system galaxy: mine, trade, run missions
 [![CodeQL](https://github.com/HEL3AN/econspace-mmo/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/HEL3AN/econspace-mmo/actions/workflows/codeql.yml)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Language: C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
-![Platforms: Windows | Linux](https://img.shields.io/badge/platforms-Windows%20(MinGW)%20%7C%20Linux%20(GCC)-lightgrey.svg)
+![Platforms: Windows | Linux | macOS](https://img.shields.io/badge/platforms-Windows%20(MinGW)%20%7C%20Linux%20(GCC)%20%7C%20macOS%20(Clang)-lightgrey.svg)
 ![Status: Prototype](https://img.shields.io/badge/status-prototype-orange.svg)
 
 > **Project status — honest version.** EconSpace is an engineering-driven **prototype**, not a finished game. The client–server architecture and netcode are solid and real; the *content* is not: there is no audio, and the world is small. The look is **glyphs** — that is the game's visual language, not a stand-in for missing art. The server currently accepts **one** client at a time — multi-client is the next foundational piece, not an extra. See [ROADMAP.md](ROADMAP.md) for where it is and where it's going. Contributions are very welcome.
@@ -67,7 +67,7 @@ The world is still read-only content authored in the editor. Several people can 
 ## Build & run
 
 **Requirements**
-- A C++17 compiler — MinGW-w64 g++ (from [MSYS2](https://www.msys2.org/)).
+- A C++17 compiler — MinGW-w64 g++ (from [MSYS2](https://www.msys2.org/)) on Windows, GCC on Linux, Apple Clang (Xcode command-line tools) on macOS.
 - CMake 3.16+.
 - Internet on the first build: [raylib](https://github.com/raysan5/raylib) 5.5 and [nlohmann/json](https://github.com/nlohmann/json) 3.11.3 are fetched and built automatically via CMake `FetchContent`.
 
@@ -77,6 +77,8 @@ cmake --build build                        # build game + editor + server + test
 
 ctest --test-dir build --output-on-failure # run the unit tests (doctest)
 ```
+
+> **macOS** builds and passes the tests in CI on every change, but nobody on the team plays on a Mac, so what the game *looks* like there has not been seen. Use the default generator (`cmake -S . -B build`, no `-G`). If you run it, a screenshot in an issue is the most useful thing you can send — Retina displays in particular are expected to misplace the screen treatment until #179.
 
 > On Windows, close the running game/editor window before rebuilding — Windows won't let you overwrite a running `.exe`. The `data/` folder is copied next to each executable on every build.
 
