@@ -592,6 +592,16 @@ player actually interacts with made honest:
   account keeps everything but its place, and arrives beside a station.
 - Ranges between ships did not change: ships did not grow.
 
+**Warp (#160)** costs little for its length. It gains 120% of its speed a second, slows in
+proportion to what is left, and caps at 250 000 units a second: a hop between neighbours
+is about six seconds with the alignment, a crossing of the system about thirteen. A flat
+speed made the crossing forty-five times the hop. A warp whose line crosses a star or a
+planet bends once beside it -- the line between two stations on either side of the star
+went through the star, and the screen turned yellow for a second. The bend is chosen by
+whoever orders the warp and carried in the command, so a client predicts exactly the path
+the server flies. The 1.8-second alignment, the window in which a warp can be stopped, is
+unchanged: nobody can be caught yet (#94), so there is nothing to tune it against.
+
 A planet is still about five hundred times smaller relative to a ship than it is in life.
 That compression is deliberate and permanent: nobody makes a playable game at true
 astronomical scale, and the part that has to be honest is the part a player judges by eye

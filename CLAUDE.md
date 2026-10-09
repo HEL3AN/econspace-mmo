@@ -107,6 +107,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   unacknowledged inputs. Changing it changes both sides at once, which is the point:
   prediction breaks the moment they compute different results from the same input. The
   client does not link `Simulation` at all.
+- **A warp is decided by whoever orders it, then only flown** (#160). Its speed comes from
+  the ship's own velocity and what is left of the path -- multiplication per fixed tick,
+  no `exp()`, so two compilers agree -- and its bend around a star or a planet
+  (`sim/WarpPath.h`) travels in the command and in the snapshot. Anything a warp needs that
+  a snapshot does not carry is a prediction that will be wrong at 250 000 units a second.
 - **`econagent` owns stdout.** It is the JSON-RPC channel; one stray `printf` or raylib
   trace on it corrupts the stream and the client reports a parse error rather than the
   line that caused it. All diagnostics go to stderr, and raylib's logger is redirected
