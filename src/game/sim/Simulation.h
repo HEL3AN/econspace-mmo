@@ -74,6 +74,19 @@ public:
     // maintained by the spawn director on the Game side).
     void StepWorldMacro();
 
+    // Factions acting on the galaxy (#231): presence grows where a faction holds, reaches
+    // one neighbour per period where value outweighs risk, and decides who holds what.
+    struct SystemOffer
+    {
+        float                  traffic = 0.0f, ore = 0.0f, salvage = 0.0f;  // each 0..1
+        std::vector<FactionId> defenders;  // owners of defensive stations
+    };
+    SystemOffer          OfferOf(const SystemState& st) const;
+    void                 StepFactions();
+    void                 StepControl(bool settling);
+    static void          SeedPresence(SystemAggregate& a);
+    static constexpr int ContestPasses() { return CONTEST_PASSES; }
+
     // System neighbors by gate lines (for macro and the spawn director).
     std::vector<std::string> Neighbors(const std::string& id) const;
 
@@ -398,7 +411,11 @@ private:
     double maintAccum_ = 0.0;  // accumulator of coarse world maintenance (director)
     // Macro passes since this process started; the first few are the world settling and
     // are not news (#143).
-    int                  macroSteps_ = 0;
+    int macroSteps_ = 0;
+    int factionPasses_ = 0;  // macro passes counted by StepFactions (#231)
+    // How many macro passes in a row a side must hold a system before it changes hands
+    // (#225): three minutes, long enough for players to notice and answer.
+    static constexpr int CONTEST_PASSES = 90;
     bool                 chartsChanged_ = false;  // a system was charted (#144)
     static constexpr int SETTLE_STEPS = 3;
     unsigned int         rng_ = 0x1234567u;  // RNG state

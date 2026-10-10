@@ -1175,7 +1175,7 @@ TEST_CASE("the region hangs off the start system by a wormhole, and its seed is 
     std::remove(path.c_str());
 }
 
-TEST_CASE("the region is nobody's to take until somebody has been there (#143)")
+TEST_CASE("the region is not decided in its first minutes, and a first ship is news (#143, #231)")
 {
     // Seen with the first generated region: within seconds of a start, the macro model
     // handed most of the region to the pirates and the news opened with eight seizures --
@@ -1471,4 +1471,52 @@ TEST_CASE("a system changes hands only after the balance has held for a while (#
     }
     MESSAGE("Tau Verge fell after " << fell << " s");
     CHECK((fell < 0 || fell >= 180));  // not before three minutes of holding
+}
+
+TEST_CASE("factions reach a step at a time, where the prize is worth the risk (#231)")
+{
+    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    Simulation        sim;
+    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    sim.AttachRegion(7, systems);
+    sim.Seed(1234u);
+    sim.InitGalaxy();
+    sim.MaterializeAllSystems(systems);
+
+    std::map<std::string, FactionId> held;
+    for (auto& kv : sim.Systems())
+        held[kv.first] = kv.second.agg.controller;
+
+    int changes = 0, early = 0;
+    for (int pass = 1; pass <= 30 * 120; pass++)  // two simulated hours, a pass every 2 s
+    {
+        sim.MaintainWorld(2.0f);
+        for (auto& kv : sim.Systems())
+        {
+            const FactionId now = kv.second.agg.controller;
+            if (now == held[kv.first])
+                continue;
+            CAPTURE(kv.first);
+            CAPTURE(pass);
+            changes++;
+            if (pass <= 30 * 10)
+                early++;
+            // A step, never a leap: whoever took it held a system next door.
+            bool adjacent = false;
+            for (const std::string& n : sim.Neighbors(kv.first))
+                adjacent = adjacent || held[n] == now;
+            CHECK(adjacent);
+            // The Independents hold what they have and reach for nothing.
+            CHECK(now != FactionId::Independent);
+        }
+        for (auto& kv : sim.Systems())
+            held[kv.first] = kv.second.agg.controller;
+    }
+    MESSAGE(changes << " systems changed hands in two hours, " << early
+                    << " in the first ten minutes");
+    CHECK(changes > 0);  // the world does go on without players
+    CHECK(early <= 1);   // ...but nothing is decided at once
+    CHECK(sim.SystemById("verge")->agg.controller == FactionId::Independent);
 }

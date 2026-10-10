@@ -37,9 +37,6 @@ constexpr float SUPPRESS_DECAY = 0.97f;           // suppression falloff per coa
 constexpr float DANGER_SEC = 0.35f;               // below this the system is "unsafe" (ambushes)
 constexpr float SPAWN_MIN_PLAYER_DIST = 2600.0f;  // do not spawn closer to the player
 constexpr float MAINT_STEP = 2.0f;                // coarse world maintenance period
-// How many macro passes in a row a side must hold a system before it changes hands (#225):
-// three minutes, long enough for players to notice and answer.
-constexpr int CONTEST_PASSES = 90;
 
 float ClampF(float v, float lo, float hi)
 {
@@ -326,51 +323,9 @@ void Simulation::StepWorldMacro()
         b->second.agg.prosperity = ClampF(b->second.agg.prosperity - dp * 0.02f, 0.0f, 1.0f);
     }
 
-    // Controller changes (on real numbers; reinforcements are provided by the director).
-    for (auto& kv : systems_)
-    {
-        SystemAggregate& a = kv.second.agg;
-        if (!a.visited)
-            continue;  // nobody's to take until somebody has been there (#143)
-        // A system changes hands only after the balance has held for a while (#225): one
-        // bad pass is a raid, not a conquest. Without it Tau Verge fell ten seconds into a
-        // fresh world -- before anybody could have done anything about it.
-        const bool pirateHold = a.controller != FactionId::Pirates &&
-                                a.pirates > a.police * 2.0f + 2.0f && a.security < 0.25f;
-        const bool lawHold =
-            a.controller == FactionId::Pirates && a.police > a.pirates && a.security > 0.4f;
-        a.contested = (pirateHold || lawHold) ? a.contested + 1 : 0;
-        if (a.contested < CONTEST_PASSES)
-            continue;
-        if (pirateHold)
-        {
-            a.contested = 0;
-            a.controller = FactionId::Pirates;
-            a.baseSecurity = std::min(a.baseSecurity, 0.15f);
-            if (!settling)
-                PushEvent("Pirates seized " + SystemName(kv.first));
-        }
-        else
-        {
-            // Law restored (the director brought police from a strong neighbor). Without
-            // a strong lawful neighbour to take it over, the count keeps running.
-            for (const std::string& nid : Neighbors(kv.first))
-            {
-                auto n = systems_.find(nid);
-                if (n != systems_.end() && Factions::IsLawful(n->second.agg.controller) &&
-                    n->second.agg.security > 0.6f)
-                {
-                    a.contested = 0;
-                    a.controller = n->second.agg.controller;
-                    a.baseSecurity = std::max(a.baseSecurity, 0.5f);
-                    if (!settling)
-                        PushEvent(SystemName(kv.first) + " liberated by " +
-                                  FactionName(n->second.agg.controller));
-                    break;
-                }
-            }
-        }
-    }
+    // Who reaches where, and who holds what: the same rule for every faction (#231).
+    StepFactions();
+    StepControl(settling);
 }
 
 void Simulation::RecountAgg(SystemState& st)
@@ -483,29 +438,28 @@ void Simulation::TopUpSystem(SystemState& st, const std::vector<Vector2>& avoid)
     std::vector<Vector2> hot = PirateSpots(nd);
 
     const SystemAggregate& agg = st.agg;
-    float                  sec = agg.security;
+    const float            sec = agg.security;
     FactionId              ctrl = agg.controller;
     bool                   lawful = Factions::IsLawful(ctrl);
 
-    // Police faction and its target. A pirate system has no police UNLESS there is a
-    // strong lawful neighbor — then it sends reinforcements.
+    // Armed ships come from what each faction has committed here (#231), not from a formula
+    // of security: the lawful as police under whichever of them is strongest here, the
+    // pirates as pirates.
     FactionId policeFac = lawful ? ctrl : FactionId::TradersGuild;
-    int       policeTarget = lawful ? (int)roundf(sec * 4.0f) : 0;
-    if (ctrl == FactionId::Pirates)
-        for (const std::string& nid : Neighbors(st.id))
+    float     lawPresence = 0.0f, strongestLaw = 0.0f;
+    for (int f = 0; f < FACTION_COUNT; f++)
+        if (Factions::IsLawful((FactionId)f))
         {
-            auto n = systems_.find(nid);
-            if (n != systems_.end() && Factions::IsLawful(n->second.agg.controller) &&
-                n->second.agg.security > 0.6f && n->second.agg.police >= 3.0f)
+            lawPresence += agg.presence[f];
+            if (agg.presence[f] > strongestLaw)
             {
-                policeFac = n->second.agg.controller;
-                policeTarget = 4;  // neighbor's reinforcements
-                break;
+                strongestLaw = agg.presence[f];
+                policeFac = (FactionId)f;
             }
         }
-
-    int piratesTarget =
-        (ctrl == FactionId::Pirates) ? 6 : std::max(0, (int)roundf((0.7f - sec) * 8.0f));
+    st.agg.policeFaction = policeFac;
+    int       policeTarget = (int)roundf(lawPresence);
+    int       piratesTarget = (int)roundf(agg.presence[(int)FactionId::Pirates]);
     int       tradersTarget = (ctrl == FactionId::Pirates) ? 1 : (int)roundf(2.0f + sec * 4.0f);
     int       minersTarget = 2;
     FactionId tradeFac = lawful ? ctrl : FactionId::Independent;
@@ -589,6 +543,10 @@ void Simulation::MaintainWorld(float dt)
             AccumSuppress(a.supMiners, prevMi - a.miners);
             AccumSuppress(a.supPolice, prevPo - a.police);
             AccumSuppress(a.supPirates, prevPi - a.pirates);
+            // What was destroyed, for the faction step: strength a faction committed and
+            // lost (#231). A fall in the count is a loss -- ships do not leave a system.
+            a.lostPirates += std::max(0.0f, prevPi - a.pirates);
+            a.lostPolice += std::max(0.0f, prevPo - a.police);
         }
         StepWorldMacro();
         for (auto& kv : systems_)

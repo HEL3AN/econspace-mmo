@@ -73,6 +73,43 @@ on their map too.
 
 ---
 
+## factions.json — who is in the galaxy, and how they act
+
+```json
+{ "id": "Pirates", "name": "Pirates", "color": [255, 161, 0], "lawful": false, "kind": "Pirate",
+  "temperament": { "appetite": 1.4, "capacity": 6, "growth": 0.08,
+                   "values": { "traffic": 1.0, "salvage": 0.6, "unclaimed": 0.4 } } }
+```
+
+`relations` gives each pair a stance (`War`, `Hostile`, `Neutral`, `Friendly`, `Ally`), and
+`repTiers` the reputation thresholds.
+
+### temperament — the same machinery for every faction (#231)
+
+Every faction acts on the galaxy by one rule. Only its temperament differs, so a new
+faction's behaviour is data.
+
+| Field | Meaning |
+|------|----------|
+| `appetite` | How bold. A faction reaches into a neighbouring system when *value − risk / appetite* > 0. `0` never reaches out: it holds what it has. |
+| `capacity` | The strength, in ships, one of its systems sustains. |
+| `growth` | How fast its strength recovers in a system it holds, per period (a minute). |
+| `values.traffic` | Weight on the trade passing through: prey to a pirate, customers to a guild. |
+| `values.ore` | Weight on belts to mine. |
+| `values.salvage` | Weight on wrecks, ruins and finds. |
+| `values.unclaimed` | Weight on a system nobody holds. |
+
+How it plays out:
+- **Risk is the same for everyone:**
+  - enemies' strength in the target;
+  - defensive stations (`defensive`) of other owners;
+  - for a faction that is not `lawful`, the system's security.
+- **One move per faction per period.** A system it holds may send what it has above 60% of `capacity` into **one** neighbour by gate, never further.
+- **What a faction may enter:** a system nobody holds, or one held by a faction it is at `War` or `Hostile` with. Never a friend's or a neutral power's.
+- **When a system changes hands:** when a challenger has held the upper hand there for three minutes. That means more than 1.5× the holder's strength plus one, and at least half its own `capacity`, which the local trouble of a lawless system never reaches.
+
+A system beyond the wormhole starts held by **nobody**: its controller reads Independent, but no garrison grows there and any faction may claim it. The spawn director makes the armed ships from this committed strength, and ships destroyed in battle are strength lost.
+
 ## archetypes.json — what a kind of object is
 
 A system file says *where* an object is and which particular one it is. The archetype

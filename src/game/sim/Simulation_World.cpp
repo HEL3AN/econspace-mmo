@@ -46,6 +46,8 @@ void Simulation::SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& i
     a.pirates = std::max(0.0f, roundf((0.7f - sec) * 8.0f));
     a.controller = info.owner.empty() ? FactionId::Independent : FactionFromString(info.owner);
     a.visited = regionDocs_.count(info.id) == 0;  // beyond the wormhole, nobody has been
+    a.claimed = !info.owner.empty();
+    SeedPresence(a);
     a.seeded = true;
 }
 
@@ -265,7 +267,8 @@ void Simulation::SaveWorld(const std::string& path) const
                              { "police", a.police },         { "pirates", a.pirates },
                              { "security", a.security },     { "baseSecurity", a.baseSecurity },
                              { "prosperity", a.prosperity }, { "controller", (int)a.controller },
-                             { "visited", a.visited } };
+                             { "visited", a.visited },       { "presence", a.presence },
+                             { "claimed", a.claimed } };
     }
     j["galaxy"] = galaxy;
 
@@ -308,6 +311,14 @@ Save::Result Simulation::LoadWorld(const std::string& path)
         a.prosperity = gj.value("prosperity", a.prosperity);
         a.controller = (FactionId)gj.value("controller", (int)a.controller);
         a.visited = gj.value("visited", a.visited);
+        a.claimed = gj.value("claimed", a.claimed);
+        // An older save has no presence: the seeded one stands, from what it did save.
+        if (gj.contains("presence") && gj["presence"].is_array() &&
+            gj["presence"].size() == FACTION_COUNT)
+            for (int f = 0; f < FACTION_COUNT; f++)
+                a.presence[f] = gj["presence"][f].get<float>();
+        else
+            SeedPresence(a);
         a.seeded = true;
     }
     return Save::Result::Ok;

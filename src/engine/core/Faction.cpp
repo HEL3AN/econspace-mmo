@@ -16,6 +16,7 @@ Color       g_color[N] = { Color{ 200, 200, 200, 255 }, Color{ 0, 228, 48, 255 }
                            Color{ 230, 41, 55, 255 }, Color{ 255, 161, 0, 255 } };
 bool        g_lawful[N] = { true, true, true, false };
 std::string g_kind[N] = { "Independent", "Major", "Major", "Pirate" };
+Temperament g_temperament[N];  // all hold and none reach out until the file says otherwise
 
 // Relations matrix. By default: hostile toward pirates, neutral among each other,
 // allied with oneself.
@@ -86,6 +87,11 @@ FactionId FactionFromString(const std::string& name)
 
 namespace Factions
 {
+const Temperament& TemperamentOf(FactionId f)
+{
+    return g_temperament[(int)f];
+}
+
 void Load(const std::string& path)
 {
     if (!g_relationsInit)
@@ -111,6 +117,19 @@ void Load(const std::string& path)
             g_name[i] = j.value("name", g_name[i]);
             g_lawful[i] = j.value("lawful", g_lawful[i]);
             g_kind[i] = j.value("kind", g_kind[i]);
+            if (j.contains("temperament") && j["temperament"].is_object())
+            {
+                const json&  t = j["temperament"];
+                Temperament& m = g_temperament[i];
+                m.appetite = t.value("appetite", m.appetite);
+                m.capacity = t.value("capacity", m.capacity);
+                m.growth = t.value("growth", m.growth);
+                const json v = t.value("values", json::object());
+                m.traffic = v.value("traffic", m.traffic);
+                m.ore = v.value("ore", m.ore);
+                m.salvage = v.value("salvage", m.salvage);
+                m.unclaimed = v.value("unclaimed", m.unclaimed);
+            }
             if (j.contains("color") && j["color"].size() >= 3)
                 g_color[i] = Color{ (unsigned char)j["color"][0], (unsigned char)j["color"][1],
                                     (unsigned char)j["color"][2], 255 };

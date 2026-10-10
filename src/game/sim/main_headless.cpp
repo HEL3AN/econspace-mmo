@@ -1271,14 +1271,28 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    // econserver <ticks> [--seed N] [--news]: with a seed, the region beyond the wormhole
+    // too; with --news, the galactic news as it happens, stamped, instead of the periodic
+    // tables -- how a living world is watched over hours (#231).
+    int      ticks = (argc > 1) ? atoi(argv[1]) : 3600;
+    uint64_t regionSeed = 0;
+    bool     newsOnly = false;
+    for (int i = 2; i < argc; i++)
+        if (std::string(argv[i]) == "--seed" && i + 1 < argc)
+            regionSeed = std::strtoull(argv[++i], nullptr, 10);
+        else if (std::string(argv[i]) == "--news")
+            newsOnly = true;
+
     Simulation sim;
     sim.LoadUniverse(dataDir + "universe.json");
+    if (regionSeed != 0)
+        sim.AttachRegion(regionSeed, dataDir + "systems/");
     sim.Seed(0xC0FFEEu);
     sim.InitGalaxy();
     sim.MaterializeAllSystems(dataDir + "systems/");  // real entities of all systems
 
-    int         ticks = (argc > 1) ? atoi(argv[1]) : 3600;
-    const float dt = 1.0f / 60.0f;  // = SIM_DT: server tick as in the game
+    const float              dt = 1.0f / 60.0f;  // = SIM_DT: server tick as in the game
+    std::vector<std::string> seen;               // the news already printed
 
     printf("EconSpace headless server — %d systems, %d ticks (real agents)\n",
            (int)sim.Universe().systems.size(), ticks);
@@ -1294,7 +1308,25 @@ int main(int argc, char** argv)
             sim.StepSystemAgents(kv.second, {}, nullptr, dt);
         sim.MaintainWorld(dt);
 
-        if (i % printEvery == 0 || i == ticks - 1)
+        if (newsOnly)
+        {
+            // The list is capped, so what is new is what follows the last line seen.
+            const std::vector<std::string>& ev = sim.Events();
+            size_t                          from = 0;
+            if (!seen.empty())
+                for (size_t k = ev.size(); k-- > 0;)
+                    if (ev[k] == seen.back())
+                    {
+                        from = k + 1;
+                        break;
+                    }
+            for (size_t k = from; k < ev.size(); k++)
+            {
+                printf("  %6.0f min  %s\n", sim.Time() / 60.0, ev[k].c_str());
+                seen.push_back(ev[k]);
+            }
+        }
+        if (!newsOnly && (i % printEvery == 0 || i == ticks - 1))
         {
             printf("\n[tick %d / t=%.1fs]\n", i, i * dt);
             for (auto& kv : sim.Systems())
@@ -1308,6 +1340,20 @@ int main(int argc, char** argv)
         }
     }
 
+    if (newsOnly)
+    {
+        printf("\nAfter %.0f minutes:\n", sim.Time() / 60.0);
+        for (auto& kv : sim.Systems())
+        {
+            const SystemAggregate& a = kv.second.agg;
+            printf("  %-10s %-14s sec %.2f  presence", kv.first.c_str(),
+                   FactionName(a.controller).c_str(), a.security);
+            for (int f = 0; f < FACTION_COUNT; f++)
+                printf(" %.1f", a.presence[f]);
+            printf("\n");
+        }
+        return 0;
+    }
     printf("\nGalactic news:\n");
     if (sim.Events().empty())
         printf("  (no territory changes)\n");
