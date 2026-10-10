@@ -41,9 +41,14 @@ public:
         modulesSeeds_ = seeds < 1 ? 1 : seeds;
     }
     void        DrawModules(bool labels);
+    void        HandleModulesInput();
     float       modulesZoom_ = 1.0f;
     std::string modulesPack_;
     int         modulesSeeds_ = 1;
+    float       modulesScroll_ = 0.0f;   // pixels the sheet is scrolled down
+    float       modulesContent_ = 0.0f;  // how tall the sheet is, for clamping the scroll
+    std::string modulesFocus_;           // one module, large, at many seeds; empty: the sheet
+    std::string modulesHover_;           // the module under the mouse, found while drawing
 
     // Starts on the shape backend instead of glyphs. F2 still switches; this is for
     // opening straight into the one you meant to look at.

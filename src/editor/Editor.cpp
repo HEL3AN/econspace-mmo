@@ -36,6 +36,9 @@ Editor::Editor()
     InitWindow(screenWidth_, screenHeight_, "EconSpace — World Editor");
     SetWindowMinSize(960, 600);
     SetTargetFPS(60);
+    // Esc is "back" in every view -- the gallery's card, the module sheet's focus -- and
+    // never "quit": the window's own close button does that.
+    SetExitKey(KEY_NULL);
     Ui::LoadAssets();
 
 #ifdef EDITOR_DATA_DIR
@@ -292,10 +295,7 @@ void Editor::Run()
         }
         else if (mode_ == Mode::Modules)
         {
-            const float wheel = GetMouseWheelMove();
-            if (wheel != 0.0f)
-                modulesZoom_ =
-                    fmaxf(0.25f, fminf(8.0f, modulesZoom_ * (wheel > 0 ? 1.2f : 1.0f / 1.2f)));
+            HandleModulesInput();
             if (!shooting)
                 treatment_.Begin(screenWidth_, screenHeight_);
             DrawModules(false);

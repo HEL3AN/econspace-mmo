@@ -14,6 +14,8 @@
 // that have to read at a glance, and there is no way to ask an entity to be damaged.
 
 #include "Editor.h"
+
+#include <algorithm>
 #include "render/Modules.h"
 
 #include "core/ArchetypeEdit.h"
@@ -768,43 +770,107 @@ void Editor::DrawTreatmentSettings()
 // library is judged as a library: does a hatch read as a hatch, do its variants differ
 // enough, does one style hold across all of them. `labels` is the second pass, drawn after
 // the screen treatment like every tool.
+// The packs in load order, "every pack" first.
+static std::vector<std::string> ModulePacks()
+{
+    std::vector<std::string> packs{ "" };
+    for (const Render::Module& m : Render::Modules::All())
+        if (std::find(packs.begin(), packs.end(), m.pack) == packs.end())
+            packs.push_back(m.pack);
+    return packs;
+}
+
+void Editor::HandleModulesInput()
+{
+    if (IsKeyPressed(KEY_TAB))
+    {
+        const std::vector<std::string> packs = ModulePacks();
+        const int                      n = (int)packs.size();
+        const auto                     at = std::find(packs.begin(), packs.end(), modulesPack_);
+        const int                      k = at == packs.end() ? 0 : (int)(at - packs.begin());
+        modulesPack_ = packs[(k + (IsKeyDown(KEY_LEFT_SHIFT) ? n - 1 : 1)) % n];
+        modulesFocus_.clear();
+        modulesScroll_ = 0.0f;
+    }
+    // More or fewer seeds of each variant.
+    if (IsKeyPressed(KEY_RIGHT_BRACKET) || IsKeyPressed(KEY_EQUAL))
+        modulesSeeds_ = std::min(8, modulesSeeds_ + 1);
+    if (IsKeyPressed(KEY_LEFT_BRACKET) || IsKeyPressed(KEY_MINUS))
+        modulesSeeds_ = std::max(1, modulesSeeds_ - 1);
+
+    // The wheel scrolls and, with Ctrl held, sizes the cards. Dragging with the right or
+    // middle button scrolls too, and the keys do what they do on any long page.
+    const float wheel = GetMouseWheelMove();
+    const bool  ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+    if (wheel != 0.0f && ctrl)
+        modulesZoom_ = fmaxf(0.4f, fminf(4.0f, modulesZoom_ * (wheel > 0 ? 1.15f : 1.0f / 1.15f)));
+    else if (wheel != 0.0f)
+        modulesScroll_ -= wheel * 120.0f;
+    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || IsMouseButtonDown(MOUSE_BUTTON_MIDDLE))
+        modulesScroll_ -= GetMouseDelta().y;
+    const float page = (float)screenHeight_ - 120.0f;
+    if (IsKeyPressed(KEY_PAGE_DOWN) || IsKeyPressed(KEY_SPACE))
+        modulesScroll_ += page;
+    if (IsKeyPressed(KEY_PAGE_UP))
+        modulesScroll_ -= page;
+    if (IsKeyDown(KEY_DOWN))
+        modulesScroll_ += 14.0f;
+    if (IsKeyDown(KEY_UP))
+        modulesScroll_ -= 14.0f;
+    if (IsKeyPressed(KEY_HOME))
+        modulesScroll_ = 0.0f;
+    if (IsKeyPressed(KEY_END))
+        modulesScroll_ = 1e9f;
+    const float most = fmaxf(0.0f, modulesContent_ - ((float)screenHeight_ - 90.0f));
+    modulesScroll_ = fmaxf(0.0f, fminf(most, modulesScroll_));
+
+    // A click opens a module large; Esc, Backspace or a click on nothing goes back.
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+    {
+        if (modulesFocus_.empty() && !modulesHover_.empty())
+        {
+            modulesFocus_ = modulesHover_;
+            modulesScroll_ = 0.0f;
+        }
+        else if (!modulesFocus_.empty() && modulesHover_.empty())
+            modulesFocus_.clear();
+    }
+    if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE))
+        modulesFocus_.clear();
+}
+
 void Editor::DrawModules(bool labels)
 {
-    // Fitted so the whole library is on one screen at zoom 1; the wheel then enlarges.
-    auto shown = [&](const Render::Module& m)
-    { return modulesPack_.empty() || m.pack == modulesPack_; };
-    const int total = [&]
-    {
-        int n = 0;
-        for (const auto& m : Render::Modules::All())
-            if (shown(m))
-                n += (int)m.variants.size() * modulesSeeds_;
-        return n;
-    }();
-    const float fit = sqrtf((float)(screenWidth_ - 48) * (float)(screenHeight_ - 80) /
-                            (float)(total > 0 ? total : 1)) *
-                      0.85f;
-    const float cell = fminf(170.0f, fit) * modulesZoom_;
-    const float left = 24.0f, top = 70.0f;
-    const int   columns = (int)fmaxf(1.0f, ((float)screenWidth_ - left * 2.0f) / cell);
-    if (labels)
-    {
-        Ui::Text("MODULES", (int)left, 18, 22, Ui::ACCENT);
-        Ui::Text(TextFormat("%d modules   %s   %d seed(s) each   wheel: zoom   F2: backend",
-                            (int)Render::Modules::All().size(),
-                            modulesPack_.empty() ? "every pack" : modulesPack_.c_str(),
-                            modulesSeeds_),
-                 (int)left + 140, 24, 14, Ui::TEXT_DIM);
-    }
+    const bool focused = !modulesFocus_.empty();
+    auto       shown = [&](const Render::Module& m)
+    { return focused ? m.id == modulesFocus_ : modulesPack_.empty() || m.pack == modulesPack_; };
+    // Opened, one module's variants down the page and six seeds of each across it.
+    const int seedsShown = focused ? 6 : modulesSeeds_;
 
-    // One shape per card, kept alive for the frame: an item borrows its shape.
-    std::vector<Render::Shape>                   shapes;
-    std::vector<std::pair<std::string, Vector2>> names;
-    std::vector<int>                             seeds;
+    const float left = 24.0f, top = 84.0f;
+    const float width = (float)screenWidth_ - left * 2.0f - 12.0f;
+    const float cell =
+        fmaxf(48.0f, (focused ? fminf(260.0f, width / (float)seedsShown) : 132.0f) * modulesZoom_);
+    const int columns = (int)fmaxf(1.0f, width / cell);
+
+    struct Card
+    {
+        std::string module, label;
+        int         seed;
+        Vector2     centre;
+    };
+    std::vector<Card>          cards;
+    std::vector<Render::Shape> shapes;  // kept alive for the frame: an item borrows its shape
+    int                        slot = 0;
     for (const Render::Module& m : Render::Modules::All())
         if (shown(m))
             for (const Render::ModuleVariant& v : m.variants)
-                for (int seed = 1; seed <= modulesSeeds_; seed++)
+            {
+                // A variant starts a new row when its seeds fit on one, so the eye reads
+                // across one family rather than across a seam between two.
+                if (seedsShown <= columns && slot % columns + seedsShown > columns)
+                    slot += columns - slot % columns;
+                for (int seed = 1; seed <= seedsShown; seed++, slot++)
                 {
                     Render::Part p;
                     p.module = m.id;
@@ -813,36 +879,83 @@ void Editor::DrawModules(bool labels)
                     Render::Shape sh;
                     sh.parts.push_back(p);
                     shapes.push_back(sh);
-                    names.push_back({ seed == 1 ? m.id + " / " + v.id : TextFormat("#%d", seed),
-                                      { 0.0f, 0.0f } });
-                    seeds.push_back(seed);
+                    const int col = slot % columns, row = slot / columns;
+                    cards.push_back(
+                        { m.id,
+                          seed == 1 ? m.id + " / " + v.id : std::string(TextFormat("#%d", seed)),
+                          seed,
+                          { left + cell * ((float)col + 0.5f),
+                            top + cell * ((float)row + 0.5f) - modulesScroll_ } });
                 }
+            }
+    modulesContent_ = cell * (float)((slot + columns - 1) / columns) + 20.0f;
 
-    Camera2D cam{};
+    if (labels)
+        modulesHover_.clear();
+    const Vector2 mouse = GetMousePosition();
+    Camera2D      cam{};
     cam.zoom = 1.0f;
-    for (size_t i = 0; i < shapes.size(); i++)
+    for (size_t i = 0; i < cards.size(); i++)
     {
-        const int     col = (int)i % columns, row = (int)i / columns;
-        const Vector2 centre = { left + cell * ((float)col + 0.5f),
-                                 top + cell * ((float)row + 0.5f) };
+        const Card& c = cards[i];
+        const float half = cell * 0.47f;
+        // Off the page, or partly under the header: a card is drawn whole or not at all.
+        if (c.centre.y - half < top - 1.0f || c.centre.y - half > (float)screenHeight_)
+            continue;
+        const Rectangle box{ c.centre.x - half, c.centre.y - half, half * 2.0f, half * 2.0f };
         if (labels)
         {
-            DrawRectangleLinesEx(
-                { centre.x - cell * 0.47f, centre.y - cell * 0.47f, cell * 0.94f, cell * 0.94f },
-                1.0f, Fade(Ui::PANEL_BORDER, 0.6f));
-            Ui::Text(names[i].first.c_str(), (int)(centre.x - cell * 0.44f),
-                     (int)(centre.y + cell * (names[i].first[0] == '#' ? -0.44f : 0.36f)), 12,
-                     Ui::TEXT_DIM);
+            const bool hover = CheckCollisionPointRec(mouse, box);
+            if (hover)
+                modulesHover_ = c.module;
+            DrawRectangleLinesEx(box, 1.0f, hover ? Ui::ACCENT : Fade(Ui::PANEL_BORDER, 0.6f));
+            Ui::Text(c.label.c_str(), (int)(c.centre.x - cell * 0.44f),
+                     (int)(c.centre.y + cell * (c.label[0] == '#' ? -0.44f : 0.36f)),
+                     cell > 180.0f ? 16 : 12, Ui::TEXT_DIM);
             continue;
         }
         Render::Item it;
-        it.pos = centre;
+        it.pos = c.centre;
         it.size = cell * 0.3f;
         it.color = { 168, 168, 176, 255 };
         it.material = "hull";
         it.shape = &shapes[i];
         it.heading = 0.0f;
-        it.id = seeds[i];
-        Render::Present({ it }, GalleryLighting(centre, it.size), cam, *backend_);
+        it.id = c.seed;
+        Render::Present({ it }, GalleryLighting(c.centre, it.size), cam, *backend_);
+    }
+    if (!labels)
+        return;
+
+    Ui::Text("MODULES", (int)left, 14, 22, Ui::ACCENT);
+    if (focused)
+    {
+        Ui::Text(modulesFocus_.c_str(), (int)left + 140, 18, 18, Ui::TEXT);
+        Ui::Text("6 seeds of each variant   click outside / Esc: back   wheel: scroll   "
+                 "Ctrl+wheel: size",
+                 (int)left, 52, 13, Ui::TEXT_DIM);
+    }
+    else
+    {
+        // Every pack named, the one shown lit: Tab steps through them.
+        int x = (int)left + 140;
+        for (const std::string& p : ModulePacks())
+        {
+            const char* name = p.empty() ? "all" : p.c_str();
+            Ui::Text(name, x, 20, 14, p == modulesPack_ ? Ui::ACCENT : Ui::TEXT_DIM);
+            x += MeasureText(name, 14) + 18;
+        }
+        Ui::Text(TextFormat("Tab: next pack   wheel / right-drag: scroll   Ctrl+wheel: size   "
+                            "[ ]: seeds (%d)   click: open a module   F2: backend",
+                            modulesSeeds_),
+                 (int)left, 52, 13, Ui::TEXT_DIM);
+    }
+    const float view = (float)screenHeight_ - top;
+    if (modulesContent_ > view)
+    {
+        // Where on the page you are.
+        const float h = fmaxf(30.0f, view * view / modulesContent_);
+        const float y = top + (view - h) * modulesScroll_ / fmaxf(1.0f, modulesContent_ - view);
+        DrawRectangle(screenWidth_ - 10, (int)y, 4, (int)h, Fade(Ui::ACCENT, 0.6f));
     }
 }
