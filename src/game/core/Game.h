@@ -162,6 +162,15 @@ private:
     std::string dataDir_;  // folder with world data (universe/systems)
 
     float simAccumulator_ = 0.0f;  // accumulator for the fixed simulation step
+    // The own ship as drawn: between its last two simulation steps, by how far the clock
+    // has got towards the next one. Drawn at the latest step instead, it moved by zero
+    // ticks in one frame and two in the next whenever frames and ticks drifted apart --
+    // a couple of pixels of shudder at cruising speed, all the time.
+    Vector2 shipPrevPos_ = { 0.0f, 0.0f };
+    float   shipPrevHeading_ = 0.0f;
+    Vector2 shipDrawPos_ = { 0.0f, 0.0f };
+    float   shipDrawHeading_ = 0.0f;
+    void    UpdateShipDrawPose();
 
     // The player's camera (#158). `camera_` is what it produced this frame -- kept as a plain
     // Camera2D because every draw call and every screen-to-world conversion already takes

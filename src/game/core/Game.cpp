@@ -180,6 +180,8 @@ void Game::Run()
                 if (pendingInputs_.size() > 256)  // guard against growth if the server stalls
                     pendingInputs_.erase(pendingInputs_.begin());
                 clientLink_->Send(Proto::EncodeCommand(cmd_));
+                shipPrevPos_ = playerShip_->GetPosition();
+                shipPrevHeading_ = playerShip_->GetHeading();
                 Sim::StepPlayerShip(*playerShip_, cmd_, 1.0f, SIM_DT, HoldTargetPos());
                 // One-shot intents applied/sent this tick — clear them (axes are held).
                 cmd_.toggleStabilizer = cmd_.toggleMining = cmd_.toggleWeapon = false;
@@ -202,12 +204,14 @@ void Game::Run()
         // is nothing between the old position and the new one to glide across.
         if (mode_ == GameMode::Flying)
         {
+            UpdateShipDrawPose();
             if (cameraSnap_)
             {
-                rig_.Snap(playerShip_->GetPosition());
+                rig_.Snap(shipDrawPos_);
                 cameraSnap_ = false;
             }
-            rig_.Update(dt, playerShip_->GetPosition(), playerShip_->IsWarping());
+            // The camera follows the ship as drawn, or the ship shudders against it.
+            rig_.Update(dt, shipDrawPos_, playerShip_->IsWarping());
             camera_ = rig_.Camera();
             BuildNetworkBeams();  // combat beams — from the snapshot (server computes combat)
 
@@ -715,4 +719,26 @@ void Game::HandleNaming()
         clientLink_->Send(Proto::EncodeCommand(c));
         naming_ = false;
     }
+}
+
+void Game::UpdateShipDrawPose()
+{
+    const Vector2 now = playerShip_->GetPosition();
+    const float   alpha = std::fmin(1.0f, std::fmax(0.0f, simAccumulator_ / SIM_DT));
+    const float   dx = now.x - shipPrevPos_.x, dy = now.y - shipPrevPos_.y;
+    // A jump, an arrival or a respawn is not a movement to smooth: a step that covered more
+    // than a warp could in one tick is a teleport, drawn where it ended.
+    if (dx * dx + dy * dy > 10000.0f * 10000.0f)
+    {
+        shipDrawPos_ = now;
+        shipDrawHeading_ = playerShip_->GetHeading();
+        return;
+    }
+    shipDrawPos_ = { shipPrevPos_.x + dx * alpha, shipPrevPos_.y + dy * alpha };
+    float turn = playerShip_->GetHeading() - shipPrevHeading_;
+    while (turn > PI)
+        turn -= 2.0f * PI;
+    while (turn < -PI)
+        turn += 2.0f * PI;
+    shipDrawHeading_ = shipPrevHeading_ + turn * alpha;
 }
