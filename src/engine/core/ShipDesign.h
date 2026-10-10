@@ -1,6 +1,7 @@
 #pragma once
 
 #include "economy/Resource.h"
+#include "render/Silhouette.h"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <utility>
@@ -43,6 +44,10 @@ struct ModulePart
     float       mass = 0.0f;
     Provides    provides;
     Cost        cost;
+    // How it meets each kind of socket when a design is drawn: socket kind -> the kit line's
+    // look ({ "mount", "turn", "scale", "z" }). An engine stands out of the stern, turned aft
+    // and under the hull; that is true of every design that fits one, so it is said once.
+    std::vector<std::pair<std::string, nlohmann::json>> look;
 };
 
 // A section of a ship: a piece of hull that stands at one position of a frame and exposes
@@ -55,6 +60,14 @@ struct Section
     Provides                                 provides;
     Cost                                     cost;
     std::vector<std::pair<std::string, int>> sockets;  // kind -> capacity
+    // What it is drawn as, in its own frame, +x forward (#279 step 3): `sections` are its
+    // hull -- fixed, mirrored, no module and nothing the seed rolls, so the class rule is
+    // checked on the hull every ship of the design has -- `kit` the trim that goes on them
+    // (`in` counts this section's own hull parts) and `parts` anything else. A frame lays
+    // its sections end to end, stern to bow, and that is the ship.
+    nlohmann::json            shape;
+    std::vector<Render::Part> hull;                     // `sections`, read
+    float                     aft = 0.0f, fore = 0.0f;  // how far the hull reaches along x
 };
 
 // A frame is a hull class (Proposal A's interceptor, frigate, hauler, barge...): the spine
@@ -68,14 +81,21 @@ struct Frame
     Cost        cost;
     int         minMids = 1;
     int         maxMids = 1;
+    // The class's silhouette rule (Proposal A), checked on every design's hull: at least this
+    // long for its width, so no capsule or oval is a main body, and its mass aft of the middle
+    // -- the drives are the heaviest thing on a ship -- unless the class is the one that
+    // carries its work in front of it.
+    float minAspect = 1.0f;
+    bool  bowHeavy = false;
 };
 
 struct FitLine
 {
     std::string module;  // a ModulePart id
     std::string in;      // the position whose sections carry it: "bow", "mid", "stern"
-    std::string on;      // the socket kind: "top", "edge", "end", "side", ...
+    std::string on;      // the socket kind: "top", "edge", "stern", "side", ...
     int         count = 1;
+    float       scale = 0.0f;  // how big it is drawn; 0: the module's look for the socket
 };
 
 struct Design
@@ -97,6 +117,7 @@ struct Rules
     float rcsPerTurn = 1.0f;           // turn rate (rad/s) = rcs acceleration / rcsPerTurn
     float buildSecondsPerMass = 0.0f;  // build time = perMass * mass + perPart * parts
     float buildSecondsPerPart = 0.0f;
+    float plain = 0.5f;  // the share of a drawn ship's sockets its trim leaves empty
 };
 
 struct Catalogue
@@ -136,9 +157,25 @@ bool Load(const std::string& path, Catalogue& out, std::string& error);
 // Whether a design can be built from the catalogue's parts: every name exists, each section
 // stands where the frame puts it, every module is placed -- a fit that runs out of sockets is
 // an invalid design, never a quietly weaker ship -- and the rules a readable ship keeps hold:
-// drives sit in the stern, and what goes on a side or an edge comes in pairs.
+// drives sit in the stern, what goes on a side or an edge comes in pairs, and the hull keeps
+// its frame's class rule (Measure).
 bool Validate(const Catalogue& c, const Design& d, std::string& error);
 
 // The design's stats. False, with the reason, for a design that does not validate.
 bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error);
+
+// What the design looks like, as the shape JSON an archetype carries (#279 step 3): its
+// sections laid end to end along x, stern to bow, centred; their trim; and every fit line as
+// a kit line that carries function (`"fit": true`) on the sections at its position, so the
+// count on the hull is the count in the design. Read with Render::ParseShape, which is where
+// a module the render library does not have is an error.
+bool ShapeOf(const Catalogue& c, const Design& d, nlohmann::json& out, std::string& error);
+
+// How a design's hull measures against its frame's class rule.
+struct Silhouette
+{
+    float length = 0.0f, width = 0.0f;
+    float massAt = 0.0f;  // where the hull's area is centred: -1 the stern, 0 the middle, 1 the bow
+};
+Silhouette Measure(const Catalogue& c, const Design& d);
 }  // namespace Ships

@@ -362,7 +362,7 @@
             "id": "weapons.tractor",
             "note": "Tractor beams: a cradle that opens forward, its emitter a soft green-blue eye. Not a weapon to look at, but it is one.",
             "tags": ["utility", "turret"],
-            "sockets": ["top", "end"],
+            "sockets": ["top", "end", "bow"],
             "variants": [
                 { "id": "emitter", "shape": [
                     {"form": "disc", "radius": [0.55, 0.62], "role": "panel"},

@@ -4,45 +4,137 @@
         "speedPerAccel": 1.2,
         "rcsPerTurn": 183,
         "buildSecondsPerMass": 4,
-        "buildSecondsPerPart": 6
+        "buildSecondsPerPart": 6,
+        "plain": 0.5
     },
     "modules": [
-        { "id": "hull.cockpit", "mass": 2, "cost": { "Iron": 4, "Ice": 2 } },
-        { "id": "hull.engine", "mass": 5, "provides": { "thrust": 8400 }, "cost": { "Iron": 10, "Crystal": 4 } },
-        { "id": "hull.thruster", "mass": 2, "provides": { "thrust": 2430, "rcs": 2100 }, "cost": { "Iron": 4, "Crystal": 1 } },
-        { "id": "hull.rcs", "mass": 0.5, "provides": { "rcs": 4800 }, "cost": { "Iron": 1, "Ice": 1 } },
-        { "id": "hull.cargo", "mass": 3, "provides": { "cargo": 30 }, "cost": { "Iron": 6 } },
-        { "id": "weapons.tractor", "mass": 2, "provides": { "mining": 1 }, "cost": { "Iron": 4, "Crystal": 2 } }
+        { "id": "hull.cockpit", "mass": 2, "cost": { "Iron": 4, "Ice": 2 },
+          "look": { "top": { "scale": 0.09 }, "front": { "scale": 0.09 } } },
+        { "id": "hull.engine", "mass": 5, "provides": { "thrust": 8400 }, "cost": { "Iron": 10, "Crystal": 4 },
+          "look": { "stern": { "mount": "out", "turn": 180, "scale": 0.14, "z": -1 } } },
+        { "id": "hull.thruster", "mass": 2, "provides": { "thrust": 2430, "rcs": 2100 }, "cost": { "Iron": 4, "Crystal": 1 },
+          "look": { "side": { "mount": "out", "turn": 90, "scale": 0.12, "z": -1 },
+                    "stern": { "mount": "out", "turn": 180, "scale": 0.12, "z": -1 } } },
+        { "id": "hull.rcs", "mass": 0.5, "provides": { "rcs": 4800 }, "cost": { "Iron": 1, "Ice": 1 },
+          "look": { "edge": { "scale": 0.045, "turn": -90 } } },
+        { "id": "hull.cargo", "mass": 3, "provides": { "cargo": 30 }, "cost": { "Iron": 6 },
+          "look": { "spine": { "scale": 0.2 }, "side": { "mount": "out", "turn": 90, "scale": 0.2 } } },
+        { "id": "weapons.tractor", "mass": 2, "provides": { "mining": 1 }, "cost": { "Iron": 4, "Crystal": 2 },
+          "look": { "top": { "scale": 0.1, "mount": "centre" }, "bow": { "scale": 0.1, "mount": "out" } } }
     ],
     "sections": [
         { "id": "bow.blunt", "position": "bow", "mass": 3, "cost": { "Iron": 12 },
-          "sockets": { "top": 2, "edge": 2, "front": 1 } },
+          "sockets": { "top": 2, "edge": 2, "front": 1 },
+          "shape": {
+              "sections": [
+                  {"form": "bar", "at": [-0.2, 0.0], "length": 0.6, "width": 0.36, "role": "hull", "pitch": 0.13},
+                  {"form": "chevron", "at": [0.3, 0.0], "length": 0.4, "width": 0.36, "tip": 0.3, "role": "hull"}
+              ],
+              "parts": [
+                  {"form": "bar", "at": [0.08, 0.0], "angle": 90, "length": 0.3, "width": 0.03, "role": "panel", "minPixels": 30}
+              ]
+          } },
         { "id": "bow.needle", "position": "bow", "mass": 2, "cost": { "Iron": 8 },
-          "sockets": { "top": 1, "edge": 2, "front": 1 } },
+          "sockets": { "top": 1, "edge": 2, "front": 1 },
+          "shape": {
+              "sections": [
+                  {"form": "chevron", "at": [0.0, 0.0], "length": 1.0, "width": 0.5, "tip": 0.06, "role": "hull"},
+                  {"form": "bar", "at": [-0.22, 0.0], "length": 0.36, "width": 0.16, "role": "panel", "pitch": 0.16}
+              ],
+              "parts": [
+                  {"form": "chevron", "at": [0.12, 0.0], "length": 0.55, "width": 0.14, "role": "trim", "minPixels": 30}
+              ]
+          } },
         { "id": "bow.cab", "position": "bow", "mass": 3, "cost": { "Iron": 12 },
-          "sockets": { "top": 1, "edge": 2 } },
+          "sockets": { "top": 1, "edge": 2 },
+          "shape": {
+              "sections": [
+                  {"form": "bar", "at": [-0.1, 0.0], "length": 0.22, "width": 0.3, "role": "hull", "pitch": 0.16},
+                  {"form": "chevron", "at": [0.12, 0.0], "length": 0.22, "width": 0.3, "tip": 0.45, "role": "hull"}
+              ]
+          } },
         { "id": "bow.hammerhead", "position": "bow", "mass": 8, "provides": { "mining": 3 }, "cost": { "Iron": 30, "Crystal": 4 },
-          "sockets": { "top": 2, "edge": 2, "front": 2 } },
+          "sockets": { "bow": 2, "edge": 4 },
+          "shape": {
+              "sections": [
+                  {"form": "bar", "at": [-0.08, 0.0], "length": 0.2, "width": 0.3, "role": "hull", "pitch": 0.13},
+                  {"form": "bar", "at": [0.14, 0.0], "angle": 90, "length": 1.0, "width": 0.32, "role": "hull", "pitch": 0.16},
+                  {"form": "bar", "at": [0.46, 0.38], "length": 0.48, "width": 0.2, "role": "hull", "mirror": true, "pitch": 0.13}
+              ],
+              "parts": [
+                  {"form": "bar", "at": [0.14, 0.0], "angle": 90, "length": 0.84, "width": 0.05, "role": "panel", "minPixels": 30}
+              ]
+          } },
         { "id": "mid.spine", "position": "mid", "mass": 5, "provides": { "cargo": 20 }, "cost": { "Iron": 20 },
-          "sockets": { "top": 2, "edge": 4, "spine": 1 } },
+          "sockets": { "top": 2, "edge": 4, "spine": 1 },
+          "shape": {
+              "sections": [
+                  {"form": "bar", "length": 0.7, "width": 0.36, "role": "hull", "pitch": 0.13}
+              ]
+          } },
         { "id": "mid.slim", "position": "mid", "mass": 3, "provides": { "cargo": 5 }, "cost": { "Iron": 12 },
-          "sockets": { "top": 1, "edge": 4, "spine": 1 } },
+          "sockets": { "top": 1, "edge": 4, "side": 2, "spine": 1 },
+          "shape": {
+              "sections": [
+                  {"form": "bar", "length": 0.42, "width": 0.38, "role": "hull", "pitch": 0.12}
+              ],
+              "kit": [
+                  {"of": "hull.wing", "on": "side", "count": 2, "variants": ["swept", "delta"], "mount": "centre", "scale": 0.36, "z": -1}
+              ]
+          } },
         { "id": "mid.keel", "position": "mid", "mass": 11, "provides": { "cargo": 40 }, "cost": { "Iron": 40 },
-          "sockets": { "top": 1, "edge": 4, "side": 2, "spine": 1 } },
+          "sockets": { "top": 1, "edge": 4, "side": 2, "spine": 1 },
+          "shape": {
+              "sections": [
+                  {"form": "bar", "length": 0.8, "width": 0.18, "role": "panel", "pitch": 0.13}
+              ]
+          } },
         { "id": "mid.hopper", "position": "mid", "mass": 13, "provides": { "cargo": 60 }, "cost": { "Iron": 45, "Ice": 5 },
-          "sockets": { "top": 2, "edge": 4, "side": 2 } },
+          "sockets": { "top": 2, "edge": 4, "side": 2, "front": 1 },
+          "shape": {
+              "sections": [
+                  {"form": "bar", "length": 0.46, "width": 0.54, "role": "hull", "pitch": 0.13}
+              ],
+              "parts": [
+                  {"form": "polygon", "at": [-0.08, 0.0], "sides": 6, "radius": 0.14, "role": "panel", "minPixels": 24},
+                  {"form": "polygon", "at": [-0.08, 0.0], "sides": 6, "radius": 0.08, "role": "trim", "minPixels": 40}
+              ]
+          } },
         { "id": "stern.single", "position": "stern", "mass": 3, "cost": { "Iron": 12 },
-          "sockets": { "end": 1, "side": 2, "edge": 2 } },
+          "sockets": { "stern": 1, "side": 2, "edge": 2 },
+          "shape": {
+              "sections": [
+                  {"form": "bar", "length": 0.4, "width": 0.52, "role": "hull", "pitch": 0.12}
+              ],
+              "parts": [
+                  {"form": "disc", "at": [-0.12, 0.22], "radius": 0.035, "role": "light", "mirror": true, "minPixels": 26}
+              ]
+          } },
         { "id": "stern.twin", "position": "stern", "mass": 4, "cost": { "Iron": 16 },
-          "sockets": { "end": 2, "side": 2, "edge": 2 } },
+          "sockets": { "stern": 2, "side": 2, "edge": 2 },
+          "shape": {
+              "sections": [
+                  {"form": "bar", "length": 0.3, "width": 0.34, "role": "hull", "pitch": 0.12},
+                  {"form": "bar", "at": [-0.03, 0.2], "length": 0.36, "width": 0.15, "role": "hull", "mirror": true, "pitch": 0.12}
+              ]
+          } },
         { "id": "stern.cluster", "position": "stern", "mass": 6, "cost": { "Iron": 24 },
-          "sockets": { "end": 3, "side": 2, "edge": 2 } }
+          "sockets": { "stern": 3, "side": 2, "edge": 2 },
+          "shape": {
+              "sections": [
+                  {"form": "bar", "length": 0.36, "width": 0.4, "role": "hull", "pitch": 0.12},
+                  {"form": "bar", "at": [-0.02, 0.24], "length": 0.4, "width": 0.16, "role": "hull", "mirror": true, "pitch": 0.12}
+              ],
+              "parts": [
+                  {"form": "disc", "at": [0.1, 0.3], "radius": 0.03, "role": "light", "mirror": true, "minPixels": 26}
+              ]
+          } }
     ],
     "frames": [
-        { "id": "interceptor", "class": "interceptor", "mass": 8, "mids": [1, 1], "provides": { "mining": 2 }, "cost": { "Iron": 30 } },
-        { "id": "frigate", "class": "frigate", "mass": 10, "mids": [1, 2], "provides": { "mining": 2 }, "cost": { "Iron": 40 } },
-        { "id": "hauler", "class": "hauler", "mass": 16, "mids": [2, 4], "provides": { "mining": 2 }, "cost": { "Iron": 60 } },
-        { "id": "barge", "class": "barge", "mass": 14, "mids": [1, 2], "provides": { "mining": 2 }, "cost": { "Iron": 50 } }
+        { "id": "interceptor", "class": "interceptor", "mass": 8, "mids": [1, 1], "minAspect": 1.6, "provides": { "mining": 2 }, "cost": { "Iron": 30 } },
+        { "id": "frigate", "class": "frigate", "mass": 10, "mids": [1, 2], "minAspect": 2.0, "provides": { "mining": 2 }, "cost": { "Iron": 40 } },
+        { "id": "hauler", "class": "hauler", "mass": 16, "mids": [2, 4], "minAspect": 3.0, "provides": { "mining": 2 }, "cost": { "Iron": 60 } },
+        { "id": "barge", "class": "barge", "mass": 14, "mids": [1, 2], "minAspect": 1.2, "bowHeavy": true, "provides": { "mining": 2 }, "cost": { "Iron": 50 } }
     ],
     "designs": [
         {
@@ -53,7 +145,7 @@
                 { "module": "weapons.tractor", "in": "bow", "on": "top", "count": 1 },
                 { "module": "hull.cargo", "in": "mid", "on": "spine", "count": 1 },
                 { "module": "hull.rcs", "in": "mid", "on": "edge", "count": 4 },
-                { "module": "hull.engine", "in": "stern", "on": "end", "count": 1 },
+                { "module": "hull.engine", "in": "stern", "on": "stern", "count": 1, "scale": 0.17 },
                 { "module": "hull.thruster", "in": "stern", "on": "side", "count": 2 }
             ]
         },
@@ -63,9 +155,9 @@
             "fit": [
                 { "module": "hull.cockpit", "in": "bow", "on": "top", "count": 1 },
                 { "module": "hull.rcs", "in": "bow", "on": "edge", "count": 2 },
-                { "module": "hull.cargo", "in": "mid", "on": "spine", "count": 1 },
+                { "module": "hull.cargo", "in": "mid", "on": "spine", "count": 1, "scale": 0.13 },
                 { "module": "hull.rcs", "in": "mid", "on": "edge", "count": 4 },
-                { "module": "hull.engine", "in": "stern", "on": "end", "count": 2 }
+                { "module": "hull.engine", "in": "stern", "on": "stern", "count": 2, "scale": 0.14 }
             ]
         },
         {
@@ -75,19 +167,19 @@
                 { "module": "hull.cockpit", "in": "bow", "on": "top", "count": 1 },
                 { "module": "hull.cargo", "in": "mid", "on": "side", "count": 4 },
                 { "module": "hull.rcs", "in": "mid", "on": "edge", "count": 6 },
-                { "module": "hull.engine", "in": "stern", "on": "end", "count": 2 }
+                { "module": "hull.engine", "in": "stern", "on": "stern", "count": 2, "scale": 0.16 }
             ]
         },
         {
             "id": "miner", "name": "Miner", "frame": "barge",
             "bow": "bow.hammerhead", "mid": ["mid.hopper"], "stern": "stern.twin",
             "fit": [
-                { "module": "hull.cockpit", "in": "bow", "on": "front", "count": 1 },
-                { "module": "weapons.tractor", "in": "bow", "on": "top", "count": 2 },
-                { "module": "hull.cargo", "in": "mid", "on": "side", "count": 2 },
-                { "module": "hull.rcs", "in": "mid", "on": "edge", "count": 4 },
+                { "module": "weapons.tractor", "in": "bow", "on": "bow", "count": 2 },
+                { "module": "hull.cockpit", "in": "mid", "on": "front", "count": 1 },
+                { "module": "hull.cargo", "in": "mid", "on": "side", "count": 2, "scale": 0.16 },
+                { "module": "hull.rcs", "in": "bow", "on": "edge", "count": 4 },
                 { "module": "hull.rcs", "in": "stern", "on": "edge", "count": 2 },
-                { "module": "hull.engine", "in": "stern", "on": "end", "count": 2 }
+                { "module": "hull.engine", "in": "stern", "on": "stern", "count": 2, "scale": 0.12 }
             ]
         }
     ]

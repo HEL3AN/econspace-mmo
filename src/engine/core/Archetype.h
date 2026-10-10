@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/ShipDesign.h"
 #include "entities/EntityKind.h"
 #include "render/Silhouette.h"
 #include "raylib.h"
@@ -115,6 +116,11 @@ struct Archetype
     Visual visual;
     float  defaultSize = 0.0f;  // used when the instance does not give its own
 
+    // The ship design it is drawn from (#279), by id in data/ships.json; empty for anything
+    // that is not one. Its shape is then the design's, made when the archetype is loaded,
+    // and an archetype that names a design writes no shape of its own.
+    std::string design;
+
     // Where this archetype lives in a system file, and what it is called there.
     // `worldCategory` is the JSON array ("stations", "gates", …); `worldSubType` is the
     // value of that category's type key ("Military", "Ice"). An empty category means the
@@ -170,6 +176,10 @@ const Archetype* Find(const std::string& id);
 // here shows up everywhere at once without rebuilding anything. It does not touch the
 // file -- see ArchetypeEdit for that.
 Archetype* Mutable(const std::string& id);
+
+// The ship catalogue read from beside the archetypes (data/ships.json), which the archetypes
+// that name a design are drawn from. Empty when there is no such file.
+const Ships::Catalogue& ShipCatalogue();
 
 // Every archetype declaring the given component.
 std::vector<const Archetype*> With(Component c);

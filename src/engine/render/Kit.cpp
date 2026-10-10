@@ -93,6 +93,8 @@ float PolygonReach(const Part& s, float t, float radius)
     return radius * std::cos(PI / (float)s.sides) / std::cos((local - 0.5f * sector) * DEG2RAD);
 }
 
+}  // namespace
+
 // Whether a placed section covers a point, by more than a sliver: a socket exactly on the
 // line where two sections meet is still a place on the one it belongs to.
 bool Covers(const Part& s, Vector2 p)
@@ -141,7 +143,6 @@ bool Covers(const Part& s, Vector2 p)
         default: return false;
     }
 }
-}  // namespace
 
 std::vector<Socket> Sockets(const std::vector<Part>& sections)
 {
@@ -491,7 +492,8 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
         {
             const Socket& s = sockets[i];
             if (fits[i] && (!bilateral || s.pos.y <= 1e-3f) && (!radial || s.copy == 0) &&
-                (entry.in < 0 || s.source == entry.in) &&
+                (entry.in.empty() ||
+                 std::find(entry.in.begin(), entry.in.end(), s.source) != entry.in.end()) &&
                 std::find(lines.begin(), lines.end(), s.line) == lines.end())
                 lines.push_back(s.line);
         }
@@ -521,9 +523,21 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
             return n > 0 ? sum / (float)n : 0.0f;
         };
         const float sign = entry.prefer == "in" ? -1.0f : 1.0f;
+        // On a bilateral object an even count is pairs (#279): two engines are the pair of
+        // nacelles, not one on the axis and a pair beside it.
+        auto paired = [&](int line)
+        {
+            for (size_t i = 0; i < sockets.size(); i++)
+                if (sockets[i].line == line && sockets[i].pos.y < -1e-3f)
+                    return true;
+            return false;
+        };
+        const bool pairsFirst = bilateral && want % 2 == 0;
         std::stable_sort(lines.begin(), lines.end(),
                          [&](int a, int b)
                          {
+                             if (pairsFirst && paired(a) != paired(b))
+                                 return paired(a);
                              const int fa = freeOn(a), fb = freeOn(b);
                              if (fa != fb)
                                  return fa > fb;
@@ -552,30 +566,62 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
             return Vector2{ s.pos.x - centre.x + n.x * push, s.pos.y - centre.y + n.y * push };
         };
 
-        auto place = [&](size_t i)
+        // A handed module (#279) is drawn as the one on the +y side -- a wing, root at the hull
+        // and tip outward -- and its pair is that drawing reflected. On a bilateral object it
+        // is placed as the +y one and drawn mirrored, one part for both, so the pair shares
+        // every roll: a left wing swept at 110 degrees and a right one at 120 is not a pair.
+        const bool handed = mod->handed && bilateral;
+
+        auto place = [&](size_t i, bool pair)
         {
             const Socket& s = sockets[i];
             Part          q;
             q.module = mod->id;
             q.variant = variant->id;
             q.scale = entry.scale > 0.0f ? entry.scale : s.size * 0.45f;
-            q.angle = s.angle + entry.turn;
-            q.at = mounted(s, q.scale, q.angle);
+            const bool reflect = handed && s.pos.y < -1e-3f;
+            // The socket the drawing is placed at: the +y twin of this one, for a handed module.
+            Socket at = s;
+            if (reflect)
+            {
+                at.pos.y = -s.pos.y;
+                at.angle = -s.angle;
+            }
+            // A handed module's turn is measured from its drawing as it stands on the +y side
+            // facing out: no turn is the wing as drawn.
+            q.angle = at.angle + entry.turn - (reflect ? 90.0f : 0.0f);
+            q.at = mounted(at, q.scale, q.angle);
             q.spin = s.spin;
             q.z = entry.z;
+            if (reflect)
+            {
+                q.mirror = true;
+                q.mirrorOnly = !pair;  // without its twin, only the -y one is drawn
+            }
             out.push_back(q);
-            // A module covers the sockets under it, so nothing else is put on top of it.
+            // A module covers the sockets under it, so nothing else is put on top of it -- by
+            // its footprint, its box with the corners rounded off, not a circle round it: a
+            // pod laid along a keel covers the keel, not the flanks beside it.
+            const float   flip = reflect ? -1.0f : 1.0f;
             const float   c = std::cos(q.angle * DEG2RAD), sn = std::sin(q.angle * DEG2RAD);
             const Vector2 mid = { (box.x + 0.5f * box.width) * q.scale,
                                   (box.y + 0.5f * box.height) * q.scale };
             const Vector2 centre = { q.at.x + mid.x * c - mid.y * sn,
-                                     q.at.y + mid.x * sn + mid.y * c };
+                                     (q.at.y + mid.x * sn + mid.y * c) * flip };
             const float   span = 0.5f * q.scale * std::max(box.width, box.height);
+            const float   hx = 0.5f * q.scale * box.width + 0.5f * s.size;
+            const float   hy = 0.5f * q.scale * box.height + 0.5f * s.size;
             for (size_t j = 0; j < sockets.size(); j++)
-                if (!used[j] && sockets[j].section == s.section &&
-                    std::hypot(sockets[j].pos.x - centre.x, sockets[j].pos.y - centre.y) <
-                        span + 0.5f * s.size)
+            {
+                if (used[j] || sockets[j].section != s.section)
+                    continue;
+                const Vector2 d = { sockets[j].pos.x - centre.x, sockets[j].pos.y - centre.y };
+                // In the module's own frame, which on the reflected side is reflected too.
+                const Vector2 local = Turn({ d.x, d.y * flip }, -q.angle);
+                if (std::hypot(d.x, d.y) < span + 0.5f * s.size && std::fabs(local.x) < hx &&
+                    std::fabs(local.y) < hy)
                     used[j] = true;
+            }
             used[i] = true;
             taken[(size_t)s.section]++;
         };
@@ -595,10 +641,29 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
         {
             if (left <= 0)
                 break;
+            // On a bilateral object a straight line across the axis -- the face of a crossbar
+            // -- is two lines meeting there: its -y half is placed and the other is the
+            // mirror. The place on the axis belongs to neither: it takes the odd one of an odd
+            // count, and nothing else, or a pair would come out odd.
             std::vector<size_t> all;
+            const bool          half = bilateral && paired(line);
+            if (half && left % 2 == 1)
+                for (size_t i = 0; i < sockets.size(); i++)
+                    if (fits[i] && sockets[i].line == line && !used[i] && !sockets[i].closed &&
+                        std::fabs(sockets[i].pos.y) <= 1e-3f && (entry.fit || room(sockets[i])))
+                    {
+                        place(i, false);
+                        left--;
+                        break;
+                    }
+            if (left <= 0)
+                break;
             for (size_t i = 0; i < sockets.size(); i++)
-                if (fits[i] && sockets[i].line == line)
+                if (fits[i] && sockets[i].line == line &&
+                    (!half || sockets[i].closed || sockets[i].pos.y < -1e-3f))
                     all.push_back(i);
+            if (all.empty())
+                continue;
             const bool offAxis = bilateral && sockets[all[0]].pos.y < -1e-3f;
             const int  n = std::min(offAxis ? (left + 1) / 2 : left, (int)all.size());
             const int  m = (int)all.size();
@@ -663,24 +728,24 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
                 }
                 if (!entry.fit && !room(sockets[i]))
                     continue;
-                const int twin = offAxis ? twinOf(i) : -1;
-                place(i);
+                const int twin = offAxis && sockets[i].pos.y < -1e-3f ? twinOf(i) : -1;
+                place(i, twin >= 0);
                 left--;
                 if (radial)
                     for (size_t j = 0; j < sockets.size(); j++)
                         if (j != i && !used[j] && sockets[j].source == sockets[i].source &&
                             sockets[j].copy != 0 && sockets[j].localLine == sockets[i].localLine &&
                             sockets[j].index == sockets[i].index)
-                            place(j);
+                            place(j, false);
                 if (twin >= 0)
                 {
-                    // The twin is the mirror of this one: its shape reflected, not turned.
+                    // The twin is the mirror of this one: its shape reflected, not turned, and
+                    // drawn from the same part, so the two share every roll -- a pod of three
+                    // tanks is not mirrored by a pod of two.
                     used[(size_t)twin] = true;
                     taken[(size_t)sockets[(size_t)twin].section]++;
-                    Part q = out.back();
-                    q.mirror = true;
-                    q.mirrorOnly = true;
-                    out.push_back(q);
+                    out.back().mirror = true;
+                    out.back().mirrorOnly = false;
                     left--;
                 }
             }

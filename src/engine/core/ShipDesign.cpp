@@ -1,6 +1,9 @@
 #include "core/ShipDesign.h"
 
 #include "core/JsonKeys.h"
+#include "render/Modules.h"
+#include <cmath>
+#include <cstdio>
 #include <fstream>
 
 using json = nlohmann::json;
@@ -9,10 +12,11 @@ namespace
 {
 const char* const POSITIONS[] = { "bow", "mid", "stern" };
 
-// The socket kinds a section may expose: the kit's own (`edge`, `top`, `end`) and the ones
-// the hull modules already declare (`front`, `side`, `spine`, `bottom`). A socket a design
-// cannot name is a misspelling, not a new kind.
-const char* const SOCKETS[] = { "top", "edge", "end", "front", "side", "spine", "bottom" };
+// The socket kinds a section may expose, in the kit's own words (world_format.md, "A ship's
+// socket kinds"). A ship's end is always one or the other: a `bow` at the bow, a `stern` at
+// the stern -- so there is exactly one stern, and it is where the drives are. A socket a
+// design cannot name is a misspelling, not a new kind.
+const char* const SOCKETS[] = { "top", "edge", "bow", "stern", "front", "side", "spine", "bottom" };
 
 // What goes here is mirrored, so it comes in pairs: one wing is a fish, not a ship.
 bool Paired(const std::string& socket)
@@ -123,20 +127,131 @@ bool ReadCost(const json& j, Ships::Cost& cost, std::string& err)
 
 bool ParseModule(const json& j, Ships::ModulePart& m, std::string& err)
 {
-    if (!j.is_object() || !OnlyKnownKeys(j, { "id", "mass", "provides", "cost" }, err))
+    if (!j.is_object() || !OnlyKnownKeys(j, { "id", "mass", "provides", "cost", "look" }, err))
     {
         if (err.empty())
             err = "not an object";
         return false;
     }
-    return ReadString(j, "id", m.id, err) && ReadMass(j, m.mass, err) &&
-           ReadProvides(j, m.provides, err) && ReadCost(j, m.cost, err);
+    if (!ReadString(j, "id", m.id, err) || !ReadMass(j, m.mass, err) ||
+        !ReadProvides(j, m.provides, err) || !ReadCost(j, m.cost, err))
+        return false;
+    if (j.contains("look"))
+    {
+        if (!j["look"].is_object())
+        {
+            err = "'look' is not an object of socket kind -> { mount, turn, scale, z }";
+            return false;
+        }
+        for (auto it = j["look"].begin(); it != j["look"].end(); ++it)
+        {
+            if (!OneOf(it.key(), SOCKETS))
+            {
+                err = "look: '" + it.key() + "' is not a socket kind";
+                return false;
+            }
+            if (!it.value().is_object() ||
+                !OnlyKnownKeys(it.value(), { "mount", "turn", "scale", "z" }, err))
+            {
+                err = "look: " + it.key() + ": " + (err.empty() ? "not an object" : err);
+                return false;
+            }
+            m.look.emplace_back(it.key(), it.value());
+        }
+    }
+    return true;
+}
+
+// A ship section's drawing (#279 step 3). Its hull is read here, without the module library:
+// it may not name a module, so nothing about the class rule waits for the renderer.
+bool ParseSectionShape(const json& j, Ships::Section& s, std::string& err)
+{
+    if (!j.is_object() || !OnlyKnownKeys(j, { "sections", "kit", "parts" }, err) ||
+        !j.contains("sections") || !j["sections"].is_array() || j["sections"].empty())
+    {
+        err = "shape: " +
+              (err.empty() ? std::string("{ \"sections\": [...], \"kit\", \"parts\" }") : err);
+        return false;
+    }
+    if (j.contains("kit") && !j["kit"].is_array())
+    {
+        err = "shape: 'kit' is a list of kit lines; the frame says how a ship is mirrored";
+        return false;
+    }
+    if (j.contains("parts") && !j["parts"].is_array())
+    {
+        err = "shape: 'parts' is a list of parts";
+        return false;
+    }
+    Render::Shape hull;
+    std::string   why;
+    if (!Render::ParseShape(json{ { "sections", j["sections"] }, { "parts", json::array() } }, hull,
+                            why))
+    {
+        err = "shape: " + why;
+        return false;
+    }
+    // A ship is mirrored about the way it flies, and a ship's hull is the same for every ship
+    // of its design: what the seed varies goes on it, as trim.
+    auto symmetric = [&](const json& pj, const char* what) -> bool
+    {
+        for (const json& e : pj)
+        {
+            if (!e.is_object())
+                continue;  // ParseShape has said so where it reads them
+            if (e.contains("repeat"))
+            {
+                err = std::string("shape: a ") + what +
+                      " repeats; a ship is mirrored, never repeated -- `repeat: 2` puts the " +
+                      "second wing in front of the nose";
+                return false;
+            }
+            if (e.value("mirror", false))
+                continue;
+            const json at = e.value("at", json::array({ 0.0, 0.0 }));
+            const bool onAxis =
+                at.is_array() && at.size() == 2 && at[1].is_number() && at[1].get<double>() == 0.0;
+            // Along the axis, or for a form that is its own mirror both ways (a bar, a
+            // capsule, a lattice, anything round), across it too.
+            const std::string form = e.value("form", std::string("disc"));
+            const bool        both = form == "bar" || form == "capsule" || form == "lattice" ||
+                                     form == "disc" || form == "ring";
+            const json        angle = e.value("angle", json(0.0));
+            const bool square = angle.is_number() && std::fmod(std::fabs(angle.get<double>()),
+                                                               both ? 90.0 : 180.0) == 0.0;
+            if (!onAxis || !square)
+            {
+                err = std::string("shape: a ") + what +
+                      " is off the axis or turned across it without `mirror`; a ship is " +
+                      "bilateral";
+                return false;
+            }
+        }
+        return true;
+    };
+    if (!symmetric(j["sections"], "hull part") ||
+        (j.contains("parts") && !symmetric(j["parts"], "part")))
+        return false;
+    for (const Render::Part& p : hull.parts)
+        if (!p.module.empty() || !p.vary.empty() || !p.palette.empty() || p.chance < 1.0f)
+        {
+            err = "shape: a hull part is fixed -- no module, range, palette or chance; what "
+                  "the seed varies is trim, on the hull";
+            return false;
+        }
+    s.shape = j;
+    s.hull = hull.parts;
+    const Rectangle box = Render::MeasuredBounds(hull);
+    s.aft = box.x;
+    s.fore = box.x + box.width;
+    return true;
 }
 
 bool ParseSection(const json& j, Ships::Section& s, std::string& err)
 {
     if (!j.is_object() ||
-        !OnlyKnownKeys(j, { "id", "position", "mass", "provides", "cost", "sockets" }, err))
+        !OnlyKnownKeys(j, { "id", "position", "mass", "provides", "cost", "sockets", "shape" },
+                       err))
     {
         if (err.empty())
             err = "not an object";
@@ -170,16 +285,29 @@ bool ParseSection(const json& j, Ships::Section& s, std::string& err)
                 err = "sockets: '" + it.key() + "' is not a positive whole capacity";
                 return false;
             }
+            // One bow and one stern: an end facing forward is only a bow's, and one facing
+            // aft only a stern's. A mid section's ends are where it meets its neighbours.
+            if ((it.key() == "bow" || it.key() == "stern") && it.key() != s.position)
+            {
+                err = "sockets: a " + s.position + " section has no '" + it.key() + "'";
+                return false;
+            }
             s.sockets.emplace_back(it.key(), it.value().get<int>());
         }
     }
-    return true;
+    if (!j.contains("shape"))
+    {
+        err = "'shape' is missing: a section is drawn as something";
+        return false;
+    }
+    return ParseSectionShape(j["shape"], s, err);
 }
 
 bool ParseFrame(const json& j, Ships::Frame& f, std::string& err)
 {
     if (!j.is_object() ||
-        !OnlyKnownKeys(j, { "id", "class", "mass", "provides", "cost", "mids" }, err))
+        !OnlyKnownKeys(
+            j, { "id", "class", "mass", "provides", "cost", "mids", "minAspect", "bowHeavy" }, err))
     {
         if (err.empty())
             err = "not an object";
@@ -197,6 +325,19 @@ bool ParseFrame(const json& j, Ships::Frame& f, std::string& err)
     }
     f.minMids = m[0].get<int>();
     f.maxMids = m[1].get<int>();
+    if (!j.contains("minAspect") || !j["minAspect"].is_number() ||
+        j["minAspect"].get<double>() <= 0.0)
+    {
+        err = "'minAspect' is missing: a class says how long it is for its width";
+        return false;
+    }
+    f.minAspect = j["minAspect"].get<float>();
+    if (j.contains("bowHeavy") && !j["bowHeavy"].is_boolean())
+    {
+        err = "'bowHeavy' is true or false";
+        return false;
+    }
+    f.bowHeavy = j.value("bowHeavy", false);
     return true;
 }
 
@@ -235,7 +376,7 @@ bool ParseDesign(const json& j, Ships::Design& d, std::string& err)
     for (const json& l : j["fit"])
     {
         Ships::FitLine line;
-        if (!l.is_object() || !OnlyKnownKeys(l, { "module", "in", "on", "count" }, err))
+        if (!l.is_object() || !OnlyKnownKeys(l, { "module", "in", "on", "count", "scale" }, err))
         {
             err = "fit: " + (err.empty() ? std::string("a line is not an object") : err);
             return false;
@@ -254,6 +395,11 @@ bool ParseDesign(const json& j, Ships::Design& d, std::string& err)
             return false;
         }
         line.count = l["count"].get<int>();
+        if (!ReadNumber(l, "scale", line.scale, err))
+        {
+            err = "fit: '" + line.module + "': " + err;
+            return false;
+        }
         d.fit.push_back(line);
     }
     return true;
@@ -414,6 +560,209 @@ bool Validate(const Catalogue& c, const Design& d, std::string& error)
             return false;
         }
     }
+
+    // The class rule, on the hull as it is laid out.
+    const Silhouette look = Measure(c, d);
+    if (look.length < frame->minAspect * look.width)
+    {
+        char buf[160];
+        std::snprintf(buf, sizeof buf,
+                      "a %s is at least %.2f times as long as it is wide, and "
+                      "this hull is %.2f",
+                      frame->hullClass.c_str(), (double)frame->minAspect,
+                      (double)(look.length / look.width));
+        error = where + buf;
+        return false;
+    }
+    if (look.massAt > 0.0f && !frame->bowHeavy)
+    {
+        error = where + "its hull carries its mass forward of the middle, and only a class " +
+                "that works in front of itself does (`bowHeavy`); a " + frame->hullClass +
+                " is heaviest at its drives";
+        return false;
+    }
+    return true;
+}
+
+namespace
+{
+// A design's sections in the order a ship is written, bow first, each with the position it
+// stands at and how far along x its own frame is moved: laid end to end, stern to bow, and
+// the whole centred on the middle of its length.
+struct Laid
+{
+    const Section* section;
+    std::string    position;
+    float          dx;
+};
+
+std::vector<Laid> LayOut(const Catalogue& c, const Design& d)
+{
+    std::vector<Laid> out;
+    out.push_back({ c.FindSection(d.bow), "bow", 0.0f });
+    for (const std::string& m : d.mids)
+        out.push_back({ c.FindSection(m), "mid", 0.0f });
+    out.push_back({ c.FindSection(d.stern), "stern", 0.0f });
+    float cursor = 0.0f;
+    for (size_t k = out.size(); k-- > 0;)
+    {
+        out[k].dx = cursor - out[k].section->aft;
+        cursor = out[k].dx + out[k].section->fore;
+    }
+    for (Laid& l : out)
+        l.dx -= 0.5f * cursor;
+    return out;
+}
+
+// A part's JSON moved `dx` along the ship.
+json Moved(json part, float dx)
+{
+    json at = part.value("at", json::array({ 0.0, 0.0 }));
+    if (at[0].is_array())  // a range moves as a whole
+        for (json& x : at[0])
+            x = x.get<double>() + (double)dx;
+    else
+        at[0] = at[0].get<double>() + (double)dx;
+    part["at"] = at;
+    return part;
+}
+}  // namespace
+
+Silhouette Measure(const Catalogue& c, const Design& d)
+{
+    Silhouette    out;
+    Render::Shape hull;
+    for (const Laid& l : LayOut(c, d))
+        for (Render::Part p : l.section->hull)
+        {
+            p.at.x += l.dx;
+            hull.parts.push_back(p);
+        }
+    const Rectangle box = Render::MeasuredBounds(hull);
+    out.length = box.width;
+    out.width = box.height;
+
+    // Where the area is: a fixed grid over the box, each point counted once whatever covers
+    // it. Every mirrored part is its two copies.
+    std::vector<Render::Part> copies;
+    for (const Render::Part& p : hull.parts)
+    {
+        Render::Part a = p;
+        a.mirror = false;
+        copies.push_back(a);
+        if (p.mirror)
+        {
+            a.at.y = -a.at.y;
+            a.angle = -a.angle;
+            copies.push_back(a);
+        }
+    }
+    const int n = 160;
+    double    sum = 0.0;
+    int       count = 0;
+    for (int i = 0; i < n; i++)
+        for (int k = 0; k < n; k++)
+        {
+            const Vector2 at = { box.x + box.width * ((float)i + 0.5f) / (float)n,
+                                 box.y + box.height * ((float)k + 0.5f) / (float)n };
+            for (const Render::Part& p : copies)
+                if (Render::Covers(p, at))
+                {
+                    sum += at.x;
+                    count++;
+                    break;
+                }
+        }
+    const float middle = box.x + 0.5f * box.width;
+    out.massAt = count > 0 && box.width > 0.0f
+                     ? ((float)(sum / (double)count) - middle) / (0.5f * box.width)
+                     : 0.0f;
+    return out;
+}
+
+bool ShapeOf(const Catalogue& c, const Design& d, json& out, std::string& error)
+{
+    if (!Validate(c, d, error))
+        return false;
+    json sections = json::array(), parts = json::array(), function = json::array(),
+         trim = json::array();
+    std::vector<std::pair<std::string, int>> indexAt;  // position -> a hull part's index
+    for (const Laid& l : LayOut(c, d))
+    {
+        const json& shape = l.section->shape;
+        const int   first = (int)sections.size();
+        json        own = json::array();
+        for (const json& p : shape["sections"])
+        {
+            own.push_back((int)sections.size());
+            indexAt.emplace_back(l.position, (int)sections.size());
+            sections.push_back(Moved(p, l.dx));
+        }
+        if (shape.contains("parts"))
+            for (const json& p : shape["parts"])
+                parts.push_back(Moved(p, l.dx));
+        if (shape.contains("kit"))
+            for (json line : shape["kit"])
+            {
+                // A section's trim stays on the section: `in` counts its own hull parts.
+                if (!line.is_object())
+                {
+                    error = "section '" + l.section->id + "': a kit line is not an object";
+                    return false;
+                }
+                if (line.contains("fit"))
+                {
+                    error = "section '" + l.section->id + "': its kit is trim; what carries " +
+                            "function is in a design's fit";
+                    return false;
+                }
+                json in = json::array();
+                if (!line.contains("in"))
+                    in = own;
+                else
+                {
+                    const json want =
+                        line["in"].is_array() ? line["in"] : json::array({ line["in"] });
+                    for (const json& k : want)
+                    {
+                        if (!k.is_number_integer() || k.get<int>() < 0 ||
+                            k.get<int>() >= (int)own.size())
+                        {
+                            error = "section '" + l.section->id + "': a kit line's 'in' is " +
+                                    "not one of its hull parts";
+                            return false;
+                        }
+                        in.push_back(first + k.get<int>());
+                    }
+                }
+                line["in"] = in;
+                trim.push_back(line);
+            }
+    }
+    for (const FitLine& f : d.fit)
+    {
+        json line = { { "of", f.module }, { "on", f.on }, { "count", f.count }, { "fit", true } };
+        for (const auto& [kind, look] : c.FindModule(f.module)->look)
+            if (kind == f.on)
+                for (auto it = look.begin(); it != look.end(); ++it)
+                    line[it.key()] = it.value();
+        if (f.scale > 0.0f)
+            line["scale"] = f.scale;
+        json in = json::array();
+        for (const auto& [position, index] : indexAt)
+            if (position == f.in)
+                in.push_back(index);
+        line["in"] = in;
+        function.push_back(line);
+    }
+    for (const json& t : trim)
+        function.push_back(t);
+    out = {
+        { "sections", sections },
+        { "kit",
+          { { "symmetry", "bilateral" }, { "plain", c.rules.plain }, { "modules", function } } },
+        { "parts", parts }
+    };
     return true;
 }
 
@@ -490,14 +839,14 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
     const json& rj = j["rules"];
     if (!OnlyKnownKeys(rj,
                        { "speedBase", "speedPerAccel", "rcsPerTurn", "buildSecondsPerMass",
-                         "buildSecondsPerPart" },
+                         "buildSecondsPerPart", "plain" },
                        error))
     {
         error = "rules: " + error;
         return false;
     }
     for (const char* key : { "speedBase", "speedPerAccel", "rcsPerTurn", "buildSecondsPerMass",
-                             "buildSecondsPerPart" })
+                             "buildSecondsPerPart", "plain" })
         if (!rj.contains(key))
         {
             error = std::string("rules: '") + key + "' is missing";
@@ -507,7 +856,8 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
         !ReadNumber(rj, "speedPerAccel", c.rules.speedPerAccel, error) ||
         !ReadNumber(rj, "rcsPerTurn", c.rules.rcsPerTurn, error) ||
         !ReadNumber(rj, "buildSecondsPerMass", c.rules.buildSecondsPerMass, error) ||
-        !ReadNumber(rj, "buildSecondsPerPart", c.rules.buildSecondsPerPart, error))
+        !ReadNumber(rj, "buildSecondsPerPart", c.rules.buildSecondsPerPart, error) ||
+        !ReadNumber(rj, "plain", c.rules.plain, error))
     {
         error = "rules: " + error;
         return false;

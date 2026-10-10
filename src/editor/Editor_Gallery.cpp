@@ -16,6 +16,7 @@
 #include "Editor.h"
 
 #include <algorithm>
+#include "core/ShipDesign.h"
 #include "render/Modules.h"
 
 #include "core/ArchetypeEdit.h"
@@ -411,6 +412,30 @@ void Editor::DrawGalleryFocusBar()
     else if (!a.visual.shape.parts.empty())
         line += "   every part drawn";
     Ui::Text(line.c_str(), 332, 103, 13, hidden > 0 ? Ui::ACCENT : Ui::TEXT);
+
+    // A ship drawn from a design (#279): what it can do, next to what it looks like, so the
+    // two are tuned together. Derived the way the server will, from the parts.
+    if (!a.design.empty())
+    {
+        const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
+        const Ships::Design*    d = ships.FindDesign(a.design);
+        Ships::Stats            s;
+        std::string             why;
+        if (d != nullptr && Ships::Derive(ships, *d, s, why))
+        {
+            const Ships::Frame*     frame = ships.FindFrame(d->frame);
+            const Ships::Silhouette look = Ships::Measure(ships, *d);
+            Ui::Text(TextFormat("%s, %s   mass %.0f   accel %.0f   top %.0f   turn %.1f   "
+                                "hold %d   mining %.1f   build %.0f s   hull %.2f:1, mass at %+.2f",
+                                d->name.c_str(), frame->hullClass.c_str(), (double)s.mass,
+                                (double)s.acceleration, (double)s.maxSpeed, (double)s.turnSpeed,
+                                s.cargoCapacity, (double)s.miningRate, (double)s.buildSeconds,
+                                (double)(look.length / look.width), (double)look.massAt),
+                     (int)box.x + 10, (int)box.y + 10, 13, Ui::TEXT);
+        }
+        else
+            Ui::Text(why.c_str(), (int)box.x + 10, (int)box.y + 10, 13, Ui::ACCENT);
+    }
 
     Ui::Text(TextFormat("%d of %d   <- / -> step   wheel: zoom   right-drag: pan   Home: reset   "
                         "Esc: back to the grid",

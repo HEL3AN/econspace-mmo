@@ -983,6 +983,62 @@
                 ]
             },
             "components": {}
+        },
+        {
+            "id": "ship.scout",
+            "style": "directional",
+            "name": "Scout",
+            "kind": "Npc",
+            "glyph": "v",
+            "sprite": "ship",
+            "color": [200, 200, 200, 255],
+            "layer": 5,
+            "size": 14,
+            "material": "hull",
+            "design": "scout",
+            "components": {}
+        },
+        {
+            "id": "ship.courier",
+            "style": "directional",
+            "name": "Courier",
+            "kind": "Npc",
+            "glyph": "v",
+            "sprite": "ship",
+            "color": [200, 200, 200, 255],
+            "layer": 5,
+            "size": 13,
+            "material": "hull",
+            "design": "courier",
+            "components": {}
+        },
+        {
+            "id": "ship.hauler",
+            "style": "directional",
+            "name": "Hauler",
+            "kind": "Npc",
+            "glyph": "v",
+            "sprite": "ship",
+            "color": [200, 200, 200, 255],
+            "layer": 5,
+            "size": 18,
+            "material": "hull",
+            "design": "hauler",
+            "components": {}
+        },
+        {
+            "id": "ship.miner",
+            "style": "directional",
+            "name": "Miner",
+            "kind": "Npc",
+            "glyph": "v",
+            "sprite": "ship",
+            "color": [200, 200, 200, 255],
+            "layer": 5,
+            "size": 15,
+            "material": "hull",
+            "design": "miner",
+            "components": {}
         }
     ]
 }

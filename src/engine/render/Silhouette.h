@@ -321,7 +321,9 @@ struct KitEntry
     // never be an ion drive says so instead of pinning one look for every ship.
     std::vector<std::string> variants;
     std::vector<std::string> except;
-    int                      in = -1;  // only on this section (its index); -1: any
+    // Only on these sections (their indices); empty: any. A ship's hold spread over two keel
+    // sections is one line on both, not two lines that each think they are the whole of it.
+    std::vector<int> in;
     // Only if the object has this component, or with "!" only if it has not (#137): a
     // station that is defensive wears turrets, one with a market wears cargo. Checked when
     // the archetype is loaded, which is where its components are known.
@@ -357,6 +359,10 @@ struct Kit
     float                 plain = 0.4f;
     std::vector<KitEntry> entries;
 };
+
+// Whether a placed section -- one copy, no repeat or mirror left on it -- covers a point by
+// more than a sliver: a point exactly where two sections meet belongs to neither.
+bool Covers(const Part& section, Vector2 p);
 
 // The sockets of a set of (resolved) sections, in a fixed order.
 std::vector<Socket> Sockets(const std::vector<Part>& sections);

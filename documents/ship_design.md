@@ -4,12 +4,14 @@ A ship is a **design**, and what it can do is read off its parts (#279, M8 groun
 file holds the parts' function and the designs built from them; `Ships::Derive`
 (`src/engine/core/ShipDesign.h`) turns a design into stats, cost and build time.
 
-**Status — first step.** Nothing in the game reads these numbers yet. `GetShipCatalog()`
-(`src/game/entities/ShipType.cpp`) still holds the hand-typed stats of Scout, Courier,
-Hauler and Miner; `tests/ship_design_tests.cpp` holds the four designs here within 10% of
-them, so the switch (step 4 below) changes no ship by more than that. The designs do not
-yet decide what a ship *looks* like either; the shape grammar they will resolve to is in place
-(step 1 below), and `ship.npc` and `ship.player` are already written in it.
+**Status — step 3 of #279.** A design now decides what its ship *looks* like: each section is
+drawn, a frame lays them end to end and holds the hull to its class's silhouette, and the
+archetypes `ship.scout`, `ship.courier`, `ship.hauler` and `ship.miner` are drawn from the
+four designs here (`"design"` in `archetypes.json`); the gallery card shows each one's derived
+stats next to it. Nothing in the game reads the numbers or flies those archetypes yet:
+`GetShipCatalog()` (`src/game/entities/ShipType.cpp`) still holds the hand-typed stats, and
+`tests/ship_design_tests.cpp` holds the designs within 10% of them, so the switch changes no
+ship by more than that.
 
 ## The model
 
@@ -18,9 +20,10 @@ design = frame + { bow, mid × N, stern } sections + fit (modules on sockets, pi
 ```
 
 - A **frame** is a hull class — Proposal A's interceptor, frigate, hauler, barge, raider,
-  cruiser. It is the spine the sections hang on and says how many mid sections it takes.
-- A **section** stands at one position — `bow`, `mid` or `stern` — and exposes **sockets**:
-  a kind and how many modules of it the section takes.
+  cruiser. It is the spine the sections hang on, says how many mid sections it takes, and
+  holds every design on it to the class's **silhouette rule** (below).
+- A **section** stands at one position — `bow`, `mid` or `stern` — exposes **sockets** (a
+  kind and how many modules of it the section takes) and is **drawn** as a piece of hull.
 - The **fit** puts modules on those sockets, each line with a whole **count**. A count that
   carries function is pinned in the design, never drawn from the seed.
 
@@ -39,23 +42,27 @@ draws nothing.
 ```json
 {
     "rules": { "speedBase": 30, "speedPerAccel": 1.2, "rcsPerTurn": 183,
-               "buildSecondsPerMass": 4, "buildSecondsPerPart": 6 },
+               "buildSecondsPerMass": 4, "buildSecondsPerPart": 6, "plain": 0.5 },
     "modules": [
-        { "id": "hull.engine", "mass": 5, "provides": { "thrust": 8400 }, "cost": { "Iron": 10, "Crystal": 4 } }
+        { "id": "hull.engine", "mass": 5, "provides": { "thrust": 8400 }, "cost": { "Iron": 10, "Crystal": 4 },
+          "look": { "stern": { "mount": "out", "turn": 180, "scale": 0.14, "z": -1 } } }
     ],
     "sections": [
         { "id": "stern.twin", "position": "stern", "mass": 4, "cost": { "Iron": 16 },
-          "sockets": { "end": 2, "side": 2, "edge": 2 } }
+          "sockets": { "stern": 2, "side": 2, "edge": 2 },
+          "shape": { "sections": [
+              {"form": "bar", "length": 0.3, "width": 0.34, "role": "hull", "pitch": 0.12},
+              {"form": "bar", "at": [-0.03, 0.2], "length": 0.36, "width": 0.15, "role": "hull", "mirror": true} ] } }
     ],
     "frames": [
-        { "id": "interceptor", "class": "interceptor", "mass": 8, "mids": [1, 1],
+        { "id": "interceptor", "class": "interceptor", "mass": 8, "mids": [1, 1], "minAspect": 1.6,
           "provides": { "mining": 2 }, "cost": { "Iron": 30 } }
     ],
     "designs": [
         {
             "id": "courier", "name": "Courier", "frame": "interceptor",
             "bow": "bow.needle", "mid": ["mid.slim"], "stern": "stern.twin",
-            "fit": [ { "module": "hull.engine", "in": "stern", "on": "end", "count": 2 } ]
+            "fit": [ { "module": "hull.engine", "in": "stern", "on": "stern", "count": 2, "scale": 0.14 } ]
         }
     ]
 }
@@ -67,9 +74,15 @@ draws nothing.
 | `provides` | module, section, frame | optional; `thrust`, `rcs`, `cargo`, `mining` — each summed over the ship |
 | `cost` | module, section, frame | required; resource → positive whole amount, as a blueprint's (#39) |
 | `position` | section | `bow`, `mid` or `stern` |
-| `sockets` | section | socket kind → capacity; kinds: `top`, `edge`, `end`, `front`, `side`, `spine`, `bottom` |
+| `sockets` | section | socket kind → capacity; kinds: `top`, `edge`, `bow`, `stern`, `front`, `side`, `spine`, `bottom` — the kit's own words. A ship's end is a `bow` at the bow and a `stern` at the stern and nowhere else, so there is one stern |
+| `shape` | section | required; what it is drawn as, +x forward — see "Drawing a design" |
+| `look` | module | optional; socket kind → how it meets that socket when drawn: `mount`, `turn`, `scale`, `z`, as on a kit line |
 | `class` | frame | the hull class it is (Proposal A) |
 | `mids` | frame | `[least, most]` mid sections |
+| `minAspect` | frame | required; the hull is at least this long for its width |
+| `bowHeavy` | frame | optional, default false; the class may carry its mass forward of the middle |
+| `plain` | rules | the share of a drawn ship's sockets its trim leaves empty |
+| `fit[].scale` | design | optional; how big the module is drawn, over its `look` |
 | `frame`, `bow`, `mid`, `stern` | design | the frame and one section per position; `mid` is a list |
 | `fit[].module` | design | a `modules` id |
 | `fit[].in` / `on` | design | the position whose sections carry it, and the socket kind |
@@ -114,16 +127,46 @@ put in, the frame's mid count holds, and:
 - **drives sit in the stern** — a module that provides `thrust` is only fitted `in: stern`,
   so the engine mass is always astern (bow ≠ stern);
 - **what is mirrored comes in pairs** — a count on a `side` or `edge` socket is even, since
-  ships are bilateral.
+  ships are bilateral;
+- **the hull keeps its class's silhouette** — laid out, it is at least `minAspect` times as
+  long as it is wide (no capsule or oval as a main body; 1.6 or more for every class but the
+  barge), and the middle of its area is aft of the middle of its length — the drives are the
+  heaviest thing on a ship — unless the frame is `bowHeavy`, which only the barge is.
+
+And a section's drawing is held to what a ship is: its hull parts are on the axis and square
+to it, or `mirror`ed (bilateral); never `repeat`ed (a repeat turns about the centre and puts
+the second wing in front of the nose); and fixed — no module, range, palette or chance — so
+the class rule holds for every ship of a design. What the seed varies is the trim on the hull.
+
+## Drawing a design
+
+A section's `shape` is `{ "sections": [...], "kit": [...], "parts": [...] }` in the grammar of
+`world_format.md`, in the section's own frame with +x forward: `sections` its hull, `kit` the
+trim that goes on it (a kit line's `in` counts this section's own hull parts; absent, any of
+them), `parts` anything else — lights, panel lines. `Ships::ShapeOf` turns a design into the
+shape an archetype carries:
+
+1. the sections are laid end to end along x, stern to bow, each by how far its hull reaches,
+   and the whole is centred on the middle of its length;
+2. every fit line becomes a kit line that carries function (`"fit": true`) with the design's
+   count, on the hull parts of every section at its position (`"in": [..]`), looking as the
+   module's `look` for that socket kind says, at the line's own `scale` if it gives one;
+3. the sections' trim follows, after the function, and the kit is bilateral.
+
+So the count on the hull is the count in the design, and a test holds every drawn design to
+placing every fit line in full at every seed. A wing is a **handed** module: one of a pair,
+placed as the +y one as drawn and the other as its reflection (`world_format.md`).
+
+An archetype draws a design by naming it — `"design": "courier"` instead of a `shape`.
 
 ## How it maps to the hull classes (Proposal A)
 
-| Ship | Frame (class) | Bow | Mid | Stern | What makes it its class |
+| Ship | Frame (class, min. aspect) | Bow | Mid | Stern | What makes it its class |
 |------|------|------|------|------|------|
-| Scout | frigate | `bow.blunt` | `mid.spine` | `stern.single` | one drive and a pair of side thrusters; one pod; a tractor |
-| Courier | interceptor | `bow.needle` | `mid.slim` | `stern.twin` | the lightest hull on two drives; one pod |
-| Hauler | hauler | `bow.cab` | `mid.keel` × 2 | `stern.cluster` | a long keel with four pods along it; no wings |
-| Miner | barge | `bow.hammerhead` | `mid.hopper` | `stern.twin` | the one bow-heavy class: the hammerhead carries the cutters, two tractors on it |
+| Scout | frigate, 2.0 | `bow.blunt` | `mid.spine` | `stern.single` | a pointed nose, a straight spine, a wider drive block with a thruster each side; one pod; a tractor |
+| Courier | interceptor, 1.6 | `bow.needle` | `mid.slim` | `stern.twin` | a dart: a long needle widening aft, swept wings on the rear third, two drives on nacelles |
+| Hauler | hauler, 3.0 | `bow.cab` | `mid.keel` × 2 | `stern.cluster` | a small cab ahead of a long thin keel with four pods along it; no wings |
+| Miner | barge, 1.2, bow-heavy | `bow.hammerhead` | `mid.hopper` | `stern.twin` | the one bow-heavy class: a hammerhead with two arms reaching forward, a tractor at each tip; a hopper amidships |
 
 Every frame provides `mining: 2` — the cutting beam every hull carries today — and the
 barge's bow and tractors add to it. Raider and cruiser have no frame yet: nothing in the
@@ -131,17 +174,15 @@ catalog flies one.
 
 ## Next steps
 
-1. **Grammar** -- done. A kit line can go on a `bow`, `stern`, `front`, `side`, `spine` or
+1. **Grammar** -- done (#316). A kit line can go on a `bow`, `stern`, `front`, `side`, `spine` or
    `bottom`, which name places a long section already has (`world_format.md`, "A ship's
    socket kinds"), and a line that carries function says `"fit": true`: one whole count, a
    module rather than a tag, placed before the trim and past `plain`. A test holds every ship
-   archetype to wearing what `provides` something only on such lines. The socket kinds here
-   are the same names, but a section's `end` in this file is the grammar's `stern` at the
-   stern position and its `bow` at the bow; step 2 says it in one vocabulary.
-2. **Frames per class** in the shape data: a section here gets the shape it is drawn with,
-   so a design resolves to the shape JSON the renderer already reads, and the frame enforces
-   its silhouette rule (length:width, where the widest point falls) as a load error.
+   archetype to wearing what `provides` something only on such lines.
+2. **Frames per class** -- done. A section here has the shape it is drawn with, a design
+   resolves to the shape JSON the renderer reads (`Ships::ShapeOf`), and the frame enforces
+   its silhouette rule as a load error. A section's sockets say `bow`/`stern` where they said
+   `end`, the grammar's words. The gallery card shows the stats.
 3. **NPC roles → designs**: a faction doctrine picks a design per `NpcRole`; `ship.npc` is
    retired.
-4. **Switch `ShipStats` to the derived stats**: `GetShipCatalog()` reads designs, and the
-   gallery card shows the numbers next to the ship so look and stats are tuned together.
+4. **Switch `ShipStats` to the derived stats**: `GetShipCatalog()` reads designs.
