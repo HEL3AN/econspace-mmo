@@ -42,13 +42,16 @@ void MissionSystem::GenerateOffers(Station* giver, const std::vector<Station*>& 
     }
 }
 
-void MissionSystem::Accept(int offerIndex)
+bool MissionSystem::Accept(int offerIndex)
 {
     if (offerIndex < 0 || offerIndex >= (int)offers_.size())
-        return;
+        return false;
+    if ((int)active_.size() >= MAX_ACTIVE)
+        return false;
 
     active_.push_back(offers_[offerIndex]);
     offers_.erase(offers_.begin() + offerIndex);
+    return true;
 }
 
 void MissionSystem::OnPirateKilled()

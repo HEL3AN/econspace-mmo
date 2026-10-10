@@ -746,9 +746,8 @@ void Game::DrawStatusContent(Rectangle area)
     y += 22;
     Ui::Text(TextFormat("Money   %.0f", player_.GetMoney()), x, y, 16, GOLD);
     y += 22;
-    // Cargo — from the snapshot (over the network playerShip_'s hold isn't synced; the server
-    // collects ore into its own ship, the snapshot carries the current volume). Single-player the
-    // snapshot = player.
+    // Cargo — from the snapshot: playerShip_'s hold isn't synced; the server collects ore into
+    // its own ship and the snapshot carries the current volume.
     Ui::Text(TextFormat("Cargo   %d / %d", snapshot_.player.cargoUsed, snapshot_.player.cargoCap),
              x, y, 16, Ui::TEXT);
     y += 24;
@@ -923,18 +922,14 @@ void Game::DrawStationScreen()
                  contentX, py + 62, 15, Color{ 230, 41, 55, 255 });
         Button payBtn(Rectangle{ (float)(contentX + 360), (float)(py + 58), 180.0f, 24.0f },
                       TextFormat("Pay bounty (%.0f)", bounty),
-                      [this, stationFaction, bounty]()
+                      [this, stationFaction]()
                       {
-                          if (!player_.CanAfford(bounty))
-                          {
-                              FlashMessage("Not enough credits to pay bounty");
-                              return;
-                          }
-                          // The account is on the server — pay via command.
+                          // The account is on the server — pay via command. Whether it was
+                          // paid, or why not, comes back as a journal entry (#219), which
+                          // ApplySnapshot flashes; saying "paid" here would be a guess.
                           Proto::Command c;
                           c.payBountyFaction = (int)stationFaction;
                           clientLink_->Send(Proto::EncodeCommand(c));
-                          FlashMessage("Bounty paid: record cleared");
                       });
         payBtn.Process();
     }
@@ -1018,20 +1013,17 @@ void Game::DrawStationScreen()
         else
         {
             Button buyBtn(btnRect, TextFormat("Buy (%.0f)", t.price * buyMul),
-                          [this, i, buyMul]()
+                          [this, i]()
                           {
-                              const ShipType& st = GetShipCatalog()[i];
-                              double          price = st.price * buyMul;
-                              if (!player_.CanAfford(price))  // player_ is a mirror (server money)
-                                  return;
                               // The purchase is server-authoritative: the server charges,
                               // records the ship as owned and refits (BuyShip); the
                               // snapshot brings all three back (#5).
                               Proto::Command c;
                               c.buyShip = (int)i;
                               clientLink_->Send(Proto::EncodeCommand(c));
-                              // No local bookkeeping: the next snapshot says whether the
-                              // server agreed, and that is the only answer worth showing.
+                              // No local bookkeeping and no local refusal: the server says
+                              // whether it agreed, and why not, in the journal (#219) -- it
+                              // knows the money and the hold, the client only mirrors them.
                           });
             buyBtn.Process();
         }
@@ -1092,8 +1084,8 @@ void Game::DrawMissionBoard(int x, int y, int w)
     for (size_t i = 0; i < active.size(); i++)
     {
         const Mission& m = active[i];
-        // Over the network the server determines readiness (m.completable from the snapshot; the
-        // client hold is a mirror, not always accurate). Single-player — a local check.
+        // The server determines readiness (m.completable from the snapshot); the client hold is
+        // a mirror and not always accurate, so it is not consulted here.
         if (!m.completable)
             continue;
         anyReady = true;
@@ -1124,8 +1116,9 @@ void Game::DrawMissionBoard(int x, int y, int w)
         clientLink_->Send(Proto::EncodeCommand(c));
     }
 
-    Ui::Text(TextFormat("Active missions: %d", (int)missions_.Active().size()), x, rowY + 4, 14,
-             Ui::TEXT_DIM);
+    Ui::Text(TextFormat("Active missions: %d / %d", (int)missions_.Active().size(),
+                        MissionSystem::MAX_ACTIVE),
+             x, rowY + 4, 14, Ui::TEXT_DIM);
 }
 
 // Active mission log: the objective and current progress for each mission.

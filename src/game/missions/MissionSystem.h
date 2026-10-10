@@ -11,13 +11,19 @@ class Station;
 class MissionSystem
 {
 public:
+    // How many missions one player may carry at once (#219). Without a cap one player
+    // could take a station's whole board -- and the board is regenerated on every dock, so
+    // undocking and docking again would hoard without limit.
+    static constexpr int MAX_ACTIVE = 5;
+
     // Generates a fresh list of offers for the issuing station. rewardMul is the
     // reward multiplier (depends on the player's reputation with the station's faction).
     void GenerateOffers(Station* giver, const std::vector<Station*>& allStations,
                         float rewardMul = 1.0f);
 
-    // Accepts an offer by index: moves it into the active list.
-    void Accept(int offerIndex);
+    // Accepts an offer by index: moves it into the active list. false -- no such offer, or
+    // MAX_ACTIVE missions are already active.
+    bool Accept(int offerIndex);
 
     const std::vector<Mission>& Offers() const { return offers_; }
     std::vector<Mission>&       Active() { return active_; }

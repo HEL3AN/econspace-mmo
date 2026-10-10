@@ -258,7 +258,8 @@ public:
 
     // Switch to another ship this account owns. Refuses one it does not: the stats are
     // looked up from the catalog here rather than taken from the caller, so "refit me to
-    // the best ship" is a request the server can say no to (#5).
+    // the best ship" is a request the server can say no to (#5). Refuses a hull whose hold
+    // is smaller than the cargo carried, as BuyShip does (#219).
     bool SwitchShip(ClientSession& s, int catalogIndex);
 
     // Server-authoritative docking (M4e-3b). StepPlayerDock finds the nearest station of
@@ -281,7 +282,10 @@ public:
     // Passive per tick: piloting xp (in flight, not docked) + bounty decay.
     void StepPlayerAccountTick(ClientSession& s, float dt);
     // Pay off a bounty with a faction (deducts the bounty from money, zeroes the wanted level).
-    void PayBounty(ClientSession& s, FactionId faction);
+    // The hangar, bounty and mission verbs answer in the session's journal as well as in the
+    // return value (#219): a Notice on success and on refusal, with the reason, so a human
+    // sees why a button did nothing and an agent's wait_for_event wakes on it.
+    bool PayBounty(ClientSession& s, FactionId faction);
     // Buy a ship by catalog index: price accounting for the docked station's reputation;
     // if affordable — deducts and refits. Refuses a ship already owned: going back to one is
     // SwitchShip, and free. true — the purchase succeeded.
@@ -293,6 +297,9 @@ public:
     // --- Player missions (server-authoritative, M4f-2) ---
     // Generates the offer board at the docked station (called from StepPlayerDock).
     void GenerateDockOffers(ClientSession& s);
+    // Takes an offer from the board, unless the session already carries
+    // MissionSystem::MAX_ACTIVE missions. true -- taken.
+    bool AcceptMission(ClientSession& s, int offerIndex);
     // Server-side mission hand-in: checks the condition, credits rewards to the account,
     // removes cargo (Mining), deletes from the log. true — handed in.
     bool CompleteMission(ClientSession& s, int activeIndex);

@@ -25,6 +25,7 @@
 #include "sim/ClientSession.h"
 #include "sim/SaveSchema.h"
 #include "missions/Mission.h"
+#include "missions/MissionSystem.h"
 #include "sim/Orders.h"
 #include "sim/Simulation.h"
 
@@ -723,6 +724,190 @@ TEST_CASE("a ship has to be bought before it can be flown")
         CHECK(old.Owns(0));
         CHECK(old.currentShip == 0);
     }
+}
+
+namespace
+{
+// The newest journal entry since `seq`, or nothing -- what a client would flash for the
+// command it just sent.
+std::string NoticeSince(const ClientSession& s, int seq)
+{
+    const std::vector<Ev::Event> fresh = s.EventsSince(seq);
+    if (fresh.empty() || fresh.back().kind != Ev::Kind::Notice)
+        return std::string();
+    return fresh.back().text;
+}
+
+int CatalogIndex(const char* name)
+{
+    for (size_t i = 0; i < GetShipCatalog().size(); i++)
+        if (GetShipCatalog()[i].name == name)
+            return (int)i;
+    return -1;
+}
+}  // namespace
+
+TEST_CASE("a hull too small for the cargo is refused, not overloaded (#219)")
+{
+    Fixture   f;
+    const int hauler = CatalogIndex("Hauler");
+    const int courier = CatalogIndex("Courier");
+    REQUIRE(hauler >= 0);
+    REQUIRE(courier >= 0);
+    const ShipType&    scout = GetShipCatalog()[0];
+    const ResourceType ore = AllResourceTypes()[0];
+
+    f.s.account.SetMoney(GetShipCatalog()[hauler].price + GetShipCatalog()[courier].price);
+    REQUIRE(f.sim.BuyShip(f.s, hauler));
+    const int load = scout.stats.cargoCapacity * 3;
+    REQUIRE(f.s.ship->AddCargo(ore, load));
+
+    SUBCASE("switching to a smaller hold says why and changes nothing")
+    {
+        const int seq = f.s.LastEventSeq();
+        CHECK_FALSE(f.sim.SwitchShip(f.s, 0));
+        CHECK(f.s.currentShip == hauler);
+        CHECK(f.s.ship->GetCargoCapacity() == GetShipCatalog()[hauler].stats.cargoCapacity);
+        CHECK(f.s.ship->GetCargoAmount(ore) == load);
+        const std::string why = NoticeSince(f.s, seq);
+        CHECK(why.find("refused") != std::string::npos);
+        CHECK(why.find(std::to_string(load)) != std::string::npos);
+    }
+
+    SUBCASE("buying a smaller hold is refused before anything is charged")
+    {
+        const double money = f.s.account.GetMoney();
+        const int    seq = f.s.LastEventSeq();
+        CHECK_FALSE(f.sim.BuyShip(f.s, courier));
+        CHECK(f.s.account.GetMoney() == doctest::Approx(money));
+        CHECK_FALSE(f.s.Owns(courier));
+        CHECK(f.s.currentShip == hauler);
+        CHECK(NoticeSince(f.s, seq).find("refused") != std::string::npos);
+    }
+
+    SUBCASE("once the cargo fits, the switch goes through")
+    {
+        f.s.ship->RemoveCargo(ore, load - scout.stats.cargoCapacity);
+        const int seq = f.s.LastEventSeq();
+        CHECK(f.sim.SwitchShip(f.s, 0));
+        CHECK(f.s.currentShip == 0);
+        CHECK(f.s.ship->GetCargoUsed() <= f.s.ship->GetCargoCapacity());
+        CHECK(NoticeSince(f.s, seq).find(scout.name) != std::string::npos);
+    }
+}
+
+TEST_CASE("station business answers in the journal, yes or no (#219)")
+{
+    Fixture         f;
+    const FactionId guild = FactionId::TradersGuild;
+
+    SUBCASE("a bounty that is not owed is not paid, and the player is told")
+    {
+        const int seq = f.s.LastEventSeq();
+        CHECK_FALSE(f.sim.PayBounty(f.s, guild));
+        CHECK(NoticeSince(f.s, seq).find("no bounty") != std::string::npos);
+    }
+
+    SUBCASE("a bounty the player cannot afford stays, with the reason")
+    {
+        f.s.account.SetBounty(guild, 500.0);
+        f.s.account.SetMoney(100.0);
+        const int seq = f.s.LastEventSeq();
+        CHECK_FALSE(f.sim.PayBounty(f.s, guild));
+        CHECK(f.s.account.GetBounty(guild) == doctest::Approx(500.0));
+        CHECK(f.s.account.GetMoney() == doctest::Approx(100.0));
+        CHECK(NoticeSince(f.s, seq).find("not paid") != std::string::npos);
+    }
+
+    SUBCASE("a bounty paid says so -- from the server, not the button")
+    {
+        f.s.account.SetBounty(guild, 500.0);
+        f.s.account.SetMoney(800.0);
+        const int seq = f.s.LastEventSeq();
+        CHECK(f.sim.PayBounty(f.s, guild));
+        CHECK(f.s.account.GetBounty(guild) == doctest::Approx(0.0));
+        CHECK(f.s.account.GetMoney() == doctest::Approx(300.0));
+        CHECK(NoticeSince(f.s, seq).find("Bounty paid") != std::string::npos);
+    }
+
+    SUBCASE("a ship the player cannot afford is refused with its price")
+    {
+        f.s.account.SetMoney(0.0);
+        const int seq = f.s.LastEventSeq();
+        CHECK_FALSE(f.sim.BuyShip(f.s, 1));
+        CHECK(NoticeSince(f.s, seq).find("costs") != std::string::npos);
+    }
+
+    SUBCASE("a hand-in that does not exist is refused aloud")
+    {
+        const int seq = f.s.LastEventSeq();
+        CHECK_FALSE(f.sim.CompleteMission(f.s, 0));
+        CHECK(NoticeSince(f.s, seq).find("refused") != std::string::npos);
+    }
+
+    SUBCASE("an offer that is not on the board is not taken, aloud")
+    {
+        const int seq = f.s.LastEventSeq();
+        CHECK_FALSE(f.sim.AcceptMission(f.s, 0));
+        CHECK(NoticeSince(f.s, seq).find("not taken") != std::string::npos);
+    }
+}
+
+TEST_CASE("one player cannot take the whole board (#219)")
+{
+    Fixture f;
+    auto    station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
+                                                FactionId::TradersGuild, StationRole::TradeHub);
+    station->SetId(91);
+    f.World().entities.push_back(std::move(station));
+
+    // The board is regenerated on every dock, so docking again is how a player would hoard;
+    // the test does the same.
+    int guard = 0;
+    while ((int)f.s.missions.Active().size() < MissionSystem::MAX_ACTIVE && guard++ < 50)
+    {
+        if (f.s.missions.Offers().empty())
+        {
+            f.sim.StepPlayerUndock(f.s);
+            REQUIRE(f.sim.StepPlayerDock(f.s, f.World()) == 91);
+        }
+        const int seq = f.s.LastEventSeq();
+        REQUIRE(f.sim.AcceptMission(f.s, 0));
+        CHECK(NoticeSince(f.s, seq).find("Mission taken") != std::string::npos);
+    }
+    REQUIRE((int)f.s.missions.Active().size() == MissionSystem::MAX_ACTIVE);
+
+    if (f.s.missions.Offers().empty())
+    {
+        f.sim.StepPlayerUndock(f.s);
+        REQUIRE(f.sim.StepPlayerDock(f.s, f.World()) == 91);
+    }
+    const size_t offers = f.s.missions.Offers().size();
+    REQUIRE(offers > 0);
+    const int seq = f.s.LastEventSeq();
+    CHECK_FALSE(f.sim.AcceptMission(f.s, 0));
+    CHECK((int)f.s.missions.Active().size() == MissionSystem::MAX_ACTIVE);
+    CHECK(f.s.missions.Offers().size() == offers);  // still on the board for someone else
+    CHECK(NoticeSince(f.s, seq).find(std::to_string(MissionSystem::MAX_ACTIVE)) !=
+          std::string::npos);
+}
+
+TEST_CASE("a worse standing is never a better deal (#219)")
+{
+    // Hated once fell through to list price: cheaper ships than Hostile, better sale prices,
+    // richer missions. Only the dock refusing Hated players hid it.
+    const RepTier tiers[] = { RepTier::Hated, RepTier::Hostile, RepTier::Neutral, RepTier::Liked,
+                              RepTier::Allied };
+    for (size_t i = 1; i < sizeof(tiers) / sizeof(tiers[0]); i++)
+    {
+        CAPTURE(i);
+        CHECK(ShipPriceMultiplier(tiers[i - 1]) > ShipPriceMultiplier(tiers[i]));
+        CHECK(SellPriceMultiplier(tiers[i - 1]) < SellPriceMultiplier(tiers[i]));
+        CHECK(MissionRewardMultiplier(tiers[i - 1]) < MissionRewardMultiplier(tiers[i]));
+    }
+    CHECK(ShipPriceMultiplier(RepTier::Neutral) == doctest::Approx(1.0f));
+    CHECK(SellPriceMultiplier(RepTier::Neutral) == doctest::Approx(1.0f));
+    CHECK(MissionRewardMultiplier(RepTier::Neutral) == doctest::Approx(1.0f));
 }
 
 TEST_CASE("how far a thing can be used is the thing's business, not the code's")

@@ -94,7 +94,7 @@ No arguments.
 
 ### `accept_mission`
 
-Take a job from the board of the station you are docked at. It joins your active missions and stays with you across systems until you hand it in.
+Take a job from the board of the station you are docked at. It joins your active missions and stays with you across systems until you hand it in. At most 5 can be active at once.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
@@ -116,7 +116,7 @@ No arguments.
 
 ### `buy_ship`
 
-Buy a ship at the station you are docked at and fly it from now on. Your old ship stays in the hangar; switch_ship goes back to it for free. Cargo capacity becomes the new hull's.
+Buy a ship at the station you are docked at and fly it from now on. Your old ship stays in the hangar; switch_ship goes back to it for free. Cargo capacity becomes the new hull's, so a hull too small for what you carry is refused.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
@@ -124,7 +124,7 @@ Buy a ship at the station you are docked at and fly it from now on. Your old shi
 
 ### `switch_ship`
 
-Fly another ship you already own, at the station you are docked at. Free; hangar lists what you own.
+Fly another ship you already own, at the station you are docked at. Free; hangar lists what you own. Refused if what you carry would not fit its hold.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
