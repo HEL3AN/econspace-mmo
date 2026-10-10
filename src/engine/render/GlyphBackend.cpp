@@ -1,8 +1,10 @@
 #include "render/GlyphBackend.h"
 
 #include "render/Textures.h"
+#include "rlgl.h"
 #include "ui/UiTheme.h"
 #include <cmath>
+#include <utility>
 
 namespace Render
 {
@@ -311,25 +313,6 @@ static void DrawTriangleAnyWay(Vector2 a, Vector2 b, Vector2 c, Color col)
         DrawTriangle(a, b, c, col);
 }
 
-// An ellipse with its short axis along `angleDeg`. A crater near a planet's limb is seen at
-// a slant (#166); raylib's own ellipse is axis-aligned and cannot turn to face the centre.
-static void DrawEllipseFacing(Vector2 centre, float longR, float shortR, float angleDeg, Color col)
-{
-    const int   segments = 28;
-    const float a = angleDeg * DEG2RAD;
-    const float cs = std::cos(a), sn = std::sin(a);
-    Vector2     prev{};
-    for (int k = 0; k <= segments; k++)
-    {
-        const float   t = 2.0f * PI * (float)k / (float)segments;
-        const float   u = std::cos(t) * shortR, v = std::sin(t) * longR;  // u along the short axis
-        const Vector2 pt{ centre.x + u * cs - v * sn, centre.y + u * sn + v * cs };
-        if (k > 0)
-            DrawTriangleAnyWay(centre, prev, pt, col);
-        prev = pt;
-    }
-}
-
 void ShapeBackend::DrawPiece(const Piece& p, Color c)
 {
     const float a = p.angle * DEG2RAD;
@@ -344,11 +327,17 @@ void ShapeBackend::DrawPiece(const Piece& p, Color c)
     switch (p.form)
     {
         case Form::Disc:
-            if (p.squash < 0.995f)
-                DrawEllipseFacing(p.pos, p.radius, p.radius * std::fmax(0.02f, p.squash), p.angle,
-                                  c);
-            else
-                DrawCircleV(p.pos, p.radius, c);
+            if (p.surface)
+            {
+                // Cut to the body's disc, so a feature at the limb ends at the limb rather
+                // than bulging past it; the piece's centre is always inside what is left.
+                const std::vector<Vector2> outline = SurfaceOutline(p);
+                const Vector2              from = SurfaceFanCentre(p, outline);
+                for (size_t k = 0; k < outline.size(); k++)
+                    DrawTriangleAnyWay(from, outline[k], outline[(k + 1) % outline.size()], c);
+                return;
+            }
+            DrawCircleV(p.pos, p.radius, c);
             return;
 
         case Form::Band:
@@ -465,6 +454,60 @@ void ShapeBackend::DrawPiece(const Piece& p, Color c)
     }
 }
 
+void ShapeBackend::DrawSoftOnSurface(const Item& item, const Piece& p, bool emissive)
+{
+    const std::vector<Vector2> outline = SurfaceOutline(p);
+    if (outline.empty())
+        return;
+
+    // Lit as the body, like every other mark on it: by the material with the body's centre
+    // and radius where there is one, and otherwise by how squarely the body faces the light
+    // under the piece -- so a storm's glow goes dark across the terminator instead of
+    // shining on the night side. A light, or a part of something that is one, is not lit.
+    const Color own = p.tint.a > 0 ? p.tint : item.color;
+    Color       base = own;
+    bool        shaded = false;
+    if (p.role != Role::Light && !emissive)
+    {
+        Lighting::Sample l = lighting_.At(p.bodyPos);
+        shaded = p.bodyRadius * view_.zoom >= MIN_SHADED_PIXELS &&
+                 BeginMaterialAt(item, l, p.bodyPos, p.bodyRadius, Vector2{ 0.0f, 0.0f });
+        if (!shaded)
+        {
+            const float r = p.bodyRadius > 0.0f ? p.bodyRadius : 1.0f;
+            l.strength *=
+                SurfaceFacing({ (p.pos.x - p.bodyPos.x) / r, (p.pos.y - p.bodyPos.y) / r }, l.dir);
+            base = Lit(own, lighting_, l);
+        }
+    }
+    const Color mid = Fade(ForRole(p.role, base), p.brightness);
+
+    // A fan from the centre, each corner as transparent as it is far out along the ellipse:
+    // nothing on the rim, and where the limb cut it, whatever the glow had left there.
+    auto corner = [&](Vector2 v)
+    {
+        const float k = 1.0f - EllipseReach(p, v);
+        rlColor4ub(mid.r, mid.g, mid.b, (unsigned char)((float)mid.a * k));
+        rlVertex2f(v.x, v.y);
+    };
+    const Vector2 from = SurfaceFanCentre(p, outline);
+    rlBegin(RL_TRIANGLES);
+    for (size_t k = 0; k < outline.size(); k++)
+    {
+        Vector2     a = outline[k], b = outline[(k + 1) % outline.size()];
+        const float cross = (a.x - from.x) * (b.y - from.y) - (a.y - from.y) * (b.x - from.x);
+        if (cross > 0.0f)
+            std::swap(a, b);  // the winding raylib keeps, as DrawTriangleAnyWay
+        corner(from);
+        corner(a);
+        corner(b);
+    }
+    rlEnd();
+
+    if (shaded)
+        EndMaterial();
+}
+
 bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sample& light)
 {
     if (item.shape == nullptr || item.shape->Empty())
@@ -507,6 +550,11 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
             if (night <= 0.01f)
                 continue;
             p.brightness *= night;
+        }
+        if (p.soft && p.surface && p.form == Form::Disc)
+        {
+            DrawSoftOnSurface(item, p, emissive);
+            continue;
         }
         if (p.soft)
         {

@@ -105,6 +105,9 @@ private:
     // given one yet -- and those keep the shape that used to be compiled in.
     bool DrawComposition(const Item& item, Color c, const Lighting::Sample& light);
     void DrawPiece(const Piece& p, Color c);
+    // A glow on a planet's surface: projected and cut like any surface piece, lit as the
+    // body, and still fading to nothing at its rim.
+    void DrawSoftOnSurface(const Item& item, const Piece& p, bool emissive);
 
     Lighting         lighting_;  // a copy: a backend outlives the scene that handed it over
     Camera2D         view_{};

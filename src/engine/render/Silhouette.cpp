@@ -230,6 +230,104 @@ Vector2 Axis(const Piece& p)
     return { 0.0f, 0.0f };
 }
 
+std::vector<Vector2> SurfaceOutline(const Piece& p, int segments)
+{
+    std::vector<Vector2> poly;
+    if (!p.surface || p.form != Form::Disc || p.radius <= 0.0f || p.bodyRadius <= 0.0f)
+        return poly;
+
+    // The ellipse: its short axis along `angle`, shortened by how obliquely it is seen.
+    const int   n = segments < 8 ? 8 : segments;
+    const float shortR = p.radius * std::fmax(0.02f, std::fmin(1.0f, p.squash));
+    const float a = p.angle * DEG2RAD, cs = std::cos(a), sn = std::sin(a);
+    poly.reserve((size_t)n + 8);
+    bool        outside = false;
+    const float inner = p.bodyRadius * std::cos(PI / (float)BODY_SIDES);  // the polygon's flats
+    for (int k = 0; k < n; k++)
+    {
+        const float   t = 2.0f * PI * (float)k / (float)n;
+        const float   u = std::cos(t) * shortR, v = std::sin(t) * p.radius;
+        const Vector2 pt{ p.pos.x + u * cs - v * sn, p.pos.y + u * sn + v * cs };
+        const float   dx = pt.x - p.bodyPos.x, dy = pt.y - p.bodyPos.y;
+        outside = outside || dx * dx + dy * dy > inner * inner;
+        poly.push_back(pt);
+    }
+    if (!outside)
+        return poly;
+
+    // Cut by each side of the body's polygon in turn (Sutherland-Hodgman). Both are convex,
+    // so the result is too, and a side the ellipse does not reach leaves it as it was.
+    std::vector<Vector2> next;
+    for (int k = 0; k < BODY_SIDES && !poly.empty(); k++)
+    {
+        const float   mid = 2.0f * PI * ((float)k + 0.5f) / (float)BODY_SIDES;
+        const Vector2 normal{ std::cos(mid), std::sin(mid) };
+        auto          over = [&](Vector2 q)
+        { return (q.x - p.bodyPos.x) * normal.x + (q.y - p.bodyPos.y) * normal.y - inner; };
+        next.clear();
+        for (size_t i = 0; i < poly.size(); i++)
+        {
+            const Vector2 cur = poly[i], nxt = poly[(i + 1) % poly.size()];
+            const float   dc = over(cur), dn = over(nxt);
+            if (dc <= 0.0f)
+                next.push_back(cur);
+            if ((dc <= 0.0f) != (dn <= 0.0f))
+            {
+                const float s = dc / (dc - dn);
+                next.push_back({ cur.x + (nxt.x - cur.x) * s, cur.y + (nxt.y - cur.y) * s });
+            }
+        }
+        poly.swap(next);
+    }
+    return poly;
+}
+
+Vector2 SurfaceFanCentre(const Piece& p, const std::vector<Vector2>& outline)
+{
+    // Inside a convex polygon is on the same side of every edge.
+    bool  inside = outline.size() >= 3;
+    float sign = 0.0f;
+    for (size_t k = 0; k < outline.size() && inside; k++)
+    {
+        const Vector2 a = outline[k], b = outline[(k + 1) % outline.size()];
+        const float   cross = (b.x - a.x) * (p.pos.y - a.y) - (b.y - a.y) * (p.pos.x - a.x);
+        if (sign == 0.0f)
+            sign = cross;
+        inside = cross * sign >= 0.0f;
+    }
+    if (inside || outline.empty())
+        return p.pos;
+    Vector2 mid{ 0.0f, 0.0f };
+    for (const Vector2& v : outline)
+        mid = { mid.x + v.x, mid.y + v.y };
+    return { mid.x / (float)outline.size(), mid.y / (float)outline.size() };
+}
+
+float EllipseReach(const Piece& p, Vector2 at)
+{
+    if (p.radius <= 0.0f)
+        return 1.0f;
+    const float shortR = p.radius * std::fmax(0.02f, std::fmin(1.0f, p.squash));
+    const float a = p.angle * DEG2RAD, cs = std::cos(a), sn = std::sin(a);
+    const float dx = at.x - p.pos.x, dy = at.y - p.pos.y;
+    const float u = (dx * cs + dy * sn) / shortR, v = (-dx * sn + dy * cs) / p.radius;
+    return std::fmin(1.0f, std::sqrt(u * u + v * v));
+}
+
+float SurfaceFacing(Vector2 offset, Vector2 lightDir)
+{
+    if (lightDir.x * lightDir.x + lightDir.y * lightDir.y < 0.0001f)
+        return 1.0f;
+    // As hull.fs: the normal of the sphere under the point, against the light raised a
+    // little out of the picture, so the terminator curves round the body.
+    const float r2 = std::fmin(1.0f, offset.x * offset.x + offset.y * offset.y);
+    const float z = std::fmax(0.001f, std::sqrt(1.0f - r2));
+    const float nl = std::sqrt(r2 + z * z);
+    const float ll = std::sqrt(lightDir.x * lightDir.x + lightDir.y * lightDir.y + 0.55f * 0.55f);
+    const float facing = (offset.x * lightDir.x + offset.y * lightDir.y + z * 0.55f) / (nl * ll);
+    return std::fmax(0.0f, facing);
+}
+
 static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error);
 
 std::vector<const ModuleVariant*> AllowedVariants(const Module&                   m,

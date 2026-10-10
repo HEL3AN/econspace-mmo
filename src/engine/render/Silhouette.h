@@ -473,6 +473,33 @@ float ShadeRadius(const Piece& p);
 // which is what a truss looked like the first time parts were shaded individually.
 Vector2 Axis(const Piece& p);
 
+// The sides of the polygon a body's disc is drawn as: raylib's own circle, corners at every
+// tenth of a turn from the +x axis. A surface piece is cut to that polygon rather than to
+// the true circle, so it never shows past the outline actually on screen.
+constexpr int BODY_SIDES = 36;
+
+// What a round piece on a planet covers on screen (#166): its ellipse, foreshortened toward
+// the body's centre, cut to the body's disc. Near the limb the ellipse is still a whole
+// ellipse and would bulge past the planet's edge; a mark on a surface ends where the
+// surface does. A convex polygon in world coordinates, `segments` corners before the cut.
+// Empty for anything that is not a round surface piece.
+std::vector<Vector2> SurfaceOutline(const Piece& p, int segments = 36);
+
+// Where to fan a surface outline from: the piece's own centre, which is where a glow is
+// brightest -- unless the piece sits in the sliver between the true limb and the body's
+// polygon, where its centre has been cut away and the outline's own middle is used.
+Vector2 SurfaceFanCentre(const Piece& p, const std::vector<Vector2>& outline);
+
+// How far a point of a surface piece's ellipse is from the piece's centre, as a fraction of
+// the way to its rim: 0 at the middle, 1 on the ellipse. A soft piece fades by it.
+float EllipseReach(const Piece& p, Vector2 at);
+
+// How squarely the surface of a body faces the light at a point, 0..1 -- the same rule the
+// hull material applies per fragment, for when there is no shader to apply it. `offset` is
+// the point's distance from the body's centre over its radius, `lightDir` the unit direction
+// toward the light; no direction means lit from everywhere.
+float SurfaceFacing(Vector2 offset, Vector2 lightDir);
+
 // Reads a shape from an archetype's `shape` array. Returns false and says why on anything
 // it does not recognise: unlike a screen-treatment pass, a part that quietly vanishes
 // leaves an object missing a piece, and nobody would know which file to look in.

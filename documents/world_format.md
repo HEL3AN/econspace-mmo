@@ -115,7 +115,10 @@ disc: a crater, a base, a city. Its own frame is a small patch of the surface at
 latitude and longitude, measured in the body's radius, and every part of it becomes a surface
 part -- carried round by `spin`, foreshortened at the limb, hidden on the far side. `repeat`
 spreads copies round the planet in longitude and `mirror` reflects across the equator. Only a
-`disc` is foreshortened at the limb today, so surface modules are written in discs.
+`disc` is foreshortened at the limb today, so surface modules are written in discs. A disc on
+the surface is cut to the planet's outline, so a storm near the limb ends at the limb rather
+than bulging past it; a `soft` one is too, and is lit as the body -- dim on the night side --
+while keeping its fade to the rim.
 
 **Packs.** Further modules live in `data/modules/*.json`, one file per domain (weapons,
 planet, wrecks...), in the same format. They are loaded after `modules.json` in file-name
