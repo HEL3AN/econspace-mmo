@@ -120,6 +120,7 @@ namespace Modules
 void Clear()
 {
     g_modules.clear();
+    ForgetExpansions();
 }
 
 const std::vector<Module>& All()
@@ -237,6 +238,7 @@ bool Load(const std::string& path, std::string& error)
 {
     error.clear();
     g_modules.clear();
+    ForgetExpansions();
     if (!LoadFile(path, error))
         return false;
 

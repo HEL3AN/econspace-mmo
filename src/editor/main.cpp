@@ -5,6 +5,7 @@
 #include <string>
 
 #include "raylib.h"
+#include "render/Scene.h"
 
 int main(int argc, char** argv)
 {
@@ -12,7 +13,7 @@ int main(int argc, char** argv)
     // visible one, opened and closed over and over by a script, steals focus from whoever is
     // using the machine (#293). Decided before the window exists: the constructor opens it.
     for (int i = 1; i < argc; i++)
-        if (std::string(argv[i]) == "shot")
+        if (std::string(argv[i]) == "shot" || std::string(argv[i]) == "perf")
             SetConfigFlags(FLAG_WINDOW_HIDDEN);
     Editor editor;
     // `worldeditor gallery` opens on the archetype gallery (#118) instead of the world,
@@ -35,7 +36,10 @@ int main(int argc, char** argv)
     uint64_t    seed = 1;
     std::string card;
     float       zoom = 1.0f;
-    std::string shot;  // `shot FILE [frames N]`: save the view after N frames and exit
+    std::string shot;             // `shot FILE [frames N]`: save the view after N frames and exit
+    bool        perf = false;     // `perf [frames N]`: print what N frames cost and exit (#296)
+    bool        notreat = false;  // `notreat`: ...with the screen treatment off
+    bool        treated = false;  // `treated`: `shot` through the screen treatment
     int         frames = 30;
     std::string pack;  // `modules pack P seeds N`: one pack, each variant at N seeds
     int         seeds = 3;
@@ -87,6 +91,14 @@ int main(int argc, char** argv)
             shot = argv[++i];
         else if (arg == "frames" && i + 1 < argc)
             frames = std::atoi(argv[++i]);
+        else if (arg == "perf")
+            perf = true;
+        else if (arg == "treated")
+            treated = true;  // a shot through the screen treatment, as it is seen
+        else if (arg == "time" && i + 1 < argc)
+            Render::FreezeLocalClock(std::atof(argv[++i]));  // every frame at this moment
+        else if (arg == "notreat")
+            notreat = true;
     }
     if (region && regionMap)
         editor.OpenRegionMap(seed, systemId);
@@ -99,7 +111,9 @@ int main(int argc, char** argv)
     else if (gallery && !card.empty())
         editor.FocusGallery(card, zoom > 0.0f ? zoom : 1.0f);
     if (!shot.empty())
-        editor.TakeShot(shot, frames);
+        editor.TakeShot(shot, frames, treated);
+    if (perf)
+        editor.MeasurePerf(frames, !notreat);
     editor.Run();
     return 0;
 }

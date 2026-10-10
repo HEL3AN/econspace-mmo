@@ -83,7 +83,20 @@ public:
     // Narrower than this on screen and a part is drawn flat rather than shaded (#135).
     static constexpr float MIN_SHADED_PIXELS = 3.0f;
 
+    // How far outside the target an object may reach and still be culled: lines are drawn at
+    // least a pixel wide, so a reach measured in world units can fall short by that much.
+    static constexpr float CULL_MARGIN_PIXELS = 4.0f;
+
+    // How far a mark on a planet's outline may fall inside the true ellipse, in pixels: what
+    // decides how many corners it is drawn with.
+    static constexpr float OUTLINE_SAG_PIXELS = 0.35f;
+
 private:
+    // Whether a circle of `reach` world units about `pos` misses the target being drawn into.
+    bool OffScreen(Vector2 pos, float reach) const;
+    // How many corners a surface mark's outline needs at the size it is on screen.
+    int OutlineSegments(const Piece& p) const;
+
     double clock_ = 0.0;  // seconds; set before every scene (Present)
     // True when a material took the object over. It then draws one plain primitive and the
     // shader does the shading, instead of the offset discs and rim arcs this backend fakes
@@ -114,8 +127,18 @@ private:
     // the plain path and the material's uniforms cannot disagree about it.
     Lighting::Sample LightAt(Vector2 p) const { return lighting_.At(p, own_); }
 
-    Lighting         lighting_;  // a copy: a backend outlives the scene that handed it over
-    int              own_ = -1;  // index in lighting_ of the drawn item's own light, or -1
+    Lighting lighting_;  // a copy: a backend outlives the scene that handed it over
+    int      own_ = -1;  // index in lighting_ of the drawn item's own light, or -1
+
+    // What the material is bound with now, so a piece shaded with the same inputs as the
+    // one before it shares the bind instead of being a draw call of its own (#296).
+    bool             bound_ = false;
+    const Material*  boundMaterial_ = nullptr;
+    const Item*      boundItem_ = nullptr;
+    Vector2          boundAt_{};
+    float            boundSize_ = 0.0f;
+    Vector2          boundAxis_{};
+    Lighting::Sample boundLight_{};
     Camera2D         view_{};
     MaterialLibrary* materials_ = nullptr;  // borrowed; null draws everything plain
 };

@@ -465,6 +465,10 @@ struct Piece
 // width, because that is the direction the surface actually turns in.
 float ShadeRadius(const Piece& p);
 
+// How far a placed piece can reach from its `pos`, in world units, whatever its form: what a
+// renderer culls a piece by. A band is traced across its whole body.
+float PieceReach(const Piece& p);
+
 // Which way an elongated piece runs, as a unit vector. Zero for the round forms, which
 // have no axis and are lit as what they are.
 //
@@ -536,6 +540,18 @@ struct Pose
 // Places a shape on an object: applies the repeats and the mirror, the object's own
 // heading, its size and position, whatever the clock is doing to it, drops the parts too
 // small or too still to be worth drawing, and perturbs what the shape allows.
+//
+// The part of that which depends only on the shape and the seed -- ranges, palettes, chance,
+// kits, modules -- is worked out once per shape and seed and kept (#296).
 std::vector<Piece> Compose(const Shape& s, const Pose& pose);
+
+// How far this object's composition can reach from its centre, in radii, at any time: what
+// a renderer culls by. Unlike Extent, it is of the shape as this seed has it -- kits, modules
+// and rolled ranges included -- and allows for orbits and rotation.
+float Reach(const Shape& s, int seed);
+
+// Forgets every kept expansion. The module library calls it when it changes: a module is
+// not part of the shape that names it, so nothing else would notice.
+void ForgetExpansions();
 
 }  // namespace Render

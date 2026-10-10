@@ -119,4 +119,11 @@ void Present(std::vector<Item> items, const Lighting& lighting, IBackend& backen
 void Present(std::vector<Item> items, const Lighting& lighting, const Camera2D& view,
              IBackend& backend, double clock = -1.0);
 
+// The clock anything with no world animates by -- the gallery, the treatment's grain: the
+// time since the window opened, unless frozen. A frozen clock is for pictures that have to
+// come out the same twice, so that a before and an after differ only by the change (#296).
+double LocalClock();
+// Pins it at `seconds`; a negative value lets it run again.
+void FreezeLocalClock(double seconds);
+
 }  // namespace Render

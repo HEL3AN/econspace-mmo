@@ -94,14 +94,26 @@ public:
     // editor's mechanism, for pictures of the game itself. The frame is drawn into a
     // texture of its own, because with the screen off the window's pixels read back blank,
     // and without the screen treatment, which keeps a target of its own.
-    void TakeShot(const std::string& path, int frames)
+    // `treated` (--treated) puts the shot through the screen treatment, as the player sees it.
+    void TakeShot(const std::string& path, int frames, bool treated = false)
     {
         shotPath_ = path;
         shotFrames_ = frames;
+        shotTreated_ = treated;
     }
     // Draw the world alone, without the HUD (--nohud): for a picture of the place rather
     // than of the instruments. Nothing else changes; the windows still exist.
     void HideHud() { hudHidden_ = true; }
+    // Measure what frames cost (--perf, #296): uncapped, the GPU waited for at every phase,
+    // and the averages over the second half of `frames` printed to stderr before exiting --
+    // the first half is the connection settling. With --shot the shot frame ends the run.
+    void MeasurePerf(int frames);
+    // Start the screen treatment off (--notreat) without touching look.json: for measuring
+    // what the passes cost.
+    void DisableTreatment() { treatment_.Config().enabled = false; }
+    // Open at a given size (--size W H): a measurement at the resolution of the machine it
+    // is about, rather than at the default window's.
+    void SetResolution(int w, int h) { ApplyResolution(w, h); }
     // Who this client is logged in as: a discoverer may name what they found (#145), and
     // the window layout is kept per account (#297).
     void SetPilotName(const std::string& n);
@@ -224,7 +236,13 @@ private:
     std::string     shotPath_;
     int             shotFrames_ = 60;
     RenderTexture2D shotTarget_ = {};
-    bool            hudHidden_ = false;  // --nohud
+    bool            shotTreated_ = false;  // --treated
+    bool            hudHidden_ = false;    // --nohud
+    int             perfFrames_ = -1;      // --perf: frames left to measure; -1 when not
+    int             perfTotal_ = 0;        // ...out of this many
+    bool            perfOverlay_ = false;  // F9: the frame's cost on screen
+    double          perfRolled_ = 0.0;     // when the overlay last closed a window
+    void            DrawPerfOverlay();
 
     // How the world is presented (#35): the generated look is the only one (#123). Glyphs
     // live on in the sensor screen, which draws its own grid rather than through a backend.

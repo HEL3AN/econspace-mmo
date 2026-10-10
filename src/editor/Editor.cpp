@@ -9,6 +9,7 @@
 #include <cstdlib>
 
 #include "core/World.h"
+#include "render/Perf.h"
 #include "render/Textures.h"
 #include "ui/UiTheme.h"
 #include "ui/Button.h"
@@ -252,6 +253,7 @@ void Editor::Run()
 {
     while (!WindowShouldClose())
     {
+        Render::Perf::BeginFrame();
         screenWidth_ = GetScreenWidth();
         screenHeight_ = GetScreenHeight();
         camera_.offset = { screenWidth_ / 2.0f, screenHeight_ / 2.0f };
@@ -283,19 +285,24 @@ void Editor::Run()
         const bool shooting = !shotPath_.empty();
         if (shooting && shotTarget_.id == 0)
             shotTarget_ = LoadRenderTexture(screenWidth_, screenHeight_);
+        Render::Perf::Mark(Render::Perf::Phase::Update);
         BeginDrawing();
         if (shooting)
             BeginTextureMode(shotTarget_);
         ClearBackground(Color{ 8, 9, 14, 255 });
+        // A shot leaves the treatment off unless asked (`treated`): it is usually of a shape.
+        const bool chain = !shooting || shotTreated_;
         if (mode_ == Mode::Gallery)
         {
             // The cards go through the chain; everything that is a tool is drawn after it
             // and stays literal. That is the same rule the game follows with its HUD.
-            if (!shooting)
-                treatment_.Begin(screenWidth_, screenHeight_);
+            if (chain)
+                treatment_.Begin(screenWidth_, screenHeight_, shooting ? &shotTarget_ : nullptr);
             DrawGallery();
-            if (!shooting)
+            Render::Perf::Mark(Render::Perf::Phase::World);
+            if (chain)
                 treatment_.End();
+            Render::Perf::Mark(Render::Perf::Phase::Treatment);
             DrawHud();
             DrawGalleryFocusBar();
             DrawGalleryPanel();
@@ -305,11 +312,13 @@ void Editor::Run()
         else if (mode_ == Mode::Modules)
         {
             HandleModulesInput();
-            if (!shooting)
-                treatment_.Begin(screenWidth_, screenHeight_);
+            if (chain)
+                treatment_.Begin(screenWidth_, screenHeight_, shooting ? &shotTarget_ : nullptr);
             DrawModules(false);
-            if (!shooting)
+            Render::Perf::Mark(Render::Perf::Phase::World);
+            if (chain)
                 treatment_.End();
+            Render::Perf::Mark(Render::Perf::Phase::Treatment);
             DrawModules(true);
         }
         else if (mode_ == Mode::Region)
@@ -322,11 +331,13 @@ void Editor::Run()
         else if (mode_ == Mode::Survey)
         {
             // The systems through the chain, the labels and flags after it, as the gallery.
-            if (!shooting)
-                treatment_.Begin(screenWidth_, screenHeight_);
+            if (chain)
+                treatment_.Begin(screenWidth_, screenHeight_, shooting ? &shotTarget_ : nullptr);
             DrawSurvey(false);
-            if (!shooting)
+            Render::Perf::Mark(Render::Perf::Phase::World);
+            if (chain)
                 treatment_.End();
+            Render::Perf::Mark(Render::Perf::Phase::Treatment);
             DrawSurvey(true);
             DrawHud();
             DrawSurveyPanel();
@@ -336,6 +347,7 @@ void Editor::Run()
         else
         {
             DrawWorld();
+            Render::Perf::Mark(Render::Perf::Phase::World);
             DrawHud();
             DrawPalette();
             DrawPropertyPanel();
@@ -358,8 +370,36 @@ void Editor::Run()
                 break;
             }
         }
+        Render::Perf::Mark(Render::Perf::Phase::Hud);
         EndDrawing();
+        Render::Perf::Mark(Render::Perf::Phase::Present);
+        Render::Perf::EndFrame();
+        // `perf`: the second half of the run, averaged, to stderr -- as the game's --perf.
+        if (perfFrames_ >= 0)
+        {
+            perfFrames_--;
+            if (perfFrames_ == perfTotal_ / 2)
+                Render::Perf::Roll();
+            if (perfFrames_ == 0)
+            {
+                Render::Perf::Roll();
+                std::fprintf(stderr, "perf (treatment %s) %dx%d\n%s",
+                             treatment_.Config().enabled && treatment_.Available() ? "on" : "off",
+                             screenWidth_, screenHeight_,
+                             Render::Perf::Report(Render::Perf::Last()).c_str());
+                break;
+            }
+        }
     }
+}
+
+void Editor::MeasurePerf(int frames, bool treated)
+{
+    perfTotal_ = perfFrames_ = frames > 1 ? frames : 2;
+    Render::Perf::Enable(true);
+    SetTargetFPS(0);  // uncapped, or the frame measures the wait
+    if (!treated)
+        treatment_.Config().enabled = false;
 }
 
 void Editor::HandleInput()

@@ -64,6 +64,8 @@ cmake --build build-release
 ./build/bin/server/econserver.exe host 50800 --public   # ...reachable from other machines (#187)
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2   # account + secret
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --shot f.png --frames 120  # save frame 120, exit (--nohud: world only)
+./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --perf --frames 240  # CPU+GPU ms per phase to stderr (F9 in game; --notreat, --size W H; --treated puts a shot through the treatment)
+./build/bin/editor/worldeditor.exe gallery shapes perf frames 200   # the same for the editor (`time T` freezes the clock, `treated` shot)
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --sensor 2000000 --shot s.png  # the sensor screen (V), 2M across
 ./build/bin/editor/worldeditor.exe
 ./build/bin/editor/worldeditor.exe gallery           # every archetype at once, for tuning a look (F3)

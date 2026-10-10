@@ -1,5 +1,6 @@
 #include "render/GlyphBackend.h"
 
+#include "render/Perf.h"
 #include "render/Textures.h"
 #include "rlgl.h"
 #include "ui/UiTheme.h"
@@ -233,17 +234,43 @@ bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& lig
     in.light.dir.y = -in.light.dir.y;
     in.axis = { axis.x, -axis.y };
 
-    return materials_->Begin(*m, in);
+    // Already bound with exactly these inputs: keep it (#296). Every mark on a planet is
+    // shaded as the planet -- the body's centre, radius and light -- so a crater field was
+    // a shader bound, a crater drawn and the shader unbound, forty times over, each one a
+    // draw call of its own. Uniforms are the same, so the pieces may share one.
+    const bool same =
+        bound_ && boundMaterial_ == m && boundItem_ == &item && boundAt_.x == in.screenPos.x &&
+        boundAt_.y == in.screenPos.y && boundSize_ == in.screenSize && boundAxis_.x == in.axis.x &&
+        boundAxis_.y == in.axis.y && boundLight_.dir.x == in.light.dir.x &&
+        boundLight_.dir.y == in.light.dir.y && boundLight_.strength == in.light.strength &&
+        ColorIsEqual(boundLight_.tint, in.light.tint);
+    if (same)
+        return true;
+    EndMaterial();
+
+    if (!materials_->Begin(*m, in))
+        return false;
+    Perf::Count(Perf::Counter::Binds);
+    bound_ = true;
+    boundMaterial_ = m;
+    boundItem_ = &item;
+    boundAt_ = in.screenPos;
+    boundSize_ = in.screenSize;
+    boundAxis_ = in.axis;
+    boundLight_ = in.light;
+    return true;
 }
 
 void ShapeBackend::EndMaterial()
 {
+    bound_ = false;
     if (materials_ != nullptr)
         materials_->End();
 }
 
 void ShapeBackend::Draw(const Item& item)
 {
+    Perf::Count(Perf::Counter::Items);
     // What the light does to this object, asked once. An object is small next to the
     // distance to its star, so one sample at its centre is the whole of the difference.
     own_ = lighting_.OwnLight(item);
@@ -257,6 +284,14 @@ void ShapeBackend::Draw(const Item& item)
     {
         if (item.ring > 0.0f)
             DrawCircleLines(0.0f, 0.0f, item.ring, DARKGRAY);
+        // Wholly off screen, it is neither composed nor drawn (#296). Most of a system is
+        // outside the window at any zoom worth flying at, and every one of those objects was
+        // being assembled piece by piece to be clipped by the GPU.
+        if (OffScreen(item.pos, item.size * Reach(*item.shape, item.id)))
+        {
+            Perf::Count(Perf::Counter::Culled);
+            return;
+        }
         DrawComposition(item, item.color, light);
         return;
     }
@@ -283,6 +318,28 @@ void ShapeBackend::Draw(const Item& item)
     // happens -- it is a visible bug in whatever is drawn next.
     DrawShape(item, c, shaded, light);
     EndMaterial();
+}
+
+int ShapeBackend::OutlineSegments(const Piece& p) const
+{
+    // A chord of a circle of r pixels, n to the turn, falls short of the arc by about
+    // r * (pi / n)^2 / 2. Kept under a third of a pixel, which no one can see: a crater ten
+    // pixels across needs ten corners, not the thirty-six a planet-sized one does (#296).
+    const float r = std::fabs(p.radius) * view_.zoom;
+    if (r <= 0.0f)
+        return 8;
+    const float n = PI / std::sqrt(2.0f * OUTLINE_SAG_PIXELS / r);
+    return (int)std::fmin(36.0f, std::fmax(8.0f, std::ceil(n)));
+}
+
+bool ShapeBackend::OffScreen(Vector2 pos, float reach) const
+{
+    // The target being drawn into, which is the screen, a shot's texture or the treatment's.
+    const float   w = (float)rlGetFramebufferWidth(), h = (float)rlGetFramebufferHeight();
+    const Vector2 s = GetWorldToScreen2D(pos, view_);
+    // Lines are at least a pixel wide whatever the zoom, so a margin of a few pixels.
+    const float r = reach * view_.zoom + CULL_MARGIN_PIXELS;
+    return s.x + r < 0.0f || s.x - r > w || s.y + r < 0.0f || s.y - r > h;
 }
 
 // A part's colour is its relationship to the object's, never a colour of its own. An
@@ -334,9 +391,11 @@ void ShapeBackend::DrawPiece(const Piece& p, Color c)
         case Form::Disc:
             if (p.surface)
             {
+                Perf::Scope timed(Perf::Section::Surface);
+                Perf::Count(Perf::Counter::Surface);
                 // Cut to the body's disc, so a feature at the limb ends at the limb rather
                 // than bulging past it; the piece's centre is always inside what is left.
-                const std::vector<Vector2> outline = SurfaceOutline(p);
+                const std::vector<Vector2> outline = SurfaceOutline(p, OutlineSegments(p));
                 const Vector2              from = SurfaceFanCentre(p, outline);
                 for (size_t k = 0; k < outline.size(); k++)
                     DrawTriangleAnyWay(from, outline[k], outline[(k + 1) % outline.size()], c);
@@ -461,7 +520,10 @@ void ShapeBackend::DrawPiece(const Piece& p, Color c)
 
 void ShapeBackend::DrawSoftOnSurface(const Item& item, const Piece& p, bool emissive)
 {
-    const std::vector<Vector2> outline = SurfaceOutline(p);
+    Perf::Scope timed(Perf::Section::Soft);
+    Perf::Count(Perf::Counter::Soft);
+    Perf::Count(Perf::Counter::Surface);
+    const std::vector<Vector2> outline = SurfaceOutline(p, OutlineSegments(p));
     if (outline.empty())
         return;
 
@@ -479,6 +541,7 @@ void ShapeBackend::DrawSoftOnSurface(const Item& item, const Piece& p, bool emis
                  BeginMaterialAt(item, l, p.bodyPos, p.bodyRadius, Vector2{ 0.0f, 0.0f });
         if (!shaded)
         {
+            EndMaterial();
             const float r = p.bodyRadius > 0.0f ? p.bodyRadius : 1.0f;
             l.strength *=
                 SurfaceFacing({ (p.pos.x - p.bodyPos.x) / r, (p.pos.y - p.bodyPos.y) / r }, l.dir);
@@ -508,9 +571,8 @@ void ShapeBackend::DrawSoftOnSurface(const Item& item, const Piece& p, bool emis
         corner(b);
     }
     rlEnd();
-
-    if (shaded)
-        EndMaterial();
+    // Left bound if it was: the next mark on this body is very likely shaded the same way,
+    // and whoever draws something else ends it (see BeginMaterialAt).
 }
 
 bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sample& light)
@@ -530,7 +592,12 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
     pose.time = clock_;
     pose.thrusting = item.thrusting;
 
-    const std::vector<Piece> pieces = Compose(*item.shape, pose);
+    std::vector<Piece> pieces;
+    {
+        Perf::Scope timed(Perf::Section::Compose);
+        pieces = Compose(*item.shape, pose);
+    }
+    Perf::Count(Perf::Counter::Pieces, (int)pieces.size());
 
     // An object that is itself a light is never shaded by one -- the same rule the
     // uncomposed path follows. Without it a star would be shaded by the light it emits,
@@ -539,6 +606,15 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
 
     for (const Piece& p0 : pieces)
     {
+        // A piece that misses the target is skipped like an object that does (#296). A star
+        // three hundred thousand units away still reaches the screen with its corona, and
+        // its prominences, flares and sunspots on the far side of it were all being drawn.
+        if (OffScreen(p0.pos, PieceReach(p0)))
+        {
+            Perf::Count(Perf::Counter::Skipped);
+            continue;
+        }
+
         // A night-side part fades out where its body faces the light: the light's direction
         // against the point's own direction from the body's centre, so it goes out across
         // the terminator rather than at it (#240). With no light at all it is night.
@@ -567,6 +643,9 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
             // never shaded: a lit wisp is a grey ball.
             const Color own = p.tint.a > 0 ? p.tint : item.color;
             const Color mid = Fade(ForRole(p.role, own), p.brightness);
+            Perf::Scope timed(Perf::Section::Soft);
+            Perf::Count(Perf::Counter::Soft);
+            EndMaterial();
             DrawCircleGradient((int)p.pos.x, (int)p.pos.y, p.radius, mid, Fade(mid, 0.0f));
             continue;
         }
@@ -578,6 +657,7 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         const Color ownC = p.tint.a > 0 ? p.tint : c;
         if (p.role == Role::Light || emissive)
         {
+            EndMaterial();
             DrawPiece(p,
                       Fade(ForRole(p.role, own), (0.25f + 0.75f * item.intensity) * p.brightness));
             continue;
@@ -602,6 +682,8 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         const float shadePixels = shadeR * view_.zoom;
         const bool  shaded = shadePixels >= MIN_SHADED_PIXELS &&
                              BeginMaterialAt(item, pieceLight, shadeAt, shadeR, shadeAxis);
+        if (!shaded)
+            EndMaterial();
 
         // With a shader the colour stays the object's own and the shading is done in the
         // fragment; without one it is dimmed here. Doing both would darken twice.
@@ -612,10 +694,9 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         if (p.brightness < 1.0f)
             base = Fade(base, p.brightness);
         DrawPiece(p, ForRole(p.role, base));
-
-        if (shaded)
-            EndMaterial();
+        // Not ended here: the next piece may be shaded with the same inputs.
     }
+    EndMaterial();
     (void)light;
     return true;
 }

@@ -145,6 +145,7 @@ add_library(engine STATIC
     src/engine/render/TreatmentPanel.cpp   # its settings, drawn by the game and the editor
     src/engine/render/GlyphBackend.cpp
     src/engine/render/TextBackend.cpp  # no raylib drawing calls: agents and tests are headless
+    src/engine/render/Perf.cpp         # what a frame costs, and where (#296)
     src/engine/ui/UiTheme.cpp
     src/engine/ui/Button.cpp
     src/engine/ui/Controls.cpp         # sliders and toggles, wanted by more than one screen

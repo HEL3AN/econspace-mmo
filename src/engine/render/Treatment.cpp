@@ -1,5 +1,7 @@
 #include "render/Treatment.h"
 
+#include "render/Perf.h"
+#include "render/Scene.h"
 #include "rlgl.h"
 #include <algorithm>
 
@@ -12,6 +14,7 @@ namespace
 // this wrong shows as a world that is upside down, which is at least obvious.
 void DrawFull(const Texture2D& tex, int w, int h)
 {
+    // Draw calls are counted where the passes are run; this is one full-target fill.
     const Rectangle src{ 0.0f, 0.0f, (float)tex.width, -(float)tex.height };
     const Rectangle dst{ 0.0f, 0.0f, (float)w, (float)h };
     DrawTexturePro(tex, src, dst, { 0.0f, 0.0f }, 0.0f, WHITE);
@@ -74,8 +77,46 @@ void Treatment::Load(const std::string& dataDir)
         l.locScale = GetShaderLocation(s, "scale");
         l.locResolution = GetShaderLocation(s, "resolution");
         l.locTime = GetShaderLocation(s, "time");
-        l.locScene = GetShaderLocation(s, "scene");
+        l.locGlow = GetShaderLocation(s, "glow");
         shaders_.push_back(l);
+    }
+
+    // Bloom is three draws now (#296), and the two that make the glow have a shader of their
+    // own. If that one fails, bloom goes with it -- said the same way as any pass that failed.
+    if (Find(PassKind::Bloom) != nullptr)
+    {
+        const std::string path = dataDir + "shaders/bloom_blur.fs";
+        const char*       failed = nullptr;
+        Shader            s{};
+        if (!FileExists(path.c_str()))
+            failed = "has no blur shader";
+        else
+        {
+            s = LoadShader(nullptr, path.c_str());
+            if (s.id == 0 || s.locs == nullptr)
+                failed = "blur shader would not compile";
+            else if (s.id == rlGetShaderIdDefault())
+                failed = "blur shader would not link";
+        }
+        if (failed != nullptr)
+        {
+            problems_.push_back(std::string("bloom: ") + failed);
+            TraceLog(LOG_WARNING, "Treatment: bloom %s -- pass dropped", failed);
+            for (size_t i = 0; i < shaders_.size(); i++)
+                if (shaders_[i].kind == PassKind::Bloom)
+                {
+                    UnloadShader(shaders_[i].shader);
+                    shaders_.erase(shaders_.begin() + (long)i);
+                    break;
+                }
+        }
+        else
+        {
+            blur_ = s;
+            blurLoaded_ = true;
+            locDirection_ = GetShaderLocation(s, "direction");
+            locBrightPass_ = GetShaderLocation(s, "brightPass");
+        }
     }
 
     if (shaders_.empty())
@@ -91,12 +132,17 @@ void Treatment::Unload()
         UnloadShader(l.shader);
     shaders_.clear();
     problems_.clear();
+    if (blurLoaded_)
+        UnloadShader(blur_);
+    blurLoaded_ = false;
 
     if (targetsReady_)
     {
         UnloadRenderTexture(scene_);
         UnloadRenderTexture(ping_);
         UnloadRenderTexture(pong_);
+        UnloadRenderTexture(glowA_);
+        UnloadRenderTexture(glowB_);
         targetsReady_ = false;
     }
     capturing_ = false;
@@ -124,10 +170,18 @@ void Treatment::EnsureTargets(int width, int height)
         UnloadRenderTexture(scene_);
         UnloadRenderTexture(ping_);
         UnloadRenderTexture(pong_);
+        UnloadRenderTexture(glowA_);
+        UnloadRenderTexture(glowB_);
     }
     scene_ = LoadRenderTexture(width, height);
     ping_ = LoadRenderTexture(width, height);
     pong_ = LoadRenderTexture(width, height);
+    // A glow is a blur, and a blur has no detail to lose at half resolution: a quarter of
+    // the pixels, and bilinear filtering brings it back up smoothly.
+    glowA_ = LoadRenderTexture(std::max(1, width / 2), std::max(1, height / 2));
+    glowB_ = LoadRenderTexture(std::max(1, width / 2), std::max(1, height / 2));
+    SetTextureFilter(glowA_.texture, TEXTURE_FILTER_BILINEAR);
+    SetTextureFilter(glowB_.texture, TEXTURE_FILTER_BILINEAR);
     // Bilinear, so pixelation is a decision the shader makes rather than a side effect of
     // how the texture happens to be sampled.
     SetTextureFilter(scene_.texture, TEXTURE_FILTER_BILINEAR);
@@ -138,12 +192,13 @@ void Treatment::EnsureTargets(int width, int height)
     targetsReady_ = true;
 }
 
-void Treatment::Begin(int width, int height)
+void Treatment::Begin(int width, int height, const RenderTexture2D* into)
 {
     if (!config_.enabled || !Available() || width <= 0 || height <= 0)
         return;
     EnsureTargets(width, height);
     capturing_ = true;
+    into_ = into;
     BeginTextureMode(scene_);
     ClearBackground(BLACK);
 }
@@ -156,7 +211,7 @@ void Treatment::End()
     EndTextureMode();
 
     const float resolution[2] = { (float)width_, (float)height_ };
-    const float now = (float)GetTime();
+    const float now = (float)LocalClock();
 
     // Ping-pong between two targets. `from` is what the last pass produced; the first
     // reads the scene itself.
@@ -179,18 +234,25 @@ void Treatment::End()
             SetShaderValue(l->shader, l->locResolution, resolution, SHADER_UNIFORM_VEC2);
         if (l->locTime >= 0)
             SetShaderValue(l->shader, l->locTime, &now, SHADER_UNIFORM_FLOAT);
-        // Bloom composites its blur back over the picture as it stood before the blur, so
-        // it needs both. Every other pass reads one texture and is done.
-        if (l->locScene >= 0)
-            SetShaderValueTexture(l->shader, l->locScene, scene_.texture);
+        // Bloom lays a glow made from the world as it was drawn over whatever the chain has
+        // made of it so far. Every other pass reads one texture and is done.
+        if (p.kind == PassKind::Bloom)
+            Glow(p.scale);
 
         BeginTextureMode(*to);
         ClearBackground(BLANK);
         BeginShaderMode(l->shader);
+        // The second sampler is set after everything that flushes raylib's batch -- starting
+        // a texture mode does, and so does changing the shader -- because a flush forgets every
+        // texture but the first. Set before them, as it was until #296, bloom read black and
+        // drew nothing at all, while costing eighty-one taps a pixel.
+        if (p.kind == PassKind::Bloom && l->locGlow >= 0)
+            SetShaderValueTexture(l->shader, l->locGlow, glowB_.texture);
         DrawFull(from->texture, width_, height_);
         EndShaderMode();
         EndTextureMode();
 
+        Perf::Count(Perf::Counter::Passes);
         from = to;
         to = (to == &ping_) ? &pong_ : &ping_;
     }
@@ -198,7 +260,38 @@ void Treatment::End()
     // Whether any pass ran or not, whatever `from` points at is the picture: with an
     // empty chain that is the scene itself, which is the raw world drawn to a texture and
     // straight back out. That is the fallback working, not a bug.
+    if (into_ != nullptr)
+        BeginTextureMode(*into_);
     DrawFull(from->texture, width_, height_);
+}
+
+void Treatment::Glow(float scale)
+{
+    const int   w = glowA_.texture.width, h = glowA_.texture.height;
+    const float bright = 1.0f, plain = 0.0f;
+    // A step is `scale` pixels of the screen, as it was when this was one pass, whatever the
+    // resolution it is taken at.
+    const float across[2] = { scale / (float)width_, 0.0f };
+    const float down[2] = { 0.0f, scale / (float)height_ };
+
+    SetShaderValue(blur_, locDirection_, across, SHADER_UNIFORM_VEC2);
+    SetShaderValue(blur_, locBrightPass_, &bright, SHADER_UNIFORM_FLOAT);
+    BeginTextureMode(glowA_);
+    ClearBackground(BLACK);
+    BeginShaderMode(blur_);
+    DrawFull(scene_.texture, w, h);
+    EndShaderMode();
+    EndTextureMode();
+
+    SetShaderValue(blur_, locDirection_, down, SHADER_UNIFORM_VEC2);
+    SetShaderValue(blur_, locBrightPass_, &plain, SHADER_UNIFORM_FLOAT);
+    BeginTextureMode(glowB_);
+    ClearBackground(BLACK);
+    BeginShaderMode(blur_);
+    DrawFull(glowA_.texture, w, h);
+    EndShaderMode();
+    EndTextureMode();
+    Perf::Count(Perf::Counter::Passes, 2);
 }
 
 bool Treatment::Save(std::string& error) const

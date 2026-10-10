@@ -4,52 +4,25 @@
 //
 // scale -- how far the glow reaches, in source pixels per step.
 //
-// One pass rather than the usual bright-pass plus two separable blurs. It is the only
-// effect here that needs the picture as it stood before it, which is why this is the one
-// shader given a second sampler.
+// The glow itself is made before this runs (#296): the bright parts of the world as it was
+// drawn, blurred across and then down at half the screen's resolution by bloom_blur.fs. That
+// is two passes of nine taps over a quarter of the pixels, where this used to be one pass of
+// eighty-one taps over all of them -- the same gaussian, because exp(-(x*x + y*y) / 8) is
+// exp(-x*x / 8) times exp(-y*y / 8). On a laptop's integrated graphics the old pass alone was
+// most of a frame. What is left here is to lay the glow over the picture.
 
 in vec2 fragTexCoord;
 in vec4 fragColor;
 
 uniform sampler2D texture0;    // what the chain has produced so far
-uniform sampler2D scene;       // the world as it was drawn, before any pass
+uniform sampler2D glow;        // the bright parts of the scene, blurred
 uniform float amount;
-uniform float scale;
-uniform vec2 resolution;
 
 out vec4 finalColor;
 
-// Where a pixel stops being ordinary and starts being a light. Below this nothing glows,
-// which is what keeps a dim hull from smearing.
-const float THRESHOLD = 0.55;
-
-vec3 bright(vec2 uv)
-{
-    vec3 c = texture(scene, uv).rgb;
-    float lum = dot(c, vec3(0.299, 0.587, 0.114));
-    return c * max(0.0, lum - THRESHOLD) / max(1.0 - THRESHOLD, 0.001);
-}
-
 void main()
 {
-    vec2 step = scale / resolution;
-    vec3 sum = vec3(0.0);
-    float total = 0.0;
-
-    // A 9x9 tap grid with a gaussian falloff. Coarse enough to be cheap, wide enough that
-    // a star reads as a light source rather than as a disc with a halo stuck on it.
-    for (int y = -4; y <= 4; y++)
-    {
-        for (int x = -4; x <= 4; x++)
-        {
-            float d2 = float(x * x + y * y);
-            float w = exp(-d2 / 8.0);
-            sum += bright(fragTexCoord + vec2(float(x), float(y)) * step) * w;
-            total += w;
-        }
-    }
-
-    vec3 glow = sum / max(total, 0.001);
     vec3 base = texture(texture0, fragTexCoord).rgb;
-    finalColor = vec4(base + glow * amount, 1.0) * fragColor;
+    vec3 g = texture(glow, fragTexCoord).rgb;
+    finalColor = vec4(base + g * amount, 1.0) * fragColor;
 }
