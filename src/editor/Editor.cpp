@@ -6,6 +6,8 @@
 
 #include "Editor.h"
 
+#include <cstdlib>
+
 #include "core/World.h"
 #include "render/Textures.h"
 #include "ui/UiTheme.h"
@@ -41,6 +43,10 @@ Editor::Editor()
 #else
     dataDir_ = std::string(GetApplicationDirectory()) + "data/";
 #endif
+    // Another checkout's data/ -- a worktree's, say -- seen through this build, so a change
+    // that is only data can be looked at without building the editor again.
+    if (const char* other = std::getenv("ECONSPACE_DATA"))
+        dataDir_ = std::string(other) + "/";
     Factions::Load(dataDir_ + "factions.json");  // faction properties/relations
     if (!Archetypes::Load(dataDir_ + "archetypes.json"))
         TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());

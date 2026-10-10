@@ -831,7 +831,8 @@ void Editor::DrawModules(bool labels)
                 { centre.x - cell * 0.47f, centre.y - cell * 0.47f, cell * 0.94f, cell * 0.94f },
                 1.0f, Fade(Ui::PANEL_BORDER, 0.6f));
             Ui::Text(names[i].first.c_str(), (int)(centre.x - cell * 0.44f),
-                     (int)(centre.y + cell * 0.36f), 12, Ui::TEXT_DIM);
+                     (int)(centre.y + cell * (names[i].first[0] == '#' ? -0.44f : 0.36f)), 12,
+                     Ui::TEXT_DIM);
             continue;
         }
         Render::Item it;
