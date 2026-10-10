@@ -66,14 +66,6 @@ constexpr float STOCK_OUTPOSTS = 2.0f;
 // A faction settles only where it has really come: half its capacity committed, the bar
 // a capture by strength has always had (StepControl). A gang is not a settlement.
 constexpr float SETTLE_PRESENCE = 0.5f;
-// Where an outpost goes is keyed by who and where, never by when or by order.
-constexpr uint64_t OUTPOST_KEY = 0x0F7905u;
-// An outpost goes up near the gate the faction came through, this far out from it, or --
-// when there is no room there -- anywhere clear between these shares of the system's
-// radius. This many places are tried before the faction gives up for now.
-constexpr float OUTPOST_NEAR_GATE = 12000.0f;
-constexpr float OUTPOST_INNER = 0.15f, OUTPOST_OUTER = 0.7f;
-constexpr int   OUTPOST_TRIES = 24;
 
 bool Hostile(FactionId a, FactionId b)
 {
@@ -119,9 +111,8 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
                 break;
             case EntityKind::Structure:
             {
-                const Structure&       t = static_cast<const Structure&>(*e);
-                const Blueprint* const bp = Blueprints::Find(Outposts::BLUEPRINT);
-                if (bp == nullptr || t.GetBuilds() != bp->archetype)
+                const Structure& t = static_cast<const Structure&>(*e);
+                if (!Outposts::IsOutpost(t.GetBuilds()))
                     break;
                 p.outpostSite = true;
                 FactionId owner;
@@ -185,6 +176,8 @@ Intel Simulation::Observe(const SystemState& st) const
     i.belts = st.profile.belts;
     i.wrecks = st.profile.wrecks;
     i.stations = st.profile.stations;
+    i.planets = st.profile.planets;
+    i.gates = st.profile.gates;
     i.defenders = st.profile.defenders;
     i.presence = st.agg.presence;
     i.controller = st.agg.controller;
@@ -297,50 +290,33 @@ void Simulation::ResolveDuePlans()
 // outpost already stands or is going up, is not one to settle -- and nothing is spent.
 bool Simulation::Settle(FactionId f, const std::string& from, const std::string& to)
 {
-    const Blueprint* bp = Blueprints::Find(Outposts::BLUEPRINT);
-    SystemState*     st = SystemById(to);
-    const float      cost = OutpostCost();
-    FactionMind&     mind = minds_[(int)f];
-    if (bp == nullptr || st == nullptr || cost <= 0.0f || mind.stock < cost)
+    SystemState* st = SystemById(to);
+    const float  cost = OutpostCost();
+    FactionMind& mind = minds_[(int)f];
+    if (st == nullptr || cost <= 0.0f || mind.stock < cost)
         return false;
-    mind.intel[to] = Observe(*st);
+    const Intel& seen = mind.intel[to] = Observe(*st);
     if (st->agg.claimed || st->profile.outpostSite)
         return false;
 
-    // Beside the gate it came through, which is the way its convoy arrived and the way it
-    // will be supplied; failing that, anywhere there is room. Drawn from who and where, so
-    // the same faction settling the same system picks the same place on every run.
-    Gen::Rng rng(Gen::Key(OUTPOST_KEY, (uint64_t)f, Intelligence::KeyOf(to)));
-    Vector2  gate{ 0.0f, 0.0f };
-    bool     hasGate = false;
-    for (const auto& e : st->entities)
-        if (e->GetKind() == EntityKind::Gate &&
-            static_cast<const JumpGate&>(*e).GetDestination() == from)
-        {
-            gate = e->GetPosition();
-            hasGate = true;
-        }
-    Vector2 at{ 0.0f, 0.0f };
-    bool    found = false;
-    for (int i = 0; i < OUTPOST_TRIES && !found; i++)
+    // What it came for decides what it builds and where (#318); a purpose with nothing to
+    // build by here, or no room left for it, is an open point instead.
+    Outposts::Purpose purpose =
+        Outposts::ChoosePurpose(Factions::TemperamentOf(f), Factions::IsLawful(f), seen);
+    OutpostSpot spot = FindOutpostSpot(f, purpose, from, to);
+    if (!spot.found && purpose != Outposts::Purpose::Open)
     {
-        const float turn = (float)(rng.Unit() * 2.0 * PI);
-        float       r = OUTPOST_NEAR_GATE * (1.0f + (float)i / 4.0f);
-        Vector2     centre = gate;
-        if (!hasGate || i >= OUTPOST_TRIES / 2)
-        {
-            centre = Vector2{ 0.0f, 0.0f };
-            r = World::SYSTEM_RADIUS *
-                (OUTPOST_INNER + (OUTPOST_OUTER - OUTPOST_INNER) * (float)rng.Unit());
-        }
-        at = Vector2{ centre.x + r * std::cos(turn), centre.y + r * std::sin(turn) };
-        found = SpotProblem(*st, *bp, at).empty();
+        purpose = Outposts::Purpose::Open;
+        spot = FindOutpostSpot(f, purpose, from, to);
     }
-    if (!found)
+    const Blueprint* bp = Blueprints::Find(Outposts::BlueprintOf(purpose));
+    if (!spot.found || bp == nullptr)
         return false;
 
     auto site =
-        std::make_unique<Structure>(at, 0.0f, FactionName(f) + " " + bp->name, bp->archetype);
+        std::make_unique<Structure>(spot.at, 0.0f, FactionName(f) + " " + bp->name, bp->archetype);
+    if (spot.orbit)
+        site->SetOrbit(*spot.orbit);
     site->StartBuilding(time_, time_ + bp->buildSeconds);
     if (bp->lifetime > 0.0f)
         site->SetExpiresAt(time_ + bp->buildSeconds + bp->lifetime);
@@ -361,7 +337,8 @@ bool Simulation::Settle(FactionId f, const std::string& from, const std::string&
     p.site = StaticKey(to, id);
     plans_[p.id] = p;
     due_.insert({ p.dueAt, p.id });
-    Record("settle", (int)f, to, FactionName(f) + " began an outpost in " + SystemName(to));
+    Record("settle", (int)f, to,
+           FactionName(f) + " began " + Outposts::Called(purpose) + " in " + SystemName(to));
     return true;
 }
 
@@ -408,7 +385,10 @@ void Simulation::ResolveSettle(const Plan& p)
     }
     TakeControl(a, p.faction);
     minds_[(int)p.faction].intel[p.target] = Observe(*st);
-    Announce("settle", (int)p.faction, p.target, who + " founded an outpost in " + where);
+    Outposts::Purpose purpose = Outposts::Purpose::Open;
+    Outposts::PurposeOf(site->GetBuilds(), purpose);
+    Announce("settle", (int)p.faction, p.target,
+             who + " founded " + Outposts::Called(purpose) + " in " + where);
 }
 
 void Simulation::StepFactions()

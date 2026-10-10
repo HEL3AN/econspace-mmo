@@ -62,4 +62,12 @@ Region GenerateRegion(const RegionParams& params);
 // (#143). Read back from an id.
 int DepthOf(const std::string& id);
 
+// How far out from a planet its satellites may go (#210): a planet's path is wider than the
+// planet, because it takes what orbits it along. The server puts a faction's orbital outpost
+// (#318) under the same limit as the generator's moons.
+inline double MoonZone(double planetSize)
+{
+    return planetSize * 1.5 + 12000.0;
+}
+
 }  // namespace Gen

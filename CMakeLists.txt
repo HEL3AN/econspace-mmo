@@ -266,6 +266,7 @@ add_executable(econserver
     src/game/sim/Simulation_Factions.cpp  # factions reach where value outweighs risk (#231)
     src/game/sim/Simulation_Player.cpp    # the server-side player verbs and account (#17)
     src/game/sim/Simulation_Build.cpp     # construction: sites, their rules and their end (#39)
+    src/game/sim/Simulation_Outposts.cpp  # where a faction's outpost stands, by purpose (#318)
     src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
     src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/PlayerStep.cpp
@@ -376,6 +377,7 @@ add_executable(tests
     tests/widget_tests.cpp         # tables, tabs, fields, sliders and the keyboard focus (#297)
     tests/actions_tests.cpp        # one list of actions, each matched by an agent's tool (#297)
     tests/settle_tests.cpp         # stock, outposts, and claims that need one (#295)
+    tests/outpost_tests.cpp        # outposts placed by purpose, and what each looks like (#318)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/core/Actions.cpp      # the actions every window offers, tested without one (#297)
@@ -390,6 +392,7 @@ add_executable(tests
     src/game/sim/Simulation_Factions.cpp  # factions reach where value outweighs risk (#231)
     src/game/sim/Simulation_Player.cpp    # the server-side player verbs and account (#17)
     src/game/sim/Simulation_Build.cpp     # construction: sites, their rules and their end (#39)
+    src/game/sim/Simulation_Outposts.cpp  # where a faction's outpost stands, by purpose (#318)
     src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
     src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/PlayerStep.cpp

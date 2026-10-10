@@ -24,6 +24,7 @@
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
 #include "entities/Station.h"
+#include "entities/Structure.h"
 #include "raylib.h"
 
 #include <nlohmann/json.hpp>
@@ -34,6 +35,7 @@
 #include <cstdio>
 #include <cctype>
 #include <cstdlib>
+#include <algorithm>
 #include <cmath>
 #include <map>
 #include <memory>
@@ -1644,6 +1646,38 @@ int main(int argc, char** argv)
                 printf(" %.1f", a.presence[f]);
             printf("\n");
         }
+        // Where each faction's outpost stands, and what it stands by (#318).
+        printf("\nOutposts:\n");
+        for (const auto& kv : sim.Systems())
+            for (const auto& e : kv.second.entities)
+            {
+                Outposts::Purpose purpose;
+                if (e->GetKind() != EntityKind::Structure ||
+                    !Outposts::PurposeOf(static_cast<const Structure&>(*e).GetBuilds(), purpose))
+                    continue;
+                const Vector2 at = e->GetPosition();
+                auto          nearest = [&](EntityKind kind)
+                {
+                    float d = -1.0f;
+                    for (const auto& o : kv.second.entities)
+                        if (o->GetKind() == kind)
+                        {
+                            const float r =
+                                std::hypot(o->GetPosition().x - at.x, o->GetPosition().y - at.y) -
+                                o->GetSize();
+                            d = d < 0.0f ? r : std::min(d, r);
+                        }
+                    return d;
+                };
+                printf("  %-10s %-24s %-20s r %7.0f  gate %7.0f  belt %7.0f  wreck %7.0f%s\n",
+                       kv.first.c_str(), e->GetName().c_str(), Outposts::Called(purpose),
+                       std::hypot(at.x, at.y), nearest(EntityKind::Gate),
+                       nearest(EntityKind::Field), nearest(EntityKind::Derelict),
+                       e->GetOrbit() ? ("  orbits planet " + std::to_string(e->GetOrbit()->planet) +
+                                        " at " + std::to_string((int)e->GetOrbit()->radius))
+                                           .c_str()
+                                     : "");
+            }
         return 0;
     }
     printf("\nGalactic news:\n");

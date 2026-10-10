@@ -890,6 +890,7 @@ there is no ordinary structure to fall back on -- and one that names anything bu
 | `size` | number | radius (optional, default the archetype's) |
 | `startedAt`, `completesAt` | number | world seconds: a construction site between the two, wearing `structure.site`; absent -- built |
 | `expiresAt` | number | world seconds at which it is taken away by itself; absent -- it stays |
+| `orbits` | object | a satellite of a planet (#210), as on any other object: a faction's orbital outpost (#318) |
 
 The time line is instants of the world clock, not a progress figure (#136): nothing
 accumulates, so a site is as far along on every client as on the server, and a server that
@@ -931,11 +932,28 @@ was down when a site was due finishes it on its first tick back.
 | `builders` | who may build one: any of `"player"`, `"faction"`; absent -- `["player"]`. A blueprint no player may build is listed in no menu or tool (#295) |
 | `limits.perAccount` | how many structures one account may have standing, in the whole galaxy; 0 -- no cap |
 
-A faction builds an `outpost` (#295): its stock pays the cost, counted as the sum of the
-amounts, and `limits.perAccount` does not apply. Where it goes is chosen by the server near
-the gate the faction came through, under the same placement rules except `reach`. The
-structure's owner is `faction:<id>`, and when it is finished the system, if nobody held it,
-is the faction's.
+A faction builds an outpost (#295): its stock pays the cost, counted as the sum of the
+amounts, and `limits.perAccount` does not apply. The structure's owner is `faction:<id>`,
+and when it is finished the system, if nobody held it, is the faction's.
+
+An outpost is built **for** something (#318), and each purpose is its own blueprint and
+archetype, all at the cost of `outpost`. The purpose is what the faction valued most in the
+system, by its temperament's weights; the place follows from it, always under the same
+placement rules as a player's site except `reach`:
+
+| Purpose | Chosen when | Blueprint | Where it goes |
+|------|------|------|------|
+| mining | ore: `values.ore` × belts | `outpost_mining` | beside the richest belt (by what it was made with) |
+| watch | traffic: `values.traffic` × the system's prosperity, or two gates (a corridor) or three (a junction) | `outpost_watch` | on the way between the gate it came by and another, or at the junction; never within 40 000 of a gate |
+| orbital | a planet to hold: `values.unclaimed` × planets | `outpost_orbital` | a satellite of the largest planet with room (`orbits`, #210), in the next free orbit within the planet's reach |
+| salvage | wrecks: `values.salvage` × wrecks | `outpost_salvage` | beside the wreck with the most others near it |
+| hidden | the faction is not `lawful`, whatever it came for | `outpost_hidden` | inside the largest cloud, or out at the edge (80–95% of the radius), as far from the lines between gates as it can |
+| — | nothing above 0.2 | `outpost` | an open point between 15% and 70% of the radius, never within 60 000 of a gate |
+
+Beside a belt or a wreck that orbits a planet, the outpost orbits that planet too. A purpose
+that has nowhere to go in the system falls back to an open point. The place is drawn from
+`Gen::Rng` keyed by faction, system and purpose, so the same world settles the same places.
+A structure that orbits carries `orbits` in `world.json` like any other satellite.
 
 The server checks every rule again whatever a client says; a refusal is a journal notice
 that names the rule ("too close to Aurora Hub (keep 400 clear)", "the hold has 0 Crystal of
