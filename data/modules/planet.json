@@ -1,0 +1,468 @@
+{
+    "modules": [
+        {
+            "id": "planet.impact",
+            "note": "On a planet (lat/lon): the craters core does not have. Discs only -- a rim is a lighter disc under a darker floor; rays are chains of faint ejecta.",
+            "tags": ["surface", "terrain"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "rayed", "shape": [
+                    {"form": "disc", "at": [0.3, 0.0], "radius": [0.07, 0.09], "role": "trim", "alpha": [0.07, 0.1], "row": {"count": [12, 18], "step": [0.05, 0.004]}},
+                    {"form": "disc", "at": [-0.22, 0.2], "radius": [0.06, 0.08], "role": "trim", "alpha": [0.07, 0.1], "row": {"count": [10, 15], "step": [-0.036, 0.036]}},
+                    {"form": "disc", "at": [-0.12, -0.28], "radius": [0.06, 0.08], "role": "trim", "alpha": [0.07, 0.1], "row": {"count": [10, 16], "step": [-0.016, -0.048]}},
+                    {"form": "disc", "at": [0.2, 0.24], "radius": 0.06, "role": "trim", "alpha": 0.08, "row": {"count": [6, 12], "step": [0.025, 0.045]}, "chance": 0.6},
+                    {"form": "disc", "radius": [0.32, 0.38], "role": "trim", "alpha": 0.9},
+                    {"form": "disc", "at": [0.03, 0.02], "radius": [0.22, 0.27], "role": "panel"}
+                ]},
+                { "id": "terraced", "shape": [
+                    {"form": "disc", "radius": [0.95, 1.05], "role": "trim", "alpha": [0.55, 0.75]},
+                    {"form": "disc", "at": [0.04, 0.03], "radius": [0.8, 0.86], "role": "panel", "alpha": 0.75},
+                    {"form": "disc", "at": [0.07, 0.05], "radius": [0.6, 0.68], "role": "panel"},
+                    {"form": "disc", "at": [[-0.1, 0.1], [-0.1, 0.1]], "radius": [0.14, 0.22], "role": "trim", "alpha": 0.85},
+                    {"form": "disc", "at": [[-0.05, 0.15], [-0.05, 0.15]], "radius": [0.06, 0.1], "role": "trim", "chance": 0.5}
+                ]},
+                { "id": "overlap", "shape": [
+                    {"form": "disc", "at": [-0.35, 0.1], "radius": [0.75, 0.85], "role": "trim", "alpha": 0.55},
+                    {"form": "disc", "at": [-0.31, 0.13], "radius": [0.6, 0.7], "role": "panel", "alpha": 0.7},
+                    {"form": "disc", "at": [0.45, -0.15], "radius": [0.5, 0.6], "role": "trim", "alpha": 0.85},
+                    {"form": "disc", "at": [0.48, -0.12], "radius": [0.38, 0.46], "role": "panel"},
+                    {"form": "disc", "at": [-0.1, 0.75], "radius": [0.22, 0.3], "role": "trim", "alpha": 0.8, "chance": 0.6},
+                    {"form": "disc", "at": [-0.08, 0.77], "radius": [0.15, 0.2], "role": "panel", "chance": 0.6}
+                ]},
+                { "id": "basin", "shape": [
+                    {"form": "disc", "radius": [0.95, 1.05], "role": "panel", "alpha": [0.3, 0.45]},
+                    {"form": "disc", "radius": [0.6, 0.72], "role": "panel", "alpha": [0.5, 0.7], "tint": [[70, 66, 62], [58, 60, 70], [80, 70, 60]]},
+                    {"form": "disc", "at": [0.75, 0.3], "radius": [0.14, 0.2], "role": "trim", "alpha": 0.7},
+                    {"form": "disc", "at": [-0.55, 0.62], "radius": [0.1, 0.16], "role": "trim", "alpha": 0.7, "chance": 0.7}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.mountains",
+            "note": "On a planet: high ground. A lit flank (trim) beside its own shadow (panel), so relief reads under the body's light.",
+            "tags": ["surface", "terrain"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "range", "shape": [
+                    {"form": "disc", "at": [-0.86, 0.36], "radius": [0.24, 0.3], "role": "panel", "row": {"count": [6, 8], "step": [0.2, -0.08]}},
+                    {"form": "disc", "at": [-0.92, 0.28], "radius": [0.2, 0.25], "role": "trim", "row": {"count": [6, 8], "step": [0.2, -0.08]}},
+                    {"form": "disc", "at": [-0.66, 0.18], "radius": [0.07, 0.1], "role": "trim", "tint": [[235, 238, 245], [220, 225, 235]], "row": {"count": [2, 4], "step": [0.52, -0.2]}, "chance": 0.6}
+                ]},
+                { "id": "massif", "shape": [
+                    {"form": "disc", "at": [0.1, 0.1], "radius": [0.6, 0.72], "role": "panel"},
+                    {"form": "disc", "at": [0.6, 0.44], "radius": [0.3, 0.36], "role": "panel"},
+                    {"form": "disc", "at": [0.56, 0.38], "radius": [0.26, 0.32], "role": "trim"},
+                    {"form": "disc", "at": [-0.55, 0.35], "radius": [0.24, 0.32], "role": "trim", "chance": 0.7},
+                    {"form": "disc", "radius": [0.5, 0.62], "role": "trim"},
+                    {"form": "disc", "at": [-0.05, -0.05], "radius": [0.16, 0.24], "role": "trim", "tint": [235, 240, 248], "alpha": 0.85, "chance": 0.5}
+                ]},
+                { "id": "crescent", "shape": [
+                    {"form": "disc", "at": [0.05, 0.1], "radius": [0.4, 0.5], "role": "hull", "alpha": 0.6, "tint": [[90, 120, 70], [110, 105, 80]], "chance": 0.5},
+                    {"form": "disc", "at": [-0.76, -0.5], "radius": [0.22, 0.26], "role": "panel", "row": {"count": 6, "step": [0.24, -0.04]}},
+                    {"form": "disc", "at": [-0.8, -0.56], "radius": [0.2, 0.24], "role": "trim", "row": {"count": 6, "step": [0.24, -0.04]}},
+                    {"form": "disc", "at": [0.6, -0.64], "radius": [0.2, 0.24], "role": "trim", "row": {"count": [4, 6], "step": [0.08, 0.22]}}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.rift",
+            "note": "On a planet: ground pulled apart. A dark chain of floors between lighter shoulders; the line is what makes it a canyon and not a crater field.",
+            "tags": ["surface", "terrain"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "canyon", "shape": [
+                    {"form": "disc", "at": [-1.0, 0.1], "radius": [0.17, 0.2], "role": "trim", "row": {"count": [12, 15], "step": [0.14, -0.02]}},
+                    {"form": "disc", "at": [-0.98, 0.1], "radius": [0.08, 0.1], "role": "panel", "row": {"count": [24, 30], "step": [0.07, -0.01]}},
+                    {"form": "disc", "at": [-0.1, -0.02], "radius": [0.06, 0.08], "role": "panel", "row": {"count": [3, 5], "step": [0.03, 0.08]}, "chance": 0.6}
+                ]},
+                { "id": "valley", "shape": [
+                    {"form": "disc", "at": [-0.95, 0.0], "radius": [0.4, 0.46], "role": "trim", "row": {"count": [9, 11], "step": [0.2, 0.03]}},
+                    {"form": "disc", "at": [-0.93, 0.0], "radius": [0.22, 0.26], "role": "panel", "row": {"count": [9, 11], "step": [0.2, 0.03]}},
+                    {"form": "disc", "at": [-0.9, 0.0], "radius": 0.05, "role": "hull", "tint": [[60, 100, 150], [70, 110, 140]], "row": {"count": [16, 20], "step": [0.1, 0.015]}, "chance": 0.5}
+                ]},
+                { "id": "fork", "shape": [
+                    {"form": "disc", "at": [-1.0, 0.0], "radius": [0.22, 0.26], "role": "trim", "row": {"count": 8, "step": [0.14, 0.0]}},
+                    {"form": "disc", "at": [-1.0, 0.0], "radius": [0.11, 0.13], "role": "panel", "row": {"count": 9, "step": [0.14, 0.0]}},
+                    {"form": "disc", "at": [0.14, -0.02], "radius": [0.08, 0.1], "role": "panel", "row": {"count": [7, 9], "step": [0.1, -0.08]}},
+                    {"form": "disc", "at": [0.14, 0.02], "radius": [0.07, 0.09], "role": "panel", "row": {"count": [5, 8], "step": [0.11, 0.07]}}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.volcano",
+            "note": "On a planet: a cone and its caldera. Dormant it is only relief; active, the caldera is a light, so it glows on the night side.",
+            "tags": ["surface", "terrain"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "dormant", "shape": [
+                    {"form": "disc", "at": [0.08, 0.08], "radius": [0.85, 1.0], "role": "panel", "alpha": 0.55},
+                    {"form": "disc", "radius": [0.7, 0.85], "role": "trim", "alpha": 0.7},
+                    {"form": "disc", "radius": [0.24, 0.3], "role": "trim"},
+                    {"form": "disc", "at": [0.02, 0.02], "radius": [0.15, 0.2], "role": "panel"},
+                    {"form": "disc", "at": [0.6, -0.55], "radius": [0.14, 0.2], "role": "trim", "alpha": 0.7, "chance": 0.5}
+                ]},
+                { "id": "active", "shape": [
+                    {"form": "disc", "at": [0.08, 0.08], "radius": [0.85, 1.0], "role": "panel", "alpha": 0.6},
+                    {"form": "disc", "radius": [0.65, 0.8], "role": "hull", "tint": [[60, 50, 46], [48, 44, 44]], "alpha": 0.9},
+                    {"form": "disc", "radius": [0.24, 0.3], "role": "panel"},
+                    {"form": "disc", "radius": [0.13, 0.18], "role": "light", "tint": [[255, 120, 40], [255, 160, 60], [255, 90, 30]], "alpha": 0.9, "blink": 3.0},
+                    {"form": "disc", "at": [-0.35, -0.55], "radius": [0.3, 0.4], "role": "trim", "tint": [200, 196, 190], "alpha": [0.2, 0.35], "chance": 0.6}
+                ]},
+                { "id": "shield", "shape": [
+                    {"form": "disc", "radius": [0.95, 1.05], "role": "trim", "alpha": 0.4},
+                    {"form": "disc", "at": [0.1, 0.06], "radius": [0.6, 0.7], "role": "trim", "alpha": 0.55},
+                    {"form": "disc", "at": [0.12, 0.08], "radius": [0.3, 0.38], "role": "panel", "alpha": 0.9},
+                    {"form": "disc", "at": [-0.45, 0.4], "radius": [0.16, 0.22], "role": "panel", "alpha": 0.8, "chance": 0.6},
+                    {"form": "disc", "at": [0.12, 0.08], "radius": 0.08, "role": "light", "tint": [255, 110, 40], "alpha": 0.7, "chance": 0.35}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.lava",
+            "note": "On a planet: molten rock. It is a light -- it makes its own colour and shows on the night side -- crusted over with dark discs so it reads as flowing, not as a lamp.",
+            "tags": ["surface", "terrain", "hot"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "flow", "shape": [
+                    {"form": "disc", "at": [-0.95, -0.2], "radius": [0.36, 0.42], "role": "panel"},
+                    {"form": "disc", "at": [-0.65, -0.12], "radius": [0.15, 0.18], "role": "light", "tint": [[200, 60, 25], [220, 75, 30], [180, 50, 25]], "row": {"count": [10, 13], "step": [0.15, 0.04]}},
+                    {"form": "disc", "at": [-0.9, -0.2], "radius": [0.24, 0.3], "role": "light", "tint": [[255, 130, 40], [255, 160, 60]]},
+                    {"form": "disc", "at": [[-0.2, 0.2], [-0.12, 0.05]], "radius": [0.08, 0.12], "role": "panel"},
+                    {"form": "disc", "at": [[0.4, 0.8], [0.0, 0.2]], "radius": [0.06, 0.1], "role": "panel", "chance": 0.7}
+                ]},
+                { "id": "lake", "shape": [
+                    {"form": "disc", "radius": [0.9, 1.0], "role": "panel", "alpha": 0.8},
+                    {"form": "disc", "at": [0.04, 0.02], "radius": [0.66, 0.78], "role": "light", "tint": [[255, 100, 35], [255, 130, 45], [230, 70, 30]], "alpha": 0.75},
+                    {"form": "disc", "at": [[-0.3, 0.3], [-0.3, 0.3]], "radius": [0.2, 0.3], "role": "panel", "alpha": 0.9},
+                    {"form": "disc", "at": [0.35, -0.3], "radius": [0.12, 0.18], "role": "panel", "alpha": 0.9, "chance": 0.6}
+                ]},
+                { "id": "fissure", "shape": [
+                    {"form": "disc", "at": [-0.95, 0.35], "radius": [0.16, 0.2], "role": "panel", "row": {"count": [14, 17], "step": [0.12, -0.045]}},
+                    {"form": "disc", "at": [-0.95, 0.35], "radius": [0.04, 0.05], "role": "light", "tint": [[255, 120, 40], [255, 170, 70]], "row": {"count": [28, 34], "step": [0.06, -0.0225]}},
+                    {"form": "disc", "at": [0.0, 0.0], "radius": [0.3, 0.4], "role": "light", "tint": [255, 90, 30], "alpha": [0.15, 0.25], "chance": 0.5}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.ice",
+            "note": "On a planet: frozen water. Nearly white, with a blue that only shows where it is deep or cracked. A patch, not the cap itself -- a cap is a band.",
+            "tags": ["surface", "terrain", "cold"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "patch", "shape": [
+                    {"form": "disc", "radius": [0.85, 1.0], "role": "trim", "tint": [[225, 232, 242], [210, 225, 240]], "alpha": [0.55, 0.7]},
+                    {"form": "disc", "at": [0.55, 0.35], "radius": [0.45, 0.55], "role": "trim", "tint": [235, 240, 248], "alpha": 0.7},
+                    {"form": "disc", "at": [-0.6, -0.3], "radius": [0.3, 0.42], "role": "trim", "tint": [220, 230, 242], "alpha": 0.6, "chance": 0.7},
+                    {"form": "disc", "at": [0.1, -0.05], "radius": [0.4, 0.5], "role": "trim", "tint": [245, 248, 252], "alpha": 0.8}
+                ]},
+                { "id": "glacier", "shape": [
+                    {"form": "disc", "at": [-0.75, -0.3], "radius": [0.5, 0.6], "role": "trim", "tint": [235, 240, 248], "alpha": 0.75},
+                    {"form": "disc", "at": [-0.3, -0.12], "radius": [0.26, 0.3], "role": "trim", "tint": [[225, 234, 245], [210, 228, 245]], "row": {"count": [6, 9], "step": [0.16, 0.07]}},
+                    {"form": "disc", "at": [-0.2, -0.08], "radius": 0.04, "role": "panel", "tint": [110, 160, 210], "row": {"count": [4, 6], "step": [0.24, 0.1]}},
+                    {"form": "disc", "at": [0.95, 0.4], "radius": [0.14, 0.2], "role": "trim", "tint": [240, 245, 250], "alpha": 0.6, "chance": 0.6}
+                ]},
+                { "id": "shelf", "shape": [
+                    {"form": "disc", "radius": [0.9, 1.0], "role": "trim", "tint": [[230, 238, 246], [215, 228, 242]], "alpha": 0.75},
+                    {"form": "disc", "at": [-0.55, -0.1], "radius": 0.05, "role": "panel", "tint": [90, 140, 200], "alpha": 0.7, "row": {"count": [5, 7], "step": [0.2, 0.05]}},
+                    {"form": "disc", "at": [-0.2, 0.4], "radius": 0.04, "role": "panel", "tint": [90, 140, 200], "alpha": 0.6, "row": {"count": [3, 5], "step": [0.17, -0.08]}, "chance": 0.6},
+                    {"form": "disc", "at": [1.05, 0.25], "radius": [0.12, 0.17], "role": "trim", "tint": [240, 245, 250], "alpha": 0.8, "row": {"count": [1, 3], "step": [0.12, 0.25]}}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.sea",
+            "note": "On a planet: open water with a coast. The shore is a lighter disc just larger than the water; a shelf is a paler blue between them.",
+            "tags": ["surface", "water"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "inland", "shape": [
+                    {"form": "disc", "radius": [0.95, 1.05], "role": "trim", "tint": [[200, 185, 150], [170, 160, 120]], "alpha": 0.55},
+                    {"form": "disc", "at": [[-0.06, 0.06], [-0.06, 0.06]], "radius": [0.85, 0.92], "role": "hull", "tint": [[70, 130, 170], [60, 140, 160]], "alpha": 0.9},
+                    {"form": "disc", "at": [[-0.2, 0.2], [-0.15, 0.15]], "radius": [0.55, 0.64], "role": "hull", "tint": [[30, 70, 120], [25, 60, 110], [35, 80, 120]]},
+                    {"form": "disc", "at": [[-0.4, 0.4], [-0.4, 0.4]], "radius": [0.08, 0.14], "role": "trim", "tint": [190, 175, 140], "chance": 0.5}
+                ]},
+                { "id": "bay", "shape": [
+                    {"form": "disc", "at": [-0.2, 0.0], "radius": [0.8, 0.9], "role": "trim", "tint": [[200, 185, 150], [150, 160, 110]], "alpha": 0.55},
+                    {"form": "disc", "at": [0.55, 0.15], "radius": [0.5, 0.6], "role": "trim", "tint": [[200, 185, 150], [150, 160, 110]], "alpha": 0.55},
+                    {"form": "disc", "at": [-0.17, 0.02], "radius": [0.7, 0.78], "role": "hull", "tint": [[30, 75, 125], [28, 66, 112]]},
+                    {"form": "disc", "at": [0.55, 0.17], "radius": [0.4, 0.5], "role": "hull", "tint": [[60, 125, 165], [55, 135, 155]], "alpha": 0.95}
+                ]},
+                { "id": "lagoon", "shape": [
+                    {"form": "disc", "radius": [0.9, 1.0], "role": "hull", "tint": [[60, 150, 165], [80, 165, 175]], "alpha": 0.85},
+                    {"form": "disc", "at": [-0.15, 0.1], "radius": [0.5, 0.6], "role": "hull", "tint": [[110, 190, 190], [130, 200, 190]], "alpha": 0.8},
+                    {"form": "disc", "at": [0.3, -0.25], "radius": [0.3, 0.42], "role": "hull", "tint": [35, 90, 130], "alpha": 0.9, "chance": 0.7},
+                    {"form": "disc", "at": [-0.7, -0.55], "radius": [0.1, 0.16], "role": "trim", "tint": [210, 195, 160], "alpha": 0.9, "row": {"count": [1, 3], "step": [0.26, -0.06]}}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.islands",
+            "note": "On a planet: land in water. Each island is a pale shore under a green or brown body; the water they stand in belongs to the planet, not to them.",
+            "tags": ["surface", "water"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "chain", "shape": [
+                    {"form": "disc", "at": [-0.9, 0.35], "radius": [0.16, 0.22], "role": "trim", "tint": [[215, 200, 160], [200, 190, 150]], "alpha": 0.9, "row": {"count": [4, 6], "step": [0.36, -0.15]}},
+                    {"form": "disc", "at": [-0.88, 0.34], "radius": [0.11, 0.15], "role": "hull", "tint": [[80, 120, 60], [110, 110, 70], [70, 105, 65]], "row": {"count": [4, 6], "step": [0.36, -0.15]}},
+                    {"form": "disc", "at": [-0.88, 0.34], "radius": 0.05, "role": "panel", "row": {"count": [2, 4], "step": [0.72, -0.3]}, "chance": 0.6}
+                ]},
+                { "id": "archipelago", "shape": [
+                    {"form": "disc", "at": [-0.3, -0.1], "radius": [0.38, 0.46], "role": "trim", "tint": [[215, 200, 160], [200, 190, 150]], "alpha": 0.9},
+                    {"form": "disc", "at": [-0.28, -0.08], "radius": [0.28, 0.36], "role": "hull", "tint": [[80, 120, 60], [110, 110, 70]]},
+                    {"form": "disc", "at": [0.45, 0.3], "radius": [0.2, 0.26], "role": "trim", "tint": [[215, 200, 160], [200, 190, 150]], "alpha": 0.9},
+                    {"form": "disc", "at": [0.46, 0.31], "radius": [0.13, 0.18], "role": "hull", "tint": [[80, 120, 60], [110, 110, 70]]},
+                    {"form": "disc", "at": [0.35, -0.55], "radius": [0.1, 0.14], "role": "trim", "tint": [215, 200, 160], "row": {"count": [1, 3], "step": [0.24, 0.1]}},
+                    {"form": "disc", "at": [-0.75, 0.55], "radius": [0.08, 0.12], "role": "trim", "tint": [215, 200, 160], "chance": 0.6}
+                ]},
+                { "id": "atoll", "shape": [
+                    {"form": "disc", "radius": [0.75, 0.85], "role": "hull", "tint": [[120, 200, 195], [140, 210, 200]], "alpha": 0.8},
+                    {"form": "disc", "radius": [0.5, 0.6], "role": "hull", "tint": [[70, 165, 180], [90, 175, 190]], "alpha": 0.9},
+                    {"form": "disc", "at": [-0.72, -0.25], "radius": [0.1, 0.14], "role": "trim", "tint": [[225, 215, 180], [210, 205, 165]], "row": {"count": [3, 4], "step": [0.2, -0.17]}},
+                    {"form": "disc", "at": [0.7, 0.2], "radius": [0.09, 0.13], "role": "trim", "tint": [[225, 215, 180], [210, 205, 165]], "row": {"count": [2, 4], "step": [-0.18, 0.18]}},
+                    {"form": "disc", "at": [-0.65, -0.2], "radius": 0.06, "role": "hull", "tint": [80, 130, 60], "chance": 0.6}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.storm",
+            "note": "On a planet: weather that turns. A pale spiral of offset discs round a darker eye; it rides the surface, so it goes by as the planet turns.",
+            "tags": ["surface", "weather"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "cyclone", "shape": [
+                    {"form": "disc", "radius": [0.75, 0.9], "role": "trim", "tint": [235, 238, 242], "alpha": [0.3, 0.4]},
+                    {"form": "disc", "at": [0.55, -0.4], "radius": [0.24, 0.3], "role": "trim", "tint": [240, 242, 246], "alpha": 0.45, "row": {"count": 3, "step": [0.2, 0.3]}},
+                    {"form": "disc", "at": [-0.55, 0.4], "radius": [0.24, 0.3], "role": "trim", "tint": [240, 242, 246], "alpha": 0.45, "row": {"count": 3, "step": [-0.2, -0.3]}},
+                    {"form": "disc", "radius": [0.4, 0.5], "role": "trim", "tint": [245, 246, 250], "alpha": 0.7},
+                    {"form": "disc", "radius": [0.08, 0.12], "role": "panel", "alpha": 0.9}
+                ]},
+                { "id": "vortex", "shape": [
+                    {"form": "disc", "radius": [0.95, 1.05], "role": "panel", "alpha": [0.25, 0.4]},
+                    {"form": "disc", "at": [0.06, 0.0], "radius": [0.7, 0.8], "role": "trim", "alpha": 0.35},
+                    {"form": "disc", "at": [0.1, 0.02], "radius": [0.48, 0.56], "role": "panel", "alpha": 0.55},
+                    {"form": "disc", "at": [0.12, 0.03], "radius": [0.24, 0.3], "role": "hull", "tint": [[200, 120, 90], [220, 180, 130], [120, 140, 190]], "alpha": 0.85},
+                    {"form": "disc", "at": [0.13, 0.03], "radius": [0.06, 0.1], "role": "panel"}
+                ]},
+                { "id": "thunderhead", "shape": [
+                    {"form": "disc", "at": [-0.3, 0.0], "radius": [0.5, 0.6], "role": "trim", "tint": [225, 228, 235], "alpha": 0.55},
+                    {"form": "disc", "at": [0.3, 0.15], "radius": [0.45, 0.55], "role": "trim", "tint": [235, 238, 244], "alpha": 0.6},
+                    {"form": "disc", "at": [0.05, -0.3], "radius": [0.35, 0.42], "role": "trim", "tint": [245, 247, 250], "alpha": 0.7},
+                    {"form": "disc", "at": [[-0.3, 0.3], [-0.2, 0.2]], "radius": [0.08, 0.12], "role": "light", "tint": [[200, 215, 255], [230, 235, 255]], "alpha": 0.8, "blink": 0.6}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.cloud",
+            "note": "On a planet: weather that drifts. White and translucent, so the ground shows through; a set of overlapping discs, never one.",
+            "tags": ["surface", "weather"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "patch", "shape": [
+                    {"form": "disc", "at": [-0.45, 0.1], "radius": [0.38, 0.48], "role": "trim", "tint": [240, 242, 246], "alpha": [0.35, 0.5]},
+                    {"form": "disc", "at": [0.1, -0.1], "radius": [0.45, 0.55], "role": "trim", "tint": [245, 246, 250], "alpha": [0.4, 0.55]},
+                    {"form": "disc", "at": [0.6, 0.12], "radius": [0.3, 0.4], "role": "trim", "tint": [238, 240, 245], "alpha": [0.3, 0.45]},
+                    {"form": "disc", "at": [-0.05, 0.35], "radius": [0.25, 0.32], "role": "trim", "tint": [240, 242, 246], "alpha": 0.35, "chance": 0.6}
+                ]},
+                { "id": "streak", "shape": [
+                    {"form": "disc", "at": [-1.0, 0.1], "radius": [0.2, 0.24], "role": "trim", "tint": [240, 242, 246], "alpha": [0.04, 0.06], "row": {"count": [18, 22], "step": [0.1, -0.012]}},
+                    {"form": "disc", "at": [-0.6, -0.22], "radius": [0.12, 0.15], "role": "trim", "tint": [240, 242, 246], "alpha": 0.06, "row": {"count": [10, 16], "step": [0.07, -0.01]}, "chance": 0.7}
+                ]},
+                { "id": "cumulus", "shape": [
+                    {"form": "disc", "at": [-0.6, 0.0], "radius": [0.16, 0.22], "role": "trim", "tint": [245, 246, 250], "alpha": 0.6, "row": {"count": [3, 4], "step": [0.38, 0.12]}},
+                    {"form": "disc", "at": [-0.4, -0.5], "radius": [0.12, 0.18], "role": "trim", "tint": [245, 246, 250], "alpha": 0.55, "row": {"count": [2, 4], "step": [0.42, 0.06]}},
+                    {"form": "disc", "at": [-0.2, 0.55], "radius": [0.1, 0.16], "role": "trim", "tint": [245, 246, 250], "alpha": 0.5, "row": {"count": [2, 3], "step": [0.4, -0.08]}, "chance": 0.7}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.aurora",
+            "note": "On a planet, near a pole: charged air glowing. A light, but a faint one -- a curtain you notice on the night side, never a lamp.",
+            "tags": ["surface", "weather", "light"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "curtain", "shape": [
+                    {"form": "disc", "at": [-1.0, 0.2], "radius": [0.16, 0.2], "role": "light", "tint": [[80, 255, 150], [100, 240, 180]], "alpha": [0.02, 0.032], "row": {"count": [22, 26], "step": [0.09, -0.022]}},
+                    {"form": "disc", "at": [-0.9, 0.04], "radius": [0.08, 0.1], "role": "light", "tint": [[180, 110, 255], [255, 100, 160]], "alpha": [0.02, 0.032], "row": {"count": [16, 22], "step": [0.09, -0.02]}, "chance": 0.6}
+                ]},
+                { "id": "arc", "shape": [
+                    {"form": "disc", "at": [-1.0, 0.4], "radius": [0.14, 0.18], "role": "light", "tint": [[80, 255, 150], [120, 255, 200]], "alpha": [0.02, 0.032], "row": {"count": 12, "step": [0.085, -0.068]}},
+                    {"form": "disc", "at": [0.0, -0.4], "radius": [0.14, 0.18], "role": "light", "tint": [[80, 255, 150], [120, 255, 200]], "alpha": [0.02, 0.032], "row": {"count": 12, "step": [0.085, 0.068]}},
+                    {"form": "disc", "at": [-0.25, -0.2], "radius": [0.2, 0.3], "role": "light", "tint": [[180, 110, 255], [90, 200, 255]], "alpha": 0.1, "chance": 0.5}
+                ]},
+                { "id": "veil", "shape": [
+                    {"form": "disc", "at": [-0.4, 0.0], "radius": [0.5, 0.6], "role": "light", "tint": [[80, 255, 150], [90, 220, 255]], "alpha": [0.08, 0.14]},
+                    {"form": "disc", "at": [0.4, -0.1], "radius": [0.45, 0.55], "role": "light", "tint": [[80, 255, 150], [180, 110, 255]], "alpha": [0.08, 0.14]},
+                    {"form": "disc", "at": [-0.8, -0.3], "radius": 0.1, "role": "light", "tint": [140, 255, 190], "alpha": 0.2, "row": {"count": [4, 6], "step": [0.32, 0.03]}}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.mine",
+            "note": "On a planet: a mining base. The pit is the point of it -- a dark hole stepped down in tiers -- with domes and pads beside it and one work lamp.",
+            "tags": ["surface", "industry"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "open-pit", "shape": [
+                    {"form": "disc", "at": [-0.3, 0.0], "radius": [0.65, 0.75], "role": "trim", "alpha": 0.55},
+                    {"form": "disc", "at": [-0.27, 0.02], "radius": [0.48, 0.55], "role": "panel", "alpha": 0.8},
+                    {"form": "disc", "at": [-0.24, 0.04], "radius": [0.25, 0.32], "role": "panel"},
+                    {"form": "disc", "at": [0.65, -0.35], "radius": [0.16, 0.2], "role": "trim", "row": {"count": [2, 3], "step": [0.0, 0.38]}},
+                    {"form": "disc", "at": [0.65, -0.35], "radius": 0.06, "role": "light", "tint": [[255, 170, 60], [255, 210, 120]], "alpha": 0.85}
+                ]},
+                { "id": "shaft", "shape": [
+                    {"form": "disc", "radius": [0.32, 0.4], "role": "trim", "alpha": 0.8},
+                    {"form": "disc", "radius": [0.16, 0.2], "role": "panel"},
+                    {"form": "disc", "at": [-0.75, 0.3], "radius": [0.2, 0.26], "role": "trim", "tint": [[200, 205, 210], [190, 180, 160]]},
+                    {"form": "disc", "at": [0.65, 0.4], "radius": 0.14, "role": "trim", "alpha": 0.7, "row": {"count": [2, 3], "step": [0.3, 0.0]}},
+                    {"form": "disc", "at": [-0.4, -0.7], "radius": [0.25, 0.3], "role": "panel", "alpha": 0.5, "chance": 0.6},
+                    {"form": "disc", "radius": 0.06, "role": "light", "tint": [255, 170, 60], "alpha": 0.8, "blink": 1.5}
+                ]},
+                { "id": "strip", "shape": [
+                    {"form": "disc", "at": [-0.9, 0.0], "radius": [0.24, 0.3], "role": "panel", "alpha": 0.75, "row": {"count": [5, 7], "step": [0.3, 0.0]}},
+                    {"form": "disc", "at": [-0.9, 0.42], "radius": [0.1, 0.14], "role": "trim", "alpha": 0.7, "row": {"count": [4, 6], "step": [0.36, 0.0]}},
+                    {"form": "disc", "at": [0.5, -0.55], "radius": [0.18, 0.22], "role": "trim", "tint": [200, 205, 210]},
+                    {"form": "disc", "at": [0.5, -0.55], "radius": 0.06, "role": "light", "tint": [255, 170, 60], "alpha": 0.85, "chance": 0.7}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.outpost",
+            "note": "On a planet: a handful of people far from anyone. Domes clustered for warmth, a pad, one lamp.",
+            "tags": ["surface", "habitat"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "domes", "shape": [
+                    {"form": "disc", "radius": [0.3, 0.36], "role": "trim"},
+                    {"form": "disc", "at": [0.48, 0.12], "radius": [0.18, 0.24], "role": "trim"},
+                    {"form": "disc", "at": [-0.35, 0.38], "radius": [0.16, 0.22], "role": "trim", "chance": 0.7},
+                    {"form": "disc", "at": [-0.15, -0.7], "radius": [0.26, 0.3], "role": "panel", "alpha": 0.8},
+                    {"form": "disc", "radius": 0.07, "role": "light", "tint": [[255, 210, 140], [180, 230, 255]], "alpha": 0.9}
+                ]},
+                { "id": "relay", "shape": [
+                    {"form": "disc", "radius": [0.24, 0.3], "role": "trim"},
+                    {"form": "disc", "at": [0.6, 0.0], "radius": [0.14, 0.18], "role": "panel"},
+                    {"form": "disc", "at": [0.6, 0.0], "radius": 0.08, "role": "trim"},
+                    {"form": "disc", "at": [-0.45, -0.2], "radius": 0.1, "role": "trim", "alpha": 0.7, "row": {"count": [1, 3], "step": [0.0, 0.3]}},
+                    {"form": "disc", "at": [0.6, 0.0], "radius": 0.05, "role": "light", "tint": [255, 70, 60], "blink": 1.5}
+                ]},
+                { "id": "camp", "shape": [
+                    {"form": "disc", "radius": [0.6, 0.7], "role": "trim", "alpha": 0.3},
+                    {"form": "disc", "at": [-0.25, -0.1], "radius": 0.14, "role": "trim", "tint": [[200, 205, 210], [210, 190, 150], [180, 200, 190]], "row": {"count": [2, 4], "step": [0.24, 0.08]}},
+                    {"form": "disc", "at": [0.1, 0.35], "radius": [0.12, 0.16], "role": "panel", "chance": 0.7},
+                    {"form": "disc", "at": [0.0, 0.0], "radius": 0.05, "role": "light", "tint": [255, 200, 120], "alpha": 0.8}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.city",
+            "note": "On a planet: a city. By day a pale smudge of built ground; by night a few clusters of lamps -- the light is what says people.",
+            "tags": ["surface", "habitat"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "sprawl", "shape": [
+                    {"form": "disc", "at": [-0.3, 0.1], "radius": [0.55, 0.7], "role": "trim", "alpha": [0.35, 0.5]},
+                    {"form": "disc", "at": [0.45, -0.2], "radius": [0.35, 0.45], "role": "trim", "alpha": [0.3, 0.45]},
+                    {"form": "disc", "at": [-0.3, 0.1], "radius": [0.22, 0.28], "role": "trim", "alpha": 0.7},
+                    {"form": "disc", "at": [-0.55, 0.0], "radius": 0.06, "role": "light", "tint": [[255, 220, 160], [255, 235, 200]], "alpha": 0.75, "row": {"count": [3, 5], "step": [0.28, -0.06]}},
+                    {"form": "disc", "at": [0.55, -0.3], "radius": 0.05, "role": "light", "tint": [255, 210, 150], "alpha": 0.6, "chance": 0.6}
+                ]},
+                { "id": "coastal", "shape": [
+                    {"form": "disc", "at": [0.1, 0.0], "radius": [0.5, 0.6], "role": "trim", "alpha": 0.45},
+                    {"form": "disc", "at": [-0.65, 0.05], "radius": [0.5, 0.6], "role": "hull", "tint": [[30, 75, 125], [35, 85, 130]], "alpha": 0.9},
+                    {"form": "disc", "at": [0.0, -0.45], "radius": 0.06, "role": "light", "tint": [255, 220, 160], "alpha": 0.75, "row": {"count": [3, 5], "step": [0.0, 0.22]}},
+                    {"form": "disc", "at": [0.3, -0.2], "radius": 0.05, "role": "light", "tint": [[255, 220, 160], [210, 230, 255]], "alpha": 0.6, "row": {"count": [2, 3], "step": [0.1, 0.25]}, "chance": 0.7}
+                ]},
+                { "id": "megacity", "shape": [
+                    {"form": "disc", "radius": [0.9, 1.0], "role": "trim", "alpha": [0.3, 0.4]},
+                    {"form": "disc", "radius": [0.45, 0.55], "role": "trim", "alpha": 0.6},
+                    {"form": "disc", "radius": [0.12, 0.16], "role": "trim"},
+                    {"form": "disc", "at": [-0.6, -0.15], "radius": 0.06, "role": "light", "tint": [[255, 220, 160], [255, 240, 210]], "alpha": 0.8, "row": {"count": [4, 6], "step": [0.24, 0.06]}},
+                    {"form": "disc", "at": [-0.2, 0.5], "radius": 0.05, "role": "light", "tint": [255, 210, 150], "alpha": 0.65, "row": {"count": [2, 4], "step": [0.2, -0.3]}}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.spaceport",
+            "note": "On a planet: where ships come down. A cleared field, pads in a row, and a beacon you see before anything else.",
+            "tags": ["surface", "habitat", "port"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "field", "shape": [
+                    {"form": "disc", "radius": [0.85, 0.95], "role": "trim", "alpha": [0.2, 0.3]},
+                    {"form": "disc", "at": [-0.45, -0.3], "radius": [0.17, 0.2], "role": "panel", "row": {"count": [2, 3], "step": [0.45, 0.0]}},
+                    {"form": "disc", "at": [-0.45, 0.3], "radius": [0.17, 0.2], "role": "panel", "row": {"count": [2, 3], "step": [0.45, 0.0]}},
+                    {"form": "disc", "at": [0.65, 0.0], "radius": [0.14, 0.18], "role": "trim"},
+                    {"form": "disc", "at": [0.65, 0.0], "radius": 0.06, "role": "light", "tint": [255, 255, 255], "blink": 0.8}
+                ]},
+                { "id": "ring", "shape": [
+                    {"form": "disc", "radius": [0.75, 0.85], "role": "trim", "alpha": 0.4},
+                    {"form": "disc", "radius": [0.3, 0.36], "role": "trim"},
+                    {"form": "disc", "at": [0.6, 0.0], "radius": 0.15, "role": "panel"},
+                    {"form": "disc", "at": [-0.3, 0.52], "radius": 0.15, "role": "panel"},
+                    {"form": "disc", "at": [-0.3, -0.52], "radius": 0.15, "role": "panel", "chance": 0.7},
+                    {"form": "disc", "radius": 0.07, "role": "light", "tint": [[255, 255, 255], [255, 180, 60]], "blink": 0.9}
+                ]},
+                { "id": "strip", "shape": [
+                    {"form": "disc", "at": [-1.0, 0.0], "radius": [0.13, 0.15], "role": "trim", "row": {"count": [14, 16], "step": [0.14, 0.0]}},
+                    {"form": "disc", "at": [-0.3, 0.45], "radius": [0.2, 0.26], "role": "trim"},
+                    {"form": "disc", "at": [0.3, 0.42], "radius": 0.14, "role": "panel", "row": {"count": [1, 3], "step": [0.3, 0.0]}},
+                    {"form": "disc", "at": [-1.0, 0.0], "radius": 0.04, "role": "light", "tint": [255, 200, 120], "alpha": 0.7, "row": {"count": 2, "step": [1.96, 0.0]}},
+                    {"form": "disc", "at": [-0.3, 0.45], "radius": 0.06, "role": "light", "tint": [255, 255, 255], "blink": 1.1, "chance": 0.7}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.ruins",
+            "note": "On a planet: somebody lived here once. The plan of a settlement, broken and dark -- no lights at all, which is the whole of the story.",
+            "tags": ["surface", "derelict"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "city", "shape": [
+                    {"form": "disc", "radius": [0.7, 0.85], "role": "panel", "alpha": [0.3, 0.45]},
+                    {"form": "disc", "at": [-0.35, -0.2], "radius": [0.14, 0.2], "role": "panel", "alpha": 0.8, "row": {"count": [2, 4], "step": [0.3, 0.1]}},
+                    {"form": "disc", "at": [0.2, 0.4], "radius": [0.1, 0.15], "role": "panel", "alpha": 0.7, "row": {"count": [1, 3], "step": [-0.3, 0.05]}},
+                    {"form": "disc", "at": [[0.2, 0.5], [-0.5, -0.2]], "radius": [0.2, 0.28], "role": "panel", "chance": 0.6}
+                ]},
+                { "id": "dome", "shape": [
+                    {"form": "disc", "radius": [0.55, 0.65], "role": "trim", "alpha": 0.4},
+                    {"form": "disc", "at": [0.18, 0.1], "radius": [0.42, 0.5], "role": "panel", "alpha": 0.85},
+                    {"form": "disc", "at": [-0.65, 0.4], "radius": [0.14, 0.2], "role": "panel", "alpha": 0.7, "chance": 0.7},
+                    {"form": "disc", "at": [0.65, -0.5], "radius": [0.1, 0.14], "role": "trim", "alpha": 0.5, "row": {"count": [1, 3], "step": [0.2, 0.15]}}
+                ]},
+                { "id": "scar", "shape": [
+                    {"form": "disc", "radius": [0.85, 1.0], "role": "hull", "tint": [[40, 36, 34], [30, 30, 34]], "alpha": [0.4, 0.55]},
+                    {"form": "disc", "radius": [0.4, 0.5], "role": "hull", "tint": [[25, 24, 24], [35, 28, 26]], "alpha": 0.7},
+                    {"form": "disc", "at": [-0.6, 0.25], "radius": 0.12, "role": "panel", "row": {"count": [2, 3], "step": [0.3, -0.15]}, "chance": 0.7},
+                    {"form": "disc", "at": [0.55, 0.45], "radius": [0.08, 0.12], "role": "panel", "alpha": 0.8}
+                ]}
+            ]
+        },
+        {
+            "id": "planet.terraformer",
+            "note": "On a planet: a machine remaking the air. A tower with a glow at its heart, and the haze it breathes out lying downwind.",
+            "tags": ["surface", "industry"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "tower", "shape": [
+                    {"form": "disc", "at": [0.45, 0.15], "radius": [0.55, 0.7], "role": "trim", "tint": [[200, 220, 230], [210, 230, 215]], "alpha": [0.15, 0.25]},
+                    {"form": "disc", "radius": [0.3, 0.36], "role": "panel"},
+                    {"form": "disc", "radius": [0.2, 0.24], "role": "trim"},
+                    {"form": "disc", "radius": [0.09, 0.12], "role": "light", "tint": [[120, 220, 255], [140, 255, 200]], "alpha": 0.9, "blink": 3.0}
+                ]},
+                { "id": "array", "shape": [
+                    {"form": "disc", "at": [0.2, 0.55], "radius": [0.6, 0.75], "role": "trim", "tint": [210, 225, 235], "alpha": [0.12, 0.2]},
+                    {"form": "disc", "at": [-0.5, 0.0], "radius": [0.18, 0.22], "role": "panel", "row": {"count": 3, "step": [0.5, 0.0]}},
+                    {"form": "disc", "at": [-0.5, 0.0], "radius": [0.1, 0.12], "role": "trim", "row": {"count": 3, "step": [0.5, 0.0]}},
+                    {"form": "disc", "at": [0.0, 0.0], "radius": 0.06, "role": "light", "tint": [[120, 220, 255], [140, 255, 200]], "alpha": 0.9}
+                ]},
+                { "id": "greening", "shape": [
+                    {"form": "disc", "radius": [0.85, 1.0], "role": "hull", "tint": [[70, 120, 60], [90, 130, 70], [60, 110, 80]], "alpha": [0.3, 0.45]},
+                    {"form": "disc", "at": [0.1, 0.05], "radius": [0.5, 0.6], "role": "hull", "tint": [[80, 140, 70], [100, 150, 80]], "alpha": 0.5},
+                    {"form": "disc", "radius": [0.22, 0.26], "role": "panel"},
+                    {"form": "disc", "radius": [0.13, 0.16], "role": "trim"},
+                    {"form": "disc", "radius": 0.06, "role": "light", "tint": [140, 255, 200], "alpha": 0.9}
+                ]}
+            ]
+        }
+    ]
+}

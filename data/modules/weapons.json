@@ -1,0 +1,446 @@
+{
+    "modules": [
+        {
+            "id": "weapons.laser",
+            "note": "Laser turrets: a slim barrel tipped with a lens. The lens is the only colour; the barrels say how many.",
+            "tags": ["weapon", "turret", "energy"],
+            "sockets": ["top"],
+            "variants": [
+                { "id": "single", "shape": [
+                    {"form": "disc", "radius": [0.52, 0.7], "role": "panel"},
+                    {"form": "disc", "radius": [0.36, 0.48], "role": "hull"},
+                    {"form": "capsule", "at": [0.65, 0.0], "length": [0.8, 1.25], "width": [0.1, 0.17], "role": "trim"},
+                    {"form": "bar", "at": [[0.25, 0.4], 0.0], "length": [0.25, 0.4], "width": [0.24, 0.34], "role": "panel", "chance": 0.6},
+                    {"form": "ring", "at": [0.0, 0.0], "radius": 0.3, "width": 0.05, "role": "trim", "chance": 0.4},
+                    {"form": "disc", "at": [1.15, 0.0], "radius": 0.09, "role": "light", "tint": [[255, 70, 60], [110, 220, 255], [110, 255, 140]], "alpha": 0.85}
+                ]},
+                { "id": "twin", "shape": [
+                    {"form": "polygon", "sides": [6, 8], "radius": 0.72, "role": "panel"},
+                    {"form": "disc", "radius": 0.5, "role": "hull"},
+                    {"form": "capsule", "at": [0.65, -0.17], "length": [0.85, 1.1], "width": 0.1, "role": "trim", "row": {"count": 2, "step": [0.0, 0.34]}},
+                    {"form": "bar", "at": [0.25, 0.0], "length": 0.36, "width": 0.5, "role": "panel"},
+                    {"form": "disc", "at": [-0.2, 0.0], "radius": 0.11, "role": "light", "tint": [[255, 70, 60], [110, 220, 255], [110, 255, 140]], "alpha": 0.7, "chance": 0.6}
+                ]},
+                { "id": "quad", "shape": [
+                    {"form": "polygon", "sides": [5, 8], "radius": [0.7, 0.8], "role": "panel"},
+                    {"form": "disc", "radius": [0.46, 0.55], "role": "hull"},
+                    {"form": "capsule", "at": [0.75, -0.12], "length": [1.0, 1.25], "width": 0.08, "role": "trim", "row": {"count": 2, "step": [0.0, 0.24]}},
+                    {"form": "capsule", "at": [0.6, -0.38], "length": [0.6, 0.85], "width": 0.08, "role": "trim", "row": {"count": 2, "step": [0.0, 0.76]}},
+                    {"form": "bar", "at": [0.3, 0.0], "angle": 90, "length": 0.86, "width": 0.14, "role": "panel"},
+                    {"form": "disc", "at": [-0.22, 0.0], "radius": 0.1, "role": "light", "tint": [[255, 70, 60], [110, 220, 255]], "alpha": 0.7, "chance": 0.7}
+                ]},
+                { "id": "lens-array", "shape": [
+                    {"form": "disc", "radius": [0.7, 0.8], "role": "panel"},
+                    {"form": "polygon", "sides": 6, "radius": 0.45, "role": "hull"},
+                    {"form": "bar", "at": [0.6, 0.0], "angle": 90, "length": [1.1, 1.3], "width": 0.3, "role": "trim"},
+                    {"form": "disc", "at": [0.68, -0.36], "radius": 0.09, "role": "light", "tint": [[255, 70, 60], [110, 220, 255], [190, 120, 255]], "alpha": 0.8, "row": {"count": 4, "step": [0.0, 0.24]}},
+                    {"form": "capsule", "at": [-0.6, 0.0], "angle": 90, "length": 0.6, "width": 0.14, "role": "panel", "chance": 0.5}
+                ]}
+            ]
+        },
+        {
+            "id": "weapons.railgun",
+            "note": "Railguns: two long rails, paired and parallel, reaching well past the mount. Capacitors sit behind as a bank of blocks.",
+            "tags": ["weapon", "turret", "kinetic"],
+            "sockets": ["top"],
+            "variants": [
+                { "id": "long", "shape": [
+                    {"form": "polygon", "sides": 6, "radius": [0.55, 0.65], "role": "panel"},
+                    {"form": "bar", "at": [0.2, 0.0], "length": 0.55, "width": 0.46, "role": "hull"},
+                    {"form": "bar", "at": [0.95, -0.13], "length": [1.3, 1.7], "width": 0.09, "role": "trim", "row": {"count": 2, "step": [0.0, 0.26]}},
+                    {"form": "bar", "at": [[0.9, 1.3], 0.0], "angle": 90, "length": 0.38, "width": 0.07, "role": "panel", "chance": 0.6},
+                    {"form": "disc", "at": [0.5, 0.0], "radius": 0.07, "role": "light", "tint": [[110, 190, 255], [170, 230, 255]], "alpha": 0.8, "chance": 0.7}
+                ]},
+                { "id": "capacitor", "shape": [
+                    {"form": "bar", "at": [-0.25, 0.0], "length": 1.1, "width": 0.95, "role": "hull"},
+                    {"form": "bar", "at": [-0.6, -0.33], "length": 0.2, "width": 0.24, "role": "panel", "row": {"count": [3, 4], "step": [0.25, 0.0]}},
+                    {"form": "bar", "at": [-0.6, 0.33], "length": 0.2, "width": 0.24, "role": "panel", "row": {"count": [3, 4], "step": [0.25, 0.0]}},
+                    {"form": "bar", "at": [0.95, -0.12], "length": [1.3, 1.6], "width": 0.08, "role": "trim", "row": {"count": 2, "step": [0.0, 0.24]}},
+                    {"form": "bar", "at": [-0.35, 0.0], "length": 0.6, "width": 0.07, "role": "light", "tint": [[110, 190, 255], [170, 230, 255], [150, 255, 230]], "alpha": 0.6}
+                ]},
+                { "id": "compact", "shape": [
+                    {"form": "disc", "radius": [0.55, 0.62], "role": "panel"},
+                    {"form": "bar", "at": [0.15, 0.0], "length": 0.7, "width": 0.5, "role": "hull"},
+                    {"form": "bar", "at": [0.85, -0.1], "length": [1.0, 1.2], "width": 0.08, "role": "trim", "row": {"count": 2, "step": [0.0, 0.2]}},
+                    {"form": "bar", "at": [1.4, 0.0], "angle": 90, "length": 0.34, "width": 0.08, "role": "panel", "chance": 0.6},
+                    {"form": "bar", "at": [0.15, 0.0], "length": 0.5, "width": 0.05, "role": "light", "tint": [110, 190, 255], "alpha": 0.6, "chance": 0.5}
+                ]}
+            ]
+        },
+        {
+            "id": "weapons.plasma",
+            "note": "Plasma throwers: bulbous. A round chamber that glows, or a barrel wound with coils. Green, violet or pink by the gas.",
+            "tags": ["weapon", "turret", "energy"],
+            "sockets": ["top"],
+            "variants": [
+                { "id": "bulb", "shape": [
+                    {"form": "disc", "radius": [0.5, 0.6], "role": "panel"},
+                    {"form": "disc", "at": [0.55, 0.0], "radius": [0.4, 0.48], "role": "hull"},
+                    {"form": "ring", "at": [0.55, 0.0], "radius": 0.47, "width": 0.07, "role": "trim", "chance": 0.6},
+                    {"form": "disc", "at": [0.55, 0.0], "radius": [0.2, 0.27], "role": "light", "tint": [[140, 255, 120], [200, 130, 255], [255, 140, 220]], "alpha": 0.75},
+                    {"form": "capsule", "at": [1.05, 0.0], "length": [0.35, 0.5], "width": 0.2, "role": "trim"}
+                ]},
+                { "id": "coil", "shape": [
+                    {"form": "disc", "radius": 0.55, "role": "panel"},
+                    {"form": "capsule", "at": [0.75, 0.0], "length": [1.2, 1.45], "width": 0.3, "role": "hull"},
+                    {"form": "bar", "at": [0.4, 0.0], "angle": 90, "length": 0.48, "width": 0.09, "role": "trim", "row": {"count": [3, 5], "step": [0.2, 0.0]}},
+                    {"form": "capsule", "at": [0.8, 0.0], "length": 1.0, "width": 0.07, "role": "light", "tint": [[140, 255, 120], [200, 130, 255], [255, 140, 220]], "alpha": 0.65},
+                    {"form": "disc", "at": [-0.25, 0.0], "radius": 0.2, "role": "trim", "chance": 0.5}
+                ]},
+                { "id": "twin-bulb", "shape": [
+                    {"form": "polygon", "sides": 6, "radius": 0.6, "role": "panel"},
+                    {"form": "disc", "at": [0.55, -0.32], "radius": [0.26, 0.31], "role": "hull", "row": {"count": 2, "step": [0.0, 0.64]}},
+                    {"form": "disc", "at": [0.55, -0.32], "radius": 0.13, "role": "light", "tint": [[140, 255, 120], [200, 130, 255], [255, 140, 220]], "alpha": 0.75, "row": {"count": 2, "step": [0.0, 0.64]}},
+                    {"form": "capsule", "at": [0.95, -0.32], "length": 0.3, "width": 0.12, "role": "trim", "row": {"count": 2, "step": [0.0, 0.64]}},
+                    {"form": "bar", "at": [0.3, 0.0], "angle": 90, "length": 0.6, "width": 0.12, "role": "trim", "chance": 0.6}
+                ]}
+            ]
+        },
+        {
+            "id": "weapons.autocannon",
+            "note": "Autocannons: short heavy barrels in a cluster. A rotary block, a square of four, or a twin with an ammunition drum.",
+            "tags": ["weapon", "turret", "kinetic"],
+            "sockets": ["top"],
+            "variants": [
+                { "id": "rotary", "shape": [
+                    {"form": "disc", "radius": [0.54, 0.68], "role": "panel"},
+                    {"form": "disc", "radius": [0.36, 0.44], "role": "hull"},
+                    {"form": "bar", "at": [0.45, 0.0], "length": [0.45, 0.6], "width": [0.38, 0.48], "role": "hull"},
+                    {"form": "capsule", "at": [0.95, -0.14], "length": [0.6, 0.95], "width": 0.07, "role": "trim", "row": {"count": 3, "step": [0.0, 0.14]}},
+                    {"form": "bar", "at": [[1.1, 1.25], 0.0], "angle": 90, "length": 0.42, "width": 0.07, "role": "panel"},
+                    {"form": "bar", "at": [-0.1, 0.42], "length": [0.4, 0.6], "width": 0.12, "role": "panel", "chance": 0.5}
+                ]},
+                { "id": "quad", "shape": [
+                    {"form": "polygon", "sides": [6, 8], "radius": [0.62, 0.72], "role": "panel"},
+                    {"form": "bar", "at": [0.2, 0.0], "length": [0.6, 0.75], "width": 0.66, "role": "hull"},
+                    {"form": "capsule", "at": [0.85, -0.24], "length": [0.75, 1.05], "width": 0.15, "role": "trim", "row": {"count": 4, "step": [0.0, 0.16]}},
+                    {"form": "bar", "at": [[0.85, 1.05], 0.0], "angle": 90, "length": 0.7, "width": 0.09, "role": "panel"},
+                    {"form": "bar", "at": [-0.3, 0.0], "angle": 90, "length": 0.55, "width": 0.07, "role": "trim", "chance": 0.5}
+                ]},
+                { "id": "twin-drum", "shape": [
+                    {"form": "polygon", "sides": 6, "radius": [0.6, 0.68], "role": "panel"},
+                    {"form": "polygon", "sides": 6, "radius": 0.45, "role": "hull"},
+                    {"form": "capsule", "at": [0.65, -0.15], "length": [0.6, 0.8], "width": 0.16, "role": "trim", "row": {"count": 2, "step": [0.0, 0.3]}},
+                    {"form": "disc", "at": [-0.4, [0.35, 0.45]], "radius": [0.22, 0.28], "role": "trim"},
+                    {"form": "ring", "at": [-0.4, 0.4], "radius": 0.12, "width": 0.05, "role": "panel", "chance": 0.6}
+                ]}
+            ]
+        },
+        {
+            "id": "weapons.flak",
+            "note": "Flak: boxy. A squared battery with a row of short stubby barrels; the hazard paint is the only colour.",
+            "tags": ["weapon", "turret", "kinetic"],
+            "sockets": ["top"],
+            "variants": [
+                { "id": "box", "shape": [
+                    {"form": "bar", "length": 1.3, "width": 1.3, "role": "panel"},
+                    {"form": "bar", "length": [1.0, 1.1], "width": 1.1, "role": "hull"},
+                    {"form": "capsule", "at": [0.72, -0.36], "length": 0.4, "width": 0.13, "role": "trim", "row": {"count": [3, 4], "step": [0.0, 0.24]}},
+                    {"form": "bar", "at": [-0.35, 0.0], "angle": 90, "length": 0.9, "width": 0.09, "role": "hull", "tint": [[220, 170, 40], [200, 80, 40], [230, 200, 60]], "chance": 0.6},
+                    {"form": "bar", "at": [0.0, 0.0], "length": 0.4, "width": 0.4, "role": "panel"}
+                ]},
+                { "id": "twin-box", "shape": [
+                    {"form": "bar", "length": 1.2, "width": 1.4, "role": "panel"},
+                    {"form": "bar", "at": [0.0, -0.33], "length": [0.95, 1.05], "width": 0.55, "role": "hull", "row": {"count": 2, "step": [0.0, 0.66]}},
+                    {"form": "capsule", "at": [0.65, -0.48], "length": 0.36, "width": 0.11, "role": "trim", "row": {"count": 6, "step": [0.0, 0.19]}},
+                    {"form": "bar", "at": [-0.3, -0.33], "length": 0.2, "width": 0.4, "role": "panel", "row": {"count": 2, "step": [0.0, 0.66]}, "chance": 0.7},
+                    {"form": "bar", "at": [-0.6, 0.0], "angle": 90, "length": 1.3, "width": 0.07, "role": "hull", "tint": [[220, 170, 40], [200, 80, 40]], "chance": 0.5}
+                ]},
+                { "id": "battery", "shape": [
+                    {"form": "bar", "length": 1.5, "width": 1.5, "role": "panel"},
+                    {"form": "bar", "at": [-0.05, -0.5], "length": [0.95, 1.1], "width": 0.4, "role": "hull", "row": {"count": 3, "step": [0.0, 0.5]}},
+                    {"form": "capsule", "at": [0.65, -0.5], "length": 0.38, "width": 0.16, "role": "trim", "row": {"count": 3, "step": [0.0, 0.5]}},
+                    {"form": "polygon", "sides": 4, "at": [-0.6, 0.0], "angle": 45, "radius": 0.17, "role": "trim", "chance": 0.6},
+                    {"form": "disc", "at": [-0.6, -0.5], "radius": 0.07, "role": "light", "tint": [255, 160, 40], "alpha": 0.7, "blink": 1.6, "chance": 0.5}
+                ]}
+            ]
+        },
+        {
+            "id": "weapons.pointdefence",
+            "note": "Point defence: small and quick. A gatling or a laser on a tiny mount, with a fire-control eye.",
+            "tags": ["weapon", "turret", "defence"],
+            "sockets": ["top", "edge"],
+            "variants": [
+                { "id": "gatling", "shape": [
+                    {"form": "disc", "radius": [0.48, 0.55], "role": "panel"},
+                    {"form": "disc", "radius": 0.34, "role": "trim"},
+                    {"form": "capsule", "at": [0.55, -0.09], "length": [0.6, 0.75], "width": 0.06, "role": "hull", "row": {"count": 3, "step": [0.0, 0.09]}},
+                    {"form": "bar", "at": [0.25, 0.0], "length": 0.3, "width": 0.3, "role": "hull"},
+                    {"form": "disc", "at": [-0.15, 0.0], "radius": 0.09, "role": "light", "tint": [[255, 70, 50], [255, 170, 60]], "alpha": 0.75, "chance": 0.6}
+                ]},
+                { "id": "laser", "shape": [
+                    {"form": "disc", "radius": [0.48, 0.55], "role": "panel"},
+                    {"form": "polygon", "sides": 4, "angle": 45, "radius": 0.36, "role": "hull"},
+                    {"form": "capsule", "at": [0.5, 0.0], "length": [0.5, 0.65], "width": 0.1, "role": "trim"},
+                    {"form": "disc", "at": [0.82, 0.0], "radius": 0.07, "role": "light", "tint": [[255, 70, 60], [110, 220, 255]], "alpha": 0.85},
+                    {"form": "disc", "at": [-0.12, -0.22], "radius": 0.1, "role": "trim", "chance": 0.5}
+                ]},
+                { "id": "eye", "shape": [
+                    {"form": "bar", "length": 0.9, "width": 0.9, "role": "panel"},
+                    {"form": "disc", "at": [-0.2, 0.0], "radius": [0.26, 0.32], "role": "trim"},
+                    {"form": "disc", "at": [-0.2, 0.0], "radius": 0.12, "role": "light", "tint": [[255, 70, 50], [120, 200, 255]], "alpha": 0.7},
+                    {"form": "capsule", "at": [0.5, -0.24], "length": 0.55, "width": 0.08, "role": "hull", "row": {"count": 2, "step": [0.0, 0.48]}},
+                    {"form": "bar", "at": [0.15, 0.0], "angle": 90, "length": 0.7, "width": 0.08, "role": "hull", "chance": 0.5}
+                ]}
+            ]
+        },
+        {
+            "id": "weapons.ion",
+            "note": "Ion and EMP projectors: forked prongs or a dish with a pale blue spark at the focus.",
+            "tags": ["weapon", "turret", "energy"],
+            "sockets": ["top"],
+            "variants": [
+                { "id": "fork", "shape": [
+                    {"form": "disc", "radius": [0.55, 0.62], "role": "panel"},
+                    {"form": "arc", "at": [0.3, 0.0], "radius": 0.45, "width": 0.16, "from": -75, "to": 75, "role": "trim"},
+                    {"form": "capsule", "at": [0.85, -0.3], "length": [0.55, 0.75], "width": 0.09, "role": "hull", "row": {"count": 2, "step": [0.0, 0.6]}},
+                    {"form": "disc", "at": [0.9, 0.0], "radius": [0.1, 0.14], "role": "light", "tint": [[140, 200, 255], [200, 230, 255], [170, 150, 255]], "alpha": 0.8, "blink": 1.2},
+                    {"form": "disc", "radius": 0.25, "role": "hull", "chance": 0.6}
+                ]},
+                { "id": "emp-dish", "shape": [
+                    {"form": "disc", "radius": [0.62, 0.7], "role": "panel"},
+                    {"form": "ring", "radius": 0.5, "width": [0.1, 0.14], "role": "trim"},
+                    {"form": "disc", "radius": 0.24, "role": "hull"},
+                    {"form": "capsule", "at": [0.6, 0.0], "length": [0.75, 0.9], "width": 0.07, "role": "antenna"},
+                    {"form": "disc", "at": [1.0, 0.0], "radius": 0.1, "role": "light", "tint": [[140, 200, 255], [200, 230, 255]], "alpha": 0.85}
+                ]},
+                { "id": "horn", "shape": [
+                    {"form": "disc", "radius": [0.48, 0.58], "role": "panel"},
+                    {"form": "chevron", "at": [0.75, 0.0], "angle": 180, "length": [0.8, 1.0], "width": [0.8, 1.05], "role": "hull"},
+                    {"form": "bar", "at": [1.2, 0.0], "angle": 90, "length": [0.8, 1.0], "width": 0.08, "role": "trim"},
+                    {"form": "bar", "at": [0.3, 0.0], "length": 0.4, "width": 0.22, "role": "trim", "chance": 0.6},
+                    {"form": "disc", "at": [0.95, 0.0], "radius": [0.1, 0.14], "role": "light", "tint": [[140, 200, 255], [170, 150, 255]], "alpha": 0.8, "blink": 1.1}
+                ]}
+            ]
+        },
+        {
+            "id": "weapons.missile",
+            "note": "Missile launchers: a box of tube mouths, two to twelve of them, or a rail of missiles carried in the open.",
+            "tags": ["weapon", "launcher"],
+            "sockets": ["top"],
+            "variants": [
+                { "id": "pod", "shape": [
+                    {"form": "bar", "length": [1.1, 1.3], "width": 1.0, "role": "hull"},
+                    {"form": "bar", "length": 1.0, "width": 0.82, "role": "panel"},
+                    {"form": "disc", "at": [-0.4, -0.2], "radius": 0.12, "role": "trim", "row": {"count": [1, 4], "step": [0.27, 0.0]}},
+                    {"form": "disc", "at": [-0.4, 0.2], "radius": 0.12, "role": "trim", "row": {"count": [1, 4], "step": [0.27, 0.0]}},
+                    {"form": "disc", "at": [0.48, 0.38], "radius": 0.06, "role": "light", "tint": [[255, 70, 50], [255, 170, 40]], "alpha": 0.8, "chance": 0.5}
+                ]},
+                { "id": "box", "shape": [
+                    {"form": "bar", "length": 1.45, "width": 1.25, "role": "hull"},
+                    {"form": "bar", "length": 1.3, "width": 1.1, "role": "panel"},
+                    {"form": "disc", "at": [-0.45, -0.34], "radius": 0.11, "role": "trim", "row": {"count": [2, 4], "step": [0.3, 0.0]}},
+                    {"form": "disc", "at": [-0.45, 0.0], "radius": 0.11, "role": "trim", "row": {"count": [2, 4], "step": [0.3, 0.0]}},
+                    {"form": "disc", "at": [-0.45, 0.34], "radius": 0.11, "role": "trim", "row": {"count": [2, 4], "step": [0.3, 0.0]}},
+                    {"form": "bar", "at": [0.0, -0.6], "length": 1.3, "width": 0.07, "role": "hull", "tint": [[220, 170, 40], [200, 80, 40]], "chance": 0.4}
+                ]},
+                { "id": "rail", "shape": [
+                    {"form": "bar", "at": [-0.6, 0.0], "length": 0.3, "width": [1.1, 1.25], "role": "panel"},
+                    {"form": "capsule", "at": [0.15, -0.39], "length": [1.1, 1.3], "width": 0.17, "role": "trim", "row": {"count": 4, "step": [0.0, 0.26]}},
+                    {"form": "chevron", "at": [0.75, -0.39], "length": 0.16, "width": 0.17, "role": "hull", "tint": [[200, 60, 50], [220, 180, 60], [230, 230, 230]], "row": {"count": 4, "step": [0.0, 0.26]}},
+                    {"form": "bar", "at": [-0.3, 0.0], "angle": 90, "length": 1.05, "width": 0.06, "role": "panel", "chance": 0.6}
+                ]}
+            ]
+        },
+        {
+            "id": "weapons.torpedo",
+            "note": "Torpedo tubes: fat, long and few. A bow tube along the keel, a broadside rack, or one heavy tube with its load showing.",
+            "tags": ["weapon", "launcher"],
+            "sockets": ["end", "edge"],
+            "variants": [
+                { "id": "bow", "shape": [
+                    {"form": "capsule", "at": [0.2, 0.0], "length": [1.7, 2.0], "width": [0.5, 0.6], "role": "hull"},
+                    {"form": "disc", "at": [0.95, 0.0], "radius": 0.2, "role": "panel"},
+                    {"form": "ring", "at": [0.95, 0.0], "radius": 0.24, "width": 0.06, "role": "trim"},
+                    {"form": "bar", "at": [-0.35, 0.0], "angle": 90, "length": 0.56, "width": 0.08, "role": "panel", "row": {"count": [2, 3], "step": [0.35, 0.0]}},
+                    {"form": "disc", "at": [-0.55, 0.18], "radius": 0.06, "role": "light", "tint": [[255, 70, 50], [255, 170, 40]], "alpha": 0.8, "chance": 0.5}
+                ]},
+                { "id": "broadside", "shape": [
+                    {"form": "bar", "at": [-0.2, 0.0], "length": 1.0, "width": [1.4, 1.55], "role": "panel"},
+                    {"form": "capsule", "at": [0.3, -0.45], "length": [1.0, 1.2], "width": 0.28, "role": "hull", "row": {"count": 3, "step": [0.0, 0.45]}},
+                    {"form": "disc", "at": [0.8, -0.45], "radius": 0.1, "role": "panel", "row": {"count": 3, "step": [0.0, 0.45]}},
+                    {"form": "bar", "at": [-0.55, 0.0], "angle": 90, "length": 1.3, "width": 0.07, "role": "trim", "chance": 0.6}
+                ]},
+                { "id": "heavy", "shape": [
+                    {"form": "capsule", "length": [1.9, 2.1], "width": 0.72, "role": "hull"},
+                    {"form": "capsule", "at": [0.1, 0.0], "length": [1.3, 1.5], "width": 0.36, "role": "panel"},
+                    {"form": "chevron", "at": [0.75, 0.0], "length": 0.24, "width": 0.3, "role": "hull", "tint": [[200, 60, 50], [220, 180, 60]]},
+                    {"form": "bar", "at": [-0.4, 0.0], "angle": 90, "length": 0.74, "width": 0.1, "role": "trim", "row": {"count": 2, "step": [0.5, 0.0]}, "chance": 0.7},
+                    {"form": "disc", "at": [-0.75, 0.0], "radius": 0.07, "role": "light", "tint": [255, 170, 40], "alpha": 0.8, "blink": 2.0, "chance": 0.5}
+                ]}
+            ]
+        },
+        {
+            "id": "weapons.minelayer",
+            "note": "Mine layers: a housing that opens at one end, and the mines themselves, spiked and round, waiting in line.",
+            "tags": ["weapon", "launcher"],
+            "sockets": ["end"],
+            "variants": [
+                { "id": "chute", "shape": [
+                    {"form": "bar", "length": [1.2, 1.35], "width": 1.0, "role": "hull"},
+                    {"form": "bar", "at": [0.6, 0.0], "length": 0.3, "width": 0.65, "role": "panel"},
+                    {"form": "polygon", "sides": 8, "at": [-0.35, 0.0], "radius": [0.17, 0.21], "role": "trim", "row": {"count": [2, 3], "step": [0.3, 0.0]}},
+                    {"form": "chevron", "at": [0.85, 0.0], "length": 0.2, "width": 0.4, "role": "hull", "tint": [[220, 170, 40], [200, 80, 40]], "chance": 0.6}
+                ]},
+                { "id": "drum", "shape": [
+                    {"form": "disc", "radius": [0.75, 0.82], "role": "hull"},
+                    {"form": "ring", "radius": 0.52, "width": 0.24, "role": "panel"},
+                    {"form": "polygon", "sides": 8, "at": [0.52, 0.0], "radius": 0.15, "role": "trim"},
+                    {"form": "polygon", "sides": 8, "at": [-0.26, 0.45], "radius": 0.15, "role": "trim", "chance": 0.7},
+                    {"form": "capsule", "at": [0.95, 0.0], "length": [0.4, 0.55], "width": 0.32, "role": "panel"},
+                    {"form": "disc", "radius": 0.1, "role": "light", "tint": [255, 160, 40], "alpha": 0.8, "blink": 1.4}
+                ]},
+                { "id": "rack", "shape": [
+                    {"form": "bar", "length": 1.9, "width": 0.12, "role": "panel"},
+                    {"form": "polygon", "sides": [6, 8], "at": [-0.7, 0.0], "radius": [0.17, 0.22], "role": "hull", "row": {"count": [3, 5], "step": [0.35, 0.0]}},
+                    {"form": "disc", "at": [-0.7, 0.0], "radius": 0.07, "role": "trim", "row": {"count": 5, "step": [0.35, 0.0]}, "chance": 0.5},
+                    {"form": "bar", "at": [0.95, 0.0], "angle": 90, "length": 0.5, "width": 0.1, "role": "trim"},
+                    {"form": "disc", "at": [-0.95, 0.0], "radius": 0.06, "role": "light", "tint": [255, 70, 50], "alpha": 0.8, "blink": 1.8, "chance": 0.5}
+                ]}
+            ]
+        },
+        {
+            "id": "weapons.lance",
+            "note": "Beam lances: spinal mounts along the keel, longer than anything else on the hull, collared by focusing rings.",
+            "tags": ["weapon", "spinal", "energy"],
+            "sockets": ["end"],
+            "variants": [
+                { "id": "spinal", "shape": [
+                    {"form": "bar", "length": [2.4, 2.7], "width": 0.32, "role": "hull"},
+                    {"form": "capsule", "length": 2.2, "width": 0.12, "role": "panel"},
+                    {"form": "bar", "at": [-0.6, 0.0], "angle": 90, "length": [0.48, 0.58], "width": 0.1, "role": "trim", "row": {"count": [3, 5], "step": [0.35, 0.0]}},
+                    {"form": "chevron", "at": [1.25, 0.0], "length": 0.24, "width": 0.4, "role": "trim"},
+                    {"form": "disc", "at": [1.15, 0.0], "radius": 0.09, "role": "light", "tint": [[255, 90, 70], [120, 220, 255], [255, 230, 150]], "alpha": 0.85}
+                ]},
+                { "id": "split", "shape": [
+                    {"form": "bar", "at": [-0.75, 0.0], "length": 0.9, "width": [0.6, 0.7], "role": "hull"},
+                    {"form": "bar", "at": [0.3, -0.22], "length": [1.9, 2.2], "width": 0.14, "role": "trim", "row": {"count": 2, "step": [0.0, 0.44]}},
+                    {"form": "bar", "at": [0.4, 0.0], "length": 1.6, "width": 0.05, "role": "light", "tint": [[255, 90, 70], [120, 220, 255], [200, 140, 255]], "alpha": [0.4, 0.7]},
+                    {"form": "bar", "at": [-0.2, 0.0], "angle": 90, "length": 0.6, "width": 0.08, "role": "panel", "row": {"count": 2, "step": [0.7, 0.0]}, "chance": 0.7}
+                ]},
+                { "id": "focused", "shape": [
+                    {"form": "disc", "at": [-0.8, 0.0], "radius": [0.45, 0.55], "role": "hull"},
+                    {"form": "ring", "at": [-0.8, 0.0], "radius": 0.5, "width": 0.08, "role": "panel"},
+                    {"form": "capsule", "at": [0.35, 0.0], "length": [1.9, 2.1], "width": 0.24, "role": "trim"},
+                    {"form": "bar", "at": [0.0, 0.0], "angle": 90, "length": 0.42, "width": 0.09, "role": "panel", "row": {"count": [2, 3], "step": [0.4, 0.0]}},
+                    {"form": "disc", "at": [-0.8, 0.0], "radius": 0.18, "role": "light", "tint": [[255, 90, 70], [120, 220, 255], [255, 230, 150]], "alpha": 0.7}
+                ]}
+            ]
+        },
+        {
+            "id": "weapons.tractor",
+            "note": "Tractor beams: a cradle that opens forward, its emitter a soft green-blue eye. Not a weapon to look at, but it is one.",
+            "tags": ["utility", "turret"],
+            "sockets": ["top", "end"],
+            "variants": [
+                { "id": "emitter", "shape": [
+                    {"form": "disc", "radius": [0.55, 0.62], "role": "panel"},
+                    {"form": "arc", "at": [1.15, 0.0], "radius": 0.6, "width": 0.14, "from": 125, "to": 235, "role": "trim"},
+                    {"form": "bar", "at": [0.35, 0.0], "length": 0.4, "width": 0.18, "role": "hull"},
+                    {"form": "disc", "at": [0.55, 0.0], "radius": [0.12, 0.15], "role": "light", "tint": [[120, 255, 200], [150, 200, 255]], "alpha": 0.7}
+                ]},
+                { "id": "cradle", "shape": [
+                    {"form": "disc", "radius": 0.45, "role": "panel"},
+                    {"form": "capsule", "at": [0.59, -0.475], "angle": -30, "length": 0.9, "width": 0.12, "role": "hull"},
+                    {"form": "capsule", "at": [0.59, 0.475], "angle": 30, "length": 0.9, "width": 0.12, "role": "hull"},
+                    {"form": "capsule", "at": [1.12, -0.52], "angle": [45, 55], "length": 0.45, "width": 0.1, "role": "trim"},
+                    {"form": "capsule", "at": [1.12, 0.52], "angle": [-55, -45], "length": 0.45, "width": 0.1, "role": "trim"},
+                    {"form": "disc", "at": [0.3, 0.0], "radius": 0.13, "role": "light", "tint": [[120, 255, 200], [150, 200, 255]], "alpha": 0.75}
+                ]},
+                { "id": "twin", "shape": [
+                    {"form": "bar", "length": 0.9, "width": 1.2, "role": "panel"},
+                    {"form": "disc", "at": [0.35, -0.32], "radius": 0.24, "role": "hull", "row": {"count": 2, "step": [0.0, 0.64]}},
+                    {"form": "arc", "at": [0.35, -0.32], "radius": 0.3, "width": 0.08, "from": -60, "to": 60, "role": "trim", "row": {"count": 2, "step": [0.0, 0.64]}},
+                    {"form": "disc", "at": [0.35, -0.32], "radius": 0.1, "role": "light", "tint": [[120, 255, 200], [150, 200, 255]], "alpha": 0.7, "row": {"count": 2, "step": [0.0, 0.64]}},
+                    {"form": "bar", "at": [-0.3, 0.0], "angle": 90, "length": 0.9, "width": 0.08, "role": "trim", "chance": 0.5}
+                ]}
+            ]
+        },
+        {
+            "id": "weapons.shield",
+            "note": "Shield generators: a squat emitter under a faint dome, or a ring with nodes. The field is the only part that glows.",
+            "tags": ["defence", "utility"],
+            "sockets": ["top"],
+            "variants": [
+                { "id": "dome", "shape": [
+                    {"form": "disc", "radius": 0.95, "role": "light", "tint": [[110, 190, 255], [150, 255, 220], [200, 170, 255]], "alpha": [0.12, 0.2]},
+                    {"form": "polygon", "sides": [6, 8], "radius": 0.6, "role": "panel"},
+                    {"form": "polygon", "sides": 6, "radius": 0.42, "role": "hull"},
+                    {"form": "disc", "radius": 0.18, "role": "trim"},
+                    {"form": "ring", "radius": 0.95, "width": 0.04, "role": "light", "tint": [[110, 190, 255], [150, 255, 220], [200, 170, 255]], "alpha": 0.45, "chance": 0.7}
+                ]},
+                { "id": "ring", "shape": [
+                    {"form": "ring", "radius": 0.82, "width": [0.16, 0.22], "role": "hull"},
+                    {"form": "ring", "radius": 0.82, "width": 0.05, "role": "light", "tint": [[110, 190, 255], [150, 255, 220], [200, 170, 255]], "alpha": 0.6},
+                    {"form": "disc", "radius": [0.32, 0.4], "role": "panel"},
+                    {"form": "bar", "length": 1.6, "width": 0.08, "role": "panel"},
+                    {"form": "bar", "angle": 90, "length": 1.6, "width": 0.08, "role": "panel", "chance": 0.6},
+                    {"form": "disc", "at": [0.82, 0.0], "radius": 0.13, "role": "trim"},
+                    {"form": "disc", "at": [-0.82, 0.0], "radius": 0.13, "role": "trim"}
+                ]},
+                { "id": "projector", "shape": [
+                    {"form": "bar", "length": [1.0, 1.15], "width": 1.0, "role": "panel"},
+                    {"form": "polygon", "sides": 4, "angle": 45, "radius": 0.5, "role": "hull"},
+                    {"form": "disc", "at": [-0.4, -0.4], "radius": 0.12, "role": "trim", "row": {"count": 2, "step": [0.0, 0.8]}, "chance": 0.7},
+                    {"form": "disc", "radius": [0.16, 0.22], "role": "light", "tint": [[110, 190, 255], [150, 255, 220], [200, 170, 255]], "alpha": 0.75, "blink": 2.5},
+                    {"form": "arc", "radius": [0.85, 1.0], "width": 0.06, "from": -50, "to": 50, "role": "light", "tint": [[110, 190, 255], [150, 255, 220]], "alpha": 0.35}
+                ]}
+            ]
+        },
+        {
+            "id": "weapons.ecm",
+            "note": "Electronic warfare: a forest of short stub antennas, a lattice mast, or a jamming panel. Spiky and thin, where weapons are solid.",
+            "tags": ["sensor", "defence"],
+            "sockets": ["top", "edge"],
+            "variants": [
+                { "id": "array", "shape": [
+                    {"form": "bar", "length": [1.3, 1.5], "width": 0.7, "role": "panel"},
+                    {"form": "bar", "at": [-0.6, -0.05], "angle": 90, "length": [0.5, 0.65], "width": 0.06, "role": "antenna", "row": {"count": [3, 4], "step": [0.22, 0.0]}},
+                    {"form": "disc", "at": [0.48, 0.0], "radius": [0.15, 0.22], "role": "trim", "chance": 0.7},
+                    {"form": "disc", "at": [-0.55, 0.25], "radius": 0.06, "role": "light", "tint": [[255, 170, 40], [190, 120, 255]], "alpha": 0.8, "blink": 0.7}
+                ]},
+                { "id": "mast", "shape": [
+                    {"form": "disc", "at": [-0.8, 0.0], "radius": 0.24, "role": "panel"},
+                    {"form": "lattice", "length": 1.7, "width": 0.26, "count": [5, 7], "role": "antenna"},
+                    {"form": "bar", "at": [0.2, 0.0], "angle": 90, "length": [0.7, 0.9], "width": 0.06, "role": "antenna", "row": {"count": 2, "step": [0.5, 0.0]}},
+                    {"form": "arc", "at": [0.55, 0.0], "radius": 0.3, "width": 0.07, "from": -60, "to": 60, "role": "trim", "chance": 0.5},
+                    {"form": "disc", "at": [0.85, 0.0], "radius": 0.07, "role": "light", "tint": [[255, 170, 40], [190, 120, 255]], "alpha": 0.8, "blink": 0.5}
+                ]},
+                { "id": "jammer", "shape": [
+                    {"form": "polygon", "sides": 4, "angle": 45, "radius": [0.75, 0.85], "role": "panel"},
+                    {"form": "chevron", "at": [-0.45, 0.0], "length": 0.22, "width": 0.7, "role": "trim", "row": {"count": [3, 4], "step": [0.28, 0.0]}},
+                    {"form": "capsule", "at": [0.0, -0.55], "length": 1.0, "width": 0.05, "role": "antenna", "row": {"count": 2, "step": [0.0, 1.1]}, "chance": 0.6},
+                    {"form": "disc", "at": [0.55, 0.0], "radius": 0.07, "role": "light", "tint": [[255, 170, 40], [190, 120, 255]], "alpha": 0.8, "blink": 0.6}
+                ]}
+            ]
+        },
+        {
+            "id": "weapons.cloak",
+            "note": "Cloaking vanes: long thin fins, half there. Nothing about them is solid; the faint violet is the field bending light.",
+            "tags": ["defence", "utility"],
+            "sockets": ["edge", "top"],
+            "variants": [
+                { "id": "vanes", "shape": [
+                    {"form": "bar", "at": [-0.75, 0.0], "angle": 90, "length": [1.3, 1.5], "width": 0.12, "role": "hull"},
+                    {"form": "bar", "at": [0.05, -0.6], "length": [1.4, 1.7], "width": 0.1, "role": "panel", "alpha": [0.5, 0.75], "row": {"count": [4, 6], "step": [0.0, 0.24]}},
+                    {"form": "bar", "at": [0.1, 0.0], "length": 1.6, "width": [1.0, 1.3], "role": "light", "tint": [[170, 120, 255], [120, 160, 255]], "alpha": 0.12, "chance": 0.7}
+                ]},
+                { "id": "fan", "shape": [
+                    {"form": "disc", "at": [-0.8, 0.0], "radius": [0.2, 0.26], "role": "hull"},
+                    {"form": "capsule", "at": [-0.05, 0.0], "length": 1.5, "width": 0.09, "role": "panel", "alpha": [0.55, 0.8]},
+                    {"form": "capsule", "at": [-0.095, -0.257], "angle": -20, "length": 1.5, "width": 0.09, "role": "panel", "alpha": [0.55, 0.8]},
+                    {"form": "capsule", "at": [-0.095, 0.257], "angle": 20, "length": 1.5, "width": 0.09, "role": "panel", "alpha": [0.55, 0.8]},
+                    {"form": "capsule", "at": [-0.226, -0.482], "angle": -40, "length": 1.5, "width": 0.09, "role": "panel", "alpha": [0.4, 0.7], "chance": 0.7},
+                    {"form": "capsule", "at": [-0.226, 0.482], "angle": 40, "length": 1.5, "width": 0.09, "role": "panel", "alpha": [0.4, 0.7], "chance": 0.7},
+                    {"form": "disc", "at": [-0.8, 0.0], "radius": 0.08, "role": "light", "tint": [[170, 120, 255], [120, 160, 255]], "alpha": 0.7}
+                ]},
+                { "id": "slats", "shape": [
+                    {"form": "bar", "length": [1.6, 1.8], "width": 0.9, "role": "panel", "alpha": 0.5},
+                    {"form": "chevron", "at": [-0.6, 0.0], "length": 0.16, "width": 0.85, "role": "trim", "alpha": [0.5, 0.8], "row": {"count": [4, 6], "step": [0.25, 0.0]}},
+                    {"form": "bar", "at": [0.0, -0.47], "length": 1.7, "width": 0.07, "role": "hull", "row": {"count": 2, "step": [0.0, 0.94]}},
+                    {"form": "bar", "length": 1.5, "width": 0.04, "role": "light", "tint": [[170, 120, 255], [120, 160, 255]], "alpha": 0.35, "chance": 0.6}
+                ]}
+            ]
+        }
+    ]
+}
