@@ -276,8 +276,10 @@ struct Part
     bool mirrorOnly = false;
 };
 
-// A place on a section where a module can go: an `edge` along a long side, an `end`, a
-// `top` along a centreline or an inner ring, a `ring` round a rim. Facing outward.
+// A place on a section where a module can go: an `edge` along a long or slanted side, an
+// `end`, a `top` along a centreline or an inner ring, a `ring` along the middle of a band, the
+// one `middle` at the section's centre. Facing outward. A place under another section is not
+// offered at all (see Kit.cpp).
 struct Socket
 {
     Vector2     pos;
@@ -326,7 +328,7 @@ struct KitEntry
     // How the module meets the socket, by its own bounding box: "on" lies wholly on the
     // hull with its edge at the hull's (a hatch, a window), "out" starts at the edge and
     // stands out from it (a docking arm, an engine, a dish on a boom), "centre" is centred
-    // on the socket. A socket inside the hull (`top`) always centres.
+    // on the socket. A socket inside the hull (`top`, `middle`) always centres.
     std::string mount = "on";
     // Draw order against the rest of the object: below 0 under the hull (engines, wings,
     // pods hung beneath it), above 0 over it.
