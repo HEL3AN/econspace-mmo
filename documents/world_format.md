@@ -114,7 +114,7 @@ each variant at four seeds, which is how ranges and palettes are judged.
 
 **Generated variety (any part, in a module or not).** A number may be written `[min, max]`
 and the object's seed picks a value (`radius`, `width`, `length`, `angle`, `at`'s
-components, `alpha`, `scale`, `sides`, `count`, `row.count`, `lat`, `lon`); `tint` may be a list of
+components, `alpha`, `scale`, `sides`, `count`, `row.count`, `lat`, `lon`, `spin`, `blink`, an arc's `from`/`to`); `tint` may be a list of
 colours, a palette to pick from; `"chance": 0.4` keeps the part on 40% of objects. Within a
 module, a part is resolved once per object, not per copy, so a row of hatches stays a row
 of the same hatch.
