@@ -917,9 +917,20 @@ int Selftest(const std::vector<Tool>& tools)
 
     // 4) An order naming something absent must be refused, not silently swallowed.
     g_phase = "waiting for a bad order to be refused";
+    const int   orderBefore = g_session.Snapshot().player.orderId;
     std::string bogus = RunTool(tools, "dock", Rpc::Json{ { "station_id", 999999 } });
     bool        refused = bogus.find("refused") != std::string::npos ||
                           bogus.find("not in this system") != std::string::npos;
+    // The tool waits two seconds for the server, on purpose; a loaded CI runner with two
+    // agents and a server on it can take longer (seen on Windows). What is checked here is
+    // the server's answer, not how fast it came, so wait for the answer itself.
+    if (!refused)
+    {
+        g_session.WaitUntil([&] { return g_session.Snapshot().player.orderId != orderBefore; },
+                            20.0);
+        const Proto::PlayerView& p = g_session.Snapshot().player;
+        refused = p.orderId != orderBefore && p.orderStatus == (int)Orders::Status::Failed;
+    }
     note("bad target refused", refused);
 
     // 5) Station business (#109): dock, take a job, and be told plainly why a purchase and a
