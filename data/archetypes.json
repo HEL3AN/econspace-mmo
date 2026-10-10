@@ -920,40 +920,6 @@
             }
         },
         {
-            "id": "ship.npc",
-            "style": "directional",
-            "name": "Ship",
-            "kind": "Npc",
-            "glyph": "v",
-            "sprite": "ship",
-            "color": [200, 200, 200, 255],
-            "layer": 5,
-            "size": 14,
-            "material": "hull",
-            "shape": {
-                "sections": [
-                    {"form": "bar", "at": [-0.26, 0.0], "length": 0.44, "width": 0.4, "role": "hull", "pitch": 0.14},
-                    {"form": "bar", "at": [0.17, 0.0], "length": 0.42, "width": 0.4, "role": "hull", "pitch": 0.14},
-                    {"form": "bar", "at": [0.55, 0.0], "length": 0.5, "width": 0.46, "role": "hull", "pitch": 0.14},
-                    {"form": "chevron", "at": [1.05, 0.0], "length": 0.5, "width": 0.46, "tip": 0.15, "role": "hull"},
-                    {"form": "bar", "at": [-0.69, 0.0], "length": 0.42, "width": 0.66, "role": "hull", "pitch": 0.12}
-                ],
-                "kit": { "symmetry": "bilateral", "plain": 0.5, "modules": [
-                    {"of": "hull.engine", "in": 4, "on": "stern", "count": 1, "fit": true, "mount": "out", "turn": 180, "scale": 0.3, "z": -1},
-                    {"of": "hull.thruster", "in": 4, "on": "side", "count": 2, "fit": true, "mount": "out", "turn": 90, "scale": 0.14, "z": -1},
-                    {"of": "hull.cargo", "in": 1, "on": "spine", "count": 1, "fit": true, "scale": 0.24},
-                    {"of": "weapons.laser", "in": 2, "on": "side", "count": 2, "fit": true, "mount": "centre", "turn": 90, "scale": 0.15},
-                    {"of": "hull.rcs", "in": 3, "on": "edge", "count": 2, "fit": true, "scale": 0.05, "turn": -90},
-                    {"of": "hull.cockpit", "in": 2, "on": "front", "count": 1, "scale": 0.12},
-                    {"of": "#style", "in": 0, "on": "top", "count": [0, 1], "scale": 0.18}
-                ] },
-                "parts": [
-                    {"form": "disc", "at": [-0.81, 0.28], "radius": 0.045, "role": "light", "mirror": true, "minPixels": 26}
-                ]
-            },
-            "components": {}
-        },
-        {
             "id": "ship.player",
             "style": "directional",
             "name": "Your Ship",
@@ -975,7 +941,6 @@
                     {"of": "hull.thruster", "in": 1, "on": "side", "count": 2, "fit": true, "mount": "centre", "turn": 68.45, "scale": 0.14, "z": -1},
                     {"of": "weapons.laser", "in": 0, "on": "side", "count": 2, "fit": true, "mount": "centre", "turn": 77.9, "scale": 0.1},
                     {"of": "hull.rcs", "in": 2, "on": "edge", "count": 2, "fit": true, "scale": 0.06, "turn": -90},
-                    {"of": "hull.armour", "in": 2, "on": "edge", "count": [0, 1], "scale": 0.09, "turn": 90},
                     {"of": "hatch", "in": 2, "on": "top", "count": [0, 1], "scale": 0.06}
                 ] },
                 "parts": [
@@ -995,7 +960,7 @@
             "sprite": "ship",
             "color": [200, 200, 200, 255],
             "layer": 5,
-            "size": 14,
+            "size": 10,
             "material": "hull",
             "design": "scout",
             "components": {}
@@ -1009,7 +974,7 @@
             "sprite": "ship",
             "color": [200, 200, 200, 255],
             "layer": 5,
-            "size": 13,
+            "size": 10,
             "material": "hull",
             "design": "courier",
             "components": {}
@@ -1023,7 +988,7 @@
             "sprite": "ship",
             "color": [200, 200, 200, 255],
             "layer": 5,
-            "size": 18,
+            "size": 13,
             "material": "hull",
             "design": "hauler",
             "components": {}
@@ -1037,9 +1002,51 @@
             "sprite": "ship",
             "color": [200, 200, 200, 255],
             "layer": 5,
-            "size": 15,
+            "size": 12,
             "material": "hull",
             "design": "miner",
+            "components": {}
+        },
+        {
+            "id": "ship.cutter",
+            "style": "directional",
+            "name": "Cutter",
+            "kind": "Npc",
+            "glyph": "v",
+            "sprite": "ship",
+            "color": [200, 200, 200, 255],
+            "layer": 5,
+            "size": 11,
+            "material": "hull",
+            "design": "cutter",
+            "components": {}
+        },
+        {
+            "id": "ship.raider",
+            "style": "directional",
+            "name": "Raider",
+            "kind": "Npc",
+            "glyph": "v",
+            "sprite": "ship",
+            "color": [200, 200, 200, 255],
+            "layer": 5,
+            "size": 10,
+            "material": "hull",
+            "design": "raider",
+            "components": {}
+        },
+        {
+            "id": "ship.cruiser",
+            "style": "directional",
+            "name": "Cruiser",
+            "kind": "Npc",
+            "glyph": "v",
+            "sprite": "ship",
+            "color": [200, 200, 200, 255],
+            "layer": 5,
+            "size": 14,
+            "material": "hull",
+            "design": "cruiser",
             "components": {}
         }
     ]

@@ -1,14 +1,45 @@
 #include "entities/NpcShip.h"
+#include "core/Archetype.h"
 #include "core/World.h"
 #include "render/Textures.h"
 #include <cmath>
 
-NpcShip::NpcShip(Vector2 pos, FactionId faction, NpcRole role, std::vector<Vector2> waypoints)
-    : Entity(pos, 10.0f, LIGHTGRAY, EntityKind::Npc), faction_(faction), role_(role),
-      waypoints_(std::move(waypoints)), target_(pos), speed_((float)GetRandomValue(120, 180)),
-      heading_(0.0f), waitTimer_(0.0f)
+const char* NpcRoleId(NpcRole role)
 {
-    SetArchetype("ship.npc");
+    switch (role)
+    {
+        case NpcRole::Trader: return "trader";
+        case NpcRole::Miner: return "miner";
+        case NpcRole::Police: return "patrol";
+        case NpcRole::Pirate: return "pirate";
+        case NpcRole::Warship: return "warship";
+    }
+    return "trader";
+}
+
+NpcShip::NpcShip(Vector2 pos, FactionId faction, NpcRole role, std::vector<Vector2> waypoints,
+                 const std::string& design)
+    : Entity(pos, 10.0f, LIGHTGRAY, EntityKind::Npc), faction_(faction), role_(role),
+      waypoints_(std::move(waypoints)), target_(pos), speed_(150.0f), heading_(0.0f),
+      waitTimer_(0.0f)
+{
+    // The design it flies is its look and its numbers (#279 step 4). There used to be one
+    // shape for every role, `ship.npc`, and a speed rolled between 120 and 180; both are the
+    // design's now, and `ship.npc` is gone -- a design nobody knows falls back to the
+    // doctrine's own pick, never to a shape that says nothing about the ship.
+    const Archetype* a = Archetypes::ForDesign(design);
+    if (a == nullptr)
+        a = Archetypes::ForDesign(
+            Archetypes::ShipCatalogue().Pick(Factions::Id(faction), NpcRoleId(role), 0));
+    if (a != nullptr)
+    {
+        design_ = a->design;
+        SetArchetype(a->id);
+        size_ = a->defaultSize;
+        speed_ = a->ship.cruise;
+        damage_ = a->ship.damage;
+        maxHull_ = hull_ = a->ship.hull;
+    }
     PickNewTarget();
 }
 

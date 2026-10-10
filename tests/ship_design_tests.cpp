@@ -2,6 +2,7 @@
 
 #include "core/Archetype.h"
 #include "core/ShipDesign.h"
+#include "entities/NpcShip.h"
 #include "entities/ShipType.h"
 #include "render/Modules.h"
 #include "render/Silhouette.h"
@@ -177,8 +178,9 @@ TEST_CASE("a ship's look never decides what it can do: its function is in fixed 
     auto                   function = [&](const std::string& id)
     {
         const Ships::ModulePart* m = c.FindModule(id);
-        return m != nullptr && (m->provides.thrust > 0.0f || m->provides.rcs > 0.0f ||
-                                m->provides.cargo > 0.0f || m->provides.mining > 0.0f);
+        return m != nullptr &&
+               (m->provides.thrust > 0.0f || m->provides.rcs > 0.0f || m->provides.cargo > 0.0f ||
+                m->provides.mining > 0.0f || m->provides.hull > 0.0f || m->provides.damage > 0.0f);
     };
     int ships = 0;
     for (const Archetype& a : Archetypes::All())
@@ -564,4 +566,115 @@ TEST_CASE("a kit line may name several sections")
     CHECK_FALSE(Render::ParseShape(nlohmann::json::parse(R"({ "sections": [], "parts": [],
             "kit": { "modules": [ { "of": "hull.cargo", "in": "keel" } ] } })"),
                                    s, error));
+}
+
+// --- Step 4: NPC roles fly designs (#279) --------------------------------------------------
+
+TEST_CASE("every faction flies a design in every role, and an armed role's design has guns")
+{
+    const Ships::Catalogue c = Shipped();
+    for (const char* faction : { "Independent", "TradersGuild", "Syndicate", "Pirates" })
+        for (const char* role : Ships::NPC_ROLES)
+        {
+            CAPTURE(faction);
+            CAPTURE(role);
+            const std::vector<std::string>* designs = c.DesignsFor(faction, role);
+            REQUIRE(designs != nullptr);
+            REQUIRE_FALSE(designs->empty());
+            for (const std::string& id : *designs)
+            {
+                Ships::Stats s;
+                std::string  error;
+                REQUIRE(Ships::Derive(c, *c.FindDesign(id), s, error));
+                CHECK(s.hull > 0.0f);
+                CHECK(s.cruise > 0.0f);
+                if (Ships::ArmedRole(role))
+                    CHECK(s.damage > 0.0f);
+            }
+        }
+
+    // A faction's own doctrine wins where it names the role; the default covers the rest. A
+    // role with several designs flies each of them, and one ship keeps its own by its id.
+    CHECK(c.Pick("TradersGuild", "trader", 7) == "hauler");
+    CHECK(c.Pick("Syndicate", "patrol", 0) == "cruiser");
+    CHECK(c.Pick("Syndicate", "patrol", 1) == "cutter");
+    CHECK(c.Pick("Independent", "patrol", 1) == "cutter");
+    CHECK(c.Pick("Pirates", "pirate", 3) == "raider");
+}
+
+TEST_CASE("NPCs fly within 15% of what every NPC flew before designs (#279 step 4)")
+{
+    // Before step 4 every NPC was the same: a hull of 60, a volley of 6 against a ship, and a
+    // speed rolled between 120 and 180. The switch keeps every role close to that, so it
+    // changes how a fight looks, not how it goes.
+    const Ships::Catalogue c = Shipped();
+    for (const Ships::Doctrine& d : c.doctrines)
+        for (const auto& [role, designs] : d.roles)
+            for (const std::string& id : designs)
+            {
+                Ships::Stats s;
+                std::string  error;
+                REQUIRE(Ships::Derive(c, *c.FindDesign(id), s, error));
+                INFO(d.faction << " " << id);
+                CHECK(Within(s.cruise, 150.0f, 0.15f));
+                CHECK(Within(s.hull, 60.0f, 0.15f));
+                if (Ships::ArmedRole(role))
+                    CHECK(Within(s.damage, 6.0f, 0.15f));
+                else
+                    CHECK(s.damage == 0.0f);
+            }
+}
+
+TEST_CASE("a doctrine that cannot be flown is a load error")
+{
+    CHECK(ErrorAfter([](nlohmann::json& j)
+                     { j["doctrines"]["Syndicate"]["smuggler"] = { "hauler" }; })
+              .find("smuggler") != std::string::npos);
+    CHECK(
+        ErrorAfter([](nlohmann::json& j) { j["doctrines"]["Merchants"]["trader"] = { "hauler" }; })
+            .find("Merchants") != std::string::npos);
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["doctrines"]["Pirates"]["pirate"] = { "galleon" }; })
+              .find("galleon") != std::string::npos);
+    // A patrol that cannot shoot is a trader in a uniform.
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["doctrines"]["Pirates"]["pirate"] = { "hauler" }; })
+              .find("guns") != std::string::npos);
+    // The default names a design for every role, so no NPC goes without one.
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["doctrines"]["default"].erase("miner"); })
+              .find("miner") != std::string::npos);
+    CHECK_FALSE(ErrorAfter([](nlohmann::json& j) { j.erase("doctrines"); }).empty());
+    CHECK_FALSE(
+        ErrorAfter([](nlohmann::json& j) { j["modules"][0]["provides"]["armour"] = 1; }).empty());
+}
+
+TEST_CASE("an NPC is drawn as the design it flies and is as fast, tough and armed as it says")
+{
+    REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
+    const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+
+    // `ship.npc` is gone: there is no shape that stands for every role any more.
+    CHECK(Archetypes::Find("ship.npc") == nullptr);
+
+    NpcShip      raider({ 0.0f, 0.0f }, FactionId::Pirates, NpcRole::Pirate, {}, "raider");
+    Ships::Stats s;
+    std::string  error;
+    REQUIRE(Ships::Derive(c, *c.FindDesign("raider"), s, error));
+    CHECK(raider.GetDesign() == "raider");
+    REQUIRE(raider.GetArchetype() != nullptr);
+    CHECK(raider.GetArchetype()->design == "raider");
+    CHECK(raider.GetMaxHull() == doctest::Approx(s.hull));
+    CHECK(raider.GetDamage() == doctest::Approx(s.damage));
+    CHECK(raider.GetSpeed() == doctest::Approx(s.cruise));
+    CHECK(raider.GetSize() == doctest::Approx(raider.GetArchetype()->defaultSize));
+
+    // No design, or one this build does not know, is the doctrine's own pick for the role --
+    // never nothing, and never another role's ship.
+    NpcShip trader({ 0.0f, 0.0f }, FactionId::TradersGuild, NpcRole::Trader, {});
+    CHECK(trader.GetDesign() == c.Pick("TradersGuild", "trader", 0));
+    NpcShip stranger({ 0.0f, 0.0f }, FactionId::Syndicate, NpcRole::Police, {}, "dreadnought");
+    CHECK(stranger.GetDesign() == c.Pick("Syndicate", "patrol", 0));
+
+    // Every NpcRole has the name the doctrines use.
+    for (NpcRole r :
+         { NpcRole::Trader, NpcRole::Miner, NpcRole::Police, NpcRole::Pirate, NpcRole::Warship })
+        CHECK(c.DesignsFor("default", NpcRoleId(r)) != nullptr);
 }

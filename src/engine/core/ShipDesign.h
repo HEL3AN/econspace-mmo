@@ -21,8 +21,9 @@
 // and a count that carries function is pinned in the design rather than drawn from the seed.
 // Two Haulers of one design carry the same hold whichever hatches they wear.
 //
-// Nothing in the game reads these stats yet: GetShipCatalog() still holds the hand-typed
-// numbers, and a test holds the derived ones within 10% of them until the switch.
+// NPCs fly designs (#279 step 4): a faction's doctrine names the designs each NPC role flies,
+// and an NPC's speed, hull and guns are its design's. The player's ships still use the
+// hand-typed GetShipCatalog(), and a test holds the derived numbers within 10% of it.
 namespace Ships
 {
 // What a part contributes. Each is summed over the ship; a part may contribute nothing.
@@ -32,6 +33,8 @@ struct Provides
     float rcs = 0.0f;     // attitude force; over mass it is the stabiliser's pull and the turn
     float cargo = 0.0f;   // hold, in units of cargo
     float mining = 0.0f;  // ore per second
+    float hull = 0.0f;    // structure points: what a hit takes away before the ship is lost
+    float damage = 0.0f;  // what one volley of its guns takes off a ship
 };
 
 using Cost = std::vector<std::pair<ResourceType, int>>;
@@ -118,6 +121,22 @@ struct Rules
     float buildSecondsPerMass = 0.0f;  // build time = perMass * mass + perPart * parts
     float buildSecondsPerPart = 0.0f;
     float plain = 0.5f;  // the share of a drawn ship's sockets its trim leaves empty
+    // The share of its top speed an NPC flies its rounds at. A ship on a job is not racing,
+    // and today's traffic moves at about half what the same hull does under a player.
+    float cruise = 0.5f;
+};
+
+// The NPC roles a doctrine names designs for, in the game's NpcRole order. The armed ones are
+// those a design must carry guns for: a patrol that cannot shoot is a trader in a uniform.
+inline constexpr const char* NPC_ROLES[] = { "trader", "miner", "patrol", "pirate", "warship" };
+bool                         ArmedRole(const std::string& role);
+
+// What a faction flies (#279 step 4): per NPC role, the designs it builds for it. The doctrine
+// called "default" names one for every role; a faction's own names only where it differs.
+struct Doctrine
+{
+    std::string                                                   faction;  // id, or "default"
+    std::vector<std::pair<std::string, std::vector<std::string>>> roles;    // role -> designs
 };
 
 struct Catalogue
@@ -127,11 +146,20 @@ struct Catalogue
     std::vector<Section>    sections;
     std::vector<Frame>      frames;
     std::vector<Design>     designs;
+    std::vector<Doctrine>   doctrines;
 
     const ModulePart* FindModule(const std::string& id) const;
     const Section*    FindSection(const std::string& id) const;
     const Frame*      FindFrame(const std::string& id) const;
     const Design*     FindDesign(const std::string& id) const;
+
+    // The designs `faction` flies in `role`: its own doctrine's, else the default's. Null for
+    // a role nobody names, which a catalogue that loaded does not have.
+    const std::vector<std::string>* DesignsFor(const std::string& faction,
+                                               const std::string& role) const;
+    // One of them, by `key` (an NPC's id), so a role with several designs flies all of them
+    // and one ship keeps its design for life. Empty when there is none.
+    std::string Pick(const std::string& faction, const std::string& role, unsigned key) const;
 };
 
 // What a design can do. Field names follow the game's ShipStats where they mean the same.
@@ -144,8 +172,11 @@ struct Stats
     float turnSpeed = 0.0f;  // rad/s
     int   cargoCapacity = 0;
     float miningRate = 0.0f;
-    Cost  cost;       // every part's, summed, in ResourceType order
-    int   parts = 0;  // frame, sections and every fitted module counted once each
+    float hull = 0.0f;    // NpcShip's hull
+    float damage = 0.0f;  // per volley, against a ship
+    float cruise = 0.0f;  // what an NPC flies its rounds at: maxSpeed * rules.cruise
+    Cost  cost;           // every part's, summed, in ResourceType order
+    int   parts = 0;      // frame, sections and every fitted module counted once each
     float buildSeconds = 0.0f;
 };
 

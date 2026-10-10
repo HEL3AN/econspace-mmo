@@ -5,6 +5,7 @@
 // population aggregate the spawn director reads and writes.
 
 #include "sim/Simulation.h"
+#include "core/Archetype.h"
 #include "core/Orbits.h"
 #include "sim/ClientSession.h"
 
@@ -25,11 +26,12 @@ namespace
 {
 // NPC combat parameters (server combat/AI simulation).
 constexpr float PIRATE_WEAPON_RANGE = 230.0f;  // NPC fire range
-constexpr float PIRATE_WEAPON_DAMAGE = 7.0f;   // damage to the player
-constexpr float NPC_WEAPON_DAMAGE = 6.0f;      // NPC-vs-NPC damage
-constexpr float NPC_AGGRO_RANGE = 3500.0f;     // AI target detection radius
-constexpr float NPC_THREAT_RANGE = 2000.0f;    // distance at which peaceful ones flee
-constexpr float DEFENCE_PERIOD = 1.0f;         // seconds between a station's shots
+// An NPC's guns are its design's (data/ships.json); against a player they hit this much
+// harder -- 7 to the player for 6 to a ship before designs did the arithmetic.
+constexpr float PLAYER_DAMAGE_SCALE = 7.0f / 6.0f;
+constexpr float NPC_AGGRO_RANGE = 3500.0f;   // AI target detection radius
+constexpr float NPC_THREAT_RANGE = 2000.0f;  // distance at which peaceful ones flee
+constexpr float DEFENCE_PERIOD = 1.0f;       // seconds between a station's shots
 
 // Spawn director. "Pressure": losses in a role raise the suppression of its spawn,
 // which then slowly recovers — the player/battles really change the population.
@@ -210,7 +212,9 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
         if (target == nullptr)
             continue;
 
-        target->TakeDamage(targetSession != 0 ? PIRATE_WEAPON_DAMAGE : NPC_WEAPON_DAMAGE);
+        // What a volley takes off is the design's guns (#279 step 4); a player is hit a sixth
+        // harder than a ship of its own kind, as before, so one raider is a threat on its own.
+        target->TakeDamage(npc->GetDamage() * (targetSession != 0 ? PLAYER_DAMAGE_SCALE : 1.0f));
         npc->ResetFireTimer();
         if (fires != nullptr)
         {
@@ -451,10 +455,18 @@ Vector2 Simulation::PirateSpawnPos(const std::vector<Vector2>& pool,
 }
 
 void Simulation::SpawnNpcInto(SystemState& st, Vector2 pos, FactionId faction, NpcRole role,
-                              std::vector<Vector2> waypoints)
+                              std::vector<Vector2> waypoints, int pick)
 {
-    auto npc = std::make_unique<NpcShip>(pos, faction, role, std::move(waypoints));
-    npc->SetId(NextAgentId());
+    // Which of its role's designs it flies is decided once, when it is made (#279 step 4), so
+    // a role with several in its faction's doctrine flies all of them and a ship keeps its
+    // own for life. Not by the id when the caller has a better key: ids depend on what was
+    // made before, and a system that warms must find the same sky whatever warmed first.
+    const int id = NextAgentId();
+    auto      npc = std::make_unique<NpcShip>(
+        pos, faction, role, std::move(waypoints),
+        Archetypes::ShipCatalogue().Pick(Factions::Id(faction), NpcRoleId(role),
+                                         (unsigned)(pick >= 0 ? pick : id)));
+    npc->SetId(id);
     st.entities.push_back(std::move(npc));
 }
 

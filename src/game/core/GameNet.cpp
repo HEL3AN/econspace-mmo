@@ -484,9 +484,10 @@ void Game::ReconcileClientWorld()
             }
             else if (es.kind == Proto::EntityKind::Npc)
             {
-                // NPC — snapshot dynamics: built from faction/role, hull for the indicator.
+                // NPC — snapshot dynamics: built from faction, role and the design the
+                // server says it flies (#279), hull for the indicator.
                 auto n = std::make_unique<NpcShip>(es.pos, es.faction, (NpcRole)es.role,
-                                                   std::vector<Vector2>{});
+                                                   std::vector<Vector2>{}, es.design);
                 n->SetHeading(es.heading);
                 n->SetHull(es.hullFrac * n->GetMaxHull());
                 p = std::move(n);
