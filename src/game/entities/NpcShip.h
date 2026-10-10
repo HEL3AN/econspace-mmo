@@ -3,6 +3,7 @@
 #include "entities/Entity.h"
 #include "entities/Combatant.h"
 #include "core/Faction.h"
+#include <string>
 #include <vector>
 
 // NPC ship role — determines its behavior and whether it's armed.
@@ -20,6 +21,9 @@ enum class NpcRole
     Warship
 };
 
+// The role as a doctrine names it in data/ships.json ("trader", "patrol", ...).
+const char* NpcRoleId(NpcRole role);
+
 // Behavior state machine state (set by the AI pass in Game).
 enum class AiState
 {
@@ -33,10 +37,19 @@ enum class AiState
 // targets. The "who counts as an enemy" decision is made by Game (which sees the
 // whole world and the player) and each frame it commands the ship via
 // Engage/FleeFrom/StandDown.
+//
+// It flies a ship design (#279 step 4): its faction's doctrine names the designs a role flies,
+// the server picks one, and the ship looks like that design and is as fast, as tough and as
+// well armed as its parts say. The snapshot carries the design, so a client draws the same
+// ship the server simulates.
 class NpcShip : public Entity, public Combatant
 {
 public:
-    NpcShip(Vector2 pos, FactionId faction, NpcRole role, std::vector<Vector2> waypoints);
+    // `design` is a design id from data/ships.json. Empty, or one the catalogue does not have,
+    // is the faction's first pick for the role -- what a client falls back to rather than
+    // draw nothing.
+    NpcShip(Vector2 pos, FactionId faction, NpcRole role, std::vector<Vector2> waypoints,
+            const std::string& design = std::string());
 
     void                    Update(float dt) override;
     Render::Item            Describe() const override;
@@ -48,10 +61,14 @@ public:
 
     FactionId GetFaction() const { return faction_; }
     NpcRole   GetRole() const { return role_; }
-    AiState   GetState() const { return state_; }
-    bool      IsPirate() const { return faction_ == FactionId::Pirates; }
-    float     GetHeading() const { return heading_; }  // heading (for snapshots/render)
-    void      SetHeading(float h) { heading_ = h; }    // for proxy reconciliation
+    // The design it flies; empty only when no ship catalogue is loaded.
+    const std::string& GetDesign() const { return design_; }
+    float              GetDamage() const { return damage_; }  // per volley, against a ship
+    float              GetSpeed() const { return speed_; }
+    AiState            GetState() const { return state_; }
+    bool               IsPirate() const { return faction_ == FactionId::Pirates; }
+    float              GetHeading() const { return heading_; }  // heading (for snapshots/render)
+    void               SetHeading(float h) { heading_ = h; }    // for proxy reconciliation
 
     // Stable agent id lives in the base Entity (GetId/SetId).
 
@@ -92,7 +109,9 @@ private:
     AiState state_ = AiState::Patrol;
     Vector2 aiPoint_ = { 0.0f, 0.0f };  // pursuit target or threat point
 
-    float maxHull_ = 60.0f;
-    float hull_ = 60.0f;
-    float fireTimer_ = 0.0f;
+    std::string design_;
+    float       damage_ = 6.0f;  // the design's; these defaults are only for no catalogue
+    float       maxHull_ = 60.0f;
+    float       hull_ = 60.0f;
+    float       fireTimer_ = 0.0f;
 };

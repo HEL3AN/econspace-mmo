@@ -1,5 +1,6 @@
 #include "core/ShipDesign.h"
 
+#include "core/Faction.h"
 #include "core/JsonKeys.h"
 #include "render/Modules.h"
 #include <cmath>
@@ -86,11 +87,13 @@ bool ReadProvides(const json& j, Ships::Provides& p, std::string& err)
         err = "'provides' is not an object";
         return false;
     }
-    // Only what a stat is derived from. Shields, hull points and sensors come with the stat
-    // that reads them; accepted before that, they would be numbers nothing uses.
-    if (!OnlyKnownKeys(pj, { "thrust", "rcs", "cargo", "mining" }, err) ||
+    // Only what a stat is derived from. Hull and damage arrived with the NPCs that read them
+    // (#279 step 4); shields and sensors come with the stat that reads them -- accepted
+    // before that, they would be numbers nothing uses.
+    if (!OnlyKnownKeys(pj, { "thrust", "rcs", "cargo", "mining", "hull", "damage" }, err) ||
         !ReadNumber(pj, "thrust", p.thrust, err) || !ReadNumber(pj, "rcs", p.rcs, err) ||
-        !ReadNumber(pj, "cargo", p.cargo, err) || !ReadNumber(pj, "mining", p.mining, err))
+        !ReadNumber(pj, "cargo", p.cargo, err) || !ReadNumber(pj, "mining", p.mining, err) ||
+        !ReadNumber(pj, "hull", p.hull, err) || !ReadNumber(pj, "damage", p.damage, err))
     {
         err = "provides: " + err;
         return false;
@@ -411,6 +414,8 @@ void Add(Ships::Provides& sum, const Ships::Provides& p, float times = 1.0f)
     sum.rcs += p.rcs * times;
     sum.cargo += p.cargo * times;
     sum.mining += p.mining * times;
+    sum.hull += p.hull * times;
+    sum.damage += p.damage * times;
 }
 
 void Add(int (&sum)[3], const Ships::Cost& c, int times = 1)
@@ -457,6 +462,31 @@ const Frame* Catalogue::FindFrame(const std::string& id) const
 const Design* Catalogue::FindDesign(const std::string& id) const
 {
     return FindIn(designs, id);
+}
+
+bool ArmedRole(const std::string& role)
+{
+    return role == "patrol" || role == "pirate" || role == "warship";
+}
+
+const std::vector<std::string>* Catalogue::DesignsFor(const std::string& faction,
+                                                      const std::string& role) const
+{
+    for (const char* who : { faction.c_str(), "default" })
+        for (const Doctrine& d : doctrines)
+            if (d.faction == who)
+                for (const auto& [r, list] : d.roles)
+                    if (r == role)
+                        return &list;
+    return nullptr;
+}
+
+std::string Catalogue::Pick(const std::string& faction, const std::string& role, unsigned key) const
+{
+    const std::vector<std::string>* list = DesignsFor(faction, role);
+    if (list == nullptr || list->empty())
+        return std::string();
+    return (*list)[key % list->size()];
 }
 
 bool Validate(const Catalogue& c, const Design& d, std::string& error)
@@ -811,11 +841,92 @@ bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error)
     out.turnSpeed = out.rcsAccel / r.rcsPerTurn;
     out.cargoCapacity = (int)(sum.cargo + 0.5f);
     out.miningRate = sum.mining;
+    out.hull = sum.hull;
+    out.damage = sum.damage;
+    out.cruise = out.maxSpeed * r.cruise;
     for (ResourceType t : AllResourceTypes())
         if (cost[(int)t] > 0)
             out.cost.emplace_back(t, cost[(int)t]);
     out.parts = parts;
     out.buildSeconds = r.buildSecondsPerMass * mass + r.buildSecondsPerPart * (float)parts;
+    return true;
+}
+
+// What each faction flies (#279 step 4): { faction id or "default": { role: [design, ...] } }.
+// The default names a design for every role, so an NPC never goes without one; an armed role
+// is flown only by designs that carry guns.
+bool ReadDoctrines(const json& j, Catalogue& c, std::string& error)
+{
+    if (!j.contains("doctrines") || !j["doctrines"].is_object())
+    {
+        error = "'doctrines' is missing: an object of faction -> { role: [designs] }";
+        return false;
+    }
+    for (auto f = j["doctrines"].begin(); f != j["doctrines"].end(); ++f)
+    {
+        const std::string where = "doctrine '" + f.key() + "': ";
+        if (f.key() != "default" && Factions::Id(FactionFromString(f.key())) != f.key())
+        {
+            error = where + "no such faction";
+            return false;
+        }
+        if (!f.value().is_object())
+        {
+            error = where + "not an object of role -> [designs]";
+            return false;
+        }
+        Doctrine d;
+        d.faction = f.key();
+        for (auto r = f.value().begin(); r != f.value().end(); ++r)
+        {
+            if (!OneOf(r.key(), NPC_ROLES))
+            {
+                error = where + "'" + r.key() + "' is not an NPC role";
+                return false;
+            }
+            if (!r.value().is_array() || r.value().empty())
+            {
+                error = where + r.key() + ": not a list of designs";
+                return false;
+            }
+            std::vector<std::string> designs;
+            for (const json& id : r.value())
+            {
+                const Design* design =
+                    id.is_string() ? c.FindDesign(id.get<std::string>()) : nullptr;
+                if (design == nullptr)
+                {
+                    error = where + r.key() + ": " +
+                            (id.is_string() ? id.get<std::string>() : "?") + " is not a design";
+                    return false;
+                }
+                Stats       st;
+                std::string why;
+                if (ArmedRole(r.key()) && (!Derive(c, *design, st, why) || st.damage <= 0.0f))
+                {
+                    error = where + r.key() + ": '" + design->id + "' carries no guns";
+                    return false;
+                }
+                designs.push_back(design->id);
+            }
+            d.roles.emplace_back(r.key(), std::move(designs));
+        }
+        c.doctrines.push_back(std::move(d));
+    }
+    for (const char* role : NPC_ROLES)
+    {
+        const std::vector<std::string>* list = nullptr;
+        for (const Doctrine& d : c.doctrines)
+            if (d.faction == "default")
+                for (const auto& [r, designs] : d.roles)
+                    if (r == role)
+                        list = &designs;
+        if (list == nullptr)
+        {
+            error = std::string("doctrine 'default': names no design for '") + role + "'";
+            return false;
+        }
+    }
     return true;
 }
 
@@ -827,7 +938,8 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
         error = "not a ship catalogue (not an object)";
         return false;
     }
-    if (!OnlyKnownKeys(j, { "rules", "modules", "sections", "frames", "designs" }, error))
+    if (!OnlyKnownKeys(j, { "rules", "modules", "sections", "frames", "designs", "doctrines" },
+                       error))
         return false;
 
     Catalogue c;
@@ -839,14 +951,14 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
     const json& rj = j["rules"];
     if (!OnlyKnownKeys(rj,
                        { "speedBase", "speedPerAccel", "rcsPerTurn", "buildSecondsPerMass",
-                         "buildSecondsPerPart", "plain" },
+                         "buildSecondsPerPart", "plain", "cruise" },
                        error))
     {
         error = "rules: " + error;
         return false;
     }
     for (const char* key : { "speedBase", "speedPerAccel", "rcsPerTurn", "buildSecondsPerMass",
-                             "buildSecondsPerPart", "plain" })
+                             "buildSecondsPerPart", "plain", "cruise" })
         if (!rj.contains(key))
         {
             error = std::string("rules: '") + key + "' is missing";
@@ -857,7 +969,8 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
         !ReadNumber(rj, "rcsPerTurn", c.rules.rcsPerTurn, error) ||
         !ReadNumber(rj, "buildSecondsPerMass", c.rules.buildSecondsPerMass, error) ||
         !ReadNumber(rj, "buildSecondsPerPart", c.rules.buildSecondsPerPart, error) ||
-        !ReadNumber(rj, "plain", c.rules.plain, error))
+        !ReadNumber(rj, "plain", c.rules.plain, error) ||
+        !ReadNumber(rj, "cruise", c.rules.cruise, error))
     {
         error = "rules: " + error;
         return false;
@@ -897,6 +1010,8 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
     for (const Design& d : c.designs)
         if (!Validate(c, d, error))
             return false;
+    if (!ReadDoctrines(j, c, error))
+        return false;
 
     out = std::move(c);
     return true;

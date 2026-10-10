@@ -96,7 +96,8 @@ TEST_CASE("snapshot round-trips through JSON")
                            3,
                            0.75f,
                            -1,
-                           "Pirate" });
+                           "Pirate",
+                           "raider" });
     s.fires.push_back({ { 0.0f, 0.0f }, { 1.0f, 2.0f }, FactionId::Pirates, true, false });
     s.fires.push_back({ { 5.0f, 5.0f }, { 9.0f, 9.0f }, FactionId::Independent, false, true });
     s.events.push_back(Ev::Event{ 7, Ev::Kind::Docked, "hello" });
@@ -111,6 +112,7 @@ TEST_CASE("snapshot round-trips through JSON")
     REQUIRE(r.entities.size() == 1);
     CHECK(r.entities[0].id == 5);
     CHECK(r.entities[0].faction == FactionId::Pirates);
+    CHECK(r.entities[0].design == "raider");  // what the client draws it as (#279)
     REQUIRE(r.fires.size() == 2);
     CHECK(r.fires[0].targetIsPlayer);
     CHECK(r.fires[0].fromPlayer == false);

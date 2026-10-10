@@ -171,7 +171,7 @@ TEST_CASE("an entity built without the registry has no look, and that is disting
                               "planet.lava",       "planet.oceanic",
                               "station.trade_hub", "station.mining_outpost",
                               "station.shipyard",  "station.military",
-                              "ship.player",       "ship.npc" };
+                              "ship.player",       "ship.hauler" };
         for (const char* id : ids)
         {
             INFO("archetype id: ", id);

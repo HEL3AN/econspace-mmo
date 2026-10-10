@@ -120,6 +120,9 @@ struct Archetype
     // that is not one. Its shape is then the design's, made when the archetype is loaded,
     // and an archetype that names a design writes no shape of its own.
     std::string design;
+    // What that design can do, derived once when the archetype is loaded (#279 step 4): an
+    // NPC flying it takes its speed, hull and guns from here.
+    Ships::Stats ship;
 
     // Where this archetype lives in a system file, and what it is called there.
     // `worldCategory` is the JSON array ("stations", "gates", …); `worldSubType` is the
@@ -180,6 +183,11 @@ Archetype* Mutable(const std::string& id);
 // The ship catalogue read from beside the archetypes (data/ships.json), which the archetypes
 // that name a design are drawn from. Empty when there is no such file.
 const Ships::Catalogue& ShipCatalogue();
+
+// The archetype that draws a ship design (#279 step 4): what an NPC flying it looks like.
+// Every design a doctrine names has one -- Load refuses a doctrine whose ship nobody draws.
+// Null for a design no archetype names.
+const Archetype* ForDesign(const std::string& design);
 
 // Every archetype declaring the given component.
 std::vector<const Archetype*> With(Component c);

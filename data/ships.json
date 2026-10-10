@@ -5,7 +5,8 @@
         "rcsPerTurn": 183,
         "buildSecondsPerMass": 4,
         "buildSecondsPerPart": 6,
-        "plain": 0.5
+        "plain": 0.5,
+        "cruise": 0.47
     },
     "modules": [
         { "id": "hull.cockpit", "mass": 2, "cost": { "Iron": 4, "Ice": 2 },
@@ -19,6 +20,12 @@
           "look": { "edge": { "scale": 0.045, "turn": -90 } } },
         { "id": "hull.cargo", "mass": 3, "provides": { "cargo": 30 }, "cost": { "Iron": 6 },
           "look": { "spine": { "scale": 0.2 }, "side": { "mount": "out", "turn": 90, "scale": 0.2 } } },
+        { "id": "hull.armour", "mass": 4, "provides": { "hull": 6 }, "cost": { "Iron": 10 },
+          "look": { "edge": { "scale": 0.08, "turn": 90 }, "side": { "mount": "out", "turn": 90, "scale": 0.12 } } },
+        { "id": "weapons.laser", "mass": 2, "provides": { "damage": 3 }, "cost": { "Iron": 4, "Crystal": 3 },
+          "look": { "top": { "scale": 0.11 } } },
+        { "id": "weapons.railgun", "mass": 5, "provides": { "damage": 6 }, "cost": { "Iron": 10, "Crystal": 5 },
+          "look": { "top": { "scale": 0.2 } } },
         { "id": "weapons.tractor", "mass": 2, "provides": { "mining": 1 }, "cost": { "Iron": 4, "Crystal": 2 },
           "look": { "top": { "scale": 0.1, "mount": "centre" }, "bow": { "scale": 0.1, "mount": "out" } } }
     ],
@@ -63,6 +70,39 @@
               ],
               "parts": [
                   {"form": "bar", "at": [0.14, 0.0], "angle": 90, "length": 0.84, "width": 0.05, "role": "panel", "minPixels": 30}
+              ]
+          } },
+        { "id": "bow.fang", "position": "bow", "mass": 3, "cost": { "Iron": 14 },
+          "sockets": { "top": 2, "edge": 2, "front": 1 },
+          "shape": {
+              "sections": [
+                  {"form": "bar", "at": [-0.12, 0.0], "length": 0.34, "width": 0.36, "role": "hull", "pitch": 0.13},
+                  {"form": "chevron", "at": [0.12, 0.0], "length": 0.24, "width": 0.3, "tip": 0.5, "role": "hull"},
+                  {"form": "chevron", "at": [0.3, 0.13], "length": 0.5, "width": 0.12, "tip": 0.05, "role": "hull", "mirror": true}
+              ],
+              "parts": [
+                  {"form": "bar", "at": [-0.04, 0.0], "angle": 90, "length": 0.26, "width": 0.03, "role": "panel", "minPixels": 30}
+              ]
+          } },
+        { "id": "bow.wedge", "position": "bow", "mass": 5, "cost": { "Iron": 22 },
+          "sockets": { "top": 2, "edge": 2, "front": 1 },
+          "shape": {
+              "sections": [
+                  {"form": "chevron", "at": [0.0, 0.0], "length": 0.92, "width": 0.76, "tip": 0.22, "role": "hull"},
+                  {"form": "bar", "at": [-0.1, 0.0], "length": 0.36, "width": 0.14, "role": "panel", "pitch": 0.14}
+              ],
+              "parts": [
+                  {"form": "chevron", "at": [0.08, 0.0], "length": 0.4, "width": 0.18, "role": "trim", "minPixels": 30}
+              ]
+          } },
+        { "id": "mid.belt", "position": "mid", "mass": 8, "provides": { "cargo": 10 }, "cost": { "Iron": 34 },
+          "sockets": { "top": 2, "edge": 4, "side": 2, "spine": 1 },
+          "shape": {
+              "sections": [
+                  {"form": "bar", "length": 0.62, "width": 0.84, "role": "hull", "pitch": 0.12}
+              ],
+              "parts": [
+                  {"form": "bar", "at": [0.0, 0.36], "length": 0.5, "width": 0.05, "role": "panel", "mirror": true, "minPixels": 30}
               ]
           } },
         { "id": "mid.spine", "position": "mid", "mass": 5, "provides": { "cargo": 20 }, "cost": { "Iron": 20 },
@@ -118,6 +158,17 @@
                   {"form": "bar", "at": [-0.03, 0.2], "length": 0.36, "width": 0.15, "role": "hull", "mirror": true, "pitch": 0.12}
               ]
           } },
+        { "id": "stern.row", "position": "stern", "mass": 6, "cost": { "Iron": 26 },
+          "sockets": { "stern": 3, "side": 2, "edge": 2 },
+          "shape": {
+              "sections": [
+                  {"form": "bar", "length": 0.38, "width": 0.56, "role": "hull", "pitch": 0.12},
+                  {"form": "bar", "at": [-0.03, 0.3], "length": 0.44, "width": 0.3, "role": "hull", "mirror": true, "pitch": 0.12}
+              ],
+              "parts": [
+                  {"form": "disc", "at": [0.12, 0.2], "radius": 0.03, "role": "light", "mirror": true, "minPixels": 26}
+              ]
+          } },
         { "id": "stern.cluster", "position": "stern", "mass": 6, "cost": { "Iron": 24 },
           "sockets": { "stern": 3, "side": 2, "edge": 2 },
           "shape": {
@@ -131,10 +182,12 @@
           } }
     ],
     "frames": [
-        { "id": "interceptor", "class": "interceptor", "mass": 8, "mids": [1, 1], "minAspect": 1.6, "provides": { "mining": 2 }, "cost": { "Iron": 30 } },
-        { "id": "frigate", "class": "frigate", "mass": 10, "mids": [1, 2], "minAspect": 2.0, "provides": { "mining": 2 }, "cost": { "Iron": 40 } },
-        { "id": "hauler", "class": "hauler", "mass": 16, "mids": [2, 4], "minAspect": 3.0, "provides": { "mining": 2 }, "cost": { "Iron": 60 } },
-        { "id": "barge", "class": "barge", "mass": 14, "mids": [1, 2], "minAspect": 1.2, "bowHeavy": true, "provides": { "mining": 2 }, "cost": { "Iron": 50 } }
+        { "id": "interceptor", "class": "interceptor", "mass": 8, "mids": [1, 1], "minAspect": 1.6, "provides": { "mining": 2, "hull": 40 }, "cost": { "Iron": 30 } },
+        { "id": "frigate", "class": "frigate", "mass": 10, "mids": [1, 2], "minAspect": 2.0, "provides": { "mining": 2, "hull": 48 }, "cost": { "Iron": 40 } },
+        { "id": "hauler", "class": "hauler", "mass": 16, "mids": [2, 4], "minAspect": 3.0, "provides": { "mining": 2, "hull": 60 }, "cost": { "Iron": 60 } },
+        { "id": "barge", "class": "barge", "mass": 14, "mids": [1, 2], "minAspect": 1.2, "bowHeavy": true, "provides": { "mining": 2, "hull": 60 }, "cost": { "Iron": 50 } },
+        { "id": "raider", "class": "raider", "mass": 17, "mids": [1, 1], "minAspect": 1.6, "provides": { "mining": 2, "hull": 48 }, "cost": { "Iron": 50 } },
+        { "id": "cruiser", "class": "cruiser", "mass": 24, "mids": [1, 2], "minAspect": 2.0, "provides": { "mining": 2, "hull": 42 }, "cost": { "Iron": 90, "Crystal": 10 } }
     ],
     "designs": [
         {
@@ -181,6 +234,54 @@
                 { "module": "hull.rcs", "in": "stern", "on": "edge", "count": 2 },
                 { "module": "hull.engine", "in": "stern", "on": "stern", "count": 2, "scale": 0.12 }
             ]
+        },
+        {
+            "id": "cutter", "name": "Cutter", "frame": "frigate",
+            "bow": "bow.blunt", "mid": ["mid.spine", "mid.spine"], "stern": "stern.single",
+            "fit": [
+                { "module": "hull.cockpit", "in": "bow", "on": "top", "count": 1 },
+                { "module": "hull.armour", "in": "bow", "on": "edge", "count": 2 },
+                { "module": "weapons.laser", "in": "mid", "on": "top", "count": 2 },
+                { "module": "hull.rcs", "in": "mid", "on": "edge", "count": 4 },
+                { "module": "hull.engine", "in": "stern", "on": "stern", "count": 1, "scale": 0.17 },
+                { "module": "hull.thruster", "in": "stern", "on": "side", "count": 2 }
+            ]
+        },
+        {
+            "id": "raider", "name": "Raider", "frame": "raider",
+            "bow": "bow.fang", "mid": ["mid.slim"], "stern": "stern.single",
+            "fit": [
+                { "module": "weapons.railgun", "in": "bow", "on": "top", "count": 1, "scale": 0.18 },
+                { "module": "hull.armour", "in": "bow", "on": "edge", "count": 2 },
+                { "module": "hull.cockpit", "in": "mid", "on": "top", "count": 1 },
+                { "module": "hull.rcs", "in": "mid", "on": "edge", "count": 4 },
+                { "module": "hull.engine", "in": "stern", "on": "stern", "count": 1, "scale": 0.17 },
+                { "module": "hull.thruster", "in": "stern", "on": "side", "count": 2 }
+            ]
+        },
+        {
+            "id": "cruiser", "name": "Cruiser", "frame": "cruiser",
+            "bow": "bow.wedge", "mid": ["mid.belt"], "stern": "stern.row",
+            "fit": [
+                { "module": "weapons.railgun", "in": "bow", "on": "top", "count": 1 },
+                { "module": "hull.cockpit", "in": "mid", "on": "top", "count": 1 },
+                { "module": "hull.rcs", "in": "bow", "on": "edge", "count": 2 },
+                { "module": "hull.armour", "in": "mid", "on": "edge", "count": 4 },
+                { "module": "hull.engine", "in": "stern", "on": "stern", "count": 2, "scale": 0.15 },
+                { "module": "hull.thruster", "in": "stern", "on": "stern", "count": 1 }
+            ]
         }
-    ]
+    ],
+    "doctrines": {
+        "default": {
+            "trader": ["hauler"],
+            "miner": ["miner"],
+            "patrol": ["cutter"],
+            "pirate": ["raider"],
+            "warship": ["cruiser"]
+        },
+        "Syndicate": {
+            "patrol": ["cruiser", "cutter"]
+        }
+    }
 }

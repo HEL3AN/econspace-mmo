@@ -150,7 +150,7 @@ void Simulation::HydrateSystem(SystemState& st)
         const int traders = (int)roundf(agg.traders);
         for (int i = 0; i < traders; i++)
             SpawnNpcInto(st, around(pick(lanes), APPROACH), tradeFactions[i % 3], NpcRole::Trader,
-                         lanes);
+                         lanes, i);
     }
 
     // Miners — at the fields.
@@ -163,7 +163,8 @@ void Simulation::HydrateSystem(SystemState& st)
             std::vector<Vector2> near = { spot };
             // Scattered over the belt, which is six thousand units across (#159), not on its
             // centre.
-            SpawnNpcInto(st, around(spot, 3000.0f), FactionId::Independent, NpcRole::Miner, near);
+            SpawnNpcInto(st, around(spot, 3000.0f), FactionId::Independent, NpcRole::Miner, near,
+                         i);
         }
     }
 
@@ -175,7 +176,7 @@ void Simulation::HydrateSystem(SystemState& st)
         const int police = (int)roundf(agg.police);
         for (int i = 0; i < police; i++)
             SpawnNpcInto(st, around(pick(patrolRoute), APPROACH), pop.policeFaction,
-                         NpcRole::Police, patrolRoute);
+                         NpcRole::Police, patrolRoute, i);
     }
 
     // Pirates — on the dark periphery and at gates into dangerous systems (not at peaceful
@@ -195,7 +196,7 @@ void Simulation::HydrateSystem(SystemState& st)
             for (int attempt = 0; attempt < 4 && !Clear(spot, avoid); attempt++)
                 spot = around(base, 3000.0f);
             std::vector<Vector2> patrol = { spot };
-            SpawnNpcInto(st, spot, FactionId::Pirates, NpcRole::Pirate, patrol);
+            SpawnNpcInto(st, spot, FactionId::Pirates, NpcRole::Pirate, patrol, i);
         }
     }
 }

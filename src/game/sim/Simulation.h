@@ -197,9 +197,12 @@ public:
     // point (the player's position in the active system) so it is not right in view.
     Vector2 PirateSpawnPos(const std::vector<Vector2>& pool, const std::vector<Vector2>& avoid);
 
-    // Creates an NPC with a stable id and puts it into the system.
+    // Creates an NPC with a stable id and puts it into the system. Which of its doctrine's
+    // designs it flies (#279) is picked by `pick`: a system warming from its aggregate passes
+    // the ship's place in its role, so the n-th patrol of a system flies the same design every
+    // time it warms, whatever else happened first; -1 (a ship sent in later) picks by its id.
     void SpawnNpcInto(SystemState& st, Vector2 pos, FactionId faction, NpcRole role,
-                      std::vector<Vector2> waypoints);
+                      std::vector<Vector2> waypoints, int pick = -1);
     // Recounts live NPCs by role into the system aggregate. A cold system has none to count:
     // its aggregate is the truth, and this leaves it alone.
     void RecountAgg(SystemState& st);

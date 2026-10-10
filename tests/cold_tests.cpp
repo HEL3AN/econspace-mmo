@@ -9,6 +9,7 @@
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
+#include "core/ShipDesign.h"
 #include "core/World.h"
 #include "economy/Resource.h"
 #include "entities/NpcShip.h"
@@ -173,10 +174,10 @@ TEST_CASE("a system's ships are drawn from the system and the time, not the orde
                     break;
                 }
         sim->Warm(*sim->SystemById(dest));
-        std::vector<std::tuple<int, int, float, float>> out;
+        std::vector<std::tuple<int, int, float, float, std::string>> out;
         for (const NpcShip* n : ShipsIn(*sim, dest))
             out.emplace_back((int)n->GetRole(), (int)n->GetFaction(), n->GetPosition().x,
-                             n->GetPosition().y);
+                             n->GetPosition().y, n->GetDesign());  // and what it flies (#279)
         return out;
     };
     const auto a = sample(false);
@@ -283,4 +284,72 @@ TEST_CASE("a cold system's fights are losses, counted as a hot system counts the
     CHECK(a.supTraders > 0.0f);
     CHECK(a.presence[(int)FactionId::Pirates] < pirates);
     CHECK_FALSE(Simulation::IsHot(*st));
+}
+
+TEST_CASE("a warmed system's ships fly their doctrine's designs, the same on every warm (#279)")
+{
+    // A system that warms makes its ships afresh from the aggregate (#295), so a design picked
+    // by a ship's id would follow whatever was made before it. The n-th ship of a role flies
+    // the n-th pick of its faction's doctrine instead: the same ships look the same every time
+    // the system warms, and a ship keeps its design while it lives.
+    const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+    auto                    designs = [&](const Simulation& sim, const std::string& id)
+    {
+        std::vector<std::tuple<int, int, std::string>> out;
+        int                                            nth[5] = { 0, 0, 0, 0, 0 };
+        for (const NpcShip* n : ShipsIn(sim, id))
+        {
+            const int role = (int)n->GetRole();
+            CHECK(n->GetDesign() == c.Pick(Factions::Id(n->GetFaction()), NpcRoleId(n->GetRole()),
+                                           (unsigned)nth[role]++));
+            REQUIRE(n->GetArchetype() != nullptr);
+            CHECK(n->GetArchetype()->design == n->GetDesign());
+            out.emplace_back(role, (int)n->GetFaction(), n->GetDesign());
+        }
+        return out;
+    };
+
+    auto              sim = ColdWorld();
+    ClientSession&    s = Arrive(*sim);
+    const std::string home = s.systemId;
+    const auto        first = designs(*sim, home);
+    REQUIRE_FALSE(first.empty());
+
+    // A ship keeps its design while it lives.
+    std::vector<std::pair<int, std::string>> alive;
+    for (const NpcShip* n : ShipsIn(*sim, home))
+        alive.emplace_back(n->GetId(), n->GetDesign());
+    Tick(*sim, 300);
+    for (const NpcShip* n : ShipsIn(*sim, home))
+        for (const auto& [id, design] : alive)
+            if (id == n->GetId())
+                CHECK(n->GetDesign() == design);
+
+    // Away until it cools, back again: new ships, made afresh from the aggregate, and the k-th
+    // ship of a role flies what the k-th did before whenever it is of the same faction.
+    const std::string away = sim->Neighbors(home).front();
+    sim->ServerEnterSystem(s, away, s.systemId);
+    Tick(*sim, (int)(Simulation::COOL_AFTER * 60.0f) + 5 * 60);
+    REQUIRE_FALSE(Simulation::IsHot(*sim->SystemById(home)));
+    sim->ServerEnterSystem(s, home, s.systemId);
+    const auto again = designs(*sim, home);
+    REQUIRE_FALSE(again.empty());
+    int compared = 0;
+    for (int role = 0; role < 5; role++)
+    {
+        std::vector<std::tuple<int, int, std::string>> a, b;
+        for (const auto& t : first)
+            if (std::get<0>(t) == role)
+                a.push_back(t);
+        for (const auto& t : again)
+            if (std::get<0>(t) == role)
+                b.push_back(t);
+        for (size_t k = 0; k < a.size() && k < b.size(); k++)
+            if (std::get<1>(a[k]) == std::get<1>(b[k]))
+            {
+                CHECK(std::get<2>(a[k]) == std::get<2>(b[k]));
+                compared++;
+            }
+    }
+    CHECK(compared > 0);
 }

@@ -124,7 +124,8 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
         json        shape;
         std::string why;
         if (!Ships::ShapeOf(g_ships, *d, shape, why) ||
-            !Render::ParseShape(shape, a.visual.shape, why))
+            !Render::ParseShape(shape, a.visual.shape, why) ||
+            !Ships::Derive(g_ships, *d, a.ship, why))
         {
             err = "archetype '" + a.id + "': design '" + a.design + "': " + why;
             return false;
@@ -450,10 +451,37 @@ bool Load(const std::string& path)
         loaded.push_back(std::move(a));
     }
 
+    // An NPC is drawn as the design it flies (#279 step 4), so a doctrine naming a design that
+    // no ship archetype draws would put an invisible ship in the world.
+    for (const Ships::Doctrine& d : g_ships.doctrines)
+        for (const auto& [role, designs] : d.roles)
+            for (const std::string& design : designs)
+            {
+                bool drawn = false;
+                for (const Archetype& a : loaded)
+                    drawn = drawn || (a.design == design && a.kind == EntityKind::Npc);
+                if (!drawn)
+                {
+                    g_error = path + ": doctrine '" + d.faction + "' flies '" + design + "' as " +
+                              role + ", and no Npc archetype draws that design";
+                    return false;
+                }
+            }
+
     // Swapped in only once the whole file parsed: a half-applied registry would be
     // worse than the previous one.
     g_archetypes = std::move(loaded);
     return true;
+}
+
+const Archetype* ForDesign(const std::string& design)
+{
+    if (design.empty())
+        return nullptr;
+    for (const Archetype& a : g_archetypes)
+        if (a.design == design)
+            return &a;
+    return nullptr;
 }
 
 const Archetype* Find(const std::string& id)

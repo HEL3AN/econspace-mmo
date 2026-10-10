@@ -432,6 +432,17 @@ void Editor::DrawGalleryFocusBar()
                                 s.cargoCapacity, (double)s.miningRate, (double)s.buildSeconds,
                                 (double)(look.length / look.width), (double)look.massAt),
                      (int)box.x + 10, (int)box.y + 10, 13, Ui::TEXT);
+            // What an NPC flying it is (#279 step 4), and which doctrines fly it as what.
+            std::string flown;
+            for (const Ships::Doctrine& doc : ships.doctrines)
+                for (const auto& [role, designs] : doc.roles)
+                    for (const std::string& id : designs)
+                        if (id == d->id)
+                            flown += "   " + doc.faction + " " + role;
+            Ui::Text(TextFormat("as an NPC: cruise %.0f   structure %.0f   volley %.0f%s",
+                                (double)s.cruise, (double)s.hull, (double)s.damage,
+                                flown.empty() ? "   flown by no doctrine" : flown.c_str()),
+                     (int)box.x + 10, (int)box.y + 28, 13, Ui::TEXT_DIM);
         }
         else
             Ui::Text(why.c_str(), (int)box.x + 10, (int)box.y + 10, 13, Ui::ACCENT);
