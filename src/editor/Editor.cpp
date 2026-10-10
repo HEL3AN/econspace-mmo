@@ -99,6 +99,7 @@ void Editor::LoadSystemAt(int index)
     if (index < 0 || index >= (int)universe_.systems.size())
         return;
     currentSystem_ = index;
+    generated_.open = false;  // a file of its own again
     selected_ = -1;
     dirty_ = false;
     activeField_.clear();
@@ -128,6 +129,11 @@ void Editor::RebuildEntities()
     handles_.clear();
     if (systemJson_.contains("star"))
         handles_.push_back({ "star", -1 });  // matches the star in BuildSystem
+    // A binary's stars come next (#142). Generated systems have them; without a handle each,
+    // every handle after them would point at the wrong entity.
+    if (systemJson_.contains("stars") && systemJson_["stars"].is_array())
+        for (int i = 0; i < (int)systemJson_["stars"].size(); i++)
+            handles_.push_back({ "stars", i });
     const char* arrays[] = { "planets", "stations",  "asteroidFields",
                              "nebulae", "derelicts", "gates" };
     for (const char* key : arrays)
@@ -141,7 +147,8 @@ int Editor::HitTest(Vector2 worldMouse) const
     // From the end (topmost objects) to the front; the star is not selectable.
     for (int i = (int)entities_.size() - 1; i >= 0; i--)
     {
-        if (i < (int)handles_.size() && handles_[i].category == "star")
+        if (i < (int)handles_.size() &&
+            (handles_[i].category == "star" || handles_[i].category == "stars"))
             continue;
         if (CheckCollisionPointCircle(worldMouse, entities_[i]->GetPosition(),
                                       entities_[i]->GetSize()))
@@ -486,6 +493,21 @@ void Editor::DrawWorld()
         Render::Present(std::move(scene), lights, camera_, *backend_);
     }
 
+    // What a pin makes, in a generated system (#237): an object nobody edited is the
+    // generator's and is not saved anywhere; one a pin changes or adds is marked, so it
+    // is never a surprise which of the two is being edited.
+    if (generated_.open)
+        for (size_t i = 0; i < handles_.size() && i < entities_.size(); i++)
+        {
+            const Provenance p = ProvenanceOf(handles_[i]);
+            if (p == Provenance::Generated)
+                continue;
+            const Vector2 at = entities_[i]->GetPosition();
+            const float   r = entities_[i]->GetSize() + 4.0f / camera_.zoom;
+            DrawRing(at, r, r + 2.0f / camera_.zoom, 0.0f, 360.0f, 48,
+                     p == Provenance::Added ? PIN_ADDED : PIN_CHANGED);
+        }
+
     // Highlight the selected object.
     if (selected_ >= 0 && selected_ < (int)entities_.size())
     {
@@ -520,6 +542,11 @@ Rectangle Editor::SaveButtonRect() const
 // Writes the current system back to its source JSON file (with indentation).
 void Editor::SaveCurrentSystem()
 {
+    if (generated_.open)
+    {
+        SavePin();  // a generated system has no file: only its difference is written
+        return;
+    }
     if (universe_.systems.empty())
         return;
     std::string   path = dataDir_ + "systems/" + universe_.systems[currentSystem_].file;

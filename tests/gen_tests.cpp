@@ -498,3 +498,100 @@ TEST_CASE("a pin is applied after generation, and says when it cannot be (#147)"
     CHECK(r.documents[id]["gates"] == generated["gates"]);
     CHECK_FALSE(r.documents[id].contains("derelicts"));
 }
+
+TEST_CASE("an edited system saves as its difference, and the pin makes it again (#237)")
+{
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const Gen::Region generated = Gen::GenerateRegion(Params(7));
+    // A system with something nameless (a planet) and something named to edit.
+    std::string id;
+    for (const auto& kv : generated.documents)
+        if (kv.second.contains("planets") && !kv.second["planets"].empty() &&
+            kv.second.contains("asteroidFields") && kv.second["asteroidFields"].size() >= 2 &&
+            kv.second.contains("character"))
+        {
+            id = kv.first;
+            break;
+        }
+    REQUIRE(!id.empty());
+
+    // A pin written by hand, for every seed: the editor builds on it and never rewrites it.
+    nlohmann::json pins = { { "pins", nlohmann::json::array() } };
+    pins["pins"].push_back(
+        { { "system", id },
+          { "document",
+            { { "derelicts", nlohmann::json::array({ { { "name", "Hand Placed" },
+                                                       { "pos", { 400000, -300000 } },
+                                                       { "size", 80 },
+                                                       { "reward", 900 } } }) } } } });
+
+    Gen::EditedSystem es;
+    REQUIRE(Gen::OpenForEditing(generated, pins, 7, id, es));
+    CHECK(es.problems.empty());
+    CHECK(es.edited == es.base);
+    CHECK(Gen::PinFor(id, 7, es.base, es.edited, es.origins).is_null());  // nothing to save
+
+    // The editor's verbs: move a planet, rename a belt, remove another, add a cloud.
+    nlohmann::json& doc = es.edited;
+    doc["planets"][0]["orbitRadius"] = doc["planets"][0]["orbitRadius"].get<int>() + 12345;
+    doc["asteroidFields"][0]["name"] = "Renamed Belt";
+    doc["asteroidFields"].erase(1);
+    es.origins["asteroidFields"].erase(es.origins["asteroidFields"].begin() + 1);
+    if (!doc.contains("nebulae"))
+        doc["nebulae"] = nlohmann::json::array();
+    doc["nebulae"].push_back(
+        { { "name", "Pinned Cloud" }, { "pos", { 1000, 2000 } }, { "radius", 30000 } });
+    es.origins["nebulae"].push_back(-1);
+    doc["character"] = "a set piece";
+
+    const nlohmann::json pin = Gen::PinFor(id, 7, es.base, es.edited, es.origins);
+    REQUIRE(pin.is_object());
+    MESSAGE(pin.dump());
+    CHECK(pin["mode"] == "merge");
+    CHECK(pin["seed"] == 7);
+    CHECK_FALSE(pin["document"].contains("star"));  // only the difference
+    CHECK_FALSE(pin["document"].contains("gates"));
+    CHECK(pin["document"]["planets"][0]["replaces"] == 0);  // a planet has no name
+
+    Gen::StorePin(pins, id, 7, pin);
+    CHECK(pins["pins"].size() == 2);  // the hand-written one is still there
+
+    // What the server builds from the file is what the editor showed.
+    Gen::Region              served = Gen::GenerateRegion(Params(7));
+    std::vector<std::string> problems;
+    Gen::ApplyPins(served, pins, 7, problems);
+    CHECK(problems.empty());
+    CHECK(served.documents[id] == es.edited);
+    CHECK(WorldLoader::BuildSystem(served.documents[id]).size() > 0);
+    // In another seed's region the editor's pin does nothing.
+    Gen::Region other = Gen::GenerateRegion(Params(7));
+    problems.clear();
+    Gen::ApplyPins(other, pins, 8, problems);
+    CHECK(other.documents[id] != es.edited);
+
+    // Opened again, it is the same edit, and saving it again writes the same pin.
+    Gen::EditedSystem again;
+    REQUIRE(Gen::OpenForEditing(generated, pins, 7, id, again));
+    CHECK(again.problems.empty());
+    CHECK(again.base == es.base);
+    CHECK(again.edited == es.edited);
+    CHECK(again.origins == es.origins);
+    CHECK(Gen::PinFor(id, 7, again.base, again.edited, again.origins) == pin);
+
+    // A key taken away cannot be said as a merge; it becomes a replace, which round-trips too.
+    again.edited.erase("character");
+    const nlohmann::json whole = Gen::PinFor(id, 7, again.base, again.edited, again.origins);
+    CHECK(whole["mode"] == "replace");
+    Gen::StorePin(pins, id, 7, whole);
+    CHECK(pins["pins"].size() == 2);
+    served = Gen::GenerateRegion(Params(7));
+    problems.clear();
+    Gen::ApplyPins(served, pins, 7, problems);
+    CHECK(problems.empty());
+    CHECK(served.documents[id] == again.edited);
+
+    // Undone entirely: the editor's pin goes, the hand-written one stays.
+    Gen::StorePin(pins, id, 7, nlohmann::json());
+    REQUIRE(pins["pins"].size() == 1);
+    CHECK_FALSE(pins["pins"][0].contains("seed"));
+}

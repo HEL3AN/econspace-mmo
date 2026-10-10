@@ -266,6 +266,8 @@ void Editor::AddObject(const std::string& archetypeId, Vector2 pos)
     if (!systemJson_.contains(category) || !systemJson_[category].is_array())
         systemJson_[category] = json::array();
     systemJson_[category].push_back(o);
+    if (generated_.open)
+        generated_.origins[category].push_back(-1);  // only a pin has it (#237)
 
     dirty_ = true;
     RebuildEntities();
@@ -292,7 +294,15 @@ void Editor::DeleteSelected()
 
     if (systemJson_.contains(h.category) && systemJson_[h.category].is_array() &&
         h.index < (int)systemJson_[h.category].size())
+    {
         systemJson_[h.category].erase(h.index);
+        if (generated_.open)  // what follows it now came from one place further on (#237)
+        {
+            std::vector<int>& from = generated_.origins[h.category];
+            if (h.index < (int)from.size())
+                from.erase(from.begin() + h.index);
+        }
+    }
 
     dirty_ = true;
     RebuildEntities();

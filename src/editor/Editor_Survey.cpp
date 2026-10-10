@@ -198,23 +198,8 @@ void Editor::RegenerateSurvey()
 {
     // The regions a server would generate from these seeds: the same home system, the
     // same map around it, so the survey is of the real thing and not of a lab copy.
-    Gen::RegionParams base;
-    nlohmann::json    homeDoc;
-    for (const WorldLoader::SystemInfo& info : universe_.systems)
-    {
-        base.knownMap.push_back(info.mapPos);
-        if (info.id != universe_.startId)
-            continue;
-        base.homeId = info.id;
-        base.homeMap = info.mapPos;
-        std::ifstream in(dataDir_ + "systems/" + info.file);
-        if (in.is_open())
-            homeDoc = nlohmann::json::parse(in, nullptr, false);
-    }
-    if (base.homeId.empty())
-        base.homeId = "home";
-    if (homeDoc.is_object())
-        base.homeSystem = &homeDoc;
+    nlohmann::json          homeDoc;
+    const Gen::RegionParams base = RegionParamsFromData(homeDoc);
 
     surveyCards_.clear();
     std::vector<nlohmann::json> docs;
@@ -344,6 +329,13 @@ void Editor::HandleSurveyInput()
             surveySelected_++;
         if (IsKeyPressed(KEY_LEFT) && surveySelected_ > 0)
             surveySelected_--;
+        // E: edit this one (#237) -- with the pins on top, as the server would build it.
+        if (IsKeyPressed(KEY_E))
+        {
+            const Gen::SurveySystem& s = surveyCards_[(size_t)surveySelected_].system;
+            OpenGenerated(s.seed, s.id);
+            return;
+        }
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(m, SurveyGridRect()))
             surveySelected_ = -1;
         return;
@@ -498,8 +490,9 @@ void Editor::DrawSurvey(bool labels)
                                 surveyCards_[(size_t)twin].system.designation.c_str(),
                                 (unsigned long long)surveyCards_[(size_t)twin].system.seed),
                      x, (int)y + 18, 14, kTwin);
-        Ui::Text(TextFormat("card %d of %d   <- / -> step   click or Esc: back to the grid",
-                            surveySelected_ + 1, count),
+        Ui::Text(TextFormat(
+                     "card %d of %d   <- / -> step   E: edit, saved as a pin   click or Esc: back",
+                     surveySelected_ + 1, count),
                  x, (int)(box.y + box.height - 22.0f), 12, Ui::TEXT_DIM);
         return;
     }

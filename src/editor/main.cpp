@@ -15,9 +15,13 @@ int main(int argc, char** argv)
     // seed, optionally with card N enlarged -- synthetic clicks do not reach the window, so
     // that is how a screenshot of one is taken. `gallery card ID|N [zoom Z]` does the same
     // for one archetype drawn large (#194), by id or registry index, at Z times fitted.
+    // `region SEED [system ID]` opens a generated system for editing (#237) -- the one
+    // through the wormhole unless named -- and Ctrl+S saves the difference as a pin.
     bool        survey = false;
     bool        modules = false;
     bool        gallery = false;
+    bool        region = false;
+    std::string systemId;  // `region SEED system ID`
     uint64_t    seed = 1;
     std::string card;
     float       zoom = 1.0f;
@@ -45,6 +49,14 @@ int main(int argc, char** argv)
             if (i + 1 < argc && argv[i + 1][0] >= '0' && argv[i + 1][0] <= '9')
                 seed = std::strtoull(argv[++i], nullptr, 10);
         }
+        else if (arg == "region")
+        {
+            region = true;
+            if (i + 1 < argc && argv[i + 1][0] >= '0' && argv[i + 1][0] <= '9')
+                seed = std::strtoull(argv[++i], nullptr, 10);
+        }
+        else if (arg == "system" && i + 1 < argc)
+            systemId = argv[++i];
         else if (arg == "card" && i + 1 < argc)
             card = argv[++i];
         else if (arg == "seed" && i + 1 < argc)
@@ -64,7 +76,9 @@ int main(int argc, char** argv)
         else if (arg == "frames" && i + 1 < argc)
             frames = std::atoi(argv[++i]);
     }
-    if (modules)
+    if (region)
+        editor.OpenGenerated(seed, systemId);
+    else if (modules)
         editor.OpenModules(zoom > 0.0f ? zoom : 1.0f, pack, seeds);
     else if (survey)
         editor.OpenSurvey(seed, card.empty() ? -1 : std::atoi(card.c_str()));

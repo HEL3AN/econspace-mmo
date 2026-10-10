@@ -7,6 +7,7 @@
 #include "render/MaterialLibrary.h"
 #include "render/Treatment.h"
 #include "core/Archetype.h"
+#include "gen/Pins.h"
 #include "gen/Survey.h"
 #include <nlohmann/json.hpp>
 #include <vector>
@@ -75,6 +76,13 @@ public:
     // every system on one screen. `card` (>= 0) opens that card enlarged, which is how a
     // screenshot of one is taken without a click.
     void OpenSurvey(uint64_t seed, int card = -1);
+
+    // Opens a system of the region `seed` makes for editing (#237): what the generator made,
+    // with every pin on top, exactly as the server builds it. Saving writes only the
+    // difference, as a pin in data/pins.json -- a generated system has no file of its own.
+    // An empty `systemId` opens the system through the wormhole. False if there is no such
+    // system (and the log says which there are).
+    bool OpenGenerated(uint64_t seed, const std::string& systemId);
 
     // Opens the gallery on one archetype drawn large (#194), by registry index or by id,
     // at `zoom` times the fitted size. `worldeditor gallery card trade_hub zoom 3` is how a
@@ -183,6 +191,39 @@ private:
     int       SurveyHit(Vector2 p) const;
     // One system fitted into `box`. `detail` is the enlarged view: names on everything.
     void DrawSurveySystem(const SurveyCard& card, Rectangle box, bool detail, bool labels);
+
+    // The region a server would generate from a seed starts from this: the same home system,
+    // the same map around it. `homeDoc` holds the home system's document the params point at.
+    Gen::RegionParams RegionParamsFromData(nlohmann::json& homeDoc) const;
+
+    // The generated system being edited (#237). While `open`, systemJson_ is the edit and
+    // `base` what it is measured against: the generator's system with every pin the editor
+    // does not own. `origins` follows each object of systemJson_ back to `base`, which is
+    // how a moved planet -- it has no name -- is saved as "that one, moved".
+    struct GeneratedEdit
+    {
+        bool           open = false;
+        uint64_t       seed = 0;
+        std::string    id;
+        std::string    name;
+        nlohmann::json base;
+        Gen::Origins   origins;
+        int            problems = 0;  // pins that could not apply, said in the log
+    };
+    GeneratedEdit generated_;
+    void          SavePin();  // the difference from base, into data/pins.json
+    // What an object of the open generated system is: as generated, or a pin's.
+    enum class Provenance
+    {
+        Generated,
+        Changed,  // a generated object a pin changes
+        Added     // an object only a pin has
+    };
+    Provenance ProvenanceOf(const ObjHandle& h) const;
+    // The marks of a pin's work: warm and green, so they never read as the accent a
+    // selection is drawn in.
+    static constexpr Color PIN_CHANGED = { 236, 180, 84, 255 };
+    static constexpr Color PIN_ADDED = { 120, 214, 140, 255 };
 
     std::vector<SurveyCard> surveyCards_;
     Gen::SurveyResult       survey_;
