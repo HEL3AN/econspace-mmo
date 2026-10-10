@@ -84,6 +84,7 @@ public:
     // `gallery card ID seed N [sockets]`: which object of the type, and its sockets shown.
     void SetGallerySeed(int seed) { gallerySeed_ = seed; }
     void ShowGallerySockets() { gallerySockets_ = true; }
+    void SetGalleryThrusting() { galleryThrusting_ = true; }
 
 private:
     // Reference to a JSON element: array category and index (star uses index=-1).

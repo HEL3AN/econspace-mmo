@@ -51,6 +51,8 @@ int main(int argc, char** argv)
             editor.SetGallerySeed(std::atoi(argv[++i]));  // which object of a type
         else if (arg == "sockets")
             editor.ShowGallerySockets();
+        else if (arg == "thrusting")
+            editor.SetGalleryThrusting();  // engines lit, for a shot of a ship under way
         else if (arg == "pack" && i + 1 < argc)
             pack = argv[++i];
         else if (arg == "seeds" && i + 1 < argc)
