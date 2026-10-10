@@ -1086,6 +1086,16 @@ static int AccountSelftest()
     };
     std::string path = std::string(GetApplicationDirectory()) + "accttest_tmp.json";
 
+    // The registry before any ship: an entity built without it has no archetype, and says
+    // so (#227).
+    const std::string dataDir = SIM_DATA_DIR;
+    Factions::Load(dataDir + "factions.json");
+    if (!Archetypes::Load(dataDir + "archetypes.json"))
+    {
+        fprintf(stderr, "FATAL: %s\n", Archetypes::Error().c_str());
+        return 1;
+    }
+
     // The account belongs to a session, so the test needs one on each side (#3). No
     // world is loaded: persistence must not depend on where the ship happens to be.
     Simulation     a;

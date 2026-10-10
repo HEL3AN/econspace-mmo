@@ -11,12 +11,13 @@
 #include <string>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "core/Archetype.h"
 #include "core/Orbits.h"
 #include "entities/Planet.h"
 #include "raymath.h"
 #include "core/Faction.h"
-#include "core/Archetype.h"
 #include "entities/AsteroidField.h"
 #include "gen/Region.h"
 #include "entities/Derelict.h"
@@ -434,6 +435,12 @@ TEST_CASE("an account remembers where the player was, not just what they own")
     f.s.ship->Teleport({ 1234.0f, -567.0f });
     f.s.ship->SetHeading(1.25f);
     REQUIRE(f.s.ship->AddCargo(AllResourceTypes()[0], 7));
+
+    // A mission is handed in at a station the galaxy has, or it is dropped on load (#227).
+    auto hub = std::make_unique<Station>(Vector2{ 9000.0f, 0.0f }, 700.0f, "Aurora Hub",
+                                         FactionId::TradersGuild, StationRole::TradeHub);
+    hub->SetId(33);
+    f.World().entities.push_back(std::move(hub));
 
     Mission m;
     m.type = MissionType::Bounty;
@@ -1882,4 +1889,126 @@ TEST_CASE("a client never sees a snapshot ahead of the change it reflects (#38)"
         CHECK(mirror.byId.at(wreck).looted);
         CHECK(mirror.rev == f.sim.BuildLayout(sys).rev);
     }
+}
+
+TEST_CASE("a saved mission finds its stations again in a world numbered differently (#227)")
+{
+    // Entity ids come from one counter that runs through every system's stations and the
+    // NPCs hydrated beside them, so another run can number the same station differently.
+    // A mission saved by id would then point at the wrong station, or at none.
+    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    auto              build = [&](Simulation& sim, int shift)
+    {
+        sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+        sim.Seed(1234u);
+        sim.InitGalaxy();
+        for (int i = 0; i < shift; i++)  // what a different count of NPCs before it would do
+            sim.NextAgentId();
+        sim.MaterializeAllSystems(systems);
+    };
+    struct Place
+    {
+        std::string system, name;
+        int         id = 0;
+    };
+    auto stations = [](const Simulation& sim)
+    {
+        std::vector<Place> out;
+        for (const auto& kv : sim.Systems())
+            for (const auto& e : kv.second.entities)
+                if (e->GetKind() == EntityKind::Station)
+                    out.push_back({ kv.first, e->GetName(), e->GetId() });
+        return out;
+    };
+
+    Simulation a;
+    build(a, 0);
+    const std::vector<Place> before = stations(a);
+    REQUIRE(before.size() >= 2);
+    const Place giver = before.front();
+    const Place dest = before.back();
+    REQUIRE(giver.system != dest.system);  // a delivery into another system, the usual case
+
+    ClientSession& s =
+        a.CreateSession(a.Universe().startId, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+    Mission delivery;
+    delivery.type = MissionType::Delivery;
+    delivery.title = "Haul";
+    delivery.giverStationId = giver.id;
+    delivery.destStationId = dest.id;
+    Mission bounty;
+    bounty.type = MissionType::Bounty;
+    bounty.title = "Hunt";
+    bounty.giverStationId = dest.id;
+    bounty.targetCount = 3;
+    bounty.progress = 1;
+    s.missions.SetMirror({}, { delivery, bounty });
+
+    const std::string path = "account_missions_tmp.json";
+    a.SaveAccount(s, path);
+
+    Simulation b;
+    build(b, 37);
+    const std::vector<Place> after = stations(b);
+    REQUIRE(after.size() == before.size());
+    auto idIn = [&](const Place& p)
+    {
+        for (const Place& q : after)
+            if (q.system == p.system && q.name == p.name)
+                return q.id;
+        return 0;
+    };
+    REQUIRE(idIn(dest) != dest.id);  // the numbering really did move
+
+    SUBCASE("each mission is handed in where it was taken to be")
+    {
+        ClientSession& t =
+            b.CreateSession(b.Universe().startId, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+        REQUIRE(b.LoadAccount(t, path) == Save::Result::Ok);
+        const std::vector<Mission>& got = t.missions.Active();
+        REQUIRE(got.size() == 2);
+        CHECK(got[0].giverStationId == idIn(giver));
+        CHECK(got[0].destStationId == idIn(dest));
+        CHECK(got[1].giverStationId == idIn(dest));
+        CHECK(got[1].progress == 1);
+    }
+
+    SUBCASE("a mission whose station is gone is dropped, and the player told")
+    {
+        nlohmann::json j;
+        {
+            std::ifstream in(path);
+            j = nlohmann::json::parse(in);
+        }
+        j["missions"][0]["dest"]["station"] = "Nowhere At All";
+        {
+            std::ofstream out(path);
+            out << j.dump();
+        }
+        ClientSession& t =
+            b.CreateSession(b.Universe().startId, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+        const int seq = t.LastEventSeq();
+        REQUIRE(b.LoadAccount(t, path) == Save::Result::Ok);
+        REQUIRE(t.missions.Active().size() == 1);
+        CHECK(t.missions.Active()[0].title == "Hunt");
+        CHECK(NoticeSince(t, seq).find("Haul") != std::string::npos);
+    }
+
+    SUBCASE("a save from before names were written keeps its ids")
+    {
+        {
+            std::ofstream out(path);
+            out << R"({"version":2,"missions":[{"type":2,"title":"Old","giver":5,"dest":9}]})";
+        }
+        ClientSession& t =
+            b.CreateSession(b.Universe().startId, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+        REQUIRE(b.LoadAccount(t, path) == Save::Result::Ok);
+        REQUIRE(t.missions.Active().size() == 1);
+        CHECK(t.missions.Active()[0].giverStationId == 5);
+        CHECK(t.missions.Active()[0].destStationId == 9);
+    }
+
+    std::remove(path.c_str());
 }
