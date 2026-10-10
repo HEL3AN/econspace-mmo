@@ -865,3 +865,25 @@ TEST_CASE("more modules come in packs, one file each, and an id is still global 
     std::string reload;
     REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", reload));
 }
+
+TEST_CASE("an arc's ends, a blink and a spin may be ranges; a wrong kind is an error, not a crash")
+{
+    const Render::Shape s = Parse(R"([
+        { "form": "arc", "radius": 1, "width": 0.1, "from": [0, 40], "to": [90, 180],
+          "blink": [1, 3], "spin": [-5, 5] } ])");
+    std::set<int>       ends;
+    for (int seed = 1; seed <= 20; seed++)
+        for (const Render::Piece& p :
+             Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 1.0f)))
+            ends.insert((int)(p.arcTo - p.arcFrom));
+    CHECK(ends.size() > 5);
+
+    // Found by an agent writing a pack: a value of the wrong kind used to throw.
+    Render::Shape bad;
+    std::string   error;
+    CHECK_FALSE(Render::ParseShape(
+        nlohmann::json::parse(R"([ { "form": "disc", "radius": "large" } ])"), bad, error));
+    CHECK_FALSE(error.empty());
+    CHECK_FALSE(Render::ParseShape(
+        nlohmann::json::parse(R"([ { "form": "disc", "filled": [1, 2] } ])"), bad, error));
+}

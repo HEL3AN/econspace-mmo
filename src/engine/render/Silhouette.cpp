@@ -228,7 +228,25 @@ Vector2 Axis(const Piece& p)
     return { 0.0f, 0.0f };
 }
 
+static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error);
+
+// Data is written by hand, and a value of the wrong kind -- a range where only a number is
+// read, a string for a colour -- is a load error that says so, never an exception that
+// takes the program down with nothing named.
 bool ParseShape(const json& j, Shape& out, std::string& error)
+{
+    try
+    {
+        return ParseShapeUnguarded(j, out, error);
+    }
+    catch (const json::exception& e)
+    {
+        error = std::string("a value of the wrong kind: ") + e.what();
+        return false;
+    }
+}
+
+static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
 {
     error.clear();
 
@@ -357,8 +375,11 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
         p.surface = p.form == Form::Band || e.contains("lat") || e.contains("lon");
         if (!field("lat", p.lat, Part::Field::Lat) || !field("lon", p.lon, Part::Field::Lon))
             return false;
-        p.spin = e.value("spin", p.spin);
-        p.blink = e.value("blink", p.blink);
+        if (!field("spin", p.spin, Part::Field::Spin) ||
+            !field("blink", p.blink, Part::Field::Blink) ||
+            !field("from", p.arcFrom, Part::Field::ArcFrom) ||
+            !field("to", p.arcTo, Part::Field::ArcTo))
+            return false;
         p.onlyThrusting = e.value("onlyThrusting", p.onlyThrusting);
         if (e.contains("tint"))
         {
@@ -392,8 +413,6 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
                 return false;
             }
         }
-        p.arcFrom = e.value("from", p.arcFrom);
-        p.arcTo = e.value("to", p.arcTo);
         if (e.contains("row"))
         {
             const json& r = e["row"];
@@ -479,6 +498,10 @@ bool Resolve(const Part& p, int seed, int salt, Part& out)
             case Part::Field::Count: out.count = (int)std::lround(x); break;
             case Part::Field::Lat: out.lat = x; break;
             case Part::Field::Lon: out.lon = x; break;
+            case Part::Field::Spin: out.spin = x; break;
+            case Part::Field::Blink: out.blink = x; break;
+            case Part::Field::ArcFrom: out.arcFrom = x; break;
+            case Part::Field::ArcTo: out.arcTo = x; break;
         }
     }
     if (!p.palette.empty())

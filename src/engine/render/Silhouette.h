@@ -182,7 +182,11 @@ struct Part
         Sides,
         Count,
         Lat,
-        Lon
+        Lon,
+        Spin,
+        Blink,
+        ArcFrom,
+        ArcTo
     };
     struct Vary
     {
