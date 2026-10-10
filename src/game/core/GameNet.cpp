@@ -122,7 +122,7 @@ void Game::BuildClientSnapshot()
                 protocolMismatchReported_ = true;
                 TraceLog(LOG_ERROR, "Protocol mismatch: server speaks v%d, this client v%d", ver,
                          Proto::PROTO_VERSION);
-                FlashMessage(TextFormat("Server protocol v%d, client v%d — update needed", ver,
+                FlashMessage(TextFormat("Server protocol v%d, client v%d: update needed", ver,
                                         Proto::PROTO_VERSION));
             }
             continue;

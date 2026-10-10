@@ -26,8 +26,10 @@ void Editor::DrawHud()
     {
         Ui::Text(TextFormat("GALLERY   archetypes: %d", (int)Archetypes::All().size()), 16, 50, 16,
                  Ui::TEXT);
-        Ui::Text("click: select  ·  wheel: scroll  ·  F2: backend  ·  edit on the right", 16, 74,
-                 13, Ui::TEXT_DIM);
+        Ui::Text(galleryFocus_ ? "one archetype, large  ·  F2: backend  ·  edit on the right"
+                               : "click: select  ·  click again / Enter: large  ·  wheel: scroll  "
+                                 "·  F2: backend  ·  edit on the right",
+                 16, 74, 13, Ui::TEXT_DIM);
     }
     else if (mode_ == Mode::Survey)
     {
@@ -74,7 +76,7 @@ void Editor::DrawHud()
         bool      overMb = CheckCollisionPointRec(GetMousePosition(), mb);
         DrawRectangleRec(mb, overMb ? Fade(Ui::ACCENT, 0.2f) : Ui::TITLE_BG);
         DrawRectangleLinesEx(mb, 1.0f, Ui::PANEL_BORDER);
-        Ui::Text((mode_ == Mode::Galaxy) ? "→ System view" : "→ Galaxy map", (int)mb.x + 10,
+        Ui::Text((mode_ == Mode::Galaxy) ? "System view >" : "Galaxy map >", (int)mb.x + 10,
                  (int)mb.y + 8, 14, Ui::TEXT);
         if (overMb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
             EnterGalaxyMode(mode_ != Mode::Galaxy);
@@ -84,7 +86,7 @@ void Editor::DrawHud()
     bool      overGb = CheckCollisionPointRec(GetMousePosition(), gb);
     DrawRectangleRec(gb, overGb ? Fade(Ui::ACCENT, 0.2f) : Ui::TITLE_BG);
     DrawRectangleLinesEx(gb, 1.0f, (mode_ == Mode::Gallery) ? Ui::ACCENT : Ui::PANEL_BORDER);
-    Ui::Text((mode_ == Mode::Gallery) ? "→ Back" : "→ Gallery", (int)gb.x + 10, (int)gb.y + 8, 14,
+    Ui::Text((mode_ == Mode::Gallery) ? "< Back" : "Gallery >", (int)gb.x + 10, (int)gb.y + 8, 14,
              (mode_ == Mode::Gallery) ? Ui::ACCENT : Ui::TEXT);
     if (overGb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
         EnterGalleryMode(mode_ != Mode::Gallery);

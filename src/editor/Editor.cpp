@@ -201,6 +201,7 @@ void Editor::Run()
             DrawGallery();
             treatment_.End();
             DrawHud();
+            DrawGalleryFocusBar();
             DrawGalleryPanel();
             if (treatmentPanelOpen_)
                 DrawTreatmentSettings();

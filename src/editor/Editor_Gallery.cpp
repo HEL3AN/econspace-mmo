@@ -22,6 +22,7 @@
 #include "raymath.h"
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -35,6 +36,8 @@ const float kCardGap = 10.0f;
 const float kGridTop = 132.0f;  // below the header and the button row
 const float kGridLeft = 16.0f;
 const float kPanelW = 300.0f;
+const float kZoomMin = 0.25f;
+const float kZoomMax = 16.0f;
 
 // What an archetype can do, one line. The palette derives the same line; both read the
 // component set rather than a description someone has to keep true.
@@ -90,6 +93,29 @@ void Editor::OpenGallery()
     EnterGalleryMode(true);
 }
 
+void Editor::FocusGallery(const std::string& which, float zoom)
+{
+    EnterGalleryMode(true);
+    const std::vector<Archetype>& all = Archetypes::All();
+    int                           index = -1;
+    if (!which.empty() && which.find_first_not_of("0123456789") == std::string::npos)
+        index = std::atoi(which.c_str());
+    else
+        for (int i = 0; i < (int)all.size(); i++)
+            if (all[(size_t)i].id == which)
+                index = i;
+    if (index < 0 || index >= (int)all.size())
+    {
+        TraceLog(LOG_WARNING, "Gallery: no archetype '%s' (%d in the registry)", which.c_str(),
+                 (int)all.size());
+        return;
+    }
+    gallerySelected_ = index;
+    galleryFocus_ = true;
+    galleryZoom_ = Clamp(zoom, kZoomMin, kZoomMax);
+    galleryPan_ = { 0.0f, 0.0f };
+}
+
 void Editor::UseShapes()
 {
     backend_ = &shapeBackend_;
@@ -98,6 +124,7 @@ void Editor::UseShapes()
 void Editor::EnterGalleryMode(bool on)
 {
     mode_ = on ? Mode::Gallery : Mode::System;
+    galleryFocus_ = false;
     activeField_.clear();
     openDropdown_.clear();
     placeArchetype_.clear();
@@ -125,6 +152,8 @@ Rectangle Editor::GalleryCardRect(int index) const
 
 int Editor::GalleryHit(Vector2 p) const
 {
+    if (galleryFocus_)
+        return -1;  // the grid is not on the screen
     if (p.x > (float)screenWidth_ - kPanelW || p.y < kGridTop)
         return -1;
     for (int i = 0; i < (int)Archetypes::All().size(); i++)
@@ -182,9 +211,64 @@ void Editor::HandleGalleryInput()
     const Vector2 m = GetMousePosition();
     const bool    overPanel = m.x > (float)screenWidth_ - kPanelW;
 
+    const int count = (int)Archetypes::All().size();
+
+    if (galleryFocus_)
+    {
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_ENTER) || gallerySelected_ < 0 ||
+            gallerySelected_ >= count)
+        {
+            galleryFocus_ = false;
+            return;
+        }
+        // Stepping keeps the zoom: the question is usually how the same detail reads on
+        // the next object, at the same size on the screen.
+        if (IsKeyPressed(KEY_RIGHT) && gallerySelected_ + 1 < count)
+        {
+            gallerySelected_++;
+            galleryPan_ = { 0.0f, 0.0f };
+        }
+        if (IsKeyPressed(KEY_LEFT) && gallerySelected_ > 0)
+        {
+            gallerySelected_--;
+            galleryPan_ = { 0.0f, 0.0f };
+        }
+        if (IsKeyPressed(KEY_HOME))
+        {
+            galleryZoom_ = 1.0f;
+            galleryPan_ = { 0.0f, 0.0f };
+        }
+        if (overPanel || m.y < kGridTop)
+            return;  // the panel and the zoom slider take their own mouse
+
+        // The wheel zooms about the cursor, so a part can be walked into rather than
+        // zoomed past and then dragged back.
+        const Archetype& a = Archetypes::All()[(size_t)gallerySelected_];
+        const float      wheel = GetMouseWheelMove();
+        if (wheel != 0.0f)
+        {
+            const Vector2 under = GetScreenToWorld2D(m, GalleryFocusCamera(a));
+            galleryZoom_ = Clamp(galleryZoom_ * powf(1.15f, wheel), kZoomMin, kZoomMax);
+            const Vector2 now = GetScreenToWorld2D(m, GalleryFocusCamera(a));
+            galleryPan_ = Vector2Add(galleryPan_, Vector2Subtract(under, now));
+        }
+        if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || IsMouseButtonDown(MOUSE_BUTTON_MIDDLE))
+        {
+            const float z = GalleryFocusCamera(a).zoom;
+            galleryPan_ = Vector2Subtract(galleryPan_, Vector2Scale(GetMouseDelta(), 1.0f / z));
+        }
+        return;
+    }
+
     if (IsKeyPressed(KEY_ESCAPE))
     {
         EnterGalleryMode(false);
+        return;
+    }
+    if (IsKeyPressed(KEY_ENTER) && gallerySelected_ >= 0 && gallerySelected_ < count)
+    {
+        galleryFocus_ = true;
+        galleryPan_ = { 0.0f, 0.0f };
         return;
     }
 
@@ -195,7 +279,6 @@ void Editor::HandleGalleryInput()
             galleryScroll_ -= wheel * 48.0f;
 
         // Never scroll past the last row: an empty screen looks like a crash.
-        const int   count = (int)Archetypes::All().size();
         const float lastBottom =
             count > 0 ? GalleryCardRect(count - 1).y + galleryScroll_ + kCardH : kGridTop;
         const float maxScroll = fmaxf(0.0f, lastBottom + 16.0f - (float)screenHeight_);
@@ -205,14 +288,111 @@ void Editor::HandleGalleryInput()
         {
             const int hit = GalleryHit(m);
             activeField_.clear();
-            gallerySelected_ = (hit == gallerySelected_) ? -1 : hit;
+            // A second click on the selected card opens it large (#194): the first click
+            // already said "this one", so the second can only mean "closer".
+            if (hit >= 0 && hit == gallerySelected_)
+            {
+                galleryFocus_ = true;
+                galleryPan_ = { 0.0f, 0.0f };
+            }
+            else
+                gallerySelected_ = hit;
         }
     }
+}
+
+// ---- The focused view (#194) --------------------------------------------------------
+//
+// A card draws an object at most ~77 px across, and a part with a larger minPixels -- a
+// station's lamps, a mast -- never appears on one. This is the same object over the whole
+// grid, with a zoom, so the detail that is decided by size can be judged at every size.
+
+Rectangle Editor::GalleryFocusRect() const
+{
+    return { kGridLeft, kGridTop, (float)screenWidth_ - kPanelW - kGridLeft * 2.0f,
+             (float)screenHeight_ - kGridTop - 16.0f };
+}
+
+// Fitted the way a card is -- to what the object reaches, not to its radius -- so zoom 1
+// is the card's picture at the size of the screen, and the zoom is a multiple of that.
+// "True scale" does not apply: one object has nothing to be compared with.
+Camera2D Editor::GalleryFocusCamera(const Archetype& a) const
+{
+    const Rectangle box = GalleryFocusRect();
+    const float     size = a.defaultSize > 0.0f ? a.defaultSize : 100.0f;
+    const float     reach = size * Render::Extent(a.visual.shape);
+    Camera2D        cam{};
+    cam.offset = { box.x + box.width / 2.0f, box.y + box.height / 2.0f };
+    cam.target = galleryPan_;
+    cam.zoom = (fminf(box.width, box.height) * 0.45f) / fmaxf(reach, 1e-3f) * galleryZoom_;
+    return cam;
+}
+
+void Editor::DrawGalleryFocus()
+{
+    const Archetype& a = Archetypes::All()[(size_t)gallerySelected_];
+    const Rectangle  box = GalleryFocusRect();
+    const float      size = a.defaultSize > 0.0f ? a.defaultSize : 100.0f;
+    const Camera2D   cam = GalleryFocusCamera(a);
+
+    DrawRectangleRec(box, Fade(Ui::PANEL_BG, 0.75f));
+    BeginClip(box);
+    BeginMode2D(cam);
+    Render::Present({ GalleryItem(a, { 0.0f, 0.0f }, size) }, GalleryLighting({ 0.0f, 0.0f }, size),
+                    cam, *backend_);
+    EndMode2D();
+    EndScissorMode();
+}
+
+// Drawn after the treatment, as the HUD is: a number that is being read must stay literal.
+void Editor::DrawGalleryFocusBar()
+{
+    const std::vector<Archetype>& all = Archetypes::All();
+    if (!galleryFocus_ || gallerySelected_ < 0 || gallerySelected_ >= (int)all.size())
+        return;
+    const Archetype& a = all[(size_t)gallerySelected_];
+    const Rectangle  box = GalleryFocusRect();
+    const float      size = a.defaultSize > 0.0f ? a.defaultSize : 100.0f;
+
+    DrawRectangleLinesEx(box, 1.0f, Ui::PANEL_BORDER);
+    Ui::LogSlider({ 16.0f, 96.0f, 300.0f, 28.0f }, "zoom (x fitted)", galleryZoom_, kZoomMin,
+                  kZoomMax, "%.2f");
+
+    // What minPixels is compared against (Silhouette.cpp): the object's diameter on the
+    // screen. Shown as a number, with what it hides, because a part missing at one size and
+    // present at the next is exactly what this view exists to make visible.
+    const float pixels = size * 2.0f * GalleryFocusCamera(a).zoom;
+    int         hidden = 0;
+    float       nextAt = 0.0f;
+    for (const Render::Part& p : a.visual.shape.parts)
+        if (p.minPixels > 0.0f && pixels < p.minPixels)
+        {
+            hidden++;
+            nextAt = nextAt > 0.0f ? fminf(nextAt, p.minPixels) : p.minPixels;
+        }
+    std::string line = TextFormat("%s   %.0f px across", a.id.c_str(), (double)pixels);
+    if (hidden > 0)
+        line += TextFormat("   %d part(s) hidden below minPixels, next at %.0f px", hidden,
+                           (double)nextAt);
+    else if (!a.visual.shape.parts.empty())
+        line += "   every part drawn";
+    Ui::Text(line.c_str(), 332, 103, 13, hidden > 0 ? Ui::ACCENT : Ui::TEXT);
+
+    Ui::Text(TextFormat("%d of %d   <- / -> step   wheel: zoom   right-drag: pan   Home: reset   "
+                        "Esc: back to the grid",
+                        gallerySelected_ + 1, (int)all.size()),
+             (int)box.x + 10, (int)(box.y + box.height - 22.0f), 12, Ui::TEXT_DIM);
 }
 
 void Editor::DrawGallery()
 {
     const std::vector<Archetype>& all = Archetypes::All();
+
+    if (galleryFocus_ && gallerySelected_ >= 0 && gallerySelected_ < (int)all.size())
+    {
+        DrawGalleryFocus();
+        return;
+    }
 
     // "True scale" measures every card against the largest object in the registry, so a
     // station reads as the speck it is beside a star. Fitted is the default because most

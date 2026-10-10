@@ -45,6 +45,12 @@ public:
     // screenshot of one is taken without a click.
     void OpenSurvey(uint64_t seed, int card = -1);
 
+    // Opens the gallery on one archetype drawn large (#194), by registry index or by id,
+    // at `zoom` times the fitted size. `worldeditor gallery card trade_hub zoom 3` is how a
+    // screenshot of the fine detail is taken without a click. Unknown: the grid, and a log
+    // line saying so.
+    void FocusGallery(const std::string& which, float zoom = 1.0f);
+
 private:
     // Reference to a JSON element: array category and index (star uses index=-1).
     struct ObjHandle
@@ -100,6 +106,11 @@ private:
     void      DrawGalleryPanel();  // state sliders, and the look of the selected archetype
     Rectangle GalleryCardRect(int index) const;
     int       GalleryHit(Vector2 p) const;  // card under a point, or -1
+    // The large single-object view (#194): one archetype over the whole grid, with a zoom.
+    Rectangle GalleryFocusRect() const;
+    Camera2D  GalleryFocusCamera(const Archetype& a) const;
+    void      DrawGalleryFocus();
+    void      DrawGalleryFocusBar();  // the zoom slider and what it means, in the header
     // What the state sliders say is happening to this object right now. Built through the
     // same Render::FromArchetype the game's entities go through, so the gallery cannot
     // show a picture the world would not.
@@ -165,7 +176,12 @@ private:
     float galleryIntensity_ = 1.0f;   // hull left, ore left, a wreck already looted
     float galleryHeading_ = 0.0f;     // radians, for the things that point somewhere
     bool  galleryThrusting_ = false;
-    bool  archetypesDirty_ = false;
+    // The focused view (#194). A card is at most ~77 px across, below the threshold of
+    // every part with a larger minPixels -- the parts most in need of judging by eye.
+    bool    galleryFocus_ = false;
+    float   galleryZoom_ = 1.0f;           // 1 = the object fitted to the view
+    Vector2 galleryPan_ = { 0.0f, 0.0f };  // world units, from the object's centre
+    bool    archetypesDirty_ = false;
     // Archetype id -> the look keys edited since the last save.
     std::map<std::string, std::set<std::string>> lookEdits_;
 

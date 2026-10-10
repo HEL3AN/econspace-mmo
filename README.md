@@ -109,6 +109,7 @@ That process speaks MCP on stdio. To hand it to Claude Code: `claude mcp add eco
 ```sh
 ./build/bin/editor/worldeditor.exe                 # the world editor
 ./build/bin/editor/worldeditor.exe gallery shapes  # every kind of object at once (F2 backend, F10 treatment)
+./build/bin/editor/worldeditor.exe gallery shapes card station.trade_hub zoom 3  # one archetype, large
 
 ./build/bin/server/econserver.exe hosttest         # smoke tests: the server loop,
 ./build/bin/server/econserver.exe accttest         #   account persistence,
