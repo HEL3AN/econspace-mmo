@@ -19,6 +19,7 @@
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
 #include "entities/Station.h"
+#include "raymath.h"
 
 #include <nlohmann/json.hpp>
 
@@ -41,7 +42,7 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
     if (!s.ship)
         return;
     s.RecordEvent(Ev::Kind::ShipDestroyed, "Ship destroyed; respawned with cargo lost");
-    s.ship->Teleport(SafeArrival(s.systemId));
+    s.ship->Teleport(SafeArrival(s.systemId, &s));
     s.ship->Repair();
     s.ship->ClearCargo();
     s.ship->DisengageAutopilot();
@@ -602,7 +603,7 @@ void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId,
         return;
 
     // Arrival point — at the gate leading back to the origin system (as on the client).
-    Vector2 arrival = SafeArrival(destId);
+    Vector2 arrival = SafeArrival(destId, &s);
     if (!fromId.empty())
         for (auto& e : SystemOf(s)->entities)
             if (JumpGate* g =
@@ -635,12 +636,19 @@ void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId,
     }
 }
 
-Vector2 Simulation::SafeArrival(const std::string& systemId) const
+Vector2 Simulation::SafeArrival(const std::string& systemId, const ClientSession* who) const
 {
     const SystemState* sys = SystemById(systemId);
+    // A station whose owner counts this player an enemy refuses them and, if it is armed,
+    // shoots (#193): arriving beside it is respawning into fire (#224).
+    auto takesUs = [&](const Entity& e)
+    {
+        return who == nullptr ||
+               !AccountHostileToFaction(*who, static_cast<const Station&>(e).GetFaction());
+    };
     if (sys != nullptr)
         for (const auto& e : sys->entities)
-            if (e->GetKind() == EntityKind::Station)
+            if (e->GetKind() == EntityKind::Station && takesUs(*e))
             {
                 const Archetype* a = e->GetArchetype();
                 const float      reach = a != nullptr ? a->dockRange : 0.0f;
@@ -659,6 +667,32 @@ Vector2 Simulation::SafeArrival(const std::string& systemId) const
                 const Vector2 s = e->GetPosition();
                 clear = std::max(clear, sqrtf(s.x * s.x + s.y * s.y) + e->GetSize() + 60000.0f);
             }
+    // And out of reach of every gun that would fire: the first of eight bearings at that
+    // distance that no hostile defensive station covers.
+    auto underFire = [&](Vector2 at)
+    {
+        if (sys == nullptr)
+            return false;
+        for (const auto& e : sys->entities)
+            if (e->GetKind() == EntityKind::Station && !takesUs(*e) && e->Has(Component::Defensive))
+            {
+                const Archetype* a = e->GetArchetype();
+                const float      reach = e->GetSize() + (a != nullptr ? a->weaponRange : 0.0f);
+                if (Vector2Distance(at, e->GetPosition()) < reach + 20000.0f)
+                    return true;
+            }
+        return false;
+    };
+    static const Vector2 BEARINGS[] = { { 0.0f, 1.0f },       { 1.0f, 0.0f },
+                                        { 0.0f, -1.0f },      { -1.0f, 0.0f },
+                                        { 0.707f, 0.707f },   { 0.707f, -0.707f },
+                                        { -0.707f, -0.707f }, { -0.707f, 0.707f } };
+    for (const Vector2& b : BEARINGS)
+    {
+        const Vector2 at = { b.x * clear, b.y * clear };
+        if (!underFire(at))
+            return at;
+    }
     return { 0.0f, clear };
 }
 
@@ -774,7 +808,7 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
             if (version >= 2 && pl.contains("pos") && pl["pos"].is_array() && pl["pos"].size() >= 2)
                 s.ship->Teleport({ (float)pl["pos"][0], (float)pl["pos"][1] });
             else
-                s.ship->Teleport(SafeArrival(sys));
+                s.ship->Teleport(SafeArrival(sys, &s));
             s.ship->SetHeading((float)pl.value("heading", 0.0));
         }
     }

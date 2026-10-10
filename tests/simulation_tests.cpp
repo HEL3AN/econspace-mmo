@@ -1520,3 +1520,32 @@ TEST_CASE("factions reach a step at a time, where the prize is worth the risk (#
     CHECK(early <= 1);   // ...but nothing is decided at once
     CHECK(sim.SystemById("verge")->agg.controller == FactionId::Independent);
 }
+
+TEST_CASE("a player is not respawned beside a station that would shoot them (#224)")
+{
+    Fixture f;
+    // A system whose only station is an armed one, as Tau Verge's is.
+    auto& ents = f.World().entities;
+    ents.erase(std::remove_if(ents.begin(), ents.end(), [](const std::unique_ptr<Entity>& e)
+                              { return e->GetKind() == EntityKind::Station; }),
+               ents.end());
+    auto fort = std::make_unique<Station>(Vector2{ 300000.0f, 0.0f }, 600.0f, "Outpost",
+                                          FactionId::Independent, StationRole::Military);
+    REQUIRE(fort->Has(Component::Defensive));
+    const Vector2 at = fort->GetPosition();
+    const float   reach = fort->GetSize() + fort->GetArchetype()->weaponRange;
+    fort->SetId(77);
+    ents.push_back(std::move(fort));
+
+    // Welcome: beside it, as before.
+    CHECK(Vector2Distance(f.sim.SafeArrival(f.s.systemId, &f.s), at) < reach);
+
+    // Hated by its owner: anywhere but in its sights.
+    f.s.account.SetReputation(FactionId::Independent, -80.0f);
+    REQUIRE(f.sim.AccountHostileToFaction(f.s, FactionId::Independent));
+    CHECK(Vector2Distance(f.sim.SafeArrival(f.s.systemId, &f.s), at) > reach + 10000.0f);
+
+    // And a respawn uses it.
+    f.sim.ServerRespawnPlayer(f.s);
+    CHECK(Vector2Distance(f.s.ship->GetPosition(), at) > reach + 10000.0f);
+}
