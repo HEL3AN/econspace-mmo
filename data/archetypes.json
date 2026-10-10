@@ -302,7 +302,7 @@
                     {"form": "chevron", "at": [0.15, 0.0], "length": 1.35, "width": 0.62, "role": "hull", "tip": 0.35}
                 ],
                 "kit": { "symmetry": "bilateral", "plain": 0.45, "modules": [
-                    {"of": "station.crane", "in": 0, "on": "edge", "count": 2, "scale": 0.17, "mount": "out"},
+                    {"of": "station.crane", "in": 0, "on": "edge", "count": 2, "scale": 0.17, "mount": "out", "prefer": "in"},
                     {"of": "light.nav", "in": 0, "on": "end", "count": 2, "scale": 0.05},
                     {"of": "station.dock", "in": 1, "on": "end", "count": 2, "scale": 0.18, "mount": "out"},
                     {"of": "station.comms", "in": 1, "on": "top", "count": 1, "scale": 0.15},
