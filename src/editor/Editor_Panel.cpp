@@ -26,8 +26,10 @@ void Editor::DrawHud()
     {
         Ui::Text(TextFormat("GALLERY   archetypes: %d", (int)Archetypes::All().size()), 16, 50, 16,
                  Ui::TEXT);
-        Ui::Text("click: select  ·  wheel: scroll  ·  F2: backend  ·  edit on the right", 16, 74,
-                 13, Ui::TEXT_DIM);
+        Ui::Text(galleryFocus_ ? "one archetype, large  ·  F2: backend  ·  edit on the right"
+                               : "click: select  ·  click again / Enter: large  ·  wheel: scroll  "
+                                 "·  F2: backend  ·  edit on the right",
+                 16, 74, 13, Ui::TEXT_DIM);
     }
     else if (mode_ == Mode::Survey)
     {

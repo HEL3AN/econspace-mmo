@@ -13,15 +13,21 @@ int main(int argc, char** argv)
     // screen treatment's panel, which lists every shader that failed on this machine.
     // `survey [seed] [card N]` opens on the survey of generated systems (#141), from that
     // seed, optionally with card N enlarged -- synthetic clicks do not reach the window, so
-    // that is how a screenshot of one is taken.
-    bool     survey = false;
-    uint64_t seed = 1;
-    int      card = -1;
+    // that is how a screenshot of one is taken. `gallery card ID|N [zoom Z]` does the same
+    // for one archetype drawn large (#194), by id or registry index, at Z times fitted.
+    bool        survey = false;
+    bool        gallery = false;
+    uint64_t    seed = 1;
+    std::string card;
+    float       zoom = 1.0f;
     for (int i = 1; i < argc; i++)
     {
         const std::string arg = argv[i];
         if (arg == "gallery")
+        {
+            gallery = true;
             editor.OpenGallery();
+        }
         else if (arg == "shapes")
             editor.UseShapes();
         else if (arg == "settings")
@@ -33,10 +39,14 @@ int main(int argc, char** argv)
                 seed = std::strtoull(argv[++i], nullptr, 10);
         }
         else if (arg == "card" && i + 1 < argc)
-            card = std::atoi(argv[++i]);
+            card = argv[++i];
+        else if (arg == "zoom" && i + 1 < argc)
+            zoom = (float)std::atof(argv[++i]);
     }
     if (survey)
-        editor.OpenSurvey(seed, card);
+        editor.OpenSurvey(seed, card.empty() ? -1 : std::atoi(card.c_str()));
+    else if (gallery && !card.empty())
+        editor.FocusGallery(card, zoom > 0.0f ? zoom : 1.0f);
     editor.Run();
     return 0;
 }
