@@ -193,6 +193,7 @@ void Game::Run()
                 cmd_.toggleStabilizer = cmd_.toggleMining = cmd_.toggleWeapon = false;
                 cmd_.dock = cmd_.undock = false;
                 cmd_.navMode = 0;
+                cmd_.nameSystem.clear();
                 cmd_.jumpGateId = cmd_.lootId = 0;
                 cmd_.deploy.clear();
             }
@@ -923,10 +924,10 @@ void Game::HandleNaming()
     if (IsKeyPressed(KEY_ENTER) && !nameBuf_.empty())
     {
         // The server checks it and says why not in the journal, which flashes here; a name
-        // it accepts comes back to everyone in the galaxy index.
-        Proto::Command c;
-        c.nameSystem = nameBuf_;
-        clientLink_->Send(Proto::EncodeCommand(c));
+        // it accepts comes back to everyone in the galaxy index. It rides on the next
+        // numbered input like any one-shot intent: a command of its own would be one more
+        // tick of movement the server steps and this client never predicted.
+        cmd_.nameSystem = nameBuf_;
         naming_ = false;
     }
 }
