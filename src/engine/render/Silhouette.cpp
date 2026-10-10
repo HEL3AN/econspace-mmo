@@ -232,6 +232,83 @@ Vector2 Axis(const Piece& p)
 
 static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error);
 
+// "kit": { "symmetry": "bilateral", "plain": 0.4, "modules": [
+//          { "of": "hatch", "count": [2, 4], "on": "edge" }, { "of": "#light", ... } ] }
+// A name that is no module and a tag no module carries are load errors, like a misspelt
+// module anywhere else.
+static bool ParseKit(const json& k, Kit& kit, std::string& error)
+{
+    if (!k.is_object() || !OnlyKnownKeys(k, { "symmetry", "plain", "modules" }, error))
+    {
+        if (error.empty())
+            error = "\"kit\" is { \"symmetry\", \"plain\", \"modules\": [...] }";
+        return false;
+    }
+    kit.symmetry = k.value("symmetry", kit.symmetry);
+    if (kit.symmetry != "bilateral" && kit.symmetry != "radial" && kit.symmetry != "none")
+    {
+        error = "kit symmetry is \"bilateral\", \"radial\" or \"none\"";
+        return false;
+    }
+    kit.plain = k.value("plain", kit.plain);
+    if (!k.contains("modules") || !k["modules"].is_array())
+    {
+        error = "a kit needs \"modules\": [...]";
+        return false;
+    }
+    for (const json& m : k["modules"])
+    {
+        if (!m.is_object() ||
+            !OnlyKnownKeys(m, { "of", "count", "on", "scale", "turn", "variant", "in", "inset" },
+                           error))
+        {
+            if (error.empty())
+                error = "a kit line is { \"of\", \"count\", \"on\", ... }";
+            return false;
+        }
+        KitEntry e;
+        e.of = m.value("of", std::string());
+        e.byTag = !e.of.empty() && e.of[0] == '#';
+        if (e.byTag)
+            e.of = e.of.substr(1);
+        bool known = false;
+        for (const Module& mod : Modules::All())
+            known = known ||
+                    (e.byTag ? std::find(mod.tags.begin(), mod.tags.end(), e.of) != mod.tags.end()
+                             : mod.id == e.of);
+        if (!known)
+        {
+            error = std::string(e.byTag ? "no module carries the tag '" : "unknown module '") +
+                    e.of + "' in the kit";
+            return false;
+        }
+        if (m.contains("count"))
+        {
+            const json& c = m["count"];
+            if (c.is_number())
+                e.lo = e.hi = c.get<float>();
+            else if (c.is_array() && c.size() == 2)
+            {
+                e.lo = c[0].get<float>();
+                e.hi = c[1].get<float>();
+            }
+        }
+        e.on = m.value("on", std::string());
+        if (!e.on.empty() && e.on != "edge" && e.on != "end" && e.on != "top" && e.on != "ring")
+        {
+            error = "a kit line's \"on\" is edge, end, top or ring";
+            return false;
+        }
+        e.scale = m.value("scale", 0.0f);
+        e.turn = m.value("turn", 0.0f);
+        e.variant = m.value("variant", std::string());
+        e.in = m.value("in", -1);
+        e.inset = m.value("inset", e.inset);
+        kit.entries.push_back(e);
+    }
+    return true;
+}
+
 // Data is written by hand, and a value of the wrong kind -- a range where only a number is
 // read, a string for a colour -- is a load error that says so, never an exception that
 // takes the program down with nothing named.
@@ -257,9 +334,12 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
     // stays valid because a station has no axis and should not have to say so.
     Shape       s;
     const json* parts = &j;
+    json        combined;
+    size_t      sectionCount = 0;
+    size_t      partIndex = 0;
     if (j.is_object())
     {
-        if (!OnlyKnownKeys(j, { "tilt", "parts", "vars" }, error))
+        if (!OnlyKnownKeys(j, { "tilt", "parts", "vars", "sections", "kit" }, error))
             return false;
         s.axisTilt = j.value("tilt", s.axisTilt);
         if (j.contains("vars"))
@@ -309,6 +389,22 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
             return false;
         }
         parts = &j["parts"];
+        if (j.contains("sections"))
+        {
+            // Sections are parts that come first and carry sockets: read in the same loop.
+            if (!j["sections"].is_array() || !parts->is_array())
+            {
+                error = "\"sections\" is an array of parts";
+                return false;
+            }
+            sectionCount = j["sections"].size();
+            combined = j["sections"];
+            for (const json& e : *parts)
+                combined.push_back(e);
+            parts = &combined;
+        }
+        if (j.contains("kit") && !ParseKit(j["kit"], s.kit, error))
+            return false;
     }
     if (!parts->is_array())
     {
@@ -318,6 +414,7 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
 
     for (const json& e : *parts)
     {
+        const bool isSection = partIndex++ < sectionCount;
         if (!e.is_object())
         {
             error = "a part is an object";
@@ -333,7 +430,7 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
                      "lat",      "lon",         "spin",        "blink",       "onlyThrusting",
                      "tint",     "from",        "to",          "row",         "module",
                      "variant",  "scale",       "chance",      "group",       "pivot",
-                     "onlyDark", "tip",         "jagged",      "soft" },
+                     "onlyDark", "tip",         "jagged",      "soft",        "pitch" },
                 error))
             return false;
         Part p;
@@ -548,6 +645,8 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         p.onlyThrusting = e.value("onlyThrusting", p.onlyThrusting);
         p.onlyDark = e.value("onlyDark", p.onlyDark);
         p.soft = e.value("soft", p.soft);
+        p.section = isSection;
+        p.pitch = e.value("pitch", p.pitch);
         if (!field("tip", p.tip, Part::Field::Tip) ||
             !field("jagged", p.jagged, Part::Field::Jagged))
             return false;
@@ -908,6 +1007,10 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
     out.axisTilt = in.axisTilt;
     // The object's own variables, rolled once for all its parts.
     const std::vector<float> top = RollVars(in, pose.seed, 9001);
+    // Every part as this object has it, and then whatever its kit places on its sections:
+    // the kit's modules go through exactly the same expansion as written ones.
+    std::vector<std::pair<Part, size_t>> work;
+    std::vector<Part>                    sections;
     for (size_t i = 0; i < in.parts.size(); i++)
     {
         Part resolved;
@@ -915,6 +1018,22 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
                      top.empty() ? nullptr : top.data()))
             continue;
         for (const Part& p : SpellRow(resolved))
+        {
+            work.push_back({ p, i });
+            if (p.section)
+                sections.push_back(p);
+        }
+    }
+    if (!in.kit.entries.empty())
+    {
+        const std::vector<Part> placed = PlaceKit(in.kit, sections, pose.seed);
+        for (size_t k = 0; k < placed.size(); k++)
+            work.push_back({ placed[k], in.parts.size() + k });
+    }
+    for (const auto& item : work)
+    {
+        const Part&  p = item.first;
+        const size_t i = item.second;
         {
             if (p.module.empty())
             {
@@ -960,6 +1079,8 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
                 const float cr = std::cos(rot * DEG2RAD), sr = std::sin(rot * DEG2RAD);
                 for (int m = 0; m < sides * rows; m++)
                 {
+                    if (p.mirrorOnly && m % sides == 0)
+                        continue;
                     const int     k = m / sides;
                     const float   flip = (m % sides == 0) ? 1.0f : -1.0f;
                     const float   ox = p.at.x + p.rowStep.x * (float)k;
@@ -1019,9 +1140,9 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
         hasModules = hasModules || !p.module.empty();
     bool varies = hasModules;
     for (const Part& p : shape.parts)
-        varies = varies || !p.vary.empty() || !p.palette.empty() || p.chance < 1.0f ||
-                 p.rowCentred || p.rowTurn != 0.0f || p.rowTaper != 1.0f || p.hasPivot ||
-                 p.rowRing > 0.0f;
+        varies = varies || !shape.kit.entries.empty() || !p.vary.empty() || !p.palette.empty() ||
+                 p.chance < 1.0f || p.rowCentred || p.rowTurn != 0.0f || p.rowTaper != 1.0f ||
+                 p.hasPivot || p.rowRing > 0.0f;
     // Ranges, palettes and chance are settled in the same pass that expands modules, so
     // everything below sees fixed numbers.
     const Shape  expanded = varies ? ExpandModules(shape, pose) : Shape{};

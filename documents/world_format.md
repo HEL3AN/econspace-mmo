@@ -163,6 +163,43 @@ never shaded: gas, haze, a corona, a nebula wisp. `tip` and `jagged` take ranges
 with: a lamp and its housing come and go together. Equal chances agree exactly; a smaller
 chance in the same group is a detail that only ever appears with the larger one.
 
+**Sections and kits (phase 3).** Instead of placing every module by hand, a shape object
+may give `"sections"` -- parts like any other, drawn first -- and a `"kit"` that says what
+goes on them:
+
+```json
+"shape": {
+  "sections": [ {"form": "polygon", "sides": 6, "radius": 0.55, "pitch": 0.2},
+                {"form": "capsule", "at": [0.85, 0], "repeat": 3, "length": 0.75, "width": 0.16} ],
+  "kit": { "symmetry": "radial", "plain": 0.45, "modules": [
+    {"of": "windows", "in": 1, "on": "edge", "count": [1, 2], "turn": 90},
+    {"of": "#opening", "in": 0, "on": "edge", "count": [2, 3]},
+    {"of": "station.dock", "on": "edge", "count": 1, "inset": -0.6} ] },
+  "parts": [ ...anything else, as before... ]
+}
+```
+
+A section exposes **sockets** from its own geometry, `pitch` apart (default: its width, or a
+third of its radius): a bar or capsule has an `edge` row along each long side, a `top` row
+along its axis and an `end` at each end; a disc or polygon has an `edge` rim on its outline and
+an inner `top` ring; a ring or arc has a `ring` rim; a chevron's tail is an `end`. Sockets face
+outward.
+
+Each kit line names a module (`"of": "id"`, or `"#tag"` for any module carrying the tag), a
+`count` (a range: every whole number in it equally likely), the socket type `on` (default: the
+module's first `sockets` entry), and optionally `in` (only on that section, by index), `scale`
+(module radius, default from the pitch), `turn` (degrees added to the outward direction),
+`inset` (in module radii: 1 puts the module wholly on the hull, the default; 0 centres it on the
+edge; -1 hangs it outside), and `variant` (pinned; otherwise the seed picks one for the whole
+line, so a row is a row of the same thing).
+
+The seed places them, within the rules against mush: a line's modules are spread evenly along
+one line of sockets; each section keeps `plain` (default 0.4) of its sockets empty; with
+`"symmetry": "bilateral"` every module on one side is mirrored onto the other, its shape
+reflected, and with `"radial"` a placement on one copy of a repeated section is repeated on
+every copy (the count is then per copy). An unknown module or a tag nobody carries is a load
+error. Sockets do not follow a section's `spin`.
+
 ## pins.json — hand-written exceptions to the generated region (#147)
 
 The generated region is the default, not a monopoly. A starting point, a set piece, or
