@@ -1,8 +1,10 @@
 #include <doctest/doctest.h>
 
+#include "core/Archetype.h"
 #include "core/ShipDesign.h"
 #include "entities/ShipType.h"
 #include "render/Modules.h"
+#include "render/Silhouette.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cmath>
@@ -162,6 +164,63 @@ TEST_CASE("every module a ship's fit names is in the render library and fits the
             REQUIRE(m != nullptr);
             CHECK(std::find(m->sockets.begin(), m->sockets.end(), line.on) != m->sockets.end());
         }
+}
+
+TEST_CASE("a ship's look never decides what it can do: its function is in fixed kit lines (#279)")
+{
+    // A module that provides something is function, wherever a ship wears it: on a kit line
+    // it must be a `fit` line, and every one of them is placed in full for every seed --
+    // a drive that found no room would be a slower ship that nobody chose. A module part
+    // written by hand may not have a chance of being there either.
+    REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
+    const Ships::Catalogue c = Shipped();
+    auto                   function = [&](const std::string& id)
+    {
+        const Ships::ModulePart* m = c.FindModule(id);
+        return m != nullptr && (m->provides.thrust > 0.0f || m->provides.rcs > 0.0f ||
+                                m->provides.cargo > 0.0f || m->provides.mining > 0.0f);
+    };
+    int ships = 0;
+    for (const Archetype& a : Archetypes::All())
+    {
+        if (a.kind != EntityKind::Npc && a.kind != EntityKind::PlayerShip)
+            continue;
+        ships++;
+        CAPTURE(a.id);
+        const Render::Shape&      shape = a.visual.shape;
+        std::vector<Render::Part> sections;
+        for (const Render::Part& p : shape.parts)
+        {
+            if (p.section)
+                sections.push_back(p);
+            else if (!p.module.empty() && function(p.module))
+                CHECK(p.chance >= 1.0f);
+        }
+        for (const Render::KitEntry& e : shape.kit.entries)
+            if (!e.byTag && function(e.of))
+            {
+                CAPTURE(e.of);
+                CHECK(e.fit);
+            }
+        for (int seed = 1; seed <= 32; seed++)
+        {
+            CAPTURE(seed);
+            const std::vector<Render::Part> placed = Render::PlaceKit(shape.kit, sections, seed);
+            for (const Render::KitEntry& e : shape.kit.entries)
+                if (e.fit)
+                {
+                    CAPTURE(e.of);
+                    // Lines of one module add up: what is placed is what they asked for.
+                    int want = 0, got = 0;
+                    for (const Render::KitEntry& o : shape.kit.entries)
+                        want += o.fit && o.of == e.of ? (int)o.lo : 0;
+                    for (const Render::Part& p : placed)
+                        got += p.module == e.of;
+                    CHECK(got == want);
+                }
+        }
+    }
+    CHECK(ships >= 2);
 }
 
 TEST_CASE("a design that does not fit is invalid, never a quietly weaker ship")

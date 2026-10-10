@@ -460,7 +460,7 @@ static bool ParseKit(const json& k, Kit& kit, std::string& error)
         if (!m.is_object() ||
             !OnlyKnownKeys(m,
                            { "of", "count", "on", "scale", "turn", "variant", "variants", "except",
-                             "in", "mount", "z", "when", "prefer" },
+                             "in", "mount", "z", "when", "prefer", "fit" },
                            error))
         {
             if (error.empty())
@@ -494,11 +494,41 @@ static bool ParseKit(const json& k, Kit& kit, std::string& error)
                 e.hi = c[1].get<float>();
             }
         }
-        e.on = m.value("on", std::string());
-        if (!e.on.empty() && e.on != "edge" && e.on != "end" && e.on != "top" && e.on != "ring" &&
-            e.on != "middle")
+        // A line that carries function (#279) has one count, whatever the seed: two haulers
+        // of a type carry the same hold. And it names its module, since a tag would let the
+        // seed choose between a drive and something else.
+        e.fit = m.value("fit", false);
+        if (e.fit && (e.byTag || !m.contains("count") || !m["count"].is_number_integer() ||
+                      m["count"].get<int>() < 1))
         {
-            error = "a kit line's \"on\" is edge, end, top, ring or middle";
+            error = "kit line '" + std::string(e.byTag ? "#" : "") + e.of +
+                    "' carries function (\"fit\"): it names a module and has one whole count";
+            return false;
+        }
+        e.on = m.value("on", std::string());
+        if (!e.on.empty() && !IsSocketKind(e.on))
+        {
+            error = "a kit line's \"on\" is edge, end, top, ring, middle, bow, stern, front, "
+                    "side, spine or bottom";
+            return false;
+        }
+        // Where it goes when the line does not say: the first kind its module declares, if
+        // every module the line can be agrees on it.
+        std::string on = e.on;
+        if (on.empty())
+            for (const Module* mod : of)
+            {
+                const std::string first = mod->sockets.empty() ? "edge" : mod->sockets[0];
+                on = (mod == of[0] || first == on) ? first : std::string();
+                if (on.empty())
+                    break;
+            }
+        // Only an object with a forward has a bow: one mirrored about the x axis, which is
+        // the way it flies. Anything else says `end`.
+        if ((on == "bow" || on == "stern" || on == "front") && kit.symmetry != "bilateral")
+        {
+            error = "kit line '" + std::string(e.byTag ? "#" : "") + e.of + "' goes on the " + on +
+                    ", and only a bilateral kit has one; say \"end\"";
             return false;
         }
         e.scale = m.value("scale", 0.0f);
@@ -514,7 +544,7 @@ static bool ParseKit(const json& k, Kit& kit, std::string& error)
             error = "a kit line's \"mount\" is on, out or centre";
             return false;
         }
-        e.z = m.value("z", e.z);
+        e.z = m.value("z", on == "bottom" ? -1 : e.z);
         e.when = m.value("when", std::string());
         e.prefer = m.value("prefer", e.prefer);
         if (e.prefer != "out" && e.prefer != "in")
@@ -1529,7 +1559,7 @@ uint64_t Fingerprint(const Shape& s)
     {
         f.S(e.of), f.B(e.byTag), f.F(e.lo), f.F(e.hi), f.S(e.on), f.F(e.scale), f.F(e.turn);
         f.S(e.variant), f.L(e.variants), f.L(e.except), f.I(e.in), f.S(e.when), f.S(e.prefer);
-        f.S(e.mount), f.I(e.z);
+        f.S(e.mount), f.I(e.z), f.B(e.fit);
     }
     return f.h;
 }

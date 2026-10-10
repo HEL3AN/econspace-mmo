@@ -279,7 +279,8 @@ struct Part
 // A place on a section where a module can go: an `edge` along a long or slanted side, an
 // `end`, a `top` along a centreline or an inner ring, a `ring` along the middle of a band, the
 // one `middle` at the section's centre. Facing outward. A place under another section is not
-// offered at all (see Kit.cpp).
+// offered at all (see Kit.cpp). The kinds a ship's modules ask for -- `bow`, `stern`, `front`,
+// `side`, `spine`, `bottom` -- are not more places but names for some of these (see Offers).
 struct Socket
 {
     Vector2     pos;
@@ -300,6 +301,10 @@ struct Socket
     // A rim that goes all the way round has no middle: modules on it spread from the place
     // that faces furthest out from the object instead.
     bool closed = false;
+    // From a long section -- a bar, capsule, lattice or chevron -- whose own axis is `axis`
+    // (degrees): what has a bow, a spine and flanks.
+    bool  axial = false;
+    float axis = 0.0f;
 };
 
 // One line of a kit: a module (by id, or any carrying a tag), how many, on which sockets.
@@ -331,8 +336,13 @@ struct KitEntry
     // on the socket. A socket inside the hull (`top`, `middle`) always centres.
     std::string mount = "on";
     // Draw order against the rest of the object: below 0 under the hull (engines, wings,
-    // pods hung beneath it), above 0 over it.
+    // pods hung beneath it), above 0 over it. A line on `bottom` is beneath unless it says.
     int z = 1;
+    // The line carries function (#279): what the object can do depends on it -- a drive, a
+    // hold, a weapon -- so the seed may choose how it looks but never how many. Its count is
+    // one whole number, it names a module rather than a tag, and it is placed before every
+    // line that is only looks and regardless of `plain`: function first, trim in what is left.
+    bool fit = false;
 };
 
 // What an archetype says about its modules instead of placing them (#240 phase 3): the
@@ -350,6 +360,21 @@ struct Kit
 
 // The sockets of a set of (resolved) sections, in a fixed order.
 std::vector<Socket> Sockets(const std::vector<Part>& sections);
+
+// Whether socket `i` of `sockets` (as Sockets returns them) is a place of this kind. The
+// plain kinds are a socket's own type. The kinds a ship asks for (#279) name some of them,
+// by where they are on a long section and which way they face; +x is an object's forward:
+//   bow, stern  an `end` facing forward or aft (within 45 degrees). `end` is either.
+//   front       the foremost `top` of a long section lying along x: a cockpit, a hangar mouth.
+//   side        the middle of what is open of a long section's flank (of two, the one nearer
+//               the section's own start): a wing, a pod, a sponson.
+//   spine       a long section's `top` row: a keel, cargo, a lance laid along the axis.
+//   bottom      any `top`, drawn beneath the hull: landing gear, a belly pod.
+// Names, not new places, so a section has as many sockets as before and `plain` reads the same.
+bool Offers(const std::vector<Socket>& sockets, size_t i, const std::string& kind);
+
+// Every kind a kit line may put a module on; anything else is a load error.
+bool IsSocketKind(const std::string& kind);
 
 // The variants of a module the seed may choose from, in the module's order: only those in
 // `only` when it is not empty, and never one in `except`. With neither list it is every

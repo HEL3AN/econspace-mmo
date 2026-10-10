@@ -8,7 +8,8 @@ file holds the parts' function and the designs built from them; `Ships::Derive`
 (`src/game/entities/ShipType.cpp`) still holds the hand-typed stats of Scout, Courier,
 Hauler and Miner; `tests/ship_design_tests.cpp` holds the four designs here within 10% of
 them, so the switch (step 4 below) changes no ship by more than that. The designs do not
-yet decide what a ship *looks* like either: that is the grammar step.
+yet decide what a ship *looks* like either; the shape grammar they will resolve to is in place
+(step 1 below), and `ship.npc` and `ship.player` are already written in it.
 
 ## The model
 
@@ -130,9 +131,13 @@ catalog flies one.
 
 ## Next steps
 
-1. **Grammar** (render, its own PR): `bow`/`stern` sockets in the kit instead of a bare
-   `end`; sections offering the `front`, `side`, `spine` and `bottom` sockets the hull
-   modules already declare; kit lines with fixed counts for what carries function.
+1. **Grammar** -- done. A kit line can go on a `bow`, `stern`, `front`, `side`, `spine` or
+   `bottom`, which name places a long section already has (`world_format.md`, "A ship's
+   socket kinds"), and a line that carries function says `"fit": true`: one whole count, a
+   module rather than a tag, placed before the trim and past `plain`. A test holds every ship
+   archetype to wearing what `provides` something only on such lines. The socket kinds here
+   are the same names, but a section's `end` in this file is the grammar's `stern` at the
+   stern position and its `bow` at the bow; step 2 says it in one vocabulary.
 2. **Frames per class** in the shape data: a section here gets the shape it is drawn with,
    so a design resolves to the shape JSON the renderer already reads, and the frame enforces
    its silhouette rule (length:width, where the widest point falls) as a load error.

@@ -210,6 +210,24 @@ an `edge` row along each slanted side and its tail is an `end`. Every section al
 a section is built round (a hub's tower, a hull's bridge, a beacon in a ring); an arc's middle
 is the middle of its band. Sockets face outward.
 
+**A ship's socket kinds (#279)** are not more places but names for some of these, read off a
+*long* section (a bar, capsule, lattice or chevron) and the way a socket faces; +x is an
+object's forward, the way a ship flies:
+
+| Kind | Which places | For |
+|------|------|------|
+| `bow` / `stern` | an `end` facing forward / aft (within 45°) | a gun or a ram / the drives |
+| `front` | the foremost `top` of a long section lying along x | the bridge, a hangar mouth |
+| `side` | the middle of what is open of a long section's flank (of two, the one nearer the section's own start) | wings, sponsons, pods |
+| `spine` | a long section's `top` row | a keel, cargo, a lance laid along it |
+| `bottom` | any `top`; the line is drawn beneath the hull (`z` -1) unless it says | landing gear, a belly pod |
+
+The rule between `end` and the two names: **say `bow` or `stern` when it matters which end,
+`end` when it does not** -- a shipyard's lights at both ends of its slip, a wreck's cable
+from whichever end is broken. Only a bilateral kit has a forward, so `bow`, `stern` and
+`front` anywhere else are load errors; so is any kind not in this list. Being names, they
+leave a section with the sockets it had, and `plain` counts the same.
+
 **A socket under another section is not offered.** What decides is the topmost other section
 covering the socket's point (by `z`, then as written): if it is drawn over the socket's own
 section, a module there would be hidden or poke out from under it; if it is drawn beneath, a
@@ -248,6 +266,14 @@ sockets under it, so nothing is put on top of it; each section keeps `plain` (de
 reflected, and with `"radial"` a placement on one copy of a repeated section is repeated on
 every copy (the count is then per copy). An unknown module or a tag nobody carries is a load
 error. A module placed on a socket shares its section's `spin`, so it turns with it.
+
+**Except where it carries function (#279).** A kit line that says `"fit": true` is a drive, a
+hold, a weapon: what the object can do depends on it, so the seed may choose how it looks but
+never how many. Its `count` is one whole number and it names a module rather than a tag (both
+load errors otherwise), and it is placed before every line that is only looks, and regardless
+of `plain`: function first, trim in what is left. On a ship, every module `data/ships.json`
+says provides something is on a `fit` line, or written by hand without a `chance`; a test holds
+every ship archetype to that, and to every `fit` line being placed in full at every seed.
 
 ## pins.json — hand-written exceptions to the generated region (#147)
 

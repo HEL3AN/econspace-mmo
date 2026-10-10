@@ -1779,3 +1779,142 @@ TEST_CASE("an object is culled by a reach that covers every piece it can have, a
         }
     }
 }
+
+TEST_CASE("a ship's socket kinds name places a section already has: bow, stern, front, side, "
+          "spine, bottom (#279)")
+{
+    // A hull along x and a beam across it, apart: the hull has a forward, the beam's ends
+    // face to the sides and are neither bow nor stern -- but still ends.
+    Render::Part hull;
+    hull.form = Render::Form::Bar;
+    hull.length = 1.2f;
+    hull.width = 0.3f;
+    hull.pitch = 0.2f;
+    hull.section = true;
+    Render::Part beam = hull;
+    beam.at = { 0.0f, 2.0f };
+    beam.angle = 90.0f;
+    Render::Part dish;
+    dish.form = Render::Form::Disc;
+    dish.at = { 3.0f, 0.0f };
+    dish.radius = 0.6f;
+    dish.section = true;
+    const std::vector<Render::Socket> s = Render::Sockets({ hull, beam, dish });
+    const size_t                      before = Render::Sockets({ hull }).size();
+
+    auto where = [&](const std::string& kind)
+    {
+        std::vector<Render::Socket> out;
+        for (size_t i = 0; i < s.size(); i++)
+            if (Render::Offers(s, i, kind))
+                out.push_back(s[i]);
+        return out;
+    };
+    const auto bow = where("bow"), stern = where("stern");
+    REQUIRE(bow.size() == 1);
+    REQUIRE(stern.size() == 1);
+    CHECK(bow[0].pos.x == doctest::Approx(0.6f));
+    CHECK(stern[0].pos.x == doctest::Approx(-0.6f));
+    CHECK(where("end").size() == 4);  // the beam's two as well
+
+    // The front is the hull's foremost top: the beam lies across x and has none.
+    const auto front = where("front");
+    REQUIRE(front.size() == 1);
+    CHECK(front[0].section == 0);
+    for (const auto& k : s)
+        if (k.section == 0 && k.type == "top")
+            CHECK(k.pos.x <= front[0].pos.x + 1e-4f);
+
+    // One side per flank, at its middle; the disc's rim is no flank.
+    const auto side = where("side");
+    CHECK(side.size() == 4);
+    for (const auto& k : side)
+    {
+        CHECK(k.type == "edge");
+        CHECK(k.section != 2);
+        if (k.section == 0)
+            CHECK(std::fabs(k.pos.x) < 0.11f);
+    }
+
+    // The spine is a long section's top row; the bottom is any top, the disc's ring too.
+    int tops = 0, discTops = 0;
+    for (const auto& k : s)
+    {
+        tops += k.type == "top";
+        discTops += k.type == "top" && k.section == 2;
+    }
+    REQUIRE(discTops > 0);
+    CHECK(where("spine").size() == (size_t)(tops - discTops));
+    CHECK(where("bottom").size() == (size_t)tops);
+
+    // Names, not places: a section has as many sockets as it had.
+    CHECK(Render::Sockets({ hull }).size() == before);
+    CHECK(Render::IsSocketKind("stern"));
+    CHECK_FALSE(Render::IsSocketKind("wingtip"));
+}
+
+TEST_CASE("a kit line on a ship's socket kinds, and one that carries function (#279)")
+{
+    std::string error;
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+    auto refused = [&](const char* text)
+    {
+        Render::Shape bad;
+        error.clear();
+        return !Render::ParseShape(nlohmann::json::parse(text), bad, error) && !error.empty();
+    };
+    // An unknown kind is a load error, as it always was.
+    CHECK(refused(
+        R"({ "parts": [], "kit": { "modules": [ { "of": "hatch", "on": "wingtip" } ] } })"));
+    // Only a bilateral object has a forward, so only it has a bow, a stern and a front.
+    CHECK(refused(R"({ "parts": [], "kit": { "symmetry": "radial",
+                     "modules": [ { "of": "hatch", "on": "stern" } ] } })"));
+    CHECK(
+        refused(R"({ "parts": [], "kit": { "modules": [ { "of": "hatch", "on": "front" } ] } })"));
+    // A line that carries function has one whole count and names its module.
+    CHECK(refused(R"({ "parts": [], "kit": { "symmetry": "bilateral", "modules": [
+                     { "of": "hull.engine", "on": "stern", "count": [1, 2], "fit": true } ] } })"));
+    CHECK(refused(R"({ "parts": [], "kit": { "symmetry": "bilateral", "modules": [
+                     { "of": "#propulsion", "on": "stern", "count": 1, "fit": true } ] } })"));
+    CHECK(refused(R"({ "parts": [], "kit": { "symmetry": "bilateral", "modules": [
+                     { "of": "hull.engine", "on": "stern", "fit": true } ] } })"));
+
+    // A hull that `plain` leaves room on for one module, trim written first, a drive astern
+    // and a pod on the spine. The function is placed whatever the seed, before the trim and
+    // past `plain`; the drive is at the -x end; a line on the bottom is beneath the hull
+    // unless it says otherwise.
+    const Render::Shape ship = Parse(R"({
+        "sections": [ { "form": "bar", "length": 1.6, "width": 0.4, "pitch": 0.16 } ],
+        "kit": { "symmetry": "bilateral", "plain": 0.97, "modules": [
+            { "of": "hatch", "on": "top", "count": 9, "scale": 0.05 },
+            { "of": "hull.engine", "on": "stern", "count": 1, "fit": true, "mount": "out",
+              "turn": 180, "scale": 0.2 },
+            { "of": "hull.cargo", "on": "spine", "count": 1, "fit": true, "scale": 0.2 },
+            { "of": "hull.gear", "on": "bottom", "count": 1, "scale": 0.1 } ] },
+        "parts": [] })");
+    REQUIRE(ship.kit.entries.size() == 4);
+    CHECK(ship.kit.entries[3].z == -1);
+    CHECK(ship.kit.entries[0].z == 1);
+    std::vector<Render::Part> sections;
+    for (const auto& p : ship.parts)
+        if (p.section)
+            sections.push_back(p);
+    for (int seed = 1; seed <= 24; seed++)
+    {
+        CAPTURE(seed);
+        int engines = 0, cargo = 0, hatch = 0;
+        for (const auto& p : Render::PlaceKit(ship.kit, sections, seed))
+        {
+            if (p.module == "hull.engine")
+            {
+                engines++;
+                CHECK(p.at.x < -0.8f);
+            }
+            cargo += p.module == "hull.cargo";
+            hatch += p.module == "hatch";
+        }
+        CHECK(engines == 1);
+        CHECK(cargo == 1);
+        CHECK(hatch == 0);  // the trim gets what is left, and here nothing is
+    }
+}
