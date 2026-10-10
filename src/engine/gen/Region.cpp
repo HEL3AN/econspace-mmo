@@ -30,6 +30,7 @@ enum Purpose : uint64_t
     WORMHOLE = 16,
     CHARACTER = 17,
     FINDS = 18,
+    RUINS = 19,
 };
 
 struct Band  // the ring a planet sweeps
@@ -174,6 +175,20 @@ bool Place(Rng& rng, double rMin, double rMax, double size, const std::vector<Ba
 // Somewhere between rMin and rMax, like Place -- but a spot in a planet's path is not
 // refused: the object belongs to that planet and orbits it (#210). Writes "pos" or
 // "orbits" into `obj`. A satellite's angle needs no sin or cos here; the loader turns it.
+// The next free orbit round one planet, written into `obj` as its "orbits" (#210).
+bool OrbitPlanet(Rng& rng, int planet, double size, Moons& moons, json& obj)
+{
+    const double radius = Round(moons.next[planet] + size, 100.0);
+    if (radius + size > moons.limit[planet])
+        return false;
+    moons.next[planet] = radius + size + 2000.0;
+    obj["orbits"] = { { "planet", planet },
+                      { "radius", (int64_t)radius },
+                      { "speed", rng.Range(20, 50) },
+                      { "phase", rng.Range(0, 65535) * (TWO_PI / 65536.0) } };
+    return true;
+}
+
 bool PlaceOrOrbit(Rng& rng, double rMin, double rMax, double size, const std::vector<Band>& bands,
                   Moons& moons, std::vector<Disc>& taken, json& obj)
 {
@@ -192,14 +207,31 @@ bool PlaceOrOrbit(Rng& rng, double rMin, double rMax, double size, const std::ve
             obj["pos"] = json::array({ (int64_t)x, (int64_t)y });
             return true;
         }
-        const double radius = Round(moons.next[planet] + size, 100.0);
-        if (radius + size > moons.limit[planet])
-            continue;  // this planet has no room left; somewhere else, then
-        moons.next[planet] = radius + size + 2000.0;
-        obj["orbits"] = { { "planet", planet },
-                          { "radius", (int64_t)radius },
-                          { "speed", rng.Range(20, 50) },
-                          { "phase", rng.Range(0, 65535) * (TWO_PI / 65536.0) } };
+        if (OrbitPlanet(rng, planet, size, moons, obj))
+            return true;
+        // this planet has no room left; somewhere else, then
+    }
+    return false;
+}
+
+// Beside something that gives it a reason to be there (#146): a wreck at the belt its
+// prospector came for, a ruin by the ore it was built over. Just clear of the anchor and
+// of everything else, and out of every planet's path.
+bool PlaceNear(Rng& rng, double ax, double ay, double anchorSize, double size,
+               const std::vector<Band>& bands, std::vector<Disc>& taken, json& pos)
+{
+    for (int attempt = 0; attempt < 48; attempt++)
+    {
+        double ux, uy;
+        RandomDirection(rng, ux, uy);
+        const double r = anchorSize + size + rng.Between(21000.0, 40000.0);
+        const double x = Round(ax + ux * r, 100.0), y = Round(ay + uy * r, 100.0);
+        if (std::sqrt(x * x + y * y) + size > 970000.0)
+            continue;  // past the edge of the system
+        if (!Clear(x, y, size, bands, taken))
+            continue;
+        taken.push_back({ x, y, size });
+        pos = json::array({ (int64_t)x, (int64_t)y });
         return true;
     }
     return false;
@@ -557,6 +589,24 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
             count = rng.Range(3, 5);
         else if (character == Character::Barren)
             count = rng.Chance(50) ? 1 : 0;
+
+        // A belt where a planet did not finish forming (#146): the widest gap between two
+        // planets' paths, or past the last one, is where a world that never came together
+        // left its rubble. Most systems with room have one; a belt cluster always does.
+        double gapLo = 0.0, gapHi = 0.0;
+        for (size_t b = 0; b < bands.size(); b++)
+        {
+            const double lo = bands[b].radius + MoonZone(bands[b].size);
+            const double hi =
+                b + 1 < bands.size() ? bands[b + 1].radius - MoonZone(bands[b + 1].size) : 840000.0;
+            if (hi - lo > gapHi - gapLo)
+            {
+                gapLo = lo;
+                gapHi = hi;
+            }
+        }
+        const bool remnant = count > 0 && (character == Character::BeltCluster || rng.Chance(45));
+
         for (int i = 0; i < count; i++)
         {
             const int   roll = rng.Range(0, 99);
@@ -567,8 +617,17 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
             json belt = { { "name", n.designation + " Belt " + std::string(1, (char)('A' + i)) },
                           { "size", size },
                           { "resource", res } };
+            const double slack = (gapHi - gapLo) / 2.0 - size - CLEARANCE;
+            json         pos;
+            if (i == 0 && remnant && slack > 0.0 &&
+                Place(rng, (gapLo + gapHi) / 2.0 - slack, (gapLo + gapHi) / 2.0 + slack, size,
+                      bands, taken, pos))
+            {
+                belt["name"] = n.designation + " Remnant";
+                belt["pos"] = pos;
+            }
             // In a planet's path a belt is its ring -- a gas giant's, most often (#210).
-            if (!PlaceOrOrbit(rng, 260000.0, 840000.0, size, bands, moons, taken, belt))
+            else if (!PlaceOrOrbit(rng, 260000.0, 840000.0, size, bands, moons, taken, belt))
                 continue;
             belt["ore"] = rng.Range(200, 400) + 40 * n.depth +
                           (character == Character::BeltCluster ? 100 : 0);
@@ -631,20 +690,105 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
         {
             // Rarer than the survey (#141) found them: a wreck in three systems of four was
             // scenery, not a find. A graveyard is where wrecks are.
-            const int chance = character == Character::Barren ? 10 : 8 + 6 * n.depth;
-            const int count = rng.Chance(chance) ? rng.Range(1, 2) : 0;
+            //
+            // And each one is where something went wrong (#146): a prospector at the belt it
+            // came for, a freighter caught at a gate, a ship lost in a cloud. Only a wreck
+            // with no such story lies wherever it fell.
+            static const char* AT_BELT[] = { "Lost Prospector", "Broken Survey Ship" };
+            static const char* AT_GATE[] = { "Gutted Freighter", "Ambushed Hauler" };
+            static const char* IN_CLOUD[] = { "Silent Hulk", "Drifted Courier" };
+            const int          chance = character == Character::Barren ? 10 : 8 + 6 * n.depth;
+            const int          count = rng.Chance(chance) ? rng.Range(1, 2) : 0;
             for (int i = 0; i < count; i++)
             {
-                const int size = rng.Range(30, 50);
-                json      wreck = { { "size", size } };
-                if (!PlaceOrOrbit(rng, 200000.0, 850000.0, size, bands, moons, taken, wreck))
+                const int   size = rng.Range(30, 50);
+                json        wreck = { { "size", size } };
+                const char* name = nullptr;
+                json        pos;
+                const int   reason = rng.Range(0, 3);
+                if (reason == 0)
+                {
+                    for (const json& b : sys["asteroidFields"])
+                        if (name == nullptr && b.contains("pos") &&
+                            PlaceNear(rng, b["pos"][0], b["pos"][1], b["size"], size, bands, taken,
+                                      pos))
+                            name = AT_BELT[rng.Range(0, 1)];
+                }
+                else if (reason == 1)
+                {
+                    for (const json& g : sys["gates"])
+                        if (name == nullptr && PlaceNear(rng, g["pos"][0], g["pos"][1], g["size"],
+                                                         size, bands, taken, pos))
+                            name = AT_GATE[rng.Range(0, 1)];
+                }
+                else if (reason == 2)
+                {
+                    // Inside the cloud, where its hazard hid whatever happened.
+                    for (const json& c : sys["nebulae"])
+                        for (int a = 0; a < 24 && name == nullptr; a++)
+                        {
+                            double ux, uy;
+                            RandomDirection(rng, ux, uy);
+                            const double r = rng.Between(0.0, c["radius"].get<double>() * 0.6);
+                            const double x = Round(c["pos"][0].get<double>() + ux * r, 100.0);
+                            const double y = Round(c["pos"][1].get<double>() + uy * r, 100.0);
+                            if (std::sqrt(x * x + y * y) + size < 970000.0 &&
+                                Clear(x, y, size, bands, taken))
+                            {
+                                taken.push_back({ x, y, (double)size });
+                                pos = json::array({ (int64_t)x, (int64_t)y });
+                                name = IN_CLOUD[rng.Range(0, 1)];
+                            }
+                        }
+                }
+                if (name != nullptr)
+                    wreck["pos"] = pos;
+                else if (PlaceOrOrbit(rng, 200000.0, 850000.0, size, bands, moons, taken, wreck))
+                    name = NAMES[rng.Range(0, 4)];
+                else
                     continue;
-                wreck["name"] = NAMES[rng.Range(0, 4)];
+                wreck["name"] = name;
                 wreck["reward"] = 1000 + 500 * n.depth + rng.Range(0, 8) * 100;
                 wrecks.push_back(wreck);
             }
         }
         sys["derelicts"] = wrecks;
+    }
+
+    // Somebody lived here (#146): the ruin of an outpost, by what it was built for -- the
+    // ore of a belt, or in orbit round a planet. Further out, more likely: whoever came this
+    // far before stayed long enough to build.
+    {
+        static const char* BY_BELT[] = { "Abandoned Claim", "Old Refinery" };
+        static const char* IN_ORBIT[] = { "Dead Outpost", "Empty Dock" };
+        Rng                rng(Key(params.seed, key, RUINS));
+        const int          chance = character == Character::Barren ? 20 : 4 + 4 * n.depth;
+        if (rng.Chance(chance))
+        {
+            const double size = 260.0;
+            json         ruin = { { "size", 260 },
+                                  { "reward", 3000 + 800 * n.depth },
+                                  { "archetype", "derelict.outpost_ruin" } };
+            const char*  name = nullptr;
+            json         pos;
+            if (rng.Chance(50))
+                for (const json& b : sys["asteroidFields"])
+                    if (name == nullptr && b.contains("pos") &&
+                        PlaceNear(rng, b["pos"][0], b["pos"][1], b["size"], size, bands, taken,
+                                  pos))
+                    {
+                        ruin["pos"] = pos;
+                        name = BY_BELT[rng.Range(0, 1)];
+                    }
+            if (name == nullptr && !bands.empty() &&
+                OrbitPlanet(rng, rng.Range(0, (int)bands.size() - 1), size, moons, ruin))
+                name = IN_ORBIT[rng.Range(0, 1)];
+            if (name != nullptr)
+            {
+                ruin["name"] = name;
+                sys["derelicts"].push_back(ruin);
+            }
+        }
     }
 
     sys["stations"] = json::array();  // nobody has built anything out here yet
