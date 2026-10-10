@@ -242,25 +242,26 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
         for (const Module& m : Modules::All())
         {
             const bool tagged = std::find(m.tags.begin(), m.tags.end(), entry.of) != m.tags.end();
-            if (entry.byTag ? tagged : m.id == entry.of)
+            // A tagged module with none of the variants the line allows is not a candidate.
+            if ((entry.byTag ? tagged : m.id == entry.of) &&
+                !AllowedVariants(m, entry.variants, entry.except).empty())
                 candidates.push_back(&m);
         }
         if (candidates.empty())
             continue;
         const Module* mod = candidates[std::min(
             candidates.size() - 1, (size_t)(Hash01(seed, salt) * (float)candidates.size()))];
-        if (mod->variants.empty())
-            continue;
         // One variant for every copy the line places: a row of the same hatch is a row, a
         // row of different hatches is clutter.
+        const std::vector<const ModuleVariant*> allowed =
+            AllowedVariants(*mod, entry.variants, entry.except);
         const ModuleVariant* variant = nullptr;
-        for (const ModuleVariant& v : mod->variants)
-            if (v.id == entry.variant)
-                variant = &v;
+        for (const ModuleVariant* v : allowed)
+            if (v->id == entry.variant)
+                variant = v;
         if (variant == nullptr)
-            variant = &mod->variants[std::min(
-                mod->variants.size() - 1,
-                (size_t)(Hash01(seed, salt + 2) * (float)mod->variants.size()))];
+            variant = allowed[std::min(allowed.size() - 1,
+                                       (size_t)(Hash01(seed, salt + 2) * (float)allowed.size()))];
         const std::string type =
             !entry.on.empty() ? entry.on : (mod->sockets.empty() ? "edge" : mod->sockets[0]);
 

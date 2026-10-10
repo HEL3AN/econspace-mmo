@@ -91,6 +91,8 @@ A part in an archetype's shape uses one instead of a form:
 |------|----------|
 | `module` | the module's id; unknown is a load error |
 | `variant` | pin one variant; absent, the object's **seed** picks (so two of a kind differ) |
+| `variants` | the seed picks only among these ids: `["bell", "cluster"]` |
+| `except` | the seed picks among all but these ids: `["ion"]` |
 | `scale` | the module's radius as a fraction of the object's (default 0.1) |
 
 `at`, `angle`, `repeat`, `mirror` and `row` place the module as a whole. A module's own
@@ -98,6 +100,15 @@ parts may use `row` but not `repeat`, `mirror`, orbits or the sphere (those plac
 about the object's centre). A module is drawn once it is about 10 px across on screen
 (its parts' own `minPixels` count in the module's pixels), so it fills in as you approach.
 `tags` and `sockets` are for the automatic placement of phase 3 of #240.
+
+`variants` and `except` narrow the seed's choice without taking it away: an engine that may
+be a bell or a cluster but never an ion drive. Every id must be one of the module's variants,
+`variant` with either list is refused (one pins, the others choose), and a list that leaves
+nothing to choose is a load error. Without them every variant is in play, in the module's
+order, so the lists change nothing for a part that does not use them.
+
+A module's parts may be `soft` like any part: a glow in a module -- a corona streamer's haze,
+a nebula's puff -- stays a glow wherever the module is placed, on the disc or on a sphere.
 
 **On a planet.** A module part with `lat`/`lon` is laid on the sphere (#166) instead of the
 disc: a crater, a base, a city. Its own frame is a small patch of the surface at that
@@ -204,7 +215,10 @@ facing away from the object's centre or the one facing it), `when` (a component 
 line to apply -- `"when": "defensive"` puts turrets only on stations that can fight, `"!market"`
 only on those without a market; an unknown component name is a load error), and
 `variant` (pinned; otherwise the seed picks one for the whole line, so a row is a row of the
-same thing).
+same thing), and `variants` / `except` (the seed picks only among, or never, these ids, as on a
+module part). On a line that names a tag, each id must be a variant of at least one module
+carrying it, and a tagged module with none of the allowed variants is not a candidate for the
+line.
 
 **The seed decides what and how many; rules decide where.** A kit line goes on the longest free
 line of sockets of its kind; on a straight line its modules are spread evenly and symmetric

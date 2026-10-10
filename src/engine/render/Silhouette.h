@@ -9,6 +9,8 @@ namespace Render
 {
 
 struct Item;
+struct Module;
+struct ModuleVariant;
 
 // What an object is shaped like, said in data (#122).
 //
@@ -175,10 +177,12 @@ struct Part
     // A module from the library in place of a form (#240): the part is placed, turned,
     // repeated, mirrored and rowed as any part is, and what is drawn there is one of the
     // module's variants at `scale` of the object's radius. `variant` pins one; empty lets
-    // the object's seed choose.
-    std::string module;
-    std::string variant;
-    float       scale = 0.1f;
+    // the object's seed choose -- among `variants` only, or among all but `except`.
+    std::string              module;
+    std::string              variant;
+    std::vector<std::string> variants;
+    std::vector<std::string> except;
+    float                    scale = 0.1f;
 
     // Generated variety (#240): a number written as [min, max] is chosen per object by its
     // seed; a tint written as a list of colours is a palette to pick from; `chance` is how
@@ -306,7 +310,11 @@ struct KitEntry
     float       scale = 0.0f;          // module radius; 0: from the socket spacing
     float       turn = 0.0f;           // degrees added to the socket's outward direction
     std::string variant;               // pinned; empty: the seed picks one for the whole line
-    int         in = -1;               // only on this section (its index); -1: any
+    // What the seed may pick from: only these, or any but these. An engine line that must
+    // never be an ion drive says so instead of pinning one look for every ship.
+    std::vector<std::string> variants;
+    std::vector<std::string> except;
+    int                      in = -1;  // only on this section (its index); -1: any
     // Only if the object has this component, or with "!" only if it has not (#137): a
     // station that is defensive wears turrets, one with a market wears cargo. Checked when
     // the archetype is loaded, which is where its components are known.
@@ -340,6 +348,13 @@ struct Kit
 
 // The sockets of a set of (resolved) sections, in a fixed order.
 std::vector<Socket> Sockets(const std::vector<Part>& sections);
+
+// The variants of a module the seed may choose from, in the module's order: only those in
+// `only` when it is not empty, and never one in `except`. With neither list it is every
+// variant, so a choice made by index over it is the choice made before the lists existed.
+std::vector<const ModuleVariant*> AllowedVariants(const Module&                   m,
+                                                  const std::vector<std::string>& only,
+                                                  const std::vector<std::string>& except);
 
 // The module parts a kit places on these sections for this seed.
 std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, int seed);
