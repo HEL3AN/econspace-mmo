@@ -377,19 +377,30 @@ declaring the component, without the pass being edited.
 | Component | Parameters | Meaning |
 |------|----------|--------|
 | `dockable` | `range` | a ship can dock; `range` is added to the object's radius |
-| `mineable` | `extractRate`, `range` | holds a deposit; `extractRate` is units per second at skill 1 |
+| `mineable` | `extractRate`, `range` | holds a deposit; `extractRate` multiplies the mining ship's own rate (1 is an ordinary belt, and the default) |
 | `market` | — | buys and sells resources |
-| `defensive` | `range`, `damage` | fires on hostiles; `damage` is per second |
-| `storage` | `capacity` | holds cargo that is not aboard a ship |
+| `defensive` | `range`, `damage` | a station fires once a second on the nearest hostile ship within reach; `damage` is per second |
+| `storage` | `capacity` | *reserved for #44*: holds cargo that is not aboard a ship |
 | `jumpLink` | `range` | connects this system to another |
 | `hazard` | `radius`, `hidesShips` | changes conditions inside it; `radius` 0 means the object's own radius |
 | `salvageable` | `range` | pays out once to whoever reaches it first |
-| `buildable` | `cost`, `buildSeconds` | a player can construct one |
+| `buildable` | `cost`, `buildSeconds` | *reserved for #44*: a player can construct one |
 
 Every `range` is added to the object's own radius, and every verb that reaches for
 something reads it from the object being reached rather than from a constant beside the
 rule. That is what lets a player-built dock, belt or gate work at its own distance without
 the docking, mining or jump pass being edited (#44).
+
+Hostile, for `defensive`, means what it means to an NPC of the station's faction: a player
+by their own account (wanted by it, or at a hostile reputation), an NPC by the relation
+matrix. A docked player or one hidden in cover is not shot at. Only a station fires today,
+because who a battery shoots for is a question of ownership, and ownership is still a
+station's own field (#41).
+
+`storage` and `buildable` are **reserved**: they are parsed and checked, so data written
+with them now stays valid, but no pass reads them yet. Holding cargo off a ship and building
+an object are the player-mutable world (#44), and they arrive with it. Declaring either on
+an archetype today changes nothing in game.
 
 Components carrying no parameters are still written as `{}` — presence is what matters.
 
