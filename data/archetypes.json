@@ -462,6 +462,29 @@
                 "salvageable": { "range": 300 }
             }
         },
+        {
+            "id": "derelict.outpost_ruin",
+            "name": "Outpost Ruin",
+            "kind": "Derelict",
+            "glyph": "#",
+            "sprite": "derelict",
+            "color": [118, 116, 112, 255],
+            "layer": 3,
+            "size": 260,
+            "material": "hull",
+            "shape": [
+                {"form": "polygon", "sides": 5, "radius": 0.5, "role": "hull", "angle": 12},
+                {"form": "lattice", "at": [0.9, 0.18], "angle": 14, "length": 1.0, "width": 0.28, "count": 4, "role": "panel", "minPixels": 44},
+                {"form": "lattice", "at": [-0.82, -0.12], "angle": 196, "length": 0.45, "width": 0.28, "count": 2, "role": "panel", "jitterAngle": 10, "minPixels": 44},
+                {"form": "bar", "at": [-1.45, -0.55], "angle": 230, "length": 0.26, "width": 0.5, "role": "panel", "jitterAngle": 35, "minPixels": 34},
+                {"form": "disc", "at": [0.1, 0.62], "radius": 0.22, "role": "panel", "minPixels": 40},
+                {"form": "chevron", "at": [0.45, -0.95], "angle": 140, "length": 0.3, "width": 0.2, "role": "hull", "jitterAngle": 30, "minPixels": 40},
+                {"form": "capsule", "at": [0.0, 0.92], "angle": 70, "length": 0.32, "width": 0.05, "role": "antenna", "jitterAngle": 25, "minPixels": 70}
+            ],
+            "components": {
+                "salvageable": { "range": 200 }
+            }
+        },
 
         {
             "id": "gate.jump",

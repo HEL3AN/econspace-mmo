@@ -86,8 +86,8 @@ TEST_CASE("the rules have not changed without saying so")
     // old rules are then refused) and update the value here.
     const uint64_t h = Fnv1a(Dump(Gen::GenerateRegion(Params(1))));
     MESSAGE("region hash for seed 1: " << h);
-    CHECK(Gen::GENERATOR_VERSION == 3);
-    CHECK(h == 16759462980079661489ull);
+    CHECK(Gen::GENERATOR_VERSION == 4);
+    CHECK(h == 13600593835554633938ull);
 }
 
 TEST_CASE("every system can be reached from home, and every link has a gate on both ends")
@@ -362,4 +362,68 @@ TEST_CASE("a satellite is a place the slowest ship can reach (#210)")
     for (uint64_t seed = 1; seed <= 20; seed++)
         for (const auto& kv : Gen::GenerateRegion(Params(seed)).documents)
             check(kv.second);
+}
+
+TEST_CASE("what is out there is where it is for a reason (#146)")
+{
+    int remnants = 0, ruins = 0, ruinsByBelt = 0, ruinsInOrbit = 0, storied = 0, wrecks = 0;
+    for (uint64_t seed = 1; seed <= 40; seed++)
+        for (const auto& kv : Gen::GenerateRegion(Params(seed)).documents)
+        {
+            const nlohmann::json& sys = kv.second;
+            for (const auto& b : sys["asteroidFields"])
+                if (b["name"].get<std::string>().find("Remnant") != std::string::npos)
+                {
+                    remnants++;
+                    CHECK(b.contains("pos"));  // between paths, never a planet's ring
+                }
+            for (const auto& d : sys["derelicts"])
+            {
+                const std::string name = d["name"];
+                if (d.value("archetype", "") == std::string("derelict.outpost_ruin"))
+                {
+                    ruins++;
+                    if (d.contains("orbits"))
+                        ruinsInOrbit++;
+                    else
+                    {
+                        // By a belt: the nearest belt is just beyond the clearance.
+                        double nearest = 1e12;
+                        for (const auto& b : sys["asteroidFields"])
+                            if (b.contains("pos"))
+                                nearest =
+                                    std::min(nearest, std::hypot(d["pos"][0].get<double>() -
+                                                                     b["pos"][0].get<double>(),
+                                                                 d["pos"][1].get<double>() -
+                                                                     b["pos"][1].get<double>()) -
+                                                          b["size"].get<double>());
+                        CAPTURE(kv.first);
+                        CHECK(nearest < 45000.0);
+                        ruinsByBelt++;
+                    }
+                }
+                else if (!d.contains("archetype") && name.find("Frigate") == std::string::npos &&
+                         name.find("Cruiser") == std::string::npos &&
+                         name.find("Escort") == std::string::npos &&
+                         name.find("Gunship") == std::string::npos &&
+                         name.find("Bridge") == std::string::npos)
+                {
+                    wrecks++;
+                    for (const char* s :
+                         { "Prospector", "Survey", "Freighter", "Hauler", "Silent", "Courier" })
+                        if (name.find(s) != std::string::npos)
+                        {
+                            storied++;
+                            break;
+                        }
+                }
+            }
+        }
+    MESSAGE("remnant belts " << remnants << ", ruins " << ruins << " (" << ruinsByBelt
+                             << " by a belt, " << ruinsInOrbit << " in orbit), wrecks with a "
+                             << "story " << storied << " of " << wrecks);
+    CHECK(remnants > 0);
+    CHECK(ruinsByBelt > 0);
+    CHECK(ruinsInOrbit > 0);
+    CHECK(storied * 2 > wrecks);  // most wrecks are where something went wrong
 }
