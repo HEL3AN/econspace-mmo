@@ -47,7 +47,7 @@ No arguments.
 
 ### `hold_station`
 
-Hold station on an object at a distance you choose, until another order replaces it or abort_order ends it. mode 'orbit' circles it, 'keep' holds the distance without circling, 'follow' holds the distance and matches its velocity -- the one that stays with a station going round a planet, or with a moving ship. It flies there at sublight: for something far away, move_to with warp first.
+Hold station on an object at a distance you choose, until another order replaces it or abort_order ends it. mode 'orbit' circles it, 'keep' holds that distance from it and moves only as much as that takes, 'follow' holds the distance and matches its velocity -- the one that stays with a station going round a planet, or with a moving ship. It flies there at sublight: for something far away, move_to with warp first.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
