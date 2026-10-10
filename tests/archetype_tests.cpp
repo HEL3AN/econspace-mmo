@@ -10,6 +10,7 @@
 #include "economy/Resource.h"
 #include <cstdio>
 #include <fstream>
+#include <raylib.h>
 #include <string>
 
 // The registry is what makes a player-built object possible (#44) and what lets an agent
@@ -281,4 +282,48 @@ TEST_CASE("colour in the world is the archetype's, not the owner's (#117)")
     CHECK(a.color.r == art.r);
     CHECK(a.color.g == art.g);
     CHECK(a.color.b == art.b);
+}
+
+TEST_CASE("what an object can do decides part of what it wears (#137, #240 phase 5)")
+{
+    // In a directory of its own, with a module library beside it: the loader reads both.
+    MakeDirectory("when_test_tmp");
+    {
+        std::ofstream m("when_test_tmp/modules.json");
+        m << R"({ "modules": [ { "id": "turret", "variants": [ { "id": "a", "shape": [
+              { "form": "disc", "radius": 0.5 } ] } ] },
+              { "id": "crate", "variants": [ { "id": "a", "shape": [
+              { "form": "bar", "length": 1 } ] } ] } ] })";
+    }
+    auto write = [](const char* components, const char* when)
+    {
+        std::ofstream f("when_test_tmp/archetypes.json");
+        f << R"({ "archetypes": [ { "id": "station.test", "kind": "Station", "shape": {
+              "sections": [ { "form": "disc", "radius": 0.8 } ],
+              "kit": { "modules": [
+                  { "of": "turret", "on": "edge", "when": ")"
+          << when << R"(" },
+                  { "of": "crate", "on": "edge" } ] },
+              "parts": [] }, "components": )"
+          << components << " } ] }";
+    };
+    write(R"({ "defensive": {} })", "defensive");
+    REQUIRE(Archetypes::Load("when_test_tmp/archetypes.json"));
+    CHECK(Archetypes::Find("station.test")->visual.shape.kit.entries.size() == 2);
+
+    write(R"({ "market": {} })", "defensive");  // not defensive: no turrets
+    REQUIRE(Archetypes::Load("when_test_tmp/archetypes.json"));
+    CHECK(Archetypes::Find("station.test")->visual.shape.kit.entries.size() == 1);
+
+    write(R"({ "market": {} })", "!defensive");  // and the other way round
+    REQUIRE(Archetypes::Load("when_test_tmp/archetypes.json"));
+    CHECK(Archetypes::Find("station.test")->visual.shape.kit.entries.size() == 2);
+
+    write(R"({ "market": {} })", "defensve");  // a misspelling is an error
+    CHECK_FALSE(Archetypes::Load("when_test_tmp/archetypes.json"));
+    CHECK(Archetypes::Error().find("defensve") != std::string::npos);
+
+    std::remove("when_test_tmp/archetypes.json");
+    std::remove("when_test_tmp/modules.json");
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
 }

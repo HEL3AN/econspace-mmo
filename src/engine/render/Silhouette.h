@@ -305,6 +305,10 @@ struct KitEntry
     float       turn = 0.0f;           // degrees added to the socket's outward direction
     std::string variant;               // pinned; empty: the seed picks one for the whole line
     int         in = -1;               // only on this section (its index); -1: any
+    // Only if the object has this component, or with "!" only if it has not (#137): a
+    // station that is defensive wears turrets, one with a market wears cargo. Checked when
+    // the archetype is loaded, which is where its components are known.
+    std::string when;
     // How the module meets the socket, by its own bounding box: "on" lies wholly on the
     // hull with its edge at the hull's (a hatch, a window), "out" starts at the edge and
     // stands out from it (a docking arm, an engine, a dish on a boom), "centre" is centred

@@ -364,6 +364,38 @@ bool Load(const std::string& path)
             g_error = path + ": " + err;
             return false;
         }
+        // What the object can do decides part of what it wears (#137, #240 phase 5): a kit
+        // line with `when` stays only if the archetype has (or, with "!", lacks) that
+        // component. A name that is no component is a load error, like any misspelling.
+        auto& kitLines = a.visual.shape.kit.entries;
+        for (size_t k = 0; k < kitLines.size();)
+        {
+            const std::string& w = kitLines[k].when;
+            if (w.empty())
+            {
+                k++;
+                continue;
+            }
+            const bool        negate = w[0] == '!';
+            const std::string name = negate ? w.substr(1) : w;
+            bool              known = false, has = false;
+            for (Component c : AllComponents())
+                if (name == ComponentName(c))
+                {
+                    known = true;
+                    has = a.Has(c);
+                }
+            if (!known)
+            {
+                g_error = path + ": archetype '" + a.id + "': kit line when \"" + w +
+                          "\" names no component";
+                return false;
+            }
+            if (has == negate)
+                kitLines.erase(kitLines.begin() + (long)k);
+            else
+                k++;
+        }
         for (const Archetype& seen : loaded)
             if (seen.id == a.id)
             {
