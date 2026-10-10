@@ -30,14 +30,20 @@ public:
     // Opens straight into the gallery (#118). `worldeditor gallery` is how a look gets
     // tuned, and the tool for judging one should not make you cross a star system first.
     void OpenGallery();
-    // `worldeditor modules [zoom Z]`: the module library as a sheet of cards (#240).
-    void OpenModules(float zoom)
+    // `worldeditor modules [pack P] [seeds N] [zoom Z]`: the module library as a sheet of
+    // cards (#240) -- one pack of it, and each variant at N seeds, which is how a range or a
+    // palette is judged: one drawing says nothing about a family.
+    void OpenModules(float zoom, const std::string& pack, int seeds)
     {
         mode_ = Mode::Modules;
         modulesZoom_ = zoom;
+        modulesPack_ = pack;
+        modulesSeeds_ = seeds < 1 ? 1 : seeds;
     }
-    void  DrawModules(bool labels);
-    float modulesZoom_ = 1.0f;
+    void        DrawModules(bool labels);
+    float       modulesZoom_ = 1.0f;
+    std::string modulesPack_;
+    int         modulesSeeds_ = 1;
 
     // Starts on the shape backend instead of glyphs. F2 still switches; this is for
     // opening straight into the one you meant to look at.

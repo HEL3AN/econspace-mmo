@@ -1,6 +1,8 @@
 #include "render/Modules.h"
 
+#include <algorithm>
 #include <fstream>
+#include <raylib.h>
 #include <nlohmann/json.hpp>
 
 namespace Render
@@ -41,14 +43,24 @@ const Module* Find(const std::string& id)
     return nullptr;
 }
 
-bool Load(const std::string& path, std::string& error)
+namespace
 {
-    error.clear();
-    g_modules.clear();
+// "data/modules/weapons.json" -> "weapons".
+std::string Stem(const std::string& path)
+{
+    const size_t slash = path.find_last_of("/\\");
+    std::string  name = slash == std::string::npos ? path : path.substr(slash + 1);
+    const size_t dot = name.find_last_of('.');
+    return dot == std::string::npos ? name : name.substr(0, dot);
+}
+
+bool LoadFile(const std::string& path, std::string& error)
+{
     std::ifstream in(path);
     if (!in.is_open())
         return true;  // no library: nothing uses one
-    const json data = json::parse(in, nullptr, false);
+    const std::string pack = Stem(path);
+    const json        data = json::parse(in, nullptr, false);
     if (data.is_discarded() || !data.is_object() || !data.contains("modules") ||
         !data["modules"].is_array())
     {
@@ -70,13 +82,14 @@ bool Load(const std::string& path, std::string& error)
                 error = "module '" + id + "': unknown field \"" + it.key() + "\"";
                 return false;
             }
-        if (Find(id) != nullptr)
+        if (const Module* twin = Find(id))
         {
-            error = "module '" + id + "' is defined twice";
+            error = "module '" + id + "' is defined twice (" + twin->pack + ", " + pack + ")";
             return false;
         }
         Module m;
         m.id = id;
+        m.pack = pack;
         m.tags = Strings(mj, "tags");
         m.sockets = Strings(mj, "sockets");
         if (!mj.contains("variants") || !mj["variants"].is_array() || mj["variants"].empty())
@@ -114,6 +127,35 @@ bool Load(const std::string& path, std::string& error)
         }
         g_modules.push_back(std::move(m));
     }
+    return true;
+}
+}  // namespace
+
+bool Load(const std::string& path, std::string& error)
+{
+    error.clear();
+    g_modules.clear();
+    if (!LoadFile(path, error))
+        return false;
+
+    const size_t      slash = path.find_last_of("/\\");
+    const std::string dir =
+        (slash == std::string::npos ? std::string() : path.substr(0, slash + 1)) + "modules";
+    if (!DirectoryExists(dir.c_str()))
+        return true;
+    std::vector<std::string> packs;
+    FilePathList             files = LoadDirectoryFilesEx(dir.c_str(), ".json", false);
+    for (unsigned int i = 0; i < files.count; i++)
+        packs.push_back(files.paths[i]);
+    UnloadDirectoryFiles(files);
+    // Name order, so which file wins an argument does not depend on the file system.
+    std::sort(packs.begin(), packs.end());
+    for (const std::string& p : packs)
+        if (!LoadFile(p, error))
+        {
+            error = Stem(p) + ": " + error;
+            return false;
+        }
     return true;
 }
 }  // namespace Modules

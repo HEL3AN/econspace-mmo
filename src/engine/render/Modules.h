@@ -15,6 +15,11 @@
 //   { "modules": [ { "id": "hatch", "tags": ["opening"], "sockets": ["top", "edge"],
 //                    "variants": [ { "id": "square", "shape": [ ...parts... ] }, ... ] } ] }
 //
+// More modules come in packs, one file per domain -- data/modules/weapons.json,
+// data/modules/planet.json -- in the same format, all loaded after modules.json in name
+// order. A pack is a file so that writing one never touches another; an id is still global,
+// and the same id in two files is an error naming both.
+//
 // A module's parts are written in its own unit, radius 1 about its own centre. They may
 // not repeat, mirror, orbit or sit on a sphere -- those place things about the *object's*
 // centre -- but they may use a row, which is a line in the module's own frame.
@@ -29,6 +34,7 @@ struct ModuleVariant
 struct Module
 {
     std::string                id;
+    std::string                pack;  // the file it came from: "modules", "weapons", ...
     std::vector<std::string>   tags;
     std::vector<std::string>   sockets;  // where it fits on a section (phase 3 of #240)
     std::vector<ModuleVariant> variants;
@@ -36,8 +42,9 @@ struct Module
 
 namespace Modules
 {
-// Replaces the library with the file's. A missing file is an empty library, not an error:
-// nothing has to use modules. A file that is there and wrong is an error, said by name.
+// Replaces the library with the file's and then every pack in the `modules` directory beside
+// it. A missing file is an empty library, not an error: nothing has to use modules. A file
+// that is there and wrong is an error, said by name.
 bool Load(const std::string& path, std::string& error);
 void Clear();
 

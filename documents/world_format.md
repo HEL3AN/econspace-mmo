@@ -106,6 +106,12 @@ part -- carried round by `spin`, foreshortened at the limb, hidden on the far si
 spreads copies round the planet in longitude and `mirror` reflects across the equator. Only a
 `disc` is foreshortened at the limb today, so surface modules are written in discs.
 
+**Packs.** Further modules live in `data/modules/*.json`, one file per domain (weapons,
+planet, wrecks...), in the same format. They are loaded after `modules.json` in file-name
+order; a module remembers its file as its `pack`. An id is global: the same id in two files
+is a load error naming both. `worldeditor modules pack weapons seeds 4` shows one pack with
+each variant at four seeds, which is how ranges and palettes are judged.
+
 **Generated variety (any part, in a module or not).** A number may be written `[min, max]`
 and the object's seed picks a value (`radius`, `width`, `length`, `angle`, `at`'s
 components, `alpha`, `scale`, `sides`, `count`, `row.count`, `lat`, `lon`); `tint` may be a list of
