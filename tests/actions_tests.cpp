@@ -168,11 +168,10 @@ TEST_CASE("Actions: every button an agent could want is an econagent tool, and t
     const std::set<Verb> interfaceOnly{ Verb::Select, Verb::SetRange };
     const std::set<Verb> owed{ Verb::Investigate };
 
-    for (Verb v :
-         { Verb::Select, Verb::Approach, Verb::Orbit, Verb::Keep, Verb::Follow, Verb::SetRange,
-           Verb::Warp, Verb::Dock, Verb::Mine, Verb::Attack, Verb::Investigate, Verb::Jump,
-           Verb::FlyHere, Verb::WarpHere, Verb::Build, Verb::Accept, Verb::HandIn,
-           Verb::Dismantle })
+    for (Verb v : { Verb::Select, Verb::Approach, Verb::Orbit, Verb::Keep, Verb::Follow,
+                    Verb::SetRange, Verb::Warp, Verb::Dock, Verb::Mine, Verb::Attack,
+                    Verb::Investigate, Verb::Jump, Verb::FlyHere, Verb::WarpHere, Verb::Build,
+                    Verb::Accept, Verb::HandIn, Verb::Dismantle })
     {
         const std::string tool = Actions::ToolFor(v);
         INFO("verb " << (int)v << " tool '" << tool << "'");
