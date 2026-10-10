@@ -102,6 +102,13 @@ json EntityLayoutsJson(const std::vector<Proto::EntityLayout>& v)
             ej["own"] = e.owner;
         if (e.looted)
             ej["looted"] = true;
+        if (e.completesAt > 0.0)
+        {
+            ej["start"] = e.startedAt;
+            ej["done"] = e.completesAt;
+        }
+        if (e.expiresAt > 0.0)
+            ej["exp"] = e.expiresAt;
         ents.push_back(std::move(ej));
     }
     return ents;
@@ -132,6 +139,9 @@ std::vector<Proto::EntityLayout> ToEntityLayouts(const json& j, const char* key)
         e.archetype = ej.value("arch", std::string());
         e.owner = ej.value("own", std::string());
         e.looted = ej.value("looted", false);
+        e.startedAt = ej.value("start", 0.0);
+        e.completesAt = ej.value("done", 0.0);
+        e.expiresAt = ej.value("exp", 0.0);
         out.push_back(std::move(e));
     }
     return out;
@@ -293,6 +303,13 @@ std::string EncodeCommand(const Command& c)
     if (c.orderAvoidDanger)  // only when asked: a command goes out sixty times a second
         j["ordSafe"] = true;
     j["ordAbort"] = c.abortOrder;
+    if (!c.deploy.empty())  // one command in a great many
+    {
+        j["deploy"] = c.deploy;
+        j["deployAt"] = V2(c.deployPos);
+        if (!c.deployName.empty())
+            j["deployName"] = c.deployName;
+    }
     return j.dump();
 }
 
@@ -338,6 +355,9 @@ bool DecodeCommand(const std::string& s, Command& out)
     out.orderDestSystem = j.value("ordDest", std::string());
     out.orderAvoidDanger = j.value("ordSafe", false);
     out.abortOrder = j.value("ordAbort", false);
+    out.deploy = j.value("deploy", std::string());
+    out.deployPos = j.contains("deployAt") ? ToV2(j["deployAt"]) : Vector2{ 0.0f, 0.0f };
+    out.deployName = j.value("deployName", std::string());
     return true;
 }
 

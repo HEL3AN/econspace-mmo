@@ -56,6 +56,8 @@ public:
     // until the login completes; the server sends it before the first layout.
     const WorldLoader::Universe& Universe() const { return universe_; }
     bool                         HasSnapshot() const { return haveSnapshot_; }
+    // The account this bridge logged in as: what it builds is owned by this name (#39).
+    const std::string& Account() const { return account_; }
 
     // Journal entries newer than `seq`, accumulated across snapshots so nothing is lost
     // between two calls.
@@ -85,6 +87,7 @@ private:
     bool                                haveSnapshot_ = false;
     std::string                         protocolError_;
     std::string                         byeReason_;
+    std::string                         account_;
 };
 
 }  // namespace Agent

@@ -35,6 +35,8 @@ EntityKind KindFromString(const std::string& s)
         return EntityKind::Npc;
     if (s == "PlayerShip")
         return EntityKind::PlayerShip;
+    if (s == "Structure")
+        return EntityKind::Structure;
     return EntityKind::Unknown;
 }
 
@@ -238,7 +240,9 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
             case Component::Defensive: params = { "range", "damage" }; break;
             case Component::Storage: params = { "capacity" }; break;
             case Component::Hazard: params = { "radius", "hidesShips" }; break;
-            case Component::Buildable: params = { "cost", "buildSeconds" }; break;
+            // What building one costs and takes is its blueprint's (data/blueprints.json),
+            // not the archetype's: one kind of object may be made more than one way.
+            case Component::Buildable:
             case Component::Market: break;
         }
         if (!OnlyKnownKeys(p, params, err))
@@ -269,11 +273,8 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
                 a.hazardRadius = p.value("radius", a.hazardRadius);
                 a.hazardHidesShips = p.value("hidesShips", a.hazardHidesShips);
                 break;
-            // Reserved for #44 like storage: nothing builds anything yet.
-            case Component::Buildable:
-                a.buildCost = p.value("cost", a.buildCost);
-                a.buildSeconds = p.value("buildSeconds", a.buildSeconds);
-                break;
+            // A marker: a blueprint may only name an archetype that says it can be built.
+            case Component::Buildable: break;
             // No archetype-level parameters. What varies about a market is per system,
             // not per kind of station.
             case Component::Market: break;

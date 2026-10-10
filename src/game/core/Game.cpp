@@ -9,6 +9,7 @@
 #include "sim/WarpPath.h"
 
 #include "core/Archetype.h"
+#include "core/Blueprint.h"
 #include "core/World.h"
 #include "core/WorldLoader.h"
 #include "entities/Star.h"
@@ -71,6 +72,10 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     // object in the client with no archetype: no glyph, no sprite, no components (#127).
     if (!Archetypes::Load(dataDir_ + "archetypes.json"))
         TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());
+    // What can be built, for the menu (#39). The server decides; without the file the menu
+    // simply offers nothing.
+    if (!Blueprints::Load(dataDir_ + "blueprints.json"))
+        TraceLog(LOG_WARNING, "Blueprints: %s", Blueprints::Error().c_str());
     // No galaxy index here: the server sends it at login (#206), before the first layout.
     if (!Render::Materials::Load(dataDir_ + "materials.json"))
         TraceLog(LOG_WARNING, "Materials: %s", Render::Materials::Error().c_str());
@@ -181,6 +186,7 @@ void Game::Run()
                 cmd_.dock = cmd_.undock = false;
                 cmd_.navMode = 0;
                 cmd_.jumpGateId = cmd_.lootId = 0;
+                cmd_.deploy.clear();
             }
             simAccumulator_ -= SIM_DT;
         }
@@ -719,6 +725,8 @@ void Game::OpenContextMenu(Entity* target)
                               } });
             break;
         }
+        // Nothing to do with one yet but go there; taking one down is the next slice (#39).
+        case EntityKind::Structure: break;
         // Scenery and the player's own ship: fly-to and warp-to, already added above, are all
         // there is to do with them.
         case EntityKind::Star:
@@ -744,6 +752,26 @@ void Game::OpenContextMenuAt(Vector2 worldPoint)
     {
         items.push_back({ "Warp here", [this, worldPoint]() { OrderWarp(worldPoint, 60.0f); } });
     }
+
+    // Build here (#39): every blueprint whose reach the point is within, with what it costs.
+    // Only the reach is checked here, so the menu does not offer what could never work; the
+    // rest -- the hold, the room, the caps -- the server decides and says in the journal.
+    if (mode_ == GameMode::Flying)
+        for (const Blueprint& bp : Blueprints::All())
+        {
+            if (sqrtf(dx * dx + dy * dy) > bp.reach)
+                continue;
+            std::string cost;
+            for (const auto& c : bp.cost)
+                cost += (cost.empty() ? "" : ", ") + std::to_string(c.second) + " " +
+                        ResourceName(c.first);
+            const std::string id = bp.id;
+            items.push_back({ "Build " + bp.name + " (" + cost + ")", [this, id, worldPoint]()
+                              {
+                                  cmd_.deploy = id;
+                                  cmd_.deployPos = worldPoint;
+                              } });
+        }
 
     contextMenu_.Open(GetMousePosition(), std::move(items));
 }

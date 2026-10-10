@@ -35,7 +35,7 @@ enum class Component
     JumpLink,     // connects this system to another
     Hazard,       // changes the conditions of anything inside it
     Salvageable,  // pays out once to whoever reaches it first
-    Buildable     // a player can construct one (reserved for #44)
+    Buildable     // a player can construct one; a blueprint says how (#39)
 };
 
 // The JSON key this component is written under, and the name it is reported by.
@@ -130,18 +130,16 @@ struct Archetype
     // been shorter to write and would have moved the guessing rather than removed it:
     // the point of putting object types in data is that what a thing can do stops being
     // something the reader has to infer.
-    float  dockRange = 0.0f;          // Dockable: added to the object's radius
-    float  extractRate = 1.0f;        // Mineable: times the ship's mining rate (#193)
-    float  extractRange = 0.0f;       // Mineable: added to the object's radius
-    float  salvageRange = 0.0f;       // Salvageable: added to the object's radius
-    float  jumpRange = 0.0f;          // JumpLink: added to the object's radius
-    float  weaponRange = 0.0f;        // Defensive
-    float  weaponDamage = 0.0f;       // Defensive: per second
-    float  storageCapacity = 0.0f;    // Storage: reserved for #44, nothing reads it yet
-    float  hazardRadius = 0.0f;       // Hazard: 0 means "the object's own radius"
-    bool   hazardHidesShips = false;  // Hazard: ships inside are invisible to NPCs
-    double buildCost = 0.0;           // Buildable: reserved for #44, nothing reads it yet
-    float  buildSeconds = 0.0f;       // Buildable: reserved for #44, nothing reads it yet
+    float dockRange = 0.0f;          // Dockable: added to the object's radius
+    float extractRate = 1.0f;        // Mineable: times the ship's mining rate (#193)
+    float extractRange = 0.0f;       // Mineable: added to the object's radius
+    float salvageRange = 0.0f;       // Salvageable: added to the object's radius
+    float jumpRange = 0.0f;          // JumpLink: added to the object's radius
+    float weaponRange = 0.0f;        // Defensive
+    float weaponDamage = 0.0f;       // Defensive: per second
+    float storageCapacity = 0.0f;    // Storage: reserved for #44, nothing reads it yet
+    float hazardRadius = 0.0f;       // Hazard: 0 means "the object's own radius"
+    bool  hazardHidesShips = false;  // Hazard: ships inside are invisible to NPCs
 
     bool Has(Component c) const { return components.Has(c); }
 };

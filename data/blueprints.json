@@ -1,0 +1,23 @@
+{
+    "blueprints": [
+        {
+            "id": "buoy",
+            "name": "Marker Buoy",
+            "archetype": "structure.buoy",
+            "cost": { "Iron": 4 },
+            "buildSeconds": 10,
+            "lifetime": 3600,
+            "placement": { "reach": 600, "clearance": 150, "bodyClearance": 2000, "perSystem": 20 }
+        },
+        {
+            "id": "beacon",
+            "name": "Beacon",
+            "archetype": "structure.beacon",
+            "cost": { "Iron": 10, "Crystal": 2 },
+            "buildSeconds": 45,
+            "lifetime": 86400,
+            "placement": { "reach": 600, "clearance": 400, "bodyClearance": 5000, "perSystem": 8 }
+        }
+    ],
+    "limits": { "perAccount": 12 }
+}

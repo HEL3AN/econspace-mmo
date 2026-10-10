@@ -15,6 +15,7 @@
 #include "sim/ClientSession.h"
 #include "net/Tcp.h"
 #include "net/Transport.h"
+#include "core/Blueprint.h"
 #include "core/Faction.h"
 #include "entities/Combatant.h"
 #include "entities/Nebula.h"
@@ -64,6 +65,13 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
     if (!Archetypes::Load(dataDir + "archetypes.json"))
     {
         fprintf(stderr, "FATAL: %s\n", Archetypes::Error().c_str());
+        exit(1);
+    }
+    // After the archetypes, which every blueprint is checked against. Fatal for the same
+    // reason: a blueprint that does not read is a structure that costs nothing (#39).
+    if (!Blueprints::Load(dataDir + "blueprints.json"))
+    {
+        fprintf(stderr, "FATAL: %s\n", Blueprints::Error().c_str());
         exit(1);
     }
     sim.LoadUniverse(dataDir + "universe.json");
@@ -203,6 +211,9 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     }
     if (c.lootId != 0)
         sim.StepPlayerLoot(s, *sim.SystemOf(s), c.lootId);
+    // A site, laid down from space (#39); the answer is in the journal either way.
+    if (!c.deploy.empty())
+        sim.Deploy(s, c.deploy, c.deployPos, c.deployName);
 
     // Player fire: on a shot — a beam event into the snapshot (client draws it blue).
     // Account effects (mission credit/reputation) are not yet applied on the server (3c-ii).
@@ -765,6 +776,7 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed)
                     ClientSession& s = SetupHostPlayer(sim);
                     hc.sessionId = s.id;
                     hc.account = h.account;
+                    s.accountName = h.account;           // what they build is theirs (#39)
                     s.ship->SetPilotName(h.account);     // what other players see (#4)
                     hc.lastEventSeq = s.LastEventSeq();  // a new session starts from now
                     const Save::Result acct = sim.LoadAccount(s, AccountPath(h.account));
@@ -1009,13 +1021,42 @@ static int HostSelftest()
     // snapshot is recorded, so the client side can check it never saw anything else.
     int               builtId = 0;
     std::vector<bool> serverHad;
+    // And a player lays one down through the wire (#39): a command, the server's rules, a
+    // delta back. The hold is stocked and the name set as a login would set it.
+    s.accountName = "selftest";
+    s.ship->AddCargo(ResourceType::Iron, 10);
+    bool tryDeploy = Blueprints::Find("buoy") != nullptr;
 
     int         lastSeq = 0;
     const float dt = 1.0f / 60.0f;
     for (int i = 0; i < 120; i++)  // ~2 s of simulation
     {
         thrust.seq = i + 1;  // client: numbered input
-        link.Client().Send(Proto::EncodeCommand(thrust));
+        Proto::Command c = thrust;
+        if (i == 100 && tryDeploy)
+        {
+            // Somewhere the rules allow, found by asking them: the ship starts beside a
+            // station that orbits a planet, and nothing may stand in a satellite's path. The
+            // ship is put there first, as if it had flown -- this tests the wire, not travel.
+            const Blueprint& bp = *Blueprints::Find("buoy");
+            const Vector2    from = s.ship->GetPosition();
+            for (int k = 0; k < 400 && c.deploy.empty(); k++)
+            {
+                const Vector2 p = { 150000.0f + 9100.0f * (float)(k % 20),
+                                    -90000.0f + 9300.0f * (float)(k / 20) };
+                s.ship->Teleport(p);
+                const Vector2 near = { p.x + bp.reach * 0.5f, p.y };
+                if (sim.PlacementProblem(s, bp, near).empty())
+                {
+                    c.deploy = bp.id;
+                    c.deployPos = near;
+                }
+            }
+            if (c.deploy.empty())
+                s.ship->Teleport(from);
+            tryDeploy = !c.deploy.empty();
+        }
+        link.Client().Send(Proto::EncodeCommand(c));
         std::vector<Proto::TradeAck>                  acks;
         std::map<std::string, std::vector<FireEvent>> fires;
         HostDrainInputs(link.Server(), sim, s, dt, lastSeq, acks, fires);  // 1 input=1 tick
@@ -1039,6 +1080,7 @@ static int HostSelftest()
     }
 
     bool                gotLayout = false, gotSnap = false, worldAgreed = builtId != 0;
+    bool                deployed = false;
     Proto::Snapshot     lastSnap;
     Proto::LayoutMirror mirror;
     size_t              snapIndex = 0;
@@ -1067,14 +1109,18 @@ static int HostSelftest()
             snapIndex++;
         }
     }
+    for (const auto& kv : mirror.byId)
+        deployed = deployed || (kv.second.kind == EntityKind::Structure &&
+                                kv.second.owner == "selftest" && kv.second.completesAt > 0.0);
     Vector2 endPos = s.ship->GetPosition();
     bool    moved = (endPos.x != startPos.x || endPos.y != startPos.y);
     bool    snapHasWorld = gotSnap && !lastSnap.entities.empty();
 
-    printf("Host selftest: layout %s, snapshot %s, player-moved %s, world-changes %s\n",
+    printf("Host selftest: layout %s, snapshot %s, player-moved %s, world-changes %s, "
+           "deploy %s\n",
            gotLayout ? "OK" : "FAIL", snapHasWorld ? "OK" : "FAIL", moved ? "OK" : "FAIL",
-           worldAgreed ? "OK" : "FAIL");
-    return (gotLayout && snapHasWorld && moved && worldAgreed) ? 0 : 1;
+           worldAgreed ? "OK" : "FAIL", deployed ? "OK" : "FAIL");
+    return (gotLayout && snapHasWorld && moved && worldAgreed && deployed) ? 0 : 1;
 }
 
 // Account persistence smoke test (no network, M4f-3): write the account to a file and

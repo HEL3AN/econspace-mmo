@@ -16,6 +16,7 @@
 #include "agent/Jsonrpc.h"
 #include "agent/Session.h"
 
+#include "core/Blueprint.h"
 #include "core/Faction.h"
 #include "core/WorldLoader.h"
 #include "economy/Resource.h"
@@ -28,11 +29,13 @@
 
 #include <atomic>
 #include <cctype>
+#include <cmath>
 #include <chrono>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <set>
 #include <string>
 #include <thread>
 
@@ -798,6 +801,130 @@ std::vector<Tool> BuildTools()
               return "name_system: " + here + " is now " + name + ", for everyone";
           } });
 
+    tools.push_back(
+        { "blueprints",
+          "What you can build in space (#39): each blueprint's id, what it costs from the "
+          "hold, how long the site takes, how long the result stands, and how close to your "
+          "ship it must go. Marks the ones your hold can pay for now.",
+          Obj({}), [](const Rpc::Json&)
+          {
+              RequireLive();
+              if (Blueprints::All().empty())
+                  return std::string("blueprints: none are known to this bridge");
+              const Proto::PlayerView&  p = g_session.Snapshot().player;
+              std::vector<ResourceType> types = AllResourceTypes();
+              auto                      held = [&](ResourceType r)
+              {
+                  for (size_t i = 0; i < types.size() && i < p.cargoByType.size(); i++)
+                      if (types[i] == r)
+                          return p.cargoByType[i];
+                  return 0;
+              };
+              std::string out = "BLUEPRINTS\n";
+              for (const Blueprint& bp : Blueprints::All())
+              {
+                  std::string cost;
+                  bool        affordable = true;
+                  for (const auto& c : bp.cost)
+                  {
+                      cost += (cost.empty() ? "" : ", ") + std::to_string(c.second) + " " +
+                              ResourceName(c.first);
+                      affordable = affordable && held(c.first) >= c.second;
+                  }
+                  char line[256];
+                  std::snprintf(line, sizeof(line),
+                                "  %-8s %-14s %s; builds in %.0fs; stands %s; within %.0fu of "
+                                "the ship%s\n",
+                                bp.id.c_str(), bp.name.c_str(), cost.c_str(), bp.buildSeconds,
+                                bp.lifetime > 0.0f
+                                    ? (std::to_string((int)(bp.lifetime / 60.0f)) + " min").c_str()
+                                    : "until removed",
+                                bp.reach, affordable ? "  CAN AFFORD" : "");
+                  out += line;
+              }
+              if (Blueprints::PerAccount() > 0)
+                  out += "At most " + std::to_string(Blueprints::PerAccount()) +
+                         " structures standing per account.\n";
+              return out;
+          } });
+
+    tools.push_back(
+        { "deploy",
+          "Lay down a construction site from a blueprint, near your ship, out of the hold. It "
+          "takes the cost at once, finishes by itself after the build time -- wait_for_event "
+          "wakes on 'built' -- and everyone in the system sees it. Refused, with the reason, "
+          "if the hold is short, the place is too close to something or in a planet's path, "
+          "or you are docked or warping. blueprints lists what can be built.",
+          Obj({ { "blueprint", Str("blueprint id from blueprints, e.g. 'beacon'") },
+                { "name", Str("what to call it (default: the blueprint's name); 3 to 24 "
+                              "characters, letters, digits, spaces, ' and -") },
+                { "x", Num("where, world x (default: where the ship is)") },
+                { "y", Num("where, world y (default: where the ship is)") } },
+              { "blueprint" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              const std::string id = args.contains("blueprint") && args["blueprint"].is_string()
+                                         ? args["blueprint"].get<std::string>()
+                                         : std::string();
+              const Blueprint*  bp = Blueprints::Find(id);
+              if (bp == nullptr)
+              {
+                  std::string known;
+                  for (const Blueprint& b : Blueprints::All())
+                      known += (known.empty() ? "" : ", ") + b.id;
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "no blueprint '" + id + "'; known: " + known };
+              }
+              const std::string name = args.contains("name") && args["name"].is_string()
+                                           ? args["name"].get<std::string>()
+                                           : std::string();
+              std::string       why;
+              if (!name.empty() && !Names::ValidSystemName(name, why))
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, why };
+              const Proto::PlayerView& p = g_session.Snapshot().player;
+              if (p.docked)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "docked; undock first" };
+              const Vector2 at = { (float)NumberOr(args, "x", p.pos.x),
+                                   (float)NumberOr(args, "y", p.pos.y) };
+              const float   dx = at.x - p.pos.x, dy = at.y - p.pos.y;
+              if (std::sqrt(dx * dx + dy * dy) > bp->reach)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "too far from the ship; a " + bp->name + " goes within " +
+                                        std::to_string((int)bp->reach) + "u of it" };
+
+              // Ours and new: the server's answer is an object in the layout, sent as a delta
+              // before the snapshot that acknowledges the command.
+              std::set<int> before;
+              for (const auto& kv : g_session.Layout())
+                  before.insert(kv.first);
+              auto laid = [&]() -> const Proto::EntityLayout*
+              {
+                  for (const auto& kv : g_session.Layout())
+                      if (kv.second.kind == Proto::EntityKind::Structure &&
+                          kv.second.owner == g_session.Account() && before.count(kv.first) == 0)
+                          return &kv.second;
+                  return nullptr;
+              };
+              const int      seq = g_session.LastEventSeq();
+              Proto::Command c;
+              c.deploy = bp->id;
+              c.deployPos = at;
+              c.deployName = name;
+              if (!Confirm(c, why))
+                  return "deploy: " + why;
+              const Proto::EntityLayout* site = laid();
+              if (site == nullptr)
+                  return Refused("deploy", seq, "the server did not lay it down");
+              char out[256];
+              std::snprintf(out, sizeof(out),
+                            "deploy: site #%d, %s, laid down at (%.0f, %.0f); built in %.0fs. "
+                            "wait_for_event wakes on 'built'.",
+                            site->id, site->name.c_str(), site->pos.x, site->pos.y,
+                            site->completesAt - g_session.Snapshot().time);
+              return std::string(out);
+          } });
+
     return tools;
 }
 
@@ -1010,8 +1137,17 @@ int Selftest(const std::vector<Tool>& tools)
         note("pay_bounty", noBounty);
     }
 
+    // 6) Construction (#39): what can be built is listed, and a site is never laid down from
+    // inside a station -- the tool says so before the server has to.
+    g_phase = "reading the blueprints";
+    const std::string bps = RunTool(tools, "blueprints", Rpc::Json::object());
+    const std::string fromDock = RunTool(tools, "deploy", Rpc::Json{ { "blueprint", "beacon" } });
+    const bool        building = bps.find("beacon") != std::string::npos &&
+                                 (!docked || fromDock.find("undock first") != std::string::npos);
+    note("blueprints and deploy", building);
+
     const bool ok = observed && stationId != 0 && ordered && arrived && refused && docked &&
-                    listed && accepted && unaffordable && noBounty;
+                    listed && accepted && unaffordable && noBounty && building;
     // A failure that is really a lost connection should say so, rather than leave a list of
     // FAILs to be read as five separate bugs.
     if (!ok && !g_session.ByeReason().empty())
@@ -1082,6 +1218,8 @@ int main(int argc, char** argv)
     // that lives in the archetype rather than in the snapshot.
     if (!Archetypes::Load(dataDir + "archetypes.json"))
         Rpc::Log("econagent: " + Archetypes::Error());
+    if (!Blueprints::Load(dataDir + "blueprints.json"))  // what deploy can lay down (#39)
+        Rpc::Log("econagent: " + Blueprints::Error());
     // The galaxy index is NOT read here: the server sends it at login, exactly as it does
     // to the game client (#206), and the session keeps it.
 

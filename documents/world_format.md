@@ -15,6 +15,7 @@ a screen pass — start with the worked how-tos in [docs/howto/](../docs/howto/R
 data/
   universe.json        galaxy index: systems, links, starting system
   archetypes.json      what each kind of object is and can do
+  blueprints.json      how a player builds something: cost, time, placement (#39)
   systems/
     <id>.json          one star system (objects)
   textures/            sprites (PNG), optional
@@ -651,7 +652,7 @@ declaring the component, without the pass being edited.
 | `jumpLink` | `range` | connects this system to another |
 | `hazard` | `radius`, `hidesShips` | changes conditions inside it; `radius` 0 means the object's own radius |
 | `salvageable` | `range` | pays out once to whoever reaches it first |
-| `buildable` | `cost`, `buildSeconds` | *reserved for #44*: a player can construct one |
+| `buildable` | — | a player can construct one; how is its blueprint's (`blueprints.json`, #39) |
 
 Every `range` is added to the object's own radius, and every verb that reaches for
 something reads it from the object being reached rather than from a constant beside the
@@ -664,10 +665,11 @@ matrix. A docked player or one hidden in cover is not shot at. Only a station fi
 because who a battery shoots for is a question of ownership, and ownership is still a
 station's own field (#41).
 
-`storage` and `buildable` are **reserved**: they are parsed and checked, so data written
-with them now stays valid, but no pass reads them yet. Holding cargo off a ship and building
-an object are the player-mutable world (#44), and they arrive with it. Declaring either on
-an archetype today changes nothing in game.
+`storage` is **reserved**: it is parsed and checked, so data written with it now stays
+valid, but no pass reads it yet -- holding cargo off a ship arrives with the player-mutable
+world (#44). `buildable` is a marker: a blueprint may only name an archetype that declares
+it, and what building one costs and takes is the blueprint's, not the archetype's, because
+one kind of object may be made more than one way.
 
 Components carrying no parameters are still written as `{}` — presence is what matters.
 
@@ -703,7 +705,8 @@ A system beyond the wormhole is not a file: the server generates it from the wor
     "asteroidFields": [ … ],
     "nebulae":        [ … ],
     "derelicts":      [ … ],
-    "gates":          [ … ]
+    "gates":          [ … ],
+    "structures":     [ … ]
 }
 ```
 
@@ -811,6 +814,72 @@ at runtime reads it; the survey screen (#141) and a reader of the document do.
 Jump: the player arrives at the gate of the target system whose `destination` points
 back to the system they left. For the return trip to work, each pair of systems must
 have gates pointing to each other.
+
+### structures[]
+What players built (#39). Written by the server into `world.json` as an added object, in
+this format, and read back by the same loader; a hand-written system may carry one too, and
+it then belongs to the world. Unlike the arrays above an entry must name its archetype --
+there is no ordinary structure to fall back on -- and one that names anything but a
+`Structure` archetype is skipped with a warning.
+
+| Field | Type | Description |
+|------|-----|----------|
+| `archetype` | string | **required**: the `Structure` archetype it is, or will be once built |
+| `name` | string | what its builder called it (default: the archetype's name) |
+| `pos` | [x,y] | position |
+| `size` | number | radius (optional, default the archetype's) |
+| `startedAt`, `completesAt` | number | world seconds: a construction site between the two, wearing `structure.site`; absent -- built |
+| `expiresAt` | number | world seconds at which it is taken away by itself; absent -- it stays |
+
+The time line is instants of the world clock, not a progress figure (#136): nothing
+accumulates, so a site is as far along on every client as on the server, and a server that
+was down when a site was due finishes it on its first tick back.
+
+---
+
+## blueprints.json — how a player builds something (#39)
+
+```json
+{
+    "blueprints": [
+        {
+            "id": "beacon",
+            "name": "Beacon",
+            "archetype": "structure.beacon",
+            "cost": { "Iron": 10, "Crystal": 2 },
+            "buildSeconds": 45,
+            "lifetime": 86400,
+            "placement": { "reach": 600, "clearance": 400, "bodyClearance": 5000, "perSystem": 8 }
+        }
+    ],
+    "limits": { "perAccount": 12 }
+}
+```
+
+| Field | Description |
+|------|----------|
+| `id` | what the deploy command and `econagent`'s `deploy` name |
+| `name` | what a player is shown, and what a new one is called unless its builder names it |
+| `archetype` | what it becomes: a `Structure` archetype that declares `buildable` |
+| `cost` | resources taken from the hold when the site is laid down, all at once; at least one |
+| `buildSeconds` | world seconds from site to finished object |
+| `lifetime` | world seconds it stands once finished; 0 or absent -- until removed |
+| `placement.reach` | at most this far from the ship laying it down; must be more than 0 |
+| `placement.clearance` | gap to the edge of any station, gate, wreck or structure |
+| `placement.bodyClearance` | gap to a star's surface, and to the band a planet -- or a satellite with its planet -- sweeps on its orbit |
+| `placement.perSystem` | how many of what this blueprint builds one system may hold, everyone's together; 0 -- no cap |
+| `limits.perAccount` | how many structures one account may have standing, in the whole galaxy; 0 -- no cap |
+
+The server checks every rule again whatever a client says; a refusal is a journal notice
+that names the rule ("too close to Aurora Hub (keep 400 clear)", "the hold has 0 Crystal of
+the 2 it takes"). A belt or a cloud is a place, not an obstacle: marking one is what a buoy
+is for. The caps are anti-spam until ownership and limits arrive properly (#41).
+
+Load it after `archetypes.json`: every blueprint is checked against the archetype it names.
+Like the archetype registry, a malformed file is a hard failure -- an unknown field, a
+resource that does not exist (rather than iron by default), an archetype that is not a
+buildable structure, a blueprint that costs nothing -- and `econserver` refuses to start
+on one. Clients read the file only to offer what can be built.
 
 ---
 

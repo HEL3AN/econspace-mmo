@@ -23,5 +23,8 @@ enum class EntityKind
     Nebula,
     Derelict,
     Npc,
-    PlayerShip
+    PlayerShip,
+    // Something a player built (#39). Last, so the kinds before it keep the numbers they
+    // had on the wire.
+    Structure
 };

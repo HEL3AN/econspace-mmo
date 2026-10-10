@@ -16,6 +16,7 @@ const char* KindName(Kind k)
         case Kind::CargoFull: return "cargo_full";
         case Kind::UnderAttack: return "under_attack";
         case Kind::ShipDestroyed: return "ship_destroyed";
+        case Kind::Built: return "built";
     }
     return "notice";
 }

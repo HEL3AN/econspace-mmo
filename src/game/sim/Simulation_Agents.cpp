@@ -531,6 +531,7 @@ void Simulation::MaintainWorld(float dt)
     // one place elapsed time can accumulate without being counted twice or not at all.
     time_ += dt;
     maintAccum_ += dt;
+    StepStructures();  // every tick: a site finishes when the clock says, not two seconds on
     while (maintAccum_ >= MAINT_STEP)
     {
         // Recount the real populations; accumulate losses since the last step as "pressure".

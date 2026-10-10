@@ -418,6 +418,14 @@ void Game::DrawRadarContent(Rectangle area)
             case Proto::EntityKind::Field: col = ORANGE; break;
             case Proto::EntityKind::Nebula: col = Color{ 150, 90, 200, 255 }; break;
             case Proto::EntityKind::Derelict: col = Color{ 130, 130, 120, 255 }; break;
+            // Yours or someone else's -- the one allegiance a structure has yet (#39).
+            case Proto::EntityKind::Structure:
+            {
+                const auto l = layout_.byId.find(e.id);
+                const bool mine = l != layout_.byId.end() && l->second.owner == pilotName_;
+                col = mine ? Color{ 120, 235, 130, 255 } : Color{ 200, 200, 210, 255 };
+                break;
+            }
             case Proto::EntityKind::Gate: col = Color{ 90, 200, 210, 255 }; break;
             // The radar is an instrument, so allegiance is allowed here -- as this player
             // sees it: hostile is red, the rest wear their faction (#117).
@@ -629,6 +637,33 @@ void Game::DrawTargetContent(Rectangle area)
     {
         Ui::Text(TextFormat("Faction  %s", FactionName(e->faction).c_str()), x, y, 16,
                  FactionColor(e->faction));
+    }
+    else if (e->kind == Proto::EntityKind::Structure)
+    {
+        const auto l = layout_.byId.find(e->id);
+        if (l != layout_.byId.end())
+        {
+            const Proto::EntityLayout& el = l->second;
+            const bool                 mine = el.owner == pilotName_;
+            Ui::Text(mine ? "Yours" : TextFormat("Built by  %s", el.owner.c_str()), x, y, 16,
+                     mine ? Color{ 120, 235, 130, 255 } : Ui::TEXT);
+            y += 26;
+            const double now = worldClock_.Now(GetTime());
+            if (el.completesAt > now)
+            {
+                // The site's progress is the clock's, not a figure the server sends (#136).
+                const double span = el.completesAt - el.startedAt;
+                const float  f = span > 0.0 ? (float)((now - el.startedAt) / span) : 1.0f;
+                Ui::Text(TextFormat("Building  %.0f s left", el.completesAt - now), x, y, 14,
+                         Ui::TEXT_DIM);
+                DrawRectangle(x, y + 16, (int)area.width, 9, Fade(GRAY, 0.35f));
+                DrawRectangle(x, y + 16, (int)(area.width * Clamp(f, 0.0f, 1.0f)), 9,
+                              Color{ 255, 170, 40, 255 });
+            }
+            else if (el.expiresAt > 0.0)
+                Ui::Text(TextFormat("Stands  %.0f min more", (el.expiresAt - now) / 60.0), x, y, 14,
+                         Ui::TEXT_DIM);
+        }
     }
     else if (e->kind == Proto::EntityKind::Field && e->ore >= 0)
     {

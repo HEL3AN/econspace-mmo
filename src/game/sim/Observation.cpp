@@ -45,6 +45,7 @@ const char* KindName(Proto::EntityKind k)
         case Proto::EntityKind::Derelict: return "derelict";
         case Proto::EntityKind::Npc: return "ship";
         case Proto::EntityKind::PlayerShip: return "pilot";
+        case Proto::EntityKind::Structure: return "structure";
         case Proto::EntityKind::Unknown: break;
     }
     return "object";
@@ -97,7 +98,7 @@ struct Seen
 // One line per object: id, what it is, its name, how far, which way, and whatever detail
 // that kind carries (ore for a field, destination for a gate, hull for a ship).
 std::string Line(const Seen& s, const Proto::PlayerView& p,
-                 const std::map<int, Proto::EntityLayout>* layout)
+                 const std::map<int, Proto::EntityLayout>* layout, double now)
 {
     const Proto::EntitySnapshot& e = *s.e;
     const char* kind = e.kind == Proto::EntityKind::Npc ? RoleName(e.role) : KindName(e.kind);
@@ -116,6 +117,17 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
             else if (e.kind == Proto::EntityKind::Derelict && it->second.reward > 0.0 &&
                      !it->second.looted)  // a searched wreck says so once it is (#38)
                 extra = "  lootable";
+            else if (e.kind == Proto::EntityKind::Structure)
+            {
+                // Whose, and how far along -- from the clock, as the client draws it (#39).
+                const Proto::EntityLayout& l = it->second;
+                const double               span = l.completesAt - l.startedAt;
+                if (l.completesAt > now && span > 0.0)
+                    extra = Fmt("  site %d%%, %.0fs left",
+                                (int)((now - l.startedAt) / span * 100.0), l.completesAt - now);
+                if (!l.owner.empty())
+                    extra += "  by " + l.owner;
+            }
         }
     }
     if (e.kind == Proto::EntityKind::Field && e.ore >= 0)
@@ -415,7 +427,7 @@ std::string Describe(const View& view, Detail detail)
     std::string hostiles;
     for (const Seen& s : seen)
         if (s.hostile)
-            hostiles += Line(s, p, view.layout) + "\n";
+            hostiles += Line(s, p, view.layout, snap.time) + "\n";
     if (!hostiles.empty())
         out += "HOSTILE\n" + hostiles;
 
@@ -433,7 +445,7 @@ std::string Describe(const View& view, Detail detail)
             skipped++;
             continue;
         }
-        nearby += Line(s, p, view.layout) + "\n";
+        nearby += Line(s, p, view.layout, snap.time) + "\n";
         shown++;
     }
     if (!nearby.empty())

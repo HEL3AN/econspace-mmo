@@ -20,6 +20,7 @@ class NpcShip;
 class Combatant;
 class Ship;
 struct ShipStats;
+struct Blueprint;
 enum class NpcRole;
 
 // Authoritative galaxy simulation. Owns the state of systems and the galaxy index;
@@ -209,6 +210,23 @@ public:
     // The key a save knows an object by (SystemState::keys), or empty for one it does not
     // keep: a ship, a body, a gate, or something put into the system by hand.
     std::string StaticKey(const std::string& systemId, int id) const;
+
+    // --- Construction (#39) ---
+    // Why this player may not lay down `bp` at `at` now, in words they can act on, or empty
+    // when they may: undocked and not warping, within the blueprint's reach, clear of
+    // bodies and the paths they sweep, clear of what others use, under the caps, and with
+    // the cost in the hold. Shared by Deploy and the tests, so both say the same thing.
+    std::string PlacementProblem(const ClientSession& s, const Blueprint& bp, Vector2 at) const;
+    // Lays down a construction site of `blueprint` at `at`, named `name` (empty -- the
+    // blueprint's name), owned by the session's account. Takes the cost from the hold and
+    // answers in the journal either way. Returns the site's id, or 0 when refused.
+    int Deploy(ClientSession& s, const std::string& blueprint, Vector2 at, const std::string& name);
+    // Finishes every site whose time has come and takes away every structure whose time is
+    // up. Each is an instant fixed when the site went down -- nothing is integrated -- so a
+    // restart in between changes nothing. Called by MaintainWorld every tick.
+    void StepStructures();
+    // How many structures this account has standing, in the whole galaxy.
+    int StructuresOwnedBy(const std::string& account) const;
 
     // M4e-3c: galaxy snapshot (statistics of all systems + news) for the networked
     // client's galaxy map. Not const: refreshes the aggregates' population (RecountAgg).
