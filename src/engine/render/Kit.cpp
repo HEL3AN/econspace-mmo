@@ -29,7 +29,7 @@ Vector2 Turn(Vector2 v, float degrees)
     return { v.x * c - v.y * s, v.x * s + v.y * c };
 }
 
-// One line of sockets along a section: an edge, an end, a centreline, a rim.
+// One line of sockets along a section: an edge, an end, a centreline, a rim, its middle.
 struct Where
 {
     int   source, copy, local;
@@ -77,6 +77,68 @@ std::vector<Part> Copies(const Part& s)
         }
     return out;
 }
+
+// How far a polygon's outline is from its centre in direction `t` (degrees, the polygon's
+// own frame): a socket on a flat face sits on the face, not on the circle through the corners.
+float PolygonReach(const Part& s, float t, float radius)
+{
+    if (s.form != Form::Polygon || s.sides < 3)
+        return radius;
+    const float sector = 360.0f / (float)s.sides;
+    float       local = std::fmod(t, sector);
+    if (local < 0.0f)
+        local += sector;
+    return radius * std::cos(PI / (float)s.sides) / std::cos((local - 0.5f * sector) * DEG2RAD);
+}
+
+// Whether a placed section covers a point, by more than a sliver: a socket exactly on the
+// line where two sections meet is still a place on the one it belongs to.
+bool Covers(const Part& s, Vector2 p)
+{
+    const float   eps = 0.01f;
+    const Vector2 d = Turn({ p.x - s.at.x, p.y - s.at.y }, -s.angle);
+    const float   r = std::hypot(d.x, d.y);
+    switch (s.form)
+    {
+        case Form::Disc: return r < s.radius - eps;
+        case Form::Ring: return r < s.radius - eps && r > s.radius - s.width + eps;
+        case Form::Arc:
+        {
+            if (r >= s.radius - eps || r <= s.radius - s.width + eps)
+                return false;
+            const float from = std::fmin(s.arcFrom, s.arcTo);
+            const float span = std::fabs(s.arcTo - s.arcFrom);
+            float       a = std::fmod(std::atan2(d.y, d.x) * RAD2DEG - from, 360.0f);
+            if (a < 0.0f)
+                a += 360.0f;
+            return a < span;
+        }
+        case Form::Polygon:
+        {
+            const float t = std::atan2(d.y, d.x) * RAD2DEG;
+            if (r >= PolygonReach(s, t, s.radius) - eps)
+                return false;
+            return s.filled || r > PolygonReach(s, t, s.radius - s.width) + eps;
+        }
+        case Form::Capsule:
+        {
+            const float x = std::fmax(-0.5f * s.length, std::fmin(0.5f * s.length, d.x));
+            return std::hypot(d.x - x, d.y) < 0.5f * s.width - eps;
+        }
+        case Form::Bar:
+        case Form::Lattice:
+            return std::fabs(d.x) < 0.5f * s.length - eps && std::fabs(d.y) < 0.5f * s.width - eps;
+        case Form::Chevron:
+        {
+            // The base at the tail (-x), narrowing to `tip` of it at the point (+x).
+            if (std::fabs(d.x) >= 0.5f * s.length - eps)
+                return false;
+            const float u = (d.x + 0.5f * s.length) / s.length;
+            return std::fabs(d.y) < 0.5f * s.width * (1.0f - u + s.tip * u) - eps;
+        }
+        default: return false;
+    }
+}
 }  // namespace
 
 std::vector<Socket> Sockets(const std::vector<Part>& sections)
@@ -84,6 +146,20 @@ std::vector<Socket> Sockets(const std::vector<Part>& sections)
     std::vector<Socket> out;
     int                 lines = 0;
     int                 index = 0;
+    // Every placed copy, in the order they are drawn: by `z`, then as written.
+    std::vector<Part> placed;
+    std::vector<int>  order;
+    for (const Part& section : sections)
+        for (const Part& c : Copies(section))
+            placed.push_back(c);
+    for (size_t i = 0; i < placed.size(); i++)
+        order.push_back((int)i);
+    std::stable_sort(order.begin(), order.end(),
+                     [&](int a, int b) { return placed[(size_t)a].z < placed[(size_t)b].z; });
+    std::vector<int> rank(placed.size());
+    for (size_t k = 0; k < order.size(); k++)
+        rank[(size_t)order[k]] = (int)k;
+
     for (size_t source = 0; source < sections.size(); source++)
     {
         const std::vector<Part> copies = Copies(sections[source]);
@@ -139,7 +215,30 @@ std::vector<Socket> Sockets(const std::vector<Part>& sections)
                 }
                 case Form::Chevron:
                 {
-                    // A wedge: its tail is an end.
+                    // A wedge: its two slanted sides are edges, facing square out of each
+                    // side as a polygon's faces do, and its tail is an end.
+                    const float pitch = s.pitch > 0.0f ? s.pitch : std::fmax(s.width, 0.08f);
+                    const float hb = 0.5f * s.width, ht = 0.5f * s.width * s.tip;
+                    const float run = std::hypot(s.length, hb - ht);
+                    const std::vector<float> xs = Along(run, pitch);
+                    for (int side = -1; side <= 1; side += 2)
+                    {
+                        // The side's middle, its direction from tail to tip, and the normal.
+                        const Vector2 mid = { 0.0f, 0.5f * (hb + ht) * (float)side };
+                        const Vector2 dir = { s.length / run, (ht - hb) * (float)side / run };
+                        const float   face =
+                            s.angle + std::atan2((float)side * s.length, hb - ht) * RAD2DEG;
+                        std::vector<Vector2> at;
+                        std::vector<float>   angle;
+                        for (float x : xs)
+                        {
+                            const Vector2 o =
+                                Turn({ mid.x + dir.x * x, mid.y + dir.y * x }, s.angle);
+                            at.push_back({ s.at.x + o.x, s.at.y + o.y });
+                            angle.push_back(face);
+                        }
+                        Line(out, lines, si, "edge", at, angle, pitch, w);
+                    }
                     const Vector2 o = Turn({ -0.5f * s.length, 0.0f }, s.angle);
                     Line(out, lines, si, "end", { { s.at.x + o.x, s.at.y + o.y } },
                          { s.angle + 180.0f }, s.width * 0.6f, w);
@@ -156,20 +255,8 @@ std::vector<Socket> Sockets(const std::vector<Part>& sections)
                     const bool  arc = s.form == Form::Arc;
                     const float from = arc ? s.arcFrom : 0.0f;
                     const float span = arc ? s.arcTo - s.arcFrom : 360.0f;
-                    // A polygon's rim is its outline, not the circle through its corners:
-                    // a socket on a flat face sits on the face.
-                    auto outline = [&](float t, float radius)
-                    {
-                        if (s.form != Form::Polygon || s.sides < 3)
-                            return radius;
-                        const float sector = 360.0f / (float)s.sides;
-                        float       local = std::fmod(t - s.angle, sector);
-                        if (local < 0.0f)
-                            local += sector;
-                        return radius * std::cos(PI / (float)s.sides) /
-                               std::cos((local - 0.5f * sector) * DEG2RAD);
-                    };
-                    // ...and faces the way its face does.
+                    // A polygon's rim is its outline, and a socket there faces the way its
+                    // face does.
                     auto normal = [&](float t)
                     {
                         if (s.form != Form::Polygon || s.sides < 3)
@@ -188,7 +275,8 @@ std::vector<Socket> Sockets(const std::vector<Part>& sections)
                         {
                             const float t = s.angle + from +
                                             span * (arc ? ((float)k + 0.5f) : (float)k) / (float)n;
-                            const Vector2 o = Turn({ outline(t, radius), 0.0f }, t);
+                            const Vector2 o =
+                                Turn({ PolygonReach(s, t - s.angle, radius), 0.0f }, t);
                             at.push_back({ s.at.x + o.x, s.at.y + o.y });
                             angle.push_back(normal(t));
                         }
@@ -197,16 +285,65 @@ std::vector<Socket> Sockets(const std::vector<Part>& sections)
                         w.closed = false;
                     };
                     const bool solid = s.form == Form::Disc || s.form == Form::Polygon;
-                    rim(s.radius, solid ? "edge" : "ring");
+                    // A ring's sockets are on the middle of its band, which is drawn from
+                    // `radius - width` out to `radius`: on its outer edge a module looked
+                    // pushed off the band it belongs to.
+                    rim(solid ? s.radius : s.radius - 0.5f * s.width, solid ? "edge" : "ring");
                     if (solid && s.radius >= 0.2f)
                         rim(s.radius * 0.55f, "top");
                     break;
                 }
                 default: break;
             }
+            // The section's own centre, facing the section's own way: the one place for the
+            // thing a section is built round -- a hub's tower, a hull's bridge, the beacon in
+            // a ring. An arc's centre is the middle of its band, where the arc actually is.
+            float   middle = 0.0f;
+            Vector2 centre = s.at;
+            float   facing = s.angle;
+            switch (s.form)
+            {
+                case Form::Bar:
+                case Form::Capsule:
+                case Form::Lattice:
+                case Form::Chevron: middle = std::fmin(s.width, s.length); break;
+                case Form::Disc:
+                case Form::Polygon: middle = s.radius; break;
+                case Form::Ring: middle = s.radius - s.width; break;
+                case Form::Arc:
+                {
+                    middle = s.width;
+                    facing = s.angle + 0.5f * (s.arcFrom + s.arcTo);
+                    const Vector2 o = Turn({ s.radius - 0.5f * s.width, 0.0f }, facing);
+                    centre = { s.at.x + o.x, s.at.y + o.y };
+                    break;
+                }
+                default: break;
+            }
+            if (middle > 0.0f)
+                Line(out, lines, si, "middle", { centre }, { facing }, middle, w);
         }
     }
-    return out;
+
+    // A socket under another section is no place at all (#240): covered by one drawn over
+    // it, a module there is hidden or pokes out from under it; lying on one drawn beneath
+    // it, the module hangs over a neighbour -- unless its own section sits on that one (a
+    // panel on a hull, a ring round a hub), which is what a section on a section is for.
+    // Only the topmost section at the point decides: what is under that is not seen.
+    std::vector<Socket> open;
+    for (const Socket& k : out)
+    {
+        int top = -1;
+        for (size_t b = 0; b < placed.size(); b++)
+            if ((int)b != k.section && Covers(placed[b], k.pos) &&
+                (top < 0 || rank[b] > rank[(size_t)top]))
+                top = (int)b;
+        if (top >= 0 && (rank[(size_t)top] > rank[(size_t)k.section] ||
+                         !Covers(placed[(size_t)top], placed[(size_t)k.section].at)))
+            continue;
+        open.push_back(k);
+    }
+    return open;
 }
 
 std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, int seed)
@@ -336,7 +473,7 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
             const float ax = std::fabs(c * n.x + sn * n.y), ay = std::fabs(-sn * n.x + c * n.y);
             const float reach = 0.5f * sc * (box.width * ax + box.height * ay);
             float       push = 0.0f;  // "centre", and any socket inside the hull
-            if (entry.mount == "on" && s.type != "top")
+            if (entry.mount == "on" && s.type != "top" && s.type != "middle")
                 push = -reach;
             else if (entry.mount == "out")
                 push = reach;

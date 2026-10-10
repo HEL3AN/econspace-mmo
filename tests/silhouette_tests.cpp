@@ -1499,3 +1499,116 @@ TEST_CASE("a module whose place is taken goes to the nearest free one, not nowhe
     REQUIRE(placed.size() == 2);
     CHECK(Dist(placed[0].at, placed[1].at) > 0.05f);  // side by side, not on top
 }
+
+TEST_CASE("socket rules: a ring's on its band, a chevron's sides, a middle, nothing underneath "
+          "(#240)")
+{
+    // A ring's sockets on the middle of its band, which is drawn from radius - width out.
+    Render::Part ring;
+    ring.form = Render::Form::Ring;
+    ring.radius = 1.0f;
+    ring.width = 0.2f;
+    ring.section = true;
+    int rings = 0;
+    for (const auto& k : Render::Sockets({ ring }))
+        if (k.type == "ring")
+        {
+            rings++;
+            CHECK(Dist(k.pos, { 0.0f, 0.0f }) == doctest::Approx(0.9f).epsilon(0.01));
+        }
+    CHECK(rings >= 3);
+
+    // A chevron's slanted sides are edges, on the side and facing square out of it.
+    Render::Part wedge;
+    wedge.form = Render::Form::Chevron;
+    wedge.length = 1.0f;
+    wedge.width = 0.6f;
+    wedge.pitch = 0.15f;
+    wedge.section = true;
+    int sides[2] = { 0, 0 };
+    for (const auto& k : Render::Sockets({ wedge }))
+        if (k.type == "edge")
+        {
+            sides[k.pos.y > 0.0f ? 1 : 0]++;
+            // On the line from the tail corner (-0.5, +-0.3) to the point (0.5, 0).
+            CHECK(std::fabs(std::fabs(k.pos.y) - 0.3f * (0.5f - k.pos.x)) < 1e-3f);
+            // Square to that side, and out of it.
+            const Vector2 n = { std::cos(k.angle * DEG2RAD), std::sin(k.angle * DEG2RAD) };
+            CHECK(std::fabs(n.x + n.y * (k.pos.y > 0.0f ? -0.3f : 0.3f)) < 1e-3f);
+            CHECK(n.y * k.pos.y > 0.0f);
+            CHECK(n.x > 0.0f);
+        }
+    CHECK(sides[0] >= 2);
+    CHECK(sides[0] == sides[1]);
+
+    // One middle per section, at its centre, facing its own way.
+    Render::Part bar;
+    bar.form = Render::Form::Bar;
+    bar.at = { 0.3f, 0.2f };
+    bar.angle = 30.0f;
+    bar.length = 1.0f;
+    bar.width = 0.3f;
+    bar.section = true;
+    int middles = 0;
+    for (const auto& k : Render::Sockets({ bar }))
+        if (k.type == "middle")
+        {
+            middles++;
+            CHECK(Dist(k.pos, bar.at) < 1e-4f);
+            CHECK(k.angle == doctest::Approx(30.0f));
+        }
+    CHECK(middles == 1);
+
+    // An arm drawn over a hub: the hub's rim under the arm and the arm's end inside the hub
+    // are no places. A panel lying on the hub keeps all of its own.
+    Render::Part hub;
+    hub.form = Render::Form::Disc;
+    hub.radius = 0.5f;
+    hub.pitch = 0.1f;
+    hub.section = true;
+    Render::Part arm;
+    arm.form = Render::Form::Bar;
+    arm.at = { 0.8f, 0.0f };
+    arm.length = 0.8f;
+    arm.width = 0.2f;
+    arm.section = true;
+    Render::Part panel;
+    panel.form = Render::Form::Bar;
+    panel.at = { -0.1f, 0.0f };
+    panel.angle = 90.0f;
+    panel.length = 0.5f;
+    panel.width = 0.1f;
+    panel.pitch = 0.1f;
+    panel.section = true;
+    int hubEdges = 0, armEnds = 0, panelSockets = 0;
+    for (const auto& k : Render::Sockets({ hub, arm, panel }))
+    {
+        if (k.section == 0 && k.type == "edge")
+        {
+            hubEdges++;
+            CHECK_FALSE((k.pos.x > 0.3f && std::fabs(k.pos.y) < 0.09f));
+        }
+        if (k.section == 1 && k.type == "end")
+        {
+            armEnds++;
+            CHECK(k.pos.x > 1.0f);
+        }
+        panelSockets += k.section == 2;
+    }
+    CHECK(hubEdges > 10);
+    CHECK(armEnds == 1);
+    CHECK(panelSockets == (int)Render::Sockets({ panel }).size());
+
+    // "on": "middle" is a socket a kit line may name; there is one per section.
+    std::string error;
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+    const Render::Shape       tower = Parse(R"({
+        "sections": [ { "form": "disc", "at": [0.2, 0.1], "radius": 0.6 } ],
+        "kit": { "plain": 0.0, "modules": [ { "of": "hatch", "on": "middle", "count": 3 } ] },
+        "parts": [] })");
+    std::vector<Render::Part> sections;
+    for (const auto& p : tower.parts)
+        if (p.section)
+            sections.push_back(p);
+    CHECK(Render::PlaceKit(tower.kit, sections, 1).size() == 1);
+}

@@ -374,9 +374,10 @@ static bool ParseKit(const json& k, Kit& kit, std::string& error)
             }
         }
         e.on = m.value("on", std::string());
-        if (!e.on.empty() && e.on != "edge" && e.on != "end" && e.on != "top" && e.on != "ring")
+        if (!e.on.empty() && e.on != "edge" && e.on != "end" && e.on != "top" && e.on != "ring" &&
+            e.on != "middle")
         {
-            error = "a kit line's \"on\" is edge, end, top or ring";
+            error = "a kit line's \"on\" is edge, end, top, ring or middle";
             return false;
         }
         e.scale = m.value("scale", 0.0f);

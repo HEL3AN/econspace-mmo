@@ -199,8 +199,20 @@ goes on them:
 A section exposes **sockets** from its own geometry, `pitch` apart (default: its width, or a
 third of its radius): a bar or capsule has an `edge` row along each long side, a `top` row
 along its axis and an `end` at each end (a capsule's at the tip of its round cap); a disc or polygon has an `edge` rim on its outline and
-an inner `top` ring; a ring or arc has a `ring` rim; a chevron's tail is an `end`. Sockets face
-outward.
+an inner `top` ring; a ring or arc has a `ring` rim along the middle of its band; a chevron has
+an `edge` row along each slanted side and its tail is an `end`. Every section also has one
+`middle` socket at its centre, facing the section's own `angle` -- the place for the one thing
+a section is built round (a hub's tower, a hull's bridge, a beacon in a ring); an arc's middle
+is the middle of its band. Sockets face outward.
+
+**A socket under another section is not offered.** What decides is the topmost other section
+covering the socket's point (by `z`, then as written): if it is drawn over the socket's own
+section, a module there would be hidden or poke out from under it; if it is drawn beneath, a
+module there would hang over a neighbour -- the inner end of an arm inside the hub, the hub's
+rim under the arm, a pod's rim against its arm. The exception is a section that sits *on*
+another, its centre inside it (a panel on a hull, a ring round a hub): its sockets stay, since
+that is what a section on a section is for. Covering is measured with a sliver of slack, so a
+socket exactly where two sections meet still belongs to its own.
 
 Each kit line names a module (`"of": "id"`, or `"#tag"` for any module carrying the tag), a
 `count` (a range: every whole number in it equally likely), the socket type `on` (default: the
@@ -211,7 +223,7 @@ origin -- the box of what its parts draw: a circle, ring or polygon by its radiu
 the span `from`..`to` actually covers, a bar, lattice or chevron by the corners of its turned
 outline, a capsule by its caps, never a circle drawn round a part: `"on"`, the default, lies wholly on the hull with its edge at the hull's; `"out"` starts
 at the edge and stands out from it -- docks, engines, dishes on booms; `"centre"` is centred on
-the socket; a `top` socket always centres), `z` (draw order, default 1: over the hull), `prefer` (`"out"`, the default, or `"in"`: which of
+the socket; a `top` or `middle` socket always centres), `z` (draw order, default 1: over the hull), `prefer` (`"out"`, the default, or `"in"`: which of
 two otherwise equal lines -- the two long edges of an arm, its two ends -- is taken first, the one
 facing away from the object's centre or the one facing it), `when` (a component the archetype must have for the
 line to apply -- `"when": "defensive"` puts turrets only on stations that can fight, `"!market"`

@@ -361,10 +361,11 @@ void Editor::DrawGalleryFocus()
         const float px = 1.0f / cam.zoom;
         for (const Render::Socket& s : Render::Sockets(sections))
         {
-            const Color   c = s.type == "edge"  ? Color{ 90, 200, 255, 255 }
-                              : s.type == "end" ? Color{ 255, 170, 60, 255 }
-                              : s.type == "top" ? Color{ 140, 255, 140, 255 }
-                                                : Color{ 230, 120, 255, 255 };
+            const Color   c = s.type == "edge"     ? Color{ 90, 200, 255, 255 }
+                              : s.type == "end"    ? Color{ 255, 170, 60, 255 }
+                              : s.type == "top"    ? Color{ 140, 255, 140, 255 }
+                              : s.type == "middle" ? Color{ 255, 255, 255, 255 }
+                                                   : Color{ 230, 120, 255, 255 };
             const Vector2 at = { s.pos.x * size, s.pos.y * size };
             DrawCircleV(at, 3.0f * px, c);
             DrawLineEx(at,
