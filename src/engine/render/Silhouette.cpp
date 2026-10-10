@@ -323,16 +323,16 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         }
         // A misspelled field would be read as absent and draw the default (#191), which
         // for a part is the kind of wrong nobody notices until it is the only one left.
-        if (!OnlyKnownKeys(e, { "form",          "role",        "at",          "sides",
-                                "angle",         "radius",      "width",       "length",
-                                "count",         "filled",      "repeat",      "mirror",
-                                "minPixels",     "jitterAngle", "jitterScale", "alpha",
-                                "orbitRadius",   "orbitPeriod", "orbitPhase",  "orbitTilt",
-                                "lat",           "lon",         "spin",        "blink",
-                                "onlyThrusting", "tint",        "from",        "to",
-                                "row",           "module",      "variant",     "scale",
-                                "chance",        "group",       "pivot",       "onlyDark" },
-                           error))
+        if (!OnlyKnownKeys(
+                e, { "form",     "role",        "at",          "sides",       "angle",
+                     "radius",   "width",       "length",      "count",       "filled",
+                     "repeat",   "mirror",      "minPixels",   "jitterAngle", "jitterScale",
+                     "alpha",    "orbitRadius", "orbitPeriod", "orbitPhase",  "orbitTilt",
+                     "lat",      "lon",         "spin",        "blink",       "onlyThrusting",
+                     "tint",     "from",        "to",          "row",         "module",
+                     "variant",  "scale",       "chance",      "group",       "pivot",
+                     "onlyDark", "tip",         "jagged",      "soft" },
+                error))
             return false;
         Part p;
         if (e.contains("module"))
@@ -485,6 +485,10 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
             return false;
         p.onlyThrusting = e.value("onlyThrusting", p.onlyThrusting);
         p.onlyDark = e.value("onlyDark", p.onlyDark);
+        p.soft = e.value("soft", p.soft);
+        if (!field("tip", p.tip, Part::Field::Tip) ||
+            !field("jagged", p.jagged, Part::Field::Jagged))
+            return false;
         if (e.contains("tint"))
         {
             // A colour, or a list of colours for the seed to pick from (#240).
@@ -651,6 +655,8 @@ bool Resolve(const Part& p, int seed, int salt, Part& out, const float* rolls)
             case Part::Field::RowTaper: out.rowTaper = x; break;
             case Part::Field::PivotX: out.pivot.x = x; break;
             case Part::Field::PivotY: out.pivot.y = x; break;
+            case Part::Field::Tip: out.tip = x; break;
+            case Part::Field::Jagged: out.jagged = x; break;
         }
     }
     if (!p.palette.empty())
@@ -986,6 +992,10 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
                 piece.brightness = brightness;
                 piece.tint = p.tint;
                 piece.onlyDark = p.onlyDark;
+                piece.tip = p.tip;
+                piece.jagged = p.jagged;
+                piece.jagSeed = (int)(Hash01(seed, salt + 337 + m * 7) * 1000000.0f);
+                piece.soft = p.soft;
                 // An arc's ends turn with the part, and a mirrored arc runs the other way.
                 piece.arcFrom = flip > 0.0f ? piece.angle + p.arcFrom : piece.angle - p.arcTo;
                 piece.arcTo = flip > 0.0f ? piece.angle + p.arcTo : piece.angle - p.arcFrom;

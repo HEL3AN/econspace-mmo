@@ -142,6 +142,12 @@ jaw with a ranged angle then swings about its joint instead of drifting off its 
 the terminator rather than at it: a city's lights, an aurora, a station's lit windows. On a
 planet the body is the planet; elsewhere it is the object itself.
 
+**Shapes the catalogue kept faking.** `"tip": 0.4` on a `chevron` makes it a trapezoid, its
+narrow end that fraction of the base: a nozzle bell, a wing chord, a fairing. `"jagged": 0.3`
+on a `polygon` pulls each corner in by up to that fraction of the radius, by the object's seed:
+rocks, torn edges, shards. `"soft": true` on a `disc` draws a glow fading to nothing at its rim,
+never shaded: gas, haze, a corona, a nebula wisp. `tip` and `jagged` take ranges.
+
 **Groups.** Parts with the same `"group": "name"` share the roll their `chance` is compared
 with: a lamp and its housing come and go together. Equal chances agree exactly; a smaller
 chance in the same group is a detail that only ever appears with the larger one.

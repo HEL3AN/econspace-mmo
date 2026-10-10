@@ -373,6 +373,30 @@ void ShapeBackend::DrawPiece(const Piece& p, Color c)
         }
 
         case Form::Polygon:
+            if (p.jagged > 0.0f)
+            {
+                // Each corner pulled in by its own amount, from the piece's seed, so a rock
+                // keeps its outline from frame to frame and differs from the next rock.
+                const int            n = std::max(3, p.sides);
+                std::vector<Vector2> pts((size_t)n);
+                for (int k = 0; k < n; k++)
+                {
+                    const unsigned h = (unsigned)p.jagSeed * 2654435761u + (unsigned)k * 40503u;
+                    const float    pull = (float)((h >> 8) % 1000u) / 1000.0f;
+                    const float    r = p.radius * (1.0f - p.jagged * pull);
+                    const float    t = (p.angle + 360.0f * (float)k / (float)n) * DEG2RAD;
+                    pts[(size_t)k] = { p.pos.x + std::cos(t) * r, p.pos.y + std::sin(t) * r };
+                }
+                for (int k = 0; k < n; k++)
+                {
+                    const Vector2 a = pts[(size_t)k], b = pts[(size_t)((k + 1) % n)];
+                    if (p.filled)
+                        DrawTriangleAnyWay(p.pos, a, b, c);
+                    else
+                        DrawLineEx(a, b, fmaxf(1.0f, p.width), c);
+                }
+                return;
+            }
             if (p.filled)
                 DrawPoly(p.pos, p.sides, p.radius, p.angle, c);
             else
@@ -386,6 +410,18 @@ void ShapeBackend::DrawPiece(const Piece& p, Color c)
             return;
 
         case Form::Chevron:
+            if (p.tip > 0.0f)
+            {
+                // A trapezoid: the narrow end at the tip, the base at the tail.
+                const float   hb = p.width * 0.5f, ht = p.width * 0.5f * p.tip;
+                const Vector2 t0{ tip.x - across.x * ht, tip.y - across.y * ht };
+                const Vector2 t1{ tip.x + across.x * ht, tip.y + across.y * ht };
+                const Vector2 b0{ tail.x - across.x * hb, tail.y - across.y * hb };
+                const Vector2 b1{ tail.x + across.x * hb, tail.y + across.y * hb };
+                DrawTriangleAnyWay(t0, b0, b1, c);
+                DrawTriangleAnyWay(t0, b1, t1, c);
+                return;
+            }
             // Vertices counter-clockwise in screen space, which with y pointing down means
             // tip, then the far corner, then the near one. Wound the other way raylib
             // culls the triangle and the part simply is not there -- which is what every
@@ -471,6 +507,15 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
             if (night <= 0.01f)
                 continue;
             p.brightness *= night;
+        }
+        if (p.soft)
+        {
+            // Gas, not a solid: a glow from the colour at its middle to nothing at its rim,
+            // never shaded: a lit wisp is a grey ball.
+            const Color own = p.tint.a > 0 ? p.tint : item.color;
+            const Color mid = Fade(ForRole(p.role, own), p.brightness);
+            DrawCircleGradient((int)p.pos.x, (int)p.pos.y, p.radius, mid, Fade(mid, 0.0f));
+            continue;
         }
         // A light dims with damage and with its own blink, and is never shaded: a lamp is
         // not lit by the star, it *is* a light, and shading one is how a beacon ends up

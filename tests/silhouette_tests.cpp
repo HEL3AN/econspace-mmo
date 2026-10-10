@@ -1038,3 +1038,22 @@ TEST_CASE("a night-side part says so on its piece, through a module too (#240)")
         any = any || (p.role == Render::Role::Light && p.onlyDark);
     CHECK(any);
 }
+
+TEST_CASE("a trapezoid, a jagged polygon and a soft glow are carried to the piece (#240)")
+{
+    const Render::Shape s = Parse(R"([
+        { "form": "chevron", "length": 1, "width": 0.6, "tip": [0.3, 0.5] },
+        { "form": "polygon", "sides": 7, "radius": 0.5, "jagged": 0.3 },
+        { "form": "disc", "radius": 0.8, "soft": true, "alpha": 0.3 } ])");
+    const auto          a = Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f));
+    const auto          b = Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 2, 1.0f));
+    REQUIRE(a.size() == 3);
+    CHECK(a[0].tip >= 0.3f);
+    CHECK(a[0].tip <= 0.5f);
+    CHECK(a[1].jagged == doctest::Approx(0.3f));
+    // Two rocks are pulled in at different corners; one rock is the same every frame.
+    CHECK(a[1].jagSeed != b[1].jagSeed);
+    CHECK(a[1].jagSeed == Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f))[1].jagSeed);
+    CHECK(a[2].soft);
+    CHECK_FALSE(a[0].soft);
+}

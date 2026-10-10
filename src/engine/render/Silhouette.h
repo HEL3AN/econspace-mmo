@@ -144,6 +144,18 @@ struct Part
     // a station's lit windows. Lit cities in daylight are what made them have to be faint.
     bool onlyDark = false;
 
+    // Three shapes the catalogue agents kept faking (#240):
+    // - `tip` on a chevron is the width of its narrow end as a fraction of its base, so a
+    //   nozzle bell, a wing chord or a fairing is a trapezoid rather than a triangle with
+    //   its point hidden under the next part.
+    // - `jagged` on a polygon pulls each corner in by up to that fraction of the radius,
+    //   by the object's seed: a rock, a torn edge, an ice shard.
+    // - `soft` draws a disc as a glow that fades to nothing at its rim and is never shaded:
+    //   gas, haze, a corona. Lit like a solid, a nebula wisp reads as a grey ball.
+    float tip = 0.0f;
+    float jagged = 0.0f;
+    bool  soft = false;
+
     // A part's own colour (#214), in place of the object's: hot cracks on a dark world,
     // crystal glints in a grey belt, a red warning lamp on a grey hull. Still an art
     // decision about the object (#117), never a faction tag; alpha 0 means "the object's".
@@ -195,7 +207,9 @@ struct Part
         RowTurn,
         RowTaper,
         PivotX,
-        PivotY
+        PivotY,
+        Tip,
+        Jagged
     };
     // `var` is the shape's variable this range follows, or -1 for a roll of its own.
     struct Vary
@@ -314,6 +328,11 @@ struct Piece
     Color tint = { 0, 0, 0, 0 };  // the part's own colour, alpha 0 for the object's
     float arcFrom = 0.0f;         // Arc, world degrees
     float arcTo = 90.0f;
+
+    float tip = 0.0f;     // Chevron: the narrow end's width over the base's; 0 is a point
+    float jagged = 0.0f;  // Polygon: how far corners are pulled in, 0..1
+    int   jagSeed = 0;    // ...and which corners, the same every frame
+    bool  soft = false;   // a glow fading to its rim, never shaded
 };
 
 // How large a piece is *for shading*, which is not the same as how far it reaches.
