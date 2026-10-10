@@ -972,3 +972,49 @@ TEST_CASE("a module's variables are rolled per placed copy, shared within it (#2
     std::remove("vars_test_tmp/modules.json");
     REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
 }
+
+TEST_CASE("a row may bend and taper, and a part may turn about a joint (#240)")
+{
+    // Twelve copies turning 30 degrees each close into a ring: every copy is as far from
+    // the ring's middle as the others.
+    const Render::Shape ring = Parse(R"([ { "form": "disc", "radius": 0.05, "at": [0, 0],
+        "row": { "count": 12, "step": [0.2, 0], "turn": 30, "centred": true } } ])");
+    const auto          pieces = Render::Compose(ring, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f));
+    REQUIRE(pieces.size() == 12);
+    const float r0 = Dist(pieces[0].pos, { 0.0f, 0.0f });
+    for (const auto& p : pieces)
+        CHECK(Dist(p.pos, { 0.0f, 0.0f }) == doctest::Approx(r0).epsilon(0.02));
+    CHECK(r0 > 20.0f);
+
+    // Each copy of a tapering row is smaller than the one before.
+    const Render::Shape taper = Parse(R"([ { "form": "disc", "radius": 0.2,
+        "row": { "count": 4, "step": [0.3, 0], "taper": 0.5 } } ])");
+    const auto          t = Render::Compose(taper, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f));
+    REQUIRE(t.size() == 4);
+    CHECK(t[3].radius == doctest::Approx(t[0].radius * 0.125f));
+
+    // A jib of length 1 hinged at its left end: turned 90 degrees, that end stays put and
+    // the middle swings to below it.
+    const Render::Shape jib = Parse(R"([ { "form": "bar", "length": 1.0, "width": 0.1,
+        "at": [0.5, 0], "angle": 90, "pivot": [-0.5, 0] } ])");
+    const auto          j = Render::Compose(jib, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f));
+    REQUIRE(j.size() == 1);
+    CHECK(j[0].pos.x == doctest::Approx(0.0f).epsilon(0.01));
+    CHECK(j[0].pos.y == doctest::Approx(50.0f).epsilon(0.01));
+}
+
+TEST_CASE("parts in a group come and go together (#240)")
+{
+    const Render::Shape s = Parse(R"([
+        { "form": "disc", "radius": 0.2, "chance": 0.5, "group": "lamp" },
+        { "form": "ring", "radius": 0.3, "width": 0.05, "chance": 0.5, "group": "lamp" } ])");
+    int                 both = 0, none = 0;
+    for (int seed = 1; seed <= 60; seed++)
+    {
+        const size_t n = Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 1.0f)).size();
+        CHECK(n != 1);  // never the lamp without its housing
+        (n == 2 ? both : none)++;
+    }
+    CHECK(both > 10);
+    CHECK(none > 10);
+}

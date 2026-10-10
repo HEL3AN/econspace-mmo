@@ -129,7 +129,18 @@ error.
 
 **Rows.** `row.step` takes ranges and variables like any number. `"centred": true` puts the
 middle of the row at `at` rather than its first copy, so a row with a ranged count stays
-balanced.
+balanced. `"turn": 30` bends the row by that many degrees per copy (and turns each copy with
+it): twelve copies at 30 close into a ring, a few at 15 make a crescent or a spiral arm.
+`"taper": 0.8` makes each copy that fraction of the one before: rays, tongues of lava, a
+glacier narrowing to its snout. Both take ranges and variables.
+
+**Pivot.** `"pivot": [x, y]` is the point `angle` turns the part about, in the part's own frame
+before it is turned (`[-0.5, 0]` is the left end of a bar of length 1). A crane jib or a clamp
+jaw with a ranged angle then swings about its joint instead of drifting off its mount.
+
+**Groups.** Parts with the same `"group": "name"` share the roll their `chance` is compared
+with: a lamp and its housing come and go together. Equal chances agree exactly; a smaller
+chance in the same group is a detail that only ever appears with the larger one.
 
 ## pins.json — hand-written exceptions to the generated region (#147)
 
