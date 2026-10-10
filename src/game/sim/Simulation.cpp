@@ -41,9 +41,15 @@ float Simulation::Rand01()
 
 void Simulation::PushEvent(const std::string& msg)
 {
-    events_.push_back(msg);
+    Announce("news", -1, std::string(), msg);
+}
+
+void Simulation::Announce(const std::string& kind, int faction, const std::string& system,
+                          const std::string& text)
+{
+    events_.push_back(text);
     if (events_.size() > 8)
         events_.erase(events_.begin());  // keep the last 8
     // ...and the history keeps it, with a time and a number (#295).
-    Record("news", -1, std::string(), msg);
+    Record(kind, faction, system, text);
 }

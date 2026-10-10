@@ -26,7 +26,11 @@ namespace Save
 //    (#295). A version 4 build would load the world without them and write it back so,
 //    and every faction would forget what it had found. An older file loads with factions
 //    that know their holdings and what is next door, as a new world's do.
-inline constexpr int WORLD_VERSION = 5;
+// 6: a faction has a stock, a plan may be a settlement naming its outpost site, and a
+//    structure's owner may be a faction (#295, slice 3). A version 5 build would drop the
+//    settlements and the stock, leave the sites standing with nobody waiting on them, and
+//    write the world back so. An older file loads with factions that have saved nothing.
+inline constexpr int WORLD_VERSION = 6;
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.
 // 3: a mission names its stations by system and station rather than by entity id, which

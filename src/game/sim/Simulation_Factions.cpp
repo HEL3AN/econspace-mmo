@@ -12,11 +12,20 @@
 // A faction decides on what it knows, not on what is there (#295): what it holds and where
 // its ships are it sees; everything else is what its surveyors last brought back, trusted
 // less the older it is. Looking is one of the things it may choose to do with its turn.
+//
+// A system nobody held is taken by building there (#295, slice 3): an outpost, paid for
+// from the stock the faction's holdings yield, standing in the system for anyone there to
+// see while it goes up. Finished, it is the claim. Strength alone takes a system only from
+// an enemy.
 #include "sim/Simulation.h"
 
+#include "core/Blueprint.h"
+#include "core/World.h"
 #include "entities/AsteroidField.h"
 #include "entities/Derelict.h"
+#include "entities/JumpGate.h"
 #include "entities/Station.h"
+#include "entities/Structure.h"
 #include "gen/Rng.h"
 #include <algorithm>
 #include <cmath>
@@ -47,6 +56,24 @@ constexpr int RESOLVE_PER_PASS = 4;
 constexpr int PLANS_PER_HOLDINGS = 8;
 // How much history is kept, in memory and in the save.
 constexpr size_t CHRONICLE_KEEP = 200;
+// What one holding yields a faction's stock per period (#295): a base, plus as much again
+// for a prosperous system and for one rich in ore. An outpost costs about ten periods of
+// what three ordinary holdings yield.
+constexpr float INCOME_BASE = 0.5f;
+// A faction keeps no more than this many outposts' worth: what it cannot store or spend
+// is not income.
+constexpr float STOCK_OUTPOSTS = 2.0f;
+// A faction settles only where it has really come: half its capacity committed, the bar
+// a capture by strength has always had (StepControl). A gang is not a settlement.
+constexpr float SETTLE_PRESENCE = 0.5f;
+// Where an outpost goes is keyed by who and where, never by when or by order.
+constexpr uint64_t OUTPOST_KEY = 0x0F7905u;
+// An outpost goes up near the gate the faction came through, this far out from it, or --
+// when there is no room there -- anywhere clear between these shares of the system's
+// radius. This many places are tried before the faction gives up for now.
+constexpr float OUTPOST_NEAR_GATE = 12000.0f;
+constexpr float OUTPOST_INNER = 0.15f, OUTPOST_OUTER = 0.7f;
+constexpr int   OUTPOST_TRIES = 24;
 
 bool Hostile(FactionId a, FactionId b)
 {
@@ -90,9 +117,44 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
                 if (e->Has(Component::Defensive))
                     p.defenders.push_back(static_cast<const Station*>(e.get())->GetFaction());
                 break;
+            case EntityKind::Structure:
+            {
+                const Structure&       t = static_cast<const Structure&>(*e);
+                const Blueprint* const bp = Blueprints::Find(Outposts::BLUEPRINT);
+                if (bp == nullptr || t.GetBuilds() != bp->archetype)
+                    break;
+                p.outpostSite = true;
+                FactionId owner;
+                if (!t.IsBuilding() && Outposts::FactionOf(t.GetOwner(), owner))
+                    p.outposts.push_back(owner);
+                break;
+            }
             default: break;
         }
     return p;
+}
+
+float Simulation::OutpostCost()
+{
+    const Blueprint* bp = Blueprints::Find(Outposts::BLUEPRINT);
+    if (bp == nullptr || !bp->byFactions)
+        return 0.0f;
+    float cost = 0.0f;
+    for (const auto& c : bp->cost)
+        cost += (float)c.second;
+    return cost;
+}
+
+void Simulation::TakeControl(SystemAggregate& a, FactionId f)
+{
+    const FactionId was = a.controller;
+    a.controller = f;
+    a.claimed = true;
+    a.contested = 0;
+    if (f == FactionId::Pirates)
+        a.baseSecurity = std::min(a.baseSecurity, 0.15f);
+    else if (was == FactionId::Pirates)
+        a.baseSecurity = std::max(a.baseSecurity, 0.5f);
 }
 
 // What a system offers, seen by anyone: how much passes through, how much ore there is,
@@ -225,8 +287,128 @@ void Simulation::ResolveDuePlans()
         switch (p.kind)
         {
             case Plan::Kind::Survey: ResolveSurvey(p); break;
+            case Plan::Kind::Settle: ResolveSettle(p); break;
         }
     }
+}
+
+// Lays the site down (#295). Everything the faction believed is checked against what is
+// there first, as a move is on arrival: a system somebody has claimed since, or where an
+// outpost already stands or is going up, is not one to settle -- and nothing is spent.
+bool Simulation::Settle(FactionId f, const std::string& from, const std::string& to)
+{
+    const Blueprint* bp = Blueprints::Find(Outposts::BLUEPRINT);
+    SystemState*     st = SystemById(to);
+    const float      cost = OutpostCost();
+    FactionMind&     mind = minds_[(int)f];
+    if (bp == nullptr || st == nullptr || cost <= 0.0f || mind.stock < cost)
+        return false;
+    mind.intel[to] = Observe(*st);
+    if (st->agg.claimed || st->profile.outpostSite)
+        return false;
+
+    // Beside the gate it came through, which is the way its convoy arrived and the way it
+    // will be supplied; failing that, anywhere there is room. Drawn from who and where, so
+    // the same faction settling the same system picks the same place on every run.
+    Gen::Rng rng(Gen::Key(OUTPOST_KEY, (uint64_t)f, Intelligence::KeyOf(to)));
+    Vector2  gate{ 0.0f, 0.0f };
+    bool     hasGate = false;
+    for (const auto& e : st->entities)
+        if (e->GetKind() == EntityKind::Gate &&
+            static_cast<const JumpGate&>(*e).GetDestination() == from)
+        {
+            gate = e->GetPosition();
+            hasGate = true;
+        }
+    Vector2 at{ 0.0f, 0.0f };
+    bool    found = false;
+    for (int i = 0; i < OUTPOST_TRIES && !found; i++)
+    {
+        const float turn = (float)(rng.Unit() * 2.0 * PI);
+        float       r = OUTPOST_NEAR_GATE * (1.0f + (float)i / 4.0f);
+        Vector2     centre = gate;
+        if (!hasGate || i >= OUTPOST_TRIES / 2)
+        {
+            centre = Vector2{ 0.0f, 0.0f };
+            r = World::SYSTEM_RADIUS *
+                (OUTPOST_INNER + (OUTPOST_OUTER - OUTPOST_INNER) * (float)rng.Unit());
+        }
+        at = Vector2{ centre.x + r * std::cos(turn), centre.y + r * std::sin(turn) };
+        found = SpotProblem(*st, *bp, at).empty();
+    }
+    if (!found)
+        return false;
+
+    auto site =
+        std::make_unique<Structure>(at, 0.0f, FactionName(f) + " " + bp->name, bp->archetype);
+    site->StartBuilding(time_, time_ + bp->buildSeconds);
+    if (bp->lifetime > 0.0f)
+        site->SetExpiresAt(time_ + bp->buildSeconds + bp->lifetime);
+    // A faction's, not an account's: the per-account cap is not its limit, the stock is.
+    const int id = AddStatic(to, std::move(site), Outposts::OwnerOf(f));
+    if (id == 0)
+        return false;
+    mind.stock -= cost;
+
+    Plan p;
+    p.id = nextPlanId_++;
+    p.kind = Plan::Kind::Settle;
+    p.faction = f;
+    p.from = from;
+    p.target = to;
+    p.startedAt = time_;
+    p.dueAt = time_ + bp->buildSeconds;
+    p.site = StaticKey(to, id);
+    plans_[p.id] = p;
+    due_.insert({ p.dueAt, p.id });
+    Record("settle", (int)f, to, FactionName(f) + " began an outpost in " + SystemName(to));
+    return true;
+}
+
+// A settlement's time has come (#295). The site finished on the tick it was due --
+// StepStructures runs every tick and saw to it -- and a finished outpost in a system nobody
+// holds is the claim. One that is gone was lost, and the stock with it.
+void Simulation::ResolveSettle(const Plan& p)
+{
+    SystemState* st = SystemById(p.target);
+    if (st == nullptr)
+        return;
+    int siteId = 0;
+    for (const auto& kv : st->keys)
+        if (kv.second == p.site)
+            siteId = kv.first;
+    const Structure* site = nullptr;
+    for (const auto& e : st->entities)
+        if (siteId != 0 && e->GetId() == siteId && e->GetKind() == EntityKind::Structure)
+            site = static_cast<const Structure*>(e.get());
+    const std::string who = FactionName(p.faction), where = SystemName(p.target);
+    if (site == nullptr)
+    {
+        Record("settle", (int)p.faction, p.target,
+               who + " lost the outpost it was building in " + where);
+        return;
+    }
+    if (site->IsBuilding())
+    {
+        // Not yet after all -- its time line says later. Wait for it.
+        Plan later = p;
+        later.dueAt = std::max(site->GetCompletesAt(), time_);
+        plans_[later.id] = later;
+        due_.insert({ later.dueAt, later.id });
+        return;
+    }
+    SystemAggregate& a = st->agg;
+    if (a.claimed)
+    {
+        Record("settle", (int)p.faction, p.target,
+               who + " finished an outpost in " + where + ", but " +
+                   (a.controller == p.faction ? std::string("it holds it already")
+                                              : FactionName(a.controller) + " holds it"));
+        return;
+    }
+    TakeControl(a, p.faction);
+    minds_[(int)p.faction].intel[p.target] = Observe(*st);
+    Announce("settle", (int)p.faction, p.target, who + " founded an outpost in " + where);
 }
 
 void Simulation::StepFactions()
@@ -261,6 +443,19 @@ void Simulation::StepFactions()
     if (phase != 0)
         return;
 
+    // Once a period, holdings yield (#295): something for being held, more for trade and
+    // for ore. What a faction cannot store is not income.
+    const float storable = STOCK_OUTPOSTS * OutpostCost();
+    for (const auto& kv : systems_)
+    {
+        const SystemAggregate& a = kv.second.agg;
+        if (!a.claimed)
+            continue;
+        const float ore = std::min(1.0f, kv.second.profile.belts / 3.0f);
+        float&      stock = minds_[(int)a.controller].stock;
+        stock = std::min(storable, stock + INCOME_BASE * (1.0f + a.prosperity + ore));
+    }
+
     // Once a period, holdings recover towards capacity; everything else fades towards what
     // the place breeds by itself, unless its faction keeps sending more.
     for (auto& kv : systems_)
@@ -287,7 +482,8 @@ void Simulation::StepFactions()
 // anything else it knows only what it saw. Then it does at most one thing: it reaches into
 // a neighbour of a holding where what it values outweighs the risk by its appetite for
 // risk -- judged on what it saw there, and the older that is the riskier -- or it sends
-// surveyors to a neighbour it knows nothing, or nothing recent, about.
+// surveyors to a neighbour it knows nothing, or nothing recent, about, or it builds an
+// outpost in a neighbour nobody holds where its ships already are.
 void Simulation::Think(FactionId f)
 {
     const int          fi = (int)f;
@@ -310,16 +506,23 @@ void Simulation::Think(FactionId f)
     // What it already has under way: one survey of a system at a time, and no more at once
     // than its holdings can send.
     std::set<std::string> surveying;
+    bool                  settling = false;
     for (const auto& kv : plans_)
         if (kv.second.faction == f && kv.second.kind == Plan::Kind::Survey)
             surveying.insert(kv.second.target);
+        else if (kv.second.faction == f && kv.second.kind == Plan::Kind::Settle)
+            settling = true;
     const bool canSurvey = (int)surveying.size() < 1 + holdings / PLANS_PER_HOLDINGS;
+    // One outpost at a time, and only with the stock to pay for it.
+    const float cost = OutpostCost();
+    const bool  canSettle = !settling && cost > 0.0f && mind.stock >= cost;
 
     enum class Act
     {
         None,
         Move,
-        Survey
+        Survey,
+        Settle
     };
     Act         act = Act::None;
     float       bestScore = 0.0f;
@@ -362,19 +565,47 @@ void Simulation::Think(FactionId f)
                 }
             }
 
-            // Reaching: only where it has looked, and only with strength to spare.
-            if (seen == nullptr || surplus < 0.5f)
+            if (seen == nullptr || closed)
                 continue;
-            // Only into a system it may take: nobody's, or an enemy's. Never a friend's
-            // or a neutral power's -- that would be a war nobody declared.
-            if (closed)
-                continue;
-
             const SystemOffer o = OfferOf(*seen);
             const float       unclaimed = seen->claimed ? 0.0f : 1.0f;
             const float value = t.traffic * o.traffic + t.ore * o.ore + t.salvage * o.salvage +
                                 t.unclaimed * unclaimed;
-            float       hostile = 0.0f;
+
+            // Settling (#295): building an outpost in a system nobody holds, where it has
+            // already come in strength -- it sees the place for itself, so what it knows is
+            // fresh. Worth what the place is worth; the risk is what is there against it,
+            // net of its own ships, which is why settling beats sending more of them.
+            if (canSettle && !seen->claimed && seen->presence[fi] >= t.capacity * SETTLE_PRESENCE)
+            {
+                float hostile = 0.0f;
+                for (int g = 0; g < FACTION_COUNT; g++)
+                    if (Hostile(f, (FactionId)g))
+                        hostile += seen->presence[g];
+                int guns = 0;
+                for (FactionId d : o.defenders)
+                    if (d != f)
+                        guns++;
+                const float risk = std::max(0.0f, hostile - seen->presence[fi]) / t.capacity +
+                                   0.5f * guns + (Factions::IsLawful(f) ? 0.0f : seen->security);
+                const float score = value - Intelligence::BelievedRisk(
+                                                risk, Intelligence::Staleness(*seen, time_)) /
+                                                t.appetite;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    act = Act::Settle;
+                    from = kv.first;
+                    to = nid;
+                }
+            }
+
+            // Reaching: only where it has looked, and only with strength to spare -- and
+            // only into a system it may take: nobody's, or an enemy's. Never a friend's or
+            // a neutral power's (`closed`) -- that would be a war nobody declared.
+            if (surplus < 0.5f)
+                continue;
+            float hostile = 0.0f;
             for (int g = 0; g < FACTION_COUNT; g++)
                 if (Hostile(f, (FactionId)g) ||
                     ((FactionId)g == seen->controller && seen->controller != f))
@@ -429,6 +660,11 @@ void Simulation::Think(FactionId f)
         due_.insert({ p.dueAt, p.id });
         return;
     }
+    if (act == Act::Settle)
+    {
+        Settle(f, from, to);
+        return;
+    }
     if (act != Act::Move)
         return;
 
@@ -450,7 +686,8 @@ void Simulation::Think(FactionId f)
 }
 
 // 3. Who holds a system: the controller, until a hostile faction has had the upper hand
-//    there for CONTEST_PASSES in a row (#225).
+//    there for CONTEST_PASSES in a row (#225). Capture of a held system stays a matter of
+//    strength until sieges of outposts arrive (#295's slice 5).
 void Simulation::StepControl(bool settling)
 {
     for (auto& kv : systems_)
@@ -470,22 +707,21 @@ void Simulation::StepControl(bool settling)
             }
         // And a faction must really have come: half its own capacity committed, which the
         // local trouble a lawless system breeds by itself (Unrest) never reaches. A gang is
-        // not a faction moving in.
-        const bool upper = (challenger != a.controller || !a.claimed) &&
+        // not a faction moving in. Nor is strength alone a claim on a system nobody held: a
+        // faction claims one by building there (#295), so it needs a finished outpost of its
+        // own -- a settlement claims on completion, and this is the same rule for one whose
+        // plan did not see it through.
+        const auto& outposts = kv.second.profile.outposts;
+        const bool  anchored =
+            a.claimed || std::find(outposts.begin(), outposts.end(), challenger) != outposts.end();
+        const bool upper = (challenger != a.controller || !a.claimed) && anchored &&
                            strongest > held * 1.5f + 1.0f &&
                            strongest >= Factions::TemperamentOf(challenger).capacity * 0.5f;
         a.contested = upper ? a.contested + 1 : 0;
         if (a.contested < ContestPasses())
             continue;
-        a.contested = 0;
-        const FactionId was = a.controller;
-        const bool      wasClaimed = a.claimed;
-        a.controller = challenger;
-        a.claimed = true;
-        if (challenger == FactionId::Pirates)
-            a.baseSecurity = std::min(a.baseSecurity, 0.15f);
-        else if (was == FactionId::Pirates)
-            a.baseSecurity = std::max(a.baseSecurity, 0.5f);
+        const bool wasClaimed = a.claimed;
+        TakeControl(a, challenger);
         if (!settling)
             PushEvent(!wasClaimed ? FactionName(challenger) + " claim " + SystemName(kv.first)
                       : challenger == FactionId::Pirates

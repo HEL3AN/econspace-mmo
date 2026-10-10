@@ -1565,6 +1565,12 @@ int main(int argc, char** argv)
         fprintf(stderr, "FATAL: %s\n", Archetypes::Error().c_str());
         return 1;
     }
+    // ...and blueprints, as the host does: a faction settles from one (#295).
+    if (!Blueprints::Load(dataDir + "blueprints.json"))
+    {
+        fprintf(stderr, "FATAL: %s\n", Blueprints::Error().c_str());
+        return 1;
+    }
 
     // econserver <ticks> [--seed N] [--news]: with a seed, the region beyond the wormhole
     // too; with --news, the galactic news as it happens, stamped, instead of the periodic

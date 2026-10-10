@@ -277,6 +277,10 @@ void Simulation::MaterializeAllSystems(const std::string& systemsDir)
             KeyWorldObjects(st);
             ReplayChanges(st);
             st.profile = ProfileOf(st);
+            // Whatever structures the data wrote or the save brought back, on the clock
+            // StepStructures reads (#295).
+            for (const auto& e : st.entities)
+                ScheduleStructure(info.id, *e);
         }
         if (!st.populated)
         {
@@ -413,7 +417,8 @@ void Simulation::SaveWorld(const std::string& path) const
                     continue;
                 intel[kv.first] = IntelJson(kv.second);
             }
-            minds[Factions::Id((FactionId)f)] = { { "intel", std::move(intel) } };
+            minds[Factions::Id((FactionId)f)] = { { "intel", std::move(intel) },
+                                                  { "stock", minds_[f].stock } };
         }
         j["factions"] = std::move(minds);
     }
@@ -421,13 +426,16 @@ void Simulation::SaveWorld(const std::string& path) const
     for (const auto& kv : plans_)
     {
         const Plan& p = kv.second;
-        plans.push_back({ { "id", p.id },
-                          { "kind", "survey" },
-                          { "faction", Factions::Id(p.faction) },
-                          { "from", p.from },
-                          { "target", p.target },
-                          { "startedAt", p.startedAt },
-                          { "dueAt", p.dueAt } });
+        json        pj = { { "id", p.id },
+                           { "kind", p.kind == Plan::Kind::Settle ? "settle" : "survey" },
+                           { "faction", Factions::Id(p.faction) },
+                           { "from", p.from },
+                           { "target", p.target },
+                           { "startedAt", p.startedAt },
+                           { "dueAt", p.dueAt } };
+        if (!p.site.empty())
+            pj["site"] = p.site;
+        plans.push_back(std::move(pj));
     }
     j["plans"] = std::move(plans);
     j["nextPlan"] = nextPlanId_;
@@ -552,22 +560,28 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             for (auto k = intel.begin(); intel.is_object() && k != intel.end(); ++k)
                 if (HasSystem(k.key()) && k.value().is_object())
                     minds_[(int)f].intel[k.key()] = IntelFrom(k.value());
+            // A version 5 world has no stock: its factions begin saving from nothing.
+            const json& stock = it.value().value("stock", json(0.0));
+            minds_[(int)f].stock = stock.is_number() ? std::max(0.0f, stock.get<float>()) : 0.0f;
         }
     }
     if (j.contains("plans") && j["plans"].is_array())
         for (const json& pj : j["plans"])
         {
-            Plan p;
-            if (!pj.is_object() || pj.value("kind", std::string()) != "survey" ||
-                !pj.contains("faction") || !FactionByName(pj["faction"], p.faction))
+            Plan              p;
+            const std::string kind = pj.is_object() ? pj.value("kind", std::string()) : "";
+            if ((kind != "survey" && kind != "settle") || !pj.contains("faction") ||
+                !FactionByName(pj["faction"], p.faction))
                 continue;
             p.id = pj.value("id", 0);
-            p.kind = Plan::Kind::Survey;
+            p.kind = kind == "settle" ? Plan::Kind::Settle : Plan::Kind::Survey;
             p.from = pj.value("from", std::string());
             p.target = pj.value("target", std::string());
             p.startedAt = pj.value("startedAt", 0.0);
             p.dueAt = pj.value("dueAt", 0.0);
-            if (p.id <= 0 || plans_.count(p.id) != 0 || !HasSystem(p.target))
+            p.site = pj.value("site", std::string());
+            if (p.id <= 0 || plans_.count(p.id) != 0 || !HasSystem(p.target) ||
+                (p.kind == Plan::Kind::Settle && p.site.empty()))
                 continue;
             plans_[p.id] = p;
             due_.insert({ p.dueAt, p.id });
@@ -622,9 +636,10 @@ Save::Result Simulation::LoadWorld(const std::string& path)
 void Simulation::Reset()
 {
     systems_.clear();
+    structureDue_.clear();
     agentIdCounter_ = 0;
     for (FactionMind& m : minds_)
-        m.intel.clear();
+        m = FactionMind();
     mindsSeeded_ = false;
     plans_.clear();
     due_.clear();
@@ -858,6 +873,7 @@ int Simulation::AddStatic(const std::string& systemId, std::unique_ptr<Entity> e
     e->SetId(id);
     e->SetOwner(owner);
     st->keys[id] = "+" + std::to_string(st->nextAddedKey++);
+    ScheduleStructure(systemId, *e);
     st->entities.push_back(std::move(e));
     st->profile = ProfileOf(*st);
     st->pendingAdded.insert(id);

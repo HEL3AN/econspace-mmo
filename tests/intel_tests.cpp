@@ -243,11 +243,18 @@ TEST_CASE("what factions know and what they have under way survive a restart (#2
     const std::string path = "intel_world_tmp.json";
     auto              a = World();
     Pass(*a);
-    // Run until a survey is under way.
-    for (int pass = 0; pass < 30 * 60 && a->Plans().empty(); pass++)
+    // Run until a survey is under way -- a survey, not a settlement (#295, slice 3).
+    auto survey = [&]() -> const Plan*
+    {
+        for (const auto& kv : a->Plans())
+            if (kv.second.kind == Plan::Kind::Survey)
+                return &kv.second;
+        return nullptr;
+    };
+    for (int pass = 0; pass < 30 * 60 && survey() == nullptr; pass++)
         Pass(*a);
-    REQUIRE_FALSE(a->Plans().empty());
-    const Plan pending = a->Plans().begin()->second;
+    REQUIRE(survey() != nullptr);
+    const Plan pending = *survey();
     a->SaveWorld(path);
 
     Simulation b;

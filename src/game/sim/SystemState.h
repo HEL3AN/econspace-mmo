@@ -92,7 +92,8 @@ struct SystemAggregate
 
 // What a system IS, as opposed to what is happening in it (#295): counted once from its
 // static layer, which is built from the document the seed makes plus what a save says
-// changed, and counted again whenever that layer changes (AddStatic, RemoveStatic). Never
+// changed, and counted again whenever that layer changes (AddStatic, RemoveStatic, a site
+// finishing). Never
 // saved -- it is remade exactly as the region is. The macro layer reads this rather than
 // walking the system's entities, so a system need not be materialized to be weighed.
 struct SystemProfile
@@ -104,6 +105,10 @@ struct SystemProfile
     int gates = 0;
     // The owner of each station that defends itself, one entry per station.
     std::vector<FactionId> defenders;
+    // The owner of each finished faction outpost (#295), one entry per outpost: what a
+    // claim on a system nobody held needs. A site still being built is not one yet.
+    std::vector<FactionId> outposts;
+    bool                   outpostSite = false;  // anyone's outpost stands or is going up
 };
 
 // State of a single star system inside the simulation. Level of detail:
