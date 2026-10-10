@@ -169,6 +169,13 @@ void Game::BuildClientSnapshot()
             ApplyTradeAcks(s);                   // say what was sold; the money is the server's
             for (const Ev::Event& e : s.events)  // server journal (#29)
                 FlashMessage(e.text);
+            // Every snapshot is a sample of where things were, so every one goes into the
+            // interpolation buffer -- including the ones that arrived in the same frame as a
+            // newer one and are otherwise dropped. Each is stamped with the server's time,
+            // not the time it happened to arrive: arrivals bunch and stretch with the
+            // network, and interpolating by them made everything nearby speed up and slow
+            // down -- a smoothed hitch every couple of seconds.
+            snapBuffer_.push_back({ s.time, s.entities });
             incoming = std::move(s);
             gotSnap = true;
         }
@@ -177,11 +184,14 @@ void Game::BuildClientSnapshot()
     {
         snapshot_ = std::move(incoming);
         worldClock_.Observe(snapshot_.time, GetTime());
-        // A buffer of snapshots with arrival timestamps — for interpolating non-own
+        // A buffer of snapshots with server timestamps — for interpolating non-own
         // entities (entity interpolation, Gambetta). We draw them "in the past", smoothing
         // out snapshot jitter. The own ship is NOT touched by interpolation (prediction).
-        snapBuffer_.push_back({ GetTime(), snapshot_.entities });
-        double cutoff = GetTime() - 0.5;  // keep ~0.5 s of history
+        // Kept in server time, half a second of it; an older snapshot arriving late is
+        // simply out of order and is dropped by the sort below.
+        std::stable_sort(snapBuffer_.begin(), snapBuffer_.end(),
+                         [](const InterpSnap& x, const InterpSnap& y) { return x.t < y.t; });
+        double cutoff = snapBuffer_.back().t - 0.5;  // keep ~0.5 s of history
         while (snapBuffer_.size() > 2 && snapBuffer_.front().t < cutoff)
             snapBuffer_.pop_front();
         if (snapBuffer_.size() > 120)
@@ -427,7 +437,9 @@ void Game::ReconcileClientWorld()
     // buffer snapshots around renderTime. Smooths out snapshot jitter (the own
     // ship runs on prediction — it's not in clientWorld_).
     {
-        double            rt = GetTime() - 0.1;  // render delay ~100 ms
+        // Two snapshot intervals in the past, on the server's clock (#192), eased so it
+        // never runs backwards or jumps with one late packet.
+        double            rt = worldClock_.Now(GetTime()) - 0.1;
         const InterpSnap* a = nullptr;
         const InterpSnap* b = nullptr;
         for (const InterpSnap& s : snapBuffer_)

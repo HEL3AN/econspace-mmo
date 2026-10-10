@@ -137,7 +137,10 @@ void Game::DrawWorld()
         DrawCircleLines(selected_->GetPosition().x, selected_->GetPosition().y,
                         selected_->GetSize() + 10.0f, WHITE);
 
-    if (playerShip_->IsAutopilotOn())
+    // Where a plain move-to is heading is worth a marker. An orbit or keep-at-range steers
+    // the autopilot at a point that runs ahead of the ship all the way round (#157); drawn,
+    // that is a line the ship chases forever, and in EVE a ship in orbit simply orbits.
+    if (playerShip_->IsAutopilotOn() && playerShip_->GetHoldMode() == HoldMode::None)
     {
         Vector2 t = playerShip_->GetAutopilotTarget();
         DrawCircleLines(t.x, t.y, 14.0f, GREEN);
@@ -163,7 +166,10 @@ void Game::DrawWorld()
         DrawLineEx(b.a, b.b, 2.5f, b.color);
 
     // Drawn last and on its own, so it stays on top of the beams and range rings above.
-    backend_->Draw(playerShip_->Describe());
+    Render::Item ship = playerShip_->Describe();
+    ship.pos = shipDrawPos_;  // between simulation steps, as the camera sees it
+    ship.heading = shipDrawHeading_;
+    backend_->Draw(ship);
 
     // Ship marker — only at far zoom, when the sprite collapses to a
     // dot. Semi-transparent "ping" rings spread out from the ship and fade;

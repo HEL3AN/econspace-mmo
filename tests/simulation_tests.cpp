@@ -1102,7 +1102,7 @@ TEST_CASE("an orbit goes round rather than parking on the ring")
 
     const Vector2 a = s.GetPosition();
     const float   ax = a.x - target.x, ay = a.y - target.y;
-    CHECK(std::sqrt(ax * ax + ay * ay) == doctest::Approx(500.0f).epsilon(0.3));
+    CHECK(std::sqrt(ax * ax + ay * ay) == doctest::Approx(500.0f).epsilon(0.05));
 
     // Ten seconds later it is somewhere else on the same ring. Aiming at the ring rather
     // than ahead of the ship on it would have parked it.
@@ -1110,7 +1110,7 @@ TEST_CASE("an orbit goes round rather than parking on the ring")
         Sim::StepPlayerShip(s, Proto::Command{}, 1.0f, Sim::SIM_DT, &target);
     const Vector2 b = s.GetPosition();
     const float   bx = b.x - target.x, by = b.y - target.y;
-    CHECK(std::sqrt(bx * bx + by * by) == doctest::Approx(500.0f).epsilon(0.3));
+    CHECK(std::sqrt(bx * bx + by * by) == doctest::Approx(500.0f).epsilon(0.05));
 
     const float moved = std::sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
     CHECK(moved > 100.0f);

@@ -168,8 +168,15 @@ void Ship::UpdateHold(Vector2 targetPos)
     // Fly to the ring and stop there. For an orbit the aim point keeps moving ahead, so
     // arriving never happens and the ship circles; for a keep it does, and stopping is
     // exactly right.
-    EngageAutopilot({ targetPos.x + ux * holdRange_, targetPos.y + uy * holdRange_ },
-                    holdRange_ * 0.08f);
+    //
+    // A ship heading for a point a lead angle further round settles where that heading is
+    // tangent, which is the aim circle's radius times cos(lead): aimed at the ring itself
+    // it circled at 0.88 of the range asked for -- 2600 for an orbit at 3000, as the
+    // overview said. So the aim is pushed out by exactly that much.
+    float aim = holdRange_;
+    if (holdMode_ == HoldMode::Orbit)
+        aim /= cosf(ORBIT_LEAD_DEGREES * DEG2RAD);
+    EngageAutopilot({ targetPos.x + ux * aim, targetPos.y + uy * aim }, holdRange_ * 0.08f);
 }
 
 void Ship::EngageWarp(Vector2 target, float dropDistance, bool hasVia, Vector2 via)
