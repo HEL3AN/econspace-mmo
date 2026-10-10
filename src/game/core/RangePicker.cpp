@@ -35,11 +35,6 @@ Rectangle RangePicker::Bounds() const
     return { pos_.x, pos_.y, PANEL_W, PANEL_H };
 }
 
-bool RangePicker::Over() const
-{
-    return open_ && CheckCollisionPointRec(GetMousePosition(), Bounds());
-}
-
 void RangePicker::Draw()
 {
     if (!open_)

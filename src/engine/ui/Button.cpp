@@ -1,4 +1,5 @@
 #include "ui/Button.h"
+#include "ui/Input.h"
 #include "ui/UiTheme.h"
 
 Button::Button(Rectangle bounds, std::string label, std::function<void()> onClick)
@@ -8,8 +9,7 @@ Button::Button(Rectangle bounds, std::string label, std::function<void()> onClic
 
 void Button::Process()
 {
-    Vector2 mouse = GetMousePosition();
-    bool    hovered = CheckCollisionPointRec(mouse, bounds_);
+    bool hovered = Ui::MouseOver(bounds_);  // false under another window (#297)
 
     DrawRectangleRec(bounds_, hovered ? Color{ 48, 54, 72, 255 } : Ui::TITLE_BG);
     DrawRectangleLinesEx(bounds_, 1.0f, hovered ? Ui::ACCENT : Ui::PANEL_BORDER);
@@ -20,6 +20,6 @@ void Button::Process()
              (int)(bounds_.y + (bounds_.height - fontSize) / 2), fontSize,
              hovered ? Ui::ACCENT : Ui::TEXT);
 
-    if (hovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+    if (hovered && Ui::MousePressed(MOUSE_BUTTON_LEFT))
         onClick_();
 }

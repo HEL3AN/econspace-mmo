@@ -222,6 +222,12 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   editing a backend, not a class. What an object *looks like* (glyph, sprite, colour,
   layer) and what it *can do* (components) both come from `data/archetypes.json` — a new
   kind of object needs no new C++ at all.
+- **The mouse has one owner per frame** (#297). `Ui::Desk` hit-tests every window, screen
+  and popup by layer and z-order and picks one; everything else is told so through
+  `Ui::Frame` or `Ui::MouseScope`. A widget that reads `IsMouseButtonPressed` against its
+  own rectangle reacts to clicks meant for the window in front of it -- use
+  `Ui::MouseOver`/`MousePressed` or the frame's `Hovered`/`Pressed`. Esc is the desk's too:
+  a new window or screen is registered with an `EscRule`, not added to a hand-written chain.
 - **Load `Archetypes` before building a world.** Entity constructors look themselves up
   in the registry, so an entity built before the load has no components and no glyph —
   it would silently be undockable and invisible rather than fail.

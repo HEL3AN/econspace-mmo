@@ -1,42 +1,29 @@
 #pragma once
 
 #include "raylib.h"
-#include <string>
+#include "ui/Input.h"
 #include <functional>
+#include <string>
 
-// Draggable UI window: frame, title bar, close button, and content area.
-// The content is drawn by the supplied callback (which receives the rectangle
-// of the inner area).
+// A window's frame: background, title bar, close button, and the content inside them.
+// Where it is, whether it is open and which one is in front belong to the desk (#297);
+// this only knows what it looks like, so it is drawn wherever the desk says it is.
 class Window
 {
 public:
-    Window(std::string title, Rectangle bounds, bool open);
+    using Content = std::function<void(Ui::Frame&)>;
 
-    void SetContent(std::function<void(Rectangle)> content) { content_ = std::move(content); }
+    Window(std::string title, Content content);
 
-    void Draw();        // frame, title, and content (if the window is open)
-    void UpdateDrag();  // continue an in-progress drag
+    // `owner`: this window owns the mouse this frame. Its content is told so through the
+    // frame, and nothing in it highlights or reacts otherwise.
+    void Draw(Rectangle bounds, bool owner) const;
 
-    bool IsOpen() const { return open_; }
-    void SetOpen(bool open) { open_ = open; }
-    void Toggle() { open_ = !open_; }
-
-    void SetBounds(Rectangle bounds) { bounds_ = bounds; }  // reset position/size
-
-    bool ContainsMouse() const;  // mouse over the (open) window
-    bool TitleBarHit(Vector2 m) const;
-    bool CloseButtonHit(Vector2 m) const;
-    void StartDrag(Vector2 m);
+    static Rectangle TitleBar(Rectangle bounds);
+    static Rectangle CloseButton(Rectangle bounds);
+    static Rectangle ContentArea(Rectangle bounds);
 
 private:
-    Rectangle TitleBarRect() const;
-    Rectangle CloseButtonRect() const;
-    Rectangle ContentArea() const;
-
-    std::string                    title_;
-    Rectangle                      bounds_;
-    bool                           open_;
-    bool                           dragging_ = false;
-    Vector2                        dragOffset_ = { 0.0f, 0.0f };
-    std::function<void(Rectangle)> content_;
+    std::string title_;
+    Content     content_;
 };

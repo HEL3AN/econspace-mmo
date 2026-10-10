@@ -21,14 +21,15 @@ public:
     void Close();
     bool IsOpen() const { return open_; }
 
-    // Input: runs the selected item and closes the menu.
-    // Returns true if the cursor is currently over the menu (mouse is busy with UI).
+    // Input: runs the selected item and closes the menu; a click anywhere else closes it
+    // too. Whether the cursor is over it is asked of Ui::MouseOver, so it is only "over" when
+    // the desk says the menu owns the mouse (#297). Returns that.
     bool Update();
     void Draw() const;
 
-private:
     Rectangle Bounds() const;
 
+private:
     bool              open_ = false;
     Vector2           pos_ = { 0.0f, 0.0f };
     std::vector<Item> items_;
