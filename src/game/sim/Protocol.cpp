@@ -604,7 +604,8 @@ std::string EncodeUniverse(const WorldLoader::Universe& u)
                         { "name", si.name },
                         { "pos", V2(si.mapPos) },
                         { "sec", si.security },
-                        { "owner", si.owner } });
+                        { "owner", si.owner },
+                        { "charted", si.charted } });
     json links = json::array();
     for (const WorldLoader::SystemLink& l : u.links)
         links.push_back(json::array({ l.a, l.b }));
@@ -632,6 +633,7 @@ bool DecodeUniverse(const std::string& s, WorldLoader::Universe& out)
             si.mapPos = ToV2(sj.value("pos", json::array()));
             si.security = sj.value("sec", 0.5f);
             si.owner = sj.value("owner", std::string());
+            si.charted = sj.value("charted", true);
             out.systems.push_back(si);
         }
     if (j.contains("links") && j["links"].is_array())

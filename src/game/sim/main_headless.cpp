@@ -491,17 +491,15 @@ static const double NET_REPORT_INTERVAL = 10.0;
 // Counted with the galaxy statistics -- it is the same kind of message, only rarer.
 static void SendUniverse(HostClient& hc, const Simulation& sim, NetStats& net)
 {
-    const std::string u = Proto::EncodeUniverse(sim.Universe());
+    const std::string u = Proto::EncodeUniverse(sim.KnownUniverse());  // what is charted (#144)
     net.galaxies += (double)u.size();
     hc.conn->Send(u);
 }
 
-// ...and to everyone logged in, whenever the index changes. Nothing changes it yet; a
-// generated region (#140) and a player discovering a system (#144) are what will call this,
-// and #144 is also where "everyone gets the same index" turns into "each player gets what
-// they know". [[maybe_unused]] only until that first caller lands.
-[[maybe_unused]] static void BroadcastUniverse(std::vector<HostClient>& clients,
-                                               const Simulation& sim, NetStats& net)
+// ...and to everyone logged in, whenever the index changes: when a first ship charts a
+// system (#144). Knowledge is shared, so everyone gets the same index.
+static void BroadcastUniverse(std::vector<HostClient>& clients, const Simulation& sim,
+                              NetStats& net)
 {
     for (HostClient& hc : clients)
         if (hc.sessionId != 0 && hc.conn)
@@ -866,6 +864,11 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed)
         // Galaxy snapshot -- rarely (once a second): the statistics change slowly and the
         // message is large (all systems). The client's galaxy map lives off it.
         galaxyAcc += frame;
+        if (sim.TakeChartsChanged())
+        {
+            BroadcastUniverse(clients, sim, net);
+            galaxyAcc = 1.0;  // and the statistics that now include it, straight away
+        }
         if (galaxyAcc >= 1.0)
         {
             galaxyAcc = 0.0;

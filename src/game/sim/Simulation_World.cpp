@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <set>
 
 void Simulation::InitGalaxy()
 {
@@ -422,4 +423,43 @@ std::vector<std::string> Simulation::PlanRoute(const std::string& from, const st
     }
     std::reverse(path.begin(), path.end());
     return path;
+}
+
+WorldLoader::Universe Simulation::KnownUniverse() const
+{
+    auto charted = [&](const std::string& id)
+    {
+        auto it = systems_.find(id);
+        return it == systems_.end() || it->second.agg.visited;
+    };
+    std::set<std::string> frontier;  // uncharted, but a charted system has a gate to it
+    for (const WorldLoader::SystemLink& l : universe_.links)
+    {
+        if (charted(l.a) && !charted(l.b))
+            frontier.insert(l.b);
+        if (charted(l.b) && !charted(l.a))
+            frontier.insert(l.a);
+    }
+
+    WorldLoader::Universe out;
+    out.startId = universe_.startId;
+    for (const WorldLoader::SystemInfo& info : universe_.systems)
+    {
+        if (charted(info.id))
+            out.systems.push_back(info);
+        else if (frontier.count(info.id))
+        {
+            WorldLoader::SystemInfo seen;
+            seen.id = info.id;
+            seen.name = info.name;  // a designation: nobody has named it yet (#145)
+            seen.mapPos = info.mapPos;
+            seen.security = 0.0f;
+            seen.charted = false;
+            out.systems.push_back(seen);
+        }
+    }
+    for (const WorldLoader::SystemLink& l : universe_.links)
+        if (charted(l.a) || charted(l.b))
+            out.links.push_back(l);
+    return out;
 }

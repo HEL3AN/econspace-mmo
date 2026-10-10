@@ -1045,3 +1045,70 @@ TEST_CASE("the region is nobody's to take until somebody has been there (#143)")
     REQUIRE_FALSE(sim.Events().empty());
     CHECK(sim.Events().back().find("First ship into") != std::string::npos);
 }
+
+TEST_CASE("players are told only what somebody has charted (#144)")
+{
+    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+
+    Simulation sim;
+    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    const size_t handWritten = sim.Universe().systems.size();
+    sim.AttachRegion(7, systems);
+    sim.Seed(1234u);
+    sim.InitGalaxy();
+    sim.MaterializeAllSystems(systems);
+
+    auto find = [](const WorldLoader::Universe& u, const std::string& id)
+    {
+        for (const auto& si : u.systems)
+            if (si.id == id)
+                return &si;
+        return static_cast<const WorldLoader::SystemInfo*>(nullptr);
+    };
+    std::string entry;  // the far side of the wormhole
+    for (const auto& l : sim.Universe().links)
+        if (l.a == sim.Universe().startId && l.b.rfind("w1-", 0) == 0)
+            entry = l.b;
+        else if (l.b == sim.Universe().startId && l.a.rfind("w1-", 0) == 0)
+            entry = l.a;
+    REQUIRE_FALSE(entry.empty());
+
+    // Before anyone goes through: known space, and one uncharted dot at the wormhole.
+    WorldLoader::Universe known = sim.KnownUniverse();
+    CHECK(known.systems.size() == handWritten + 1);
+    REQUIRE(find(known, entry) != nullptr);
+    CHECK_FALSE(find(known, entry)->charted);
+    CHECK(find(known, entry)->security == 0.0f);  // nothing about it but where it is
+    for (const auto& l : known.links)
+        CHECK((find(known, l.a) != nullptr && find(known, l.b) != nullptr));
+    CHECK_FALSE(sim.TakeChartsChanged());
+    for (const auto& g : sim.BuildGalaxyState().systems)
+        CHECK(g.id != entry);
+
+    // The first ship through charts it, for everyone, and shows what its gates lead to.
+    ClientSession& s =
+        sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+    sim.ServerEnterSystem(s, entry, sim.Universe().startId);
+    CHECK(sim.TakeChartsChanged());
+    CHECK_FALSE(sim.TakeChartsChanged());  // taken once
+    known = sim.KnownUniverse();
+    CHECK(find(known, entry)->charted);
+    CHECK(known.systems.size() > handWritten + 1);
+    for (const auto& l : sim.Universe().links)
+        if (l.a == entry || l.b == entry)
+        {
+            const std::string other = l.a == entry ? l.b : l.a;
+            CAPTURE(other);
+            CHECK(find(known, other) != nullptr);
+        }
+
+    // And the wire carries the difference.
+    WorldLoader::Universe decoded;
+    REQUIRE(Proto::DecodeUniverse(Proto::EncodeUniverse(known), decoded));
+    size_t uncharted = 0;
+    for (const auto& si : decoded.systems)
+        uncharted += si.charted ? 0 : 1;
+    CHECK(uncharted > 0);
+}

@@ -38,6 +38,17 @@ public:
     // Loads the galaxy index (universe.json).
     void                         LoadUniverse(const std::string& path);
     const WorldLoader::Universe& Universe() const { return universe_; }
+    // The galaxy as players know it (#144): every system somebody has been to, and the
+    // systems a gate from one of those leads to -- located and designated, uncharted.
+    // Nothing further. Knowledge is shared: the first ship in charts it for everyone.
+    WorldLoader::Universe KnownUniverse() const;
+    // Set when a system is charted; whoever sends the index takes it and resends.
+    bool TakeChartsChanged()
+    {
+        const bool c = chartsChanged_;
+        chartsChanged_ = false;
+        return c;
+    }
 
     // The region beyond the wormhole (#140): generated from `seed` and hung off the start
     // system by one wormhole gate. Call after LoadUniverse and before InitGalaxy/LoadWorld
@@ -373,6 +384,7 @@ private:
     // Macro passes since this process started; the first few are the world settling and
     // are not news (#143).
     int                  macroSteps_ = 0;
+    bool                 chartsChanged_ = false;  // a system was charted (#144)
     static constexpr int SETTLE_STEPS = 3;
     unsigned int         rng_ = 0x1234567u;  // RNG state
 

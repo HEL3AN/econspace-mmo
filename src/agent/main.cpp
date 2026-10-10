@@ -115,6 +115,8 @@ std::string DescribeGalaxy()
     for (const WorldLoader::SystemInfo& si : g_session.Universe().systems)
     {
         std::string line = "  " + si.id + "  " + si.name;
+        if (!si.charted)  // a gate leads there; nobody has been (#144)
+            line += "   uncharted: nobody has been there yet";
         for (const Proto::GalaxySystemStat& g : g_session.Galaxy().systems)
             if (g.id == si.id)
             {
