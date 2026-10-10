@@ -400,7 +400,7 @@ registry says *what it is and what it can do*, once, for every object of that ki
 | `layer` | int | draw order, lowest first; the same number means the same thing in every backend |
 | `shape` | array | **optional** — what the object is made of, as a list of parts. Omit it and the backend falls back to the figure it used to compile in for this kind. See below |
 | `material` | string | **optional** — the material that shades it, by id from `data/materials.json`. Omit it and the object is drawn plain. An id `materials.json` does not define also draws plain, and the client and editor log it by name at startup |
-| `light` | object | **optional** — this object lights the system: `radius` (world units at which its light has fallen to nothing) and `intensity` (default 1.0). Omit it and the object emits nothing. See below |
+| `light` | object | **optional** — this object lights the system: `radius` (world units at which its light has fallen to nothing), `intensity` (default 1.0) and `self` (default false: whether it lights itself). Omit it and the object emits nothing. See below |
 | `size` | number | default radius when the instance does not give its own |
 | `world` | object | where this archetype lives in a system file — see below |
 | `components` | object | what the object can do — see below |
@@ -424,8 +424,17 @@ the strongest few sources; a light past its radius contributes nothing rather th
 so a star on the far side of a system cannot decide which way something near you is lit.
 
 ```json
-"light": { "radius": 2480000, "intensity": 1.00 }
+"light": { "radius": 2480000, "intensity": 1.00, "self": true }
 ```
+
+**`self`** says whether the light lights the object it belongs to, and it is `false` unless
+written. A light stands at its object's centre, so if it lit that object it would reach
+every part of the hull at full strength from inside: no lit side, no dark side, flat paint.
+So by default an object's light lights everything else in the system and not the object,
+whose hull is lit by the system's other lights like any hull — a beacon keeps its volume
+under the star. `"self": true` takes the object out of shading altogether and draws it at
+its own colour, which is what a star is: a light, not a surface. The three stars set it.
+Either way, parts with the role `light` glow; they are never shaded.
 
 A reach well past `SYSTEM_RADIUS` (1 000 000) is normal: the falloff is quadratic, so a star
 that only just covers its system leaves the outskirts almost unlit. These numbers were set

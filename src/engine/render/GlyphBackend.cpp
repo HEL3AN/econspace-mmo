@@ -49,12 +49,14 @@ bool HasDirection(const Lighting::Sample& s)
     return s.dir.x != 0.0f || s.dir.y != 0.0f;
 }
 
-// A thing that is itself a light is never shaded by one. Shading a star by the light it
+// A thing whose light lights itself is never shaded by one. Shading a star by the light it
 // emits is how a sun ends up looking like a moon, and reading it off the item rather than
-// off EntityKind means a beacon a player builds gets the same exemption for free.
+// off EntityKind means anything a player builds can say the same in data. A light that
+// does not light itself -- the default, a beacon -- leaves its hull a surface like any
+// other, lit by every light but its own (#119); its `light` parts still glow.
 bool Emissive(const Item& it)
 {
-    return it.lightRadius > 0.0f && it.lightIntensity > 0.0f;
+    return it.lightRadius > 0.0f && it.lightIntensity > 0.0f && it.lightSelf;
 }
 
 // The arc where the light grazes a round silhouette. Cheap, and it does more for reading
@@ -106,7 +108,9 @@ void ShadeDisc(Vector2 pos, float size, Color base, const Lighting& lg, const Li
 
 void GlyphBackend::Draw(const Item& item)
 {
-    Color c = Emissive(item) ? item.color : Lit(item.color, lighting_, lighting_.At(item.pos));
+    Color c = Emissive(item)
+                  ? item.color
+                  : Lit(item.color, lighting_, lighting_.At(item.pos, lighting_.OwnLight(item)));
     if (item.intensity < 1.0f)
         c = Fade(c, 0.35f + 0.65f * item.intensity);
 
@@ -242,7 +246,8 @@ void ShapeBackend::Draw(const Item& item)
 {
     // What the light does to this object, asked once. An object is small next to the
     // distance to its star, so one sample at its centre is the whole of the difference.
-    const Lighting::Sample light = lighting_.At(item.pos);
+    own_ = lighting_.OwnLight(item);
+    const Lighting::Sample light = LightAt(item.pos);
 
     // A composition is shaded a part at a time (#135), so it never begins an object-level
     // material: one sphere at the object's centre is the truth about a planet and a lie
@@ -469,7 +474,7 @@ void ShapeBackend::DrawSoftOnSurface(const Item& item, const Piece& p, bool emis
     bool        shaded = false;
     if (p.role != Role::Light && !emissive)
     {
-        Lighting::Sample l = lighting_.At(p.bodyPos);
+        Lighting::Sample l = LightAt(p.bodyPos);
         shaded = p.bodyRadius * view_.zoom >= MIN_SHADED_PIXELS &&
                  BeginMaterialAt(item, l, p.bodyPos, p.bodyRadius, Vector2{ 0.0f, 0.0f });
         if (!shaded)
@@ -542,7 +547,7 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         {
             const Vector2          body = p.surface ? p.bodyPos : item.pos;
             const float            radius = p.surface ? p.bodyRadius : item.size;
-            const Lighting::Sample l = lighting_.At(body);
+            const Lighting::Sample l = LightAt(body);
             const float            r = radius > 0.0f ? radius : 1.0f;
             const float day = ((p.pos.x - body.x) * l.dir.x + (p.pos.y - body.y) * l.dir.y) / r;
             const float t = std::fmin(1.0f, std::fmax(0.0f, (day * l.strength + 0.15f) / 0.25f));
@@ -588,7 +593,7 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         const Vector2          shadeAt = p.surface ? p.bodyPos : p.pos;
         const float            shadeR = p.surface ? p.bodyRadius : ShadeRadius(p);
         const Vector2          shadeAxis = p.surface ? Vector2{ 0.0f, 0.0f } : Axis(p);
-        const Lighting::Sample pieceLight = lighting_.At(shadeAt);
+        const Lighting::Sample pieceLight = LightAt(shadeAt);
 
         // Below a few pixels across there is no surface left to shade, and shading it
         // anyway is worse than not: a rail two pixels wide is *entirely* the part of a

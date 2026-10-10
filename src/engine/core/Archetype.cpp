@@ -118,13 +118,19 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
 
     if (j.contains("light") && j["light"].is_object())
     {
-        if (!OnlyKnownKeys(j["light"], { "radius", "intensity" }, err))
+        if (!OnlyKnownKeys(j["light"], { "radius", "intensity", "self" }, err))
         {
             err = "archetype '" + a.id + "': light: " + err;
             return false;
         }
+        if (j["light"].contains("self") && !j["light"]["self"].is_boolean())
+        {
+            err = "archetype '" + a.id + "': light: self is not a boolean";
+            return false;
+        }
         a.visual.lightRadius = j["light"].value("radius", 0.0f);
         a.visual.lightIntensity = j["light"].value("intensity", 1.0f);
+        a.visual.lightSelf = j["light"].value("self", false);
     }
 
     if (j.contains("color"))

@@ -706,7 +706,10 @@ static std::string LookFieldJson(const Archetype& a, const std::string& key)
         // A fixed two decimals rather than %g, so the text a save produces is the text
         // the file already holds and re-saving an unchanged light changes nothing.
         os << "{ \"radius\": " << (long long)llroundf(a.visual.lightRadius)
-           << ", \"intensity\": " << TextFormat("%.2f", (double)a.visual.lightIntensity) << " }";
+           << ", \"intensity\": " << TextFormat("%.2f", (double)a.visual.lightIntensity);
+        if (a.visual.lightSelf)
+            os << ", \"self\": true";  // written only when set, like the file holds it
+        os << " }";
         return os.str();
     }
     if (key == "color")

@@ -27,6 +27,15 @@ struct Light
     Color   color = { 255, 255, 255, 255 };
     float   intensity = 1.0f;  // brightness at the source
     float   radius = 1.0f;     // distance at which it contributes nothing at all
+
+    // The object this light belongs to, when it does not light that object (#119). A
+    // light standing at an object's own centre reaches every part of it at full strength
+    // from inside, so the hull has no lit side and no dark one and reads as flat paint. So
+    // by default an object's light lights everything else in the system and not the object
+    // itself, whose hull is lit by the system's other lights like any other hull.
+    // `sparesSource` is false for a light that belongs to nothing -- the gallery's lamp.
+    bool sparesSource = false;
+    int  source = 0;  // the Item::id of that object
 };
 
 // The lights of one system and the floor beneath them.
@@ -57,7 +66,15 @@ struct Lighting
     // players build, and the fifth-brightest has never changed a picture.
     static constexpr int MAX_CONTRIBUTORS = 4;
 
-    Sample At(Vector2 p) const;
+    // `skip` is the index of a light to leave out -- the one OwnLight names for the object
+    // being drawn -- or -1 for none.
+    Sample At(Vector2 p, int skip = -1) const;
+
+    // The index of the light `it` gives off and is not lit by, or -1. Matched by the item's
+    // id and position together: an id alone is 0 for everything a gallery draws, and a
+    // light is copied from the item's position, so a light standing exactly where an item
+    // with that id stands is that item's.
+    int OwnLight(const Item& it) const;
 };
 
 // The lights an already-described scene contains. An item lights the system when its

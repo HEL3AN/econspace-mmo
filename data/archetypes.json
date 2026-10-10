@@ -9,7 +9,7 @@
             "color": [253, 249, 0, 255],
             "layer": 0,
             "size": 150000,
-            "light": { "radius": 2480000, "intensity": 1.00 },
+            "light": { "radius": 2480000, "intensity": 1.00, "self": true },
             "shape": { "vars": { "pa": [0, 360] }, "parts": [
                 {"form": "disc", "radius": 2.6, "role": "hull", "soft": true, "alpha": 0.32},
                 {"form": "disc", "radius": 1.6, "role": "hull", "soft": true, "alpha": 0.4},
@@ -30,7 +30,7 @@
             "color": [230, 41, 55, 255],
             "layer": 0,
             "size": 175000,
-            "light": { "radius": 1920000, "intensity": 0.90 },
+            "light": { "radius": 1920000, "intensity": 0.90, "self": true },
             "shape": { "vars": { "pa": [0, 360] }, "parts": [
                 {"form": "disc", "radius": 2.80, "role": "hull", "soft": true, "alpha": 0.32},
                 {"form": "disc", "radius": 1.72, "role": "hull", "soft": true, "alpha": 0.4},
@@ -51,7 +51,7 @@
             "color": [102, 191, 255, 255],
             "layer": 0,
             "size": 137500,
-            "light": { "radius": 3120000, "intensity": 1.10 },
+            "light": { "radius": 3120000, "intensity": 1.10, "self": true },
             "shape": { "vars": { "eq": [0, 360] }, "parts": [
                 {"form": "disc", "radius": 2.0, "role": "hull", "soft": true, "alpha": 0.34},
                 {"form": "disc", "radius": 1.5, "role": "trim", "soft": true, "tint": [170, 210, 255], "alpha": 0.6},

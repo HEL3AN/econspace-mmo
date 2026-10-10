@@ -78,6 +78,11 @@ TEST_CASE("a misspelled archetype field is refused, not read as absent")
     {
         CHECK_FALSE(LoadWithEntry(R"({"id":"x","kind":"Star","light":{"raduis":5000}})"));
         CHECK(Mentions("raduis"));
+        CHECK_FALSE(LoadWithEntry(R"({"id":"x","kind":"Star","light":{"slef":true}})"));
+        CHECK(Mentions("slef"));
+        // A string where a boolean goes is refused too: "false" read as true is worse.
+        CHECK_FALSE(LoadWithEntry(R"({"id":"x","kind":"Star","light":{"self":"false"}})"));
+        CHECK(Mentions("self"));
     }
 
     SUBCASE("in the world block")

@@ -109,7 +109,13 @@ private:
     // body, and still fading to nothing at its rim.
     void DrawSoftOnSurface(const Item& item, const Piece& p, bool emissive);
 
+    // What reaches `p` on the object being drawn: every light but its own, unless it is
+    // one that lights itself (#119). Every sample this backend takes goes through here, so
+    // the plain path and the material's uniforms cannot disagree about it.
+    Lighting::Sample LightAt(Vector2 p) const { return lighting_.At(p, own_); }
+
     Lighting         lighting_;  // a copy: a backend outlives the scene that handed it over
+    int              own_ = -1;  // index in lighting_ of the drawn item's own light, or -1
     Camera2D         view_{};
     MaterialLibrary* materials_ = nullptr;  // borrowed; null draws everything plain
 };
