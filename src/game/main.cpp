@@ -1,5 +1,5 @@
 // EconSpace — entry point. All logic lives in the Game class.
-//   econspace connect <host> <port> <name> <secret> [--zoom Z] [--shapes] [--warp X Y] [--map]
+//   econspace connect <host> <port> <name> <secret> [--zoom Z] [--warp X Y] [--map]
 //   [--sensor [RANGE]]
 //   [--shot FILE [--frames N]] [--nohud] —
 //   connect to an econserver host
@@ -24,11 +24,10 @@ static int Usage(const char* exe)
                  "  %s connect <host> <port> <name> <secret>\n"
                  "      the secret is this account's; the first login sets it\n"
                  "      --zoom Z   start the camera at zoom Z (1 = a unit is a pixel)\n"
-                 "      --shapes   start on the shape backend (F2 switches)\n"
                  "      --warp X Y warp to the point (X, Y) two seconds after joining\n"
                  "      --map      start with the galaxy map open (G/Esc closes it)\n"
                  "      --sensor [RANGE]\n"
-                 "                 start with the sensor screen open (V closes it), RANGE\n"
+                 "                 start with the sensor screen open (V/Esc closes it), RANGE\n"
                  "                 world units across\n"
                  "      --shot FILE [--frames N]\n"
                  "                 save frame N (default 60) to FILE as a PNG and exit\n"
@@ -52,7 +51,6 @@ int main(int argc, char** argv)
     const std::string account = argv[4];
     const std::string secret = argv[5];
     float             startZoom = 0.0f;  // 0: the default
-    bool              shapes = false;
     bool              warp = false;
     bool              map = false;
     bool              sensor = false;
@@ -65,7 +63,9 @@ int main(int argc, char** argv)
         if (std::strcmp(argv[i], "--zoom") == 0 && i + 1 < argc)
             startZoom = (float)std::atof(argv[++i]);
         else if (std::strcmp(argv[i], "--shapes") == 0)
-            shapes = true;
+        {
+            // accepted and ignored: shapes are the only look now (#123)
+        }
         else if (std::strcmp(argv[i], "--map") == 0)
             map = true;
         else if (std::strcmp(argv[i], "--sensor") == 0)
@@ -120,8 +120,6 @@ int main(int argc, char** argv)
         game.SetPilotName(account);
         if (startZoom > 0.0f)
             game.SetStartZoom(startZoom);
-        if (shapes)
-            game.StartOnShapes();
         if (warp)
             game.StartWithWarp(warpTo);
         if (map)

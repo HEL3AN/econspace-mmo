@@ -11,8 +11,8 @@ Photoshop. The project's style is **pixel art**.
 > **The rendering path works — the only thing missing is the PNG files.**
 > `Render::ShapeBackend` (`src/engine/render/GlyphBackend.h`) calls
 > `Tex::DrawSprite(...)`, which loads and caches PNGs from `data/textures/` on demand
-> and falls back to a vector shape when one is absent. Press **F2** in the game or the
-> editor to switch to that backend. Drop a correctly named file into `data/textures/`
+> and falls back to a vector shape when one is absent. It is the game's world view; in the
+> editor, **F2** switches to it. Drop a correctly named file into `data/textures/`
 > and it appears on the next run — no code changes, no rebuild.
 
 > **The sprite name comes from the archetype, not from C++.** `data/archetypes.json`

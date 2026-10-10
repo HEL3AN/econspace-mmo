@@ -53,6 +53,9 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     InitWindow(screenWidth_, screenHeight_, "EconSpace");
     SetWindowMinSize(960, 600);
     SetTargetFPS(60);
+    // raylib quits on Esc unless told otherwise. Here Esc closes what is on top
+    // (HandleEscape); leaving the game is the window's close button.
+    SetExitKey(KEY_NULL);
     Ui::LoadAssets();
 
     // Presentation data: factions, archetypes, materials. In a dev build we read the source data/
@@ -126,24 +129,14 @@ void Game::Run()
         // Debug commands (work in any mode).
         if (IsKeyPressed(KEY_F11))
             ToggleBorderlessWindowed();
-        if (IsKeyPressed(KEY_F2))  // switch presentation: shapes ↔ glyphs
-        {
-            backend_ = (backend_ == &shapeBackend_) ? (Render::IBackend*)&glyphBackend_
-                                                    : (Render::IBackend*)&shapeBackend_;
-            FlashMessage(std::string("Rendering: ") + backend_->Name());
-        }
         if (IsKeyPressed(KEY_F10))  // the screen treatment's settings (#120)
         {
-            treatmentPanelOpen_ = !treatmentPanelOpen_;
-            if (!treatmentPanelOpen_)
-            {
-                // Written on close rather than on every slider frame: this is a file, and
-                // a slider being dragged is sixty writes a second.
-                std::string error;
-                if (!treatment_.Save(error))
-                    TraceLog(LOG_WARNING, "Treatment: %s", error.c_str());
-            }
+            if (treatmentPanelOpen_)
+                CloseTreatmentPanel();
+            else
+                treatmentPanelOpen_ = true;
         }
+        HandleEscape();
         if (IsKeyPressed(KEY_F1))  // account is on the server — credit via command
         {
             Proto::Command dc;
@@ -353,13 +346,11 @@ void Game::HandleInput(float dt)
 
     if (IsKeyPressed(KEY_G))
         galaxyMapOpen_ = !galaxyMapOpen_;
-    // The sensor screen (#123). Not Esc: raylib quits on it.
+    // The sensor screen (#123); Esc closes it too (HandleEscape).
     if (IsKeyPressed(KEY_V))
         sensorOpen_ = !sensorOpen_;
     // While it is open, the mouse points at cells rather than at the world behind them.
     const bool onSensor = sensorOpen_ && !overUi;
-    if (galaxyMapOpen_ && IsKeyPressed(KEY_ESCAPE))
-        galaxyMapOpen_ = false;
     if (galaxyMapOpen_ && IsKeyPressed(KEY_N) && CanNameHere())
     {
         naming_ = true;
@@ -755,6 +746,55 @@ void Game::OpenContextMenuAt(Vector2 worldPoint)
     }
 
     contextMenu_.Open(GetMousePosition(), std::move(items));
+}
+
+void Game::CloseTreatmentPanel()
+{
+    treatmentPanelOpen_ = false;
+    // Written on close rather than on every slider frame: this is a file, and a slider
+    // being dragged is sixty writes a second.
+    std::string error;
+    if (!treatment_.Save(error))
+        TraceLog(LOG_WARNING, "Treatment: %s", error.c_str());
+}
+
+// Esc closes the topmost thing that is open, in the order they are drawn, and does
+// nothing when nothing is. It never quits: an MMO client that drops you on a stray key is
+// a ship left drifting. The station screen is not closed by it either -- leaving it is
+// undocking, an order to the server, and that wants its own button.
+void Game::HandleEscape()
+{
+    if (!IsKeyPressed(KEY_ESCAPE) || naming_)  // the name field takes its own Esc
+        return;
+    if (treatmentPanelOpen_)
+    {
+        CloseTreatmentPanel();
+        return;
+    }
+    if (contextMenu_.IsOpen())
+    {
+        contextMenu_.Close();
+        return;
+    }
+    if (mode_ != GameMode::Flying)
+        return;
+    if (galaxyMapOpen_)
+    {
+        galaxyMapOpen_ = false;
+        return;
+    }
+    if (sensorOpen_)
+    {
+        sensorOpen_ = false;
+        return;
+    }
+    // The end of the list is the window on top.
+    for (int i = (int)windows_.size() - 1; i >= 0; i--)
+        if (windows_[i]->IsOpen())
+        {
+            windows_[i]->SetOpen(false);
+            return;
+        }
 }
 
 bool Game::CanNameHere() const

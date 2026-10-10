@@ -9,7 +9,7 @@
 #include "sim/Protocol.h"
 #include "net/Transport.h"
 #include "net/Tcp.h"
-#include "render/GlyphBackend.h"
+#include "render/GlyphBackend.h"  // ShapeBackend
 #include "render/MaterialLibrary.h"
 #include "render/CameraRig.h"
 #include "sim/Overview.h"
@@ -71,8 +71,6 @@ public:
     // Where the camera starts (--zoom): for looking at a scale without a wheel, which is
     // also how a screenshot of one is taken -- synthetic input does not reach the window.
     void SetStartZoom(float zoom) { rig_.SetZoom(zoom); }
-    // Start on the shape backend (--shapes), the one F2 switches to.
-    void StartOnShapes() { backend_ = &shapeBackend_; }
     // Order a warp to a point shortly after joining (--warp X Y): for watching a warp, and
     // screenshotting one, without a hand on the controls.
     void StartWithWarp(Vector2 target)
@@ -140,8 +138,10 @@ private:
     // in it (0 if nothing) and the world point at its centre. False off the grid.
     bool             SensorPick(Vector2 screen, int& id, Vector2& world) const;
     Sensor::Standing ViewerStanding() const;  // this pilot's standing, for the instruments
-    bool CanNameHere() const;  // in a system this pilot found and nobody has named (#145)
-    void HandleNaming();       // typing a name: every key goes to the name until Enter/Esc
+    bool CanNameHere() const;    // in a system this pilot found and nobody has named (#145)
+    void HandleNaming();         // typing a name: every key goes to the name until Enter/Esc
+    void HandleEscape();         // Esc closes whatever is on top, and never quits
+    void CloseTreatmentPanel();  // closes F10's panel and writes what was tuned
 
     void Undock();
 
@@ -226,11 +226,9 @@ private:
     RenderTexture2D shotTarget_ = {};
     bool            hudHidden_ = false;  // --nohud
 
-    // How the world is presented (#35). Glyphs are the game's look (#36); shapes remain
-    // reachable with F2, as the alternative backend the sprite path hangs off.
-    Render::GlyphBackend glyphBackend_;
+    // How the world is presented (#35): the generated look is the only one (#123). Glyphs
+    // live on in the sensor screen, which draws its own grid rather than through a backend.
     Render::ShapeBackend shapeBackend_;
-    Render::IBackend*    backend_ = &glyphBackend_;
 
     // The screen treatment (#120). The world goes through it; the HUD does too only if the
     // player says so, because it carries numbers they fly by. F10 opens its settings, and
