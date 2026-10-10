@@ -407,7 +407,16 @@ public:
     // Server-side active-system change (for the headless host on a jump): makes destId
     // active and teleports the player to the gate leading back to fromId (as the arrival
     // point). Systems are already materialized, so no hydrate is needed.
-    void ServerEnterSystem(ClientSession& s, const std::string& destId, const std::string& fromId);
+    // fromId is by value on purpose: callers pass s.systemId, which this overwrites (#310).
+    void ServerEnterSystem(ClientSession& s, const std::string& destId, std::string fromId);
+
+    // Where a ship coming from fromId appears in destId (#310): beside the gate whose
+    // destination is fromId, ARRIVAL_CLEARANCE beyond its edge towards the middle of the
+    // system, and (through heading, when given) facing away from it. Without such a gate,
+    // SafeArrival.
+    static constexpr float ARRIVAL_CLEARANCE = 200.0f;
+    Vector2 ArrivalFrom(const std::string& destId, const std::string& fromId,
+                        const ClientSession* who = nullptr, float* heading = nullptr) const;
 
     // How close a body must be for a saved ship to be kept beside it rather than at a point
     // in space (#258): within this of its surface.
