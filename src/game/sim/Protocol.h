@@ -28,7 +28,8 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    15;  // 15: structures and deploying them (#39); 14: layout revisions and LayoutDelta (#38)
+    16;  // 16: follow (nav 5, hold 3) and hold orders (#298); 15: structures and deploying
+         // them (#39); 14: layout revisions and LayoutDelta (#38)
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).
@@ -91,9 +92,10 @@ struct Command
     // Combat target / navigation / jump.
     int targetId = 0;  // selected agent (0 — none)
     // Navigation order. Modes 1 and 2 are one-shot -- fly there, or warp there, and stop.
-    // Modes 3 and 4 are standing: hold station on an object until released, which is what
+    // Modes 3 to 5 are standing: hold station on an object until released, which is what
     // flying a fight or waiting at a gate actually is (#157).
-    //   0 none, 1 autopilot, 2 warp, 3 orbit, 4 keep at range
+    //   0 none, 1 autopilot, 2 warp, 3 orbit, 4 keep at range, 5 follow (keep the range
+    //   and match the target's velocity, #298)
     int     navMode = 0;
     Vector2 navTarget = { 0.0f, 0.0f };
     float   navStopDist = 0.0f;
@@ -192,7 +194,7 @@ struct PlayerView
     // The standing hold, if any (#157). Mirrored like the warp and the autopilot: the
     // client has to have it in order to replay unacknowledged inputs on top of a snapshot,
     // and it is what the HUD reports the ship is doing.
-    int   holdMode = 0;  // 0 none, 1 orbit, 2 keep at range
+    int   holdMode = 0;  // 0 none, 1 orbit, 2 keep at range, 3 follow (#298)
     int   holdTargetId = 0;
     float holdRange = 0.0f;
     bool  stabilizer = true;

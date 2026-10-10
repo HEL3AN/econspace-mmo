@@ -180,7 +180,7 @@ void Game::Run()
                 clientLink_->Send(Proto::EncodeCommand(cmd_));
                 shipPrevPos_ = playerShip_->GetPosition();
                 shipPrevHeading_ = playerShip_->GetHeading();
-                Sim::StepPlayerShip(*playerShip_, cmd_, 1.0f, SIM_DT, HoldTargetPos());
+                Sim::StepPlayerShip(*playerShip_, cmd_, 1.0f, SIM_DT, HoldTarget());
                 // One-shot intents applied/sent this tick — clear them (axes are held).
                 cmd_.toggleStabilizer = cmd_.toggleMining = cmd_.toggleWeapon = false;
                 cmd_.dock = cmd_.undock = false;
@@ -318,7 +318,7 @@ void Game::HandleInput(float dt)
 
     // The context menu is handled first — it sits above the whole UI.
     // We call all handlers explicitly so short-circuit || doesn't skip them.
-    bool overMenu = contextMenu_.Update();
+    bool overMenu = contextMenu_.Update() || rangePicker_.Over();
     // The map is modal; the sensor screen covers the windows, so they take no clicks.
     bool overWin = !galaxyMapOpen_ && !sensorOpen_ && HandleWindows();
     bool overBar = HandleMenuBar();
@@ -573,7 +573,8 @@ void Game::OrderWarp(Vector2 target, float dropDist)
     cmd_.navViaSet = WarpPath::Via(playerShip_->GetPosition(), target, bodies, cmd_.navVia);
 }
 
-// Standing hold: orbit (mode 3) or keep at range (mode 4). Unlike Approach and Warp these
+// Standing hold: orbit (mode 3), keep at range (mode 4) or follow (mode 5, #298). Unlike
+// Approach and Warp these
 // do not finish -- they run until something releases them, which is what flying a fight or
 // waiting beside a gate actually is (#157).
 void Game::OrderHold(int mode, int targetId, float range)
@@ -625,6 +626,19 @@ void Game::OpenContextMenu(Entity* target)
         }
         items.push_back({ TextFormat("Keep at %.0f", base * HOLD_RANGES[1]),
                           [this, tid, base]() { OrderHold(4, tid, base * HOLD_RANGES[1]); } });
+        // Matching its velocity as well as its distance: the one that stays with a station
+        // going round a planet rather than arriving behind it (#298).
+        items.push_back({ TextFormat("Follow at %.0f", base * HOLD_RANGES[1]),
+                          [this, tid, base]() { OrderHold(5, tid, base * HOLD_RANGES[1]); } });
+        // Any distance, not just the presets.
+        const std::string name = target->GetName();
+        items.push_back({ "Hold at a range...", [this, tid, base, name]()
+                          {
+                              rangePicker_.Open(GetMousePosition(), name, base,
+                                                base * HOLD_RANGES[1],
+                                                [this, tid](int mode, float range)
+                                                { OrderHold(mode, tid, range); });
+                          } });
     }
 
     // Warp — only if the target is far enough (Approach suffices up close). The drop
@@ -802,6 +816,11 @@ void Game::HandleEscape()
     if (contextMenu_.IsOpen())
     {
         contextMenu_.Close();
+        return;
+    }
+    if (rangePicker_.IsOpen())
+    {
+        rangePicker_.Close();
         return;
     }
     if (mode_ != GameMode::Flying)

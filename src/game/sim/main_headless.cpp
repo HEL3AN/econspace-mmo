@@ -136,7 +136,7 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     bool changed = false;
 
     // Dock/undock (server-authoritative). While docked we do not step the player's
-    // physics (the ship is frozen at the station), but we still handle trade/undock.
+    // physics (the ship is carried by the station, #298), but we still handle trade/undock.
     if (c.dock && !s.IsDocked())
         sim.StepPlayerDock(s, *sim.SystemOf(s));
     if (c.undock)
@@ -295,6 +295,10 @@ static void HostStepWorld(Simulation& sim, float dt,
         ClientSession& s = kv.second;
         if (s.ship && !s.ship->IsAlive())
             sim.ServerRespawnPlayer(s);
+
+        // After the world moved: a docked ship goes round with its station, and a hold
+        // target's velocity is measured for a follow (#298).
+        sim.StepPlayerAttachment(s, dt);
 
         // Standing orders execute here rather than in the input path: an agent issues one
         // order and then sends nothing, so if the order did not drive its own ticks the

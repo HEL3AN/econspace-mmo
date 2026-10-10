@@ -137,17 +137,20 @@ void Simulation::StepPlayerShip(ClientSession& s, const Proto::Command& cmd, flo
     // A standing hold follows something that moves, so the step has to be told where that
     // something is now (#157). The server resolves it from the live entity; the client
     // resolves the same id from its own proxy.
-    Vector2        holdPos{ 0.0f, 0.0f };
-    const Vector2* holdPtr = nullptr;
-    const int      holdId = s.ship->GetHoldTargetId();
+    // Its velocity is the one StepPlayerAttachment measured on the last world tick (#298).
+    Sim::HoldTarget        hold;
+    const Sim::HoldTarget* holdPtr = nullptr;
+    const int              holdId = s.ship->GetHoldTargetId();
     if (s.ship->GetHoldMode() != HoldMode::None && holdId != 0)
     {
         if (const SystemState* st = SystemOf(s))
             for (const auto& e : st->entities)
                 if (e->GetId() == holdId)
                 {
-                    holdPos = e->GetPosition();
-                    holdPtr = &holdPos;
+                    hold.pos = e->GetPosition();
+                    if (s.holdTrackId == holdId)
+                        hold.vel = s.holdTrackVel;
+                    holdPtr = &hold;
                     break;
                 }
         // A target that is gone -- destroyed, or in another system now -- releases the
@@ -632,13 +635,82 @@ int Simulation::StepPlayerDock(ClientSession& s, SystemState& st)
             }
         }
         s.ship->DisengageAutopilot();
+        s.ship->ReleaseHold();
         s.ship->Stop();
         s.dockedStationId = e->GetId();
+        // Berthed on the side it came in from, and from now on carried there (#298).
+        s.dockBearing = Sim::DockBearing(e->GetPosition(), pp);
+        s.ship->Teleport(Sim::DockBerth(e->GetPosition(), e->GetSize(), s.dockBearing));
         s.RecordEvent(Ev::Kind::Docked, "Docked at " + e->GetName());
         GenerateDockOffers(s);  // fresh station mission board (M4f-2)
         return s.dockedStationId;
     }
     return 0;
+}
+
+void Simulation::StepPlayerUndock(ClientSession& s)
+{
+    if (s.dockedStationId == 0)
+        return;
+    // Out at the berth beside where the station is now, at rest -- not wherever the ship
+    // was when it docked, which an orbiting station left long ago (#298).
+    if (s.ship)
+        if (const SystemState* st = SystemOf(s))
+            for (const auto& e : st->entities)
+                if (e->GetId() == s.dockedStationId)
+                {
+                    s.ship->Teleport(Sim::DockBerth(e->GetPosition(), e->GetSize(), s.dockBearing));
+                    break;
+                }
+    s.RecordEvent(Ev::Kind::Undocked, "Undocked");
+    s.dockedStationId = 0;
+}
+
+void Simulation::StepPlayerAttachment(ClientSession& s, float dt)
+{
+    if (!s.ship || dt <= 0.0f)
+        return;
+    const SystemState* st = SystemOf(s);
+    if (st == nullptr)
+        return;
+
+    if (s.IsDocked())
+    {
+        for (const auto& e : st->entities)
+            if (e->GetId() == s.dockedStationId)
+            {
+                const Vector2 berth = Sim::DockBerth(e->GetPosition(), e->GetSize(), s.dockBearing);
+                const Vector2 was = s.ship->GetPosition();
+                s.ship->Carry(berth, { (berth.x - was.x) / dt, (berth.y - was.y) / dt });
+                break;
+            }
+        return;
+    }
+
+    // Measured here, once a world tick, rather than in the player step: commands come in
+    // bursts, and two steps inside one tick would see the target standing still.
+    const int     id = s.ship->GetHoldMode() != HoldMode::None ? s.ship->GetHoldTargetId() : 0;
+    const Entity* target = nullptr;
+    if (id != 0)
+        for (const auto& e : st->entities)
+            if (e->GetId() == id)
+            {
+                target = e.get();
+                break;
+            }
+    if (target == nullptr)
+    {
+        s.holdTrackId = 0;
+        s.holdTrackVel = { 0.0f, 0.0f };
+        return;
+    }
+    const Vector2 now = target->GetPosition();
+    if (s.holdTrackId == id)
+        s.holdTrackVel = { (now.x - s.holdTrackPos.x) / dt, (now.y - s.holdTrackPos.y) / dt };
+    else
+        s.holdTrackVel = { 0.0f, 0.0f };  // first sight: one tick before it can be measured
+    s.holdTrackId = id;
+    s.holdTrackPos = now;
 }
 
 void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId,

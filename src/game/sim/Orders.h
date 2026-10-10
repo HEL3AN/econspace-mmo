@@ -28,8 +28,18 @@ enum class Kind
     Dock,    // approach a station and dock with it
     Undock,  // leave the station
     Mine,    // approach a field and mine it
-    Route    // travel to another system, gate by gate
+    Route,   // travel to another system, gate by gate
+    // Holding station on an object at `stopDist` (#157, #298). These never finish on their
+    // own: they run until replaced or aborted, or until the target is gone.
+    Orbit,  // circle it
+    Keep,   // keep at range
+    Follow  // keep at range and match its velocity
 };
+
+inline bool IsHold(Kind k)
+{
+    return k == Kind::Orbit || k == Kind::Keep || k == Kind::Follow;
+}
 
 enum class Status
 {
@@ -44,7 +54,7 @@ struct Order
     Kind    kind = Kind::None;
     int     targetId = 0;            // station / field / object to act on (0 — use point)
     Vector2 point = { 0.0f, 0.0f };  // destination for MoveTo without a target
-    float   stopDist = 120.0f;       // how close counts as arrived
+    float   stopDist = 120.0f;       // how close counts as arrived; a hold's range
     bool    useWarp = false;         // MoveTo: warp instead of cruising
     bool    untilFull = false;       // Mine: keep going until the hold is full
 

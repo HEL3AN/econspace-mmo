@@ -205,6 +205,7 @@ add_executable(econspace
     src/game/core/Game.cpp
     src/game/core/GameNet.cpp
     src/game/core/GameHud.cpp
+    src/game/core/RangePicker.cpp  # a hold at a distance of the player's choosing (#298)
     src/game/sim/Overview.cpp      # what the overview lists and in what order (#157)
     src/game/sim/Sensor.cpp        # the sensor screen's grid and allegiance colours (#123)
     src/game/sim/PlayerStep.cpp

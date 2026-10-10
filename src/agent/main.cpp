@@ -459,6 +459,39 @@ std::vector<Tool> BuildTools()
                           return GiveOrder(OrderCommand(Orders::Kind::Undock), "undock");
                       } });
 
+    tools.push_back(
+        { "hold_station",
+          "Hold station on an object at a distance you choose, until another order replaces "
+          "it or abort_order ends it. mode 'orbit' circles it, 'keep' holds the distance "
+          "without circling, 'follow' holds the distance and matches its velocity -- the "
+          "one that stays with a station going round a planet, or with a moving ship. It "
+          "flies there at sublight: for something far away, move_to with warp first.",
+          Obj({ { "target_id", Num("object id from observe") },
+                { "mode", Str("'orbit', 'keep' or 'follow'") },
+                { "range", Num("distance to hold from its centre (default 500)") } },
+              { "target_id", "mode" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              const std::string mode = Lower(args.value("mode", std::string()));
+              Orders::Kind      kind = Orders::Kind::None;
+              if (mode == "orbit")
+                  kind = Orders::Kind::Orbit;
+              else if (mode == "keep")
+                  kind = Orders::Kind::Keep;
+              else if (mode == "follow")
+                  kind = Orders::Kind::Follow;
+              else
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "mode is 'orbit', 'keep' or 'follow'" };
+              const double range = NumberOr(args, "range", 500.0);
+              if (!(range >= 1.0))
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "range is a distance of at least 1" };
+              Proto::Command c = OrderCommand(kind);
+              c.orderTarget = (int)NumberOr(args, "target_id", 0);
+              c.orderStopDist = (float)range;
+              return GiveOrder(c, "hold_station");
+          } });
+
     tools.push_back({ "mine",
                       "Approach an asteroid field and mine it. With until_full, keeps "
                       "going until the hold is full or the field is exhausted.",

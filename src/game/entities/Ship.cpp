@@ -81,9 +81,14 @@ void Ship::ApplyNavView(int warpPhase, float warpAlignTimer, Vector2 warpTarget,
     apArrived_ = false;
     apTarget_ = apTarget;
     apStopDistance_ = apStopDistance;
-    holdMode_ =
-        (holdMode == 1) ? HoldMode::Orbit : (holdMode == 2 ? HoldMode::Keep : HoldMode::None);
+    holdMode_ = holdMode == 1   ? HoldMode::Orbit
+                : holdMode == 2 ? HoldMode::Keep
+                : holdMode == 3 ? HoldMode::Follow
+                                : HoldMode::None;
     holdTargetId_ = holdTargetId;
+    // Not in the snapshot: a follow re-derives it from the target on its next step, and
+    // anything else must not inherit one.
+    apCarry_ = { 0.0f, 0.0f };
     holdRange_ = holdRange;
 }
 
@@ -118,6 +123,7 @@ void Ship::EngageAutopilot(Vector2 target, float stopDistance)
     apArrived_ = false;
     apTarget_ = target;
     apStopDistance_ = stopDistance;
+    apCarry_ = { 0.0f, 0.0f };
 }
 
 void Ship::EngageHold(HoldMode mode, int targetId, float range)
@@ -133,9 +139,10 @@ void Ship::ReleaseHold()
 {
     holdMode_ = HoldMode::None;
     holdTargetId_ = 0;
+    apCarry_ = { 0.0f, 0.0f };
 }
 
-void Ship::UpdateHold(Vector2 targetPos)
+void Ship::UpdateHold(Vector2 targetPos, Vector2 targetVel)
 {
     if (holdMode_ == HoldMode::None)
         return;
@@ -176,6 +183,16 @@ void Ship::UpdateHold(Vector2 targetPos)
     float aim = holdRange_;
     if (holdMode_ == HoldMode::Orbit)
         aim /= cosf(ORBIT_LEAD_DEGREES * DEG2RAD);
+    if (holdMode_ == HoldMode::Follow)
+    {
+        // The ring at the bearing the ship already has, as for a keep, but flown as a
+        // tether: never "arrived", always moving with the target plus a correction towards
+        // the ring. Arriving would stop the ship, and a stopped ship is left behind by
+        // anything that moves.
+        EngageAutopilot({ targetPos.x + ux * aim, targetPos.y + uy * aim }, 0.0f);
+        apCarry_ = targetVel;
+        return;
+    }
     EngageAutopilot({ targetPos.x + ux * aim, targetPos.y + uy * aim }, holdRange_ * 0.08f);
 }
 
@@ -354,6 +371,41 @@ void Ship::RunAutopilot(float dt)
     float dx = apTarget_.x - pos_.x;
     float dy = apTarget_.y - pos_.y;
     float dist = sqrtf(dx * dx + dy * dy);
+
+    if (holdMode_ == HoldMode::Follow)
+    {
+        // The target's velocity plus a pull towards the aim point that shrinks as it
+        // closes: a first-order loop around a moving point, which settles on it rather than
+        // circling it. Capped at what the ship can do -- a target faster than that is
+        // simply not kept up with.
+        Vector2     want = apCarry_;
+        const float pull = fminf(dist * 1.5f, MaxSpeed());
+        if (dist > 0.001f)
+        {
+            want.x += dx / dist * pull;
+            want.y += dy / dist * pull;
+        }
+        const float sp = sqrtf(want.x * want.x + want.y * want.y);
+        if (sp > MaxSpeed())
+        {
+            want.x *= MaxSpeed() / sp;
+            want.y *= MaxSpeed() / sp;
+        }
+        desiredVelocity_ = want;
+
+        // The nose follows the way the ship is going, once it is going anywhere.
+        if (sp > 5.0f)
+        {
+            float diff = atan2f(want.y, want.x) - heading_;
+            while (diff > PI)
+                diff -= 2.0f * PI;
+            while (diff < -PI)
+                diff += 2.0f * PI;
+            const float step = stats_.turnSpeed * dt;
+            heading_ += (fabsf(diff) <= step) ? diff : (diff > 0 ? step : -step);
+        }
+        return;
+    }
 
     if (apArrived_ || dist <= apStopDistance_)
     {

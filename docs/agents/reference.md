@@ -45,6 +45,16 @@ Leave the station.
 
 No arguments.
 
+### `hold_station`
+
+Hold station on an object at a distance you choose, until another order replaces it or abort_order ends it. mode 'orbit' circles it, 'keep' holds the distance without circling, 'follow' holds the distance and matches its velocity -- the one that stays with a station going round a planet, or with a moving ship. It flies there at sublight: for something far away, move_to with warp first.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `mode` | string | yes | 'orbit', 'keep' or 'follow' |
+| `range` | number |  | distance to hold from its centre (default 500) |
+| `target_id` | number | yes | object id from observe |
+
 ### `mine`
 
 Approach an asteroid field and mine it. With until_full, keeps going until the hold is full or the field is exhausted.

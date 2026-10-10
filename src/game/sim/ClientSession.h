@@ -74,6 +74,15 @@ struct ClientSession
     float fireTimer = 0.0f;       // weapon cooldown
     float miningProgress = 0.0f;  // accumulator of ore-unit fractions
     int   dockedStationId = 0;    // 0 means in flight
+    // Which side of the station the ship is berthed on, as a unit vector from its centre,
+    // fixed at the dock (#298). The berth itself moves with the station.
+    Vector2 dockBearing = { 1.0f, 0.0f };
+
+    // The hold target as last measured, once per world tick (#298): which object, where it
+    // was, and the velocity that came out of the difference. A follow flies that velocity.
+    int     holdTrackId = 0;
+    Vector2 holdTrackPos = { 0.0f, 0.0f };
+    Vector2 holdTrackVel = { 0.0f, 0.0f };
 
     // The standing order this player has running (#26).
     Orders::Order  order;

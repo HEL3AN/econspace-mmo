@@ -14,7 +14,9 @@ enum class HoldMode
 {
     None,
     Orbit,  // circle it at a distance
-    Keep    // hold the distance without circling
+    Keep,   // hold the distance without circling
+    Follow  // hold the distance and match its velocity: a soft tether to something moving
+            // (#298) -- keep-at-range catches up with a moving station and stops, behind
 };
 
 // Warp jump phases: aligning to the target (spin-up), the jump itself, or no warp.
@@ -50,7 +52,11 @@ public:
 
     // Autopilot: fly to target and stop at stopDistance.
     void EngageAutopilot(Vector2 target, float stopDistance);
-    void DisengageAutopilot() { apActive_ = false; }
+    void DisengageAutopilot()
+    {
+        apActive_ = false;
+        apCarry_ = { 0.0f, 0.0f };
+    }
 
     // Holding station on an object at a distance (#157). The target is an id rather than a
     // point because the whole purpose is to follow something that moves; the position is
@@ -62,8 +68,10 @@ public:
     int      GetHoldTargetId() const { return holdTargetId_; }
     float    GetHoldRange() const { return holdRange_; }
     // Aims the autopilot at where the ship should be a moment from now. Called once a tick
-    // while a hold is running and the target's position is known.
-    void UpdateHold(Vector2 targetPos);
+    // while a hold is running and the target's position is known. `targetVel` is used by a
+    // follow only: the ship flies the target's own velocity plus a correction towards the
+    // ring, so it stays with something that moves instead of always arriving late.
+    void UpdateHold(Vector2 targetPos, Vector2 targetVel = { 0.0f, 0.0f });
 
     // How far ahead on the circle an orbiting ship aims. Large enough that it keeps moving
     // rather than converging on a point, small enough that it does not spiral outward.
@@ -94,6 +102,14 @@ public:
     void SetMiningOn(bool on) { miningOn_ = on; }  // network: sync from snapshot
 
     void Stop() { velocity_ = { 0.0f, 0.0f }; }
+
+    // Docked: carried by the station rather than flown (#298). The velocity is the
+    // station's, so what the ship reports is what it is doing; nothing integrates it.
+    void Carry(Vector2 pos, Vector2 vel)
+    {
+        pos_ = pos;
+        velocity_ = vel;
+    }
 
     // Piloting skill bonus — a multiplier on speed and maneuverability.
     void SetPilotBonus(float bonus) { pilotBonus_ = bonus; }
@@ -207,6 +223,10 @@ private:
     int      holdTargetId_ = 0;
     float    holdRange_ = 0.0f;
     float    apStopDistance_ = 0.0f;
+    // A follow's feed-forward: the velocity the autopilot adds to its own, so that "at the
+    // aim point" means moving with the target rather than stopped where it was (#298).
+    // Zero for every other kind of flight.
+    Vector2 apCarry_ = { 0.0f, 0.0f };
 
 public:
     // The warp profile (#160). A warp accelerates by a fixed share of its speed every second

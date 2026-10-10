@@ -391,12 +391,21 @@ std::string Describe(const View& view, Detail detail)
                                           snap.systemId.c_str(), sysExtra.c_str());
 
     // --- What we are flying -------------------------------------------------
-    const char* mode = p.docked ? "docked" : (p.warpPhase != 0 ? "in warp" : "flying");
+    // Docked is attached: the ship goes round with a station on an orbit (#298).
+    const char* mode = p.docked ? "docked (attached, moves with the station)"
+                                : (p.warpPhase != 0 ? "in warp" : "flying");
     out += Fmt("SHIP   hull %.0f/%.0f  shields %.0f/%.0f  cargo %d/%d  money %.0f cr\n", p.hull,
                p.maxHull, p.shields, p.maxShields, p.cargoUsed, p.cargoCap, p.money);
     out += Fmt("       %s  stabilizer %s  weapons %s  mining %s%s\n", mode,
                p.stabilizer ? "on" : "off", p.weaponOn ? "ARMED" : "off", p.mining ? "on" : "off",
                p.autopilot ? "  autopilot engaged" : "");
+    // A standing hold runs until something releases it (#157, #298), so say it is running.
+    if (p.holdMode != 0)
+        out += Fmt("       holding: %s object %d at %.0f\n",
+                   p.holdMode == 1   ? "orbiting"
+                   : p.holdMode == 2 ? "keeping at range of"
+                                     : "following",
+                   p.holdTargetId, p.holdRange);
 
     // Cargo by name, so an agent can decide what to sell without a second call.
     if (!p.cargoByType.empty())

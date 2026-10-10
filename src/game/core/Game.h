@@ -20,6 +20,7 @@
 #include <string>
 #include "ui/Window.h"
 #include "ui/ContextMenu.h"
+#include "core/RangePicker.h"
 #include <deque>
 #include <map>
 #include <vector>
@@ -243,14 +244,15 @@ private:
     // Where the object the ship is holding station on (#157) currently is, from the
     // client's own proxies -- or null if it is holding station on nothing, or on something
     // this client cannot see. Interpolated, so it lags the server's answer by the render
-    // delay; that is what the comment on StepPlayerShip is about.
-    const Vector2* HoldTargetPos() const;
+    // delay; that is what the comment on StepPlayerShip is about. Its velocity comes from
+    // the snapshots, for a follow (#298).
+    const Sim::HoldTarget* HoldTarget() const;
     // Standing orders: hold station on an object at a distance until released (#157).
-    void            OrderHold(int mode, int targetId, float range);
-    void            ReleaseHold();
-    mutable Vector2 holdTargetPos_ = { 0.0f, 0.0f };
-    bool            treatmentPanelOpen_ = false;
-    void            DrawTreatmentSettings();
+    void                    OrderHold(int mode, int targetId, float range);
+    void                    ReleaseHold();
+    mutable Sim::HoldTarget holdTarget_;
+    bool                    treatmentPanelOpen_ = false;
+    void                    DrawTreatmentSettings();
 
     // Radar state: zoom and absolute view center (does not follow the player).
     float   radarZoom_ = 1.0f;
@@ -345,4 +347,5 @@ private:
     Vector2 galaxyDragLast_ = { 0.0f, 0.0f };
 
     ContextMenu contextMenu_;  // right-click action menu on an object
+    RangePicker rangePicker_;  // a hold at a distance of the player's choosing (#298)
 };
