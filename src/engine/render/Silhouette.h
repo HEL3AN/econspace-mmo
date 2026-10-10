@@ -214,7 +214,6 @@ struct Part
 // RollVars); without it a part that names a variable rolls on its own.
 bool Resolve(const Part& p, int seed, int salt, Part& out, const float* rolls = nullptr);
 
-
 struct Shape
 {
     std::vector<Part> parts;
