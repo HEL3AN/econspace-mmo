@@ -76,7 +76,7 @@ void Session::Pump()
             if (!Proto::DecodeSnapshot(msg, s))
                 continue;
             // Names, sizes and ore live in the layout, not in every tick (#16).
-            Proto::CompleteFromLayout(s, layout_);
+            Proto::CompleteFromLayout(s, layout_.byId);
             // Journal entries accumulate here rather than being replaced: two snapshots may
             // arrive between two tool calls, and dropping the first would lose exactly the
             // event the agent is waiting on.
@@ -96,9 +96,16 @@ void Session::Pump()
             Proto::SystemLayout lay;
             if (!Proto::DecodeLayout(msg, lay))
                 continue;
-            layout_.clear();
-            for (const Proto::EntityLayout& el : lay.entities)
-                layout_[el.id] = el;
+            layout_.Reset(lay);
+        }
+        else if (type == "ldelta")
+        {
+            // The system changed while the agent was in it (#38): a structure built or
+            // gone, a wreck searched. Without this the agent would be told to dock at a
+            // station that no longer exists.
+            Proto::LayoutDelta d;
+            if (Proto::DecodeLayoutDelta(msg, d))
+                layout_.Apply(d);
         }
         else if (type == "galaxy")
         {
@@ -161,7 +168,7 @@ std::string Session::Describe(Obs::Detail detail) const
 {
     Obs::View v;
     v.snapshot = haveSnapshot_ ? &snapshot_ : nullptr;
-    v.layout = &layout_;
+    v.layout = &layout_.byId;
     v.universe = &universe_;
     v.galaxy = &galaxy_;
     return Obs::Describe(v, detail);

@@ -21,6 +21,7 @@
 #include "entities/NpcShip.h"
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
+#include "entities/Station.h"
 #include "raylib.h"
 
 #include <nlohmann/json.hpp>
@@ -488,6 +489,26 @@ struct NetStats
 
 static const double NET_REPORT_INTERVAL = 10.0;
 
+// What changed in the static layer since the last call, to everyone whose picture of that
+// system it changes (#38). Called once per loop, after every input and every world tick
+// that could have changed anything and before any snapshot is built: deltas and snapshots
+// share one ordered connection, so a snapshot can never arrive ahead of the change it
+// reflects. Nobody in a system means nobody is told -- whoever arrives later is sent the
+// whole layout, which already has it. Counted as layout traffic.
+static void SendLayoutDeltas(std::vector<HostClient>& clients, Simulation& sim, NetStats& net)
+{
+    for (const Proto::LayoutDelta& d : sim.TakeLayoutDeltas())
+    {
+        const std::string msg = Proto::EncodeLayoutDelta(d);
+        for (HostClient& hc : clients)
+            if (hc.sessionId != 0 && hc.conn && hc.layoutSystem == d.systemId)
+            {
+                net.layouts += (double)msg.size();
+                hc.conn->Send(msg);
+            }
+    }
+}
+
 // The galaxy index goes to one client: at login, before its first layout, so by the time
 // it is told which system it is in it already knows what that system is called (#206).
 // Counted with the galaxy statistics -- it is the same kind of message, only rarer.
@@ -826,6 +847,9 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed)
             acc -= dt;
         }
 
+        // Before the snapshots below, never after (#38).
+        SendLayoutDeltas(clients, sim, net);
+
         snapshotAcc += frame;
         const bool sendSnapshots = snapshotAcc >= SNAPSHOT_INTERVAL;
         if (sendSnapshots)
@@ -978,6 +1002,12 @@ static int HostSelftest()
 
     Vector2 startPos = s.ship->GetPosition();
 
+    // A structure appears a third of the way in and is gone again two thirds in (#38): the
+    // world changing while someone watches. What the server held when it built each
+    // snapshot is recorded, so the client side can check it never saw anything else.
+    int               builtId = 0;
+    std::vector<bool> serverHad;
+
     int         lastSeq = 0;
     const float dt = 1.0f / 60.0f;
     for (int i = 0; i < 120; i++)  // ~2 s of simulation
@@ -988,29 +1018,61 @@ static int HostSelftest()
         std::map<std::string, std::vector<FireEvent>> fires;
         HostDrainInputs(link.Server(), sim, s, dt, lastSeq, acks, fires);  // 1 input=1 tick
         HostStepWorld(sim, dt, fires);                                     // world
+        if (i == 40)
+            builtId = sim.AddStatic(
+                s.systemId,
+                std::make_unique<Station>(Vector2{ 900.0f, 900.0f }, 60.0f, "Selftest Depot",
+                                          FactionId::Independent, StationRole::TradeHub),
+                "selftest");
+        if (i == 80)
+            sim.RemoveStatic(s.systemId, builtId);
+        // As RunHost does it: the deltas first, then the snapshot (#38).
+        for (const Proto::LayoutDelta& d : sim.TakeLayoutDeltas())
+            if (d.systemId == s.systemId)
+                link.Server().Send(Proto::EncodeLayoutDelta(d));
         Proto::Snapshot snap = sim.BuildSnapshot(s, s.systemId);
         snap.player.lastInput = lastSeq;
         link.Server().Send(Proto::EncodeSnapshot(snap));
+        serverHad.push_back(i >= 40 && i < 80);
     }
 
-    bool            gotLayout = false, gotSnap = false;
-    Proto::Snapshot lastSnap;
-    std::string     msg;
+    bool                gotLayout = false, gotSnap = false, worldAgreed = builtId != 0;
+    Proto::Snapshot     lastSnap;
+    Proto::LayoutMirror mirror;
+    size_t              snapIndex = 0;
+    std::string         msg;
     while (link.Client().Poll(msg))
     {
-        std::string t = Proto::MessageType(msg);
-        if (t == "layout")
+        std::string         t = Proto::MessageType(msg);
+        Proto::SystemLayout lay;
+        Proto::LayoutDelta  d;
+        if (t == "layout" && Proto::DecodeLayout(msg, lay))
+        {
+            mirror.Reset(lay);
             gotLayout = true;
+        }
+        else if (t == "ldelta" && Proto::DecodeLayoutDelta(msg, d))
+            mirror.Apply(d);
         else if (t == "snap" && Proto::DecodeSnapshot(msg, lastSnap))
+        {
             gotSnap = true;
+            Proto::CompleteFromLayout(lastSnap, mirror.byId);
+            bool seen = false;
+            for (const Proto::EntitySnapshot& e : lastSnap.entities)
+                seen = seen || (e.id == builtId);
+            if (snapIndex >= serverHad.size() || seen != serverHad[snapIndex])
+                worldAgreed = false;
+            snapIndex++;
+        }
     }
     Vector2 endPos = s.ship->GetPosition();
     bool    moved = (endPos.x != startPos.x || endPos.y != startPos.y);
     bool    snapHasWorld = gotSnap && !lastSnap.entities.empty();
 
-    printf("Host selftest: layout %s, snapshot %s, player-moved %s\n", gotLayout ? "OK" : "FAIL",
-           snapHasWorld ? "OK" : "FAIL", moved ? "OK" : "FAIL");
-    return (gotLayout && snapHasWorld && moved) ? 0 : 1;
+    printf("Host selftest: layout %s, snapshot %s, player-moved %s, world-changes %s\n",
+           gotLayout ? "OK" : "FAIL", snapHasWorld ? "OK" : "FAIL", moved ? "OK" : "FAIL",
+           worldAgreed ? "OK" : "FAIL");
+    return (gotLayout && snapHasWorld && moved && worldAgreed) ? 0 : 1;
 }
 
 // Account persistence smoke test (no network, M4f-3): write the account to a file and

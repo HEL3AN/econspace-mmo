@@ -7,6 +7,7 @@
 #include "core/Faction.h"
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -105,4 +106,10 @@ struct SystemState
     // Seconds until each defensive object fires again, by entity id (#193). Transient:
     // a station that has just been hydrated is simply ready.
     std::map<int, float> defenceCooldown;
+
+    // The static layer's revision and what changed in it since the last LayoutDelta went
+    // out (#38), by entity id. Transient like the rest of a hot system: a restart begins
+    // at revision 0, and every client is sent a whole layout then anyway.
+    int           layoutRev = 0;
+    std::set<int> pendingAdded, pendingChanged, pendingRemoved;
 };

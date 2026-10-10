@@ -282,6 +282,9 @@ double Simulation::StepPlayerLoot(ClientSession& s, SystemState& st, int derelic
             if (std::sqrt(dx * dx + dy * dy) > dr->GetSize() + e->GetArchetype()->salvageRange)
                 return 0.0;
             dr->SetLooted();
+            // Everyone else in the system sees it searched now, not on their next visit
+            // -- and nobody is offered a wreck the server will refuse (#38).
+            MarkStaticChanged(st, derelictId);
             double reward = dr->GetReward();
             s.account.AddMoney(reward);
             return reward;

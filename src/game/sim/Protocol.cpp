@@ -1,5 +1,7 @@
 #include "sim/Protocol.h"
 
+#include "entities/Derelict.h"
+
 #include <nlohmann/json.hpp>
 
 #include <cmath>
@@ -71,6 +73,68 @@ bool OpenEnvelope(const std::string& s, json& j)
     if (j.is_discarded() || !j.is_object())
         return false;
     return j.value("v", 0) == Proto::PROTO_VERSION;
+}
+
+// One object of a system's static layer. Shared by the whole layout and by a delta, which
+// describe an object the same way -- a delta's `added` is exactly what a layout sent later
+// would have said.
+json EntityLayoutsJson(const std::vector<Proto::EntityLayout>& v)
+{
+    json ents = json::array();
+    for (const Proto::EntityLayout& e : v)
+    {
+        json ej = { { "id", e.id },
+                    { "kind", (int)e.kind },
+                    { "pos", V2(e.pos) },
+                    { "size", e.size },
+                    { "col", Col(e.color) },
+                    { "name", e.name },
+                    { "fac", (int)e.faction },
+                    { "sub", e.subType },
+                    { "orbit", e.orbitRadius },
+                    { "res", e.resource },
+                    { "reward", e.reward },
+                    { "dest", e.dest },
+                    { "arch", e.archetype } };
+        // Only when there is something to say: almost everything belongs to the world and
+        // almost no wreck has been searched.
+        if (!e.owner.empty())
+            ej["own"] = e.owner;
+        if (e.looted)
+            ej["looted"] = true;
+        ents.push_back(std::move(ej));
+    }
+    return ents;
+}
+
+std::vector<Proto::EntityLayout> ToEntityLayouts(const json& j, const char* key)
+{
+    std::vector<Proto::EntityLayout> out;
+    if (!j.contains(key) || !j[key].is_array())
+        return out;
+    for (const json& ej : j[key])
+    {
+        if (!ej.is_object())
+            continue;
+        Proto::EntityLayout e;
+        e.id = ej.value("id", 0);
+        e.kind = (Proto::EntityKind)ej.value("kind", 0);
+        e.pos = ToV2(ej.value("pos", json::array()));
+        e.size = ej.value("size", 0.0f);
+        e.color = ToCol(ej.value("col", json::array()));
+        e.name = ej.value("name", std::string());
+        e.faction = (FactionId)ej.value("fac", 0);
+        e.subType = ej.value("sub", 0);
+        e.orbitRadius = ej.value("orbit", 0.0f);
+        e.resource = ej.value("res", -1);
+        e.reward = ej.value("reward", 0.0);
+        e.dest = ej.value("dest", std::string());
+        e.archetype = ej.value("arch", std::string());
+        e.owner = ej.value("own", std::string());
+        e.looted = ej.value("looted", false);
+        out.push_back(std::move(e));
+    }
+    return out;
 }
 
 json MissionJson(const Proto::MissionView& m)
@@ -509,23 +573,8 @@ std::string EncodeLayout(const SystemLayout& s)
     json j;
     Stamp(j, "layout");
     j["sys"] = s.systemId;
-
-    json ents = json::array();
-    for (const EntityLayout& e : s.entities)
-        ents.push_back({ { "id", e.id },
-                         { "kind", (int)e.kind },
-                         { "pos", V2(e.pos) },
-                         { "size", e.size },
-                         { "col", Col(e.color) },
-                         { "name", e.name },
-                         { "fac", (int)e.faction },
-                         { "sub", e.subType },
-                         { "orbit", e.orbitRadius },
-                         { "res", e.resource },
-                         { "reward", e.reward },
-                         { "dest", e.dest },
-                         { "arch", e.archetype } });
-    j["ents"] = ents;
+    j["rev"] = s.rev;
+    j["ents"] = EntityLayoutsJson(s.entities);
     return j.dump();
 }
 
@@ -536,26 +585,63 @@ bool DecodeLayout(const std::string& s, SystemLayout& out)
         return false;
 
     out.systemId = j.value("sys", std::string());
-    out.entities.clear();
-    if (j.contains("ents") && j["ents"].is_array())
-        for (const json& ej : j["ents"])
-        {
-            EntityLayout e;
-            e.id = ej.value("id", 0);
-            e.kind = (EntityKind)ej.value("kind", 0);
-            e.pos = ToV2(ej.value("pos", json::array()));
-            e.size = ej.value("size", 0.0f);
-            e.color = ToCol(ej.value("col", json::array()));
-            e.name = ej.value("name", std::string());
-            e.faction = (FactionId)ej.value("fac", 0);
-            e.subType = ej.value("sub", 0);
-            e.orbitRadius = ej.value("orbit", 0.0f);
-            e.resource = ej.value("res", -1);
-            e.reward = ej.value("reward", 0.0);
-            e.dest = ej.value("dest", std::string());
-            e.archetype = ej.value("arch", std::string());
-            out.entities.push_back(e);
-        }
+    out.rev = j.value("rev", 0);
+    out.entities = ToEntityLayouts(j, "ents");
+    return true;
+}
+
+std::string EncodeLayoutDelta(const LayoutDelta& d)
+{
+    json j;
+    Stamp(j, "ldelta");
+    j["sys"] = d.systemId;
+    j["rev"] = d.rev;
+    j["add"] = EntityLayoutsJson(d.added);
+    j["chg"] = EntityLayoutsJson(d.changed);
+    j["rem"] = d.removed;
+    return j.dump();
+}
+
+bool DecodeLayoutDelta(const std::string& s, LayoutDelta& out)
+{
+    json j;
+    if (!OpenEnvelope(s, j) || j.value("t", std::string()) != "ldelta")
+        return false;
+
+    out = LayoutDelta{};
+    out.systemId = j.value("sys", std::string());
+    out.rev = j.value("rev", 0);
+    out.added = ToEntityLayouts(j, "add");
+    out.changed = ToEntityLayouts(j, "chg");
+    if (j.contains("rem") && j["rem"].is_array())
+        for (const json& r : j["rem"])
+            if (r.is_number_integer())
+                out.removed.push_back(r.get<int>());
+    return true;
+}
+
+void LayoutMirror::Reset(const SystemLayout& lay)
+{
+    systemId = lay.systemId;
+    rev = lay.rev;
+    byId.clear();
+    for (const EntityLayout& el : lay.entities)
+        byId[el.id] = el;
+}
+
+bool LayoutMirror::Apply(const LayoutDelta& d)
+{
+    if (d.systemId != systemId || d.rev <= rev)
+        return false;
+    // Replaces before removals: an object added and removed again since the last delta is
+    // only in `removed`, but a client that already had it from a layout must lose it.
+    for (const EntityLayout& el : d.added)
+        byId[el.id] = el;
+    for (const EntityLayout& el : d.changed)
+        byId[el.id] = el;
+    for (int id : d.removed)
+        byId.erase(id);
+    rev = d.rev;
     return true;
 }
 
@@ -668,6 +754,14 @@ int MessageVersion(const std::string& s)
     return j.value("v", 0);
 }
 
+// The name an object goes by in the completed snapshot. The layout carries a wreck's name and
+// whether it has been searched apart (#38), so a client building a Derelict from it does not
+// say "(searched)" twice; everything that reads a snapshot gets the name a player would see.
+static std::string ShownName(const EntityLayout& l)
+{
+    return l.kind == EntityKind::Derelict ? Derelict::DisplayName(l.name, l.looted) : l.name;
+}
+
 void CompleteFromLayout(Snapshot& s, const std::map<int, EntityLayout>& layout)
 {
     std::map<int, bool> present;
@@ -679,7 +773,7 @@ void CompleteFromLayout(Snapshot& s, const std::map<int, EntityLayout>& layout)
             continue;  // an NPC or another player: nothing static to fill in
         const EntityLayout& l = it->second;
         if (e.name.empty())
-            e.name = l.name;
+            e.name = ShownName(l);
         if (e.size == 0.0f)
             e.size = l.size;
         if (e.faction == FactionId::Independent)
@@ -702,7 +796,7 @@ void CompleteFromLayout(Snapshot& s, const std::map<int, EntityLayout>& layout)
         e.kind = l.kind;
         e.pos = l.pos;
         e.size = l.size;
-        e.name = l.name;
+        e.name = ShownName(l);
         e.faction = l.faction;
         e.ore = l.resource;
         s.entities.push_back(std::move(e));

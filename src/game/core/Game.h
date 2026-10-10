@@ -141,6 +141,7 @@ private:
     void
     BuildClientSnapshot();  // client: receives snapshot/layout from the transport + player view
     void ApplyLayout(const Proto::SystemLayout& lay);  // client: accept the layout of a new system
+    void ApplyLayoutDelta(const Proto::LayoutDelta& d);  // client: the system changed (#38)
     std::unique_ptr<Entity>
             MakeProxyFromLayout(const Proto::EntityLayout& el);  // proxy from layout
     Entity* FindEntityById(int id) const;  // live entity in the active system by id
@@ -276,8 +277,10 @@ private:
     // Statics are built from the received layout, dynamics (NPCs) from the snapshot; positions
     // are updated from the snapshot by id (M4d-3c). There is no local simulation to clone.
     std::vector<std::unique_ptr<Entity>> clientWorld_;
-    std::map<int, Proto::EntityLayout>   layoutById_;  // static layout of the current system by id
-    Proto::GalaxyState galaxyState_;  // net: per-system stats for the galaxy map (M4e-3c)
+    // The static layer of the current system: the layout sent on entry, kept current by
+    // the deltas that follow it (#38).
+    Proto::LayoutMirror layout_;
+    Proto::GalaxyState  galaxyState_;  // net: per-system stats for the galaxy map (M4e-3c)
     // Buffer of timestamped snapshots for interpolating non-own entities (M4e-2):
     // we draw them "in the past" (render delay), interpolating between two snapshots.
     struct InterpSnap

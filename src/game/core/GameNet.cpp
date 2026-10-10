@@ -30,6 +30,7 @@
 #include <string>
 #include <algorithm>
 #include <fstream>
+#include <set>
 
 void Game::BuildNetworkBeams()
 {
@@ -79,9 +80,7 @@ Entity* Game::FindEntityById(int id) const
 // resets the proxies (they'll be rebuilt from the new layout + snapshot).
 void Game::ApplyLayout(const Proto::SystemLayout& lay)
 {
-    layoutById_.clear();
-    for (const Proto::EntityLayout& el : lay.entities)
-        layoutById_[el.id] = el;
+    layout_.Reset(lay);
     clientWorld_.clear();
     snapBuffer_.clear();  // another system's interpolation history isn't needed
 
@@ -98,6 +97,67 @@ void Game::ApplyLayout(const Proto::SystemLayout& lay)
     // camera once the new position arrives instead of sliding across the gap.
     radarInit_ = false;
     cameraSnap_ = true;
+}
+
+// Client: the system we are in changed while we were in it (#38). The layout takes the
+// change, and every proxy it touches is rebuilt from the new description at once -- a
+// removed one simply is not. The raw pointers into the old proxies are re-pointed by id in
+// the same breath, as ApplyLayout clears them all, or they would dangle on the next frame.
+void Game::ApplyLayoutDelta(const Proto::LayoutDelta& d)
+{
+    if (!layout_.Apply(d))
+        return;  // another system's, or already in the layout we were sent
+
+    std::set<int> touched(d.removed.begin(), d.removed.end());
+    for (const Proto::EntityLayout& el : d.changed)
+        touched.insert(el.id);
+    for (const Proto::EntityLayout& el : d.added)
+        touched.insert(el.id);  // a client that had it from a layout rebuilds it as described
+
+    // Held by id across the rebuild: a wreck searched by somebody else is no reason to lose
+    // the target you were flying to.
+    auto      idOf = [](const Entity* e) { return e != nullptr ? e->GetId() : 0; };
+    const int selectedId = idOf(selected_);
+    const int nearbyId = idOf(nearbyStation_);
+    const int dockedId = idOf(dockedStation_);
+    const int miningId = idOf(miningBeamField_);
+
+    clientWorld_.erase(std::remove_if(clientWorld_.begin(), clientWorld_.end(),
+                                      [&touched](const std::unique_ptr<Entity>& e)
+                                      { return touched.count(e->GetId()) > 0; }),
+                       clientWorld_.end());
+    for (int id : touched)
+    {
+        auto it = layout_.byId.find(id);
+        if (it == layout_.byId.end())
+            continue;  // removed
+        if (std::unique_ptr<Entity> p = MakeProxyFromLayout(it->second))
+            clientWorld_.push_back(std::move(p));
+    }
+
+    // The last snapshot was completed against the old layout. Brought up to date as well,
+    // or the reconcile that runs before the next one would put a removed object back and
+    // drop an added one for a frame.
+    snapshot_.entities.erase(
+        std::remove_if(snapshot_.entities.begin(), snapshot_.entities.end(),
+                       [this, &touched](const Proto::EntitySnapshot& e)
+                       { return touched.count(e.id) > 0 && layout_.byId.count(e.id) == 0; }),
+        snapshot_.entities.end());
+    Proto::CompleteFromLayout(snapshot_, layout_.byId);
+
+    selected_ = FindEntityById(selectedId);
+    nearbyStation_ = StationById(nearbyId);
+    Entity* field = FindEntityById(miningId);
+    miningBeamField_ = field != nullptr && field->GetKind() == EntityKind::Field
+                           ? static_cast<AsteroidField*>(field)
+                           : nullptr;
+    dockedStation_ = StationById(dockedId);
+    if (dockedId != 0 && dockedStation_ == nullptr)
+        mode_ = GameMode::Flying;  // the station is gone; the snapshot says the same
+
+    for (const Proto::EntityLayout& el : d.added)
+        if (!el.owner.empty())
+            FlashMessage(TextFormat("%s built %s", el.owner.c_str(), el.name.c_str()));
 }
 
 void Game::BuildClientSnapshot()
@@ -143,6 +203,12 @@ void Game::BuildClientSnapshot()
             if (Proto::DecodeLayout(msg, lay))
                 ApplyLayout(lay);
         }
+        else if (type == "ldelta")
+        {
+            Proto::LayoutDelta d;
+            if (Proto::DecodeLayoutDelta(msg, d))
+                ApplyLayoutDelta(d);
+        }
         else if (type == "galaxy")
         {
             Proto::DecodeGalaxy(msg, galaxyState_);  // per-system stats for the map
@@ -165,7 +231,7 @@ void Game::BuildClientSnapshot()
                 continue;
             // The static half of each entity is not on the wire; it is in the layout we
             // were sent on entry (#16).
-            Proto::CompleteFromLayout(s, layoutById_);
+            Proto::CompleteFromLayout(s, layout_.byId);
             ApplyTradeAcks(s);                   // say what was sold; the money is the server's
             for (const Ev::Event& e : s.events)  // server journal (#29)
                 FlashMessage(e.text);
@@ -318,14 +384,20 @@ std::unique_ptr<Entity> Game::MakeProxyFromLayout(const Proto::EntityLayout& el)
             e = std::make_unique<Nebula>(el.pos, el.size, el.name);
             break;
         case Proto::EntityKind::Derelict:
-            e = std::make_unique<Derelict>(el.pos, el.size, el.name, el.reward);
+        {
+            auto d = std::make_unique<Derelict>(el.pos, el.size, el.name, el.reward);
+            if (el.looted)
+                d->SetLooted();  // dimmer, and no longer offering to be investigated (#38)
+            e = std::move(d);
             break;
+        }
         default: return nullptr;
     }
     if (e)
     {
         e->SetId(el.id);
         e->SetPosition(el.pos);
+        e->SetOwner(el.owner);
         // The archetype the server built it as (#195), which may not be its kind's usual
         // one: a leviathan among the derelicts (#142, #211). Without this the client would
         // draw every rare find as the ordinary thing of its kind.
@@ -406,8 +478,8 @@ void Game::ReconcileClientWorld()
             else
             {
                 // Statics — from the system layout by id.
-                auto itl = layoutById_.find(es.id);
-                if (itl != layoutById_.end())
+                auto itl = layout_.byId.find(es.id);
+                if (itl != layout_.byId.end())
                     p = MakeProxyFromLayout(itl->second);
             }
             if (!p)

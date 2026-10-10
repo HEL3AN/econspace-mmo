@@ -3,8 +3,11 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <deque>
 #include <fstream>
+#include <functional>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -26,6 +29,7 @@
 #include "sim/SaveSchema.h"
 #include "missions/Mission.h"
 #include "missions/MissionSystem.h"
+#include "net/Transport.h"
 #include "sim/Orders.h"
 #include "sim/Simulation.h"
 
@@ -1649,4 +1653,233 @@ TEST_CASE("a ship left beside a moving body is found beside it again (#258)")
 
     CHECK(back.ship->GetPosition().x == doctest::Approx(was.x + 16000.0f));
     CHECK(back.ship->GetPosition().y == doctest::Approx(was.y + 8880.0f));
+}
+
+// --- Authoritative world mutation (#38) ---
+
+namespace
+{
+std::unique_ptr<Station> MakeDepot(Vector2 at)
+{
+    return std::make_unique<Station>(at, 60.0f, "Depot", FactionId::TradersGuild,
+                                     StationRole::TradeHub);
+}
+
+bool LayoutHas(const Proto::SystemLayout& l, int id)
+{
+    for (const Proto::EntityLayout& e : l.entities)
+        if (e.id == id)
+            return true;
+    return false;
+}
+}  // namespace
+
+TEST_CASE("the static layer changes on the server, and says what changed (#38)")
+{
+    Fixture           f;
+    const std::string sys = f.s.systemId;
+    const int         rev0 = f.sim.BuildLayout(sys).rev;
+
+    const int id = f.sim.AddStatic(sys, MakeDepot({ 3000.0f, 0.0f }), "hunter");
+    REQUIRE(id != 0);
+    const Proto::SystemLayout after = f.sim.BuildLayout(sys);
+    CHECK(after.rev > rev0);
+    REQUIRE(LayoutHas(after, id));
+    for (const Proto::EntityLayout& e : after.entities)
+        if (e.id == id)
+            CHECK(e.owner == "hunter");
+
+    std::vector<Proto::LayoutDelta> ds = f.sim.TakeLayoutDeltas();
+    REQUIRE(ds.size() == 1);
+    CHECK(ds[0].systemId == sys);
+    CHECK(ds[0].rev == after.rev);
+    REQUIRE(ds[0].added.size() == 1);
+    CHECK(ds[0].added[0].id == id);
+    CHECK(ds[0].added[0].name == "Depot");
+    CHECK(f.sim.TakeLayoutDeltas().empty());  // said once
+
+    SUBCASE("taking it away is a removal, and it is gone from the layout")
+    {
+        REQUIRE(f.sim.RemoveStatic(sys, id));
+        ds = f.sim.TakeLayoutDeltas();
+        REQUIRE(ds.size() == 1);
+        CHECK(ds[0].removed == std::vector<int>{ id });
+        CHECK_FALSE(LayoutHas(f.sim.BuildLayout(sys), id));
+        CHECK_FALSE(f.sim.RemoveStatic(sys, id));  // and only once
+    }
+
+    SUBCASE("an object built and gone before anyone was told is only a removal")
+    {
+        const int brief = f.sim.AddStatic(sys, MakeDepot({ 0.0f, 3000.0f }), "hunter");
+        REQUIRE(f.sim.RemoveStatic(sys, brief));
+        ds = f.sim.TakeLayoutDeltas();
+        REQUIRE(ds.size() == 1);
+        CHECK(ds[0].added.empty());
+        CHECK(ds[0].removed == std::vector<int>{ brief });
+    }
+
+    SUBCASE("ids are never handed out twice")
+    {
+        const int next = f.sim.AddStatic(sys, MakeDepot({ 0.0f, -3000.0f }), "");
+        CHECK(next != id);
+        CHECK(next > id);
+    }
+}
+
+TEST_CASE("what may not change is refused, not half-changed (#38)")
+{
+    Fixture           f;
+    const std::string sys = f.s.systemId;
+
+    // A planet: satellites find their planet by its place in the file (#210).
+    auto planet = std::make_unique<Planet>(1500.0f, 0.0f, 0.0f, 40.0f, Color{ 70, 130, 200, 255 },
+                                           ResourceType::Iron, PlanetType::Rocky);
+    CHECK(f.sim.AddStatic(sys, std::move(planet), "hunter") == 0);
+    // A ship is not part of the static layer at all.
+    CHECK(f.sim.AddStatic(sys,
+                          std::make_unique<NpcShip>(Vector2{ 0.0f, 0.0f }, FactionId::Pirates,
+                                                    NpcRole::Pirate, std::vector<Vector2>{}),
+                          "") == 0);
+    CHECK(f.sim.AddStatic("no-such-system", MakeDepot({ 0.0f, 0.0f }), "") == 0);
+
+    // A gate already in the world stays: it is an edge of the route graph.
+    auto gate = std::make_unique<JumpGate>(Vector2{ 2000.0f, 0.0f }, 50.0f, "Gate", "elsewhere");
+    gate->SetId(91);
+    f.World().entities.push_back(std::move(gate));
+    CHECK_FALSE(f.sim.RemoveStatic(sys, 91));
+    CHECK(f.sim.TakeLayoutDeltas().empty());  // nothing was changed, so nothing is said
+}
+
+TEST_CASE("nobody is left docked inside a station that is gone (#38)")
+{
+    Fixture           f;
+    const std::string sys = f.s.systemId;
+    const int         id = f.sim.AddStatic(sys, MakeDepot({ 5000.0f, 0.0f }), "");
+    f.s.ship->Teleport({ 5000.0f, 0.0f });
+    REQUIRE(f.sim.StepPlayerDock(f.s, f.World()) == id);
+
+    const int before = f.s.LastEventSeq();
+    REQUIRE(f.sim.RemoveStatic(sys, id));
+    CHECK_FALSE(f.s.IsDocked());
+    const std::vector<Ev::Event> evs = f.s.EventsSince(before);
+    REQUIRE(evs.size() == 1);
+    CHECK(evs[0].kind == Ev::Kind::Undocked);
+    // The snapshot built after it agrees, so a client's station screen closes with it.
+    CHECK_FALSE(f.sim.BuildSnapshot(f.s, sys).player.docked);
+}
+
+TEST_CASE("a searched wreck is searched for everyone, at once (#38)")
+{
+    Fixture f;
+    auto wreck = std::make_unique<Derelict>(Vector2{ 100.0f, 0.0f }, 20.0f, "Hauler Wreck", 250.0);
+    wreck->SetId(61);
+    f.World().entities.push_back(std::move(wreck));
+    f.sim.TakeLayoutDeltas();
+
+    REQUIRE(f.sim.StepPlayerLoot(f.s, f.World(), 61) > 0.0);
+    std::vector<Proto::LayoutDelta> ds = f.sim.TakeLayoutDeltas();
+    REQUIRE(ds.size() == 1);
+    REQUIRE(ds[0].changed.size() == 1);
+    CHECK(ds[0].changed[0].id == 61);
+    CHECK(ds[0].changed[0].looted);
+    CHECK(ds[0].changed[0].name == "Hauler Wreck");  // the state is apart from the name
+}
+
+// The ordering guarantee, end to end through the test transport: the server sends what
+// changed before every snapshot built after it, and a client that applies messages in the
+// order they arrive never holds a snapshot that disagrees with the server's world -- no
+// ghost of something removed, no gap where something was built.
+TEST_CASE("a client never sees a snapshot ahead of the change it reflects (#38)")
+{
+    Fixture           f;
+    const std::string sys = f.s.systemId;
+    LocalTransport    link;
+
+    Proto::LayoutMirror mirror;
+    int                 depot = 0, wreck = 0;
+    // What the server held when it built each snapshot, in the order they were sent.
+    std::deque<std::set<int>> truths;
+    auto                      drain = [&]()
+    {
+        std::string msg;
+        while (link.Client().Poll(msg))
+        {
+            const std::string   t = Proto::MessageType(msg);
+            Proto::SystemLayout lay;
+            Proto::LayoutDelta  d;
+            if (t == "layout" && Proto::DecodeLayout(msg, lay))
+                mirror.Reset(lay);
+            else if (t == "ldelta" && Proto::DecodeLayoutDelta(msg, d))
+                mirror.Apply(d);
+            else if (t == "snap")
+            {
+                Proto::Snapshot s;
+                REQUIRE(Proto::DecodeSnapshot(msg, s));
+                Proto::CompleteFromLayout(s, mirror.byId);
+                std::set<int> seen;
+                for (const Proto::EntitySnapshot& e : s.entities)
+                    seen.insert(e.id);
+                REQUIRE_FALSE(truths.empty());
+                CHECK(seen == truths.front());
+                truths.pop_front();
+            }
+        }
+    };
+    // One host frame, in RunHost's order: whatever changed, then the deltas, then the
+    // snapshot.
+    auto frame = [&](const std::function<void()>& change)
+    {
+        if (change)
+            change();
+        for (const Proto::LayoutDelta& d : f.sim.TakeLayoutDeltas())
+            link.Server().Send(Proto::EncodeLayoutDelta(d));
+        link.Server().Send(Proto::EncodeSnapshot(f.sim.BuildSnapshot(f.s, sys)));
+        std::set<int> truth;
+        for (const auto& e : f.World().entities)
+            if (e->GetKind() != EntityKind::Npc)
+                truth.insert(e->GetId());
+        truths.push_back(truth);
+    };
+
+    link.Server().Send(Proto::EncodeLayout(f.sim.BuildLayout(sys)));
+    frame(nullptr);
+    frame([&]() { depot = f.sim.AddStatic(sys, MakeDepot({ 4000.0f, 0.0f }), "hunter"); });
+    frame(
+        [&]()
+        {
+            wreck = f.sim.AddStatic(
+                sys, std::make_unique<Derelict>(Vector2{ 50.0f, 0.0f }, 20.0f, "Wreck", 100.0), "");
+        });
+    drain();
+    REQUIRE(mirror.byId.count(depot) == 1);
+
+    SUBCASE("a layout sent in between does not make the delta after it take anything back")
+    {
+        // A client arriving mid-frame is sent the whole layout, built after a change but
+        // before the delta about it goes out. Applying that delta again is a no-op.
+        frame(
+            [&]()
+            {
+                f.sim.RemoveStatic(sys, depot);
+                link.Server().Send(Proto::EncodeLayout(f.sim.BuildLayout(sys)));
+            });
+        drain();
+        CHECK(mirror.byId.count(depot) == 0);
+    }
+
+    SUBCASE("removals and changes arrive before the snapshot that reflects them")
+    {
+        frame(
+            [&]()
+            {
+                f.sim.RemoveStatic(sys, depot);
+                f.s.ship->Teleport({ 50.0f, 0.0f });
+                f.sim.StepPlayerLoot(f.s, f.World(), wreck);
+            });
+        drain();
+        CHECK(mirror.byId.count(depot) == 0);
+        REQUIRE(mirror.byId.count(wreck) == 1);
+        CHECK(mirror.byId.at(wreck).looted);
+        CHECK(mirror.rev == f.sim.BuildLayout(sys).rev);
+    }
 }
