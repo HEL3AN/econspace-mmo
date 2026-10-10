@@ -124,9 +124,14 @@ std::vector<Socket> Sockets(const std::vector<Part>& sections)
                         }
                         Line(out, lines, si, "top", at, angle, pitch, w);
                     }
+                    // An end is where the drawing ends: a capsule's round cap reaches half
+                    // its width past `length`, and a module mounted at the cap's base would
+                    // sink into it.
+                    const float reach =
+                        0.5f * s.length + (s.form == Form::Capsule ? 0.5f * s.width : 0.0f);
                     for (int end = -1; end <= 1; end += 2)
                     {
-                        const Vector2 o = Turn({ 0.5f * s.length * (float)end, 0.0f }, s.angle);
+                        const Vector2 o = Turn({ reach * (float)end, 0.0f }, s.angle);
                         Line(out, lines, si, "end", { { s.at.x + o.x, s.at.y + o.y } },
                              { s.angle + (end > 0 ? 0.0f : 180.0f) }, std::fmin(s.width, pitch), w);
                     }

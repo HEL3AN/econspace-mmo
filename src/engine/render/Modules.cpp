@@ -16,6 +16,80 @@ std::vector<Module> g_modules;
 // The box a variant covers in its own unit: composed as the game would draw it -- rows,
 // rings and turns laid out, ranges at one seed -- and measured from the pieces, so a
 // drawing that is all on one side of its origin is mounted by where it actually is.
+//
+// Each piece is measured by what it draws, not by a circle around it: a circle, ring or
+// polygon by its radius; an arc by the part of the annulus its span covers (its two ends,
+// inner and outer, and any of the four axis points of the outer edge it passes); a bar or a
+// lattice by the corners of its turned rectangle, a chevron by its own corners, a capsule by
+// its two end caps. A circle around a long bar is as wide as the bar is long, and a quarter
+// arc measured as its whole circle is twice its size each way; either pushed a module
+// standing `out` off the hull it was meant to stand on.
+void Include(float lo[2], float hi[2], Vector2 p, float r = 0.0f)
+{
+    lo[0] = std::min(lo[0], p.x - r);
+    lo[1] = std::min(lo[1], p.y - r);
+    hi[0] = std::max(hi[0], p.x + r);
+    hi[1] = std::max(hi[1], p.y + r);
+}
+
+void Measure(const Piece& p, float lo[2], float hi[2])
+{
+    const float   a = p.angle * DEG2RAD;
+    const Vector2 along = { std::cos(a), std::sin(a) };
+    const Vector2 across = { -along.y, along.x };
+    // A point `u` along the piece's axis and `v` across it.
+    auto at = [&](float u, float v)
+    {
+        return Vector2{ p.pos.x + along.x * u + across.x * v,
+                        p.pos.y + along.y * u + across.y * v };
+    };
+    const float hl = 0.5f * p.length, hw = 0.5f * p.width;
+    switch (p.form)
+    {
+        case Form::Band: return;  // a planet's, never a module's
+        case Form::Disc:
+        case Form::Ring:
+        case Form::Polygon: Include(lo, hi, p.pos, p.radius); return;
+        case Form::Arc:
+        {
+            float from = std::min(p.arcFrom, p.arcTo), to = std::max(p.arcFrom, p.arcTo);
+            if (to - from >= 360.0f)
+            {
+                Include(lo, hi, p.pos, p.radius);
+                return;
+            }
+            const float inner = std::max(0.0f, p.radius - p.width);
+            for (const float d : { from, to })
+                for (const float r : { inner, p.radius })
+                    Include(lo, hi,
+                            { p.pos.x + std::cos(d * DEG2RAD) * r,
+                              p.pos.y + std::sin(d * DEG2RAD) * r });
+            // The outer edge bulges furthest where it crosses an axis.
+            for (float d = std::ceil(from / 90.0f) * 90.0f; d <= to; d += 90.0f)
+                Include(lo, hi,
+                        { p.pos.x + std::cos(d * DEG2RAD) * p.radius,
+                          p.pos.y + std::sin(d * DEG2RAD) * p.radius });
+            return;
+        }
+        case Form::Bar:
+        case Form::Lattice:
+            for (const float u : { -hl, hl })
+                for (const float v : { -hw, hw })
+                    Include(lo, hi, at(u, v));
+            return;
+        case Form::Chevron:
+            Include(lo, hi, at(hl, -hw * p.tip));
+            Include(lo, hi, at(hl, hw * p.tip));
+            Include(lo, hi, at(-hl, -hw));
+            Include(lo, hi, at(-hl, hw));
+            return;
+        case Form::Capsule:
+            Include(lo, hi, at(-hl, 0.0f), hw);
+            Include(lo, hi, at(hl, 0.0f), hw);
+            return;
+    }
+}
+
 Rectangle Bounds(const Shape& s)
 {
     Pose pose;
@@ -24,17 +98,7 @@ Rectangle Bounds(const Shape& s)
     pose.thrusting = true;
     float lo[2] = { 1e9f, 1e9f }, hi[2] = { -1e9f, -1e9f };
     for (const Piece& p : Compose(s, pose))
-    {
-        const bool  round = p.form == Form::Disc || p.form == Form::Ring ||
-                            p.form == Form::Polygon || p.form == Form::Arc;
-        const float r = round ? p.radius : 0.5f * std::hypot(p.length, p.width);
-        if (p.form == Form::Band)
-            continue;
-        lo[0] = std::min(lo[0], p.pos.x - r);
-        lo[1] = std::min(lo[1], p.pos.y - r);
-        hi[0] = std::max(hi[0], p.pos.x + r);
-        hi[1] = std::max(hi[1], p.pos.y + r);
-    }
+        Measure(p, lo, hi);
     if (lo[0] > hi[0])
         return { -1.0f, -1.0f, 2.0f, 2.0f };
     return { lo[0], lo[1], hi[0] - lo[0], hi[1] - lo[1] };
