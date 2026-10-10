@@ -198,7 +198,7 @@ goes on them:
 
 A section exposes **sockets** from its own geometry, `pitch` apart (default: its width, or a
 third of its radius): a bar or capsule has an `edge` row along each long side, a `top` row
-along its axis and an `end` at each end; a disc or polygon has an `edge` rim on its outline and
+along its axis and an `end` at each end (a capsule's at the tip of its round cap); a disc or polygon has an `edge` rim on its outline and
 an inner `top` ring; a ring or arc has a `ring` rim; a chevron's tail is an `end`. Sockets face
 outward.
 
@@ -207,7 +207,9 @@ Each kit line names a module (`"of": "id"`, or `"#tag"` for any module carrying 
 module's first `sockets` entry), and optionally `in` (only on that section, by index), `scale`
 (module radius, default from the pitch), `turn` (degrees added to the outward direction),
 `mount` (how the module meets the socket, measured by the module's own box rather than its
-origin: `"on"`, the default, lies wholly on the hull with its edge at the hull's; `"out"` starts
+origin -- the box of what its parts draw: a circle, ring or polygon by its radius, an arc by
+the span `from`..`to` actually covers, a bar, lattice or chevron by the corners of its turned
+outline, a capsule by its caps, never a circle drawn round a part: `"on"`, the default, lies wholly on the hull with its edge at the hull's; `"out"` starts
 at the edge and stands out from it -- docks, engines, dishes on booms; `"centre"` is centred on
 the socket; a `top` socket always centres), `z` (draw order, default 1: over the hull), `prefer` (`"out"`, the default, or `"in"`: which of
 two otherwise equal lines -- the two long edges of an arm, its two ends -- is taken first, the one

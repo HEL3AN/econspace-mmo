@@ -1190,6 +1190,60 @@ TEST_CASE("a variant with a field nobody reads is refused (#240)")
     REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
 }
 
+TEST_CASE("a variant is measured by what it draws, not by a circle round each part (#240)")
+{
+    MakeDirectory("bounds_test_tmp");
+    {
+        std::ofstream f("bounds_test_tmp/modules.json");
+        f << R"({ "modules": [
+            { "id": "arc", "variants": [ { "id": "a", "shape": [
+                { "form": "arc", "radius": 1, "width": 0.2, "from": 0, "to": 90 } ] } ] },
+            { "id": "bar", "variants": [ { "id": "a", "shape": [
+                { "form": "bar", "length": 2, "width": 0.4, "angle": 90 } ] } ] },
+            { "id": "pill", "variants": [ { "id": "a", "shape": [
+                { "form": "capsule", "length": 1, "width": 0.4, "at": [0.5, 0] } ] } ] } ] })";
+    }
+    std::string error;
+    REQUIRE(Render::Modules::Load("bounds_test_tmp/modules.json", error));
+    auto box = [](const char* id) { return Render::Modules::Find(id)->variants[0].bounds; };
+
+    // A quarter arc covers one quarter of the plane, not its whole circle.
+    const Rectangle arc = box("arc");
+    CHECK(arc.x == doctest::Approx(0.0f).epsilon(0.01));
+    CHECK(arc.width == doctest::Approx(1.0f).epsilon(0.01));
+    CHECK(arc.height == doctest::Approx(1.0f).epsilon(0.01));
+
+    // A turned bar is its turned rectangle: long one way, thin the other.
+    const Rectangle bar = box("bar");
+    CHECK(bar.width == doctest::Approx(0.4f).epsilon(0.01));
+    CHECK(bar.height == doctest::Approx(2.0f).epsilon(0.01));
+
+    // A capsule reaches its caps and no further, wherever it is placed.
+    const Rectangle pill = box("pill");
+    CHECK(pill.width == doctest::Approx(1.4f).epsilon(0.01));
+    CHECK(pill.height == doctest::Approx(0.4f).epsilon(0.01));
+
+    std::remove("bounds_test_tmp/modules.json");
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+}
+
+TEST_CASE("a capsule's end socket is at the tip of its cap, where the drawing ends (#240)")
+{
+    Render::Part pill;
+    pill.form = Render::Form::Capsule;
+    pill.length = 1.0f;
+    pill.width = 0.4f;
+    pill.section = true;
+    int ends = 0;
+    for (const auto& k : Render::Sockets({ pill }))
+        if (k.type == "end")
+        {
+            CHECK(std::fabs(k.pos.x) == doctest::Approx(0.7f));
+            ends++;
+        }
+    CHECK(ends == 2);
+}
+
 TEST_CASE(
     "a section exposes sockets: edges, ends and a centreline on a block, a rim on a disc (#240)")
 {
