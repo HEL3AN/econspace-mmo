@@ -1425,6 +1425,88 @@ TEST_CASE("the region hangs off the start system by a wormhole, and its seed is 
     std::remove(path.c_str());
 }
 
+// Every link, both ways: jump through each gate the way the host does -- passing the
+// session's own system id as where it came from -- and the ship must appear beside the gate
+// that leads back, facing away from it (#310). Hand-written systems, the wormhole and a
+// generated region alike.
+static void CheckEveryJumpArrivesAtTheGateBack(Simulation& sim)
+{
+    std::vector<std::pair<std::string, int>> gates;  // (system, gate id): sessions move maps
+    for (const auto& [id, st] : sim.Systems())
+        for (const auto& e : st.entities)
+            if (e->GetKind() == EntityKind::Gate)
+                gates.push_back({ id, e->GetId() });
+    REQUIRE_FALSE(gates.empty());
+
+    for (const auto& link : gates)
+    {
+        // Named variables, not structured bindings: CAPTURE takes them in a lambda, and
+        // capturing a structured binding is C++20 (Apple Clang refuses it under -Werror).
+        const std::string& fromId = link.first;
+        const int          gateId = link.second;
+        const Entity*      gate = nullptr;
+        for (const auto& e : sim.SystemById(fromId)->entities)
+            if (e->GetId() == gateId)
+                gate = e.get();
+        const std::string destId = static_cast<const JumpGate&>(*gate).GetDestination();
+        CAPTURE(fromId);
+        CAPTURE(destId);
+        const SystemState* dest = sim.SystemById(destId);
+        REQUIRE(dest != nullptr);
+        const Entity* back = nullptr;
+        for (const auto& g : dest->entities)
+            if (g->GetKind() == EntityKind::Gate &&
+                static_cast<const JumpGate&>(*g).GetDestination() == fromId)
+                back = g.get();
+        REQUIRE(back != nullptr);  // a link with no way back is a broken region
+
+        ClientSession& s =
+            sim.CreateSession(fromId, gate->GetPosition(), GetShipCatalog()[0].stats);
+        sim.ServerEnterSystem(s, destId, s.systemId);  // as the host and a route order call it
+        CHECK(s.systemId == destId);
+        const Vector2 at = s.ship->GetPosition();
+        const float   d = Vector2Distance(at, back->GetPosition());
+        CHECK(d > back->GetSize());  // clear of the gate
+        CHECK(d <= back->GetSize() + Simulation::ARRIVAL_CLEARANCE + 1.0f);
+        // Facing away: the nose points from the gate towards the ship.
+        const Vector2 away = Vector2Normalize(Vector2Subtract(at, back->GetPosition()));
+        const float   h = s.ship->GetHeading();
+        CHECK(std::cos(h) * away.x + std::sin(h) * away.y == doctest::Approx(1.0f).epsilon(0.001));
+        sim.DestroySession(s.id);
+    }
+}
+
+TEST_CASE("a jump arrives beside the gate that leads back, in every kind of system (#310)")
+{
+    SUBCASE("the hand-written galaxy")
+    {
+        Fixture f;
+        f.sim.MaterializeAllSystems(std::string(TEST_DATA_DIR) + "systems/");
+        CheckEveryJumpArrivesAtTheGateBack(f.sim);
+    }
+    auto region = [](uint64_t seed)
+    {
+        Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+        REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+        const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+        Simulation        sim;
+        sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+        sim.AttachRegion(seed, systems);
+        REQUIRE(sim.HasRegion());
+        sim.InitGalaxy();
+        sim.MaterializeAllSystems(systems);
+        CheckEveryJumpArrivesAtTheGateBack(sim);
+    };
+    SUBCASE("a generated region, seed 7")
+    {
+        region(7);
+    }
+    SUBCASE("a generated region, seed 31337")
+    {
+        region(31337);
+    }
+}
+
 TEST_CASE("the region is not decided in its first minutes, and a first ship is news (#143, #231)")
 {
     // Seen with the first generated region: within seconds of a start, the macro model

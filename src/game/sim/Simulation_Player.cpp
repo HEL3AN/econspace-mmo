@@ -713,30 +713,20 @@ void Simulation::StepPlayerAttachment(ClientSession& s, float dt)
     s.holdTrackPos = now;
 }
 
-void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId,
-                                   const std::string& fromId)
+void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId, std::string fromId)
 {
+    // fromId is taken by value: every caller passes s.systemId, which the next line
+    // overwrites. Held by reference it read as the destination, no gate there leads to
+    // itself, and every jump ended beside a station or in open space instead (#310).
     if (!HasSystem(destId))
         return;
     s.systemId = destId;
     if (!s.ship)
         return;
 
-    // Arrival point — at the gate leading back to the origin system (as on the client).
-    Vector2 arrival = SafeArrival(destId, &s);
-    if (!fromId.empty())
-        for (auto& e : SystemOf(s)->entities)
-            if (JumpGate* g =
-                    e->GetKind() == EntityKind::Gate ? static_cast<JumpGate*>(e.get()) : nullptr)
-                if (g->GetDestination() == fromId)
-                {
-                    Vector2 gp = g->GetPosition();
-                    float   d = std::sqrt(gp.x * gp.x + gp.y * gp.y);
-                    float   k = d > 1.0f ? (d - (g->GetSize() + 200.0f)) / d : 0.0f;
-                    arrival = { gp.x * k, gp.y * k };
-                    break;
-                }
-    s.ship->Teleport(arrival);
+    float heading = s.ship->GetHeading();
+    s.ship->Teleport(ArrivalFrom(destId, fromId, &s, &heading));
+    s.ship->SetHeading(heading);
     s.ship->DisengageAutopilot();
     s.ship->CancelWarp();
     s.dockedStationId = 0;     // the jump releases the docking
@@ -755,6 +745,32 @@ void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId,
         PushEvent("First ship into " + SystemName(destId));
         s.RecordEvent(Ev::Kind::Notice, "First ship ever into " + SystemName(destId));
     }
+}
+
+Vector2 Simulation::ArrivalFrom(const std::string& destId, const std::string& fromId,
+                                const ClientSession* who, float* heading) const
+{
+    // Beside the gate that leads back to where the ship came from -- the wormhole, for the
+    // link between home and the region, is such a gate too -- on the side towards the middle
+    // of the system, clear of the gate, and facing away from it. Gates do not move, so the
+    // position is the one in the layout every client has.
+    const SystemState* sys = SystemById(destId);
+    if (sys != nullptr && !fromId.empty())
+        for (const auto& e : sys->entities)
+            if (e->GetKind() == EntityKind::Gate &&
+                static_cast<const JumpGate&>(*e).GetDestination() == fromId)
+            {
+                const Vector2 gp = e->GetPosition();
+                const float   d = std::sqrt(gp.x * gp.x + gp.y * gp.y);
+                // Towards the centre; a gate at the very centre is left along +y.
+                const Vector2 dir =
+                    d > 1.0f ? Vector2{ -gp.x / d, -gp.y / d } : Vector2{ 0.0f, 1.0f };
+                const float off = e->GetSize() + ARRIVAL_CLEARANCE;
+                if (heading != nullptr)
+                    *heading = std::atan2(dir.y, dir.x);
+                return { gp.x + dir.x * off, gp.y + dir.y * off };
+            }
+    return SafeArrival(destId, who);
 }
 
 Vector2 Simulation::SafeArrival(const std::string& systemId, const ClientSession* who) const
