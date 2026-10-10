@@ -469,7 +469,7 @@
                     {"form": "bar", "at": [-0.75, -0.2], "angle": 38, "length": 0.5, "width": 0.38, "role": "hull", "pitch": 0.12, "spin": -0.8}
                 ],
                 "kit": { "symmetry": "none", "plain": 0.5, "modules": [
-                    {"of": "hull.engine", "in": 2, "on": "end", "count": 1, "scale": 0.15, "mount": "out", "z": -1},
+                    {"of": "hull.engine", "in": 2, "on": "end", "count": 1, "scale": 0.15, "mount": "out", "turn": 180, "z": -1},
                     {"of": "wreck.sparking-cable", "in": 2, "on": "end", "count": 1, "scale": 0.1, "mount": "out"},
                     {"of": "wreck.sparking-cable", "in": 0, "on": "end", "count": [0, 1], "scale": 0.1, "mount": "out"},
                     {"of": "wreck.breach", "in": 0, "on": "top", "count": 1, "scale": 0.11},
@@ -701,13 +701,12 @@
                     {"form": "chevron", "at": [-0.32, 0.4], "angle": 130, "length": 0.62, "width": 0.36, "role": "panel", "mirror": true, "minPixels": 24, "z": -1}
                 ],
                 "kit": { "symmetry": "bilateral", "plain": 0.5, "modules": [
-                    {"of": "hull.engine", "in": 1, "on": "end", "count": 1, "mount": "out", "scale": 0.22, "z": -1},
+                    {"of": "hull.engine", "in": 1, "on": "end", "count": 1, "mount": "out", "turn": 180, "scale": 0.22, "z": -1},
                     {"of": "hull.cargo", "in": 0, "on": "edge", "count": [0, 2], "mount": "centre", "turn": 90, "scale": 0.17, "z": -1},
                     {"of": "#style", "in": 0, "on": "top", "count": [0, 1], "scale": 0.2},
                     {"of": "hull.rcs", "in": 1, "on": "edge", "count": 2, "scale": 0.06, "turn": -90}
                 ] },
                 "parts": [
-                    {"form": "chevron", "at": [-1.25, 0.0], "angle": 180, "length": 0.7, "width": 0.42, "role": "light", "onlyThrusting": true, "z": -2},
                     {"module": "hull.cockpit", "at": [0.6, 0.0], "scale": 0.13},
                     {"form": "disc", "at": [-0.7, 0.33], "radius": 0.045, "role": "light", "mirror": true, "minPixels": 26}
                 ]
@@ -737,7 +736,6 @@
                     {"of": "hatch", "in": 2, "on": "top", "count": [0, 1], "scale": 0.06}
                 ] },
                 "parts": [
-                    {"form": "chevron", "at": [-1.05, 0.0], "angle": 180, "length": 0.9, "width": 0.5, "role": "light", "onlyThrusting": true},
                     {"module": "hull.cockpit", "at": [0.42, 0.0], "scale": 0.16},
                     {"module": "hull.engine", "at": [-0.95, 0.0], "scale": 0.24, "z": -1},
                     {"module": "hull.thruster", "at": [-0.62, 0.72], "scale": 0.16, "mirror": true, "chance": 0.6, "z": -1},
