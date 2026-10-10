@@ -8,6 +8,7 @@
 
 #include "core/World.h"
 #include "entities/AsteroidField.h"
+#include "entities/Derelict.h"
 #include "entities/JumpGate.h"
 #include "entities/NpcShip.h"
 #include "entities/Ship.h"
@@ -258,6 +259,13 @@ void Simulation::MaterializeAllSystems(const std::string& systemsDir)
             }
             else
                 st.entities = WorldLoader::LoadSystem(systemsDir + info.file);
+            // Ids here rather than in HydrateSystem, in the same order as ever, because what a
+            // save changed is replayed by id-bearing objects before any NPC exists.
+            for (auto& e : st.entities)
+                if (e->GetId() == 0)
+                    e->SetId(NextAgentId());
+            KeyWorldObjects(st);
+            ReplayChanges(st);
         }
         if (!st.populated)
         {
@@ -266,6 +274,30 @@ void Simulation::MaterializeAllSystems(const std::string& systemsDir)
         }
     }
 }
+
+namespace
+{
+// What a save keeps about an object beyond its description (#38): who owns it, and whether a
+// wreck has been searched. Empty for an object in the state it was made in.
+nlohmann::json StateOf(const Entity& e)
+{
+    nlohmann::json s = nlohmann::json::object();
+    if (!e.GetOwner().empty())
+        s["owner"] = e.GetOwner();
+    if (e.GetKind() == EntityKind::Derelict && static_cast<const Derelict&>(e).IsLooted())
+        s["looted"] = true;
+    return s;
+}
+
+void ApplyState(Entity& e, const nlohmann::json& s)
+{
+    if (!s.is_object())
+        return;
+    e.SetOwner(s.value("owner", std::string()));
+    if (e.GetKind() == EntityKind::Derelict && s.value("looted", false))
+        static_cast<Derelict&>(e).SetLooted();
+}
+}  // namespace
 
 // Server world persistence: the galaxy (system aggregates) + time. The sup* "pressure"
 // field is transient — not written (on load the world has "rested").
@@ -294,6 +326,49 @@ void Simulation::SaveWorld(const std::string& path) const
                              { "name", a.givenName } };
     }
     j["galaxy"] = galaxy;
+
+    // What players changed (#38). Stored as changes rather than as the systems themselves:
+    // the region is remade from its seed (#140) and the hand-written systems from data, so
+    // the save holds only what neither of them says.
+    json changes = json::object();
+    for (const auto& kv : systems_)
+    {
+        const SystemState& st = kv.second;
+        json               added = json::array();
+        json               state = json::object();
+        for (const auto& e : st.entities)
+        {
+            const auto key = st.keys.find(e->GetId());
+            if (key == st.keys.end())
+                continue;
+            json now = StateOf(*e);
+            if (key->second[0] == '+')
+            {
+                std::string array;
+                json        object = WorldLoader::DescribeObject(*e, array);
+                if (array.empty())
+                    continue;
+                now["key"] = key->second;
+                now["array"] = array;
+                now["object"] = std::move(object);
+                added.push_back(std::move(now));
+            }
+            else if (!now.empty())
+                state[key->second] = std::move(now);
+        }
+        if (st.removedKeys.empty() && added.empty() && state.empty())
+            continue;
+        json c = json::object();
+        if (!st.removedKeys.empty())
+            c["removed"] = st.removedKeys;
+        if (!state.empty())
+            c["state"] = std::move(state);
+        if (!added.empty())
+            c["added"] = std::move(added);
+        c["nextAdded"] = st.nextAddedKey;
+        changes[kv.first] = std::move(c);
+    }
+    j["changes"] = std::move(changes);
 
     std::ofstream out(path);
     if (out.is_open())
@@ -346,6 +421,29 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             SeedPresence(a);
         a.seeded = true;
     }
+
+    // Before version 3 nothing a player changed was kept, so an older save has nothing to
+    // replay and its world is the generated or written one, as it always was.
+    if (j.value("version", Save::UNVERSIONED) >= 3 && j.contains("changes") &&
+        j["changes"].is_object())
+        for (auto it = j["changes"].begin(); it != j["changes"].end(); ++it)
+        {
+            if (!HasSystem(it.key()) || !it.value().is_object())
+            {
+                TraceLog(LOG_WARNING,
+                         "World: changes to '%s', which this galaxy has not -- dropped",
+                         it.key().c_str());
+                continue;
+            }
+            SystemState& st = systems_[it.key()];
+            const json&  c = it.value();
+            if (c.contains("removed") && c["removed"].is_array())
+                for (const json& k : c["removed"])
+                    if (k.is_string())
+                        st.removedKeys.insert(k.get<std::string>());
+            st.nextAddedKey = std::max(1, c.value("nextAdded", 1));
+            st.restore = c.dump();
+        }
     return Save::Result::Ok;
 }
 
@@ -578,6 +676,7 @@ int Simulation::AddStatic(const std::string& systemId, std::unique_ptr<Entity> e
     const int id = NextAgentId();
     e->SetId(id);
     e->SetOwner(owner);
+    st->keys[id] = "+" + std::to_string(st->nextAddedKey++);
     st->entities.push_back(std::move(e));
     st->pendingAdded.insert(id);
     st->layoutRev++;
@@ -606,6 +705,15 @@ bool Simulation::RemoveStatic(const std::string& systemId, int id)
         }
     }
     st->defenceCooldown.erase(id);
+    // One of the world's own stays gone across a restart; one added since simply stops
+    // being saved.
+    const auto key = st->keys.find(id);
+    if (key != st->keys.end())
+    {
+        if (key->second[0] != '+')
+            st->removedKeys.insert(key->second);
+        st->keys.erase(key);
+    }
     st->entities.erase(it);
     st->pendingAdded.erase(id);  // added and gone again before anyone was told: only gone
     st->pendingChanged.erase(id);
@@ -623,4 +731,105 @@ void Simulation::MarkStaticChanged(SystemState& st, int id)
     if (st.pendingAdded.count(id) == 0)
         st.pendingChanged.insert(id);
     st.layoutRev++;
+}
+
+std::string Simulation::StaticKey(const std::string& systemId, int id) const
+{
+    const SystemState* st = SystemById(systemId);
+    if (st == nullptr)
+        return std::string();
+    const auto key = st->keys.find(id);
+    return key == st->keys.end() ? std::string() : key->second;
+}
+
+// --- Keeping what changed across a restart (#38) ---
+
+void Simulation::KeyWorldObjects(SystemState& st)
+{
+    // Named by what the object is, never by where it came in the build: one more belt in a
+    // hand-written file does not rename every station, and the generator's rule (#140) --
+    // keyed by what, not by order -- holds for the save too. The nth only tells apart two
+    // of one name, as a saved mission does (#227).
+    std::map<std::string, int> seen;
+    for (const auto& e : st.entities)
+    {
+        if (!IsMutableKind(e->GetKind()))
+            continue;
+        std::string array;
+        WorldLoader::DescribeObject(*e, array);
+        const std::string name = e->GetKind() == EntityKind::Derelict
+                                     ? static_cast<const Derelict&>(*e).GetBaseName()
+                                     : e->GetName();
+        const std::string stem = array + "/" + name + "#";
+        st.keys[e->GetId()] = stem + std::to_string(seen[stem]++);
+    }
+}
+
+void Simulation::ReplayChanges(SystemState& st)
+{
+    using nlohmann::json;
+    if (st.restore.empty() && st.removedKeys.empty())
+        return;
+    const json c = st.restore.empty() ? json::object() : json::parse(st.restore, nullptr, false);
+    st.restore.clear();
+    if (!c.is_object())
+        return;
+
+    std::map<std::string, Entity*> byKey;
+    for (const auto& e : st.entities)
+    {
+        const auto key = st.keys.find(e->GetId());
+        if (key != st.keys.end())
+            byKey[key->second] = e.get();
+    }
+
+    // Changed in place.
+    if (c.contains("state") && c["state"].is_object())
+        for (auto it = c["state"].begin(); it != c["state"].end(); ++it)
+        {
+            const auto e = byKey.find(it.key());
+            if (e != byKey.end())
+                ApplyState(*e->second, it.value());
+        }
+
+    // Taken away. A key the data no longer has is said, and kept: the object stays gone if
+    // the data comes back to it.
+    for (const std::string& k : st.removedKeys)
+        if (byKey.count(k) == 0)
+            TraceLog(LOG_WARNING, "World: %s in %s was removed, and the data no longer has it",
+                     k.c_str(), st.id.c_str());
+    auto gone = [&](const std::unique_ptr<Entity>& e)
+    {
+        const auto key = st.keys.find(e->GetId());
+        if (key == st.keys.end() || st.removedKeys.count(key->second) == 0)
+            return false;
+        st.keys.erase(key);
+        return true;
+    };
+    st.entities.erase(std::remove_if(st.entities.begin(), st.entities.end(), gone),
+                      st.entities.end());
+
+    // Added, after the world's own and in the order they were added, which is the order they
+    // were saved in: the same objects in the same places in the list as before the restart.
+    if (c.contains("added") && c["added"].is_array())
+        for (const json& a : c["added"])
+        {
+            const std::string key = a.value("key", std::string());
+            const std::string array = a.value("array", std::string());
+            if (key.empty() || key[0] != '+' || array.empty() || !a.contains("object"))
+                continue;
+            std::vector<std::unique_ptr<Entity>> built =
+                WorldLoader::BuildSystem(json{ { array, json::array({ a["object"] }) } });
+            if (built.size() != 1 || !IsMutableKind(built[0]->GetKind()))
+            {
+                TraceLog(LOG_WARNING, "World: %s in %s could not be rebuilt -- dropped",
+                         key.c_str(), st.id.c_str());
+                continue;
+            }
+            std::unique_ptr<Entity>& e = built[0];
+            e->SetId(NextAgentId());
+            ApplyState(*e, a);
+            st.keys[e->GetId()] = key;
+            st.entities.push_back(std::move(e));
+        }
 }

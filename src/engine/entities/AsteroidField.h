@@ -18,6 +18,7 @@ public:
 
     ResourceType GetResource() const { return resource_; }
     bool         HasOre() const { return oreRemaining_ > 0; }
+    int          GetOreMax() const { return oreMax_; }  // what it was made with
 
     // Takes up to amount units of ore, returns the amount actually extracted.
     int Extract(int amount);

@@ -15,7 +15,11 @@ namespace Save
 // 2: the world carries the seed and the rules' version of the region beyond the wormhole
 //    (#140). A version 1 file has neither, and is read as the same galaxy with a region
 //    made from a new seed.
-inline constexpr int WORLD_VERSION = 2;
+// 3: the world carries what players changed in each system's static layer (#38). Older
+//    files have none and load as the world the data describes. The bump is what keeps a
+//    version 2 build from reading a newer file, ignoring the changes, and writing the world
+//    back without them -- every structure built and every wreck searched, quietly undone.
+inline constexpr int WORLD_VERSION = 3;
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.
 // 3: a mission names its stations by system and station rather than by entity id, which

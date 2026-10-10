@@ -271,3 +271,64 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
     Orbits::Place(entities, 0.0);  // satellites without a "pos" need one before anything asks
     return entities;
 }
+
+nlohmann::json WorldLoader::DescribeObject(const Entity& e, std::string& array)
+{
+    json o = json::object();
+    array.clear();
+    o["pos"] = { e.GetPosition().x, e.GetPosition().y };
+    switch (e.GetKind())
+    {
+        case EntityKind::Station:
+        {
+            const Station& s = static_cast<const Station&>(e);
+            array = "stations";
+            o["name"] = s.GetName();
+            o["size"] = s.GetSize();
+            o["faction"] = Factions::Id(s.GetFaction());
+            o["role"] = StationRoleId(s.GetRole());
+            break;
+        }
+        case EntityKind::Field:
+        {
+            const AsteroidField& f = static_cast<const AsteroidField&>(e);
+            array = "asteroidFields";
+            o["name"] = f.GetName();
+            o["size"] = f.GetSize();
+            o["resource"] = ResourceName(f.GetResource());
+            o["ore"] = f.GetOreMax();
+            break;
+        }
+        case EntityKind::Nebula:
+            array = "nebulae";
+            o["name"] = e.GetName();
+            o["radius"] = e.GetSize();
+            break;
+        case EntityKind::Derelict:
+        {
+            const Derelict& d = static_cast<const Derelict&>(e);
+            array = "derelicts";
+            o["name"] = d.GetBaseName();  // searched or not is state, not description
+            o["size"] = d.GetSize();
+            o["reward"] = d.GetReward();
+            break;
+        }
+        case EntityKind::Star:
+        case EntityKind::Planet:
+        case EntityKind::Gate:
+        case EntityKind::Npc:
+        case EntityKind::PlayerShip:
+        case EntityKind::Unknown: return json();
+    }
+    if (e.GetArchetype() != nullptr)
+        o["archetype"] = e.GetArchetype()->id;
+    if (e.GetOrbit().has_value())
+    {
+        const Orbit& orbit = *e.GetOrbit();
+        o["orbits"] = { { "planet", orbit.planet },
+                        { "radius", orbit.radius },
+                        { "speed", orbit.speed },
+                        { "phase", orbit.phase } };
+    }
+    return o;
+}

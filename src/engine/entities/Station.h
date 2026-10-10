@@ -17,6 +17,8 @@ std::string StationRoleName(StationRole role);
 // author wrote should ask ParseStationRole instead, which says so (#191).
 StationRole StationRoleFromString(const std::string& s);
 bool        ParseStationRole(const std::string& s, StationRole& out);
+// The spelling ParseStationRole reads, which is what a system document is written with.
+std::string StationRoleId(StationRole role);
 
 // Space station: a hub with a screen (market, hangar). Belongs to a faction.
 class Station : public Entity

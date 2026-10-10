@@ -25,6 +25,18 @@ static const char* ArchetypeIdForStationRole(StationRole role)
     return "station.trade_hub";
 }
 
+std::string StationRoleId(StationRole role)
+{
+    switch (role)
+    {
+        case StationRole::TradeHub: return "TradeHub";
+        case StationRole::MiningOutpost: return "MiningOutpost";
+        case StationRole::Shipyard: return "Shipyard";
+        case StationRole::Military: return "Military";
+    }
+    return "TradeHub";
+}
+
 bool ParseStationRole(const std::string& s, StationRole& out)
 {
     if (s == "TradeHub")

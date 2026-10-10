@@ -2009,6 +2009,160 @@ TEST_CASE("a saved mission finds its stations again in a world numbered differen
         CHECK(t.missions.Active()[0].giverStationId == 5);
         CHECK(t.missions.Active()[0].destStationId == 9);
     }
+}
 
+// --- What players changed outlives the server (#38) ---
+
+namespace
+{
+// The registries once per test, before any server: a second Archetypes::Load leaves every
+// entity already built pointing into the registry it replaced.
+void LoadRegistries()
+{
+    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+}
+
+// A server's start, as econserver makes one: the data, then the save if there is one, then
+// every system built from data with the save's changes replayed on top.
+void StartServer(Simulation& sim, const std::string& worldPath)
+{
+    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    sim.Seed(1234u);
+    if (worldPath.empty() || sim.LoadWorld(worldPath) != Save::Result::Ok)
+        sim.InitGalaxy();
+    sim.MaterializeAllSystems(std::string(TEST_DATA_DIR) + "systems/");
+}
+
+// A system's static layer as somebody standing in it would describe it, in its order: what
+// each object is called in a save, and everything a player could tell apart. Ids are left
+// out on purpose -- they are good for one run.
+std::vector<std::string> StaticLayer(const Simulation& sim, const std::string& sys)
+{
+    std::vector<std::string> out;
+    for (const Proto::EntityLayout& e : sim.BuildLayout(sys).entities)
+        out.push_back(sim.StaticKey(sys, e.id) + " | " + std::to_string((int)e.kind) + " " +
+                      e.name + " owner=" + e.owner + (e.looted ? " searched" : "") + " @" +
+                      std::to_string((long)std::lround(e.pos.x)) + "," +
+                      std::to_string((long)std::lround(e.pos.y)));
+    return out;
+}
+
+template <typename T> T* FirstOf(SystemState& st, EntityKind kind)
+{
+    for (auto& e : st.entities)
+        if (e->GetKind() == kind)
+            return static_cast<T*>(e.get());
+    return nullptr;
+}
+}  // namespace
+
+TEST_CASE("the world's own objects are called the same on every load (#38)")
+{
+    LoadRegistries();
+    Simulation a, b;
+    StartServer(a, "");
+    StartServer(b, "");
+    const std::string sys = a.Universe().startId;
+    CHECK(StaticLayer(a, sys) == StaticLayer(b, sys));
+
+    // By what they are: the array they came from, their name, and which of that name.
+    Station* hub = FirstOf<Station>(*a.SystemById(sys), EntityKind::Station);
+    REQUIRE(hub != nullptr);
+    CHECK(a.StaticKey(sys, hub->GetId()) == "stations/" + hub->GetName() + "#0");
+    // A body or a gate is not something a save names: it does not change.
+    const Entity* star = FirstOf<Entity>(*a.SystemById(sys), EntityKind::Star);
+    REQUIRE(star != nullptr);
+    CHECK(a.StaticKey(sys, star->GetId()).empty());
+}
+
+TEST_CASE("what players changed in the static layer survives a restart (#38)")
+{
+    LoadRegistries();
+    const std::string path = "world_changes_tmp.json";
+    Simulation        a;
+    StartServer(a, "");
+    const std::string sys = a.Universe().startId;
+    SystemState&      st = *a.SystemById(sys);
+
+    // One of the world's own stations taken away, a wreck searched...
+    Station* hub = FirstOf<Station>(st, EntityKind::Station);
+    REQUIRE(hub != nullptr);
+    const std::string hubName = hub->GetName();
+    REQUIRE(a.RemoveStatic(sys, hub->GetId()));
+    Derelict* wreck = FirstOf<Derelict>(st, EntityKind::Derelict);
+    REQUIRE(wreck != nullptr);
+    wreck->SetLooted();
+    a.MarkStaticChanged(st, wreck->GetId());
+    // ...a depot built, one built and pulled down again, and a wreck left by a player.
+    const int depot = a.AddStatic(sys, MakeDepot({ 3000.0f, 0.0f }), "hunter");
+    const int brief = a.AddStatic(sys, MakeDepot({ 0.0f, 3000.0f }), "hunter");
+    REQUIRE(a.RemoveStatic(sys, brief));
+    auto hulk = std::make_unique<Derelict>(Vector2{ -4000.0f, 0.0f }, 50.0f, "Hulk", 250.0);
+    hulk->SetLooted();
+    REQUIRE(a.AddStatic(sys, std::move(hulk), "ann") != 0);
+    CHECK(a.StaticKey(sys, depot) == "+1");
+
+    const std::vector<std::string> before = StaticLayer(a, sys);
+    a.SaveWorld(path);
+
+    Simulation b;
+    StartServer(b, path);
+    std::remove(path.c_str());
+    CHECK(StaticLayer(b, sys) == before);  // the same objects, in the same order, the same state
+
+    bool hubBack = false;
+    for (const auto& e : b.SystemById(sys)->entities)
+        hubBack = hubBack || (e->GetKind() == EntityKind::Station && e->GetName() == hubName &&
+                              e->GetOwner().empty());
+    CHECK_FALSE(hubBack);
+
+    // A key is never handed out twice, not even across a restart.
+    const int next = b.AddStatic(sys, MakeDepot({ 6000.0f, 0.0f }), "hunter");
+    CHECK(b.StaticKey(sys, next) == "+4");
+    // The replay itself is no news: a client is sent the whole layout on arrival anyway.
+    CHECK(b.TakeLayoutDeltas().size() == 1);  // only the depot just built
+
+    SUBCASE("and survives a second restart, with nothing more changed")
+    {
+        b.SaveWorld(path);
+        Simulation c;
+        StartServer(c, path);
+        std::remove(path.c_str());
+        CHECK(StaticLayer(c, sys) == StaticLayer(b, sys));
+    }
+}
+
+TEST_CASE("a world saved before changes were kept loads as the data describes it (#38, #20)")
+{
+    LoadRegistries();
+    Simulation fresh;
+    StartServer(fresh, "");
+    const std::string sys = fresh.Universe().startId;
+    Station*          hub = FirstOf<Station>(*fresh.SystemById(sys), EntityKind::Station);
+    REQUIRE(hub != nullptr);
+
+    // Version 2 knew nothing of changes; anything under that name is not this build's to read.
+    const std::string path = "world_v2_tmp.json";
+    {
+        std::ofstream out(path);
+        out << R"({ "version": 2, "simTime": 5.0, "galaxy": { ")" << sys
+            << R"(": { "traders": 3 } }, "changes": { ")" << sys
+            << R"(": { "removed": [ "stations/)" << hub->GetName() << R"(#0" ] } } })";
+    }
+    Simulation old;
+    StartServer(old, path);
+    std::remove(path.c_str());
+    CHECK(old.Time() == doctest::Approx(5.0));
+    CHECK(StaticLayer(old, sys) == StaticLayer(fresh, sys));
+
+    // And one from a later build is refused, as ever.
+    {
+        std::ofstream out(path);
+        out << R"({ "version": )" << Save::WORLD_VERSION + 1 << R"(, "galaxy": {} })";
+    }
+    Simulation later;
+    later.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    CHECK(later.LoadWorld(path) == Save::Result::TooNew);
     std::remove(path.c_str());
 }

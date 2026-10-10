@@ -206,6 +206,9 @@ public:
     // the snapshots that follow, which is the whole ordering guarantee: a snapshot never
     // reaches a client ahead of the change it reflects.
     std::vector<Proto::LayoutDelta> TakeLayoutDeltas();
+    // The key a save knows an object by (SystemState::keys), or empty for one it does not
+    // keep: a ship, a body, a gate, or something put into the system by hand.
+    std::string StaticKey(const std::string& systemId, int id) const;
 
     // M4e-3c: galaxy snapshot (statistics of all systems + news) for the networked
     // client's galaxy map. Not const: refreshes the aggregates' population (RecountAgg).
@@ -383,6 +386,9 @@ public:
     // WORLD persistence (server-side): the galaxy (system aggregates) + time into a
     // separate world.json file. Does not touch entities — after LoadWorld the caller
     // materializes the world (MaterializeAllSystems). The player account is NOT included.
+    // What players changed in the static layer goes with it (#38): per system, the keys of
+    // the world's own objects that were taken away, the state of those that changed, and
+    // every object added since, whole, in the format of a system document.
     void SaveWorld(const std::string& path) const;
     // Save::Result::TooNew means the file was written by a later build: it is left alone
     // and nothing is loaded, because reading it with this build's rules would turn an
@@ -433,6 +439,11 @@ public:
     }
 
 private:
+    // A system's static layer was just built from its document: give the objects that may
+    // change their keys, then replay what the save said had changed (#38).
+    void KeyWorldObjects(SystemState& st);
+    void ReplayChanges(SystemState& st);
+
     WorldLoader::Universe              universe_;
     bool                               hasRegion_ = false;
     uint64_t                           regionSeed_ = 0;
