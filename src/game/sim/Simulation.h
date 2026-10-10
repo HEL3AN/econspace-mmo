@@ -43,9 +43,11 @@ public:
     // system by one wormhole gate. Call after LoadUniverse and before InitGalaxy/LoadWorld
     // -- its systems have to be in the index before anything is made for them. Reads the
     // start system's own file, so the wormhole is not placed in a planet's path.
-    void     AttachRegion(uint64_t seed, const std::string& systemsDir);
-    bool     HasRegion() const { return hasRegion_; }
-    uint64_t RegionSeed() const { return regionSeed_; }
+    void AttachRegion(uint64_t seed, const std::string& systemsDir);
+    bool HasRegion() const { return hasRegion_; }
+    // The generated systems as the loader reads them, by id (#140) -- for tools.
+    const std::map<std::string, std::string>& RegionDocuments() const { return regionDocs_; }
+    uint64_t                                  RegionSeed() const { return regionSeed_; }
 
     // The seed and rules a saved world was generated with, read without loading it. False
     // when the file is missing or has none (a save from before #140).

@@ -518,6 +518,36 @@ static void SendUniverse(HostClient& hc, const Simulation& sim, NetStats& net)
 // what changed is how often the result is described, not how often it is computed.
 static const double SNAPSHOT_INTERVAL = 1.0 / 20.0;
 
+// Prints the region a seed makes, as JSON on stdout: the galaxy index entries and every
+// system document, exactly what the server would build. The region is never saved -- it
+// is remade from the seed -- so this is how a developer or a bot finds where something
+// is without flying there: `econserver regiondump 8 | jq ...`.
+static int RegionDump(uint64_t seed)
+{
+    SetTraceLogLevel(LOG_NONE);  // stdout is the JSON
+    std::string dataDir = SIM_DATA_DIR;
+    Simulation  sim;
+    sim.LoadUniverse(dataDir + "universe.json");
+    sim.AttachRegion(seed, dataDir + "systems/");
+    if (!sim.HasRegion())
+    {
+        fprintf(stderr, "regiondump: no region (is %suniverse.json there?)\n", dataDir.c_str());
+        return 1;
+    }
+    nlohmann::json out;
+    out["seed"] = seed;
+    out["generator"] = Gen::GENERATOR_VERSION;
+    out["systems"] = nlohmann::json::array();
+    for (const auto& info : sim.Universe().systems)
+        if (sim.RegionDocuments().count(info.id))
+            out["systems"].push_back(
+                { { "id", info.id }, { "name", info.name }, { "security", info.security } });
+    for (const auto& kv : sim.RegionDocuments())
+        out["documents"][kv.first] = nlohmann::json::parse(kv.second);
+    printf("%s\n", out.dump(2).c_str());
+    return 0;
+}
+
 static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed)
 {
     std::string dataDir = SIM_DATA_DIR;
@@ -1207,6 +1237,8 @@ int main(int argc, char** argv)
         return WorldSelftest();
     if (argc > 1 && std::string(argv[1]) == "ordertest")
         return OrderSelftest();
+    if (argc > 1 && std::string(argv[1]) == "regiondump")
+        return RegionDump(argc > 2 ? std::strtoull(argv[2], nullptr, 10) : 1);
     if (argc > 1 && std::string(argv[1]) == "host")
     {
         unsigned short port = (argc > 2) ? (unsigned short)atoi(argv[2]) : 50800;
