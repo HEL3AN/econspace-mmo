@@ -45,6 +45,25 @@ struct View
 // should get a partial answer, not a failure.
 std::string Describe(const View& view, Detail detail);
 
+// The station's job board and the missions under way (#109), in full: what each asks, what
+// it pays, where it is handed in and whether it can be right now. Numbered as the snapshot
+// numbers them, because those numbers are what accept_mission and complete_mission take.
+std::string DescribeMissions(const View& view);
+
+// What this account owns, which ship it flies, and what each other hull would cost here
+// (#109) -- at the price this player would be charged, which depends on its standing with
+// the station's owner, rather than the catalog's.
+std::string DescribeHangar(const View& view);
+
+// Who owns the station the player is docked at, from the layout. Independent when not
+// docked or the layout does not say -- which is also what the server assumes.
+FactionId DockedFaction(const View& view);
+
+// What a mission still needs before it can be handed in, in one phrase ("destroy 2 more
+// pirates", "dock at Vale Station"). Empty when it can be handed in now. Kept beside the
+// mission list so an agent refused a hand-in is told the same thing the list says.
+std::string MissionNeeds(const View& view, const Proto::MissionView& m);
+
 // Compass point for a world-space offset ("N", "NE", ...). Exposed because the tests pin
 // the convention: +y is down in world coordinates, so north is -y, matching what the
 // player sees on screen rather than what the raw numbers suggest.

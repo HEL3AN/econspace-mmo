@@ -243,8 +243,6 @@ public:
     PlayerSellResult StepPlayerSell(ClientSession& s, SystemState& st, int resourceType,
                                     int amount);
 
-    // Refit the player ship to different stats (station hangar). A server mutation of the
-    // ship; ship ownership/money/index — on the client side (account).
     // Switch to another ship this account owns. Refuses one it does not: the stats are
     // looked up from the catalog here rather than taken from the caller, so "refit me to
     // the best ship" is a request the server can say no to (#5).
@@ -272,7 +270,8 @@ public:
     // Pay off a bounty with a faction (deducts the bounty from money, zeroes the wanted level).
     void PayBounty(ClientSession& s, FactionId faction);
     // Buy a ship by catalog index: price accounting for the docked station's reputation;
-    // if affordable — deducts and refits. true — the purchase succeeded.
+    // if affordable — deducts and refits. Refuses a ship already owned: going back to one is
+    // SwitchShip, and free. true — the purchase succeeded.
     bool BuyShip(ClientSession& s, int catalogIndex);
     // Whether a faction is hostile to this player by account (pirates; wanted;
     // Hostile/Hated reputation) — the server combat predicate.

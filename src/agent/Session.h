@@ -38,7 +38,15 @@ public:
     // serviced throughout, which is why this cannot be a plain sleep.
     bool WaitUntil(const std::function<bool()>& done, double timeoutSeconds);
 
-    void Send(const Proto::Command& c);
+    // Numbers every command, so the snapshot's `lastInput` says which ones the server has
+    // applied. The number is the only receipt there is: a purchase or a hand-in is not an
+    // order with a status, and the server says nothing when it declines one (#109).
+    // Returns the number given.
+    int Send(const Proto::Command& c);
+    // Sends and waits until a snapshot acknowledges it -- by then the snapshot also carries
+    // its effect, because the server applies a command before it builds the next one. False
+    // if no acknowledgement came in time (the server may be throttling this client).
+    bool SendAndConfirm(const Proto::Command& c, double timeoutSeconds);
 
     const Proto::Snapshot&                    Snapshot() const { return snapshot_; }
     const std::map<int, Proto::EntityLayout>& Layout() const { return layout_; }
@@ -73,6 +81,7 @@ private:
     WorldLoader::Universe               universe_;
     std::vector<Ev::Event>              journal_;
     int                                 lastEventSeq_ = 0;
+    int                                 commandSeq_ = 0;
     bool                                haveSnapshot_ = false;
     std::string                         protocolError_;
     std::string                         byeReason_;

@@ -377,31 +377,28 @@ bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
     const std::vector<ShipType>& catalog = GetShipCatalog();
     if (!s.ship || catalogIndex < 0 || catalogIndex >= (int)catalog.size())
         return false;
+    // A ship already in the hangar is switched to for nothing (SwitchShip). Buying it again
+    // used to charge the full price a second time and hand back what the account already had.
+    if (s.Owns(catalogIndex))
+        return false;
 
-    // Price multiplier by the docked station's faction reputation (as on the client).
+    // Price multiplier by the docked station's faction reputation.
     FactionId sf = FactionId::Independent;
     for (auto& e : SystemOf(s)->entities)
         if (e->GetId() == s.dockedStationId)
         {
-            if (Station* s =
-                    e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
-                sf = s->GetFaction();
+            if (const Station* sta = e->GetKind() == EntityKind::Station
+                                         ? static_cast<const Station*>(e.get())
+                                         : nullptr)
+                sf = sta->GetFaction();
             break;
         }
-    float buyMul = 1.0f;
-    switch (Factions::TierOf(s.account.GetReputation(sf)))
-    {
-        case RepTier::Hostile: buyMul = 1.15f; break;
-        case RepTier::Liked: buyMul = 0.92f; break;
-        case RepTier::Allied: buyMul = 0.85f; break;
-        default: break;
-    }
-    double price = catalog[catalogIndex].price * buyMul;
+    const double price = catalog[catalogIndex].price *
+                         ShipPriceMultiplier(Factions::TierOf(s.account.GetReputation(sf)));
     if (!s.account.CanAfford(price))
         return false;
     s.account.AddMoney(-price);
-    if (!s.Owns(catalogIndex))
-        s.ownedShips.push_back(catalogIndex);
+    s.ownedShips.push_back(catalogIndex);
     s.ship->Refit(catalog[catalogIndex].stats);
     s.currentShip = catalogIndex;
     return true;

@@ -132,10 +132,20 @@ bool Session::WaitUntil(const std::function<bool()>& done, double timeoutSeconds
     }
 }
 
-void Session::Send(const Proto::Command& c)
+int Session::Send(const Proto::Command& c)
 {
+    Proto::Command numbered = c;
+    numbered.seq = ++commandSeq_;
     if (conn_)
-        conn_->Send(Proto::EncodeCommand(c));
+        conn_->Send(Proto::EncodeCommand(numbered));
+    return numbered.seq;
+}
+
+bool Session::SendAndConfirm(const Proto::Command& c, double timeoutSeconds)
+{
+    const int seq = Send(c);
+    return WaitUntil([&] { return haveSnapshot_ && snapshot_.player.lastInput >= seq; },
+                     timeoutSeconds);
 }
 
 std::vector<Ev::Event> Session::EventsSince(int seq) const

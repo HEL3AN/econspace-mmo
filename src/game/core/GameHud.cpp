@@ -902,14 +902,7 @@ void Game::DrawStationScreen()
 
     // Reputation makes buying a ship cheaper. Selling needs no multiplier here: the server
     // prices a sale, and the revenue arrives with its acknowledgement.
-    float buyMul = 1.0f;
-    switch (stationTier)
-    {
-        case RepTier::Hostile: buyMul = 1.15f; break;
-        case RepTier::Liked: buyMul = 0.92f; break;
-        case RepTier::Allied: buyMul = 0.85f; break;
-        default: break;
-    }
+    const float buyMul = ShipPriceMultiplier(stationTier);
 
     const char* moneyStr = TextFormat("Money  %.0f", player_.GetMoney());
     Ui::Text(moneyStr, px + pw - Ui::TextWidth(moneyStr, 22) - 24, py + 10, 22, GOLD);

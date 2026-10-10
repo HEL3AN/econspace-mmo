@@ -255,6 +255,7 @@ add_executable(econagent
     src/agent/Session.cpp
     src/game/sim/Observation.cpp   # the world as text, which is what a model reads
     src/game/sim/Orders.cpp        # order kinds, shared with the server
+    src/game/entities/ShipType.cpp # the hangar catalog and what a station charges (#109)
 )
 target_include_directories(econagent PRIVATE ${CMAKE_SOURCE_DIR}/src)
 # The selftest's watchdog is a thread: a self-test must not be able to hang.

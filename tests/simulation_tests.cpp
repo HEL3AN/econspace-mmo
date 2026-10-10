@@ -622,6 +622,21 @@ TEST_CASE("a ship has to be bought before it can be flown")
         CHECK(f.s.Owns(better));
     }
 
+    SUBCASE("a ship already owned is not sold a second time (#109)")
+    {
+        f.s.account.SetMoney(GetShipCatalog()[better].price * 3.0);
+        REQUIRE(f.sim.BuyShip(f.s, better));
+        REQUIRE(f.sim.SwitchShip(f.s, 0));
+        const double money = f.s.account.GetMoney();
+
+        // Buying it again used to charge the full price and hand back what was already
+        // in the hangar. Going back to it is SwitchShip's job, and it is free.
+        CHECK_FALSE(f.sim.BuyShip(f.s, better));
+        CHECK(f.s.account.GetMoney() == doctest::Approx(money));
+        CHECK(f.s.currentShip == 0);
+        CHECK(f.s.ownedShips.size() == 2);
+    }
+
     SUBCASE("a hangar survives a reconnect")
     {
         f.s.account.SetMoney(GetShipCatalog()[better].price * 2.0);

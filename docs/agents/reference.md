@@ -86,6 +86,58 @@ Sell cargo at the station you are docked at. Sells everything of that resource u
 | `amount` | number |  | how much (default: all of it) |
 | `resource` | string | yes | resource name as observe lists it under CARGO, e.g. 'Iron' |
 
+### `missions`
+
+The job board of the station you are docked at, and the missions you have taken: what each asks, what it pays, where it is handed in and what it still needs. The numbers are what accept_mission and complete_mission take.
+
+No arguments.
+
+### `accept_mission`
+
+Take a job from the board of the station you are docked at. It joins your active missions and stays with you across systems until you hand it in.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `offer` | number | yes | offer number from missions |
+
+### `complete_mission`
+
+Hand in an active mission at the station you are docked at, for its reward. A bounty or mining job goes back to the station that gave it, a delivery to its destination; mining hands over the ore from the hold.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `mission` | number | yes | active mission number from missions |
+
+### `hangar`
+
+The ships you own, the one you are flying, and what every other hull costs at this station -- at the price you would actually pay, which depends on your standing with the station's owner.
+
+No arguments.
+
+### `buy_ship`
+
+Buy a ship at the station you are docked at and fly it from now on. Your old ship stays in the hangar; switch_ship goes back to it for free. Cargo capacity becomes the new hull's.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `ship` | string | yes | ship name as hangar lists it, e.g. 'Hauler' |
+
+### `switch_ship`
+
+Fly another ship you already own, at the station you are docked at. Free; hangar lists what you own.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `ship` | string | yes | ship name as hangar lists it, e.g. 'Scout' |
+
+### `pay_bounty`
+
+Pay off the bounty a faction has on you, at a station, so its ships stop hunting you. Costs the whole bounty. observe with detail='full' lists who wants you.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `faction` | string |  | faction name; default: the faction that owns this station |
+
 ## Resources
 
 | URI | Name | What |
@@ -114,6 +166,12 @@ Ready-made plans a client can offer its user. Each is sent to the model as writt
 *Visit each system and report what is there*
 
 > Scout the galaxy. For every system in the galaxy resource, travel_to_system to it, observe, and note the stations, asteroid fields and how much traffic and hostility you see. Report a short summary per system at the end. Do not pick fights; if a system looks dangerous, say so and move on.
+
+### `contract_work`
+
+*Take jobs from a station's board and earn from them*
+
+> Work the job boards. Dock at a station and call missions to read its board. Take work you can actually do with accept_mission: a mining job needs ore you can mine nearby, a delivery needs only the trip, a bounty means fighting pirates -- judge that from observe before taking one. Do the work, then dock where the job says and complete_mission. If a faction has a bounty on you, pay_bounty before its ships find you. When the hangar offers a ship that suits the work better and you can afford it, buy_ship.
 
 ### `patrol`
 

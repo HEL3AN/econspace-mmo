@@ -171,7 +171,9 @@ who decides things for themselves, not scenery), and NPCs by role — `trader`, 
 ## What a bot can do
 
 `observe`, `move_to`, `dock`, `undock`, `mine`, `travel_to_system`, `sell_cargo`, `abort_order`
-and `wait_for_event`. **Their exact arguments are in [reference.md](reference.md)**, which is
+and `wait_for_event` to fly and earn; `missions`, `accept_mission`, `complete_mission`, `hangar`,
+`buy_ship`, `switch_ship` and `pay_bounty` to spend it and to take work (#109). **Their exact
+arguments are in [reference.md](reference.md)**, which is
 generated from the server itself and checked by CI, so it cannot disagree with what the server
 actually accepts.
 
@@ -182,14 +184,22 @@ A few that are worth knowing before reading the reference:
 - `travel_to_system` is one order for a whole journey, gate by gate; `avoid_danger` prefers
   safer systems over the short way.
 - `sell_cargo` takes a resource by the **name** `CARGO` shows — `"Iron"`, not an index.
+- `missions` numbers the station's board and your active jobs; `accept_mission` and
+  `complete_mission` take those numbers. Each job says what it still needs and where it is
+  handed in.
+- `hangar` quotes ships at the price *you* would pay here, which depends on your standing
+  with the station's owner. `buy_ship` and `switch_ship` take a ship by name.
+- `pay_bounty` pays the station owner's bounty unless you name another faction.
+- The station verbs are not orders: they need you docked, they say why when they cannot
+  happen, and they report what the server actually did -- the money paid, the job taken.
 
 Every tool answers in plain text. An order that is accepted says so and returns at once; the
 order itself runs on the server, and you learn how it ended from the journal.
 
 ### Prompts
 
-Four ready-made plans a client can offer its user: `mining_run`, `trade_run`, `scout` and
-`patrol` — their full text is in [reference.md](reference.md#prompts). They are short instructions to a model, written in terms of the tools above, and are
+Five ready-made plans a client can offer its user: `mining_run`, `trade_run`, `scout`,
+`contract_work` and `patrol` — their full text is in [reference.md](reference.md#prompts). They are short instructions to a model, written in terms of the tools above, and are
 a reasonable place to start writing your own.
 
 ---
@@ -247,13 +257,14 @@ Ideas for bots worth building are welcome as issues — and so are the bots.
 ## What a bot cannot do yet
 
 The agent surface is narrower than the game. These exist for human players and not yet for
-bots; they are tracked in [#109](https://github.com/HEL3AN/econspace-mmo/issues/109):
+bots:
 
 - **orbit** and **keep at range** a chosen object ([#157](https://github.com/HEL3AN/econspace-mmo/issues/157)), the two standing behaviours a fight
   is flown with;
 - buying at a market;
-- taking and handing in missions;
-- combat orders — engaging and disengaging.
+- combat orders — engaging and disengaging. Deliberately separate: an agent that can shoot
+  needs to be told what shooting costs, and between players that is not settled yet
+  ([#94](https://github.com/HEL3AN/econspace-mmo/issues/94)).
 
 A bot can see all of it in `observe`; it cannot yet act on it. If one of these is what your bot
 needs, that issue is the place to say so.

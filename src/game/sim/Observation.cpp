@@ -3,6 +3,8 @@
 #include "core/Archetype.h"
 #include "core/Faction.h"
 #include "economy/Resource.h"
+#include "entities/ShipType.h"
+#include "missions/Mission.h"
 
 #include <algorithm>
 #include <cmath>
@@ -156,10 +158,173 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
     return line;
 }
 
+// A station by id, named if this system's layout knows it. Missions address stations by id
+// and survive a jump, so the station may well be somewhere else -- say so rather than
+// print a bare number that looks like an id observe would list.
+std::string StationName(const Obs::View& view, int id)
+{
+    if (view.layout != nullptr)
+    {
+        auto it = view.layout->find(id);
+        if (it != view.layout->end() && !it->second.name.empty())
+            return Fmt("%s (#%d)", it->second.name.c_str(), id);
+    }
+    if (view.snapshot != nullptr)
+        for (const Proto::EntitySnapshot& e : view.snapshot->entities)
+            if (e.id == id && !e.name.empty())
+                return Fmt("%s (#%d)", e.name.c_str(), id);
+    return Fmt("station #%d, not in this system", id);
+}
+
+const char* MissionKind(int type)
+{
+    switch ((MissionType)type)
+    {
+        case MissionType::Bounty: return "bounty";
+        case MissionType::Mining: return "mining";
+        case MissionType::Delivery: return "delivery";
+    }
+    return "job";
+}
+
+// Where a mission is handed in. A delivery ends at its destination; everything else goes
+// back to the station that gave it -- the same rule as Simulation::MissionCompletableNow.
+int HandInStation(const Proto::MissionView& m)
+{
+    return (MissionType)m.type == MissionType::Delivery ? m.destStationId : m.giverStationId;
+}
+
+std::string MissionLine(const Obs::View& view, size_t index, const Proto::MissionView& m)
+{
+    std::string out = Fmt("  [%d] %s: %s -- %s\n", (int)index, MissionKind(m.type), m.title.c_str(),
+                          m.description.c_str());
+    out += Fmt("       reward %.0f cr, %s standing %+.1f; hand in at %s\n", m.rewardMoney,
+               FactionName((FactionId)m.faction).c_str(), m.rewardRep,
+               StationName(view, HandInStation(m)).c_str());
+    return out;
+}
+
 }  // namespace
 
 namespace Obs
 {
+
+FactionId DockedFaction(const View& view)
+{
+    if (view.snapshot == nullptr || view.layout == nullptr || !view.snapshot->player.docked)
+        return FactionId::Independent;
+    auto it = view.layout->find(view.snapshot->player.dockedStationId);
+    return it == view.layout->end() ? FactionId::Independent : it->second.faction;
+}
+
+std::string MissionNeeds(const View& view, const Proto::MissionView& m)
+{
+    if (m.completable)
+        return std::string();
+    const Proto::PlayerView* p = view.snapshot != nullptr ? &view.snapshot->player : nullptr;
+    switch ((MissionType)m.type)
+    {
+        case MissionType::Bounty:
+            if (m.progress < m.targetCount)
+                return Fmt("destroy %d more pirate%s", m.targetCount - m.progress,
+                           m.targetCount - m.progress == 1 ? "" : "s");
+            break;
+        case MissionType::Mining:
+        {
+            int held = 0;
+            if (p != nullptr && m.resource >= 0 && m.resource < (int)p->cargoByType.size())
+                held = p->cargoByType[m.resource];
+            if (held < m.targetCount)
+                return Fmt("carry %d %s (the hold has %d)", m.targetCount,
+                           ResourceName((ResourceType)m.resource).c_str(), held);
+            break;
+        }
+        case MissionType::Delivery: break;
+    }
+    return "dock at " + StationName(view, HandInStation(m));
+}
+
+std::string DescribeMissions(const View& view)
+{
+    if (view.snapshot == nullptr)
+        return "No world state yet.\n";
+    const Proto::Snapshot& snap = *view.snapshot;
+    std::string            out;
+
+    if (!snap.player.docked)
+        out += "OFFERS  none: the job board is at a station; dock to see its work\n";
+    else if (snap.missionOffers.empty())
+        out += "OFFERS  this station has no work on its board\n";
+    else
+    {
+        out += Fmt("OFFERS at %s -- accept_mission takes the number\n",
+                   StationName(view, snap.player.dockedStationId).c_str());
+        for (size_t i = 0; i < snap.missionOffers.size(); i++)
+            out += MissionLine(view, i, snap.missionOffers[i]);
+    }
+
+    if (snap.missionActive.empty())
+    {
+        out += "ACTIVE  none\n";
+        return out;
+    }
+    out += "ACTIVE -- complete_mission takes the number\n";
+    for (size_t i = 0; i < snap.missionActive.size(); i++)
+    {
+        const Proto::MissionView& m = snap.missionActive[i];
+        out += MissionLine(view, i, m);
+        if ((MissionType)m.type == MissionType::Bounty)
+            out += Fmt("       progress %d/%d\n", m.progress, m.targetCount);
+        out += m.completable ? "       READY TO HAND IN here\n"
+                             : "       needs: " + MissionNeeds(view, m) + "\n";
+    }
+    return out;
+}
+
+std::string DescribeHangar(const View& view)
+{
+    if (view.snapshot == nullptr)
+        return "No world state yet.\n";
+    const Proto::PlayerView&     p = view.snapshot->player;
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+
+    auto owns = [&p](int i)
+    {
+        for (int o : p.ownedShips)
+            if (o == i)
+                return true;
+        return false;
+    };
+
+    // Outside a station the prices are the catalog's: what a station charges depends on who
+    // owns it, and there is no station to ask.
+    const FactionId sf = DockedFaction(view);
+    const float     standing = (size_t)sf < p.reputation.size() ? p.reputation[(size_t)sf] : 0.0f;
+    const float     mul = p.docked ? ShipPriceMultiplier(Factions::TierOf(standing)) : 1.0f;
+
+    std::string out =
+        p.docked
+            ? Fmt("HANGAR at %s, owned by %s -- money %.0f cr\n",
+                  StationName(view, p.dockedStationId).c_str(), FactionName(sf).c_str(), p.money)
+            : Fmt("HANGAR -- money %.0f cr; dock at a station to buy or switch ships\n", p.money);
+    for (size_t i = 0; i < catalog.size(); i++)
+    {
+        const ShipType& t = catalog[i];
+        std::string     status;
+        if ((int)i == p.shipIndex)
+            status = "FLYING";
+        else if (owns((int)i))
+            status = "owned, switch_ship for free";
+        else if (p.docked)
+            status = Fmt("for sale %.0f cr%s", t.price * mul,
+                         p.money >= t.price * mul ? "" : " (cannot afford)");
+        else
+            status = Fmt("list price %.0f cr", t.price);
+        out += Fmt("  [%d] %-8s speed %.0f  cargo %d  mining %.1f/s  %s\n", (int)i, t.name.c_str(),
+                   t.stats.maxSpeed, t.stats.cargoCapacity, t.stats.miningRate, status.c_str());
+    }
+    return out;
+}
 
 std::string Compass(float dx, float dy)
 {
