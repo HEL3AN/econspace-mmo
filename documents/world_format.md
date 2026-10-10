@@ -127,12 +127,23 @@ variant's `shape` written as `{ "vars": {...}, "parts": [...] }`) the roll is pe
 two pods on one hull may differ, and the parts of one pod do not. An undeclared name is a load
 error.
 
+A variable may be used as a straight line of itself: `"-$a"` (a pair of jaws opening
+together), `"$len*0.5"`, `"$r+0.05"` (a rim a fixed step outside its crater), `"-$len/2+0.1"`
+(a pivot at the end of a ranged length). Negation, then one `*` or `/` by a number, then one
+`+` or `-` a number; nothing else.
+
 **Rows.** `row.step` takes ranges and variables like any number. `"centred": true` puts the
 middle of the row at `at` rather than its first copy, so a row with a ranged count stays
 balanced. `"turn": 30` bends the row by that many degrees per copy (and turns each copy with
 it): twelve copies at 30 close into a ring, a few at 15 make a crescent or a spiral arm.
 `"taper": 0.8` makes each copy that fraction of the one before: rays, tongues of lava, a
-glacier narrowing to its snout. Both take ranges and variables.
+glacier narrowing to its snout. Both take ranges and variables. `"taperStep": true` shrinks the
+gaps with the copies, so a tapering row stays touching and a bent one spirals inward.
+
+`"ring": 0.6` lays the row round `at` instead of along a step: the copies sit at that radius,
+spread evenly all the way round, each turned to face out, and the count may be a range and
+the ring still closes. `"spread": 90` makes it a fan of that many degrees centred on the part's
+own direction. A `pivot` on a ring row swings each copy about its own joint.
 
 **Pivot.** `"pivot": [x, y]` is the point `angle` turns the part about, in the part's own frame
 before it is turned (`[-0.5, 0]` is the left end of a bar of length 1). A crane jib or a clamp

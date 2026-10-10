@@ -209,7 +209,9 @@ struct Part
         PivotX,
         PivotY,
         Tip,
-        Jagged
+        Jagged,
+        RowRing,
+        RowSpread
     };
     // `var` is the shape's variable this range follows, or -1 for a roll of its own.
     struct Vary
@@ -231,6 +233,17 @@ struct Part
     // lava, a glacier narrowing to its snout. Each copy also turns with the row.
     float rowTurn = 0.0f;
     float rowTaper = 1.0f;
+    // A row laid round a centre instead of along a line: `at` is the centre, `rowRing` the
+    // radius, and the copies are spread evenly over `rowSpread` degrees -- all the way
+    // round by default, a fan centred on the part's own direction otherwise. Each copy is
+    // turned to face out. The count may be a range: the spacing follows it, which a turning
+    // row with a step worked out by hand cannot do.
+    bool  rowTaperStep = false;  // the step shrinks with the copies
+    float rowRing = 0.0f;
+    float rowSpread = 360.0f;
+    // How far a pivot moved the part, kept apart from `at` for a ring row so each copy
+    // swings about its own joint rather than all of them about the first one's.
+    Vector2 pivotShift = { 0.0f, 0.0f };
 
     // The point `angle` turns the part about, in the part's own frame before it is turned
     // (so [-0.5, 0] on a bar of length 1 is its left end): a crane jib or a clamp jaw swings

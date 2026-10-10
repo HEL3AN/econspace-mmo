@@ -5,7 +5,9 @@
 #include "core/JsonKeys.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdlib>
 
 using nlohmann::json;
 
@@ -368,18 +370,75 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         }
 
         // A shape variable by name, "$name", or -1 having said why not.
-        auto variable = [&](const json& v) -> int
+        // "$name", or a straight line of one: "-$a", "$w*0.5", "$r+0.05", "-$len/2+0.1".
+        // Enough for a pair of jaws that open together, a rim a fixed step outside its
+        // crater, a pivot at the end of a ranged length -- and no more: a shape is data, not
+        // a program. Sets the slope and offset; -1 having said why not.
+        auto variable = [&](const json& v, float& mul, float& add) -> int
         {
-            const std::string name = v.get<std::string>().substr(1);
-            for (size_t k = 0; k < s.vars.size(); k++)
-                if (s.vars[k].name == name)
-                    return (int)k;
-            error = "unknown variable '$" + name + "' (declare it in the shape's \"vars\")";
-            return -1;
+            const std::string text = v.get<std::string>();
+            size_t            at = 0;
+            mul = 1.0f;
+            add = 0.0f;
+            if (text[at] == '-')
+            {
+                mul = -1.0f;
+                at++;
+            }
+            at++;  // the '$'
+            size_t end = at;
+            while (end < text.size() &&
+                   (std::isalnum((unsigned char)text[end]) || text[end] == '_'))
+                end++;
+            const std::string name = text.substr(at, end - at);
+            int               k = -1;
+            for (size_t i = 0; i < s.vars.size(); i++)
+                if (s.vars[i].name == name)
+                    k = (int)i;
+            if (k < 0)
+            {
+                error = "unknown variable '$" + name + "' (declare it in the shape's \"vars\")";
+                return -1;
+            }
+            const char* rest = text.c_str() + end;
+            char*       stop = nullptr;
+            if (*rest == '*' || *rest == '/')
+            {
+                const char  op = *rest;
+                const float x = std::strtof(rest + 1, &stop);
+                if (stop == rest + 1 || (op == '/' && x == 0.0f))
+                {
+                    error = "'" + text + "': a number was expected after '" + op + "'";
+                    return -1;
+                }
+                mul *= op == '*' ? x : 1.0f / x;
+                rest = stop;
+            }
+            if (*rest == '+' || *rest == '-')
+            {
+                add = std::strtof(rest, &stop);
+                if (stop == rest + 1)
+                {
+                    error = "'" + text + "': a number was expected after the sign";
+                    return -1;
+                }
+                rest = stop;
+            }
+            if (*rest != '\0')
+            {
+                error = "'" + text +
+                        "' is \"$name\", optionally negated, times or over a "
+                        "number, plus or minus a number";
+                return -1;
+            }
+            return k;
         };
         auto isVariable = [](const json& v)
         {
-            return v.is_string() && !v.get<std::string>().empty() && v.get<std::string>()[0] == '$';
+            if (!v.is_string())
+                return false;
+            const std::string t = v.get<std::string>();
+            return (!t.empty() && t[0] == '$') || (t.size() > 1 && t[0] == '-' && t[1] == '$');
         };
 
         // A number, or [min, max] for the seed to choose in (#240), or "$name" for a shape
@@ -388,7 +447,8 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         {
             if (isVariable(v))
             {
-                const int k = variable(v);
+                float     mul = 1.0f, add = 0.0f;
+                const int k = variable(v, mul, add);
                 if (k < 0)
                     return false;
                 if (!s.vars[k].palette.empty())
@@ -396,8 +456,10 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
                     error = "variable '" + s.vars[k].name + "' is a colour, not a number";
                     return false;
                 }
-                dst = s.vars[k].lo;
-                p.vary.push_back({ f, s.vars[k].lo, s.vars[k].hi, k });
+                // A line of a uniform roll is a uniform roll between the line's ends.
+                const float lo = s.vars[k].lo * mul + add, hi = s.vars[k].hi * mul + add;
+                dst = lo;
+                p.vary.push_back({ f, lo, hi, k });
                 return true;
             }
             if (v.is_number())
@@ -495,7 +557,8 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
             const json& t = e["tint"];
             if (isVariable(t))
             {
-                const int k = variable(t);
+                float     mul = 1.0f, add = 0.0f;
+                const int k = variable(t, mul, add);
                 if (k < 0)
                     return false;
                 if (s.vars[k].palette.empty())
@@ -542,21 +605,30 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         {
             const json& r = e["row"];
             if (!r.is_object() ||
-                !OnlyKnownKeys(r, { "count", "step", "centred", "turn", "taper" }, error) ||
-                !r.contains("step") || !r["step"].is_array() || r["step"].size() != 2)
+                !OnlyKnownKeys(
+                    r,
+                    { "count", "step", "centred", "turn", "taper", "ring", "spread", "taperStep" },
+                    error) ||
+                (!r.contains("ring") &&
+                 (!r.contains("step") || !r["step"].is_array() || r["step"].size() != 2)))
             {
                 if (error.empty())
-                    error = "\"row\" is { \"count\": n, \"step\": [dx, dy] }";
+                    error = "\"row\" is { \"count\": n, \"step\": [dx, dy] } or "
+                            "{ \"count\": n, \"ring\": radius }";
                 return false;
             }
             float rc = 1.0f;
             if (r.contains("count") && !num(r["count"], rc, Part::Field::RowCount))
                 return false;
             p.rowCount = (int)rc;
-            if (!num(r["step"][0], p.rowStep.x, Part::Field::StepX) ||
-                !num(r["step"][1], p.rowStep.y, Part::Field::StepY))
+            if (r.contains("step") && (!num(r["step"][0], p.rowStep.x, Part::Field::StepX) ||
+                                       !num(r["step"][1], p.rowStep.y, Part::Field::StepY)))
+                return false;
+            if ((r.contains("ring") && !num(r["ring"], p.rowRing, Part::Field::RowRing)) ||
+                (r.contains("spread") && !num(r["spread"], p.rowSpread, Part::Field::RowSpread)))
                 return false;
             p.rowCentred = r.value("centred", false);
+            p.rowTaperStep = r.value("taperStep", false);
             if ((r.contains("turn") && !num(r["turn"], p.rowTurn, Part::Field::RowTurn)) ||
                 (r.contains("taper") && !num(r["taper"], p.rowTaper, Part::Field::RowTaper)))
                 return false;
@@ -657,6 +729,8 @@ bool Resolve(const Part& p, int seed, int salt, Part& out, const float* rolls)
             case Part::Field::PivotY: out.pivot.y = x; break;
             case Part::Field::Tip: out.tip = x; break;
             case Part::Field::Jagged: out.jagged = x; break;
+            case Part::Field::RowRing: out.rowRing = x; break;
+            case Part::Field::RowSpread: out.rowSpread = x; break;
         }
     }
     if (!p.palette.empty())
@@ -668,9 +742,13 @@ bool Resolve(const Part& p, int seed, int salt, Part& out, const float* rolls)
     if (out.hasPivot)
     {
         // Turned about the joint: the centre moves by however far the turn carries it.
-        const float c = std::cos(out.angle * DEG2RAD), sn = std::sin(out.angle * DEG2RAD);
-        const float px = out.pivot.x, py = out.pivot.y;
-        out.at = { out.at.x + px - (px * c - py * sn), out.at.y + py - (px * sn + py * c) };
+        const float   c = std::cos(out.angle * DEG2RAD), sn = std::sin(out.angle * DEG2RAD);
+        const float   px = out.pivot.x, py = out.pivot.y;
+        const Vector2 shift = { px - (px * c - py * sn), py - (px * sn + py * c) };
+        if (out.rowRing > 0.0f && out.rowCount > 1)
+            out.pivotShift = shift;
+        else
+            out.at = { out.at.x + shift.x, out.at.y + shift.y };
         out.hasPivot = false;
     }
     // A bent or tapering row is spelled out copy by copy (SpellRow), and centred there.
@@ -690,6 +768,38 @@ bool Resolve(const Part& p, int seed, int salt, Part& out, const float* rolls)
 // the composer to lay out as it always has.
 std::vector<Part> SpellRow(const Part& p)
 {
+    if (p.rowCount > 1 && p.rowRing > 0.0f)
+    {
+        // Round a centre: closed when the spread is a full turn, a fan about the part's own
+        // direction otherwise. The part's own offset from a pivot turns with its copy.
+        std::vector<Part> copies;
+        const int         n = p.rowCount;
+        const bool        closed = p.rowSpread >= 359.9f;
+        float             size = 1.0f;
+        for (int k = 0; k < n; k++)
+        {
+            const float theta = closed
+                                    ? 360.0f * (float)k / (float)n
+                                    : -0.5f * p.rowSpread + p.rowSpread * (float)k / (float)(n - 1);
+            const float c = std::cos(theta * DEG2RAD), sn = std::sin(theta * DEG2RAD);
+            const float lx = p.rowRing + p.pivotShift.x, ly = p.pivotShift.y;
+            Part        q = p;
+            q.rowCount = 1;
+            q.rowStep = { 0.0f, 0.0f };
+            q.rowRing = 0.0f;
+            q.rowCentred = false;
+            q.pivotShift = { 0.0f, 0.0f };
+            q.at = { p.at.x + lx * c - ly * sn, p.at.y + lx * sn + ly * c };
+            q.angle = p.angle + theta;
+            q.radius *= size;
+            q.width *= size;
+            q.length *= size;
+            q.scale *= size;
+            copies.push_back(q);
+            size *= p.rowTaper;
+        }
+        return copies;
+    }
     if (p.rowCount <= 1 || (p.rowTurn == 0.0f && p.rowTaper == 1.0f))
         return { p };
     std::vector<Part>    copies;
@@ -711,8 +821,11 @@ std::vector<Part> SpellRow(const Part& p)
         copies.push_back(q);
         const float t = p.rowTurn * (float)k * DEG2RAD;
         const float c = std::cos(t), sn = std::sin(t);
-        off = { off.x + p.rowStep.x * c - p.rowStep.y * sn,
-                off.y + p.rowStep.x * sn + p.rowStep.y * c };
+        // With taperStep the gaps shrink with the copies, so a tapering row stays touching
+        // and a bent one spirals inward instead of closing into a circle.
+        const float g = p.rowTaperStep ? size : 1.0f;
+        off = { off.x + (p.rowStep.x * c - p.rowStep.y * sn) * g,
+                off.y + (p.rowStep.x * sn + p.rowStep.y * c) * g };
         size *= p.rowTaper;
     }
     Vector2 shift = { 0.0f, 0.0f };
@@ -907,7 +1020,8 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
     bool varies = hasModules;
     for (const Part& p : shape.parts)
         varies = varies || !p.vary.empty() || !p.palette.empty() || p.chance < 1.0f ||
-                 p.rowCentred || p.rowTurn != 0.0f || p.rowTaper != 1.0f || p.hasPivot;
+                 p.rowCentred || p.rowTurn != 0.0f || p.rowTaper != 1.0f || p.hasPivot ||
+                 p.rowRing > 0.0f;
     // Ranges, palettes and chance are settled in the same pass that expands modules, so
     // everything below sees fixed numbers.
     const Shape  expanded = varies ? ExpandModules(shape, pose) : Shape{};

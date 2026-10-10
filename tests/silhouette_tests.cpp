@@ -1057,3 +1057,67 @@ TEST_CASE("a trapezoid, a jagged polygon and a soft glow are carried to the piec
     CHECK(a[2].soft);
     CHECK_FALSE(a[0].soft);
 }
+
+TEST_CASE("a variable may be negated, scaled and offset; a row may go round a centre (#240)")
+{
+    // A pair of jaws opening together: one at $a, the other at -$a.
+    const Render::Shape jaws = Parse(R"({ "vars": { "a": [10, 40], "len": [0.4, 0.8] }, "parts": [
+        { "form": "bar", "angle": "$a", "length": "$len" },
+        { "form": "bar", "angle": "-$a", "length": "$len*0.5+0.1" } ] })");
+    for (int seed = 1; seed <= 20; seed++)
+    {
+        const auto p = Render::Compose(jaws, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 1.0f));
+        REQUIRE(p.size() == 2);
+        CHECK(p[0].angle == doctest::Approx(-p[1].angle));
+        CHECK(p[1].length == doctest::Approx(p[0].length * 0.5f + 10.0f));
+    }
+    Render::Shape bad;
+    std::string   error;
+    CHECK_FALSE(Render::ParseShape(
+        nlohmann::json::parse(
+            R"({ "vars": { "a": [0, 1] }, "parts": [ { "form": "bar", "angle": "$a*x" } ] })"),
+        bad, error));
+    CHECK_FALSE(error.empty());
+
+    // A ring whose count is a range still closes: every copy at the radius, evenly spaced.
+    const Render::Shape ring = Parse(R"([ { "form": "disc", "radius": 0.05, "at": [0, 0],
+        "row": { "count": [5, 9], "ring": 0.6 } } ])");
+    std::set<size_t>    counts;
+    for (int seed = 1; seed <= 30; seed++)
+    {
+        const auto p = Render::Compose(ring, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 1.0f));
+        counts.insert(p.size());
+        Vector2 sum = { 0.0f, 0.0f };
+        for (const auto& q : p)
+        {
+            CHECK(Dist(q.pos, { 0.0f, 0.0f }) == doctest::Approx(60.0f).epsilon(0.01));
+            sum = { sum.x + q.pos.x, sum.y + q.pos.y };
+        }
+        CHECK(std::fabs(sum.x) < 0.5f);  // closed: balanced about the centre
+        CHECK(std::fabs(sum.y) < 0.5f);
+    }
+    CHECK(counts.size() >= 3);
+
+    // A fan: spread over 90 degrees about the part's own direction, symmetric.
+    const Render::Shape fan = Parse(R"([ { "form": "bar", "length": 0.2, "at": [0, 0],
+        "row": { "count": 3, "ring": 0.5, "spread": 90 } } ])");
+    const auto          f = Render::Compose(fan, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f));
+    REQUIRE(f.size() == 3);
+    CHECK(f[1].pos.x == doctest::Approx(50.0f));
+    CHECK(f[0].pos.y == doctest::Approx(-f[2].pos.y));
+}
+
+TEST_CASE("a variant with a field nobody reads is refused (#240)")
+{
+    MakeDirectory("variant_test_tmp");
+    {
+        std::ofstream f("variant_test_tmp/modules.json");
+        f << R"({ "modules": [ { "id": "x", "variants": [ { "id": "a", "shpae": [],
+              "shape": [ { "form": "disc" } ] } ] } ] })";
+    }
+    std::string error;
+    CHECK_FALSE(Render::Modules::Load("variant_test_tmp/modules.json", error));
+    CHECK(error.find("shpae") != std::string::npos);
+    std::remove("variant_test_tmp/modules.json");
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+}
