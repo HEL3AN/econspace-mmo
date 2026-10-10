@@ -455,14 +455,17 @@ Vector2 Simulation::PirateSpawnPos(const std::vector<Vector2>& pool,
 }
 
 void Simulation::SpawnNpcInto(SystemState& st, Vector2 pos, FactionId faction, NpcRole role,
-                              std::vector<Vector2> waypoints)
+                              std::vector<Vector2> waypoints, int pick)
 {
-    // Which of its role's designs it flies is decided once, by its id (#279 step 4), so a
-    // role with several in its faction's doctrine flies all of them.
+    // Which of its role's designs it flies is decided once, when it is made (#279 step 4), so
+    // a role with several in its faction's doctrine flies all of them and a ship keeps its
+    // own for life. Not by the id when the caller has a better key: ids depend on what was
+    // made before, and a system that warms must find the same sky whatever warmed first.
     const int id = NextAgentId();
     auto      npc = std::make_unique<NpcShip>(
         pos, faction, role, std::move(waypoints),
-        Archetypes::ShipCatalogue().Pick(Factions::Id(faction), NpcRoleId(role), (unsigned)id));
+        Archetypes::ShipCatalogue().Pick(Factions::Id(faction), NpcRoleId(role),
+                                         (unsigned)(pick >= 0 ? pick : id)));
     npc->SetId(id);
     st.entities.push_back(std::move(npc));
 }
