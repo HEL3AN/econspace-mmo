@@ -896,7 +896,7 @@ void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Regi
                 const char* name = NAMES[rng.Range(0, 3)];
                 PlaceFind(rng, region.documents[n->id], "derelicts", 250000.0, 820000.0,
                           { { "name", name },
-                            { "size", 520 },
+                            { "size", 2600 },
                             { "reward", 12000 + 1500 * n->depth },
                             { "archetype", "derelict.leviathan" } });
             }

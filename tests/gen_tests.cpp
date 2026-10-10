@@ -87,7 +87,7 @@ TEST_CASE("the rules have not changed without saying so")
     // old rules are then refused) and update the value here.
     const uint64_t h = Fnv1a(Dump(Gen::GenerateRegion(Params(1))));
     MESSAGE("region hash for seed 1: " << h);
-    CHECK(Gen::GENERATOR_VERSION == 4);
+    CHECK(Gen::GENERATOR_VERSION == 5);
     CHECK(h == 13600593835554633938ull);
 }
 
