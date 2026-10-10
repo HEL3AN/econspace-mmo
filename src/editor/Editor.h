@@ -84,6 +84,11 @@ public:
     // system (and the log says which there are).
     bool OpenGenerated(uint64_t seed, const std::string& systemId);
 
+    // Opens the map of the whole region `seed` makes (#237): its systems where the generator
+    // put them, the gates between them, which ones a pin touches. A click opens a system for
+    // editing; `focus` (a system id) is ringed, which is where the map was opened from.
+    void OpenRegionMap(uint64_t seed, const std::string& focus = "");
+
     // Opens the gallery on one archetype drawn large (#194), by registry index or by id,
     // at `zoom` times the fitted size. `worldeditor gallery card trade_hub zoom 3` is how a
     // screenshot of the fine detail is taken without a click. Unknown: the grid, and a log
@@ -312,9 +317,40 @@ private:
         Galaxy,   // universe.json: the nodes and the links between them
         Gallery,  // every archetype at once, for judging a look (#118)
         Survey,   // many generated systems at once, for judging the rules (#141)
-        Modules   // the module library, every variant side by side (#240)
+        Modules,  // the module library, every variant side by side (#240)
+        Region    // the whole region of one seed, as a map (#237)
     };
     Mode mode_ = Mode::System;
+
+    // The region map (#237). Generated, then pinned, exactly as the server builds it, so a
+    // system's summary on the map is what opening it shows.
+    struct RegionMap
+    {
+        uint64_t                        seed = 0;
+        Gen::Region                     region;
+        std::vector<Gen::SystemSummary> summaries;     // parallel to region.systems
+        std::map<std::string, int>      pins;          // system id -> pins for exactly this seed
+        std::set<std::string>           everySeed;     // systems a seedless pin touches
+        int                             problems = 0;  // pins that could not apply
+        std::string                     homeName;
+        Vector2                         homeMap = { 0.0f, 0.0f };
+        std::string                     focus;                // the system the map was opened from
+        Mode                            back = Mode::System;  // where Esc goes
+        std::string                     notice;               // why a click did nothing
+        Rectangle                       bounds = { 0, 0, 1, 1 };  // every node, in map units
+    };
+    RegionMap regionMap_;
+    void      BuildRegionMap(uint64_t seed);
+    void      HandleRegionInput();
+    void      DrawRegionMap();
+    void      DrawRegionPanel();
+    Rectangle RegionMapRect() const;
+    Rectangle RegionButtonRect() const;
+    Vector2   RegionToScreen(Vector2 map) const;
+    int       RegionHit(Vector2 p) const;  // index in region.systems, -1 none, -2 home
+    void      ToggleRegionMap();           // F5 and the button: from where you are
+    // data/pins.json, an empty object if there is none, null if it is not valid JSON.
+    static nlohmann::json ReadPins(const std::string& path);
 
     // Galaxy mode.
     nlohmann::json universeJson_;    // the galaxy index being edited
