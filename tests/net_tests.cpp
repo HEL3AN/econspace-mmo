@@ -16,10 +16,10 @@
 TEST_CASE("TCP transport round-trips command and snapshot over loopback")
 {
     REQUIRE(Net::Startup());
-    const unsigned short port = 50790;
-
     Net::TcpListener listener;
-    REQUIRE(listener.Listen(port));
+    REQUIRE(listener.Listen(0));  // any free port: a fixed one may be in use (#306)
+    const unsigned short port = listener.Port();
+    REQUIRE(port != 0);
 
     std::unique_ptr<Net::TcpConnection> client = Net::Dial("127.0.0.1", port);
     REQUIRE(client);
@@ -75,10 +75,10 @@ TEST_CASE("a frame header the peer made up does not become memory the server all
     // out-of-memory kill (#14). A raw socket is used deliberately: TcpConnection::Send
     // frames correctly, and a hostile peer would not.
     REQUIRE(Net::Startup());
-    const unsigned short port = 50791;
-
     Net::TcpListener listener;
-    REQUIRE(listener.Listen(port));
+    REQUIRE(listener.Listen(0));  // any free port: a fixed one may be in use (#306)
+    const unsigned short port = listener.Port();
+    REQUIRE(port != 0);
 
     const unsigned long long raw = RawSocket::Connect(port);
     REQUIRE(raw != 0);
@@ -112,10 +112,10 @@ TEST_CASE("a connection that dies says why")
     // the server's log could only say "a client left". The transport knows whether the
     // peer hung up or the socket failed, and keeps that for the log.
     REQUIRE(Net::Startup());
-    const unsigned short port = 50792;
-
     Net::TcpListener listener;
-    REQUIRE(listener.Listen(port));
+    REQUIRE(listener.Listen(0));  // any free port: a fixed one may be in use (#306)
+    const unsigned short port = listener.Port();
+    REQUIRE(port != 0);
 
     std::unique_ptr<Net::TcpConnection> client = Net::Dial("127.0.0.1", port);
     REQUIRE(client);
@@ -140,7 +140,15 @@ TEST_CASE("dialing a port nobody answers on gives up within its deadline")
     // caller's own deadline cannot be kept from inside a call it does not control, so the
     // deadline belongs to Dial itself.
     REQUIRE(Net::Startup());
-    const unsigned short port = 50793;  // nothing listens here
+    // A port the system just handed out and took back: nothing listens there, which a
+    // fixed number could not promise on somebody else's machine (#306).
+    unsigned short port = 0;
+    {
+        Net::TcpListener probe;
+        REQUIRE(probe.Listen(0));
+        port = probe.Port();
+    }
+    REQUIRE(port != 0);
 
     const auto                          start = std::chrono::steady_clock::now();
     std::unique_ptr<Net::TcpConnection> c = Net::Dial("127.0.0.1", port, 1.0);

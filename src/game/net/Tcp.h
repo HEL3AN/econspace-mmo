@@ -76,7 +76,13 @@ public:
         Loopback,  // this machine only
         Public     // every interface
     };
+    // Port 0 lets the operating system choose a free one; Port() then says which (#306).
+    // A fixed port in the dynamic range (49152-65535) can be handed to any outbound
+    // connection on the machine as its source port, so a test that hard-codes one fails
+    // whenever a browser happens to hold it.
     bool Listen(unsigned short port, Exposure exposure = Exposure::Loopback);
+    // The port actually listened on; 0 before a successful Listen.
+    unsigned short Port() const { return port_; }
     // Accept a connection; nullptr if none is queued.
     std::unique_ptr<TcpConnection> Accept();
 
@@ -85,6 +91,7 @@ private:
     // INVALID_SOCKET is (SOCKET)~0, and (int)~0ull is -1, which is what a failed POSIX
     // socket() returns. That coincidence is why this header can stay platform-free.
     unsigned long long sock_ = ~0ull;
+    unsigned short     port_ = 0;
 };
 
 // Client connection to host:port (host is an IPv4 literal, e.g. "127.0.0.1").

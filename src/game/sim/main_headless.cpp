@@ -614,9 +614,11 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed)
     }
     std::signal(SIGINT, OnInterrupt);
     std::signal(SIGTERM, OnInterrupt);
+    // The port actually listened on: `host 0` lets the system choose a free one, and this
+    // line is where a script reads which (#306).
     printf("EconSpace server on port %d, %s. The galaxy runs with or without players; "
            "Ctrl+C to stop.\n",
-           port,
+           listener.Port(),
            isPublic ? "open to other machines"
                     : "this machine only (add --public to let other machines connect)");
 

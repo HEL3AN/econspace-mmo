@@ -118,7 +118,9 @@ jobs:
         timeout-minutes: 10  # a hung socket fails the run instead of holding it for hours
         run: |
           set -e
-          ./build/bin/server/econserver.exe host 50801 > mc.log 2>&1 &
+          # Port 0: the system picks a free one and the server says which (#306). A fixed
+          # port in the dynamic range can already be some outbound connection's source port.
+          ./build/bin/server/econserver.exe host 0 > mc.log 2>&1 &
           server_pid=$!
           # However this ends -- a failed check under set -e included -- stop the server
           # and show its log. A step that dies without the server's side of the story is
@@ -135,11 +137,12 @@ jobs:
           # exit at all.
           agent() { timeout -k 10 300 ./build/bin/agent/econagent.exe "$@"; }
           wait_for "EconSpace server on port"
+          port=$(sed -n 's/.*EconSpace server on port \([0-9]*\).*/\1/p' mc.log)
 
           # Two people sharing a galaxy. Each has to complete its own scripted run.
-          agent selftest 127.0.0.1 50801 alice alice-secret &
+          agent selftest 127.0.0.1 $port alice alice-secret &
           alice=$!
-          agent selftest 127.0.0.1 50801 bob bob-secret &
+          agent selftest 127.0.0.1 $port bob bob-secret &
           bob=$!
           wait $alice
           wait $bob
@@ -148,13 +151,13 @@ jobs:
           # the newcomer still plays normally afterwards. The second login waits until the
           # first has actually joined -- after a fixed three seconds it sometimes had not,
           # and then the "first" displaced the second and the check failed.
-          sleep 30 | agent connect 127.0.0.1 50801 carol carol-secret >/dev/null 2>&1 &
+          sleep 30 | agent connect 127.0.0.1 $port carol carol-secret >/dev/null 2>&1 &
           holder=$!
           wait_for "carol joined"
-          agent selftest 127.0.0.1 50801 carol carol-secret
+          agent selftest 127.0.0.1 $port carol carol-secret
 
           # And the secret is not decoration: the wrong one is refused (#106).
-          if agent selftest 127.0.0.1 50801 carol not-the-secret; then
+          if agent selftest 127.0.0.1 $port carol not-the-secret; then
             echo "a wrong secret was accepted"
             exit 1
           fi
@@ -164,10 +167,10 @@ jobs:
           # A brand-new account has no file until its first save. While its first session
           # is still playing, a login with another secret must be refused, not registered
           # over it (#201).
-          sleep 30 | agent connect 127.0.0.1 50801 dave dave-secret >/dev/null 2>&1 &
+          sleep 30 | agent connect 127.0.0.1 $port dave dave-secret >/dev/null 2>&1 &
           dave=$!
           wait_for "dave joined"
-          if agent selftest 127.0.0.1 50801 dave someone-elses-secret; then
+          if agent selftest 127.0.0.1 $port dave someone-elses-secret; then
             echo "a new account was taken over during its first session"
             exit 1
           fi
@@ -243,7 +246,9 @@ jobs:
         timeout-minutes: 10  # a hung socket fails the run instead of holding it for hours
         run: |
           set -e
-          ./build/bin/server/econserver host 50801 > mc.log 2>&1 &
+          # Port 0: the system picks a free one and the server says which (#306). A fixed
+          # port in the dynamic range can already be some outbound connection's source port.
+          ./build/bin/server/econserver host 0 > mc.log 2>&1 &
           server_pid=$!
           # However this ends -- a failed check under set -e included -- stop the server
           # and show its log. A step that dies without the server's side of the story is
@@ -260,11 +265,12 @@ jobs:
           # exit at all.
           agent() { timeout -k 10 300 ./build/bin/agent/econagent "$@"; }
           wait_for "EconSpace server on port"
+          port=$(sed -n 's/.*EconSpace server on port \([0-9]*\).*/\1/p' mc.log)
 
           # Two people sharing a galaxy. Each has to complete its own scripted run.
-          agent selftest 127.0.0.1 50801 alice alice-secret &
+          agent selftest 127.0.0.1 $port alice alice-secret &
           alice=$!
-          agent selftest 127.0.0.1 50801 bob bob-secret &
+          agent selftest 127.0.0.1 $port bob bob-secret &
           bob=$!
           wait $alice
           wait $bob
@@ -273,13 +279,13 @@ jobs:
           # the newcomer still plays normally afterwards. The second login waits until the
           # first has actually joined -- after a fixed three seconds it sometimes had not,
           # and then the "first" displaced the second and the check failed.
-          sleep 30 | agent connect 127.0.0.1 50801 carol carol-secret >/dev/null 2>&1 &
+          sleep 30 | agent connect 127.0.0.1 $port carol carol-secret >/dev/null 2>&1 &
           holder=$!
           wait_for "carol joined"
-          agent selftest 127.0.0.1 50801 carol carol-secret
+          agent selftest 127.0.0.1 $port carol carol-secret
 
           # And the secret is not decoration: the wrong one is refused (#106).
-          if agent selftest 127.0.0.1 50801 carol not-the-secret; then
+          if agent selftest 127.0.0.1 $port carol not-the-secret; then
             echo "a wrong secret was accepted"
             exit 1
           fi
@@ -289,10 +295,10 @@ jobs:
           # A brand-new account has no file until its first save. While its first session
           # is still playing, a login with another secret must be refused, not registered
           # over it (#201).
-          sleep 30 | agent connect 127.0.0.1 50801 dave dave-secret >/dev/null 2>&1 &
+          sleep 30 | agent connect 127.0.0.1 $port dave dave-secret >/dev/null 2>&1 &
           dave=$!
           wait_for "dave joined"
-          if agent selftest 127.0.0.1 50801 dave someone-elses-secret; then
+          if agent selftest 127.0.0.1 $port dave someone-elses-secret; then
             echo "a new account was taken over during its first session"
             exit 1
           fi
