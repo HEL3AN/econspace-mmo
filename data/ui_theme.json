@@ -32,7 +32,9 @@
         "buttonHeight": 26,
         "resizeGrip": 14,
         "rowHeight": 20,
-        "scrollbar": 4
+        "scrollbar": 4,
+        "snap": 12,
+        "tabWidth": 112
     },
     "fontSize": {
         "small": 11,

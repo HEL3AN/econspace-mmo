@@ -178,7 +178,9 @@ bool ParseTheme(const nlohmann::json& j, Theme& into, std::string& error)
                        { "buttonHeight", &m.buttonHeight },
                        { "resizeGrip", &m.resizeGrip },
                        { "rowHeight", &m.rowHeight },
-                       { "scrollbar", &m.scrollbar } },
+                       { "scrollbar", &m.scrollbar },
+                       { "snap", &m.snap },
+                       { "tabWidth", &m.tabWidth } },
                      error))
         return false;
 

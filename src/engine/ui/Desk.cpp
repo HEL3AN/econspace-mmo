@@ -6,6 +6,11 @@
 namespace Ui
 {
 
+namespace
+{
+constexpr double DOUBLE_CLICK = 0.35;  // seconds between two presses on a title
+}
+
 void Desk::AddWindow(const WindowSpec& spec, const std::string& title, bool open,
                      Window::Content content)
 {
@@ -34,6 +39,8 @@ void Desk::AddSurface(const WindowSpec& spec, bool open, Surface surface)
 void Desk::BeginFrame()
 {
     focus_.EndFrame();  // a field that was not drawn last frame lets the keyboard go
+    layout_.SetTitleHeight(CurrentTheme().metrics.titleHeight);
+    layout_.SetSnapDistance(CurrentTheme().metrics.snap);
     layout_.SetScreen((float)GetScreenWidth(), (float)GetScreenHeight());
     layout_.SetUnit(Scale());  // a larger interface has larger windows (#297)
     for (int h = 0; h < (int)items_.size(); h++)
@@ -64,11 +71,37 @@ void Desk::HandleMouse()
     // back while the field is drawn, and that is not counted as a loss.
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))
         focus_.Release(Focus::Blur::Elsewhere);
+    const bool held = IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+
+    // A tab held down comes away once the cursor leaves the title bar with it: from then on
+    // it is a window of its own, dragged from where its tab was grabbed.
+    if (tabPress_ != DeskLayout::NONE)
+    {
+        const Rectangle b = layout_.Rect(tabPress_);
+        const Rectangle bar = Window::TitleBar(b);
+        const Rectangle zone{ bar.x, bar.y - bar.height * 0.5f, bar.width, bar.height * 2.0f };
+        if (!held || !layout_.IsOpen(tabPress_))
+            tabPress_ = DeskLayout::NONE;
+        else if (!CheckCollisionPointRec(m, zone))
+        {
+            const int h = tabPress_;
+            tabPress_ = DeskLayout::NONE;
+            layout_.Unstack(h);
+            layout_.SetRect(h, { m.x - dragOffset_.x, m.y - dragOffset_.y, b.width, b.height });
+            layout_.Raise(h);
+            if (layout_.BeginMove(h, true))
+                dragging_ = h;
+        }
+    }
+
     if (dragging_ != DeskLayout::NONE)
     {
-        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT) || !layout_.IsOpen(dragging_))
+        if (!held || !layout_.IsOpen(dragging_))
         {
-            layout_.Settle(dragging_);
+            if (resizing_)
+                layout_.Settle(dragging_);
+            else
+                layout_.EndMove(m);  // stacked, grouped or left alone
             dragging_ = DeskLayout::NONE;
             resizing_ = false;
         }
@@ -79,12 +112,7 @@ void Desk::HandleMouse()
             layout_.Resize(dragging_, m.x + dragOffset_.x - r.x, m.y + dragOffset_.y - r.y);
         }
         else
-        {
-            Rectangle r = layout_.Rect(dragging_);
-            r.x = m.x - dragOffset_.x;
-            r.y = m.y - dragOffset_.y;
-            layout_.SetRect(dragging_, r);
-        }
+            layout_.MoveTo({ m.x - dragOffset_.x, m.y - dragOffset_.y });
     }
 
     const int owner = layout_.Owner();
@@ -93,9 +121,15 @@ void Desk::HandleMouse()
         return;
     layout_.Raise(owner);
     const Rectangle b = layout_.Rect(owner);
+    const bool      pinned = layout_.Pinned(owner);
     if (CheckCollisionPointRec(m, Window::CloseButton(b)))
         Close(owner);
-    else if (layout_.Spec(owner).resizable && CheckCollisionPointRec(m, Window::ResizeGrip(b)))
+    else if (CheckCollisionPointRec(m, Window::PinButton(b)))
+        layout_.SetPinned(owner, !pinned);
+    else if (CheckCollisionPointRec(m, Window::CollapseButton(b)))
+        layout_.SetCollapsed(owner, !layout_.Collapsed(owner));
+    else if (layout_.Spec(owner).resizable && !pinned && !layout_.Collapsed(owner) &&
+             CheckCollisionPointRec(m, Window::ResizeGrip(b)))
     {
         dragging_ = owner;
         resizing_ = true;
@@ -103,9 +137,54 @@ void Desk::HandleMouse()
     }
     else if (CheckCollisionPointRec(m, Window::TitleBar(b)))
     {
-        dragging_ = owner;
-        dragOffset_ = { m.x - b.x, m.y - b.y };
+        // A tab: brought to the front, and held -- pulled far enough, it comes away.
+        const std::vector<int> tabs = layout_.Tabs(owner);
+        if (tabs.size() >= 2)
+            for (int i = 0; i < (int)tabs.size(); i++)
+            {
+                const Rectangle tr = Window::TabRect(b, i, (int)tabs.size());
+                if (!CheckCollisionPointRec(m, tr))
+                    continue;
+                layout_.Raise(tabs[i]);
+                if (!pinned)
+                {
+                    tabPress_ = tabs[i];
+                    dragOffset_ = { m.x - tr.x, m.y - b.y };
+                }
+                return;
+            }
+        // The rest of the bar: a double click folds the window to its title, a drag moves it.
+        const double now = GetTime();
+        if (lastTitle_ == owner && now - lastTitleTime_ < DOUBLE_CLICK)
+        {
+            layout_.SetCollapsed(owner, !layout_.Collapsed(owner));
+            lastTitle_ = DeskLayout::NONE;
+            return;
+        }
+        lastTitle_ = owner;
+        lastTitleTime_ = now;
+        const bool alone = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+        if (layout_.BeginMove(owner, alone))  // a pinned window does not move
+        {
+            dragging_ = owner;
+            dragOffset_ = { m.x - b.x, m.y - b.y };
+        }
     }
+}
+
+void Desk::Toggle(const std::string& id)
+{
+    const int h = layout_.Find(id);
+    if (h == DeskLayout::NONE)
+        return;
+    // Open behind another tab of its stack: the player cannot see it, so the button brings
+    // it forward rather than closing what they were looking for.
+    if (layout_.IsOpen(h) && !layout_.Shown(h) && !layout_.Covered(h))
+    {
+        layout_.Raise(h);
+        return;
+    }
+    SetOpen(id, !layout_.IsOpen(h));
 }
 
 void Desk::Close(int h)
@@ -146,8 +225,25 @@ void Desk::Draw(Layer layer)
         if (!(it.surface.isOpen ? it.surface.isOpen() : layout_.IsOpen(h)))
             continue;
         if (it.window)
-            it.window->Draw(layout_.Rect(h), owner == h, layout_.Spec(h).resizable, &focus_,
-                            layout_.Spec(h).id);
+        {
+            if (!layout_.Shown(h))
+                continue;  // a tab behind the one in front of its stack
+            Window::Chrome c;
+            c.owner = owner == h;
+            c.resizable = layout_.Spec(h).resizable;
+            c.pinned = layout_.Pinned(h);
+            c.collapsed = layout_.Collapsed(h);
+            const std::vector<int> tabs = layout_.Tabs(h);
+            if (tabs.size() >= 2)
+                for (int t : tabs)
+                {
+                    if (t == h)
+                        c.activeTab = (int)c.tabs.size();
+                    c.tabs.push_back(items_[t].window ? items_[t].window->Title() : "");
+                }
+            c.dropTarget = layout_.Moving() && layout_.DropTarget(GetMousePosition()) == h;
+            it.window->Draw(layout_.Rect(h), c, &focus_, layout_.Spec(h).id);
+        }
         else if (it.surface.draw)
         {
             MouseScope scope(owner == h);
