@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "entities/Entity.h"
 #include "economy/Market.h"
 #include "core/Faction.h"
@@ -63,6 +65,20 @@ struct SystemAggregate
     // Macro passes in a row that one side has held the upper hand (#225). Transient: a
     // restart begins the count again.
     int contested = 0;
+
+    // Each faction's committed strength here, in ships (#231), by FactionId. The spawn
+    // director makes real ships of it; battles take it away; the faction step grows it
+    // where the faction holds and moves it where the faction reaches. Saved.
+    std::array<float, FACTION_COUNT> presence{};
+    // Whether anybody holds it at all. A system beyond the wormhole starts held by nobody:
+    // its controller reads Independent, but no garrison grows there and any faction may
+    // take it. Tau Verge is held -- by the Independents -- and only an enemy of theirs
+    // may. Saved.
+    bool claimed = true;
+    // Ships destroyed since the last faction step, by side -- transient.
+    float     lostPirates = 0.0f;
+    float     lostPolice = 0.0f;
+    FactionId policeFaction = FactionId::Independent;  // whose police the director sent
 
     bool seeded = false;  // aggregate initialized with starting values
 };

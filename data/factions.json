@@ -1,9 +1,13 @@
 {
     "factions": [
-        { "id": "Independent",  "name": "Independent",  "color": [200, 200, 200], "lawful": true,  "kind": "Independent" },
-        { "id": "TradersGuild", "name": "Traders Guild", "color": [0, 228, 48],   "lawful": true,  "kind": "Major" },
-        { "id": "Syndicate",    "name": "Syndicate",    "color": [230, 41, 55],   "lawful": true,  "kind": "Major" },
-        { "id": "Pirates",      "name": "Pirates",      "color": [255, 161, 0],   "lawful": false, "kind": "Pirate" }
+        { "id": "Independent",  "name": "Independent",  "color": [200, 200, 200], "lawful": true,  "kind": "Independent",
+          "temperament": { "appetite": 0.0, "capacity": 3, "growth": 0.1, "values": {} } },
+        { "id": "TradersGuild", "name": "Traders Guild", "color": [0, 228, 48],   "lawful": true,  "kind": "Major",
+          "temperament": { "appetite": 0.6, "capacity": 5, "growth": 0.1, "values": { "traffic": 1.0, "ore": 0.3, "unclaimed": 0.5 } } },
+        { "id": "Syndicate",    "name": "Syndicate",    "color": [230, 41, 55],   "lawful": true,  "kind": "Major",
+          "temperament": { "appetite": 0.8, "capacity": 5, "growth": 0.1, "values": { "ore": 0.8, "salvage": 0.3, "unclaimed": 0.6 } } },
+        { "id": "Pirates",      "name": "Pirates",      "color": [255, 161, 0],   "lawful": false, "kind": "Pirate",
+          "temperament": { "appetite": 1.4, "capacity": 6, "growth": 0.08, "values": { "traffic": 1.0, "salvage": 0.6, "unclaimed": 0.4 } } }
     ],
     "relations": [
         ["TradersGuild", "Pirates",   "War"],
