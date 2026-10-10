@@ -1055,7 +1055,7 @@ TEST_CASE("a ship can hold station on something, and keeps holding it")
     hold.navHoldId = 9;
     hold.navRange = 400.0f;
 
-    const Vector2 target{ 2000.0f, 0.0f };
+    const Sim::HoldTarget target{ { 2000.0f, 0.0f } };
     Sim::StepPlayerShip(s, hold, 1.0f, Sim::SIM_DT, &target);
     REQUIRE(s.GetHoldMode() == HoldMode::Keep);
     REQUIRE(s.GetHoldTargetId() == 9);
@@ -1065,7 +1065,7 @@ TEST_CASE("a ship can hold station on something, and keeps holding it")
     for (int i = 0; i < 60 * 90; i++)
         Sim::StepPlayerShip(s, Proto::Command{}, 1.0f, Sim::SIM_DT, &target);
 
-    const float dx = s.GetPosition().x - target.x, dy = s.GetPosition().y - target.y;
+    const float dx = s.GetPosition().x - target.pos.x, dy = s.GetPosition().y - target.pos.y;
     const float dist = std::sqrt(dx * dx + dy * dy);
     CHECK(dist == doctest::Approx(400.0f).epsilon(0.25));
 
@@ -1074,7 +1074,7 @@ TEST_CASE("a ship can hold station on something, and keeps holding it")
         for (int i = 0; i < 60 * 60; i++)
             Sim::StepPlayerShip(s, Proto::Command{}, 1.0f, Sim::SIM_DT, &target);
         CHECK(s.GetHoldMode() == HoldMode::Keep);
-        const float ax = s.GetPosition().x - target.x, ay = s.GetPosition().y - target.y;
+        const float ax = s.GetPosition().x - target.pos.x, ay = s.GetPosition().y - target.pos.y;
         CHECK(std::sqrt(ax * ax + ay * ay) == doctest::Approx(400.0f).epsilon(0.3));
     }
 
@@ -1108,13 +1108,13 @@ TEST_CASE("an orbit goes round rather than parking on the ring")
     orbit.navHoldId = 1;
     orbit.navRange = 500.0f;
 
-    const Vector2 target{ 1500.0f, 0.0f };
+    const Sim::HoldTarget target{ { 1500.0f, 0.0f } };
     Sim::StepPlayerShip(s, orbit, 1.0f, Sim::SIM_DT, &target);
     for (int i = 0; i < 60 * 60; i++)
         Sim::StepPlayerShip(s, Proto::Command{}, 1.0f, Sim::SIM_DT, &target);
 
     const Vector2 a = s.GetPosition();
-    const float   ax = a.x - target.x, ay = a.y - target.y;
+    const float   ax = a.x - target.pos.x, ay = a.y - target.pos.y;
     CHECK(std::sqrt(ax * ax + ay * ay) == doctest::Approx(500.0f).epsilon(0.05));
 
     // Ten seconds later it is somewhere else on the same ring. Aiming at the ring rather
@@ -1122,11 +1122,248 @@ TEST_CASE("an orbit goes round rather than parking on the ring")
     for (int i = 0; i < 60 * 10; i++)
         Sim::StepPlayerShip(s, Proto::Command{}, 1.0f, Sim::SIM_DT, &target);
     const Vector2 b = s.GetPosition();
-    const float   bx = b.x - target.x, by = b.y - target.y;
+    const float   bx = b.x - target.pos.x, by = b.y - target.pos.y;
     CHECK(std::sqrt(bx * bx + by * by) == doctest::Approx(500.0f).epsilon(0.05));
 
     const float moved = std::sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
     CHECK(moved > 100.0f);
+}
+
+// --- Flight near moving stations (#298) ---
+
+TEST_CASE("orbit and keep-at-range hold the distance asked for, not only the presets (#298)")
+{
+    // The context menu offers a few multiples of the target's size and a slider beside them;
+    // an agent passes any number. Whatever the number, the ring is that far out.
+    for (const float range : { 777.0f, 1234.0f })
+    {
+        for (const int mode : { 3, 4 })
+        {
+            Ship s({ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+            s.SetStabilizerOn(true);
+            Proto::Command hold;
+            hold.navMode = mode;
+            hold.navHoldId = 1;
+            hold.navRange = range;
+            const Sim::HoldTarget target{ { 3000.0f, 500.0f } };
+            Sim::StepPlayerShip(s, hold, 1.0f, Sim::SIM_DT, &target);
+            for (int i = 0; i < 60 * 60; i++)
+                Sim::StepPlayerShip(s, Proto::Command{}, 1.0f, Sim::SIM_DT, &target);
+            CAPTURE(range);
+            CAPTURE(mode);
+            CHECK(s.GetHoldRange() == range);
+            CHECK(Vector2Distance(s.GetPosition(), target.pos) ==
+                  doctest::Approx(range).epsilon(mode == 3 ? 0.05 : 0.1));
+        }
+    }
+}
+
+namespace
+{
+// A station going round a planet that itself goes round the star -- the case #298 is
+// about -- with its position and velocity at a time, the way the server places it.
+struct MovingStation
+{
+    float   radius = 30000.0f, speed = 50.0f;
+    Vector2 At(double t) const
+    {
+        const double a = (double)speed / radius * t;
+        return { 200000.0f + (float)std::cos(a) * radius, (float)std::sin(a) * radius };
+    }
+    Vector2 VelAt(double t) const
+    {
+        const double a = (double)speed / radius * t;
+        return { -(float)std::sin(a) * speed, (float)std::cos(a) * speed };
+    }
+};
+}  // namespace
+
+TEST_CASE("a follow stays with a target that moves, at the range and at its speed (#298)")
+{
+    const MovingStation st;
+    Ship                s({ st.At(0).x - 900.0f, st.At(0).y + 300.0f }, GetShipCatalog()[0].stats);
+    s.SetStabilizerOn(true);
+
+    Proto::Command follow;
+    follow.navMode = 5;
+    follow.navHoldId = 7;
+    follow.navRange = 600.0f;
+
+    double          t = 0.0;
+    Sim::HoldTarget target{ st.At(t), st.VelAt(t) };
+    Sim::StepPlayerShip(s, follow, 1.0f, Sim::SIM_DT, &target);
+    REQUIRE(s.GetHoldMode() == HoldMode::Follow);
+
+    // Settle, then watch for a minute: a tether is judged by how it holds, not by one tick.
+    float worst = 0.0f, worstSpeed = 0.0f;
+    for (int i = 0; i < 60 * 120; i++)
+    {
+        t += Sim::SIM_DT;
+        target = { st.At(t), st.VelAt(t) };
+        Sim::StepPlayerShip(s, Proto::Command{}, 1.0f, Sim::SIM_DT, &target);
+        if (i >= 60 * 60)
+        {
+            worst =
+                std::max(worst, std::fabs(Vector2Distance(s.GetPosition(), target.pos) - 600.0f));
+            worstSpeed = std::max(worstSpeed, Vector2Distance(s.GetVelocity(), target.vel));
+        }
+    }
+    CHECK(worst < 30.0f);                        // on the ring...
+    CHECK(worstSpeed < 5.0f);                    // ...and moving with it, not chasing it
+    CHECK(s.GetHoldMode() == HoldMode::Follow);  // standing: still running
+}
+
+namespace
+{
+// A planet far out and a station going round it, as the generator makes them (#210). The
+// station's id is 44; the fixture's clock starts at zero.
+Entity* AddOrbitingStation(Fixture& f)
+{
+    f.World().entities.push_back(std::make_unique<Planet>(300000.0f, 52.0f, 0.0f, 15000.0f, WHITE,
+                                                          ResourceType::Iron, PlanetType::Rocky));
+    auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 600.0f, "Moon Dock",
+                                             FactionId::TradersGuild, StationRole::TradeHub);
+    station->SetId(44);
+    Orbit o;
+    o.planet = 0;
+    o.radius = 30000.0f;
+    o.speed = 50.0f;
+    station->SetOrbit(o);
+    Entity* e = station.get();
+    f.World().entities.push_back(std::move(station));
+    Orbits::Place(f.World().entities, 0.0);
+    return e;
+}
+}  // namespace
+
+TEST_CASE("a docked ship goes round with its station, and undocks beside where it is now (#298)")
+{
+    Fixture       f;
+    Entity* const station = AddOrbitingStation(f);
+    const Vector2 at = station->GetPosition();
+    f.s.ship->Teleport({ at.x + 700.0f, at.y });  // inside the door, off to one side
+    REQUIRE(f.sim.StepPlayerDock(f.s, f.World()) == 44);
+
+    // Berthed just clear of the hull on the side it came in from.
+    const float berth = station->GetSize() + Sim::DOCK_BERTH_CLEARANCE;
+    CHECK(Vector2Distance(f.s.ship->GetPosition(), at) == doctest::Approx(berth));
+
+    // Two minutes of the world turning, the way the host steps it: the world moves, then
+    // whatever the ship is attached to is applied.
+    double      t = 0.0;
+    const float dt = Sim::SIM_DT;
+    for (int i = 0; i < 60 * 120; i++)
+    {
+        t += dt;
+        Orbits::Place(f.World().entities, t);
+        f.sim.StepPlayerAttachment(f.s, dt);
+        if (i % 600 == 0)
+        {
+            CAPTURE(i);
+            CHECK(Vector2Distance(f.s.ship->GetPosition(), station->GetPosition()) ==
+                  doctest::Approx(berth));
+        }
+    }
+    const Vector2 now = station->GetPosition();
+    REQUIRE(Vector2Distance(at, now) > 5000.0f);  // it really did go a long way
+    CHECK(Vector2Distance(f.s.ship->GetPosition(),
+                          Sim::DockBerth(now, station->GetSize(), f.s.dockBearing)) < 0.01f);
+    // Carried, so it reports the station's speed rather than standing still.
+    CHECK(f.s.ship->GetSpeed() > 50.0f);
+
+    // What a client is told is where the ship is: the snapshot carries the berth. A client
+    // that docked does not predict -- it shows this -- so there is nothing to disagree with.
+    const Proto::Snapshot snap = f.sim.BuildSnapshot(f.s, f.s.systemId);
+    CHECK(snap.player.docked);
+    CHECK(Vector2Distance(snap.player.pos, f.s.ship->GetPosition()) < 0.1f);
+
+    // Undocking puts it beside where the station is now, at rest, close enough to dock
+    // again -- not where it docked, which the station left minutes ago.
+    f.sim.StepPlayerUndock(f.s);
+    CHECK_FALSE(f.s.IsDocked());
+    CHECK(Vector2Distance(f.s.ship->GetPosition(), now) == doctest::Approx(berth));
+    CHECK(Vector2Distance(f.s.ship->GetPosition(), at) > 5000.0f);
+    CHECK(f.s.ship->GetSpeed() == 0.0f);
+    CHECK(Vector2Distance(f.s.ship->GetPosition(), now) <=
+          station->GetSize() + station->GetArchetype()->dockRange);
+
+    // And from there, the server's step and the client's prediction are one function of
+    // the same input: they fly off identically.
+    Ship client = *f.s.ship;
+    for (int i = 0; i < 120; i++)
+    {
+        Proto::Command c;
+        c.thrust = true;
+        c.turn = i < 60 ? 1.0f : 0.0f;
+        f.sim.StepPlayerShip(f.s, c, 1.0f, dt);
+        Sim::StepPlayerShip(client, c, 1.0f, dt);
+    }
+    CHECK(client.GetPosition().x == f.s.ship->GetPosition().x);
+    CHECK(client.GetPosition().y == f.s.ship->GetPosition().y);
+}
+
+TEST_CASE("a follow order stays with an orbiting station, and prediction keeps up (#298)")
+{
+    Fixture       f;
+    Entity* const station = AddOrbitingStation(f);
+    const Vector2 at = station->GetPosition();
+    f.s.ship->Teleport({ at.x - 2500.0f, at.y + 800.0f });
+
+    // What an agent's hold_station sends.
+    Orders::Order o;
+    o.kind = Orders::Kind::Follow;
+    o.targetId = 44;
+    o.stopDist = 1500.0f;
+    REQUIRE(f.sim.GiveOrder(f.s, o) > 0);
+
+    // The client's prediction of the same ship: the same step, told where the station was
+    // a render delay ago (six ticks) and how fast the snapshots say it goes.
+    Ship           client = *f.s.ship;
+    Proto::Command nav;
+    nav.navMode = 5;
+    nav.navHoldId = 44;
+    nav.navRange = 1500.0f;
+    bool                first = true;
+    std::deque<Vector2> seen;  // the station as each tick left it, newest at the back
+    double              t = 0.0;
+    const float         dt = Sim::SIM_DT;
+    float               worstServer = 0.0f, worstApart = 0.0f;
+    for (int i = 0; i < 60 * 150; i++)
+    {
+        t += dt;
+        Orbits::Place(f.World().entities, t);
+        f.sim.StepPlayerAttachment(f.s, dt);
+        f.sim.StepPlayerOrder(f.s, f.World(), dt);
+
+        seen.push_back(station->GetPosition());
+        if (seen.size() > 7)
+            seen.pop_front();
+        const Vector2   late = seen.front();
+        const Vector2   later = seen.size() > 1 ? seen[1] : late;
+        Sim::HoldTarget proxy{ late, { (later.x - late.x) / dt, (later.y - late.y) / dt } };
+        Sim::StepPlayerShip(client, first ? nav : Proto::Command{}, 1.0f, dt, &proxy);
+        first = false;
+
+        if (i >= 60 * 90)
+        {
+            worstServer = std::max(worstServer, std::fabs(Vector2Distance(f.s.ship->GetPosition(),
+                                                                          station->GetPosition()) -
+                                                          1500.0f));
+            worstApart = std::max(worstApart,
+                                  Vector2Distance(f.s.ship->GetPosition(), client.GetPosition()));
+        }
+    }
+    CHECK(Vector2Distance(at, station->GetPosition()) > 5000.0f);  // it moved, a long way
+    CHECK(f.s.orderStatus == Orders::Status::Running);             // a hold does not finish
+    CHECK(f.s.ship->GetHoldMode() == HoldMode::Follow);
+    CHECK(worstServer < 60.0f);
+    // The two differ by roughly the render delay times the station's speed, and no more:
+    // the one difference CLAUDE.md allows a standing hold.
+    CHECK(worstApart < 40.0f);
+
+    // Aborting the order lets go of the station, rather than leaving a hold nobody runs.
+    f.sim.AbortOrder(f.s, "test");
+    CHECK(f.s.ship->GetHoldMode() == HoldMode::None);
 }
 
 TEST_CASE("the region hangs off the start system by a wormhole, and its seed is saved (#140)")

@@ -71,6 +71,8 @@ void Simulation::AbortOrder(ClientSession& s, const std::string& why)
         s.ship->DisengageAutopilot();
         s.ship->CancelWarp();
         s.ship->SetMiningOn(false);
+        if (Orders::IsHold(s.order.kind))
+            s.ship->ReleaseHold();  // nothing else would: a hold is standing
     }
 }
 
@@ -87,6 +89,8 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
         {
             s.ship->DisengageAutopilot();
             s.ship->SetMiningOn(false);
+            if (Orders::IsHold(s.order.kind))
+                s.ship->ReleaseHold();
         }
         // The journal entry is the point: it is what an agent sleeps on rather than
         // polling the world to find out whether its order is done.
@@ -109,6 +113,37 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
     {
         StepPlayerUndock(s);
         finish(Orders::Status::Done, "undocked");
+        return;
+    }
+
+    // A hold is the ship's own standing behaviour (#157, #298): the order engages it once and
+    // then only keeps the ship stepping, since an agent sends no commands of its own. The
+    // step is the session's, which tells the ship where its target is and how it moves.
+    if (Orders::IsHold(s.order.kind))
+    {
+        if (FindById(st, s.order.targetId) == nullptr)
+        {
+            finish(Orders::Status::Failed, "target is not in this system");
+            return;
+        }
+        if (!s.orderNavIssued)
+        {
+            Proto::Command nav;
+            nav.navMode = s.order.kind == Orders::Kind::Orbit  ? 3
+                          : s.order.kind == Orders::Kind::Keep ? 4
+                                                               : 5;
+            nav.navHoldId = s.order.targetId;
+            nav.navRange = s.order.stopDist;
+            StepPlayerShip(s, nav, 1.0f, dt);
+            s.orderNavIssued = true;
+            return;
+        }
+        if (s.ship->GetHoldMode() == HoldMode::None)
+        {
+            finish(Orders::Status::Failed, "the hold was released");
+            return;
+        }
+        StepPlayerShip(s, Proto::Command{}, 1.0f, dt);
         return;
     }
 

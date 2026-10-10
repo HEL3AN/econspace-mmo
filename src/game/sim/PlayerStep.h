@@ -34,14 +34,23 @@ inline constexpr float SIM_DT = 1.0f / 60.0f;
 // player on the first second of every session.
 inline constexpr float MAX_CATCHUP_SECONDS = 0.25f;
 
+// Where the object a ship is holding station on is, and how fast it is going. The
+// velocity is what lets a follow (#298) match a moving target instead of chasing the
+// place it was a moment ago; orbit and keep-at-range only read the position.
+struct HoldTarget
+{
+    Vector2 pos = { 0.0f, 0.0f };
+    Vector2 vel = { 0.0f, 0.0f };
+};
+
 // Applies a client command to the ship: movement toggles, manual control (which cancels
 // autopilot, warp and any standing hold), a navigation order, the piloting bonus, and the
 // physics update for dt.
 //
-// `holdTargetPos` is where the object the ship is holding station on currently is, or null
-// if it is holding station on nothing. Both sides resolve it themselves -- the server from
-// the live entity, the client from its interpolated proxy -- so the two will differ by
-// roughly the render delay.
+// `hold` is where the object the ship is holding station on currently is, or null if it is
+// holding station on nothing. Both sides resolve it themselves -- the server from the live
+// entity, the client from its interpolated proxy -- so the two will differ by roughly the
+// render delay.
 //
 // That is deliberate and it is the one place this file tolerates a difference. A hold is a
 // slow control loop aiming at a ring hundreds of units across; a tenth of a second of lag
@@ -49,6 +58,20 @@ inline constexpr float MAX_CATCHUP_SECONDS = 0.25f;
 // would not be acceptable for anything that decides a hit, which is why nothing that
 // decides a hit is computed from an interpolated position.
 void StepPlayerShip(Ship& ship, const Proto::Command& cmd, float pilotBonus, float dt,
-                    const Vector2* holdTargetPos = nullptr);
+                    const HoldTarget* hold = nullptr);
+
+// How far outside a station's hull a docked ship is berthed (#298).
+inline constexpr float DOCK_BERTH_CLEARANCE = 60.0f;
+
+// Where a ship docked at a station is: on the side it came in from, just clear of the
+// hull. Docked means attached -- the station may be on an orbit (#210), and the ship goes
+// round with it -- so this is recomputed from wherever the station is now, every tick
+// while docked and once more at the undock. `bearing` is a unit vector from the station
+// to the berth, fixed at the moment of docking.
+Vector2 DockBerth(Vector2 stationPos, float stationSize, Vector2 bearing);
+
+// The bearing a ship at `shipPos` docks on. Sitting exactly on the station's centre has
+// no direction, so that one gets a fixed one rather than a division by zero.
+Vector2 DockBearing(Vector2 stationPos, Vector2 shipPos);
 
 }  // namespace Sim

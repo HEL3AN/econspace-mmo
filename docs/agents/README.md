@@ -170,7 +170,7 @@ who decides things for themselves, not scenery), and NPCs by role — `trader`, 
 
 ## What a bot can do
 
-`observe`, `move_to`, `dock`, `undock`, `mine`, `travel_to_system`, `sell_cargo`, `abort_order`
+`observe`, `move_to`, `dock`, `undock`, `mine`, `travel_to_system`, `hold_station`, `sell_cargo`, `abort_order`
 and `wait_for_event` to fly and earn; `missions`, `accept_mission`, `complete_mission`, `hangar`,
 `buy_ship`, `switch_ship` and `pay_bounty` to spend it and to take work (#109). **Their exact
 arguments are in [reference.md](reference.md)**, which is

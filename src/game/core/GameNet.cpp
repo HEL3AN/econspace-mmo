@@ -289,7 +289,7 @@ void Game::BuildClientSnapshot()
         playerShip_->SetStabilizerOn(p.stabilizer);
         playerShip_->SetMiningOn(p.mining);
         for (const Proto::Command& c : pendingInputs_)
-            Sim::StepPlayerShip(*playerShip_, c, 1.0f, SIM_DT, HoldTargetPos());
+            Sim::StepPlayerShip(*playerShip_, c, 1.0f, SIM_DT, HoldTarget());
         // Weapon state is server-owned; the local flag is only an optimistic echo of the
         // toggle we sent, corrected here the same way the ship's position is.
         weaponOn_ = p.weaponOn;
@@ -606,7 +606,11 @@ bool Game::OwnsShip(int catalogIndex) const
 // own proxies. The server answers the same question from the live entity, and the two
 // differ by the render delay -- deliberately, and only for a control loop that cannot see
 // the difference (#157).
-const Vector2* Game::HoldTargetPos() const
+//
+// The velocity, which a follow flies (#298), is the difference between the two newest
+// snapshots that have the object: what the server said it did, rather than a derivative of
+// the interpolation, which is piecewise and steps at every snapshot.
+const Sim::HoldTarget* Game::HoldTarget() const
 {
     if (!playerShip_ || playerShip_->GetHoldMode() == HoldMode::None)
         return nullptr;
@@ -616,8 +620,28 @@ const Vector2* Game::HoldTargetPos() const
     for (const auto& e : clientWorld_)
         if (e->GetId() == id)
         {
-            holdTargetPos_ = e->GetPosition();
-            return &holdTargetPos_;
+            holdTarget_.pos = e->GetPosition();
+            holdTarget_.vel = { 0.0f, 0.0f };
+            const Proto::EntitySnapshot* newer = nullptr;
+            double                       newerT = 0.0;
+            for (auto it = snapBuffer_.rbegin(); it != snapBuffer_.rend(); ++it)
+            {
+                const Proto::EntitySnapshot* es = FindEnt(it->ents, id);
+                if (es == nullptr)
+                    continue;
+                if (newer == nullptr)
+                {
+                    newer = es;
+                    newerT = it->t;
+                    continue;
+                }
+                const float span = (float)(newerT - it->t);
+                if (span > 0.0f)
+                    holdTarget_.vel = { (newer->pos.x - es->pos.x) / span,
+                                        (newer->pos.y - es->pos.y) / span };
+                break;
+            }
+            return &holdTarget_;
         }
     return nullptr;
 }

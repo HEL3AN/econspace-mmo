@@ -895,6 +895,7 @@ void Game::DrawHud()
     }
 
     contextMenu_.Draw();  // over the windows
+    rangePicker_.Draw();
 
     // Current system and its security level (top center).
     if (const WorldLoader::SystemInfo* si = CurrentSystemInfo())
@@ -916,6 +917,24 @@ void Game::DrawHud()
     {
         const char* w = TextFormat("WANTED: %s", wanted.c_str());
         Ui::Text(w, (screenWidth_ - Ui::TextWidth(w, 16)) / 2, 36, 16, RED);
+    }
+
+    // What the ship is holding station on, and how well (#157, #298). A standing behaviour
+    // runs until something releases it, so it has to be visible the whole time it does.
+    if (playerShip_->GetHoldMode() != HoldMode::None)
+    {
+        const HoldMode hm = playerShip_->GetHoldMode();
+        const char*    verb = hm == HoldMode::Orbit  ? "ORBITING"
+                              : hm == HoldMode::Keep ? "KEEPING AT RANGE OF"
+                                                     : "FOLLOWING";
+        const Entity*  t = FindEntityById(playerShip_->GetHoldTargetId());
+        std::string    line = std::string(verb) + "  " + (t ? t->GetName() : std::string("?")) +
+                              TextFormat("  at %.0f", playerShip_->GetHoldRange());
+        if (t != nullptr)
+            line += TextFormat("  (now %.0f)",
+                               Vector2Distance(t->GetPosition(), playerShip_->GetPosition()));
+        Ui::Text(line.c_str(), (screenWidth_ - Ui::TextWidth(line.c_str(), 16)) / 2,
+                 screenHeight_ - 98, 16, Ui::ACCENT);
     }
 
     Ui::Text("[debug] F1: +money   F11: fullscreen", 56, screenHeight_ - 26, 14, Ui::TEXT_DIM);
@@ -948,7 +967,14 @@ void Game::DrawStationScreen()
     FactionId stationFaction = dockedStation_->GetFaction();
     float     stationRep = player_.GetReputation(stationFaction);
     RepTier   stationTier = Factions::TierOf(stationRep);
-    Ui::Text(TextFormat("DOCKED  ·  %s  ·  %s  ·  %s (%d)",
+    // Docked means attached (#298): the ship is berthed on the station and goes where it
+    // goes. Said here, because a station on an orbit is moving the whole time the player is
+    // reading its market, and the ship with it.
+    const float       carried = Vector2Length(snapshot_.player.vel);
+    const std::string attached =
+        carried > 0.5f ? std::string(TextFormat("ATTACHED, moving with it at %.0f u/s", carried))
+                       : std::string("ATTACHED");
+    Ui::Text(TextFormat("DOCKED  ·  %s  ·  %s  ·  %s  ·  %s (%d)", attached.c_str(),
                         StationRoleName(dockedStation_->GetRole()).c_str(),
                         FactionName(stationFaction).c_str(),
                         Factions::TierName(stationTier).c_str(), (int)stationRep),

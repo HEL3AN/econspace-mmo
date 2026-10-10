@@ -248,6 +248,13 @@ public:
     // the piloting bonus, and updates the physics. Combat/mining — via separate methods.
     void StepPlayerShip(ClientSession& s, const Proto::Command& cmd, float pilotBonus, float dt);
 
+    // Once per world tick, after the world has moved: what the player's ship is attached
+    // to (#298). A docked ship is carried to its berth beside the station, wherever the
+    // station has gone on its orbit (#210), and a ship holding station on something has
+    // that something's velocity measured, for a follow to match. Commands arrive in bursts
+    // and an agent sends almost none, so neither can be left to the command path.
+    void StepPlayerAttachment(ClientSession& s, float dt);
+
     // Player weapon range lives in sim/PlayerStep.h — a single source shared with the
     // client, which draws the targeting circle from it.
     static constexpr float PLAYER_WEAPON_RANGE = Sim::PLAYER_WEAPON_RANGE;
@@ -337,16 +344,15 @@ public:
 
     // Server-authoritative docking (M4e-3b). StepPlayerDock finds the nearest station of
     // st within docking range and (if the player is not warping) fixes the docking, returning
-    // the station id (0 — failed). While docked, the host freezes the player's physics.
+    // the station id (0 — failed). While docked, the player's physics is not stepped.
     // Reputation admittance is decided here as well: a station whose faction hates the
     // player refuses. Undock releases the docking.
+    //
+    // Docked means attached (#298): the ship is berthed just outside the hull on the side it
+    // came in from, carried there every tick by StepPlayerAttachment, and undocking leaves
+    // it at that berth -- beside where the station is now, not where it was at the dock.
     int  StepPlayerDock(ClientSession& s, SystemState& st);
-    void StepPlayerUndock(ClientSession& s)
-    {
-        if (s.dockedStationId != 0)
-            s.RecordEvent(Ev::Kind::Undocked, "Undocked");
-        s.dockedStationId = 0;
-    }
+    void StepPlayerUndock(ClientSession& s);
 
     // --- Player account (server-authoritative, M4f) ---
     // Money/skills/reputation/wanted live on the session (ClientSession::account) and are
