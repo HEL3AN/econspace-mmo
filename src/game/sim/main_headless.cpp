@@ -222,6 +222,9 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     // A site, laid down from space (#39); the answer is in the journal either way.
     if (!c.deploy.empty())
         sim.Deploy(s, c.deploy, c.deployPos, c.deployName);
+    // ...and taken apart by its owner, the same way.
+    if (c.dismantleId != 0)
+        sim.Dismantle(s, c.dismantleId);
 
     // Player fire: on a shot — a beam event into the snapshot (client draws it blue).
     // Account effects (mission credit/reputation) are not yet applied on the server (3c-ii).
@@ -313,6 +316,16 @@ static void HostStepWorld(Simulation& sim, float dt,
         // ship would simply sit there.
         if (SystemState* st = sim.SystemOf(s))
             sim.StepPlayerOrder(s, *st, dt);
+        for (const ClientSession::Shot& shot : s.orderShots)
+        {
+            FireEvent fe;
+            fe.from = shot.from;
+            fe.to = shot.to;
+            fe.shooterFaction = FactionId::Independent;
+            fe.shooterSessionId = s.id;
+            fires[s.systemId].push_back(fe);
+        }
+        s.orderShots.clear();
 
         // Account passive: piloting xp (in flight) + bounty decay.
         sim.StepPlayerAccountTick(s, dt);

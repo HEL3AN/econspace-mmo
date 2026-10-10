@@ -117,6 +117,27 @@ TEST_CASE("Actions: each kind offers what it is for")
     CHECK(jump->label == "Jump to Vela");
 }
 
+TEST_CASE("Actions: your own structure is taken apart, anyone else's is attacked (#39)")
+{
+    const Vector2 from{ 0.0f, 0.0f };
+    Target        t = Thing(EntityKind::Structure);
+    t.mine = true;
+    t.refund = "5 Iron";
+    const std::vector<Action> own = Actions::For(t, from);
+    const Action*             dismantle = Find(own, Verb::Dismantle);
+    REQUIRE(dismantle != nullptr);
+    CHECK(dismantle->label == "Dismantle (back: 5 Iron)");
+    CHECK(dismantle->tool == "dismantle");
+    CHECK_FALSE(Has(own, Verb::Attack));
+
+    t.mine = false;
+    const std::vector<Action> theirs = Actions::For(t, from);
+    CHECK_FALSE(Has(theirs, Verb::Dismantle));
+    const Action* attack = Find(theirs, Verb::Attack);
+    REQUIRE(attack != nullptr);
+    CHECK(attack->tool == "attack");
+}
+
 TEST_CASE("Actions: a point in space offers flying, warping, and what can be built in reach")
 {
     Blueprint beacon;
@@ -145,12 +166,13 @@ TEST_CASE("Actions: every button an agent could want is an econagent tool, and t
     const std::set<std::string> tools = AgentTools();
     REQUIRE_FALSE(tools.empty());
     const std::set<Verb> interfaceOnly{ Verb::Select, Verb::SetRange };
-    const std::set<Verb> owed{ Verb::Attack, Verb::Investigate };
+    const std::set<Verb> owed{ Verb::Investigate };
 
     for (Verb v :
          { Verb::Select, Verb::Approach, Verb::Orbit, Verb::Keep, Verb::Follow, Verb::SetRange,
            Verb::Warp, Verb::Dock, Verb::Mine, Verb::Attack, Verb::Investigate, Verb::Jump,
-           Verb::FlyHere, Verb::WarpHere, Verb::Build, Verb::Accept, Verb::HandIn })
+           Verb::FlyHere, Verb::WarpHere, Verb::Build, Verb::Accept, Verb::HandIn,
+           Verb::Dismantle })
     {
         const std::string tool = Actions::ToolFor(v);
         INFO("verb " << (int)v << " tool '" << tool << "'");

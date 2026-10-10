@@ -904,6 +904,7 @@ there is no ordinary structure to fall back on -- and one that names anything bu
 | Field | Type | Description |
 |------|-----|----------|
 | `archetype` | string | **required**: the `Structure` archetype it is, or will be once built |
+| `blueprint` | string | the blueprint it was made from: what dismantling returns and what destroys it; absent -- the first blueprint that builds its archetype |
 | `name` | string | what its builder called it (default: the archetype's name) |
 | `pos` | [x,y] | position |
 | `size` | number | radius (optional, default the archetype's) |
@@ -929,10 +930,14 @@ was down when a site was due finishes it on its first tick back.
             "cost": { "Iron": 10, "Crystal": 2 },
             "buildSeconds": 45,
             "lifetime": 86400,
+            "hull": 400,
+            "wreck": "derelict.wreck",
             "placement": { "reach": 600, "clearance": 400, "bodyClearance": 5000, "perSystem": 8 }
         }
     ],
-    "limits": { "perAccount": 12 }
+    "limits": { "perAccount": 12 },
+    "dismantle": { "refund": 0.5 },
+    "destruction": { "siteHull": 0.25, "wreckShare": 0.25 }
 }
 ```
 
@@ -944,12 +949,34 @@ was down when a site was due finishes it on its first tick back.
 | `cost` | resources taken from the hold when the site is laid down, all at once; at least one |
 | `buildSeconds` | world seconds from site to finished object |
 | `lifetime` | world seconds it stands once finished; 0 or absent -- until removed |
+| `hull` | **required**, more than 0: the damage that destroys the finished thing. Anything buildable can be destroyed |
+| `wreck` | the `Derelict` archetype it leaves when destroyed; absent -- nothing is left (a buoy) |
 | `placement.reach` | at most this far from the ship laying it down; must be more than 0 |
 | `placement.clearance` | gap to the edge of any station, gate, wreck or structure |
 | `placement.bodyClearance` | gap to a star's surface, and to the band a planet -- or a satellite with its planet -- sweeps on its orbit |
 | `placement.perSystem` | how many of what this blueprint builds one system may hold, everyone's together; 0 -- no cap |
 | `builders` | who may build one: any of `"player"`, `"faction"`; absent -- `["player"]`. A blueprint no player may build is listed in no menu or tool (#295) |
 | `limits.perAccount` | how many structures one account may have standing, in the whole galaxy; 0 -- no cap |
+| `dismantle.refund` | share of the cost an owner gets back for dismantling a finished structure (default 0.5) |
+| `destruction.siteHull` | a site's hull at the moment it goes down, as a share of `hull`; it grows to all of it at completion (default 0.25) |
+| `destruction.wreckShare` | share of the cost, in credits at the base price, a destroyed structure's wreck pays whoever searches it (default 0.25) |
+
+**Taking things down (#39).** The owner dismantles their own site or structure from within
+`placement.reach` of it, and the hold gets back, per resource and rounded down,
+`cost x (1 - progress x (1 - refund)) x hull left`: all of it for a site cancelled the moment
+it went down, falling to `refund` at completion, and less for whatever has been shot off.
+Half is the default because a build-and-take-down cycle must cost something -- otherwise a
+structure is a free way to block a spot and move on -- while misplacing one should not cost
+it all; and it is more than the wreck holds, so having your own shot down never pays better
+than taking it apart. What the hold has no room for is a refusal, not a loss.
+
+Anyone may shoot a site or a structure; a site is weaker the earlier it is. Hitting one is a
+crime where it is someone's property under a law: a lawful faction's own structure is that
+faction's, and a player's (or the world's) is under the law of a lawful system controller.
+The price is the one for attacking that faction's ships -- reputation and bounty per hit,
+more for the kill. A pirate outpost, anything in a lawless system, and your own are not
+crimes. A destroyed structure leaves its `wreck` where it stood (on its orbit, if it had one), and a faction's outpost is
+lost from the chronicle; the claim it made stands until the system is taken (#295).
 
 A faction builds an outpost (#295): its stock pays the cost, counted as the sum of the
 amounts, and `limits.perAccount` does not apply. The structure's owner is `faction:<id>`,
@@ -972,7 +999,12 @@ placement rules as a player's site except `reach`:
 Beside a belt or a wreck that orbits a planet, the outpost orbits that planet too. A purpose
 that has nowhere to go in the system falls back to an open point. The place is drawn from
 `Gen::Rng` keyed by faction, system and purpose, so the same world settles the same places.
-A structure that orbits carries `orbits` in `world.json` like any other satellite.
+A structure that orbits carries `orbits` in `world.json` like any other satellite; the damage
+it has taken is state beside it, and a destroyed one leaves its wreck on the same orbit.
+
+Every outpost leaves a `derelict.outpost_ruin` when destroyed. Their hulls differ by what they
+are for: a watch post and a salvage post are light (3000), an ordinary, mining or orbital
+outpost is 4000, and a pirate's hidden base, dug in where nobody looks, is 5000.
 
 The server checks every rule again whatever a client says; a refusal is a journal notice
 that names the rule ("too close to Aurora Hub (keep 400 clear)", "the hold has 0 Crystal of

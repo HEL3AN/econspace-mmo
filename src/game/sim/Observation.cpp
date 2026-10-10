@@ -4,6 +4,7 @@
 #include "core/Faction.h"
 #include "economy/Resource.h"
 #include "entities/ShipType.h"
+#include "entities/Structure.h"
 #include "missions/Mission.h"
 
 #include <algorithm>
@@ -127,6 +128,15 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
                                 (int)((now - l.startedAt) / span * 100.0), l.completesAt - now);
                 if (!l.owner.empty())
                     extra += "  by " + l.owner;
+                // Its hull once it has been hit, by the rule the server destroys it by.
+                if (l.damage > 0.0f)
+                {
+                    Structure probe(l.pos, l.size, l.name, l.archetype);
+                    probe.StartBuilding(l.startedAt, l.completesAt);
+                    probe.SetBlueprint(l.blueprint);
+                    probe.SetDamage(l.damage);
+                    extra += Fmt("  hull %.0f%%", probe.HullFraction(now) * 100.0f);
+                }
             }
         }
     }

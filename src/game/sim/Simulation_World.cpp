@@ -9,6 +9,7 @@
 #include "core/World.h"
 #include "entities/AsteroidField.h"
 #include "entities/Derelict.h"
+#include "entities/Structure.h"
 #include "entities/JumpGate.h"
 #include "entities/NpcShip.h"
 #include "entities/Ship.h"
@@ -292,8 +293,9 @@ void Simulation::MaterializeAllSystems(const std::string& systemsDir)
 
 namespace
 {
-// What a save keeps about an object beyond its description (#38): who owns it, and whether a
-// wreck has been searched. Empty for an object in the state it was made in.
+// What a save keeps about an object beyond its description (#38): who owns it, whether a
+// wreck has been searched, and how much of a structure has been shot off (#39). Empty for an
+// object in the state it was made in.
 nlohmann::json StateOf(const Entity& e)
 {
     nlohmann::json s = nlohmann::json::object();
@@ -301,6 +303,8 @@ nlohmann::json StateOf(const Entity& e)
         s["owner"] = e.GetOwner();
     if (e.GetKind() == EntityKind::Derelict && static_cast<const Derelict&>(e).IsLooted())
         s["looted"] = true;
+    if (e.GetKind() == EntityKind::Structure && static_cast<const Structure&>(e).GetDamage() > 0.0f)
+        s["damage"] = static_cast<const Structure&>(e).GetDamage();
     return s;
 }
 
@@ -311,6 +315,8 @@ void ApplyState(Entity& e, const nlohmann::json& s)
     e.SetOwner(s.value("owner", std::string()));
     if (e.GetKind() == EntityKind::Derelict && s.value("looted", false))
         static_cast<Derelict&>(e).SetLooted();
+    if (e.GetKind() == EntityKind::Structure)
+        static_cast<Structure&>(e).SetDamage(s.value("damage", 0.0f));
 }
 
 // A faction by the id factions.json gives it, or false for one this build does not have:

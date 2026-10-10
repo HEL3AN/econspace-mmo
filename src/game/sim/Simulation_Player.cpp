@@ -19,6 +19,7 @@
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
 #include "entities/Station.h"
+#include "entities/Structure.h"
 #include "raymath.h"
 
 #include <nlohmann/json.hpp>
@@ -172,31 +173,57 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
     if (!s.weaponOn || !s.ship || targetId == 0)
         return false;
 
-    // Target — an NPC of the active system by id.
-    NpcShip* target = nullptr;
+    // The target, by id, in the player's system: a ship, or something somebody built (#39).
+    Entity* found = nullptr;
     for (auto& e : st.entities)
         if (e->GetId() == targetId)
         {
-            target = e->GetKind() == EntityKind::Npc ? static_cast<NpcShip*>(e.get()) : nullptr;
+            found = e.get();
             break;
         }
-    if (target == nullptr || !target->IsAlive())
+    if (found == nullptr ||
+        (found->GetKind() != EntityKind::Npc && found->GetKind() != EntityKind::Structure))
+        return false;
+    if (found->GetKind() == EntityKind::Npc && !static_cast<NpcShip*>(found)->IsAlive())
         return false;
 
-    Vector2 shipPos = s.ship->GetPosition();
-    float   dx = target->GetPosition().x - shipPos.x;
-    float   dy = target->GetPosition().y - shipPos.y;
-    if (std::sqrt(dx * dx + dy * dy) > PLAYER_WEAPON_RANGE || s.fireTimer > 0.0f)
+    const Vector2 shipPos = s.ship->GetPosition();
+    const Vector2 at = found->GetPosition();
+    const float   dx = at.x - shipPos.x;
+    const float   dy = at.y - shipPos.y;
+    // A structure is hit at its edge: an outpost is far larger than any ship.
+    const float reach =
+        PLAYER_WEAPON_RANGE + (found->GetKind() == EntityKind::Structure ? found->GetSize() : 0.0f);
+    if (std::sqrt(dx * dx + dy * dy) > reach || s.fireTimer > 0.0f)
         return false;
-
-    target->TakeDamage(PLAYER_WEAPON_DAMAGE);
     s.fireTimer = PLAYER_FIRE_INTERVAL;
-
     if (ev != nullptr)
     {
         ev->shotFrom = shipPos;
-        ev->shotTo = target->GetPosition();
+        ev->shotTo = at;
     }
+
+    // A structure: its rules are construction's (Simulation_Build.cpp), and what the shot
+    // costs the shooter is decided by whose law it stands under, not by its owner's colour.
+    if (found->GetKind() == EntityKind::Structure)
+    {
+        FactionId law = FactionId::Independent;
+        if (LawOver(st, static_cast<const Structure&>(*found), s.accountName, law) && ev != nullptr)
+        {
+            ev->hitLawful = true;
+            ev->hitFaction = law;
+        }
+        if (DamageStructure(st, targetId, PLAYER_WEAPON_DAMAGE, &s) && ev != nullptr &&
+            ev->hitLawful)
+        {
+            ev->killedLawful = true;
+            ev->killedFaction = law;
+        }
+        return true;
+    }
+
+    NpcShip* target = static_cast<NpcShip*>(found);
+    target->TakeDamage(PLAYER_WEAPON_DAMAGE);
 
     // Account effects: attacking a lawful target is a crime; a kill is mission credit
     // (pirate) or a serious crime (lawful). Applied to the session's account, which is the
@@ -210,8 +237,7 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
             ev->hitLawful = true;
             ev->hitFaction = tf;
         }
-        s.account.AddReputation(tf, -0.4f);
-        s.account.AddBounty(tf, 5.0);
+        ChargeAttack(s, tf, false);
     }
     if (!target->IsAlive())
     {
@@ -229,11 +255,22 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
                 ev->killedLawful = true;
                 ev->killedFaction = tf;
             }
-            s.account.AddReputation(tf, -3.0f);
-            s.account.AddBounty(tf, 50.0);
+            ChargeAttack(s, tf, true);
         }
     }
     return true;
+}
+
+void Simulation::ChargeAttack(ClientSession& s, FactionId victim, bool killed)
+{
+    if (killed)
+    {
+        s.account.AddReputation(victim, -3.0f);
+        s.account.AddBounty(victim, 50.0);
+        return;
+    }
+    s.account.AddReputation(victim, -0.4f);
+    s.account.AddBounty(victim, 5.0);
 }
 
 Simulation::PlayerMiningResult Simulation::StepPlayerMining(ClientSession& s, SystemState& st,

@@ -28,7 +28,8 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    16;  // 16: follow (nav 5, hold 3) and hold orders (#298); 15: structures and deploying
+    17;  // 17: dismantling, a structure's blueprint and damage, the attack order (#39);
+         // 16: follow (nav 5, hold 3) and hold orders (#298); 15: structures and deploying
          // them (#39); 14: layout revisions and LayoutDelta (#38)
 
 // --- Command: client -> server, every tick ---
@@ -144,6 +145,9 @@ struct Command
     std::string deploy;
     Vector2     deployPos = { 0.0f, 0.0f };
     std::string deployName;
+    // Take one's own site or structure apart, by id (#39); 0 -- not this command. What comes
+    // back goes into the hold; a refusal is a Notice saying why.
+    int dismantleId = 0;
 };
 
 // Entity kind. The wire uses the engine's enum rather than a parallel copy, so there is
@@ -298,6 +302,11 @@ struct EntityLayout
     double startedAt = 0.0;
     double completesAt = 0.0;
     double expiresAt = 0.0;
+    // A structure's blueprint and the damage it has taken (#39). Its hull at any instant is
+    // Structure::MaxHull of the time line, so a site's grows on every client with no word
+    // from the server; a hit is a change and comes as a delta.
+    std::string blueprint;
+    float       damage = 0.0f;
 };
 
 // Full static "layout" of a system — what the client builds the world proxy from.

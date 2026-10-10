@@ -52,13 +52,14 @@ const char* ToolFor(Verb verb)
         case Verb::Build: return "deploy";
         case Verb::Accept: return "accept_mission";
         case Verb::HandIn: return "complete_mission";
+        case Verb::Dismantle: return "dismantle";
+        case Verb::Attack: return "attack";
         // The interface's own: they change what a window shows, not the world. An agent
         // names a thing by its id and a range by a number, and needs neither.
         case Verb::Select:
         case Verb::SetRange: return "";
-        // Not yet a tool: an agent cannot fight or salvage. Listed in the test, so adding
-        // the tool is the only way off the list.
-        case Verb::Attack:
+        // Not yet a tool: an agent cannot salvage. Listed in the test, so adding the tool is
+        // the only way off the list.
         case Verb::Investigate: return "";
     }
     return "";
@@ -130,8 +131,17 @@ std::vector<Action> For(const Target& t, Vector2 from)
                                                ? std::string("Jump")
                                                : "Jump to " + t.destinationName));
             break;
-        // Nothing to do with one yet but go there; taking one down is the next slice (#39).
-        case EntityKind::Structure: break;
+        // Your own you take apart; anyone else's you can shoot down (#39). Whether that is a
+        // crime is the server's to say, by whose law it stands under -- the menu does not
+        // pretend to know.
+        case EntityKind::Structure:
+            if (t.mine)
+                out.push_back(Make(Verb::Dismantle, t.refund.empty()
+                                                        ? std::string("Dismantle")
+                                                        : "Dismantle (back: " + t.refund + ")"));
+            else
+                out.push_back(Make(Verb::Attack, "Attack"));
+            break;
         // Scenery and the player's own ship: going there is all there is to do with them.
         case EntityKind::Star:
         case EntityKind::Planet:

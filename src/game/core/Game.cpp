@@ -22,6 +22,7 @@
 #include "entities/Nebula.h"
 #include "entities/Derelict.h"
 #include "entities/JumpGate.h"
+#include "entities/Structure.h"
 #include "economy/Resource.h"
 #include "ui/Button.h"
 #include "ui/UiTheme.h"
@@ -205,6 +206,7 @@ void Game::Run()
                 cmd_.nameSystem.clear();
                 cmd_.jumpGateId = cmd_.lootId = 0;
                 cmd_.deploy.clear();
+                cmd_.dismantleId = 0;
             }
             simAccumulator_ -= SIM_DT;
         }
@@ -720,6 +722,18 @@ Actions::Target Game::ActionTarget(const Entity& e) const
     t.name = e.GetName();
     if (t.kind == EntityKind::Derelict)
         t.looted = static_cast<const Derelict&>(e).IsLooted();
+    if (t.kind == EntityKind::Structure)
+    {
+        const Structure& s = static_cast<const Structure&>(e);
+        t.mine = !pilotName_.empty() && s.GetOwner() == pilotName_;
+        if (const Blueprint* bp = s.GetBlueprint())
+        {
+            const double now = snapshot_.time;  // the last word from the server is near enough
+            for (const auto& c : Blueprints::Refund(*bp, s.Progress(now), s.HullFraction(now)))
+                t.refund += (t.refund.empty() ? "" : ", ") + std::to_string(c.second) + " " +
+                            ResourceName(c.first);
+        }
+    }
     if (t.kind == EntityKind::Gate)
     {
         const std::string& dest = static_cast<const JumpGate&>(e).GetDestination();
@@ -802,6 +816,9 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
             OrderAutopilot(target->GetPosition(), target->GetSize() + 30.0f);
             if (!snapshot_.player.mining)  // enable mining via command
                 cmd_.toggleMining = true;
+            break;
+        case Verb::Dismantle:
+            cmd_.dismantleId = target->GetId();  // the server checks reach and ownership
             break;
         case Verb::Attack:
             selected_ = target;

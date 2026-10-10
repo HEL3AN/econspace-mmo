@@ -173,6 +173,22 @@ Lay down a construction site from a blueprint, near your ship, out of the hold. 
 | `x` | number |  | where, world x (default: where the ship is) |
 | `y` | number |  | where, world y (default: where the ship is) |
 
+### `dismantle`
+
+Take apart a site or structure you built, from within its blueprint's reach. What comes back goes into the hold: all of the cost for a site just laid down, falling to half for a finished structure, and less for whatever has been shot off. Refused, with the reason, if it is not yours, you are too far, docked or warping, or the hold has no room for what it returns.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `structure_id` | number | yes | structure id from observe |
+
+### `attack`
+
+Close to weapon range of a ship or a structure and fire until it is destroyed. Finishes when it is gone; aborts like any order if the hull gets critical. A destroyed structure leaves a wreck where it fits. Shooting what a lawful faction owns, or a player's structure in a system a lawful faction holds, is a crime: reputation and bounty with that faction, per hit and more for the kill. Your own structures are dismantled, not attacked.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `target_id` | number | yes | ship or structure id from observe |
+
 ## Resources
 
 | URI | Name | What |

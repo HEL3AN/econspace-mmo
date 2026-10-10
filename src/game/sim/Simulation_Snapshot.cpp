@@ -264,6 +264,8 @@ static bool DescribeStatic(const Entity& e, Proto::EntityLayout& el)
             el.startedAt = t.IsBuilding() ? t.GetStartedAt() : 0.0;
             el.completesAt = t.GetCompletesAt();
             el.expiresAt = t.GetExpiresAt();
+            el.blueprint = t.GetBlueprintId();
+            el.damage = t.GetDamage();
             break;
         }
         case EntityKind::Npc:         // dynamic: created by the client from the snapshot

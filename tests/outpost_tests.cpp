@@ -315,6 +315,8 @@ TEST_CASE("an orbital outpost moves with its planet and is still its satellite a
     CHECK(moved->GetPosition().x == doctest::Approx(expect.x).epsilon(1e-4));
     CHECK(moved->GetPosition().y == doctest::Approx(expect.y).epsilon(1e-4));
     CHECK(Distance(moved->GetPosition(), spot.at) > 1000.0f);  // an hour on, it has moved
+    // Shot at (#39): the damage is state, and the orbit stays description.
+    CHECK_FALSE(a->DamageStructure(*a->SystemById(where), id, 100.0f, nullptr));
     a->SaveWorld(path);
 
     Simulation b;
@@ -332,6 +334,19 @@ TEST_CASE("an orbital outpost moves with its planet and is still its satellite a
     CHECK(back->GetOrbit()->phase == doctest::Approx(spot.orbit->phase));
     CHECK(back->GetOrbit()->speed == doctest::Approx(spot.orbit->speed));
     CHECK(back->GetOwner() == Outposts::OwnerOf(FactionId::Syndicate));
+    CHECK(back->GetDamage() == doctest::Approx(100.0f));
+
+    // Destroyed, it leaves its wreck on the same orbit (#39).
+    REQUIRE(b.DamageStructure(*b.SystemById(where), back->GetId(), 1.0e6f, nullptr));
+    CHECK(OutpostIn(b, where) == nullptr);
+    const Entity* wreck = nullptr;
+    for (const auto& e : b.SystemById(where)->entities)
+        if (e->GetKind() == EntityKind::Derelict && e->GetOrbit() &&
+            e->GetOrbit()->planet == spot.orbit->planet &&
+            e->GetOrbit()->radius == doctest::Approx(spot.orbit->radius))
+            wreck = e.get();
+    REQUIRE(wreck != nullptr);
+    CHECK(wreck->GetArchetype()->id == bp->wreck);
 }
 
 TEST_CASE("a settlement builds for what the faction saw there, and the same world settles the "

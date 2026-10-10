@@ -109,6 +109,10 @@ json EntityLayoutsJson(const std::vector<Proto::EntityLayout>& v)
         }
         if (e.expiresAt > 0.0)
             ej["exp"] = e.expiresAt;
+        if (!e.blueprint.empty())
+            ej["bp"] = e.blueprint;
+        if (e.damage > 0.0f)
+            ej["dmg"] = e.damage;
         ents.push_back(std::move(ej));
     }
     return ents;
@@ -142,6 +146,8 @@ std::vector<Proto::EntityLayout> ToEntityLayouts(const json& j, const char* key)
         e.startedAt = ej.value("start", 0.0);
         e.completesAt = ej.value("done", 0.0);
         e.expiresAt = ej.value("exp", 0.0);
+        e.blueprint = ej.value("bp", std::string());
+        e.damage = ej.value("dmg", 0.0f);
         out.push_back(std::move(e));
     }
     return out;
@@ -310,6 +316,8 @@ std::string EncodeCommand(const Command& c)
         if (!c.deployName.empty())
             j["deployName"] = c.deployName;
     }
+    if (c.dismantleId != 0)
+        j["dismantle"] = c.dismantleId;
     return j.dump();
 }
 
@@ -358,6 +366,7 @@ bool DecodeCommand(const std::string& s, Command& out)
     out.deploy = j.value("deploy", std::string());
     out.deployPos = j.contains("deployAt") ? ToV2(j["deployAt"]) : Vector2{ 0.0f, 0.0f };
     out.deployName = j.value("deployName", std::string());
+    out.dismantleId = j.value("dismantle", 0);
     return true;
 }
 

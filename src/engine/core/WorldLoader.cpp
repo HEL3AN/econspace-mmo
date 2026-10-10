@@ -297,6 +297,7 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
                                                   t.value("name", a->name), id);
             st->StartBuilding(t.value("startedAt", 0.0), t.value("completesAt", 0.0));
             st->SetExpiresAt(t.value("expiresAt", 0.0));
+            st->SetBlueprint(t.value("blueprint", std::string()));
             ApplyOrbit(*st, t);
             entities.push_back(std::move(st));
         }
@@ -356,6 +357,8 @@ nlohmann::json WorldLoader::DescribeObject(const Entity& e, std::string& array)
             o["name"] = t.GetName();
             o["size"] = t.GetSize();
             o["archetype"] = t.GetBuilds();
+            if (!t.GetBlueprintId().empty())
+                o["blueprint"] = t.GetBlueprintId();
             if (t.IsBuilding())
             {
                 o["startedAt"] = t.GetStartedAt();

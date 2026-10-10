@@ -9,6 +9,7 @@
 #include "core/World.h"
 #include "entities/Entity.h"
 #include "entities/JumpGate.h"
+#include "entities/NpcShip.h"
 #include "entities/Ship.h"
 
 #include <cmath>
@@ -51,6 +52,8 @@ void BendAroundBodies(Proto::Command& nav, Vector2 from, const SystemState& st)
 
 int Simulation::GiveOrder(ClientSession& s, const Orders::Order& o)
 {
+    if (s.HasRunningOrder() && s.order.kind == Orders::Kind::Attack)
+        s.weaponOn = false;  // the attack it replaces armed it
     s.order = o;
     s.orderId = ++s.nextOrderId;
     s.orderStatus = Orders::Status::Running;
@@ -74,6 +77,8 @@ void Simulation::AbortOrder(ClientSession& s, const std::string& why)
         if (Orders::IsHold(s.order.kind))
             s.ship->ReleaseHold();  // nothing else would: a hold is standing
     }
+    if (s.order.kind == Orders::Kind::Attack)
+        s.weaponOn = false;  // armed for the order, and only for it
 }
 
 void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
@@ -92,6 +97,8 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             if (Orders::IsHold(s.order.kind))
                 s.ship->ReleaseHold();
         }
+        if (s.order.kind == Orders::Kind::Attack)
+            s.weaponOn = false;
         // The journal entry is the point: it is what an agent sleeps on rather than
         // polling the world to find out whether its order is done.
         s.RecordEvent(status == Orders::Status::Done ? Ev::Kind::OrderDone : Ev::Kind::OrderFailed,
@@ -245,6 +252,19 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
         const Archetype* a = target != nullptr ? target->GetArchetype() : nullptr;
         arrive = size + (a != nullptr ? a->extractRange : 0.0f);
     }
+    else if (s.order.kind == Orders::Kind::Attack)
+    {
+        // Something to shoot at, and within the weapon's reach of it -- a structure from its
+        // edge, as StepPlayerFire measures it.
+        const bool ship = target != nullptr && target->GetKind() == EntityKind::Npc;
+        const bool built = target != nullptr && target->GetKind() == EntityKind::Structure;
+        if (!ship && !built)
+        {
+            finish(Orders::Status::Failed, "only a ship or a structure can be attacked");
+            return;
+        }
+        arrive = PLAYER_WEAPON_RANGE + (built ? size : 0.0f);
+    }
 
     float dist = DistTo(*s.ship, dest);
 
@@ -325,6 +345,22 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             }
             if (!s.order.untilFull)
                 finish(Orders::Status::Done, "mined");
+            return;
+        }
+
+        case Orders::Kind::Attack:
+        {
+            const int id = s.order.targetId;
+            s.weaponOn = true;
+            Sim::StepPlayerShip(*s.ship, Proto::Command{}, 1.0f, dt);
+            PlayerCombatEvents ev;
+            if (StepPlayerFire(s, st, id, dt, &ev))
+                s.orderShots.push_back({ ev.shotFrom, ev.shotTo });
+            // Gone from the system, or a ship that is a wreck now: done either way.
+            const Entity* left = FindById(st, id);
+            if (left == nullptr || (left->GetKind() == EntityKind::Npc &&
+                                    !static_cast<const NpcShip*>(left)->IsAlive()))
+                finish(Orders::Status::Done, "target destroyed");
             return;
         }
 
