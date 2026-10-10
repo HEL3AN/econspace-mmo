@@ -73,6 +73,39 @@ on their map too.
 
 ---
 
+## pins.json — hand-written exceptions to the generated region (#147)
+
+The generated region is the default, not a monopoly. A starting point, a set piece, or
+anything a mission depends on is a **pin**. **Order: generate, then apply pins, always.**
+A pin that cannot apply says so in the server log, by number and system, rather than
+quietly losing to the generator.
+
+```json
+{ "pins": [
+    { "system": "w1-1", "document": { "derelicts": [ { "name": "The First Expedition",
+                                                       "pos": [500000, 500000], "size": 60, "reward": 1500 } ] } },
+    { "system": "w2-1", "seed": 7, "mode": "replace", "document": { "star": { "type": "Blue", "size": 120000 } } }
+] }
+```
+
+| Field | Meaning |
+|------|----------|
+| `system` | The generated system's id (`w3-2`). Required. |
+| `seed` | Apply only in the region this seed makes. If absent, the pin applies for every seed. |
+| `mode` | `merge` (the default) or `replace`; see below. |
+| `document` | System JSON, in the same format as `systems/<id>.json`. |
+| `note` | Free text for whoever reads the file. |
+
+**`merge`** keeps the generated system and adds to it:
+- A list (`planets`, `stations`, `asteroidFields`, `nebulae`, `derelicts`, `gates`) appends its objects.
+- An object with `"replaces": "<name>"` takes the place of the generated object of that name. With `"remove": true` as well, that object is removed instead.
+- Any other key (`star`, `stars`, `character`) is set to the pin's value.
+
+**`replace`** makes the document the whole system. Its gates are still kept from the generated system unless the document lists its own, because the gates are the region's topology.
+
+Any other field is an error, as everywhere else (#191). Pins are data, like the systems: a
+pin added later changes the region the next time the server starts.
+
 ## factions.json — who is in the galaxy, and how they act
 
 ```json
