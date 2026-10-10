@@ -3,6 +3,7 @@
 #include "entities/Entity.h"
 #include "economy/Market.h"
 #include "core/Faction.h"
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -74,4 +75,8 @@ struct SystemState
     Market                               market;
     bool                                 populated = false;  // entities filled (hot)
     SystemAggregate                      agg;                // cold state (always)
+
+    // Seconds until each defensive object fires again, by entity id (#193). Transient:
+    // a station that has just been hydrated is simply ready.
+    std::map<int, float> defenceCooldown;
 };

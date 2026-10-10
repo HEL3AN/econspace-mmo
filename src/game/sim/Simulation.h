@@ -102,6 +102,14 @@ public:
     void StepNpcCombat(SystemState& st, const std::vector<PlayerPresence>& players,
                        std::vector<FireEvent>* fires);
 
+    // Fixed defences (#193): anything `defensive` that belongs to a faction -- today, a
+    // station -- fires at the nearest hostile ship within its radius plus its range, once
+    // a second, for its archetype's damage per second. Hostile means what it means to an
+    // NPC of that faction: a player by their own account, an NPC by the relation matrix.
+    // A hidden or docked player is not in `players`, so is not shot at.
+    void StepStationDefence(SystemState& st, const std::vector<PlayerPresence>& players,
+                            std::vector<FireEvent>* fires, float dt);
+
     // One full step of a system: AI, movement, combat, cleanup of the fallen. `players`
     // is whoever happens to be standing in it, which is usually nobody -- a system with
     // no one in it is the normal case, not a lesser kind of step (#3).

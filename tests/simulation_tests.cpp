@@ -1297,3 +1297,151 @@ TEST_CASE("players are told only what somebody has charted (#144)")
         uncharted += si.charted ? 0 : 1;
     CHECK(uncharted > 0);
 }
+
+TEST_CASE("a richer deposit gives up its ore faster (#193)")
+{
+    // The ship sets the pace and the deposit how rich it is: the same ship on the same
+    // skill takes half as much again from a motherlode as from an ordinary belt.
+    auto mineFor = [](const char* archetype)
+    {
+        Fixture f;
+        auto    belt = std::make_unique<AsteroidField>(Vector2{ 20.0f, 0.0f }, 30.0f, "Belt",
+                                                       AllResourceTypes()[0], 1000);
+        belt->SetArchetype(archetype);
+        belt->SetId(56);
+        f.World().entities.push_back(std::move(belt));
+        f.s.ship->SetMiningOn(true);
+        int mined = 0;
+        for (int i = 0; i < 600; i++)  // ten simulated seconds, short of a full hold
+            mined += f.sim.StepPlayerMining(f.s, f.World(), 1.0f, 1.0f / 60.0f).minedUnits;
+        return mined;
+    };
+
+    const int fromBelt = mineFor("field.asteroid");
+    const int fromLode = mineFor("field.motherlode");
+
+    // Looked up after the runs: every Fixture reloads the registry, which would leave a
+    // pointer taken before it dangling.
+    const Archetype* ordinary = Archetypes::Find("field.asteroid");
+    const Archetype* rich = Archetypes::Find("field.motherlode");
+    REQUIRE(ordinary != nullptr);
+    REQUIRE(rich != nullptr);
+    REQUIRE(rich->extractRate > ordinary->extractRate);
+    REQUIRE(fromBelt > 0);
+    CHECK(fromLode > fromBelt);
+    CHECK((float)fromLode / (float)fromBelt ==
+          doctest::Approx(rich->extractRate / ordinary->extractRate).epsilon(0.1));
+}
+
+TEST_CASE("a defensive station fires on hostiles near it, and only on them (#193)")
+{
+    Fixture          f;
+    const Archetype* mil = Archetypes::Find("station.military");
+    REQUIRE(mil != nullptr);
+    REQUIRE(mil->Has(Component::Defensive));
+    REQUIRE(mil->weaponDamage > 0.0f);
+
+    const Vector2 at{ 40000.0f, 0.0f };  // clear of anything the start system holds
+    auto          station = std::make_unique<Station>(at, 600.0f, "Bastion", FactionId::Independent,
+                                                      StationRole::Military);
+    station->SetId(90);
+    Station* bastion = station.get();
+    f.World().entities.push_back(std::move(station));
+    const float reach = bastion->GetSize() + mil->weaponRange;
+
+    auto addNpc = [&](float x, FactionId faction, NpcRole role, int id)
+    {
+        auto npc = std::make_unique<NpcShip>(Vector2{ at.x + x, at.y }, faction, role,
+                                             std::vector<Vector2>{});
+        npc->SetId(id);
+        NpcShip* raw = npc.get();
+        f.World().entities.push_back(std::move(npc));
+        return raw;
+    };
+
+    std::vector<FireEvent>                  fires;
+    std::vector<Simulation::PlayerPresence> nobody;
+    const float                             dt = 1.0f / 60.0f;
+
+    SUBCASE("a pirate in range is hit, once a second")
+    {
+        NpcShip* pirate = addNpc(reach - 50.0f, FactionId::Pirates, NpcRole::Pirate, 91);
+        for (int i = 0; i < 60; i++)  // one second: exactly one shot
+            f.sim.StepStationDefence(f.World(), nobody, &fires, dt);
+        CHECK(fires.size() == 1);
+        CHECK(pirate->GetHull() == doctest::Approx(pirate->GetMaxHull() - mil->weaponDamage));
+        REQUIRE_FALSE(fires.empty());
+        CHECK(fires[0].shooterFaction == FactionId::Independent);
+        CHECK(fires[0].targetSessionId == 0);
+    }
+
+    SUBCASE("a pirate out of range is not")
+    {
+        NpcShip* pirate = addNpc(reach + 50.0f, FactionId::Pirates, NpcRole::Pirate, 91);
+        for (int i = 0; i < 120; i++)
+            f.sim.StepStationDefence(f.World(), nobody, &fires, dt);
+        CHECK(fires.empty());
+        CHECK(pirate->GetHull() == doctest::Approx(pirate->GetMaxHull()));
+    }
+
+    SUBCASE("a friendly trader alongside is left alone")
+    {
+        NpcShip* trader = addNpc(100.0f, FactionId::TradersGuild, NpcRole::Trader, 92);
+        for (int i = 0; i < 120; i++)
+            f.sim.StepStationDefence(f.World(), nobody, &fires, dt);
+        CHECK(fires.empty());
+        CHECK(trader->GetHull() == doctest::Approx(trader->GetMaxHull()));
+    }
+
+    SUBCASE("a player is judged by their own account")
+    {
+        f.s.ship->Teleport({ at.x + reach - 50.0f, at.y });
+        Simulation::PlayerPresence p;
+        p.session = &f.s;
+        p.ship = f.s.ship.get();
+        std::vector<Simulation::PlayerPresence> players{ p };
+
+        for (int i = 0; i < 120; i++)  // in good standing: not a target
+            f.sim.StepStationDefence(f.World(), players, &fires, dt);
+        CHECK(fires.empty());
+
+        f.s.account.AddBounty(FactionId::Independent, 100.0);  // wanted by the owner
+        for (int i = 0; i < 60; i++)
+            f.sim.StepStationDefence(f.World(), players, &fires, dt);
+        REQUIRE(fires.size() == 1);
+        CHECK(fires[0].targetSessionId == f.s.id);
+        // Shields take the first hits.
+        CHECK(f.s.ship->GetShields() + f.s.ship->GetHull() ==
+              doctest::Approx(f.s.ship->GetMaxShields() + f.s.ship->GetMaxHull() -
+                              mil->weaponDamage));
+
+        // Hidden in cover, the same wanted player is not seen.
+        fires.clear();
+        const float hull = f.s.ship->GetShields() + f.s.ship->GetHull();
+        players[0].hidden = true;
+        for (int i = 0; i < 120; i++)
+            f.sim.StepStationDefence(f.World(), players, &fires, dt);
+        CHECK(fires.empty());
+        CHECK(f.s.ship->GetShields() + f.s.ship->GetHull() == doctest::Approx(hull));
+    }
+
+    SUBCASE("a station without the component never fires")
+    {
+        auto hub = std::make_unique<Station>(Vector2{ -40000.0f, 0.0f }, 600.0f, "Hub",
+                                             FactionId::Independent, StationRole::TradeHub);
+        hub->SetId(93);
+        REQUIRE_FALSE(hub->Has(Component::Defensive));
+        f.World().entities.push_back(std::move(hub));
+        auto npc =
+            std::make_unique<NpcShip>(Vector2{ -40000.0f + 700.0f, 0.0f }, FactionId::Pirates,
+                                      NpcRole::Pirate, std::vector<Vector2>{});
+        npc->SetId(94);
+        NpcShip* pirate = npc.get();
+        f.World().entities.push_back(std::move(npc));
+        // The bastion is still there, eighty thousand units away, out of its own reach.
+        for (int i = 0; i < 120; i++)
+            f.sim.StepStationDefence(f.World(), nobody, &fires, dt);
+        CHECK(fires.empty());
+        CHECK(pirate->GetHull() == doctest::Approx(pirate->GetMaxHull()));
+    }
+}

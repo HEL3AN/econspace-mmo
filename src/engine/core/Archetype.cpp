@@ -258,6 +258,8 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
                 a.weaponRange = p.value("range", a.weaponRange);
                 a.weaponDamage = p.value("damage", a.weaponDamage);
                 break;
+            // Parsed and checked so that data written now stays valid, but no pass reads
+            // it: holding cargo off a ship belongs to the player-mutable world (#44).
             case Component::Storage:
                 a.storageCapacity = p.value("capacity", a.storageCapacity);
                 break;
@@ -265,6 +267,7 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
                 a.hazardRadius = p.value("radius", a.hazardRadius);
                 a.hazardHidesShips = p.value("hidesShips", a.hazardHidesShips);
                 break;
+            // Reserved for #44 like storage: nothing builds anything yet.
             case Component::Buildable:
                 a.buildCost = p.value("cost", a.buildCost);
                 a.buildSeconds = p.value("buildSeconds", a.buildSeconds);

@@ -215,8 +215,9 @@ Simulation::PlayerMiningResult Simulation::StepPlayerMining(ClientSession& s, Sy
 
         r.fieldId = field->GetId();
 
-        // The mining skill (passed by the client as a multiplier) speeds up extraction.
-        float rate = s.ship->GetStats().miningRate * miningBonus;
+        // The ship sets the pace, the deposit how rich it is (#193), and the mining skill
+        // (passed as a multiplier) speeds both up.
+        float rate = s.ship->GetStats().miningRate * e->GetArchetype()->extractRate * miningBonus;
         s.miningProgress += rate * dt;
         while (s.miningProgress >= 1.0f)
         {

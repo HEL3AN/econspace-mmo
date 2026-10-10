@@ -28,6 +28,7 @@ constexpr float PIRATE_WEAPON_DAMAGE = 7.0f;   // damage to the player
 constexpr float NPC_WEAPON_DAMAGE = 6.0f;      // NPC-vs-NPC damage
 constexpr float NPC_AGGRO_RANGE = 3500.0f;     // AI target detection radius
 constexpr float NPC_THREAT_RANGE = 2000.0f;    // distance at which peaceful ones flee
+constexpr float DEFENCE_PERIOD = 1.0f;         // seconds between a station's shots
 
 // Spawn director. "Pressure": losses in a role raise the suppression of its spawn,
 // which then slowly recovers — the player/battles really change the population.
@@ -193,6 +194,74 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
     }
 }
 
+void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPresence>& players,
+                                    std::vector<FireEvent>* fires, float dt)
+{
+    std::vector<NpcShip*> ships;  // gathered once, and only if something can shoot
+    bool                  gathered = false;
+    for (auto& e : st.entities)
+    {
+        // Who a battery shoots at depends on whose it is, and ownership is still
+        // Station-specific state (#41) -- so a defensive object with no owner is inert.
+        if (!e->Has(Component::Defensive) || e->GetKind() != EntityKind::Station)
+            continue;
+        const Archetype* a = e->GetArchetype();
+        float&           cooldown = st.defenceCooldown[e->GetId()];
+        cooldown -= dt;
+        if (cooldown > 0.0f || a->weaponDamage <= 0.0f)
+            continue;
+
+        if (!gathered)
+        {
+            ships = AliveShips(st);
+            gathered = true;
+        }
+        const FactionId owner = static_cast<const Station*>(e.get())->GetFaction();
+        const Vector2   spos = e->GetPosition();
+        float           bestD = e->GetSize() + a->weaponRange;
+        Combatant*      target = nullptr;
+        int             targetSession = 0;
+
+        auto consider = [&](Combatant* c, int sessionId)
+        {
+            float d = Dist(c->GetPosition(), spos);
+            if (d <= bestD)
+            {
+                bestD = d;
+                target = c;
+                targetSession = sessionId;
+            }
+        };
+        for (const PlayerPresence& p : players)
+            if (p.ship != nullptr && p.session != nullptr && !p.hidden && p.ship->IsAlive() &&
+                AccountHostileToFaction(*p.session, owner))
+                consider(p.ship, p.session->id);
+        for (NpcShip* n : ships)
+        {
+            const Stance rel = Factions::Relation(owner, n->GetFaction());
+            if (n->IsAlive() && (rel == Stance::Hostile || rel == Stance::War))
+                consider(n, 0);
+        }
+
+        if (target == nullptr)
+        {
+            cooldown = 0.0f;  // ready the moment something comes into range
+            continue;
+        }
+        target->TakeDamage(a->weaponDamage * DEFENCE_PERIOD);
+        cooldown = DEFENCE_PERIOD;
+        if (fires != nullptr)
+        {
+            FireEvent fe;
+            fe.from = spos;
+            fe.to = target->GetPosition();
+            fe.shooterFaction = owner;
+            fe.targetSessionId = targetSession;
+            fires->push_back(fe);
+        }
+    }
+}
+
 void Simulation::StepSystemAgents(SystemState& st, const std::vector<PlayerPresence>& players,
                                   std::vector<FireEvent>* fires, float dt)
 {
@@ -206,6 +275,7 @@ void Simulation::StepSystemAgents(SystemState& st, const std::vector<PlayerPrese
         e->Update(dt);
 
     StepNpcCombat(st, players, fires);
+    StepStationDefence(st, players, fires, dt);
 
     // Cleanup of the fallen.
     st.entities.erase(std::remove_if(st.entities.begin(), st.entities.end(),
