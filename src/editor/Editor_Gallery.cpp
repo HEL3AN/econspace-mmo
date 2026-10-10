@@ -22,6 +22,7 @@
 #include "core/ArchetypeEdit.h"
 #include "render/TreatmentPanel.h"
 #include "ui/Controls.h"
+#include "ui/Theme.h"
 #include "ui/UiTheme.h"
 #include "raymath.h"
 #include <cmath>
@@ -803,24 +804,27 @@ void Editor::SaveArchetypes()
 }
 
 // The treatment's settings, drawn over everything and never treated (#120). The same
-// panel the game shows, so a look tuned here is the look tuned there.
+// panel the game shows, so a look tuned here is the look tuned there. The editor has no
+// desk, so the frame is drawn here and stays where it is; what is inside is laid out.
 void Editor::DrawTreatmentSettings()
 {
-    const float w = 320.0f;
-    const float h = Render::TreatmentPanelHeight(treatment_, &materials_) + 24.0f;
-    Rectangle   panel{ 16.0f, 60.0f, w, fminf(h, (float)screenHeight_ - 80.0f) };
+    const Ui::Theme& th = Ui::CurrentTheme();
+    const float      pad = Ui::Px(th.metrics.padding);
+    const float      bar = Ui::Px(th.metrics.titleHeight);
+    const Rectangle  panel{ Ui::Px(16.0f), Ui::Px(60.0f), Ui::Px(340.0f),
+                            fminf(Ui::Px(600.0f), (float)screenHeight_ - Ui::Px(80.0f)) };
 
-    DrawRectangleRec(panel, Ui::PANEL_BG);
-    DrawRectangleLinesEx(panel, 1.0f, Ui::PANEL_BORDER);
+    DrawRectangleRec(panel, th.colors.panel);
+    DrawRectangleRec({ panel.x, panel.y, panel.width, bar }, th.colors.title);
+    DrawRectangleLinesEx(panel, th.metrics.border, th.colors.border);
+    const int px = (int)Ui::Px(th.fontSize.title);
+    Ui::Text("SCREEN TREATMENT   F10 closes and saves", (int)(panel.x + pad),
+             (int)(panel.y + (bar - (float)px) * 0.5f), px, th.colors.text);
 
-    BeginScissorMode((int)panel.x, (int)panel.y, (int)panel.width, (int)panel.height);
-    Render::DrawTreatmentPanel(
-        { panel.x + 12.0f, panel.y + 12.0f, panel.width - 24.0f, panel.height - 24.0f }, treatment_,
-        &materials_);
-    EndScissorMode();
-
-    Ui::Text("F10 closes and saves", (int)panel.x + 12, (int)(panel.y + panel.height - 16.0f), 10,
-             Ui::TEXT_DIM);
+    const Rectangle area{ panel.x + pad, panel.y + bar + pad, panel.width - pad * 2.0f,
+                          panel.height - bar - pad * 2.0f };
+    lookPanel_.Draw(Ui::Frame(area, CheckCollisionPointRec(GetMousePosition(), panel)), treatment_,
+                    &materials_);
 }
 
 // ---- The module library (#240) ----------------------------------------------------------

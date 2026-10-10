@@ -6,6 +6,7 @@
 #include "render/GlyphBackend.h"
 #include "render/MaterialLibrary.h"
 #include "render/Treatment.h"
+#include "render/TreatmentPanel.h"
 #include "core/Archetype.h"
 #include "gen/Pins.h"
 #include "gen/Survey.h"
@@ -259,6 +260,7 @@ private:
     // effect it is adjusting cannot be read while adjusting it.
     Render::MaterialLibrary materials_;  // the shaders a material names (#121)
     Render::Treatment       treatment_;
+    Render::TreatmentPanel  lookPanel_;
     bool                    treatmentPanelOpen_ = false;
     void                    DrawTreatmentSettings();
 

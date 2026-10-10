@@ -189,6 +189,14 @@ Close to weapon range of a ship or a structure and fire until it is destroyed. F
 |---|---|---|---|
 | `target_id` | number | yes | ship or structure id from observe |
 
+### `salvage`
+
+Search a wreck (a derelict observe marks 'lootable') and take what it pays. A wreck is searched once, by whoever gets there first, and everyone sees it searched after. Within its reach this searches it now and says what it paid. Out of reach it flies there instead (a move_to order, warping when far): wait_for_event until it arrives, then call salvage again.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `derelict_id` | number | yes | derelict id from observe |
+
 ## Resources
 
 | URI | Name | What |

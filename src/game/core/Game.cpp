@@ -43,6 +43,14 @@ static float DockReach(const Entity& st)
     return st.GetSize() + (a != nullptr ? a->dockRange : 0.0f);
 }
 
+// The same for a wreck: its salvage reach is its archetype's, as the server and the agent's
+// salvage tool measure it.
+static float SalvageReach(const Entity& wreck)
+{
+    const Archetype* a = wreck.GetArchetype();
+    return wreck.GetSize() + (a != nullptr ? a->salvageRange : 0.0f);
+}
+
 // Player combat and mining are now server-side (Simulation::StepPlayerFire/StepPlayerMining);
 // the weapon range for rendering the targeting circle is Sim::PLAYER_WEAPON_RANGE.
 
@@ -878,10 +886,11 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
             weaponOn_ = true;
             break;
         case Verb::Investigate:
-            if (distanceTo(target) <= target->GetSize() + 120.0f)
+            if (distanceTo(target) <= SalvageReach(*target))
                 cmd_.lootId = target->GetId();  // salvage order (server will verify)
-            else                                // far — approach first
-                OrderAutopilot(target->GetPosition(), target->GetSize() + 40.0f);
+            else  // far: approach to well inside the reach, as the agent's tool does
+                OrderAutopilot(target->GetPosition(),
+                               (target->GetSize() + SalvageReach(*target)) * 0.5f);
             break;
         case Verb::Jump:
             if (distanceTo(target) <= target->GetSize() + 200.0f)
@@ -927,8 +936,8 @@ void Game::OpenContextMenuAt(Vector2 worldPoint)
 
 void Game::SaveTreatment()
 {
-    // Written on close rather than on every slider frame: this is a file, and a slider
-    // being dragged is sixty writes a second.
+    // Written when a change is let go of rather than on every slider frame: this is a
+    // file, and a slider being dragged is sixty writes a second.
     std::string error;
     if (!treatment_.Save(error))
         TraceLog(LOG_WARNING, "Treatment: %s", error.c_str());
