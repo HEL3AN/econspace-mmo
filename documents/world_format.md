@@ -138,6 +138,10 @@ glacier narrowing to its snout. Both take ranges and variables.
 before it is turned (`[-0.5, 0]` is the left end of a bar of length 1). A crane jib or a clamp
 jaw with a ranged angle then swings about its joint instead of drifting off its mount.
 
+**Night side.** `"onlyDark": true` fades a part out where its body faces the light, across
+the terminator rather than at it: a city's lights, an aurora, a station's lit windows. On a
+planet the body is the planet; elsewhere it is the object itself.
+
 **Groups.** Parts with the same `"group": "name"` share the roll their `chance` is compared
 with: a lamp and its housing come and go together. Equal chances agree exactly; a smaller
 chance in the same group is a detail that only ever appears with the larger one.

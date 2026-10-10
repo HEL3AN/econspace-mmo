@@ -281,18 +281,18 @@
             "sockets": ["sphere"],
             "variants": [
                 { "id": "curtain", "shape": [
-                    {"form": "disc", "at": [-1.0, 0.2], "radius": [0.16, 0.2], "role": "light", "tint": [[80, 255, 150], [100, 240, 180]], "alpha": [0.02, 0.032], "row": {"count": [22, 26], "step": [0.09, -0.022]}},
-                    {"form": "disc", "at": [-0.9, 0.04], "radius": [0.08, 0.1], "role": "light", "tint": [[180, 110, 255], [255, 100, 160]], "alpha": [0.02, 0.032], "row": {"count": [16, 22], "step": [0.09, -0.02]}, "chance": 0.6}
+                    {"form": "disc", "at": [-1.0, 0.2], "radius": [0.16, 0.2], "role": "light", "onlyDark": true, "tint": [[80, 255, 150], [100, 240, 180]], "alpha": [0.02, 0.032], "row": {"count": [22, 26], "step": [0.09, -0.022]}},
+                    {"form": "disc", "at": [-0.9, 0.04], "radius": [0.08, 0.1], "role": "light", "onlyDark": true, "tint": [[180, 110, 255], [255, 100, 160]], "alpha": [0.02, 0.032], "row": {"count": [16, 22], "step": [0.09, -0.02]}, "chance": 0.6}
                 ]},
                 { "id": "arc", "shape": [
-                    {"form": "disc", "at": [-1.0, 0.4], "radius": [0.14, 0.18], "role": "light", "tint": [[80, 255, 150], [120, 255, 200]], "alpha": [0.02, 0.032], "row": {"count": 12, "step": [0.085, -0.068]}},
-                    {"form": "disc", "at": [0.0, -0.4], "radius": [0.14, 0.18], "role": "light", "tint": [[80, 255, 150], [120, 255, 200]], "alpha": [0.02, 0.032], "row": {"count": 12, "step": [0.085, 0.068]}},
-                    {"form": "disc", "at": [-0.25, -0.2], "radius": [0.2, 0.3], "role": "light", "tint": [[180, 110, 255], [90, 200, 255]], "alpha": 0.1, "chance": 0.5}
+                    {"form": "disc", "at": [-1.0, 0.4], "radius": [0.14, 0.18], "role": "light", "onlyDark": true, "tint": [[80, 255, 150], [120, 255, 200]], "alpha": [0.02, 0.032], "row": {"count": 12, "step": [0.085, -0.068]}},
+                    {"form": "disc", "at": [0.0, -0.4], "radius": [0.14, 0.18], "role": "light", "onlyDark": true, "tint": [[80, 255, 150], [120, 255, 200]], "alpha": [0.02, 0.032], "row": {"count": 12, "step": [0.085, 0.068]}},
+                    {"form": "disc", "at": [-0.25, -0.2], "radius": [0.2, 0.3], "role": "light", "onlyDark": true, "tint": [[180, 110, 255], [90, 200, 255]], "alpha": 0.1, "chance": 0.5}
                 ]},
                 { "id": "veil", "shape": [
-                    {"form": "disc", "at": [-0.4, 0.0], "radius": [0.5, 0.6], "role": "light", "tint": [[80, 255, 150], [90, 220, 255]], "alpha": [0.08, 0.14]},
-                    {"form": "disc", "at": [0.4, -0.1], "radius": [0.45, 0.55], "role": "light", "tint": [[80, 255, 150], [180, 110, 255]], "alpha": [0.08, 0.14]},
-                    {"form": "disc", "at": [-0.8, -0.3], "radius": 0.1, "role": "light", "tint": [140, 255, 190], "alpha": 0.2, "row": {"count": [4, 6], "step": [0.32, 0.03]}}
+                    {"form": "disc", "at": [-0.4, 0.0], "radius": [0.5, 0.6], "role": "light", "onlyDark": true, "tint": [[80, 255, 150], [90, 220, 255]], "alpha": [0.08, 0.14]},
+                    {"form": "disc", "at": [0.4, -0.1], "radius": [0.45, 0.55], "role": "light", "onlyDark": true, "tint": [[80, 255, 150], [180, 110, 255]], "alpha": [0.08, 0.14]},
+                    {"form": "disc", "at": [-0.8, -0.3], "radius": 0.1, "role": "light", "onlyDark": true, "tint": [140, 255, 190], "alpha": 0.2, "row": {"count": [4, 6], "step": [0.32, 0.03]}}
                 ]}
             ]
         },
@@ -363,21 +363,21 @@
                     {"form": "disc", "at": [-0.3, 0.1], "radius": [0.55, 0.7], "role": "trim", "alpha": [0.35, 0.5]},
                     {"form": "disc", "at": [0.45, -0.2], "radius": [0.35, 0.45], "role": "trim", "alpha": [0.3, 0.45]},
                     {"form": "disc", "at": [-0.3, 0.1], "radius": [0.22, 0.28], "role": "trim", "alpha": 0.7},
-                    {"form": "disc", "at": [-0.55, 0.0], "radius": 0.06, "role": "light", "tint": [[255, 220, 160], [255, 235, 200]], "alpha": 0.75, "row": {"count": [3, 5], "step": [0.28, -0.06]}},
-                    {"form": "disc", "at": [0.55, -0.3], "radius": 0.05, "role": "light", "tint": [255, 210, 150], "alpha": 0.6, "chance": 0.6}
+                    {"form": "disc", "at": [-0.55, 0.0], "radius": 0.06, "role": "light", "onlyDark": true, "tint": [[255, 220, 160], [255, 235, 200]], "alpha": 0.75, "row": {"count": [3, 5], "step": [0.28, -0.06]}},
+                    {"form": "disc", "at": [0.55, -0.3], "radius": 0.05, "role": "light", "onlyDark": true, "tint": [255, 210, 150], "alpha": 0.6, "chance": 0.6}
                 ]},
                 { "id": "coastal", "shape": [
                     {"form": "disc", "at": [0.1, 0.0], "radius": [0.5, 0.6], "role": "trim", "alpha": 0.45},
                     {"form": "disc", "at": [-0.65, 0.05], "radius": [0.5, 0.6], "role": "hull", "tint": [[30, 75, 125], [35, 85, 130]], "alpha": 0.9},
-                    {"form": "disc", "at": [0.0, -0.45], "radius": 0.06, "role": "light", "tint": [255, 220, 160], "alpha": 0.75, "row": {"count": [3, 5], "step": [0.0, 0.22]}},
-                    {"form": "disc", "at": [0.3, -0.2], "radius": 0.05, "role": "light", "tint": [[255, 220, 160], [210, 230, 255]], "alpha": 0.6, "row": {"count": [2, 3], "step": [0.1, 0.25]}, "chance": 0.7}
+                    {"form": "disc", "at": [0.0, -0.45], "radius": 0.06, "role": "light", "onlyDark": true, "tint": [255, 220, 160], "alpha": 0.75, "row": {"count": [3, 5], "step": [0.0, 0.22]}},
+                    {"form": "disc", "at": [0.3, -0.2], "radius": 0.05, "role": "light", "onlyDark": true, "tint": [[255, 220, 160], [210, 230, 255]], "alpha": 0.6, "row": {"count": [2, 3], "step": [0.1, 0.25]}, "chance": 0.7}
                 ]},
                 { "id": "megacity", "shape": [
                     {"form": "disc", "radius": [0.9, 1.0], "role": "trim", "alpha": [0.3, 0.4]},
                     {"form": "disc", "radius": [0.45, 0.55], "role": "trim", "alpha": 0.6},
                     {"form": "disc", "radius": [0.12, 0.16], "role": "trim"},
-                    {"form": "disc", "at": [-0.6, -0.15], "radius": 0.06, "role": "light", "tint": [[255, 220, 160], [255, 240, 210]], "alpha": 0.8, "row": {"count": [4, 6], "step": [0.24, 0.06]}},
-                    {"form": "disc", "at": [-0.2, 0.5], "radius": 0.05, "role": "light", "tint": [255, 210, 150], "alpha": 0.65, "row": {"count": [2, 4], "step": [0.2, -0.3]}}
+                    {"form": "disc", "at": [-0.6, -0.15], "radius": 0.06, "role": "light", "onlyDark": true, "tint": [[255, 220, 160], [255, 240, 210]], "alpha": 0.8, "row": {"count": [4, 6], "step": [0.24, 0.06]}},
+                    {"form": "disc", "at": [-0.2, 0.5], "radius": 0.05, "role": "light", "onlyDark": true, "tint": [255, 210, 150], "alpha": 0.65, "row": {"count": [2, 4], "step": [0.2, -0.3]}}
                 ]}
             ]
         },
