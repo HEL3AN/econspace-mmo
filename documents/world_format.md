@@ -130,7 +130,8 @@ error.
 A variable may be used as a straight line of itself: `"-$a"` (a pair of jaws opening
 together), `"$len*0.5"`, `"$r+0.05"` (a rim a fixed step outside its crater), `"-$len/2+0.1"`
 (a pivot at the end of a ranged length). Negation, then one `*` or `/` by a number, then one
-`+` or `-` a number; nothing else.
+`+` or `-` a number; nothing else. The step may be a range, `"$r+[0.02,0.06]"`, which each part
+rolls on its own: rims that all follow a shared radius, each a different step outside it.
 
 **Rows.** `row.step` takes ranges and variables like any number. `"centred": true` puts the
 middle of the row at `at` rather than its first copy, so a row with a ranged count stays

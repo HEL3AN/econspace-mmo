@@ -1107,6 +1107,41 @@ TEST_CASE("a variable may be negated, scaled and offset; a row may go round a ce
     CHECK(f[0].pos.y == doctest::Approx(-f[2].pos.y));
 }
 
+TEST_CASE("a variable's offset may be a range each part rolls on its own (#240)")
+{
+    // Two rims on one crater: both follow its radius, each a step outside it of its own.
+    const Render::Shape rims = Parse(R"({ "vars": { "r": [0.2, 0.4] }, "parts": [
+        { "form": "disc", "radius": "$r" },
+        { "form": "ring", "radius": "$r+[0.02,0.08]" },
+        { "form": "ring", "radius": "$r-[0.05,0.01]" } ] })");
+    std::set<int>       steps;
+    for (int seed = 1; seed <= 30; seed++)
+    {
+        const auto p = Render::Compose(rims, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 1.0f));
+        REQUIRE(p.size() == 3);
+        const float out = p[1].radius - p[0].radius, in = p[0].radius - p[2].radius;
+        CHECK(out >= 2.0f - 1e-3f);
+        CHECK(out <= 8.0f + 1e-3f);
+        CHECK(in >= 1.0f - 1e-3f);
+        CHECK(in <= 5.0f + 1e-3f);
+        steps.insert((int)(out * 10.0f));
+        CHECK(p[1].radius ==
+              Render::Compose(rims, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 1.0f))[1].radius);
+    }
+    CHECK(steps.size() >= 5);
+
+    for (const char* wrong : { "$r+[0.1]", "$r+[0.1,]", "$r+[a,b]", "$r+[0.1,0.2" })
+    {
+        Render::Shape     bad;
+        std::string       error;
+        const std::string text =
+            std::string(R"({ "vars": { "r": [0, 1] }, "parts": [ { "form": "disc", "radius": ")") +
+            wrong + "\" } ] }";
+        CHECK_FALSE(Render::ParseShape(nlohmann::json::parse(text), bad, error));
+        CHECK_FALSE(error.empty());
+    }
+}
+
 TEST_CASE("a variant with a field nobody reads is refused (#240)")
 {
     MakeDirectory("variant_test_tmp");
