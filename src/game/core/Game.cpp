@@ -5,6 +5,7 @@
 // so that finding "how does a click become an order" does not mean scrolling past the
 // station screen. See GameNet.cpp and GameHud.cpp.
 #include "core/Game.h"
+#include "render/Perf.h"
 #include "sim/PlayerStep.h"
 #include "sim/WarpPath.h"
 
@@ -123,6 +124,7 @@ void Game::Run()
 {
     while (!WindowShouldClose())
     {
+        Render::Perf::BeginFrame();
         float dt = GetFrameTime();
 
         // Pick up the current window size (it may have been resized with the mouse).
@@ -137,6 +139,13 @@ void Game::Run()
         // Debug commands (work in any mode).
         if (IsKeyPressed(KEY_F11))
             ToggleBorderlessWindowed();
+        if (IsKeyPressed(KEY_F9))  // what a frame costs (#296)
+        {
+            perfOverlay_ = !perfOverlay_;
+            if (perfFrames_ < 0)
+                Render::Perf::Enable(perfOverlay_);
+            perfRolled_ = GetTime();
+        }
         if (IsKeyPressed(KEY_F10))  // the screen treatment's settings (#120)
             desk_.Toggle(WIN_LOOK);
         HandleEscape();
@@ -236,6 +245,8 @@ void Game::Run()
             }
         }
 
+        Render::Perf::Mark(Render::Perf::Phase::Update);
+
         const bool shooting = !shotPath_.empty();
         if (shooting && shotTarget_.id == 0)
             shotTarget_ = LoadRenderTexture(screenWidth_, screenHeight_);
@@ -253,10 +264,10 @@ void Game::Run()
         // The station screen is interface, not world, so it goes through the chain only if
         // the player asked for the interface to be treated. Otherwise the chain would be
         // running over an empty scene and laying grain behind a menu.
-        const bool useChain = (flying || treatHud) && !shooting;
+        const bool useChain = (flying || treatHud) && (!shooting || shotTreated_);
 
         if (useChain)
-            treatment_.Begin(screenWidth_, screenHeight_);
+            treatment_.Begin(screenWidth_, screenHeight_, shooting ? &shotTarget_ : nullptr);
         if (flying)
         {
             DrawWorld();
@@ -270,6 +281,7 @@ void Game::Run()
         }
         if (useChain)
             treatment_.End();
+        Render::Perf::Mark(Render::Perf::Phase::Treatment);
 
         if (flying && !treatHud)
             DrawHud();
@@ -277,6 +289,10 @@ void Game::Run()
         // Above everything, and never treated: a settings screen seen through the effect
         // it is adjusting is a settings screen you cannot read while adjusting it.
         desk_.Draw(Ui::Layer::Overlay);
+        // Not a window: it is read, never clicked, so it takes no part in who owns the mouse.
+        if (perfOverlay_)
+            DrawPerfOverlay();
+        Render::Perf::Mark(Render::Perf::Phase::Hud);
 
         if (shooting)
         {
@@ -291,11 +307,76 @@ void Game::Run()
                 UnloadImage(shot);
                 UnloadRenderTexture(shotTarget_);
                 EndDrawing();
+                if (perfFrames_ >= 0)
+                {
+                    Render::Perf::Mark(Render::Perf::Phase::Present);
+                    Render::Perf::EndFrame();
+                    Render::Perf::Roll();
+                    std::fprintf(stderr, "perf (shot, treatment %s) %dx%d\n%s",
+                                 shotTreated_ && treatment_.Config().enabled ? "on" : "off",
+                                 screenWidth_, screenHeight_,
+                                 Render::Perf::Report(Render::Perf::Last()).c_str());
+                }
                 break;
             }
         }
         EndDrawing();
         desk_.Persist();  // a window moved, opened or closed: the layout is written now
+        Render::Perf::Mark(Render::Perf::Phase::Present);
+        Render::Perf::EndFrame();
+
+        // The overlay averages over a second; --perf over the second half of its run.
+        if (perfOverlay_ && perfFrames_ < 0 && GetTime() - perfRolled_ >= 1.0)
+        {
+            Render::Perf::Roll();
+            perfRolled_ = GetTime();
+        }
+        if (perfFrames_ >= 0)
+        {
+            perfFrames_--;
+            if (perfFrames_ == perfTotal_ / 2)
+                Render::Perf::Roll();  // the first half was the connection settling
+            if (perfFrames_ == 0 && shotPath_.empty())
+            {
+                Render::Perf::Roll();
+                std::fprintf(stderr, "perf (treatment %s) %dx%d\n%s",
+                             treatment_.Config().enabled && treatment_.Available() ? "on" : "off",
+                             screenWidth_, screenHeight_,
+                             Render::Perf::Report(Render::Perf::Last()).c_str());
+                break;
+            }
+        }
+    }
+}
+
+void Game::MeasurePerf(int frames)
+{
+    perfTotal_ = perfFrames_ = frames > 1 ? frames : 2;
+    Render::Perf::Enable(true);
+    // Uncapped: a frame that waits for the next sixtieth of a second measures the wait.
+    SetTargetFPS(0);
+}
+
+// The last second's averages, in the corner, over everything and never treated.
+void Game::DrawPerfOverlay()
+{
+    const std::string text = Render::Perf::Report(Render::Perf::Last());
+    const float       x = 60.0f, y = (float)screenHeight_ - 250.0f;
+    DrawRectangle((int)x - 6, (int)y - 6, 470, 236, Fade(BLACK, 0.8f));
+    Ui::Text("F9  frame cost  (cpu+gpu per phase; sections are cpu)", (int)x, (int)y, 11,
+             Ui::ACCENT);
+    int    line = 0;
+    size_t from = 0;
+    while (from < text.size())
+    {
+        const size_t      to = text.find('\n', from);
+        const std::string row =
+            text.substr(from, to == std::string::npos ? std::string::npos : to - from);
+        Ui::Text(row.c_str(), (int)x, (int)y + 16 + line * 14, 11, Ui::TEXT_DIM);
+        line++;
+        if (to == std::string::npos)
+            break;
+        from = to + 1;
     }
 }
 

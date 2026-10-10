@@ -1710,3 +1710,72 @@ TEST_CASE("socket rules: a ring's on its band, a chevron's sides, a middle, noth
             sections.push_back(p);
     CHECK(Render::PlaceKit(tower.kit, sections, 1).size() == 1);
 }
+
+TEST_CASE("an object's expansion is kept, and a turning module still turns with the clock (#296)")
+{
+    std::string error;
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+
+    // A hatch carried round the centre at 30 degrees a second: kept from one frame to the
+    // next, and still a function of the time it is drawn at (#136).
+    const Render::Shape s = Parse(R"([
+        { "module": "hatch", "variant": "round", "at": [0.5, 0.0], "scale": 0.1, "spin": 30 } ])");
+    Render::Pose        pose = At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 10.0f);
+    const auto          first = Render::Compose(s, pose);
+    pose.time = 3.0;  // a quarter of a turn
+    const auto later = Render::Compose(s, pose);
+    const auto again = Render::Compose(s, pose);
+    REQUIRE(!first.empty());
+    REQUIRE(first.size() == later.size());
+    REQUIRE(later.size() == again.size());
+    for (size_t i = 0; i < first.size(); i++)
+    {
+        // (x, y) turned a quarter, on screen counter-clockwise as every angle in the grammar.
+        CHECK(later[i].pos.x == doctest::Approx(-first[i].pos.y).epsilon(0.01));
+        CHECK(later[i].pos.y == doctest::Approx(first[i].pos.x).epsilon(0.01));
+        CHECK(again[i].pos.x == later[i].pos.x);
+        CHECK(again[i].pos.y == later[i].pos.y);
+    }
+}
+
+TEST_CASE("a shape rebuilt where another one was is expanded again, not handed the old one")
+{
+    // The cache is keyed by where a shape is, and a shape built in the same place with other
+    // parts -- a test, the editor's module page -- must not be given the previous expansion.
+    auto radiusOf = [](const char* text)
+    {
+        const Render::Shape s = Parse(text);
+        const auto          p = Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 7, 1.0f));
+        REQUIRE(p.size() == 1);
+        return p[0].radius;
+    };
+    CHECK(radiusOf(R"([ { "form": "disc", "radius": [0.2, 0.2] } ])") == doctest::Approx(20.0f));
+    CHECK(radiusOf(R"([ { "form": "disc", "radius": [0.5, 0.5] } ])") == doctest::Approx(50.0f));
+}
+
+TEST_CASE("an object is culled by a reach that covers every piece it can have, at any time")
+{
+    // Culling by a reach that falls short is a piece of a station vanishing at the edge of
+    // the screen. So for every shipped shape, several objects of it and several moments, every
+    // piece has to lie inside the reach it is culled by.
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    for (const Archetype& a : Archetypes::All())
+    {
+        if (a.visual.shape.Empty())
+            continue;
+        INFO("archetype: ", a.id);
+        for (int seed = 1; seed <= 6; seed++)
+        {
+            const float reach = 100.0f * Render::Reach(a.visual.shape, seed);
+            for (double t : { 0.0, 7.3, 41.0, 333.3 })
+            {
+                Render::Pose pose = At({ 0.0f, 0.0f }, 100.0f, 0.7f, seed, 1000.0f);
+                pose.time = t;
+                pose.thrusting = true;
+                for (const Render::Piece& p : Render::Compose(a.visual.shape, pose))
+                    CHECK(Dist(p.pos, { 0.0f, 0.0f }) + Render::PieceReach(p) <=
+                          reach * 1.001f + 0.01f);
+            }
+        }
+    }
+}

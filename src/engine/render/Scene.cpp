@@ -52,12 +52,24 @@ void Present(std::vector<Item> items, const Lighting& lighting, const Camera2D& 
     // system would get.
     backend.SetView(view);
     backend.SetLighting(lighting);
-    backend.SetClock(clock >= 0.0 ? clock : GetTime());
+    backend.SetClock(clock >= 0.0 ? clock : LocalClock());
 
     backend.Begin();
     for (const Item& it : items)
         backend.Draw(it);
     backend.End();
+}
+
+static double g_frozen = -1.0;
+
+double LocalClock()
+{
+    return g_frozen >= 0.0 ? g_frozen : GetTime();
+}
+
+void FreezeLocalClock(double seconds)
+{
+    g_frozen = seconds;
 }
 
 void Present(std::vector<Item> items, const Lighting& lighting, IBackend& backend)

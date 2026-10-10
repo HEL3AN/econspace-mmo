@@ -1,7 +1,7 @@
 // EconSpace — entry point. All logic lives in the Game class.
 //   econspace connect <host> <port> <name> <secret> [--zoom Z] [--warp X Y] [--map]
 //   [--sensor [RANGE]]
-//   [--shot FILE [--frames N]] [--nohud] —
+//   [--shot FILE [--frames N]] [--nohud] [--treated] [--perf] [--notreat] [--size W H] —
 //   connect to an econserver host
 //
 // Connecting is mandatory: the world lives on an authoritative server and the
@@ -31,7 +31,13 @@ static int Usage(const char* exe)
                  "                 world units across\n"
                  "      --shot FILE [--frames N]\n"
                  "                 save frame N (default 60) to FILE as a PNG and exit\n"
+                 "      --treated  ...through the screen treatment, as the player sees it\n"
                  "      --nohud    draw the world without the HUD\n"
+                 "      --perf     run N frames (--frames, default 60) uncapped and print\n"
+                 "                 what they cost, CPU and GPU per phase, to stderr; F9\n"
+                 "                 shows the same in game\n"
+                 "      --notreat  start with the screen treatment off (look.json untouched)\n"
+                 "      --size W H open the window at W x H\n"
                  "\n"
                  "Start a server first:\n"
                  "  econserver host 50800\n",
@@ -59,6 +65,10 @@ int main(int argc, char** argv)
     std::string       shot;
     int               frames = 60;
     bool              nohud = false;
+    bool              perf = false;
+    bool              notreat = false;
+    bool              treated = false;
+    int               width = 0, height = 0;
     for (int i = 6; i < argc; i++)
         if (std::strcmp(argv[i], "--zoom") == 0 && i + 1 < argc)
             startZoom = (float)std::atof(argv[++i]);
@@ -80,6 +90,18 @@ int main(int argc, char** argv)
             frames = std::atoi(argv[++i]);
         else if (std::strcmp(argv[i], "--nohud") == 0)
             nohud = true;
+        else if (std::strcmp(argv[i], "--perf") == 0)
+            perf = true;
+        else if (std::strcmp(argv[i], "--notreat") == 0)
+            notreat = true;
+        else if (std::strcmp(argv[i], "--treated") == 0)
+            treated = true;
+        else if (std::strcmp(argv[i], "--size") == 0 && i + 2 < argc)
+        {
+            width = std::atoi(argv[i + 1]);
+            height = std::atoi(argv[i + 2]);
+            i += 2;
+        }
         else if (std::strcmp(argv[i], "--warp") == 0 && i + 2 < argc)
         {
             warpTo = { (float)std::atof(argv[i + 1]), (float)std::atof(argv[i + 2]) };
@@ -118,9 +140,11 @@ int main(int argc, char** argv)
     {
         // A shot comes from a render texture; a hidden window keeps a scripted run from
         // stealing focus from whoever is using the machine (#293).
-        if (!shot.empty())
+        if (!shot.empty() || perf)
             SetConfigFlags(FLAG_WINDOW_HIDDEN);
         Game game(std::move(conn));
+        if (width > 0 && height > 0)
+            game.SetResolution(width, height);
         game.SetPilotName(account);
         if (startZoom > 0.0f)
             game.SetStartZoom(startZoom);
@@ -131,9 +155,13 @@ int main(int argc, char** argv)
         if (sensor)
             game.StartOnSensor(sensorRange);
         if (!shot.empty())
-            game.TakeShot(shot, frames);
+            game.TakeShot(shot, frames, treated);
         if (nohud)
             game.HideHud();
+        if (notreat)
+            game.DisableTreatment();
+        if (perf)
+            game.MeasurePerf(frames);
         game.Run();
     }  // the socket closes with Game, before winsock is unloaded
 

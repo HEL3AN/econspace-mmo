@@ -50,7 +50,11 @@ public:
 
     // Everything drawn between these goes through the chain. Nesting them is not
     // supported; End without Begin does nothing.
-    void Begin(int width, int height);
+    //
+    // `into` is a texture the caller was drawing into, such as a screenshot's: raylib has
+    // one target at a time, so the chain takes over from it and End draws the result into
+    // it and leaves it bound, as it was found. Null is the screen.
+    void Begin(int width, int height, const RenderTexture2D* into = nullptr);
     void End();
 
     // Writes the chain back to `<dataDir>/look.json`. Returns false and fills `error`.
@@ -65,11 +69,14 @@ private:
         int      locScale = -1;
         int      locResolution = -1;
         int      locTime = -1;
-        int      locScene = -1;  // bloom's second sampler: the untouched scene
+        int      locGlow = -1;  // bloom's second sampler: the blurred bright parts
     };
 
     const Loaded* Find(PassKind k) const;
     void          EnsureTargets(int width, int height);
+    // Bloom's glow, into glowB_: the scene's bright parts blurred across into glowA_ and then
+    // down, both at half resolution (#296).
+    void Glow(float scale);
 
     TreatmentConfig          config_ = TreatmentConfig::Default();
     std::string              dataDir_;
@@ -79,9 +86,18 @@ private:
     RenderTexture2D scene_{};  // what the world was drawn into
     RenderTexture2D ping_{};
     RenderTexture2D pong_{};
+    RenderTexture2D glowA_{};  // half resolution: bloom's blur, across
+    RenderTexture2D glowB_{};  // ...and down
     bool            targetsReady_ = false;
-    int             width_ = 0, height_ = 0;
-    bool            capturing_ = false;
+
+    // The blur bloom is made with. Not a pass of its own: without it bloom is dropped.
+    Shader                 blur_{};
+    bool                   blurLoaded_ = false;
+    int                    locDirection_ = -1;
+    int                    locBrightPass_ = -1;
+    int                    width_ = 0, height_ = 0;
+    bool                   capturing_ = false;
+    const RenderTexture2D* into_ = nullptr;
 };
 
 }  // namespace Render

@@ -7,6 +7,7 @@
 // Part of the Game class; see Game.cpp.
 #include "core/Game.h"
 #include "render/TreatmentPanel.h"
+#include "render/Perf.h"
 #include "sim/Overview.h"
 #include "sim/PlayerStep.h"
 
@@ -87,6 +88,7 @@ void Game::DrawStarfield()
 void Game::DrawWorld()
 {
     DrawStarfield();
+    Render::Perf::Mark(Render::Perf::Phase::Sky);
 
     BeginMode2D(camera_);
 
@@ -111,6 +113,7 @@ void Game::DrawWorld()
         Render::Present(std::move(scene), lights, camera_, shapeBackend_,
                         worldClock_.Now(GetTime()));
     }
+    Render::Perf::Mark(Render::Perf::Phase::World);
 
     // Destination-station markers for active delivery missions. We draw them only if
     // the destination station is in the CURRENT system (by id), and at its rendered
@@ -194,6 +197,7 @@ void Game::DrawWorld()
     }
 
     EndMode2D();
+    Render::Perf::Mark(Render::Perf::Phase::Overlay);
 }
 
 void Game::SetupWindows()

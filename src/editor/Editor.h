@@ -63,12 +63,18 @@ public:
     // `shot FILE [frames N]`: saves what the window shows after N frames and exits. Read
     // back from a texture of its own rather than copied from the desktop, so it works when
     // the screen is off or covered -- a desktop capture then comes back white.
-    void TakeShot(const std::string& path, int frames)
+    // `perf [notreat]`: run N frames uncapped and print what they cost (#296).
+    void MeasurePerf(int frames, bool treated);
+    void TakeShot(const std::string& path, int frames, bool treated = false)
     {
         shotPath_ = path;
         shotFrames_ = frames;
+        shotTreated_ = treated;
     }
+    int             perfFrames_ = -1;  // `perf`: frames left to measure; -1 when not
+    int             perfTotal_ = 0;
     std::string     shotPath_;
+    bool            shotTreated_ = false;  // `treated`: the shot goes through the treatment
     int             shotFrames_ = 30;
     RenderTexture2D shotTarget_ = {};
 

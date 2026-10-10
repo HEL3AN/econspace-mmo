@@ -1,13 +1,16 @@
 #include "render/Silhouette.h"
 
 #include "render/Modules.h"
+#include "render/Perf.h"
 
 #include "core/JsonKeys.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
+#include <map>
 
 using nlohmann::json;
 
@@ -207,6 +210,26 @@ float ShadeRadius(const Piece& p)
         case Form::Lattice: return p.width * 0.5f;
     }
     return p.radius;
+}
+
+float PieceReach(const Piece& p)
+{
+    switch (p.form)
+    {
+        case Form::Disc:
+        case Form::Ring:
+        case Form::Arc:
+        case Form::Polygon: return std::fabs(p.radius);
+        case Form::Band: return std::fabs(p.radius) > 0.0f ? std::fabs(p.radius) : p.bodyRadius;
+        case Form::Capsule:
+        case Form::Chevron:
+        case Form::Bar:
+        case Form::Lattice:
+            // Half the diagonal, and a capsule's rounded ends stand out by half its width.
+            return std::sqrt(p.length * p.length + p.width * p.width) * 0.5f +
+                   std::fabs(p.width) * 0.5f;
+    }
+    return std::fabs(p.radius);
 }
 
 Vector2 Axis(const Piece& p)
@@ -1267,12 +1290,15 @@ void ExpandOnSphere(const Part& p, const ModuleVariant& v, int seed, int salt, S
 // as a whole; inside it, its own parts keep their arrangement, turned with it, scaled by
 // `scale`, reflected when the copy is a mirror image. The result has no module parts left
 // and goes through the ordinary composer.
-Shape ExpandModules(const Shape& in, const Pose& pose)
+//
+// A function of the shape and the seed and nothing else, which is what lets it be kept
+// (see Expand below): a module that turns keeps its `spin`, and the composer turns it.
+Shape ExpandModules(const Shape& in, int seed)
 {
     Shape out;
     out.axisTilt = in.axisTilt;
     // The object's own variables, rolled once for all its parts.
-    const std::vector<float> top = RollVars(in, pose.seed, 9001);
+    const std::vector<float> top = RollVars(in, seed, 9001);
     // Every part as this object has it, and then whatever its kit places on its sections:
     // the kit's modules go through exactly the same expansion as written ones.
     std::vector<std::pair<Part, size_t>> work;
@@ -1280,7 +1306,7 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
     for (size_t i = 0; i < in.parts.size(); i++)
     {
         Part resolved;
-        if (!Resolve(in.parts[i], pose.seed, (int)i * 977 + 3, resolved,
+        if (!Resolve(in.parts[i], seed, (int)i * 977 + 3, resolved,
                      top.empty() ? nullptr : top.data()))
             continue;
         for (const Part& p : SpellRow(resolved))
@@ -1292,7 +1318,7 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
     }
     if (!in.kit.entries.empty())
     {
-        const std::vector<Part> placed = PlaceKit(in.kit, sections, pose.seed);
+        const std::vector<Part> placed = PlaceKit(in.kit, sections, seed);
         for (size_t k = 0; k < placed.size(); k++)
             work.push_back({ placed[k], in.parts.size() + k });
     }
@@ -1325,27 +1351,26 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
                     AllowedVariants(*mod, p.variants, p.except);
                 const int n = (int)allowed.size();
                 if (n > 0)
-                    v = allowed[std::min(n - 1, (int)(Hash01(pose.seed, (int)i * 977 + 5) * n))];
+                    v = allowed[std::min(n - 1, (int)(Hash01(seed, (int)i * 977 + 5) * n))];
             }
             if (v == nullptr)
                 continue;
 
             if (p.surface)
             {
-                ExpandOnSphere(p, *v, pose.seed, (int)i * 977 + 41, out);
+                ExpandOnSphere(p, *v, seed, (int)i * 977 + 41, out);
                 continue;
             }
 
-            const int   repeat = p.repeat < 1 ? 1 : p.repeat;
-            const int   sides = p.mirror ? 2 : 1;
-            const int   rows = p.rowCount < 1 ? 1 : p.rowCount;
-            const float turned = (float)std::fmod((double)p.spin * pose.time, 360.0);
+            const int repeat = p.repeat < 1 ? 1 : p.repeat;
+            const int sides = p.mirror ? 2 : 1;
+            const int rows = p.rowCount < 1 ? 1 : p.rowCount;
             // The module's variables, rolled per placement: two hatches on one hull may differ,
             // the parts of one hatch may not. Every copy of a repeat or row shares the roll.
-            const std::vector<float> mrolls = RollVars(v->shape, pose.seed, (int)i * 977 + 61);
+            const std::vector<float> mrolls = RollVars(v->shape, seed, (int)i * 977 + 61);
             for (int r = 0; r < repeat; r++)
             {
-                const float rot = (360.0f / (float)repeat) * (float)r + turned;
+                const float rot = (360.0f / (float)repeat) * (float)r;
                 const float cr = std::cos(rot * DEG2RAD), sr = std::sin(rot * DEG2RAD);
                 for (int m = 0; m < sides * rows; m++)
                 {
@@ -1363,7 +1388,7 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
                         // Resolved once per module part, not per copy: a row of the same hatch
                         // is a row of the same hatch, and rhythm is what reads as designed.
                         Part resolved;
-                        if (!Resolve(v->shape.parts[j], pose.seed, (int)i * 977 + (int)j * 131 + 41,
+                        if (!Resolve(v->shape.parts[j], seed, (int)i * 977 + (int)j * 131 + 41,
                                      resolved, mrolls.empty() ? nullptr : mrolls.data()))
                             continue;
                         for (const Part& mp : SpellRow(resolved))
@@ -1392,7 +1417,9 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
                             q.minPixels = std::fmax(p.minPixels, own / std::fmax(p.scale, 0.001f));
                             q.repeat = 1;
                             q.mirror = false;
-                            q.spin = 0.0f;
+                            // The module's own parts do not turn on their own; the placement
+                            // turns them all about the object's centre, in the composer.
+                            q.spin = p.spin;
                             q.z = mp.z + p.z;  // the placement's layer, then the module's own order
                             out.parts.push_back(q);
                         }
@@ -1404,23 +1431,201 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
     return out;
 }
 
+// --- What a shape is for one object, worked out once (#296) --------------------------------
+//
+// Ranges, palettes, chance, kits and modules are settled by the seed alone: none of them moves.
+// Expanding them was being done for every object in every frame, and on a busy system it was
+// most of what composing cost. So the expansion is kept, per shape and seed, and only the pose
+// -- position, heading, size, the clock -- is applied each frame. What moves is still a
+// function of time and seed (#136): a module that turns carries its `spin` through the
+// expansion and is turned by the composer, like any part, instead of being turned during it.
+namespace
+{
+struct Expansion
+{
+    uint64_t fingerprint = 0;
+    bool     varies = false;
+    Shape    shape;  // empty unless `varies`
+    float    reach = 1.0f;
+};
+
+// Keyed by the shape's address and the seed. The address alone is not trusted: a shape built
+// on the stack, composed, dropped and built differently at the same place -- which a test or
+// the editor's module page does -- must not be handed the old one's expansion. So the entry
+// also keeps a fingerprint of the shape's content and is thrown away when it no longer
+// matches. Modules are not part of the fingerprint; loading them forgets everything.
+std::map<std::pair<const Shape*, int>, Expansion> g_expansions;
+constexpr size_t                                  MAX_EXPANSIONS = 2048;
+
+struct Fnv
+{
+    uint64_t h = 1469598103934665603ull;
+    void     Bytes(const void* p, size_t n)
+    {
+        const unsigned char* b = (const unsigned char*)p;
+        for (size_t i = 0; i < n; i++)
+        {
+            h ^= b[i];
+            h *= 1099511628211ull;
+        }
+    }
+    void F(float v) { Bytes(&v, sizeof v); }
+    void I(int v) { Bytes(&v, sizeof v); }
+    void B(bool v) { I(v ? 1 : 0); }
+    void V(Vector2 v) { F(v.x), F(v.y); }
+    void C(Color c) { Bytes(&c, sizeof c); }
+    void S(const std::string& s)
+    {
+        I((int)s.size());
+        Bytes(s.data(), s.size());
+    }
+    void L(const std::vector<std::string>& v)
+    {
+        I((int)v.size());
+        for (const std::string& s : v)
+            S(s);
+    }
+};
+
+// Every field a part, a kit or a variable has. A field added to Part and not added here would
+// only matter to a shape edited in place between two frames, but it would matter silently.
+uint64_t Fingerprint(const Shape& s)
+{
+    Fnv f;
+    f.F(s.axisTilt);
+    f.I((int)s.parts.size());
+    for (const Part& p : s.parts)
+    {
+        f.I((int)p.form), f.I((int)p.role), f.I(p.sides), f.V(p.at), f.F(p.angle);
+        f.F(p.radius), f.F(p.width), f.F(p.length), f.I(p.count), f.B(p.filled);
+        f.I(p.repeat), f.B(p.mirror), f.F(p.minPixels), f.F(p.jitterAngle), f.F(p.jitterScale);
+        f.F(p.alpha), f.F(p.orbitRadius), f.F(p.orbitPeriod), f.F(p.orbitPhase), f.F(p.orbitTilt);
+        f.B(p.surface), f.F(p.lat), f.F(p.lon), f.F(p.spin), f.F(p.blink);
+        f.B(p.onlyThrusting), f.B(p.onlyDark), f.F(p.tip), f.F(p.jagged), f.B(p.soft);
+        f.C(p.tint), f.F(p.arcFrom), f.F(p.arcTo), f.I(p.rowCount), f.V(p.rowStep);
+        f.S(p.module), f.S(p.variant), f.L(p.variants), f.L(p.except), f.F(p.scale);
+        f.I((int)p.vary.size());
+        for (const Part::Vary& v : p.vary)
+            f.I((int)v.field), f.F(v.lo), f.F(v.hi), f.I(v.var), f.F(v.plusLo), f.F(v.plusHi);
+        f.I((int)p.palette.size());
+        for (const Color& c : p.palette)
+            f.C(c);
+        f.I(p.tintVar), f.F(p.chance), f.I(p.chanceVar), f.F(p.rowTurn), f.F(p.rowTaper);
+        f.B(p.rowTaperStep), f.F(p.rowRing), f.F(p.rowSpread), f.V(p.pivotShift);
+        f.B(p.hasPivot), f.V(p.pivot), f.B(p.rowCentred), f.B(p.section), f.F(p.pitch);
+        f.I(p.z), f.B(p.mirrorOnly);
+    }
+    f.I((int)s.vars.size());
+    for (const Shape::Var& v : s.vars)
+    {
+        f.S(v.name), f.F(v.lo), f.F(v.hi);
+        f.I((int)v.palette.size());
+        for (const Color& c : v.palette)
+            f.C(c);
+    }
+    f.S(s.kit.symmetry), f.F(s.kit.plain);
+    f.I((int)s.kit.entries.size());
+    for (const KitEntry& e : s.kit.entries)
+    {
+        f.S(e.of), f.B(e.byTag), f.F(e.lo), f.F(e.hi), f.S(e.on), f.F(e.scale), f.F(e.turn);
+        f.S(e.variant), f.L(e.variants), f.L(e.except), f.I(e.in), f.S(e.when), f.S(e.prefer);
+        f.S(e.mount), f.I(e.z);
+    }
+    return f.h;
+}
+
+// How far any piece of these (expanded) parts can be from the centre, in radii, at any time:
+// turning, mirroring and blinking change where a piece is but not how far out it is, and an
+// orbit is at most its radius out -- nearer the viewer it is drawn up to 18% larger.
+float ReachOf(const Shape& s)
+{
+    float reach = 1.0f;
+    for (const Part& p : s.parts)
+    {
+        float own = 0.0f;
+        switch (p.form)
+        {
+            case Form::Disc:
+            case Form::Ring:
+            case Form::Arc:
+            case Form::Polygon: own = p.radius; break;
+            case Form::Band: own = 1.0f; break;
+            case Form::Capsule:
+            case Form::Chevron:
+            case Form::Bar:
+            case Form::Lattice:
+                // As PieceReach measures it: half the diagonal, and a capsule's ends.
+                own = std::sqrt(p.length * p.length + p.width * p.width) * 0.5f +
+                      std::fabs(p.width) * 0.5f;
+                break;
+        }
+        own = std::fabs(own) * (1.0f + std::fabs(p.jitterScale));
+        float from = 0.0f;
+        if (p.surface)
+            from = 1.0f;  // on the unit sphere whatever its `at` says
+        else if (p.orbitRadius > 0.0f)
+        {
+            from = p.orbitRadius;
+            own *= 1.18f;
+        }
+        else
+        {
+            const int   n = std::max(1, p.rowCount);
+            const float ex = p.at.x + p.rowStep.x * (float)(n - 1);
+            const float ey = p.at.y + p.rowStep.y * (float)(n - 1);
+            from = std::fmax(std::sqrt(p.at.x * p.at.x + p.at.y * p.at.y),
+                             std::sqrt(ex * ex + ey * ey));
+        }
+        reach = std::fmax(reach, from + own);
+    }
+    return reach;
+}
+
+const Expansion& Expand(const Shape& shape, int seed)
+{
+    const uint64_t fp = Fingerprint(shape);
+    const auto     key = std::make_pair(&shape, seed);
+    auto           it = g_expansions.find(key);
+    if (it != g_expansions.end() && it->second.fingerprint == fp)
+        return it->second;
+
+    if (g_expansions.size() >= MAX_EXPANSIONS)
+        g_expansions.clear();  // a survey of fifty systems, not a leak
+    Perf::Count(Perf::Counter::CacheMisses);
+
+    Expansion e;
+    e.fingerprint = fp;
+    for (const Part& p : shape.parts)
+        e.varies = e.varies || !p.module.empty() || !shape.kit.entries.empty() || !p.vary.empty() ||
+                   !p.palette.empty() || p.chance < 1.0f || p.rowCentred || p.rowTurn != 0.0f ||
+                   p.rowTaper != 1.0f || p.hasPivot || p.rowRing > 0.0f;
+    // Ranges, palettes and chance are settled in the same pass that expands modules, so
+    // everything after this sees fixed numbers.
+    if (e.varies)
+        e.shape = ExpandModules(shape, seed);
+    e.reach = ReachOf(e.varies ? e.shape : shape);
+    return g_expansions[key] = std::move(e);
+}
+}  // namespace
+
+void ForgetExpansions()
+{
+    g_expansions.clear();
+}
+
+float Reach(const Shape& s, int seed)
+{
+    return s.Empty() ? 1.0f : Expand(s, seed).reach;
+}
+
 std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
 {
-    bool hasModules = false;
-    for (const Part& p : shape.parts)
-        hasModules = hasModules || !p.module.empty();
-    bool varies = hasModules;
-    for (const Part& p : shape.parts)
-        varies = varies || !shape.kit.entries.empty() || !p.vary.empty() || !p.palette.empty() ||
-                 p.chance < 1.0f || p.rowCentred || p.rowTurn != 0.0f || p.rowTaper != 1.0f ||
-                 p.hasPivot || p.rowRing > 0.0f;
-    // Ranges, palettes and chance are settled in the same pass that expands modules, so
-    // everything below sees fixed numbers.
-    const Shape  expanded = varies ? ExpandModules(shape, pose) : Shape{};
-    const Shape& s = varies ? expanded : shape;
-
     std::vector<Piece> out;
-    if (s.Empty() || pose.size <= 0.0f)
+    if (shape.Empty() || pose.size <= 0.0f)
+        return out;
+    const Expansion& e = Expand(shape, pose.seed);
+    const Shape&     s = e.varies ? e.shape : shape;
+    if (s.Empty())
         return out;
 
     const Vector2 pos = pose.pos;
