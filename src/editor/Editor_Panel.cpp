@@ -40,6 +40,15 @@ void Editor::DrawHud()
                  "seeds  ·  F2: backend",
                  16, 74, 13, Ui::TEXT_DIM);
     }
+    else if (mode_ == Mode::Region)
+    {
+        Ui::Text(TextFormat("REGION   seed %llu   %d systems", (unsigned long long)regionMap_.seed,
+                            (int)regionMap_.region.systems.size()),
+                 16, 50, 16, Ui::TEXT);
+        Ui::Text("generated, then pinned, as the server builds it  ·  click: edit a system  ·  "
+                 "hover: what is there",
+                 16, 74, 13, Ui::TEXT_DIM);
+    }
     else if (mode_ == Mode::Galaxy)
     {
         Ui::Text(TextFormat("GALAXY   systems: %d", (int)(universeJson_.contains("systems")
@@ -97,7 +106,7 @@ void Editor::DrawHud()
 
     // Mode toggle button (System / Galaxy). The gallery is not a place in the world, so
     // it does not sit on this toggle; it has its own button beside it.
-    if (mode_ != Mode::Gallery && mode_ != Mode::Survey)
+    if (mode_ != Mode::Gallery && mode_ != Mode::Survey && mode_ != Mode::Region)
     {
         Rectangle mb = ModeButtonRect();
         bool      overMb = CheckCollisionPointRec(GetMousePosition(), mb);
@@ -128,7 +137,23 @@ void Editor::DrawHud()
     if (overSvb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
         EnterSurveyMode(mode_ != Mode::Survey);
 
-    if (mode_ == Mode::Survey)
+    // The region map (#237), from a generated system or the survey -- the two places a
+    // seed is in front of you -- and back.
+    if (mode_ == Mode::Region || mode_ == Mode::Survey ||
+        (mode_ == Mode::System && generated_.open))
+    {
+        const Rectangle rb = RegionButtonRect();
+        const bool      overRb = CheckCollisionPointRec(GetMousePosition(), rb);
+        const bool      on = mode_ == Mode::Region;
+        DrawRectangleRec(rb, overRb ? Fade(Ui::ACCENT, 0.2f) : Ui::TITLE_BG);
+        DrawRectangleLinesEx(rb, 1.0f, on ? Ui::ACCENT : Ui::PANEL_BORDER);
+        Ui::Text(on ? "Back  [F5]" : "Region  [F5]", (int)rb.x + 12, (int)rb.y + 8, 13,
+                 on ? Ui::ACCENT : Ui::TEXT);
+        if (overRb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+            ToggleRegionMap();
+    }
+
+    if (mode_ == Mode::Survey || mode_ == Mode::Region)
         return;  // nothing to save: a generated system has no file
 
     // Save button (top center) with an indicator of unsaved edits.

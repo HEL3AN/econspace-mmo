@@ -32,9 +32,7 @@ Gen::RegionParams Editor::RegionParamsFromData(json& homeDoc) const
     return params;
 }
 
-namespace
-{
-json ReadPins(const std::string& path)
+json Editor::ReadPins(const std::string& path)
 {
     std::ifstream in(path);
     if (!in.is_open())
@@ -42,7 +40,6 @@ json ReadPins(const std::string& path)
     json pins = json::parse(in, nullptr, false);
     return pins.is_discarded() ? json() : pins;
 }
-}  // namespace
 
 bool Editor::OpenGenerated(uint64_t seed, const std::string& systemId)
 {

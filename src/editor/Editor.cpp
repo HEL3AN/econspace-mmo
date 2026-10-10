@@ -264,6 +264,8 @@ void Editor::Run()
             EnterGalleryMode(mode_ != Mode::Gallery);
         if (IsKeyPressed(KEY_F4))  // the survey of generated systems (#141)
             EnterSurveyMode(mode_ != Mode::Survey);
+        if (IsKeyPressed(KEY_F5))  // the region map of what is in front of you (#237)
+            ToggleRegionMap();
         if (IsKeyPressed(KEY_F10))  // the treatment's settings, the same key as in the game
         {
             treatmentPanelOpen_ = !treatmentPanelOpen_;
@@ -309,6 +311,13 @@ void Editor::Run()
             if (!shooting)
                 treatment_.End();
             DrawModules(true);
+        }
+        else if (mode_ == Mode::Region)
+        {
+            // A map, not a picture: nothing on it goes through the treatment.
+            DrawRegionMap();
+            DrawHud();
+            DrawRegionPanel();
         }
         else if (mode_ == Mode::Survey)
         {
@@ -381,13 +390,20 @@ void Editor::HandleInput()
         HandleSurveyInput();
         return;
     }
+    if (mode_ == Mode::Region)
+    {
+        HandleRegionInput();
+        return;
+    }
 
     // Over the property panel and palette the world doesn't react (clicks go to the UI).
     bool overPanel = (selected_ >= 0) && CheckCollisionPointRec(GetMousePosition(), PanelRect());
     bool overPalette = CheckCollisionPointRec(GetMousePosition(), PaletteRect());
     bool overSave = CheckCollisionPointRec(GetMousePosition(), SaveButtonRect());
     bool overMode = CheckCollisionPointRec(GetMousePosition(), ModeButtonRect());
-    bool overUi = overPanel || overPalette || overSave || overMode;
+    bool overRegion =
+        generated_.open && CheckCollisionPointRec(GetMousePosition(), RegionButtonRect());
+    bool overUi = overPanel || overPalette || overSave || overMode || overRegion;
 
     // Cancel placement mode.
     if (!placeArchetype_.empty() &&
