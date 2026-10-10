@@ -117,6 +117,8 @@ struct Command
     bool debugMoney = false;     // F1: grant debug money
     int  acceptOffer = -1;       // accept mission offer by board index (-1 none)
     int  completeMission = -1;   // hand in active mission by index (-1 none)
+    // Name the system the ship is in, as its discoverer (#145); empty -- not this command.
+    std::string nameSystem;
 
     // Standing order (one-shot, #26/#72). The client sends an INTENT, exactly as it does
     // for docking or trading: the server decides whether the order is possible and owns

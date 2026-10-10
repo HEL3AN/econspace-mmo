@@ -138,6 +138,14 @@ Pay off the bounty a faction has on you, at a station, so its ships stop hunting
 |---|---|---|---|
 | `faction` | string |  | faction name; default: the faction that owns this station |
 
+### `name_system`
+
+Name the system you are in. Beyond the wormhole a system has only a designation (W-3.2) until whoever got there first names it -- once, for everyone. 3 to 24 characters, starting with a letter; letters, digits, spaces, ' and -; not a name another system has.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | string | yes | the name, e.g. 'Haven' |
+
 ## Resources
 
 | URI | Name | What |

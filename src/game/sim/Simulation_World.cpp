@@ -4,6 +4,7 @@
 // One translation unit of Simulation (#17).
 
 #include "sim/Simulation.h"
+#include "sim/Names.h"
 
 #include "core/World.h"
 #include "entities/AsteroidField.h"
@@ -66,6 +67,9 @@ std::vector<std::string> Simulation::Neighbors(const std::string& id) const
 
 std::string Simulation::SystemName(const std::string& id) const
 {
+    auto named = systems_.find(id);
+    if (named != systems_.end() && !named->second.agg.givenName.empty())
+        return named->second.agg.givenName;
     for (const auto& s : universe_.systems)
         if (s.id == id)
             return s.name;
@@ -268,7 +272,8 @@ void Simulation::SaveWorld(const std::string& path) const
                              { "security", a.security },     { "baseSecurity", a.baseSecurity },
                              { "prosperity", a.prosperity }, { "controller", (int)a.controller },
                              { "visited", a.visited },       { "presence", a.presence },
-                             { "claimed", a.claimed } };
+                             { "claimed", a.claimed },       { "discoverer", a.discoverer },
+                             { "name", a.givenName } };
     }
     j["galaxy"] = galaxy;
 
@@ -312,6 +317,8 @@ Save::Result Simulation::LoadWorld(const std::string& path)
         a.controller = (FactionId)gj.value("controller", (int)a.controller);
         a.visited = gj.value("visited", a.visited);
         a.claimed = gj.value("claimed", a.claimed);
+        a.discoverer = gj.value("discoverer", a.discoverer);
+        a.givenName = gj.value("name", a.givenName);
         // An older save has no presence: the seeded one stands, from what it did save.
         if (gj.contains("presence") && gj["presence"].is_array() &&
             gj["presence"].size() == FACTION_COUNT)
@@ -457,7 +464,16 @@ WorldLoader::Universe Simulation::KnownUniverse() const
     for (const WorldLoader::SystemInfo& info : universe_.systems)
     {
         if (charted(info.id))
+        {
             out.systems.push_back(info);
+            const SystemAggregate& a = systems_.at(info.id).agg;
+            out.systems.back().discoverer = a.discoverer;
+            if (!a.givenName.empty())
+            {
+                out.systems.back().designation = info.name;
+                out.systems.back().name = a.givenName;
+            }
+        }
         else if (frontier.count(info.id))
         {
             WorldLoader::SystemInfo seen;
@@ -473,4 +489,38 @@ WorldLoader::Universe Simulation::KnownUniverse() const
         if (charted(l.a) || charted(l.b))
             out.links.push_back(l);
     return out;
+}
+
+bool Simulation::NameSystem(ClientSession& s, const std::string& name)
+{
+    auto refuse = [&](const std::string& why)
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Not named: " + why);
+        return false;
+    };
+    auto it = systems_.find(s.systemId);
+    if (it == systems_.end() || regionDocs_.count(s.systemId) == 0)
+        return refuse("only a system beyond the wormhole can be named");
+    SystemAggregate& a = it->second.agg;
+    if (!a.givenName.empty())
+        return refuse(SystemName(s.systemId) + " already has its name");
+    const std::string pilot = s.ship ? s.ship->GetPilotName() : std::string();
+    if (a.discoverer.empty() || a.discoverer != pilot)
+        return refuse("only " +
+                      (a.discoverer.empty() ? std::string("its discoverer") : a.discoverer) +
+                      ", who got here first, may name it");
+    std::string why;
+    if (!Names::ValidSystemName(name, why))
+        return refuse(why);
+    for (const auto& info : universe_.systems)
+        if (Names::SameName(info.name, name) || Names::SameName(info.id, name) ||
+            Names::SameName(systems_[info.id].agg.givenName, name))
+            return refuse("there is already a system called " + name);
+
+    const std::string designation = SystemName(s.systemId);
+    a.givenName = name;
+    chartsChanged_ = true;  // everyone's index changes
+    PushEvent(designation + " is now " + name + ", named by " + pilot);
+    s.RecordEvent(Ev::Kind::Notice, "Named " + designation + " " + name);
+    return true;
 }

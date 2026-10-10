@@ -42,6 +42,9 @@ public:
     // systems a gate from one of those leads to -- located and designated, uncharted.
     // Nothing further. Knowledge is shared: the first ship in charts it for everyone.
     WorldLoader::Universe KnownUniverse() const;
+    // The first ship into a system beyond the wormhole may name it, once (#145). Says why
+    // not in the player's journal when it cannot.
+    bool NameSystem(ClientSession& s, const std::string& name);
     // Set when a system is charted; whoever sends the index takes it and resends.
     bool TakeChartsChanged()
     {

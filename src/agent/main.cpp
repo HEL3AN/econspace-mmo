@@ -21,6 +21,7 @@
 #include "economy/Resource.h"
 #include "entities/ShipType.h"
 #include "missions/MissionSystem.h"
+#include "sim/Names.h"
 #include "sim/Orders.h"
 
 #include "raylib.h"
@@ -760,6 +761,41 @@ std::vector<Tool> BuildTools()
                                  "detail='full' to see the bounty now");
               return "pay_bounty: paid " + Money(moneyBefore - after.money) + " to " +
                      FactionName(f) + "; no longer wanted by them. Money now " + Money(after.money);
+          } });
+
+    tools.push_back(
+        { "name_system",
+          "Name the system you are in. Beyond the wormhole a system has only a designation "
+          "(W-3.2) until whoever got there first names it -- once, for everyone. 3 to 24 "
+          "characters, starting with a letter; letters, digits, spaces, ' and -; not a name "
+          "another system has.",
+          Obj({ { "name", Str("the name, e.g. 'Haven'") } }, { "name" }), [](const Rpc::Json& args)
+          {
+              RequireLive();
+              const std::string name = args.contains("name") && args["name"].is_string()
+                                           ? args["name"].get<std::string>()
+                                           : std::string();
+              std::string       why;
+              if (!Names::ValidSystemName(name, why))
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, why };
+              const std::string here = g_session.Snapshot().systemId;
+              auto              named = [&]
+              {
+                  for (const auto& si : g_session.Universe().systems)
+                      if (si.id == here)
+                          return si.name == name;
+                  return false;
+              };
+              const int      seq = g_session.LastEventSeq();
+              Proto::Command c;
+              c.nameSystem = name;
+              if (!Confirm(c, why))
+                  return "name_system: " + why;
+              // The new name reaches everyone in the galaxy index the server resends.
+              g_session.WaitUntil(named, 3.0);
+              if (!named())
+                  return Refused("name_system", seq, "the server did not name it");
+              return "name_system: " + here + " is now " + name + ", for everyone";
           } });
 
     return tools;

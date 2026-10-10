@@ -92,6 +92,7 @@ int main(int argc, char** argv)
 
     {
         Game game(std::move(conn));
+        game.SetPilotName(account);
         if (startZoom > 0.0f)
             game.SetStartZoom(startZoom);
         if (shapes)

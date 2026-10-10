@@ -82,6 +82,8 @@ public:
     // Start with the galaxy map open (--map): for seeing the index the server sent without
     // a hand on the keyboard.
     void StartOnMap() { galaxyMapOpen_ = true; }
+    // Who this client is logged in as: a discoverer may name what they found (#145).
+    void SetPilotName(const std::string& n) { pilotName_ = n; }
     ~Game();
 
     void Run();
@@ -112,6 +114,8 @@ private:
     void DrawRadarContent(Rectangle area);                // system radar minimap
     void DrawMissionsContent(Rectangle area);             // log of active missions
     void DrawGalaxyMap();                                 // full-screen star map
+    bool CanNameHere() const;  // in a system this pilot found and nobody has named (#145)
+    void HandleNaming();       // typing a name: every key goes to the name until Enter/Esc
 
     void Undock();
 
@@ -272,7 +276,10 @@ private:
     Window*          missionsWin_ = nullptr;
     Window*          settingsWin_ = nullptr;
 
-    bool galaxyMapOpen_ = false;  // full-screen galaxy map
+    bool        galaxyMapOpen_ = false;  // full-screen galaxy map
+    std::string pilotName_;              // the account this client logged in as
+    bool        naming_ = false;         // the name field is open (#145)
+    std::string nameBuf_;
 
     // Short notification (saved/loaded).
     std::string flashMsg_;

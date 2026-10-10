@@ -1335,7 +1335,13 @@ void Game::DrawGalaxyMap()
         if (cur)
             DrawCircleLines((int)p.x, (int)p.y, 16.0f, Fade(Ui::ACCENT, 0.6f));
         if (named)
+        {
             Ui::Text(s.name.c_str(), (int)p.x + 14, (int)p.y - 8, 16, cur ? Ui::ACCENT : Ui::TEXT);
+            // A named system keeps its designation beside the name (#145).
+            if (!s.designation.empty())
+                Ui::Text(s.designation.c_str(), (int)p.x + 22 + Ui::TextWidth(s.name.c_str(), 16),
+                         (int)p.y - 6, 12, Ui::TEXT_DIM);
+        }
 
         // Live summary: security/pirates/economy/controller, from the server's galaxy
         // snapshot (galaxyState_).
@@ -1373,6 +1379,13 @@ void Game::DrawGalaxyMap()
         }
         if (cur)
             Ui::Text("you are here", (int)p.x + 14, (int)p.y + 38, 12, Ui::TEXT_DIM);
+        if (detail && !s.discoverer.empty())
+            Ui::Text(TextFormat("found by %s", s.discoverer.c_str()), (int)p.x + 14,
+                     (int)p.y + (cur ? 52 : 38), 12, Ui::TEXT_DIM);
+        if (cur && CanNameHere())
+            Ui::Text(naming_ ? TextFormat("name: %s_   [Enter] / [Esc]", nameBuf_.c_str())
+                             : "[N] name this system",
+                     (int)p.x + 14, (int)p.y + 66, 14, Ui::ACCENT);
     }
 
     EndScissorMode();

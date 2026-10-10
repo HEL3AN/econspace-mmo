@@ -587,8 +587,10 @@ TEST_CASE("a route order that asks for the safe way still asks for it after the 
 TEST_CASE("the galaxy index survives the wire, without the server's file names")
 {
     WorldLoader::Universe u;
-    u.systems.push_back({ "sol", "Sol", "sol.json", { 10.5f, -20.0f }, 0.9f, "federation" });
-    u.systems.push_back({ "vega", "Vega", "vega.json", { 300.0f, 40.25f }, 0.1f, "" });
+    u.systems.push_back(
+        { "sol", "Sol", "sol.json", { 10.5f, -20.0f }, 0.9f, "federation", true, "", "" });
+    u.systems.push_back(
+        { "vega", "Vega", "vega.json", { 300.0f, 40.25f }, 0.1f, "", true, "", "" });
     u.links.push_back({ "sol", "vega" });
     u.startId = "sol";
 

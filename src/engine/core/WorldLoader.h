@@ -23,6 +23,10 @@ struct SystemInfo
     // because a gate from a charted one leads to it: where it is on the map and what it
     // is designated, never its security, owner or contents.
     bool charted = true;
+    // A generated system's designation, when it has been given a name (#145): "W-3.2"
+    // stays the way to tell two people mean the same place. Empty otherwise.
+    std::string designation;
+    std::string discoverer;  // who got there first, if anybody has
 };
 
 // A link between two systems (for drawing on the star map).
