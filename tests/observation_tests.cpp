@@ -1,8 +1,11 @@
 #include <doctest/doctest.h>
 
 #include "core/Archetype.h"
+#include "entities/ShipType.h"
+#include "missions/Mission.h"
 #include "sim/Observation.h"
 
+#include <cstdio>
 #include <string>
 
 namespace
@@ -210,4 +213,112 @@ TEST_CASE("dockable is the archetype's component, not the kind's (#195)")
     };
     CHECK(Has(lineOf("Fitted Hulk"), "dockable"));
     CHECK_FALSE(Has(lineOf("Empty Shell"), "dockable"));
+}
+
+namespace
+{
+
+// Docked at station 3, owned by the Syndicate, with a layout that names it.
+struct Docked
+{
+    Proto::Snapshot                    s = BaseSnapshot();
+    std::map<int, Proto::EntityLayout> layout;
+    Obs::View                          v;
+
+    Docked()
+    {
+        s.player.docked = true;
+        s.player.dockedStationId = 3;
+        s.player.ownedShips = { 0 };
+        s.player.shipIndex = 0;
+        s.player.cargoByType.assign(AllResourceTypes().size(), 0);
+        layout[3].id = 3;
+        layout[3].kind = Proto::EntityKind::Station;
+        layout[3].name = "Vale Station";
+        layout[3].faction = FactionId::Syndicate;
+        v.snapshot = &s;
+        v.layout = &layout;
+    }
+};
+
+Proto::MissionView Job(MissionType type, int giver, int dest, int target, int progress)
+{
+    Proto::MissionView m;
+    m.type = (int)type;
+    m.faction = (int)FactionId::Syndicate;
+    m.title = "A job";
+    m.description = "Do the thing";
+    m.giverStationId = giver;
+    m.destStationId = dest;
+    m.targetCount = target;
+    m.progress = progress;
+    m.rewardMoney = 900.0;
+    m.rewardRep = 2.0f;
+    return m;
+}
+
+}  // namespace
+
+TEST_CASE("the mission list numbers what accept and complete take, and says what is missing (#109)")
+{
+    Docked d;
+    d.s.missionOffers.push_back(Job(MissionType::Delivery, 3, 44, 0, 0));
+    d.s.missionActive.push_back(Job(MissionType::Bounty, 3, 0, 3, 1));
+    Proto::MissionView mining = Job(MissionType::Mining, 3, 0, 20, 0);
+    mining.resource = 0;
+    d.s.player.cargoByType[0] = 5;
+    d.s.missionActive.push_back(mining);
+    Proto::MissionView ready = Job(MissionType::Delivery, 9, 3, 0, 0);
+    ready.completable = true;
+    d.s.missionActive.push_back(ready);
+
+    const std::string out = Obs::DescribeMissions(d.v);
+    CHECK(Has(out, "OFFERS at Vale Station (#3)"));
+    CHECK(Has(out, "[0] delivery: A job"));
+    CHECK(Has(out, "900 cr"));
+    // A delivery is handed in at its destination, which is in another system here.
+    CHECK(Has(out, "station #44, not in this system"));
+    CHECK(Has(out, "progress 1/3"));
+    CHECK(Has(out, "destroy 2 more pirates"));
+    CHECK(Has(out, "carry 20 " + ResourceName((ResourceType)0) + " (the hold has 5)"));
+    CHECK(Has(out, "READY TO HAND IN"));
+
+    CHECK(Obs::MissionNeeds(d.v, ready).empty());
+}
+
+TEST_CASE("outside a station there is no board, but the missions taken are still listed (#109)")
+{
+    Docked d;
+    d.s.player.docked = false;
+    d.s.player.dockedStationId = 0;
+    d.s.missionActive.push_back(Job(MissionType::Bounty, 3, 0, 3, 3));
+
+    const std::string out = Obs::DescribeMissions(d.v);
+    CHECK(Has(out, "dock to see its work"));
+    CHECK(Has(out, "[0] bounty"));
+    // Enough pirates, but the hand-in is at the giver.
+    CHECK(Has(out, "needs: dock at Vale Station (#3)"));
+    CHECK(Obs::DockedFaction(d.v) == FactionId::Independent);
+}
+
+TEST_CASE("the hangar quotes the price this player would be charged here (#109)")
+{
+    Docked d;
+    REQUIRE(GetShipCatalog().size() > 2);
+    d.s.player.ownedShips = { 0, 2 };
+    d.s.player.money = 100000.0;
+    d.s.player.reputation[(int)FactionId::Syndicate] = 60.0f;  // allied with the owner
+
+    CHECK(Obs::DockedFaction(d.v) == FactionId::Syndicate);
+    const std::string out = Obs::DescribeHangar(d.v);
+    CHECK(Has(out, "owned by Syndicate"));
+    CHECK(Has(out, "FLYING"));
+    CHECK(Has(out, "owned, switch_ship"));
+
+    // The same multiplier the server charges with, not a copy of it.
+    const double price = GetShipCatalog()[1].price * ShipPriceMultiplier(RepTier::Allied);
+    char         buf[64];
+    std::snprintf(buf, sizeof(buf), "for sale %.0f cr", price);
+    CHECK(Has(out, buf));
+    CHECK(price < GetShipCatalog()[1].price);
 }

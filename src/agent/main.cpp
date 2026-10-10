@@ -19,6 +19,7 @@
 #include "core/Faction.h"
 #include "core/WorldLoader.h"
 #include "economy/Resource.h"
+#include "entities/ShipType.h"
 #include "sim/Orders.h"
 
 #include "raylib.h"
@@ -76,12 +77,12 @@ double NumberOr(const Rpc::Json& args, const char* key, double fallback)
     return args.contains(key) && args[key].is_number() ? args[key].get<double>() : fallback;
 }
 
-// Sends an order and reports what the server made of it. The wait is short on purpose:
-// long enough for the server to acknowledge, not long enough to be mistaken for the order
 // The last journal entry handed to the model. Separate from the session's own cursor,
 // which only tracks what has been received (#113).
 int g_reportedEventSeq = 0;
 
+// Sends an order and reports what the server made of it. The wait is short on purpose:
+// long enough for the server to acknowledge, not long enough to be mistaken for the order
 // itself finishing -- that is what wait_for_event is for.
 std::string GiveOrder(const Proto::Command& cmd, const std::string& what)
 {
@@ -171,6 +172,14 @@ const std::vector<Prompt>& Prompts()
           "it, observe, and note the stations, asteroid fields and how much traffic and "
           "hostility you see. Report a short summary per system at the end. Do not pick "
           "fights; if a system looks dangerous, say so and move on." },
+        { "contract_work", "Take jobs from a station's board and earn from them",
+          "Work the job boards. Dock at a station and call missions to read its board. Take "
+          "work you can actually do with accept_mission: a mining job needs ore you can mine "
+          "nearby, a delivery needs only the trip, a bounty means fighting pirates -- judge "
+          "that from observe before taking one. Do the work, then dock where the job says and "
+          "complete_mission. If a faction has a bounty on you, pay_bounty before its ships "
+          "find you. When the hangar offers a ship that suits the work better and you can "
+          "afford it, buy_ship." },
         { "patrol", "Hold a system and deal with hostiles you can handle",
           "Patrol the system you are in. Observe regularly. If hostiles appear, judge "
           "whether you can take them from their hull and numbers, and disengage if not — "
@@ -253,6 +262,127 @@ int ResourceArg(const Rpc::Json& args)
     }
     throw Rpc::Error{ Rpc::INVALID_PARAMS,
                       "no resource called '" + r.get<std::string>() + "'; known: " + known };
+}
+
+// --- Station business (#109) --------------------------------------------------
+// Buying, switching, paying and handing in are not orders: there is no status to watch and
+// the server says nothing when it declines one. So each of these checks first what the
+// agent can see for itself -- the same snapshot a player's station screen reads -- and
+// names the reason, sends the command, waits for the server to acknowledge it, and then
+// reports what actually changed. The server stays the judge; the checks only make its
+// silence legible.
+
+Obs::View CurrentView()
+{
+    Obs::View v;
+    v.snapshot = g_session.HasSnapshot() ? &g_session.Snapshot() : nullptr;
+    v.layout = &g_session.Layout();
+    v.universe = &g_session.Universe();
+    v.galaxy = &g_session.Galaxy();
+    return v;
+}
+
+void RequireDocked(const char* what)
+{
+    if (!g_session.Snapshot().player.docked)
+        throw Rpc::Error{ Rpc::INVALID_PARAMS, std::string("not docked; ") + what +
+                                                   " happens at a station -- dock first" };
+}
+
+// An index argument, checked against how many there are, so a model that miscounted is told
+// what the valid numbers are rather than that nothing happened.
+int IndexArg(const Rpc::Json& args, const char* key, size_t count, const char* listedBy)
+{
+    if (!args.contains(key) || !args[key].is_number_integer())
+        throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                          std::string(key) + " is required: the number " + listedBy + " shows" };
+    const int i = args[key].get<int>();
+    if (count == 0)
+        throw Rpc::Error{ Rpc::INVALID_PARAMS, std::string("there is nothing to choose from; ") +
+                                                   "call " + listedBy + " to see why" };
+    if (i < 0 || i >= (int)count)
+        throw Rpc::Error{ Rpc::INVALID_PARAMS, std::string(key) + " must be 0.." +
+                                                   std::to_string((int)count - 1) +
+                                                   ", as numbered by " + listedBy };
+    return i;
+}
+
+std::string Lower(std::string s)
+{
+    for (char& ch : s)
+        ch = (char)std::tolower((unsigned char)ch);
+    return s;
+}
+
+// A ship by catalog name ("Hauler") or by its number in the hangar.
+int ShipArg(const Rpc::Json& args)
+{
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    if (args.contains("ship") && args["ship"].is_number_integer())
+    {
+        const int i = args["ship"].get<int>();
+        if (i >= 0 && i < (int)catalog.size())
+            return i;
+    }
+    else if (args.contains("ship") && args["ship"].is_string())
+    {
+        const std::string want = Lower(args["ship"].get<std::string>());
+        for (size_t i = 0; i < catalog.size(); i++)
+            if (Lower(catalog[i].name) == want)
+                return (int)i;
+    }
+    std::string known;
+    for (const ShipType& t : catalog)
+        known += (known.empty() ? "" : ", ") + t.name;
+    throw Rpc::Error{ Rpc::INVALID_PARAMS, "ship is a name from hangar; known: " + known };
+}
+
+bool OwnsShip(int index)
+{
+    for (int o : g_session.Snapshot().player.ownedShips)
+        if (o == index)
+            return true;
+    return false;
+}
+
+// The faction a bounty is paid to: the one named, or the owner of this station.
+FactionId FactionArg(const Rpc::Json& args)
+{
+    if (!args.contains("faction"))
+        return Obs::DockedFaction(CurrentView());
+    if (!args["faction"].is_string())
+        throw Rpc::Error{ Rpc::INVALID_PARAMS, "faction is a name, e.g. 'Syndicate'" };
+    const std::string want = Lower(args["faction"].get<std::string>());
+    std::string       known;
+    for (int i = 0; i < 4; i++)
+    {
+        const std::string name = FactionName((FactionId)i);
+        if (Lower(name) == want)
+            return (FactionId)i;
+        known += (known.empty() ? "" : ", ") + name;
+    }
+    throw Rpc::Error{ Rpc::INVALID_PARAMS, "no faction called '" +
+                                               args["faction"].get<std::string>() +
+                                               "'; known: " + known };
+}
+
+// Sends a station command and returns false, with the reason in `why`, if the server never
+// acknowledged it. Two seconds is forty snapshots; a missing acknowledgement means the
+// connection is in trouble, not that the server is thinking.
+bool Confirm(const Proto::Command& c, std::string& why)
+{
+    if (g_session.SendAndConfirm(c, 2.0))
+        return true;
+    RequireLive();  // a dead connection is the likelier story; say that if it is
+    why = "sent, but the server has not acknowledged it yet; call observe before retrying";
+    return false;
+}
+
+std::string Money(double cr)
+{
+    char buf[48];
+    std::snprintf(buf, sizeof(buf), "%.0f cr", cr);
+    return buf;
 }
 
 std::vector<Tool> BuildTools()
@@ -405,6 +535,205 @@ std::vector<Tool> BuildTools()
                           return std::string("sell sent; call observe to see the result");
                       } });
 
+    tools.push_back(
+        { "missions",
+          "The job board of the station you are docked at, and the missions you have taken: "
+          "what each asks, what it pays, where it is handed in and what it still needs. The "
+          "numbers are what accept_mission and complete_mission take.",
+          Obj({}), [](const Rpc::Json&)
+          {
+              RequireLive();
+              return Obs::DescribeMissions(CurrentView());
+          } });
+
+    tools.push_back(
+        { "accept_mission",
+          "Take a job from the board of the station you are docked at. It joins your active "
+          "missions and stays with you across systems until you hand it in.",
+          Obj({ { "offer", Num("offer number from missions") } }, { "offer" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              RequireDocked("taking work");
+              const Proto::Snapshot& before = g_session.Snapshot();
+              const int i = IndexArg(args, "offer", before.missionOffers.size(), "missions");
+              const Proto::MissionView taken = before.missionOffers[i];
+              const size_t             activeBefore = before.missionActive.size();
+
+              Proto::Command c;
+              c.acceptOffer = i;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "accept_mission: " + why;
+              const Proto::Snapshot& after = g_session.Snapshot();
+              if (after.missionActive.size() <= activeBefore)
+                  return std::string("accept_mission: the server did not take it; call "
+                                     "missions to see the board as it is now");
+              const Proto::MissionView& m = after.missionActive.back();
+              return "accept_mission: taken -- " + m.title + ", " + Money(m.rewardMoney) +
+                     ". It is active mission [" + std::to_string(after.missionActive.size() - 1) +
+                     "]; it needs: " +
+                     (m.completable ? std::string("nothing more, hand it in")
+                                    : Obs::MissionNeeds(CurrentView(), m)) +
+                     (taken.title == m.title ? "" : " (the board had changed)");
+          } });
+
+    tools.push_back(
+        { "complete_mission",
+          "Hand in an active mission at the station you are docked at, for its reward. A "
+          "bounty or mining job goes back to the station that gave it, a delivery to its "
+          "destination; mining hands over the ore from the hold.",
+          Obj({ { "mission", Num("active mission number from missions") } }, { "mission" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              RequireDocked("handing in work");
+              const Proto::Snapshot& before = g_session.Snapshot();
+              const int i = IndexArg(args, "mission", before.missionActive.size(), "missions");
+              const Proto::MissionView m = before.missionActive[i];
+              if (!m.completable)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "'" + m.title + "' cannot be handed in here yet; it needs: " +
+                                        Obs::MissionNeeds(CurrentView(), m) };
+              const double moneyBefore = before.player.money;
+              const size_t activeBefore = before.missionActive.size();
+
+              Proto::Command c;
+              c.completeMission = i;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "complete_mission: " + why;
+              const Proto::Snapshot& after = g_session.Snapshot();
+              if (after.missionActive.size() >= activeBefore)
+                  return std::string("complete_mission: the server did not accept the hand-in; "
+                                     "call missions to see what it still needs");
+              return "complete_mission: handed in '" + m.title + "' -- paid " +
+                     Money(after.player.money - moneyBefore) + ", money now " +
+                     Money(after.player.money);
+          } });
+
+    tools.push_back({ "hangar",
+                      "The ships you own, the one you are flying, and what every other hull "
+                      "costs at this station -- at the price you would actually pay, which "
+                      "depends on your standing with the station's owner.",
+                      Obj({}), [](const Rpc::Json&)
+                      {
+                          RequireLive();
+                          return Obs::DescribeHangar(CurrentView());
+                      } });
+
+    tools.push_back(
+        { "buy_ship",
+          "Buy a ship at the station you are docked at and fly it from now on. Your old ship "
+          "stays in the hangar; switch_ship goes back to it for free. Cargo capacity becomes "
+          "the new hull's.",
+          Obj({ { "ship", Str("ship name as hangar lists it, e.g. 'Hauler'") } }, { "ship" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              RequireDocked("buying a ship");
+              const int       i = ShipArg(args);
+              const ShipType& t = GetShipCatalog()[i];
+              if (OwnsShip(i))
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "you already own a " + t.name + "; use switch_ship" };
+              const Proto::PlayerView& p = g_session.Snapshot().player;
+              const FactionId          sf = Obs::DockedFaction(CurrentView());
+              const float              standing =
+                  (size_t)sf < p.reputation.size() ? p.reputation[(size_t)sf] : 0.0f;
+              const double price = t.price * ShipPriceMultiplier(Factions::TierOf(standing));
+              if (p.money < price)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "a " + t.name + " costs " + Money(price) +
+                                                             " here and you have " +
+                                                             Money(p.money) };
+              const double moneyBefore = p.money;
+
+              Proto::Command c;
+              c.buyShip = i;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "buy_ship: " + why;
+              if (!OwnsShip(i))
+                  return std::string("buy_ship: the server did not sell it; call hangar to see "
+                                     "the price and your money as they are now");
+              const Proto::PlayerView& after = g_session.Snapshot().player;
+              return "buy_ship: bought a " + t.name + " for " + Money(moneyBefore - after.money) +
+                     " and flying it -- cargo capacity " + std::to_string(t.stats.cargoCapacity) +
+                     ", money now " + Money(after.money);
+          } });
+
+    tools.push_back(
+        { "switch_ship",
+          "Fly another ship you already own, at the station you are docked at. "
+          "Free; hangar lists what you own.",
+          Obj({ { "ship", Str("ship name as hangar lists it, e.g. 'Scout'") } }, { "ship" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              RequireDocked("switching ships");
+              const int       i = ShipArg(args);
+              const ShipType& t = GetShipCatalog()[i];
+              if (g_session.Snapshot().player.shipIndex == i)
+                  return "switch_ship: already flying the " + t.name;
+              if (!OwnsShip(i))
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "you do not own a " + t.name + "; buy_ship first" };
+
+              Proto::Command c;
+              c.refitShip = i;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "switch_ship: " + why;
+              if (g_session.Snapshot().player.shipIndex != i)
+                  return std::string("switch_ship: the server did not switch; call "
+                                     "hangar to see what it says you own");
+              return "switch_ship: now flying the " + t.name + " -- cargo capacity " +
+                     std::to_string(t.stats.cargoCapacity);
+          } });
+
+    tools.push_back(
+        { "pay_bounty",
+          "Pay off the bounty a faction has on you, at a station, so its ships stop hunting "
+          "you. Costs the whole bounty. observe with detail='full' lists who wants you.",
+          Obj({ { "faction", Str("faction name; default: the faction that owns this station") } }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              RequireDocked("paying a bounty");
+              const FactionId          f = FactionArg(args);
+              const Proto::PlayerView& p = g_session.Snapshot().player;
+              const double owed = (size_t)f < p.bounty.size() ? p.bounty[(size_t)f] : 0.0;
+              if (owed <= 0.0)
+              {
+                  std::string wanted;
+                  for (size_t i = 0; i < p.bounty.size(); i++)
+                      if (p.bounty[i] > 0.0)
+                          wanted += (wanted.empty() ? "" : ", ") + FactionName((FactionId)i) + " " +
+                                    Money(p.bounty[i]);
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    FactionName(f) + " has no bounty on you" +
+                                        (wanted.empty() ? std::string("; nobody does")
+                                                        : "; wanted by: " + wanted) };
+              }
+              if (p.money < owed)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "the bounty is " + Money(owed) +
+                                                             " and you have " + Money(p.money) };
+              const double moneyBefore = p.money;
+
+              Proto::Command c;
+              c.payBountyFaction = (int)f;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "pay_bounty: " + why;
+              const Proto::PlayerView& after = g_session.Snapshot().player;
+              const double left = (size_t)f < after.bounty.size() ? after.bounty[(size_t)f] : 0.0;
+              if (left > 0.0)
+                  return std::string("pay_bounty: the server did not take the payment; call "
+                                     "observe with detail='full' to see the bounty now");
+              return "pay_bounty: paid " + Money(moneyBefore - after.money) + " to " +
+                     FactionName(f) + "; no longer wanted by them. Money now " + Money(after.money);
+          } });
+
     return tools;
 }
 
@@ -486,8 +815,9 @@ std::atomic<const char*> g_phase{ "starting" };
 // it does fire it says what it was waiting for and exits non-zero.
 //
 // The budget is the sum of the script's own waits with room to spare: connect 10 s, login
-// 10 s, first snapshot 5 s, two order acknowledgements of 2 s and the flight of 120 s.
-constexpr double SELFTEST_BUDGET_SECONDS = 240.0;
+// 10 s, first snapshot 5 s, two order acknowledgements of 2 s, the flight of 120 s, then
+// docking (60 s) and five station calls of about 2 s each.
+constexpr double SELFTEST_BUDGET_SECONDS = 270.0;  // under CI's own 300 s bound
 
 void StartSelftestWatchdog()
 {
@@ -564,7 +894,49 @@ int Selftest(const std::vector<Tool>& tools)
                           bogus.find("not in this system") != std::string::npos;
     note("bad target refused", refused);
 
-    const bool ok = observed && stationId != 0 && ordered && arrived && refused;
+    // 5) Station business (#109): dock, take a job, and be told plainly why a purchase and a
+    // payment cannot happen. A new account has 500 cr and no bounty, so both refusals are
+    // certain -- and a refusal that names its reason is the behaviour being tested.
+    bool docked = false, listed = false, accepted = false, unaffordable = false, noBounty = false;
+    if (arrived)
+    {
+        g_phase = "docking";
+        std::string reply = RunTool(tools, "dock", Rpc::Json{ { "station_id", stationId } });
+        if (reply.find("accepted") != std::string::npos)
+            g_session.WaitUntil([] { return g_session.Snapshot().player.docked; }, 60.0);
+        docked = g_session.Snapshot().player.docked;
+        note("docked", docked);
+    }
+    if (docked)
+    {
+        g_phase = "reading the job board";
+        g_session.WaitUntil([] { return !g_session.Snapshot().missionOffers.empty(); }, 2.0);
+        std::string board = RunTool(tools, "missions", Rpc::Json::object());
+        listed = board.find("OFFERS at") != std::string::npos;
+        note("missions lists a board", listed);
+
+        g_phase = "accepting a mission";
+        std::string take = RunTool(tools, "accept_mission", Rpc::Json{ { "offer", 0 } });
+        accepted = take.find("taken") != std::string::npos;
+        note("accept_mission", accepted);
+
+        g_phase = "asking the hangar";
+        std::string hangar = RunTool(tools, "hangar", Rpc::Json::object());
+        std::string buy = RunTool(tools, "buy_ship", Rpc::Json{ { "ship", "Miner" } });
+        unaffordable =
+            hangar.find("FLYING") != std::string::npos &&
+            (buy.find("costs") != std::string::npos || buy.find("bought") != std::string::npos);
+        note("hangar and buy_ship", unaffordable);
+
+        g_phase = "paying a bounty nobody has set";
+        std::string pay = RunTool(tools, "pay_bounty", Rpc::Json::object());
+        noBounty =
+            pay.find("no bounty") != std::string::npos || pay.find("paid") != std::string::npos;
+        note("pay_bounty", noBounty);
+    }
+
+    const bool ok = observed && stationId != 0 && ordered && arrived && refused && docked &&
+                    listed && accepted && unaffordable && noBounty;
     // A failure that is really a lost connection should say so, rather than leave a list of
     // FAILs to be read as five separate bugs.
     if (!ok && !g_session.ByeReason().empty())

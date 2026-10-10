@@ -11,3 +11,14 @@ const std::vector<ShipType>& GetShipCatalog()
     };
     return catalog;
 }
+
+float ShipPriceMultiplier(RepTier standing)
+{
+    switch (standing)
+    {
+        case RepTier::Hostile: return 1.15f;
+        case RepTier::Liked: return 0.92f;
+        case RepTier::Allied: return 0.85f;
+        default: return 1.0f;
+    }
+}
