@@ -783,7 +783,7 @@ TEST_CASE("a module with a latitude and a longitude is laid on the planet, not o
         { "form": "disc", "radius": 1.0 },
         { "module": "hatch", "variant": "round", "lat": 0, "lon": 0, "scale": 0.1,
           "row": { "count": 3, "step": [0.2, 0.0] }, "spin": 10.0 } ]})");
-    Render::Pose p = At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 10.0f);
+    Render::Pose        p = At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 10.0f);
 
     // Every piece of it is a surface piece, lit as the body and on the disc; when the
     // planet has turned it to face the viewer, all of it is there.
@@ -817,7 +817,7 @@ TEST_CASE("a module with a latitude and a longitude is laid on the planet, not o
     // A latitude may be a range, so a crater field is scattered differently per planet.
     const Render::Shape scattered = Parse(R"({ "tilt": 0, "parts": [
         { "module": "hatch", "variant": "round", "lat": [-60, 60], "lon": 0, "scale": 0.1 } ]})");
-    std::set<int> heights;
+    std::set<int>       heights;
     for (int seed = 1; seed <= 20; seed++)
         for (const Render::Piece& piece :
              Render::Compose(scattered, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 10.0f)))

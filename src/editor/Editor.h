@@ -56,8 +56,8 @@ public:
         shotPath_ = path;
         shotFrames_ = frames;
     }
-    std::string shotPath_;
-    int         shotFrames_ = 30;
+    std::string     shotPath_;
+    int             shotFrames_ = 30;
     RenderTexture2D shotTarget_ = {};
 
     // Opens straight into the survey (#141): the regions of consecutive seeds from `seed`,
