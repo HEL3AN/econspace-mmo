@@ -453,8 +453,25 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
     // which is how a sun ends up looking like a moon (#119).
     const bool emissive = Emissive(item);
 
-    for (const Piece& p : pieces)
+    for (const Piece& p0 : pieces)
     {
+        // A night-side part fades out where its body faces the light: the light's direction
+        // against the point's own direction from the body's centre, so it goes out across
+        // the terminator rather than at it (#240). With no light at all it is night.
+        Piece p = p0;
+        if (p.onlyDark)
+        {
+            const Vector2          body = p.surface ? p.bodyPos : item.pos;
+            const float            radius = p.surface ? p.bodyRadius : item.size;
+            const Lighting::Sample l = lighting_.At(body);
+            const float            r = radius > 0.0f ? radius : 1.0f;
+            const float day = ((p.pos.x - body.x) * l.dir.x + (p.pos.y - body.y) * l.dir.y) / r;
+            const float t = std::fmin(1.0f, std::fmax(0.0f, (day * l.strength + 0.15f) / 0.25f));
+            const float night = 1.0f - t * t * (3.0f - 2.0f * t);
+            if (night <= 0.01f)
+                continue;
+            p.brightness *= night;
+        }
         // A light dims with damage and with its own blink, and is never shaded: a lamp is
         // not lit by the star, it *is* a light, and shading one is how a beacon ends up
         // dark on its own night side.

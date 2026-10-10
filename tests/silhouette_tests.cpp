@@ -1018,3 +1018,23 @@ TEST_CASE("parts in a group come and go together (#240)")
     CHECK(both > 10);
     CHECK(none > 10);
 }
+
+TEST_CASE("a night-side part says so on its piece, through a module too (#240)")
+{
+    const Render::Shape s = Parse(R"([
+        { "form": "disc", "radius": 0.1, "role": "light", "onlyDark": true },
+        { "form": "disc", "radius": 0.1, "at": [0.5, 0] } ])");
+    const auto          pieces = Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f));
+    REQUIRE(pieces.size() == 2);
+    CHECK(pieces[0].onlyDark);
+    CHECK_FALSE(pieces[1].onlyDark);
+
+    std::string error;
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+    const Render::Shape city =
+        Parse(R"([ { "module": "settlement", "variant": "city", "scale": 0.3 } ])");
+    bool any = false;
+    for (const auto& p : Render::Compose(city, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 10.0f)))
+        any = any || (p.role == Render::Role::Light && p.onlyDark);
+    CHECK(any);
+}

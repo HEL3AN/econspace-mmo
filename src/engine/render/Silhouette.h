@@ -140,6 +140,9 @@ struct Part
     float spin = 0.0f;            // degrees per second about the object's centre
     float blink = 0.0f;           // seconds per cycle; 0 is a steady light
     bool  onlyThrusting = false;  // drawn only while the object's engine is burning
+    // Seen only on the side turned away from the light (#240): a city's lights, an aurora,
+    // a station's lit windows. Lit cities in daylight are what made them have to be faint.
+    bool onlyDark = false;
 
     // A part's own colour (#214), in place of the object's: hot cracks on a dark world,
     // crystal glints in a grey belt, a red warning lamp on a grey hull. Still an art
@@ -300,6 +303,9 @@ struct Piece
     bool    surface = false;
     Vector2 bodyPos = { 0.0f, 0.0f };
     float   bodyRadius = 0.0f;
+
+    // Faded out on the lit side of the body it belongs to; the backend knows the light.
+    bool onlyDark = false;
 
     // A band is not a primitive: it is the visible part of a latitude strip, projected.
     // Stored as a strip -- upper edge and lower edge alternating -- in world coordinates.
