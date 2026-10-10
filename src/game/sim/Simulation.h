@@ -336,7 +336,10 @@ public:
     // station, inside docking reach, so a new player's first choice is to dock or to
     // fly. A fixed point would do until the bodies grow (#159) -- then any constant lands
     // inside a star somewhere.
-    Vector2 SafeArrival(const std::string& systemId) const;
+    // Where a ship appears without a gate: beside a station that would take this player,
+    // else clear of every gun that would fire on them and of the stars (#224). Without a
+    // session, beside the first station.
+    Vector2 SafeArrival(const std::string& systemId, const ClientSession* who = nullptr) const;
 
     double Time() const { return time_; }
     void   SetTime(double t) { time_ = t; }
