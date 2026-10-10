@@ -3,6 +3,7 @@
 #include "core/Archetype.h"
 #include "render/Modules.h"
 #include "render/Silhouette.h"
+#include <algorithm>
 #include <cmath>
 #include <set>
 #include <nlohmann/json.hpp>
@@ -770,4 +771,56 @@ TEST_CASE("a range, a palette and a chance make one written part a family (#240)
     CHECK(colours.size() == 3);
     CHECK(withDisc > 10);
     CHECK(withDisc < 50);
+}
+
+TEST_CASE("a module with a latitude and a longitude is laid on the planet, not on the disc (#240)")
+{
+    std::string error;
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+
+    // A row of three hatches as a "base", facing the viewer, a tenth of the planet across.
+    const Render::Shape s = Parse(R"({ "tilt": 0, "parts": [
+        { "form": "disc", "radius": 1.0 },
+        { "module": "hatch", "variant": "round", "lat": 0, "lon": 0, "scale": 0.1,
+          "row": { "count": 3, "step": [0.2, 0.0] }, "spin": 10.0 } ]})");
+    Render::Pose p = At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 10.0f);
+
+    // Every piece of it is a surface piece, lit as the body and on the disc; when the
+    // planet has turned it to face the viewer, all of it is there.
+    int most = 0;
+    for (int i = 0; i < 36; i++)
+    {
+        p.time = (float)i;
+        int onSurface = 0;
+        for (const Render::Piece& piece : Render::Compose(s, p))
+            if (piece.surface)
+            {
+                onSurface++;
+                CHECK(piece.bodyRadius == doctest::Approx(100.0f));
+                CHECK(Dist(piece.pos, { 0.0f, 0.0f }) <= 100.0f + 0.01f);
+            }
+        most = std::max(most, onSurface);
+    }
+    const size_t perHatch = Render::Modules::Find("hatch")->variants[1].shape.parts.size();
+    CHECK(most == (int)(3 * perHatch));
+
+    // The planet's turn carries the whole base round the back and out again.
+    int hidden = 0;
+    for (int i = 0; i < 36; i++)
+    {
+        p.time = (float)i;
+        if (Render::Compose(s, p).size() == 1)
+            hidden++;
+    }
+    CHECK(hidden > 8);
+
+    // A latitude may be a range, so a crater field is scattered differently per planet.
+    const Render::Shape scattered = Parse(R"({ "tilt": 0, "parts": [
+        { "module": "hatch", "variant": "round", "lat": [-60, 60], "lon": 0, "scale": 0.1 } ]})");
+    std::set<int> heights;
+    for (int seed = 1; seed <= 20; seed++)
+        for (const Render::Piece& piece :
+             Render::Compose(scattered, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 10.0f)))
+            heights.insert((int)piece.pos.y);
+    CHECK(heights.size() > 5);
 }

@@ -180,7 +180,9 @@ struct Part
         Scale,
         RowCount,
         Sides,
-        Count
+        Count,
+        Lat,
+        Lon
     };
     struct Vary
     {
