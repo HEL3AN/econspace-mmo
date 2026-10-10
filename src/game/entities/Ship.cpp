@@ -160,10 +160,37 @@ void Ship::UpdateHold(Vector2 targetPos, Vector2 targetVel)
     }
     float ux = dx / dist, uy = dy / dist;
 
+    // Where on the ring the ship is aiming. A ship heading for a point a lead angle further
+    // round settles where that heading is tangent, which is the aim circle's radius times
+    // cos(lead): aimed at the ring itself it circled at 0.88 of the range asked for -- 2600
+    // for an orbit at 3000, as the overview said. So the aim is pushed out by exactly that.
+    float aim = holdRange_;
+    if (holdMode_ == HoldMode::Orbit)
+        aim /= cosf(ORBIT_LEAD_DEGREES * DEG2RAD);
+
+    // Every hold is flown as a tether (#309): the target's motion fed forward, plus a
+    // correction towards the aim point, and never "arrived". Arriving stops the ship, and a
+    // stopped ship beside a planet that goes 50 a second is off the ring again in seconds;
+    // a keep that parked inside a tolerance of 8% of its range waited until a planet had
+    // carried it 1440 out of an 18 000 ring, then lurched back at full thrust, over and
+    // over. Nothing in the loop scales with the range any more (see RunAutopilot).
+    //
+    // What is fed forward is what the order asks the ship to hold:
+    //  - follow: the distance and the bearing, so all of the target's velocity;
+    //  - orbit: a circle round the target, so all of it too -- the circle is flown in the
+    //    target's frame, and is the same circle whether the target moves or not;
+    //  - keep: the distance only, so only the part of the velocity along the line to the
+    //    target. The target slides past sideways and the ship moves no more than it must.
+    Vector2 carry = targetVel;
+    if (holdMode_ == HoldMode::Keep)
+    {
+        const float along = targetVel.x * ux + targetVel.y * uy;
+        carry = { ux * along, uy * along };
+    }
     if (holdMode_ == HoldMode::Orbit)
     {
         // Aim at a point further round the circle than the ship currently is, so it keeps
-        // moving instead of converging. Aiming *at* the ring would stop the ship on it.
+        // moving instead of converging; aiming *at* the ring would stop the ship on it.
         const float a = ORBIT_LEAD_DEGREES * DEG2RAD;
         const float cs = cosf(a), sn = sinf(a);
         const float rx = ux * cs - uy * sn;
@@ -171,29 +198,8 @@ void Ship::UpdateHold(Vector2 targetPos, Vector2 targetVel)
         ux = rx;
         uy = ry;
     }
-
-    // Fly to the ring and stop there. For an orbit the aim point keeps moving ahead, so
-    // arriving never happens and the ship circles; for a keep it does, and stopping is
-    // exactly right.
-    //
-    // A ship heading for a point a lead angle further round settles where that heading is
-    // tangent, which is the aim circle's radius times cos(lead): aimed at the ring itself
-    // it circled at 0.88 of the range asked for -- 2600 for an orbit at 3000, as the
-    // overview said. So the aim is pushed out by exactly that much.
-    float aim = holdRange_;
-    if (holdMode_ == HoldMode::Orbit)
-        aim /= cosf(ORBIT_LEAD_DEGREES * DEG2RAD);
-    if (holdMode_ == HoldMode::Follow)
-    {
-        // The ring at the bearing the ship already has, as for a keep, but flown as a
-        // tether: never "arrived", always moving with the target plus a correction towards
-        // the ring. Arriving would stop the ship, and a stopped ship is left behind by
-        // anything that moves.
-        EngageAutopilot({ targetPos.x + ux * aim, targetPos.y + uy * aim }, 0.0f);
-        apCarry_ = targetVel;
-        return;
-    }
-    EngageAutopilot({ targetPos.x + ux * aim, targetPos.y + uy * aim }, holdRange_ * 0.08f);
+    EngageAutopilot({ targetPos.x + ux * aim, targetPos.y + uy * aim }, 0.0f);
+    apCarry_ = carry;
 }
 
 void Ship::EngageWarp(Vector2 target, float dropDistance, bool hasVia, Vector2 via)
@@ -372,28 +378,42 @@ void Ship::RunAutopilot(float dt)
     float dy = apTarget_.y - pos_.y;
     float dist = sqrtf(dx * dx + dy * dy);
 
-    if (holdMode_ == HoldMode::Follow)
+    if (holdMode_ != HoldMode::None)
     {
-        // The target's velocity plus a pull towards the aim point that shrinks as it
-        // closes: a first-order loop around a moving point, which settles on it rather than
-        // circling it. Capped at what the ship can do -- a target faster than that is
-        // simply not kept up with.
+        // A hold (#157, #298, #309): the target's motion plus a pull towards the aim point,
+        // a first-order loop around a moving point which settles on it rather than circling
+        // it. Nothing in it is proportional to the range -- the pull depends on how far the
+        // ship is from where it should be, not on how big the ring is -- so a hold at
+        // 60 000 is the same loop as one at 500.
+        //
+        // The pull is the gentler of two limits: closing at 1.5 times the distance, and
+        // the speed the stabilizer can still brake from with part of its push before
+        // reaching the point. The first alone asks for a deceleration of 1.5 times the
+        // speed, which at full speed is more than a hauler has, and it overshot.
+        //
+        // And it is capped so that pull and feed-forward together are within what the ship
+        // can do: the feed-forward comes first, and the pull gets what is left. An orbit is
+        // then a steady circle round a moving target rather than one that surges with the
+        // target's motion and stalls against it. A target faster than the ship is simply
+        // not kept up with.
+        const float carry = sqrtf(apCarry_.x * apCarry_.x + apCarry_.y * apCarry_.y);
         Vector2     want = apCarry_;
-        const float pull = fminf(dist * 1.5f, MaxSpeed());
+        if (carry > MaxSpeed())
+        {
+            want.x *= MaxSpeed() / carry;
+            want.y *= MaxSpeed() / carry;
+        }
+        float pull = fminf(dist * 1.5f, sqrtf(2.0f * HOLD_BRAKE_SHARE * RcsAccel() * dist));
+        pull = fminf(pull, fmaxf(MaxSpeed() - carry, 0.0f));
         if (dist > 0.001f)
         {
             want.x += dx / dist * pull;
             want.y += dy / dist * pull;
         }
-        const float sp = sqrtf(want.x * want.x + want.y * want.y);
-        if (sp > MaxSpeed())
-        {
-            want.x *= MaxSpeed() / sp;
-            want.y *= MaxSpeed() / sp;
-        }
         desiredVelocity_ = want;
 
         // The nose follows the way the ship is going, once it is going anywhere.
+        const float sp = sqrtf(want.x * want.x + want.y * want.y);
         if (sp > 5.0f)
         {
             float diff = atan2f(want.y, want.x) - heading_;

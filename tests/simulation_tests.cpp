@@ -1366,6 +1366,236 @@ TEST_CASE("a follow order stays with an orbiting station, and prediction keeps u
     CHECK(f.s.ship->GetHoldMode() == HoldMode::None);
 }
 
+// --- Holding station on a planet or a station that moves (#309) ---
+
+namespace
+{
+// Something going round something else, placed the way Orbits::Place places it (#210): a
+// planet round the star, and a station round a planet that is itself going round. The
+// speeds are the generator's: a planet goes 28 to 52 a second, a moon 20 to 50 on top.
+struct Mover
+{
+    float   planetRadius = 150000.0f, planetSpeed = 52.0f;
+    float   moonRadius = 0.0f, moonSpeed = 0.0f;  // zero: the planet itself
+    Vector2 At(double t) const
+    {
+        const double a = (double)planetSpeed / planetRadius * t;
+        Vector2      p{ (float)std::cos(a) * planetRadius, (float)std::sin(a) * planetRadius };
+        if (moonRadius > 0.0f)
+        {
+            const double b = (double)moonSpeed / moonRadius * t;
+            p.x += (float)std::cos(b) * moonRadius;
+            p.y += (float)std::sin(b) * moonRadius;
+        }
+        return p;
+    }
+    Vector2 VelAt(double t) const
+    {
+        const double a = (double)planetSpeed / planetRadius * t;
+        Vector2      v{ -(float)std::sin(a) * planetSpeed, (float)std::cos(a) * planetSpeed };
+        if (moonRadius > 0.0f)
+        {
+            const double b = (double)moonSpeed / moonRadius * t;
+            v.x += -(float)std::sin(b) * moonSpeed;
+            v.y += (float)std::cos(b) * moonSpeed;
+        }
+        return v;
+    }
+};
+
+// How a hold behaved once it had settled: the worst miss of the ring, the hardest the
+// ship was pushed, the fastest it moved along the line to the target, and how steady its
+// speed round the target was.
+struct HoldRun
+{
+    float worstMiss = 0.0f;                // |distance - range|
+    float worstAccel = 0.0f;               // |dv| over a second, of the ship itself
+    float worstRadial = 0.0f;              // |(ship - target velocity) . line of sight|
+    float slowest = 1e9f, fastest = 0.0f;  // |ship - target velocity|
+};
+
+HoldRun FlyHold(int navMode, float range, const ShipStats& stats, const Mover& m,
+                float settleSeconds, float watchSeconds)
+{
+    double        t = 0.0;
+    const Vector2 c0 = m.At(t);
+    // Off the ring and at rest -- so it starts by being run at or run from.
+    Ship s({ c0.x + range * 1.05f, c0.y + range * 0.1f }, stats);
+    s.SetStabilizerOn(true);
+
+    Proto::Command cmd;
+    cmd.navMode = navMode;
+    cmd.navHoldId = 1;
+    cmd.navRange = range;
+    Sim::HoldTarget target{ m.At(t), m.VelAt(t) };
+    Sim::StepPlayerShip(s, cmd, 1.0f, Sim::SIM_DT, &target);
+
+    HoldRun r;
+    // A second of velocities, oldest at the front. A lurch is a change of velocity over
+    // a second, not tick to tick: there a position a few hundred thousand out is a float
+    // with a few hundredths of precision, and the loop's gain turns that into noise.
+    std::deque<Vector2> vels;
+    const int           settle = (int)(settleSeconds * 60.0f), watch = (int)(watchSeconds * 60.0f);
+    for (int i = 0; i < settle + watch; i++)
+    {
+        t += Sim::SIM_DT;
+        target = { m.At(t), m.VelAt(t) };
+        Sim::StepPlayerShip(s, Proto::Command{}, 1.0f, Sim::SIM_DT, &target);
+        const Vector2 v = s.GetVelocity();
+        vels.push_back(v);
+        if (vels.size() > 61)
+            vels.pop_front();
+        if (i >= settle)
+        {
+            const Vector2 off = Vector2Subtract(s.GetPosition(), target.pos);
+            const float   d = Vector2Length(off);
+            const Vector2 rel = Vector2Subtract(v, target.vel);
+            r.worstMiss = std::max(r.worstMiss, std::fabs(d - range));
+            r.worstAccel = std::max(r.worstAccel, Vector2Length(Vector2Subtract(v, vels.front())));
+            r.worstRadial = std::max(r.worstRadial, std::fabs(Vector2DotProduct(rel, off) / d));
+            r.slowest = std::min(r.slowest, Vector2Length(rel));
+            r.fastest = std::max(r.fastest, Vector2Length(rel));
+        }
+    }
+    return r;
+}
+
+std::vector<Mover> MovingTargets()
+{
+    Mover planet;
+    Mover station;
+    station.planetRadius = 300000.0f;
+    station.moonRadius = 30000.0f;
+    station.moonSpeed = 50.0f;
+    return { planet, station };
+}
+}  // namespace
+
+TEST_CASE("keep-at-range settles on the ring round a moving planet and stays there (#309)")
+{
+    for (const Mover& m : MovingTargets())
+        for (const size_t hull : { (size_t)0, (size_t)2 })  // the scout and the slow hauler
+            for (const float range : { 500.0f, 3000.0f, 18000.0f, 60000.0f })
+            {
+                const HoldRun r =
+                    FlyHold(4, range, GetShipCatalog()[hull].stats, m, 240.0f, 240.0f);
+                CAPTURE(m.moonRadius);
+                CAPTURE(hull);
+                CAPTURE(range);
+                CHECK(r.worstMiss < 20.0f);   // on the ring, however large it is...
+                CHECK(r.worstRadial < 5.0f);  // ...not lurching in and out of it...
+                CHECK(r.worstAccel < 5.0f);   // ...and not being shoved about to stay there
+            }
+}
+
+TEST_CASE("an orbit round a moving planet is a steady circle at any range (#309)")
+{
+    for (const Mover& m : MovingTargets())
+        for (const size_t hull : { (size_t)0, (size_t)2 })
+            for (const float range : { 500.0f, 3000.0f, 18000.0f, 60000.0f })
+            {
+                // A lap at sixty thousand takes the scout a quarter of an hour; the circle
+                // is judged over long enough to go a fair way round it.
+                const float   settle = range > 20000.0f ? 600.0f : 240.0f;
+                const HoldRun r =
+                    FlyHold(3, range, GetShipCatalog()[hull].stats, m, settle, 240.0f);
+                CAPTURE(m.moonRadius);
+                CAPTURE(hull);
+                CAPTURE(range);
+                CHECK(r.worstMiss < 20.0f + range * 0.002f);
+                // Round the target at a steady pace: not surging and stalling as the
+                // target's own motion adds to the ship's and then takes away from it.
+                CHECK(r.fastest - r.slowest < r.fastest * 0.1f);
+            }
+}
+
+TEST_CASE("keep and orbit round a moving planet: the server and the prediction agree (#309)")
+{
+    // Keep at 18 000 from a planet was the playtest's case; 3000 from a station going round
+    // one is the close version of it.
+    struct Case
+    {
+        Orders::Kind kind;
+        int          navMode;
+        bool         planet;
+        float        range;
+    };
+    for (const Case c : { Case{ Orders::Kind::Keep, 4, true, 18000.0f },
+                          Case{ Orders::Kind::Keep, 4, false, 3000.0f },
+                          Case{ Orders::Kind::Orbit, 3, true, 18000.0f },
+                          Case{ Orders::Kind::Orbit, 3, false, 3000.0f } })
+    {
+        CAPTURE(c.navMode);
+        CAPTURE(c.range);
+        Fixture       f;
+        Entity* const station = AddOrbitingStation(f);
+        Entity*       planet = nullptr;
+        for (auto& e : f.World().entities)
+            if (e->GetKind() == EntityKind::Planet && e->GetSize() == 15000.0f)
+                planet = e.get();
+        REQUIRE(planet != nullptr);
+        planet->SetId(43);
+        Entity* const target = c.planet ? planet : station;
+        const Vector2 at = target->GetPosition();
+        f.s.ship->Teleport({ at.x + c.range * 1.1f, at.y + 400.0f });
+
+        Orders::Order o;
+        o.kind = c.kind;
+        o.targetId = target->GetId();
+        o.stopDist = c.range;
+        REQUIRE(f.sim.GiveOrder(f.s, o) > 0);
+
+        // The client: the same step, told where the target was a render delay ago (six
+        // ticks) and how fast the snapshots say it goes -- as for a follow (#298).
+        Ship           client = *f.s.ship;
+        Proto::Command nav;
+        nav.navMode = c.navMode;
+        nav.navHoldId = target->GetId();
+        nav.navRange = c.range;
+        bool                first = true;
+        std::deque<Vector2> seen;
+        double              t = 0.0;
+        const float         dt = Sim::SIM_DT;
+        float               worstServer = 0.0f, worstClient = 0.0f, worstApart = 0.0f;
+        for (int i = 0; i < 60 * 240; i++)
+        {
+            t += dt;
+            Orbits::Place(f.World().entities, t);
+            f.sim.StepPlayerAttachment(f.s, dt);
+            f.sim.StepPlayerOrder(f.s, f.World(), dt);
+
+            seen.push_back(target->GetPosition());
+            if (seen.size() > 7)
+                seen.pop_front();
+            const Vector2   late = seen.front();
+            const Vector2   later = seen.size() > 1 ? seen[1] : late;
+            Sim::HoldTarget proxy{ late, { (later.x - late.x) / dt, (later.y - late.y) / dt } };
+            Sim::StepPlayerShip(client, first ? nav : Proto::Command{}, 1.0f, dt, &proxy);
+            first = false;
+
+            if (i >= 60 * 120)
+            {
+                worstServer = std::max(
+                    worstServer,
+                    std::fabs(Vector2Distance(f.s.ship->GetPosition(), target->GetPosition()) -
+                              c.range));
+                worstClient = std::max(
+                    worstClient, std::fabs(Vector2Distance(client.GetPosition(), late) - c.range));
+                worstApart = std::max(
+                    worstApart, Vector2Distance(f.s.ship->GetPosition(), client.GetPosition()));
+            }
+        }
+        CHECK(Vector2Distance(at, target->GetPosition()) > 5000.0f);  // it moved, a long way
+        CHECK(f.s.orderStatus == Orders::Status::Running);
+        CHECK(worstServer < 30.0f);
+        CHECK(worstClient < 30.0f);
+        // Both on the ring, and apart by about what the target moves in the render delay:
+        // the one difference CLAUDE.md allows a standing hold. An orbit's ring is the same
+        // one, so the two ships are at the same place on it.
+        CHECK(worstApart < 40.0f);
+    }
+}
+
 TEST_CASE("the region hangs off the start system by a wormhole, and its seed is saved (#140)")
 {
     Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");

@@ -715,7 +715,8 @@ void Game::OpenContextMenu(Entity* target)
             items.push_back({ TextFormat("Orbit at %.0f", range),
                               [this, tid, range]() { OrderHold(3, tid, range); } });
         }
-        items.push_back({ TextFormat("Keep at %.0f", base * HOLD_RANGES[1]),
+        // Named for what it does (#309): hold this distance from it, wherever it goes.
+        items.push_back({ TextFormat("Hold %.0f from it", base * HOLD_RANGES[1]),
                           [this, tid, base]() { OrderHold(4, tid, base * HOLD_RANGES[1]); } });
         // Matching its velocity as well as its distance: the one that stays with a station
         // going round a planet rather than arriving behind it (#298).

@@ -35,8 +35,9 @@ inline constexpr float SIM_DT = 1.0f / 60.0f;
 inline constexpr float MAX_CATCHUP_SECONDS = 0.25f;
 
 // Where the object a ship is holding station on is, and how fast it is going. The
-// velocity is what lets a follow (#298) match a moving target instead of chasing the
-// place it was a moment ago; orbit and keep-at-range only read the position.
+// velocity is what lets a hold match a moving target instead of chasing the place it was a
+// moment ago: all of it for a follow (#298) and an orbit, the part along the line of sight
+// for a keep (#309).
 struct HoldTarget
 {
     Vector2 pos = { 0.0f, 0.0f };
