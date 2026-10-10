@@ -149,6 +149,11 @@ own direction. A `pivot` on a ring row swings each copy about its own joint.
 before it is turned (`[-0.5, 0]` is the left end of a bar of length 1). A crane jib or a clamp
 jaw with a ranged angle then swings about its joint instead of drifting off its mount.
 
+**Draw order.** `"z"` on any part: parts are drawn by depth (orbits), then by `z`, then as
+written. Below 0 is under the hull -- wings beneath a fuselage, an engine block whose nozzle
+shows behind the tail -- above 0 is on it. A module's parts take its placement's `z` plus their
+own.
+
 **Night side.** `"onlyDark": true` fades a part out where its body faces the light, across
 the terminator rather than at it: a city's lights, an aurora, a station's lit windows. On a
 planet the body is the planet; elsewhere it is the object itself.
@@ -189,12 +194,18 @@ Each kit line names a module (`"of": "id"`, or `"#tag"` for any module carrying 
 `count` (a range: every whole number in it equally likely), the socket type `on` (default: the
 module's first `sockets` entry), and optionally `in` (only on that section, by index), `scale`
 (module radius, default from the pitch), `turn` (degrees added to the outward direction),
-`inset` (in module radii: 1 puts the module wholly on the hull, the default; 0 centres it on the
-edge; -1 hangs it outside), and `variant` (pinned; otherwise the seed picks one for the whole
-line, so a row is a row of the same thing).
+`mount` (how the module meets the socket, measured by the module's own box rather than its
+origin: `"on"`, the default, lies wholly on the hull with its edge at the hull's; `"out"` starts
+at the edge and stands out from it -- docks, engines, dishes on booms; `"centre"` is centred on
+the socket; a `top` socket always centres), `z` (draw order, default 1: over the hull), and
+`variant` (pinned; otherwise the seed picks one for the whole line, so a row is a row of the
+same thing).
 
-The seed places them, within the rules against mush: a line's modules are spread evenly along
-one line of sockets; each section keeps `plain` (default 0.4) of its sockets empty; with
+**The seed decides what and how many; rules decide where.** A kit line goes on the longest free
+line of sockets of its kind; on a straight line its modules are spread evenly and symmetric
+about the middle, on a closed rim they spread from the socket that faces furthest out from the
+object (a pod's dock is on its far side, not facing the hub); a placed module covers the
+sockets under it, so nothing is put on top of it; each section keeps `plain` (default 0.4) of its sockets empty; with
 `"symmetry": "bilateral"` every module on one side is mirrored onto the other, its shape
 reflected, and with `"radial"` a placement on one copy of a repeated section is repeated on
 every copy (the count is then per copy). An unknown module or a tag nobody carries is a load

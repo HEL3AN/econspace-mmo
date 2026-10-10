@@ -1,6 +1,7 @@
 #include "render/Modules.h"
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <raylib.h>
 #include <nlohmann/json.hpp>
@@ -11,6 +12,33 @@ namespace
 {
 using json = nlohmann::json;
 std::vector<Module> g_modules;
+
+// The box a variant covers in its own unit: composed as the game would draw it -- rows,
+// rings and turns laid out, ranges at one seed -- and measured from the pieces, so a
+// drawing that is all on one side of its origin is mounted by where it actually is.
+Rectangle Bounds(const Shape& s)
+{
+    Pose pose;
+    pose.size = 1.0f;
+    pose.pixelsPerUnit = 1000.0f;  // every detail present, whatever its minPixels
+    pose.thrusting = true;
+    float lo[2] = { 1e9f, 1e9f }, hi[2] = { -1e9f, -1e9f };
+    for (const Piece& p : Compose(s, pose))
+    {
+        const bool  round = p.form == Form::Disc || p.form == Form::Ring ||
+                            p.form == Form::Polygon || p.form == Form::Arc;
+        const float r = round ? p.radius : 0.5f * std::hypot(p.length, p.width);
+        if (p.form == Form::Band)
+            continue;
+        lo[0] = std::min(lo[0], p.pos.x - r);
+        lo[1] = std::min(lo[1], p.pos.y - r);
+        hi[0] = std::max(hi[0], p.pos.x + r);
+        hi[1] = std::max(hi[1], p.pos.y + r);
+    }
+    if (lo[0] > hi[0])
+        return { -1.0f, -1.0f, 2.0f, 2.0f };
+    return { lo[0], lo[1], hi[0] - lo[0], hi[1] - lo[1] };
+}
 
 std::vector<std::string> Strings(const json& o, const char* key)
 {
@@ -132,6 +160,7 @@ bool LoadFile(const std::string& path, std::string& error)
                             "sphere or be modules themselves";
                     return false;
                 }
+            v.bounds = Bounds(v.shape);
             m.variants.push_back(std::move(v));
         }
         g_modules.push_back(std::move(m));

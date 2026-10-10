@@ -259,8 +259,8 @@ static bool ParseKit(const json& k, Kit& kit, std::string& error)
     for (const json& m : k["modules"])
     {
         if (!m.is_object() ||
-            !OnlyKnownKeys(m, { "of", "count", "on", "scale", "turn", "variant", "in", "inset" },
-                           error))
+            !OnlyKnownKeys(
+                m, { "of", "count", "on", "scale", "turn", "variant", "in", "mount", "z" }, error))
         {
             if (error.empty())
                 error = "a kit line is { \"of\", \"count\", \"on\", ... }";
@@ -303,7 +303,13 @@ static bool ParseKit(const json& k, Kit& kit, std::string& error)
         e.turn = m.value("turn", 0.0f);
         e.variant = m.value("variant", std::string());
         e.in = m.value("in", -1);
-        e.inset = m.value("inset", e.inset);
+        e.mount = m.value("mount", e.mount);
+        if (e.mount != "on" && e.mount != "out" && e.mount != "centre")
+        {
+            error = "a kit line's \"mount\" is on, out or centre";
+            return false;
+        }
+        e.z = m.value("z", e.z);
         kit.entries.push_back(e);
     }
     return true;
@@ -430,7 +436,8 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
                      "lat",      "lon",         "spin",        "blink",       "onlyThrusting",
                      "tint",     "from",        "to",          "row",         "module",
                      "variant",  "scale",       "chance",      "group",       "pivot",
-                     "onlyDark", "tip",         "jagged",      "soft",        "pitch" },
+                     "onlyDark", "tip",         "jagged",      "soft",        "pitch",
+                     "z" },
                 error))
             return false;
         Part p;
@@ -647,6 +654,7 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         p.soft = e.value("soft", p.soft);
         p.section = isSection;
         p.pitch = e.value("pitch", p.pitch);
+        p.z = e.value("z", p.z);
         if (!field("tip", p.tip, Part::Field::Tip) ||
             !field("jagged", p.jagged, Part::Field::Jagged))
             return false;
@@ -990,6 +998,7 @@ void ExpandOnSphere(const Part& p, const ModuleVariant& v, int seed, int salt, S
                     q.repeat = p.repeat;
                     q.mirror = p.mirror;
                     q.spin = p.spin;
+                    q.z = mp.z + p.z;
                     out.parts.push_back(q);
                 }
             }
@@ -1123,6 +1132,7 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
                             q.repeat = 1;
                             q.mirror = false;
                             q.spin = 0.0f;
+                            q.z = mp.z + p.z;  // the placement's layer, then the module's own order
                             out.parts.push_back(q);
                         }
                     }
@@ -1227,6 +1237,7 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
                 piece.brightness = brightness;
                 piece.tint = p.tint;
                 piece.onlyDark = p.onlyDark;
+                piece.z = p.z;
                 piece.tip = p.tip;
                 piece.jagged = p.jagged;
                 piece.jagSeed = (int)(Hash01(seed, salt + 337 + m * 7) * 1000000.0f);
@@ -1345,8 +1356,8 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
     // Back to front, so the body hides what is behind it and covers nothing in front.
     // Stable, so parts that share a depth -- everything that is simply part of the object
     // -- keep the order the shape was written in.
-    std::stable_sort(out.begin(), out.end(),
-                     [](const Piece& a, const Piece& b) { return a.depth < b.depth; });
+    std::stable_sort(out.begin(), out.end(), [](const Piece& a, const Piece& b)
+                     { return a.depth < b.depth || (a.depth == b.depth && a.z < b.z); });
     return out;
 }
 

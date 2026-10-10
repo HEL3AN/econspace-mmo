@@ -29,6 +29,10 @@ struct ModuleVariant
 {
     std::string id;
     Shape       shape;
+    // What the variant covers in its own unit, from its parts as written (a range counts at
+    // its low end). A kit mounts a module by this box, not by its origin: a drawing that
+    // starts at its origin and runs one way would otherwise hang off the hull it is on.
+    Rectangle bounds = { -1.0f, -1.0f, 2.0f, 2.0f };
 };
 
 struct Module
