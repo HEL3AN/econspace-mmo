@@ -72,6 +72,7 @@ ctest --test-dir build --output-on-failure
 ./build/bin/server/econserver.exe accttest          # account persistence smoke test
 ./build/bin/server/econserver.exe worldtest         # galaxy persistence + clock
 ./build/bin/server/econserver.exe ordertest         # standing orders, routes, journal
+./build/bin/server/econserver.exe regiondump 8     # the region seed 8 makes, as JSON (it is never saved)
 ```
 
 Windows/MinGW and Linux/GCC, both built by CI (#12). The transport picks winsock or
