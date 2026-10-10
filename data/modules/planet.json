@@ -270,12 +270,12 @@
             "tags": ["surface", "weather"],
             "sockets": ["sphere"],
             "variants": [
-                { "id": "cyclone", "shape": { "vars": { "n": [5, 7], "tw": [-30, -20], "tp": [0.82, 0.9] }, "parts": [
-                    {"form": "disc", "radius": [0.75, 0.9], "role": "trim", "tint": [235, 238, 242], "alpha": [0.25, 0.35]},
-                    {"form": "disc", "at": [0.14, 0.0], "radius": 0.28, "role": "trim", "tint": [240, 242, 246], "alpha": 0.45, "row": {"count": "$n", "step": [0.0, [0.16, 0.2]], "turn": "$tw", "taper": "$tp"}},
-                    {"form": "disc", "at": [-0.14, 0.0], "radius": 0.28, "role": "trim", "tint": [240, 242, 246], "alpha": 0.45, "row": {"count": "$n", "step": [0.0, [-0.2, -0.16]], "turn": "$tw", "taper": "$tp"}},
-                    {"form": "disc", "radius": [0.3, 0.4], "role": "trim", "tint": [245, 246, 250], "alpha": 0.65},
-                    {"form": "disc", "radius": [0.08, 0.12], "role": "panel", "alpha": 0.9}
+                { "id": "cyclone", "shape": { "vars": { "n": [9, 11], "tw": [14, 17], "ex": [-0.03, 0.03] }, "parts": [
+                    {"form": "disc", "at": [0.04, 0.0], "radius": [0.48, 0.52], "role": "panel", "alpha": 0.14, "row": {"count": 2, "step": [0.0, 0.28], "centred": true}},
+                    {"form": "disc", "at": [0.15, 0.0], "radius": 0.17, "role": "trim", "alpha": 1.0, "row": {"count": "$n", "step": [0.05, 0.13], "turn": "$tw", "taper": 0.9, "taperStep": true}},
+                    {"form": "disc", "at": [-0.15, 0.0], "radius": 0.17, "role": "trim", "alpha": 1.0, "row": {"count": "$n", "step": [-0.05, -0.13], "turn": "$tw", "taper": 0.9, "taperStep": true}},
+                    {"form": "disc", "radius": [0.2, 0.22], "role": "trim", "alpha": 1.0},
+                    {"form": "disc", "at": ["$ex", "$ex"], "radius": [0.05, 0.065], "role": "panel", "alpha": 0.7}
                 ]}},
                 { "id": "vortex", "shape": { "vars": { "cx": [0.06, 0.16], "cy": [-0.04, 0.04], "tw": [4, 7], "n": [10, 13], "core": [[196, 128, 92], [210, 160, 118], [226, 204, 168]] }, "parts": [
                     {"form": "disc", "radius": [0.42, 0.46], "role": "panel", "alpha": 0.16, "row": {"count": 3, "step": [0.32, 0.0], "centred": true}},
