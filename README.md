@@ -10,6 +10,7 @@ You fly a ship in a persistent galaxy: mine, trade, run missions, fight, build r
 ![Language: C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
 ![Platforms: Windows | Linux | macOS](https://img.shields.io/badge/platforms-Windows%20(MinGW)%20%7C%20Linux%20(GCC)%20%7C%20macOS%20(Clang)-lightgrey.svg)
 ![Status: Prototype](https://img.shields.io/badge/status-prototype-orange.svg)
+[![itch.io: EconSpace](https://img.shields.io/badge/itch.io-EconSpace-FA5C5C?logo=itchdotio&logoColor=white)](https://hel3an.itch.io/econspace)
 
 > **Status — the honest version.** EconSpace is a working **prototype**, not a finished game. The client–server core, the netcode, multiplayer, accounts and the agent interface are real and tested. The look is new and moving fast. Content is thin and there is no audio. The direction is set — see [Where it is going](#where-it-is-going) — and contributions are welcome, from people and from agents.
 
@@ -26,7 +27,7 @@ You fly a ship in a persistent galaxy: mine, trade, run missions, fight, build r
 | ![Fifty-four generated systems on one screen](media/survey.png) | ![The station pack of the module library](media/module-library-station.png) |
 | The editor's survey: fifty-four systems from three seeds, flagged when one comes out empty, thin or a twin. | The module library: every part is data, drawn here at three seeds each. |
 
-More in [media/](media/). Pictures are taken by the game and the editor themselves (`--shot`, `shot`), without the screen treatment.
+The project page is on **[itch.io](https://hel3an.itch.io/econspace)**. More in [media/](media/). Pictures are taken by the game and the editor themselves (`--shot`, `shot`), without the screen treatment.
 
 ---
 

@@ -1,5 +1,7 @@
 # itch.io page — DRAFT
 
+**Published:** https://hel3an.itch.io/econspace. This file is the draft it was made from; the live page is the source of truth.
+
 > **DRAFT for the owner.** Nothing here has been published. Every claim below is meant to
 > match what the repository does today (checked against README.md, ROADMAP.md and the code
 > on 2026-10-10); anything marked *(owner)* is a decision this draft does not make.
