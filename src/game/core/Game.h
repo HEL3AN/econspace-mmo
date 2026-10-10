@@ -22,6 +22,8 @@
 #include "ui/Desk.h"
 #include "ui/Layout.h"
 #include "core/Actions.h"
+#include "core/Faction.h"
+#include "economy/Resource.h"
 #include <algorithm>
 #include <deque>
 #include <map>
@@ -89,6 +91,9 @@ public:
         startSelectFrames_ = 90;
         startMenu_ = menu;
     }
+    // Fly to the nearest station and dock shortly after joining (--dock): for a picture of the
+    // station's windows without a hand on the controls.
+    void StartDocking() { startDockFrames_ = 90; }
     // Start with the galaxy map open (--map): for seeing the index the server sent without
     // a hand on the keyboard.
     void StartOnMap() { desk_.SetOpen(WIN_MAP, true); }
@@ -154,11 +159,19 @@ public:
 
 private:
     void HandleInput(float dt);  // client: input → player command (cmd_)
+    void HandleDockedInput();    // docked: the menu bar and the keys that open windows
     void DrawWorld();
     void DrawStarfield();  // parallax star background (screen coordinates)
     void DrawHud();
-    void DrawStationScreen();
-    void DrawMissionBoard(int x, int y, int w);  // mission board at the station
+    // Docked (#297): the station's hall where the world would be, and its windows on the desk
+    // -- the station itself, its market and its hangar -- with the missions window beside
+    // them. GameStation.cpp.
+    void    DrawStationHall();
+    void    DrawStationContent(const Ui::Frame& f);  // who runs it, the account, undock
+    void    DrawMarketContent(const Ui::Frame& f);   // what it pays for what is in the hold
+    void    DrawHangarContent(const Ui::Frame& f);   // the hulls: fly, switch, buy
+    void    SellCargo(ResourceType type, int amount);
+    RepTier DockedTier() const;  // what the docked station's owner thinks of this pilot
 
     void SetupWindows();                         // puts every window, screen and popup on the desk
     void HandleMenuBar();                        // menu bar input: a button toggles its window
@@ -276,6 +289,8 @@ private:
     Vector2    startWarpTarget_ = { 0.0f, 0.0f };
     int        startWarpFrames_ = -1;    // counts down to the --warp order; -1 when there is none
     int        startSelectFrames_ = -1;  // ...and to --select
+    int        startDockFrames_ = -1;    // ...and to --dock, which then keeps at it until docked
+    void       DriveStartDock();
     bool       startMenu_ = false;
     WorldClock worldClock_;  // the server's clock, eased (#192)
 
@@ -383,17 +398,34 @@ private:
     static constexpr const char* WIN_MAP = "map";        // the full-screen galaxy map
     static constexpr const char* WIN_SENSOR = "sensor";  // the sensor screen (#123)
     static constexpr const char* WIN_SETTINGS = "settings";
-    static constexpr const char* WIN_STATION = "station";  // the docked screen
+    static constexpr const char* WIN_STATION = "station";  // docked: the station's own window
+    static constexpr const char* WIN_MARKET = "market";
+    static constexpr const char* WIN_HANGAR = "hangar";
     static constexpr const char* WIN_MENUBAR = "menubar";
     static constexpr const char* WIN_CONTEXT = "context";  // the right-click menu
     static constexpr const char* WIN_LOOK = "look";        // F10's treatment panel (#120)
     Ui::Desk                     desk_;
+    // Where the player is, for the windows that belong somewhere: the station's while docked,
+    // the ones that look at space while flying (WindowSpec::context).
+    static constexpr const char* CTX_DOCKED = "docked";
+    static constexpr const char* CTX_SPACE = "space";
     // The windows laid out by Ui::Layout rather than by hand (#297); each keeps its own,
     // because a layout remembers hover, scroll and what is being typed.
     Ui::Layout statusLayout_;
     Ui::Layout overviewLayout_{ 8192 };  // a row is seven elements, and a system has many rows
     Ui::Layout targetLayout_;
     Ui::Layout mapNameLayout_;  // the map's name field
+    Ui::Layout mapLayout_;      // the map's heading, legend and news (#297)
+    Ui::Layout sensorLayout_;   // the sensor screen's heading and legend
+    // Docked (#297).
+    Ui::Layout stationLayout_;
+    Ui::Layout marketLayout_;
+    Ui::Layout hangarLayout_;
+    Ui::Layout hallLayout_;
+    int        marketSel_ = 0;
+    float      sellAmount_ = 0.0f;   // how much of the chosen commodity to sell
+    int        sellAmountFor_ = -1;  // ...chosen for this row; another row starts at its hold
+    int        hangarSel_ = -1;      // -1: the hull being flown
 
     // Missions, radar and settings (#297).
     Ui::Layout missionsLayout_;
@@ -427,6 +459,7 @@ private:
     Vector2         sensorOrigin_ = { 0.0f, 0.0f };  // screen point of cell (0, 0)'s corner
     float           sensorCellPx_ = 0.0f;
     Vector2         sensorCentre_ = { 0.0f, 0.0f };  // world point the picture is centred on
+    Rectangle       sensorArea_ = { 0.0f, 0.0f, 0.0f, 0.0f };  // the room the layout gave the grid
 
     // Short notification (saved/loaded).
     std::string flashMsg_;

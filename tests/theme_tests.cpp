@@ -39,11 +39,15 @@ TEST_CASE("the shipped theme loads, and says what the built-in one says")
     CHECK(Same(t.standing.hostile, d.standing.hostile));
     CHECK(Same(t.standing.friendly, d.standing.friendly));
     CHECK(Same(t.colors.selected, d.colors.selected));
+    CHECK(Same(t.colors.backdrop, d.colors.backdrop));
+    CHECK(Same(t.colors.shade, d.colors.shade));
+    CHECK(Same(t.colors.sensor, d.colors.sensor));
     CHECK(t.metrics.titleHeight == d.metrics.titleHeight);
     CHECK(t.metrics.rowHeight == d.metrics.rowHeight);
     CHECK(t.metrics.scrollbar == d.metrics.scrollbar);
     CHECK(t.metrics.snap == d.metrics.snap);
     CHECK(t.metrics.tabWidth == d.metrics.tabWidth);
+    CHECK(t.metrics.sidePanel == d.metrics.sidePanel);
     CHECK(t.fontSize.body == d.fontSize.body);
     CHECK(t.fonts.regular == d.fonts.regular);
 }

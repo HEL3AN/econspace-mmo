@@ -32,6 +32,9 @@ struct Theme
         Color track{ 80, 86, 100, 110 };     // the empty part of a bar or slider
         Color hover{ 92, 170, 232, 40 };     // under the cursor
         Color selected{ 92, 170, 232, 56 };  // the chosen row of a table, the open tab
+        Color backdrop{ 8, 9, 14, 255 };     // behind the windows where there is no world: docked
+        Color shade{ 6, 8, 14, 235 };        // over the world, under a screen drawn on it: the map
+        Color sensor{ 5, 10, 9, 255 };       // the sensor screen's ground: opaque, a readout
     } colors;
 
     // Allegiance, as the *instruments* say it (#117): the overview, the radar, the sensor
@@ -61,6 +64,7 @@ struct Theme
         float scrollbar = 4.0f;    // the width of a scroll indicator
         float snap = 12.0f;        // how near an edge a dragged window jumps to it
         float tabWidth = 112.0f;   // the widest a tab of a stacked window is
+        float sidePanel = 240.0f;  // a screen's column of legends and news beside its picture
     } metrics;
 
     struct FontSizes

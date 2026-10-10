@@ -29,6 +29,7 @@ static int Usage(const char* exe)
                  "      --map      start with the galaxy map open (G/Esc closes it)\n"
                  "      --select   select the nearest thing shortly after joining\n"
                  "      --menu     ...and open its right-click menu\n"
+                 "      --dock     fly to the nearest station and dock, shortly after joining\n"
                  "      --sensor [RANGE]\n"
                  "                 start with the sensor screen open (V/Esc closes it), RANGE\n"
                  "                 world units across\n"
@@ -66,6 +67,7 @@ int main(int argc, char** argv)
     bool              warp = false;
     bool              map = false;
     bool              select = false, menu = false;
+    bool              dock = false;
     bool              sensor = false;
     float             sensorRange = 0.0f;  // 0: the default
     Vector2           warpTo = { 0.0f, 0.0f };
@@ -91,6 +93,8 @@ int main(int argc, char** argv)
             select = true;
         else if (std::strcmp(argv[i], "--menu") == 0)
             select = menu = true;
+        else if (std::strcmp(argv[i], "--dock") == 0)
+            dock = true;
         else if (std::strcmp(argv[i], "--sensor") == 0)
         {
             sensor = true;
@@ -173,6 +177,8 @@ int main(int argc, char** argv)
             game.StartOnMap();
         if (select)
             game.StartWithSelection(menu);
+        if (dock)
+            game.StartDocking();
         if (sensor)
             game.StartOnSensor(sensorRange);
         if (!openWindows.empty())

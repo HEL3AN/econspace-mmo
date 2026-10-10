@@ -128,7 +128,13 @@ int DeskLayout::Add(const WindowSpec& spec, bool open)
     if (Placed(e))
         Place(e);
     entries_.push_back(e);
-    return (int)entries_.size() - 1;
+    const int h = (int)entries_.size() - 1;
+    if (!Available(h))
+    {
+        entries_[h].held = open;
+        entries_[h].open = false;
+    }
+    return h;
 }
 
 int DeskLayout::Find(const std::string& id) const
@@ -148,10 +154,59 @@ void DeskLayout::Touched(const Entry& e)
 void DeskLayout::SetOpen(int h, bool open)
 {
     Entry& e = entries_[h];
+    if (!Available(h))
+    {
+        if (e.held != open)
+        {
+            e.held = open;
+            Touched(e);
+        }
+        return;
+    }
     if (e.open == open)
         return;
     e.open = open;
     Touched(e);
+}
+
+void DeskLayout::SetContext(const std::string& name, bool active)
+{
+    if (name.empty() || ContextActive(name) == active)
+        return;
+    if (active)
+        contexts_.push_back(name);
+    else
+        contexts_.erase(std::find(contexts_.begin(), contexts_.end(), name));
+    for (int h = 0; h < (int)entries_.size(); h++)
+    {
+        Entry& e = entries_[h];
+        if (e.spec.context != name)
+            continue;
+        if (!active)
+        {
+            e.held = e.open;
+            e.open = false;
+            if (move_.h != NONE && Contains(move_.windows, h))
+                move_ = Move();  // the drag is let go of where it is
+        }
+        else if (e.held)
+        {
+            e.open = true;
+            e.held = false;
+            Raise(h);
+        }
+    }
+}
+
+bool DeskLayout::ContextActive(const std::string& name) const
+{
+    return std::find(contexts_.begin(), contexts_.end(), name) != contexts_.end();
+}
+
+bool DeskLayout::Available(int h) const
+{
+    const std::string& c = entries_[h].spec.context;
+    return c.empty() || ContextActive(c);
 }
 
 void DeskLayout::Raise(int h)
@@ -686,7 +741,7 @@ nlohmann::json DeskLayout::Save() const
         const Entry& e = entries_[h];
         if (!e.spec.persist)
             continue;
-        nlohmann::json w = { { "open", e.open },
+        nlohmann::json w = { { "open", e.open || e.held },
                              { "anchor", AnchorName(e.anchor) },
                              { "offset", { e.offset.x, e.offset.y } },
                              { "size", { e.size.x, e.size.y } },
@@ -738,6 +793,11 @@ void DeskLayout::Load(const nlohmann::json& windows)
             continue;
         const nlohmann::json& w = *it;
         flag(w, "open", e.open);
+        if (!Available(h))
+        {
+            e.held = e.open;
+            e.open = false;
+        }
         if (!Placed(e))
             continue;
         if (w.contains("anchor") && w["anchor"].is_string())

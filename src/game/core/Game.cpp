@@ -141,8 +141,11 @@ void Game::Run()
         screenHeight_ = GetScreenHeight();
         rig_.SetViewport((float)screenWidth_, (float)screenHeight_);
 
-        // Who the mouse belongs to this frame, decided once for everything (#297): a click
-        // reaches the window in front of it and nothing behind.
+        // Which windows are there at all: the station's while docked, space's while flying
+        // (#297). Then who the mouse belongs to this frame, decided once for everything: a
+        // click reaches the window in front of it and nothing behind.
+        desk_.SetContext(CTX_DOCKED, mode_ == GameMode::Docked);
+        desk_.SetContext(CTX_SPACE, mode_ == GameMode::Flying);
         desk_.BeginFrame();
 
         // Debug commands (work in any mode).
@@ -172,6 +175,8 @@ void Game::Run()
         // control is also set here and read on every simulation step.
         if (mode_ == GameMode::Flying)
             HandleInput(dt);
+        else
+            HandleDockedInput();
 
         // The simulation runs at a fixed step, separate from the render rate.
         // The accumulator is clamped against the "spiral of death" on frame drops.
@@ -271,29 +276,25 @@ void Game::Run()
         // off or unavailable, Begin and End do nothing and this is the old draw order.
         const bool treatHud = treatment_.Config().treatHud;
         const bool flying = (mode_ == GameMode::Flying);
-        // The station screen is interface, not world, so it goes through the chain only if
-        // the player asked for the interface to be treated. Otherwise the chain would be
-        // running over an empty scene and laying grain behind a menu.
+        // Docked, the station's hall and its windows are interface, not world, so they go
+        // through the chain only if the player asked for the interface to be treated.
+        // Otherwise the chain would be running over an empty scene and laying grain behind
+        // a menu.
         const bool useChain = (flying || treatHud) && (!shooting || shotTreated_);
 
         if (useChain)
             treatment_.Begin(screenWidth_, screenHeight_, shooting ? &shotTarget_ : nullptr);
         if (flying)
-        {
             DrawWorld();
-            if (treatHud)
-                DrawHud();
-        }
         else
-        {
-            Ui::MouseScope scope(desk_.Owns(WIN_STATION));  // F10's panel can sit over it
-            DrawStationScreen();
-        }
+            DrawStationHall();
+        if (treatHud)
+            DrawHud();
         if (useChain)
             treatment_.End();
         Render::Perf::Mark(Render::Perf::Phase::Treatment);
 
-        if (flying && !treatHud)
+        if (!treatHud)
             DrawHud();
 
         // Above everything, and never treated: a settings screen seen through the effect
@@ -423,6 +424,11 @@ void Game::HandleInput(float dt)
         }
         startSelectFrames_ = -1;
     }
+
+    if (startDockFrames_ > 0 && --startDockFrames_ == 0)
+        startDockFrames_ = 1;  // from here on, every frame until docked
+    if (startDockFrames_ == 1)
+        DriveStartDock();
 
     // A text field that has the keyboard -- the map's name field, the range being typed --
     // takes every key: its letters are not hotkeys and its W is not thrust (#145, #297).
@@ -611,6 +617,49 @@ void Game::HandleInput(float dt)
     }
 }
 
+// --dock: the nearest station, warped to if it is far and flown to if it is near, then the
+// dock order every frame until the server says docked.
+void Game::DriveStartDock()
+{
+    Station* nearest = nullptr;
+    float    best = 0.0f;
+    for (const auto& e : clientWorld_)
+        if (e->GetKind() == EntityKind::Station)
+        {
+            const float d = Vector2Distance(e->GetPosition(), playerShip_->GetPosition());
+            if (nearest == nullptr || d < best)
+            {
+                nearest = static_cast<Station*>(e.get());
+                best = d;
+            }
+        }
+    if (nearest == nullptr)
+        return;
+    if (best <= DockReach(*nearest))
+        cmd_.dock = true;
+    else if (!playerShip_->IsWarping() && !playerShip_->IsAutopilotOn())
+    {
+        if (best > 20000.0f)
+            OrderWarp(nearest->GetPosition(), nearest->GetSize() + 60.0f);
+        else
+            OrderAutopilot(nearest->GetPosition(), nearest->GetSize() + 60.0f);
+    }
+}
+
+// Docked, the ship takes no orders but leaving; the windows still open and close by key,
+// and the menu bar opens what has been closed (#297).
+void Game::HandleDockedInput()
+{
+    startDockFrames_ = -1;  // --dock has done its job
+    HandleMenuBar();
+    if (desk_.KeyboardTaken())  // a number being typed into the market is not a hotkey
+        return;
+    if (IsKeyPressed(KEY_J))
+        desk_.Toggle(WIN_MISSIONS);
+    if (IsKeyPressed(KEY_G))
+        desk_.Toggle(WIN_MAP);
+}
+
 void Game::Undock()
 {
     // Undocking is server-authoritative: send the order, the server clears the dock and
@@ -620,6 +669,7 @@ void Game::Undock()
     clientLink_->Send(Proto::EncodeCommand(c));
     mode_ = GameMode::Flying;
     dockedStation_ = nullptr;
+    missionsTab_ = 0;  // the board was the station's
 }
 
 // Network: combat beams from the snapshot (server computes combat). Own shot — blue, shot at the
