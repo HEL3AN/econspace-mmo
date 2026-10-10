@@ -273,12 +273,32 @@ quietly losing to the generator.
 **`merge`** keeps the generated system and adds to it:
 - A list (`planets`, `stations`, `asteroidFields`, `nebulae`, `derelicts`, `gates`) appends its objects.
 - An object with `"replaces": "<name>"` takes the place of the generated object of that name. With `"remove": true` as well, that object is removed instead.
+- `"replaces": N` names the N-th object of the list (from 0) instead of a name: a generated planet has none.
+- Every `replaces` is read against the list as it stood **before this pin**, so the order of the entries does not matter: replaced objects keep their place, removed ones go, added ones come after.
 - Any other key (`star`, `stars`, `character`) is set to the pin's value.
 
 **`replace`** makes the document the whole system. Its gates are still kept from the generated system unless the document lists its own, because the gates are the region's topology.
 
 Any other field is an error, as everywhere else (#191). Pins are data, like the systems: a
 pin added later changes the region the next time the server starts.
+
+### Writing pins with the world editor (#237)
+
+`worldeditor region 7` opens the system through the wormhole of the region seed 7 makes
+(`region 7 system w2-1` opens another; in the survey, **E** on an enlarged card opens that
+one). It is the system the server would build: generated, then every pin on top. The
+ordinary tools work on it -- drag, the palette, the property panel, Del -- and an object a
+pin changes is ringed amber, one a pin adds green; everything else is the generator's and
+is written nowhere.
+
+**Ctrl+S writes only the difference**, as one pin for that system **and that seed**, which
+replaces the editor's earlier pin for the pair and goes last in the file (the editor showed
+it on top of every other pin). Pins without a `seed`, or for another system, are written by
+hand and never touched. The difference is a `merge` -- changed objects as `replaces`,
+removed ones as `remove`, new ones appended, keys that differ set -- unless it cannot be
+said as one (a key taken away), and then it is a `replace` of the whole system. No
+difference left removes the pin. Opening the system again gives back exactly what was
+saved; a test holds the editor to that.
 
 ## factions.json — who is in the galaxy, and how they act
 

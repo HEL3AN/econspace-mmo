@@ -282,6 +282,7 @@ add_executable(worldeditor
     src/editor/Editor_Universe.cpp  # everything that changes universe.json (#17)
     src/editor/Editor_Gallery.cpp   # every archetype at once, for judging a look (#118)
     src/editor/Editor_Survey.cpp    # many generated systems at once, for judging rules (#141)
+    src/editor/Editor_Pins.cpp      # a generated system edited, saved as a pin (#237)
 )
 target_include_directories(worldeditor PRIVATE ${CMAKE_SOURCE_DIR}/src/editor)
 target_link_libraries(worldeditor PRIVATE engine)
