@@ -18,6 +18,7 @@ Simulation::~Simulation() = default;
 void Simulation::LoadUniverse(const std::string& path)
 {
     universe_ = WorldLoader::LoadUniverse(path);
+    IndexLinks();
 }
 
 int Simulation::RandRange(int lo, int hi)

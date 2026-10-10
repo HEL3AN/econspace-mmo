@@ -18,6 +18,7 @@
 #include "entities/Station.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 namespace
@@ -48,6 +49,18 @@ void AccumSuppress(float& sup, float losses)
 {
     if (losses > 0.0f)
         sup = std::min(1.0f, sup + losses * SUPPRESS_PER_KILL);
+}
+
+// Adds the wall time since `from` to `into` and restarts the stopwatch, when there is
+// somewhere to add it (#295). Nothing is read from the clock when nobody asked.
+using BenchClock = std::chrono::steady_clock;
+void Lap(double* into, BenchClock::time_point& from)
+{
+    if (into == nullptr)
+        return;
+    const BenchClock::time_point now = BenchClock::now();
+    *into += std::chrono::duration<double>(now - from).count();
+    from = now;
 }
 
 float Dist(Vector2 a, Vector2 b)
@@ -524,16 +537,20 @@ void Simulation::TopUpSystem(SystemState& st, const std::vector<Vector2>& avoid)
         }
 }
 
-void Simulation::MaintainWorld(float dt)
+void Simulation::MaintainWorld(float dt, MaintainCost* cost)
 {
+    BenchClock::time_point lap = cost != nullptr ? BenchClock::now() : BenchClock::time_point();
     // The simulation clock lives here because MaintainWorld is called once per tick by
     // every driver of the world -- the host loop and the batch mode -- which makes it the
     // one place elapsed time can accumulate without being counted twice or not at all.
     time_ += dt;
     maintAccum_ += dt;
     StepStructures();  // every tick: a site finishes when the clock says, not two seconds on
+    Lap(cost ? &cost->structures : nullptr, lap);
     while (maintAccum_ >= MAINT_STEP)
     {
+        if (cost != nullptr)
+            cost->passes++;
         // Recount the real populations; accumulate losses since the last step as "pressure".
         for (auto& kv : systems_)
         {
@@ -549,7 +566,9 @@ void Simulation::MaintainWorld(float dt)
             a.lostPirates += std::max(0.0f, prevPi - a.pirates);
             a.lostPolice += std::max(0.0f, prevPo - a.police);
         }
+        Lap(cost ? &cost->recount : nullptr, lap);
         StepWorldMacro();
+        Lap(cost ? &cost->macro : nullptr, lap);
         for (auto& kv : systems_)
         {
             // Recovery: the pressure slowly subsides.
@@ -566,6 +585,7 @@ void Simulation::MaintainWorld(float dt)
                     avoid.push_back(sv.second.ship->GetPosition());
             TopUpSystem(kv.second, avoid);
         }
+        Lap(cost ? &cost->topUp : nullptr, lap);
         maintAccum_ -= MAINT_STEP;
     }
 }

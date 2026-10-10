@@ -58,7 +58,9 @@ public:
     // system by one wormhole gate. Call after LoadUniverse and before InitGalaxy/LoadWorld
     // -- its systems have to be in the index before anything is made for them. Reads the
     // start system's own file, so the wormhole is not placed in a planet's path.
-    void AttachRegion(uint64_t seed, const std::string& systemsDir);
+    // `systems` overrides how many systems the region has (0: the generator's own number);
+    // only a benchmark asks for another, since a saved world records the seed and not this.
+    void AttachRegion(uint64_t seed, const std::string& systemsDir, int systems = 0);
     bool HasRegion() const { return hasRegion_; }
     // The generated systems as the loader reads them, by id (#140) -- for tools.
     const std::map<std::string, std::string>& RegionDocuments() const { return regionDocs_; }
@@ -85,14 +87,19 @@ public:
         float                  traffic = 0.0f, ore = 0.0f, salvage = 0.0f;  // each 0..1
         std::vector<FactionId> defenders;  // owners of defensive stations
     };
-    SystemOffer          OfferOf(const SystemState& st) const;
+    SystemOffer OfferOf(const SystemState& st) const;  // reads st.profile, never the entities
+    // Counts what a system's static layer holds (#295). Called when the layer is built
+    // and whenever it changes; see SystemProfile.
+    static SystemProfile ProfileOf(const SystemState& st);
     void                 StepFactions();
     void                 StepControl(bool settling);
     static void          SeedPresence(SystemAggregate& a);
     static constexpr int ContestPasses() { return CONTEST_PASSES; }
 
-    // System neighbors by gate lines (for macro and the spawn director).
-    std::vector<std::string> Neighbors(const std::string& id) const;
+    // System neighbors by gate lines (for macro and the spawn director), in the order the
+    // links are listed. Read from an index built when the links change (#295) -- the
+    // faction step asks this for every holding of every faction.
+    const std::vector<std::string>& Neighbors(const std::string& id) const;
 
     // --- Step-by-step simulation of system agents (server core, M3) ---
     // Are two NPCs hostile (faction relation matrix) — pure server logic.
@@ -162,7 +169,18 @@ public:
     // Coarse world maintenance every ~2 s of simulation: recount + "pressure", macro,
     // spawn director across all systems. Where players are is read from the sessions:
     // pirates are not dropped on top of someone, in whichever systems people happen to be.
-    void MaintainWorld(float dt);
+    //
+    // `cost`, when given, is added to: where the time went, for `econserver macrobench`
+    // (#295). Measuring changes nothing about what is done.
+    struct MaintainCost
+    {
+        double structures = 0.0;  // StepStructures, every tick (seconds of wall time)
+        double recount = 0.0;     // recounting populations into the aggregates
+        double macro = 0.0;       // StepWorldMacro: drift, diffusion, factions, control
+        double topUp = 0.0;       // the spawn director in every system
+        int    passes = 0;        // coarse passes run
+    };
+    void MaintainWorld(float dt, MaintainCost* cost = nullptr);
 
     // Materializes a system from its aggregate: spawn NPCs by role in suitable places.
     void HydrateSystem(SystemState& st);
@@ -467,6 +485,8 @@ private:
     // change their keys, then replay what the save said had changed (#38).
     void KeyWorldObjects(SystemState& st);
     void ReplayChanges(SystemState& st);
+    // Rebuilds neighbors_ from universe_.links; called wherever the links change.
+    void IndexLinks();
 
     WorldLoader::Universe              universe_;
     bool                               hasRegion_ = false;
@@ -475,6 +495,8 @@ private:
     std::string                        wormhole_;    // the gate added to the start system, as JSON
     std::map<std::string, SystemState> systems_;     // state by system id
     int                                agentIdCounter_ = 0;
+    // The links, by system (#295): what Neighbors reads.
+    std::map<std::string, std::vector<std::string>> neighbors_;
 
     // One per connected player (#3). A std::map because the verbs take a ClientSession&,
     // and a session must not move under one while the world is being stepped.

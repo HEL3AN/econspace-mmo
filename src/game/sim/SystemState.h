@@ -90,6 +90,22 @@ struct SystemAggregate
     bool seeded = false;  // aggregate initialized with starting values
 };
 
+// What a system IS, as opposed to what is happening in it (#295): counted once from its
+// static layer, which is built from the document the seed makes plus what a save says
+// changed, and counted again whenever that layer changes (AddStatic, RemoveStatic). Never
+// saved -- it is remade exactly as the region is. The macro layer reads this rather than
+// walking the system's entities, so a system need not be materialized to be weighed.
+struct SystemProfile
+{
+    int belts = 0;     // asteroid fields
+    int wrecks = 0;    // derelicts, searched or not
+    int stations = 0;  // stations of any role
+    int planets = 0;
+    int gates = 0;
+    // The owner of each station that defends itself, one entry per station.
+    std::vector<FactionId> defenders;
+};
+
 // State of a single star system inside the simulation. Level of detail:
 //  - cold: only `agg` (entities empty) — for systems without the player;
 //  - hot:  full `entities` (materialized on player entry).
@@ -102,6 +118,7 @@ struct SystemState
     Market                               market;
     bool                                 populated = false;  // entities filled (hot)
     SystemAggregate                      agg;                // cold state (always)
+    SystemProfile                        profile;            // static summary, not saved
 
     // Seconds until each defensive object fires again, by entity id (#193). Transient:
     // a station that has just been hydrated is simply ready.

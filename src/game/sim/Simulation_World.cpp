@@ -54,17 +54,24 @@ void Simulation::SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& i
     a.seeded = true;
 }
 
-std::vector<std::string> Simulation::Neighbors(const std::string& id) const
+const std::vector<std::string>& Simulation::Neighbors(const std::string& id) const
 {
-    std::vector<std::string> out;
+    static const std::vector<std::string> kNone;
+    const auto                            it = neighbors_.find(id);
+    return it == neighbors_.end() ? kNone : it->second;
+}
+
+void Simulation::IndexLinks()
+{
+    // In the order the links are listed, as the scan this replaces returned them: the
+    // faction step breaks ties by whichever neighbour it met first.
+    neighbors_.clear();
     for (const auto& l : universe_.links)
     {
-        if (l.a == id)
-            out.push_back(l.b);
-        else if (l.b == id)
-            out.push_back(l.a);
+        neighbors_[l.a].push_back(l.b);
+        if (l.b != l.a)
+            neighbors_[l.b].push_back(l.a);
     }
-    return out;
 }
 
 std::string Simulation::SystemName(const std::string& id) const
@@ -160,7 +167,7 @@ void Simulation::HydrateSystem(SystemState& st)
     }
 }
 
-void Simulation::AttachRegion(uint64_t seed, const std::string& systemsDir)
+void Simulation::AttachRegion(uint64_t seed, const std::string& systemsDir, int systems)
 {
     const WorldLoader::SystemInfo* home = nullptr;
     for (const auto& info : universe_.systems)
@@ -182,6 +189,8 @@ void Simulation::AttachRegion(uint64_t seed, const std::string& systemsDir)
     for (const auto& info : universe_.systems)
         params.knownMap.push_back(info.mapPos);
     params.homeSystem = homeDoc.is_discarded() ? nullptr : &homeDoc;
+    if (systems > 0)
+        params.systems = systems;
     Gen::Region region = Gen::GenerateRegion(params);
 
     // Then the hand-written exceptions, always after (#147): data/pins.json beside the
@@ -213,6 +222,7 @@ void Simulation::AttachRegion(uint64_t seed, const std::string& systemsDir)
     }
     for (const auto& l : region.links)
         universe_.links.push_back({ l[0].get<std::string>(), l[1].get<std::string>() });
+    IndexLinks();
     // Kept as text: the header stays free of the JSON library, and a document is parsed
     // once, when its system is built.
     for (const auto& kv : region.documents)
@@ -266,6 +276,7 @@ void Simulation::MaterializeAllSystems(const std::string& systemsDir)
                     e->SetId(NextAgentId());
             KeyWorldObjects(st);
             ReplayChanges(st);
+            st.profile = ProfileOf(st);
         }
         if (!st.populated)
         {
@@ -679,6 +690,7 @@ int Simulation::AddStatic(const std::string& systemId, std::unique_ptr<Entity> e
     e->SetOwner(owner);
     st->keys[id] = "+" + std::to_string(st->nextAddedKey++);
     st->entities.push_back(std::move(e));
+    st->profile = ProfileOf(*st);
     st->pendingAdded.insert(id);
     st->layoutRev++;
     return id;
@@ -716,6 +728,7 @@ bool Simulation::RemoveStatic(const std::string& systemId, int id)
         st->keys.erase(key);
     }
     st->entities.erase(it);
+    st->profile = ProfileOf(*st);
     st->pendingAdded.erase(id);  // added and gone again before anyone was told: only gone
     st->pendingChanged.erase(id);
     st->pendingRemoved.insert(id);
