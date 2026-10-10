@@ -1325,6 +1325,19 @@ void Game::DrawGalaxyMap()
         const float room = nearestOnScreen(s);
         const bool  detail = cur || hovered || room >= 110.0f;
         const bool  named = cur || hovered || room >= 45.0f;
+        // Uncharted (#144): a gate from somewhere known leads there, and that is all anyone
+        // knows -- an empty ring and a designation, no numbers.
+        if (!s.charted)
+        {
+            DrawCircleLines((int)p.x, (int)p.y, 7.0f, Ui::TEXT_DIM);
+            if (named)
+            {
+                Ui::Text(s.name.c_str(), (int)p.x + 14, (int)p.y - 8, 16, Ui::TEXT_DIM);
+                if (detail)
+                    Ui::Text("uncharted", (int)p.x + 14, (int)p.y + 10, 12, Ui::TEXT_DIM);
+            }
+            continue;
+        }
         DrawCircleV(p, cur ? 10.0f : 7.0f, cur ? Ui::ACCENT : Ui::TEXT_DIM);
         if (cur)
             DrawCircleLines((int)p.x, (int)p.y, 16.0f, Fade(Ui::ACCENT, 0.6f));

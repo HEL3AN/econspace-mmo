@@ -273,7 +273,9 @@ Proto::GalaxyState Simulation::BuildGalaxyState()
     for (auto& kv : systems_)
     {
         RecountAgg(kv.second);  // refresh the population from live entities
-        const SystemAggregate&  a = kv.second.agg;
+        const SystemAggregate& a = kv.second.agg;
+        if (!a.visited)
+            continue;  // nobody knows how a system nobody has seen is doing (#144)
         Proto::GalaxySystemStat g;
         g.id = kv.first;
         g.security = a.security;

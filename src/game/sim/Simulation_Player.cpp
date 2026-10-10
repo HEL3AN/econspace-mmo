@@ -552,6 +552,7 @@ void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId,
     if (!agg.visited)
     {
         agg.visited = true;
+        chartsChanged_ = true;
         PushEvent("First ship into " + SystemName(destId));
         s.RecordEvent(Ev::Kind::Notice, "First ship ever into " + SystemName(destId));
     }

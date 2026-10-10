@@ -27,7 +27,8 @@ namespace Proto
 // without it a client built against an older protocol would silently receive defaults
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
-inline constexpr int PROTO_VERSION = 12;  // 12: the galaxy index comes from the server (#206)
+inline constexpr int PROTO_VERSION =
+    13;  // 13: uncharted systems (#144); 12: index from the server (#206)
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).

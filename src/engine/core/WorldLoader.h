@@ -19,6 +19,10 @@ struct SystemInfo
     Vector2     mapPos;           // position on the star map
     float       security = 0.5f;  // security level 0..1 (1 = safe)
     std::string owner;            // owning faction (id); empty — unclaimed system
+    // Whether anybody has been there (#144). An uncharted system is known only to exist,
+    // because a gate from a charted one leads to it: where it is on the map and what it
+    // is designated, never its security, owner or contents.
+    bool charted = true;
 };
 
 // A link between two systems (for drawing on the star map).
