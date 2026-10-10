@@ -44,4 +44,6 @@ void Simulation::PushEvent(const std::string& msg)
     events_.push_back(msg);
     if (events_.size() > 8)
         events_.erase(events_.begin());  // keep the last 8
+    // ...and the history keeps it, with a time and a number (#295).
+    Record("news", -1, std::string(), msg);
 }

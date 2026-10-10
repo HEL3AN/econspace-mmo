@@ -348,6 +348,7 @@ add_executable(tests
     tests/build_tests.cpp          # construction: blueprints, sites, the clock (#39)
     tests/ship_design_tests.cpp    # ship designs and the stats derived from them (#279)
     tests/desk_tests.cpp           # the window manager: z-order, the mouse, Esc, layout (#297)
+    tests/intel_tests.cpp          # what factions know, and surveying (#295)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/Sensor.cpp        # the sensor screen, tested without a window (#123)

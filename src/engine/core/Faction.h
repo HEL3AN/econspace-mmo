@@ -29,6 +29,9 @@ struct Temperament
     float ore = 0.0f;        // belts to mine
     float salvage = 0.0f;    // wrecks, ruins, finds
     float unclaimed = 0.0f;  // a system nobody holds
+    // What finding out is worth to it (#295): the value of surveying a system it knows
+    // nothing about. 0 never looks further than it can see.
+    float curiosity = 0.0f;
 };
 
 // Stance between two factions (for combat/hostility logic).

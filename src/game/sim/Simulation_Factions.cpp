@@ -8,13 +8,19 @@
 // own appetite for risk; and a system changes hands only when a hostile faction has held
 // the upper hand there for a sustained time (#225). Nothing here depends on whether a
 // player is present: the world goes on without them, slowly and for reasons.
+//
+// A faction decides on what it knows, not on what is there (#295): what it holds and where
+// its ships are it sees; everything else is what its surveyors last brought back, trusted
+// less the older it is. Looking is one of the things it may choose to do with its turn.
 #include "sim/Simulation.h"
 
 #include "entities/AsteroidField.h"
 #include "entities/Derelict.h"
 #include "entities/Station.h"
+#include "gen/Rng.h"
 #include <algorithm>
 #include <cmath>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -30,6 +36,17 @@ constexpr float MOVE_SHARE = 0.25f;
 constexpr float FADE = 0.05f;
 // Below this a presence is not worth calling one.
 constexpr float SPARSE = 0.05f;
+// A survey takes this long, plus up to SURVEY_JITTER more seconds of world time (#295).
+constexpr double SURVEY_TIME = 90.0;
+constexpr int    SURVEY_JITTER = 60;
+// What keys a survey's randomness, besides who, where and when.
+constexpr uint64_t SURVEY_KEY = 0x5E5u;
+// At most this many plans come due in one pass; the rest wait for the next.
+constexpr int RESOLVE_PER_PASS = 4;
+// A faction may have one survey under way, and one more for every this many holdings.
+constexpr int PLANS_PER_HOLDINGS = 8;
+// How much history is kept, in memory and in the save.
+constexpr size_t CHRONICLE_KEEP = 200;
 
 bool Hostile(FactionId a, FactionId b)
 {
@@ -84,12 +101,132 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
 // not walk a hundred lists of ships to count the belts.
 Simulation::SystemOffer Simulation::OfferOf(const SystemState& st) const
 {
+    return OfferOf(Observe(st));
+}
+
+Simulation::SystemOffer Simulation::OfferOf(const Intel& seen)
+{
     SystemOffer o;
-    o.traffic = std::clamp(st.agg.prosperity, 0.0f, 1.0f);
-    o.ore = std::min(1.0f, st.profile.belts / 3.0f);
-    o.salvage = std::min(1.0f, st.profile.wrecks / 4.0f);
-    o.defenders = st.profile.defenders;
+    o.traffic = std::clamp(seen.traffic, 0.0f, 1.0f);
+    o.ore = std::min(1.0f, seen.belts / 3.0f);
+    o.salvage = std::min(1.0f, seen.wrecks / 4.0f);
+    o.defenders = seen.defenders;
     return o;
+}
+
+Intel Simulation::Observe(const SystemState& st) const
+{
+    Intel i;
+    i.seenAt = time_;
+    i.traffic = st.agg.prosperity;
+    i.security = st.agg.security;
+    i.belts = st.profile.belts;
+    i.wrecks = st.profile.wrecks;
+    i.stations = st.profile.stations;
+    i.defenders = st.profile.defenders;
+    i.presence = st.agg.presence;
+    i.controller = st.agg.controller;
+    i.claimed = st.agg.claimed;
+    return i;
+}
+
+void Simulation::Record(const std::string& kind, int faction, const std::string& system,
+                        const std::string& text)
+{
+    ChronicleEntry e;
+    e.seq = ++chronicleSeq_;
+    e.time = time_;
+    e.kind = kind;
+    e.faction = faction;
+    e.system = system;
+    e.text = text;
+    chronicle_.push_back(std::move(e));
+    if (chronicle_.size() > CHRONICLE_KEEP)
+        chronicle_.erase(chronicle_.begin(),
+                         chronicle_.begin() + (long)(chronicle_.size() - CHRONICLE_KEEP));
+}
+
+// What every faction knows when the world begins (#295): the systems it holds and the ones
+// a gate from them leads to. Everything beyond is a name on a chart at most -- and beyond
+// the wormhole, not even that.
+void Simulation::SeedMinds()
+{
+    mindsSeeded_ = true;
+    for (auto& kv : systems_)
+    {
+        const SystemAggregate& a = kv.second.agg;
+        if (!a.claimed)
+            continue;
+        FactionMind& m = minds_[(int)a.controller];
+        m.intel[kv.first] = Observe(kv.second);
+        for (const std::string& nid : Neighbors(kv.first))
+        {
+            const auto n = systems_.find(nid);
+            if (n != systems_.end() && m.intel.count(nid) == 0)
+                m.intel[nid] = Observe(n->second);
+        }
+    }
+}
+
+// "3 belts, held by Syndicate, pirates": what a survey found, as somebody reading the
+// history would want it put.
+std::string Simulation::DescribeSurvey(const Intel& seen, FactionId by) const
+{
+    std::string text;
+    auto        add = [&](const std::string& part) { text += (text.empty() ? "" : ", ") + part; };
+    auto        count = [&](int n, const char* one, const char* many)
+    {
+        if (n > 0)
+            add(n == 1 ? std::string("1 ") + one : std::to_string(n) + " " + many);
+    };
+    count(seen.belts, "belt", "belts");
+    count(seen.wrecks, "wreck", "wrecks");
+    count(seen.stations, "station", "stations");
+    if (!seen.claimed)
+        add("held by nobody");
+    else if (seen.controller != by)
+        add("held by " + FactionName(seen.controller));
+    for (int g = 0; g < FACTION_COUNT; g++)
+        if ((FactionId)g != by && seen.presence[g] >= 1.0f &&
+            !(seen.claimed && (FactionId)g == seen.controller))
+            add((FactionId)g == FactionId::Pirates ? std::string("pirates")
+                                                   : FactionName((FactionId)g) + " ships");
+    return text.empty() ? "nothing of note" : text;
+}
+
+void Simulation::ResolveSurvey(const Plan& p)
+{
+    const auto st = systems_.find(p.target);
+    if (st == systems_.end())
+        return;  // the galaxy no longer has it; the survey comes back with nothing
+    const Intel seen = Observe(st->second);
+    minds_[(int)p.faction].intel[p.target] = seen;
+    Record("survey", (int)p.faction, p.target,
+           FactionName(p.faction) + " surveyed " + SystemName(p.target) + ": " +
+               DescribeSurvey(seen, p.faction));
+}
+
+// Plans whose time has come, a few per pass (#295). One that misses its pass because the
+// budget ran out is simply a pass late; nothing is lost.
+void Simulation::ResolveDuePlans()
+{
+    for (int budget = RESOLVE_PER_PASS; budget > 0 && !due_.empty(); budget--)
+    {
+        const auto next = due_.begin();
+        if (next->first > time_)
+            break;
+        const int id = next->second;
+        due_.erase(next);
+        const auto it = plans_.find(id);
+        if (it == plans_.end())
+            continue;
+        const Plan p = it->second;
+        plans_.erase(it);
+        switch (p.kind)
+        {
+            case Plan::Kind::Survey: ResolveSurvey(p); break;
+        }
+    }
 }
 
 void Simulation::StepFactions()
@@ -110,11 +247,22 @@ void Simulation::StepFactions()
         a.lostPirates = a.lostPolice = 0.0f;
     }
 
-    if (++factionPasses_ % FACTION_PERIOD != 0)
+    if (!mindsSeeded_)
+        SeedMinds();
+    ResolveDuePlans();
+
+    // Each faction thinks once a period, on a pass of its own (#295): spread across the
+    // period rather than all on one pass, so no pass carries more than one of them.
+    static_assert(FACTION_COUNT <= FACTION_PERIOD, "more than one faction would think per pass");
+    const int phase = ++factionPasses_ % FACTION_PERIOD;
+    for (int fi = 0; fi < FACTION_COUNT; fi++)
+        if (phase == fi * FACTION_PERIOD / FACTION_COUNT)
+            Think((FactionId)fi);
+    if (phase != 0)
         return;
 
-    // 1. Holdings recover towards capacity; everything else fades towards what the place
-    //    breeds by itself, unless its faction keeps sending more.
+    // Once a period, holdings recover towards capacity; everything else fades towards what
+    // the place breeds by itself, unless its faction keeps sending more.
     for (auto& kv : systems_)
     {
         SystemAggregate& a = kv.second.agg;
@@ -133,88 +281,172 @@ void Simulation::StepFactions()
                 p = 0.0f;
         }
     }
+}
 
-    // 2. Each faction makes at most one move: its best target among the neighbours of what
-    //    it holds, if the best is worth the risk at all.
-    for (int fi = 0; fi < FACTION_COUNT; fi++)
+// One faction's turn (#231, #295). It sees what it holds and wherever its ships are; of
+// anything else it knows only what it saw. Then it does at most one thing: it reaches into
+// a neighbour of a holding where what it values outweighs the risk by its appetite for
+// risk -- judged on what it saw there, and the older that is the riskier -- or it sends
+// surveyors to a neighbour it knows nothing, or nothing recent, about.
+void Simulation::Think(FactionId f)
+{
+    const int          fi = (int)f;
+    const Temperament& t = Factions::TemperamentOf(f);
+    FactionMind&       mind = minds_[fi];
+
+    // What it sees for itself is never out of date -- and is not saved, for that reason.
+    int holdings = 0;
+    for (auto& kv : systems_)
     {
-        const FactionId    f = (FactionId)fi;
-        const Temperament& t = Factions::TemperamentOf(f);
-        if (t.appetite <= 0.0f)
-            continue;  // holds what it has and reaches for nothing
+        const SystemAggregate& a = kv.second.agg;
+        const bool             held = a.claimed && a.controller == f;
+        holdings += held ? 1 : 0;
+        if (held || a.presence[fi] >= 1.0f)
+            mind.intel[kv.first] = Observe(kv.second);
+    }
+    if (t.appetite <= 0.0f)
+        return;  // holds what it has and reaches for nothing
 
-        float       bestScore = 0.0f;
-        std::string from, to, why;
-        for (auto& kv : systems_)
+    // What it already has under way: one survey of a system at a time, and no more at once
+    // than its holdings can send.
+    std::set<std::string> surveying;
+    for (const auto& kv : plans_)
+        if (kv.second.faction == f && kv.second.kind == Plan::Kind::Survey)
+            surveying.insert(kv.second.target);
+    const bool canSurvey = (int)surveying.size() < 1 + holdings / PLANS_PER_HOLDINGS;
+
+    enum class Act
+    {
+        None,
+        Move,
+        Survey
+    };
+    Act         act = Act::None;
+    float       bestScore = 0.0f;
+    std::string from, to, why;
+    for (auto& kv : systems_)
+    {
+        const SystemAggregate& home = kv.second.agg;
+        if (!home.claimed || home.controller != f)
+            continue;
+        const float surplus = home.presence[fi] - t.capacity * HOME_GUARD;
+        for (const std::string& nid : Neighbors(kv.first))
         {
-            const SystemAggregate& home = kv.second.agg;
-            if (home.controller != f)
+            if (systems_.count(nid) == 0)
                 continue;
-            const float surplus = home.presence[fi] - t.capacity * HOME_GUARD;
-            if (surplus < 0.5f)
-                continue;
-            for (const std::string& nid : Neighbors(kv.first))
-            {
-                auto n = systems_.find(nid);
-                if (n == systems_.end())
-                    continue;
-                const SystemAggregate& a = n->second.agg;
-                // Only into a system it may take: nobody's, or an enemy's. Never a friend's
-                // or a neutral power's -- that would be a war nobody declared.
-                if ((a.claimed && a.controller == f) || (a.claimed && !Hostile(f, a.controller)))
-                    continue;
+            const auto   k = mind.intel.find(nid);
+            const Intel* seen = k == mind.intel.end() ? nullptr : &k->second;
 
-                const SystemOffer o = OfferOf(n->second);
-                const float       unclaimed = a.claimed ? 0.0f : 1.0f;
-                const float value = t.traffic * o.traffic + t.ore * o.ore + t.salvage * o.salvage +
-                                    t.unclaimed * unclaimed;
+            // Looking: worth its curiosity where it has never been, and again as what it
+            // saw goes stale -- unless what it saw was a friend's or a neutral's, which it
+            // could not take whatever has changed there. The risk is the unknown, plus
+            // whatever hostile it saw there.
+            const bool closed = seen != nullptr && seen->claimed &&
+                                (seen->controller == f || !Hostile(f, seen->controller));
+            if (canSurvey && !closed && surveying.count(nid) == 0)
+            {
+                const float value = Intelligence::SurveyValue(t.curiosity, seen, time_);
                 float       hostile = 0.0f;
-                for (int g = 0; g < FACTION_COUNT; g++)
-                    if (Hostile(f, (FactionId)g) ||
-                        ((FactionId)g == a.controller && a.controller != f))
-                        hostile += a.presence[g];
-                int guns = 0;
-                for (FactionId d : o.defenders)
-                    if (d != f)
-                        guns++;
-                // The lawless also fear the law itself; the law does not fear a quiet system.
-                const float risk = hostile / t.capacity + 0.5f * guns +
-                                   (Factions::IsLawful(f) ? 0.0f : a.security);
+                if (seen != nullptr)
+                    for (int g = 0; g < FACTION_COUNT; g++)
+                        if (Hostile(f, (FactionId)g))
+                            hostile += seen->presence[g];
+                const float risk = Intelligence::UNSEEN_RISK + 0.5f * hostile / t.capacity;
                 const float score = value - risk / t.appetite;
-                if (score > bestScore)
+                if (value > 0.0f && score > bestScore)
                 {
                     bestScore = score;
+                    act = Act::Survey;
                     from = kv.first;
                     to = nid;
-                    why.clear();
-                    auto add = [&](float w, float v, const char* word)
-                    {
-                        if (w * v >= 0.3f)
-                            why += std::string(why.empty() ? "" : ", ") + word;
-                    };
-                    add(t.traffic, o.traffic, "traffic");
-                    add(t.ore, o.ore, "ore");
-                    add(t.salvage, o.salvage, "salvage");
-                    add(t.unclaimed, unclaimed, "nobody holds it");
-                    if (hostile < 1.0f && guns == 0)
-                        why += std::string(why.empty() ? "" : ", ") + "nobody to stop them";
                 }
             }
-        }
-        if (to.empty())
-            continue;
 
-        SystemAggregate& home = systems_[from].agg;
-        SystemAggregate& dest = systems_[to].agg;
-        const float      move =
-            std::min(home.presence[fi] - t.capacity * HOME_GUARD, t.capacity * MOVE_SHARE);
-        const bool first = dest.presence[fi] < 1.0f && dest.presence[fi] + move >= 1.0f;
-        home.presence[fi] -= move;
-        dest.presence[fi] += move;
-        if (first)
-            PushEvent(FactionName(f) + " move into " + SystemName(to) +
-                      (why.empty() ? std::string() : ": " + why));
+            // Reaching: only where it has looked, and only with strength to spare.
+            if (seen == nullptr || surplus < 0.5f)
+                continue;
+            // Only into a system it may take: nobody's, or an enemy's. Never a friend's
+            // or a neutral power's -- that would be a war nobody declared.
+            if (closed)
+                continue;
+
+            const SystemOffer o = OfferOf(*seen);
+            const float       unclaimed = seen->claimed ? 0.0f : 1.0f;
+            const float value = t.traffic * o.traffic + t.ore * o.ore + t.salvage * o.salvage +
+                                t.unclaimed * unclaimed;
+            float       hostile = 0.0f;
+            for (int g = 0; g < FACTION_COUNT; g++)
+                if (Hostile(f, (FactionId)g) ||
+                    ((FactionId)g == seen->controller && seen->controller != f))
+                    hostile += seen->presence[g];
+            int guns = 0;
+            for (FactionId d : o.defenders)
+                if (d != f)
+                    guns++;
+            // The lawless also fear the law itself; the law does not fear a quiet system.
+            const float risk = hostile / t.capacity + 0.5f * guns +
+                               (Factions::IsLawful(f) ? 0.0f : seen->security);
+            const float score =
+                value - Intelligence::BelievedRisk(risk, Intelligence::Staleness(*seen, time_)) /
+                            t.appetite;
+            if (score > bestScore)
+            {
+                bestScore = score;
+                act = Act::Move;
+                from = kv.first;
+                to = nid;
+                why.clear();
+                auto add = [&](float w, float v, const char* word)
+                {
+                    if (w * v >= 0.3f)
+                        why += std::string(why.empty() ? "" : ", ") + word;
+                };
+                add(t.traffic, o.traffic, "traffic");
+                add(t.ore, o.ore, "ore");
+                add(t.salvage, o.salvage, "salvage");
+                add(t.unclaimed, unclaimed, "nobody holds it");
+                if (hostile < 1.0f && guns == 0)
+                    why += std::string(why.empty() ? "" : ", ") + "nobody to stop them";
+            }
+        }
     }
+
+    if (act == Act::Survey)
+    {
+        // How long it takes is drawn from what it is -- this faction, that system, this
+        // minute of the world's clock -- never from how many draws came before.
+        Gen::Rng rng(
+            Gen::Key(SURVEY_KEY, (uint64_t)fi, Intelligence::KeyOf(to), (uint64_t)(time_ / 60.0)));
+        Plan p;
+        p.id = nextPlanId_++;
+        p.kind = Plan::Kind::Survey;
+        p.faction = f;
+        p.from = from;
+        p.target = to;
+        p.startedAt = time_;
+        p.dueAt = time_ + SURVEY_TIME + rng.Range(0, SURVEY_JITTER);
+        plans_[p.id] = p;
+        due_.insert({ p.dueAt, p.id });
+        return;
+    }
+    if (act != Act::Move)
+        return;
+
+    SystemAggregate& home = systems_[from].agg;
+    SystemState&     dest = systems_[to];
+    // Arriving, it sees the place as it is -- and if that is a friend's or a neutral's
+    // after all, it turns back rather than start a war on old news.
+    mind.intel[to] = Observe(dest);
+    if (dest.agg.claimed && (dest.agg.controller == f || !Hostile(f, dest.agg.controller)))
+        return;
+    const float move =
+        std::min(home.presence[fi] - t.capacity * HOME_GUARD, t.capacity * MOVE_SHARE);
+    const bool first = dest.agg.presence[fi] < 1.0f && dest.agg.presence[fi] + move >= 1.0f;
+    home.presence[fi] -= move;
+    dest.agg.presence[fi] += move;
+    if (first)
+        PushEvent(FactionName(f) + " move into " + SystemName(to) +
+                  (why.empty() ? std::string() : ": " + why));
 }
 
 // 3. Who holds a system: the controller, until a hostile faction has had the upper hand

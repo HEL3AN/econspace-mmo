@@ -22,7 +22,11 @@ namespace Save
 // 4: an added object may be a structure (#39), written under "structures" with its time
 //    line. A version 3 build would not rebuild one, drop it with a warning, and write the
 //    world back without it -- every site and beacon gone after one checkpoint.
-inline constexpr int WORLD_VERSION = 4;
+// 5: the world carries what each faction knows, the surveys under way and the history
+//    (#295). A version 4 build would load the world without them and write it back so,
+//    and every faction would forget what it had found. An older file loads with factions
+//    that know their holdings and what is next door, as a new world's do.
+inline constexpr int WORLD_VERSION = 5;
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.
 // 3: a mission names its stations by system and station rather than by entity id, which

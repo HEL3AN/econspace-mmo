@@ -308,6 +308,60 @@ void ApplyState(Entity& e, const nlohmann::json& s)
     if (e.GetKind() == EntityKind::Derelict && s.value("looted", false))
         static_cast<Derelict&>(e).SetLooted();
 }
+
+// A faction by the id factions.json gives it, or false for one this build does not have:
+// the reader maps anything it does not know to the Independents, which for a save would
+// hand one faction's knowledge to another.
+bool FactionByName(const nlohmann::json& v, FactionId& f)
+{
+    if (!v.is_string())
+        return false;
+    f = FactionFromString(v.get<std::string>());
+    return Factions::Id(f) == v.get<std::string>();
+}
+
+nlohmann::json IntelJson(const Intel& i)
+{
+    nlohmann::json defenders = nlohmann::json::array();
+    for (FactionId d : i.defenders)
+        defenders.push_back(Factions::Id(d));
+    return { { "seenAt", i.seenAt },
+             { "traffic", i.traffic },
+             { "security", i.security },
+             { "belts", i.belts },
+             { "wrecks", i.wrecks },
+             { "stations", i.stations },
+             { "defenders", defenders },
+             { "presence", i.presence },
+             { "controller", Factions::Id(i.controller) },
+             { "claimed", i.claimed } };
+}
+
+Intel IntelFrom(const nlohmann::json& j)
+{
+    Intel i;
+    i.seenAt = j.value("seenAt", 0.0);
+    i.traffic = j.value("traffic", i.traffic);
+    i.security = j.value("security", i.security);
+    i.belts = j.value("belts", 0);
+    i.wrecks = j.value("wrecks", 0);
+    i.stations = j.value("stations", 0);
+    if (j.contains("defenders") && j["defenders"].is_array())
+        for (const auto& d : j["defenders"])
+        {
+            FactionId f;
+            if (FactionByName(d, f))
+                i.defenders.push_back(f);
+        }
+    if (j.contains("presence") && j["presence"].is_array() && j["presence"].size() == FACTION_COUNT)
+        for (int f = 0; f < FACTION_COUNT; f++)
+            i.presence[f] = j["presence"][f].get<float>();
+    FactionId c;
+    if (j.contains("controller") && FactionByName(j["controller"], c))
+        i.controller = c;
+    i.claimed = j.value("claimed", false);
+    return i;
+}
 }  // namespace
 
 // Server world persistence: the galaxy (system aggregates) + time. The sup* "pressure"
@@ -337,6 +391,57 @@ void Simulation::SaveWorld(const std::string& path) const
                              { "name", a.givenName } };
     }
     j["galaxy"] = galaxy;
+
+    // What each faction knows, what it has under way, and the history so far (#295).
+    // Knowledge is written only once there is some: a world saved before its first macro
+    // pass seeds it on load, as an older save does.
+    if (mindsSeeded_)
+    {
+        json minds = json::object();
+        for (int f = 0; f < FACTION_COUNT; f++)
+        {
+            json intel = json::object();
+            // Not what it sees for itself -- its holdings and where its ships are: the
+            // faction looks at those again before it next decides anything, and in a
+            // region the pirates have overrun they are most of the file.
+            for (const auto& kv : minds_[f].intel)
+            {
+                const auto st = systems_.find(kv.first);
+                if (st != systems_.end() &&
+                    ((st->second.agg.claimed && st->second.agg.controller == (FactionId)f) ||
+                     st->second.agg.presence[f] >= 1.0f))
+                    continue;
+                intel[kv.first] = IntelJson(kv.second);
+            }
+            minds[Factions::Id((FactionId)f)] = { { "intel", std::move(intel) } };
+        }
+        j["factions"] = std::move(minds);
+    }
+    json plans = json::array();
+    for (const auto& kv : plans_)
+    {
+        const Plan& p = kv.second;
+        plans.push_back({ { "id", p.id },
+                          { "kind", "survey" },
+                          { "faction", Factions::Id(p.faction) },
+                          { "from", p.from },
+                          { "target", p.target },
+                          { "startedAt", p.startedAt },
+                          { "dueAt", p.dueAt } });
+    }
+    j["plans"] = std::move(plans);
+    j["nextPlan"] = nextPlanId_;
+    json history = json::array();
+    for (const ChronicleEntry& e : chronicle_)
+        history.push_back(
+            { { "seq", e.seq },
+              { "time", e.time },
+              { "kind", e.kind },
+              { "faction", e.faction < 0 ? std::string() : Factions::Id((FactionId)e.faction) },
+              { "system", e.system },
+              { "text", e.text } });
+    j["chronicle"] = std::move(history);
+    j["chronicleSeq"] = chronicleSeq_;
 
     // What players changed (#38). Stored as changes rather than as the systems themselves:
     // the region is remade from its seed (#140) and the hand-written systems from data, so
@@ -433,6 +538,62 @@ Save::Result Simulation::LoadWorld(const std::string& path)
         a.seeded = true;
     }
 
+    // What factions knew (#295). An older save has none: the factions start again from
+    // what they hold and what is next door, the first time they are stepped.
+    if (j.contains("factions") && j["factions"].is_object())
+    {
+        mindsSeeded_ = true;
+        for (auto it = j["factions"].begin(); it != j["factions"].end(); ++it)
+        {
+            FactionId f;
+            if (!FactionByName(json(it.key()), f) || !it.value().is_object())
+                continue;
+            const json& intel = it.value().value("intel", json::object());
+            for (auto k = intel.begin(); intel.is_object() && k != intel.end(); ++k)
+                if (HasSystem(k.key()) && k.value().is_object())
+                    minds_[(int)f].intel[k.key()] = IntelFrom(k.value());
+        }
+    }
+    if (j.contains("plans") && j["plans"].is_array())
+        for (const json& pj : j["plans"])
+        {
+            Plan p;
+            if (!pj.is_object() || pj.value("kind", std::string()) != "survey" ||
+                !pj.contains("faction") || !FactionByName(pj["faction"], p.faction))
+                continue;
+            p.id = pj.value("id", 0);
+            p.kind = Plan::Kind::Survey;
+            p.from = pj.value("from", std::string());
+            p.target = pj.value("target", std::string());
+            p.startedAt = pj.value("startedAt", 0.0);
+            p.dueAt = pj.value("dueAt", 0.0);
+            if (p.id <= 0 || plans_.count(p.id) != 0 || !HasSystem(p.target))
+                continue;
+            plans_[p.id] = p;
+            due_.insert({ p.dueAt, p.id });
+        }
+    nextPlanId_ = std::max(1, j.value("nextPlan", 1));
+    for (const auto& kv : plans_)
+        nextPlanId_ = std::max(nextPlanId_, kv.first + 1);
+    if (j.contains("chronicle") && j["chronicle"].is_array())
+        for (const json& ej : j["chronicle"])
+        {
+            if (!ej.is_object())
+                continue;
+            ChronicleEntry e;
+            e.seq = ej.value("seq", 0LL);
+            e.time = ej.value("time", 0.0);
+            e.kind = ej.value("kind", std::string());
+            FactionId f;
+            e.faction = ej.contains("faction") && FactionByName(ej["faction"], f) ? (int)f : -1;
+            e.system = ej.value("system", std::string());
+            e.text = ej.value("text", std::string());
+            chronicle_.push_back(std::move(e));
+        }
+    chronicleSeq_ = j.value("chronicleSeq", 0LL);
+    for (const ChronicleEntry& e : chronicle_)
+        chronicleSeq_ = std::max(chronicleSeq_, e.seq);
+
     // Before version 3 nothing a player changed was kept, so an older save has nothing to
     // replay and its world is the generated or written one, as it always was.
     if (j.value("version", Save::UNVERSIONED) >= 3 && j.contains("changes") &&
@@ -462,6 +623,14 @@ void Simulation::Reset()
 {
     systems_.clear();
     agentIdCounter_ = 0;
+    for (FactionMind& m : minds_)
+        m.intel.clear();
+    mindsSeeded_ = false;
+    plans_.clear();
+    due_.clear();
+    nextPlanId_ = 1;
+    chronicle_.clear();
+    chronicleSeq_ = 0;
 }
 
 SystemState* Simulation::SystemById(const std::string& id)
