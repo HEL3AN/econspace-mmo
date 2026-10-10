@@ -26,6 +26,7 @@
 #include "ui/UiTheme.h"
 #include "ui/Desk.h"
 #include "ui/Input.h"
+#include "ui/Units.h"
 #include "render/Textures.h"
 #include "raymath.h"
 #include <nlohmann/json.hpp>
@@ -589,8 +590,8 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
     Ui::TableSpec table;
     table.id = "overview";
     table.columns = { { "name", Size::Grow(), Ui::Align::Start, true },
-                      { "type", Size::Fixed(72.0f), Ui::Align::Start, true },
-                      { "dist", Size::Fixed(56.0f), Ui::Align::End, true } };
+                      { "type", Size::Fit(0.0f, 96.0f), Ui::Align::Start, true },
+                      { "dist", Size::Fit(), Ui::Align::End, true } };
     table.rows = (int)rows.size();
     table.sort = &overviewSort_;
     table.empty = filters[overviewTab_] == Overview::Filter::Hostile ? "nothing hostile in sight"
@@ -610,13 +611,7 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
                                            : held      ? t.colors.accent
                                                        : t.colors.text };
             case 1: return Ui::Cell{ row.kind, t.colors.dim };
-            default:
-                // Thousands past ten thousand: a column of seven-digit numbers is one nobody
-                // reads.
-                return Ui::Cell{ row.distance >= 10000.0f
-                                     ? TextFormat("%.0fk", row.distance / 1000.0f)
-                                     : TextFormat("%.0f", row.distance),
-                                 t.colors.dim };
+            default: return Ui::Cell{ Ui::Distance(row.distance), t.colors.dim };
         }
     };
     table.rowFill = [&](int r)
@@ -1530,15 +1525,73 @@ void Game::DrawGalaxyMap()
         return best;
     };
 
-    // System nodes.
+    // Labels are placed, not just drawn (#259, #313): the system you are in and the one under
+    // the cursor claim their text first, and any other label that would land on a claimed
+    // one gives up its details, then its name. Spacing alone did not keep a neighbour's name
+    // off the five lines the current system says about itself.
+    std::vector<const WorldLoader::SystemInfo*> order;
     for (const auto& s : systems)
+        order.push_back(&s);
+    auto priority = [&](const WorldLoader::SystemInfo* s)
     {
-        Vector2     p = toScreen(s.mapPos);
-        bool        cur = (s.id == activeSys);
-        const bool  hovered = CheckCollisionPointCircle(m, p, 12.0f);
-        const float room = nearestOnScreen(s);
-        const bool  detail = cur || hovered || room >= 110.0f;
-        const bool  named = cur || hovered || room >= 45.0f;
+        if (s->id == activeSys)
+            return 0;
+        return CheckCollisionPointCircle(m, toScreen(s->mapPos), 12.0f) ? 1 : 2;
+    };
+    std::stable_sort(order.begin(), order.end(),
+                     [&](const WorldLoader::SystemInfo* a, const WorldLoader::SystemInfo* b)
+                     { return priority(a) < priority(b); });
+    std::vector<Rectangle> claimed;
+    auto                   unclaimed = [&](Rectangle r)
+    {
+        for (const Rectangle& c : claimed)
+            if (CheckCollisionRecs(r, c))
+                return false;
+        return true;
+    };
+
+    // System nodes.
+    for (const WorldLoader::SystemInfo* sp : order)
+    {
+        const WorldLoader::SystemInfo& s = *sp;
+        Vector2                        p = toScreen(s.mapPos);
+        bool                           cur = (s.id == activeSys);
+        const bool                     hovered = CheckCollisionPointCircle(m, p, 12.0f);
+        const float                    room = nearestOnScreen(s);
+        bool                           detail = cur || hovered || room >= 110.0f;
+        bool                           named = cur || hovered || room >= 45.0f;
+        float                          lx = p.x + 14.0f;  // where its labels start
+        {
+            // What its labels would cover: the name line, and the lines under it.
+            float nameW = (float)Ui::TextWidth(s.name.c_str(), 16);
+            if (!s.designation.empty())
+                nameW += 8.0f + (float)Ui::TextWidth(s.designation.c_str(), 12);
+            const float     detailW = fmaxf(nameW, s.charted ? 190.0f : 80.0f);
+            const float     bottom = !s.charted ? 24.0f
+                                     : cur      ? (CanNameHere() ? 82.0f : 66.0f)
+                                                : (s.discoverer.empty() ? 38.0f : 52.0f);
+            const Rectangle nameBox{ p.x + 14.0f, p.y - 8.0f, nameW, 18.0f };
+            const Rectangle leftBox{ p.x - 14.0f - nameW, p.y - 8.0f, nameW, 18.0f };
+            const Rectangle detailBox{ p.x + 14.0f, p.y - 8.0f, detailW, bottom + 8.0f };
+            // In order: everything to the right, the name to the right, the name to the left
+            // of the node. A label that fits nowhere is left to the cursor.
+            if (!cur && !hovered)
+            {
+                if (detail && !unclaimed(detailBox))
+                    detail = false;
+                if (named && !detail && !unclaimed(nameBox))
+                {
+                    if (unclaimed(leftBox))
+                        lx = leftBox.x;
+                    else
+                        named = false;
+                }
+            }
+            if (detail)
+                claimed.push_back(detailBox);
+            else if (named)
+                claimed.push_back(lx < p.x ? leftBox : nameBox);
+        }
         // Uncharted (#144): a gate from somewhere known leads there, and that is all anyone
         // knows -- an empty ring and a designation, no numbers.
         if (!s.charted)
@@ -1546,9 +1599,9 @@ void Game::DrawGalaxyMap()
             DrawCircleLines((int)p.x, (int)p.y, 7.0f, Ui::TEXT_DIM);
             if (named)
             {
-                Ui::Text(s.name.c_str(), (int)p.x + 14, (int)p.y - 8, 16, Ui::TEXT_DIM);
+                Ui::Text(s.name.c_str(), (int)lx, (int)p.y - 8, 16, Ui::TEXT_DIM);
                 if (detail)
-                    Ui::Text("uncharted", (int)p.x + 14, (int)p.y + 10, 12, Ui::TEXT_DIM);
+                    Ui::Text("uncharted", (int)lx, (int)p.y + 10, 12, Ui::TEXT_DIM);
             }
             continue;
         }
@@ -1557,10 +1610,10 @@ void Game::DrawGalaxyMap()
             DrawCircleLines((int)p.x, (int)p.y, 16.0f, Fade(Ui::ACCENT, 0.6f));
         if (named)
         {
-            Ui::Text(s.name.c_str(), (int)p.x + 14, (int)p.y - 8, 16, cur ? Ui::ACCENT : Ui::TEXT);
+            Ui::Text(s.name.c_str(), (int)lx, (int)p.y - 8, 16, cur ? Ui::ACCENT : Ui::TEXT);
             // A named system keeps its designation beside the name (#145).
             if (!s.designation.empty())
-                Ui::Text(s.designation.c_str(), (int)p.x + 22 + Ui::TextWidth(s.name.c_str(), 16),
+                Ui::Text(s.designation.c_str(), (int)lx + 8 + Ui::TextWidth(s.name.c_str(), 16),
                          (int)p.y - 6, 12, Ui::TEXT_DIM);
         }
 
@@ -1590,25 +1643,25 @@ void Game::DrawGalaxyMap()
                                               : Color{ 230, 120, 60, 255 };
             Ui::Text(
                 TextFormat("sec %.2f  pir %d  econ %.0f%%", security, pirates, prosperity * 100.0f),
-                (int)p.x + 14, (int)p.y + 10, 12, secCol);
+                (int)lx, (int)p.y + 10, 12, secCol);
             // Territory controller (L3) — in the faction's color.
-            Ui::Text(FactionName(controller).c_str(), (int)p.x + 14, (int)p.y + 24, 12,
+            Ui::Text(FactionName(controller).c_str(), (int)lx, (int)p.y + 24, 12,
                      FactionColor(controller));
             // The node ring is tinted with the controller's color.
             DrawCircleLines((int)p.x, (int)p.y, cur ? 13.0f : 10.0f,
                             Fade(FactionColor(controller), 0.7f));
         }
         if (cur)
-            Ui::Text("you are here", (int)p.x + 14, (int)p.y + 38, 12, Ui::TEXT_DIM);
+            Ui::Text("you are here", (int)lx, (int)p.y + 38, 12, Ui::TEXT_DIM);
         if (detail && !s.discoverer.empty())
-            Ui::Text(TextFormat("found by %s", s.discoverer.c_str()), (int)p.x + 14,
+            Ui::Text(TextFormat("found by %s", s.discoverer.c_str()), (int)lx,
                      (int)p.y + (cur ? 52 : 38), 12, Ui::TEXT_DIM);
         if (cur && CanNameHere())
         {
             if (desk_.KeyboardFocus().Holds(WIN_MAP, "name"))
-                nameAt = { p.x + 14.0f, p.y + 60.0f };  // the field is drawn after the clip
+                nameAt = { lx, p.y + 60.0f };  // the field is drawn after the clip
             else
-                Ui::Text("[N] name this system", (int)p.x + 14, (int)p.y + 66, 14, Ui::ACCENT);
+                Ui::Text("[N] name this system", (int)lx, (int)p.y + 66, 14, Ui::ACCENT);
         }
     }
 

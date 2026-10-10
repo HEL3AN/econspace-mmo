@@ -366,9 +366,13 @@ std::unique_ptr<Entity> Game::MakeProxyFromLayout(const Proto::EntityLayout& el)
             e = std::make_unique<Star>(el.pos, el.size, (StarType)el.subType);
             break;
         case Proto::EntityKind::Planet:
-            e = std::make_unique<Planet>(el.orbitRadius, 0.0f, 0.0f, el.size, el.color,
-                                         (ResourceType)el.resource, (PlanetType)el.subType);
+        {
+            auto p = std::make_unique<Planet>(el.orbitRadius, 0.0f, 0.0f, el.size, el.color,
+                                              (ResourceType)el.resource, (PlanetType)el.subType);
+            p->SetName(el.name);  // the server's name for it (#259)
+            e = std::move(p);
             break;
+        }
         case Proto::EntityKind::Station:
             e = std::make_unique<Station>(el.pos, el.size, el.name, el.faction,
                                           (StationRole)el.subType);

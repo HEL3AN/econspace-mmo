@@ -268,6 +268,32 @@ TEST_CASE("a generated system is a system the game can build")
     }
 }
 
+TEST_CASE("planets are called after their system, numbered from the star out (#259)")
+{
+    CHECK(WorldLoader::RomanNumeral(1) == "I");
+    CHECK(WorldLoader::RomanNumeral(4) == "IV");
+    CHECK(WorldLoader::RomanNumeral(9) == "IX");
+    CHECK(WorldLoader::RomanNumeral(14) == "XIV");
+    CHECK(WorldLoader::RomanNumeral(0).empty());
+
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    // In the file out of order: the number follows the orbit, not the line it is written on.
+    const nlohmann::json sys = nlohmann::json::parse(R"({
+        "planets": [ { "type": "Gas", "size": 30000, "orbitRadius": 600000 },
+                     { "type": "Rocky", "size": 15000, "orbitRadius": 200000 },
+                     { "type": "Ice", "size": 15000, "orbitRadius": 400000 } ]
+    })");
+    auto                 e = WorldLoader::BuildSystem(sys);
+    REQUIRE(e.size() == 3);
+    CHECK(e[0]->GetName() == "Planet");  // nothing has named them yet
+    WorldLoader::NamePlanets(e, "Helios Core");
+    CHECK(e[0]->GetName() == "Helios Core III");
+    CHECK(e[1]->GetName() == "Helios Core I");
+    CHECK(e[2]->GetName() == "Helios Core II");
+    WorldLoader::NamePlanets(e, "Ember");  // the system is named: so are its planets
+    CHECK(e[1]->GetName() == "Ember I");
+}
+
 TEST_CASE("an object can say which archetype of its kind it is (#142)")
 {
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));

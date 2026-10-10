@@ -3,6 +3,7 @@
 #include "ui/DeskLayout.h"
 #include "ui/Focus.h"
 #include "ui/Layout.h"
+#include "ui/Units.h"
 
 #include <string>
 #include <string_view>
@@ -266,6 +267,53 @@ TEST_CASE("Table: a cell too long for its column is cut short with ..")
         }
     }
     CHECK(found);
+}
+
+TEST_CASE("Table: a Fit column is as wide as its widest cell, on every row (#259)")
+{
+    Layout l;
+    Monospaced(l);
+    std::vector<std::string> dist = { "9", "12.5k", "480" };
+    auto                     frame = [&]
+    {
+        Ui::TableSpec s;
+        s.id = "t";
+        s.columns = { { "name", Size::Grow(), Ui::Align::Start, true },
+                      { "d", Size::Fit(), Ui::Align::End, true } };
+        s.rows = (int)dist.size();
+        s.cell = [&](int r, int c) { return Ui::Cell{ c == 0 ? "row" : dist[r], WHITE }; };
+        l.Begin(AREA, 1.0f, Layout::Pointer());
+        l.Table(s);
+        const std::vector<Ui::DrawCommand> out = l.End();
+        CHECK_MESSAGE(l.LastError().empty(), l.LastError());
+        return out;
+    };
+    frame();
+    for (const Ui::DrawCommand& c : frame())
+        if (c.kind == Ui::DrawCommand::Kind::Text)
+            CHECK(c.text.find("..") == std::string::npos);  // nothing cut short
+    const float narrow = l.BoxOf("t~h", 1).width;
+    CHECK(narrow > 0.0f);
+
+    dist[1] = "12345.6k";  // a wider value widens the whole column, heading included
+    frame();
+    const float wide = l.BoxOf("t~h", 1).width;
+    CHECK(wide > narrow);
+    CHECK(wide < AREA.width / 2.0f);
+}
+
+TEST_CASE("Distance: exact to 9999, then three figures with k or M (#259)")
+{
+    CHECK(Ui::Distance(0.0f) == "0");
+    CHECK(Ui::Distance(9599.0f) == "9599");
+    CHECK(Ui::Distance(12500.0f) == "12.5k");
+    CHECK(Ui::Distance(99960.0f) == "100k");  // decided on the printed value, not "100.0k"
+    CHECK(Ui::Distance(480000.0f) == "480k");
+    CHECK(Ui::Distance(999600.0f) == "1.00M");
+    CHECK(Ui::Distance(1250000.0f) == "1.25M");
+    CHECK(Ui::Distance(25000000.0f) == "25.0M");
+    for (float d = 1.0f; d < 1e9f; d *= 1.37f)
+        CHECK(Ui::Distance(d).size() <= 5);
 }
 
 TEST_CASE("Ellipsize: a short text is left alone, a long one ends in ..")

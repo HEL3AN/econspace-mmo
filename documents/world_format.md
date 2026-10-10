@@ -40,6 +40,8 @@ on their map too.
 - Objects farther than `MID_RADIUS` from the center are "hot spots": belts beyond this
   threshold spawn pirates (see `Game::PopulateNpcs`).
 - A planet's `orbitSpeed` is a linear speed; the angular speed = `orbitSpeed / orbitRadius`.
+- A planet has no `name`: it is called after its system and its place counted from the star
+  out, "Helios Core III" (#259). Naming a system names its planets.
 
 ---
 

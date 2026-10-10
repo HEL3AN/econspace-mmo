@@ -15,7 +15,9 @@
 #include "economy/Resource.h"
 #include "raylib.h"
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <fstream>
+#include <utility>
 
 using json = nlohmann::json;
 
@@ -304,6 +306,33 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
 
     Orbits::Place(entities, 0.0);  // satellites without a "pos" need one before anything asks
     return entities;
+}
+
+std::string WorldLoader::RomanNumeral(int n)
+{
+    static const std::pair<int, const char*> DIGITS[] = {
+        { 1000, "M" }, { 900, "CM" }, { 500, "D" }, { 400, "CD" }, { 100, "C" },
+        { 90, "XC" },  { 50, "L" },   { 40, "XL" }, { 10, "X" },   { 9, "IX" },
+        { 5, "V" },    { 4, "IV" },   { 1, "I" }
+    };
+    std::string out;
+    for (const auto& d : DIGITS)
+        for (; n >= d.first; n -= d.first)
+            out += d.second;
+    return out;
+}
+
+void WorldLoader::NamePlanets(std::vector<std::unique_ptr<Entity>>& entities,
+                              const std::string&                    systemName)
+{
+    std::vector<Planet*> planets;
+    for (auto& e : entities)
+        if (e->GetKind() == EntityKind::Planet)
+            planets.push_back(static_cast<Planet*>(e.get()));
+    std::stable_sort(planets.begin(), planets.end(), [](const Planet* a, const Planet* b)
+                     { return a->GetOrbitRadius() < b->GetOrbitRadius(); });
+    for (size_t i = 0; i < planets.size(); i++)
+        planets[i]->SetName(systemName + " " + RomanNumeral((int)i + 1));
 }
 
 nlohmann::json WorldLoader::DescribeObject(const Entity& e, std::string& array)

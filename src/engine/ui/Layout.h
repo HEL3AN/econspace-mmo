@@ -183,7 +183,9 @@ struct TextStyle
 // --- What the widgets take and give ----------------------------------------------------
 
 // A table's column: its heading, how wide it is (the same rule as a box's), where its text
-// sits, and whether clicking the heading sorts by it.
+// sits, and whether clicking the heading sorts by it. A Fit column is as wide as the widest
+// thing in it, heading included, within its min and max -- the same width on every row, so
+// the column lines up and a number is never cut short (#259).
 struct TableColumn
 {
     std::string label;

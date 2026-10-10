@@ -35,7 +35,12 @@ public:
 
     Render::Item            Describe() const override;
     std::unique_ptr<Entity> Clone() const override { return std::make_unique<Planet>(*this); }
-    std::string             GetName() const override { return "Planet"; }
+    // A planet is called after its system and its place from the star out, "Helios Core
+    // III", as EVE calls them: nobody writes planet names, and a name that only says
+    // "Planet" is one an overview of five of them cannot tell apart. WorldLoader::NamePlanets
+    // gives it; a planet nothing named is still "Planet".
+    std::string GetName() const override { return name_.empty() ? "Planet" : name_; }
+    void        SetName(const std::string& name) { name_ = name; }
 
     ResourceType GetDeposit() const { return deposit_; }
     PlanetType   GetPlanetType() const { return type_; }
@@ -47,4 +52,5 @@ private:
     float        angle_;
     ResourceType deposit_;  // the planet's subsurface resource (data from system.json)
     PlanetType   type_;
+    std::string  name_;
 };
