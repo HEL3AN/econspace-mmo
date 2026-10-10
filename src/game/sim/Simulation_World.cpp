@@ -44,6 +44,7 @@ void Simulation::SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& i
     a.police = roundf(sec * 4.0f);
     a.pirates = std::max(0.0f, roundf((0.7f - sec) * 8.0f));
     a.controller = info.owner.empty() ? FactionId::Independent : FactionFromString(info.owner);
+    a.visited = regionDocs_.count(info.id) == 0;  // beyond the wormhole, nobody has been
     a.seeded = true;
 }
 
@@ -262,7 +263,8 @@ void Simulation::SaveWorld(const std::string& path) const
         galaxy[kv.first] = { { "traders", a.traders },       { "miners", a.miners },
                              { "police", a.police },         { "pirates", a.pirates },
                              { "security", a.security },     { "baseSecurity", a.baseSecurity },
-                             { "prosperity", a.prosperity }, { "controller", (int)a.controller } };
+                             { "prosperity", a.prosperity }, { "controller", (int)a.controller },
+                             { "visited", a.visited } };
     }
     j["galaxy"] = galaxy;
 
@@ -304,6 +306,7 @@ Save::Result Simulation::LoadWorld(const std::string& path)
         a.baseSecurity = gj.value("baseSecurity", a.baseSecurity);
         a.prosperity = gj.value("prosperity", a.prosperity);
         a.controller = (FactionId)gj.value("controller", (int)a.controller);
+        a.visited = gj.value("visited", a.visited);
         a.seeded = true;
     }
     return Save::Result::Ok;

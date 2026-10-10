@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -921,4 +922,60 @@ TEST_CASE("the region hangs off the start system by a wormhole, and its seed is 
     CHECK(seed == 424242u);
     CHECK(rules == Gen::GENERATOR_VERSION);
     std::remove(path.c_str());
+}
+
+TEST_CASE("the region is nobody's to take until somebody has been there (#143)")
+{
+    // Seen with the first generated region: within seconds of a start, the macro model
+    // handed most of the region to the pirates and the news opened with eight seizures --
+    // a world that had run its course before any player arrived.
+    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+
+    Simulation sim;
+    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    const size_t handWritten = sim.Universe().systems.size();
+    sim.AttachRegion(7, systems);  // the seed it was seen with
+    sim.Seed(1234u);
+    sim.InitGalaxy();
+    sim.MaterializeAllSystems(systems);
+
+    std::map<std::string, FactionId>   before;
+    std::map<std::string, std::string> names;
+    for (size_t i = handWritten; i < sim.Universe().systems.size(); i++)
+    {
+        const std::string& id = sim.Universe().systems[i].id;
+        names[id] = sim.Universe().systems[i].name;
+        CHECK_FALSE(sim.SystemById(id)->agg.visited);
+        before[id] = sim.SystemById(id)->agg.controller;
+    }
+    REQUIRE_FALSE(before.empty());
+    CHECK(sim.SystemById(sim.Universe().startId)->agg.visited);  // known space is known
+
+    for (int i = 0; i < 60 * 300; i++)  // five simulated minutes of maintenance
+        sim.MaintainWorld(1.0f / 60.0f);
+
+    for (const auto& kv : before)
+    {
+        CAPTURE(kv.first);
+        CHECK(sim.SystemById(kv.first)->agg.controller == kv.second);
+    }
+    // Known space is contested from the start -- Tau Verge, at 0.3, can fall -- so only
+    // the region's names are checked here.
+    for (const std::string& e : sim.Events())
+        for (const auto& kv : before)
+        {
+            CAPTURE(e);
+            CHECK(e.find("seized " + names[kv.first]) == std::string::npos);
+        }
+
+    // The first ship in makes it part of the contested world, and that is news.
+    ClientSession& s =
+        sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+    const std::string entry = before.begin()->first;
+    sim.ServerEnterSystem(s, entry, sim.Universe().startId);
+    CHECK(sim.SystemById(entry)->agg.visited);
+    REQUIRE_FALSE(sim.Events().empty());
+    CHECK(sim.Events().back().find("First ship into") != std::string::npos);
 }

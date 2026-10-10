@@ -367,9 +367,13 @@ private:
     std::map<int, ClientSession> sessions_;
     int                          sessionIdCounter_ = 0;
 
-    double       time_ = 0.0;        // total simulation time (seconds)
-    double       maintAccum_ = 0.0;  // accumulator of coarse world maintenance (director)
-    unsigned int rng_ = 0x1234567u;  // RNG state
+    double time_ = 0.0;        // total simulation time (seconds)
+    double maintAccum_ = 0.0;  // accumulator of coarse world maintenance (director)
+    // Macro passes since this process started; the first few are the world settling and
+    // are not news (#143).
+    int                  macroSteps_ = 0;
+    static constexpr int SETTLE_STEPS = 3;
+    unsigned int         rng_ = 0x1234567u;  // RNG state
 
     std::vector<std::string> events_;  // recent galaxy events (capped)
 
