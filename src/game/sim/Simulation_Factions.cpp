@@ -58,24 +58,37 @@ void Simulation::SeedPresence(SystemAggregate& a)
         a.presence[(int)FactionId::Pirates] = Unrest(a);
 }
 
+SystemProfile Simulation::ProfileOf(const SystemState& st)
+{
+    SystemProfile p;
+    for (const auto& e : st.entities)
+        switch (e->GetKind())
+        {
+            case EntityKind::Field: p.belts++; break;
+            case EntityKind::Derelict: p.wrecks++; break;
+            case EntityKind::Planet: p.planets++; break;
+            case EntityKind::Gate: p.gates++; break;
+            case EntityKind::Station:
+                p.stations++;
+                if (e->Has(Component::Defensive))
+                    p.defenders.push_back(static_cast<const Station*>(e.get())->GetFaction());
+                break;
+            default: break;
+        }
+    return p;
+}
+
 // What a system offers, seen by anyone: how much passes through, how much ore there is,
-// how much lies about to be salvaged, and who defends it.
+// how much lies about to be salvaged, and who defends it. The last three are what the
+// system is, read from its profile (#295) -- a faction weighing a hundred neighbours does
+// not walk a hundred lists of ships to count the belts.
 Simulation::SystemOffer Simulation::OfferOf(const SystemState& st) const
 {
     SystemOffer o;
     o.traffic = std::clamp(st.agg.prosperity, 0.0f, 1.0f);
-    int belts = 0, wrecks = 0;
-    for (const auto& e : st.entities)
-    {
-        if (e->GetKind() == EntityKind::Field)
-            belts++;
-        else if (e->GetKind() == EntityKind::Derelict)
-            wrecks++;
-        else if (e->GetKind() == EntityKind::Station && e->Has(Component::Defensive))
-            o.defenders.push_back(static_cast<const Station*>(e.get())->GetFaction());
-    }
-    o.ore = std::min(1.0f, belts / 3.0f);
-    o.salvage = std::min(1.0f, wrecks / 4.0f);
+    o.ore = std::min(1.0f, st.profile.belts / 3.0f);
+    o.salvage = std::min(1.0f, st.profile.wrecks / 4.0f);
+    o.defenders = st.profile.defenders;
     return o;
 }
 

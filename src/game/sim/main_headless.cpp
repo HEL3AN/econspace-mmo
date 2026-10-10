@@ -8,6 +8,7 @@
 // Run: econserver [ticks]   (default 3600 ticks = 60 s at SIM_DT=1/60).
 
 #include "sim/Auth.h"
+#include "sim/MacroBench.h"
 #include "sim/Protocol.h"
 #include "sim/SaveSchema.h"
 #include "gen/Region.h"
@@ -1405,6 +1406,24 @@ int main(int argc, char** argv)
         return OrderSelftest();
     if (argc > 1 && std::string(argv[1]) == "regiondump")
         return RegionDump(argc > 2 ? std::strtoull(argv[2], nullptr, 10) : 1);
+    // econserver macrobench [N ...] [--seconds S] [--seed X]: what the galaxy costs to run
+    // with a region of N systems and nobody connected (#295). Without N, 20 100 500 1000.
+    if (argc > 1 && std::string(argv[1]) == "macrobench")
+    {
+        std::vector<int> sizes;
+        double           seconds = 120.0;
+        uint64_t         seed = 1;
+        for (int i = 2; i < argc; i++)
+            if (std::string(argv[i]) == "--seconds" && i + 1 < argc)
+                seconds = atof(argv[++i]);
+            else if (std::string(argv[i]) == "--seed" && i + 1 < argc)
+                seed = std::strtoull(argv[++i], nullptr, 10);
+            else if (atoi(argv[i]) > 0)
+                sizes.push_back(atoi(argv[i]));
+        if (sizes.empty())
+            sizes = { 20, 100, 500, 1000 };
+        return MacroBench(sizes, seconds, seed);
+    }
     if (argc > 1 && std::string(argv[1]) == "host")
     {
         unsigned short port = (argc > 2) ? (unsigned short)atoi(argv[2]) : 50800;

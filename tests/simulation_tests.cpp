@@ -2405,3 +2405,73 @@ TEST_CASE("a world saved before changes were kept loads as the data describes it
     CHECK(later.LoadWorld(path) == Save::Result::TooNew);
     std::remove(path.c_str());
 }
+
+TEST_CASE("the macro layer reads a system's profile and the link index, not the world (#295)")
+{
+    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    Simulation        sim;
+    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    sim.AttachRegion(7, systems);
+    sim.Seed(1234u);
+    sim.InitGalaxy();
+    sim.MaterializeAllSystems(systems);
+
+    // The neighbours are what a scan of the links finds, in the order it finds them: the
+    // faction step breaks a tie by whichever it met first.
+    for (const auto& kv : sim.Systems())
+    {
+        std::vector<std::string> scanned;
+        for (const auto& l : sim.Universe().links)
+            if (l.a == kv.first)
+                scanned.push_back(l.b);
+            else if (l.b == kv.first)
+                scanned.push_back(l.a);
+        CAPTURE(kv.first);
+        CHECK(sim.Neighbors(kv.first) == scanned);
+    }
+    CHECK(sim.Neighbors("no-such-system").empty());
+
+    // What a system offers is what its objects are, counted as the offer once counted them.
+    for (const auto& kv : sim.Systems())
+    {
+        int                    belts = 0, wrecks = 0;
+        std::vector<FactionId> defenders;
+        for (const auto& e : kv.second.entities)
+            if (e->GetKind() == EntityKind::Field)
+                belts++;
+            else if (e->GetKind() == EntityKind::Derelict)
+                wrecks++;
+            else if (e->GetKind() == EntityKind::Station && e->Has(Component::Defensive))
+                defenders.push_back(static_cast<const Station*>(e.get())->GetFaction());
+        CAPTURE(kv.first);
+        const Simulation::SystemOffer o = sim.OfferOf(kv.second);
+        CHECK(o.ore == doctest::Approx(std::min(1.0f, belts / 3.0f)));
+        CHECK(o.salvage == doctest::Approx(std::min(1.0f, wrecks / 4.0f)));
+        CHECK(o.defenders == defenders);
+    }
+
+    // ...and it follows the static layer when that changes.
+    const std::string sys = sim.Universe().startId;
+    const int         before = sim.SystemById(sys)->profile.belts;
+    const int         id =
+        sim.AddStatic(sys,
+                      std::make_unique<AsteroidField>(Vector2{ 9000.0f, 0.0f }, 30.0f, "New Belt",
+                                                      AllResourceTypes()[0], 1000),
+                      "");
+    REQUIRE(id != 0);
+    CHECK(sim.SystemById(sys)->profile.belts == before + 1);
+    REQUIRE(sim.RemoveStatic(sys, id));
+    CHECK(sim.SystemById(sys)->profile.belts == before);
+}
+
+TEST_CASE("a region can be asked for at another size, for measuring (#295)")
+{
+    Simulation sim;
+    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    const size_t known = sim.Universe().systems.size();
+    sim.AttachRegion(7, std::string(TEST_DATA_DIR) + "systems/", 60);
+    CHECK(sim.RegionDocuments().size() == 60);
+    CHECK(sim.Universe().systems.size() == known + 60);
+}

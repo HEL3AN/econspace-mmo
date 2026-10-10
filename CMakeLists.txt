@@ -230,6 +230,8 @@ target_compile_definitions(econspace PRIVATE GAME_DATA_DIR="${CMAKE_SOURCE_DIR}/
 # authoritative server running real agents in every system. No client (Game) over it yet.
 add_executable(econserver
     src/game/sim/main_headless.cpp
+    src/game/sim/MacroBench.cpp           # econserver macrobench: the galaxy's cost by size (#295)
+    src/game/sim/ProcessMemory.cpp        # resident memory, for the benchmark (#295)
     src/game/sim/Simulation.cpp
     src/game/sim/ClientSession.cpp        # one connected player, extracted from Simulation (#3)
     src/game/sim/Simulation_World.cpp     # galaxy, hydration, routes, persistence (#17)
