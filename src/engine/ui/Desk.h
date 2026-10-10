@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/DeskLayout.h"
+#include "ui/Focus.h"
 #include "ui/Input.h"
 #include "ui/Window.h"
 
@@ -49,10 +50,12 @@ public:
     // Window frames: a press raises the window it lands on, the close button closes it, the
     // title bar drags it, and a resizable window's corner grip resizes it.
     void HandleMouse();
-    // Closes the top thing Esc closes; true if something was.
+    // Closes the top thing Esc closes; true if something was. A text field that holds the
+    // keyboard takes the Esc instead: it lets go, and nothing closes.
     bool Escape();
     // Draws the open windows and surfaces of one layer that the desk draws, bottom to top.
-    void Draw(Layer layer) const;
+    // What a screen covers is not drawn (WindowSpec::covers).
+    void Draw(Layer layer);
     // Writes the layout if a window moved, opened or closed since the last call.
     void Persist();
 
@@ -61,7 +64,16 @@ public:
     void Toggle(const std::string& id) { SetOpen(id, !IsOpen(id)); }
     bool Owns(const std::string& id) const;  // owns the mouse this frame
     bool WorldOwnsMouse() const { return layout_.Owner() == DeskLayout::NONE; }
-    void ResetLayout() { layout_.Reset(); }
+    // A frame for a surface that lays out a field of its own (the map's name field): its
+    // area, whether it owns the mouse, and the keyboard focus.
+    Frame SurfaceFrame(const std::string& id, Rectangle area);
+
+    // The keyboard (#297). A field takes it by being clicked, or the game hands it over
+    // (Take); while it is held, keys are text, and the game reads no hotkeys
+    // (KeyboardTaken). A press anywhere, Esc, or the field's window closing lets go.
+    Focus& KeyboardFocus() { return focus_; }
+    bool   KeyboardTaken() const { return focus_.Taken(); }
+    void   ResetLayout() { layout_.Reset(); }
 
     // The menu bar's buttons, in the order they were registered.
     struct MenuSlot
@@ -88,6 +100,7 @@ private:
     void Close(int h);
 
     DeskLayout        layout_;
+    Focus             focus_;
     std::vector<Item> items_;  // by handle
     int               dragging_ = DeskLayout::NONE;
     bool              resizing_ = false;  // the drag is of the corner, not the title bar

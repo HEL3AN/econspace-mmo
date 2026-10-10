@@ -21,7 +21,7 @@ enum class Layer
     Panels,   // the windows a player arranges: status, overview, radar...
     Screen,   // something that covers the world view: the map, the sensor screen, a station
     Modal,    // above the screens: the menu bar that opens them
-    Popup,    // the context menu, the range picker
+    Popup,    // the context menu
     Overlay,  // F10's panel: above everything, never treated
 };
 
@@ -59,6 +59,10 @@ struct WindowSpec
     bool      persist = false;    // its place and open state are kept per account
     bool      resizable = false;  // a saved size is restored only if the player could make one
     Vector2   minSize{ 160.0f, 96.0f };  // units; a resizable window is never made smaller
+    // While it is open, every window on a lower layer is hidden: it is drawn over the whole
+    // view, and a panel showing through it is a panel nobody can use and that hides part of
+    // it (the map, the sensor screen, the station).
+    bool covers = false;
 };
 
 class DeskLayout
@@ -78,6 +82,9 @@ public:
     void Raise(int h);  // to the front of its layer
     // Every window, bottom to top: by layer, then by when it was raised.
     std::vector<int> Order() const;
+    // Open, but under something on a higher layer that covers the view: not drawn, and
+    // never under the cursor.
+    bool Covered(int h) const;
 
     // The screen the windows are placed on; a change re-places every placed window from
     // its anchor, so a resolution change keeps each one at its edge.

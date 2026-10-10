@@ -21,7 +21,7 @@
 #include "ui/ContextMenu.h"
 #include "ui/Desk.h"
 #include "ui/Layout.h"
-#include "core/RangePicker.h"
+#include "core/Actions.h"
 #include <deque>
 #include <map>
 #include <vector>
@@ -79,6 +79,14 @@ public:
     {
         startWarpTarget_ = target;
         startWarpFrames_ = 120;  // two seconds: the first snapshots have placed the ship
+    }
+    // Select the nearest thing shortly after joining, and with `menu` open its right-click
+    // menu too (--select, --menu): for a picture of the selected-item window and the
+    // actions, without a hand on the mouse.
+    void StartWithSelection(bool menu)
+    {
+        startSelectFrames_ = 90;
+        startMenu_ = menu;
     }
     // Start with the galaxy map open (--map): for seeing the index the server sent without
     // a hand on the keyboard.
@@ -138,29 +146,34 @@ private:
     void DrawStationScreen();
     void DrawMissionBoard(int x, int y, int w);  // mission board at the station
 
-    void SetupWindows();                         // puts every window, screen and popup on the desk
-    void HandleMenuBar();                        // menu bar input: a button toggles its window
-    void DrawMenuBar();                          // vertical menu bar on the left
-    void ApplyResolution(int w, int h);          // changes the window size
-    void DrawSettingsContent(Rectangle area);    // contents of the settings window
-    void OpenContextMenu(Entity* target);        // right-click action menu on an object
+    void SetupWindows();                       // puts every window, screen and popup on the desk
+    void HandleMenuBar();                      // menu bar input: a button toggles its window
+    void DrawMenuBar();                        // vertical menu bar on the left
+    void ApplyResolution(int w, int h);        // changes the window size
+    void DrawSettingsContent(Rectangle area);  // contents of the settings window
+    void OpenContextMenu(Entity* target);  // right-click action menu on an object, at the cursor
+    void OpenContextMenu(Entity* target, Vector2 at);
     void OpenContextMenuAt(Vector2 worldPoint);  // right-click menu on empty space
+    // What the client knows about a thing, for Actions::For; and doing one of its actions.
+    // The target is looked up by id when the action runs: a menu outlives a frame, and the
+    // proxy it was opened on may not.
+    Actions::Target ActionTarget(const Entity& e) const;
+    void            Perform(const Actions::Action& a, int targetId, Vector2 point);
     // Navigation orders (client → command; applied by the server in StepPlayerShip).
     void OrderAutopilot(Vector2 target, float stopDist);  // fly to a point
     void OrderWarp(Vector2 target, float dropDist);       // warp to a point
     void DrawStatusContent(const Ui::Frame& f);           // contents of the status window
-    void DrawTargetContent(Rectangle area);               // contents of the selected-target window
-    void DrawOverviewContent(const Ui::Frame& f);         // list of objects in the system
-    void DrawRadarContent(const Ui::Frame& f);            // system radar minimap
-    void DrawMissionsContent(Rectangle area);             // log of active missions
-    void DrawGalaxyMap();                                 // full-screen star map
-    void DrawSensorScreen();                              // the sensor grid (#123)
+    void DrawTargetContent(const Ui::Frame& f);    // the selected item: what it is, what to do
+    void DrawOverviewContent(const Ui::Frame& f);  // list of objects in the system
+    void DrawRadarContent(const Ui::Frame& f);     // system radar minimap
+    void DrawMissionsContent(Rectangle area);      // log of active missions
+    void DrawGalaxyMap();                          // full-screen star map
+    void DrawSensorScreen();                       // the sensor grid (#123)
     // The sensor cell under a screen point, from the last picture drawn: the id of what is
     // in it (0 if nothing) and the world point at its centre. False off the grid.
     bool             SensorPick(Vector2 screen, int& id, Vector2& world) const;
     Sensor::Standing ViewerStanding() const;  // this pilot's standing, for the instruments
     bool CanNameHere() const;  // in a system this pilot found and nobody has named (#145)
-    void HandleNaming();       // typing a name: every key goes to the name until Enter/Esc
     void HandleEscape();       // Esc closes whatever is on top, and never quits
     void SaveTreatment();      // writes what was tuned in F10's panel
 
@@ -243,8 +256,10 @@ private:
     Vector2    skyLastTarget_ = { 0.0f, 0.0f };
     bool       skyPrimed_ = false;
     Vector2    startWarpTarget_ = { 0.0f, 0.0f };
-    int        startWarpFrames_ = -1;  // counts down to the --warp order; -1 when there is none
-    WorldClock worldClock_;            // the server's clock, eased (#192)
+    int        startWarpFrames_ = -1;    // counts down to the --warp order; -1 when there is none
+    int        startSelectFrames_ = -1;  // ...and to --select
+    bool       startMenu_ = false;
+    WorldClock worldClock_;  // the server's clock, eased (#192)
 
     // --shot: where the frame goes (empty when not shooting), and how many frames are left.
     std::string     shotPath_;
@@ -353,18 +368,24 @@ private:
     static constexpr const char* WIN_STATION = "station";  // the docked screen
     static constexpr const char* WIN_MENUBAR = "menubar";
     static constexpr const char* WIN_CONTEXT = "context";  // the right-click menu
-    static constexpr const char* WIN_RANGE = "range";      // the range picker (#298)
     static constexpr const char* WIN_LOOK = "look";        // F10's treatment panel (#120)
     Ui::Desk                     desk_;
-    // The status window, laid out by Ui::Layout rather than by hand (#297): the first one.
+    // The windows laid out by Ui::Layout rather than by hand (#297); each keeps its own,
+    // because a layout remembers hover, scroll and what is being typed.
     Ui::Layout statusLayout_;
+    Ui::Layout overviewLayout_{ 8192 };  // a row is seven elements, and a system has many rows
+    Ui::Layout targetLayout_;
+    Ui::Layout mapNameLayout_;  // the map's name field
     // The overview's tab and sort (#157), kept across frames and windows being reopened.
-    Overview::Filter overviewFilter_ = Overview::Filter::All;
-    Overview::Sort   overviewSort_ = Overview::Sort::Distance;
+    int           overviewTab_ = 0;           // into Overview::AllFilters()
+    Ui::TableSort overviewSort_{ 2, false };  // by distance
+    // The range the selected-item window holds at, for orbit, keep and follow (#298): the
+    // player's own, starting from the target's default and kept until the target changes.
+    float holdRange_ = 0.0f;
+    int   holdRangeFor_ = 0;  // the target it was chosen for
 
-    std::string pilotName_;       // the account this client logged in as
-    bool        naming_ = false;  // the name field is open (#145)
-    std::string nameBuf_;
+    std::string pilotName_;  // the account this client logged in as
+    std::string nameBuf_;    // the map's name field (#145), while it has the keyboard
 
     // The sensor screen (#123): V opens it, the wheel steps its range. It covers the world
     // view and the windows while open, and the flight keys keep working, because flying by
@@ -387,5 +408,4 @@ private:
     Vector2 galaxyDragLast_ = { 0.0f, 0.0f };
 
     ContextMenu contextMenu_;  // right-click action menu on an object
-    RangePicker rangePicker_;  // a hold at a distance of the player's choosing (#298)
 };

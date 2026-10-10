@@ -11,7 +11,8 @@
         "bad": "#E65A50",
         "money": "#FFCB00",
         "track": "#5056646E",
-        "hover": "#5CAAE828"
+        "hover": "#5CAAE828",
+        "selected": "#5CAAE838"
     },
     "standing": {
         "own": "#78EB82",
@@ -29,7 +30,9 @@
         "border": 1,
         "barHeight": 8,
         "buttonHeight": 26,
-        "resizeGrip": 14
+        "resizeGrip": 14,
+        "rowHeight": 20,
+        "scrollbar": 4
     },
     "fontSize": {
         "small": 11,

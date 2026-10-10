@@ -167,6 +167,7 @@ add_library(engine STATIC
     src/engine/ui/Window.cpp
     src/engine/ui/ContextMenu.cpp
     src/engine/ui/Input.cpp            # who the mouse belongs to while something draws (#297)
+    src/engine/ui/Focus.cpp            # ...and who the keyboard belongs to: one text field
     src/engine/ui/DeskLayout.cpp       # the window manager's rules, with no drawing -- tested
     src/engine/ui/Desk.cpp             # ...and the half that reads the mouse and draws
     src/engine/ui/Theme.cpp            # colours, spacing and sizes as data, and the UI scale (#297)
@@ -231,7 +232,7 @@ add_executable(econspace
     src/game/core/Game.cpp
     src/game/core/GameNet.cpp
     src/game/core/GameHud.cpp
-    src/game/core/RangePicker.cpp  # a hold at a distance of the player's choosing (#298)
+    src/game/core/Actions.cpp      # what can be done about a thing: one list for every window (#297)
     src/game/sim/Overview.cpp      # what the overview lists and in what order (#157)
     src/game/sim/Sensor.cpp        # the sensor screen's grid and allegiance colours (#123)
     src/game/sim/PlayerStep.cpp
@@ -372,8 +373,11 @@ add_executable(tests
     tests/theme_tests.cpp          # the UI theme's strict loading, and the scale (#297)
     tests/layout_tests.cpp         # rows, columns, growing and wrapping, without a window (#297)
     tests/intel_tests.cpp          # what factions know, and surveying (#295)
+    tests/widget_tests.cpp         # tables, tabs, fields, sliders and the keyboard focus (#297)
+    tests/actions_tests.cpp        # one list of actions, each matched by an agent's tool (#297)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
+    src/game/core/Actions.cpp      # the actions every window offers, tested without one (#297)
     src/game/sim/Sensor.cpp        # the sensor screen, tested without a window (#123)
     # The simulation itself is under test now, not only the wire (#10). That pulls in its
     # dependency tree -- ships, NPCs, the mission system -- which is the price of testing

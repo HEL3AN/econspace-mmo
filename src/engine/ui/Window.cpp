@@ -30,7 +30,8 @@ Rectangle Window::ResizeGrip(Rectangle b)
     return { b.x + b.width - s, b.y + b.height - s, s, s };
 }
 
-void Window::Draw(Rectangle bounds, bool owner, bool resizable) const
+void Window::Draw(Rectangle bounds, bool owner, bool resizable, Ui::Focus* focus,
+                  std::string_view id) const
 {
     const Ui::Theme& t = Ui::CurrentTheme();
     DrawRectangleRec(bounds, t.colors.panel);
@@ -57,7 +58,7 @@ void Window::Draw(Rectangle bounds, bool owner, bool resizable) const
     if (content_)
     {
         Ui::MouseScope scope(owner);  // the controls inside read the same answer
-        Ui::Frame      frame(ContentArea(bounds), owner);
+        Ui::Frame      frame(ContentArea(bounds), owner, focus, id);
         content_(frame);
     }
 

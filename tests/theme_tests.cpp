@@ -38,7 +38,10 @@ TEST_CASE("the shipped theme loads, and says what the built-in one says")
     CHECK(Same(t.colors.hover, d.colors.hover));
     CHECK(Same(t.standing.hostile, d.standing.hostile));
     CHECK(Same(t.standing.friendly, d.standing.friendly));
+    CHECK(Same(t.colors.selected, d.colors.selected));
     CHECK(t.metrics.titleHeight == d.metrics.titleHeight);
+    CHECK(t.metrics.rowHeight == d.metrics.rowHeight);
+    CHECK(t.metrics.scrollbar == d.metrics.scrollbar);
     CHECK(t.fontSize.body == d.fontSize.body);
     CHECK(t.fonts.regular == d.fonts.regular);
 }

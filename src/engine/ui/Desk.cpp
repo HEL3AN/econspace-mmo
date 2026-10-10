@@ -33,6 +33,7 @@ void Desk::AddSurface(const WindowSpec& spec, bool open, Surface surface)
 
 void Desk::BeginFrame()
 {
+    focus_.EndFrame();  // a field that was not drawn last frame lets the keyboard go
     layout_.SetScreen((float)GetScreenWidth(), (float)GetScreenHeight());
     layout_.SetUnit(Scale());  // a larger interface has larger windows (#297)
     for (int h = 0; h < (int)items_.size(); h++)
@@ -59,6 +60,10 @@ void Desk::BeginFrame()
 void Desk::HandleMouse()
 {
     const Vector2 m = GetMousePosition();
+    // A press lets go of the keyboard; a press on the field that held it takes it straight
+    // back while the field is drawn, and that is not counted as a loss.
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))
+        focus_.Release(Focus::Blur::Elsewhere);
     if (dragging_ != DeskLayout::NONE)
     {
         if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT) || !layout_.IsOpen(dragging_))
@@ -108,33 +113,41 @@ void Desk::Close(int h)
     if (!layout_.IsOpen(h))
         return;
     layout_.SetOpen(h, false);
+    focus_.ReleaseOwner(layout_.Spec(h).id, Focus::Blur::Elsewhere);
     if (items_[h].surface.onClose)
         items_[h].surface.onClose();
 }
 
 bool Desk::Escape()
 {
+    if (focus_.Taken())
+    {
+        focus_.Release(Focus::Blur::Cancel);
+        return true;
+    }
     const int h = layout_.Escape();
     if (h == DeskLayout::NONE)
         return false;
+    focus_.ReleaseOwner(layout_.Spec(h).id, Focus::Blur::Elsewhere);
     if (items_[h].surface.onClose)
         items_[h].surface.onClose();
     return true;
 }
 
-void Desk::Draw(Layer layer) const
+void Desk::Draw(Layer layer)
 {
     const int owner = layout_.Owner();
     for (int h : layout_.Order())
     {
-        if (layout_.Spec(h).layer != layer)
+        if (layout_.Spec(h).layer != layer || layout_.Covered(h))
             continue;
         const Item& it = items_[h];
         // A popup opened during this frame's input is drawn this frame, not the next.
         if (!(it.surface.isOpen ? it.surface.isOpen() : layout_.IsOpen(h)))
             continue;
         if (it.window)
-            it.window->Draw(layout_.Rect(h), owner == h, layout_.Spec(h).resizable);
+            it.window->Draw(layout_.Rect(h), owner == h, layout_.Spec(h).resizable, &focus_,
+                            layout_.Spec(h).id);
         else if (it.surface.draw)
         {
             MouseScope scope(owner == h);
@@ -162,6 +175,13 @@ void Desk::SetOpen(const std::string& id, bool open)
     if (!layout_.IsOpen(h))
         layout_.Raise(h);
     layout_.SetOpen(h, true);
+}
+
+Frame Desk::SurfaceFrame(const std::string& id, Rectangle area)
+{
+    const int              h = layout_.Find(id);
+    const std::string_view key = h == DeskLayout::NONE ? std::string_view() : layout_.Spec(h).id;
+    return Frame(area, Owns(id), &focus_, key);
 }
 
 bool Desk::Owns(const std::string& id) const

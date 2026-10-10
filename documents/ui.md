@@ -68,9 +68,9 @@ void Game::DrawMissions(const Ui::Frame& f)
 - **Text** is measured in our font, so a row knows how wide its words are. `.Wrap()` breaks
   at words to the width the text is given. Styles come from the theme: `Small`, `Label`,
   `Body`, `Strong`, `Title`, `Heading`; `.Tint(colour)` changes one.
-- **Widgets** so far: `Bar`, `Field` (label left, value right), `Divider`, `Button`, `Chip`.
-  More arrive as windows need them; a widget is a function on `Layout` built from boxes
-  and text, never from coordinates.
+- **Widgets**: the simple ones are `Bar`, `Field` (label left, value right), `Divider`,
+  `Button`, `Chip`; the ones a window lists, chooses and types with are below. A widget is
+  a function on `Layout` built from boxes and text, never from coordinates.
 - **Adapting.** A layout follows the window, so a window can be any size. For a real change
   of arrangement, branch on the area: the status window puts its two halves side by side
   when it is wide enough (`f.Area().width >= Ui::Px(420)`).
@@ -89,6 +89,80 @@ Rules:
    test can hold and an agent can read (`Overview::Build` is the pattern). The layout only
    draws what that returns.
 
+## The widget library
+
+Every widget takes an id, answers on the frame something happened, and keeps whatever it
+must remember between frames (a drag, a number half typed, how long the cursor has rested)
+inside the layout. None of them knows what it is showing: the rows, the labels and the
+values come from the window's model.
+
+| Widget | Call | Gives back |
+|---|---|---|
+| Scrolling column | `L.Scroll(Box().Id("list").Grow(), [&]{ ... })` | -- |
+| Table | `L.Table(spec)` | `TableEvents`: `hovered`, `clicked`, `rightClicked`, `sorted` |
+| Tabs | `L.Tabs("tabs", labels, selected)` | true when `selected` changed |
+| Text field | `L.TextField("name", text, options)` | `EditResult`: `changed`, `submitted` |
+| Number field | `L.NumberField("range", value, lo, hi, "%.0f")` | true when `value` changed |
+| Slider | `L.Slider("zoom", value, lo, hi, logarithmic)` | true while it moves `value` |
+| Tooltip | `L.Tooltip("orbit", "Circle it at this range")` | -- |
+
+- **Scroll** lays its children out top to bottom, scrolls them with the wheel, and puts an
+  indicator beside them that shows how much there is and where the view is; it can be
+  dragged. Its room is kept even when everything fits, so a list that grows past the window
+  does not shift sideways. Clay keeps at most ten clipping elements per layout, so a window
+  scrolls a list, not every cell of it.
+- **Table** is headings, a divider and rows in a `Scroll`:
+
+  ```cpp
+  Ui::TableSpec table;
+  table.id = "overview";
+  table.columns = { { "name", Size::Grow(), Align::Start, true },  // sortable
+                    { "dist", Size::Fixed(56.0f), Align::End, true } };
+  table.rows = (int)rows.size();
+  table.cell = [&](int r, int c) { return Ui::Cell{ ..., t.colors.text }; };
+  table.rowFill = [&](int r) { return r == selected ? t.colors.selected : Color{}; };
+  table.sort = &sort_;       // a click on a heading changes it; the model reads it
+  table.tooltip = [&](int r) { return rows[r].name; };  // the whole of a name cut short
+  const Ui::TableEvents ev = L.Table(table);
+  ```
+
+  A cell too long for its column ends in `..` (`Ui::Ellipsize`). Clicking the sorted
+  heading again reverses the order only if `reversible` -- the overview's model always
+  lists hostiles first, which a reversed list would put last.
+- **TextField** edits a `std::string` in place. A click takes the keyboard; Enter submits
+  and lets go; Esc lets go. `TakeFocus(id)` hands it the keyboard without a click (N on the
+  map).
+- **NumberField** is text while it is being typed in, starting empty with the old value
+  shown dim. Enter, or a click anywhere else, takes the number, clamped to `[lo, hi]`; Esc
+  puts the old one back. Paired with a `Slider` on the same value, it is how a window asks
+  for a distance (the selected-item window's range).
+- **Tooltip** shows its text once the cursor has rested on the element a moment. It is drawn
+  by `Ui::DrawTooltip()` at the end of the HUD, after the popups, so nothing covers it.
+
+## The keyboard
+
+One text field in the whole client holds the keyboard at a time (`Ui::Focus`, owned by the
+desk). A field takes it when it is clicked, keeps it while it is drawn, and loses it to
+Enter, Esc, a press anywhere, its window closing, or not being drawn any more. Esc goes to
+the field before it goes to any window: `Desk::Escape` lets go of the field and closes
+nothing. While a field holds it, keys are text: the game asks `desk_.KeyboardTaken()` before
+reading a hotkey or a flight key, so typing a W into a name does not fly the ship.
+
+A field needs a frame from the desk to take the keyboard: a window's content gets one; a
+surface that lays out a field of its own (the map's name field) asks for
+`desk_.SurfaceFrame(id, area)`.
+
+## Actions
+
+What a player can do about a thing is one list, `Actions::For(target, from)` in
+`src/game/core/Actions.h`, and every place that offers an action reads it: the right-click
+menu, the selected-item window's buttons, the overview's right click. `Game::Perform`
+turns a chosen action into a command. Each action names the econagent tool that does the
+same thing, and `actions_tests.cpp` checks those tools exist -- a window cannot offer what
+an agent cannot do. The verbs that only change what the interface shows (`Select`,
+`SetRange`) need no tool; the ones still owed one (`Attack`, `Investigate`) are listed in
+the test, and adding the tool is the only way off the list.
+
 ## The mouse
 
 One thing owns the mouse each frame: the window in front under the cursor, a screen, a
@@ -100,6 +174,13 @@ popup, or the world (#297, slice 1). Inside a window's content:
 - Hand-written widgets read `f.Pressed()`, `f.Hovered(rect)`, `f.Wheel()`; the older
   `Ui::Slider`/`Toggle`/`Button` read `Ui::MouseScope`, which the window sets.
 - Nothing reads `IsMouseButtonPressed` directly: that is how a click went through a window.
+
+## Screens cover the windows
+
+A spec with `covers = true` -- the map, the sensor screen, the station -- hides every window
+on a lower layer while it is open: they are neither drawn nor under the cursor
+(`DeskLayout::Covered`). The map is drawn translucent over the world, and the panels used to
+show through it. The menu bar is on a higher layer and stays.
 
 ## Theme and scale
 
@@ -131,6 +212,7 @@ no window is written against Clay itself.
 
 ## Still placed by hand
 
-Every window except status, and the screens (map, sensor, station), still draw with
+On `Ui::Layout`: status, overview, the selected item, the map's name field. Radar,
+missions, settings, F10's panel and the screens (map, sensor, station) still draw with
 coordinates. They take the font and the theme's colours already; they move onto
 `Ui::Layout` one at a time, and then follow the scale inside as well as outside.

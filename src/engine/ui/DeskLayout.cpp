@@ -210,13 +210,22 @@ void DeskLayout::Reset()
     }
 }
 
+bool DeskLayout::Covered(int h) const
+{
+    const Layer layer = entries_[h].spec.layer;
+    for (const Entry& e : entries_)
+        if (e.open && e.spec.covers && e.spec.layer > layer)
+            return true;
+    return false;
+}
+
 int DeskLayout::HitTest(Vector2 p) const
 {
     const std::vector<int> order = Order();
     for (auto it = order.rbegin(); it != order.rend(); ++it)
     {
         const Entry& e = entries_[*it];
-        if (e.open && e.spec.layer != Layer::World && p.x >= e.rect.x &&
+        if (e.open && e.spec.layer != Layer::World && !Covered(*it) && p.x >= e.rect.x &&
             p.x < e.rect.x + e.rect.width && p.y >= e.rect.y && p.y < e.rect.y + e.rect.height)
             return *it;
     }

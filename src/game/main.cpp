@@ -1,6 +1,6 @@
 // EconSpace — entry point. All logic lives in the Game class.
 //   econspace connect <host> <port> <name> <secret> [--zoom Z] [--warp X Y] [--map]
-//   [--sensor [RANGE]]
+//   [--select] [--menu] [--sensor [RANGE]]
 //   [--shot FILE [--frames N]] [--nohud] [--treated] [--perf] [--notreat] [--size W H]
 //   [--uiscale S] —
 //   connect to an econserver host
@@ -27,6 +27,8 @@ static int Usage(const char* exe)
                  "      --zoom Z   start the camera at zoom Z (1 = a unit is a pixel)\n"
                  "      --warp X Y warp to the point (X, Y) two seconds after joining\n"
                  "      --map      start with the galaxy map open (G/Esc closes it)\n"
+                 "      --select   select the nearest thing shortly after joining\n"
+                 "      --menu     ...and open its right-click menu\n"
                  "      --sensor [RANGE]\n"
                  "                 start with the sensor screen open (V/Esc closes it), RANGE\n"
                  "                 world units across\n"
@@ -62,6 +64,7 @@ int main(int argc, char** argv)
     float             startZoom = 0.0f;  // 0: the default
     bool              warp = false;
     bool              map = false;
+    bool              select = false, menu = false;
     bool              sensor = false;
     float             sensorRange = 0.0f;  // 0: the default
     Vector2           warpTo = { 0.0f, 0.0f };
@@ -82,6 +85,10 @@ int main(int argc, char** argv)
         }
         else if (std::strcmp(argv[i], "--map") == 0)
             map = true;
+        else if (std::strcmp(argv[i], "--select") == 0)
+            select = true;
+        else if (std::strcmp(argv[i], "--menu") == 0)
+            select = menu = true;
         else if (std::strcmp(argv[i], "--sensor") == 0)
         {
             sensor = true;
@@ -160,6 +167,8 @@ int main(int argc, char** argv)
             game.StartWithWarp(warpTo);
         if (map)
             game.StartOnMap();
+        if (select)
+            game.StartWithSelection(menu);
         if (sensor)
             game.StartOnSensor(sensorRange);
         if (!shot.empty())

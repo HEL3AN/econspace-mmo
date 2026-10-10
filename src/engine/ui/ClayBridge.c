@@ -164,6 +164,10 @@ void uiclay_open(const UiClayElement* e)
     if (e->scrollY)
     {
         d.clip.vertical = true;
+        /* Clipped sideways as well, though it only scrolls up and down: a clipped axis does
+         * not take its size from its children, so one long line cannot make the window's
+         * whole list wider than the window. */
+        d.clip.horizontal = true;
         d.clip.childOffset = Clay_GetScrollOffset(); /* of the element just opened */
     }
     Clay__ConfigureOpenElement(d);
@@ -276,4 +280,26 @@ int uiclay_box(UiClay* c, const char* id, int32_t length, uint32_t index, float 
     out[2] = d.boundingBox.width;
     out[3] = d.boundingBox.height;
     return 1;
+}
+
+int uiclay_scroll(UiClay* c, const char* id, int32_t length, uint32_t index, float out[3])
+{
+    Clay_SetCurrentContext(c->context);
+    Clay_String              s = { false, length, id };
+    Clay_ScrollContainerData d = Clay_GetScrollContainerData(Clay_GetElementIdWithIndex(s, index));
+    if (!d.found || d.scrollPosition == NULL)
+        return 0;
+    out[0] = -d.scrollPosition->y;
+    out[1] = d.scrollContainerDimensions.height;
+    out[2] = d.contentDimensions.height;
+    return 1;
+}
+
+void uiclay_set_scroll(UiClay* c, const char* id, int32_t length, uint32_t index, float offset)
+{
+    Clay_SetCurrentContext(c->context);
+    Clay_String              s = { false, length, id };
+    Clay_ScrollContainerData d = Clay_GetScrollContainerData(Clay_GetElementIdWithIndex(s, index));
+    if (d.found && d.scrollPosition != NULL)
+        d.scrollPosition->y = -offset;
 }
