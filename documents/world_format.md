@@ -16,6 +16,7 @@ data/
   universe.json        galaxy index: systems, links, starting system
   archetypes.json      what each kind of object is and can do
   blueprints.json      how a player builds something: cost, time, placement (#39)
+  ships.json           ship designs and what their parts do (#279; see ship_design.md)
   systems/
     <id>.json          one star system (objects)
   textures/            sprites (PNG), optional

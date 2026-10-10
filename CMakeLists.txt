@@ -117,6 +117,7 @@ add_library(engine STATIC
     src/engine/core/ArchetypeEdit.cpp  # writing a tuned look back without reformatting (#118)
     src/engine/core/Orbits.cpp       # planets and their satellites, as a function of time (#210)
     src/engine/core/Blueprint.cpp    # how a player makes something: cost, time, placement (#39)
+    src/engine/core/ShipDesign.cpp   # a ship as a design, its stats read off its parts (#279)
     src/engine/gen/Region.cpp        # the region beyond the wormhole, from a seed (#140)
     src/engine/gen/Pins.cpp          # hand-written exceptions applied after generation (#147)
     src/engine/gen/Survey.cpp        # many generated systems judged at once (#141)
@@ -341,6 +342,7 @@ add_executable(tests
     tests/warp_path_tests.cpp
     tests/clock_tests.cpp
     tests/build_tests.cpp          # construction: blueprints, sites, the clock (#39)
+    tests/ship_design_tests.cpp    # ship designs and the stats derived from them (#279)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/Sensor.cpp        # the sensor screen, tested without a window (#123)
