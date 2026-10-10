@@ -18,7 +18,9 @@ namespace Save
 inline constexpr int WORLD_VERSION = 2;
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.
-inline constexpr int ACCOUNT_VERSION = 2;
+// 3: a mission names its stations by system and station rather than by entity id, which
+//    holds for one server run only (#227). An older one keeps its ids, as it always did.
+inline constexpr int ACCOUNT_VERSION = 3;
 
 // A file with no version at all: everything written before this existed. Those files are
 // a strict subset of version 1, so they are read as-is rather than migrated.

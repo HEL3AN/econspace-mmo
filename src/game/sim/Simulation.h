@@ -231,9 +231,9 @@ public:
     // client, which draws the targeting circle from it.
     static constexpr float PLAYER_WEAPON_RANGE = Sim::PLAYER_WEAPON_RANGE;
 
-    // Facts of the player's combat for the client account: the server applies damage and
-    // reports what happened; the client credits reputation/bounty/mission credit (account until
-    // M4f).
+    // Facts of the player's combat: the server applies damage and credits reputation, bounty
+    // and mission progress to the session's account itself; these are reported so the client
+    // can draw the consequences from facts rather than recompute them.
     struct PlayerCombatEvents
     {
         bool      hitLawful = false;  // hit a lawful target (a crime)
@@ -277,27 +277,28 @@ public:
     struct PlayerMiningResult
     {
         int fieldId = 0;     // the field being mined (0 — none; for the beam)
-        int minedUnits = 0;  // ore units extracted (for xp on the client)
+        int minedUnits = 0;  // ore units extracted
     };
     // Server player mining: if the module is on and there is ore in range — extracts it
-    // into the ship's cargo. miningBonus — the skill multiplier (account, passed by the client).
+    // into the ship's cargo. miningBonus — the skill multiplier, read by the caller from the
+    // session's account.
     PlayerMiningResult StepPlayerMining(ClientSession& s, SystemState& st, float miningBonus,
                                         float dt);
 
     // Jump: if the gate (gateId) is in the system and the player is near — returns the
-    // destination system id, otherwise "". The system change itself is done by the client
-    // (layout still local); the server only validates proximity to the gate.
+    // destination system id, otherwise "". Only the check: the caller moves the session
+    // with ServerEnterSystem.
     std::string JumpGateDestIfNear(const ClientSession& s, SystemState& st, int gateId) const;
 
     // Loot a derelict (derelictId): if near and not looted — marks it looted (a server
-    // world mutation) and returns the reward; otherwise 0. The money is credited by the
-    // client (account).
+    // world mutation), credits the reward to the session's account and returns it;
+    // otherwise 0.
     double StepPlayerLoot(ClientSession& s, SystemState& st, int derelictId);
 
     // Sell cargo on the system market (server mutation: market + cargo). amount is clamped
     // to cargo. Returns what was actually sold and the gross revenue at the current price
-    // (the price sags in the process). Skill/reputation multipliers and crediting of
-    // money/xp/reputation — on the client side (account until M4f).
+    // (the price sags in the process). The trading-skill and reputation multipliers, and
+    // crediting the money, xp and reputation, happen here too, on the session's account.
     struct PlayerSellResult
     {
         int    sold = 0;
@@ -316,7 +317,8 @@ public:
     // Server-authoritative docking (M4e-3b). StepPlayerDock finds the nearest station of
     // st within docking range and (if the player is not warping) fixes the docking, returning
     // the station id (0 — failed). While docked, the host freezes the player's physics.
-    // Reputation admittance — on the client side (account). Undock releases the docking.
+    // Reputation admittance is decided here as well: a station whose faction hates the
+    // player refuses. Undock releases the docking.
     int  StepPlayerDock(ClientSession& s, SystemState& st);
     void StepPlayerUndock(ClientSession& s)
     {

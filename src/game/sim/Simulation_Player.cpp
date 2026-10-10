@@ -35,6 +35,51 @@ namespace
 // reached and comes from its archetype (#34).
 constexpr float PLAYER_WEAPON_DAMAGE = 16.0f;  // player shot damage
 constexpr float PLAYER_FIRE_INTERVAL = 0.5f;   // cooldown between player shots
+
+// A station as a save names it (#227): the system it is in, its name, and which of that
+// name it is there. An entity id comes from a counter that interleaves every system's
+// stations with the NPCs hydrated before them, so it means the same station only within
+// one server run. Null for an id that is no station.
+nlohmann::json StationRefOf(const std::map<std::string, SystemState>& systems, int id)
+{
+    if (id == 0)
+        return nullptr;
+    for (const auto& kv : systems)
+    {
+        const auto& all = kv.second.entities;
+        for (size_t i = 0; i < all.size(); i++)
+        {
+            if (all[i]->GetId() != id || all[i]->GetKind() != EntityKind::Station)
+                continue;
+            // Counted among stations of the same name only, so one added elsewhere in the
+            // system does not change which is meant.
+            int nth = 0;
+            for (size_t k = 0; k < i; k++)
+                if (all[k]->GetKind() == EntityKind::Station &&
+                    all[k]->GetName() == all[i]->GetName())
+                    nth++;
+            return { { "system", kv.first }, { "station", all[i]->GetName() }, { "nth", nth } };
+        }
+    }
+    return nullptr;
+}
+
+// The other direction, on load: the id that station has in this run, or 0 when the galaxy
+// no longer has it.
+int StationIdOf(const std::map<std::string, SystemState>& systems, const nlohmann::json& ref)
+{
+    if (!ref.is_object())
+        return 0;
+    const auto it = systems.find(ref.value("system", std::string()));
+    if (it == systems.end())
+        return 0;
+    const std::string name = ref.value("station", std::string());
+    int               nth = ref.value("nth", 0);
+    for (const auto& e : it->second.entities)
+        if (e->GetKind() == EntityKind::Station && e->GetName() == name && nth-- == 0)
+            return e->GetId();
+    return 0;
+}
 }  // namespace
 
 void Simulation::ServerRespawnPlayer(ClientSession& s)
@@ -782,17 +827,17 @@ void Simulation::SaveAccount(const ClientSession& s, const std::string& path) co
     j["ships"] = s.ownedShips;
     j["ship"] = s.currentShip;
 
-    // Missions address stations by stable id on purpose -- that is what lets one survive
-    // a jump -- so ids are what gets written. A name would have to be resolved against a
-    // galaxy that may have been edited since.
+    // A mission addresses its stations by id while the server runs -- that is what lets
+    // one survive a jump -- but an id is good for one run only (#227). The save names them
+    // the way the data does, by system and station, and the load looks the ids up again.
     json missions = json::array();
     for (const Mission& m : s.missions.Active())
         missions.push_back({ { "type", (int)m.type },
                              { "faction", (int)m.faction },
                              { "title", m.title },
                              { "description", m.description },
-                             { "giver", m.giverStationId },
-                             { "dest", m.destStationId },
+                             { "giver", StationRefOf(systems_, m.giverStationId) },
+                             { "dest", StationRefOf(systems_, m.destStationId) },
                              { "resource", ResourceName(m.resource) },
                              { "target", m.targetCount },
                              { "progress", m.progress },
@@ -929,13 +974,35 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
             m.faction = (FactionId)mj.value("faction", 0);
             m.title = mj.value("title", std::string());
             m.description = mj.value("description", std::string());
-            m.giverStationId = mj.value("giver", 0);
-            m.destStationId = mj.value("dest", 0);
             m.resource = ResourceFromName(mj.value("resource", std::string()));
             m.targetCount = mj.value("target", 0);
             m.progress = mj.value("progress", 0);
             m.rewardMoney = mj.value("rewardMoney", 0.0);
             m.rewardRep = mj.value("rewardRep", 0.0f);
+            const json giver = mj.value("giver", json());
+            const json dest = mj.value("dest", json());
+            if (version >= 3)
+            {
+                m.giverStationId = StationIdOf(systems_, giver);
+                m.destStationId = StationIdOf(systems_, dest);
+                // A mission handed in at a station the galaxy no longer has could never be
+                // completed, and would hold one of the player's slots for good.
+                const int handIn =
+                    m.type == MissionType::Delivery ? m.destStationId : m.giverStationId;
+                if (handIn == 0)
+                {
+                    s.RecordEvent(Ev::Kind::Notice, "Mission dropped -- " + m.title +
+                                                        ": its station is no longer there");
+                    continue;
+                }
+            }
+            else
+            {
+                // Before #227 the ids themselves were written. They are the best there is,
+                // and right whenever the world has materialised in the same order since.
+                m.giverStationId = giver.is_number_integer() ? giver.get<int>() : 0;
+                m.destStationId = dest.is_number_integer() ? dest.get<int>() : 0;
+            }
             active.push_back(std::move(m));
         }
         // The offer board is not restored: it belongs to the station the player was

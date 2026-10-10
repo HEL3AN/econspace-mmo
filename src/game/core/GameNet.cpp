@@ -336,15 +336,14 @@ void Game::BuildClientSnapshot()
 
         // Server-authoritative docking: enter/leave station mode by snapshot.
         // We take the station from the proxy by id (at docking time the client was in flight, so a
-        // proxy exists). Money/reputation/missions — the client account (missions over the network
-        // — later).
+        // proxy exists). No flash of our own: the server's journal already says "Docked at X",
+        // and saying it here as well showed it twice (#227).
         if (p.docked && mode_ == GameMode::Flying)
         {
             if (Station* s = StationById(p.dockedStationId))
             {
                 mode_ = GameMode::Docked;
                 dockedStation_ = s;
-                FlashMessage(TextFormat("Docked at %s", s->GetName().c_str()));
             }
         }
         else if (!p.docked && mode_ == GameMode::Docked)
