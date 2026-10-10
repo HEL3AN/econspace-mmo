@@ -1058,6 +1058,39 @@ TEST_CASE("a trapezoid, a jagged polygon and a soft glow are carried to the piec
     CHECK_FALSE(a[0].soft);
 }
 
+TEST_CASE("a soft part inside a module is still soft where the module is placed (#240)")
+{
+    MakeDirectory("soft_test_tmp");
+    {
+        std::ofstream f("soft_test_tmp/modules.json");
+        f << R"({ "modules": [ { "id": "glow", "variants": [ { "id": "a", "shape": [
+            { "form": "disc", "radius": 0.6, "soft": true, "alpha": 0.2 },
+            { "form": "disc", "radius": 0.2, "at": [0.5, 0] } ] } ] } ] })";
+    }
+    std::string error;
+    REQUIRE(Render::Modules::Load("soft_test_tmp/modules.json", error));
+    const Render::Shape s = Parse(R"([
+        { "module": "glow", "at": [1.2, 0], "scale": 0.5, "repeat": 3 },
+        { "module": "glow", "at": [0, 1], "scale": 0.5, "mirror": true } ])");
+    const auto          pieces = Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 10.0f));
+    int                 soft = 0, solid = 0;
+    for (const auto& p : pieces)
+        (p.soft ? soft : solid)++;
+    CHECK(soft == 3 + 2);
+    CHECK(solid == soft);
+
+    // On a sphere too, where it is in view: the seed turns the planet, so look at several.
+    const Render::Shape planet =
+        Parse(R"([ { "module": "glow", "lat": 0, "lon": 0, "scale": 0.3 } ])");
+    bool softOnSphere = false;
+    for (int seed = 1; seed <= 12; seed++)
+        for (const auto& p : Render::Compose(planet, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 10.0f)))
+            softOnSphere = softOnSphere || (p.surface && p.soft);
+    CHECK(softOnSphere);
+    std::remove("soft_test_tmp/modules.json");
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+}
+
 TEST_CASE("a variable may be negated, scaled and offset; a row may go round a centre (#240)")
 {
     // A pair of jaws opening together: one at $a, the other at -$a.
@@ -1291,6 +1324,106 @@ TEST_CASE("a kit mounts a module by its box and draws it in its layer (#240)")
     const auto pieces = Render::Compose(layered, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f));
     REQUIRE(pieces.size() == 2);
     CHECK(pieces[0].form == Render::Form::Bar);
+}
+
+TEST_CASE("a module part or a kit line may allow some variants or bar some (#240)")
+{
+    std::string error;
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+    const Render::Module* engine = Render::Modules::Find("engine");
+    REQUIRE(engine != nullptr);
+
+    // With no lists every variant is allowed, in the module's order: the seed's choice by
+    // index is the choice it made before the lists existed.
+    CHECK(Render::AllowedVariants(*engine, {}, {}).size() == engine->variants.size());
+    const auto only = Render::AllowedVariants(*engine, { "bell", "cluster" }, {});
+    REQUIRE(only.size() == 2);
+    CHECK(only[0]->id == "bell");
+    const auto but = Render::AllowedVariants(*engine, {}, { "ion" });
+    CHECK(but.size() == engine->variants.size() - 1);
+
+    // Written on a part, every seed draws one of the allowed variants exactly as if it had
+    // been pinned, and over many seeds each of them turns up.
+    auto same = [](const std::vector<Render::Piece>& a, const std::vector<Render::Piece>& b)
+    {
+        if (a.size() != b.size())
+            return false;
+        for (size_t k = 0; k < a.size(); k++)
+            if (a[k].form != b[k].form || Dist(a[k].pos, b[k].pos) > 1e-3f)
+                return false;
+        return true;
+    };
+    const Render::Shape listed =
+        Parse(R"([ { "module": "turret", "scale": 0.1, "variants": ["heavy", "missile"] } ])");
+    const Render::Shape heavy =
+        Parse(R"([ { "module": "turret", "scale": 0.1, "variant": "heavy" } ])");
+    const Render::Shape missile =
+        Parse(R"([ { "module": "turret", "scale": 0.1, "variant": "missile" } ])");
+    int sawHeavy = 0, sawMissile = 0;
+    for (int seed = 1; seed <= 40; seed++)
+    {
+        const auto pose = At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 10.0f);
+        const auto got = Render::Compose(listed, pose);
+        const bool h = same(got, Render::Compose(heavy, pose));
+        const bool m = same(got, Render::Compose(missile, pose));
+        CHECK((h || m));
+        sawHeavy += h;
+        sawMissile += m;
+    }
+    CHECK(sawHeavy > 0);
+    CHECK(sawMissile > 0);
+
+    // On a kit line: the placed parts carry only allowed variants, and the same seed is the
+    // same choice.
+    const Render::Shape       ship = Parse(R"({
+        "sections": [ { "form": "bar", "length": 1.6, "width": 0.4, "pitch": 0.2 } ],
+        "kit": { "modules": [ { "of": "engine", "count": 1, "on": "end", "except": ["ion"] },
+                              { "of": "#opening", "count": 1, "on": "edge",
+                                "variants": ["round"] } ] },
+        "parts": [] })");
+    std::vector<Render::Part> sections;
+    for (const auto& p : ship.parts)
+        if (p.section)
+            sections.push_back(p);
+    std::set<std::string> engines;
+    for (int seed = 1; seed <= 40; seed++)
+    {
+        const auto placed = Render::PlaceKit(ship.kit, sections, seed);
+        for (const auto& p : placed)
+        {
+            CHECK(p.variant != "ion");
+            if (p.module == "engine")
+                engines.insert(p.variant);
+            else
+                CHECK(p.variant == "round");  // hatch and vent both have one
+        }
+    }
+    CHECK(engines.size() == 2);
+
+    // Mistakes are load errors that say so.
+    Render::Shape bad;
+    CHECK_FALSE(Render::ParseShape(
+        nlohmann::json::parse(R"([ { "module": "engine", "variants": ["warp"] } ])"), bad, error));
+    CHECK(error.find("warp") != std::string::npos);
+    CHECK_FALSE(Render::ParseShape(
+        nlohmann::json::parse(
+            R"([ { "module": "engine", "except": ["bell", "cluster", "ion"] } ])"),
+        bad, error));
+    CHECK_FALSE(Render::ParseShape(
+        nlohmann::json::parse(
+            R"([ { "module": "engine", "variant": "bell", "except": ["ion"] } ])"),
+        bad, error));
+    CHECK_FALSE(Render::ParseShape(
+        nlohmann::json::parse(R"([ { "module": "engine", "variants": "bell" } ])"), bad, error));
+    // A tag's lines check against every module carrying it: a hatch's id is fine on
+    // #opening, a turret's is not.
+    CHECK(Render::ParseShape(nlohmann::json::parse(R"({ "parts": [], "kit": { "modules": [
+        { "of": "#opening", "variants": ["blast-door"] } ] } })"),
+                             bad, error));
+    CHECK_FALSE(Render::ParseShape(nlohmann::json::parse(R"({ "parts": [], "kit": { "modules": [
+        { "of": "#opening", "variants": ["heavy"] } ] } })"),
+                                   bad, error));
+    CHECK(error.find("heavy") != std::string::npos);
 }
 
 TEST_CASE("a module whose place is taken goes to the nearest free one, not nowhere (#240)")

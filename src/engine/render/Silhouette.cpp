@@ -232,6 +232,84 @@ Vector2 Axis(const Piece& p)
 
 static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error);
 
+std::vector<const ModuleVariant*> AllowedVariants(const Module&                   m,
+                                                  const std::vector<std::string>& only,
+                                                  const std::vector<std::string>& except)
+{
+    std::vector<const ModuleVariant*> out;
+    for (const ModuleVariant& v : m.variants)
+    {
+        const bool listed = std::find(only.begin(), only.end(), v.id) != only.end();
+        const bool barred = std::find(except.begin(), except.end(), v.id) != except.end();
+        if ((only.empty() || listed) && !barred)
+            out.push_back(&v);
+    }
+    return out;
+}
+
+// "variants": [...] and "except": [...], on a module part or a kit line: which of a module's
+// variants the seed may choose from (#240). Every name has to be a variant of one of
+// `modules` -- of the module itself, or of any module carrying the tag a kit line names --
+// and something has to be left to choose: a list that rules out everything is a mistake,
+// not an empty object.
+static bool ParseVariantLists(const json& e, const std::vector<const Module*>& modules,
+                              const std::string& what, std::string& variant,
+                              std::vector<std::string>& only, std::vector<std::string>& except,
+                              std::string& error)
+{
+    auto names = [&](const char* key, std::vector<std::string>& out)
+    {
+        if (!e.contains(key))
+            return true;
+        const json& l = e[key];
+        if (!l.is_array() || l.empty())
+        {
+            error = what + ": \"" + key + "\" is a list of variant ids";
+            return false;
+        }
+        for (const json& n : l)
+        {
+            if (!n.is_string())
+            {
+                error = what + ": \"" + key + "\" is a list of variant ids";
+                return false;
+            }
+            const std::string id = n.get<std::string>();
+            bool              known = false;
+            for (const Module* m : modules)
+                for (const ModuleVariant& v : m->variants)
+                    known = known || v.id == id;
+            if (!known)
+            {
+                error = what + " has no variant '" + id + "'";
+                return false;
+            }
+            out.push_back(id);
+        }
+        return true;
+    };
+    if (!names("variants", only) || !names("except", except))
+        return false;
+    if (!variant.empty() && (!only.empty() || !except.empty()))
+    {
+        error = what + ": \"variant\" pins one, \"variants\" and \"except\" choose among them; "
+                       "not both";
+        return false;
+    }
+    if (!only.empty() || !except.empty())
+    {
+        bool left = false;
+        for (const Module* m : modules)
+            left = left || !AllowedVariants(*m, only, except).empty();
+        if (!left)
+        {
+            error = what + ": \"variants\" and \"except\" leave no variant to choose";
+            return false;
+        }
+    }
+    return true;
+}
+
 // "kit": { "symmetry": "bilateral", "plain": 0.4, "modules": [
 //          { "of": "hatch", "count": [2, 4], "on": "edge" }, { "of": "#light", ... } ] }
 // A name that is no module and a tag no module carries are load errors, like a misspelt
@@ -258,10 +336,11 @@ static bool ParseKit(const json& k, Kit& kit, std::string& error)
     }
     for (const json& m : k["modules"])
     {
-        if (!m.is_object() || !OnlyKnownKeys(m,
-                                             { "of", "count", "on", "scale", "turn", "variant",
-                                               "in", "mount", "z", "when", "prefer" },
-                                             error))
+        if (!m.is_object() ||
+            !OnlyKnownKeys(m,
+                           { "of", "count", "on", "scale", "turn", "variant", "variants", "except",
+                             "in", "mount", "z", "when", "prefer" },
+                           error))
         {
             if (error.empty())
                 error = "a kit line is { \"of\", \"count\", \"on\", ... }";
@@ -272,12 +351,12 @@ static bool ParseKit(const json& k, Kit& kit, std::string& error)
         e.byTag = !e.of.empty() && e.of[0] == '#';
         if (e.byTag)
             e.of = e.of.substr(1);
-        bool known = false;
+        std::vector<const Module*> of;
         for (const Module& mod : Modules::All())
-            known = known ||
-                    (e.byTag ? std::find(mod.tags.begin(), mod.tags.end(), e.of) != mod.tags.end()
-                             : mod.id == e.of);
-        if (!known)
+            if (e.byTag ? std::find(mod.tags.begin(), mod.tags.end(), e.of) != mod.tags.end()
+                        : mod.id == e.of)
+                of.push_back(&mod);
+        if (of.empty())
         {
             error = std::string(e.byTag ? "no module carries the tag '" : "unknown module '") +
                     e.of + "' in the kit";
@@ -303,6 +382,9 @@ static bool ParseKit(const json& k, Kit& kit, std::string& error)
         e.scale = m.value("scale", 0.0f);
         e.turn = m.value("turn", 0.0f);
         e.variant = m.value("variant", std::string());
+        if (!ParseVariantLists(m, of, std::string("kit line '") + (e.byTag ? "#" : "") + e.of + "'",
+                               e.variant, e.variants, e.except, error))
+            return false;
         e.in = m.value("in", -1);
         e.mount = m.value("mount", e.mount);
         if (e.mount != "on" && e.mount != "out" && e.mount != "centre")
@@ -436,17 +518,51 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         }
         // A misspelled field would be read as absent and draw the default (#191), which
         // for a part is the kind of wrong nobody notices until it is the only one left.
-        if (!OnlyKnownKeys(
-                e, { "form",     "role",        "at",          "sides",       "angle",
-                     "radius",   "width",       "length",      "count",       "filled",
-                     "repeat",   "mirror",      "minPixels",   "jitterAngle", "jitterScale",
-                     "alpha",    "orbitRadius", "orbitPeriod", "orbitPhase",  "orbitTilt",
-                     "lat",      "lon",         "spin",        "blink",       "onlyThrusting",
-                     "tint",     "from",        "to",          "row",         "module",
-                     "variant",  "scale",       "chance",      "group",       "pivot",
-                     "onlyDark", "tip",         "jagged",      "soft",        "pitch",
-                     "z" },
-                error))
+        if (!OnlyKnownKeys(e,
+                           { "form",
+                             "role",
+                             "at",
+                             "sides",
+                             "angle",
+                             "radius",
+                             "width",
+                             "length",
+                             "count",
+                             "filled",
+                             "repeat",
+                             "mirror",
+                             "minPixels",
+                             "jitterAngle",
+                             "jitterScale",
+                             "alpha",
+                             "orbitRadius",
+                             "orbitPeriod",
+                             "orbitPhase",
+                             "orbitTilt",
+                             "lat",
+                             "lon",
+                             "spin",
+                             "blink",
+                             "onlyThrusting",
+                             "tint",
+                             "from",
+                             "to",
+                             "row",
+                             "module",
+                             "variant",
+                             "variants",
+                             "except",
+                             "scale",
+                             "chance",
+                             "group",
+                             "pivot",
+                             "onlyDark",
+                             "tip",
+                             "jagged",
+                             "soft",
+                             "pitch",
+                             "z" },
+                           error))
             return false;
         Part p;
         if (e.contains("module"))
@@ -469,6 +585,9 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
                 error = "module '" + p.module + "' has no variant '" + p.variant + "'";
                 return false;
             }
+            if (!ParseVariantLists(e, { m }, "module '" + p.module + "'", p.variant, p.variants,
+                                   p.except, error))
+                return false;
         }
         if (!FormFromName(e.value("form", std::string("disc")), p.form))
         {
@@ -1101,9 +1220,13 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
             else
             {
                 // The object's choice, per module part: the same every frame and on every
-                // client, different from one object to the next.
-                const int n = (int)mod->variants.size();
-                v = &mod->variants[std::min(n - 1, (int)(Hash01(pose.seed, (int)i * 977 + 5) * n))];
+                // client, different from one object to the next -- among the variants the
+                // part allows, which without lists is all of them.
+                const std::vector<const ModuleVariant*> allowed =
+                    AllowedVariants(*mod, p.variants, p.except);
+                const int n = (int)allowed.size();
+                if (n > 0)
+                    v = allowed[std::min(n - 1, (int)(Hash01(pose.seed, (int)i * 977 + 5) * n))];
             }
             if (v == nullptr)
                 continue;

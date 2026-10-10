@@ -74,28 +74,31 @@
             "tags": ["star", "edge", "glow"],
             "sockets": ["edge"],
             "variants": [
-                { "id": "helmet", "shape": { "vars": { "dir": [-8, 8] }, "parts": [
-                    {"form": "disc", "at": [-0.55, 0.0], "radius": [0.45, 0.6], "role": "trim", "alpha": [0.12, 0.2]},
-                    {"form": "chevron", "at": [0.25, 0.0], "angle": "$dir", "length": [1.4, 1.8], "width": [0.6, 0.9], "role": "trim", "alpha": [0.12, 0.2]},
-                    {"form": "capsule", "at": [0.3, 0.0], "angle": "$dir", "length": [1.2, 1.6], "width": [0.06, 0.12], "role": "trim", "alpha": [0.2, 0.32]}
+                { "id": "helmet", "shape": { "vars": { "dir": [-6, 6] }, "parts": [
+                    {"form": "disc", "soft": true, "at": [-0.5, 0.0], "radius": [0.5, 0.6], "role": "trim", "alpha": [0.35, 0.45]},
+                    {"form": "disc", "soft": true, "at": [-0.2, 0.0], "radius": [0.42, 0.48], "role": "trim", "alpha": [0.18, 0.24],
+                     "row": {"count": [9, 11], "step": [0.17, 0.0], "turn": "$dir", "taper": [0.88, 0.91], "taperStep": true}},
+                    {"form": "capsule", "at": [0.45, 0.0], "angle": "$dir", "length": [1.2, 1.5], "width": [0.03, 0.05], "role": "trim", "alpha": [0.12, 0.2]}
                 ]}},
                 { "id": "ray", "shape": [
-                    {"form": "chevron", "angle": 180, "length": [1.7, 2.0], "width": [0.3, 0.5], "role": "trim", "alpha": [0.1, 0.18]},
-                    {"form": "chevron", "at": [0.1, 0.0], "angle": 180, "length": [1.4, 1.7], "width": [0.08, 0.14], "role": "trim", "alpha": [0.25, 0.4]},
-                    {"form": "disc", "at": [-0.85, 0.0], "radius": [0.15, 0.25], "role": "trim", "alpha": [0.12, 0.2]},
-                    {"form": "capsule", "at": [0.1, [0.15, 0.3]], "angle": [4, 14], "length": [0.8, 1.2], "width": 0.05, "role": "trim", "alpha": [0.12, 0.2], "chance": 0.6}
+                    {"form": "disc", "soft": true, "at": [-0.7, 0.0], "radius": [0.3, 0.38], "role": "trim", "alpha": [0.35, 0.45]},
+                    {"form": "disc", "soft": true, "at": [-0.55, 0.0], "radius": [0.28, 0.32], "role": "trim", "alpha": [0.18, 0.24],
+                     "row": {"count": [12, 14], "step": [0.12, 0.0], "taper": [0.93, 0.95], "taperStep": true}},
+                    {"form": "capsule", "at": [0.1, [0.15, 0.3]], "angle": [4, 14], "length": [0.8, 1.2], "width": 0.03, "role": "trim", "alpha": [0.1, 0.16], "chance": 0.6}
                 ]},
                 { "id": "fan", "shape": [
-                    {"form": "disc", "at": [-0.7, 0.0], "radius": [0.35, 0.5], "role": "trim", "alpha": [0.1, 0.16]},
-                    {"form": "capsule", "at": [0.25, -0.26], "angle": -15, "length": [1.3, 1.7], "width": [0.08, 0.14], "role": "trim", "alpha": [0.12, 0.22],
-                     "row": {"count": [3, 5], "step": [0.045, 0.168], "turn": 10, "taper": [0.85, 1.0]}}
+                    {"form": "disc", "soft": true, "at": [-0.6, 0.0], "radius": [0.45, 0.55], "role": "trim", "alpha": [0.35, 0.45]},
+                    {"form": "disc", "soft": true, "at": [-0.35, 0.0], "radius": [0.24, 0.28], "role": "trim", "alpha": [0.16, 0.22],
+                     "row": {"count": [9, 11], "step": [0.11, -0.035], "taper": [0.91, 0.93], "taperStep": true}},
+                    {"form": "disc", "soft": true, "at": [-0.35, 0.0], "radius": [0.26, 0.3], "role": "trim", "alpha": [0.18, 0.24],
+                     "row": {"count": [11, 13], "step": [0.11, 0.0], "taper": [0.92, 0.94], "taperStep": true}},
+                    {"form": "disc", "soft": true, "at": [-0.35, 0.0], "radius": [0.24, 0.28], "role": "trim", "alpha": [0.16, 0.22],
+                     "row": {"count": [9, 11], "step": [0.11, 0.035], "taper": [0.91, 0.93], "taperStep": true}}
                 ]},
-                { "id": "plume", "shape": { "vars": { "bend": [-5, 5] }, "parts": [
-                    {"form": "disc", "at": [-0.6, 0.0], "radius": [0.4, 0.55], "role": "trim", "alpha": [0.1, 0.16]},
-                    {"form": "capsule", "at": [-0.35, 0.0], "length": [0.5, 0.6], "width": [0.3, 0.42], "role": "trim", "alpha": [0.1, 0.16],
-                     "row": {"count": [4, 6], "step": [0.36, 0.0], "turn": "$bend", "taper": [0.78, 0.88]}},
-                    {"form": "capsule", "at": [-0.35, 0.0], "length": [0.38, 0.41], "width": 0.05, "role": "trim", "alpha": [0.22, 0.32],
-                     "row": {"count": [4, 6], "step": [0.36, 0.0], "turn": "$bend", "taper": 0.95}}
+                { "id": "plume", "shape": { "vars": { "bend": [-4, 4] }, "parts": [
+                    {"form": "disc", "soft": true, "at": [-0.55, 0.0], "radius": [0.45, 0.55], "role": "trim", "alpha": [0.35, 0.45]},
+                    {"form": "disc", "soft": true, "at": [-0.3, 0.0], "radius": [0.36, 0.42], "role": "trim", "alpha": [0.18, 0.24],
+                     "row": {"count": [10, 12], "step": [0.15, 0.0], "turn": "$bend", "taper": [0.9, 0.92], "taperStep": true}}
                 ]}}
             ]
         },
