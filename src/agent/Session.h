@@ -39,9 +39,9 @@ public:
     bool WaitUntil(const std::function<bool()>& done, double timeoutSeconds);
 
     // Numbers every command, so the snapshot's `lastInput` says which ones the server has
-    // applied. The number is the only receipt there is: a purchase or a hand-in is not an
-    // order with a status, and the server says nothing when it declines one (#109).
-    // Returns the number given.
+    // applied. A purchase or a hand-in is not an order with a status (#109): the number is
+    // the receipt, and the reason for a refusal is a journal Notice in the same snapshot
+    // (#219). Returns the number given.
     int Send(const Proto::Command& c);
     // Sends and waits until a snapshot acknowledges it -- by then the snapshot also carries
     // its effect, because the server applies a command before it builds the next one. False

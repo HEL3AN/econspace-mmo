@@ -326,15 +326,8 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, System
                 sf = station->GetFaction();
             break;
         }
-    float sellMul = 1.0f;
-    switch (Factions::TierOf(s.account.GetReputation(sf)))
-    {
-        case RepTier::Hostile: sellMul = 0.85f; break;
-        case RepTier::Liked: sellMul = 1.10f; break;
-        case RepTier::Allied: sellMul = 1.20f; break;
-        default: break;
-    }
-    double revenue = r.gross * s.account.GetSkills().GetBonus(SkillType::Trading) * sellMul;
+    const float sellMul = SellPriceMultiplier(Factions::TierOf(s.account.GetReputation(sf)));
+    double      revenue = r.gross * s.account.GetSkills().GetBonus(SkillType::Trading) * sellMul;
     s.account.AddMoney(revenue);
     s.account.GetSkills().AddXp(SkillType::Trading, (float)(revenue * 0.05));
     s.account.AddReputation(sf, (float)(revenue * 0.002));
@@ -342,15 +335,46 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, System
     return r;
 }
 
+// A hull whose hold is smaller than what the ship carries is refused, not refitted (#219).
+// Refit swaps stats and leaves the cargo alone, so without this a full Hauler became a Scout
+// carrying four times its capacity. Refusing keeps "a hold never holds more than it can"
+// true without deciding for the player which ore to throw away.
+static bool HoldFits(ClientSession& s, const ShipType& t, const std::string& verb)
+{
+    const int used = s.ship->GetCargoUsed();
+    if (used <= t.stats.cargoCapacity)
+        return true;
+    s.RecordEvent(Ev::Kind::Notice, verb + " refused: the hold carries " + std::to_string(used) +
+                                        " and a " + t.name + " holds " +
+                                        std::to_string(t.stats.cargoCapacity) +
+                                        "; sell or hand in cargo first");
+    return false;
+}
+
+static std::string Credits(double cr)
+{
+    return std::to_string((long long)std::llround(cr)) + " cr";
+}
+
 bool Simulation::SwitchShip(ClientSession& s, int catalogIndex)
 {
     const std::vector<ShipType>& catalog = GetShipCatalog();
     if (!s.ship || catalogIndex < 0 || catalogIndex >= (int)catalog.size())
         return false;
+    const ShipType& t = catalog[catalogIndex];
     if (!s.Owns(catalogIndex))
-        return false;  // not theirs; the client asking nicely does not make it so
-    s.ship->Refit(catalog[catalogIndex].stats);
+    {
+        // Not theirs; the client asking nicely does not make it so.
+        s.RecordEvent(Ev::Kind::Notice, "Switch to " + t.name + " refused: not in your hangar");
+        return false;
+    }
+    if (catalogIndex == s.currentShip)
+        return true;
+    if (!HoldFits(s, t, "Switch to " + t.name))
+        return false;
+    s.ship->Refit(t.stats);
     s.currentShip = catalogIndex;
+    s.RecordEvent(Ev::Kind::Notice, "Now flying the " + t.name);
     return true;
 }
 
@@ -362,14 +386,25 @@ void Simulation::StepPlayerAccountTick(ClientSession& s, float dt)
     s.account.DecayBounty(1.0 * dt);
 }
 
-void Simulation::PayBounty(ClientSession& s, FactionId faction)
+bool Simulation::PayBounty(ClientSession& s, FactionId faction)
 {
-    double b = s.account.GetBounty(faction);
-    if (b > 0.0 && s.account.CanAfford(b))
+    const double      b = s.account.GetBounty(faction);
+    const std::string who = FactionName(faction);
+    if (b <= 0.0)
     {
-        s.account.AddMoney(-b);
-        s.account.SetBounty(faction, 0.0);
+        s.RecordEvent(Ev::Kind::Notice, "Bounty not paid: " + who + " has no bounty on you");
+        return false;
     }
+    if (!s.account.CanAfford(b))
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Bounty not paid: " + who + " wants " + Credits(b) +
+                                            " and you have " + Credits(s.account.GetMoney()));
+        return false;
+    }
+    s.account.AddMoney(-b);
+    s.account.SetBounty(faction, 0.0);
+    s.RecordEvent(Ev::Kind::Notice, "Bounty paid to " + who + ": record cleared");
+    return true;
 }
 
 bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
@@ -377,9 +412,17 @@ bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
     const std::vector<ShipType>& catalog = GetShipCatalog();
     if (!s.ship || catalogIndex < 0 || catalogIndex >= (int)catalog.size())
         return false;
+    const ShipType& t = catalog[catalogIndex];
     // A ship already in the hangar is switched to for nothing (SwitchShip). Buying it again
     // used to charge the full price a second time and hand back what the account already had.
     if (s.Owns(catalogIndex))
+    {
+        s.RecordEvent(Ev::Kind::Notice,
+                      "Purchase refused: you already own a " + t.name + "; switch to it instead");
+        return false;
+    }
+    // Checked before charging: a purchase that cannot be flown away is not a purchase.
+    if (!HoldFits(s, t, "Purchase of a " + t.name))
         return false;
 
     // Price multiplier by the docked station's faction reputation.
@@ -393,14 +436,21 @@ bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
                 sf = sta->GetFaction();
             break;
         }
-    const double price = catalog[catalogIndex].price *
-                         ShipPriceMultiplier(Factions::TierOf(s.account.GetReputation(sf)));
+    const double price =
+        t.price * ShipPriceMultiplier(Factions::TierOf(s.account.GetReputation(sf)));
     if (!s.account.CanAfford(price))
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Purchase refused: a " + t.name + " costs " +
+                                            Credits(price) + " here and you have " +
+                                            Credits(s.account.GetMoney()));
         return false;
+    }
     s.account.AddMoney(-price);
     s.ownedShips.push_back(catalogIndex);
-    s.ship->Refit(catalog[catalogIndex].stats);
+    s.ship->Refit(t.stats);
     s.currentShip = catalogIndex;
+    s.RecordEvent(Ev::Kind::Notice,
+                  "Bought a " + t.name + " for " + Credits(price) + "; now flying it");
     return true;
 }
 
@@ -429,15 +479,9 @@ void Simulation::GenerateDockOffers(ClientSession& s)
     if (giver == nullptr)
         return;
 
-    // Reward multiplier by the station faction's reputation (as on the client in Dock).
-    float repMul = 1.0f;
-    switch (Factions::TierOf(s.account.GetReputation(giver->GetFaction())))
-    {
-        case RepTier::Hostile: repMul = 0.8f; break;
-        case RepTier::Liked: repMul = 1.15f; break;
-        case RepTier::Allied: repMul = 1.3f; break;
-        default: break;
-    }
+    // Reward multiplier by the station faction's reputation.
+    const float repMul =
+        MissionRewardMultiplier(Factions::TierOf(s.account.GetReputation(giver->GetFaction())));
     s.missions.GenerateOffers(giver, all, repMul);
 }
 
@@ -457,20 +501,52 @@ bool Simulation::MissionCompletableNow(const ClientSession& s, const Mission& m)
     return false;
 }
 
+bool Simulation::AcceptMission(ClientSession& s, int offerIndex)
+{
+    const std::vector<Mission>& offers = s.missions.Offers();
+    if (offerIndex < 0 || offerIndex >= (int)offers.size())
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Mission not taken: that offer is no longer on the board");
+        return false;
+    }
+    const std::string what = offers[offerIndex].title + ": " + offers[offerIndex].description;
+    if ((int)s.missions.Active().size() >= MissionSystem::MAX_ACTIVE)
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Mission not taken: already carrying " +
+                                            std::to_string(MissionSystem::MAX_ACTIVE) +
+                                            " missions, the most one pilot may; hand one in first");
+        return false;
+    }
+    if (!s.missions.Accept(offerIndex))
+        return false;
+    s.RecordEvent(Ev::Kind::Notice, "Mission taken -- " + what);
+    return true;
+}
+
 bool Simulation::CompleteMission(ClientSession& s, int activeIndex)
 {
     std::vector<Mission>& active = s.missions.Active();
     if (activeIndex < 0 || activeIndex >= (int)active.size())
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Hand-in refused: no such active mission");
         return false;
-    const Mission& m = active[activeIndex];
+    }
+    const Mission&    m = active[activeIndex];
+    const std::string what = m.title + ": " + m.description;
     if (!MissionCompletableNow(s, m))
+    {
+        s.RecordEvent(Ev::Kind::Notice,
+                      "Hand-in refused -- " + what + " is not done, or is not handed in here");
         return false;
+    }
 
     if (m.type == MissionType::Mining && s.ship)
         s.ship->RemoveCargo(m.resource, m.targetCount);
+    const double reward = m.rewardMoney;
     s.account.AddMoney(m.rewardMoney);
     s.account.AddReputation(m.faction, m.rewardRep);
-    active.erase(active.begin() + activeIndex);
+    active.erase(active.begin() + activeIndex);  // m dangles from here on
+    s.RecordEvent(Ev::Kind::Notice, "Mission complete -- " + what + ", paid " + Credits(reward));
     return true;
 }
 

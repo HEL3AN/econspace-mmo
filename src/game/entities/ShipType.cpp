@@ -12,13 +12,44 @@ const std::vector<ShipType>& GetShipCatalog()
     return catalog;
 }
 
+// Each switch names every tier and has no default, so a new tier is a compiler warning
+// rather than a silent fall to list price -- which is how Hated came to be cheaper than
+// Hostile (#219).
 float ShipPriceMultiplier(RepTier standing)
 {
     switch (standing)
     {
+        case RepTier::Hated: return 1.30f;
         case RepTier::Hostile: return 1.15f;
+        case RepTier::Neutral: return 1.0f;
         case RepTier::Liked: return 0.92f;
         case RepTier::Allied: return 0.85f;
-        default: return 1.0f;
     }
+    return 1.0f;
+}
+
+float SellPriceMultiplier(RepTier standing)
+{
+    switch (standing)
+    {
+        case RepTier::Hated: return 0.70f;
+        case RepTier::Hostile: return 0.85f;
+        case RepTier::Neutral: return 1.0f;
+        case RepTier::Liked: return 1.10f;
+        case RepTier::Allied: return 1.20f;
+    }
+    return 1.0f;
+}
+
+float MissionRewardMultiplier(RepTier standing)
+{
+    switch (standing)
+    {
+        case RepTier::Hated: return 0.6f;
+        case RepTier::Hostile: return 0.8f;
+        case RepTier::Neutral: return 1.0f;
+        case RepTier::Liked: return 1.15f;
+        case RepTier::Allied: return 1.3f;
+    }
+    return 1.0f;
 }

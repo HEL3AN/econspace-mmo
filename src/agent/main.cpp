@@ -20,6 +20,7 @@
 #include "core/WorldLoader.h"
 #include "economy/Resource.h"
 #include "entities/ShipType.h"
+#include "missions/MissionSystem.h"
 #include "sim/Orders.h"
 
 #include "raylib.h"
@@ -265,12 +266,12 @@ int ResourceArg(const Rpc::Json& args)
 }
 
 // --- Station business (#109) --------------------------------------------------
-// Buying, switching, paying and handing in are not orders: there is no status to watch and
-// the server says nothing when it declines one. So each of these checks first what the
-// agent can see for itself -- the same snapshot a player's station screen reads -- and
-// names the reason, sends the command, waits for the server to acknowledge it, and then
-// reports what actually changed. The server stays the judge; the checks only make its
-// silence legible.
+// Buying, switching, paying and handing in are not orders: there is no status to watch. So
+// each of these checks first what the agent can see for itself -- the same snapshot a
+// player's station screen reads -- and names the reason, sends the command, waits for the
+// server to acknowledge it, and then reports what actually changed. The server stays the
+// judge, and since #219 it says why it declined, in a journal Notice that arrives in the
+// same snapshot as the acknowledgement; a refusal quotes it.
 
 Obs::View CurrentView()
 {
@@ -376,6 +377,18 @@ bool Confirm(const Proto::Command& c, std::string& why)
     RequireLive();  // a dead connection is the likelier story; say that if it is
     why = "sent, but the server has not acknowledged it yet; call observe before retrying";
     return false;
+}
+
+// A refusal, in the server's words when it gave any: the newest Notice journalled after
+// `seq`, which was the journal's end when the command was sent. `fallback` covers a server
+// that said nothing.
+std::string Refused(const char* tool, int seq, const std::string& fallback)
+{
+    std::string said;
+    for (const Ev::Event& e : g_session.EventsSince(seq))
+        if (e.kind == Ev::Kind::Notice)
+            said = e.text;
+    return std::string(tool) + ": " + (said.empty() ? fallback : "refused -- " + said);
 }
 
 std::string Money(double cr)
@@ -546,10 +559,12 @@ std::vector<Tool> BuildTools()
               return Obs::DescribeMissions(CurrentView());
           } });
 
+    static_assert(MissionSystem::MAX_ACTIVE == 5, "accept_mission's description quotes the cap");
     tools.push_back(
         { "accept_mission",
           "Take a job from the board of the station you are docked at. It joins your active "
-          "missions and stays with you across systems until you hand it in.",
+          "missions and stays with you across systems until you hand it in. At most "
+          "5 can be active at once.",
           Obj({ { "offer", Num("offer number from missions") } }, { "offer" }),
           [](const Rpc::Json& args)
           {
@@ -560,6 +575,7 @@ std::vector<Tool> BuildTools()
               const Proto::MissionView taken = before.missionOffers[i];
               const size_t             activeBefore = before.missionActive.size();
 
+              const int      seq = g_session.LastEventSeq();
               Proto::Command c;
               c.acceptOffer = i;
               std::string why;
@@ -567,8 +583,9 @@ std::vector<Tool> BuildTools()
                   return "accept_mission: " + why;
               const Proto::Snapshot& after = g_session.Snapshot();
               if (after.missionActive.size() <= activeBefore)
-                  return std::string("accept_mission: the server did not take it; call "
-                                     "missions to see the board as it is now");
+                  return Refused("accept_mission", seq,
+                                 "the server did not take it; call missions to see the board "
+                                 "as it is now");
               const Proto::MissionView& m = after.missionActive.back();
               return "accept_mission: taken -- " + m.title + ", " + Money(m.rewardMoney) +
                      ". It is active mission [" + std::to_string(after.missionActive.size() - 1) +
@@ -598,6 +615,7 @@ std::vector<Tool> BuildTools()
               const double moneyBefore = before.player.money;
               const size_t activeBefore = before.missionActive.size();
 
+              const int      seq = g_session.LastEventSeq();
               Proto::Command c;
               c.completeMission = i;
               std::string why;
@@ -605,8 +623,9 @@ std::vector<Tool> BuildTools()
                   return "complete_mission: " + why;
               const Proto::Snapshot& after = g_session.Snapshot();
               if (after.missionActive.size() >= activeBefore)
-                  return std::string("complete_mission: the server did not accept the hand-in; "
-                                     "call missions to see what it still needs");
+                  return Refused("complete_mission", seq,
+                                 "the server did not accept the hand-in; call missions to see "
+                                 "what it still needs");
               return "complete_mission: handed in '" + m.title + "' -- paid " +
                      Money(after.player.money - moneyBefore) + ", money now " +
                      Money(after.player.money);
@@ -626,7 +645,7 @@ std::vector<Tool> BuildTools()
         { "buy_ship",
           "Buy a ship at the station you are docked at and fly it from now on. Your old ship "
           "stays in the hangar; switch_ship goes back to it for free. Cargo capacity becomes "
-          "the new hull's.",
+          "the new hull's, so a hull too small for what you carry is refused.",
           Obj({ { "ship", Str("ship name as hangar lists it, e.g. 'Hauler'") } }, { "ship" }),
           [](const Rpc::Json& args)
           {
@@ -648,14 +667,16 @@ std::vector<Tool> BuildTools()
                                                              Money(p.money) };
               const double moneyBefore = p.money;
 
+              const int      seq = g_session.LastEventSeq();
               Proto::Command c;
               c.buyShip = i;
               std::string why;
               if (!Confirm(c, why))
                   return "buy_ship: " + why;
               if (!OwnsShip(i))
-                  return std::string("buy_ship: the server did not sell it; call hangar to see "
-                                     "the price and your money as they are now");
+                  return Refused("buy_ship", seq,
+                                 "the server did not sell it; call hangar to see the price and "
+                                 "your money as they are now");
               const Proto::PlayerView& after = g_session.Snapshot().player;
               return "buy_ship: bought a " + t.name + " for " + Money(moneyBefore - after.money) +
                      " and flying it -- cargo capacity " + std::to_string(t.stats.cargoCapacity) +
@@ -665,7 +686,8 @@ std::vector<Tool> BuildTools()
     tools.push_back(
         { "switch_ship",
           "Fly another ship you already own, at the station you are docked at. "
-          "Free; hangar lists what you own.",
+          "Free; hangar lists what you own. Refused if what you carry would not fit "
+          "its hold.",
           Obj({ { "ship", Str("ship name as hangar lists it, e.g. 'Scout'") } }, { "ship" }),
           [](const Rpc::Json& args)
           {
@@ -679,14 +701,16 @@ std::vector<Tool> BuildTools()
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                     "you do not own a " + t.name + "; buy_ship first" };
 
+              const int      seq = g_session.LastEventSeq();
               Proto::Command c;
               c.refitShip = i;
               std::string why;
               if (!Confirm(c, why))
                   return "switch_ship: " + why;
               if (g_session.Snapshot().player.shipIndex != i)
-                  return std::string("switch_ship: the server did not switch; call "
-                                     "hangar to see what it says you own");
+                  return Refused("switch_ship", seq,
+                                 "the server did not switch; call hangar to see what it says "
+                                 "you own");
               return "switch_ship: now flying the " + t.name + " -- cargo capacity " +
                      std::to_string(t.stats.cargoCapacity);
           } });
@@ -720,6 +744,7 @@ std::vector<Tool> BuildTools()
                                                              " and you have " + Money(p.money) };
               const double moneyBefore = p.money;
 
+              const int      seq = g_session.LastEventSeq();
               Proto::Command c;
               c.payBountyFaction = (int)f;
               std::string why;
@@ -728,8 +753,9 @@ std::vector<Tool> BuildTools()
               const Proto::PlayerView& after = g_session.Snapshot().player;
               const double left = (size_t)f < after.bounty.size() ? after.bounty[(size_t)f] : 0.0;
               if (left > 0.0)
-                  return std::string("pay_bounty: the server did not take the payment; call "
-                                     "observe with detail='full' to see the bounty now");
+                  return Refused("pay_bounty", seq,
+                                 "the server did not take the payment; call observe with "
+                                 "detail='full' to see the bounty now");
               return "pay_bounty: paid " + Money(moneyBefore - after.money) + " to " +
                      FactionName(f) + "; no longer wanted by them. Money now " + Money(after.money);
           } });

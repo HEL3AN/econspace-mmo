@@ -33,3 +33,14 @@ const std::vector<ShipType>& GetShipCatalog();
 // deciding whether it can afford one. Two copies of a price are how a button says one thing
 // and the account is charged another.
 float ShipPriceMultiplier(RepTier standing);
+
+// What a station pays for cargo, as a multiple of its gross, given the seller's standing.
+float SellPriceMultiplier(RepTier standing);
+
+// How a station scales the money and reputation its missions offer, given the standing of
+// the player reading its board.
+float MissionRewardMultiplier(RepTier standing);
+
+// The three tables move together and are monotonic in standing (#219): a worse tier is never
+// a better deal. Hated once fell through to list price -- cheaper than Hostile -- and only
+// the dock refusing Hated players hid it.

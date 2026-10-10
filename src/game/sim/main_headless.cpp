@@ -153,7 +153,7 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
         if (c.payBountyFaction >= 0)
             sim.PayBounty(s, (FactionId)c.payBountyFaction);  // clear bounty
         if (c.acceptOffer >= 0)
-            s.missions.Accept(c.acceptOffer);  // accept a mission from the board
+            sim.AcceptMission(s, c.acceptOffer);  // accept a mission from the board
         if (c.completeMission >= 0)
             sim.CompleteMission(s, c.completeMission);  // hand in a mission (reward to account)
         return changed;  // at a station the ship neither moves nor fires
