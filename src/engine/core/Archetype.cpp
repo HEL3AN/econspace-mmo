@@ -15,6 +15,7 @@ namespace
 std::vector<Archetype> g_archetypes;
 std::string            g_error;
 Ships::Catalogue       g_ships;
+unsigned               g_generation = 0;
 
 EntityKind KindFromString(const std::string& s)
 {
@@ -352,6 +353,9 @@ const Ships::Catalogue& ShipCatalogue()
 bool Load(const std::string& path)
 {
     g_error.clear();
+    // Whatever happens below, what was read before may be gone: the ship catalogue is
+    // replaced before the archetypes are read.
+    ++g_generation;
 
     // The module library first, from beside this file: archetypes name modules, and a
     // part naming one that is not loaded is a load error (#240).
@@ -467,6 +471,20 @@ bool Load(const std::string& path)
                     return false;
                 }
             }
+    // So is a player's (#279 step 5): a hull in the hangar that nothing draws would be flown
+    // as nothing.
+    for (const Ships::HangarEntry& h : g_ships.hangar)
+    {
+        bool drawn = false;
+        for (const Archetype& a : loaded)
+            drawn = drawn || (a.design == h.design && a.kind == EntityKind::Npc);
+        if (!drawn)
+        {
+            g_error = path + ": the hangar sells '" + h.design +
+                      "', and no Npc archetype draws that design";
+            return false;
+        }
+    }
 
     // Swapped in only once the whole file parsed: a half-applied registry would be
     // worse than the previous one.
@@ -479,9 +497,14 @@ const Archetype* ForDesign(const std::string& design)
     if (design.empty())
         return nullptr;
     for (const Archetype& a : g_archetypes)
-        if (a.design == design)
+        if (a.design == design && a.kind == EntityKind::Npc)
             return &a;
     return nullptr;
+}
+
+unsigned Generation()
+{
+    return g_generation;
 }
 
 const Archetype* Find(const std::string& id)

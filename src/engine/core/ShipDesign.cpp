@@ -844,6 +844,8 @@ bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error)
     out.hull = sum.hull;
     out.damage = sum.damage;
     out.cruise = out.maxSpeed * r.cruise;
+    out.playerHull = out.hull + r.playerHull;
+    out.playerDamage = out.damage + r.playerGun;
     for (ResourceType t : AllResourceTypes())
         if (cost[(int)t] > 0)
             out.cost.emplace_back(t, cost[(int)t]);
@@ -930,6 +932,53 @@ bool ReadDoctrines(const json& j, Catalogue& c, std::string& error)
     return true;
 }
 
+// What players fly (#279 step 5): [{ "design", "price" }], the starter first. An account owns
+// hulls by their place here, so a list that is empty, names a design twice or one that is not
+// a design is an error -- it would hand a pilot a ship that is not one, or two that are.
+bool ReadHangar(const json& j, Catalogue& c, std::string& error)
+{
+    if (!j.contains("hangar") || !j["hangar"].is_array() || j["hangar"].empty())
+    {
+        error = "'hangar' is missing: a list of { design, price }, the starter first";
+        return false;
+    }
+    for (const json& e : j["hangar"])
+    {
+        HangarEntry h;
+        std::string err;
+        if (!e.is_object() || !OnlyKnownKeys(e, { "design", "price" }, err) ||
+            !ReadString(e, "design", h.design, err))
+        {
+            error = "hangar: " + (err.empty() ? std::string("an entry is not an object") : err);
+            return false;
+        }
+        const std::string where = "hangar '" + h.design + "': ";
+        if (!e.contains("price"))
+        {
+            error = where + "'price' is missing";
+            return false;
+        }
+        if (!ReadNumber(e, "price", h.price, err))
+        {
+            error = where + err;
+            return false;
+        }
+        if (c.FindDesign(h.design) == nullptr)
+        {
+            error = where + "is not a design";
+            return false;
+        }
+        for (const HangarEntry& other : c.hangar)
+            if (other.design == h.design)
+            {
+                error = where + "is in the hangar twice";
+                return false;
+            }
+        c.hangar.push_back(h);
+    }
+    return true;
+}
+
 bool Parse(const json& j, Catalogue& out, std::string& error)
 {
     error.clear();
@@ -938,8 +987,9 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
         error = "not a ship catalogue (not an object)";
         return false;
     }
-    if (!OnlyKnownKeys(j, { "rules", "modules", "sections", "frames", "designs", "doctrines" },
-                       error))
+    if (!OnlyKnownKeys(
+            j, { "rules", "modules", "sections", "frames", "designs", "doctrines", "hangar" },
+            error))
         return false;
 
     Catalogue c;
@@ -951,14 +1001,14 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
     const json& rj = j["rules"];
     if (!OnlyKnownKeys(rj,
                        { "speedBase", "speedPerAccel", "rcsPerTurn", "buildSecondsPerMass",
-                         "buildSecondsPerPart", "plain", "cruise" },
+                         "buildSecondsPerPart", "plain", "cruise", "playerHull", "playerGun" },
                        error))
     {
         error = "rules: " + error;
         return false;
     }
     for (const char* key : { "speedBase", "speedPerAccel", "rcsPerTurn", "buildSecondsPerMass",
-                             "buildSecondsPerPart", "plain", "cruise" })
+                             "buildSecondsPerPart", "plain", "cruise", "playerHull", "playerGun" })
         if (!rj.contains(key))
         {
             error = std::string("rules: '") + key + "' is missing";
@@ -970,7 +1020,9 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
         !ReadNumber(rj, "buildSecondsPerMass", c.rules.buildSecondsPerMass, error) ||
         !ReadNumber(rj, "buildSecondsPerPart", c.rules.buildSecondsPerPart, error) ||
         !ReadNumber(rj, "plain", c.rules.plain, error) ||
-        !ReadNumber(rj, "cruise", c.rules.cruise, error))
+        !ReadNumber(rj, "cruise", c.rules.cruise, error) ||
+        !ReadNumber(rj, "playerHull", c.rules.playerHull, error) ||
+        !ReadNumber(rj, "playerGun", c.rules.playerGun, error))
     {
         error = "rules: " + error;
         return false;
@@ -1010,7 +1062,7 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
     for (const Design& d : c.designs)
         if (!Validate(c, d, error))
             return false;
-    if (!ReadDoctrines(j, c, error))
+    if (!ReadDoctrines(j, c, error) || !ReadHangar(j, c, error))
         return false;
 
     out = std::move(c);

@@ -304,6 +304,7 @@ TEST_CASE("outside a station there is no board, but the missions taken are still
 TEST_CASE("the hangar quotes the price this player would be charged here (#109)")
 {
     Docked d;
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));  // the hangar
     REQUIRE(GetShipCatalog().size() > 2);
     d.s.player.ownedShips = { 0, 2 };
     d.s.player.money = 100000.0;
@@ -314,6 +315,11 @@ TEST_CASE("the hangar quotes the price this player would be charged here (#109)"
     CHECK(Has(out, "owned by Syndicate"));
     CHECK(Has(out, "FLYING"));
     CHECK(Has(out, "owned, switch_ship"));
+    // What each hull can do is its design's (#279 step 5), and the agent is told all of it.
+    char said[64];
+    std::snprintf(said, sizeof(said), "hull %.0f  guns %.0f/shot",
+                  (double)GetShipCatalog()[1].stats.hull, (double)GetShipCatalog()[1].stats.damage);
+    CHECK(Has(out, said));
 
     // The same multiplier the server charges with, not a copy of it.
     const double price = GetShipCatalog()[1].price * ShipPriceMultiplier(RepTier::Allied);

@@ -142,9 +142,12 @@ public:
     void ToggleMining() { miningOn_ = !miningOn_; }
     bool IsMiningOn() const { return miningOn_; }
 
-    // Switch to another ship — applies the new parameters.
-    void             Refit(const ShipStats& stats) { stats_ = stats; }
+    // Switch to another ship — applies the new parameters: how it flies, what it holds, how
+    // much hull it has (in the same shape it was, as a share) and what it looks like.
+    void             Refit(const ShipStats& stats);
     const ShipStats& GetStats() const { return stats_; }
+    // What one shot of its guns takes off (#279 step 5): the design's, under a player.
+    float GetDamage() const { return stats_.damage; }
 
     bool AddCargo(ResourceType type, int amount);  // false if it doesn't fit
     void RemoveCargo(ResourceType type, int amount);
@@ -194,8 +197,11 @@ private:
 
     ShipStats stats_;
     float     pilotBonus_ = 1.0f;
+    // The archetype that draws its design (#279 step 5), whose shape this ship wears; null
+    // draws it as `ship.player` itself, the starter. Borrowed like Entity's archetype.
+    const Archetype* look_ = nullptr;
 
-    // Combat stats.
+    // Combat stats. The hull is the design's (Refit); the shields are every ship's.
     float maxHull_ = 100.0f;
     float hull_ = 100.0f;
     float maxShields_ = 60.0f;

@@ -3,6 +3,7 @@
 #include "core/Archetype.h"
 #include "core/ShipDesign.h"
 #include "entities/NpcShip.h"
+#include "entities/Ship.h"
 #include "entities/ShipType.h"
 #include "render/Modules.h"
 #include "render/Silhouette.h"
@@ -12,9 +13,9 @@
 #include <fstream>
 #include <string>
 
-// Ships as designs, first step (#279): a ship's stats are read off its parts. Nothing in the
-// game uses the derived numbers yet; these tests hold them to the hand-typed catalog until
-// the switch, and hold the format to the rule that a mistake is a load error.
+// Ships as designs (#279): a ship's stats are read off its parts, an NPC's (step 4) and a
+// player's (step 5) alike. These tests hold the derived numbers near what was typed by hand
+// before, and hold the format to the rule that a mistake is a load error.
 
 namespace
 {
@@ -65,31 +66,133 @@ nlohmann::json& DesignJson(nlohmann::json& j, const char* id)
 }
 }  // namespace
 
-TEST_CASE("today's four ships, written as designs, derive within 10% of their typed stats")
+TEST_CASE("the player's hulls are designs, and fly within 10% of the numbers they were typed as")
 {
-    const Ships::Catalogue c = Shipped();
-    for (const ShipType& t : GetShipCatalog())
+    // What GetShipCatalog() held, by hand, until the hulls became designs (#279 step 5):
+    // thrust, turn, top speed, rcs, hold, mining -- and every hull had 100 hull and a 16 shot.
+    struct Typed
     {
-        CAPTURE(t.name);
-        const Ships::Design* d = nullptr;
-        for (const Ships::Design& candidate : c.designs)
-            if (candidate.name == t.name)
-                d = &candidate;
-        REQUIRE_MESSAGE(d != nullptr, "the catalog's " << t.name << " has no design");
+        const char* name;
+        double      price;
+        float       thrust, turn, maxSpeed, rcs;
+        int         cargo;
+        float       mining;
+    };
+    const Typed before[] = {
+        { "Scout", 0.0, 340.0f, 3.2f, 440.0f, 600.0f, 50, 3.0f },
+        { "Courier", 2500.0, 480.0f, 4.2f, 620.0f, 820.0f, 35, 2.0f },
+        { "Hauler", 3000.0, 220.0f, 2.2f, 300.0f, 380.0f, 200, 2.0f },
+        { "Miner", 4200.0, 260.0f, 2.6f, 360.0f, 460.0f, 120, 7.0f },
+    };
 
+    REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    // An account owns hulls by their place in the hangar, so the old ones keep theirs.
+    REQUIRE(catalog.size() >= 4);
+    for (int i = 0; i < 4; i++)
+    {
+        const Typed&    was = before[i];
+        const ShipType& t = catalog[i];
+        CAPTURE(was.name);
+        CHECK(t.name == was.name);
+        CHECK(t.price == doctest::Approx(was.price));
+        CHECK(Within(t.stats.thrustPower, was.thrust, 0.10f));
+        CHECK(Within(t.stats.turnSpeed, was.turn, 0.10f));
+        CHECK(Within(t.stats.maxSpeed, was.maxSpeed, 0.10f));
+        CHECK(Within(t.stats.rcsAccel, was.rcs, 0.10f));
+        CHECK(Within((float)t.stats.cargoCapacity, (float)was.cargo, 0.10f));
+        CHECK(Within(t.stats.miningRate, was.mining, 0.10f));
+        CHECK(Within(t.stats.hull, 100.0f, 0.10f));
+        CHECK(Within(t.stats.damage, 16.0f, 0.10f));
+    }
+}
+
+TEST_CASE("a hull's numbers are its design's, derived, and nothing typed beside them")
+{
+    REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
+    const Ships::Catalogue&      c = Archetypes::ShipCatalogue();
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    REQUIRE(catalog.size() == c.hangar.size());
+    for (size_t i = 0; i < catalog.size(); i++)
+    {
+        const ShipType& t = catalog[i];
+        CAPTURE(t.name);
+        const Ships::Design* d = c.FindDesign(c.hangar[i].design);
+        REQUIRE(d != nullptr);
         Ships::Stats s;
         std::string  error;
         REQUIRE_MESSAGE(Ships::Derive(c, *d, s, error), error);
-        CHECK(Within(s.acceleration, t.stats.thrustPower, 0.10f));
-        CHECK(Within(s.turnSpeed, t.stats.turnSpeed, 0.10f));
-        CHECK(Within(s.maxSpeed, t.stats.maxSpeed, 0.10f));
-        CHECK(Within(s.rcsAccel, t.stats.rcsAccel, 0.10f));
-        CHECK(Within((float)s.cargoCapacity, (float)t.stats.cargoCapacity, 0.10f));
-        CHECK(Within(s.miningRate, t.stats.miningRate, 0.10f));
-        CHECK(s.mass > 0.0f);
-        CHECK_FALSE(s.cost.empty());
-        CHECK(s.buildSeconds > 0.0f);
+        CHECK(t.stats.design == d->id);
+        CHECK(t.name == d->name);
+        CHECK(t.price == doctest::Approx(c.hangar[i].price));
+        CHECK(t.stats.thrustPower == doctest::Approx(s.acceleration));
+        CHECK(t.stats.turnSpeed == doctest::Approx(s.turnSpeed));
+        CHECK(t.stats.maxSpeed == doctest::Approx(s.maxSpeed));
+        CHECK(t.stats.rcsAccel == doctest::Approx(s.rcsAccel));
+        CHECK(t.stats.cargoCapacity == s.cargoCapacity);
+        CHECK(t.stats.miningRate == doctest::Approx(s.miningRate));
+        // Under a player the same design has more hull and a gun its fitted guns add to.
+        CHECK(t.stats.hull == doctest::Approx(s.hull + c.rules.playerHull));
+        CHECK(t.stats.damage == doctest::Approx(s.damage + c.rules.playerGun));
+        CHECK(ShipTypeOf(d->id) == &t);
     }
+    CHECK(ShipTypeOf("no such design") == nullptr);
+}
+
+TEST_CASE("a player's ship flies, takes hits and looks as its design says")
+{
+    REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    REQUIRE(catalog.size() >= 3);
+
+    // `ship.player` is what a player's ship is; the starter's design is what it looks like
+    // until it flies another. The dart that was drawn by hand is gone.
+    const Archetype* player = Archetypes::Find("ship.player");
+    REQUIRE(player != nullptr);
+    CHECK(player->design == catalog[0].stats.design);
+    // Not what an NPC of that design is drawn as: that is always an Npc archetype.
+    REQUIRE(Archetypes::ForDesign(catalog[0].stats.design) != nullptr);
+    CHECK(Archetypes::ForDesign(catalog[0].stats.design)->kind == EntityKind::Npc);
+
+    Ship ship({ 0.0f, 0.0f }, catalog[0].stats);
+    CHECK(ship.GetMaxHull() == doctest::Approx(catalog[0].stats.hull));
+    CHECK(ship.GetHull() == doctest::Approx(ship.GetMaxHull()));
+    CHECK(ship.GetDamage() == doctest::Approx(catalog[0].stats.damage));
+    CHECK(ship.Describe().shape == &Archetypes::ForDesign(catalog[0].stats.design)->visual.shape);
+
+    // Another hull: another shape, its own hull -- in the shape the last one was in.
+    ship.TakeDamage(ship.GetShields() + ship.GetMaxHull() * 0.5f);
+    REQUIRE(ship.GetHull() == doctest::Approx(ship.GetMaxHull() * 0.5f));
+    ship.Refit(catalog[2].stats);
+    CHECK(ship.GetMaxHull() == doctest::Approx(catalog[2].stats.hull));
+    CHECK(ship.GetHull() == doctest::Approx(catalog[2].stats.hull * 0.5f));
+    CHECK(ship.GetCargoCapacity() == catalog[2].stats.cargoCapacity);
+    const Render::Item drawn = ship.Describe();
+    CHECK(drawn.shape == &Archetypes::ForDesign(catalog[2].stats.design)->visual.shape);
+    CHECK(drawn.kind == EntityKind::PlayerShip);
+}
+
+TEST_CASE("the hangar: a list of designs, the starter first, and a mistake is a load error")
+{
+    CHECK(ErrorAfter([](nlohmann::json& j) { j.erase("hangar"); }).find("hangar") !=
+          std::string::npos);
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["hangar"] = nlohmann::json::array(); })
+              .find("hangar") != std::string::npos);
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["hangar"][1]["design"] = "dreadnought"; })
+              .find("not a design") != std::string::npos);
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["hangar"][1]["design"] = "scout"; }).find("twice") !=
+          std::string::npos);
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["hangar"][1].erase("price"); }).find("price") !=
+          std::string::npos);
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["hangar"][1]["price"] = -5; }).find("price") !=
+          std::string::npos);
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["hangar"][1]["cost"] = 5; }).find("cost") !=
+          std::string::npos);
+    CHECK(
+        ErrorAfter([](nlohmann::json& j) { j["rules"].erase("playerHull"); }).find("playerHull") !=
+        std::string::npos);
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["rules"].erase("playerGun"); }).find("playerGun") !=
+          std::string::npos);
 }
 
 TEST_CASE("the classes still read in the numbers: the hauler holds most, the courier is fastest, "
@@ -436,7 +539,7 @@ TEST_CASE("the ship archetypes drawn from designs are those designs")
     int                     drawn = 0;
     for (const Ships::Design& d : c.designs)
         for (const Archetype& a : Archetypes::All())
-            if (a.design == d.id)
+            if (a.design == d.id && a.kind == EntityKind::Npc)  // ship.player draws one too
             {
                 drawn++;
                 CAPTURE(a.id);

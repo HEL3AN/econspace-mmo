@@ -48,7 +48,10 @@ struct HangarRow
     float       speed = 0.0f;
     int         cargo = 0;
     float       mining = 0.0f;
-    double      price = 0.0;  // what this station charges this pilot (ShipPriceMultiplier)
+    float       turn = 0.0f;    // rad/s
+    float       hull = 0.0f;    // structure, before the shields
+    float       damage = 0.0f;  // a shot of its guns
+    double      price = 0.0;    // what this station charges this pilot (ShipPriceMultiplier)
     Berth       berth = Berth::ForSale;
     bool        affordable = true;  // for sale, and the money is there
     // The hold would take what the ship carries now. The server refuses a refit into a

@@ -333,9 +333,13 @@ void Game::DrawHangarContent(const Ui::Frame& f)
             return;
         const StationList::HangarRow& h = rows[hangarSel_];
         L.Text(h.name, TextStyle::Title());
+        // Read off the hull's design (#279 step 5), as the server flies it.
         L.Field("Top speed", TextFormat("%.0f u/s", h.speed), t.colors.text);
+        L.Field("Turn", TextFormat("%.1f rad/s", h.turn), t.colors.text);
         L.Field("Hold", std::to_string(h.cargo), t.colors.text);
         L.Field("Mining", TextFormat("%.1f a second", h.mining), t.colors.text);
+        L.Field("Hull", TextFormat("%.0f", h.hull), t.colors.text);
+        L.Field("Guns", TextFormat("%.0f a shot", h.damage), t.colors.text);
         if (h.berth == StationList::Berth::ForSale)
             L.Field("Price here", TextFormat("%.0f cr", h.price), t.colors.money);
         L.Divider();

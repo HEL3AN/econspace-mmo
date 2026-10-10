@@ -443,6 +443,14 @@ void Editor::DrawGalleryFocusBar()
                                 (double)s.cruise, (double)s.hull, (double)s.damage,
                                 flown.empty() ? "   flown by no doctrine" : flown.c_str()),
                      (int)box.x + 10, (int)box.y + 28, 13, Ui::TEXT_DIM);
+            // And what a player flying it is (#279 step 5), if a station sells it.
+            for (size_t i = 0; i < ships.hangar.size(); i++)
+                if (ships.hangar[i].design == d->id)
+                    Ui::Text(TextFormat("as a player: hangar [%d]   %.0f cr   hull %.0f   gun "
+                                        "%.0f a shot",
+                                        (int)i, (double)ships.hangar[i].price, (double)s.playerHull,
+                                        (double)s.playerDamage),
+                             (int)box.x + 10, (int)box.y + 46, 13, Ui::TEXT_DIM);
         }
         else
             Ui::Text(why.c_str(), (int)box.x + 10, (int)box.y + 10, 13, Ui::ACCENT);

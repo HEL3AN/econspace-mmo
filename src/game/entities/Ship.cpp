@@ -1,4 +1,5 @@
 #include "entities/Ship.h"
+#include "core/Archetype.h"
 #include "core/World.h"
 #include "render/Textures.h"
 #include <algorithm>
@@ -9,11 +10,29 @@ Ship::Ship(Vector2 startPos, const ShipStats& stats)
       velocity_({ 0.0f, 0.0f })
 {
     SetArchetype("ship.player");
+    Refit(stats);
+    hull_ = maxHull_;
+}
+
+void Ship::Refit(const ShipStats& stats)
+{
+    const float share = maxHull_ > 0.0f ? hull_ / maxHull_ : 1.0f;
+    stats_ = stats;
+    maxHull_ = stats.hull;
+    hull_ = share * maxHull_;
+    look_ = Archetypes::ForDesign(stats.design);
 }
 
 Render::Item Ship::Describe() const
 {
     Render::Item it = Entity::Describe();
+    // `ship.player` says what a player's ship is -- its glyph, layer and name; the design
+    // it flies says what it looks like (#279 step 5), so a Hauler is a hauler to everyone.
+    if (look_ != nullptr)
+    {
+        it.shape = &look_->visual.shape;
+        it.material = look_->visual.material;
+    }
     it.heading = heading_;
     it.thrusting = engineActive_;
     it.intensity = maxHull_ > 0.0f ? hull_ / maxHull_ : 1.0f;

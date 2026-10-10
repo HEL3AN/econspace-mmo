@@ -5,27 +5,40 @@
 #include <string>
 #include <vector>
 
-// Ship parameters. Change when switching to another ship.
+// Ship parameters. Change when switching to another ship. Every one of them is read off the
+// ship's design (#279 step 5, Ships::Derive) -- the server flies the ship by them and the
+// client predicts its own with the same numbers (Sim::StepPlayerShip), so they cannot come
+// from anywhere else.
 struct ShipStats
 {
-    float thrustPower;    // engine thrust (stabilizer-off mode)
-    float turnSpeed;      // turn rate, rad/sec
-    float maxSpeed;       // top speed
-    float rcsAccel;       // stabilizer power
-    int   cargoCapacity;  // cargo hold capacity
-    float miningRate;     // mining rate, units/sec
+    float       thrustPower = 0.0f;  // engine thrust (stabilizer-off mode)
+    float       turnSpeed = 0.0f;    // turn rate, rad/sec
+    float       maxSpeed = 0.0f;     // top speed
+    float       rcsAccel = 0.0f;     // stabilizer power
+    int         cargoCapacity = 0;   // cargo hold capacity
+    float       miningRate = 0.0f;   // mining rate, units/sec
+    float       hull = 0.0f;         // structure: what a hit takes once the shields are down
+    float       damage = 0.0f;       // what one shot of its guns takes off
+    std::string design;              // what it is and what it looks like, in data/ships.json
 };
 
 // A ship type in the hangar: name, price, base stats.
 struct ShipType
 {
     std::string name;
-    double      price;
+    double      price = 0.0;
     ShipStats   stats;
 };
 
-// Catalog of available ships. The first one is the starter.
+// Catalog of available ships: the hangar of data/ships.json, each hull's stats derived from
+// its design, so it is read once the archetypes are loaded (Archetypes::Load) and again
+// whenever they are reloaded. The first one is the starter. An account owns hulls by their
+// index here, which is their place in the file's hangar list.
 const std::vector<ShipType>& GetShipCatalog();
+
+// The hull in the catalog that is `design`, or null: what a client makes of the design the
+// snapshot says another player's ship is.
+const ShipType* ShipTypeOf(const std::string& design);
 
 // What a station charges for a ship, as a multiple of the catalog price, given the buyer's
 // standing with the station's owner. One function because three places need the same number

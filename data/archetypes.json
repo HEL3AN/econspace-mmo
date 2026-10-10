@@ -930,25 +930,7 @@
             "layer": 6,
             "size": 16,
             "material": "hull",
-            "shape": {
-                "sections": [
-                    {"form": "chevron", "at": [0.2, 0.0], "length": 2.1, "width": 0.9, "role": "hull"},
-                    {"form": "chevron", "at": [-0.5, 0.62], "angle": 145, "length": 1.15, "width": 0.55, "role": "hull", "mirror": true, "minPixels": 24, "z": -1},
-                    {"form": "bar", "at": [-0.25, 0.0], "length": 0.95, "width": 0.24, "role": "panel", "alpha": 0.55, "pitch": 0.12, "minPixels": 20}
-                ],
-                "kit": { "symmetry": "bilateral", "plain": 0.5, "modules": [
-                    {"of": "hull.engine", "in": 0, "on": "stern", "count": 1, "fit": true, "mount": "out", "turn": 180, "scale": 0.24, "z": -1},
-                    {"of": "hull.thruster", "in": 1, "on": "side", "count": 2, "fit": true, "mount": "centre", "turn": 68.45, "scale": 0.14, "z": -1},
-                    {"of": "weapons.laser", "in": 0, "on": "side", "count": 2, "fit": true, "mount": "centre", "turn": 77.9, "scale": 0.1},
-                    {"of": "hull.rcs", "in": 2, "on": "edge", "count": 2, "fit": true, "scale": 0.06, "turn": -90},
-                    {"of": "hatch", "in": 2, "on": "top", "count": [0, 1], "scale": 0.06}
-                ] },
-                "parts": [
-                    {"module": "hull.cockpit", "at": [0.42, 0.0], "scale": 0.16},
-                    {"module": "hull.fin", "at": [-0.55, 0.0], "scale": 0.18, "chance": 0.4},
-                    {"form": "disc", "at": [-0.78, 0.3], "radius": 0.05, "role": "light", "mirror": true, "minPixels": 26}
-                ]
-            },
+            "design": "scout",
             "components": {}
         },
         {

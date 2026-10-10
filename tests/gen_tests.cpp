@@ -361,6 +361,8 @@ TEST_CASE("a satellite is a place the slowest ship can reach (#210)")
 {
     // A station that moves faster than a ship can fly is a station nobody docks at: its
     // planet and its own turn together must stay well under the slowest hull's top speed.
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));  // the hangar
+    REQUIRE_FALSE(GetShipCatalog().empty());
     float slowest = 1e9f;
     for (const ShipType& t : GetShipCatalog())
         slowest = std::min(slowest, t.stats.maxSpeed);
