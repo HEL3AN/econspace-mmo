@@ -55,6 +55,14 @@ std::vector<std::unique_ptr<Entity>> LoadSystem(const std::string& path);
 // in-memory edits). Entity order matches the order in the JSON.
 std::vector<std::unique_ptr<Entity>> BuildSystem(const nlohmann::json& data);
 
+// Names every planet after its system and its place from the star out: "Helios Core I" is the
+// innermost (#259). A rule rather than data: a generated system's planets are named the
+// moment it is, and naming the system names them again. Ties in orbit keep the file's order.
+void NamePlanets(std::vector<std::unique_ptr<Entity>>& entities, const std::string& systemName);
+
+// The numeral a planet's place is written in: 1 -> "I", 14 -> "XIV". Empty below 1.
+std::string RomanNumeral(int n);
+
 // The other direction, for one object: the element BuildSystem would build it from, and the
 // array of a system document it belongs in ("stations", "asteroidFields", ...). A save keeps
 // an object a player added this way (#38), in the format the data is written in, so loading

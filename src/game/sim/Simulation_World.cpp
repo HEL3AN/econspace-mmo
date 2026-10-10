@@ -269,6 +269,7 @@ void Simulation::MaterializeAllSystems(const std::string& systemsDir)
             }
             else
                 st.entities = WorldLoader::LoadSystem(systemsDir + info.file);
+            WorldLoader::NamePlanets(st.entities, SystemName(info.id));  // (#259)
             // Ids here rather than in HydrateSystem, in the same order as ever, because what a
             // save changed is replayed by id-bearing objects before any NPC exists.
             for (auto& e : st.entities)
@@ -835,6 +836,9 @@ bool Simulation::NameSystem(ClientSession& s, const std::string& name)
     const std::string designation = SystemName(s.systemId);
     a.givenName = name;
     chartsChanged_ = true;  // everyone's index changes
+    // Its planets are called after it (#259). A client already here keeps the names its
+    // layout gave it until it next enters; everyone after sees the new ones.
+    WorldLoader::NamePlanets(it->second.entities, name);
     PushEvent(designation + " is now " + name + ", named by " + pilot);
     s.RecordEvent(Ev::Kind::Notice, "Named " + designation + " " + name);
     return true;

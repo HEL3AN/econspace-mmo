@@ -729,6 +729,33 @@ TableEvents Layout::Table(const TableSpec& s)
                 }
             }
 
+    // A Fit column measured across every row, then laid out as Fixed: fitted row by row,
+    // each row's cell would be as wide as its own text and the column would not line up.
+    std::vector<Size> widths;
+    for (int c = 0; c < cols; c++)
+    {
+        const TableColumn& col = s.columns[c];
+        if (col.width.kind != Size::Kind::Fit)
+        {
+            widths.push_back(col.width);
+            continue;
+        }
+        // The heading with room for the sort mark it may carry.
+        float widest = TextWidthPx(TextStyle::Small(), col.label + (col.sortable ? " v" : ""));
+        for (int r = 0; r < s.rows && s.cell; r++)
+        {
+            const Cell cell = s.cell(r, c);
+            TextStyle  st = TextStyle::Body();
+            st.face = cell.face;
+            widest = std::max(widest, TextWidthPx(st, cell.text));
+        }
+        float units = std::ceil(widest / std::max(scale_, 0.01f)) + 2.0f * pad;
+        units = std::max(units, col.width.min);
+        if (col.width.max > 0.0f)
+            units = std::min(units, col.width.max);
+        widths.push_back(Size::Fixed(units));
+    }
+
     Column(Box().Grow(),
            [&]
            {
@@ -745,7 +772,7 @@ TableEvents Layout::Table(const TableSpec& s)
                                label += s.sort->descending ? " ^" : " v";
                            Row(Box()
                                    .Id(head, (uint32_t)c)
-                                   .Width(col.width)
+                                   .Width(widths[c])
                                    .Height(Size::Fixed(t.metrics.rowHeight))
                                    .Pad(pad, pad, 0.0f, 0.0f)
                                    .Align(col.align, Align::Center),
@@ -806,7 +833,7 @@ TableEvents Layout::Table(const TableSpec& s)
                                               Ellipsize(cell.text, room, [&](std::string_view x)
                                                         { return TextWidthPx(st, x); });
                                           Row(Box()
-                                                  .Width(col.width)
+                                                  .Width(widths[c])
                                                   .Height(Size::Grow())
                                                   .Pad(pad, pad, 0.0f, 0.0f)
                                                   .Align(col.align, Align::Center),

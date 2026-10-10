@@ -101,7 +101,11 @@ std::string KindShort(const std::string& kind)
     return kind.substr(0, std::min<size_t>(kind.size(), 3)) + ":";
 }
 
+// How tall a chart is: its title, its bars, their labels. An empty chart is shorter.
+constexpr float HISTOGRAM_H = 28.0f + 30.0f + 18.0f;
+
 // One distribution as a row of bars. Returns the height it took.
+
 float Histogram(float x, float y, float w, const char* title,
                 const std::vector<std::pair<std::string, int>>& bins, int total, Color bar)
 {
@@ -132,7 +136,7 @@ float Histogram(float x, float y, float w, const char* title,
                  Ui::TEXT_DIM);
         EndScissorMode();
     }
-    return 28.0f + barsH + 18.0f;
+    return HISTOGRAM_H;
 }
 
 std::vector<std::pair<std::string, int>> Bins(const std::map<int, int>& m)
@@ -619,24 +623,31 @@ void Editor::DrawSurveyPanel()
     DrawLine((int)x, (int)y, (int)(x + w), (int)y, Ui::PANEL_BORDER);
     y += 8.0f;
 
-    const int n = st.systems;
-    y += Histogram(x, y, w, "star", Bins(st.stars), n, Color{ 240, 200, 110, 255 });
-    if (!st.characters.empty())
-        y += Histogram(x, y, w, "character", Bins(st.characters), n, kTwin);
-    y += Histogram(x, y, w, "planets", Bins(st.planets), n, Ui::ACCENT);
-    y += Histogram(x, y, w, "outermost orbit (x100k)", Bins(st.reach), n, Ui::ACCENT);
-    y += Histogram(x, y, w, "worth stopping for (all kinds)", Bins(st.worth), n, kThin);
-    for (const auto& kv : st.things)
-    {
-        if (y > (float)screenHeight_ - 120.0f)
-            break;  // a run with many kinds outgrows the panel; the commonest come first
-        y += Histogram(x, y, w,
-                       TextFormat("%s   (%d in all)", KindName(kv.first).c_str(),
-                                  st.totals.count(kv.first) ? st.totals.at(kv.first) : 0),
-                       Bins(kv.second), n, Ui::ACCENT);
-    }
-
+    // The keys' block is placed first and the charts fill what is above it: a chart is drawn
+    // only if the whole of it fits (#259). A run with many kinds outgrows the panel, and
+    // checking where the last chart *started* let it run on under the keys.
     const float ky = (float)screenHeight_ - 74.0f;
+    const int   n = st.systems;
+    auto        chart =
+        [&](const char* title, const std::vector<std::pair<std::string, int>>& bins, Color bar)
+    {
+        if (y + HISTOGRAM_H > ky - 10.0f)
+            return false;
+        y += Histogram(x, y, w, title, bins, n, bar);
+        return true;
+    };
+    chart("star", Bins(st.stars), Color{ 240, 200, 110, 255 });
+    if (!st.characters.empty())
+        chart("character", Bins(st.characters), kTwin);
+    chart("planets", Bins(st.planets), Ui::ACCENT);
+    chart("outermost orbit (x100k)", Bins(st.reach), Ui::ACCENT);
+    chart("worth stopping for (all kinds)", Bins(st.worth), kThin);
+    for (const auto& kv : st.things)  // the commonest come first
+        if (!chart(TextFormat("%s   (%d in all)", KindName(kv.first).c_str(),
+                              st.totals.count(kv.first) ? st.totals.at(kv.first) : 0),
+                   Bins(kv.second), Ui::ACCENT))
+            break;
+
     DrawLine((int)x, (int)ky - 6, (int)(x + w), (int)ky - 6, Ui::PANEL_BORDER);
     Ui::Text("PgDn / PgUp  next / previous seeds", (int)x, (int)ky, 11, Ui::TEXT_DIM);
     Ui::Text("+ / -  regions per page   R  again   M  markers", (int)x, (int)ky + 15, 11,

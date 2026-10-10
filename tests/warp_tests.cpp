@@ -53,6 +53,35 @@ TEST_CASE("a warp ends at its drop distance, stopped, and never overshoots it")
     }
 }
 
+TEST_CASE("a warp that has arrived has ended: never still warping at a standstill (#259)")
+{
+    // The HUD was seen saying WARP at speed 0 after an arrival. Far from the origin a float
+    // cannot land exactly on the drop-out point, so the last step must not leave a warp
+    // creeping the remaining fraction of a unit at a speed of nothing. The one tick between
+    // the alignment ending and the first push is the only standstill a warp has.
+    const float dt = Sim::SIM_DT;
+    for (Vector2 from : { Vector2{ -574800.0f, 143700.0f }, Vector2{ 600000.0f, 377800.0f },
+                          Vector2{ 0.0f, -900000.0f }, Vector2{ 1234.5f, 0.0f } })
+        for (float drop : { 500.0f, 2500.0f, 15000.0f })
+        {
+            CAPTURE(from.x);
+            CAPTURE(drop);
+            Ship ship(from, GetShipCatalog()[0].stats);
+            ship.EngageWarp({ 948000.0f, 0.0f }, drop);
+            int  still = 0;
+            bool moved = false;
+            for (int i = 0; i < 60 * 120 && ship.IsWarping(); i++)
+            {
+                ship.Update(dt);
+                moved = moved || ship.GetSpeed() > 0.0f;
+                if (moved && ship.IsWarping() && ship.GetSpeed() < 1.0f)
+                    still++;
+            }
+            CHECK_FALSE(ship.IsWarping());
+            CHECK(still == 0);
+        }
+}
+
 TEST_CASE("how far a warp goes costs little time, so a system is one place")
 {
     // At a flat speed, crossing the system took forty-five times as long as a hop between

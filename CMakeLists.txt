@@ -172,6 +172,7 @@ add_library(engine STATIC
     src/engine/ui/Desk.cpp             # ...and the half that reads the mouse and draws
     src/engine/ui/Theme.cpp            # colours, spacing and sizes as data, and the UI scale (#297)
     src/engine/ui/Fonts.cpp            # the interface's typeface, crisp at every size (#297)
+    src/engine/ui/Units.cpp            # numbers as a column reads them: 12.5k, 1.25M (#259)
     src/engine/ui/Layout.cpp           # rows, columns and text inside a window (#297)...
     src/engine/ui/ClayBridge.c         # ...solved by Clay, in C, behind a seam
 )

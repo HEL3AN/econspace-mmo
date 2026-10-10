@@ -307,8 +307,19 @@ void Ship::RunWarp(float dt)
     speed = speed < WARP_ENTRY_SPEED ? WARP_ENTRY_SPEED : speed * (1.0f + WARP_ACCEL * dt);
     speed = std::min(speed, std::max(WARP_ACCEL * remaining, WARP_EXIT_SPEED));
     speed = std::min(speed, WARP_MAX_SPEED);
-    if (!warpHasVia_)
-        speed = std::min(speed, remaining / dt);
+    if (!warpHasVia_ && speed * dt >= remaining)
+    {
+        // The step that reaches the drop-out point is the arrival (#259). Stepping onto it
+        // and ending on the next tick did not survive a float: far from the origin the step
+        // lands a fraction of a unit short, and the warp crept that fraction for seconds at
+        // a speed of nothing -- the HUD said WARP at speed 0 after the ship had arrived.
+        pos_.x += dirX * remaining;
+        pos_.y += dirY * remaining;
+        warpPhase_ = WarpPhase::None;
+        velocity_ = { 0.0f, 0.0f };
+        engineActive_ = false;
+        return;
+    }
     velocity_ = { dirX * speed, dirY * speed };
     engineActive_ = true;
 }
