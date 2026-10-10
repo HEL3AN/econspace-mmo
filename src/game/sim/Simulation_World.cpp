@@ -335,6 +335,8 @@ nlohmann::json IntelJson(const Intel& i)
              { "belts", i.belts },
              { "wrecks", i.wrecks },
              { "stations", i.stations },
+             { "planets", i.planets },
+             { "gates", i.gates },
              { "defenders", defenders },
              { "presence", i.presence },
              { "controller", Factions::Id(i.controller) },
@@ -350,6 +352,8 @@ Intel IntelFrom(const nlohmann::json& j)
     i.belts = j.value("belts", 0);
     i.wrecks = j.value("wrecks", 0);
     i.stations = j.value("stations", 0);
+    i.planets = j.value("planets", 0);
+    i.gates = j.value("gates", 0);
     if (j.contains("defenders") && j["defenders"].is_array())
         for (const auto& d : j["defenders"])
         {

@@ -154,6 +154,14 @@ static void ApplyOrbit(Entity& e, const json& o)
     e.SetOrbit(orbit);
 }
 
+static json OrbitJson(const Orbit& orbit)
+{
+    return { { "planet", orbit.planet },
+             { "radius", orbit.radius },
+             { "speed", orbit.speed },
+             { "phase", orbit.phase } };
+}
+
 static Vector2 PosOf(const json& o)
 {
     return o.contains("pos") ? Vec2FromJson(o["pos"]) : Vector2{ 0.0f, 0.0f };
@@ -289,6 +297,7 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
                                                   t.value("name", a->name), id);
             st->StartBuilding(t.value("startedAt", 0.0), t.value("completesAt", 0.0));
             st->SetExpiresAt(t.value("expiresAt", 0.0));
+            ApplyOrbit(*st, t);
             entities.push_back(std::move(st));
         }
     }
@@ -354,6 +363,8 @@ nlohmann::json WorldLoader::DescribeObject(const Entity& e, std::string& array)
             }
             if (t.GetExpiresAt() > 0.0)
                 o["expiresAt"] = t.GetExpiresAt();
+            if (t.GetOrbit().has_value())  // a faction's orbital outpost (#318)
+                o["orbits"] = OrbitJson(*t.GetOrbit());
             return o;
         }
         case EntityKind::Star:
@@ -366,12 +377,6 @@ nlohmann::json WorldLoader::DescribeObject(const Entity& e, std::string& array)
     if (e.GetArchetype() != nullptr)
         o["archetype"] = e.GetArchetype()->id;
     if (e.GetOrbit().has_value())
-    {
-        const Orbit& orbit = *e.GetOrbit();
-        o["orbits"] = { { "planet", orbit.planet },
-                        { "radius", orbit.radius },
-                        { "speed", orbit.speed },
-                        { "phase", orbit.phase } };
-    }
+        o["orbits"] = OrbitJson(*e.GetOrbit());
     return o;
 }

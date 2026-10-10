@@ -778,6 +778,146 @@
             }
         },
         {
+            "id": "structure.outpost_mining",
+            "name": "Mining Outpost",
+            "kind": "Structure",
+            "glyph": "^",
+            "color": [200, 194, 182, 255],
+            "layer": 4,
+            "size": 160,
+            "material": "hull",
+            "shape": {
+                "sections": [
+                    {"form": "polygon", "sides": 8, "radius": 0.45, "angle": 22.5, "role": "hull", "pitch": 0.18},
+                    {"form": "lattice", "at": [0.9, 0.0], "repeat": 2, "length": 0.8, "width": 0.26, "count": 4, "role": "panel", "pitch": 0.2, "z": -1},
+                    {"form": "bar", "at": [1.45, 0.0], "repeat": 2, "angle": 90, "length": 0.62, "width": 0.34, "role": "hull", "pitch": 0.16}
+                ],
+                "kit": { "symmetry": "radial", "plain": 0.45, "modules": [
+                    {"of": "station.ore", "in": 2, "on": "top", "count": 1, "scale": 0.22},
+                    {"of": "station.crane", "in": 0, "on": "edge", "count": 1, "turn": 90, "scale": 0.2, "mount": "out"},
+                    {"of": "light.nav", "in": 2, "on": "end", "count": 2, "scale": 0.05}
+                ] },
+                "parts": [
+                    {"module": "station.refinery", "scale": 0.26}
+                ]
+            },
+            "components": {
+                "buildable": {}
+            }
+        },
+        {
+            "id": "structure.outpost_watch",
+            "name": "Watch Post",
+            "kind": "Structure",
+            "glyph": "^",
+            "color": [190, 200, 214, 255],
+            "layer": 4,
+            "size": 160,
+            "material": "hull",
+            "shape": {
+                "sections": [
+                    {"form": "polygon", "sides": 6, "radius": 0.38, "role": "hull", "pitch": 0.16},
+                    {"form": "lattice", "at": [0.88, 0.0], "length": 1.0, "width": 0.16, "count": 6, "role": "panel", "pitch": 0.16, "z": -1},
+                    {"form": "capsule", "at": [-0.5, 0.0], "angle": 90, "length": 1.0, "width": 0.18, "role": "hull", "pitch": 0.15}
+                ],
+                "kit": { "symmetry": "bilateral", "plain": 0.4, "modules": [
+                    {"of": "dish", "in": 2, "on": "end", "count": 1, "scale": 0.16, "mount": "out"},
+                    {"of": "station.comms", "in": 0, "on": "middle", "count": 1, "scale": 0.22},
+                    {"of": "light.nav", "in": 1, "on": "end", "count": 1, "scale": 0.05}
+                ] },
+                "parts": [
+                    {"module": "mast", "at": [1.45, 0.0], "scale": 0.16},
+                    {"form": "ring", "radius": 0.3, "width": 0.025, "role": "trim", "alpha": 0.6, "minPixels": 40}
+                ]
+            },
+            "components": {
+                "buildable": {}
+            }
+        },
+        {
+            "id": "structure.outpost_orbital",
+            "name": "Orbital Outpost",
+            "kind": "Structure",
+            "glyph": "^",
+            "color": [205, 205, 212, 255],
+            "layer": 4,
+            "size": 160,
+            "material": "hull",
+            "shape": {
+                "sections": [
+                    {"form": "disc", "radius": 0.34, "role": "hull", "pitch": 0.14},
+                    {"form": "bar", "at": [0.56, 0.0], "repeat": 4, "length": 0.44, "width": 0.07, "role": "panel", "pitch": 0.12, "z": -1},
+                    {"form": "ring", "radius": 0.8, "width": 0.09, "role": "hull", "pitch": 0.12}
+                ],
+                "kit": { "symmetry": "radial", "plain": 0.5, "modules": [
+                    {"of": "station.dock", "in": 2, "on": "ring", "count": 1, "scale": 0.12, "mount": "out"},
+                    {"of": "windows", "in": 2, "on": "ring", "count": [1, 2], "variant": "lit", "scale": 0.06}
+                ] },
+                "parts": [
+                    {"module": "station.reactor", "scale": 0.2}
+                ]
+            },
+            "components": {
+                "buildable": {}
+            }
+        },
+        {
+            "id": "structure.outpost_salvage",
+            "name": "Salvage Post",
+            "kind": "Structure",
+            "glyph": "^",
+            "color": [196, 188, 170, 255],
+            "layer": 4,
+            "size": 160,
+            "material": "hull",
+            "shape": {
+                "sections": [
+                    {"form": "bar", "length": 1.1, "width": 0.44, "role": "hull", "pitch": 0.16},
+                    {"form": "lattice", "at": [0.95, 0.0], "length": 0.8, "width": 0.22, "count": 4, "role": "panel", "pitch": 0.16, "z": -1},
+                    {"form": "disc", "at": [-0.72, 0.0], "radius": 0.26, "role": "panel", "pitch": 0.13}
+                ],
+                "kit": { "symmetry": "bilateral", "plain": 0.4, "modules": [
+                    {"of": "weapons.tractor", "in": 1, "on": "end", "count": 1, "scale": 0.16, "mount": "out"},
+                    {"of": "container", "in": 0, "on": "top", "count": [2, 3], "scale": 0.11},
+                    {"of": "station.crane", "in": 0, "on": "edge", "count": 1, "scale": 0.2, "mount": "out"},
+                    {"of": "light.nav", "in": 2, "on": "edge", "count": 1, "scale": 0.05, "mount": "out"}
+                ] },
+                "parts": [
+                    {"form": "ring", "at": [-0.72, 0.0], "radius": 0.17, "width": 0.03, "role": "trim", "alpha": 0.6, "minPixels": 40}
+                ]
+            },
+            "components": {
+                "buildable": {}
+            }
+        },
+        {
+            "id": "structure.outpost_hidden",
+            "name": "Hidden Base",
+            "kind": "Structure",
+            "glyph": "^",
+            "color": [120, 116, 112, 255],
+            "layer": 4,
+            "size": 160,
+            "material": "hull",
+            "shape": {
+                "sections": [
+                    {"form": "polygon", "sides": 6, "radius": 0.5, "angle": 30, "jagged": 0.14, "role": "hull", "pitch": 0.18},
+                    {"form": "chevron", "at": [0.62, 0.0], "repeat": 3, "length": 0.46, "width": 0.4, "role": "panel", "pitch": 0.15}
+                ],
+                "kit": { "symmetry": "radial", "plain": 0.6, "modules": [
+                    {"of": "weapons.cloak", "in": 0, "on": "edge", "count": 1, "scale": 0.12, "mount": "out"},
+                    {"of": "gate.style-pirate", "in": 1, "on": "edge", "count": 1, "variants": ["patches", "mismatched-plates"], "scale": 0.1},
+                    {"of": "weapons.pointdefence", "in": 0, "on": "top", "count": 1, "scale": 0.1}
+                ] },
+                "parts": [
+                    {"form": "disc", "at": [0.3, 0.0], "radius": 0.035, "role": "light", "tint": [200, 40, 30], "blink": 2.5, "minPixels": 50}
+                ]
+            },
+            "components": {
+                "buildable": {}
+            }
+        },
+        {
             "id": "ship.npc",
             "style": "directional",
             "name": "Ship",

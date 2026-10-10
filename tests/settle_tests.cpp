@@ -70,13 +70,17 @@ std::string GuildFrontier(const Simulation& sim)
 
 const Structure* OutpostIn(const Simulation& sim, const std::string& system)
 {
-    const Blueprint* bp = Blueprints::Find(Outposts::BLUEPRINT);
-    REQUIRE(bp != nullptr);
     for (const auto& e : sim.SystemById(system)->entities)
         if (e->GetKind() == EntityKind::Structure &&
-            static_cast<const Structure&>(*e).GetBuilds() == bp->archetype)
+            Outposts::IsOutpost(static_cast<const Structure&>(*e).GetBuilds()))
             return static_cast<const Structure*>(e.get());
     return nullptr;
+}
+
+// "Traders Guild began a watch post in W-3.2": whoever, then whatever it is for, then where.
+bool Says(const std::string& text, const std::string& who, const std::string& verb)
+{
+    return text.rfind(who + " " + verb + " ", 0) == 0 && text.find(" in ") != std::string::npos;
 }
 
 const Plan* SettlementOf(const Simulation& sim, FactionId f)
@@ -223,7 +227,7 @@ TEST_CASE("a faction settles where it has come, everyone sees the site, and fini
         }
     CHECK(sent);
     CHECK_FALSE(sim->SystemById(frontier)->agg.claimed);
-    CHECK(sim->Chronicle().back().text.rfind("Traders Guild began an outpost in ", 0) == 0);
+    CHECK(Says(sim->Chronicle().back().text, "Traders Guild", "began"));
 
     // One at a time: no second settlement while the first goes up, whatever the stock.
     for (int pass = 0; pass < 60; pass++)
@@ -247,15 +251,14 @@ TEST_CASE("a faction settles where it has come, everyone sees the site, and fini
     CHECK(Holds(*sim, FactionId::TradersGuild, frontier));
     bool founded = false, news = false;
     for (const ChronicleEntry& e : sim->Chronicle())
-        if (e.kind == "settle" && e.system == frontier &&
-            e.text.rfind("Traders Guild founded an outpost in ", 0) == 0)
+        if (e.kind == "settle" && e.system == frontier && Says(e.text, "Traders Guild", "founded"))
         {
             founded = true;
             CHECK(e.faction == (int)FactionId::TradersGuild);
             CHECK(e.time >= plan.dueAt);
         }
     for (const std::string& line : sim->Events())
-        news = news || line.rfind("Traders Guild founded an outpost in ", 0) == 0;
+        news = news || Says(line, "Traders Guild", "founded");
     CHECK(founded);
     CHECK(news);  // in the feed every client shows
 }

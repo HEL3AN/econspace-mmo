@@ -26,6 +26,51 @@
             "cost": { "Iron": 40, "Crystal": 10 },
             "buildSeconds": 600,
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
+        },
+        {
+            "id": "outpost_mining",
+            "name": "Mining Outpost",
+            "archetype": "structure.outpost_mining",
+            "builders": ["faction"],
+            "cost": { "Iron": 40, "Crystal": 10 },
+            "buildSeconds": 600,
+            "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
+        },
+        {
+            "id": "outpost_watch",
+            "name": "Watch Post",
+            "archetype": "structure.outpost_watch",
+            "builders": ["faction"],
+            "cost": { "Iron": 40, "Crystal": 10 },
+            "buildSeconds": 600,
+            "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
+        },
+        {
+            "id": "outpost_orbital",
+            "name": "Orbital Outpost",
+            "archetype": "structure.outpost_orbital",
+            "builders": ["faction"],
+            "cost": { "Iron": 40, "Crystal": 10 },
+            "buildSeconds": 600,
+            "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
+        },
+        {
+            "id": "outpost_salvage",
+            "name": "Salvage Post",
+            "archetype": "structure.outpost_salvage",
+            "builders": ["faction"],
+            "cost": { "Iron": 40, "Crystal": 10 },
+            "buildSeconds": 600,
+            "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
+        },
+        {
+            "id": "outpost_hidden",
+            "name": "Hidden Base",
+            "archetype": "structure.outpost_hidden",
+            "builders": ["faction"],
+            "cost": { "Iron": 40, "Crystal": 10 },
+            "buildSeconds": 600,
+            "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
         }
     ],
     "limits": { "perAccount": 12 }

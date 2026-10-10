@@ -85,13 +85,6 @@ void RandomDirection(Rng& rng, double& ux, double& uy)
     }
 }
 
-// How far out from a planet its satellites may go (#210): a planet's path is wider than the
-// planet, because it takes what orbits it along.
-double MoonZone(double planetSize)
-{
-    return planetSize * 1.5 + 12000.0;
-}
-
 bool ClearOfTaken(double x, double y, double size, const std::vector<Disc>& taken)
 {
     for (const Disc& d : taken)

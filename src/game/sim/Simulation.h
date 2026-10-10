@@ -15,6 +15,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <tuple>
@@ -109,6 +110,20 @@ public:
     // What an outpost costs a faction's stock (#295): its blueprint's cost, counted as one
     // number. Zero when there is no outpost blueprint, which means no faction can settle.
     static float OutpostCost();
+    // Where `f` would build an outpost for `purpose` in `systemId`, arriving from `from`
+    // (#318): by the richest belt, between the gates, round a planet, by the wrecks, out of
+    // sight, or at an open point -- always somewhere SpotProblem allows, and for a satellite
+    // in a free orbit of its planet. Drawn from who, where and what for, so the same world
+    // gives the same answer. Not found when the purpose has nothing to build by here or no
+    // room left; the caller falls back to an open point.
+    struct OutpostSpot
+    {
+        bool                 found = false;
+        Vector2              at{ 0.0f, 0.0f };  // where it stands now
+        std::optional<Orbit> orbit;             // set: a satellite, placed by the clock (#210)
+    };
+    OutpostSpot FindOutpostSpot(FactionId f, Outposts::Purpose purpose, const std::string& from,
+                                const std::string& systemId) const;
     // The world's history, oldest first, capped (#295). Everything the news feed says is
     // here too, with a time and a sequence number; surveys are here and not in the feed.
     const std::vector<ChronicleEntry>& Chronicle() const { return chronicle_; }
