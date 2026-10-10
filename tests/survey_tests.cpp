@@ -125,7 +125,7 @@ TEST_CASE("survey: consecutive seeds, every system of each region, in the index'
     for (const Gen::SurveySystem& s : run)
     {
         CHECK(s.doc.is_object());
-        CHECK(s.doc.contains("star"));
+        CHECK((s.doc.contains("star") || s.doc.contains("stars")));  // a binary has two (#142)
     }
     // The same seeds survey the same way: the screen is a fact about the rules.
     const std::vector<Gen::SurveySystem> again = Gen::GenerateSurvey(base, 5, 3);

@@ -67,8 +67,13 @@ nobody built, #165 orbiting parts.
 7. **M7 has started.** #140 (done): the region beyond the wormhole comes from a seed
    (`src/engine/gen/`), hangs off the start system by one wormhole gate, and is remade
    from the seed in `world.json` on every start. `econserver host PORT --seed N` makes a
-   new galaxy reproducible. Next: #141 (fifty systems on one screen, to judge the rules),
-   then #142 (the system rules proper) and #143 (the region's shape) tuned against it.
+   new galaxy reproducible. #141: `worldeditor survey 1 shapes` shows fifty generated
+   systems at once and flags empty and identical ones. #142: a system has a character
+   (ordinary, binary, belt cluster, shrouded, graveyard, giants, frozen, barren). #211:
+   rare finds -- a leviathan wreck, a motherlode, a station hulk, a rogue world, an ancient
+   gate -- at most one of each per region, as archetypes placed with the per-object
+   `archetype` field. Next: #210 (an object in a planet's path becomes its satellite),
+   #143 (the region's shape, and pirates taking all of it at once), #144-#147.
 
 Also queued: **#137** shape derived from what an object does (it supersedes the closed
 #133), **#138** damage that removes parts, **#139** variation that changes a silhouette

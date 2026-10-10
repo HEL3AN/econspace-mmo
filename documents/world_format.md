@@ -411,12 +411,15 @@ does nothing. `econserver` refuses to start on a registry that will not load.
 
 ## systems/<id>.json — star system
 
-All sections except `star` are optional (an entire array may be omitted). `pos` is
-`[x, y]` in units. `color` is `[r, g, b]` (0–255).
+Every section is optional (an entire array may be omitted). `pos` is `[x, y]` in units.
+`color` is `[r, g, b]` (0–255).
+
+A system beyond the wormhole is not a file: the server generates it from the world's seed
+(#140) in exactly this format, so everything below describes both.
 
 ```json
 {
-    "star":  { "type": "Yellow", "size": 600 },
+    "star":  { "type": "Yellow", "size": 150000 },
     "planets":        [ … ],
     "stations":       [ … ],
     "asteroidFields": [ … ],
@@ -426,13 +429,26 @@ All sections except `star` are optional (an entire array may be omitted). `pos` 
 }
 ```
 
-### star (required)
+### star, or stars[]
 | Field | Type | Values |
 |------|-----|----------|
 | `type` | string | `Yellow` (default), `Red`, `Blue` |
 | `size` | number | radius |
+| `pos` | [x,y] | `stars[]` only: where this one stands |
 
-The star's position is always `(0,0)`.
+`star` stands at `(0,0)`. A system with several -- a binary (#142) -- lists them in `stars`
+instead, each at its `pos`; each lights the system (#119). Planets orbit `(0,0)` either way.
+
+### What every object may also carry
+
+| Field | Type | Meaning |
+|------|-----|----------|
+| `archetype` | string | Which archetype **of its kind** this object is, in place of its kind's ordinary one (#142): a derelict that is `derelict.leviathan`, a belt that is `field.motherlode`. A name that is not an archetype, or is one of another kind, is logged by name and ignored -- the object is built as usual. |
+
+### character (generated systems)
+A string the generator writes to say what kind of system it made (#142): `ordinary`,
+`binary`, `belt cluster`, `shrouded`, `graveyard`, `giants`, `frozen`, `barren`. Nothing
+at runtime reads it; the survey screen (#141) and a reader of the document do.
 
 ### planets[]
 | Field | Type | Values / description |
