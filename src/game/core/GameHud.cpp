@@ -28,6 +28,7 @@
 #include "raymath.h"
 #include <nlohmann/json.hpp>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <algorithm>
 #include <fstream>
@@ -36,8 +37,8 @@
 static const float MENU_BAR_W = 46.0f;
 static const float MENU_BTN = 36.0f;
 static const float MENU_STEP = 46.0f;
-// Hostile, as the instruments say it: the overview, the radar (#117).
-static const Color HOSTILE = { 230, 90, 80, 255 };
+// Hostile, as the instruments say it: the overview, the radar, the sensor screen (#117).
+static const Color HOSTILE = Sensor::ColorOf(Sensor::Allegiance::Hostile);
 static const float MENU_TOP = 12.0f;
 
 void Game::DrawStarfield()
@@ -682,17 +683,20 @@ bool Game::HandleMenuBar()
         return over;
 
     // The MAP slot (index 5) is not a window but the full-screen map (wins[5] == nullptr).
+    // The SNS slot (index 6) is the full-screen sensor screen (#123), likewise.
     Window* wins[] = { statusWin_,   targetWin_, overviewWin_, radarWin_,
-                       missionsWin_, nullptr,    settingsWin_ };
-    for (int i = 0; i < 7; i++)
+                       missionsWin_, nullptr,    nullptr,      settingsWin_ };
+    for (int i = 0; i < 8; i++)
     {
         Rectangle b{ (MENU_BAR_W - MENU_BTN) / 2.0f, MENU_TOP + i * MENU_STEP, MENU_BTN, MENU_BTN };
         if (CheckCollisionPointRec(m, b))
         {
             if (wins[i] != nullptr)
                 wins[i]->Toggle();
-            else
+            else if (i == 5)
                 galaxyMapOpen_ = !galaxyMapOpen_;
+            else
+                sensorOpen_ = !sensorOpen_;
             break;
         }
     }
@@ -708,16 +712,17 @@ void Game::DrawMenuBar()
                Ui::PANEL_BORDER);
 
     Window*     wins[] = { statusWin_,   targetWin_, overviewWin_, radarWin_,
-                           missionsWin_, nullptr,    settingsWin_ };
-    const char* labels[] = { "STA", "TGT", "OVR", "RAD", "MIS", "MAP", "SET" };
+                           missionsWin_, nullptr,    nullptr,      settingsWin_ };
+    const char* labels[] = { "STA", "TGT", "OVR", "RAD", "MIS", "MAP", "SNS", "SET" };
     Vector2     m = GetMousePosition();
 
-    for (int i = 0; i < 7; i++)
+    for (int i = 0; i < 8; i++)
     {
         Rectangle b{ (MENU_BAR_W - MENU_BTN) / 2.0f, MENU_TOP + i * MENU_STEP, MENU_BTN, MENU_BTN };
-        bool      open = wins[i] ? wins[i]->IsOpen() : galaxyMapOpen_;  // MAP — not a window
-        bool      hover = CheckCollisionPointRec(m, b);
-        Color     accent = (open || hover) ? Ui::ACCENT : Ui::TEXT_DIM;
+        // MAP and SNS are screens, not windows.
+        bool  open = wins[i] ? wins[i]->IsOpen() : (i == 5 ? galaxyMapOpen_ : sensorOpen_);
+        bool  hover = CheckCollisionPointRec(m, b);
+        Color accent = (open || hover) ? Ui::ACCENT : Ui::TEXT_DIM;
 
         DrawRectangleRec(b, open ? Fade(Ui::ACCENT, 0.25f)
                                  : (hover ? Fade(Ui::ACCENT, 0.12f) : Ui::PANEL_BG));
@@ -808,9 +813,15 @@ void Game::DrawHud()
 {
     if (hudHidden_)
         return;
-    DrawScaleBar();
+    if (!sensorOpen_)
+        DrawScaleBar();  // a scale for the world view; the sensor screen states its own
     for (auto& w : windows_)
         w->Draw();
+
+    // Over the windows, like the map: a screen of its own with its own legend, which a
+    // window parked on top of it would hide. The flight keys still work under it.
+    if (sensorOpen_)
+        DrawSensorScreen();
 
     if (galaxyMapOpen_)
         DrawGalaxyMap();
@@ -1435,4 +1446,166 @@ void Game::DrawTreatmentSettings()
 
     Ui::Text("F10 closes and saves", (int)panel.x + 12, (int)(panel.y + panel.height - 16.0f), 10,
              Ui::TEXT_DIM);
+}
+
+// A world distance as the sensor screen says it: 2k, 250k, 1M.
+static std::string SensorUnits(float u)
+{
+    char buf[32];
+    if (u >= 1000000.0f)
+        std::snprintf(buf, sizeof(buf), "%gM", u / 1000000.0f);
+    else if (u >= 1000.0f)
+        std::snprintf(buf, sizeof(buf), "%gk", std::round(u / 100.0f) / 10.0f);
+    else
+        std::snprintf(buf, sizeof(buf), "%.0f", u);
+    return buf;
+}
+
+// The sensor screen (#123): the surroundings projected onto a fixed grid, centred on the
+// ship. Sensor::Scan decides what lands in which cell and how it reads to this pilot; this
+// lays the grid out on the screen and draws it.
+void Game::DrawSensorScreen()
+{
+    const float left = MENU_BAR_W;
+    const float width = (float)screenWidth_ - left;
+    // Opaque: a readout over a picture of the same place would be two answers at once.
+    DrawRectangle((int)left, 0, (int)width, screenHeight_, Color{ 5, 10, 9, 255 });
+
+    const float legendW = 200.0f;
+    const float top = 92.0f;
+    const float cellPx = 16.0f;
+    Rectangle   area{ left + 24.0f, top, width - 48.0f - legendW,
+                      (float)screenHeight_ - top - 24.0f };
+
+    // Odd counts, so the ship has a cell of its own in the middle rather than a corner.
+    int cols = std::max(9, (int)(area.width / cellPx));
+    int rows = std::max(9, (int)(area.height / cellPx));
+    if (cols % 2 == 0)
+        cols--;
+    if (rows % 2 == 0)
+        rows--;
+
+    // What this pilot makes of each thing in the snapshot. Allegiance is decided here, by
+    // the one looking, and never read off the object (#117).
+    const Sensor::Standing            me = ViewerStanding();
+    std::map<int, Sensor::Allegiance> reads;
+    for (const auto& e : snapshot_.entities)
+        reads[e.id] = Sensor::Classify(e, me);
+
+    std::vector<Render::Item> scene;
+    scene.reserve(clientWorld_.size());
+    for (const auto& e : clientWorld_)
+        scene.push_back(e->Describe());
+    Render::Item own = playerShip_->Describe();
+    own.pos = shipDrawPos_;
+
+    sensorCentre_ = own.pos;
+    sensorPicture_ =
+        Sensor::Scan(std::move(scene), own, cols, rows, sensorRange_,
+                     [&](int id)
+                     {
+                         auto it = reads.find(id);
+                         return it != reads.end() ? it->second : Sensor::Allegiance::Unowned;
+                     });
+    sensorCellPx_ = cellPx;
+    sensorOrigin_ = { area.x + (area.width - cols * cellPx) * 0.5f,
+                      area.y + (area.height - rows * cellPx) * 0.5f };
+
+    const std::string across = SensorUnits(sensorRange_);
+    const std::string cell = SensorUnits(sensorPicture_.UnitsPerCell());
+    Ui::Text("SENSORS", (int)left + 24, 24, 28, Ui::ACCENT);
+    Ui::Text(TextFormat("%s across  ·  %s a cell  ·  wheel: range  ·  click: select  ·  [V] close",
+                        across.c_str(), cell.c_str()),
+             (int)left + 24, 58, 14, Ui::TEXT_DIM);
+
+    // The frame, and a faint lattice every fourth cell from the ship, so a distance can be
+    // counted off the screen.
+    const Rectangle grid{ sensorOrigin_.x, sensorOrigin_.y, cols * cellPx, rows * cellPx };
+    DrawRectangleLinesEx(grid, 1.0f, Fade(Ui::PANEL_BORDER, 0.7f));
+    const Font    font = Ui::GetFont();
+    const float   glyphPx = cellPx * 1.15f;
+    const int     cx = cols / 2, cy = rows / 2;
+    const Vector2 mouse = GetMousePosition();
+    const int     selId = selected_ != nullptr ? selected_->GetId() : 0;
+    int           hoverId = 0;
+    for (int y = 0; y < rows; y++)
+        for (int x = 0; x < cols; x++)
+        {
+            const Sensor::Cell& c = sensorPicture_.At(x, y);
+            const float         px = sensorOrigin_.x + x * cellPx;
+            const float         py = sensorOrigin_.y + y * cellPx;
+            const Vector2       mid = { px + cellPx * 0.5f, py + cellPx * 0.5f };
+            if (c.glyph == ' ')
+            {
+                if ((x - cx) % 4 == 0 && (y - cy) % 4 == 0)
+                    DrawRectangleV({ mid.x - 0.5f, mid.y - 0.5f }, { 1.0f, 1.0f },
+                                   Fade(Ui::TEXT_DIM, 0.45f));
+                continue;
+            }
+            const char    glyph[2] = { c.glyph, '\0' };
+            const Vector2 ext = MeasureTextEx(font, glyph, glyphPx, 0.0f);
+            DrawTextEx(font, glyph, { mid.x - ext.x * 0.5f, mid.y - ext.y * 0.5f }, glyphPx, 0.0f,
+                       Sensor::ColorOf(c.allegiance));
+            const Rectangle box{ px, py, cellPx, cellPx };
+            if (c.id != 0 && c.id == selId)
+                DrawRectangleLinesEx(box, 1.0f, WHITE);
+            if (c.id != 0 && CheckCollisionPointRec(mouse, box))
+                hoverId = c.id;
+        }
+
+    // What the cursor is on, by name and distance: a character says what class of thing it
+    // is, and a pilot choosing between two of them needs to know which.
+    if (hoverId != 0)
+        for (const auto& e : snapshot_.entities)
+            if (e.id == hoverId)
+            {
+                const float       d = std::hypot(e.pos.x - own.pos.x, e.pos.y - own.pos.y);
+                const std::string dist = SensorUnits(d);
+                const char*       label =
+                    TextFormat("%s  %s", e.name.empty() ? Overview::KindWord(e) : e.name.c_str(),
+                               dist.c_str());
+                Ui::Text(label, (int)mouse.x + 14, (int)mouse.y - 6, 14, Ui::TEXT);
+                break;
+            }
+
+    // The legend: what the colours mean, then what the characters on the screen stand for.
+    int lx = (int)(area.x + area.width + 24.0f);
+    int ly = (int)top;
+    Ui::Text("ALLEGIANCE", lx, ly, 14, Ui::TEXT_DIM);
+    ly += 22;
+    for (Sensor::Allegiance a :
+         { Sensor::Allegiance::Own, Sensor::Allegiance::Friendly, Sensor::Allegiance::Neutral,
+           Sensor::Allegiance::Hostile, Sensor::Allegiance::Unowned })
+    {
+        DrawRectangle(lx, ly + 3, 10, 10, Sensor::ColorOf(a));
+        Ui::Text(Sensor::Word(a), lx + 18, ly, 14, Ui::TEXT);
+        ly += 20;
+    }
+    ly += 14;
+    Ui::Text("IN VIEW", lx, ly, 14, Ui::TEXT_DIM);
+    ly += 22;
+    for (const Sensor::LegendEntry& l : sensorPicture_.legend)
+    {
+        if (ly > screenHeight_ - 40)
+            break;
+        const char glyph[2] = { l.glyph, '\0' };
+        DrawTextEx(font, glyph, { (float)lx, (float)ly - 2.0f }, 18.0f, 0.0f, Ui::TEXT);
+        Ui::Text(l.kind, lx + 18, ly, 14, Ui::TEXT);
+        ly += 20;
+    }
+}
+
+bool Game::SensorPick(Vector2 screen, int& id, Vector2& world) const
+{
+    const Sensor::Picture& p = sensorPicture_;
+    if (p.width == 0 || sensorCellPx_ <= 0.0f)
+        return false;
+    const int x = (int)std::floor((screen.x - sensorOrigin_.x) / sensorCellPx_);
+    const int y = (int)std::floor((screen.y - sensorOrigin_.y) / sensorCellPx_);
+    if (x < 0 || x >= p.width || y < 0 || y >= p.height)
+        return false;
+    id = p.At(x, y).id;
+    const float u = p.UnitsPerCell();
+    world = { sensorCentre_.x + (x - p.width / 2) * u, sensorCentre_.y + (y - p.height / 2) * u };
+    return true;
 }

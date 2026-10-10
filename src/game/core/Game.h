@@ -13,6 +13,7 @@
 #include "render/MaterialLibrary.h"
 #include "render/CameraRig.h"
 #include "sim/Overview.h"
+#include "sim/Sensor.h"
 #include "sim/WorldClock.h"
 #include "render/Treatment.h"
 #include "player/Player.h"
@@ -82,6 +83,14 @@ public:
     // Start with the galaxy map open (--map): for seeing the index the server sent without
     // a hand on the keyboard.
     void StartOnMap() { galaxyMapOpen_ = true; }
+    // Start with the sensor screen open (--sensor), at a range if one is given: the same
+    // reason as --map, for a picture of the instrument.
+    void StartOnSensor(float range)
+    {
+        sensorOpen_ = true;
+        if (range > 0.0f)
+            sensorRange_ = Sensor::StepRange(range, 0);
+    }
     // Save the frame drawn after N frames to a PNG and exit (--shot FILE --frames N): the
     // editor's mechanism, for pictures of the game itself. The frame is drawn into a
     // texture of its own, because with the screen off the window's pixels read back blank,
@@ -126,6 +135,11 @@ private:
     void DrawRadarContent(Rectangle area);                // system radar minimap
     void DrawMissionsContent(Rectangle area);             // log of active missions
     void DrawGalaxyMap();                                 // full-screen star map
+    void DrawSensorScreen();                              // the sensor grid (#123)
+    // The sensor cell under a screen point, from the last picture drawn: the id of what is
+    // in it (0 if nothing) and the world point at its centre. False off the grid.
+    bool             SensorPick(Vector2 screen, int& id, Vector2& world) const;
+    Sensor::Standing ViewerStanding() const;  // this pilot's standing, for the instruments
     bool CanNameHere() const;  // in a system this pilot found and nobody has named (#145)
     void HandleNaming();       // typing a name: every key goes to the name until Enter/Esc
 
@@ -307,6 +321,17 @@ private:
     std::string pilotName_;              // the account this client logged in as
     bool        naming_ = false;         // the name field is open (#145)
     std::string nameBuf_;
+
+    // The sensor screen (#123): V opens it, the wheel steps its range. It covers the world
+    // view and the windows while open, and the flight keys keep working, because flying by
+    // instruments is the point of having them. The picture and where it was drawn are kept
+    // for the next frame's clicks.
+    bool            sensorOpen_ = false;
+    float           sensorRange_ = Sensor::DefaultRange();
+    Sensor::Picture sensorPicture_;
+    Vector2         sensorOrigin_ = { 0.0f, 0.0f };  // screen point of cell (0, 0)'s corner
+    float           sensorCellPx_ = 0.0f;
+    Vector2         sensorCentre_ = { 0.0f, 0.0f };  // world point the picture is centred on
 
     // Short notification (saved/loaded).
     std::string flashMsg_;

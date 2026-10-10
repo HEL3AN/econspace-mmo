@@ -34,8 +34,9 @@ private:
     std::vector<std::string> lines_;
 };
 
-// The world as a fixed-size character grid, the way a glyph renderer lays it out but
-// without a window. Used by tests to assert that an object landed where it should.
+// The world as a fixed-size character grid: a projection of continuous space onto cells,
+// where a cell holds whatever is standing in it. No window -- the client's sensor screen
+// (#123) draws what it holds, and tests assert that an object landed where it should.
 class GridBackend : public IBackend
 {
 public:
@@ -53,6 +54,16 @@ public:
 
     // What ended up at this cell, or ' ' if nothing did.
     char At(int x, int y) const;
+    // The id of the item that ended up at this cell, or 0. An instrument needs to know
+    // *what* is there, not only which character it is -- allegiance is a fact about the
+    // object and the viewer, and the character carries neither (#117).
+    int IdAt(int x, int y) const;
+
+    int   Width() const { return width_; }
+    int   Height() const { return height_; }
+    float Span() const { return span_; }
+    // The cell a world point falls in; false when it falls outside the grid.
+    bool CellOf(Vector2 world, int& x, int& y) const;
 
 private:
     int               width_;
@@ -60,6 +71,7 @@ private:
     float             span_;
     Vector2           center_;
     std::vector<char> cells_;
+    std::vector<int>  ids_;
 };
 
 }  // namespace Render

@@ -443,8 +443,10 @@ channel — size taken from the world — is exactly what stops it being the thi
 imitating.
 
 Glyphs keep a place, a smaller and truer one: a projection of the world onto a fixed grid,
-which is a sensor readout rather than a picture. `GridBackend` already does that correctly
-and is used by nothing (#123).
+which is a sensor readout rather than a picture. `GridBackend` already did that correctly
+and was used by nothing (#123).
+Done: it is the sensor screen, on `V` -- the ship's surroundings on a grid, centred on the
+ship, each character coloured by how the pilot looking stands with whatever is in the cell.
 
 **Colour.** Allegiance is not a property of an object. It is a property of an object *and
 who is looking at it* — the same trade hub is a friend to one player and a target to

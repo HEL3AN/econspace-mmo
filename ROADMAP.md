@@ -55,7 +55,7 @@ In the order they are meant to be done.
 
 ### M6 — The look *(eight of ten done)*
 
-Left: glyphs become a **sensor screen** over a fixed grid, the one job they are genuinely good at (#123), and colour stops meaning allegiance in the world view, because allegiance depends on who is looking (#117). Queued behind them: shape derived from what an object does (#137), damage that takes parts off (#138), and variation that changes a silhouette rather than nudging it (#139).
+Glyphs have their **sensor screen** (`V`): the surroundings projected onto a fixed grid, the one job they are genuinely good at, and the place where colour means allegiance as the pilot looking sees it (#123, #117). Left of #123: the world view stops offering glyphs at all, now that they have somewhere better to be. Queued behind it: shape derived from what an object does (#137), damage that takes parts off (#138), and variation that changes a silhouette rather than nudging it (#139).
 
 ### M9 — The scale of a system *(in progress)*
 
