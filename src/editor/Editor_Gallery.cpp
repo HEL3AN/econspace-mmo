@@ -771,11 +771,14 @@ void Editor::DrawTreatmentSettings()
 void Editor::DrawModules(bool labels)
 {
     // Fitted so the whole library is on one screen at zoom 1; the wheel then enlarges.
-    const int total = []
+    auto shown = [&](const Render::Module& m)
+    { return modulesPack_.empty() || m.pack == modulesPack_; };
+    const int total = [&]
     {
         int n = 0;
         for (const auto& m : Render::Modules::All())
-            n += (int)m.variants.size();
+            if (shown(m))
+                n += (int)m.variants.size() * modulesSeeds_;
         return n;
     }();
     const float fit = sqrtf((float)(screenWidth_ - 48) * (float)(screenHeight_ - 80) /
@@ -787,26 +790,33 @@ void Editor::DrawModules(bool labels)
     if (labels)
     {
         Ui::Text("MODULES", (int)left, 18, 22, Ui::ACCENT);
-        Ui::Text(TextFormat("%d modules   wheel: zoom   F2: backend",
-                            (int)Render::Modules::All().size()),
+        Ui::Text(TextFormat("%d modules   %s   %d seed(s) each   wheel: zoom   F2: backend",
+                            (int)Render::Modules::All().size(),
+                            modulesPack_.empty() ? "every pack" : modulesPack_.c_str(),
+                            modulesSeeds_),
                  (int)left + 140, 24, 14, Ui::TEXT_DIM);
     }
 
     // One shape per card, kept alive for the frame: an item borrows its shape.
     std::vector<Render::Shape>                   shapes;
     std::vector<std::pair<std::string, Vector2>> names;
+    std::vector<int>                             seeds;
     for (const Render::Module& m : Render::Modules::All())
-        for (const Render::ModuleVariant& v : m.variants)
-        {
-            Render::Part p;
-            p.module = m.id;
-            p.variant = v.id;
-            p.scale = 1.0f;
-            Render::Shape sh;
-            sh.parts.push_back(p);
-            shapes.push_back(sh);
-            names.push_back({ m.id + " / " + v.id, { 0.0f, 0.0f } });
-        }
+        if (shown(m))
+            for (const Render::ModuleVariant& v : m.variants)
+                for (int seed = 1; seed <= modulesSeeds_; seed++)
+                {
+                    Render::Part p;
+                    p.module = m.id;
+                    p.variant = v.id;
+                    p.scale = 1.0f;
+                    Render::Shape sh;
+                    sh.parts.push_back(p);
+                    shapes.push_back(sh);
+                    names.push_back({ seed == 1 ? m.id + " / " + v.id : TextFormat("#%d", seed),
+                                      { 0.0f, 0.0f } });
+                    seeds.push_back(seed);
+                }
 
     Camera2D cam{};
     cam.zoom = 1.0f;
@@ -821,7 +831,8 @@ void Editor::DrawModules(bool labels)
                 { centre.x - cell * 0.47f, centre.y - cell * 0.47f, cell * 0.94f, cell * 0.94f },
                 1.0f, Fade(Ui::PANEL_BORDER, 0.6f));
             Ui::Text(names[i].first.c_str(), (int)(centre.x - cell * 0.44f),
-                     (int)(centre.y + cell * 0.36f), 12, Ui::TEXT_DIM);
+                     (int)(centre.y + cell * (names[i].first[0] == '#' ? -0.44f : 0.36f)), 12,
+                     Ui::TEXT_DIM);
             continue;
         }
         Render::Item it;
@@ -831,6 +842,7 @@ void Editor::DrawModules(bool labels)
         it.material = "hull";
         it.shape = &shapes[i];
         it.heading = 0.0f;
+        it.id = seeds[i];
         Render::Present({ it }, GalleryLighting(centre, it.size), cam, *backend_);
     }
 }

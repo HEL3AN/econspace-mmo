@@ -23,6 +23,8 @@ int main(int argc, char** argv)
     float       zoom = 1.0f;
     std::string shot;  // `shot FILE [frames N]`: save the view after N frames and exit
     int         frames = 30;
+    std::string pack;  // `modules pack P seeds N`: one pack, each variant at N seeds
+    int         seeds = 1;
     for (int i = 1; i < argc; i++)
     {
         const std::string arg = argv[i];
@@ -45,6 +47,10 @@ int main(int argc, char** argv)
         }
         else if (arg == "card" && i + 1 < argc)
             card = argv[++i];
+        else if (arg == "pack" && i + 1 < argc)
+            pack = argv[++i];
+        else if (arg == "seeds" && i + 1 < argc)
+            seeds = std::atoi(argv[++i]);
         else if (arg == "zoom" && i + 1 < argc)
             zoom = (float)std::atof(argv[++i]);
         else if (arg == "shot" && i + 1 < argc)
@@ -53,7 +59,7 @@ int main(int argc, char** argv)
             frames = std::atoi(argv[++i]);
     }
     if (modules)
-        editor.OpenModules(zoom > 0.0f ? zoom : 1.0f);
+        editor.OpenModules(zoom > 0.0f ? zoom : 1.0f, pack, seeds);
     else if (survey)
         editor.OpenSurvey(seed, card.empty() ? -1 : std::atoi(card.c_str()));
     else if (gallery && !card.empty())

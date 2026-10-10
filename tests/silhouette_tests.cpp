@@ -5,6 +5,9 @@
 #include "render/Silhouette.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <fstream>
+#include <raylib.h>
 #include <set>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -823,4 +826,42 @@ TEST_CASE("a module with a latitude and a longitude is laid on the planet, not o
              Render::Compose(scattered, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 10.0f)))
             heights.insert((int)piece.pos.y);
     CHECK(heights.size() > 5);
+}
+
+TEST_CASE("more modules come in packs, one file each, and an id is still global (#240)")
+{
+    // Written to the working directory (the build tree under ctest), never into data/.
+    MakeDirectory("packs_test_tmp/modules");
+    auto write = [](const char* path, const char* body)
+    {
+        std::ofstream f(path);
+        f << body;
+    };
+    write("packs_test_tmp/modules.json",
+          R"({ "modules": [ { "id": "core.thing", "variants": [ { "id": "a", "shape": [
+              { "form": "disc", "radius": 1 } ] } ] } ] })");
+    write("packs_test_tmp/modules/weapons.json",
+          R"({ "modules": [ { "id": "gun", "variants": [ { "id": "a", "shape": [
+              { "form": "bar", "length": 2 } ] } ] } ] })");
+
+    std::string error;
+    CHECK(Render::Modules::Load("packs_test_tmp/modules.json", error));
+    CHECK(error.empty());
+    REQUIRE(Render::Modules::Find("gun") != nullptr);
+    CHECK(Render::Modules::Find("gun")->pack == "weapons");
+    CHECK(Render::Modules::Find("core.thing")->pack == "modules");
+
+    // The same id in two files is an error that names both.
+    write("packs_test_tmp/modules/zz.json",
+          R"({ "modules": [ { "id": "gun", "variants": [ { "id": "b", "shape": [
+              { "form": "bar", "length": 1 } ] } ] } ] })");
+    CHECK_FALSE(Render::Modules::Load("packs_test_tmp/modules.json", error));
+    CHECK(error.find("weapons") != std::string::npos);
+    CHECK(error.find("zz") != std::string::npos);
+
+    std::remove("packs_test_tmp/modules/zz.json");
+    std::remove("packs_test_tmp/modules/weapons.json");
+    std::remove("packs_test_tmp/modules.json");
+    std::string reload;
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", reload));
 }
