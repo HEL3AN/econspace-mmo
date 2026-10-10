@@ -6,6 +6,7 @@
 #include "core/World.h"
 #include "core/WorldLoader.h"
 #include "entities/Entity.h"
+#include "gen/Pins.h"
 #include "gen/Region.h"
 #include "gen/Rng.h"
 
@@ -426,4 +427,74 @@ TEST_CASE("what is out there is where it is for a reason (#146)")
     CHECK(ruinsByBelt > 0);
     CHECK(ruinsInOrbit > 0);
     CHECK(storied * 2 > wrecks);  // most wrecks are where something went wrong
+}
+
+TEST_CASE("a pin is applied after generation, and says when it cannot be (#147)")
+{
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    Gen::Region       r = Gen::GenerateRegion(Params(7));
+    const std::string id = r.documents.begin()->first;
+    const auto        generated = r.documents[id];
+    REQUIRE(generated.contains("gates"));
+    const std::string firstBelt = generated["asteroidFields"].empty()
+                                      ? std::string()
+                                      : generated["asteroidFields"][0]["name"].get<std::string>();
+
+    nlohmann::json pins = nlohmann::json::parse(R"({ "pins": [] })");
+    nlohmann::json add = {
+        { "system", id },
+        { "document",
+          { { "character", "set piece" },
+            { "derelicts", nlohmann::json::array({ { { "name", "The First Expedition" },
+                                                     { "pos", { 500000, 500000 } },
+                                                     { "size", 60 },
+                                                     { "reward", 1500 } } }) } } }
+    };
+    pins["pins"].push_back(add);
+    if (!firstBelt.empty())
+        pins["pins"].push_back(
+            { { "system", id },
+              { "document",
+                { { "asteroidFields", nlohmann::json::array({ { { "replaces", firstBelt },
+                                                                { "remove", true } } }) } } } });
+    pins["pins"].push_back(
+        { { "system", id }, { "seed", 999 }, { "document", { { "character", "elsewhere" } } } });
+    pins["pins"].push_back({ { "system", "w99-9" }, { "document", nlohmann::json::object() } });
+    pins["pins"].push_back(
+        { { "system", id }, { "sytem", "typo" }, { "document", nlohmann::json::object() } });
+    pins["pins"].push_back(
+        { { "system", id }, { "mode", "overwrite" }, { "document", nlohmann::json::object() } });
+
+    std::vector<std::string> problems;
+    Gen::ApplyPins(r, pins, 7, problems);
+    const auto& pinned = r.documents[id];
+    CHECK(pinned["character"] == "set piece");  // the pin's word, not the generator's
+    bool expedition = false;
+    for (const auto& d : pinned["derelicts"])
+        expedition = expedition || d["name"] == "The First Expedition";
+    CHECK(expedition);
+    if (!firstBelt.empty())
+        for (const auto& b : pinned["asteroidFields"])
+            CHECK(b["name"] != firstBelt);
+    CHECK(pinned["gates"] == generated["gates"]);  // merge leaves the topology alone
+    // The seed-7-only pin for 999 did not apply; the three broken pins each said so.
+    CHECK(problems.size() == 3);
+    for (const std::string& p : problems)
+        MESSAGE(p);
+    CHECK(WorldLoader::BuildSystem(pinned).size() > 0);
+
+    // Replace: the document is the system, but the gates stay the region's.
+    nlohmann::json whole = { { "pins",
+                               nlohmann::json::array(
+                                   { { { "system", id },
+                                       { "mode", "replace" },
+                                       { "document",
+                                         { { "star", { { "type", "Blue" }, { "size", 120000 } } },
+                                           { "planets", nlohmann::json::array() } } } } }) } };
+    problems.clear();
+    Gen::ApplyPins(r, whole, 7, problems);
+    CHECK(problems.empty());
+    CHECK(r.documents[id]["star"]["type"] == "Blue");
+    CHECK(r.documents[id]["gates"] == generated["gates"]);
+    CHECK_FALSE(r.documents[id].contains("derelicts"));
 }

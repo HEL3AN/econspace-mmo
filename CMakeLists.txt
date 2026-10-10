@@ -117,6 +117,7 @@ add_library(engine STATIC
     src/engine/core/ArchetypeEdit.cpp  # writing a tuned look back without reformatting (#118)
     src/engine/core/Orbits.cpp       # planets and their satellites, as a function of time (#210)
     src/engine/gen/Region.cpp        # the region beyond the wormhole, from a seed (#140)
+    src/engine/gen/Pins.cpp          # hand-written exceptions applied after generation (#147)
     src/engine/gen/Survey.cpp        # many generated systems judged at once (#141)
     src/engine/entities/Entity.cpp
     src/engine/entities/Star.cpp

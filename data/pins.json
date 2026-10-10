@@ -1,0 +1,4 @@
+{
+    "note": "Hand-written exceptions to the generated region, applied after generation (#147). See documents/world_format.md, pins.json.",
+    "pins": []
+}

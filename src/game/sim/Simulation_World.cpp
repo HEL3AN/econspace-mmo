@@ -13,6 +13,7 @@
 #include "entities/Ship.h"
 #include "entities/Station.h"
 
+#include "gen/Pins.h"
 #include "gen/Region.h"
 #include <nlohmann/json.hpp>
 
@@ -181,6 +182,23 @@ void Simulation::AttachRegion(uint64_t seed, const std::string& systemsDir)
         params.knownMap.push_back(info.mapPos);
     params.homeSystem = homeDoc.is_discarded() ? nullptr : &homeDoc;
     Gen::Region region = Gen::GenerateRegion(params);
+
+    // Then the hand-written exceptions, always after (#147): data/pins.json beside the
+    // systems directory. Every pin that cannot apply is said, by name.
+    {
+        std::ifstream pinsIn(systemsDir + "../pins.json");
+        if (pinsIn.is_open())
+        {
+            const nlohmann::json     pins = nlohmann::json::parse(pinsIn, nullptr, false);
+            std::vector<std::string> problems;
+            if (pins.is_discarded())
+                problems.push_back("pins.json is not valid JSON");
+            else
+                Gen::ApplyPins(region, pins, seed, problems);
+            for (const std::string& p : problems)
+                TraceLog(LOG_WARNING, "Pins: %s -- not applied", p.c_str());
+        }
+    }
 
     for (const auto& s : region.systems)
     {
