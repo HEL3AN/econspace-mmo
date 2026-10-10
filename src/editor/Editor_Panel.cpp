@@ -92,6 +92,8 @@ void Editor::DrawHud()
         else
             Ui::Text("click: select  ·  drag empty: pan  ·  wheel: zoom", 16, 96, 13, Ui::TEXT_DIM);
     }
+    if (mode_ == Mode::System && !notice_.empty() && GetTime() < noticeUntil_)
+        Ui::Text(notice_.c_str(), 16, 136, 14, PIN_CHANGED);
 
     // Mode toggle button (System / Galaxy). The gallery is not a place in the world, so
     // it does not sit on this toggle; it has its own button beside it.
@@ -488,13 +490,30 @@ void Editor::DrawPropertyPanel()
     {
         changed |= FieldRow(row(24), "name", obj, "name", false, false);
         changed |= FieldRow(row(24), "size", obj, "size", true, true, 10);
-        std::vector<std::string> ids, names;
-        for (const auto& s : universe_.systems)
+        if (generated_.open)
         {
-            ids.push_back(s.id);
-            names.push_back(s.name);
+            // The region's topology (#237): shown, never offered. A pin may move a gate,
+            // and the far side keeps its gate back here whatever this one says.
+            const std::string dest = obj.value("destination", std::string());
+            const auto        n = generated_.names.find(dest);
+            Ui::Text(TextFormat("leads to %s (%s)",
+                                n != generated_.names.end() ? n->second.c_str() : "?",
+                                dest.c_str()),
+                     x, y, 14, Ui::TEXT);
+            y += 20;
+            Ui::Text("the region's link: fixed", x, y, 13, Ui::TEXT_DIM);
+            y += 22;
         }
-        DropdownRow(row(24), "dest", obj, "destination", ids, names);
+        else
+        {
+            std::vector<std::string> ids, names;
+            for (const auto& s : universe_.systems)
+            {
+                ids.push_back(s.id);
+                names.push_back(s.name);
+            }
+            DropdownRow(row(24), "dest", obj, "destination", ids, names);
+        }
     }
 
     // Anything but a star, a planet or a gate can be a planet's satellite (#210).

@@ -69,6 +69,7 @@ ctest --test-dir build --output-on-failure
 ./build/bin/editor/worldeditor.exe survey 1 shapes   # ~50 generated systems from seeds 1.., flagged empty/thin/twin (F4)
 ./build/bin/editor/worldeditor.exe gallery shapes card planet.rocky shot out.png  # save that view and exit; works with the screen off
 ./build/bin/editor/worldeditor.exe gallery shapes card station.trade_hub seed 3 sockets  # one object of a type, its kit sockets shown ([ ] seed, K sockets)
+./build/bin/editor/worldeditor.exe region 7 system w2-1   # edit a generated system; Ctrl+S saves the difference as a pin in data/pins.json
 ./build/bin/editor/worldeditor.exe gallery shapes card ship.player thrusting shot s.png  # ...with its engines lit
 
 ./build/bin/agent/econagent.exe connect 127.0.0.1 50800 agent hunter2  # MCP for an agent

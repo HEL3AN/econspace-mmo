@@ -85,6 +85,11 @@ bool Editor::OpenGenerated(uint64_t seed, const std::string& systemId)
     generated_.base = es.base;
     generated_.origins = es.origins;
     generated_.problems = (int)es.problems.size();
+    generated_.systems = Gen::Destinations(region);
+    for (const WorldLoader::SystemInfo& info : universe_.systems)
+        generated_.names[info.id] = info.name;
+    for (const json& s : region.systems)
+        generated_.names[s.value("id", std::string())] = s.value("name", std::string());
 
     mode_ = Mode::System;
     selected_ = -1;
@@ -108,6 +113,18 @@ void Editor::SavePin()
     if (pins.is_null())
     {
         TraceLog(LOG_WARNING, "Editor: %s is not valid JSON -- not saved", path.c_str());
+        return;
+    }
+    // The server would refuse a pin that breaks the system (#237); writing one would only
+    // move the refusal to the next start. The editor's own verbs keep these rules, so this
+    // is the last line, not the first.
+    std::vector<std::string> broken;
+    Gen::CheckPinned(generated_.base, systemJson_, generated_.systems, generated_.id, broken);
+    if (!broken.empty())
+    {
+        for (const std::string& b : broken)
+            TraceLog(LOG_WARNING, "Editor: %s", b.c_str());
+        Notice("Not saved: " + broken.front());
         return;
     }
     if (!pins.contains("note"))
@@ -145,7 +162,21 @@ Editor::Provenance Editor::ProvenanceOf(const ObjHandle& h) const
     const int from = o->second[(size_t)h.index];
     if (!generated_.base.contains(h.category) || from >= (int)generated_.base[h.category].size())
         return Provenance::Added;
-    return systemJson_[h.category][(size_t)h.index] == generated_.base[h.category][(size_t)from]
-               ? Provenance::Generated
-               : Provenance::Changed;
+    // A satellite only re-pointed because a planet before its own went is not changed:
+    // the pin says nothing about it (#237).
+    const size_t basePlanets =
+        generated_.base.contains("planets") && generated_.base["planets"].is_array()
+            ? generated_.base["planets"].size()
+            : 0;
+    const json alone = Gen::Repointed(generated_.base[h.category][(size_t)from],
+                                      Gen::PlanetMap(basePlanets, generated_.origins));
+    return systemJson_[h.category][(size_t)h.index] == alone ? Provenance::Generated
+                                                             : Provenance::Changed;
+}
+
+void Editor::Notice(const std::string& text)
+{
+    TraceLog(LOG_INFO, "Editor: %s", text.c_str());
+    notice_ = text;
+    noticeUntil_ = GetTime() + 6.0;
 }

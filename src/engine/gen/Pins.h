@@ -3,6 +3,7 @@
 #include "gen/Region.h"
 #include <nlohmann/json.hpp>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,16 @@
 //             other key (star, stars, character) is set.
 //             "replace": the document IS the system. Its gates are kept from the generated
 //             one unless it lists its own, because they are the region's topology.
+//
+// Two rules hold whatever a pin says (#237), and a pin that would break either is refused
+// whole -- it is not applied, and `problems` says why:
+//   - Gates are the region's topology. A pin may move a gate, rename it, restyle it, but its
+//     system's gates must still lead to exactly the systems they led to before it.
+//   - A satellite belongs to its planet, which it finds by its place in "planets" (#210).
+//     When a merge removes a planet, every object it does not mention that orbits a planet
+//     is re-pointed at that planet's new place, or removed with it if its planet is gone. An
+//     object the pin itself writes is read as written, counting the planets AFTER the pin.
+//     A satellite left orbiting a planet the system does not have refuses the pin.
 namespace Gen
 {
 // Applies every pin that matches `seed` to `region`, in file order. Each problem -- an
@@ -67,6 +78,31 @@ bool OpenForEditing(const Region& generated, const nlohmann::json& pins, uint64_
 // taken away). Null when there is no difference -- nothing to pin.
 nlohmann::json PinFor(const std::string& system, uint64_t seed, const nlohmann::json& base,
                       const nlohmann::json& edited, const Origins& origins);
+
+// ---- The rules both sides keep (#237) ----
+
+// Where each of `basePlanets` planets is now, given where the planets now came from
+// (origins["planets"]); -1 for one removed. Without a record, nothing moved.
+std::vector<int> PlanetMap(size_t basePlanets, const Origins& origins);
+
+// `obj` with its orbit re-pointed at its planet's new place, or null if its planet is gone.
+// An object that orbits nothing (or a planet already out of range) comes back unchanged.
+nlohmann::json Repointed(const nlohmann::json& obj, const std::vector<int>& planetMap);
+
+// The editor's Del on a planet: removes planet `index`, everything that orbits it, and
+// re-points every other satellite. `origins` (may be null) follows. Returns how many
+// satellites went with the planet.
+int RemovePlanet(nlohmann::json& sys, int index, Origins* origins);
+
+// Every system a gate in `region` may lead to: its own and the home system it opens from.
+std::set<std::string> Destinations(const Region& region);
+
+// The checks a pinned system is held to, `before` being the system as it was without the
+// pin: its gates lead where they did and to systems that exist, and every satellite's
+// planet is there. Each failure is one line in `problems`, prefixed with `where`.
+void CheckPinned(const nlohmann::json& before, const nlohmann::json& after,
+                 const std::set<std::string>& systems, const std::string& where,
+                 std::vector<std::string>& problems);
 
 // Puts `pin` into the pins file in place of every pin the editor owns for that system and
 // seed (or only removes those, for a null pin). Pins written by hand are left alone.

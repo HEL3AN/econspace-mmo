@@ -209,6 +209,10 @@ private:
         nlohmann::json base;
         Gen::Origins   origins;
         int            problems = 0;  // pins that could not apply, said in the log
+        // The systems of the region, and their names: where its gates lead, which is the
+        // region's topology and not the editor's to change.
+        std::set<std::string>              systems;
+        std::map<std::string, std::string> names;
     };
     GeneratedEdit generated_;
     void          SavePin();  // the difference from base, into data/pins.json
@@ -224,6 +228,12 @@ private:
     // selection is drawn in.
     static constexpr Color PIN_CHANGED = { 236, 180, 84, 255 };
     static constexpr Color PIN_ADDED = { 120, 214, 140, 255 };
+
+    // A line under the HUD for a few seconds: why something was refused, or what went with
+    // it. Also written to the log.
+    void        Notice(const std::string& text);
+    std::string notice_;
+    double      noticeUntil_ = 0.0;
 
     std::vector<SurveyCard> surveyCards_;
     Gen::SurveyResult       survey_;
