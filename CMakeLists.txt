@@ -7,7 +7,8 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Project name and language. After this line CMake knows we write in C++.
-project(EconSpace LANGUAGES CXX)
+# C as well as C++: Clay, the layout engine inside windows, is C99 and is compiled as C (#297).
+project(EconSpace LANGUAGES C CXX)
 
 # Use the C++17 standard and require exactly it (no silent fallback).
 set(CMAKE_CXX_STANDARD 17)
@@ -87,6 +88,20 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(doctest)
 
+# --- Clay: flexbox-style layout for the inside of a window (#297) ---------------------
+# One C99 header, zlib licence. Its header refuses C++ before C++20, so it is compiled in
+# one C file (src/engine/ui/ClayBridge.c) and the client reaches it only through Ui::Layout.
+# Pinned by tag and hash; SOURCE_SUBDIR names a directory that does not exist, so its own
+# CMakeLists -- which builds the examples, and fetches a raylib of its own -- is never read.
+FetchContent_Declare(
+    clay
+    URL      https://github.com/nicbarker/clay/archive/refs/tags/v0.14.tar.gz
+    URL_HASH SHA256=ee8f6477020dd72afe8cf6f8d3ab6855980028289a2b677a1423d17aab983585
+    SOURCE_SUBDIR header-only
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(clay)
+
 # --- Optional clang-tidy at build time (off by default — don't slow builds down) -
 # Enable with: cmake -S . -B build -G "MinGW Makefiles" -DENABLE_CLANG_TIDY=ON
 # Install in MSYS2: pacman -S mingw-w64-x86_64-clang-tools-extra
@@ -154,11 +169,17 @@ add_library(engine STATIC
     src/engine/ui/Input.cpp            # who the mouse belongs to while something draws (#297)
     src/engine/ui/DeskLayout.cpp       # the window manager's rules, with no drawing -- tested
     src/engine/ui/Desk.cpp             # ...and the half that reads the mouse and draws
+    src/engine/ui/Theme.cpp            # colours, spacing and sizes as data, and the UI scale (#297)
+    src/engine/ui/Fonts.cpp            # the interface's typeface, crisp at every size (#297)
+    src/engine/ui/Layout.cpp           # rows, columns and text inside a window (#297)...
+    src/engine/ui/ClayBridge.c         # ...solved by Clay, in C, behind a seam
 )
 # PUBLIC: the src/engine root is visible to everyone who links engine. That's why
 # includes like "entities/Entity.h" from game and editor resolve automatically.
 target_include_directories(engine PUBLIC ${CMAKE_SOURCE_DIR}/src/engine)
 target_link_libraries(engine PUBLIC raylib nlohmann_json::nlohmann_json)
+# SYSTEM: Clay's warnings are not ours. PRIVATE: only ClayBridge.c includes it.
+target_include_directories(engine SYSTEM PRIVATE ${clay_SOURCE_DIR})
 # Compiler warnings for OUR code (engine + everything that links it: game/
 # editor/server/tests). Third-party raylib/json build as their own targets, untouched.
 target_compile_options(engine PUBLIC -Wall -Wextra)
@@ -348,6 +369,8 @@ add_executable(tests
     tests/build_tests.cpp          # construction: blueprints, sites, the clock (#39)
     tests/ship_design_tests.cpp    # ship designs and the stats derived from them (#279)
     tests/desk_tests.cpp           # the window manager: z-order, the mouse, Esc, layout (#297)
+    tests/theme_tests.cpp          # the UI theme's strict loading, and the scale (#297)
+    tests/layout_tests.cpp         # rows, columns, growing and wrapping, without a window (#297)
     tests/intel_tests.cpp          # what factions know, and surveying (#295)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)

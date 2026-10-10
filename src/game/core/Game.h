@@ -20,6 +20,7 @@
 #include <string>
 #include "ui/ContextMenu.h"
 #include "ui/Desk.h"
+#include "ui/Layout.h"
 #include "core/RangePicker.h"
 #include <deque>
 #include <map>
@@ -82,6 +83,14 @@ public:
     // Start with the galaxy map open (--map): for seeing the index the server sent without
     // a hand on the keyboard.
     void StartOnMap() { desk_.SetOpen(WIN_MAP, true); }
+    // The interface at exactly this scale, whatever the display asks for (--uiscale): for
+    // pictures that look the same on every machine. Not saved.
+    void SetUiScale(float s)
+    {
+        Ui::SetUserScale(s);
+        Ui::OverrideDisplayScale(1.0f);
+        uiScaleLocked_ = true;
+    }
     // Start with the sensor screen open (--sensor), at a range if one is given: the same
     // reason as --map, for a picture of the instrument.
     void StartOnSensor(float range)
@@ -139,7 +148,7 @@ private:
     // Navigation orders (client → command; applied by the server in StepPlayerShip).
     void OrderAutopilot(Vector2 target, float stopDist);  // fly to a point
     void OrderWarp(Vector2 target, float dropDist);       // warp to a point
-    void DrawStatusContent(Rectangle area);               // contents of the status window
+    void DrawStatusContent(const Ui::Frame& f);           // contents of the status window
     void DrawTargetContent(Rectangle area);               // contents of the selected-target window
     void DrawOverviewContent(const Ui::Frame& f);         // list of objects in the system
     void DrawRadarContent(const Ui::Frame& f);            // system radar minimap
@@ -199,6 +208,11 @@ private:
     MissionSystem         missions_;
 
     std::string dataDir_;  // folder with world data (universe/systems)
+    // This machine's UI settings (the scale), and whether they may be written: not when the
+    // file came from a newer build, nor when --uiscale set the scale for one run.
+    std::string uiSettingsPath_;
+    bool        uiSettingsWritable_ = true;
+    bool        uiScaleLocked_ = false;
 
     float simAccumulator_ = 0.0f;  // accumulator for the fixed simulation step
     // The own ship as drawn: between its last two simulation steps, by how far the clock
@@ -342,6 +356,8 @@ private:
     static constexpr const char* WIN_RANGE = "range";      // the range picker (#298)
     static constexpr const char* WIN_LOOK = "look";        // F10's treatment panel (#120)
     Ui::Desk                     desk_;
+    // The status window, laid out by Ui::Layout rather than by hand (#297): the first one.
+    Ui::Layout statusLayout_;
     // The overview's tab and sort (#157), kept across frames and windows being reopened.
     Overview::Filter overviewFilter_ = Overview::Filter::All;
     Overview::Sort   overviewSort_ = Overview::Sort::Distance;

@@ -236,6 +236,57 @@ TEST_CASE("Desk: a saved place that is off the screen comes back reachable")
     CHECK(Equal(g.d.Rect(g.status), { 56, 16, 264, 312 }));
 }
 
+TEST_CASE("Desk: a resizable window keeps its corner, its minimum, and its size after a restart")
+{
+    DeskLayout d;
+    WindowSpec spec = Panel("status", Anchor::TopLeft, { 56, 16, 264, 312 });
+    spec.resizable = true;
+    spec.minSize = { 200, 150 };
+    const int fixed = d.Add(Panel("fixed", Anchor::TopLeft, { 400, 16, 200, 200 }), true);
+    const int h = d.Add(spec, true);
+
+    d.Resize(h, 480, 360);
+    CHECK(Equal(d.Rect(h), { 56, 16, 480, 360 }));
+    d.Resize(h, 10, 10);  // never below its minimum
+    CHECK(Equal(d.Rect(h), { 56, 16, 200, 150 }));
+    d.Resize(h, 5000, 5000);  // never above the screen
+    CHECK(d.Rect(h).width <= 1280.0f);
+    CHECK(d.Rect(h).height <= 720.0f);
+    d.Resize(fixed, 500, 500);  // a window that is not resizable is not
+    CHECK(Equal(d.Rect(fixed), { 400, 16, 200, 200 }));
+
+    d.Resize(h, 480, 360);
+    d.Settle(h);
+    nlohmann::json file;
+    DeskLayout::WriteFile(file, "pilot", d);
+
+    DeskLayout after;
+    after.Add(Panel("fixed", Anchor::TopLeft, { 400, 16, 200, 200 }), true);
+    const int   h2 = after.Add(spec, true);
+    std::string error;
+    REQUIRE(DeskLayout::ReadFile(nlohmann::json::parse(file.dump()), "pilot", after, error));
+    CHECK(Equal(after.Rect(h2), { 56, 16, 480, 360 }));
+}
+
+TEST_CASE("Desk: at a larger UI scale the windows are larger, and the layout is kept in units")
+{
+    GameDesk g;
+    g.d.SetUnit(1.5f);
+    CHECK(Equal(g.d.Rect(g.status), { 84, 24, 396, 468 }));
+    // Right stays right: 16 units from the edge is 24 pixels.
+    CHECK(Equal(g.d.Rect(g.target), { 1280 - 24 - 396, 24, 396, 294 }));
+
+    // A drag at 1.5 is saved in units, so the same layout comes back at 1.
+    g.d.SetRect(g.radar, { 150, 60, 396, 432 });
+    g.d.Settle(g.radar);
+    nlohmann::json file;
+    DeskLayout::WriteFile(file, "pilot", g.d);
+    GameDesk    after;
+    std::string error;
+    REQUIRE(DeskLayout::ReadFile(nlohmann::json::parse(file.dump()), "pilot", after.d, error));
+    CHECK(Equal(after.d.Rect(after.radar), { 100, 40, 264, 288 }));
+}
+
 TEST_CASE("Desk: a layout file from a newer build is refused, and other accounts survive a write")
 {
     GameDesk             g;

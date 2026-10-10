@@ -57,7 +57,6 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     // raylib quits on Esc unless told otherwise. Here Esc closes what is on top
     // (HandleEscape); leaving the game is the window's close button.
     SetExitKey(KEY_NULL);
-    Ui::LoadAssets();
 
     // Presentation data: factions, archetypes, materials. In a dev build we read the source data/
     // (the same path the editor writes to), otherwise a copy next to the exe.
@@ -66,6 +65,15 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
 #else
     dataDir_ = std::string(GetApplicationDirectory()) + "data/";
 #endif
+    // The interface: its theme, the fonts it names (#297), and this machine's UI scale.
+    Ui::LoadAssets(dataDir_);
+    {
+        std::string error;
+        uiSettingsPath_ = std::string(GetApplicationDirectory()) + "ui_settings.json";
+        uiSettingsWritable_ = Ui::LoadUiSettings(uiSettingsPath_, error);
+        if (!uiSettingsWritable_)
+            TraceLog(LOG_WARNING, "UI settings: %s", error.c_str());
+    }
     Factions::Load(dataDir_ + "factions.json");  // faction properties/relations
     // Before any entity exists -- and the player's own ship is one. It used to be built
     // seventeen lines above this call, under this same comment, which made it the one

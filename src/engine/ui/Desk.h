@@ -47,7 +47,7 @@ public:
     // mouse -- hit-tested against where things were drawn last.
     void BeginFrame();
     // Window frames: a press raises the window it lands on, the close button closes it, the
-    // title bar drags it.
+    // title bar drags it, and a resizable window's corner grip resizes it.
     void HandleMouse();
     // Closes the top thing Esc closes; true if something was.
     bool Escape();
@@ -90,6 +90,7 @@ private:
     DeskLayout        layout_;
     std::vector<Item> items_;  // by handle
     int               dragging_ = DeskLayout::NONE;
+    bool              resizing_ = false;  // the drag is of the corner, not the title bar
     Vector2           dragOffset_{ 0.0f, 0.0f };
     std::string       file_;
     std::string       account_;

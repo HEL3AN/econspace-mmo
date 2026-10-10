@@ -1,0 +1,45 @@
+{
+    "colors": {
+        "panel": "#12141CEB",
+        "border": "#465064",
+        "title": "#222634",
+        "accent": "#5CAAE8",
+        "text": "#DEE2EA",
+        "dim": "#848E9E",
+        "good": "#78D282",
+        "warn": "#E8BE5A",
+        "bad": "#E65A50",
+        "money": "#FFCB00",
+        "track": "#5056646E",
+        "hover": "#5CAAE828"
+    },
+    "standing": {
+        "own": "#78EB82",
+        "friendly": "#5AAAFF",
+        "neutral": "#D7D7CD",
+        "hostile": "#E65A50",
+        "unowned": "#7D879B"
+    },
+    "metrics": {
+        "titleHeight": 26,
+        "padding": 12,
+        "gap": 8,
+        "rowGap": 4,
+        "radius": 3,
+        "border": 1,
+        "barHeight": 8,
+        "buttonHeight": 26,
+        "resizeGrip": 14
+    },
+    "fontSize": {
+        "small": 11,
+        "label": 13,
+        "body": 14,
+        "title": 15,
+        "heading": 22
+    },
+    "fonts": {
+        "regular": "fonts/Inter-Regular.ttf",
+        "strong": "fonts/Inter-SemiBold.ttf"
+    }
+}

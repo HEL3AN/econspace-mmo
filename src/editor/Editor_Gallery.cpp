@@ -977,7 +977,7 @@ void Editor::DrawModules(bool labels)
         {
             const char* name = p.empty() ? "all" : p.c_str();
             Ui::Text(name, x, 20, 14, p == modulesPack_ ? Ui::ACCENT : Ui::TEXT_DIM);
-            x += MeasureText(name, 14) + 18;
+            x += Ui::TextWidth(name, 14) + 18;
         }
         Ui::Text(TextFormat("Tab: next pack   wheel / right-drag: scroll   Ctrl+wheel: size   "
                             "[ ]: seeds (%d)   click: open a module   F2: backend",

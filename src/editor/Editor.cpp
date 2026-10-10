@@ -40,7 +40,6 @@ Editor::Editor()
     // Esc is "back" in every view -- the gallery's card, the module sheet's focus -- and
     // never "quit": the window's own close button does that.
     SetExitKey(KEY_NULL);
-    Ui::LoadAssets();
 
 #ifdef EDITOR_DATA_DIR
     dataDir_ = EDITOR_DATA_DIR;  // the repository's source data/ folder
@@ -51,6 +50,7 @@ Editor::Editor()
     // that is only data can be looked at without building the editor again.
     if (const char* other = std::getenv("ECONSPACE_DATA"))
         dataDir_ = std::string(other) + "/";
+    Ui::LoadAssets(dataDir_);                    // the theme and the fonts it names (#297)
     Factions::Load(dataDir_ + "factions.json");  // faction properties/relations
     if (!Archetypes::Load(dataDir_ + "archetypes.json"))
         TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());

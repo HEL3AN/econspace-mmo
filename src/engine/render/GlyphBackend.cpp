@@ -15,8 +15,8 @@ namespace
 // Draws one glyph centred on a world point.
 void GlyphAt(const char* glyph, Vector2 centre, float height, Color c)
 {
-    Font    font = Ui::GetFont();
-    Vector2 extent = MeasureTextEx(font, glyph, height, 0.0f);
+    const Font& font = Ui::GlyphFont();
+    Vector2     extent = MeasureTextEx(font, glyph, height, 0.0f);
     DrawTextEx(font, glyph, { centre.x - extent.x * 0.5f, centre.y - extent.y * 0.5f }, height,
                0.0f, c);
 }
@@ -184,7 +184,7 @@ void GlyphBackend::DrawDirectional(const Item& item, Color c)
     }
 
     const char* glyph = item.glyph.empty() ? "?" : item.glyph.c_str();
-    Font        font = Ui::GetFont();
+    const Font& font = Ui::GlyphFont();
     Vector2     extent = MeasureTextEx(font, glyph, height, 0.0f);
     // The glyph is drawn nose-up, as the ship sprites are, so the heading gets a quarter
     // turn added. Origin at the glyph's centre so it spins in place.

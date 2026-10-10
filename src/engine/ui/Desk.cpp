@@ -1,4 +1,5 @@
 #include "ui/Desk.h"
+#include "ui/Theme.h"
 
 #include <fstream>
 
@@ -33,6 +34,7 @@ void Desk::AddSurface(const WindowSpec& spec, bool open, Surface surface)
 void Desk::BeginFrame()
 {
     layout_.SetScreen((float)GetScreenWidth(), (float)GetScreenHeight());
+    layout_.SetUnit(Scale());  // a larger interface has larger windows (#297)
     for (int h = 0; h < (int)items_.size(); h++)
     {
         const Surface& s = items_[h].surface;
@@ -63,6 +65,13 @@ void Desk::HandleMouse()
         {
             layout_.Settle(dragging_);
             dragging_ = DeskLayout::NONE;
+            resizing_ = false;
+        }
+        else if (resizing_)
+        {
+            // dragOffset_ is where the press was inside the grip, from the bottom right.
+            const Rectangle r = layout_.Rect(dragging_);
+            layout_.Resize(dragging_, m.x + dragOffset_.x - r.x, m.y + dragOffset_.y - r.y);
         }
         else
         {
@@ -81,6 +90,12 @@ void Desk::HandleMouse()
     const Rectangle b = layout_.Rect(owner);
     if (CheckCollisionPointRec(m, Window::CloseButton(b)))
         Close(owner);
+    else if (layout_.Spec(owner).resizable && CheckCollisionPointRec(m, Window::ResizeGrip(b)))
+    {
+        dragging_ = owner;
+        resizing_ = true;
+        dragOffset_ = { b.x + b.width - m.x, b.y + b.height - m.y };
+    }
     else if (CheckCollisionPointRec(m, Window::TitleBar(b)))
     {
         dragging_ = owner;
@@ -119,7 +134,7 @@ void Desk::Draw(Layer layer) const
         if (!(it.surface.isOpen ? it.surface.isOpen() : layout_.IsOpen(h)))
             continue;
         if (it.window)
-            it.window->Draw(layout_.Rect(h), owner == h);
+            it.window->Draw(layout_.Rect(h), owner == h, layout_.Spec(h).resizable);
         else if (it.surface.draw)
         {
             MouseScope scope(owner == h);

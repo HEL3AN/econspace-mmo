@@ -7,7 +7,8 @@
 
 // A window's frame: background, title bar, close button, and the content inside them.
 // Where it is, whether it is open and which one is in front belong to the desk (#297);
-// this only knows what it looks like, so it is drawn wherever the desk says it is.
+// this only knows what it looks like, so it is drawn wherever the desk says it is. Its
+// metrics come from the theme at the current UI scale.
 class Window
 {
 public:
@@ -16,12 +17,14 @@ public:
     Window(std::string title, Content content);
 
     // `owner`: this window owns the mouse this frame. Its content is told so through the
-    // frame, and nothing in it highlights or reacts otherwise.
-    void Draw(Rectangle bounds, bool owner) const;
+    // frame, and nothing in it highlights or reacts otherwise. `resizable` draws the grip
+    // in the bottom right corner.
+    void Draw(Rectangle bounds, bool owner, bool resizable = false) const;
 
     static Rectangle TitleBar(Rectangle bounds);
     static Rectangle CloseButton(Rectangle bounds);
     static Rectangle ContentArea(Rectangle bounds);
+    static Rectangle ResizeGrip(Rectangle bounds);
 
 private:
     std::string title_;
