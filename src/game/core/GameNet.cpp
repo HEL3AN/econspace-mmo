@@ -402,6 +402,8 @@ std::unique_ptr<Entity> Game::MakeProxyFromLayout(const Proto::EntityLayout& el)
             auto t = std::make_unique<Structure>(el.pos, el.size, el.name, el.archetype);
             t->StartBuilding(el.startedAt, el.completesAt);
             t->SetExpiresAt(el.expiresAt);
+            t->SetBlueprint(el.blueprint);
+            t->SetDamage(el.damage);
             e = std::move(t);
             break;
         }

@@ -33,14 +33,15 @@ enum class Verb
     Warp,         // warp to it, dropping out at `distance`
     Dock,         // a station
     Mine,         // a belt
-    Attack,       // a ship
+    Attack,       // a ship, or a structure that is not your own (#39)
     Investigate,  // a wreck
     Jump,         // a gate
     FlyHere,      // a point in space
     WarpHere,
-    Build,   // lay down a blueprint at a point (#39)
-    Accept,  // take an offer from the board of the station the ship is docked at
-    HandIn,  // hand in an active mission, for its reward
+    Build,      // lay down a blueprint at a point (#39)
+    Accept,     // take an offer from the board of the station the ship is docked at
+    HandIn,     // hand in an active mission, for its reward
+    Dismantle,  // take one's own structure apart for a refund (#39)
 };
 
 struct Action
@@ -63,6 +64,10 @@ struct Target
     std::string name;
     bool        looted = false;   // a wreck already searched
     std::string destinationName;  // a gate: where it leads, if the galaxy index knows
+    // A structure: whether the viewer built it, and what dismantling it would return now
+    // ("5 Iron, 1 Crystal"; empty when that is not known).
+    bool        mine = false;
+    std::string refund;
 };
 
 // The distances a hold is offered at, as multiples of the target's own radius: the same

@@ -24,6 +24,7 @@
 class NpcShip;
 class Combatant;
 class Ship;
+class Structure;
 struct ShipStats;
 struct Blueprint;
 enum class NpcRole;
@@ -317,6 +318,28 @@ public:
     void StepStructures();
     // How many structures this account has standing, in the whole galaxy.
     int StructuresOwnedBy(const std::string& account) const;
+
+    // --- Taking things down (#39, slice 2) ---
+    // Why this player may not dismantle structure `id` now, or empty when they may: it is
+    // theirs, in their system, within its blueprint's reach of the ship, the ship is in
+    // space and not warping, and the hold has room for what comes back.
+    std::string DismantleProblem(const ClientSession& s, int id) const;
+    // The owner takes their own site or structure apart: the refund the blueprint's rules
+    // give (Blueprints::Refund) goes into the hold and the object leaves the world through
+    // RemoveStatic. Answers in the journal either way; false when refused.
+    bool Dismantle(ClientSession& s, int id);
+    // The faction whose law makes attacking this structure a crime, if any (#41): a lawful
+    // faction's own outpost is that faction's; anything else -- a player's, the world's --
+    // is under the law of the system's holder when that is a lawful faction. Nobody's in a
+    // system nobody holds, a pirate's, and never for its own owner.
+    bool LawOver(const SystemState& st, const Structure& t, const std::string& attacker,
+                 FactionId& law) const;
+    // Damage to a structure, from `by` (null -- not a player). Every hit is a change to the
+    // layer (MarkStaticChanged) so everyone sees its hull, and a save keeps it. At no hull
+    // left it is destroyed: its wreck, if its blueprint names one, goes down where it stood
+    // holding the rules' share of the cost, and the structure goes through RemoveStatic.
+    // Returns true when this hit destroyed it.
+    bool DamageStructure(SystemState& st, int id, float damage, ClientSession* by);
 
     // M4e-3c: galaxy snapshot (statistics of all systems + news) for the networked
     // client's galaxy map. Not const: refreshes the aggregates' population (RecountAgg).
@@ -670,6 +693,10 @@ private:
     void        Announce(const std::string& kind, int faction, const std::string& system,
                          const std::string& text);
     std::string DescribeSurvey(const Intel& seen, FactionId by) const;
+
+    // What attacking something of a lawful faction's costs the attacker with that faction:
+    // per hit, and more for the kill. One table for ships and structures alike (#41).
+    static void ChargeAttack(ClientSession& s, FactionId victim, bool killed);
 
     void        SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& info);
     std::string SystemName(const std::string& id) const;

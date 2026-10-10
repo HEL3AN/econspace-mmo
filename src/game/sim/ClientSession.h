@@ -91,6 +91,14 @@ struct ClientSession
     int            orderId = 0;             // id of the current order
     int            nextOrderId = 0;         // issuance counter
     bool           orderNavIssued = false;  // nav order already given to the ship
+    // Shots a standing order fired (an attack, #39), for the host to add to the beams of the
+    // player's system alongside the ones commands fire. Drained every world tick.
+    struct Shot
+    {
+        Vector2 from{ 0.0f, 0.0f };
+        Vector2 to{ 0.0f, 0.0f };
+    };
+    std::vector<Shot> orderShots;
 
     // What happened to this player, in order. Per session rather than per world: one
     // player docking is not news to another, and a shared journal would leak both ways.

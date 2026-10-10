@@ -7,6 +7,7 @@
             "cost": { "Iron": 4 },
             "buildSeconds": 10,
             "lifetime": 3600,
+            "hull": 60,
             "placement": { "reach": 600, "clearance": 150, "bodyClearance": 2000, "perSystem": 20 }
         },
         {
@@ -16,6 +17,8 @@
             "cost": { "Iron": 10, "Crystal": 2 },
             "buildSeconds": 45,
             "lifetime": 86400,
+            "hull": 400,
+            "wreck": "derelict.wreck",
             "placement": { "reach": 600, "clearance": 400, "bodyClearance": 5000, "perSystem": 8 }
         },
         {
@@ -25,6 +28,8 @@
             "builders": ["faction"],
             "cost": { "Iron": 40, "Crystal": 10 },
             "buildSeconds": 600,
+            "hull": 4000,
+            "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
         },
         {
@@ -34,6 +39,8 @@
             "builders": ["faction"],
             "cost": { "Iron": 40, "Crystal": 10 },
             "buildSeconds": 600,
+            "hull": 4000,
+            "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
         },
         {
@@ -43,6 +50,8 @@
             "builders": ["faction"],
             "cost": { "Iron": 40, "Crystal": 10 },
             "buildSeconds": 600,
+            "hull": 3000,
+            "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
         },
         {
@@ -52,6 +61,8 @@
             "builders": ["faction"],
             "cost": { "Iron": 40, "Crystal": 10 },
             "buildSeconds": 600,
+            "hull": 4000,
+            "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
         },
         {
@@ -61,6 +72,8 @@
             "builders": ["faction"],
             "cost": { "Iron": 40, "Crystal": 10 },
             "buildSeconds": 600,
+            "hull": 3000,
+            "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
         },
         {
@@ -70,8 +83,12 @@
             "builders": ["faction"],
             "cost": { "Iron": 40, "Crystal": 10 },
             "buildSeconds": 600,
+            "hull": 5000,
+            "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
         }
     ],
-    "limits": { "perAccount": 12 }
+    "limits": { "perAccount": 12 },
+    "dismantle": { "refund": 0.5 },
+    "destruction": { "siteHull": 0.25, "wreckShare": 0.25 }
 }

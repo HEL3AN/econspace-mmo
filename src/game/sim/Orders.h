@@ -31,9 +31,13 @@ enum class Kind
     Route,   // travel to another system, gate by gate
     // Holding station on an object at `stopDist` (#157, #298). These never finish on their
     // own: they run until replaced or aborted, or until the target is gone.
-    Orbit,  // circle it
-    Keep,   // keep at range
-    Follow  // keep at range and match its velocity
+    Orbit,   // circle it
+    Keep,    // keep at range
+    Follow,  // keep at range and match its velocity
+    // Close to weapon range of a ship or a structure and fire until it is gone (#39). The
+    // weapon is armed for the order and disarmed when it ends; firing is the same server
+    // verb a client's trigger drives, with the same consequences.
+    Attack
 };
 
 inline bool IsHold(Kind k)

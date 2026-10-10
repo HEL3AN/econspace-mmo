@@ -3,6 +3,8 @@
 #include "entities/Entity.h"
 #include <string>
 
+struct Blueprint;
+
 // Something a player put into the world (#39). What it is and what it can do come from its
 // archetype entirely -- a beacon and a depot are the same class -- so a new kind of
 // deployable is a line of data, not a subclass. The class adds only what an archetype
@@ -43,9 +45,29 @@ public:
     double GetExpiresAt() const { return expiresAt_; }
     void   SetExpiresAt(double t) { expiresAt_ = t; }
 
+    // The blueprint it was made from (#39): what it cost, so what dismantling returns, and
+    // how much it takes to destroy. Set when it is laid down and kept with it; one that does
+    // not say (a save from before) is taken to be from the first blueprint that builds its
+    // archetype. Null when no blueprint builds it any more.
+    void               SetBlueprint(std::string id) { blueprint_ = std::move(id); }
+    const std::string& GetBlueprintId() const { return blueprint_; }
+    const Blueprint*   GetBlueprint() const;
+
+    // Its hull at world time `now`. A site's grows with it, from the destruction rules' share
+    // of the finished thing's to all of it, so this is f(time) like the rest of the time
+    // line; the damage taken is the only thing that accumulates, and it is state.
+    float MaxHull(double now) const;
+    float GetDamage() const { return damage_; }
+    void  SetDamage(float d) { damage_ = d < 0.0f ? 0.0f : d; }
+    void  TakeDamage(float d) { SetDamage(damage_ + d); }
+    // 0..1 of its hull still standing at `now`; 0 is destroyed.
+    float HullFraction(double now) const;
+
 private:
     std::string name_;
     std::string builds_;
+    std::string blueprint_;
+    float       damage_ = 0.0f;
     double      startedAt_ = 0.0;
     double      completesAt_ = 0.0;  // 0: built
     double      expiresAt_ = 0.0;    // 0: permanent

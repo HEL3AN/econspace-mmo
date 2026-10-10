@@ -21,6 +21,7 @@
 #include "entities/Nebula.h"
 #include "entities/Derelict.h"
 #include "entities/JumpGate.h"
+#include "entities/Structure.h"
 #include "economy/Resource.h"
 #include "ui/Button.h"
 #include "ui/UiTheme.h"
@@ -521,6 +522,15 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                     else if (el.expiresAt > 0.0)
                         L.Field("Stands", TextFormat("%.0f min more", (el.expiresAt - now) / 60.0),
                                 t.colors.dim);
+                    // Its hull, from the proxy, which knows its blueprint and its time line: a
+                    // site's grows as it goes up (#39).
+                    if (const Entity* p = FindEntityById(e->id))
+                        if (p->GetKind() == EntityKind::Structure)
+                        {
+                            const float h = static_cast<const Structure*>(p)->HullFraction(now);
+                            L.Field("Hull", TextFormat("%.0f%%", h * 100.0f), t.colors.text);
+                            L.Bar(h, h > 0.3f ? t.colors.good : t.colors.bad);
+                        }
                 }
             }
             else if (e->kind == Proto::EntityKind::Field && e->ore >= 0)

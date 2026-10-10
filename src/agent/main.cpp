@@ -959,6 +959,64 @@ std::vector<Tool> BuildTools()
               return std::string(out);
           } });
 
+    tools.push_back(
+        { "dismantle",
+          "Take apart a site or structure you built, from within its blueprint's reach. What "
+          "comes back goes into the hold: all of the cost for a site just laid down, falling to "
+          "half for a finished structure, and less for whatever has been shot off. Refused, "
+          "with the reason, if it is not yours, you are too far, docked or warping, or the "
+          "hold has no room for what it returns.",
+          Obj({ { "structure_id", Num("structure id from observe") } }, { "structure_id" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              const int  id = (int)NumberOr(args, "structure_id", 0);
+              const auto it = g_session.Layout().find(id);
+              if (it == g_session.Layout().end() || it->second.kind != Proto::EntityKind::Structure)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "no structure #" + std::to_string(id) + " in this system" };
+              if (it->second.owner != g_session.Account())
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    it->second.name +
+                                        " is not yours; attack takes down another's" };
+              const std::string name = it->second.name;
+              const int         seq = g_session.LastEventSeq();
+              Proto::Command    c;
+              c.dismantleId = id;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "dismantle: " + why;
+              // The answer is in the journal either way: what came back, or why not.
+              for (const Ev::Event& e : g_session.EventsSince(seq))
+                  if (e.kind == Ev::Kind::Notice && e.text.rfind("Dismantled ", 0) == 0)
+                      return "dismantle: " + e.text;
+              return Refused("dismantle", seq, "the server did not take " + name + " apart");
+          } });
+
+    tools.push_back(
+        { "attack",
+          "Close to weapon range of a ship or a structure and fire until it is destroyed. "
+          "Finishes when it is gone; aborts like any order if the hull gets critical. A "
+          "destroyed structure leaves a wreck where it fits. Shooting what a lawful faction "
+          "owns, or a player's structure in a system a lawful faction holds, is a crime: "
+          "reputation and bounty with that faction, per hit and more for the kill. Your own "
+          "structures are dismantled, not attacked.",
+          Obj({ { "target_id", Num("ship or structure id from observe") } }, { "target_id" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              const int  id = (int)NumberOr(args, "target_id", 0);
+              const auto it = g_session.Layout().find(id);
+              if (it != g_session.Layout().end() &&
+                  it->second.kind == Proto::EntityKind::Structure &&
+                  it->second.owner == g_session.Account())
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    it->second.name + " is yours; dismantle it instead" };
+              Proto::Command c = OrderCommand(Orders::Kind::Attack);
+              c.orderTarget = id;
+              return GiveOrder(c, "attack");
+          } });
+
     return tools;
 }
 
@@ -1176,9 +1234,13 @@ int Selftest(const std::vector<Tool>& tools)
     g_phase = "reading the blueprints";
     const std::string bps = RunTool(tools, "blueprints", Rpc::Json::object());
     const std::string fromDock = RunTool(tools, "deploy", Rpc::Json{ { "blueprint", "beacon" } });
-    const bool        building = bps.find("beacon") != std::string::npos &&
-                                 (!docked || fromDock.find("undock first") != std::string::npos);
-    note("blueprints and deploy", building);
+    // ...and nothing is taken apart that is not there to take (#39).
+    const std::string nothing =
+        RunTool(tools, "dismantle", Rpc::Json{ { "structure_id", 999999 } });
+    const bool building = bps.find("beacon") != std::string::npos &&
+                          (!docked || fromDock.find("undock first") != std::string::npos) &&
+                          nothing.find("no structure") != std::string::npos;
+    note("blueprints, deploy and dismantle", building);
 
     const bool ok = observed && stationId != 0 && ordered && arrived && refused && docked &&
                     listed && accepted && unaffordable && noBounty && building;

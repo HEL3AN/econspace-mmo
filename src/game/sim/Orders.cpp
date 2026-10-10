@@ -16,6 +16,7 @@ const char* KindName(Kind k)
         case Kind::Orbit: return "orbit";
         case Kind::Keep: return "keep";
         case Kind::Follow: return "follow";
+        case Kind::Attack: return "attack";
     }
     return "none";
 }
