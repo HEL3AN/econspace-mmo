@@ -197,7 +197,9 @@ module's first `sockets` entry), and optionally `in` (only on that section, by i
 `mount` (how the module meets the socket, measured by the module's own box rather than its
 origin: `"on"`, the default, lies wholly on the hull with its edge at the hull's; `"out"` starts
 at the edge and stands out from it -- docks, engines, dishes on booms; `"centre"` is centred on
-the socket; a `top` socket always centres), `z` (draw order, default 1: over the hull), and
+the socket; a `top` socket always centres), `z` (draw order, default 1: over the hull), `when` (a component the archetype must have for the
+line to apply -- `"when": "defensive"` puts turrets only on stations that can fight, `"!market"`
+only on those without a market; an unknown component name is a load error), and
 `variant` (pinned; otherwise the seed picks one for the whole line, so a row is a row of the
 same thing).
 
