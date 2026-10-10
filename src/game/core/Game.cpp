@@ -752,6 +752,19 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
             cmd_.deploy = a.blueprint;
             cmd_.deployPos = point;
             return;
+        // The missions are the server's (M4f-2): a one-off command, and the next snapshot
+        // says whether it was taken.
+        case Verb::Accept:
+        case Verb::HandIn:
+        {
+            Proto::Command c;
+            if (a.verb == Verb::Accept)
+                c.acceptOffer = a.mission;
+            else
+                c.completeMission = a.mission;
+            clientLink_->Send(Proto::EncodeCommand(c));
+            return;
+        }
         default: break;
     }
     if (target == nullptr)
@@ -811,7 +824,9 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
             break;
         case Verb::FlyHere:
         case Verb::WarpHere:
-        case Verb::Build: break;  // handled above: they need no target
+        case Verb::Build:
+        case Verb::Accept:
+        case Verb::HandIn: break;  // handled above: they need no target
     }
 }
 

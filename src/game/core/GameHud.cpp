@@ -39,9 +39,7 @@
 static const float MENU_BAR_W = 46.0f;
 static const float MENU_BTN = 36.0f;
 static const float MENU_STEP = 46.0f;
-// Hostile, as the instruments say it: the overview, the radar, the sensor screen (#117).
-static const Color& HOSTILE = Ui::MutableTheme().standing.hostile;
-static const float  MENU_TOP = 12.0f;
+static const float MENU_TOP = 12.0f;
 
 void Game::DrawStarfield()
 {
@@ -255,10 +253,20 @@ void Game::SetupWindows()
     overview.resizable = true;
     overview.minSize = { 260.0f, 160.0f };
     desk_.AddWindow(overview, "OVERVIEW", true, [this](Ui::Frame& f) { DrawOverviewContent(f); });
-    desk_.AddWindow(panel(WIN_RADAR, "RAD", Anchor::TopLeft, { 56.0f, 344.0f, 264.0f, 288.0f }),
-                    "RADAR", false, [this](Ui::Frame& f) { DrawRadarContent(f); });
-    desk_.AddWindow(panel(WIN_MISSIONS, "MIS", Anchor::TopRight, { 16.0f, 360.0f, 264.0f, 264.0f }),
-                    "MISSIONS", false, [this](Ui::Frame& f) { DrawMissionsContent(f.Area()); });
+    // The radar is a picture drawn by hand inside a layout (#297): its toolbar is laid out,
+    // the scope takes whatever room is left, so it can be any size.
+    WindowSpec radar = panel(WIN_RADAR, "RAD", Anchor::TopLeft, { 56.0f, 344.0f, 264.0f, 288.0f });
+    radar.resizable = true;
+    radar.minSize = { 180.0f, 180.0f };
+    desk_.AddWindow(radar, "RADAR", false, [this](Ui::Frame& f) { DrawRadarContent(f); });
+    // A list of missions and the chosen one in full: one above the other when narrow, side
+    // by side when wide. Beside the selected item rather than on top of the overview, which
+    // is open from the start.
+    WindowSpec missions =
+        panel(WIN_MISSIONS, "MIS", Anchor::TopRight, { 324.0f, 16.0f, 300.0f, 320.0f });
+    missions.resizable = true;
+    missions.minSize = { 240.0f, 220.0f };
+    desk_.AddWindow(missions, "MISSIONS", false, [this](Ui::Frame& f) { DrawMissionsContent(f); });
 
     // The two screens cover the world view and the windows; whichever opened last is on top.
     // Covering means the windows are not drawn at all while one is open: the map is drawn
@@ -279,8 +287,10 @@ void Game::SetupWindows()
     sensor.draw = [this]() { DrawSensorScreen(); };
     desk_.AddSurface(screen(WIN_SENSOR, "SNS", Ui::EscRule::Close), false, sensor);
 
-    desk_.AddWindow(panel(WIN_SETTINGS, "SET", Anchor::Top, { 0.0f, 100.0f, 300.0f, 380.0f }),
-                    "SETTINGS", false, [this](Ui::Frame& f) { DrawSettingsContent(f.Area()); });
+    WindowSpec settings = panel(WIN_SETTINGS, "SET", Anchor::Top, { 0.0f, 100.0f, 340.0f, 400.0f });
+    settings.resizable = true;
+    settings.minSize = { 260.0f, 240.0f };
+    desk_.AddWindow(settings, "SETTINGS", false, [this](Ui::Frame& f) { DrawSettingsContent(f); });
 
     // Docked: a screen of its own, drawn by Run. Esc stops at it, because leaving it is
     // undocking, an order to the server (#285).
@@ -327,234 +337,6 @@ void Game::ApplyResolution(int w, int h)
     // time only because GetScreenWidth picks them up next frame.
     screenWidth_ = w;
     screenHeight_ = h;
-}
-
-// Settings window content: resolution, fullscreen mode, layout reset.
-void Game::DrawSettingsContent(Rectangle area)
-{
-    struct Res
-    {
-        int w, h;
-    };
-    static const Res modes[] = { { 1280, 720 }, { 1600, 900 }, { 1920, 1080 } };
-
-    int x = (int)area.x;
-    int y = (int)area.y;
-
-    Ui::Text("RESOLUTION", x, y, 14, Ui::TEXT_DIM);
-    y += 22;
-    for (const Res& r : modes)
-    {
-        bool   current = (screenWidth_ == r.w && screenHeight_ == r.h);
-        Button btn(Rectangle{ area.x, (float)y, area.width, 30.0f },
-                   TextFormat("%d x %d%s", r.w, r.h, current ? "   *" : ""),
-                   [this, r]() { ApplyResolution(r.w, r.h); });
-        btn.Process();
-        y += 36;
-    }
-
-    y += 10;
-    Ui::Text("DISPLAY", x, y, 14, Ui::TEXT_DIM);
-    y += 22;
-    bool   fs = IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE);
-    Button fsBtn(Rectangle{ area.x, (float)y, area.width, 30.0f },
-                 fs ? "Fullscreen: ON" : "Fullscreen: off", []() { ToggleBorderlessWindowed(); });
-    fsBtn.Process();
-    y += 42;
-
-    // The interface's own scale, times whatever the display asks for (#297). It reaches the
-    // windows laid out with Ui::Layout and every window's frame; the screens still placed
-    // by hand follow as they move onto the layout.
-    Ui::Text(TextFormat("INTERFACE SCALE   %.0f%%", Ui::Scale() * 100.0f), x, y, 14, Ui::TEXT_DIM);
-    y += 22;
-    static const float scales[] = { 1.0f, 1.25f, 1.5f, 2.0f };
-    const float        bw = (area.width - 3 * 6.0f) / 4.0f;
-    for (int i = 0; i < 4; i++)
-    {
-        const float s = scales[i];
-        const bool  current = !uiScaleLocked_ && fabsf(Ui::UserScale() - s) < 0.01f;
-        Button      b(Rectangle{ area.x + i * (bw + 6.0f), (float)y, bw, 30.0f },
-                      TextFormat("%.0f%%%s", s * 100.0f, current ? "*" : ""),
-                      [this, s]()
-                      {
-                     Ui::OverrideDisplayScale(0.0f);  // a --uiscale run is over
-                     uiScaleLocked_ = false;
-                     Ui::SetUserScale(s);
-                     if (uiSettingsWritable_ && !Ui::SaveUiSettings(uiSettingsPath_))
-                         TraceLog(LOG_WARNING, "UI settings: cannot write %s",
-                                  uiSettingsPath_.c_str());
-                      });
-        b.Process();
-    }
-    y += 42;
-
-    Button resetBtn(Rectangle{ area.x, (float)y, area.width, 30.0f }, "Reset window layout",
-                    [this]() { desk_.ResetLayout(); });
-    resetBtn.Process();
-}
-
-// Radar minimap: a free view of the system (does not follow the player). Inside the window
-// you can pan (LMB drag), zoom (wheel), select an object (click), and open the context menu (RMB).
-// The button in the top right centers the radar on the ship.
-void Game::DrawRadarContent(const Ui::Frame& f)
-{
-    const Rectangle area = f.Area();
-    float           side = fminf(area.width, area.height);
-    Rectangle       r{ area.x + (area.width - side) / 2.0f, area.y, side, side };
-    DrawRectangleRec(r, Fade(BLACK, 0.4f));
-    DrawRectangleLinesEx(r, 1.0f, Fade(Ui::PANEL_BORDER, 0.6f));
-
-    Vector2 sp = snapshot_.player.pos;  // M4c: the radar reads the snapshot
-    if (!radarInit_)                    // on first display, center on the player
-    {
-        radarCenter_ = sp;
-        radarInit_ = true;
-    }
-
-    // Base scale — from the system's extent (stable while panning).
-    float maxR = 600.0f;
-    for (const auto& e : snapshot_.entities)
-        maxR = fmaxf(maxR, sqrtf(e.pos.x * e.pos.x + e.pos.y * e.pos.y));
-    maxR *= 1.1f;
-
-    Vector2 c{ r.x + side / 2.0f, r.y + side / 2.0f };
-    float   scale = (side / 2.0f) / maxR * radarZoom_;
-
-    auto toRadar = [&](Vector2 w) -> Vector2
-    { return { c.x + (w.x - radarCenter_.x) * scale, c.y + (w.y - radarCenter_.y) * scale }; };
-    auto toWorld = [&](Vector2 s) -> Vector2
-    { return { radarCenter_.x + (s.x - c.x) / scale, radarCenter_.y + (s.y - c.y) / scale }; };
-
-    // Over it only when the radar's window owns the mouse (#297).
-    Vector2 m = f.Mouse();
-    bool    overR = f.Hovered(r);
-
-    // Center-on-player button — top right of the radar.
-    Rectangle recBtn{ r.x + r.width - 24.0f, r.y + 6.0f, 18.0f, 18.0f };
-    bool      overRec = f.Hovered(recBtn);
-
-    // Wheel zoom.
-    if (overR)
-    {
-        float wheel = f.Wheel();
-        if (wheel != 0.0f)
-            radarZoom_ = Clamp(radarZoom_ * (1.0f + wheel * 0.12f), 0.25f, 12.0f);
-    }
-
-    // LMB: the center button takes priority, otherwise pan/select.
-    if (overRec && f.Pressed(MOUSE_BUTTON_LEFT))
-    {
-        radarCenter_ = sp;
-    }
-    else if (overR && f.Pressed(MOUSE_BUTTON_LEFT))
-    {
-        radarDragging_ = true;
-        radarDragMoved_ = false;
-        radarDragLast_ = m;
-        radarPressPos_ = m;
-    }
-    if (radarDragging_)
-    {
-        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT))
-        {
-            radarCenter_.x -= (m.x - radarDragLast_.x) / scale;
-            radarCenter_.y -= (m.y - radarDragLast_.y) / scale;
-            radarDragLast_ = m;
-            if (fabsf(m.x - radarPressPos_.x) + fabsf(m.y - radarPressPos_.y) > 4.0f)
-                radarDragMoved_ = true;
-        }
-        else
-        {
-            radarDragging_ = false;
-            if (!radarDragMoved_)  // it was a click — select the object under the cursor
-            {
-                for (const auto& e : snapshot_.entities)
-                    if (CheckCollisionPointCircle(m, toRadar(e.pos), 7.0f))
-                    {
-                        selected_ = FindEntityById(e.id);
-                        if (selected_ != nullptr)
-                            desk_.SetOpen(WIN_TARGET, true);
-                        break;
-                    }
-            }
-        }
-    }
-
-    // RMB: menu on the object under the cursor, or on a map point.
-    if (overR && f.Pressed(MOUSE_BUTTON_RIGHT))
-    {
-        int hitId = 0;
-        for (const auto& e : snapshot_.entities)
-            if (CheckCollisionPointCircle(m, toRadar(e.pos), 7.0f))
-            {
-                hitId = e.id;
-                break;
-            }
-        Entity* hit = FindEntityById(hitId);
-        if (hit != nullptr)
-            OpenContextMenu(hit);
-        else
-            OpenContextMenuAt(toWorld(m));
-    }
-
-    int selId = selected_ != nullptr ? selected_->GetId() : 0;
-    BeginScissorMode((int)r.x, (int)r.y, (int)r.width, (int)r.height);
-    for (const auto& e : snapshot_.entities)
-    {
-        Vector2 p = toRadar(e.pos);
-        if (!CheckCollisionPointRec(p, r))
-            continue;  // outside the radar — don't draw
-
-        Color col = GRAY;
-        switch (e.kind)
-        {
-            case Proto::EntityKind::Star: col = GOLD; break;
-            case Proto::EntityKind::Planet: col = SKYBLUE; break;
-            case Proto::EntityKind::Station:
-                col = HostileToPlayerFaction(e.faction) ? HOSTILE : Ui::ACCENT;
-                break;
-            case Proto::EntityKind::Field: col = ORANGE; break;
-            case Proto::EntityKind::Nebula: col = Color{ 150, 90, 200, 255 }; break;
-            case Proto::EntityKind::Derelict: col = Color{ 130, 130, 120, 255 }; break;
-            // Yours or someone else's -- the one allegiance a structure has yet (#39).
-            case Proto::EntityKind::Structure:
-            {
-                const auto l = layout_.byId.find(e.id);
-                const bool mine = l != layout_.byId.end() && l->second.owner == pilotName_;
-                col = mine ? Color{ 120, 235, 130, 255 } : Color{ 200, 200, 210, 255 };
-                break;
-            }
-            case Proto::EntityKind::Gate: col = Color{ 90, 200, 210, 255 }; break;
-            // The radar is an instrument, so allegiance is allowed here -- as this player
-            // sees it: hostile is red, the rest wear their faction (#117).
-            case Proto::EntityKind::Npc:
-                col = HostileToPlayerFaction(e.faction) ? HOSTILE : FactionColor(e.faction);
-                break;
-            default: col = GRAY; break;
-        }
-
-        DrawCircleV(p, 3.0f, col);
-        if (e.id != 0 && e.id == selId)
-            DrawCircleLines((int)p.x, (int)p.y, 6.0f, WHITE);
-    }
-
-    // Player ship.
-    Vector2 pp = toRadar(sp);
-    if (CheckCollisionPointRec(pp, r))
-    {
-        DrawCircleV(pp, 3.5f, GREEN);
-        DrawCircleLines((int)pp.x, (int)pp.y, 6.0f, Fade(GREEN, 0.6f));
-    }
-    EndScissorMode();
-
-    // Center-on-player button (over the blips): frame + crosshair.
-    DrawRectangleRec(recBtn, overRec ? Fade(Ui::ACCENT, 0.25f) : Fade(Ui::TITLE_BG, 0.8f));
-    DrawRectangleLinesEx(recBtn, 1.0f, overRec ? Ui::ACCENT : Ui::PANEL_BORDER);
-    Vector2 rc{ recBtn.x + recBtn.width / 2.0f, recBtn.y + recBtn.height / 2.0f };
-    Color   ric = overRec ? Ui::ACCENT : Ui::TEXT_DIM;
-    DrawLineEx({ rc.x - 5, rc.y }, { rc.x + 5, rc.y }, 1.0f, ric);
-    DrawLineEx({ rc.x, rc.y - 5 }, { rc.x, rc.y + 5 }, 1.0f, ric);
-    DrawCircleLines((int)rc.x, (int)rc.y, 3.0f, ric);
 }
 
 // The overview (#157), on Ui::Layout (#297): the filters as tabs, and a table that sorts by
@@ -1338,76 +1120,6 @@ void Game::DrawMissionBoard(int x, int y, int w)
     Ui::Text(TextFormat("Active missions: %d / %d", (int)missions_.Active().size(),
                         MissionSystem::MAX_ACTIVE),
              x, rowY + 4, 14, Ui::TEXT_DIM);
-}
-
-// Active mission log: the objective and current progress for each mission.
-void Game::DrawMissionsContent(Rectangle area)
-{
-    const std::vector<Mission>& active = missions_.Active();
-    int                         x = (int)area.x;
-    int                         y = (int)area.y;
-
-    if (active.empty())
-    {
-        Ui::Text("No active missions", x, y, 16, Ui::TEXT_DIM);
-        Ui::Text("Accept jobs at a station.", x, y + 22, 14, Ui::TEXT_DIM);
-        return;
-    }
-
-    const Color done = { 120, 210, 130, 255 };  // color of a completed objective
-    const int   rowH = 60;
-
-    for (const Mission& m : active)
-    {
-        if (y + rowH > area.y + area.height)
-            break;  // doesn't fit — truncate the list
-
-        Ui::Text(m.title.c_str(), x, y, 16, FactionColor(m.faction));
-        Ui::Text(m.description.c_str(), x, y + 19, 13, Ui::TEXT);
-
-        // The progress line depends on the mission type.
-        const char* line = "";
-        bool        complete = false;
-        switch (m.type)
-        {
-            case MissionType::Bounty:
-                complete = m.progress >= m.targetCount;
-                line = TextFormat("Pirates  %d / %d", m.progress, m.targetCount);
-                break;
-            case MissionType::Mining:
-            {
-                // Cargo comes from the snapshot: the predicted ship's hold is not synced.
-                int cur = 0;
-                {
-                    int idx = 0;
-                    for (ResourceType rt : AllResourceTypes())
-                    {
-                        if (rt == m.resource)
-                        {
-                            cur = idx < (int)snapshot_.player.cargoByType.size()
-                                      ? snapshot_.player.cargoByType[idx]
-                                      : 0;
-                            break;
-                        }
-                        idx++;
-                    }
-                }
-                complete = m.completable;
-                line =
-                    TextFormat("%s  %d / %d", ResourceName(m.resource).c_str(), cur, m.targetCount);
-                break;
-            }
-            case MissionType::Delivery:
-            {
-                Station* destSt = StationById(m.destStationId);
-                line = TextFormat("Deliver to %s", destSt ? destSt->GetName().c_str() : "station");
-                break;
-            }
-        }
-        Ui::Text(line, x, y + 38, 14, complete ? done : Ui::TEXT_DIM);
-
-        y += rowH;
-    }
 }
 
 // Full-screen galaxy star map (EVE-style): dimmed background,

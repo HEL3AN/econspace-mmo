@@ -38,7 +38,9 @@ enum class Verb
     Jump,         // a gate
     FlyHere,      // a point in space
     WarpHere,
-    Build,  // lay down a blueprint at a point (#39)
+    Build,   // lay down a blueprint at a point (#39)
+    Accept,  // take an offer from the board of the station the ship is docked at
+    HandIn,  // hand in an active mission, for its reward
 };
 
 struct Action
@@ -47,6 +49,7 @@ struct Action
     std::string label;            // what the menu says
     float       distance = 0.0f;  // the hold's range, the approach's stop, the warp's drop
     std::string blueprint;        // Build: which one
+    int         mission = -1;     // Accept, HandIn: the offer's or the mission's number
     std::string tool;             // the econagent tool that does the same; empty if none yet
 };
 
@@ -77,6 +80,21 @@ std::vector<Action> For(const Target& target, Vector2 from);
 
 // The actions for an empty point in space: fly, warp, and whatever can be built there.
 std::vector<Action> ForPoint(Vector2 point, Vector2 from, const std::vector<Blueprint>& blueprints);
+
+// What the client knows about a mission it might act on. `index` is its number in the
+// snapshot's list -- the number accept_mission and complete_mission take.
+struct MissionTarget
+{
+    int  index = -1;
+    bool offer = false;   // on the board, not yet taken
+    bool ready = false;   // can be handed in now: the server says so
+    bool docked = false;  // the job board is a station's
+    int  active = 0;      // missions already taken
+};
+
+// What can be done with a mission itself: take it, or hand it in. Where it is handed in is
+// a station, and what can be done about that is For(station).
+std::vector<Action> ForMission(const MissionTarget& mission);
 
 // The econagent tool that does what a verb does; empty for one no tool covers yet.
 const char* ToolFor(Verb verb);

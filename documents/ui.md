@@ -73,7 +73,12 @@ void Game::DrawMissions(const Ui::Frame& f)
   a function on `Layout` built from boxes and text, never from coordinates.
 - **Adapting.** A layout follows the window, so a window can be any size. For a real change
   of arrangement, branch on the area: the status window puts its two halves side by side
-  when it is wide enough (`f.Area().width >= Ui::Px(420)`).
+  when it is wide enough (`f.Area().width >= Ui::Px(420)`); the missions window puts its
+  list beside the chosen mission at 520, and above it otherwise.
+- **A list and its details.** The list keeps a share of the room (`Size::Percent`) and the
+  details scroll in a pane of their own, so a long description never pushes the list out of
+  the window. Something is always chosen while the list has rows: an empty details pane asks
+  for a click nobody knows to make.
 
 Rules:
 
@@ -139,6 +144,23 @@ values come from the window's model.
 - **Tooltip** shows its text once the cursor has rested on the element a moment. It is drawn
   by `Ui::DrawTooltip()` at the end of the HUD, after the popups, so nothing covers it.
 
+## A picture inside a window
+
+The radar is a picture, not a layout, and it is still a proper window: its toolbar is laid
+out, and the picture gets a box that takes whatever room is left --
+`L.Row(Box().Id("scope").Grow(), [] {})`. After `End`, `L.BoxOf("scope")` is where to draw
+it, by hand, clipped to that box; input on it reads the frame (`f.Hovered(box)`,
+`f.Pressed`, `f.Down`, `f.Wheel`), never raylib directly, and a drag keeps going outside the
+window because a press keeps its owner until release. Sizes drawn by hand follow the scale
+through `Ui::Scale()`/`Ui::Px`, and colours come from the theme like everything else -- on an
+instrument, `standing.*` for whose a thing is, and shape rather than colour for what it is.
+
+## A setting that resizes the interface
+
+The UI scale's slider moves a draft and applies it on release: applied while held, every
+window grows under the cursor and the slider runs away from it. Anything a control changes
+that moves the control itself works the same way.
+
 ## The keyboard
 
 One text field in the whole client holds the keyboard at a time (`Ui::Focus`, owned by the
@@ -162,6 +184,12 @@ same thing, and `actions_tests.cpp` checks those tools exist -- a window cannot 
 an agent cannot do. The verbs that only change what the interface shows (`Select`,
 `SetRange`) need no tool; the ones still owed one (`Attack`, `Investigate`) are listed in
 the test, and adding the tool is the only way off the list.
+
+A mission is a thing too: `Actions::ForMission` offers `Accept` (an offer, docked, with room)
+and `Hand in` (one the server says is ready), matched by `accept_mission` and
+`complete_mission`. Where a mission ends is a station, and the missions window offers that
+station's own actions from `Actions::For` -- target it, fly there, dock -- rather than
+inventing a "set destination" of its own.
 
 ## The mouse
 
@@ -247,7 +275,15 @@ no window is written against Clay itself.
 
 ## Still placed by hand
 
-On `Ui::Layout`: status, overview, the selected item, the map's name field. Radar,
-missions, settings, F10's panel and the screens (map, sensor, station) still draw with
-coordinates. They take the font and the theme's colours already; they move onto
-`Ui::Layout` one at a time, and then follow the scale inside as well as outside.
+On `Ui::Layout`: status, overview, the selected item, missions, radar (its toolbar; the
+scope is a picture in a box the layout gives), settings, and the map's name field. F10's
+panel and the screens (map, sensor, station) still draw with coordinates. They take the font
+and the theme's colours already; they move onto `Ui::Layout` one at a time, and then follow
+the scale inside as well as outside.
+
+## Seeing a window
+
+Synthetic input does not reach the client's window, so a picture of one is asked for on the
+command line: `econspace connect ... --open radar,missions,settings --uiscale 1.5 --shot
+f.png`. `--open` takes the desk's ids, and opening a window this way is remembered in
+`ui_layout.json` like opening it by hand.

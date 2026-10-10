@@ -147,9 +147,10 @@ TEST_CASE("Actions: every button an agent could want is an econagent tool, and t
     const std::set<Verb> interfaceOnly{ Verb::Select, Verb::SetRange };
     const std::set<Verb> owed{ Verb::Attack, Verb::Investigate };
 
-    for (Verb v : { Verb::Select, Verb::Approach, Verb::Orbit, Verb::Keep, Verb::Follow,
-                    Verb::SetRange, Verb::Warp, Verb::Dock, Verb::Mine, Verb::Attack,
-                    Verb::Investigate, Verb::Jump, Verb::FlyHere, Verb::WarpHere, Verb::Build })
+    for (Verb v :
+         { Verb::Select, Verb::Approach, Verb::Orbit, Verb::Keep, Verb::Follow, Verb::SetRange,
+           Verb::Warp, Verb::Dock, Verb::Mine, Verb::Attack, Verb::Investigate, Verb::Jump,
+           Verb::FlyHere, Verb::WarpHere, Verb::Build, Verb::Accept, Verb::HandIn })
     {
         const std::string tool = Actions::ToolFor(v);
         INFO("verb " << (int)v << " tool '" << tool << "'");
@@ -158,4 +159,30 @@ TEST_CASE("Actions: every button an agent could want is an econagent tool, and t
         else
             CHECK(tools.count(tool) == 1);
     }
+}
+
+TEST_CASE("Actions: a mission is taken at a station with room for it, and handed in when ready")
+{
+    Actions::MissionTarget offer;
+    offer.index = 2;
+    offer.offer = true;
+    CHECK(Actions::ForMission(offer).empty());  // the board is a station's: not in flight
+    offer.docked = true;
+    const std::vector<Action> take = Actions::ForMission(offer);
+    const Action*             accept = Find(take, Verb::Accept);
+    REQUIRE(accept != nullptr);
+    CHECK(accept->mission == 2);
+    CHECK(accept->tool == "accept_mission");
+    offer.active = 5;  // MissionSystem::MAX_ACTIVE
+    CHECK_FALSE(Has(Actions::ForMission(offer), Verb::Accept));
+
+    Actions::MissionTarget active;
+    active.index = 0;
+    CHECK(Actions::ForMission(active).empty());
+    active.ready = true;
+    const std::vector<Action> give = Actions::ForMission(active);
+    const Action*             handIn = Find(give, Verb::HandIn);
+    REQUIRE(handIn != nullptr);
+    CHECK(handIn->mission == 0);
+    CHECK_FALSE(Has(give, Verb::Accept));
 }
