@@ -1,5 +1,12 @@
 #include "economy/Market.h"
 
+#include <cmath>
+
+namespace
+{
+constexpr double RECOVERY = 0.1;  // share of the gap to the base price closed per second
+}
+
 Market::Market()
 {
     basePrices_[ResourceType::Iron] = 10.0;
@@ -40,6 +47,15 @@ void Market::Update(float dt)
     for (auto& [type, price] : prices_)
     {
         double diff = basePrices_[type] - price;
-        price += 0.1 * diff * dt;
+        price += RECOVERY * diff * dt;
     }
+}
+
+void Market::Recover(float seconds)
+{
+    // Update's step taken continuously: the gap closes by e^(-rate*t). Server-side and
+    // never compared across machines, so exp is fine here.
+    const double closed = 1.0 - std::exp(-RECOVERY * (double)seconds);
+    for (auto& [type, price] : prices_)
+        price += (basePrices_[type] - price) * closed;
 }

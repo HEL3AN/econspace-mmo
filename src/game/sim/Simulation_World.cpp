@@ -1,11 +1,12 @@
-// The galaxy itself: seeding it, materializing a system's NPCs from its aggregate,
-// activating a system, planning a route across it, and persistence.
+// The galaxy itself: seeding it, materializing a system's NPCs from its aggregate when it
+// warms and letting them go when it cools, planning a route across it, and persistence.
 //
 // One translation unit of Simulation (#17).
 
 #include "sim/Simulation.h"
 #include "sim/Names.h"
 
+#include "core/Orbits.h"
 #include "core/World.h"
 #include "entities/AsteroidField.h"
 #include "entities/Derelict.h"
@@ -16,12 +17,35 @@
 
 #include "gen/Pins.h"
 #include "gen/Region.h"
+#include "gen/Rng.h"
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <set>
+
+namespace
+{
+// What a system's ships are drawn from when it warms (#295): the system and the second.
+constexpr uint64_t HYDRATE_KEY = 0x4D7A7Eu;
+// How far before a station or a gate a ship that flew there is seen: it drops out of warp
+// this far short and flies the rest (NpcShip::Update).
+constexpr float APPROACH = 3000.0f;
+// Not to be dropped closer than this to a player (as the spawn director keeps).
+constexpr float CLEAR_OF_PLAYERS = 2600.0f;
+
+bool Clear(Vector2 at, const std::vector<Vector2>& avoid)
+{
+    for (Vector2 a : avoid)
+    {
+        const float dx = at.x - a.x, dy = at.y - a.y;
+        if (dx * dx + dy * dy < CLEAR_OF_PLAYERS * CLEAR_OF_PLAYERS)
+            return false;
+    }
+    return true;
+}
+}  // namespace
 
 void Simulation::InitGalaxy()
 {
@@ -85,8 +109,13 @@ std::string Simulation::SystemName(const std::string& id) const
     return id;
 }
 
-// Materialize (hydrate) the NPCs of a system from its cold aggregate: as many ships of
-// each role as the aggregate "accumulated" — that many we spawn in suitable places.
+// Materialize (hydrate) the NPCs of a system from its cold aggregate (#295): as many ships
+// of each role as the aggregate holds, under the flags the spawn director would give them,
+// where ships of that role spend their time -- the last stretch of a lane before a station
+// or a gate (a long leg is crossed at warp, so that is where they are seen), over a belt,
+// out on the periphery. Drawn from the system and the world second, not from the order
+// systems happen to be visited in: two players arriving in the same second find the same
+// sky. Pirates keep clear of whoever is already standing here.
 void Simulation::HydrateSystem(SystemState& st)
 {
     // Stable ids for the static objects (stations/planets/gates/fields) from JSON —
@@ -95,76 +124,107 @@ void Simulation::HydrateSystem(SystemState& st)
         if (e->GetId() == 0)
             e->SetId(NextAgentId());
 
-    SpawnNodes             nd = GatherNodes(st);
+    const SpawnNodes       nd = GatherNodes(st);
+    const Population       pop = PopulationOf(st, RoomOf(nd));
     const SystemAggregate& agg = st.agg;
-
-    // The controlling faction holds the law; if control is with pirates/no one — fall back
-    // to the station's faction, otherwise the Guild.
-    FactionId owner = agg.controller;
-    if (!Factions::IsLawful(owner))
+    Gen::Rng               rng(Gen::Key(HYDRATE_KEY, Intelligence::KeyOf(st.id),
+                                        (uint64_t)std::max(0.0, std::floor(time_))));
+    auto                   pick = [&](const std::vector<Vector2>& v) -> Vector2
+    { return v[rng.Range(0, (int)v.size() - 1)]; };
+    // Somewhere within `r` of `at`, in any direction.
+    auto around = [&](Vector2 at, float r) -> Vector2
     {
-        owner = FactionId::TradersGuild;
-        for (auto& e : st.entities)
-            if (Station* s =
-                    e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
-                if (Factions::IsLawful(s->GetFaction()))
-                {
-                    owner = s->GetFaction();
-                    break;
-                }
-    }
-
-    auto pick = [&](const std::vector<Vector2>& v) -> Vector2
-    { return v[RandRange(0, (int)v.size() - 1)]; };
+        const float turn = (float)(rng.Unit() * 2.0 * PI);
+        const float d = (float)rng.Between(0.0, (double)r);
+        return Vector2{ at.x + d * std::cos(turn), at.y + d * std::sin(turn) };
+    };
 
     // Traders cruise the lanes (stations + gates).
     std::vector<Vector2> lanes = nd.stations;
     lanes.insert(lanes.end(), nd.gates.begin(), nd.gates.end());
     if (lanes.size() >= 2)
     {
-        FactionId tradeFactions[] = { owner, FactionId::Independent, FactionId::TradersGuild };
-        int       traders = (int)roundf(agg.traders);
+        FactionId tradeFactions[] = { pop.tradeFaction, FactionId::Independent,
+                                      FactionId::TradersGuild };
+        const int traders = (int)roundf(agg.traders);
         for (int i = 0; i < traders; i++)
-            SpawnNpcInto(st, pick(lanes), tradeFactions[i % 3], NpcRole::Trader, lanes);
+            SpawnNpcInto(st, around(pick(lanes), APPROACH), tradeFactions[i % 3], NpcRole::Trader,
+                         lanes);
     }
 
     // Miners — at the fields.
     if (!nd.fields.empty())
     {
-        int miners = (int)roundf(agg.miners);
+        const int miners = (int)roundf(agg.miners);
         for (int i = 0; i < miners; i++)
         {
             Vector2              spot = pick(nd.fields);
             std::vector<Vector2> near = { spot };
             // Scattered over the belt, which is six thousand units across (#159), not on its
             // centre.
-            Vector2 start = { spot.x + RandRange(-3000, 3000), spot.y + RandRange(-3000, 3000) };
-            SpawnNpcInto(st, start, FactionId::Independent, NpcRole::Miner, near);
+            SpawnNpcInto(st, around(spot, 3000.0f), FactionId::Independent, NpcRole::Miner, near);
         }
     }
 
-    // The owner's police patrol the whole system (lanes + fields).
+    // The law's police patrol the whole system (lanes + fields).
     std::vector<Vector2> patrolRoute = lanes;
     patrolRoute.insert(patrolRoute.end(), nd.fields.begin(), nd.fields.end());
     if (patrolRoute.size() >= 2)
     {
-        int police = (int)roundf(agg.police);
+        const int police = (int)roundf(agg.police);
         for (int i = 0; i < police; i++)
-            SpawnNpcInto(st, pick(patrolRoute), owner, NpcRole::Police, patrolRoute);
+            SpawnNpcInto(st, around(pick(patrolRoute), APPROACH), pop.policeFaction,
+                         NpcRole::Police, patrolRoute);
     }
 
-    // Pirates — on the dark periphery and at gates into dangerous systems (not at peaceful gates).
+    // Pirates — on the dark periphery and at gates into dangerous systems (not at peaceful
+    // gates), and not on top of a player.
     std::vector<Vector2> hot = PirateSpots(nd);
+    std::vector<Vector2> avoid;
+    for (const auto& kv : sessions_)
+        if (kv.second.systemId == st.id && kv.second.ship && !kv.second.IsDocked())
+            avoid.push_back(kv.second.ship->GetPosition());
     if (!hot.empty())
     {
-        int pirates = (int)roundf(agg.pirates);
+        const int pirates = (int)roundf(agg.pirates);
         for (int i = 0; i < pirates; i++)
         {
-            Vector2              spot = PirateSpawnPos(hot, {});
+            const Vector2 base = pick(hot);
+            Vector2       spot = around(base, 3000.0f);
+            for (int attempt = 0; attempt < 4 && !Clear(spot, avoid); attempt++)
+                spot = around(base, 3000.0f);
             std::vector<Vector2> patrol = { spot };
             SpawnNpcInto(st, spot, FactionId::Pirates, NpcRole::Pirate, patrol);
         }
     }
+}
+
+void Simulation::Warm(SystemState& st)
+{
+    st.warmUntil = std::max(st.warmUntil, time_ + COOL_AFTER);
+    if (st.populated)
+        return;
+    // A cold system's bodies are placed once a coarse pass; ships are put among them where
+    // they are now.
+    Orbits::Place(st.entities, time_);
+    HydrateSystem(st);
+    st.populated = true;
+    // The aggregate keeps fractions of a ship; the system now holds whole ones. Counted
+    // here, so the next pass does not read the rounding as ships lost.
+    RecountAgg(st);
+}
+
+void Simulation::Cool(SystemState& st)
+{
+    // What is here is what the aggregate says from now on. The ships themselves go: nobody
+    // is left to see them, and a system that warms again makes them afresh.
+    RecountAgg(st);
+    st.entities.erase(std::remove_if(st.entities.begin(), st.entities.end(),
+                                     [](const std::unique_ptr<Entity>& e)
+                                     { return e->GetKind() == EntityKind::Npc; }),
+                      st.entities.end());
+    st.defenceCooldown.clear();
+    st.populated = false;
 }
 
 void Simulation::AttachRegion(uint64_t seed, const std::string& systemsDir, int systems)
@@ -283,11 +343,9 @@ void Simulation::MaterializeAllSystems(const std::string& systemsDir)
             for (const auto& e : st.entities)
                 ScheduleStructure(info.id, *e);
         }
-        if (!st.populated)
-        {
-            HydrateSystem(st);
-            st.populated = true;
-        }
+        // Ships only where somebody is (#295): a system warms when a player arrives.
+        if (allHot_)
+            Warm(st);
     }
 }
 

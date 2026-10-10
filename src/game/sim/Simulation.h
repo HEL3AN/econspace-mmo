@@ -174,8 +174,8 @@ public:
                             std::vector<FireEvent>* fires, float dt);
 
     // One full step of a system: AI, movement, combat, cleanup of the fallen. `players`
-    // is whoever happens to be standing in it, which is usually nobody -- a system with
-    // no one in it is the normal case, not a lesser kind of step (#3).
+    // is whoever happens to be standing in it. A cold system (#295) has no ships to step
+    // and is kept by the coarse pass instead: this does nothing for one.
     void StepSystemAgents(SystemState& st, const std::vector<PlayerPresence>& players,
                           std::vector<FireEvent>* fires, float dt);
 
@@ -199,7 +199,8 @@ public:
     // Creates an NPC with a stable id and puts it into the system.
     void SpawnNpcInto(SystemState& st, Vector2 pos, FactionId faction, NpcRole role,
                       std::vector<Vector2> waypoints);
-    // Recounts live NPCs by role into the system aggregate.
+    // Recounts live NPCs by role into the system aggregate. A cold system has none to count:
+    // its aggregate is the truth, and this leaves it alone.
     void RecountAgg(SystemState& st);
     // Spawn director for one system: tops the population up to targets by security/controller,
     // accounting for the "pressure" from losses. avoid — the player's position (active system) or
@@ -223,9 +224,34 @@ public:
 
     // Materializes a system from its aggregate: spawn NPCs by role in suitable places.
     void HydrateSystem(SystemState& st);
-    // M0: loads the static objects of all systems from systemsDir (with a trailing '/')
-    // and populates them with NPCs. Used by both the client (Game) and the server (econserver).
+    // Loads the static objects of all systems from systemsDir (with a trailing '/'): the
+    // stations, bodies, gates and structures, and nothing that flies. Ships are made only
+    // where a player is (Warm), unless every system is kept hot (SetAllHot).
     void MaterializeAllSystems(const std::string& systemsDir);
+
+    // --- Cold systems (#295) ---
+    // A system is hot -- its NPC ships real and stepped every tick -- while a player is in it
+    // and for COOL_AFTER seconds after the last one has gone; otherwise it is cold, and its
+    // population, its losses, its market and its bodies are kept by arithmetic once a coarse
+    // pass. Production, presence, the faction step and the macro drift read the aggregates
+    // either way, so the world does not stop where nobody is; it only stops being drawn.
+    //
+    // A minute: a player who jumps out and straight back -- running from a fight, or looking
+    // through a gate -- finds the same ships where they were, and so does one whose
+    // connection dropped and came back. Not much longer, so that somebody flying a route
+    // leaves at most the last system or two of it hot behind them: what an empty server
+    // costs is set by where its players are, not by how big the map is.
+    static constexpr float COOL_AFTER = 60.0f;
+    static bool            IsHot(const SystemState& st) { return st.populated; }
+    // Makes a system hot now if it is not -- its ships made from its aggregate, among its
+    // bodies where the clock puts them -- and keeps it hot for COOL_AFTER from now. Every
+    // tick a player is in a system does this for it (MaintainWorld), and so does arriving.
+    void Warm(SystemState& st);
+    // Every system hot all the time, as before cold systems existed: for comparing the two
+    // (`econserver <ticks> --hot`, `macrobench --hot`) and for tests about ships in a system
+    // nobody is in. Set before MaterializeAllSystems.
+    void SetAllHot(bool all) { allHot_ = all; }
+    bool AllHot() const { return allHot_; }
 
     // M4: builds the WORLD snapshot of a system (entities with id/kind/position, etc.) for
     // the client. Player state and fire events are added by the caller (the client owns the
@@ -452,7 +478,7 @@ public:
 
     // Server-side active-system change (for the headless host on a jump): makes destId
     // active and teleports the player to the gate leading back to fromId (as the arrival
-    // point). Systems are already materialized, so no hydrate is needed.
+    // point). A cold destination warms (#295): its ships are made before the player sees it.
     // fromId is by value on purpose: callers pass s.systemId, which this overwrites (#310).
     void ServerEnterSystem(ClientSession& s, const std::string& destId, std::string fromId);
 
@@ -536,6 +562,38 @@ public:
     }
 
 private:
+    // What the spawn director keeps in a system (#295): how many ships of each role, after
+    // the pressure of recent losses, and under whose flags. Zero for a role the system has
+    // nowhere to put. A hot system is topped up towards it a couple of ships a pass; a cold
+    // one is simply that.
+    struct Population
+    {
+        int       traders = 0, miners = 0, police = 0, pirates = 0;
+        FactionId policeFaction = FactionId::TradersGuild;
+        FactionId tradeFaction = FactionId::Independent;
+    };
+    // Where a system has room for each role: lane ends (stations and gates), belts, and
+    // whether anywhere is dark enough for pirates (a belt, or a gate into danger). A hot
+    // system reads it off the nodes it gathers; a cold one off its profile and its
+    // neighbours, without walking its objects.
+    struct Room
+    {
+        size_t lanes = 0, fields = 0;
+        bool   dark = false;
+    };
+    static Room RoomOf(const SpawnNodes& nd);
+    Room        RoomOf(const SystemState& st) const;
+    Population  PopulationOf(const SystemState& st, const Room& room) const;
+    // A cold system's coarse pass (#295): what its ships would have done to each other in
+    // the time, as expected losses -- counted as losses are in a hot one -- and then the
+    // spawn director's arithmetic in place of its ships.
+    void ColdLosses(SystemState& st);
+    void ColdTopUp(SystemState& st);
+    // A hot system nobody has been in for COOL_AFTER: its ships are counted into the
+    // aggregate and let go.
+    void Cool(SystemState& st);
+    bool allHot_ = false;
+
     // A system's static layer was just built from its document: give the objects that may
     // change their keys, then replay what the save said had changed (#38).
     void KeyWorldObjects(SystemState& st);
