@@ -331,6 +331,9 @@ void Editor::Run()
             {
                 Image shot = LoadImageFromTexture(shotTarget_.texture);
                 ImageFlipVertical(&shot);  // a render texture is stored upside down
+                // Without alpha: a translucent part writes alpha into the target, and a viewer then
+                // shows dark overlays as grey blobs over a checkerboard.
+                ImageFormat(&shot, PIXELFORMAT_UNCOMPRESSED_R8G8B8);
                 if (!ExportImage(shot, shotPath_.c_str()))
                     TraceLog(LOG_WARNING, "Could not write %s", shotPath_.c_str());
                 UnloadImage(shot);
