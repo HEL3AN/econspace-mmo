@@ -274,6 +274,17 @@ void Editor::Run()
             if (treatmentPanelOpen_)
                 DrawTreatmentSettings();
         }
+        else if (mode_ == Mode::Modules)
+        {
+            const float wheel = GetMouseWheelMove();
+            if (wheel != 0.0f)
+                modulesZoom_ =
+                    fmaxf(0.25f, fminf(8.0f, modulesZoom_ * (wheel > 0 ? 1.2f : 1.0f / 1.2f)));
+            treatment_.Begin(screenWidth_, screenHeight_);
+            DrawModules(false);
+            treatment_.End();
+            DrawModules(true);
+        }
         else if (mode_ == Mode::Survey)
         {
             // The systems through the chain, the labels and flags after it, as the gallery.

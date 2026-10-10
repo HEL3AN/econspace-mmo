@@ -156,6 +156,14 @@ struct Part
     // further on, in the object's radii, before the object turns.
     int     rowCount = 1;
     Vector2 rowStep = { 0.0f, 0.0f };
+
+    // A module from the library in place of a form (#240): the part is placed, turned,
+    // repeated, mirrored and rowed as any part is, and what is drawn there is one of the
+    // module's variants at `scale` of the object's radius. `variant` pins one; empty lets
+    // the object's seed choose.
+    std::string module;
+    std::string variant;
+    float       scale = 0.1f;
 };
 
 struct Shape

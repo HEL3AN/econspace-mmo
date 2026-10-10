@@ -16,6 +16,7 @@ int main(int argc, char** argv)
     // that is how a screenshot of one is taken. `gallery card ID|N [zoom Z]` does the same
     // for one archetype drawn large (#194), by id or registry index, at Z times fitted.
     bool        survey = false;
+    bool        modules = false;
     bool        gallery = false;
     uint64_t    seed = 1;
     std::string card;
@@ -28,6 +29,8 @@ int main(int argc, char** argv)
             gallery = true;
             editor.OpenGallery();
         }
+        else if (arg == "modules")
+            modules = true;  // the module library, every variant (#240)
         else if (arg == "shapes")
             editor.UseShapes();
         else if (arg == "settings")
@@ -43,7 +46,9 @@ int main(int argc, char** argv)
         else if (arg == "zoom" && i + 1 < argc)
             zoom = (float)std::atof(argv[++i]);
     }
-    if (survey)
+    if (modules)
+        editor.OpenModules(zoom > 0.0f ? zoom : 1.0f);
+    else if (survey)
         editor.OpenSurvey(seed, card.empty() ? -1 : std::atoi(card.c_str()));
     else if (gallery && !card.empty())
         editor.FocusGallery(card, zoom > 0.0f ? zoom : 1.0f);

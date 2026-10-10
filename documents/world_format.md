@@ -73,6 +73,32 @@ on their map too.
 
 ---
 
+## modules.json — the module library (#240)
+
+Recognisable things -- a hatch, a turret, a dish, a tank, a row of windows -- written once,
+in several **variants**, and placed on objects by name. Loaded before `archetypes.json`
+(from the same directory). `worldeditor modules` shows every variant side by side.
+
+```json
+{ "modules": [
+    { "id": "hatch", "tags": ["opening"], "sockets": ["top", "edge"],
+      "variants": [ { "id": "round", "shape": [ ...parts, in the module's own unit, radius 1... ] } ] } ] }
+```
+
+A part in an archetype's shape uses one instead of a form:
+
+| Field | Meaning |
+|------|----------|
+| `module` | the module's id; unknown is a load error |
+| `variant` | pin one variant; absent, the object's **seed** picks (so two of a kind differ) |
+| `scale` | the module's radius as a fraction of the object's (default 0.1) |
+
+`at`, `angle`, `repeat`, `mirror` and `row` place the module as a whole. A module's own
+parts may use `row` but not `repeat`, `mirror`, orbits or the sphere (those place things
+about the object's centre). A module is drawn once it is about 10 px across on screen
+(its parts' own `minPixels` count in the module's pixels), so it fills in as you approach.
+`tags` and `sockets` are for the automatic placement of phase 3 of #240.
+
 ## pins.json — hand-written exceptions to the generated region (#147)
 
 The generated region is the default, not a monopoly. A starting point, a set piece, or

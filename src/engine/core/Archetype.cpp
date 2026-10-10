@@ -1,5 +1,7 @@
 #include "core/Archetype.h"
 
+#include "render/Modules.h"
+
 #include "core/JsonKeys.h"
 #include "entities/Planet.h"
 #include "entities/Station.h"
@@ -313,6 +315,20 @@ namespace Archetypes
 bool Load(const std::string& path)
 {
     g_error.clear();
+
+    // The module library first, from beside this file: archetypes name modules, and a
+    // part naming one that is not loaded is a load error (#240).
+    {
+        const size_t      slash = path.find_last_of("/\\");
+        const std::string dir =
+            slash == std::string::npos ? std::string() : path.substr(0, slash + 1);
+        std::string why;
+        if (!Render::Modules::Load(dir + "modules.json", why))
+        {
+            g_error = why;
+            return false;
+        }
+    }
 
     std::ifstream f(path);
     if (!f.is_open())

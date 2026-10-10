@@ -14,6 +14,7 @@
 // that have to read at a glance, and there is no way to ask an entity to be damaged.
 
 #include "Editor.h"
+#include "render/Modules.h"
 
 #include "core/ArchetypeEdit.h"
 #include "render/TreatmentPanel.h"
@@ -759,4 +760,77 @@ void Editor::DrawTreatmentSettings()
 
     Ui::Text("F10 closes and saves", (int)panel.x + 12, (int)(panel.y + panel.height - 16.0f), 10,
              Ui::TEXT_DIM);
+}
+
+// ---- The module library (#240) ----------------------------------------------------------
+//
+// Every variant of every module on one sheet, lit as the gallery lights an object, so the
+// library is judged as a library: does a hatch read as a hatch, do its variants differ
+// enough, does one style hold across all of them. `labels` is the second pass, drawn after
+// the screen treatment like every tool.
+void Editor::DrawModules(bool labels)
+{
+    // Fitted so the whole library is on one screen at zoom 1; the wheel then enlarges.
+    const int total = []
+    {
+        int n = 0;
+        for (const auto& m : Render::Modules::All())
+            n += (int)m.variants.size();
+        return n;
+    }();
+    const float fit = sqrtf((float)(screenWidth_ - 48) * (float)(screenHeight_ - 80) /
+                            (float)(total > 0 ? total : 1)) *
+                      0.85f;
+    const float cell = fminf(170.0f, fit) * modulesZoom_;
+    const float left = 24.0f, top = 70.0f;
+    const int   columns = (int)fmaxf(1.0f, ((float)screenWidth_ - left * 2.0f) / cell);
+    if (labels)
+    {
+        Ui::Text("MODULES", (int)left, 18, 22, Ui::ACCENT);
+        Ui::Text(TextFormat("%d modules   wheel: zoom   F2: backend",
+                            (int)Render::Modules::All().size()),
+                 (int)left + 140, 24, 14, Ui::TEXT_DIM);
+    }
+
+    // One shape per card, kept alive for the frame: an item borrows its shape.
+    std::vector<Render::Shape>                   shapes;
+    std::vector<std::pair<std::string, Vector2>> names;
+    for (const Render::Module& m : Render::Modules::All())
+        for (const Render::ModuleVariant& v : m.variants)
+        {
+            Render::Part p;
+            p.module = m.id;
+            p.variant = v.id;
+            p.scale = 1.0f;
+            Render::Shape sh;
+            sh.parts.push_back(p);
+            shapes.push_back(sh);
+            names.push_back({ m.id + " / " + v.id, { 0.0f, 0.0f } });
+        }
+
+    Camera2D cam{};
+    cam.zoom = 1.0f;
+    for (size_t i = 0; i < shapes.size(); i++)
+    {
+        const int     col = (int)i % columns, row = (int)i / columns;
+        const Vector2 centre = { left + cell * ((float)col + 0.5f),
+                                 top + cell * ((float)row + 0.5f) };
+        if (labels)
+        {
+            DrawRectangleLinesEx(
+                { centre.x - cell * 0.47f, centre.y - cell * 0.47f, cell * 0.94f, cell * 0.94f },
+                1.0f, Fade(Ui::PANEL_BORDER, 0.6f));
+            Ui::Text(names[i].first.c_str(), (int)(centre.x - cell * 0.44f),
+                     (int)(centre.y + cell * 0.36f), 12, Ui::TEXT_DIM);
+            continue;
+        }
+        Render::Item it;
+        it.pos = centre;
+        it.size = cell * 0.3f;
+        it.color = { 168, 168, 176, 255 };
+        it.material = "hull";
+        it.shape = &shapes[i];
+        it.heading = 0.0f;
+        Render::Present({ it }, GalleryLighting(centre, it.size), cam, *backend_);
+    }
 }

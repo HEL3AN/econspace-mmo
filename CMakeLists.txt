@@ -130,6 +130,7 @@ add_library(engine STATIC
     src/engine/economy/Resource.cpp
     src/engine/render/Textures.cpp
     src/engine/render/Scene.cpp        # what an object looks like, apart from who draws it (#35)
+    src/engine/render/Modules.cpp      # the module library: things placed by name, in variants (#240)
     src/engine/render/Lighting.cpp     # where a system's light comes from, and how much (#119)
     src/engine/render/Silhouette.cpp       # what an object is made of, as data (#122)
     src/engine/render/CameraRig.cpp        # the player's camera, not the ship's (#158)

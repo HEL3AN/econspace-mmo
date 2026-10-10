@@ -30,6 +30,14 @@ public:
     // Opens straight into the gallery (#118). `worldeditor gallery` is how a look gets
     // tuned, and the tool for judging one should not make you cross a star system first.
     void OpenGallery();
+    // `worldeditor modules [zoom Z]`: the module library as a sheet of cards (#240).
+    void OpenModules(float zoom)
+    {
+        mode_ = Mode::Modules;
+        modulesZoom_ = zoom;
+    }
+    void  DrawModules(bool labels);
+    float modulesZoom_ = 1.0f;
 
     // Starts on the shape backend instead of glyphs. F2 still switches; this is for
     // opening straight into the one you meant to look at.
@@ -219,7 +227,8 @@ private:
         System,   // one star system, the objects in it
         Galaxy,   // universe.json: the nodes and the links between them
         Gallery,  // every archetype at once, for judging a look (#118)
-        Survey    // many generated systems at once, for judging the rules (#141)
+        Survey,   // many generated systems at once, for judging the rules (#141)
+        Modules   // the module library, every variant side by side (#240)
     };
     Mode mode_ = Mode::System;
 
