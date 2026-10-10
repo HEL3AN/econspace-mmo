@@ -263,6 +263,16 @@ bool TcpListener::Listen(unsigned short port, Exposure exposure)
         CloseSocket(s);
         return false;
     }
+    // Port 0 asks the operating system for any free port; read back which one it chose,
+    // so a test or a script can listen without guessing at a port nobody holds (#306).
+    sockaddr_in bound;
+    socklen_t   len = sizeof(bound);
+    if (getsockname(s, (sockaddr*)&bound, &len) != 0)
+    {
+        CloseSocket(s);
+        return false;
+    }
+    port_ = ntohs(bound.sin_port);
     SetNonBlocking(s);
     sock_ = (unsigned long long)s;
     return true;
