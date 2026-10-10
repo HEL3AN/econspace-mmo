@@ -79,6 +79,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
                 const NpcShip* n = static_cast<const NpcShip*>(e.get());
                 es.faction = n->GetFaction();
                 es.role = (int)n->GetRole();
+                es.design = n->GetDesign();
                 es.heading = n->GetHeading();
                 es.hullFrac = n->GetMaxHull() > 0.0f ? n->GetHull() / n->GetMaxHull() : 0.0f;
                 break;

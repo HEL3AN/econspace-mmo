@@ -115,7 +115,7 @@ TEST_CASE("the shipped registry loads and covers every kind the world contains")
 
         // Ships turn; scenery does not.
         CHECK(Archetypes::Find("ship.player")->visual.style == GlyphStyle::Directional);
-        CHECK(Archetypes::Find("ship.npc")->visual.style == GlyphStyle::Directional);
+        CHECK(Archetypes::Find("ship.hauler")->visual.style == GlyphStyle::Directional);
         CHECK(Archetypes::Find("station.trade_hub")->visual.style == GlyphStyle::Point);
         CHECK(Archetypes::Find("star.yellow")->visual.style == GlyphStyle::Point);
     }

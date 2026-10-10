@@ -28,9 +28,9 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    17;  // 17: dismantling, a structure's blueprint and damage, the attack order (#39);
-         // 16: follow (nav 5, hold 3) and hold orders (#298); 15: structures and deploying
-         // them (#39); 14: layout revisions and LayoutDelta (#38)
+    18;  // 18: an NPC's ship design (#279); 17: dismantling, a structure's blueprint and
+         // damage, the attack order (#39); 16: follow (nav 5, hold 3) and hold orders (#298);
+         // 15: structures and deploying them (#39); 14: layout revisions and LayoutDelta (#38)
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).
@@ -168,6 +168,9 @@ struct EntitySnapshot
     float       hullFrac = 1.0f;  // hull fraction 0..1 (for combatants)
     int         ore = -1;         // ResourceType as int for fields (-1 — not a field)
     std::string name;
+    // The ship design an NPC flies (#279), by id in data/ships.json; empty for anything else.
+    // It is what the client draws, so it is the server's word, not a guess from the role.
+    std::string design;
 };
 
 // Player ship state in the snapshot.

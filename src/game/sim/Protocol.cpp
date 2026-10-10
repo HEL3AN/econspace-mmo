@@ -439,6 +439,8 @@ std::string EncodeSnapshot(const Snapshot& s)
             ej["ore"] = e.ore;
         if (!e.name.empty())
             ej["name"] = e.name;
+        if (!e.design.empty())
+            ej["design"] = e.design;
         ents.push_back(std::move(ej));
     }
     j["ents"] = ents;
@@ -544,6 +546,7 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
             e.hullFrac = ej.value("hullFrac", 1.0f);
             e.ore = ej.value("ore", -1);
             e.name = ej.value("name", std::string());
+            e.design = ej.value("design", std::string());
             out.entities.push_back(e);
         }
 
