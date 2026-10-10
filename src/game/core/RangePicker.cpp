@@ -58,7 +58,7 @@ void RangePicker::Draw()
         const char* label;
         int         navMode;
     };
-    static const Choice choices[] = { { "Orbit", 3 }, { "Keep", 4 }, { "Follow", 5 } };
+    static const Choice choices[] = { { "Orbit", 3 }, { "Hold", 4 }, { "Follow", 5 } };
     const float         bw = (b.width - 20.0f - 2 * 6.0f) / 3.0f;
     for (int i = 0; i < 3; i++)
     {

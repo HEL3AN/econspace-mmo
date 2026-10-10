@@ -68,14 +68,17 @@ public:
     int      GetHoldTargetId() const { return holdTargetId_; }
     float    GetHoldRange() const { return holdRange_; }
     // Aims the autopilot at where the ship should be a moment from now. Called once a tick
-    // while a hold is running and the target's position is known. `targetVel` is used by a
-    // follow only: the ship flies the target's own velocity plus a correction towards the
-    // ring, so it stays with something that moves instead of always arriving late.
+    // while a hold is running and the target's position is known. The ship flies what of
+    // `targetVel` the hold asks it to match plus a correction towards the ring (#309), so it
+    // stays with something that moves instead of always arriving late.
     void UpdateHold(Vector2 targetPos, Vector2 targetVel = { 0.0f, 0.0f });
 
     // How far ahead on the circle an orbiting ship aims. Large enough that it keeps moving
     // rather than converging on a point, small enough that it does not spiral outward.
     static constexpr float ORBIT_LEAD_DEGREES = 28.0f;
+    // The share of the stabilizer's push a hold plans to brake with (#309). The rest is
+    // headroom for the target changing course under it.
+    static constexpr float HOLD_BRAKE_SHARE = 0.5f;
 
     // Warp jump: fast travel to target, dropping out at dropDistance.
     // `via`, when given, is a point the warp turns at on the way -- around a body rather
@@ -223,9 +226,9 @@ private:
     int      holdTargetId_ = 0;
     float    holdRange_ = 0.0f;
     float    apStopDistance_ = 0.0f;
-    // A follow's feed-forward: the velocity the autopilot adds to its own, so that "at the
-    // aim point" means moving with the target rather than stopped where it was (#298).
-    // Zero for every other kind of flight.
+    // A hold's feed-forward: the velocity the autopilot adds to its own, so that "at the
+    // aim point" means moving with the target rather than stopped where it was (#298,
+    // #309). Zero for every other kind of flight.
     Vector2 apCarry_ = { 0.0f, 0.0f };
 
 public:

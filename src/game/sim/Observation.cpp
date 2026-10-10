@@ -400,12 +400,12 @@ std::string Describe(const View& view, Detail detail)
                p.stabilizer ? "on" : "off", p.weaponOn ? "ARMED" : "off", p.mining ? "on" : "off",
                p.autopilot ? "  autopilot engaged" : "");
     // A standing hold runs until something releases it (#157, #298), so say it is running.
-    if (p.holdMode != 0)
+    // A keep is said as what it does (#309): this distance from that object.
+    if (p.holdMode == 2)
+        out += Fmt("       holding: %.0f from object %d\n", p.holdRange, p.holdTargetId);
+    else if (p.holdMode != 0)
         out += Fmt("       holding: %s object %d at %.0f\n",
-                   p.holdMode == 1   ? "orbiting"
-                   : p.holdMode == 2 ? "keeping at range of"
-                                     : "following",
-                   p.holdTargetId, p.holdRange);
+                   p.holdMode == 1 ? "orbiting" : "following", p.holdTargetId, p.holdRange);
 
     // Cargo by name, so an agent can decide what to sell without a second call.
     if (!p.cargoByType.empty())

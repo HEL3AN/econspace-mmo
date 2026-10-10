@@ -922,13 +922,16 @@ void Game::DrawHud()
     // runs until something releases it, so it has to be visible the whole time it does.
     if (playerShip_->GetHoldMode() != HoldMode::None)
     {
-        const HoldMode hm = playerShip_->GetHoldMode();
-        const char*    verb = hm == HoldMode::Orbit  ? "ORBITING"
-                              : hm == HoldMode::Keep ? "KEEPING AT RANGE OF"
-                                                     : "FOLLOWING";
-        const Entity*  t = FindEntityById(playerShip_->GetHoldTargetId());
-        std::string    line = std::string(verb) + "  " + (t ? t->GetName() : std::string("?")) +
-                              TextFormat("  at %.0f", playerShip_->GetHoldRange());
+        // Said as what it does (#309): a keep holds a distance from the target, and "keeping
+        // at range" left the player to guess which distance and why the ship moved.
+        const HoldMode    hm = playerShip_->GetHoldMode();
+        const Entity*     t = FindEntityById(playerShip_->GetHoldTargetId());
+        const std::string name = t ? t->GetName() : std::string("?");
+        const float       range = playerShip_->GetHoldRange();
+        std::string       line =
+            hm == HoldMode::Orbit  ? TextFormat("ORBITING %s  at %.0f", name.c_str(), range)
+            : hm == HoldMode::Keep ? TextFormat("HOLDING %.0f FROM %s", range, name.c_str())
+                                   : TextFormat("FOLLOWING %s  at %.0f", name.c_str(), range);
         if (t != nullptr)
             line += TextFormat("  (now %.0f)",
                                Vector2Distance(t->GetPosition(), playerShip_->GetPosition()));
