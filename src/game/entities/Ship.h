@@ -41,8 +41,9 @@ public:
     // Whose ship this is. The server sets it from the account name when a player joins,
     // and it travels in the snapshot so other players see a name rather than a shape
     // (#4). Empty on the client's own ship: it does not need to be told who it is.
-    void        SetPilotName(const std::string& n) { pilotName_ = n; }
-    std::string GetName() const override { return pilotName_.empty() ? "Ship" : pilotName_; }
+    void               SetPilotName(const std::string& n) { pilotName_ = n; }
+    const std::string& GetPilotName() const { return pilotName_; }
+    std::string        GetName() const override { return pilotName_.empty() ? "Ship" : pilotName_; }
 
     // Control intents for the current frame (turn: -1 left, +1 right).
     void SetControls(bool thrust, float turn, bool brake);

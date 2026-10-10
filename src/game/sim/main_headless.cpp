@@ -150,6 +150,8 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
             sim.SwitchShip(s, c.refitShip);  // only to a ship this account owns (#5)
         if (c.buyShip >= 0)
             sim.BuyShip(s, c.buyShip);  // purchase (deducts money)
+        if (!c.nameSystem.empty())
+            sim.NameSystem(s, c.nameSystem);  // as the discoverer (#145)
         if (c.payBountyFaction >= 0)
             sim.PayBounty(s, (FactionId)c.payBountyFaction);  // clear bounty
         if (c.acceptOffer >= 0)

@@ -285,6 +285,13 @@ void Game::HandleInput(float dt)
         startWarpFrames_ = -1;
     }
 
+    // Naming a system takes the keyboard: its letters are not hotkeys (#145).
+    if (naming_)
+    {
+        HandleNaming();
+        return;
+    }
+
     // The context menu is handled first — it sits above the whole UI.
     // We call all handlers explicitly so short-circuit || doesn't skip them.
     bool overMenu = contextMenu_.Update();
@@ -322,6 +329,15 @@ void Game::HandleInput(float dt)
         galaxyMapOpen_ = !galaxyMapOpen_;
     if (galaxyMapOpen_ && IsKeyPressed(KEY_ESCAPE))
         galaxyMapOpen_ = false;
+    if (galaxyMapOpen_ && IsKeyPressed(KEY_N) && CanNameHere())
+    {
+        naming_ = true;
+        nameBuf_.clear();
+        while (GetCharPressed() != 0)
+        {
+            // the N that opened the field is not the name's first letter
+        }
+    }
 
     // Over a window, the wheel and the drag go to the window (the radar has its own).
     float wheel = GetMouseWheelMove();
@@ -671,4 +687,32 @@ void Game::OpenContextMenuAt(Vector2 worldPoint)
     }
 
     contextMenu_.Open(GetMousePosition(), std::move(items));
+}
+
+bool Game::CanNameHere() const
+{
+    for (const WorldLoader::SystemInfo& si : universe_.systems)
+        if (si.id == snapshot_.systemId)
+            return !pilotName_.empty() && si.discoverer == pilotName_ && si.designation.empty();
+    return false;
+}
+
+void Game::HandleNaming()
+{
+    for (int c = GetCharPressed(); c != 0; c = GetCharPressed())
+        if (c >= 32 && c < 127 && nameBuf_.size() < 24)
+            nameBuf_ += (char)c;
+    if (IsKeyPressed(KEY_BACKSPACE) && !nameBuf_.empty())
+        nameBuf_.pop_back();
+    if (IsKeyPressed(KEY_ESCAPE))
+        naming_ = false;
+    if (IsKeyPressed(KEY_ENTER) && !nameBuf_.empty())
+    {
+        // The server checks it and says why not in the journal, which flashes here; a name
+        // it accepts comes back to everyone in the galaxy index.
+        Proto::Command c;
+        c.nameSystem = nameBuf_;
+        clientLink_->Send(Proto::EncodeCommand(c));
+        naming_ = false;
+    }
 }

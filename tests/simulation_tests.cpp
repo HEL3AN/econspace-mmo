@@ -1549,3 +1549,77 @@ TEST_CASE("a player is not respawned beside a station that would shoot them (#22
     f.sim.ServerRespawnPlayer(f.s);
     CHECK(Vector2Distance(f.s.ship->GetPosition(), at) > reach + 10000.0f);
 }
+
+TEST_CASE("whoever gets there first names it, once, for everyone (#145)")
+{
+    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    Simulation        sim;
+    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    sim.AttachRegion(7, systems);
+    sim.Seed(1234u);
+    sim.InitGalaxy();
+    sim.MaterializeAllSystems(systems);
+    const std::string home = sim.Universe().startId;
+    std::string       entry;
+    for (const auto& l : sim.Universe().links)
+        if (l.a == home && l.b.rfind("w1-", 0) == 0)
+            entry = l.b;
+        else if (l.b == home && l.a.rfind("w1-", 0) == 0)
+            entry = l.a;
+    REQUIRE_FALSE(entry.empty());
+
+    auto pilot = [&](const char* name) -> ClientSession&
+    {
+        ClientSession& s =
+            sim.CreateSession(home, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+        s.ship->SetPilotName(name);
+        return s;
+    };
+    auto lastNotice = [](ClientSession& s)
+    { return s.EventsSince(0).empty() ? std::string() : s.EventsSince(0).back().text; };
+
+    ClientSession& ann = pilot("ann");
+    ClientSession& bo = pilot("bo");
+    CHECK_FALSE(sim.NameSystem(ann, "Haven"));  // known space has its names
+    sim.ServerEnterSystem(ann, entry, home);    // first in
+    sim.ServerEnterSystem(bo, entry, home);
+
+    CHECK_FALSE(sim.NameSystem(bo, "Bo's Rest"));  // not the discoverer
+    CHECK(lastNotice(bo).find("ann") != std::string::npos);
+    CHECK_FALSE(sim.NameSystem(ann, "x"));              // too short
+    CHECK_FALSE(sim.NameSystem(ann, "9 Lives"));        // not a letter first
+    CHECK_FALSE(sim.NameSystem(ann, "Haven<script>"));  // not a name
+    CHECK_FALSE(sim.NameSystem(ann, "helios core"));    // taken, whatever the case
+    CHECK(sim.NameSystem(ann, "Haven"));
+    CHECK_FALSE(sim.NameSystem(ann, "Other Haven"));  // once
+
+    // Everyone sees it, with its designation beside it, and the news says who.
+    CHECK(sim.TakeChartsChanged());
+    const WorldLoader::Universe known = sim.KnownUniverse();
+    bool                        seen = false;
+    for (const auto& si : known.systems)
+        if (si.id == entry)
+        {
+            seen = true;
+            CHECK(si.name == "Haven");
+            CHECK(si.designation.rfind("W-1.", 0) == 0);
+            CHECK(si.discoverer == "ann");
+        }
+    CHECK(seen);
+    CHECK(sim.Events().back().find("Haven, named by ann") != std::string::npos);
+
+    // And it is kept: world state, in the world save.
+    const std::string path = "names_test_world.json";
+    sim.SaveWorld(path);
+    Simulation again;
+    again.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    again.AttachRegion(7, systems);
+    REQUIRE(again.LoadWorld(path) == Save::Result::Ok);
+    bool kept = false;
+    for (const auto& si : again.KnownUniverse().systems)
+        kept = kept || (si.id == entry && si.name == "Haven");
+    CHECK(kept);
+    std::remove(path.c_str());
+}

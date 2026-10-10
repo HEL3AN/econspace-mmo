@@ -75,6 +75,12 @@ struct SystemAggregate
     // take it. Tau Verge is held -- by the Independents -- and only an enemy of theirs
     // may. Saved.
     bool claimed = true;
+
+    // Who got here first, and what they called it (#145). A system beyond the wormhole
+    // has a designation until its discoverer names it; the name is world state, seen by
+    // everyone and kept. Saved.
+    std::string discoverer;
+    std::string givenName;
     // Ships destroyed since the last faction step, by side -- transient.
     float     lostPirates = 0.0f;
     float     lostPolice = 0.0f;

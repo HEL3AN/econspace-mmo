@@ -214,6 +214,8 @@ std::string EncodeCommand(const Command& c)
     j["refit"] = c.refitShip;
     j["buy"] = c.buyShip;
     j["payB"] = c.payBountyFaction;
+    if (!c.nameSystem.empty())
+        j["nameSys"] = c.nameSystem;
     j["dbgMoney"] = c.debugMoney;
     j["acceptM"] = c.acceptOffer;
     j["completeM"] = c.completeMission;
@@ -259,6 +261,7 @@ bool DecodeCommand(const std::string& s, Command& out)
     out.refitShip = j.value("refit", -1);
     out.buyShip = j.value("buy", -1);
     out.payBountyFaction = j.value("payB", -1);
+    out.nameSystem = j.value("nameSys", std::string());
     out.debugMoney = j.value("dbgMoney", false);
     out.acceptOffer = j.value("acceptM", -1);
     out.completeMission = j.value("completeM", -1);
@@ -605,7 +608,9 @@ std::string EncodeUniverse(const WorldLoader::Universe& u)
                         { "pos", V2(si.mapPos) },
                         { "sec", si.security },
                         { "owner", si.owner },
-                        { "charted", si.charted } });
+                        { "charted", si.charted },
+                        { "desig", si.designation },
+                        { "found", si.discoverer } });
     json links = json::array();
     for (const WorldLoader::SystemLink& l : u.links)
         links.push_back(json::array({ l.a, l.b }));
@@ -634,6 +639,8 @@ bool DecodeUniverse(const std::string& s, WorldLoader::Universe& out)
             si.security = sj.value("sec", 0.5f);
             si.owner = sj.value("owner", std::string());
             si.charted = sj.value("charted", true);
+            si.designation = sj.value("desig", std::string());
+            si.discoverer = sj.value("found", std::string());
             out.systems.push_back(si);
         }
     if (j.contains("links") && j["links"].is_array())
