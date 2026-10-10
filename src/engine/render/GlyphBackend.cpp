@@ -645,6 +645,7 @@ void ShapeBackend::DrawShape(const Item& item, Color c, bool shaded, const Light
             return;
 
         case EntityKind::Station:
+        case EntityKind::Structure:
             if (Tex::DrawSprite(item.sprite.c_str(), item.pos, item.size, 0.0f, WHITE))
                 return;
             DrawPolyLines(item.pos, 6, item.size, 0.0f, c);

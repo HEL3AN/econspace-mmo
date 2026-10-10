@@ -17,6 +17,7 @@
 #include "entities/Ship.h"
 #include "entities/Star.h"
 #include "entities/Station.h"
+#include "entities/Structure.h"
 
 #include <cmath>
 
@@ -47,7 +48,8 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
                 case EntityKind::Field:
                 case EntityKind::Gate:
                 case EntityKind::Nebula:
-                case EntityKind::Derelict: continue;
+                case EntityKind::Derelict:
+                case EntityKind::Structure: continue;
                 default: break;
             }
 
@@ -249,6 +251,17 @@ static bool DescribeStatic(const Entity& e, Proto::EntityLayout& el)
             el.name = d.GetBaseName();
             el.reward = d.GetReward();
             el.looted = d.IsLooted();
+            break;
+        }
+        case EntityKind::Structure:
+        {
+            // What it is or will be, and when: a client wears the site's look until then and
+            // needs no word from the server when the moment passes (#39).
+            const Structure& t = static_cast<const Structure&>(e);
+            el.archetype = t.GetBuilds();
+            el.startedAt = t.IsBuilding() ? t.GetStartedAt() : 0.0;
+            el.completesAt = t.GetCompletesAt();
+            el.expiresAt = t.GetExpiresAt();
             break;
         }
         case EntityKind::Npc:         // dynamic: created by the client from the snapshot

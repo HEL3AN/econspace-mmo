@@ -10,6 +10,7 @@
 #include "entities/Nebula.h"
 #include "entities/Derelict.h"
 #include "entities/JumpGate.h"
+#include "entities/Structure.h"
 #include "core/Faction.h"
 #include "economy/Resource.h"
 #include "raylib.h"
@@ -159,7 +160,7 @@ static Vector2 PosOf(const json& o)
 }
 
 // Builds entities from already-parsed JSON. Order: star, planets, stations,
-// asteroid fields, nebulae, derelicts, gates — the editor relies on it (entity
+// asteroid fields, nebulae, derelicts, gates, structures — the editor relies on it (entity
 // indices correspond to JSON elements).
 std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
 {
@@ -268,6 +269,30 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
         }
     }
 
+    // What players built (#39), last so nothing the data writes moves in the list. Unlike the
+    // arrays above, an entry must say what it is: there is no ordinary structure for it to be.
+    if (data.contains("structures"))
+    {
+        for (const json& t : data["structures"])
+        {
+            const std::string id = t.value("archetype", std::string());
+            const Archetype*  a = Archetypes::Find(id);
+            if (a == nullptr || a->kind != EntityKind::Structure)
+            {
+                TraceLog(LOG_WARNING,
+                         "WorldLoader: structure '%s' names '%s', which is not a "
+                         "structure archetype -- skipped",
+                         t.value("name", std::string("?")).c_str(), id.c_str());
+                continue;
+            }
+            auto st = std::make_unique<Structure>(PosOf(t), (float)t.value("size", 0.0),
+                                                  t.value("name", a->name), id);
+            st->StartBuilding(t.value("startedAt", 0.0), t.value("completesAt", 0.0));
+            st->SetExpiresAt(t.value("expiresAt", 0.0));
+            entities.push_back(std::move(st));
+        }
+    }
+
     Orbits::Place(entities, 0.0);  // satellites without a "pos" need one before anything asks
     return entities;
 }
@@ -312,6 +337,24 @@ nlohmann::json WorldLoader::DescribeObject(const Entity& e, std::string& array)
             o["size"] = d.GetSize();
             o["reward"] = d.GetReward();
             break;
+        }
+        case EntityKind::Structure:
+        {
+            // Its time line is description, not state: a site is described as one, and a
+            // finished structure by what it is. Whose it is goes with the state.
+            const Structure& t = static_cast<const Structure&>(e);
+            array = "structures";
+            o["name"] = t.GetName();
+            o["size"] = t.GetSize();
+            o["archetype"] = t.GetBuilds();
+            if (t.IsBuilding())
+            {
+                o["startedAt"] = t.GetStartedAt();
+                o["completesAt"] = t.GetCompletesAt();
+            }
+            if (t.GetExpiresAt() > 0.0)
+                o["expiresAt"] = t.GetExpiresAt();
+            return o;
         }
         case EntityKind::Star:
         case EntityKind::Planet:

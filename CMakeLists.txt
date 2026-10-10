@@ -116,6 +116,7 @@ add_library(engine STATIC
     src/engine/core/Archetype.cpp    # what a kind of object is, as data (#34)
     src/engine/core/ArchetypeEdit.cpp  # writing a tuned look back without reformatting (#118)
     src/engine/core/Orbits.cpp       # planets and their satellites, as a function of time (#210)
+    src/engine/core/Blueprint.cpp    # how a player makes something: cost, time, placement (#39)
     src/engine/gen/Region.cpp        # the region beyond the wormhole, from a seed (#140)
     src/engine/gen/Pins.cpp          # hand-written exceptions applied after generation (#147)
     src/engine/gen/Survey.cpp        # many generated systems judged at once (#141)
@@ -127,6 +128,7 @@ add_library(engine STATIC
     src/engine/entities/Nebula.cpp
     src/engine/entities/Derelict.cpp
     src/engine/entities/JumpGate.cpp
+    src/engine/entities/Structure.cpp  # anything a player built (#39)
     src/engine/economy/Resource.cpp
     src/engine/render/Textures.cpp
     src/engine/render/Scene.cpp        # what an object looks like, apart from who draws it (#35)
@@ -233,6 +235,7 @@ add_executable(econserver
     src/game/sim/Simulation_Agents.cpp    # NPC AI, combat, spawn director, macro (#17)
     src/game/sim/Simulation_Factions.cpp  # factions reach where value outweighs risk (#231)
     src/game/sim/Simulation_Player.cpp    # the server-side player verbs and account (#17)
+    src/game/sim/Simulation_Build.cpp     # construction: sites, their rules and their end (#39)
     src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
     src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/PlayerStep.cpp
@@ -334,6 +337,7 @@ add_executable(tests
     tests/warp_tests.cpp
     tests/warp_path_tests.cpp
     tests/clock_tests.cpp
+    tests/build_tests.cpp          # construction: blueprints, sites, the clock (#39)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/Sensor.cpp        # the sensor screen, tested without a window (#123)
@@ -346,6 +350,7 @@ add_executable(tests
     src/game/sim/Simulation_Agents.cpp    # NPC AI, combat, spawn director, macro (#17)
     src/game/sim/Simulation_Factions.cpp  # factions reach where value outweighs risk (#231)
     src/game/sim/Simulation_Player.cpp    # the server-side player verbs and account (#17)
+    src/game/sim/Simulation_Build.cpp     # construction: sites, their rules and their end (#39)
     src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
     src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/PlayerStep.cpp

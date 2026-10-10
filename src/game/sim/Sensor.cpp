@@ -68,6 +68,7 @@ const char* KindWord(EntityKind k)
         case EntityKind::Derelict: return "wreck";
         case EntityKind::Npc: return "ship";
         case EntityKind::PlayerShip: return "pilot";
+        case EntityKind::Structure: return "structure";
         case EntityKind::Unknown: break;
     }
     return "object";

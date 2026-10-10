@@ -650,7 +650,8 @@ bool Simulation::IsMutableKind(EntityKind k)
         case EntityKind::Station:
         case EntityKind::Field:
         case EntityKind::Nebula:
-        case EntityKind::Derelict: return true;
+        case EntityKind::Derelict:
+        case EntityKind::Structure: return true;
         // Bodies are the generator's, and satellites find their planet by its place in the
         // file (#210): one more or one fewer planet moves every moon in the system. A gate
         // is an edge of the route graph, which is the galaxy index's, not the system's.

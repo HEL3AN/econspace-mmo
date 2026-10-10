@@ -19,7 +19,10 @@ namespace Save
 //    files have none and load as the world the data describes. The bump is what keeps a
 //    version 2 build from reading a newer file, ignoring the changes, and writing the world
 //    back without them -- every structure built and every wreck searched, quietly undone.
-inline constexpr int WORLD_VERSION = 3;
+// 4: an added object may be a structure (#39), written under "structures" with its time
+//    line. A version 3 build would not rebuild one, drop it with a warning, and write the
+//    world back without it -- every site and beacon gone after one checkpoint.
+inline constexpr int WORLD_VERSION = 4;
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.
 // 3: a mission names its stations by system and station rather than by entity id, which

@@ -19,6 +19,7 @@
 #include "entities/Nebula.h"
 #include "entities/Derelict.h"
 #include "entities/JumpGate.h"
+#include "entities/Structure.h"
 #include "economy/Resource.h"
 #include "ui/Button.h"
 #include "ui/UiTheme.h"
@@ -390,6 +391,16 @@ std::unique_ptr<Entity> Game::MakeProxyFromLayout(const Proto::EntityLayout& el)
             e = std::move(d);
             break;
         }
+        case Proto::EntityKind::Structure:
+        {
+            // Built as what it will be, then dressed as a site until its moment (#39). The
+            // server says when that moment passed with a delta; the look follows it.
+            auto t = std::make_unique<Structure>(el.pos, el.size, el.name, el.archetype);
+            t->StartBuilding(el.startedAt, el.completesAt);
+            t->SetExpiresAt(el.expiresAt);
+            e = std::move(t);
+            break;
+        }
         default: return nullptr;
     }
     if (e)
@@ -400,8 +411,8 @@ std::unique_ptr<Entity> Game::MakeProxyFromLayout(const Proto::EntityLayout& el)
         // The archetype the server built it as (#195), which may not be its kind's usual
         // one: a leviathan among the derelicts (#142, #211). Without this the client would
         // draw every rare find as the ordinary thing of its kind.
-        if (!el.archetype.empty() && e->GetArchetype() != nullptr &&
-            e->GetArchetype()->id != el.archetype)
+        if (el.kind != Proto::EntityKind::Structure && !el.archetype.empty() &&
+            e->GetArchetype() != nullptr && e->GetArchetype()->id != el.archetype)
         {
             const Archetype* a = Archetypes::Find(el.archetype);
             if (a != nullptr && a->kind == e->GetKind())

@@ -14,6 +14,7 @@
 #include <nlohmann/json.hpp>
 
 #include "core/Archetype.h"
+#include "core/Blueprint.h"
 #include "core/Orbits.h"
 #include "entities/Planet.h"
 #include "raymath.h"
@@ -60,6 +61,7 @@ struct Fixture
         // Before InitGalaxy: entity constructors look themselves up in the registry, and
         // passes like docking ask for a component rather than for a class (#34).
         Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json");
+        Blueprints::Load(std::string(TEST_DATA_DIR) + "blueprints.json");
         sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
         sim.Seed(1234u);
         sim.InitGalaxy();

@@ -13,6 +13,7 @@ namespace Agent
 bool Session::Connect(const std::string& host, unsigned short port, const std::string& account,
                       const std::string& secret)
 {
+    account_ = account;
     if (!Net::Startup())
         return false;
     conn_ = Net::Dial(host, port, 10.0);

@@ -209,6 +209,7 @@ std::unique_ptr<Entity> Editor::MakeEntity(const std::string& archetypeId, Vecto
         case EntityKind::Star:
         case EntityKind::Npc:
         case EntityKind::PlayerShip:
+        case EntityKind::Structure:  // built by players, not written into a system (#39)
         case EntityKind::Unknown: return nullptr;  // not placed by hand; see Archetype::Placeable
     }
     return nullptr;

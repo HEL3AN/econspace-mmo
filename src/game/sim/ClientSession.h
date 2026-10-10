@@ -55,6 +55,10 @@ struct ClientSession
     std::string authSalt;
     std::string authStored;
 
+    // The account this session plays under (#3). What a player builds is owned by this name
+    // (#39), and it outlives the session; empty for a session nobody logged into.
+    std::string accountName;
+
     // Where this player is. Systems other than this one keep running; what makes this one
     // different is only that the NPCs in it can see this ship.
     std::string systemId;

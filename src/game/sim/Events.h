@@ -18,15 +18,16 @@ namespace Ev
 
 enum class Kind
 {
-    Notice,        // something worth saying, with no other handling
-    OrderDone,     // a standing order finished as asked
-    OrderFailed,   // a standing order gave up; text says why
-    Docked,        //
-    Undocked,      //
-    Jumped,        // arrived in another system
-    CargoFull,     // the hold filled up
-    UnderAttack,   // something is shooting at us
-    ShipDestroyed  // we died
+    Notice,         // something worth saying, with no other handling
+    OrderDone,      // a standing order finished as asked
+    OrderFailed,    // a standing order gave up; text says why
+    Docked,         //
+    Undocked,       //
+    Jumped,         // arrived in another system
+    CargoFull,      // the hold filled up
+    UnderAttack,    // something is shooting at us
+    ShipDestroyed,  // we died
+    Built           // a structure of ours was finished (#39)
 };
 
 struct Event

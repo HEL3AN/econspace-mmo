@@ -146,6 +146,23 @@ Name the system you are in. Beyond the wormhole a system has only a designation 
 |---|---|---|---|
 | `name` | string | yes | the name, e.g. 'Haven' |
 
+### `blueprints`
+
+What you can build in space (#39): each blueprint's id, what it costs from the hold, how long the site takes, how long the result stands, and how close to your ship it must go. Marks the ones your hold can pay for now.
+
+No arguments.
+
+### `deploy`
+
+Lay down a construction site from a blueprint, near your ship, out of the hold. It takes the cost at once, finishes by itself after the build time -- wait_for_event wakes on 'built' -- and everyone in the system sees it. Refused, with the reason, if the hold is short, the place is too close to something or in a planet's path, or you are docked or warping. blueprints lists what can be built.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `blueprint` | string | yes | blueprint id from blueprints, e.g. 'beacon' |
+| `name` | string |  | what to call it (default: the blueprint's name); 3 to 24 characters, letters, digits, spaces, ' and - |
+| `x` | number |  | where, world x (default: where the ship is) |
+| `y` | number |  | where, world y (default: where the ship is) |
+
 ## Resources
 
 | URI | Name | What |

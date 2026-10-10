@@ -689,6 +689,67 @@
         },
 
         {
+            "id": "structure.site",
+            "name": "Construction Site",
+            "kind": "Structure",
+            "glyph": "+",
+            "color": [150, 150, 140, 255],
+            "layer": 4,
+            "size": 30,
+            "material": "hull",
+            "shape": {
+                "parts": [
+                    {"form": "ring", "radius": 0.85, "width": 0.07, "role": "panel", "alpha": 0.7},
+                    {"form": "bar", "angle": 45, "length": 1.6, "width": 0.08, "role": "panel", "alpha": 0.6, "repeat": 2},
+                    {"form": "polygon", "sides": 4, "radius": 0.3, "angle": 45, "role": "hull", "pitch": 0.15},
+                    {"form": "disc", "at": [0.85, 0.0], "repeat": 4, "radius": 0.09, "role": "light", "tint": [255, 170, 40], "blink": 1.2, "minPixels": 24}
+                ]
+            },
+            "components": {}
+        },
+        {
+            "id": "structure.beacon",
+            "name": "Beacon",
+            "kind": "Structure",
+            "glyph": "!",
+            "color": [210, 215, 225, 255],
+            "layer": 4,
+            "size": 30,
+            "material": "hull",
+            "shape": {
+                "parts": [
+                    {"form": "bar", "at": [-0.3, 0.62], "angle": 90, "length": 0.62, "width": 0.3, "role": "panel", "pitch": 0.12, "mirror": true, "minPixels": 24},
+                    {"form": "bar", "at": [-0.3, 0.0], "angle": 90, "length": 1.0, "width": 0.07, "role": "trim", "minPixels": 30},
+                    {"form": "polygon", "sides": 6, "radius": 0.4, "role": "hull", "pitch": 0.18},
+                    {"form": "capsule", "at": [0.62, 0.0], "length": 0.55, "width": 0.09, "role": "antenna", "minPixels": 20},
+                    {"module": "beacon", "variant": "strobe", "at": [1.02, 0.0], "scale": 0.42}
+                ]
+            },
+            "components": {
+                "buildable": {}
+            }
+        },
+        {
+            "id": "structure.buoy",
+            "name": "Marker Buoy",
+            "kind": "Structure",
+            "glyph": "o",
+            "color": [200, 190, 160, 255],
+            "layer": 4,
+            "size": 18,
+            "material": "hull",
+            "shape": {
+                "parts": [
+                    {"form": "disc", "radius": 0.5, "role": "hull", "pitch": 0.2},
+                    {"form": "ring", "radius": 0.5, "width": 0.08, "role": "panel"},
+                    {"module": "beacon", "variant": "warning", "scale": 0.5}
+                ]
+            },
+            "components": {
+                "buildable": {}
+            }
+        },
+        {
             "id": "ship.npc",
             "style": "directional",
             "name": "Ship",

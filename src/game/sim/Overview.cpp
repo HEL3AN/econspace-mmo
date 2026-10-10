@@ -26,7 +26,9 @@ bool Passes(Filter f, const Proto::EntitySnapshot& e, bool hostile)
         case Filter::All: return true;
         case Filter::Hostile: return hostile;
         case Filter::Destinations:
-            return e.kind == Proto::EntityKind::Station || e.kind == Proto::EntityKind::Gate;
+            // A beacon is a place somebody marked to come back to (#39).
+            return e.kind == Proto::EntityKind::Station || e.kind == Proto::EntityKind::Gate ||
+                   e.kind == Proto::EntityKind::Structure;
         case Filter::Ships:
             return e.kind == Proto::EntityKind::Npc || e.kind == Proto::EntityKind::PlayerShip;
         case Filter::Features:
@@ -71,6 +73,7 @@ const char* KindWord(const Proto::EntitySnapshot& e)
         case Proto::EntityKind::Gate: return "gate";
         case Proto::EntityKind::Nebula: return "nebula";
         case Proto::EntityKind::Derelict: return "wreck";
+        case Proto::EntityKind::Structure: return "structure";
         case Proto::EntityKind::PlayerShip: return "pilot";
         case Proto::EntityKind::Npc:
             // An NPC by what it does, which is what a player decides on.

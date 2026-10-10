@@ -28,7 +28,7 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    14;  // 14: layout revisions and LayoutDelta (#38); 13: uncharted systems (#144)
+    15;  // 15: structures and deploying them (#39); 14: layout revisions and LayoutDelta (#38)
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).
@@ -135,6 +135,13 @@ struct Command
     // accepted, advertised to models in a prompt, and silently dropped.
     bool orderAvoidDanger = false;
     bool abortOrder = false;  // drop whatever is running
+
+    // Lay down a construction site (#39): the blueprint's id, where, and what to call it
+    // (empty -- the blueprint's name). Empty `deploy` -- not this command. The server checks
+    // everything: the hold, the place, the caps; a refusal is a Notice saying which.
+    std::string deploy;
+    Vector2     deployPos = { 0.0f, 0.0f };
+    std::string deployName;
 };
 
 // Entity kind. The wire uses the engine's enum rather than a parallel copy, so there is
@@ -282,6 +289,13 @@ struct EntityLayout
     // from the world's without asking; what an owner may do with it is the server's call.
     std::string owner;
     bool        looted = false;  // derelict: already searched -- a wreck changes once (#38)
+    // A structure's time line, in world seconds (#39). While `completesAt` is ahead of the
+    // clock it is a site and `archetype` is what it will become; 0 -- built. `expiresAt` 0 --
+    // it stays. Instants rather than a progress figure, so the site advances on every client
+    // without another word from the server.
+    double startedAt = 0.0;
+    double completesAt = 0.0;
+    double expiresAt = 0.0;
 };
 
 // Full static "layout" of a system — what the client builds the world proxy from.
