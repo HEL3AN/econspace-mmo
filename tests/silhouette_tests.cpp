@@ -646,3 +646,51 @@ TEST_CASE("the shapes that ship are ones the game can read")
     }
     CHECK(composed > 0);
 }
+
+TEST_CASE(
+    "a row lays copies along a line, an arc spans its angles, a tint is the part's own (#214)")
+{
+    // Ribs down a hull: five, half a radius apart, starting at the stern.
+    const Render::Shape ribs = Parse(R"([
+        { "form": "bar", "at": [-1.0, 0.0], "length": 0.1, "width": 0.6,
+          "row": { "count": 5, "step": [0.5, 0.0] } } ])");
+    const auto          pieces = Render::Compose(ribs, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f));
+    REQUIRE(pieces.size() == 5);
+    for (int k = 0; k < 5; k++)
+        CHECK(pieces[k].pos.x == doctest::Approx(-100.0f + 50.0f * k));
+    CHECK(Render::Extent(ribs) >= 1.0f);  // the row's far end counts, not only its start
+
+    // A row turns with the object, like everything else.
+    const auto turned = Render::Compose(ribs, At({ 0.0f, 0.0f }, 100.0f, PI / 2.0f, 1, 1.0f));
+    CHECK(turned[4].pos.y == doctest::Approx(100.0f).epsilon(0.01));
+
+    // A broken docking ring: an arc from 20 to 160 degrees, carried round by the heading,
+    // and a mirrored one runs the other way.
+    const Render::Shape ring = Parse(R"([
+        { "form": "arc", "radius": 1.2, "width": 0.1, "from": 20, "to": 160, "mirror": true } ])");
+    const auto          arcs = Render::Compose(ring, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f));
+    REQUIRE(arcs.size() == 2);
+    CHECK(arcs[0].form == Render::Form::Arc);
+    CHECK(arcs[0].arcFrom == doctest::Approx(20.0f));
+    CHECK(arcs[0].arcTo == doctest::Approx(160.0f));
+    CHECK(arcs[1].arcFrom == doctest::Approx(-160.0f));
+    CHECK(arcs[1].arcTo == doctest::Approx(-20.0f));
+
+    // A red lamp on a grey hull.
+    const Render::Shape lamp =
+        Parse(R"([ { "form": "disc", "radius": 0.05, "role": "light", "tint": [255, 40, 30] } ])");
+    const auto lit = Render::Compose(lamp, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f));
+    REQUIRE(lit.size() == 1);
+    CHECK(lit[0].tint.r == 255);
+    CHECK(lit[0].tint.a == 255);
+
+    // And a misspelt row or a tint that is not a colour is a load error, never a default.
+    Render::Shape bad;
+    std::string   error;
+    CHECK_FALSE(Render::ParseShape(
+        nlohmann::json::parse(R"([ { "form": "bar", "row": { "count": 3, "stpe": [1, 0] } } ])"),
+        bad, error));
+    CHECK_FALSE(error.empty());
+    CHECK_FALSE(Render::ParseShape(
+        nlohmann::json::parse(R"([ { "form": "disc", "tint": "red" } ])"), bad, error));
+}

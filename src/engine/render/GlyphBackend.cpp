@@ -362,6 +362,16 @@ void ShapeBackend::DrawPiece(const Piece& p, Color c)
 
         case Form::Ring: DrawRing(p.pos, p.radius - p.width, p.radius, 0.0f, 360.0f, 48, c); return;
 
+        case Form::Arc:
+        {
+            // Segments by how much of the circle it covers, so a sliver is not drawn with
+            // as many as a whole ring.
+            const float span = std::fabs(p.arcTo - p.arcFrom);
+            const int   segments = std::max(4, (int)(48.0f * span / 360.0f));
+            DrawRing(p.pos, p.radius - p.width, p.radius, p.arcFrom, p.arcTo, segments, c);
+            return;
+        }
+
         case Form::Polygon:
             if (p.filled)
                 DrawPoly(p.pos, p.sides, p.radius, p.angle, c);
@@ -448,10 +458,13 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         // A light dims with damage and with its own blink, and is never shaded: a lamp is
         // not lit by the star, it *is* a light, and shading one is how a beacon ends up
         // dark on its own night side.
+        // A part with a tint of its own is that colour where the object's would be (#214).
+        const Color own = p.tint.a > 0 ? p.tint : item.color;
+        const Color ownC = p.tint.a > 0 ? p.tint : c;
         if (p.role == Role::Light || emissive)
         {
-            DrawPiece(p, Fade(ForRole(p.role, item.color),
-                              (0.25f + 0.75f * item.intensity) * p.brightness));
+            DrawPiece(p,
+                      Fade(ForRole(p.role, own), (0.25f + 0.75f * item.intensity) * p.brightness));
             continue;
         }
 
@@ -477,7 +490,7 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
 
         // With a shader the colour stays the object's own and the shading is done in the
         // fragment; without one it is dimmed here. Doing both would darken twice.
-        Color base = shaded ? c : Lit(c, lighting_, pieceLight);
+        Color base = shaded ? ownC : Lit(ownC, lighting_, pieceLight);
         // A part's own solidity and whatever the clock is doing to it, in one number, and
         // it applies to any role rather than only to a lamp: a nebula breathes and a belt
         // glitters through the same field.
