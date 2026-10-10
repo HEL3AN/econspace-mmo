@@ -224,9 +224,15 @@ void Editor::AddObject(const std::string& archetypeId, Vector2 pos)
         return;
 
     const std::string category = a->worldCategory;
-    const int         px = (int)roundf(pos.x), py = (int)roundf(pos.y);
-    const int         size = (int)roundf(a->defaultSize > 0.0f ? a->defaultSize : 100.0f);
-    json              o = json::object();
+    if (category == "gates" && generated_.open)
+    {
+        // A new gate would be a link only one side knows about (#237).
+        Notice("A generated system's gates are the region's links: none can be added here");
+        return;
+    }
+    const int px = (int)roundf(pos.x), py = (int)roundf(pos.y);
+    const int size = (int)roundf(a->defaultSize > 0.0f ? a->defaultSize : 100.0f);
+    json      o = json::object();
 
     if (category == "planets")
     {
@@ -291,9 +297,26 @@ void Editor::DeleteSelected()
     const ObjHandle h = handles_[selected_];
     if (h.category == "star")
         return;  // we don't delete the star
+    if (h.category == "gates" && generated_.open)
+    {
+        // Where a generated system's gates lead is the region's topology (#237): the far
+        // side keeps its gate back here. A gate may be moved, not removed.
+        Notice("A generated system's gates are the region's links: move one, but it stays");
+        return;
+    }
 
-    if (systemJson_.contains(h.category) && systemJson_[h.category].is_array() &&
-        h.index < (int)systemJson_[h.category].size())
+    if (h.category == "planets")
+    {
+        // A satellite belongs to its planet and finds it by its place in the list (#210):
+        // it goes with it, and every satellite of a later planet is re-pointed (#237).
+        const int gone = Gen::RemovePlanet(systemJson_, h.index,
+                                           generated_.open ? &generated_.origins : nullptr);
+        if (gone > 0)
+            Notice(TextFormat("Removed the planet and the %d object%s orbiting it", gone,
+                              gone == 1 ? "" : "s"));
+    }
+    else if (systemJson_.contains(h.category) && systemJson_[h.category].is_array() &&
+             h.index < (int)systemJson_[h.category].size())
     {
         systemJson_[h.category].erase(h.index);
         if (generated_.open)  // what follows it now came from one place further on (#237)

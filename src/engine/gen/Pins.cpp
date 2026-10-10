@@ -1,5 +1,6 @@
 #include "gen/Pins.h"
 
+#include <map>
 #include <set>
 
 namespace Gen
@@ -11,6 +12,16 @@ using json = nlohmann::json;
 const std::set<std::string> OBJECT_LISTS = { "planets", "stations",  "asteroidFields",
                                              "nebulae", "derelicts", "gates" };
 const std::set<std::string> PIN_FIELDS = { "system", "seed", "mode", "document", "note" };
+
+// The record of one list, if `origins` has one -- looked up, never made: an empty list has
+// no entry, and making one would make two equal records compare unequal.
+std::vector<int>* OriginsOf(Origins* origins, const std::string& key)
+{
+    if (origins == nullptr)
+        return nullptr;
+    const auto o = origins->find(key);
+    return o != origins->end() ? &o->second : nullptr;
+}
 
 // The index in `list` that `ref` names: a name (the first object called that) or a
 // position. -1 if nothing.
@@ -32,8 +43,12 @@ int Resolve(const json& list, const json& ref)
 // One list of a merge. Every "replaces" is resolved against the list as it stood before
 // this pin, then the list is rebuilt: kept and replaced objects in their places, removed
 // ones gone, added ones after. `origins` (may be null) is carried through the same way.
+// `prior` gets, for each object of the new list, its index before the pin (-1 if added);
+// `untouched`, whether the pin left it as it was -- the only objects whose references the
+// merge itself still has to keep right.
 void MergeList(json& list, const json& entries, const std::string& where, const std::string& key,
-               std::vector<std::string>& problems, std::vector<int>* origins)
+               std::vector<std::string>& problems, std::vector<int>* origins,
+               std::vector<int>& prior, std::vector<bool>& untouched)
 {
     if (!list.is_array())
         list = json::array();
@@ -81,17 +96,23 @@ void MergeList(json& list, const json& entries, const std::string& where, const 
 
     json             out = json::array();
     std::vector<int> outFrom;
+    prior.clear();
+    untouched.clear();
     for (size_t i = 0; i < list.size(); i++)
     {
         if (fate[i] == 2)
             continue;
         out.push_back(fate[i] == 1 ? replacement[i] : list[i]);
         outFrom.push_back(from[i]);
+        prior.push_back((int)i);
+        untouched.push_back(fate[i] == 0);
     }
     for (const json& o : added)
     {
         out.push_back(o);
         outFrom.push_back(-1);
+        prior.push_back(-1);
+        untouched.push_back(false);
     }
     list = out;
     if (origins != nullptr)
@@ -101,6 +122,11 @@ void MergeList(json& list, const json& entries, const std::string& where, const 
 void Merge(json& sys, const json& doc, const std::string& where, std::vector<std::string>& problems,
            Origins* origins)
 {
+    const size_t planetsBefore =
+        sys.contains("planets") && sys["planets"].is_array() ? sys["planets"].size() : 0;
+    std::map<std::string, std::vector<bool>> untouched;  // per list the pin merged
+    std::vector<int>                         planetPrior;
+    bool                                     planetsMerged = false;
     for (auto it = doc.begin(); it != doc.end(); ++it)
     {
         const std::string& key = it.key();
@@ -114,8 +140,46 @@ void Merge(json& sys, const json& doc, const std::string& where, std::vector<std
             problems.push_back(where + ": \"" + key + "\" must be a list");
             continue;
         }
+        std::vector<int> prior;
         MergeList(sys[key], it.value(), where, key, problems,
-                  origins != nullptr ? &(*origins)[key] : nullptr);
+                  origins != nullptr ? &(*origins)[key] : nullptr, prior, untouched[key]);
+        if (key == "planets")
+        {
+            planetPrior = prior;
+            planetsMerged = true;
+        }
+    }
+    if (!planetsMerged)
+        return;
+
+    // A satellite belongs to its planet (#210) and finds it by its place in the list, so
+    // what the pin did to the planets is done to what it left alone: re-pointed at its
+    // planet's new place, or gone with it. An object the pin wrote is as the pin wrote it.
+    std::vector<int> map(planetsBefore, -1);
+    for (size_t j = 0; j < planetPrior.size(); j++)
+        if (planetPrior[j] >= 0 && planetPrior[j] < (int)planetsBefore)
+            map[(size_t)planetPrior[j]] = (int)j;
+    for (const std::string& key : OBJECT_LISTS)
+    {
+        if (key == "planets" || !sys.contains(key) || !sys[key].is_array())
+            continue;
+        const auto        u = untouched.find(key);
+        std::vector<int>* from = OriginsOf(origins, key);
+        json              kept = json::array();
+        std::vector<int>  keptFrom;
+        for (size_t i = 0; i < sys[key].size(); i++)
+        {
+            const bool alone = u == untouched.end() || i >= u->second.size() || u->second[i];
+            const json o = alone ? Repointed(sys[key][i], map) : sys[key][i];
+            if (o.is_null())
+                continue;
+            kept.push_back(o);
+            if (from != nullptr && i < from->size())
+                keptFrom.push_back((*from)[i]);
+        }
+        if (from != nullptr && from->size() == sys[key].size())
+            *from = keptFrom;
+        sys[key] = kept;
     }
 }
 
@@ -178,6 +242,25 @@ bool WellFormed(const json& pin, const std::string& where, std::vector<std::stri
     return ok;
 }
 
+// Applies one pin, then holds the result to CheckPinned: a pin that would break the
+// system is not applied at all, rather than applied and broken.
+void ApplyChecked(json& sys, const json& pin, const std::string& where,
+                  const std::set<std::string>& systems, std::vector<std::string>& problems,
+                  Origins* origins)
+{
+    json    trial = sys;
+    Origins trialOrigins = origins != nullptr ? *origins : Origins();
+    if (!ApplyOne(trial, pin, where, problems, origins != nullptr ? &trialOrigins : nullptr))
+        return;
+    const size_t before = problems.size();
+    CheckPinned(sys, trial, systems, where, problems);
+    if (problems.size() != before)
+        return;
+    sys = trial;
+    if (origins != nullptr)
+        *origins = trialOrigins;
+}
+
 std::string Where(const json& pin, int n)
 {
     return "pin " + std::to_string(n) +
@@ -196,7 +279,8 @@ void ApplyPins(Region& region, const json& pins, uint64_t seed, std::vector<std:
         problems.push_back("pins.json: \"pins\" must be a list");
         return;
     }
-    int n = 0;
+    const std::set<std::string> systems = Destinations(region);
+    int                         n = 0;
     for (const json& pin : pins["pins"])
     {
         const std::string where = Where(pin, ++n);
@@ -212,7 +296,7 @@ void ApplyPins(Region& region, const json& pins, uint64_t seed, std::vector<std:
             problems.push_back(where + ": this region has no system \"" + id + "\"");
             continue;
         }
-        ApplyOne(sys->second, pin, where, problems, nullptr);
+        ApplyChecked(sys->second, pin, where, systems, problems, nullptr);
     }
 }
 
@@ -241,6 +325,7 @@ bool OpenForEditing(const Region& generated, const json& pins, uint64_t seed,
     if (!generated.documents.count(system))
         return false;
     out = EditedSystem();
+    const std::set<std::string> systems = Destinations(generated);
 
     // Everything the editor does not own, in file order, as the server applies it.
     Region others = generated;
@@ -262,7 +347,7 @@ bool OpenForEditing(const Region& generated, const json& pins, uint64_t seed,
     {
         const std::string where = "owned " + Where(pin, ++n);
         if (WellFormed(pin, where, out.problems))
-            ApplyOne(out.edited, pin, where, out.problems, &out.origins);
+            ApplyChecked(out.edited, pin, where, systems, out.problems, &out.origins);
     }
     return true;
 }
@@ -280,6 +365,12 @@ json PinFor(const std::string& system, uint64_t seed, const json& base, const js
     for (auto it = base.begin(); it != base.end(); ++it)
         if (!OBJECT_LISTS.count(it.key()) && !edited.contains(it.key()))
             expressible = false;  // a merge cannot take a key away
+
+    // What a merge does by itself to an object it is not told about: re-points a
+    // satellite at its planet's new place, or removes it with its planet.
+    const size_t basePlanets =
+        base.contains("planets") && base["planets"].is_array() ? base["planets"].size() : 0;
+    const std::vector<int> planetMap = PlanetMap(basePlanets, origins);
 
     for (const std::string& key : OBJECT_LISTS)
     {
@@ -327,7 +418,8 @@ json PinFor(const std::string& system, uint64_t seed, const json& base, const js
             if (from[j] >= 0)
             {
                 kept[(size_t)from[j]] = true;
-                if (now[j] != was[(size_t)from[j]])
+                const json alone = Repointed(was[(size_t)from[j]], planetMap);
+                if (alone.is_null() || now[j] != alone)
                 {
                     json e = now[j];
                     e["replaces"] = ref(from[j]);
@@ -358,6 +450,148 @@ json PinFor(const std::string& system, uint64_t seed, const json& base, const js
     pin["mode"] = "merge";
     pin["document"] = doc;
     return pin;
+}
+
+// ---- What a pinned system must still be (#237) ----------------------------------------
+
+std::vector<int> PlanetMap(size_t basePlanets, const Origins& origins)
+{
+    std::vector<int> map(basePlanets, -1);
+    const auto       o = origins.find("planets");
+    if (o == origins.end())
+    {
+        for (size_t i = 0; i < basePlanets; i++)
+            map[i] = (int)i;
+        return map;
+    }
+    for (size_t j = 0; j < o->second.size(); j++)
+        if (o->second[j] >= 0 && o->second[j] < (int)basePlanets)
+            map[(size_t)o->second[j]] = (int)j;
+    return map;
+}
+
+json Repointed(const json& obj, const std::vector<int>& planetMap)
+{
+    if (!obj.is_object() || !obj.contains("orbits") || !obj["orbits"].is_object() ||
+        !obj["orbits"].contains("planet") || !obj["orbits"]["planet"].is_number_integer())
+        return obj;
+    const long long p = obj["orbits"]["planet"].get<long long>();
+    if (p < 0 || p >= (long long)planetMap.size())
+        return obj;  // already wrong: CheckPinned says so
+    if (planetMap[(size_t)p] < 0)
+        return json();
+    json out = obj;
+    out["orbits"]["planet"] = planetMap[(size_t)p];
+    return out;
+}
+
+int RemovePlanet(json& sys, int index, Origins* origins)
+{
+    if (!sys.contains("planets") || !sys["planets"].is_array() || index < 0 ||
+        index >= (int)sys["planets"].size())
+        return 0;
+    const size_t n = sys["planets"].size();
+    sys["planets"].erase((size_t)index);
+    if (origins != nullptr)
+    {
+        std::vector<int>& from = (*origins)["planets"];
+        if (index < (int)from.size())
+            from.erase(from.begin() + index);
+    }
+    std::vector<int> map(n, -1);
+    for (size_t i = 0; i < n; i++)
+        if ((int)i != index)
+            map[i] = (int)i < index ? (int)i : (int)i - 1;
+
+    int gone = 0;
+    for (const std::string& key : OBJECT_LISTS)
+    {
+        if (key == "planets" || !sys.contains(key) || !sys[key].is_array())
+            continue;
+        std::vector<int>* from = OriginsOf(origins, key);
+        for (size_t i = sys[key].size(); i-- > 0;)
+        {
+            const json o = Repointed(sys[key][i], map);
+            if (!o.is_null())
+            {
+                sys[key][i] = o;
+                continue;
+            }
+            sys[key].erase(i);
+            if (from != nullptr && i < from->size())
+                from->erase(from->begin() + (long)i);
+            gone++;
+        }
+    }
+    return gone;
+}
+
+std::set<std::string> Destinations(const Region& region)
+{
+    std::set<std::string> out;
+    for (const json& s : region.systems)
+        if (s.is_object() && s.contains("id") && s["id"].is_string())
+            out.insert(s["id"].get<std::string>());
+    for (const json& l : region.links)
+        if (l.is_array())
+            for (const json& end : l)
+                if (end.is_string())
+                    out.insert(end.get<std::string>());
+    for (const auto& kv : region.documents)
+        out.insert(kv.first);
+    return out;
+}
+
+void CheckPinned(const json& before, const json& after, const std::set<std::string>& systems,
+                 const std::string& where, std::vector<std::string>& problems)
+{
+    // Gates are the region's topology: a pin may move one, rename it, change its look,
+    // never where it leads -- the far side would keep a gate back to a system that no
+    // longer comes to it, or a gate would lead nowhere.
+    auto leads = [](const json& sys)
+    {
+        std::multiset<std::string> out;
+        if (sys.contains("gates") && sys["gates"].is_array())
+            for (const json& g : sys["gates"])
+                out.insert(g.is_object() ? g.value("destination", std::string()) : std::string());
+        return out;
+    };
+    const std::multiset<std::string> was = leads(before), now = leads(after);
+    for (const std::string& d : now)
+        if (!systems.count(d))
+            problems.push_back(where + ": a gate leads to \"" + d +
+                               "\", and this region has no such system");
+    if (was != now)
+    {
+        std::string a, b;
+        for (const std::string& d : was)
+            a += (a.empty() ? "" : ", ") + d;
+        for (const std::string& d : now)
+            b += (b.empty() ? "" : ", ") + d;
+        problems.push_back(where + ": the gates would lead to [" + b + "] instead of [" + a +
+                           "] -- a pin may move a gate, never change where it leads");
+    }
+
+    // Every satellite's planet is there (#210): it is found by its place in the list.
+    const long long planets = after.contains("planets") && after["planets"].is_array()
+                                  ? (long long)after["planets"].size()
+                                  : 0;
+    for (const std::string& key : OBJECT_LISTS)
+    {
+        if (key == "planets" || !after.contains(key) || !after[key].is_array())
+            continue;
+        for (const json& o : after[key])
+        {
+            if (!o.is_object() || !o.contains("orbits") || !o["orbits"].is_object())
+                continue;
+            const json p = o["orbits"].value("planet", json());
+            if (p.is_number_integer() && p.get<long long>() >= 0 && p.get<long long>() < planets)
+                continue;
+            problems.push_back(where + ": \"" + o.value("name", std::string("an object")) +
+                               "\" in \"" + key + "\" orbits planet " + p.dump() +
+                               ", and the system has " + std::to_string(planets));
+        }
+    }
 }
 
 void StorePin(json& pinsFile, const std::string& system, uint64_t seed, const json& pin)

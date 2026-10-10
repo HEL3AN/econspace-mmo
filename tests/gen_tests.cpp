@@ -595,3 +595,183 @@ TEST_CASE("an edited system saves as its difference, and the pin makes it again 
     REQUIRE(pins["pins"].size() == 1);
     CHECK_FALSE(pins["pins"][0].contains("seed"));
 }
+
+namespace
+{
+// A small region written by hand, so a test can say exactly which planet a satellite
+// orbits: "a" has three planets, satellites of each, and two gates.
+Gen::Region SmallRegion()
+{
+    Gen::Region r;
+    r.systems = nlohmann::json::parse(R"([ { "id": "a", "name": "Alpha" },
+                                           { "id": "b", "name": "Beta" } ])");
+    r.links = nlohmann::json::parse(R"([ [ "home", "a" ], [ "a", "b" ] ])");
+    r.documents["a"] = nlohmann::json::parse(R"({
+        "star": { "type": "Yellow", "size": 150000 },
+        "planets": [ { "orbitRadius": 300000, "size": 20000 },
+                     { "orbitRadius": 450000, "size": 25000 },
+                     { "orbitRadius": 600000, "size": 30000 } ],
+        "stations": [ { "name": "Moon Dock", "size": 40,
+                        "orbits": { "planet": 0, "radius": 40000, "speed": 30, "phase": 0 } },
+                      { "name": "Far Dock", "size": 40,
+                        "orbits": { "planet": 2, "radius": 50000, "speed": 30, "phase": 1 } },
+                      { "name": "Free Dock", "pos": [ 100000, 0 ], "size": 40 } ],
+        "derelicts": [ { "name": "Old Wreck", "size": 50, "reward": 100,
+                         "orbits": { "planet": 1, "radius": 45000, "speed": 20, "phase": 2 } } ],
+        "gates": [ { "name": "To Beta", "pos": [ 900000, 0 ], "size": 900, "destination": "b" },
+                   { "name": "To Home", "pos": [ -900000, 0 ], "size": 900, "destination": "home" } ]
+    })");
+    r.documents["b"] = nlohmann::json::parse(R"({
+        "gates": [ { "name": "To Alpha", "pos": [ 900000, 0 ], "size": 900, "destination": "a" } ]
+    })");
+    r.entryId = "a";
+    return r;
+}
+
+nlohmann::json OnePin(const char* doc, const char* mode = "merge")
+{
+    return { { "pins",
+               nlohmann::json::array({ { { "system", "a" },
+                                         { "mode", mode },
+                                         { "document", nlohmann::json::parse(doc) } } }) } };
+}
+}  // namespace
+
+TEST_CASE("a pin may move a gate, never change where it leads (#237)")
+{
+    const Gen::Region        generated = SmallRegion();
+    std::vector<std::string> problems;
+
+    // Moved and renamed: the same link, so it applies.
+    Gen::Region r = generated;
+    Gen::ApplyPins(r, OnePin(R"({ "gates": [ { "replaces": "To Beta", "name": "Beta Gate",
+                                            "pos": [ 800000, 1000 ], "size": 900,
+                                            "destination": "b" } ] })"),
+                   0, problems);
+    CHECK(problems.empty());
+    CHECK(r.documents["a"]["gates"][0]["name"] == "Beta Gate");
+
+    // Each of these breaks the topology, and each is refused whole: the system is untouched.
+    const char* broken[] = {
+        // to a system the region does not have
+        R"({ "character": "x", "gates": [ { "replaces": "To Beta", "name": "To Beta",
+                                            "pos": [ 900000, 0 ], "size": 900,
+                                            "destination": "w9-9" } ] })",
+        // to one it has, but not the one the region links
+        R"({ "gates": [ { "replaces": 1, "name": "To Home", "pos": [ -900000, 0 ],
+                          "size": 900, "destination": "b" } ] })",
+        // a link removed: the far side would keep its gate back
+        R"({ "gates": [ { "replaces": "To Home", "remove": true } ] })",
+        // a link added that only this side knows
+        R"({ "gates": [ { "name": "Shortcut", "pos": [ 0, 900000 ], "size": 900,
+                          "destination": "b" } ] })",
+    };
+    for (const char* doc : broken)
+    {
+        r = generated;
+        problems.clear();
+        Gen::ApplyPins(r, OnePin(doc), 0, problems);
+        CHECK_FALSE(problems.empty());
+        for (const std::string& p : problems)
+            MESSAGE(p);
+        CHECK(r.documents["a"] == generated.documents.at("a"));
+    }
+
+    // A replace that lists its own gates is held to the same rule.
+    r = generated;
+    problems.clear();
+    Gen::ApplyPins(r, OnePin(R"({ "gates": [] })", "replace"), 0, problems);
+    CHECK(problems.size() == 1);
+    CHECK(r.documents["a"] == generated.documents.at("a"));
+
+    // The editor opens a system its own broken pin cannot spoil, and says why.
+    nlohmann::json owned = OnePin(R"({ "gates": [ { "replaces": "To Home", "remove": true } ] })");
+    owned["pins"][0]["seed"] = 5;
+    Gen::EditedSystem es;
+    REQUIRE(Gen::OpenForEditing(generated, owned, 5, "a", es));
+    CHECK(es.problems.size() == 1);
+    CHECK(es.edited == es.base);
+    CHECK(es.origins == Gen::IdentityOrigins(es.base));
+
+    // Every system the generator itself makes passes the check against itself.
+    const Gen::Region           real = Gen::GenerateRegion(Params(7));
+    const std::set<std::string> ids = Gen::Destinations(real);
+    std::vector<std::string>    none;
+    for (const auto& kv : real.documents)
+        Gen::CheckPinned(kv.second, kv.second, ids, kv.first, none);
+    CHECK(none.empty());
+    CHECK(ids.count("core"));  // the gate back through the wormhole leads home
+}
+
+TEST_CASE("a planet takes what orbits it along, and the rest are re-pointed (#237)")
+{
+    const Gen::Region generated = SmallRegion();
+
+    // The editor's Del on the first planet: its moon goes with it, the others follow theirs.
+    Gen::EditedSystem es;
+    REQUIRE(Gen::OpenForEditing(generated, nlohmann::json::object(), 5, "a", es));
+    CHECK(Gen::RemovePlanet(es.edited, 0, &es.origins) == 1);
+    const nlohmann::json& doc = es.edited;
+    REQUIRE(doc["planets"].size() == 2);
+    REQUIRE(doc["stations"].size() == 2);
+    CHECK(doc["stations"][0]["name"] == "Far Dock");
+    CHECK(doc["stations"][0]["orbits"]["planet"] == 1);   // was 2: still the outermost
+    CHECK(doc["derelicts"][0]["orbits"]["planet"] == 0);  // was 1
+    CHECK(es.origins.at("stations") == std::vector<int>({ 1, 2 }));
+
+    // The pin says only what was removed; re-pointing is the rule's, not the pin's.
+    const nlohmann::json pin = Gen::PinFor("a", 5, es.base, es.edited, es.origins);
+    REQUIRE(pin.is_object());
+    MESSAGE(pin.dump());
+    CHECK(pin["mode"] == "merge");
+    CHECK(pin["document"]["planets"].size() == 1);
+    CHECK(pin["document"]["stations"].size() == 1);  // Moon Dock, removed
+    CHECK_FALSE(pin["document"].contains("derelicts"));
+
+    // ... and the server makes the same, correct system from it.
+    nlohmann::json pins = { { "pins", nlohmann::json::array() } };
+    Gen::StorePin(pins, "a", 5, pin);
+    Gen::Region              served = SmallRegion();
+    std::vector<std::string> problems;
+    Gen::ApplyPins(served, pins, 5, problems);
+    CHECK(problems.empty());
+    CHECK(served.documents["a"] == es.edited);
+    Gen::EditedSystem again;
+    REQUIRE(Gen::OpenForEditing(generated, pins, 5, "a", again));
+    CHECK(again.problems.empty());
+    CHECK(again.edited == es.edited);
+    CHECK(again.origins == es.origins);
+    CHECK(Gen::PinFor("a", 5, again.base, again.edited, again.origins) == pin);
+
+    // A hand-written merge gets the same rule: the middle planet goes, and its wreck with it.
+    served = SmallRegion();
+    problems.clear();
+    Gen::ApplyPins(served, OnePin(R"({ "planets": [ { "replaces": 1, "remove": true } ] })"), 0,
+                   problems);
+    CHECK(problems.empty());
+    CHECK(served.documents["a"]["derelicts"].empty());
+    CHECK(served.documents["a"]["stations"][0]["orbits"]["planet"] == 0);
+    CHECK(served.documents["a"]["stations"][1]["orbits"]["planet"] == 1);
+
+    // An object the pin writes counts the planets after it: "planet 0" is the former 1.
+    served = SmallRegion();
+    problems.clear();
+    Gen::ApplyPins(served, OnePin(R"({ "planets": [ { "replaces": 0, "remove": true } ],
+        "stations": [ { "replaces": "Far Dock", "name": "Far Dock", "size": 40,
+                        "orbits": { "planet": 0, "radius": 50000, "speed": 30, "phase": 1 } } ] })"),
+                   0, problems);
+    CHECK(problems.empty());
+    CHECK(served.documents["a"]["stations"][0]["name"] == "Far Dock");
+    CHECK(served.documents["a"]["stations"][0]["orbits"]["planet"] == 0);
+
+    // A satellite of a planet the system does not have refuses the pin.
+    served = SmallRegion();
+    problems.clear();
+    Gen::ApplyPins(served, OnePin(R"({ "stations": [ { "name": "Lost", "size": 40,
+        "orbits": { "planet": 7, "radius": 50000 } } ] })"),
+                   0, problems);
+    REQUIRE(problems.size() == 1);
+    MESSAGE(problems[0]);
+    CHECK(problems[0].find("orbits planet 7") != std::string::npos);
+    CHECK(served.documents["a"] == generated.documents.at("a"));
+}

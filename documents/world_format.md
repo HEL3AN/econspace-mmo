@@ -279,6 +279,23 @@ quietly losing to the generator.
 
 **`replace`** makes the document the whole system. Its gates are still kept from the generated system unless the document lists its own, because the gates are the region's topology.
 
+Two rules hold whatever a pin says (#237). A pin that would break either is **refused
+whole** -- not applied at all, and the log says why:
+
+- **Gates are the region's topology.** A pin may move a gate, rename it or change its look,
+  but the system's gates must still lead to exactly the systems they led to before it: none
+  removed (the far side would keep a gate back to a system that no longer comes to it), none
+  added (a link only one side knows), none re-aimed, and never at a system the region does
+  not have.
+- **A satellite belongs to its planet.** An object with `orbits` finds its planet by its
+  place in `planets` (#210), so removing a planet would otherwise hand its moons -- and every
+  later planet's -- to the wrong one. When a merge removes a planet, every object the pin
+  does not mention that orbits a planet is re-pointed at that planet's new place, or
+  **removed with it** if its own planet is the one gone. An object the pin writes (a
+  replacement or an addition) is read as written, and its `orbits.planet` counts the planets
+  **after** the pin. A satellite left orbiting a planet the system does not have refuses the
+  pin.
+
 Any other field is an error, as everywhere else (#191). Pins are data, like the systems: a
 pin added later changes the region the next time the server starts.
 
@@ -299,6 +316,13 @@ removed ones as `remove`, new ones appended, keys that differ set -- unless it c
 said as one (a key taken away), and then it is a `replace` of the whole system. No
 difference left removes the pin. Opening the system again gives back exactly what was
 saved; a test holds the editor to that.
+
+The editor keeps the same two rules. A generated system's gates can be moved but not
+deleted or added, and the property panel shows where one leads instead of offering a
+choice. **Del on a planet** -- in any system, generated or not -- removes what orbits it
+too, says how many went, and re-points the satellites of the planets after it; the saved
+pin then only says which planet and which objects were removed. A save that would still
+break a rule is refused with the reason, rather than written for the server to refuse.
 
 ## factions.json — who is in the galaxy, and how they act
 
