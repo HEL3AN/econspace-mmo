@@ -37,6 +37,9 @@ constexpr float SUPPRESS_DECAY = 0.97f;           // suppression falloff per coa
 constexpr float DANGER_SEC = 0.35f;               // below this the system is "unsafe" (ambushes)
 constexpr float SPAWN_MIN_PLAYER_DIST = 2600.0f;  // do not spawn closer to the player
 constexpr float MAINT_STEP = 2.0f;                // coarse world maintenance period
+// How many macro passes in a row a side must hold a system before it changes hands (#225):
+// three minutes, long enough for players to notice and answer.
+constexpr int CONTEST_PASSES = 90;
 
 float ClampF(float v, float lo, float hi)
 {
@@ -329,23 +332,35 @@ void Simulation::StepWorldMacro()
         SystemAggregate& a = kv.second.agg;
         if (!a.visited)
             continue;  // nobody's to take until somebody has been there (#143)
-        if (a.controller != FactionId::Pirates && a.pirates > a.police * 2.0f + 2.0f &&
-            a.security < 0.25f)
+        // A system changes hands only after the balance has held for a while (#225): one
+        // bad pass is a raid, not a conquest. Without it Tau Verge fell ten seconds into a
+        // fresh world -- before anybody could have done anything about it.
+        const bool pirateHold = a.controller != FactionId::Pirates &&
+                                a.pirates > a.police * 2.0f + 2.0f && a.security < 0.25f;
+        const bool lawHold =
+            a.controller == FactionId::Pirates && a.police > a.pirates && a.security > 0.4f;
+        a.contested = (pirateHold || lawHold) ? a.contested + 1 : 0;
+        if (a.contested < CONTEST_PASSES)
+            continue;
+        if (pirateHold)
         {
+            a.contested = 0;
             a.controller = FactionId::Pirates;
             a.baseSecurity = std::min(a.baseSecurity, 0.15f);
             if (!settling)
                 PushEvent("Pirates seized " + SystemName(kv.first));
         }
-        else if (a.controller == FactionId::Pirates && a.police > a.pirates && a.security > 0.4f)
+        else
         {
-            // Law restored (the director brought police from a strong neighbor).
+            // Law restored (the director brought police from a strong neighbor). Without
+            // a strong lawful neighbour to take it over, the count keeps running.
             for (const std::string& nid : Neighbors(kv.first))
             {
                 auto n = systems_.find(nid);
                 if (n != systems_.end() && Factions::IsLawful(n->second.agg.controller) &&
                     n->second.agg.security > 0.6f)
                 {
+                    a.contested = 0;
                     a.controller = n->second.agg.controller;
                     a.baseSecurity = std::max(a.baseSecurity, 0.5f);
                     if (!settling)

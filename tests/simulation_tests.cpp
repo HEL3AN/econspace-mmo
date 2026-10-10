@@ -1445,3 +1445,30 @@ TEST_CASE("a defensive station fires on hostiles near it, and only on them (#193
         CHECK(pirate->GetHull() == doctest::Approx(pirate->GetMaxHull()));
     }
 }
+
+TEST_CASE("a system changes hands only after the balance has held for a while (#225)")
+{
+    // Tau Verge, at security 0.3, fell to the pirates ten seconds into a fresh world.
+    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    Simulation        sim;
+    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    sim.Seed(1234u);
+    sim.InitGalaxy();
+    sim.MaterializeAllSystems(systems);
+    REQUIRE(sim.SystemById("verge") != nullptr);
+    const FactionId start = sim.SystemById("verge")->agg.controller;
+    REQUIRE(start != FactionId::Pirates);
+
+    int fell = -1;
+    for (int s = 1; s <= 20 * 60 && fell < 0; s++)  // up to twenty simulated minutes
+    {
+        for (int i = 0; i < 60; i++)
+            sim.MaintainWorld(1.0f / 60.0f);
+        if (sim.SystemById("verge")->agg.controller == FactionId::Pirates)
+            fell = s;
+    }
+    MESSAGE("Tau Verge fell after " << fell << " s");
+    CHECK((fell < 0 || fell >= 180));  // not before three minutes of holding
+}
