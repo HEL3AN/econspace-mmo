@@ -58,6 +58,12 @@ private:
 
     int  HitTest(Vector2 worldMouse) const;  // index of the entity under the cursor, or -1
     void MoveSelected(Vector2 desiredPos);   // places the selected object at a position
+    // A satellite of a planet, or no longer one (#210). Attaching keeps the object where it
+    // stands: the orbit is measured from the nearest planet as the editor shows it.
+    void AttachSelectedToNearestPlanet();
+    void DetachSelected();
+    // Where the planet with this index in the "planets" array is drawn, or nullptr.
+    const Entity* PlanetEntity(int planetIndex) const;
 
     void HandleInput();
     void DrawWorld();

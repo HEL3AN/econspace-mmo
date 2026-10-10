@@ -4,8 +4,8 @@
         "size": 137500
     },
     "planets": [
-        { "orbitRadius": 353000, "orbitSpeed": 340, "angle": 0.7, "size": 16500, "type": "Lava", "deposit": "Crystal" },
-        { "orbitRadius": 580000, "orbitSpeed": 460, "angle": 2.9, "size": 33000, "type": "Gas", "deposit": "Iron" }
+        { "orbitRadius": 353000, "orbitSpeed": 34, "angle": 0.7, "size": 16500, "type": "Lava", "deposit": "Crystal" },
+        { "orbitRadius": 580000, "orbitSpeed": 46, "angle": 2.9, "size": 33000, "type": "Gas", "deposit": "Iron" }
     ],
     "stations": [
         { "name": "Verge Outpost", "pos": [-256000, -170700], "size": 600, "faction": "Independent", "role": "Military" }

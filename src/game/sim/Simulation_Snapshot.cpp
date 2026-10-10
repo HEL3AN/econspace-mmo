@@ -38,16 +38,18 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         // they stay. What this costs is that a static object which changed mid-session is
         // invisible until the client re-enters the system -- which was already true of
         // its name and size, and is #38.
-        switch (e->GetKind())
-        {
-            case EntityKind::Star:
-            case EntityKind::Station:
-            case EntityKind::Field:
-            case EntityKind::Gate:
-            case EntityKind::Nebula:
-            case EntityKind::Derelict: continue;
-            default: break;
-        }
+        // A satellite moves with its planet (#210), so it stays too.
+        if (!e->GetOrbit())
+            switch (e->GetKind())
+            {
+                case EntityKind::Star:
+                case EntityKind::Station:
+                case EntityKind::Field:
+                case EntityKind::Gate:
+                case EntityKind::Nebula:
+                case EntityKind::Derelict: continue;
+                default: break;
+            }
 
         Proto::EntitySnapshot es;
         es.id = e->GetId();

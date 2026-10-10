@@ -27,7 +27,12 @@ public:
     Planet(float orbitRadius, float orbitSpeed, float angle, float size, Color color,
            ResourceType deposit, PlanetType type);
 
-    void                    Update(float dt) override;
+    // Where the planet is at a world time (#210). A function of the clock, not a sum of
+    // ticks: a planet in a system nobody was in for a week is where it would have got to,
+    // and a satellite asks the same function and so cannot fall behind its planet (#136).
+    Vector2 PositionAt(double time) const;
+    void    SetClock(double time) { pos_ = PositionAt(time); }
+
     Render::Item            Describe() const override;
     std::unique_ptr<Entity> Clone() const override { return std::make_unique<Planet>(*this); }
     std::string             GetName() const override { return "Planet"; }

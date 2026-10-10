@@ -84,9 +84,12 @@ Render::Item Planet::Describe() const
     return it;
 }
 
-void Planet::Update(float dt)
+Vector2 Planet::PositionAt(double time) const
 {
-    float angularSpeed = orbitSpeed_ / orbitRadius_;
-    angle_ += angularSpeed * dt;
-    pos_ = { cosf(angle_) * orbitRadius_, sinf(angle_) * orbitRadius_ };
+    if (orbitRadius_ <= 0.0f)
+        return pos_;
+    // Wrapped in double before it becomes a float: after a week the raw angle is in the
+    // hundreds of radians and a float would have no precision left for the fraction.
+    const double a = std::fmod(angle_ + (double)orbitSpeed_ / orbitRadius_ * time, 2.0 * PI);
+    return { cosf((float)a) * orbitRadius_, sinf((float)a) * orbitRadius_ };
 }

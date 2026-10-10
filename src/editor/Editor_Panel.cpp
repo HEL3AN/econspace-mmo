@@ -7,6 +7,7 @@
 #include "Editor.h"
 
 #include "core/Faction.h"
+#include "ui/Controls.h"
 #include "ui/UiTheme.h"
 #include "ui/Button.h"
 #include "raymath.h"
@@ -455,6 +456,25 @@ void Editor::DrawPropertyPanel()
             names.push_back(s.name);
         }
         DropdownRow(row(24), "dest", obj, "destination", ids, names);
+    }
+
+    // Anything but a star, a planet or a gate can be a planet's satellite (#210).
+    if (h.category == "stations" || h.category == "asteroidFields" || h.category == "nebulae" ||
+        h.category == "derelicts")
+    {
+        if (obj.contains("orbits") && obj["orbits"].is_object())
+        {
+            json& o = obj["orbits"];
+            Ui::Text(TextFormat("satellite of planet %d", o.value("planet", 0)), x, y, 14,
+                     Ui::TEXT_DIM);
+            y += 22;
+            changed |= FieldRow(row(24), "orbit radius", o, "radius", true, true, 500);
+            changed |= FieldRow(row(24), "orbit speed", o, "speed", true, true, 5);
+            if (Ui::SmallButton(row(24), "Detach from planet"))
+                DetachSelected();
+        }
+        else if (Ui::SmallButton(row(24), "Attach to nearest planet"))
+            AttachSelectedToNearestPlanet();
     }
 
     // Deferred rendering of the open dropdown on top of everything + selection handling.

@@ -11,6 +11,7 @@
 #include "ui/UiTheme.h"
 #include "ui/Button.h"
 #include "raymath.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -154,12 +155,79 @@ void Editor::MoveSelected(Vector2 desiredPos)
         systemJson_["planets"][h.index]["orbitRadius"] = (int)roundf(r);
         systemJson_["planets"][h.index]["angle"] = a;
     }
+    else if (h.category != "star" && systemJson_[h.category][h.index].contains("orbits"))
+    {
+        // A satellite is moved round its planet, not across the system (#210): the drag
+        // sets how far out it is and where on its circle it stands at world time zero.
+        json&         o = systemJson_[h.category][h.index]["orbits"];
+        const Entity* planet = PlanetEntity(o.value("planet", 0));
+        if (planet == nullptr)
+            return;
+        const Vector2 d = Vector2Subtract(desiredPos, planet->GetPosition());
+        const float   minR = planet->GetSize() + entities_[selected_]->GetSize();
+        o["radius"] = (int)roundf(std::max(Vector2Length(d), minR));
+        o["phase"] = atan2f(d.y, d.x);
+    }
     else if (h.category != "star")
     {
         systemJson_[h.category][h.index]["pos"] =
             json::array({ (int)roundf(desiredPos.x), (int)roundf(desiredPos.y) });
     }
 
+    dirty_ = true;
+    RebuildEntities();
+}
+
+const Entity* Editor::PlanetEntity(int planetIndex) const
+{
+    for (size_t i = 0; i < handles_.size() && i < entities_.size(); i++)
+        if (handles_[i].category == "planets" && handles_[i].index == planetIndex)
+            return entities_[i].get();
+    return nullptr;
+}
+
+void Editor::AttachSelectedToNearestPlanet()
+{
+    if (selected_ < 0 || selected_ >= (int)handles_.size())
+        return;
+    const ObjHandle& h = handles_[selected_];
+    const Vector2    at = entities_[selected_]->GetPosition();
+    int              best = -1;
+    float            bestD = 0.0f;
+    for (size_t i = 0; i < handles_.size(); i++)
+        if (handles_[i].category == "planets")
+        {
+            const float d = Vector2Distance(at, entities_[i]->GetPosition());
+            if (best < 0 || d < bestD)
+            {
+                best = handles_[i].index;
+                bestD = d;
+            }
+        }
+    if (best < 0)
+        return;
+    const Entity* planet = PlanetEntity(best);
+    const Vector2 d = Vector2Subtract(at, planet->GetPosition());
+    const float   minR = planet->GetSize() + entities_[selected_]->GetSize();
+    // Speed: a slow turn, well within what the slowest ship can follow (#210).
+    systemJson_[h.category][h.index]["orbits"] = { { "planet", best },
+                                                   { "radius", (int)roundf(std::max(bestD, minR)) },
+                                                   { "speed", 30 },
+                                                   { "phase", atan2f(d.y, d.x) } };
+    systemJson_[h.category][h.index].erase("pos");
+    dirty_ = true;
+    RebuildEntities();
+}
+
+void Editor::DetachSelected()
+{
+    if (selected_ < 0 || selected_ >= (int)handles_.size())
+        return;
+    const ObjHandle& h = handles_[selected_];
+    const Vector2    at = entities_[selected_]->GetPosition();
+    json&            o = systemJson_[h.category][h.index];
+    o.erase("orbits");
+    o["pos"] = json::array({ (int)roundf(at.x), (int)roundf(at.y) });
     dirty_ = true;
     RebuildEntities();
 }
