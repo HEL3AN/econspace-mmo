@@ -197,7 +197,9 @@ module's first `sockets` entry), and optionally `in` (only on that section, by i
 `mount` (how the module meets the socket, measured by the module's own box rather than its
 origin: `"on"`, the default, lies wholly on the hull with its edge at the hull's; `"out"` starts
 at the edge and stands out from it -- docks, engines, dishes on booms; `"centre"` is centred on
-the socket; a `top` socket always centres), `z` (draw order, default 1: over the hull), `when` (a component the archetype must have for the
+the socket; a `top` socket always centres), `z` (draw order, default 1: over the hull), `prefer` (`"out"`, the default, or `"in"`: which of
+two otherwise equal lines -- the two long edges of an arm, its two ends -- is taken first, the one
+facing away from the object's centre or the one facing it), `when` (a component the archetype must have for the
 line to apply -- `"when": "defensive"` puts turrets only on stations that can fight, `"!market"`
 only on those without a market; an unknown component name is a load error), and
 `variant` (pinned; otherwise the seed picks one for the whole line, so a row is a row of the
@@ -211,7 +213,7 @@ sockets under it, so nothing is put on top of it; each section keeps `plain` (de
 `"symmetry": "bilateral"` every module on one side is mirrored onto the other, its shape
 reflected, and with `"radial"` a placement on one copy of a repeated section is repeated on
 every copy (the count is then per copy). An unknown module or a tag nobody carries is a load
-error. Sockets do not follow a section's `spin`.
+error. A module placed on a socket shares its section's `spin`, so it turns with it.
 
 ## pins.json — hand-written exceptions to the generated region (#147)
 

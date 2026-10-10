@@ -309,6 +309,10 @@ struct KitEntry
     // station that is defensive wears turrets, one with a market wears cargo. Checked when
     // the archetype is loaded, which is where its components are known.
     std::string when;
+    // Between lines that are otherwise equal, the one facing out from the object ("out",
+    // the default: turrets, docks, lamps) or the one facing in ("in": cranes over a slip,
+    // anything that works on what is between two sections).
+    std::string prefer = "out";
     // How the module meets the socket, by its own bounding box: "on" lies wholly on the
     // hull with its edge at the hull's (a hatch, a window), "out" starts at the edge and
     // stands out from it (a docking arm, an engine, a dish on a boom), "centre" is centred

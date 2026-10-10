@@ -1257,3 +1257,23 @@ TEST_CASE("a kit mounts a module by its box and draws it in its layer (#240)")
     REQUIRE(pieces.size() == 2);
     CHECK(pieces[0].form == Render::Form::Bar);
 }
+
+TEST_CASE("a module whose place is taken goes to the nearest free one, not nowhere (#240)")
+{
+    std::string error;
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+    // Two lines that both want the middle of the same top line: the second must still land.
+    const Render::Shape       s = Parse(R"({
+        "sections": [ { "form": "bar", "length": 2.0, "width": 0.3, "pitch": 0.2 } ],
+        "kit": { "plain": 0.2, "modules": [
+            { "of": "hatch", "on": "top", "count": 1, "scale": 0.06 },
+            { "of": "vent", "on": "top", "count": 1, "scale": 0.06 } ] },
+        "parts": [] })");
+    std::vector<Render::Part> sections;
+    for (const auto& p : s.parts)
+        if (p.section)
+            sections.push_back(p);
+    const auto placed = Render::PlaceKit(s.kit, sections, 1);
+    REQUIRE(placed.size() == 2);
+    CHECK(Dist(placed[0].at, placed[1].at) > 0.05f);  // side by side, not on top
+}

@@ -289,8 +289,31 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
             return n;
         };
         // The longest free line first, then the order the sections were written in.
+        // How squarely a line faces away from the object's centre, -1..1: which of two
+        // equal edges is the outer one, which end of an arm is its far end.
+        auto outward = [&](int line)
+        {
+            float sum = 0.0f;
+            int   n = 0;
+            for (const Socket& s : sockets)
+                if (s.line == line)
+                {
+                    const float   len = std::hypot(s.pos.x, s.pos.y);
+                    const Vector2 nrm = Turn({ 1.0f, 0.0f }, s.angle);
+                    sum += len > 1e-4f ? (s.pos.x * nrm.x + s.pos.y * nrm.y) / len : 0.0f;
+                    n++;
+                }
+            return n > 0 ? sum / (float)n : 0.0f;
+        };
+        const float sign = entry.prefer == "in" ? -1.0f : 1.0f;
         std::stable_sort(lines.begin(), lines.end(),
-                         [&](int a, int b) { return freeOn(a) > freeOn(b); });
+                         [&](int a, int b)
+                         {
+                             const int fa = freeOn(a), fb = freeOn(b);
+                             if (fa != fb)
+                                 return fa > fb;
+                             return sign * outward(a) > sign * outward(b) + 1e-3f;
+                         });
 
         const Rectangle& box = variant->bounds;
 
@@ -401,8 +424,29 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
             // quarter of the way in from each end, not wherever free sockets happen to be.
             for (size_t k = 0; k < picks.size() && left > 0; k++)
             {
-                const size_t i = picks[k];
-                if (used[i] || !room(sockets[i]))
+                size_t i = picks[k];
+                if (used[i])
+                {
+                    // Covered by something placed before: the nearest free socket on the
+                    // same line rather than nothing -- a crane hidden behind a radiator
+                    // used to vanish without a word.
+                    size_t best = all.size();
+                    int    bestD = 1 << 30;
+                    size_t at = 0;
+                    for (size_t q = 0; q < all.size(); q++)
+                        if (all[q] == i)
+                            at = q;
+                    for (size_t q = 0; q < all.size(); q++)
+                        if (!used[all[q]] && std::abs((int)q - (int)at) < bestD)
+                        {
+                            bestD = std::abs((int)q - (int)at);
+                            best = q;
+                        }
+                    if (best == all.size())
+                        continue;
+                    i = all[best];
+                }
+                if (!room(sockets[i]))
                     continue;
                 const int twin = offAxis ? twinOf(i) : -1;
                 place(i);

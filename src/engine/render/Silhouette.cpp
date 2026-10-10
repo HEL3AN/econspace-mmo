@@ -258,10 +258,10 @@ static bool ParseKit(const json& k, Kit& kit, std::string& error)
     }
     for (const json& m : k["modules"])
     {
-        if (!m.is_object() ||
-            !OnlyKnownKeys(
-                m, { "of", "count", "on", "scale", "turn", "variant", "in", "mount", "z", "when" },
-                error))
+        if (!m.is_object() || !OnlyKnownKeys(m,
+                                             { "of", "count", "on", "scale", "turn", "variant",
+                                               "in", "mount", "z", "when", "prefer" },
+                                             error))
         {
             if (error.empty())
                 error = "a kit line is { \"of\", \"count\", \"on\", ... }";
@@ -312,6 +312,12 @@ static bool ParseKit(const json& k, Kit& kit, std::string& error)
         }
         e.z = m.value("z", e.z);
         e.when = m.value("when", std::string());
+        e.prefer = m.value("prefer", e.prefer);
+        if (e.prefer != "out" && e.prefer != "in")
+        {
+            error = "a kit line's \"prefer\" is out or in";
+            return false;
+        }
         kit.entries.push_back(e);
     }
     return true;
