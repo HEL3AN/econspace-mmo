@@ -84,30 +84,22 @@
         },
         {
             "id": "nature.prominence",
-            "note": "A loop of cooler gas held up off the limb by the field: an arch with both feet on the star. Soft glow only -- from each hot foot a straight leg rises and bends over into the other, thick at the feet and thin at the top, with a brighter core along the same path -- so it reads as plasma, never as a ring segment.",
+            "note": "A loop of cooler gas held up off the limb by the field: an open arch with both feet in the star, wider than it is tall. Soft glow only -- a fan of soft discs round a centre just below the limb, less than a half-circle so the convex limb does not close it into a ring, laid twice, once thinning from each foot, so the arch is thick at both feet and thin overhead, with a brighter core along it. The module's origin is the limb: the feet sit just inside it and the arch is drawn before the disc, so it rises out of the surface rather than sitting on it.",
             "tags": ["star", "edge", "glow"],
             "sockets": ["edge"],
             "variants": [
-                { "id": "loop", "shape": { "vars": { "w": [0.52, 0.56] }, "parts": [
-                    {"form": "disc", "soft": true, "at": [-0.35, "-$w"], "radius": [0.25, 0.28], "role": "hull", "alpha": [0.3, 0.38],
-                     "row": {"count": 5, "step": [0.06, 0.0], "taper": 0.95}},
-                    {"form": "disc", "soft": true, "at": [-0.35, "$w"], "radius": [0.25, 0.28], "role": "hull", "alpha": [0.3, 0.38],
-                     "row": {"count": 5, "step": [0.06, 0.0], "taper": 0.95}},
-                    {"form": "disc", "soft": true, "at": [-0.05, "-$w"], "radius": [0.2, 0.22], "role": "hull", "alpha": [0.3, 0.38],
-                     "row": {"count": 15, "step": [0.06, 0.0], "turn": 6.4, "taper": 0.95}},
-                    {"form": "disc", "soft": true, "at": [-0.05, "$w"], "radius": [0.2, 0.22], "role": "hull", "alpha": [0.3, 0.38],
-                     "row": {"count": 15, "step": [0.06, 0.0], "turn": -6.4, "taper": 0.95}},
-                    {"form": "disc", "soft": true, "at": [-0.35, "-$w"], "radius": [0.13, 0.14], "role": "trim", "alpha": [0.45, 0.55],
-                     "row": {"count": 5, "step": [0.06, 0.0], "taper": 0.95}},
-                    {"form": "disc", "soft": true, "at": [-0.35, "$w"], "radius": [0.13, 0.14], "role": "trim", "alpha": [0.45, 0.55],
-                     "row": {"count": 5, "step": [0.06, 0.0], "taper": 0.95}},
-                    {"form": "disc", "soft": true, "at": [-0.05, "-$w"], "radius": [0.1, 0.11], "role": "trim", "alpha": [0.45, 0.55],
-                     "row": {"count": 15, "step": [0.06, 0.0], "turn": 6.4, "taper": 0.95}},
-                    {"form": "disc", "soft": true, "at": [-0.05, "$w"], "radius": [0.1, 0.11], "role": "trim", "alpha": [0.45, 0.55],
-                     "row": {"count": 15, "step": [0.06, 0.0], "turn": -6.4, "taper": 0.95}},
-                    {"form": "disc", "soft": true, "at": [-0.3, "-$w"], "radius": [0.32, 0.38], "role": "hull", "alpha": [0.6, 0.75]},
-                    {"form": "disc", "soft": true, "at": [-0.3, "$w"], "radius": [0.32, 0.38], "role": "hull", "alpha": [0.6, 0.75]}
-                ]}}
+                { "id": "loop", "shape": [
+                    {"form": "disc", "soft": true, "at": [-0.3, 0.0], "radius": [0.3, 0.33], "role": "hull", "alpha": [0.3, 0.36],
+                     "row": {"count": 31, "ring": 0.75, "spread": 160, "taper": 0.955}},
+                    {"form": "disc", "soft": true, "at": [-0.3, 0.0], "radius": [0.075, 0.083], "role": "hull", "alpha": [0.3, 0.36],
+                     "row": {"count": 31, "ring": 0.75, "spread": 160, "taper": 1.047}},
+                    {"form": "disc", "soft": true, "at": [-0.3, 0.0], "radius": [0.12, 0.13], "role": "trim", "alpha": [0.4, 0.5],
+                     "row": {"count": 31, "ring": 0.75, "spread": 160, "taper": 0.955}},
+                    {"form": "disc", "soft": true, "at": [-0.3, 0.0], "radius": [0.031, 0.034], "role": "trim", "alpha": [0.4, 0.5],
+                     "row": {"count": 31, "ring": 0.75, "spread": 160, "taper": 1.047}},
+                    {"form": "disc", "soft": true, "at": [-0.12, -0.72], "radius": [0.3, 0.36], "role": "hull", "alpha": [0.6, 0.75]},
+                    {"form": "disc", "soft": true, "at": [-0.12, 0.72], "radius": [0.3, 0.36], "role": "hull", "alpha": [0.6, 0.75]}
+                ]}
             ]
         },
         {

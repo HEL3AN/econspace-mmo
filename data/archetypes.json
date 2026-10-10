@@ -13,7 +13,7 @@
             "shape": { "vars": { "pa": [0, 360] }, "parts": [
                 {"form": "disc", "radius": 2.6, "role": "hull", "soft": true, "alpha": 0.32},
                 {"form": "disc", "radius": 1.6, "role": "hull", "soft": true, "alpha": 0.4},
-                {"module": "nature.prominence", "variant": "loop", "at": [1.1, 0], "pivot": [-1.1, 0], "angle": "$pa", "scale": [0.4, 0.48], "tint": [255, 150, 60], "minPixels": 50},
+                {"module": "nature.prominence", "variant": "loop", "at": [1.0, 0], "pivot": [-1.0, 0], "angle": "$pa", "scale": [0.3, 0.36], "tint": [255, 150, 60], "minPixels": 50},
                 {"module": "nature.flare", "at": [1.06, 0], "pivot": [-1.06, 0], "angle": "$pa+150", "scale": [0.2, 0.26], "tint": [255, 235, 150], "minPixels": 50, "chance": 0.45},
                 {"form": "disc", "radius": 1.0, "role": "hull"},
                 {"module": "nature.sunspot", "at": [[-0.45, 0.45], [-0.4, 0.4]], "scale": [0.16, 0.24], "minPixels": 40},
@@ -35,7 +35,7 @@
                 {"form": "disc", "radius": 2.80, "role": "hull", "soft": true, "alpha": 0.32},
                 {"form": "disc", "radius": 1.72, "role": "hull", "soft": true, "alpha": 0.4},
                 {"module": "nature.flare", "at": [1.07, 0], "pivot": [-1.07, 0], "angle": "$pa", "scale": [0.26, 0.34], "tint": [255, 200, 140], "minPixels": 50, "chance": 0.75},
-                {"module": "nature.prominence", "variant": "loop", "at": [1.1, 0], "pivot": [-1.1, 0], "angle": "$pa+170", "scale": [0.28, 0.36], "tint": [255, 120, 80], "minPixels": 50, "chance": 0.6},
+                {"module": "nature.prominence", "variant": "loop", "at": [1.0, 0], "pivot": [-1.0, 0], "angle": "$pa+170", "scale": [0.26, 0.32], "tint": [255, 120, 80], "minPixels": 50, "chance": 0.6},
                 {"form": "disc", "radius": 1.0, "role": "hull"},
                 {"module": "nature.sunspot", "at": [[-0.4, 0.4], [-0.35, 0.35]], "scale": [0.24, 0.32], "minPixels": 40},
                 {"module": "nature.sunspot", "at": [[-0.55, 0.55], [-0.5, 0.5]], "scale": [0.14, 0.2], "minPixels": 50, "chance": 0.7}
