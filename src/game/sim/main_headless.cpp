@@ -47,8 +47,10 @@ static const double WORLD_SAVE_INTERVAL = 60.0;
 //
 // worldPath non-empty: restore the galaxy from it if the file exists. LoadWorld does its
 // own Reset+InitGalaxy and restores only the aggregates (population, security, prosperity,
-// controllers) plus simulation time. Entities are never persisted, so materialization
-// happens afterwards either way. An empty worldPath keeps a run ephemeral (the self-tests).
+// controllers) plus simulation time, and holds what players changed in the static layer
+// (#38) until materialization, which builds every system from data and replays the changes
+// on top -- so it happens afterwards either way. An empty worldPath keeps a run ephemeral (the
+// self-tests).
 static void SetupHostSim(Simulation& sim, const std::string& dataDir,
                          const std::string& worldPath = std::string(), uint64_t newSeed = 1)
 {
@@ -1179,12 +1181,49 @@ static int WorldSelftest()
     bool ctrl = haveSys && b.Systems()[sid].agg.controller == FactionId::Pirates;
     std::remove(path.c_str());
 
-    bool ok = ticked && loaded && time && sec && prosp && pir && ctrl;
+    // What players changed in the static layer (#38): a station of the world's own taken
+    // away and one built, across a save and a start from it the way the server starts.
+    bool        kept = false;
+    std::string builtKey;
+    {
+        Simulation before;
+        SetupHostSim(before, dataDir);
+        Station* gone = nullptr;
+        for (auto& e : before.Systems()[sid].entities)
+            if (gone == nullptr && e->GetKind() == EntityKind::Station)
+                gone = static_cast<Station*>(e.get());
+        const std::string goneName = gone != nullptr ? gone->GetName() : std::string();
+        const bool        removed = gone != nullptr && before.RemoveStatic(sid, gone->GetId());
+        const int         built = before.AddStatic(
+            sid,
+            std::make_unique<Station>(Vector2{ 4000.0f, 0.0f }, 60.0f, "Selftest Depot",
+                                      FactionId::TradersGuild, StationRole::TradeHub),
+            "selftest");
+        builtKey = before.StaticKey(sid, built);
+        before.SaveWorld(path);
+
+        Simulation after;
+        SetupHostSim(after, dataDir, path);
+        std::remove(path.c_str());
+        bool goneStays = true, builtBack = false;
+        for (const auto& e : after.Systems()[sid].entities)
+        {
+            if (e->GetKind() != EntityKind::Station)
+                continue;
+            goneStays = goneStays && e->GetName() != goneName;
+            builtBack =
+                builtBack || (e->GetName() == "Selftest Depot" && e->GetOwner() == "selftest" &&
+                              after.StaticKey(sid, e->GetId()) == builtKey);
+        }
+        kept = removed && built != 0 && goneStays && builtBack;
+    }
+
+    bool ok = ticked && loaded && time && sec && prosp && pir && ctrl && kept;
     printf("World selftest: clock %s, load %s, time %s, security %s, prosperity %s, "
-           "pirates %s, controller %s => %s\n",
+           "pirates %s, controller %s, built/removed kept %s => %s\n",
            ticked ? "OK" : "FAIL", loaded ? "OK" : "FAIL", time ? "OK" : "FAIL",
            sec ? "OK" : "FAIL", prosp ? "OK" : "FAIL", pir ? "OK" : "FAIL", ctrl ? "OK" : "FAIL",
-           ok ? "PASS" : "FAIL");
+           kept ? "OK" : "FAIL", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
 

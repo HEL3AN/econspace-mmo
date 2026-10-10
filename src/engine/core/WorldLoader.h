@@ -54,4 +54,12 @@ std::vector<std::unique_ptr<Entity>> LoadSystem(const std::string& path);
 // Builds entities from already-parsed JSON (for the editor — rebuild after
 // in-memory edits). Entity order matches the order in the JSON.
 std::vector<std::unique_ptr<Entity>> BuildSystem(const nlohmann::json& data);
+
+// The other direction, for one object: the element BuildSystem would build it from, and the
+// array of a system document it belongs in ("stations", "asteroidFields", ...). A save keeps
+// an object a player added this way (#38), in the format the data is written in, so loading
+// it is BuildSystem again rather than a second reader. Only what the document format
+// describes is written -- state such as a searched wreck is the caller's. A kind the format
+// cannot add one at a time (a star, a planet, a gate, a ship) gives an empty `array`.
+nlohmann::json DescribeObject(const Entity& e, std::string& array);
 }  // namespace WorldLoader

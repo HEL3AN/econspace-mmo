@@ -112,4 +112,20 @@ struct SystemState
     // at revision 0, and every client is sent a whole layout then anyway.
     int           layoutRev = 0;
     std::set<int> pendingAdded, pendingChanged, pendingRemoved;
+
+    // What a save calls each object of the static layer that may change (#38), by entity id.
+    // An id is good for one run -- one counter runs through every system and the NPCs
+    // hydrated beside them -- so a save names an object by a key that comes out the same on
+    // every load: for the world's own, the array of the system document it was built from,
+    // its name and which of that name it is ("stations/Aurora Hub#0"); for one added since,
+    // "+" and a number this system never hands out twice. Remade on every load, not saved.
+    std::map<int, std::string> keys;
+    // The world's own objects somebody has taken away, by key, and the number the next one
+    // added here will be keyed by. Saved: with what is added and what has changed, they are
+    // what a restart replays on top of the generated or written system.
+    std::set<std::string> removedKeys;
+    int                   nextAddedKey = 1;
+    // What a loaded save says to put back into this system, as JSON text (the header stays
+    // free of the JSON library). Replayed once, when the static layer is built, then cleared.
+    std::string restore;
 };
