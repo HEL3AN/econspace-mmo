@@ -264,15 +264,15 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
         }
         // A misspelled field would be read as absent and draw the default (#191), which
         // for a part is the kind of wrong nobody notices until it is the only one left.
-        if (!OnlyKnownKeys(e, { "form",          "role",        "at",          "sides",
-                                "angle",         "radius",      "width",       "length",
-                                "count",         "filled",      "repeat",      "mirror",
-                                "minPixels",     "jitterAngle", "jitterScale", "alpha",
-                                "orbitRadius",   "orbitPeriod", "orbitPhase",  "orbitTilt",
-                                "lat",           "lon",         "spin",        "blink",
-                                "onlyThrusting", "tint",        "from",        "to",
-                                "row",           "module",      "variant",     "scale" },
-                           error))
+        if (!OnlyKnownKeys(
+                e, { "form",    "role",        "at",          "sides",       "angle",
+                     "radius",  "width",       "length",      "count",       "filled",
+                     "repeat",  "mirror",      "minPixels",   "jitterAngle", "jitterScale",
+                     "alpha",   "orbitRadius", "orbitPeriod", "orbitPhase",  "orbitTilt",
+                     "lat",     "lon",         "spin",        "blink",       "onlyThrusting",
+                     "tint",    "from",        "to",          "row",         "module",
+                     "variant", "scale",       "chance" },
+                error))
             return false;
         Part p;
         if (e.contains("module"))
@@ -307,22 +307,49 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
             return false;
         }
 
+        // A number, or [min, max] for the seed to choose in (#240).
+        auto num = [&](const json& v, float& dst, Part::Field f) -> bool
+        {
+            if (v.is_number())
+            {
+                dst = v.get<float>();
+                return true;
+            }
+            if (v.is_array() && v.size() == 2 && v[0].is_number() && v[1].is_number())
+            {
+                dst = v[0].get<float>();
+                p.vary.push_back({ f, v[0].get<float>(), v[1].get<float>() });
+                return true;
+            }
+            error = "a number or [min, max] was expected";
+            return false;
+        };
+        auto field = [&](const char* key, float& dst, Part::Field f) -> bool
+        { return !e.contains(key) || num(e[key], dst, f); };
         if (e.contains("at") && e["at"].is_array() && e["at"].size() == 2)
-            p.at = { e["at"][0].get<float>(), e["at"][1].get<float>() };
+            if (!num(e["at"][0], p.at.x, Part::Field::AtX) ||
+                !num(e["at"][1], p.at.y, Part::Field::AtY))
+                return false;
 
-        p.sides = e.value("sides", p.sides);
-        p.angle = e.value("angle", p.angle);
-        p.radius = e.value("radius", p.radius);
-        p.width = e.value("width", p.width);
-        p.length = e.value("length", p.length);
-        p.count = e.value("count", p.count);
+        float sides = (float)p.sides, count = (float)p.count;
+        if (!field("sides", sides, Part::Field::Sides) ||
+            !field("angle", p.angle, Part::Field::Angle) ||
+            !field("radius", p.radius, Part::Field::Radius) ||
+            !field("width", p.width, Part::Field::Width) ||
+            !field("length", p.length, Part::Field::Length) ||
+            !field("count", count, Part::Field::Count) ||
+            !field("alpha", p.alpha, Part::Field::Alpha) ||
+            !field("scale", p.scale, Part::Field::Scale))
+            return false;
+        p.sides = (int)sides;
+        p.count = (int)count;
+        p.chance = e.value("chance", p.chance);
         p.filled = e.value("filled", p.filled);
         p.repeat = e.value("repeat", p.repeat);
         p.mirror = e.value("mirror", p.mirror);
         p.minPixels = e.value("minPixels", p.minPixels);
         p.jitterAngle = e.value("jitterAngle", p.jitterAngle);
         p.jitterScale = e.value("jitterScale", p.jitterScale);
-        p.alpha = e.value("alpha", p.alpha);
         p.orbitRadius = e.value("orbitRadius", p.orbitRadius);
         p.orbitPeriod = e.value("orbitPeriod", p.orbitPeriod);
         p.orbitPhase = e.value("orbitPhase", p.orbitPhase);
@@ -335,16 +362,36 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
         p.onlyThrusting = e.value("onlyThrusting", p.onlyThrusting);
         if (e.contains("tint"))
         {
+            // A colour, or a list of colours for the seed to pick from (#240).
             const json& t = e["tint"];
-            if (!t.is_array() || t.size() < 3)
+            auto        colour = [](const json& c, Color& out)
             {
-                error = "\"tint\" is a colour, [r, g, b]";
+                if (!c.is_array() || c.size() < 3 || !c[0].is_number())
+                    return false;
+                out = { (unsigned char)c[0].get<int>(), (unsigned char)c[1].get<int>(),
+                        (unsigned char)c[2].get<int>(), 255 };
+                return true;
+            };
+            if (t.is_array() && !t.empty() && t[0].is_array())
+            {
+                for (const json& c : t)
+                {
+                    Color col;
+                    if (!colour(c, col))
+                    {
+                        error = "\"tint\" is a colour [r, g, b] or a list of them";
+                        return false;
+                    }
+                    p.palette.push_back(col);
+                }
+                p.tint = p.palette.front();
+            }
+            else if (!colour(t, p.tint))
+            {
+                error = "\"tint\" is a colour [r, g, b] or a list of them";
                 return false;
             }
-            p.tint = { (unsigned char)t[0].get<int>(), (unsigned char)t[1].get<int>(),
-                       (unsigned char)t[2].get<int>(), 255 };
         }
-        p.scale = e.value("scale", p.scale);
         p.arcFrom = e.value("from", p.arcFrom);
         p.arcTo = e.value("to", p.arcTo);
         if (e.contains("row"))
@@ -357,7 +404,10 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
                     error = "\"row\" is { \"count\": n, \"step\": [dx, dy] }";
                 return false;
             }
-            p.rowCount = r.value("count", 1);
+            float rc = 1.0f;
+            if (r.contains("count") && !num(r["count"], rc, Part::Field::RowCount))
+                return false;
+            p.rowCount = (int)rc;
             p.rowStep = { r["step"][0].get<float>(), r["step"][1].get<float>() };
         }
         s.parts.push_back(p);
@@ -405,6 +455,36 @@ float Extent(const Shape& s)
     return reach;
 }
 
+bool Resolve(const Part& p, int seed, int salt, Part& out)
+{
+    out = p;
+    if (p.chance < 1.0f && Hash01(seed, salt + 911) >= p.chance)
+        return false;
+    for (size_t k = 0; k < p.vary.size(); k++)
+    {
+        const Part::Vary& v = p.vary[k];
+        const float       x = v.lo + (v.hi - v.lo) * Hash01(seed, salt + 701 + (int)k * 17);
+        switch (v.field)
+        {
+            case Part::Field::Radius: out.radius = x; break;
+            case Part::Field::Width: out.width = x; break;
+            case Part::Field::Length: out.length = x; break;
+            case Part::Field::Angle: out.angle = x; break;
+            case Part::Field::AtX: out.at.x = x; break;
+            case Part::Field::AtY: out.at.y = x; break;
+            case Part::Field::Alpha: out.alpha = x; break;
+            case Part::Field::Scale: out.scale = x; break;
+            case Part::Field::RowCount: out.rowCount = (int)std::lround(x); break;
+            case Part::Field::Sides: out.sides = (int)std::lround(x); break;
+            case Part::Field::Count: out.count = (int)std::lround(x); break;
+        }
+    }
+    if (!p.palette.empty())
+        out.tint = p.palette[std::min(p.palette.size() - 1,
+                                      (size_t)(Hash01(seed, salt + 503) * p.palette.size()))];
+    return true;
+}
+
 // Every module part of a shape, replaced by the parts of the variant it stands for,
 // carried to where each copy of it goes (#240). Repeat, mirror and row place the module
 // as a whole; inside it, its own parts keep their arrangement, turned with it, scaled by
@@ -416,7 +496,9 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
     out.axisTilt = in.axisTilt;
     for (size_t i = 0; i < in.parts.size(); i++)
     {
-        const Part& p = in.parts[i];
+        Part p;
+        if (!Resolve(in.parts[i], pose.seed, (int)i * 977 + 3, p))
+            continue;
         if (p.module.empty())
         {
             out.parts.push_back(p);
@@ -459,8 +541,14 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
                 const Vector2 origin = { ox * cr - oy * sr, ox * sr + oy * cr };
                 const float   a = p.angle * flip + rot;
                 const float   ca = std::cos(a * DEG2RAD), sa = std::sin(a * DEG2RAD);
-                for (const Part& mp : v->shape.parts)
+                for (size_t j = 0; j < v->shape.parts.size(); j++)
                 {
+                    // Resolved once per module part, not per copy: a row of the same hatch
+                    // is a row of the same hatch, and rhythm is what reads as designed.
+                    Part mp;
+                    if (!Resolve(v->shape.parts[j], pose.seed, (int)i * 977 + (int)j * 131 + 41,
+                                 mp))
+                        continue;
                     Part        q = mp;
                     const float lx = mp.at.x * p.scale, ly = mp.at.y * p.scale * flip;
                     q.at = { origin.x + lx * ca - ly * sa, origin.y + lx * sa + ly * ca };
@@ -498,8 +586,13 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
     bool hasModules = false;
     for (const Part& p : shape.parts)
         hasModules = hasModules || !p.module.empty();
-    const Shape  expanded = hasModules ? ExpandModules(shape, pose) : Shape{};
-    const Shape& s = hasModules ? expanded : shape;
+    bool varies = hasModules;
+    for (const Part& p : shape.parts)
+        varies = varies || !p.vary.empty() || !p.palette.empty() || p.chance < 1.0f;
+    // Ranges, palettes and chance are settled in the same pass that expands modules, so
+    // everything below sees fixed numbers.
+    const Shape  expanded = varies ? ExpandModules(shape, pose) : Shape{};
+    const Shape& s = varies ? expanded : shape;
 
     std::vector<Piece> out;
     if (s.Empty() || pose.size <= 0.0f)

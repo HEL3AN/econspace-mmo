@@ -164,7 +164,37 @@ struct Part
     std::string module;
     std::string variant;
     float       scale = 0.1f;
+
+    // Generated variety (#240): a number written as [min, max] is chosen per object by its
+    // seed; a tint written as a list of colours is a palette to pick from; `chance` is how
+    // often the part is there at all. One written variant becomes a family of looks.
+    enum class Field
+    {
+        Radius,
+        Width,
+        Length,
+        Angle,
+        AtX,
+        AtY,
+        Alpha,
+        Scale,
+        RowCount,
+        Sides,
+        Count
+    };
+    struct Vary
+    {
+        Field field;
+        float lo, hi;
+    };
+    std::vector<Vary>  vary;
+    std::vector<Color> palette;
+    float              chance = 1.0f;
 };
+
+// The part as this object has it: ranges chosen, a colour picked, and false when the part's
+// chance says it is not there. Same seed and salt, same answer, on every client (#240).
+bool Resolve(const Part& p, int seed, int salt, Part& out);
 
 struct Shape
 {
