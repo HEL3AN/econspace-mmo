@@ -119,6 +119,18 @@ colours, a palette to pick from; `"chance": 0.4` keeps the part on 40% of object
 module, a part is resolved once per object, not per copy, so a row of hatches stays a row
 of the same hatch.
 
+**Variables (shared rolls).** A shape object may declare `"vars"`: each one is `[min, max]`
+or a list of colours, rolled once per object. A part names one with `"$name"` wherever it
+would take a number or a `tint` (`"count": "$tubes"`, `"angle": "$sweep"`, `"tint": "$paint"`),
+so the tubes and their caps, or a wing's hull and its trim, always agree. In a module (its
+variant's `shape` written as `{ "vars": {...}, "parts": [...] }`) the roll is per placed copy:
+two pods on one hull may differ, and the parts of one pod do not. An undeclared name is a load
+error.
+
+**Rows.** `row.step` takes ranges and variables like any number. `"centred": true` puts the
+middle of the row at `at` rather than its first copy, so a row with a ranged count stays
+balanced.
+
 ## pins.json — hand-written exceptions to the generated region (#147)
 
 The generated region is the default, not a monopoly. A starting point, a set piece, or

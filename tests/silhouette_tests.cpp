@@ -887,3 +887,88 @@ TEST_CASE("an arc's ends, a blink and a spin may be ranges; a wrong kind is an e
     CHECK_FALSE(Render::ParseShape(
         nlohmann::json::parse(R"([ { "form": "disc", "filled": [1, 2] } ])"), bad, error));
 }
+
+TEST_CASE("a shape's variables are rolled once and shared by every part that names them (#240)")
+{
+    const Render::Shape s =
+        Parse(R"({ "vars": { "len": [0.5, 1.5], "paint": [[200, 0, 0], [0, 200, 0], [0, 0, 200]] },
+        "parts": [
+            { "form": "bar", "at": [0, -0.5], "length": "$len", "tint": "$paint" },
+            { "form": "bar", "at": [0, 0.5], "length": "$len", "tint": "$paint" } ] })");
+    std::set<int> lengths, colours;
+    for (int seed = 1; seed <= 40; seed++)
+    {
+        const auto pieces = Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 1.0f));
+        REQUIRE(pieces.size() == 2);
+        // The same roll on both: a wing's hull and its trim at one sweep, not two.
+        CHECK(pieces[0].length == doctest::Approx(pieces[1].length));
+        CHECK(pieces[0].tint.r == pieces[1].tint.r);
+        CHECK(pieces[0].tint.g == pieces[1].tint.g);
+        lengths.insert((int)pieces[0].length);
+        colours.insert(pieces[0].tint.r * 3 + pieces[0].tint.g * 2 + pieces[0].tint.b);
+    }
+    CHECK(lengths.size() > 10);  // ...and a different roll on another object
+    CHECK(colours.size() == 3);
+
+    // A name nobody declared, and a colour used as a number, are load errors that say so.
+    Render::Shape bad;
+    std::string   error;
+    CHECK_FALSE(Render::ParseShape(
+        nlohmann::json::parse(R"([ { "form": "bar", "length": "$len" } ])"), bad, error));
+    CHECK(error.find("len") != std::string::npos);
+    CHECK_FALSE(Render::ParseShape(
+        nlohmann::json::parse(
+            R"({ "vars": { "c": [[1, 2, 3]] }, "parts": [ { "form": "bar", "length": "$c" } ] })"),
+        bad, error));
+}
+
+TEST_CASE("a centred row stays balanced on its place whatever count it rolls (#240)")
+{
+    const Render::Shape s = Parse(R"([
+        { "form": "disc", "radius": 0.05, "at": [0.3, 0.0],
+          "row": { "count": [2, 7], "step": [0.1, 0.0], "centred": true } } ])");
+    std::set<size_t>    counts;
+    for (int seed = 1; seed <= 30; seed++)
+    {
+        const auto pieces = Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 1.0f));
+        float      sum = 0.0f;
+        for (const auto& p : pieces)
+            sum += p.pos.x;
+        CHECK(sum / (float)pieces.size() == doctest::Approx(30.0f).epsilon(0.01));
+        counts.insert(pieces.size());
+    }
+    CHECK(counts.size() >= 4);
+}
+
+TEST_CASE("a module's variables are rolled per placed copy, shared within it (#240)")
+{
+    MakeDirectory("vars_test_tmp");
+    {
+        std::ofstream f("vars_test_tmp/modules.json");
+        f << R"({ "modules": [ { "id": "pod", "variants": [ { "id": "a", "shape": {
+            "vars": { "n": [2, 6] },
+            "parts": [
+                { "form": "disc", "radius": 0.1, "row": { "count": "$n", "step": [0.2, 0] } },
+                { "form": "bar", "role": "trim", "length": 0.1, "width": 0.1, "at": [0, 0.3],
+                  "row": { "count": "$n", "step": [0.2, 0] } } ] } } ] } ] })";
+    }
+    std::string error;
+    REQUIRE(Render::Modules::Load("vars_test_tmp/modules.json", error));
+    const Render::Shape s = Parse(R"([ { "module": "pod", "scale": 0.5, "at": [0, -0.5] },
+                                       { "module": "pod", "scale": 0.5, "at": [0, 0.5] } ])");
+    bool                differed = false;
+    for (int seed = 1; seed <= 30; seed++)
+    {
+        int tubes[2] = { 0, 0 }, caps[2] = { 0, 0 };
+        for (const auto& p : Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 10.0f)))
+            (p.form == Render::Form::Disc ? tubes : caps)[p.pos.y > 0.0f ? 1 : 0]++;
+        // Tubes and their caps agree within a pod...
+        CHECK(tubes[0] == caps[0]);
+        CHECK(tubes[1] == caps[1]);
+        // ...and two pods on one object need not.
+        differed = differed || tubes[0] != tubes[1];
+    }
+    CHECK(differed);
+    std::remove("vars_test_tmp/modules.json");
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+}

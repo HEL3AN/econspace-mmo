@@ -257,9 +257,50 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
     const json* parts = &j;
     if (j.is_object())
     {
-        if (!OnlyKnownKeys(j, { "tilt", "parts" }, error))
+        if (!OnlyKnownKeys(j, { "tilt", "parts", "vars" }, error))
             return false;
         s.axisTilt = j.value("tilt", s.axisTilt);
+        if (j.contains("vars"))
+        {
+            const json& vs = j["vars"];
+            if (!vs.is_object())
+            {
+                error = "\"vars\" is { \"name\": [min, max] or [[r, g, b], ...] }";
+                return false;
+            }
+            for (auto it = vs.begin(); it != vs.end(); ++it)
+            {
+                Shape::Var var;
+                var.name = it.key();
+                const json& v = it.value();
+                if (v.is_array() && v.size() == 2 && v[0].is_number() && v[1].is_number())
+                {
+                    var.lo = v[0].get<float>();
+                    var.hi = v[1].get<float>();
+                }
+                else if (v.is_array() && !v.empty() && v[0].is_array())
+                {
+                    for (const json& c : v)
+                    {
+                        if (!c.is_array() || c.size() < 3)
+                        {
+                            error = "variable '" + var.name + "': a colour is [r, g, b]";
+                            return false;
+                        }
+                        var.palette.push_back({ (unsigned char)c[0].get<int>(),
+                                                (unsigned char)c[1].get<int>(),
+                                                (unsigned char)c[2].get<int>(), 255 });
+                    }
+                }
+                else
+                {
+                    error = "variable '" + var.name +
+                            "' is [min, max] or a list of colours [[r, g, b], ...]";
+                    return false;
+                }
+                s.vars.push_back(var);
+            }
+        }
         if (!j.contains("parts"))
         {
             error = "a shape object needs \"parts\"";
@@ -325,9 +366,39 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
             return false;
         }
 
-        // A number, or [min, max] for the seed to choose in (#240).
+        // A shape variable by name, "$name", or -1 having said why not.
+        auto variable = [&](const json& v) -> int
+        {
+            const std::string name = v.get<std::string>().substr(1);
+            for (size_t k = 0; k < s.vars.size(); k++)
+                if (s.vars[k].name == name)
+                    return (int)k;
+            error = "unknown variable '$" + name + "' (declare it in the shape's \"vars\")";
+            return -1;
+        };
+        auto isVariable = [](const json& v)
+        {
+            return v.is_string() && !v.get<std::string>().empty() && v.get<std::string>()[0] == '$';
+        };
+
+        // A number, or [min, max] for the seed to choose in (#240), or "$name" for a shape
+        // variable's roll.
         auto num = [&](const json& v, float& dst, Part::Field f) -> bool
         {
+            if (isVariable(v))
+            {
+                const int k = variable(v);
+                if (k < 0)
+                    return false;
+                if (!s.vars[k].palette.empty())
+                {
+                    error = "variable '" + s.vars[k].name + "' is a colour, not a number";
+                    return false;
+                }
+                dst = s.vars[k].lo;
+                p.vary.push_back({ f, s.vars[k].lo, s.vars[k].hi, k });
+                return true;
+            }
             if (v.is_number())
             {
                 dst = v.get<float>();
@@ -385,7 +456,21 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         {
             // A colour, or a list of colours for the seed to pick from (#240).
             const json& t = e["tint"];
-            auto        colour = [](const json& c, Color& out)
+            if (isVariable(t))
+            {
+                const int k = variable(t);
+                if (k < 0)
+                    return false;
+                if (s.vars[k].palette.empty())
+                {
+                    error = "variable '" + s.vars[k].name + "' is a number, not a colour";
+                    return false;
+                }
+                p.palette = s.vars[k].palette;
+                p.tint = p.palette.front();
+                p.tintVar = k;
+            }
+            auto colour = [](const json& c, Color& out)
             {
                 if (!c.is_array() || c.size() < 3 || !c[0].is_number())
                     return false;
@@ -393,7 +478,10 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
                         (unsigned char)c[2].get<int>(), 255 };
                 return true;
             };
-            if (t.is_array() && !t.empty() && t[0].is_array())
+            if (p.tintVar >= 0)
+            {
+            }
+            else if (t.is_array() && !t.empty() && t[0].is_array())
             {
                 for (const json& c : t)
                 {
@@ -416,7 +504,7 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         if (e.contains("row"))
         {
             const json& r = e["row"];
-            if (!r.is_object() || !OnlyKnownKeys(r, { "count", "step" }, error) ||
+            if (!r.is_object() || !OnlyKnownKeys(r, { "count", "step", "centred" }, error) ||
                 !r.contains("step") || !r["step"].is_array() || r["step"].size() != 2)
             {
                 if (error.empty())
@@ -427,7 +515,10 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
             if (r.contains("count") && !num(r["count"], rc, Part::Field::RowCount))
                 return false;
             p.rowCount = (int)rc;
-            p.rowStep = { r["step"][0].get<float>(), r["step"][1].get<float>() };
+            if (!num(r["step"][0], p.rowStep.x, Part::Field::StepX) ||
+                !num(r["step"][1], p.rowStep.y, Part::Field::StepY))
+                return false;
+            p.rowCentred = r.value("centred", false);
         }
         s.parts.push_back(p);
     }
@@ -474,7 +565,15 @@ float Extent(const Shape& s)
     return reach;
 }
 
-bool Resolve(const Part& p, int seed, int salt, Part& out)
+std::vector<float> RollVars(const Shape& s, int seed, int salt)
+{
+    std::vector<float> rolls(s.vars.size());
+    for (size_t k = 0; k < s.vars.size(); k++)
+        rolls[k] = Hash01(seed, salt + 17 + (int)k * 53);
+    return rolls;
+}
+
+bool Resolve(const Part& p, int seed, int salt, Part& out, const float* rolls)
 {
     out = p;
     if (p.chance < 1.0f && Hash01(seed, salt + 911) >= p.chance)
@@ -482,7 +581,9 @@ bool Resolve(const Part& p, int seed, int salt, Part& out)
     for (size_t k = 0; k < p.vary.size(); k++)
     {
         const Part::Vary& v = p.vary[k];
-        const float       x = v.lo + (v.hi - v.lo) * Hash01(seed, salt + 701 + (int)k * 17);
+        const float u = (v.var >= 0 && rolls != nullptr) ? rolls[v.var]
+                                                         : Hash01(seed, salt + 701 + (int)k * 17);
+        const float x = v.lo + (v.hi - v.lo) * u;
         switch (v.field)
         {
             case Part::Field::Radius: out.radius = x; break;
@@ -502,11 +603,23 @@ bool Resolve(const Part& p, int seed, int salt, Part& out)
             case Part::Field::Blink: out.blink = x; break;
             case Part::Field::ArcFrom: out.arcFrom = x; break;
             case Part::Field::ArcTo: out.arcTo = x; break;
+            case Part::Field::StepX: out.rowStep.x = x; break;
+            case Part::Field::StepY: out.rowStep.y = x; break;
         }
     }
     if (!p.palette.empty())
-        out.tint = p.palette[std::min(p.palette.size() - 1,
-                                      (size_t)(Hash01(seed, salt + 503) * p.palette.size()))];
+    {
+        const float u =
+            (p.tintVar >= 0 && rolls != nullptr) ? rolls[p.tintVar] : Hash01(seed, salt + 503);
+        out.tint = p.palette[std::min(p.palette.size() - 1, (size_t)(u * p.palette.size()))];
+    }
+    if (p.rowCentred && out.rowCount > 1)
+    {
+        // The row's middle where `at` says, whatever count the roll gave it.
+        const float half = 0.5f * (float)(out.rowCount - 1);
+        out.at = { out.at.x - out.rowStep.x * half, out.at.y - out.rowStep.y * half };
+        out.rowCentred = false;
+    }
     return true;
 }
 
@@ -520,13 +633,15 @@ bool Resolve(const Part& p, int seed, int salt, Part& out)
 // round the planet in longitude and a mirrored one is reflected across the equator.
 void ExpandOnSphere(const Part& p, const ModuleVariant& v, int seed, int salt, Shape& out)
 {
-    const int   rows = p.rowCount < 1 ? 1 : p.rowCount;
-    const float ca = std::cos(p.angle * DEG2RAD), sa = std::sin(p.angle * DEG2RAD);
+    const int                rows = p.rowCount < 1 ? 1 : p.rowCount;
+    const float              ca = std::cos(p.angle * DEG2RAD), sa = std::sin(p.angle * DEG2RAD);
+    const std::vector<float> rolls = RollVars(v.shape, seed, salt + 20);
     for (int k = 0; k < rows; k++)
         for (size_t j = 0; j < v.shape.parts.size(); j++)
         {
             Part mp;
-            if (!Resolve(v.shape.parts[j], seed, salt + (int)j * 131, mp))
+            if (!Resolve(v.shape.parts[j], seed, salt + (int)j * 131, mp,
+                         rolls.empty() ? nullptr : rolls.data()))
                 continue;
             // A surface part is one point on the sphere, so a row inside the module is
             // spelled out here rather than left to the composer.
@@ -571,10 +686,13 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
 {
     Shape out;
     out.axisTilt = in.axisTilt;
+    // The object's own variables, rolled once for all its parts.
+    const std::vector<float> top = RollVars(in, pose.seed, 9001);
     for (size_t i = 0; i < in.parts.size(); i++)
     {
         Part p;
-        if (!Resolve(in.parts[i], pose.seed, (int)i * 977 + 3, p))
+        if (!Resolve(in.parts[i], pose.seed, (int)i * 977 + 3, p,
+                     top.empty() ? nullptr : top.data()))
             continue;
         if (p.module.empty())
         {
@@ -611,6 +729,9 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
         const int   sides = p.mirror ? 2 : 1;
         const int   rows = p.rowCount < 1 ? 1 : p.rowCount;
         const float turned = (float)std::fmod((double)p.spin * pose.time, 360.0);
+        // The module's variables, rolled per placement: two hatches on one hull may differ,
+        // the parts of one hatch may not. Every copy of a repeat or row shares the roll.
+        const std::vector<float> mrolls = RollVars(v->shape, pose.seed, (int)i * 977 + 61);
         for (int r = 0; r < repeat; r++)
         {
             const float rot = (360.0f / (float)repeat) * (float)r + turned;
@@ -629,8 +750,8 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
                     // Resolved once per module part, not per copy: a row of the same hatch
                     // is a row of the same hatch, and rhythm is what reads as designed.
                     Part mp;
-                    if (!Resolve(v->shape.parts[j], pose.seed, (int)i * 977 + (int)j * 131 + 41,
-                                 mp))
+                    if (!Resolve(v->shape.parts[j], pose.seed, (int)i * 977 + (int)j * 131 + 41, mp,
+                                 mrolls.empty() ? nullptr : mrolls.data()))
                         continue;
                     Part        q = mp;
                     const float lx = mp.at.x * p.scale, ly = mp.at.y * p.scale * flip;
@@ -671,7 +792,7 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
         hasModules = hasModules || !p.module.empty();
     bool varies = hasModules;
     for (const Part& p : shape.parts)
-        varies = varies || !p.vary.empty() || !p.palette.empty() || p.chance < 1.0f;
+        varies = varies || !p.vary.empty() || !p.palette.empty() || p.chance < 1.0f || p.rowCentred;
     // Ranges, palettes and chance are settled in the same pass that expands modules, so
     // everything below sees fixed numbers.
     const Shape  expanded = varies ? ExpandModules(shape, pose) : Shape{};
