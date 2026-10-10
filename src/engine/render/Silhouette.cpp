@@ -355,8 +355,8 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
         p.orbitPhase = e.value("orbitPhase", p.orbitPhase);
         p.orbitTilt = e.value("orbitTilt", p.orbitTilt);
         p.surface = p.form == Form::Band || e.contains("lat") || e.contains("lon");
-        p.lat = e.value("lat", p.lat);
-        p.lon = e.value("lon", p.lon);
+        if (!field("lat", p.lat, Part::Field::Lat) || !field("lon", p.lon, Part::Field::Lon))
+            return false;
         p.spin = e.value("spin", p.spin);
         p.blink = e.value("blink", p.blink);
         p.onlyThrusting = e.value("onlyThrusting", p.onlyThrusting);
@@ -477,12 +477,66 @@ bool Resolve(const Part& p, int seed, int salt, Part& out)
             case Part::Field::RowCount: out.rowCount = (int)std::lround(x); break;
             case Part::Field::Sides: out.sides = (int)std::lround(x); break;
             case Part::Field::Count: out.count = (int)std::lround(x); break;
+            case Part::Field::Lat: out.lat = x; break;
+            case Part::Field::Lon: out.lon = x; break;
         }
     }
     if (!p.palette.empty())
         out.tint = p.palette[std::min(p.palette.size() - 1,
                                       (size_t)(Hash01(seed, salt + 503) * p.palette.size()))];
     return true;
+}
+
+// A module laid on a planet's surface (#240): a base, a city, a crater field. Its own frame
+// is a small patch of the sphere at the part's latitude and longitude, measured in the
+// body's radius like everything else on it, so an offset becomes degrees -- across a
+// latitude by its own width, which keeps a city the same shape near a pole. Each module
+// part becomes an ordinary surface part, and the composer then does what it does for any:
+// the planet's turn carries it round, the limb squashes it, the far side hides it. Repeat,
+// mirror and spin stay on the copies for the same reason, so a repeated base is spread
+// round the planet in longitude and a mirrored one is reflected across the equator.
+void ExpandOnSphere(const Part& p, const ModuleVariant& v, int seed, int salt, Shape& out)
+{
+    const int   rows = p.rowCount < 1 ? 1 : p.rowCount;
+    const float ca = std::cos(p.angle * DEG2RAD), sa = std::sin(p.angle * DEG2RAD);
+    for (int k = 0; k < rows; k++)
+        for (size_t j = 0; j < v.shape.parts.size(); j++)
+        {
+            Part mp;
+            if (!Resolve(v.shape.parts[j], seed, salt + (int)j * 131, mp))
+                continue;
+            // A surface part is one point on the sphere, so a row inside the module is
+            // spelled out here rather than left to the composer.
+            const int own = mp.rowCount < 1 ? 1 : mp.rowCount;
+            for (int n = 0; n < own; n++)
+            {
+                const float lx = (mp.at.x + mp.rowStep.x * (float)n) * p.scale;
+                const float ly = (mp.at.y + mp.rowStep.y * (float)n) * p.scale;
+                const float x = p.rowStep.x * (float)k + lx * ca - ly * sa;
+                const float y = p.rowStep.y * (float)k + lx * sa + ly * ca;
+                Part        q = mp;
+                q.surface = true;
+                // Screen y points south, and a degree of longitude narrows towards a pole.
+                q.lat = std::fmax(-89.0f, std::fmin(89.0f, p.lat - y * RAD2DEG));
+                q.lon = p.lon + x / std::fmax(0.2f, std::cos(q.lat * DEG2RAD)) * RAD2DEG;
+                q.at = { 0.0f, 0.0f };
+                q.angle = mp.angle + p.angle;
+                q.radius *= p.scale;
+                q.width *= p.scale;
+                q.length *= p.scale;
+                q.rowCount = 1;
+                q.rowStep = { 0.0f, 0.0f };
+                q.alpha *= p.alpha;
+                if (q.tint.a == 0)
+                    q.tint = p.tint;
+                const float seen = mp.minPixels > 0.0f ? mp.minPixels : 10.0f;
+                q.minPixels = std::fmax(p.minPixels, seen / std::fmax(p.scale, 0.001f));
+                q.repeat = p.repeat;
+                q.mirror = p.mirror;
+                q.spin = p.spin;
+                out.parts.push_back(q);
+            }
+        }
 }
 
 // Every module part of a shape, replaced by the parts of the variant it stands for,
@@ -523,6 +577,12 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
         }
         if (v == nullptr)
             continue;
+
+        if (p.surface)
+        {
+            ExpandOnSphere(p, *v, pose.seed, (int)i * 977 + 41, out);
+            continue;
+        }
 
         const int   repeat = p.repeat < 1 ? 1 : p.repeat;
         const int   sides = p.mirror ? 2 : 1;

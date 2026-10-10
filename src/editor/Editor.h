@@ -48,6 +48,18 @@ public:
     // a raylib window, so this is how a screenshot of that panel is taken.
     void OpenTreatmentSettings() { treatmentPanelOpen_ = true; }
 
+    // `shot FILE [frames N]`: saves what the window shows after N frames and exits. Read
+    // back from a texture of its own rather than copied from the desktop, so it works when
+    // the screen is off or covered -- a desktop capture then comes back white.
+    void TakeShot(const std::string& path, int frames)
+    {
+        shotPath_ = path;
+        shotFrames_ = frames;
+    }
+    std::string     shotPath_;
+    int             shotFrames_ = 30;
+    RenderTexture2D shotTarget_ = {};
+
     // Opens straight into the survey (#141): the regions of consecutive seeds from `seed`,
     // every system on one screen. `card` (>= 0) opens that card enlarged, which is how a
     // screenshot of one is taken without a click.

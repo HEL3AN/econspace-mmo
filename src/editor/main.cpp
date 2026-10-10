@@ -21,6 +21,8 @@ int main(int argc, char** argv)
     uint64_t    seed = 1;
     std::string card;
     float       zoom = 1.0f;
+    std::string shot;  // `shot FILE [frames N]`: save the view after N frames and exit
+    int         frames = 30;
     for (int i = 1; i < argc; i++)
     {
         const std::string arg = argv[i];
@@ -45,6 +47,10 @@ int main(int argc, char** argv)
             card = argv[++i];
         else if (arg == "zoom" && i + 1 < argc)
             zoom = (float)std::atof(argv[++i]);
+        else if (arg == "shot" && i + 1 < argc)
+            shot = argv[++i];
+        else if (arg == "frames" && i + 1 < argc)
+            frames = std::atoi(argv[++i]);
     }
     if (modules)
         editor.OpenModules(zoom > 0.0f ? zoom : 1.0f);
@@ -52,6 +58,8 @@ int main(int argc, char** argv)
         editor.OpenSurvey(seed, card.empty() ? -1 : std::atoi(card.c_str()));
     else if (gallery && !card.empty())
         editor.FocusGallery(card, zoom > 0.0f ? zoom : 1.0f);
+    if (!shot.empty())
+        editor.TakeShot(shot, frames);
     editor.Run();
     return 0;
 }

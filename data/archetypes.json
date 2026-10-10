@@ -110,6 +110,10 @@
                 {"form": "disc", "lat": 30, "lon": 250, "radius": 0.15, "role": "panel", "spin": 5.0, "minPixels": 40},
                 {"form": "disc", "lat": -55, "lon": 320, "radius": 0.1, "role": "panel", "spin": 5.0, "minPixels": 60},
                 {"form": "disc", "lat": 62, "lon": 40, "radius": 0.08, "role": "panel", "spin": 5.0, "minPixels": 80},
+                {"module": "crater", "lat": [-50, 50], "lon": 35, "scale": [0.1, 0.17], "spin": 5.0},
+                {"module": "crater", "lat": [-50, 50], "lon": 185, "scale": [0.07, 0.13], "spin": 5.0},
+                {"module": "crater", "variant": "chain", "lat": [-35, 35], "lon": 300, "scale": [0.06, 0.09], "spin": 5.0, "chance": 0.6},
+                {"module": "settlement", "lat": [-40, 40], "lon": [0, 360], "scale": [0.05, 0.08], "spin": 5.0, "chance": 0.5},
                 {"form": "disc", "radius": 0.11, "role": "trim", "orbitRadius": 1.5, "orbitPeriod": 2400.0, "orbitTilt": 0.3, "minPixels": 60}
             ] },
             "components": {}
@@ -156,6 +160,7 @@
                 {"form": "band", "lat": -80, "width": 20, "role": "trim", "minPixels": 30},
                 {"form": "band", "lat": 30, "width": 6, "role": "panel", "alpha": 0.5, "minPixels": 60},
                 {"form": "disc", "lat": -10, "lon": 90, "radius": 0.12, "role": "panel", "alpha": 0.6, "spin": 3.0, "minPixels": 60},
+                {"module": "crater", "variant": "old", "lat": [-45, 45], "lon": [0, 360], "scale": [0.08, 0.14], "spin": 3.0, "chance": 0.7},
                 {"form": "disc", "radius": 0.09, "role": "trim", "repeat": 2, "orbitRadius": 1.7, "orbitPeriod": 3800.0, "orbitTilt": 0.22, "minPixels": 60}
             ] },
             "components": {}

@@ -259,15 +259,25 @@ void Editor::Run()
             }
         }
 
+        // A shot is drawn into a texture of its own and without the screen treatment, which
+        // keeps its own: the window's pixels belong to the desktop, and with the screen
+        // off or covered reading them back gives nothing.
+        const bool shooting = !shotPath_.empty();
+        if (shooting && shotTarget_.id == 0)
+            shotTarget_ = LoadRenderTexture(screenWidth_, screenHeight_);
         BeginDrawing();
+        if (shooting)
+            BeginTextureMode(shotTarget_);
         ClearBackground(Color{ 8, 9, 14, 255 });
         if (mode_ == Mode::Gallery)
         {
             // The cards go through the chain; everything that is a tool is drawn after it
             // and stays literal. That is the same rule the game follows with its HUD.
-            treatment_.Begin(screenWidth_, screenHeight_);
+            if (!shooting)
+                treatment_.Begin(screenWidth_, screenHeight_);
             DrawGallery();
-            treatment_.End();
+            if (!shooting)
+                treatment_.End();
             DrawHud();
             DrawGalleryFocusBar();
             DrawGalleryPanel();
@@ -280,17 +290,21 @@ void Editor::Run()
             if (wheel != 0.0f)
                 modulesZoom_ =
                     fmaxf(0.25f, fminf(8.0f, modulesZoom_ * (wheel > 0 ? 1.2f : 1.0f / 1.2f)));
-            treatment_.Begin(screenWidth_, screenHeight_);
+            if (!shooting)
+                treatment_.Begin(screenWidth_, screenHeight_);
             DrawModules(false);
-            treatment_.End();
+            if (!shooting)
+                treatment_.End();
             DrawModules(true);
         }
         else if (mode_ == Mode::Survey)
         {
             // The systems through the chain, the labels and flags after it, as the gallery.
-            treatment_.Begin(screenWidth_, screenHeight_);
+            if (!shooting)
+                treatment_.Begin(screenWidth_, screenHeight_);
             DrawSurvey(false);
-            treatment_.End();
+            if (!shooting)
+                treatment_.End();
             DrawSurvey(true);
             DrawHud();
             DrawSurveyPanel();
@@ -303,6 +317,21 @@ void Editor::Run()
             DrawHud();
             DrawPalette();
             DrawPropertyPanel();
+        }
+        if (shooting)
+        {
+            EndTextureMode();
+            if (--shotFrames_ <= 0)
+            {
+                Image shot = LoadImageFromTexture(shotTarget_.texture);
+                ImageFlipVertical(&shot);  // a render texture is stored upside down
+                if (!ExportImage(shot, shotPath_.c_str()))
+                    TraceLog(LOG_WARNING, "Could not write %s", shotPath_.c_str());
+                UnloadImage(shot);
+                UnloadRenderTexture(shotTarget_);
+                EndDrawing();
+                break;
+            }
         }
         EndDrawing();
     }
