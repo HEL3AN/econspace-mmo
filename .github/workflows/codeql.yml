@@ -6,13 +6,16 @@ name: codeql
 # instead of autobuild — the project only builds with that toolchain. Third-party code
 # fetched by CMake (raylib, nlohmann/json) is filtered out in .github/codeql-config.yml,
 # so findings point at code we can actually fix.
+#
+# Not run on pull requests: at 10-15 minutes it was the one check every merge waited for,
+# while the build and tests on three platforms take five. Every push to main is analysed
+# and so is the whole tree once a day; findings land in the Security tab.
 on:
   push:
     branches: [ main ]
-  pull_request:
   schedule:
-    # Weekly, so newly published queries reach an unchanged codebase too.
-    - cron: '31 4 * * 1'
+    # Daily, so newly published queries reach an unchanged codebase too.
+    - cron: '31 4 * * *'
   workflow_dispatch:
 
 jobs:
