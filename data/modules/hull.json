@@ -1,0 +1,390 @@
+{
+    "modules": [
+        {
+            "id": "hull.nose",
+            "note": "The front of a ship, pointing along +x. Blunt for haulers, a needle for interceptors, a hammerhead for sensor boats, split for something that carries a weapon between its prongs.",
+            "tags": ["structure", "nose"],
+            "sockets": ["front"],
+            "variants": [
+                { "id": "blunt", "shape": [
+                    {"form": "capsule", "at": [0.05, 0.0], "length": [1.0, 1.6], "width": [0.8, 1.2], "role": "hull"},
+                    {"form": "bar", "at": [-0.6, 0.0], "length": 0.55, "width": [0.75, 1.1], "role": "panel"},
+                    {"form": "bar", "at": [[-0.3, 0.0], 0.0], "angle": 90, "length": [0.75, 1.05], "width": 0.06, "role": "trim", "alpha": 0.7},
+                    {"form": "capsule", "at": [0.45, 0.0], "length": [0.2, 0.5], "width": [0.28, 0.44], "role": "trim"},
+                    {"form": "disc", "at": [0.88, 0.0], "radius": 0.06, "role": "light", "tint": [[255, 70, 50], [235, 240, 255]], "chance": 0.5}
+                ]},
+                { "id": "needle", "shape": [
+                    {"form": "chevron", "at": [0.15, 0.0], "length": [1.3, 1.75], "width": [0.45, 0.85], "role": "hull"},
+                    {"form": "chevron", "at": [0.05, 0.0], "length": [0.7, 1.0], "width": [0.2, 0.34], "role": "trim"},
+                    {"form": "bar", "at": [-0.78, 0.0], "length": 0.45, "width": [0.45, 0.85], "role": "panel"},
+                    {"form": "bar", "at": [-0.3, 0.0], "angle": 90, "length": [0.4, 0.6], "width": 0.07, "role": "panel", "chance": 0.5},
+                    {"form": "capsule", "at": [1.15, 0.0], "length": [0.35, 0.7], "width": 0.05, "role": "antenna", "chance": 0.6}
+                ]},
+                { "id": "hammerhead", "shape": [
+                    {"form": "bar", "at": [-0.35, 0.0], "length": 1.2, "width": [0.35, 0.65], "role": "hull"},
+                    {"form": "bar", "at": [0.5, 0.0], "length": [0.35, 0.6], "width": [1.5, 1.9], "role": "hull"},
+                    {"form": "bar", "at": [0.5, 0.0], "length": 0.16, "width": [1.3, 1.5], "role": "panel"},
+                    {"form": "disc", "at": [0.5, -0.82], "radius": [0.14, 0.2], "role": "trim", "row": {"count": 2, "step": [0.0, 1.64]}},
+                    {"form": "disc", "at": [0.75, 0.0], "radius": 0.07, "role": "light", "tint": [[120, 220, 255], [255, 200, 90]], "alpha": 0.85, "chance": 0.6}
+                ]},
+                { "id": "split", "shape": [
+                    {"form": "bar", "at": [-0.6, 0.0], "length": 0.75, "width": [0.95, 1.1], "role": "hull"},
+                    {"form": "capsule", "at": [0.25, -0.34], "length": [0.9, 1.4], "width": [0.22, 0.38], "role": "hull", "row": {"count": 2, "step": [0.0, 0.68]}},
+                    {"form": "bar", "at": [-0.23, 0.0], "length": 0.12, "width": 0.5, "role": "panel"},
+                    {"form": "capsule", "at": [0.85, -0.34], "length": 0.2, "width": 0.14, "role": "trim", "row": {"count": 2, "step": [0.0, 0.68]}},
+                    {"form": "disc", "at": [0.1, 0.0], "radius": [0.06, 0.1], "role": "light", "tint": [[255, 90, 60], [140, 210, 255]], "alpha": 0.8, "chance": 0.5}
+                ]}
+            ]
+        },
+        {
+            "id": "hull.wing",
+            "note": "One wing, root along -y and tip toward +y; an archetype mirrors it for the pair. Swept back, delta, a stub with a hardpoint, or folded at a hinge.",
+            "tags": ["structure", "wing"],
+            "sockets": ["side"],
+            "variants": [
+                { "id": "swept", "shape": [
+                    {"form": "bar", "at": [-0.12, 0.0], "angle": 112, "length": [1.7, 2.0], "width": [0.38, 0.6], "role": "hull"},
+                    {"form": "bar", "at": [-0.32, -0.02], "angle": 112, "length": [1.1, 1.5], "width": 0.14, "role": "panel"},
+                    {"form": "bar", "at": [0.02, 0.02], "angle": 112, "length": 1.6, "width": 0.05, "role": "trim"},
+                    {"form": "capsule", "at": [-0.4, 0.85], "length": [0.6, 0.9], "width": 0.2, "role": "trim", "chance": 0.4},
+                    {"form": "disc", "at": [-0.42, 0.88], "radius": 0.07, "role": "light", "tint": [[60, 255, 110], [255, 50, 40]], "blink": 2.4, "chance": 0.5}
+                ]},
+                { "id": "delta", "shape": [
+                    {"form": "chevron", "at": [-0.15, -0.05], "angle": 107, "length": [1.6, 1.95], "width": [1.3, 1.75], "role": "hull"},
+                    {"form": "chevron", "at": [-0.25, -0.15], "angle": 107, "length": [0.9, 1.15], "width": [0.6, 0.85], "role": "panel"},
+                    {"form": "capsule", "at": [0.0, 0.15], "length": [0.7, 1.0], "width": 0.16, "role": "trim", "chance": 0.5},
+                    {"form": "disc", "at": [-0.4, 0.7], "radius": 0.06, "role": "light", "tint": [[60, 255, 110], [255, 50, 40]], "blink": 2.4, "chance": 0.5}
+                ]},
+                { "id": "stub", "shape": [
+                    {"form": "bar", "at": [0.0, -0.35], "angle": 90, "length": [1.0, 1.3], "width": [0.45, 0.75], "role": "hull"},
+                    {"form": "bar", "at": [0.0, -0.35], "angle": 90, "length": 0.9, "width": 0.12, "role": "panel"},
+                    {"form": "capsule", "at": [[-0.1, 0.15], 0.45], "length": [0.9, 1.5], "width": [0.26, 0.42], "role": "trim"},
+                    {"form": "capsule", "at": [0.05, 0.45], "length": [0.4, 0.7], "width": 0.08, "role": "panel", "chance": 0.5},
+                    {"form": "disc", "at": [0.85, 0.45], "radius": 0.08, "role": "panel", "chance": 0.6}
+                ]},
+                { "id": "folded", "shape": [
+                    {"form": "bar", "at": [0.0, -0.5], "angle": 90, "length": 0.95, "width": [0.45, 0.65], "role": "hull"},
+                    {"form": "bar", "at": [-0.3, 0.4], "angle": [116, 134], "length": [0.9, 1.1], "width": [0.32, 0.5], "role": "hull"},
+                    {"form": "disc", "at": [-0.6, 0.82], "radius": 0.06, "role": "light", "tint": [[60, 255, 110], [255, 50, 40]], "blink": 2.4, "chance": 0.4},
+                    {"form": "disc", "at": [0.0, 0.0], "radius": [0.2, 0.26], "role": "trim"},
+                    {"form": "disc", "at": [0.0, 0.0], "radius": 0.1, "role": "panel"},
+                    {"form": "bar", "at": [0.0, -0.5], "angle": 90, "length": 0.7, "width": 0.08, "role": "panel"}
+                ]}
+            ]
+        },
+        {
+            "id": "hull.fin",
+            "note": "A stabiliser or radar-signature fin, seen from above: a blade along the hull with its root at -x.",
+            "tags": ["structure"],
+            "sockets": ["top", "edge"],
+            "variants": [
+                { "id": "blade", "shape": [
+                    {"form": "bar", "at": [-0.3, 0.0], "length": [0.9, 1.3], "width": [0.18, 0.34], "role": "hull"},
+                    {"form": "chevron", "at": [0.55, 0.0], "length": [0.4, 0.9], "width": [0.18, 0.34], "role": "hull"},
+                    {"form": "bar", "at": [-0.3, 0.0], "length": 1.0, "width": 0.05, "role": "trim"},
+                    {"form": "bar", "at": [-0.7, 0.0], "length": 0.5, "width": [0.36, 0.5], "role": "panel", "chance": 0.5},
+                    {"form": "disc", "at": [-0.9, 0.0], "radius": 0.07, "role": "light", "tint": [255, 50, 40], "blink": 1.8, "chance": 0.4}
+                ]},
+                { "id": "swept", "shape": [
+                    {"form": "chevron", "at": [-0.1, 0.0], "angle": 180, "length": [1.4, 1.9], "width": [0.4, 0.8], "role": "hull"},
+                    {"form": "bar", "at": [0.6, 0.0], "length": 0.4, "width": [0.26, 0.4], "role": "panel"},
+                    {"form": "chevron", "at": [-0.4, 0.0], "angle": 180, "length": 0.8, "width": 0.2, "role": "trim"},
+                    {"form": "capsule", "at": [-0.95, 0.0], "length": [0.3, 0.6], "width": 0.05, "role": "antenna", "chance": 0.5}
+                ]},
+                { "id": "twin", "shape": [
+                    {"form": "bar", "at": [0.0, -0.4], "length": [1.1, 1.7], "width": [0.16, 0.26], "role": "hull", "row": {"count": 2, "step": [0.0, 0.8]}},
+                    {"form": "bar", "at": [[-0.45, 0.1], 0.0], "angle": 90, "length": 0.85, "width": [0.12, 0.3], "role": "panel"},
+                    {"form": "bar", "at": [0.0, -0.4], "length": 1.1, "width": 0.05, "role": "trim", "row": {"count": 2, "step": [0.0, 0.8]}},
+                    {"form": "bar", "at": [0.7, -0.4], "length": 0.14, "width": 0.18, "role": "light", "tint": [255, 170, 40], "alpha": 0.8, "chance": 0.4, "row": {"count": 2, "step": [0.0, 0.8]}}
+                ]}
+            ]
+        },
+        {
+            "id": "hull.keel",
+            "note": "The spine a ship is hung on, along x: ribbed, segmented, or an open truss.",
+            "tags": ["structure"],
+            "sockets": ["spine"],
+            "variants": [
+                { "id": "ribbed", "shape": [
+                    {"form": "bar", "length": 1.95, "width": [0.28, 0.36], "role": "hull"},
+                    {"form": "bar", "at": [-0.75, 0.0], "angle": 90, "length": [0.55, 0.75], "width": 0.09, "role": "trim", "row": {"count": [4, 6], "step": [0.3, 0.0]}},
+                    {"form": "bar", "length": 1.8, "width": 0.06, "role": "panel"}
+                ]},
+                { "id": "segmented", "shape": [
+                    {"form": "bar", "length": 1.9, "width": 0.12, "role": "panel"},
+                    {"form": "polygon", "at": [-0.7, 0.0], "sides": [5, 8], "radius": [0.17, 0.28], "role": "hull", "row": {"count": [3, 4], "step": [0.467, 0.0]}},
+                    {"form": "disc", "at": [-0.7, 0.0], "radius": 0.08, "role": "trim", "row": {"count": 4, "step": [0.467, 0.0]}}
+                ]},
+                { "id": "truss", "shape": [
+                    {"form": "lattice", "length": 1.95, "width": [0.4, 0.55], "count": [5, 8], "role": "antenna"},
+                    {"form": "bar", "at": [-0.9, 0.0], "angle": 90, "length": 0.6, "width": 0.12, "role": "hull"},
+                    {"form": "bar", "at": [0.9, 0.0], "angle": 90, "length": 0.6, "width": 0.12, "role": "hull"},
+                    {"form": "capsule", "at": [0.0, 0.0], "length": [0.4, 0.8], "width": 0.2, "role": "panel", "chance": 0.5}
+                ]}
+            ]
+        },
+        {
+            "id": "hull.armour",
+            "note": "An armour belt along a flank: plates over the hull, an ablative slab, or plating with hazard marks.",
+            "tags": ["structure", "armour"],
+            "sockets": ["edge", "side"],
+            "variants": [
+                { "id": "plates", "shape": [
+                    {"form": "bar", "length": 1.95, "width": [0.45, 0.75], "role": "panel"},
+                    {"form": "bar", "at": [-0.72, 0.0], "length": [0.3, 0.44], "width": [0.4, 0.68], "role": "hull", "row": {"count": 4, "step": [0.48, 0.0]}},
+                    {"form": "bar", "at": [0.0, -0.3], "length": 1.95, "width": 0.05, "role": "trim", "alpha": 0.7},
+                    {"form": "disc", "at": [-0.72, 0.0], "radius": 0.05, "role": "trim", "chance": 0.5, "row": {"count": 4, "step": [0.48, 0.0]}}
+                ]},
+                { "id": "slab", "shape": [
+                    {"form": "bar", "length": [1.7, 1.95], "width": [0.6, 0.8], "role": "hull"},
+                    {"form": "chevron", "at": [0.95, 0.0], "length": 0.3, "width": [0.6, 0.8], "role": "hull"},
+                    {"form": "bar", "at": [-0.6, 0.0], "angle": 90, "length": 0.5, "width": 0.06, "role": "panel", "row": {"count": 3, "step": [0.6, 0.0]}},
+                    {"form": "bar", "at": [0.0, 0.3], "length": 1.7, "width": 0.08, "role": "trim"}
+                ]},
+                { "id": "hazard", "shape": [
+                    {"form": "bar", "length": 1.9, "width": [0.5, 0.6], "role": "hull"},
+                    {"form": "bar", "length": 1.9, "width": 0.36, "role": "panel"},
+                    {"form": "bar", "at": [-0.8, 0.0], "angle": 60, "length": 0.4, "width": 0.1, "role": "trim", "tint": [[230, 170, 40], [210, 60, 40], [220, 220, 210]], "row": {"count": [4, 7], "step": [0.27, 0.0]}}
+                ]}
+            ]
+        },
+        {
+            "id": "hull.cockpit",
+            "note": "Where the crew sits, facing +x: a glass bubble, a slit in a faired nose, or an armoured box with vision ports.",
+            "tags": ["habitat", "cockpit"],
+            "sockets": ["top", "front"],
+            "variants": [
+                { "id": "bubble", "shape": [
+                    {"form": "capsule", "length": [0.5, 0.8], "width": [0.95, 1.15], "role": "trim"},
+                    {"form": "capsule", "at": [0.05, 0.0], "length": [0.4, 0.7], "width": [0.75, 0.9], "role": "panel"},
+                    {"form": "bar", "at": [-0.2, 0.0], "angle": 90, "length": 0.9, "width": 0.07, "role": "trim", "chance": 0.6},
+                    {"form": "disc", "at": [0.3, -0.18], "radius": [0.08, 0.12], "role": "light", "tint": [[200, 230, 255], [170, 255, 230]], "alpha": [0.35, 0.55]}
+                ]},
+                { "id": "slit", "shape": [
+                    {"form": "chevron", "at": [0.1, 0.0], "length": [1.5, 1.8], "width": [0.9, 1.1], "role": "hull"},
+                    {"form": "chevron", "at": [0.25, 0.0], "length": 0.7, "width": 0.4, "role": "panel"},
+                    {"form": "bar", "at": [0.15, 0.0], "angle": 90, "length": [0.35, 0.5], "width": 0.06, "role": "light", "tint": [[140, 220, 255], [255, 210, 140]], "alpha": 0.8}
+                ]},
+                { "id": "armoured", "shape": [
+                    {"form": "polygon", "sides": [6, 8], "radius": [0.8, 0.9], "role": "hull"},
+                    {"form": "polygon", "sides": [6, 8], "radius": 0.62, "role": "panel"},
+                    {"form": "bar", "at": [0.5, -0.24], "angle": 90, "length": 0.14, "width": 0.08, "role": "trim", "row": {"count": [3, 4], "step": [0.0, 0.16]}},
+                    {"form": "disc", "at": [-0.3, 0.0], "radius": 0.07, "role": "light", "tint": [255, 70, 50], "alpha": 0.7, "chance": 0.4}
+                ]}
+            ]
+        },
+        {
+            "id": "hull.engine",
+            "note": "A ship's main drive, exhaust along -x: a flared bell, a cluster of nozzles, an ion grid, a plasma throat in magnetic rings, a bell with an afterburner ring. Richer than the core 'engine': a housing, a nozzle, and a plume drawn only while thrusting.",
+            "tags": ["propulsion"],
+            "sockets": ["end"],
+            "variants": [
+                { "id": "bell", "shape": [
+                    {"form": "chevron", "at": [-0.35, 0.0], "length": [1.25, 1.4], "width": [0.95, 1.3], "role": "hull"},
+                    {"form": "chevron", "at": [-0.5, 0.0], "length": 1.05, "width": [0.6, 0.8], "role": "panel"},
+                    {"form": "bar", "at": [0.55, 0.0], "length": 0.8, "width": [0.65, 0.9], "role": "panel"},
+                    {"form": "bar", "at": [0.15, 0.0], "length": 0.12, "width": [0.75, 0.95], "role": "trim"},
+                    {"form": "bar", "at": [[0.4, 0.7], 0.0], "angle": 90, "length": 0.6, "width": 0.07, "role": "trim", "chance": 0.5},
+                    {"form": "chevron", "at": [-1.4, 0.0], "angle": 180, "length": [0.7, 1.0], "width": [0.55, 0.75], "role": "light", "tint": [[120, 190, 255], [255, 170, 80]], "alpha": 0.75, "onlyThrusting": true}
+                ]},
+                { "id": "cluster", "shape": [
+                    {"form": "chevron", "at": [-0.4, -0.5], "length": [0.8, 1.0], "width": [0.26, 0.34], "role": "hull", "row": {"count": 4, "step": [0.0, 0.333]}},
+                    {"form": "bar", "at": [0.45, 0.0], "length": 0.9, "width": [1.25, 1.5], "role": "panel"},
+                    {"form": "bar", "at": [0.0, 0.0], "angle": 90, "length": [1.3, 1.5], "width": 0.1, "role": "trim"},
+                    {"form": "bar", "at": [0.45, 0.0], "angle": 90, "length": 0.9, "width": 0.07, "role": "trim", "chance": 0.5},
+                    {"form": "disc", "at": [-0.95, -0.5], "radius": 0.15, "role": "light", "tint": [[120, 190, 255], [180, 140, 255]], "alpha": 0.8, "onlyThrusting": true, "row": {"count": 4, "step": [0.0, 0.333]}}
+                ]},
+                { "id": "ion-grid", "shape": [
+                    {"form": "bar", "at": [0.35, 0.0], "length": 0.9, "width": [1.0, 1.2], "role": "panel"},
+                    {"form": "bar", "at": [-0.25, 0.0], "length": 0.3, "width": [1.6, 1.8], "role": "hull"},
+                    {"form": "bar", "at": [-0.25, -0.66], "length": 0.2, "width": 0.16, "role": "trim", "row": {"count": 5, "step": [0.0, 0.33]}},
+                    {"form": "bar", "at": [-0.48, 0.0], "length": 0.08, "width": 1.6, "role": "light", "tint": [[110, 220, 255], [150, 255, 210]], "alpha": [0.3, 0.45]},
+                    {"form": "bar", "at": [-0.85, 0.0], "length": [0.5, 0.8], "width": 1.5, "role": "light", "tint": [110, 220, 255], "alpha": 0.35, "onlyThrusting": true}
+                ]},
+                { "id": "plasma", "shape": [
+                    {"form": "capsule", "at": [0.3, 0.0], "length": [1.0, 1.2], "width": [0.55, 0.7], "role": "hull"},
+                    {"form": "bar", "at": [-0.5, 0.0], "length": 0.5, "width": [0.3, 0.4], "role": "panel"},
+                    {"form": "bar", "at": [-0.65, 0.0], "length": 0.1, "width": [0.8, 1.0], "role": "trim", "row": {"count": [2, 3], "step": [0.22, 0.0]}},
+                    {"form": "disc", "at": [-0.8, 0.0], "radius": [0.12, 0.17], "role": "light", "tint": [[200, 120, 255], [255, 110, 200], [120, 230, 255]], "alpha": 0.75},
+                    {"form": "chevron", "at": [-1.2, 0.0], "angle": 180, "length": [0.9, 1.3], "width": 0.4, "role": "light", "tint": [[200, 120, 255], [255, 110, 200]], "alpha": 0.6, "onlyThrusting": true}
+                ]},
+                { "id": "afterburner", "shape": [
+                    {"form": "capsule", "at": [0.3, 0.0], "length": [0.9, 1.15], "width": [0.65, 0.8], "role": "hull"},
+                    {"form": "bar", "at": [0.3, 0.0], "angle": 90, "length": [0.6, 0.75], "width": 0.06, "role": "panel", "chance": 0.6},
+                    {"form": "bar", "at": [-0.5, 0.0], "length": [0.3, 0.45], "width": [0.55, 0.65], "role": "panel"},
+                    {"form": "ring", "at": [-0.72, 0.0], "radius": [0.42, 0.5], "width": [0.08, 0.12], "role": "trim"},
+                    {"form": "disc", "at": [-0.95, 0.0], "radius": 0.28, "role": "light", "tint": [255, 150, 60], "alpha": 0.85, "onlyThrusting": true},
+                    {"form": "chevron", "at": [-1.45, 0.0], "angle": 180, "length": [1.0, 1.3], "width": [0.75, 0.9], "role": "light", "tint": [[255, 130, 50], [255, 190, 90]], "alpha": 0.55, "onlyThrusting": true}
+                ]}
+            ]
+        },
+        {
+            "id": "hull.rcs",
+            "note": "Reaction control: small nozzles in four directions on a block, for turning rather than going.",
+            "tags": ["propulsion", "rcs"],
+            "sockets": ["edge", "top"],
+            "variants": [
+                { "id": "quad", "shape": [
+                    {"form": "chevron", "at": [0.0, 0.58], "angle": -90, "length": [0.45, 0.55], "width": [0.28, 0.4], "role": "trim"},
+                    {"form": "chevron", "at": [0.0, -0.58], "angle": 90, "length": [0.45, 0.55], "width": [0.28, 0.4], "role": "trim"},
+                    {"form": "chevron", "at": [0.58, 0.0], "angle": 180, "length": [0.45, 0.55], "width": [0.28, 0.4], "role": "trim"},
+                    {"form": "chevron", "at": [-0.58, 0.0], "angle": 0, "length": [0.45, 0.55], "width": [0.28, 0.4], "role": "trim"},
+                    {"form": "polygon", "sides": [4, 8], "angle": 45, "radius": [0.38, 0.48], "role": "panel"},
+                    {"form": "disc", "radius": [0.1, 0.16], "role": "hull"}
+                ]},
+                { "id": "block", "shape": [
+                    {"form": "chevron", "at": [0.62, -0.3], "angle": 180, "length": 0.5, "width": [0.24, 0.32], "role": "trim", "row": {"count": 2, "step": [0.0, 0.6]}},
+                    {"form": "chevron", "at": [-0.62, -0.3], "angle": 0, "length": 0.5, "width": [0.24, 0.32], "role": "trim", "row": {"count": 2, "step": [0.0, 0.6]}},
+                    {"form": "bar", "length": 0.9, "width": [0.9, 1.1], "role": "panel"},
+                    {"form": "bar", "length": 0.6, "width": [0.6, 0.8], "role": "hull"},
+                    {"form": "disc", "at": [0.2, 0.25], "radius": 0.07, "role": "light", "tint": [255, 170, 40], "alpha": 0.8, "chance": 0.3}
+                ]},
+                { "id": "strip", "shape": [
+                    {"form": "chevron", "at": [-0.45, -0.45], "angle": 90, "length": [0.4, 0.5], "width": [0.24, 0.32], "role": "trim", "row": {"count": 2, "step": [0.9, 0.0]}},
+                    {"form": "chevron", "at": [-0.45, 0.45], "angle": -90, "length": [0.4, 0.5], "width": [0.24, 0.32], "role": "trim", "row": {"count": 2, "step": [0.9, 0.0]}},
+                    {"form": "bar", "length": [1.4, 1.7], "width": [0.4, 0.5], "role": "hull"},
+                    {"form": "bar", "length": 1.2, "width": 0.07, "role": "panel"},
+                    {"form": "disc", "at": [0.0, 0.0], "radius": [0.1, 0.16], "role": "trim", "chance": 0.6}
+                ]}
+            ]
+        },
+        {
+            "id": "hull.thruster",
+            "note": "A thruster pod hung off a hull or a wingtip, exhaust along -x: a nacelle, a gimballed can, a pair.",
+            "tags": ["propulsion"],
+            "sockets": ["side", "end"],
+            "variants": [
+                { "id": "nacelle", "shape": [
+                    {"form": "chevron", "at": [-0.8, 0.0], "length": [0.6, 0.7], "width": [0.55, 0.7], "role": "panel"},
+                    {"form": "capsule", "at": [0.15, 0.0], "length": [1.1, 1.45], "width": [0.45, 0.65], "role": "hull"},
+                    {"form": "bar", "at": [0.15, 0.0], "length": 0.9, "width": 0.12, "role": "panel", "chance": 0.6},
+                    {"form": "bar", "at": [-0.6, 0.0], "length": 0.14, "width": [0.55, 0.75], "role": "trim"},
+                    {"form": "chevron", "at": [-1.4, 0.0], "angle": 180, "length": [0.5, 0.8], "width": 0.5, "role": "light", "tint": [[120, 190, 255], [255, 170, 80]], "alpha": 0.75, "onlyThrusting": true}
+                ]},
+                { "id": "gimbal", "shape": [
+                    {"form": "disc", "at": [0.25, 0.0], "radius": [0.5, 0.6], "role": "hull"},
+                    {"form": "ring", "at": [0.25, 0.0], "radius": [0.5, 0.6], "width": 0.08, "role": "trim"},
+                    {"form": "chevron", "at": [-0.4, 0.0], "angle": [-15, 15], "length": 0.6, "width": 0.55, "role": "panel"},
+                    {"form": "disc", "at": [-0.85, 0.0], "radius": 0.22, "role": "light", "tint": [120, 190, 255], "alpha": 0.8, "onlyThrusting": true}
+                ]},
+                { "id": "twin", "shape": [
+                    {"form": "bar", "at": [0.25, 0.0], "length": [0.4, 0.7], "width": 0.7, "role": "panel"},
+                    {"form": "chevron", "at": [-0.8, -0.32], "length": 0.55, "width": [0.36, 0.46], "role": "trim", "row": {"count": 2, "step": [0.0, 0.64]}},
+                    {"form": "capsule", "at": [0.0, -0.32], "length": [0.8, 1.1], "width": [0.3, 0.4], "role": "hull", "row": {"count": 2, "step": [0.0, 0.64]}},
+                    {"form": "bar", "at": [0.2, -0.32], "length": 0.5, "width": 0.06, "role": "panel", "chance": 0.5, "row": {"count": 2, "step": [0.0, 0.64]}},
+                    {"form": "disc", "at": [-1.1, -0.32], "radius": 0.16, "role": "light", "tint": [[120, 190, 255], [255, 170, 80]], "alpha": 0.8, "onlyThrusting": true, "row": {"count": 2, "step": [0.0, 0.64]}}
+                ]}
+            ]
+        },
+        {
+            "id": "hull.cargo",
+            "note": "What a hauler carries outside: a row of pods, an open frame of containers, or strapped tanks.",
+            "tags": ["cargo"],
+            "sockets": ["side", "spine"],
+            "variants": [
+                { "id": "pods", "shape": [
+                    {"form": "bar", "length": 1.95, "width": 0.1, "role": "panel"},
+                    {"form": "capsule", "at": [-0.68, 0.0], "angle": 90, "length": [0.3, 0.5], "width": [0.3, 0.38], "role": "hull", "tint": [[150, 150, 150], [180, 120, 60], [90, 120, 150]], "row": {"count": [3, 4], "step": [0.45, 0.0]}},
+                    {"form": "bar", "at": [-0.68, 0.0], "length": 0.36, "width": 0.05, "role": "panel", "chance": 0.6, "row": {"count": [3, 4], "step": [0.45, 0.0]}}
+                ]},
+                { "id": "frame", "shape": [
+                    {"form": "lattice", "length": 1.95, "width": [0.9, 1.05], "count": 5, "role": "antenna"},
+                    {"form": "bar", "at": [-0.58, -0.22], "length": 0.36, "width": 0.38, "role": "hull", "tint": [[190, 110, 50], [70, 110, 170], [200, 180, 80]], "row": {"count": [2, 4], "step": [0.39, 0.0]}},
+                    {"form": "bar", "at": [-0.58, 0.22], "length": 0.36, "width": 0.38, "role": "hull", "tint": [[160, 70, 60], [80, 130, 110], [110, 110, 120]], "chance": 0.7, "row": {"count": [1, 4], "step": [0.39, 0.0]}}
+                ]},
+                { "id": "tanks", "shape": [
+                    {"form": "bar", "length": 1.9, "width": [0.12, 0.2], "role": "panel"},
+                    {"form": "disc", "at": [-0.6, 0.0], "radius": [0.27, 0.38], "role": "hull", "row": {"count": 3, "step": [0.6, 0.0]}},
+                    {"form": "ring", "at": [-0.6, 0.0], "radius": [0.27, 0.38], "width": 0.05, "role": "panel", "row": {"count": 3, "step": [0.6, 0.0]}},
+                    {"form": "disc", "at": [-0.6, 0.0], "radius": [0.08, 0.12], "role": "trim", "tint": [[230, 170, 40], [200, 200, 205], [90, 160, 120]], "chance": 0.6, "row": {"count": 3, "step": [0.6, 0.0]}}
+                ]}
+            ]
+        },
+        {
+            "id": "hull.hangar",
+            "note": "A bay small craft launch from, opening toward +x: an open deck, clamshell doors, or a launch tube.",
+            "tags": ["opening", "hangar"],
+            "sockets": ["edge", "front"],
+            "variants": [
+                { "id": "deck", "shape": [
+                    {"form": "bar", "length": [1.6, 1.85], "width": [1.0, 1.2], "role": "trim"},
+                    {"form": "bar", "at": [0.08, 0.0], "length": [1.5, 1.7], "width": [0.82, 1.0], "role": "panel"},
+                    {"form": "bar", "at": [-0.55, 0.0], "length": 0.2, "width": 0.06, "role": "trim", "alpha": 0.7, "row": {"count": [3, 5], "step": [0.3, 0.0]}},
+                    {"form": "bar", "at": [0.0, -0.3], "length": [1.2, 1.4], "width": 0.04, "role": "trim", "alpha": 0.5, "chance": 0.6, "row": {"count": 2, "step": [0.0, 0.6]}},
+                    {"form": "bar", "at": [0.88, 0.0], "angle": 90, "length": 0.9, "width": 0.05, "role": "light", "tint": [[120, 220, 255], [255, 190, 90]], "alpha": 0.6}
+                ]},
+                { "id": "clamshell", "shape": [
+                    {"form": "bar", "length": 1.8, "width": 1.2, "role": "hull"},
+                    {"form": "bar", "at": [0.0, -0.32], "length": 1.6, "width": [0.4, 0.48], "role": "panel"},
+                    {"form": "bar", "at": [0.0, 0.32], "length": 1.6, "width": [0.4, 0.48], "role": "panel"},
+                    {"form": "bar", "length": 1.6, "width": [0.04, 0.14], "role": "light", "tint": [255, 200, 120], "alpha": 0.6},
+                    {"form": "disc", "at": [0.8, -0.5], "radius": 0.06, "role": "light", "tint": [255, 170, 40], "blink": 1.2, "chance": 0.5}
+                ]},
+                { "id": "tube", "shape": [
+                    {"form": "capsule", "length": [1.5, 1.7], "width": [0.6, 0.75], "role": "hull"},
+                    {"form": "bar", "at": [0.1, 0.0], "length": 1.5, "width": [0.3, 0.4], "role": "panel"},
+                    {"form": "ring", "at": [0.9, 0.0], "radius": [0.36, 0.42], "width": 0.08, "role": "trim"},
+                    {"form": "bar", "at": [-0.5, 0.0], "angle": 90, "length": 0.7, "width": 0.06, "role": "trim", "row": {"count": 3, "step": [0.4, 0.0]}}
+                ]}
+            ]
+        },
+        {
+            "id": "hull.collar",
+            "note": "A docking collar: where a ship meets a station. A plain ring, a clamp with jaws, or a ring at the end of an extending boom.",
+            "tags": ["docking"],
+            "sockets": ["top", "end", "edge"],
+            "variants": [
+                { "id": "ring", "shape": [
+                    {"form": "disc", "radius": [0.75, 0.85], "role": "panel"},
+                    {"form": "ring", "radius": [0.75, 0.85], "width": [0.14, 0.2], "role": "trim"},
+                    {"form": "disc", "radius": [0.32, 0.4], "role": "hull"},
+                    {"form": "disc", "at": [0.6, 0.0], "radius": 0.06, "role": "light", "tint": [[60, 255, 110], [255, 200, 90]], "blink": 2.0, "chance": 0.6}
+                ]},
+                { "id": "clamp", "shape": [
+                    {"form": "ring", "radius": [0.55, 0.65], "width": [0.1, 0.16], "role": "trim"},
+                    {"form": "disc", "radius": 0.45, "role": "panel"},
+                    {"form": "polygon", "sides": [3, 6], "radius": [0.15, 0.25], "role": "hull", "chance": 0.6},
+                    {"form": "bar", "at": [0.0, -0.75], "length": [0.35, 0.45], "width": 0.3, "role": "hull", "row": {"count": 2, "step": [0.0, 1.5]}},
+                    {"form": "bar", "at": [-0.75, 0.0], "angle": 90, "length": [0.35, 0.45], "width": 0.3, "role": "hull", "row": {"count": 2, "step": [1.5, 0.0]}}
+                ]},
+                { "id": "boom", "shape": [
+                    {"form": "bar", "at": [-0.35, 0.0], "length": [1.0, 1.3], "width": [0.22, 0.3], "role": "hull"},
+                    {"form": "bar", "at": [-0.6, 0.0], "angle": 90, "length": 0.4, "width": 0.07, "role": "panel", "row": {"count": 3, "step": [0.22, 0.0]}},
+                    {"form": "ring", "at": [0.5, 0.0], "radius": [0.45, 0.52], "width": 0.12, "role": "trim"},
+                    {"form": "disc", "at": [0.5, 0.0], "radius": 0.3, "role": "panel"}
+                ]}
+            ]
+        },
+        {
+            "id": "hull.gear",
+            "note": "Landing gear for ships that set down on a surface, seen from above: skids, a tripod of pads, or folding legs.",
+            "tags": ["utility", "landing"],
+            "sockets": ["bottom", "side"],
+            "variants": [
+                { "id": "skids", "shape": [
+                    {"form": "capsule", "at": [0.0, -0.6], "length": [1.3, 1.6], "width": [0.14, 0.2], "role": "trim", "row": {"count": 2, "step": [0.0, 1.2]}},
+                    {"form": "bar", "at": [-0.4, 0.0], "angle": 90, "length": 1.2, "width": 0.07, "role": "panel", "row": {"count": 2, "step": [0.8, 0.0]}},
+                    {"form": "bar", "length": [0.3, 0.6], "width": [0.25, 0.4], "role": "hull"},
+                    {"form": "disc", "at": [-0.65, -0.6], "radius": 0.13, "role": "panel", "chance": 0.5, "row": {"count": 2, "step": [0.0, 1.2]}}
+                ]},
+                { "id": "tripod", "shape": [
+                    {"form": "bar", "at": [0.35, 0.0], "length": 0.7, "width": [0.06, 0.12], "role": "panel"},
+                    {"form": "bar", "at": [-0.18, 0.3], "angle": 120, "length": 0.7, "width": 0.07, "role": "panel"},
+                    {"form": "bar", "at": [-0.18, -0.3], "angle": 240, "length": 0.7, "width": 0.07, "role": "panel"},
+                    {"form": "disc", "at": [0.75, 0.0], "radius": 0.19, "role": "trim"},
+                    {"form": "disc", "at": [-0.375, 0.65], "radius": 0.19, "role": "trim"},
+                    {"form": "disc", "at": [-0.375, -0.65], "radius": 0.19, "role": "trim"},
+                    {"form": "polygon", "sides": [5, 8], "radius": [0.24, 0.36], "role": "hull"}
+                ]},
+                { "id": "legs", "shape": [
+                    {"form": "bar", "at": [0.0, 0.0], "length": [0.6, 1.0], "width": [0.3, 0.45], "role": "hull"},
+                    {"form": "bar", "at": [-0.5, 0.45], "angle": 132, "length": 0.95, "width": [0.07, 0.13], "role": "panel"},
+                    {"form": "bar", "at": [-0.5, -0.45], "angle": 228, "length": 0.95, "width": [0.07, 0.13], "role": "panel"},
+                    {"form": "bar", "at": [-0.85, 0.8], "length": [0.3, 0.5], "width": 0.14, "role": "trim"},
+                    {"form": "bar", "at": [-0.85, -0.8], "length": [0.3, 0.5], "width": 0.14, "role": "trim"},
+                    {"form": "disc", "at": [0.3, 0.0], "radius": 0.06, "role": "light", "tint": [255, 170, 40], "blink": 1.5, "chance": 0.3}
+                ]}
+            ]
+        }
+    ]
+}

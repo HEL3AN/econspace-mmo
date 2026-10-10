@@ -1,0 +1,386 @@
+{
+    "modules": [
+        {
+            "id": "wreck.breach",
+            "note": "A hole torn in a hull. The dark is the inside; the lighter tongues are plate peeled back round the edge, never a clean cut.",
+            "tags": ["damage"],
+            "sockets": ["top", "edge"],
+            "variants": [
+                { "id": "puncture", "shape": [
+                    {"form": "polygon", "sides": [5, 8], "angle": [0, 60], "radius": [0.9, 1.0], "role": "panel", "alpha": [0.45, 0.6]},
+                    {"form": "polygon", "sides": [5, 8], "angle": [0, 60], "radius": [0.6, 0.72], "role": "panel", "tint": [[18, 18, 22], [26, 22, 20]], "alpha": 0.92},
+                    {"form": "polygon", "sides": 3, "at": [[0.5, 0.62], [-0.15, 0.1]], "angle": [170, 190], "radius": [0.2, 0.28], "role": "trim", "alpha": 0.5},
+                    {"form": "polygon", "sides": 3, "at": [[-0.62, -0.5], [-0.1, 0.2]], "angle": [-10, 10], "radius": [0.16, 0.24], "role": "hull", "alpha": 0.6, "chance": 0.8},
+                    {"form": "polygon", "sides": 3, "at": [[-0.2, 0.15], [0.48, 0.6]], "angle": [260, 280], "radius": [0.14, 0.22], "role": "trim", "alpha": 0.45, "chance": 0.6},
+                    {"form": "bar", "at": [[-0.25, 0.25], [-0.25, 0.25]], "angle": [0, 180], "length": [0.7, 0.9], "width": 0.05, "role": "antenna", "alpha": 0.7, "chance": 0.5}
+                ]},
+                { "id": "gash", "shape": [
+                    {"form": "capsule", "angle": [-15, 15], "length": [1.5, 1.9], "width": [0.32, 0.46], "role": "panel", "tint": [18, 18, 22], "alpha": 0.9},
+                    {"form": "chevron", "at": [[-0.55, -0.35], [0.22, 0.3]], "angle": [80, 105], "length": 0.3, "width": 0.22, "role": "trim", "alpha": 0.5},
+                    {"form": "chevron", "at": [[0.05, 0.25], [-0.32, -0.22]], "angle": [255, 285], "length": 0.32, "width": 0.24, "role": "trim", "alpha": 0.5},
+                    {"form": "chevron", "at": [[0.5, 0.7], [0.18, 0.28]], "angle": [70, 100], "length": 0.26, "width": 0.2, "role": "trim", "alpha": 0.45, "chance": 0.6},
+                    {"form": "bar", "at": [[-0.4, 0.4], 0.0], "angle": [70, 110], "length": 0.5, "width": 0.05, "role": "antenna", "alpha": 0.7, "chance": 0.5}
+                ]},
+                { "id": "blown-out", "shape": [
+                    {"form": "polygon", "sides": [6, 9], "angle": [0, 40], "radius": [0.85, 1.0], "role": "panel", "alpha": [0.5, 0.65]},
+                    {"form": "polygon", "sides": [4, 6], "at": [[-0.1, 0.1], [-0.1, 0.1]], "angle": [0, 90], "radius": [0.5, 0.62], "role": "panel", "tint": [16, 16, 20], "alpha": 0.92},
+                    {"form": "bar", "at": [[-0.2, 0.2], 0.0], "angle": [-30, 30], "length": 1.0, "width": 0.07, "role": "antenna", "alpha": 0.8},
+                    {"form": "bar", "at": [0.0, [-0.2, 0.2]], "angle": [60, 120], "length": 0.9, "width": 0.06, "role": "antenna", "alpha": 0.7, "chance": 0.7},
+                    {"form": "disc", "at": [[-0.3, 0.3], [-0.3, 0.3]], "radius": 0.05, "role": "light", "tint": [[255, 140, 60], [255, 90, 40]], "alpha": 0.6, "blink": 3.1, "chance": 0.3}
+                ]}
+            ]
+        },
+        {
+            "id": "wreck.scorch",
+            "note": "Where fire or a beam went over the plating. Only darker and only faint: it stains a hull, it is not on it.",
+            "tags": ["damage"],
+            "sockets": ["top", "edge"],
+            "variants": [
+                { "id": "splash", "shape": [
+                    {"form": "disc", "radius": [0.85, 1.0], "role": "panel", "tint": [30, 26, 24], "alpha": [0.18, 0.28]},
+                    {"form": "disc", "at": [[-0.2, 0.2], [-0.2, 0.2]], "radius": [0.5, 0.65], "role": "panel", "tint": [24, 20, 18], "alpha": [0.28, 0.4]},
+                    {"form": "disc", "at": [[-0.15, 0.15], [-0.15, 0.15]], "radius": [0.2, 0.32], "role": "panel", "tint": [16, 14, 14], "alpha": [0.4, 0.55]},
+                    {"form": "disc", "at": [[0.6, 0.9], [-0.5, 0.5]], "radius": [0.15, 0.25], "role": "panel", "tint": [30, 26, 24], "alpha": 0.25, "chance": 0.6}
+                ]},
+                { "id": "streak", "shape": [
+                    {"form": "capsule", "angle": [-20, 20], "length": [1.6, 2.0], "width": [0.4, 0.55], "role": "panel", "tint": [30, 26, 24], "alpha": [0.18, 0.26]},
+                    {"form": "capsule", "at": [[-0.3, -0.1], [-0.05, 0.05]], "angle": [-15, 15], "length": [0.9, 1.2], "width": [0.18, 0.26], "role": "panel", "tint": [18, 16, 16], "alpha": [0.35, 0.5]},
+                    {"form": "disc", "at": [[-0.9, -0.7], 0.0], "radius": [0.18, 0.26], "role": "panel", "tint": [14, 12, 12], "alpha": 0.5},
+                    {"form": "capsule", "at": [[0.3, 0.6], [0.15, 0.3]], "angle": [-30, 10], "length": [0.5, 0.8], "width": 0.12, "role": "panel", "tint": [30, 26, 24], "alpha": 0.25, "chance": 0.5}
+                ]},
+                { "id": "starburst", "shape": [
+                    {"form": "disc", "radius": [0.3, 0.42], "role": "panel", "tint": [16, 14, 14], "alpha": [0.4, 0.55]},
+                    {"form": "capsule", "at": [0.45, 0.0], "angle": [-10, 10], "length": [0.6, 0.9], "width": 0.12, "role": "panel", "tint": [26, 22, 20], "alpha": 0.3},
+                    {"form": "capsule", "at": [-0.25, 0.4], "angle": [110, 130], "length": [0.5, 0.8], "width": 0.12, "role": "panel", "tint": [26, 22, 20], "alpha": 0.3},
+                    {"form": "capsule", "at": [-0.25, -0.4], "angle": [230, 250], "length": [0.5, 0.8], "width": 0.12, "role": "panel", "tint": [26, 22, 20], "alpha": 0.3, "chance": 0.8},
+                    {"form": "capsule", "at": [0.2, -0.45], "angle": [285, 305], "length": [0.4, 0.6], "width": 0.1, "role": "panel", "tint": [26, 22, 20], "alpha": 0.25, "chance": 0.5}
+                ]}
+            ]
+        },
+        {
+            "id": "wreck.missing-plate",
+            "note": "A plate gone and the frame behind it showing: a darker field crossed by the ribs that held it.",
+            "tags": ["damage"],
+            "sockets": ["top", "edge"],
+            "variants": [
+                { "id": "square", "shape": [
+                    {"form": "bar", "angle": [-6, 6], "length": [1.3, 1.6], "width": [1.1, 1.4], "role": "panel", "alpha": 0.85},
+                    {"form": "bar", "at": [-0.45, 0.0], "angle": 90, "length": 1.1, "width": 0.07, "role": "antenna", "row": {"count": [3, 4], "step": [0.3, 0.0]}},
+                    {"form": "bar", "at": [0.0, [-0.1, 0.1]], "length": 1.3, "width": 0.06, "role": "antenna", "alpha": 0.7},
+                    {"form": "bar", "at": [[0.4, 0.6], [0.3, 0.45]], "angle": [10, 30], "length": 0.35, "width": 0.3, "role": "hull", "alpha": 0.8, "chance": 0.5}
+                ]},
+                { "id": "strip", "shape": [
+                    {"form": "bar", "angle": [-4, 4], "length": [1.7, 1.95], "width": [0.45, 0.6], "role": "panel", "alpha": 0.85},
+                    {"form": "bar", "at": [-0.7, 0.0], "angle": 90, "length": 0.5, "width": 0.06, "role": "antenna", "row": {"count": [4, 6], "step": [0.28, 0.0]}},
+                    {"form": "bar", "at": [[0.6, 0.85], 0.0], "angle": [-25, 25], "length": 0.35, "width": 0.45, "role": "hull", "alpha": 0.8, "chance": 0.6}
+                ]},
+                { "id": "lattice", "shape": [
+                    {"form": "polygon", "sides": 4, "angle": [35, 55], "radius": [0.9, 1.1], "role": "panel", "alpha": 0.85},
+                    {"form": "lattice", "angle": [-10, 10], "length": [1.1, 1.3], "width": 0.42, "count": [4, 6], "role": "antenna", "alpha": 0.8},
+                    {"form": "polygon", "sides": 4, "angle": [35, 55], "radius": [0.9, 1.1], "width": 0.06, "filled": false, "role": "trim", "alpha": 0.35},
+                    {"form": "polygon", "sides": 3, "at": [[0.3, 0.5], [-0.5, -0.3]], "angle": [0, 120], "radius": [0.22, 0.3], "role": "hull", "alpha": 0.85, "chance": 0.5}
+                ]}
+            ]
+        },
+        {
+            "id": "wreck.bent-spar",
+            "note": "A structural member that took a blow: kinked, snapped, or hanging by a corner.",
+            "tags": ["damage", "structure"],
+            "sockets": ["edge", "end"],
+            "variants": [
+                { "id": "kinked", "shape": [
+                    {"form": "bar", "at": [-0.5, 0.0], "length": 1.0, "width": 0.18, "role": "hull"},
+                    {"form": "bar", "at": [0.42, [0.15, 0.3]], "angle": [20, 40], "length": [0.8, 1.0], "width": 0.18, "role": "hull"},
+                    {"form": "disc", "at": [0.0, 0.0], "radius": 0.13, "role": "panel"},
+                    {"form": "bar", "at": [-0.5, 0.0], "length": 0.9, "width": 0.05, "role": "panel", "alpha": 0.7}
+                ]},
+                { "id": "snapped", "shape": [
+                    {"form": "bar", "at": [-0.55, 0.0], "length": [0.8, 0.95], "width": 0.2, "role": "hull"},
+                    {"form": "chevron", "at": [[-0.12, -0.05], 0.0], "length": 0.18, "width": 0.2, "role": "panel"},
+                    {"form": "bar", "at": [[0.55, 0.7], [-0.25, 0.25]], "angle": [-35, 35], "length": [0.55, 0.75], "width": 0.2, "role": "hull", "alpha": 0.9},
+                    {"form": "capsule", "at": [[0.05, 0.2], [-0.1, 0.1]], "angle": [-60, 60], "length": 0.4, "width": 0.04, "role": "antenna", "chance": 0.6}
+                ]},
+                { "id": "truss", "shape": [
+                    {"form": "lattice", "at": [-0.45, 0.0], "length": 1.0, "width": 0.34, "count": 4, "role": "antenna"},
+                    {"form": "lattice", "at": [0.45, [0.1, 0.3]], "angle": [15, 45], "length": [0.7, 0.95], "width": 0.34, "count": 3, "role": "antenna"},
+                    {"form": "bar", "at": [[0.9, 1.1], [0.4, 0.7]], "angle": [50, 90], "length": 0.4, "width": 0.05, "role": "antenna", "alpha": 0.7, "chance": 0.5}
+                ]}
+            ]
+        },
+        {
+            "id": "wreck.sparking-cable",
+            "note": "Cable pulled out of a wall and still live: thin dark lines and one flicker at the frayed end.",
+            "tags": ["damage", "light"],
+            "sockets": ["edge", "end"],
+            "variants": [
+                { "id": "loose", "shape": [
+                    {"form": "disc", "at": [-0.85, 0.0], "radius": 0.16, "role": "panel"},
+                    {"form": "capsule", "at": [-0.45, 0.0], "angle": [-10, 10], "length": 0.8, "width": 0.07, "role": "antenna"},
+                    {"form": "capsule", "at": [[0.15, 0.25], [0.05, 0.2]], "angle": [15, 45], "length": [0.5, 0.7], "width": 0.07, "role": "antenna"},
+                    {"form": "disc", "at": [[0.45, 0.55], [0.25, 0.4]], "radius": 0.09, "role": "light", "tint": [[200, 225, 255], [255, 240, 190]], "alpha": 0.9, "blink": 0.35}
+                ]},
+                { "id": "frayed", "shape": [
+                    {"form": "bar", "at": [-0.85, 0.0], "angle": 90, "length": 0.5, "width": 0.18, "role": "panel"},
+                    {"form": "capsule", "at": [-0.35, 0.0], "length": 1.0, "width": 0.1, "role": "antenna"},
+                    {"form": "capsule", "at": [0.35, 0.1], "angle": [15, 35], "length": 0.4, "width": 0.04, "role": "antenna"},
+                    {"form": "capsule", "at": [0.35, -0.1], "angle": [-35, -15], "length": 0.4, "width": 0.04, "role": "antenna"},
+                    {"form": "capsule", "at": [0.38, 0.0], "angle": [-8, 8], "length": [0.35, 0.5], "width": 0.04, "role": "antenna", "chance": 0.6},
+                    {"form": "disc", "at": [0.55, [-0.2, 0.2]], "radius": 0.08, "role": "light", "tint": [[180, 210, 255], [255, 255, 255]], "alpha": 0.9, "blink": 0.25}
+                ]},
+                { "id": "bundle", "shape": [
+                    {"form": "bar", "at": [-0.85, 0.0], "angle": 90, "length": 0.7, "width": 0.2, "role": "panel"},
+                    {"form": "capsule", "at": [-0.3, -0.18], "angle": [-15, -5], "length": [0.9, 1.2], "width": 0.06, "role": "antenna"},
+                    {"form": "capsule", "at": [-0.3, 0.0], "angle": [-5, 5], "length": [1.0, 1.3], "width": 0.06, "role": "antenna"},
+                    {"form": "capsule", "at": [-0.3, 0.18], "angle": [5, 20], "length": [0.8, 1.1], "width": 0.06, "role": "antenna", "chance": 0.8},
+                    {"form": "disc", "at": [[0.25, 0.4], [-0.1, 0.1]], "radius": 0.07, "role": "light", "tint": [[200, 225, 255], [255, 200, 120]], "alpha": 0.85, "blink": 0.45, "chance": 0.75}
+                ]}
+            ]
+        },
+        {
+            "id": "wreck.frozen-plume",
+            "note": "Air that vented and froze where it left: a pale fan standing off a hull. Faint; it is ice, not paint.",
+            "tags": ["damage"],
+            "sockets": ["edge", "top"],
+            "variants": [
+                { "id": "fan", "shape": [
+                    {"form": "bar", "at": [-0.85, 0.0], "angle": 90, "length": 0.45, "width": 0.16, "role": "panel"},
+                    {"form": "chevron", "at": [0.0, 0.0], "angle": 180, "length": [1.4, 1.7], "width": [1.0, 1.3], "role": "trim", "tint": [[210, 225, 240], [225, 235, 245]], "alpha": [0.16, 0.24]},
+                    {"form": "chevron", "at": [-0.25, 0.0], "angle": 180, "length": [0.9, 1.1], "width": [0.55, 0.7], "role": "trim", "tint": [225, 235, 245], "alpha": [0.24, 0.32]},
+                    {"form": "disc", "at": [[0.4, 0.7], [-0.4, 0.4]], "radius": [0.06, 0.1], "role": "trim", "tint": [235, 240, 250], "alpha": 0.4, "chance": 0.6}
+                ]},
+                { "id": "jet", "shape": [
+                    {"form": "disc", "at": [-0.85, 0.0], "radius": 0.14, "role": "panel"},
+                    {"form": "chevron", "at": [0.1, 0.0], "angle": [172, 188], "length": [1.6, 1.85], "width": [0.4, 0.55], "role": "trim", "tint": [220, 232, 245], "alpha": [0.2, 0.28]},
+                    {"form": "disc", "at": [[0.65, 0.8], [-0.1, 0.1]], "radius": [0.22, 0.3], "role": "trim", "tint": [220, 232, 245], "alpha": 0.16},
+                    {"form": "disc", "at": [[0.95, 1.15], [-0.2, 0.2]], "radius": [0.14, 0.2], "role": "trim", "tint": [220, 232, 245], "alpha": 0.12, "chance": 0.7},
+                    {"form": "disc", "at": [[0.3, 0.6], [-0.35, 0.35]], "radius": 0.05, "role": "trim", "tint": [235, 240, 250], "alpha": 0.4, "chance": 0.6}
+                ]},
+                { "id": "crystals", "shape": [
+                    {"form": "bar", "at": [-0.85, 0.0], "angle": 90, "length": 0.4, "width": 0.14, "role": "panel"},
+                    {"form": "polygon", "sides": [3, 4], "at": [-0.45, [-0.05, 0.05]], "angle": [0, 90], "radius": [0.14, 0.18], "role": "trim", "tint": [225, 235, 245], "alpha": 0.45, "row": {"count": [3, 5], "step": [0.32, 0.06]}},
+                    {"form": "polygon", "sides": [3, 4], "at": [-0.3, [0.25, 0.35]], "angle": [0, 90], "radius": [0.08, 0.12], "role": "trim", "tint": [225, 235, 245], "alpha": 0.3, "row": {"count": [2, 4], "step": [0.35, 0.1]}},
+                    {"form": "chevron", "at": [0.1, 0.0], "angle": 180, "length": 1.3, "width": 0.9, "role": "trim", "tint": [215, 228, 242], "alpha": 0.12}
+                ]}
+            ]
+        },
+        {
+            "id": "wreck.debris",
+            "note": "A loose cloud of fragments: plates and shards at every angle, a different handful on every wreck.",
+            "tags": ["debris"],
+            "sockets": ["edge", "top"],
+            "variants": [
+                { "id": "shards", "shape": [
+                    {"form": "polygon", "sides": 3, "at": [[-0.8, -0.4], [-0.5, 0.0]], "angle": [0, 120], "radius": [0.2, 0.3], "role": "hull"},
+                    {"form": "polygon", "sides": 3, "at": [[0.0, 0.3], [0.3, 0.7]], "angle": [0, 120], "radius": [0.15, 0.25], "role": "panel"},
+                    {"form": "polygon", "sides": [3, 4], "at": [[0.5, 0.9], [-0.6, -0.1]], "angle": [0, 120], "radius": [0.18, 0.28], "role": "hull"},
+                    {"form": "polygon", "sides": 3, "at": [[-0.4, 0.0], [0.4, 0.8]], "angle": [0, 120], "radius": [0.1, 0.16], "role": "trim", "chance": 0.7},
+                    {"form": "polygon", "sides": 3, "at": [[0.1, 0.4], [-0.9, -0.6]], "angle": [0, 120], "radius": [0.08, 0.14], "role": "panel", "chance": 0.6},
+                    {"form": "disc", "at": [[-0.9, 0.9], [-0.9, 0.9]], "radius": 0.05, "role": "trim", "chance": 0.5}
+                ]},
+                { "id": "plates", "shape": [
+                    {"form": "bar", "at": [[-0.7, -0.3], [-0.4, 0.1]], "angle": [0, 180], "length": [0.4, 0.55], "width": [0.18, 0.28], "role": "hull"},
+                    {"form": "bar", "at": [[0.2, 0.6], [0.2, 0.6]], "angle": [0, 180], "length": [0.3, 0.45], "width": [0.15, 0.25], "role": "panel"},
+                    {"form": "bar", "at": [[0.3, 0.8], [-0.7, -0.3]], "angle": [0, 180], "length": [0.25, 0.35], "width": [0.1, 0.2], "role": "hull", "chance": 0.8},
+                    {"form": "bar", "at": [[-0.6, -0.1], [0.5, 0.9]], "angle": [0, 180], "length": 0.4, "width": 0.05, "role": "antenna", "chance": 0.6},
+                    {"form": "polygon", "sides": 3, "at": [[-0.1, 0.2], [-0.2, 0.2]], "angle": [0, 120], "radius": 0.1, "role": "trim", "chance": 0.5}
+                ]},
+                { "id": "dust", "shape": [
+                    {"form": "disc", "radius": [0.9, 1.1], "role": "panel", "alpha": [0.08, 0.14]},
+                    {"form": "polygon", "sides": [3, 5], "at": [[-0.6, -0.2], [-0.5, 0.5]], "angle": [0, 120], "radius": [0.12, 0.2], "role": "hull"},
+                    {"form": "polygon", "sides": 3, "at": [[0.2, 0.6], [-0.5, 0.5]], "angle": [0, 120], "radius": [0.08, 0.14], "role": "panel"},
+                    {"form": "disc", "at": [-0.7, [-0.6, 0.6]], "radius": 0.045, "role": "trim", "alpha": 0.7, "row": {"count": [3, 5], "step": [0.35, 0.2]}}
+                ]}
+            ]
+        },
+        {
+            "id": "wreck.ring-segment",
+            "note": "A piece of a ring that is not a ring any more: an arc with ragged ends, sometimes still wearing its spokes.",
+            "tags": ["debris", "structure"],
+            "sockets": ["edge"],
+            "variants": [
+                { "id": "short", "shape": [
+                    {"form": "arc", "radius": 1.0, "width": [0.18, 0.26], "angle": [-15, 15], "from": -35, "to": 35, "role": "hull"},
+                    {"form": "arc", "radius": 0.94, "width": 0.05, "angle": [-15, 15], "from": -30, "to": 30, "role": "panel", "alpha": 0.7},
+                    {"form": "polygon", "sides": 3, "at": [[0.75, 0.85], [0.5, 0.65]], "angle": [0, 120], "radius": 0.12, "role": "hull", "chance": 0.6}
+                ]},
+                { "id": "long", "shape": [
+                    {"form": "arc", "radius": 1.0, "width": [0.14, 0.2], "angle": [-25, 25], "from": -70, "to": 45, "role": "hull"},
+                    {"form": "arc", "radius": 0.82, "width": 0.05, "angle": [-25, 25], "from": -55, "to": 30, "role": "trim", "alpha": 0.6, "chance": 0.7},
+                    {"form": "bar", "at": [[0.6, 0.75], [-0.15, 0.15]], "angle": [-20, 20], "length": [0.3, 0.45], "width": 0.06, "role": "antenna"},
+                    {"form": "polygon", "sides": 3, "at": [[-0.1, 0.1], [-0.95, -0.8]], "angle": [0, 120], "radius": 0.1, "role": "hull", "chance": 0.6}
+                ]},
+                { "id": "spoked", "shape": [
+                    {"form": "arc", "radius": 1.0, "width": 0.22, "angle": [-20, 20], "from": -45, "to": 45, "role": "hull"},
+                    {"form": "bar", "at": [0.65, [-0.25, -0.15]], "angle": [-30, -10], "length": [0.55, 0.75], "width": 0.08, "role": "panel"},
+                    {"form": "bar", "at": [0.65, [0.15, 0.25]], "angle": [10, 30], "length": [0.35, 0.65], "width": 0.08, "role": "panel", "chance": 0.7},
+                    {"form": "disc", "at": [[0.9, 0.95], [-0.1, 0.1]], "radius": 0.06, "role": "panel", "tint": [20, 20, 24], "alpha": 0.8, "row": {"count": [2, 3], "step": [0.0, 0.2]}}
+                ]}
+            ]
+        },
+        {
+            "id": "wreck.escape-pod",
+            "note": "Somebody got out. A small hull with one slow distress lamp; some pods are empty and dark.",
+            "tags": ["debris", "light"],
+            "sockets": ["edge", "top"],
+            "variants": [
+                { "id": "capsule", "shape": [
+                    {"form": "capsule", "length": [1.3, 1.6], "width": [0.6, 0.72], "role": "hull"},
+                    {"form": "bar", "at": [[-0.25, 0.25], 0.0], "angle": 90, "length": 0.6, "width": 0.05, "role": "panel", "alpha": 0.8},
+                    {"form": "disc", "at": [[0.35, 0.45], 0.0], "radius": 0.16, "role": "panel"},
+                    {"form": "chevron", "at": [[-0.85, -0.75], 0.0], "angle": 180, "length": 0.2, "width": 0.36, "role": "panel", "chance": 0.7},
+                    {"form": "disc", "at": [-0.2, 0.0], "radius": 0.08, "role": "light", "tint": [[255, 60, 40], [255, 160, 40]], "alpha": 0.85, "blink": 3.0, "chance": 0.7}
+                ]},
+                { "id": "sphere", "shape": [
+                    {"form": "disc", "radius": [0.6, 0.72], "role": "hull"},
+                    {"form": "ring", "radius": [0.6, 0.72], "width": 0.08, "role": "panel"},
+                    {"form": "polygon", "sides": 4, "at": [[-0.25, 0.25], [-0.25, 0.25]], "angle": [0, 90], "radius": 0.18, "role": "panel"},
+                    {"form": "chevron", "at": [[-0.8, -0.7], 0.0], "angle": 180, "length": 0.22, "width": 0.3, "role": "panel"},
+                    {"form": "disc", "at": [0.3, -0.3], "radius": 0.07, "role": "light", "tint": [255, 60, 40], "alpha": 0.85, "blink": 2.5, "chance": 0.6}
+                ]},
+                { "id": "lander", "shape": [
+                    {"form": "polygon", "sides": 6, "angle": [0, 60], "radius": [0.55, 0.65], "role": "hull"},
+                    {"form": "polygon", "sides": 6, "angle": [0, 60], "radius": 0.35, "role": "panel"},
+                    {"form": "capsule", "at": [-0.65, 0.4], "angle": 140, "length": 0.45, "width": 0.07, "role": "antenna"},
+                    {"form": "capsule", "at": [-0.65, -0.4], "angle": 220, "length": 0.45, "width": 0.07, "role": "antenna", "chance": 0.7},
+                    {"form": "disc", "radius": 0.08, "role": "light", "tint": [[255, 60, 40], [255, 200, 120]], "alpha": 0.8, "blink": 2.5, "chance": 0.6}
+                ]}
+            ]
+        },
+        {
+            "id": "wreck.cargo-spill",
+            "note": "Containers broken loose from a hold, tumbled at angles. Cargo paint is the one honest colour in a wreck.",
+            "tags": ["debris", "cargo"],
+            "sockets": ["edge", "top"],
+            "variants": [
+                { "id": "scattered", "shape": [
+                    {"form": "bar", "at": [[-0.8, -0.5], [-0.4, 0.0]], "angle": [0, 180], "length": 0.5, "width": 0.26, "role": "hull", "tint": [[170, 90, 45], [150, 70, 50], [70, 100, 150]]},
+                    {"form": "bar", "at": [[-0.1, 0.2], [0.2, 0.5]], "angle": [0, 180], "length": 0.5, "width": 0.26, "role": "hull", "tint": [[180, 160, 70], [100, 100, 110]]},
+                    {"form": "bar", "at": [[0.4, 0.8], [-0.6, -0.2]], "angle": [0, 180], "length": 0.5, "width": 0.26, "role": "hull", "tint": [[150, 70, 50], [70, 120, 100]], "chance": 0.8},
+                    {"form": "bar", "at": [[0.3, 0.6], [0.5, 0.8]], "angle": [0, 180], "length": 0.25, "width": 0.26, "role": "panel", "chance": 0.5},
+                    {"form": "polygon", "sides": 3, "at": [[-0.4, 0.0], [-0.8, -0.5]], "angle": [0, 120], "radius": 0.1, "role": "panel", "chance": 0.6}
+                ]},
+                { "id": "trail", "shape": [
+                    {"form": "bar", "at": [-0.85, [-0.1, 0.1]], "angle": [-30, 30], "length": 0.4, "width": 0.22, "role": "hull", "tint": [[170, 90, 45], [180, 160, 70], [70, 100, 150]], "row": {"count": [3, 5], "step": [0.42, 0.12]}},
+                    {"form": "bar", "at": [-0.85, [-0.1, 0.1]], "angle": [-30, 30], "length": 0.4, "width": 0.04, "role": "panel", "alpha": 0.8, "row": {"count": [3, 5], "step": [0.42, 0.12]}},
+                    {"form": "disc", "at": [[-0.5, 0.5], [0.3, 0.6]], "radius": 0.05, "role": "trim", "alpha": 0.7, "chance": 0.6}
+                ]},
+                { "id": "burst", "shape": [
+                    {"form": "bar", "angle": [0, 90], "length": [0.55, 0.7], "width": [0.4, 0.5], "role": "hull", "tint": [[170, 90, 45], [70, 100, 150], [100, 100, 110]], "alpha": 0.9},
+                    {"form": "polygon", "sides": 4, "angle": [0, 90], "radius": 0.18, "role": "panel", "tint": [20, 20, 24], "alpha": 0.85},
+                    {"form": "polygon", "sides": [4, 5], "at": [[0.6, 0.85], [-0.3, 0.3]], "angle": [0, 90], "radius": [0.08, 0.13], "role": "trim", "alpha": 0.8},
+                    {"form": "polygon", "sides": [4, 5], "at": [[-0.85, -0.6], [-0.3, 0.3]], "angle": [0, 90], "radius": [0.07, 0.12], "role": "trim", "alpha": 0.8},
+                    {"form": "polygon", "sides": 4, "at": [[-0.3, 0.3], [0.6, 0.85]], "angle": [0, 90], "radius": [0.06, 0.1], "role": "trim", "alpha": 0.7, "chance": 0.7}
+                ]}
+            ]
+        },
+        {
+            "id": "wreck.dead-lights",
+            "note": "Ports that are dark: the strip a living station lights. Now and then one still glows, which is worse.",
+            "tags": ["habitat", "damage"],
+            "sockets": ["edge"],
+            "variants": [
+                { "id": "row", "shape": [
+                    {"form": "bar", "length": 1.9, "width": 0.34, "role": "panel"},
+                    {"form": "bar", "at": [-0.8, 0.0], "length": 0.16, "width": 0.18, "role": "panel", "tint": [18, 18, 22], "alpha": 0.85, "row": {"count": [5, 6], "step": [0.32, 0.0]}},
+                    {"form": "bar", "at": [[-0.5, 0.5], 0.0], "length": 0.16, "width": 0.18, "role": "trim", "alpha": 0.25, "chance": 0.5}
+                ]},
+                { "id": "shattered", "shape": [
+                    {"form": "bar", "length": 1.9, "width": 0.34, "role": "panel"},
+                    {"form": "bar", "at": [-0.8, 0.0], "length": 0.16, "width": 0.18, "role": "panel", "tint": [18, 18, 22], "alpha": 0.85, "row": {"count": 6, "step": [0.32, 0.0]}},
+                    {"form": "polygon", "sides": 3, "at": [[-0.6, 0.6], 0.0], "angle": [0, 120], "radius": 0.2, "role": "panel", "tint": [14, 14, 18], "alpha": 0.9},
+                    {"form": "disc", "at": [[-0.8, 0.8], 0.0], "radius": 0.05, "role": "light", "tint": [[255, 225, 160], [200, 220, 255]], "alpha": 0.35, "blink": 3.0, "chance": 0.35}
+                ]},
+                { "id": "grid", "shape": [
+                    {"form": "bar", "length": 1.6, "width": 0.9, "role": "panel"},
+                    {"form": "bar", "at": [-0.6, -0.22], "length": 0.18, "width": 0.18, "role": "panel", "tint": [18, 18, 22], "alpha": 0.85, "row": {"count": 5, "step": [0.3, 0.0]}},
+                    {"form": "bar", "at": [-0.6, 0.22], "length": 0.18, "width": 0.18, "role": "panel", "tint": [18, 18, 22], "alpha": 0.85, "row": {"count": [3, 5], "step": [0.3, 0.0]}},
+                    {"form": "bar", "at": [[-0.6, 0.6], [-0.22, 0.22]], "length": 0.18, "width": 0.18, "role": "light", "tint": [255, 225, 160], "alpha": 0.3, "blink": 4.0, "chance": 0.3}
+                ]}
+            ]
+        },
+        {
+            "id": "wreck.pylon",
+            "note": "Something old and not ours: a tall narrow shaft, banded, with a faint glow at its heart that has been on longer than anyone has been here.",
+            "tags": ["ancient", "structure"],
+            "sockets": ["top", "end"],
+            "variants": [
+                { "id": "spire", "shape": [
+                    {"form": "chevron", "at": [0.42, 0.0], "length": [0.8, 1.0], "width": [0.5, 0.6], "role": "hull"},
+                    {"form": "chevron", "at": [-0.42, 0.0], "angle": 180, "length": [0.8, 1.0], "width": [0.5, 0.6], "role": "hull"},
+                    {"form": "bar", "at": [-0.5, 0.0], "angle": 90, "length": 0.32, "width": 0.04, "role": "panel", "row": {"count": [2, 4], "step": [0.33, 0.0]}},
+                    {"form": "bar", "length": [1.4, 1.7], "width": 0.03, "role": "trim", "alpha": 0.45},
+                    {"form": "disc", "radius": 0.08, "role": "light", "tint": [[150, 220, 210], [190, 160, 255]], "alpha": [0.35, 0.55], "blink": 9.0}
+                ]},
+                { "id": "twin", "shape": [
+                    {"form": "bar", "at": [0.0, -0.32], "angle": [-3, 3], "length": [1.6, 1.8], "width": 0.24, "role": "hull"},
+                    {"form": "bar", "at": [0.0, 0.32], "angle": [-3, 3], "length": [1.4, 1.8], "width": 0.24, "role": "hull"},
+                    {"form": "bar", "at": [[-0.4, 0.4], 0.0], "angle": 90, "length": 0.5, "width": 0.08, "role": "panel", "chance": 0.7},
+                    {"form": "capsule", "length": 1.2, "width": 0.05, "role": "light", "tint": [[150, 220, 210], [190, 160, 255]], "alpha": [0.2, 0.35]}
+                ]},
+                { "id": "toppled", "shape": [
+                    {"form": "bar", "at": [-0.35, 0.0], "angle": [-8, 8], "length": [1.0, 1.2], "width": 0.4, "role": "hull"},
+                    {"form": "chevron", "at": [[0.5, 0.7], [-0.25, 0.25]], "angle": [10, 50], "length": 0.6, "width": 0.38, "role": "hull", "alpha": 0.95},
+                    {"form": "bar", "at": [-0.6, 0.0], "angle": 90, "length": 0.44, "width": 0.05, "role": "panel", "row": {"count": 3, "step": [0.28, 0.0]}},
+                    {"form": "polygon", "sides": 3, "at": [[0.15, 0.35], [-0.35, 0.35]], "angle": [0, 120], "radius": 0.1, "role": "hull", "chance": 0.7},
+                    {"form": "disc", "at": [-0.35, 0.0], "radius": 0.06, "role": "light", "tint": [150, 220, 210], "alpha": 0.25, "blink": 11.0, "chance": 0.5}
+                ]}
+            ]
+        },
+        {
+            "id": "wreck.glyph-panel",
+            "note": "A slab cut with marks in no script anyone reads. The marks are the faintest light there is.",
+            "tags": ["ancient"],
+            "sockets": ["top", "edge"],
+            "variants": [
+                { "id": "column", "shape": [
+                    {"form": "bar", "length": [0.75, 0.9], "width": [1.6, 1.8], "role": "panel"},
+                    {"form": "chevron", "at": [0.0, -0.6], "angle": [-90, 90], "length": 0.22, "width": 0.3, "role": "trim", "alpha": 0.55},
+                    {"form": "arc", "at": [0.0, -0.15], "radius": 0.16, "width": 0.05, "angle": [0, 360], "from": 0, "to": 220, "role": "trim", "alpha": 0.55},
+                    {"form": "bar", "at": [0.0, 0.25], "angle": [0, 90], "length": 0.36, "width": 0.05, "role": "trim", "alpha": 0.55},
+                    {"form": "polygon", "sides": [3, 4], "at": [0.0, 0.62], "angle": [0, 90], "radius": 0.14, "filled": false, "width": 0.04, "role": "light", "tint": [[150, 220, 210], [190, 160, 255]], "alpha": 0.4}
+                ]},
+                { "id": "band", "shape": [
+                    {"form": "bar", "length": [1.7, 1.9], "width": [0.55, 0.65], "role": "panel"},
+                    {"form": "arc", "at": [-0.6, 0.0], "radius": 0.15, "width": 0.04, "angle": [0, 360], "from": 0, "to": 270, "role": "trim", "alpha": 0.5},
+                    {"form": "chevron", "at": [-0.2, 0.0], "angle": [0, 180], "length": 0.2, "width": 0.26, "role": "trim", "alpha": 0.5},
+                    {"form": "bar", "at": [0.2, 0.0], "angle": 90, "length": 0.28, "width": 0.04, "role": "trim", "alpha": 0.5, "row": {"count": [1, 3], "step": [0.08, 0.0]}},
+                    {"form": "disc", "at": [0.65, 0.0], "radius": 0.08, "role": "light", "tint": [[150, 220, 210], [190, 160, 255]], "alpha": 0.4, "blink": 7.0}
+                ]},
+                { "id": "tablet", "shape": [
+                    {"form": "polygon", "sides": 6, "angle": 30, "radius": 0.95, "role": "panel"},
+                    {"form": "polygon", "sides": 6, "angle": 30, "radius": [0.68, 0.8], "width": 0.04, "filled": false, "role": "trim", "alpha": 0.45},
+                    {"form": "ring", "radius": [0.25, 0.32], "width": 0.05, "role": "light", "tint": [[150, 220, 210], [190, 160, 255]], "alpha": 0.35},
+                    {"form": "bar", "at": [0.0, 0.0], "angle": [0, 180], "length": 0.9, "width": 0.04, "role": "trim", "alpha": 0.5},
+                    {"form": "chevron", "at": [[-0.45, 0.45], 0.45], "angle": [0, 360], "length": 0.16, "width": 0.2, "role": "trim", "alpha": 0.5, "chance": 0.7}
+                ]}
+            ]
+        },
+        {
+            "id": "wreck.monolith",
+            "note": "A slab darker than anything near it, with perfect edges. It is the one thing in a wreck that is not damaged.",
+            "tags": ["ancient", "structure"],
+            "sockets": ["top"],
+            "variants": [
+                { "id": "slab", "shape": [
+                    {"form": "bar", "length": [1.4, 1.9], "width": [0.6, 0.8], "role": "panel", "tint": [12, 12, 16]},
+                    {"form": "bar", "length": 1.3, "width": 0.03, "role": "trim", "alpha": [0.2, 0.4]},
+                    {"form": "bar", "at": [[1.15, 1.3], [-0.5, 0.5]], "angle": [10, 80], "length": 0.3, "width": 0.18, "role": "panel", "tint": [12, 12, 16], "chance": 0.4},
+                    {"form": "disc", "at": [[-0.5, 0.5], 0.0], "radius": 0.04, "role": "light", "tint": [[150, 220, 210], [190, 160, 255]], "alpha": 0.3, "blink": 13.0, "chance": 0.4}
+                ]},
+                { "id": "standing", "shape": [
+                    {"form": "polygon", "sides": 4, "angle": 45, "radius": 0.7, "role": "panel", "tint": [12, 12, 16]},
+                    {"form": "polygon", "sides": 4, "angle": 45, "radius": 0.7, "width": 0.03, "filled": false, "role": "trim", "alpha": [0.2, 0.4]},
+                    {"form": "ring", "radius": [1.0, 1.15], "width": 0.025, "role": "trim", "alpha": [0.12, 0.2]},
+                    {"form": "ring", "radius": [1.3, 1.45], "width": 0.02, "role": "trim", "alpha": 0.1, "chance": 0.5},
+                    {"form": "disc", "radius": 0.06, "role": "light", "tint": [[150, 220, 210], [190, 160, 255]], "alpha": 0.3, "chance": 0.5}
+                ]},
+                { "id": "cleft", "shape": [
+                    {"form": "bar", "at": [-0.5, 0.0], "angle": [-4, 4], "length": [0.8, 0.9], "width": 0.8, "role": "panel", "tint": [12, 12, 16]},
+                    {"form": "bar", "at": [0.5, [0.0, 0.08]], "angle": [-4, 4], "length": [0.8, 0.9], "width": 0.8, "role": "panel", "tint": [12, 12, 16]},
+                    {"form": "bar", "angle": 90, "length": [0.7, 0.85], "width": [0.04, 0.08], "role": "light", "tint": [[150, 220, 210], [190, 160, 255]], "alpha": [0.25, 0.4]},
+                    {"form": "polygon", "sides": 3, "at": [[0.9, 1.1], [-0.5, 0.5]], "angle": [0, 120], "radius": 0.08, "role": "panel", "tint": [12, 12, 16], "chance": 0.4}
+                ]}
+            ]
+        }
+    ]
+}
