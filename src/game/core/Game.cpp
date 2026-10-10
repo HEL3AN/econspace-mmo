@@ -23,7 +23,6 @@
 #include "economy/Resource.h"
 #include "ui/Button.h"
 #include "ui/UiTheme.h"
-#include "ui/Window.h"
 #include "render/Textures.h"
 #include "raymath.h"
 #include <nlohmann/json.hpp>
@@ -131,17 +130,17 @@ void Game::Run()
         screenHeight_ = GetScreenHeight();
         rig_.SetViewport((float)screenWidth_, (float)screenHeight_);
 
+        // Who the mouse belongs to this frame, decided once for everything (#297): a click
+        // reaches the window in front of it and nothing behind.
+        desk_.BeginFrame();
+
         // Debug commands (work in any mode).
         if (IsKeyPressed(KEY_F11))
             ToggleBorderlessWindowed();
         if (IsKeyPressed(KEY_F10))  // the screen treatment's settings (#120)
-        {
-            if (treatmentPanelOpen_)
-                CloseTreatmentPanel();
-            else
-                treatmentPanelOpen_ = true;
-        }
+            desk_.Toggle(WIN_LOOK);
         HandleEscape();
+        desk_.HandleMouse();       // raising, dragging and closing windows
         if (IsKeyPressed(KEY_F1))  // account is on the server — credit via command
         {
             Proto::Command dc;
@@ -266,6 +265,7 @@ void Game::Run()
         }
         else
         {
+            Ui::MouseScope scope(desk_.Owns(WIN_STATION));  // F10's panel can sit over it
             DrawStationScreen();
         }
         if (useChain)
@@ -276,8 +276,7 @@ void Game::Run()
 
         // Above everything, and never treated: a settings screen seen through the effect
         // it is adjusting is a settings screen you cannot read while adjusting it.
-        if (treatmentPanelOpen_)
-            DrawTreatmentSettings();
+        desk_.Draw(Ui::Layer::Overlay);
 
         if (shooting)
         {
@@ -296,7 +295,15 @@ void Game::Run()
             }
         }
         EndDrawing();
+        desk_.Persist();  // a window moved, opened or closed: the layout is written now
     }
+}
+
+void Game::SetPilotName(const std::string& n)
+{
+    pilotName_ = n;
+    // Next to the executable, not in data/: it is this machine's preference, not the game's.
+    desk_.UseLayoutFile(std::string(GetApplicationDirectory()) + "ui_layout.json", n);
 }
 
 void Game::HandleInput(float dt)
@@ -316,13 +323,15 @@ void Game::HandleInput(float dt)
         return;
     }
 
-    // The context menu is handled first — it sits above the whole UI.
-    // We call all handlers explicitly so short-circuit || doesn't skip them.
-    bool overMenu = contextMenu_.Update() || rangePicker_.Over();
-    // The map is modal; the sensor screen covers the windows, so they take no clicks.
-    bool overWin = !galaxyMapOpen_ && !sensorOpen_ && HandleWindows();
-    bool overBar = HandleMenuBar();
-    bool overUi = overMenu || overWin || overBar || galaxyMapOpen_;
+    // The desk has chosen who the mouse belongs to (#297): a popup, a window, a screen, or
+    // -- when none of them is under the cursor -- the world. The map and the sensor screen
+    // cover the windows, so they take the clicks the windows would have.
+    {
+        Ui::MouseScope scope(desk_.Owns(WIN_CONTEXT));
+        contextMenu_.Update();  // a click elsewhere closes it, and still lands there
+    }
+    HandleMenuBar();
+    const bool toWorld = desk_.WorldOwnsMouse();
 
     // Combat/mining/docking intents go into the command (applied by the simulation
     // step, accounting for warp etc.), rather than calling ship methods directly.
@@ -339,25 +348,25 @@ void Game::HandleInput(float dt)
     }
 
     if (IsKeyPressed(KEY_T))
-        targetWin_->Toggle();
+        desk_.Toggle(WIN_TARGET);
 
     if (IsKeyPressed(KEY_O))
-        overviewWin_->Toggle();
+        desk_.Toggle(WIN_OVERVIEW);
 
     if (IsKeyPressed(KEY_R))
-        radarWin_->Toggle();
+        desk_.Toggle(WIN_RADAR);
 
     if (IsKeyPressed(KEY_J))
-        missionsWin_->Toggle();
+        desk_.Toggle(WIN_MISSIONS);
 
     if (IsKeyPressed(KEY_G))
-        galaxyMapOpen_ = !galaxyMapOpen_;
+        desk_.Toggle(WIN_MAP);
     // The sensor screen (#123); Esc closes it too (HandleEscape).
     if (IsKeyPressed(KEY_V))
-        sensorOpen_ = !sensorOpen_;
+        desk_.Toggle(WIN_SENSOR);
     // While it is open, the mouse points at cells rather than at the world behind them.
-    const bool onSensor = sensorOpen_ && !overUi;
-    if (galaxyMapOpen_ && IsKeyPressed(KEY_N) && CanNameHere())
+    const bool onSensor = desk_.Owns(WIN_SENSOR);
+    if (desk_.IsOpen(WIN_MAP) && IsKeyPressed(KEY_N) && CanNameHere())
     {
         naming_ = true;
         nameBuf_.clear();
@@ -371,14 +380,15 @@ void Game::HandleInput(float dt)
     float wheel = GetMouseWheelMove();
     if (wheel != 0.0f && onSensor)
         sensorRange_ = Sensor::StepRange(sensorRange_, wheel > 0.0f ? -1 : 1);  // in is closer
-    else if (wheel != 0.0f && !overUi && !sensorOpen_)
+    else if (wheel != 0.0f && toWorld)
         rig_.Zoom(wheel, GetMousePosition());
 
     // Middle button looks away; C comes back. Left and right are already select and the
-    // context menu, and looking around is not worth taking either of them.
-    if (IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE) && !overUi)
+    // context menu, and looking around is not worth taking either of them. A drag begun in
+    // the world stays the world's when it passes over a window.
+    if (IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE) && toWorld)
         panLast_ = GetMousePosition();
-    if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) && !overUi && !sensorOpen_)
+    if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) && toWorld)
     {
         const Vector2 m = GetMousePosition();
         rig_.Pan({ m.x - panLast_.x, m.y - panLast_.y });
@@ -412,7 +422,7 @@ void Game::HandleInput(float dt)
         {
             selected_ = FindEntityById(id);
             if (selected_ != nullptr)
-                targetWin_->SetOpen(true);
+                desk_.SetOpen(WIN_TARGET, true);
         }
     }
     if (onSensor && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))
@@ -431,7 +441,7 @@ void Game::HandleInput(float dt)
 
     // Left click — select the object under the cursor (unless over the UI). Search the
     // snapshot (M4c); the action applies to the live entity by id.
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !overUi && !sensorOpen_)
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && toWorld)
     {
         Vector2 worldMouse = GetScreenToWorld2D(GetMousePosition(), camera_);
         selected_ = nullptr;
@@ -443,11 +453,11 @@ void Game::HandleInput(float dt)
             }
         // Selecting an object opens the target window.
         if (selected_ != nullptr)
-            targetWin_->SetOpen(true);
+            desk_.SetOpen(WIN_TARGET, true);
     }
 
     // Right click: on an object — context menu; on empty space — autopilot.
-    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && !overUi && !sensorOpen_)
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && toWorld)
     {
         Vector2 worldMouse = GetScreenToWorld2D(GetMousePosition(), camera_);
         int     hitId = 0;
@@ -607,7 +617,7 @@ void Game::OpenContextMenu(Entity* target)
     items.push_back({ "Target", [this, target]()
                       {
                           selected_ = target;
-                          targetWin_->SetOpen(true);
+                          desk_.SetOpen(WIN_TARGET, true);
                       } });
     items.push_back({ "Approach", [this, target]()
                       { OrderAutopilot(target->GetPosition(), target->GetSize() + 70.0f); } });
@@ -693,7 +703,7 @@ void Game::OpenContextMenu(Entity* target)
             items.push_back({ "Attack", [this, npc]()
                               {
                                   selected_ = npc;
-                                  targetWin_->SetOpen(true);
+                                  desk_.SetOpen(WIN_TARGET, true);
                                   if (!weaponOn_)
                                       cmd_.toggleWeapon = true;
                                   weaponOn_ = true;
@@ -790,9 +800,8 @@ void Game::OpenContextMenuAt(Vector2 worldPoint)
     contextMenu_.Open(GetMousePosition(), std::move(items));
 }
 
-void Game::CloseTreatmentPanel()
+void Game::SaveTreatment()
 {
-    treatmentPanelOpen_ = false;
     // Written on close rather than on every slider frame: this is a file, and a slider
     // being dragged is sixty writes a second.
     std::string error;
@@ -800,48 +809,17 @@ void Game::CloseTreatmentPanel()
         TraceLog(LOG_WARNING, "Treatment: %s", error.c_str());
 }
 
-// Esc closes the topmost thing that is open, in the order they are drawn, and does
-// nothing when nothing is. It never quits: an MMO client that drops you on a stray key is
+// Esc closes the topmost thing that is open and does nothing when nothing is; the desk
+// keeps the order (#297): F10's panel, then a popup, then the map or the sensor screen,
+// then the window in front. It never quits: an MMO client that drops you on a stray key is
 // a ship left drifting. The station screen is not closed by it either -- leaving it is
-// undocking, an order to the server, and that wants its own button.
+// undocking, an order to the server, and that wants its own button -- so it stops Esc
+// there rather than letting it reach the windows behind it.
 void Game::HandleEscape()
 {
     if (!IsKeyPressed(KEY_ESCAPE) || naming_)  // the name field takes its own Esc
         return;
-    if (treatmentPanelOpen_)
-    {
-        CloseTreatmentPanel();
-        return;
-    }
-    if (contextMenu_.IsOpen())
-    {
-        contextMenu_.Close();
-        return;
-    }
-    if (rangePicker_.IsOpen())
-    {
-        rangePicker_.Close();
-        return;
-    }
-    if (mode_ != GameMode::Flying)
-        return;
-    if (galaxyMapOpen_)
-    {
-        galaxyMapOpen_ = false;
-        return;
-    }
-    if (sensorOpen_)
-    {
-        sensorOpen_ = false;
-        return;
-    }
-    // The end of the list is the window on top.
-    for (int i = (int)windows_.size() - 1; i >= 0; i--)
-        if (windows_[i]->IsOpen())
-        {
-            windows_[i]->SetOpen(false);
-            return;
-        }
+    desk_.Escape();
 }
 
 bool Game::CanNameHere() const

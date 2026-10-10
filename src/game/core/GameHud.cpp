@@ -23,7 +23,8 @@
 #include "economy/Resource.h"
 #include "ui/Button.h"
 #include "ui/UiTheme.h"
-#include "ui/Window.h"
+#include "ui/Desk.h"
+#include "ui/Input.h"
 #include "render/Textures.h"
 #include "raymath.h"
 #include <nlohmann/json.hpp>
@@ -197,49 +198,98 @@ void Game::DrawWorld()
 
 void Game::SetupWindows()
 {
-    // Create windows with temporary bounds; ResetWindowLayout arranges them.
-    Rectangle stub{ 0.0f, 0.0f, 10.0f, 10.0f };
+    using Ui::Anchor;
+    using Ui::Layer;
+    using Ui::WindowSpec;
 
-    windows_.push_back(std::make_unique<Window>("STATUS", stub, true));
-    statusWin_ = windows_.back().get();
-    statusWin_->SetContent([this](Rectangle a) { DrawStatusContent(a); });
+    // A window the player arranges: placed from a corner, kept per account.
+    auto panel = [](const char* id, const char* label, Anchor anchor, Rectangle place)
+    {
+        WindowSpec s;
+        s.id = id;
+        s.menuLabel = label;
+        s.layer = Layer::Panels;
+        s.anchor = anchor;
+        s.place = place;
+        s.persist = true;
+        return s;
+    };
+    // Something drawn and kept elsewhere that still takes part in the order, the mouse and
+    // Esc: a screen, the menu bar, a popup.
+    auto surface = [](const char* id, const char* label, Layer layer, Ui::EscRule esc)
+    {
+        WindowSpec s;
+        s.id = id;
+        s.menuLabel = label;
+        s.layer = layer;
+        s.esc = esc;
+        return s;
+    };
+    auto fullScreen = [this]()
+    { return Rectangle{ 0.0f, 0.0f, (float)screenWidth_, (float)screenHeight_ }; };
 
-    windows_.push_back(std::make_unique<Window>("TARGET", stub, false));
-    targetWin_ = windows_.back().get();
-    targetWin_->SetContent([this](Rectangle a) { DrawTargetContent(a); });
-
+    // Registered in the menu bar's order. The places are the ones the windows have always
+    // had at 1280 x 720; anchored, they now keep to their side at any other size.
+    desk_.AddWindow(panel(WIN_STATUS, "STA", Anchor::TopLeft, { 56.0f, 16.0f, 264.0f, 312.0f }),
+                    "STATUS", true, [this](Ui::Frame& f) { DrawStatusContent(f.Area()); });
+    desk_.AddWindow(panel(WIN_TARGET, "TGT", Anchor::TopRight, { 16.0f, 16.0f, 264.0f, 196.0f }),
+                    "TARGET", false, [this](Ui::Frame& f) { DrawTargetContent(f.Area()); });
     // Open from the start: it is the instrument a player flies by (#157), and a player who
     // has to know a key exists before they can navigate has not been told how to play.
-    windows_.push_back(std::make_unique<Window>("OVERVIEW", stub, true));
-    overviewWin_ = windows_.back().get();
-    overviewWin_->SetContent([this](Rectangle a) { DrawOverviewContent(a); });
+    desk_.AddWindow(panel(WIN_OVERVIEW, "OVR", Anchor::TopRight, { 16.0f, 224.0f, 264.0f, 400.0f }),
+                    "OVERVIEW", true, [this](Ui::Frame& f) { DrawOverviewContent(f); });
+    desk_.AddWindow(panel(WIN_RADAR, "RAD", Anchor::TopLeft, { 56.0f, 344.0f, 264.0f, 288.0f }),
+                    "RADAR", false, [this](Ui::Frame& f) { DrawRadarContent(f); });
+    desk_.AddWindow(panel(WIN_MISSIONS, "MIS", Anchor::TopRight, { 16.0f, 360.0f, 264.0f, 264.0f }),
+                    "MISSIONS", false, [this](Ui::Frame& f) { DrawMissionsContent(f.Area()); });
 
-    windows_.push_back(std::make_unique<Window>("RADAR", stub, false));
-    radarWin_ = windows_.back().get();
-    radarWin_->SetContent([this](Rectangle a) { DrawRadarContent(a); });
+    // The two screens cover the world view and the windows; whichever opened last is on top.
+    Ui::Desk::Surface map;
+    map.bounds = fullScreen;
+    map.draw = [this]() { DrawGalaxyMap(); };
+    desk_.AddSurface(surface(WIN_MAP, "MAP", Layer::Screen, Ui::EscRule::Close), false, map);
+    Ui::Desk::Surface sensor;
+    sensor.bounds = [this]()
+    { return Rectangle{ MENU_BAR_W, 0.0f, screenWidth_ - MENU_BAR_W, (float)screenHeight_ }; };
+    sensor.draw = [this]() { DrawSensorScreen(); };
+    desk_.AddSurface(surface(WIN_SENSOR, "SNS", Layer::Screen, Ui::EscRule::Close), false, sensor);
 
-    windows_.push_back(std::make_unique<Window>("MISSIONS", stub, false));
-    missionsWin_ = windows_.back().get();
-    missionsWin_->SetContent([this](Rectangle a) { DrawMissionsContent(a); });
+    desk_.AddWindow(panel(WIN_SETTINGS, "SET", Anchor::Top, { 0.0f, 100.0f, 300.0f, 300.0f }),
+                    "SETTINGS", false, [this](Ui::Frame& f) { DrawSettingsContent(f.Area()); });
 
-    windows_.push_back(std::make_unique<Window>("SETTINGS", stub, false));
-    settingsWin_ = windows_.back().get();
-    settingsWin_->SetContent([this](Rectangle a) { DrawSettingsContent(a); });
+    // Docked: a screen of its own, drawn by Run. Esc stops at it, because leaving it is
+    // undocking, an order to the server (#285).
+    Ui::Desk::Surface station;
+    station.bounds = fullScreen;
+    station.isOpen = [this]() { return mode_ == GameMode::Docked; };
+    desk_.AddSurface(surface(WIN_STATION, "", Layer::Screen, Ui::EscRule::Block), false, station);
 
-    ResetWindowLayout();
-}
+    // Above the screens it opens; Esc passes over it.
+    Ui::Desk::Surface bar;
+    bar.bounds = [this]() { return Rectangle{ 0.0f, 0.0f, MENU_BAR_W, (float)screenHeight_ }; };
+    bar.isOpen = [this]() { return mode_ == GameMode::Flying && !hudHidden_; };
+    bar.draw = [this]() { DrawMenuBar(); };
+    desk_.AddSurface(surface(WIN_MENUBAR, "", Layer::Modal, Ui::EscRule::Ignore), false, bar);
 
-// Arranges windows at their default positions (right-side ones relative to the current window
-// width).
-void Game::ResetWindowLayout()
-{
-    float rx = (float)(screenWidth_ - 280);
-    statusWin_->SetBounds(Rectangle{ 56.0f, 16.0f, 264.0f, 312.0f });
-    targetWin_->SetBounds(Rectangle{ rx, 16.0f, 264.0f, 196.0f });
-    overviewWin_->SetBounds(Rectangle{ rx, 224.0f, 264.0f, 400.0f });
-    radarWin_->SetBounds(Rectangle{ 56.0f, 344.0f, 264.0f, 288.0f });
-    missionsWin_->SetBounds(Rectangle{ rx, 360.0f, 264.0f, 264.0f });
-    settingsWin_->SetBounds(Rectangle{ screenWidth_ / 2.0f - 150.0f, 100.0f, 300.0f, 300.0f });
+    Ui::Desk::Surface menu;
+    menu.bounds = [this]() { return contextMenu_.Bounds(); };
+    menu.isOpen = [this]() { return contextMenu_.IsOpen(); };
+    menu.onClose = [this]() { contextMenu_.Close(); };
+    menu.draw = [this]() { contextMenu_.Draw(); };
+    desk_.AddSurface(surface(WIN_CONTEXT, "", Layer::Popup, Ui::EscRule::Close), false, menu);
+    Ui::Desk::Surface range;
+    range.bounds = [this]() { return rangePicker_.Bounds(); };
+    range.isOpen = [this]() { return rangePicker_.IsOpen(); };
+    range.onClose = [this]() { rangePicker_.Close(); };
+    range.draw = [this]() { rangePicker_.Draw(); };
+    desk_.AddSurface(surface(WIN_RANGE, "", Layer::Popup, Ui::EscRule::Close), false, range);
+
+    // F10's panel: over everything, and closing it writes what was tuned.
+    Ui::Desk::Surface look;
+    look.bounds = [this]() { return TreatmentPanelRect(); };
+    look.onClose = [this]() { SaveTreatment(); };
+    look.draw = [this]() { DrawTreatmentSettings(); };
+    desk_.AddSurface(surface(WIN_LOOK, "", Layer::Overlay, Ui::EscRule::Close), false, look);
 }
 
 // Changes the window size; if fullscreen mode is active — exits it first.
@@ -251,12 +301,10 @@ void Game::ApplyResolution(int w, int h)
     int mon = GetCurrentMonitor();
     SetWindowPosition((GetMonitorWidth(mon) - w) / 2, (GetMonitorHeight(mon) - h) / 2);
 
-    // The window layout depends on the screen size — reset it for the new
-    // resolution (right-side windows are anchored to the width). We update the sizes ahead of time,
-    // since GetScreenWidth would only pick them up next frame.
+    // The windows keep to their anchors on their own (#297); the sizes are updated ahead of
+    // time only because GetScreenWidth picks them up next frame.
     screenWidth_ = w;
     screenHeight_ = h;
-    ResetWindowLayout();
 }
 
 // Settings window content: resolution, fullscreen mode, layout reset.
@@ -293,17 +341,18 @@ void Game::DrawSettingsContent(Rectangle area)
     y += 42;
 
     Button resetBtn(Rectangle{ area.x, (float)y, area.width, 30.0f }, "Reset window layout",
-                    [this]() { ResetWindowLayout(); });
+                    [this]() { desk_.ResetLayout(); });
     resetBtn.Process();
 }
 
 // Radar minimap: a free view of the system (does not follow the player). Inside the window
 // you can pan (LMB drag), zoom (wheel), select an object (click), and open the context menu (RMB).
 // The button in the top right centers the radar on the ship.
-void Game::DrawRadarContent(Rectangle area)
+void Game::DrawRadarContent(const Ui::Frame& f)
 {
-    float     side = fminf(area.width, area.height);
-    Rectangle r{ area.x + (area.width - side) / 2.0f, area.y, side, side };
+    const Rectangle area = f.Area();
+    float           side = fminf(area.width, area.height);
+    Rectangle       r{ area.x + (area.width - side) / 2.0f, area.y, side, side };
     DrawRectangleRec(r, Fade(BLACK, 0.4f));
     DrawRectangleLinesEx(r, 1.0f, Fade(Ui::PANEL_BORDER, 0.6f));
 
@@ -328,27 +377,28 @@ void Game::DrawRadarContent(Rectangle area)
     auto toWorld = [&](Vector2 s) -> Vector2
     { return { radarCenter_.x + (s.x - c.x) / scale, radarCenter_.y + (s.y - c.y) / scale }; };
 
-    Vector2 m = GetMousePosition();
-    bool    overR = CheckCollisionPointRec(m, r);
+    // Over it only when the radar's window owns the mouse (#297).
+    Vector2 m = f.Mouse();
+    bool    overR = f.Hovered(r);
 
     // Center-on-player button — top right of the radar.
     Rectangle recBtn{ r.x + r.width - 24.0f, r.y + 6.0f, 18.0f, 18.0f };
-    bool      overRec = CheckCollisionPointRec(m, recBtn);
+    bool      overRec = f.Hovered(recBtn);
 
     // Wheel zoom.
     if (overR)
     {
-        float wheel = GetMouseWheelMove();
+        float wheel = f.Wheel();
         if (wheel != 0.0f)
             radarZoom_ = Clamp(radarZoom_ * (1.0f + wheel * 0.12f), 0.25f, 12.0f);
     }
 
     // LMB: the center button takes priority, otherwise pan/select.
-    if (overRec && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+    if (overRec && f.Pressed(MOUSE_BUTTON_LEFT))
     {
         radarCenter_ = sp;
     }
-    else if (overR && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+    else if (overR && f.Pressed(MOUSE_BUTTON_LEFT))
     {
         radarDragging_ = true;
         radarDragMoved_ = false;
@@ -375,7 +425,7 @@ void Game::DrawRadarContent(Rectangle area)
                     {
                         selected_ = FindEntityById(e.id);
                         if (selected_ != nullptr)
-                            targetWin_->SetOpen(true);
+                            desk_.SetOpen(WIN_TARGET, true);
                         break;
                     }
             }
@@ -383,7 +433,7 @@ void Game::DrawRadarContent(Rectangle area)
     }
 
     // RMB: menu on the object under the cursor, or on a map point.
-    if (overR && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))
+    if (overR && f.Pressed(MOUSE_BUTTON_RIGHT))
     {
         int hitId = 0;
         for (const auto& e : snapshot_.entities)
@@ -460,34 +510,36 @@ void Game::DrawRadarContent(Rectangle area)
 }
 
 // List of system objects, sorted by distance; click — select.
-void Game::DrawOverviewContent(Rectangle area)
+void Game::DrawOverviewContent(const Ui::Frame& f)
 {
     // The overview is the instrument a player flies by (#157): pick a thing from the list,
     // then choose what to do about it with a right click. What goes in it and in what order
     // is decided by Overview::Build, which a test can hold; this only draws it. Read from the
     // snapshot (M4c), not from the live objects; a click maps back to the proxy by id.
-    const Vector2 sp = snapshot_.player.pos;
-    const Vector2 m = GetMousePosition();
-    const bool    clicked = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
-    const bool    rclicked = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
-    const int     rowH = 20;
-    float         y = area.y;
+    // The frame answers for the mouse: a row under another window neither lights up nor
+    // takes the click meant for the window in front (#297).
+    const Rectangle area = f.Area();
+    const Vector2   sp = snapshot_.player.pos;
+    const bool      clicked = f.Pressed(MOUSE_BUTTON_LEFT);
+    const bool      rclicked = f.Pressed(MOUSE_BUTTON_RIGHT);
+    const int       rowH = 20;
+    float           y = area.y;
 
     // --- Tabs -------------------------------------------------------------------------
     {
         float x = area.x;
-        for (Overview::Filter f : Overview::AllFilters())
+        for (Overview::Filter filter : Overview::AllFilters())
         {
-            const char* label = Overview::Label(f);
+            const char* label = Overview::Label(filter);
             const float w = (float)Ui::TextWidth(label, 13) + 14.0f;
             Rectangle   tab{ x, y, w, 20.0f };
-            const bool  on = (overviewFilter_ == f);
-            const bool  over = CheckCollisionPointRec(m, tab);
+            const bool  on = (overviewFilter_ == filter);
+            const bool  over = f.Hovered(tab);
             DrawRectangleRec(tab, on ? Fade(Ui::ACCENT, 0.25f)
                                      : (over ? Fade(Ui::ACCENT, 0.10f) : Fade(Ui::TITLE_BG, 0.6f)));
             Ui::Text(label, (int)x + 7, (int)y + 3, 13, on ? Ui::ACCENT : Ui::TEXT_DIM);
             if (over && clicked)
-                overviewFilter_ = f;
+                overviewFilter_ = filter;
             x += w + 3.0f;
         }
         y += 24.0f;
@@ -510,7 +562,7 @@ void Game::DrawOverviewContent(Rectangle area)
             Rectangle  hit{ c.x - 2.0f, y, 52.0f, 16.0f };
             Ui::Text(TextFormat("%s%s", c.label, on ? " v" : ""), (int)c.x, (int)y, 11,
                      on ? Ui::ACCENT : Ui::TEXT_DIM);
-            if (clicked && CheckCollisionPointRec(m, hit))
+            if (clicked && f.Hovered(hit))
                 overviewSort_ = c.sort;
         }
         y += 16.0f;
@@ -540,7 +592,7 @@ void Game::DrawOverviewContent(Rectangle area)
             DrawRectangleRec(row, Fade(Ui::ACCENT, 0.22f));
         else if (held)
             DrawRectangleRec(row, Fade(Ui::ACCENT, 0.12f));
-        else if (CheckCollisionPointRec(m, row))
+        else if (f.Hovered(row))
             DrawRectangleRec(row, Fade(Ui::ACCENT, 0.06f));
 
         // Hostiles in red, because this list is where allegiance belongs: the instrument, not
@@ -564,13 +616,13 @@ void Game::DrawOverviewContent(Rectangle area)
         Ui::Text(d, (int)(area.x + area.width) - Ui::TextWidth(d, 14) - 4, (int)y + 3, 14,
                  Ui::TEXT_DIM);
 
-        if (CheckCollisionPointRec(m, row))
+        if (f.Hovered(row))
         {
             if (clicked)
             {
                 selected_ = FindEntityById(e.id);
                 if (selected_ != nullptr)
-                    targetWin_->SetOpen(true);
+                    desk_.SetOpen(WIN_TARGET, true);
             }
             else if (rclicked)  // the actions on this thing: approach, orbit, warp, dock...
             {
@@ -672,71 +724,23 @@ void Game::DrawTargetContent(Rectangle area)
     }
 }
 
-// Window input: continuing drags and routing a press.
-// Returns true if the mouse is currently captured by the UI.
-bool Game::HandleWindows()
+// Menu bar input: clicking a button toggles the window or screen it stands for. The buttons
+// are the desk's registry in order (#297), so a window registered with a label has one.
+void Game::HandleMenuBar()
 {
-    for (auto& w : windows_)
-        w->UpdateDrag();
-
-    bool overUi = false;
-    for (auto& w : windows_)
-        if (w->ContainsMouse())
-            overUi = true;
-
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-    {
-        Vector2 m = GetMousePosition();
-        // Find the topmost window under the cursor (end of the list — on top).
-        for (int i = (int)windows_.size() - 1; i >= 0; i--)
-        {
-            if (!windows_[i]->ContainsMouse())
-                continue;
-
-            std::unique_ptr<Window> w = std::move(windows_[i]);
-            windows_.erase(windows_.begin() + i);
-
-            if (w->CloseButtonHit(m))
-                w->SetOpen(false);
-            else if (w->TitleBarHit(m))
-                w->StartDrag(m);
-
-            windows_.push_back(std::move(w));  // bring to the front
-            break;
-        }
-    }
-    return overUi;
-}
-
-// Menu bar input: clicking a button toggles the corresponding window.
-// Returns true if the cursor is over the bar (mouse captured by the UI).
-bool Game::HandleMenuBar()
-{
-    Vector2 m = GetMousePosition();
-    bool    over =
-        CheckCollisionPointRec(m, Rectangle{ 0.0f, 0.0f, MENU_BAR_W, (float)screenHeight_ });
-    if (!over || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-        return over;
-
-    // The MAP slot (index 5) is not a window but the full-screen map (wins[5] == nullptr).
-    // The SNS slot (index 6) is the full-screen sensor screen (#123), likewise.
-    Window* wins[] = { statusWin_,   targetWin_, overviewWin_, radarWin_,
-                       missionsWin_, nullptr,    nullptr,      settingsWin_ };
-    for (int i = 0; i < 8; i++)
+    if (!desk_.Owns(WIN_MENUBAR) || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+        return;
+    const Vector2                         m = GetMousePosition();
+    const std::vector<Ui::Desk::MenuSlot> slots = desk_.MenuSlots();
+    for (size_t i = 0; i < slots.size(); i++)
     {
         Rectangle b{ (MENU_BAR_W - MENU_BTN) / 2.0f, MENU_TOP + i * MENU_STEP, MENU_BTN, MENU_BTN };
         if (CheckCollisionPointRec(m, b))
         {
-            if (wins[i] != nullptr)
-                wins[i]->Toggle();
-            else if (i == 5)
-                galaxyMapOpen_ = !galaxyMapOpen_;
-            else
-                sensorOpen_ = !sensorOpen_;
+            desk_.Toggle(slots[i].id);
             break;
         }
     }
-    return over;
 }
 
 // Vertical menu bar on the left: window-toggle buttons,
@@ -747,25 +751,21 @@ void Game::DrawMenuBar()
     DrawLineEx(Vector2{ MENU_BAR_W, 0.0f }, Vector2{ MENU_BAR_W, (float)screenHeight_ }, 1.0f,
                Ui::PANEL_BORDER);
 
-    Window*     wins[] = { statusWin_,   targetWin_, overviewWin_, radarWin_,
-                           missionsWin_, nullptr,    nullptr,      settingsWin_ };
-    const char* labels[] = { "STA", "TGT", "OVR", "RAD", "MIS", "MAP", "SNS", "SET" };
-    Vector2     m = GetMousePosition();
-
-    for (int i = 0; i < 8; i++)
+    const std::vector<Ui::Desk::MenuSlot> slots = desk_.MenuSlots();
+    for (size_t i = 0; i < slots.size(); i++)
     {
         Rectangle b{ (MENU_BAR_W - MENU_BTN) / 2.0f, MENU_TOP + i * MENU_STEP, MENU_BTN, MENU_BTN };
-        // MAP and SNS are screens, not windows.
-        bool  open = wins[i] ? wins[i]->IsOpen() : (i == 5 ? galaxyMapOpen_ : sensorOpen_);
-        bool  hover = CheckCollisionPointRec(m, b);
-        Color accent = (open || hover) ? Ui::ACCENT : Ui::TEXT_DIM;
+        const char* label = slots[i].label.c_str();
+        bool        open = slots[i].open;
+        bool        hover = Ui::MouseOver(b);
+        Color       accent = (open || hover) ? Ui::ACCENT : Ui::TEXT_DIM;
 
         DrawRectangleRec(b, open ? Fade(Ui::ACCENT, 0.25f)
                                  : (hover ? Fade(Ui::ACCENT, 0.12f) : Ui::PANEL_BG));
         DrawRectangleLinesEx(b, 1.0f, (open || hover) ? Ui::ACCENT : Ui::PANEL_BORDER);
 
-        int tw = Ui::TextWidth(labels[i], 14);
-        Ui::Text(labels[i], (int)(b.x + (b.width - tw) / 2.0f), (int)b.y + 11, 14, accent);
+        int tw = Ui::TextWidth(label, 14);
+        Ui::Text(label, (int)(b.x + (b.width - tw) / 2.0f), (int)b.y + 11, 14, accent);
     }
 }
 
@@ -849,20 +849,16 @@ void Game::DrawHud()
 {
     if (hudHidden_)
         return;
-    if (!sensorOpen_)
+    if (!desk_.IsOpen(WIN_SENSOR))
         DrawScaleBar();  // a scale for the world view; the sensor screen states its own
-    for (auto& w : windows_)
-        w->Draw();
+    desk_.Draw(Ui::Layer::Panels);
 
-    // Over the windows, like the map: a screen of its own with its own legend, which a
-    // window parked on top of it would hide. The flight keys still work under it.
-    if (sensorOpen_)
-        DrawSensorScreen();
+    // Over the windows: the map, and the sensor screen -- a screen of its own with its own
+    // legend, which a window parked on top of it would hide. The flight keys still work
+    // under it.
+    desk_.Draw(Ui::Layer::Screen);
 
-    if (galaxyMapOpen_)
-        DrawGalaxyMap();
-
-    DrawMenuBar();
+    desk_.Draw(Ui::Layer::Modal);  // the menu bar
 
     // Docking prompt.
     if (nearbyStation_ != nullptr)
@@ -894,8 +890,7 @@ void Game::DrawHud()
         Ui::Text(w, (screenWidth_ - Ui::TextWidth(w, 22)) / 2, 38, 22, SKYBLUE);
     }
 
-    contextMenu_.Draw();  // over the windows
-    rangePicker_.Draw();
+    desk_.Draw(Ui::Layer::Popup);  // the context menu and the range picker, over the windows
 
     // Current system and its security level (top center).
     if (const WorldLoader::SystemInfo* si = CurrentSystemInfo())
@@ -1314,19 +1309,20 @@ void Game::DrawGalaxyMap()
         galaxyInit_ = true;
     }
 
-    // Input: wheel zoom and drag-to-pan — like the radar.
+    // Input: wheel zoom and drag-to-pan — like the radar. Drawn by the desk, which says
+    // whether the map owns the mouse (#297).
     Vector2 m = GetMousePosition();
-    bool    over = CheckCollisionPointRec(m, area);
+    bool    over = Ui::MouseOver(area);
     if (over)
     {
-        float wheel = GetMouseWheelMove();
+        float wheel = Ui::MouseWheel();
         if (wheel != 0.0f)
             galaxyZoom_ = Clamp(galaxyZoom_ * (1.0f + wheel * 0.12f), 0.3f, 8.0f);
     }
 
     float scale = baseScale * galaxyZoom_;
 
-    if (over && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+    if (over && Ui::MousePressed(MOUSE_BUTTON_LEFT))
     {
         galaxyDragging_ = true;
         galaxyDragLast_ = m;
@@ -1490,12 +1486,16 @@ void Game::DrawGalaxyMap()
 // The screen treatment's settings, over everything and never treated themselves (#120).
 // A panel seen through the effect it is adjusting is a panel you cannot read while
 // adjusting it.
-void Game::DrawTreatmentSettings()
+Rectangle Game::TreatmentPanelRect() const
 {
     const float w = 320.0f;
     const float h = Render::TreatmentPanelHeight(treatment_, &materials_) + 24.0f;
-    Rectangle   panel{ (float)screenWidth_ - w - 16.0f, 60.0f, w,
-                       fminf(h, (float)screenHeight_ - 80.0f) };
+    return { (float)screenWidth_ - w - 16.0f, 60.0f, w, fminf(h, (float)screenHeight_ - 80.0f) };
+}
+
+void Game::DrawTreatmentSettings()
+{
+    const Rectangle panel = TreatmentPanelRect();
 
     DrawRectangleRec(panel, Ui::PANEL_BG);
     DrawRectangleLinesEx(panel, 1.0f, Ui::PANEL_BORDER);
@@ -1611,7 +1611,7 @@ void Game::DrawSensorScreen()
             const Rectangle box{ px, py, cellPx, cellPx };
             if (c.id != 0 && c.id == selId)
                 DrawRectangleLinesEx(box, 1.0f, WHITE);
-            if (c.id != 0 && CheckCollisionPointRec(mouse, box))
+            if (c.id != 0 && Ui::MouseOver(box))
                 hoverId = c.id;
         }
 

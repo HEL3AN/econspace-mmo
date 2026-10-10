@@ -150,6 +150,9 @@ add_library(engine STATIC
     src/engine/ui/Controls.cpp         # sliders and toggles, wanted by more than one screen
     src/engine/ui/Window.cpp
     src/engine/ui/ContextMenu.cpp
+    src/engine/ui/Input.cpp            # who the mouse belongs to while something draws (#297)
+    src/engine/ui/DeskLayout.cpp       # the window manager's rules, with no drawing -- tested
+    src/engine/ui/Desk.cpp             # ...and the half that reads the mouse and draws
 )
 # PUBLIC: the src/engine root is visible to everyone who links engine. That's why
 # includes like "entities/Entity.h" from game and editor resolve automatically.
@@ -343,6 +346,7 @@ add_executable(tests
     tests/clock_tests.cpp
     tests/build_tests.cpp          # construction: blueprints, sites, the clock (#39)
     tests/ship_design_tests.cpp    # ship designs and the stats derived from them (#279)
+    tests/desk_tests.cpp           # the window manager: z-order, the mouse, Esc, layout (#297)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/Sensor.cpp        # the sensor screen, tested without a window (#123)

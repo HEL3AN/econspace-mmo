@@ -11,7 +11,8 @@
 // would have been three.
 //
 // Immediate mode, like the rest of this UI: they draw and report what the mouse did in the
-// same call, and own no state.
+// same call, and own no state. They see the mouse only when what they are drawn in owns it
+// (Ui::MouseScope, #297), so a slider under another window does not move.
 namespace Ui
 {
 

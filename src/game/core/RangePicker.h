@@ -9,9 +9,9 @@
 // small panel with a slider and one button per behaviour, opened from the context menu
 // beside the presets.
 //
-// Deliberately on its own and knowing nothing about Game. A real window system is coming
-// (#297); this is the piece that moves into it, and until then it is drawn and fed input
-// like the context menu it is opened from.
+// Deliberately on its own and knowing nothing about Game. It sits on the desk's popup
+// layer (#297) beside the context menu it is opened from, which decides whether it owns
+// the mouse; its controls ask Ui::MouseOver, so they react only when it does.
 class RangePicker
 {
 public:
@@ -26,14 +26,12 @@ public:
     void Close() { open_ = false; }
     bool IsOpen() const { return open_; }
 
-    // True while the cursor is over it, so a click there is not also a click in space.
-    bool Over() const;
     // Draws it and acts on what the mouse did; closes after a choice.
     void Draw();
 
-private:
     Rectangle Bounds() const;
 
+private:
     bool        open_ = false;
     bool        justOpened_ = false;
     Vector2     pos_ = { 0.0f, 0.0f };

@@ -14,6 +14,8 @@ savegame.json
 account.json
 account_*.json
 world.json
+# The client's window layout, per account on this machine (#297): a preference, not data.
+ui_layout.json
 
 # clangd index cache (IDE) — local, generated, not needed in the repo.
 .cache/

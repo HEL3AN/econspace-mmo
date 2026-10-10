@@ -1,4 +1,5 @@
 #include "ui/ContextMenu.h"
+#include "ui/Input.h"
 #include "ui/UiTheme.h"
 #include <cmath>
 
@@ -40,7 +41,7 @@ bool ContextMenu::Update()
         return false;
 
     Vector2 m = GetMousePosition();
-    bool    over = CheckCollisionPointRec(m, Bounds());
+    bool    over = Ui::MouseOver(Bounds());
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
     {
@@ -70,11 +71,10 @@ void ContextMenu::Draw() const
     DrawRectangleRec(b, Ui::PANEL_BG);
     DrawRectangleLinesEx(b, 1.0f, Ui::PANEL_BORDER);
 
-    Vector2 m = GetMousePosition();
     for (size_t i = 0; i < items_.size(); i++)
     {
         Rectangle row{ b.x, b.y + ROW_HEIGHT * (float)i, b.width, ROW_HEIGHT };
-        bool      hover = CheckCollisionPointRec(m, row);
+        bool      hover = Ui::MouseOver(row);
         if (hover)
             DrawRectangleRec(row, Fade(Ui::ACCENT, 0.22f));
         Ui::Text(items_[i].label.c_str(), (int)b.x + 10, (int)row.y + 6, 16,

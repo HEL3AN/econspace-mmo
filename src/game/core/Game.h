@@ -18,8 +18,8 @@
 #include "render/Treatment.h"
 #include "player/Player.h"
 #include <string>
-#include "ui/Window.h"
 #include "ui/ContextMenu.h"
+#include "ui/Desk.h"
 #include "core/RangePicker.h"
 #include <deque>
 #include <map>
@@ -81,12 +81,12 @@ public:
     }
     // Start with the galaxy map open (--map): for seeing the index the server sent without
     // a hand on the keyboard.
-    void StartOnMap() { galaxyMapOpen_ = true; }
+    void StartOnMap() { desk_.SetOpen(WIN_MAP, true); }
     // Start with the sensor screen open (--sensor), at a range if one is given: the same
     // reason as --map, for a picture of the instrument.
     void StartOnSensor(float range)
     {
-        sensorOpen_ = true;
+        desk_.SetOpen(WIN_SENSOR, true);
         if (range > 0.0f)
             sensorRange_ = Sensor::StepRange(range, 0);
     }
@@ -102,8 +102,9 @@ public:
     // Draw the world alone, without the HUD (--nohud): for a picture of the place rather
     // than of the instruments. Nothing else changes; the windows still exist.
     void HideHud() { hudHidden_ = true; }
-    // Who this client is logged in as: a discoverer may name what they found (#145).
-    void SetPilotName(const std::string& n) { pilotName_ = n; }
+    // Who this client is logged in as: a discoverer may name what they found (#145), and
+    // the window layout is kept per account (#297).
+    void SetPilotName(const std::string& n);
     ~Game();
 
     void Run();
@@ -116,10 +117,8 @@ private:
     void DrawStationScreen();
     void DrawMissionBoard(int x, int y, int w);  // mission board at the station
 
-    void SetupWindows();                         // creates the UI windows
-    void ResetWindowLayout();                    // arranges windows at their default positions
-    bool HandleWindows();                        // window input; true — mouse captured by the UI
-    bool HandleMenuBar();                        // menu bar input; true — mouse over the bar
+    void SetupWindows();                         // puts every window, screen and popup on the desk
+    void HandleMenuBar();                        // menu bar input: a button toggles its window
     void DrawMenuBar();                          // vertical menu bar on the left
     void ApplyResolution(int w, int h);          // changes the window size
     void DrawSettingsContent(Rectangle area);    // contents of the settings window
@@ -130,8 +129,8 @@ private:
     void OrderWarp(Vector2 target, float dropDist);       // warp to a point
     void DrawStatusContent(Rectangle area);               // contents of the status window
     void DrawTargetContent(Rectangle area);               // contents of the selected-target window
-    void DrawOverviewContent(Rectangle area);             // list of objects in the system
-    void DrawRadarContent(Rectangle area);                // system radar minimap
+    void DrawOverviewContent(const Ui::Frame& f);         // list of objects in the system
+    void DrawRadarContent(const Ui::Frame& f);            // system radar minimap
     void DrawMissionsContent(Rectangle area);             // log of active missions
     void DrawGalaxyMap();                                 // full-screen star map
     void DrawSensorScreen();                              // the sensor grid (#123)
@@ -139,10 +138,10 @@ private:
     // in it (0 if nothing) and the world point at its centre. False off the grid.
     bool             SensorPick(Vector2 screen, int& id, Vector2& world) const;
     Sensor::Standing ViewerStanding() const;  // this pilot's standing, for the instruments
-    bool CanNameHere() const;    // in a system this pilot found and nobody has named (#145)
-    void HandleNaming();         // typing a name: every key goes to the name until Enter/Esc
-    void HandleEscape();         // Esc closes whatever is on top, and never quits
-    void CloseTreatmentPanel();  // closes F10's panel and writes what was tuned
+    bool CanNameHere() const;  // in a system this pilot found and nobody has named (#145)
+    void HandleNaming();       // typing a name: every key goes to the name until Enter/Esc
+    void HandleEscape();       // Esc closes whatever is on top, and never quits
+    void SaveTreatment();      // writes what was tuned in F10's panel
 
     void Undock();
 
@@ -251,8 +250,8 @@ private:
     void                    OrderHold(int mode, int targetId, float range);
     void                    ReleaseHold();
     mutable Sim::HoldTarget holdTarget_;
-    bool                    treatmentPanelOpen_ = false;
     void                    DrawTreatmentSettings();
+    Rectangle               TreatmentPanelRect() const;
 
     // Radar state: zoom and absolute view center (does not follow the player).
     float   radarZoom_ = 1.0f;
@@ -308,28 +307,35 @@ private:
     bool              weaponOn_ = false;
     std::vector<Beam> beams_;  // weapon beams for the current frame
 
-    // UI. The order in windows_ sets the z-order (last — on top).
-    std::vector<std::unique_ptr<Window>> windows_;
-    Window*                              statusWin_ = nullptr;
-    Window*                              targetWin_ = nullptr;
-    Window*                              overviewWin_ = nullptr;
+    // UI (#297). Every window, screen and popup is on the desk, which decides which is in
+    // front, who the mouse belongs to this frame and what Esc closes. These are their ids;
+    // the ones on the menu bar are registered in the bar's order.
+    static constexpr const char* WIN_STATUS = "status";
+    static constexpr const char* WIN_TARGET = "target";
+    static constexpr const char* WIN_OVERVIEW = "overview";
+    static constexpr const char* WIN_RADAR = "radar";
+    static constexpr const char* WIN_MISSIONS = "missions";
+    static constexpr const char* WIN_MAP = "map";        // the full-screen galaxy map
+    static constexpr const char* WIN_SENSOR = "sensor";  // the sensor screen (#123)
+    static constexpr const char* WIN_SETTINGS = "settings";
+    static constexpr const char* WIN_STATION = "station";  // the docked screen
+    static constexpr const char* WIN_MENUBAR = "menubar";
+    static constexpr const char* WIN_CONTEXT = "context";  // the right-click menu
+    static constexpr const char* WIN_RANGE = "range";      // the range picker (#298)
+    static constexpr const char* WIN_LOOK = "look";        // F10's treatment panel (#120)
+    Ui::Desk                     desk_;
     // The overview's tab and sort (#157), kept across frames and windows being reopened.
     Overview::Filter overviewFilter_ = Overview::Filter::All;
     Overview::Sort   overviewSort_ = Overview::Sort::Distance;
-    Window*          radarWin_ = nullptr;
-    Window*          missionsWin_ = nullptr;
-    Window*          settingsWin_ = nullptr;
 
-    bool        galaxyMapOpen_ = false;  // full-screen galaxy map
-    std::string pilotName_;              // the account this client logged in as
-    bool        naming_ = false;         // the name field is open (#145)
+    std::string pilotName_;       // the account this client logged in as
+    bool        naming_ = false;  // the name field is open (#145)
     std::string nameBuf_;
 
     // The sensor screen (#123): V opens it, the wheel steps its range. It covers the world
     // view and the windows while open, and the flight keys keep working, because flying by
     // instruments is the point of having them. The picture and where it was drawn are kept
     // for the next frame's clicks.
-    bool            sensorOpen_ = false;
     float           sensorRange_ = Sensor::DefaultRange();
     Sensor::Picture sensorPicture_;
     Vector2         sensorOrigin_ = { 0.0f, 0.0f };  // screen point of cell (0, 0)'s corner
