@@ -13,7 +13,7 @@
             "shape": { "vars": { "pa": [0, 360] }, "parts": [
                 {"form": "disc", "radius": 2.6, "role": "hull", "soft": true, "alpha": 0.32},
                 {"form": "disc", "radius": 1.6, "role": "hull", "soft": true, "alpha": 0.4},
-                {"module": "nature.prominence", "variant": "loop", "at": [1.1, 0], "pivot": [-1.1, 0], "angle": "$pa", "scale": [0.3, 0.38], "tint": [255, 170, 100], "minPixels": 50},
+                {"module": "nature.prominence", "variant": "loop", "at": [1.1, 0], "pivot": [-1.1, 0], "angle": "$pa", "scale": [0.4, 0.48], "tint": [255, 150, 60], "minPixels": 50},
                 {"module": "nature.flare", "at": [1.06, 0], "pivot": [-1.06, 0], "angle": "$pa+150", "scale": [0.2, 0.26], "tint": [255, 235, 150], "minPixels": 50, "chance": 0.45},
                 {"form": "disc", "radius": 1.0, "role": "hull"},
                 {"module": "nature.sunspot", "at": [[-0.45, 0.45], [-0.4, 0.4]], "scale": [0.16, 0.24], "minPixels": 40},
@@ -35,7 +35,7 @@
                 {"form": "disc", "radius": 2.80, "role": "hull", "soft": true, "alpha": 0.32},
                 {"form": "disc", "radius": 1.72, "role": "hull", "soft": true, "alpha": 0.4},
                 {"module": "nature.flare", "at": [1.07, 0], "pivot": [-1.07, 0], "angle": "$pa", "scale": [0.26, 0.34], "tint": [255, 200, 140], "minPixels": 50, "chance": 0.75},
-                {"module": "nature.prominence", "variant": "twin", "at": [1.1, 0], "pivot": [-1.1, 0], "angle": "$pa+170", "scale": [0.28, 0.36], "tint": [255, 120, 80], "minPixels": 50, "chance": 0.6},
+                {"module": "nature.prominence", "variant": "loop", "at": [1.1, 0], "pivot": [-1.1, 0], "angle": "$pa+170", "scale": [0.28, 0.36], "tint": [255, 120, 80], "minPixels": 50, "chance": 0.6},
                 {"form": "disc", "radius": 1.0, "role": "hull"},
                 {"module": "nature.sunspot", "at": [[-0.4, 0.4], [-0.35, 0.35]], "scale": [0.24, 0.32], "minPixels": 40},
                 {"module": "nature.sunspot", "at": [[-0.55, 0.55], [-0.5, 0.5]], "scale": [0.14, 0.2], "minPixels": 50, "chance": 0.7}
@@ -448,8 +448,8 @@
                 {"form": "disc", "at": [[-0.35, -0.2], [-0.3, -0.1]], "radius": [0.45, 0.55], "role": "trim", "soft": true, "tint": [[200, 120, 200], [150, 110, 230]], "alpha": 0.3, "spin": 0.31, "blink": 13.0, "minPixels": 40},
                 {"form": "disc", "at": [[0.2, 0.4], [-0.45, -0.25]], "radius": [0.3, 0.4], "role": "trim", "soft": true, "tint": [[120, 140, 235], [210, 120, 180]], "alpha": 0.3, "spin": -0.22, "blink": 11.0, "minPixels": 40},
                 {"form": "disc", "at": [[-0.3, -0.1], [0.25, 0.45]], "radius": [0.28, 0.36], "role": "trim", "soft": true, "alpha": 0.28, "spin": 0.31, "blink": 9.0, "minPixels": 60},
-                {"module": "nature.nebula-wisp", "variant": "streak", "at": [[0.05, 0.25], [-0.25, -0.05]], "angle": [0, 180], "scale": [0.4, 0.5], "tint": [[170, 120, 230], [210, 130, 210]], "alpha": 0.45, "spin": -0.22, "minPixels": 50},
-                {"module": "nature.dark-lane", "variant": "lane", "at": [[-0.1, 0.1], [-0.1, 0.1]], "angle": [0, 180], "scale": [0.45, 0.55], "alpha": 0.75, "spin": 0.15, "minPixels": 50}
+                {"form": "disc", "at": [[0.0, 0.2], [-0.25, -0.05]], "radius": [0.18, 0.22], "role": "trim", "soft": true, "tint": [[170, 120, 230], [210, 130, 210]], "alpha": 0.1, "spin": -0.22, "minPixels": 50,
+                 "row": {"count": [8, 10], "step": [[0.05, 0.09], [-0.08, 0.08]], "turn": [3, 6], "taper": [0.9, 0.93], "centred": true}}
             ] },
             "components": {
                 "hazard": { "radius": 0, "hidesShips": true }

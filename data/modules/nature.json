@@ -38,33 +38,13 @@
         },
         {
             "id": "nature.flare",
-            "note": "A star letting go: bright arcs off the limb and a hot knot where they root. The one place on a star where light is the shape.",
-            "tags": ["star", "edge"],
+            "note": "A star letting go: a hot knot on the limb, brightest where it roots and fading to nothing. Soft glow only -- the solid spikes, ray fans and arc stacks this used to draw read as something stuck to the star, not light leaving it.",
+            "tags": ["star", "edge", "glow"],
             "sockets": ["edge"],
             "variants": [
-                { "id": "arcade", "shape": { "vars": { "tilt": [-15, 15] }, "parts": [
-                    {"form": "arc", "at": [-0.3, 0.0], "angle": "$tilt", "radius": [0.82, 0.95], "width": [0.08, 0.13], "from": [-90, -72], "to": [70, 90], "role": "trim", "alpha": [0.5, 0.75],
-                     "row": {"count": [2, 4], "step": [0.0, 0.0], "taper": [0.68, 0.8]}},
-                    {"form": "arc", "at": [-0.3, 0.0], "angle": "$tilt", "radius": [1.0, 1.12], "width": 0.05, "from": [-70, -50], "to": [50, 70], "role": "trim", "alpha": [0.2, 0.35], "chance": 0.6},
-                    {"form": "disc", "at": [[-0.2, 0.1], [-0.2, 0.2]], "radius": [0.14, 0.22], "role": "light", "tint": [[255, 240, 200], [255, 210, 140], [255, 250, 235]], "alpha": 0.85}
-                ]}},
-                { "id": "eruption", "shape": { "vars": { "dir": [-20, 20] }, "parts": [
-                    {"form": "chevron", "at": [0.2, 0.0], "angle": "$dir", "length": [1.2, 1.6], "width": [0.5, 0.8], "role": "trim", "alpha": [0.35, 0.55]},
-                    {"form": "chevron", "at": [0.35, [-0.1, 0.1]], "angle": "$dir", "length": [0.7, 1.0], "width": [0.25, 0.4], "role": "trim", "alpha": 0.6},
-                    {"form": "disc", "at": [[0.8, 0.95], [-0.25, 0.25]], "radius": [0.08, 0.13], "role": "trim", "alpha": 0.5, "chance": 0.7,
-                     "row": {"count": [2, 3], "step": [0.22, [-0.08, 0.08]], "taper": [0.6, 0.75]}},
-                    {"form": "disc", "at": [-0.4, 0.0], "radius": [0.2, 0.28], "role": "light", "tint": [[255, 235, 190], [255, 200, 120]], "alpha": 0.8}
-                ]}},
-                { "id": "ribbon", "shape": [
-                    {"form": "arc", "at": [[-0.5, -0.3], [-0.5, -0.3]], "angle": [-40, 0], "radius": [0.7, 0.9], "width": [0.06, 0.1], "from": [-65, -35], "to": [70, 105], "role": "trim", "alpha": [0.5, 0.7]},
-                    {"form": "arc", "at": [[0.2, 0.4], [0.2, 0.5]], "angle": [140, 200], "radius": [0.5, 0.7], "width": [0.05, 0.08], "from": [-55, -25], "to": [80, 115], "role": "trim", "alpha": [0.35, 0.6]},
-                    {"form": "disc", "at": [[-0.15, 0.15], [-0.15, 0.15]], "radius": [0.08, 0.13], "role": "light", "tint": [[255, 245, 220], [255, 200, 130]], "alpha": 0.9}
-                ]},
-                { "id": "spray", "shape": [
-                    {"form": "disc", "at": [-0.45, -0.25], "radius": [0.3, 0.42], "role": "trim", "alpha": [0.15, 0.25]},
-                    {"form": "capsule", "at": [0.1, -0.25], "length": [0.95, 1.1], "width": [0.04, 0.07], "role": "trim", "alpha": [0.45, 0.7],
-                     "row": {"count": [3, 5], "step": [0.0, 0.144], "turn": 15, "taper": [0.75, 0.9]}},
-                    {"form": "disc", "at": [-0.45, -0.25], "radius": [0.1, 0.15], "role": "light", "tint": [[255, 245, 215], [255, 210, 150]], "alpha": 0.9}
+                { "id": "knot", "shape": [
+                    {"form": "disc", "soft": true, "at": [-0.3, 0.0], "radius": [0.7, 0.85], "role": "hull", "alpha": [0.3, 0.4]},
+                    {"form": "disc", "soft": true, "at": [-0.35, 0.0], "radius": [0.32, 0.4], "role": "hull", "alpha": [0.8, 0.95]}
                 ]}
             ]
         },
@@ -104,30 +84,29 @@
         },
         {
             "id": "nature.prominence",
-            "note": "A loop of cooler gas held up off the limb by the field: an arch with both feet on the star.",
-            "tags": ["star", "edge"],
+            "note": "A loop of cooler gas held up off the limb by the field: an arch with both feet on the star. Soft glow only -- from each hot foot a straight leg rises and bends over into the other, thick at the feet and thin at the top, with a brighter core along the same path -- so it reads as plasma, never as a ring segment.",
+            "tags": ["star", "edge", "glow"],
             "sockets": ["edge"],
             "variants": [
-                { "id": "loop", "shape": { "vars": { "tilt": [-12, 12] }, "parts": [
-                    {"form": "arc", "at": [-0.4, 0.0], "angle": "$tilt", "radius": [0.75, 0.95], "width": [0.14, 0.22], "from": [-90, -75], "to": [75, 90], "role": "trim", "alpha": [0.5, 0.7]},
-                    {"form": "arc", "at": [-0.4, 0.0], "angle": "$tilt", "radius": [0.95, 1.1], "width": [0.08, 0.12], "from": [-75, -55], "to": [55, 75], "role": "trim", "alpha": [0.15, 0.25]},
-                    {"form": "disc", "at": [[0.3, 0.5], [-0.3, 0.3]], "radius": [0.06, 0.1], "role": "light", "tint": [[255, 120, 90], [255, 170, 110]], "alpha": 0.7, "chance": 0.5}
-                ]}},
-                { "id": "twin", "shape": [
-                    {"form": "arc", "at": [[-0.55, -0.4], [-0.35, -0.2]], "angle": [-20, 10], "radius": [0.55, 0.75], "width": [0.1, 0.16], "from": [-90, -70], "to": [70, 90], "role": "trim", "alpha": [0.45, 0.65]},
-                    {"form": "arc", "at": [[-0.5, -0.35], [0.2, 0.35]], "angle": [-10, 20], "radius": [0.4, 0.6], "width": [0.08, 0.13], "from": [-90, -70], "to": [70, 90], "role": "trim", "alpha": [0.4, 0.6]},
-                    {"form": "arc", "at": [-0.45, 0.0], "angle": [-10, 10], "radius": [0.85, 1.0], "width": 0.06, "from": [-65, -50], "to": [50, 65], "role": "trim", "alpha": [0.12, 0.2]}
-                ]},
-                { "id": "detached", "shape": [
-                    {"form": "arc", "at": [-0.5, 0.0], "angle": [-15, 15], "radius": [0.55, 0.7], "width": [0.08, 0.12], "from": [-95, -80], "to": [35, 70], "role": "trim", "alpha": [0.4, 0.6]},
-                    {"form": "polygon", "sides": [5, 8], "angle": [0, 360], "at": [[0.45, 0.7], [-0.2, 0.25]], "radius": [0.2, 0.32], "role": "trim", "alpha": [0.4, 0.6]},
-                    {"form": "disc", "at": [[0.8, 1.0], [-0.3, 0.3]], "radius": [0.08, 0.14], "role": "trim", "alpha": 0.3, "chance": 0.6}
-                ]},
-                { "id": "hedgerow", "shape": { "vars": { "h": [0.2, 0.27] }, "parts": [
-                    {"form": "capsule", "at": [-0.35, 0.0], "angle": 90, "length": [1.5, 1.8], "width": [0.1, 0.14], "role": "trim", "alpha": [0.08, 0.14]},
-                    {"form": "arc", "at": [-0.35, 0.0], "radius": "$h", "width": [0.06, 0.09], "from": [-90, -80], "to": [80, 90], "role": "trim", "alpha": [0.45, 0.65],
-                     "row": {"count": [3, 4], "step": [0.0, 0.42], "centred": true}},
-                    {"form": "disc", "at": [-0.35, [-0.4, 0.4]], "radius": [0.05, 0.08], "role": "light", "tint": [[255, 130, 100], [255, 175, 120]], "alpha": 0.7, "chance": 0.4}
+                { "id": "loop", "shape": { "vars": { "w": [0.52, 0.56] }, "parts": [
+                    {"form": "disc", "soft": true, "at": [-0.35, "-$w"], "radius": [0.25, 0.28], "role": "hull", "alpha": [0.3, 0.38],
+                     "row": {"count": 5, "step": [0.06, 0.0], "taper": 0.95}},
+                    {"form": "disc", "soft": true, "at": [-0.35, "$w"], "radius": [0.25, 0.28], "role": "hull", "alpha": [0.3, 0.38],
+                     "row": {"count": 5, "step": [0.06, 0.0], "taper": 0.95}},
+                    {"form": "disc", "soft": true, "at": [-0.05, "-$w"], "radius": [0.2, 0.22], "role": "hull", "alpha": [0.3, 0.38],
+                     "row": {"count": 15, "step": [0.06, 0.0], "turn": 6.4, "taper": 0.95}},
+                    {"form": "disc", "soft": true, "at": [-0.05, "$w"], "radius": [0.2, 0.22], "role": "hull", "alpha": [0.3, 0.38],
+                     "row": {"count": 15, "step": [0.06, 0.0], "turn": -6.4, "taper": 0.95}},
+                    {"form": "disc", "soft": true, "at": [-0.35, "-$w"], "radius": [0.13, 0.14], "role": "trim", "alpha": [0.45, 0.55],
+                     "row": {"count": 5, "step": [0.06, 0.0], "taper": 0.95}},
+                    {"form": "disc", "soft": true, "at": [-0.35, "$w"], "radius": [0.13, 0.14], "role": "trim", "alpha": [0.45, 0.55],
+                     "row": {"count": 5, "step": [0.06, 0.0], "taper": 0.95}},
+                    {"form": "disc", "soft": true, "at": [-0.05, "-$w"], "radius": [0.1, 0.11], "role": "trim", "alpha": [0.45, 0.55],
+                     "row": {"count": 15, "step": [0.06, 0.0], "turn": 6.4, "taper": 0.95}},
+                    {"form": "disc", "soft": true, "at": [-0.05, "$w"], "radius": [0.1, 0.11], "role": "trim", "alpha": [0.45, 0.55],
+                     "row": {"count": 15, "step": [0.06, 0.0], "turn": -6.4, "taper": 0.95}},
+                    {"form": "disc", "soft": true, "at": [-0.3, "-$w"], "radius": [0.32, 0.38], "role": "hull", "alpha": [0.6, 0.75]},
+                    {"form": "disc", "soft": true, "at": [-0.3, "$w"], "radius": [0.32, 0.38], "role": "hull", "alpha": [0.6, 0.75]}
                 ]}}
             ]
         },
