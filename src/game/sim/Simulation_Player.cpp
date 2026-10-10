@@ -545,6 +545,16 @@ void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId,
     s.missions.ClearOffers();  // clear the board of the station we left; active missions
                                // survive the jump (they address stations by id) — otherwise
                                // Bounty/Delivery into another system would be uncompletable
+
+    // The first ship into a system beyond the wormhole (#143): from now on it is part of
+    // the contested world, and that it was reached at all is news.
+    SystemAggregate& agg = systems_[destId].agg;
+    if (!agg.visited)
+    {
+        agg.visited = true;
+        PushEvent("First ship into " + SystemName(destId));
+        s.RecordEvent(Ev::Kind::Notice, "First ship ever into " + SystemName(destId));
+    }
 }
 
 Vector2 Simulation::SafeArrival(const std::string& systemId) const

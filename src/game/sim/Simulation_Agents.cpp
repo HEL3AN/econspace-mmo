@@ -224,6 +224,11 @@ void Simulation::StepSystemAgents(SystemState& st, const std::vector<PlayerPrese
 // changed — that is done by real battles and the Game spawn director.
 void Simulation::StepWorldMacro()
 {
+    // The first passes after a start are the world settling into its numbers, not events
+    // anybody should read about (#143).
+    const bool settling = macroSteps_ < SETTLE_STEPS;
+    macroSteps_++;
+
     // Security and economy drift from the real populations.
     for (auto& kv : systems_)
     {
@@ -252,12 +257,15 @@ void Simulation::StepWorldMacro()
     for (auto& kv : systems_)
     {
         SystemAggregate& a = kv.second.agg;
+        if (!a.visited)
+            continue;  // nobody's to take until somebody has been there (#143)
         if (a.controller != FactionId::Pirates && a.pirates > a.police * 2.0f + 2.0f &&
             a.security < 0.25f)
         {
             a.controller = FactionId::Pirates;
             a.baseSecurity = std::min(a.baseSecurity, 0.15f);
-            PushEvent("Pirates seized " + SystemName(kv.first));
+            if (!settling)
+                PushEvent("Pirates seized " + SystemName(kv.first));
         }
         else if (a.controller == FactionId::Pirates && a.police > a.pirates && a.security > 0.4f)
         {
@@ -270,8 +278,9 @@ void Simulation::StepWorldMacro()
                 {
                     a.controller = n->second.agg.controller;
                     a.baseSecurity = std::max(a.baseSecurity, 0.5f);
-                    PushEvent(SystemName(kv.first) + " liberated by " +
-                              FactionName(n->second.agg.controller));
+                    if (!settling)
+                        PushEvent(SystemName(kv.first) + " liberated by " +
+                                  FactionName(n->second.agg.controller));
                     break;
                 }
             }

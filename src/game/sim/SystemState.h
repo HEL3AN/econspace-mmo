@@ -53,6 +53,12 @@ struct SystemAggregate
     float supPolice = 0.0f;
     float supPirates = 0.0f;
 
+    // Whether a player has ever been here (#143). Known space starts visited; a system
+    // beyond the wormhole does not, and until somebody goes there it is nobody's to take:
+    // a region that changed hands before anyone arrived is a world that ran without its
+    // players. Saved; an older save without it reads the default.
+    bool visited = true;
+
     bool seeded = false;  // aggregate initialized with starting values
 };
 
