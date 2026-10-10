@@ -34,6 +34,11 @@ struct Blueprint
     float bodyClearance = 0.0f;  // gap to a star's or planet's surface, and to the path one
                                  // that moves sweeps -- it would come round and through it
     int perSystem = 0;           // of this blueprint in one system, everyone's; 0 -- no cap
+
+    // Who may lay one down (#295): "builders" in the file, ["player"] when it says nothing.
+    // An outpost is a faction's claim on a system and is not offered to a player yet.
+    bool byPlayers = true;
+    bool byFactions = false;
 };
 
 namespace Blueprints
@@ -44,7 +49,9 @@ namespace Blueprints
 // one that silently costs nothing is not.
 bool Load(const std::string& path);
 
-const Blueprint*              Find(const std::string& id);  // null for an unknown id
+const Blueprint* Find(const std::string& id);  // any blueprint; null for an unknown id
+// What a player may build, in the file's order: every menu and tool lists this. A blueprint
+// only factions build is found by Find and listed nowhere.
 const std::vector<Blueprint>& All();
 
 // How many structures one account may have standing at once, everywhere (#41 will replace

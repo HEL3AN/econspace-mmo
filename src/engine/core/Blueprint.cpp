@@ -10,6 +10,7 @@ using json = nlohmann::json;
 namespace
 {
 std::vector<Blueprint> g_blueprints;
+std::vector<Blueprint> g_forPlayers;  // the ones a player may build, as All() lists them
 int                    g_perAccount = 0;
 std::string            g_error;
 
@@ -41,9 +42,35 @@ bool ParseBlueprint(const json& j, Blueprint& b, std::string& err)
         err = "blueprint without an id";
         return false;
     }
-    if (!OnlyKnownKeys(
-            j, { "id", "name", "archetype", "cost", "buildSeconds", "lifetime", "placement" }, err))
+    if (!OnlyKnownKeys(j,
+                       { "id", "name", "archetype", "cost", "buildSeconds", "lifetime", "placement",
+                         "builders" },
+                       err))
         return false;
+    if (j.contains("builders"))
+    {
+        const json& who = j["builders"];
+        if (!who.is_array() || who.empty())
+        {
+            err = "'builders' is a list of who may build it: \"player\", \"faction\"";
+            return false;
+        }
+        b.byPlayers = b.byFactions = false;
+        for (const json& w : who)
+        {
+            const std::string s = w.is_string() ? w.get<std::string>() : std::string();
+            if (s == "player")
+                b.byPlayers = true;
+            else if (s == "faction")
+                b.byFactions = true;
+            else
+            {
+                err = "builders: '" + (w.is_string() ? s : w.dump()) +
+                      "' is not \"player\" or \"faction\"";
+                return false;
+            }
+        }
+    }
     b.name = j.value("name", b.id);
     b.archetype = j.value("archetype", std::string());
 
@@ -178,6 +205,10 @@ bool Load(const std::string& path)
         perAccount = (int)n;
     }
 
+    g_forPlayers.clear();
+    for (const Blueprint& b : loaded)
+        if (b.byPlayers)
+            g_forPlayers.push_back(b);
     g_blueprints = std::move(loaded);
     g_perAccount = perAccount;
     return true;
@@ -193,7 +224,7 @@ const Blueprint* Find(const std::string& id)
 
 const std::vector<Blueprint>& All()
 {
-    return g_blueprints;
+    return g_forPlayers;
 }
 
 int PerAccount()

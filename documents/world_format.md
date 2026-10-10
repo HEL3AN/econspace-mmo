@@ -928,7 +928,14 @@ was down when a site was due finishes it on its first tick back.
 | `placement.clearance` | gap to the edge of any station, gate, wreck or structure |
 | `placement.bodyClearance` | gap to a star's surface, and to the band a planet -- or a satellite with its planet -- sweeps on its orbit |
 | `placement.perSystem` | how many of what this blueprint builds one system may hold, everyone's together; 0 -- no cap |
+| `builders` | who may build one: any of `"player"`, `"faction"`; absent -- `["player"]`. A blueprint no player may build is listed in no menu or tool (#295) |
 | `limits.perAccount` | how many structures one account may have standing, in the whole galaxy; 0 -- no cap |
+
+A faction builds an `outpost` (#295): its stock pays the cost, counted as the sum of the
+amounts, and `limits.perAccount` does not apply. Where it goes is chosen by the server near
+the gate the faction came through, under the same placement rules except `reach`. The
+structure's owner is `faction:<id>`, and when it is finished the system, if nobody held it,
+is the faction's.
 
 The server checks every rule again whatever a client says; a refusal is a journal notice
 that names the rule ("too close to Aurora Hub (keep 400 clear)", "the hold has 0 Crystal of

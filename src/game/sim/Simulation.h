@@ -17,6 +17,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 
 class NpcShip;
@@ -100,10 +101,10 @@ public:
     // What a faction knows (#295): its holdings, where its ships are, and what its surveys
     // brought back, each as of when it was seen.
     const FactionMind& MindOf(FactionId f) const { return minds_[(int)f]; }
-    // ...and for a test, to plant a belief. What is planted before the first macro pass
-    // stands; the seeding only adds what is missing.
+    // ...and for a test, to plant a belief or a stock. What is planted before the first
+    // macro pass stands; the seeding only adds what is missing.
     FactionMind& MindOf(FactionId f) { return minds_[(int)f]; }
-    // Surveys under way, by id (#295).
+    // Surveys and settlements under way, by id (#295).
     const std::map<int, Plan>& Plans() const { return plans_; }
     // The world's history, oldest first, capped (#295). Everything the news feed says is
     // here too, with a time and a sequence number; surveys are here and not in the feed.
@@ -259,9 +260,16 @@ public:
     // blueprint's name), owned by the session's account. Takes the cost from the hold and
     // answers in the journal either way. Returns the site's id, or 0 when refused.
     int Deploy(ClientSession& s, const std::string& blueprint, Vector2 at, const std::string& name);
+    // Why `bp` may not stand at `at` in this system, or empty when it may: inside the
+    // system, clear of bodies and the paths they sweep, clear of what others use, and
+    // under the blueprint's cap per system. The part of PlacementProblem that is about the
+    // place rather than the builder; a faction's outpost is placed by it too (#295).
+    std::string SpotProblem(const SystemState& st, const Blueprint& bp, Vector2 at) const;
     // Finishes every site whose time has come and takes away every structure whose time is
     // up. Each is an instant fixed when the site went down -- nothing is integrated -- so a
-    // restart in between changes nothing. Called by MaintainWorld every tick.
+    // restart in between changes nothing. Called by MaintainWorld every tick, and looks at
+    // nothing that is not due (#295): the instants wait in a queue, filled when a structure
+    // is added and when the static layers are built.
     void StepStructures();
     // How many structures this account has standing, in the whole galaxy.
     int StructuresOwnedBy(const std::string& account) const;
@@ -561,12 +569,33 @@ private:
     std::vector<ChronicleEntry>      chronicle_;
     long long                        chronicleSeq_ = 0;
 
-    void        SeedMinds();
-    void        Think(FactionId f);
-    void        ResolveDuePlans();
-    void        ResolveSurvey(const Plan& p);
+    // When each structure next has something happen to it -- it is finished, or its time is
+    // up -- as (instant, entity id, system). StepStructures pops what is due and touches
+    // nothing else (#295). Not saved: remade when the static layers are built, from the time
+    // lines the structures carry. An entry whose structure has gone is skipped.
+    std::set<std::tuple<double, int, std::string>> structureDue_;
+    // Puts a structure's coming instants on the queue; anything else is ignored. Whatever
+    // changes a structure's time line after it is added schedules it again.
+    void ScheduleStructure(const std::string& systemId, const Entity& e);
+
+    void SeedMinds();
+    void Think(FactionId f);
+    void ResolveDuePlans();
+    void ResolveSurvey(const Plan& p);
+    // A faction lays an outpost site in `to`, coming from `from`, and pays for it (#295).
+    // False when the system turns out not to be one it may settle, or there is no room.
+    bool Settle(FactionId f, const std::string& from, const std::string& to);
+    void ResolveSettle(const Plan& p);
+    // What an outpost costs a faction's stock: its blueprint's cost, counted as one number.
+    // Zero when there is no outpost blueprint, which means no faction can settle.
+    static float OutpostCost();
+    // `f` takes a system: its controller, and the security a change of hands brings.
+    static void TakeControl(SystemAggregate& a, FactionId f);
     void        Record(const std::string& kind, int faction, const std::string& system,
                        const std::string& text);
+    // News: the feed every client shows, and the history, which keeps who and where.
+    void        Announce(const std::string& kind, int faction, const std::string& system,
+                         const std::string& text);
     std::string DescribeSurvey(const Intel& seen, FactionId by) const;
 
     void        SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& info);

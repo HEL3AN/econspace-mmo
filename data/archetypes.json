@@ -750,6 +750,34 @@
             }
         },
         {
+            "id": "structure.outpost",
+            "name": "Outpost",
+            "kind": "Structure",
+            "glyph": "^",
+            "color": [195, 200, 210, 255],
+            "layer": 4,
+            "size": 160,
+            "material": "hull",
+            "shape": {
+                "sections": [
+                    {"form": "polygon", "sides": 6, "radius": 0.5, "role": "hull", "pitch": 0.18},
+                    {"form": "bar", "at": [0.8, 0.0], "repeat": 3, "length": 0.6, "width": 0.22, "role": "panel", "pitch": 0.14},
+                    {"form": "polygon", "sides": 4, "at": [1.2, 0.0], "repeat": 3, "radius": 0.22, "angle": 45, "role": "hull", "pitch": 0.12}
+                ],
+                "kit": { "symmetry": "radial", "plain": 0.55, "modules": [
+                    {"of": "station.comms", "in": 0, "on": "top", "count": 1, "scale": 0.24},
+                    {"of": "radiator", "in": 1, "on": "edge", "count": [0, 1], "turn": 90, "scale": 0.1},
+                    {"of": "light.nav", "in": 2, "on": "edge", "count": 1, "scale": 0.07, "mount": "out"}
+                ] },
+                "parts": [
+                    {"form": "ring", "radius": 0.36, "width": 0.03, "role": "trim", "alpha": 0.6, "minPixels": 40}
+                ]
+            },
+            "components": {
+                "buildable": {}
+            }
+        },
+        {
             "id": "ship.npc",
             "style": "directional",
             "name": "Ship",

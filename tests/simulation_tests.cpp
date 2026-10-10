@@ -1744,6 +1744,7 @@ TEST_CASE("the region is not decided in its first minutes, and a first ship is n
     // a world that had run its course before any player arrived.
     Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    REQUIRE(Blueprints::Load(std::string(TEST_DATA_DIR) + "blueprints.json"));  // outposts
     const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
 
     Simulation sim;
@@ -2013,6 +2014,7 @@ TEST_CASE("a system changes hands only after the balance has held for a while (#
     // Tau Verge, at security 0.3, fell to the pirates ten seconds into a fresh world.
     Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    REQUIRE(Blueprints::Load(std::string(TEST_DATA_DIR) + "blueprints.json"));  // outposts
     const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
     Simulation        sim;
     sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
@@ -2039,6 +2041,7 @@ TEST_CASE("factions reach a step at a time, where the prize is worth the risk (#
 {
     Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    REQUIRE(Blueprints::Load(std::string(TEST_DATA_DIR) + "blueprints.json"));  // outposts
     const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
     Simulation        sim;
     sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");

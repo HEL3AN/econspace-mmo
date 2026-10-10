@@ -375,6 +375,7 @@ add_executable(tests
     tests/intel_tests.cpp          # what factions know, and surveying (#295)
     tests/widget_tests.cpp         # tables, tabs, fields, sliders and the keyboard focus (#297)
     tests/actions_tests.cpp        # one list of actions, each matched by an agent's tool (#297)
+    tests/settle_tests.cpp         # stock, outposts, and claims that need one (#295)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/core/Actions.cpp      # the actions every window offers, tested without one (#297)

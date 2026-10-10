@@ -17,6 +17,15 @@
             "buildSeconds": 45,
             "lifetime": 86400,
             "placement": { "reach": 600, "clearance": 400, "bodyClearance": 5000, "perSystem": 8 }
+        },
+        {
+            "id": "outpost",
+            "name": "Outpost",
+            "archetype": "structure.outpost",
+            "builders": ["faction"],
+            "cost": { "Iron": 40, "Crystal": 10 },
+            "buildSeconds": 600,
+            "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
         }
     ],
     "limits": { "perAccount": 12 }
