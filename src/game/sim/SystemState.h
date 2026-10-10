@@ -60,6 +60,10 @@ struct SystemAggregate
     // players. Saved; an older save without it reads the default.
     bool visited = true;
 
+    // Macro passes in a row that one side has held the upper hand (#225). Transient: a
+    // restart begins the count again.
+    int contested = 0;
+
     bool seeded = false;  // aggregate initialized with starting values
 };
 
