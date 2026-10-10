@@ -4,8 +4,16 @@
 #include <cstdlib>
 #include <string>
 
+#include "raylib.h"
+
 int main(int argc, char** argv)
 {
+    // A shot is taken from a render texture, so it needs no window anyone can see -- and a
+    // visible one, opened and closed over and over by a script, steals focus from whoever is
+    // using the machine (#293). Decided before the window exists: the constructor opens it.
+    for (int i = 1; i < argc; i++)
+        if (std::string(argv[i]) == "shot")
+            SetConfigFlags(FLAG_WINDOW_HIDDEN);
     Editor editor;
     // `worldeditor gallery` opens on the archetype gallery (#118) instead of the world,
     // and `shapes` starts on the shape backend. Both are conveniences for the one job the
