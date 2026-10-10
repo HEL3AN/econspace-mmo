@@ -734,3 +734,40 @@ TEST_CASE("a module is placed by name, in a variant the seed picks (#240)")
     CHECK_FALSE(Render::ParseShape(
         nlohmann::json::parse(R"([ { "module": "hatch", "variant": "oval" } ])"), bad, error));
 }
+
+TEST_CASE("a range, a palette and a chance make one written part a family (#240)")
+{
+    const Render::Shape s = Parse(R"([
+        { "form": "bar", "length": [0.5, 1.5], "tint": [[200, 0, 0], [0, 200, 0], [0, 0, 200]],
+          "row": { "count": [2, 6], "step": [0.2, 0.0] } },
+        { "form": "disc", "radius": 0.1, "chance": 0.5 } ])");
+    std::set<int>       lengths, rows, colours;
+    int                 withDisc = 0;
+    for (int seed = 1; seed <= 60; seed++)
+    {
+        const auto pieces = Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 1.0f));
+        int        bars = 0;
+        for (const auto& p : pieces)
+            if (p.form == Render::Form::Bar)
+            {
+                bars++;
+                CHECK(p.length >= 50.0f - 0.01f);
+                CHECK(p.length <= 150.0f + 0.01f);
+                lengths.insert((int)p.length);
+                colours.insert(p.tint.r * 3 + p.tint.g * 2 + p.tint.b);
+            }
+            else
+                withDisc++;
+        CHECK(bars >= 2);
+        CHECK(bars <= 6);
+        rows.insert(bars);
+        // The same seed is the same object, every time.
+        CHECK(Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 1.0f)).size() ==
+              pieces.size());
+    }
+    CHECK(lengths.size() > 10);
+    CHECK(rows.size() >= 4);
+    CHECK(colours.size() == 3);
+    CHECK(withDisc > 10);
+    CHECK(withDisc < 50);
+}

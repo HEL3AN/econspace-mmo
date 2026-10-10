@@ -99,6 +99,13 @@ about the object's centre). A module is drawn once it is about 10 px across on s
 (its parts' own `minPixels` count in the module's pixels), so it fills in as you approach.
 `tags` and `sockets` are for the automatic placement of phase 3 of #240.
 
+**Generated variety (any part, in a module or not).** A number may be written `[min, max]`
+and the object's seed picks a value (`radius`, `width`, `length`, `angle`, `at`'s
+components, `alpha`, `scale`, `sides`, `count`, `row.count`); `tint` may be a list of
+colours, a palette to pick from; `"chance": 0.4` keeps the part on 40% of objects. Within a
+module, a part is resolved once per object, not per copy, so a row of hatches stays a row
+of the same hatch.
+
 ## pins.json — hand-written exceptions to the generated region (#147)
 
 The generated region is the default, not a monopoly. A starting point, a set piece, or

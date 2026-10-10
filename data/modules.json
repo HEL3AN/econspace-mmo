@@ -77,8 +77,9 @@
                 { "id": "light-twin", "shape": [
                     {"form": "disc", "radius": 0.7, "role": "panel"},
                     {"form": "disc", "radius": 0.5, "role": "hull"},
-                    {"form": "capsule", "at": [0.6, 0.14], "length": 0.9, "width": 0.11, "role": "trim"},
-                    {"form": "capsule", "at": [0.6, -0.14], "length": 0.9, "width": 0.11, "role": "trim"}
+                    {"form": "capsule", "at": [0.6, 0.14], "length": [0.75, 1.05], "width": 0.11, "role": "trim"},
+                    {"form": "capsule", "at": [0.6, -0.14], "length": [0.75, 1.05], "width": 0.11, "role": "trim"},
+                    {"form": "disc", "at": [-0.2, 0.3], "radius": 0.12, "role": "light", "tint": [[255, 70, 50], [255, 190, 60]], "alpha": 0.7, "chance": 0.5}
                 ]},
                 { "id": "heavy", "shape": [
                     {"form": "polygon", "sides": 6, "radius": 0.85, "role": "panel"},
@@ -175,7 +176,7 @@
             "sockets": ["top"],
             "variants": [
                 { "id": "stack-orange", "shape": [
-                    {"form": "bar", "at": [-0.55, 0.0], "length": 0.5, "width": 1.0, "role": "hull", "tint": [190, 110, 50], "row": {"count": 3, "step": [0.55, 0.0]}},
+                    {"form": "bar", "at": [-0.55, 0.0], "length": 0.5, "width": [0.8, 1.0], "role": "hull", "tint": [[190, 110, 50], [170, 80, 45], [200, 150, 60]], "row": {"count": [2, 4], "step": [0.55, 0.0]}},
                     {"form": "bar", "at": [-0.55, 0.0], "length": 0.5, "width": 0.05, "role": "panel", "row": {"count": 3, "step": [0.55, 0.0]}}
                 ]},
                 { "id": "stack-blue", "shape": [
