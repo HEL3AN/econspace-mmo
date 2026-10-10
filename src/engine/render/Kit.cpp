@@ -32,15 +32,16 @@ Vector2 Turn(Vector2 v, float degrees)
 // One line of sockets along a section: an edge, an end, a centreline, a rim.
 struct Where
 {
-    int source, copy, local;
+    int   source, copy, local;
+    float spin;
 };
 
 void Line(std::vector<Socket>& out, int& lines, int section, const char* type,
           const std::vector<Vector2>& at, const std::vector<float>& angle, float size, Where& w)
 {
     for (size_t k = 0; k < at.size(); k++)
-        out.push_back(
-            { at[k], angle[k], type, section, lines, (int)k, size, w.source, w.copy, w.local });
+        out.push_back({ at[k], angle[k], type, section, lines, (int)k, size, w.source, w.copy,
+                        w.local, w.spin });
     lines++;
     w.local++;
 }
@@ -89,7 +90,7 @@ std::vector<Socket> Sockets(const std::vector<Part>& sections)
         {
             const Part& s = copies[copy];
             const int   si = index++;
-            Where       w{ (int)source, (int)copy, 0 };
+            Where       w{ (int)source, (int)copy, 0, s.spin };
             switch (s.form)
             {
                 case Form::Bar:
@@ -297,6 +298,7 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
             const Vector2 in = Turn({ -entry.inset * q.scale, 0.0f }, s.angle);
             q.at = { s.pos.x + in.x, s.pos.y + in.y };
             q.angle = s.angle + entry.turn;
+            q.spin = s.spin;
             out.push_back(q);
             used[i] = true;
             taken[(size_t)s.section]++;

@@ -281,6 +281,9 @@ struct Socket
     int source = 0;
     int copy = 0;
     int localLine = 0;
+    // The section's own turn, which a module placed here shares: a derelict that tumbles
+    // carries its breaches round with it.
+    float spin = 0.0f;
 };
 
 // One line of a kit: a module (by id, or any carrying a tag), how many, on which sockets.
