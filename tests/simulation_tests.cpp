@@ -1438,9 +1438,13 @@ static void CheckEveryJumpArrivesAtTheGateBack(Simulation& sim)
                 gates.push_back({ id, e->GetId() });
     REQUIRE_FALSE(gates.empty());
 
-    for (const auto& [fromId, gateId] : gates)
+    for (const auto& link : gates)
     {
-        const Entity* gate = nullptr;
+        // Named variables, not structured bindings: CAPTURE takes them in a lambda, and
+        // capturing a structured binding is C++20 (Apple Clang refuses it under -Werror).
+        const std::string& fromId = link.first;
+        const int          gateId = link.second;
+        const Entity*      gate = nullptr;
         for (const auto& e : sim.SystemById(fromId)->entities)
             if (e->GetId() == gateId)
                 gate = e.get();
