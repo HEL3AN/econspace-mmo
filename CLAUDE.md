@@ -134,8 +134,13 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
 - **Bump `PROTO_VERSION` when a message changes meaning.** Decoding is deliberately
   permissive per field, so without a version bump an older peer silently reads defaults
   instead of failing.
-- **`SystemLayout` is sent once**, when a client enters a system. Anything that changes
-  the static world mid-session is invisible until re-entry (#38).
+- **The static world changes only through `Simulation`, and a `LayoutDelta` says so** (#38).
+  `SystemLayout` is sent when a client enters a system; after that, `AddStatic`,
+  `RemoveStatic` and `MarkStaticChanged` are the only ways a station, belt, nebula or wreck
+  appears, goes or changes, and the host sends the delta before any snapshot that reflects
+  it -- a client never sees a snapshot about an object it has not been told exists. Stars,
+  planets and gates are refused: moons find their planet by position and gates are the
+  route graph. Mutations do not yet survive a restart.
 - **Saves carry a schema version and refuse a newer one** (#20). Field-by-field defaults
   are right for a message from a peer and wrong for a save: a file from a later build would
   load as a plausible-looking wrong account and then be written back over the real one. A
