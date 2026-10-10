@@ -9,23 +9,31 @@
                 { "id": "single", "shape": [
                     {"form": "polygon", "sides": [7, 10], "angle": [0, 360], "radius": [0.6, 0.8], "role": "panel", "alpha": [0.45, 0.6]},
                     {"form": "disc", "at": [[-0.1, 0.1], [-0.1, 0.1]], "radius": [0.25, 0.36], "role": "panel", "alpha": 0.9},
-                    {"form": "disc", "at": [[0.6, 0.9], [-0.4, 0.4]], "radius": [0.12, 0.2], "role": "panel", "alpha": 0.7, "chance": 0.6}
+                    {"form": "disc", "at": [[0.75, 0.9], [-0.35, -0.15]], "radius": [0.08, 0.12], "role": "panel", "alpha": 0.8, "chance": 0.6,
+                     "row": {"count": [2, 4], "step": [0.0, 0.17], "turn": [14, 28], "taper": [0.75, 0.9]}}
                 ]},
-                { "id": "group", "shape": [
-                    {"form": "polygon", "sides": [7, 9], "angle": [0, 360], "at": [-0.6, -0.05], "radius": [0.3, 0.42], "role": "panel", "alpha": 0.55},
-                    {"form": "disc", "at": [[-0.65, -0.55], [-0.1, 0.0]], "radius": [0.13, 0.19], "role": "panel", "alpha": 0.9},
-                    {"form": "disc", "at": [[-0.15, 0.15], [0.1, 0.35]], "radius": [0.1, 0.2], "role": "panel", "alpha": 0.75},
-                    {"form": "polygon", "sides": [6, 9], "angle": [0, 360], "at": [0.55, -0.15], "radius": [0.2, 0.34], "role": "panel", "alpha": 0.55, "chance": 0.8},
-                    {"form": "disc", "at": [[0.5, 0.6], [-0.2, -0.1]], "radius": [0.08, 0.13], "role": "panel", "alpha": 0.9, "chance": 0.8},
-                    {"form": "disc", "at": [[0.85, 1.0], [0.1, 0.35]], "radius": [0.06, 0.11], "role": "panel", "alpha": 0.7, "chance": 0.5}
-                ]},
-                { "id": "bipolar", "shape": [
-                    {"form": "polygon", "sides": [6, 9], "angle": [0, 360], "at": [-0.55, 0.0], "radius": [0.36, 0.48], "role": "panel", "alpha": 0.5},
-                    {"form": "disc", "at": [[-0.6, -0.5], [-0.05, 0.05]], "radius": [0.15, 0.22], "role": "panel", "alpha": 0.9},
-                    {"form": "polygon", "sides": [6, 9], "angle": [0, 360], "at": [0.55, 0.0], "radius": [0.28, 0.42], "role": "panel", "alpha": 0.5},
-                    {"form": "disc", "at": [[0.5, 0.6], [-0.05, 0.05]], "radius": [0.11, 0.18], "role": "panel", "alpha": 0.9},
-                    {"form": "arc", "radius": [0.55, 0.65], "width": 0.05, "from": 200, "to": 340, "role": "trim", "alpha": [0.25, 0.45], "chance": 0.5}
-                ]}
+                { "id": "group", "shape": { "vars": { "ax": [-0.7, -0.5], "ay": [-0.15, 0.1], "ar": [0.3, 0.42], "bx": [0.45, 0.65], "by": [-0.25, 0.05], "br": [0.2, 0.32] }, "parts": [
+                    {"form": "polygon", "sides": [7, 9], "angle": [0, 360], "at": ["$ax", "$ay"], "radius": "$ar", "role": "panel", "alpha": 0.55},
+                    {"form": "disc", "at": ["$ax", "$ay"], "radius": [0.12, 0.18], "role": "panel", "alpha": 0.9},
+                    {"form": "polygon", "sides": [6, 9], "angle": [0, 360], "at": ["$bx", "$by"], "radius": "$br", "role": "panel", "alpha": 0.55, "chance": 0.85, "group": "follower"},
+                    {"form": "disc", "at": ["$bx", "$by"], "radius": [0.07, 0.12], "role": "panel", "alpha": 0.9, "chance": 0.85, "group": "follower"},
+                    {"form": "disc", "at": [-0.02, [0.05, 0.35]], "radius": [0.06, 0.1], "role": "panel", "alpha": 0.8,
+                     "row": {"count": [2, 4], "step": [0.16, [-0.08, 0.08]], "centred": true, "taper": [0.75, 0.95]}}
+                ]}},
+                { "id": "bipolar", "shape": { "vars": { "ly": [-0.08, 0.08], "fy": [-0.08, 0.08], "lx": [-0.62, -0.5], "fx": [0.5, 0.62] }, "parts": [
+                    {"form": "polygon", "sides": [6, 9], "angle": [0, 360], "at": ["$lx", "$ly"], "radius": [0.36, 0.48], "role": "panel", "alpha": 0.5},
+                    {"form": "disc", "at": ["$lx", "$ly"], "radius": [0.15, 0.22], "role": "panel", "alpha": 0.9},
+                    {"form": "polygon", "sides": [6, 9], "angle": [0, 360], "at": ["$fx", "$fy"], "radius": [0.28, 0.42], "role": "panel", "alpha": 0.5},
+                    {"form": "disc", "at": ["$fx", "$fy"], "radius": [0.11, 0.18], "role": "panel", "alpha": 0.9},
+                    {"form": "arc", "radius": [0.55, 0.65], "width": 0.05, "from": [190, 215], "to": [325, 350], "role": "trim", "alpha": [0.25, 0.45], "chance": 0.5}
+                ]}},
+                { "id": "filamented", "shape": { "vars": { "fil": [0.15, 0.19] }, "parts": [
+                    {"form": "polygon", "sides": [8, 11], "angle": [0, 360], "radius": [0.62, 0.78], "role": "panel", "alpha": [0.4, 0.55]},
+                    {"form": "bar", "length": [0.2, 0.26], "width": 0.035, "role": "panel", "alpha": [0.75, 0.9],
+                     "row": {"count": 12, "step": [0.0, "$fil"], "turn": 30, "centred": true}},
+                    {"form": "disc", "at": [[-0.06, 0.06], [-0.06, 0.06]], "radius": [0.22, 0.3], "role": "panel", "alpha": 0.92},
+                    {"form": "bar", "angle": [0, 180], "length": [0.32, 0.45], "width": [0.04, 0.06], "role": "trim", "alpha": [0.35, 0.5], "chance": 0.55}
+                ]}}
             ]
         },
         {
@@ -34,22 +42,29 @@
             "tags": ["star", "edge"],
             "sockets": ["edge"],
             "variants": [
-                { "id": "arcade", "shape": [
-                    {"form": "arc", "at": [-0.3, 0.0], "angle": [-15, 15], "radius": [0.65, 0.85], "width": [0.08, 0.14], "from": -80, "to": 80, "role": "trim", "alpha": [0.55, 0.8]},
-                    {"form": "arc", "at": [-0.3, 0.0], "angle": [-25, 25], "radius": [0.45, 0.6], "width": [0.06, 0.1], "from": -70, "to": 70, "role": "trim", "alpha": [0.45, 0.7]},
-                    {"form": "arc", "at": [-0.3, 0.0], "angle": [-30, 30], "radius": [0.95, 1.1], "width": 0.05, "from": -60, "to": 60, "role": "trim", "alpha": [0.25, 0.4], "chance": 0.6},
+                { "id": "arcade", "shape": { "vars": { "tilt": [-15, 15] }, "parts": [
+                    {"form": "arc", "at": [-0.3, 0.0], "angle": "$tilt", "radius": [0.82, 0.95], "width": [0.08, 0.13], "from": [-90, -72], "to": [70, 90], "role": "trim", "alpha": [0.5, 0.75],
+                     "row": {"count": [2, 4], "step": [0.0, 0.0], "taper": [0.68, 0.8]}},
+                    {"form": "arc", "at": [-0.3, 0.0], "angle": "$tilt", "radius": [1.0, 1.12], "width": 0.05, "from": [-70, -50], "to": [50, 70], "role": "trim", "alpha": [0.2, 0.35], "chance": 0.6},
                     {"form": "disc", "at": [[-0.2, 0.1], [-0.2, 0.2]], "radius": [0.14, 0.22], "role": "light", "tint": [[255, 240, 200], [255, 210, 140], [255, 250, 235]], "alpha": 0.85}
-                ]},
-                { "id": "eruption", "shape": [
-                    {"form": "chevron", "at": [0.2, 0.0], "angle": [-20, 20], "length": [1.2, 1.6], "width": [0.5, 0.8], "role": "trim", "alpha": [0.35, 0.55]},
-                    {"form": "chevron", "at": [0.35, [-0.15, 0.15]], "angle": [-35, 35], "length": [0.7, 1.0], "width": [0.25, 0.4], "role": "trim", "alpha": 0.6},
-                    {"form": "disc", "at": [[0.85, 1.1], [-0.25, 0.25]], "radius": [0.08, 0.14], "role": "trim", "alpha": 0.5, "chance": 0.7},
+                ]}},
+                { "id": "eruption", "shape": { "vars": { "dir": [-20, 20] }, "parts": [
+                    {"form": "chevron", "at": [0.2, 0.0], "angle": "$dir", "length": [1.2, 1.6], "width": [0.5, 0.8], "role": "trim", "alpha": [0.35, 0.55]},
+                    {"form": "chevron", "at": [0.35, [-0.1, 0.1]], "angle": "$dir", "length": [0.7, 1.0], "width": [0.25, 0.4], "role": "trim", "alpha": 0.6},
+                    {"form": "disc", "at": [[0.8, 0.95], [-0.25, 0.25]], "radius": [0.08, 0.13], "role": "trim", "alpha": 0.5, "chance": 0.7,
+                     "row": {"count": [2, 3], "step": [0.22, [-0.08, 0.08]], "taper": [0.6, 0.75]}},
                     {"form": "disc", "at": [-0.4, 0.0], "radius": [0.2, 0.28], "role": "light", "tint": [[255, 235, 190], [255, 200, 120]], "alpha": 0.8}
-                ]},
+                ]}},
                 { "id": "ribbon", "shape": [
-                    {"form": "arc", "at": [[-0.5, -0.3], [-0.5, -0.3]], "angle": [-40, 0], "radius": [0.7, 0.9], "width": [0.06, 0.1], "from": -50, "to": 90, "role": "trim", "alpha": [0.5, 0.7]},
-                    {"form": "arc", "at": [[0.2, 0.4], [0.2, 0.5]], "angle": [140, 200], "radius": [0.5, 0.7], "width": [0.05, 0.08], "from": -40, "to": 100, "role": "trim", "alpha": [0.35, 0.6]},
+                    {"form": "arc", "at": [[-0.5, -0.3], [-0.5, -0.3]], "angle": [-40, 0], "radius": [0.7, 0.9], "width": [0.06, 0.1], "from": [-65, -35], "to": [70, 105], "role": "trim", "alpha": [0.5, 0.7]},
+                    {"form": "arc", "at": [[0.2, 0.4], [0.2, 0.5]], "angle": [140, 200], "radius": [0.5, 0.7], "width": [0.05, 0.08], "from": [-55, -25], "to": [80, 115], "role": "trim", "alpha": [0.35, 0.6]},
                     {"form": "disc", "at": [[-0.15, 0.15], [-0.15, 0.15]], "radius": [0.08, 0.13], "role": "light", "tint": [[255, 245, 220], [255, 200, 130]], "alpha": 0.9}
+                ]},
+                { "id": "spray", "shape": [
+                    {"form": "disc", "at": [-0.45, -0.25], "radius": [0.3, 0.42], "role": "trim", "alpha": [0.15, 0.25]},
+                    {"form": "capsule", "at": [0.1, -0.25], "length": [0.95, 1.1], "width": [0.04, 0.07], "role": "trim", "alpha": [0.45, 0.7],
+                     "row": {"count": [3, 5], "step": [0.0, 0.144], "turn": 15, "taper": [0.75, 0.9]}},
+                    {"form": "disc", "at": [-0.45, -0.25], "radius": [0.1, 0.15], "role": "light", "tint": [[255, 245, 215], [255, 210, 150]], "alpha": 0.9}
                 ]}
             ]
         },
@@ -59,11 +74,11 @@
             "tags": ["star", "edge", "glow"],
             "sockets": ["edge"],
             "variants": [
-                { "id": "helmet", "shape": [
+                { "id": "helmet", "shape": { "vars": { "dir": [-8, 8] }, "parts": [
                     {"form": "disc", "at": [-0.55, 0.0], "radius": [0.45, 0.6], "role": "trim", "alpha": [0.12, 0.2]},
-                    {"form": "chevron", "at": [0.25, [-0.08, 0.08]], "angle": [-8, 8], "length": [1.4, 1.8], "width": [0.6, 0.9], "role": "trim", "alpha": [0.12, 0.2]},
-                    {"form": "capsule", "at": [0.3, [-0.05, 0.05]], "angle": [-5, 5], "length": [1.2, 1.6], "width": [0.06, 0.12], "role": "trim", "alpha": [0.2, 0.32]}
-                ]},
+                    {"form": "chevron", "at": [0.25, 0.0], "angle": "$dir", "length": [1.4, 1.8], "width": [0.6, 0.9], "role": "trim", "alpha": [0.12, 0.2]},
+                    {"form": "capsule", "at": [0.3, 0.0], "angle": "$dir", "length": [1.2, 1.6], "width": [0.06, 0.12], "role": "trim", "alpha": [0.2, 0.32]}
+                ]}},
                 { "id": "ray", "shape": [
                     {"form": "chevron", "angle": 180, "length": [1.7, 2.0], "width": [0.3, 0.5], "role": "trim", "alpha": [0.1, 0.18]},
                     {"form": "chevron", "at": [0.1, 0.0], "angle": 180, "length": [1.4, 1.7], "width": [0.08, 0.14], "role": "trim", "alpha": [0.25, 0.4]},
@@ -71,11 +86,17 @@
                     {"form": "capsule", "at": [0.1, [0.15, 0.3]], "angle": [4, 14], "length": [0.8, 1.2], "width": 0.05, "role": "trim", "alpha": [0.12, 0.2], "chance": 0.6}
                 ]},
                 { "id": "fan", "shape": [
-                    {"form": "capsule", "at": [0.1, [-0.35, -0.2]], "angle": [-22, -10], "length": [1.2, 1.6], "width": [0.08, 0.14], "role": "trim", "alpha": [0.12, 0.22]},
-                    {"form": "capsule", "at": [0.2, [-0.05, 0.05]], "angle": [-4, 4], "length": [1.5, 1.9], "width": [0.1, 0.16], "role": "trim", "alpha": [0.15, 0.25]},
-                    {"form": "capsule", "at": [0.1, [0.2, 0.35]], "angle": [10, 22], "length": [1.1, 1.5], "width": [0.08, 0.14], "role": "trim", "alpha": [0.12, 0.22], "chance": 0.8},
-                    {"form": "disc", "at": [-0.7, 0.0], "radius": [0.35, 0.5], "role": "trim", "alpha": [0.1, 0.16]}
-                ]}
+                    {"form": "disc", "at": [-0.7, 0.0], "radius": [0.35, 0.5], "role": "trim", "alpha": [0.1, 0.16]},
+                    {"form": "capsule", "at": [0.25, -0.26], "angle": -15, "length": [1.3, 1.7], "width": [0.08, 0.14], "role": "trim", "alpha": [0.12, 0.22],
+                     "row": {"count": [3, 5], "step": [0.045, 0.168], "turn": 10, "taper": [0.85, 1.0]}}
+                ]},
+                { "id": "plume", "shape": { "vars": { "bend": [-5, 5] }, "parts": [
+                    {"form": "disc", "at": [-0.6, 0.0], "radius": [0.4, 0.55], "role": "trim", "alpha": [0.1, 0.16]},
+                    {"form": "capsule", "at": [-0.35, 0.0], "length": [0.5, 0.6], "width": [0.3, 0.42], "role": "trim", "alpha": [0.1, 0.16],
+                     "row": {"count": [4, 6], "step": [0.36, 0.0], "turn": "$bend", "taper": [0.78, 0.88]}},
+                    {"form": "capsule", "at": [-0.35, 0.0], "length": [0.38, 0.41], "width": 0.05, "role": "trim", "alpha": [0.22, 0.32],
+                     "row": {"count": [4, 6], "step": [0.36, 0.0], "turn": "$bend", "taper": 0.95}}
+                ]}}
             ]
         },
         {
@@ -84,21 +105,27 @@
             "tags": ["star", "edge"],
             "sockets": ["edge"],
             "variants": [
-                { "id": "loop", "shape": [
-                    {"form": "arc", "at": [-0.4, 0.0], "angle": [-12, 12], "radius": [0.75, 0.95], "width": [0.14, 0.22], "from": -85, "to": 85, "role": "trim", "alpha": [0.5, 0.7]},
-                    {"form": "arc", "at": [-0.4, 0.0], "angle": [-12, 12], "radius": [0.95, 1.1], "width": [0.08, 0.12], "from": -70, "to": 70, "role": "trim", "alpha": [0.15, 0.25]},
+                { "id": "loop", "shape": { "vars": { "tilt": [-12, 12] }, "parts": [
+                    {"form": "arc", "at": [-0.4, 0.0], "angle": "$tilt", "radius": [0.75, 0.95], "width": [0.14, 0.22], "from": [-90, -75], "to": [75, 90], "role": "trim", "alpha": [0.5, 0.7]},
+                    {"form": "arc", "at": [-0.4, 0.0], "angle": "$tilt", "radius": [0.95, 1.1], "width": [0.08, 0.12], "from": [-75, -55], "to": [55, 75], "role": "trim", "alpha": [0.15, 0.25]},
                     {"form": "disc", "at": [[0.3, 0.5], [-0.3, 0.3]], "radius": [0.06, 0.1], "role": "light", "tint": [[255, 120, 90], [255, 170, 110]], "alpha": 0.7, "chance": 0.5}
-                ]},
+                ]}},
                 { "id": "twin", "shape": [
-                    {"form": "arc", "at": [[-0.55, -0.4], [-0.35, -0.2]], "angle": [-20, 10], "radius": [0.55, 0.75], "width": [0.1, 0.16], "from": -80, "to": 80, "role": "trim", "alpha": [0.45, 0.65]},
-                    {"form": "arc", "at": [[-0.5, -0.35], [0.2, 0.35]], "angle": [-10, 20], "radius": [0.4, 0.6], "width": [0.08, 0.13], "from": -80, "to": 80, "role": "trim", "alpha": [0.4, 0.6]},
-                    {"form": "arc", "at": [-0.45, 0.0], "angle": [-10, 10], "radius": [0.85, 1.0], "width": 0.06, "from": -60, "to": 60, "role": "trim", "alpha": [0.12, 0.2]}
+                    {"form": "arc", "at": [[-0.55, -0.4], [-0.35, -0.2]], "angle": [-20, 10], "radius": [0.55, 0.75], "width": [0.1, 0.16], "from": [-90, -70], "to": [70, 90], "role": "trim", "alpha": [0.45, 0.65]},
+                    {"form": "arc", "at": [[-0.5, -0.35], [0.2, 0.35]], "angle": [-10, 20], "radius": [0.4, 0.6], "width": [0.08, 0.13], "from": [-90, -70], "to": [70, 90], "role": "trim", "alpha": [0.4, 0.6]},
+                    {"form": "arc", "at": [-0.45, 0.0], "angle": [-10, 10], "radius": [0.85, 1.0], "width": 0.06, "from": [-65, -50], "to": [50, 65], "role": "trim", "alpha": [0.12, 0.2]}
                 ]},
                 { "id": "detached", "shape": [
-                    {"form": "arc", "at": [-0.5, 0.0], "angle": [-15, 15], "radius": [0.55, 0.7], "width": [0.08, 0.12], "from": -90, "to": 60, "role": "trim", "alpha": [0.4, 0.6]},
+                    {"form": "arc", "at": [-0.5, 0.0], "angle": [-15, 15], "radius": [0.55, 0.7], "width": [0.08, 0.12], "from": [-95, -80], "to": [35, 70], "role": "trim", "alpha": [0.4, 0.6]},
                     {"form": "polygon", "sides": [5, 8], "angle": [0, 360], "at": [[0.45, 0.7], [-0.2, 0.25]], "radius": [0.2, 0.32], "role": "trim", "alpha": [0.4, 0.6]},
                     {"form": "disc", "at": [[0.8, 1.0], [-0.3, 0.3]], "radius": [0.08, 0.14], "role": "trim", "alpha": 0.3, "chance": 0.6}
-                ]}
+                ]},
+                { "id": "hedgerow", "shape": { "vars": { "h": [0.2, 0.27] }, "parts": [
+                    {"form": "capsule", "at": [-0.35, 0.0], "angle": 90, "length": [1.5, 1.8], "width": [0.1, 0.14], "role": "trim", "alpha": [0.08, 0.14]},
+                    {"form": "arc", "at": [-0.35, 0.0], "radius": "$h", "width": [0.06, 0.09], "from": [-90, -80], "to": [80, 90], "role": "trim", "alpha": [0.45, 0.65],
+                     "row": {"count": [3, 4], "step": [0.0, 0.42], "centred": true}},
+                    {"form": "disc", "at": [-0.35, [-0.4, 0.4]], "radius": [0.05, 0.08], "role": "light", "tint": [[255, 130, 100], [255, 175, 120]], "alpha": 0.7, "chance": 0.4}
+                ]}}
             ]
         },
         {
@@ -107,16 +134,16 @@
             "tags": ["star", "stream", "glow"],
             "sockets": ["between"],
             "variants": [
-                { "id": "stream", "shape": [
-                    {"form": "capsule", "at": [0.0, [-0.05, 0.05]], "angle": [-4, 4], "length": [1.6, 1.9], "width": [0.18, 0.28], "role": "trim", "alpha": [0.15, 0.25]},
-                    {"form": "capsule", "at": [0.0, [-0.03, 0.03]], "angle": [-3, 3], "length": [1.5, 1.8], "width": [0.05, 0.09], "role": "trim", "alpha": [0.35, 0.5]},
+                { "id": "stream", "shape": { "vars": { "a": [-4, 4] }, "parts": [
+                    {"form": "capsule", "angle": "$a", "length": [1.6, 1.9], "width": [0.18, 0.28], "role": "trim", "alpha": [0.15, 0.25]},
+                    {"form": "capsule", "angle": "$a", "length": [1.5, 1.8], "width": [0.05, 0.09], "role": "trim", "alpha": [0.35, 0.5]},
                     {"form": "chevron", "at": [-0.55, 0.0], "angle": [-5, 5], "length": [0.8, 1.0], "width": [0.6, 0.9], "role": "trim", "alpha": [0.12, 0.2]},
-                    {"form": "disc", "at": [0.85, [-0.05, 0.05]], "radius": [0.1, 0.16], "role": "light", "tint": [[255, 230, 190], [200, 220, 255]], "alpha": 0.8}
-                ]},
+                    {"form": "disc", "at": [0.85, 0.0], "radius": [0.12, 0.17], "role": "light", "tint": [[255, 230, 190], [200, 220, 255]], "alpha": 0.8}
+                ]}},
                 { "id": "spiral", "shape": [
-                    {"form": "arc", "at": [[-0.1, 0.1], [0.4, 0.6]], "angle": [-10, 10], "radius": [0.9, 1.05], "width": [0.08, 0.14], "from": 225, "to": 315, "role": "trim", "alpha": [0.3, 0.45]},
+                    {"form": "arc", "at": [[-0.1, 0.1], [0.4, 0.6]], "angle": [-10, 10], "radius": [0.9, 1.05], "width": [0.08, 0.14], "from": [215, 230], "to": [305, 325], "role": "trim", "alpha": [0.3, 0.45]},
                     {"form": "ring", "at": [0.8, 0.0], "radius": [0.24, 0.32], "width": [0.06, 0.1], "role": "trim", "alpha": [0.35, 0.5]},
-                    {"form": "arc", "at": [0.8, 0.0], "angle": [0, 360], "radius": [0.38, 0.45], "width": 0.04, "from": 0, "to": 200, "role": "trim", "alpha": [0.15, 0.25]},
+                    {"form": "arc", "at": [0.8, 0.0], "angle": [0, 360], "radius": [0.38, 0.45], "width": 0.04, "from": 0, "to": [150, 240], "role": "trim", "alpha": [0.15, 0.25], "spin": [-14, -6]},
                     {"form": "disc", "at": [0.8, 0.0], "radius": [0.06, 0.1], "role": "light", "tint": [[255, 240, 220], [190, 215, 255]], "alpha": 0.9}
                 ]},
                 { "id": "envelope", "shape": [
@@ -124,6 +151,12 @@
                     {"form": "disc", "at": [0.6, 0.0], "radius": [0.38, 0.5], "role": "trim", "alpha": [0.1, 0.16]},
                     {"form": "capsule", "length": [0.7, 0.9], "width": [0.35, 0.5], "role": "trim", "alpha": [0.15, 0.22]},
                     {"form": "bar", "length": [1.3, 1.6], "width": 0.03, "role": "trim", "alpha": [0.3, 0.4], "chance": 0.6}
+                ]},
+                { "id": "siphon", "shape": [
+                    {"form": "chevron", "at": [-0.6, 0.0], "angle": [-5, 5], "length": [0.7, 0.9], "width": [0.55, 0.8], "role": "trim", "alpha": [0.12, 0.2]},
+                    {"form": "capsule", "at": [-0.7, 0.0], "length": [0.4, 0.5], "width": [0.2, 0.26], "role": "trim", "alpha": [0.2, 0.3],
+                     "row": {"count": 5, "step": [0.32, 0.0], "turn": [-9, 9], "taper": [0.8, 0.88]}},
+                    {"form": "ring", "at": [0.75, 0.0], "radius": [0.16, 0.22], "width": [0.04, 0.06], "role": "trim", "alpha": [0.3, 0.45]}
                 ]}
             ]
         },
@@ -133,18 +166,18 @@
             "tags": ["star", "glow"],
             "sockets": ["centre"],
             "variants": [
-                { "id": "twin", "shape": [
-                    {"form": "capsule", "angle": [-8, 8], "length": [1.8, 2.0], "width": [0.06, 0.1], "role": "light", "tint": [[180, 210, 255], [220, 200, 255], [200, 240, 255]], "alpha": [0.55, 0.75]},
-                    {"form": "capsule", "angle": [-8, 8], "length": [1.9, 2.0], "width": [0.22, 0.32], "role": "trim", "alpha": [0.08, 0.14]},
+                { "id": "twin", "shape": { "vars": { "beam": [-8, 8], "hue": [[180, 210, 255], [220, 200, 255], [200, 240, 255]] }, "parts": [
+                    {"form": "capsule", "angle": "$beam", "length": [1.8, 2.0], "width": [0.06, 0.1], "role": "light", "tint": "$hue", "alpha": [0.55, 0.75], "blink": [0.6, 1.6]},
+                    {"form": "capsule", "angle": "$beam", "length": [1.9, 2.0], "width": [0.22, 0.32], "role": "trim", "alpha": [0.08, 0.14]},
                     {"form": "disc", "radius": [0.14, 0.2], "role": "trim"},
                     {"form": "ring", "radius": [0.3, 0.4], "width": 0.03, "role": "trim", "alpha": [0.2, 0.35], "chance": 0.6}
-                ]},
-                { "id": "cone", "shape": [
-                    {"form": "chevron", "at": [0.55, 0.0], "angle": 180, "length": [0.9, 1.1], "width": [0.3, 0.45], "role": "trim", "alpha": [0.2, 0.3]},
-                    {"form": "chevron", "at": [-0.55, 0.0], "angle": 0, "length": [0.9, 1.1], "width": [0.3, 0.45], "role": "trim", "alpha": [0.2, 0.3]},
-                    {"form": "capsule", "angle": [-3, 3], "length": [1.6, 1.9], "width": 0.04, "role": "light", "tint": [[180, 210, 255], [235, 220, 255]], "alpha": 0.7},
+                ]}},
+                { "id": "cone", "shape": { "vars": { "beam": [-3, 3], "spread": [0.3, 0.45] }, "parts": [
+                    {"form": "chevron", "at": [0.55, 0.0], "angle": 180, "length": [0.9, 1.1], "width": "$spread", "role": "trim", "alpha": [0.2, 0.3]},
+                    {"form": "chevron", "at": [-0.55, 0.0], "angle": 0, "length": [0.9, 1.1], "width": "$spread", "role": "trim", "alpha": [0.2, 0.3]},
+                    {"form": "capsule", "angle": "$beam", "length": [1.6, 1.9], "width": 0.04, "role": "light", "tint": [[180, 210, 255], [235, 220, 255]], "alpha": 0.7, "blink": [0.8, 2.0]},
                     {"form": "disc", "radius": [0.12, 0.17], "role": "trim"}
-                ]},
+                ]}},
                 { "id": "nebula", "shape": [
                     {"form": "disc", "radius": [0.55, 0.75], "role": "trim", "alpha": [0.08, 0.14]},
                     {"form": "ring", "radius": [0.32, 0.42], "width": [0.04, 0.07], "role": "trim", "alpha": [0.25, 0.4]},
@@ -171,44 +204,56 @@
                     {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[0.4, 0.65], [-0.15, 0.15]], "radius": [0.3, 0.45], "role": "hull"},
                     {"form": "disc", "at": [[-0.3, 0.3], [-0.12, 0.12]], "radius": [0.08, 0.14], "role": "panel", "alpha": 0.8, "chance": 0.6}
                 ]},
-                { "id": "cratered", "shape": [
+                { "id": "cratered", "shape": { "vars": { "cx": [-0.35, -0.1], "cy": [-0.35, 0.0], "cr": [0.22, 0.32] }, "parts": [
                     {"form": "polygon", "sides": [7, 10], "angle": [0, 360], "radius": [0.8, 0.95], "role": "hull"},
-                    {"form": "disc", "at": [[-0.35, -0.1], [-0.35, 0.0]], "radius": [0.22, 0.32], "role": "panel"},
-                    {"form": "ring", "at": [[-0.35, -0.1], [-0.35, 0.0]], "radius": [0.24, 0.34], "width": 0.05, "role": "trim", "alpha": 0.6},
+                    {"form": "disc", "at": ["$cx", "$cy"], "radius": "$cr", "role": "panel"},
+                    {"form": "ring", "at": ["$cx", "$cy"], "radius": "$cr", "width": 0.06, "role": "trim", "alpha": 0.6},
                     {"form": "disc", "at": [[0.2, 0.45], [0.1, 0.4]], "radius": [0.12, 0.2], "role": "panel", "alpha": 0.85},
                     {"form": "disc", "at": [[0.1, 0.45], [-0.5, -0.3]], "radius": [0.06, 0.11], "role": "panel", "alpha": 0.8, "chance": 0.6}
-                ]},
+                ]}},
                 { "id": "shard", "shape": [
                     {"form": "polygon", "sides": [3, 4], "angle": [0, 360], "radius": [0.75, 0.9], "role": "hull"},
                     {"form": "polygon", "sides": [3, 5], "angle": [0, 360], "at": [[-0.25, 0.25], [-0.25, 0.25]], "radius": [0.45, 0.6], "role": "hull"},
                     {"form": "polygon", "sides": 3, "angle": [0, 360], "at": [[-0.2, 0.2], [-0.2, 0.2]], "radius": [0.2, 0.3], "role": "trim", "alpha": [0.3, 0.5]}
+                ]},
+                { "id": "rubble", "shape": [
+                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [0.0, 0.0], "radius": [0.42, 0.5], "role": "hull",
+                     "row": {"count": [4, 6], "step": [0.38, 0.0], "turn": [60, 85], "taper": [0.78, 0.9], "centred": true}},
+                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[-0.15, 0.15], [-0.15, 0.15]], "radius": [0.3, 0.38], "role": "hull"},
+                    {"form": "disc", "at": [[-0.2, 0.2], [-0.2, 0.2]], "radius": [0.07, 0.12], "role": "panel", "alpha": 0.8, "chance": 0.6}
                 ]}
             ]
         },
         {
             "id": "nature.ore-vein",
-            "note": "Something worth mining showing through the rock: a seam of darker stone with a glint in it. The glint is the only light, and it is small.",
+            "note": "Something worth mining showing through the rock: a seam of darker stone with a glint in it. The glint is the only light, and it is small. The vein and its glint are one mineral, so they share a colour.",
             "tags": ["asteroid", "resource"],
             "sockets": ["face"],
             "variants": [
-                { "id": "seam", "shape": [
+                { "id": "seam", "shape": { "vars": { "ore": [[220, 180, 85], [125, 210, 225], [180, 135, 225], [215, 115, 80]] }, "parts": [
                     {"form": "capsule", "length": [1.3, 1.7], "width": [0.18, 0.28], "role": "panel"},
-                    {"form": "capsule", "at": [[0.2, 0.5], [0.1, 0.35]], "angle": [20, 70], "length": [0.5, 0.8], "width": [0.1, 0.16], "role": "panel", "chance": 0.7},
-                    {"form": "capsule", "at": [[-0.1, 0.1], 0.0], "length": [0.9, 1.2], "width": 0.05, "role": "trim", "tint": [[210, 170, 80], [120, 200, 210], [170, 130, 210], [200, 110, 80]], "alpha": 0.7},
-                    {"form": "disc", "at": [[-0.4, 0.4], 0.0], "radius": [0.07, 0.11], "role": "light", "tint": [[255, 220, 120], [140, 240, 255], [210, 160, 255], [255, 140, 90]], "alpha": 0.85}
-                ]},
-                { "id": "nodules", "shape": [
-                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [[-0.55, -0.35], [-0.25, 0.1]], "radius": [0.22, 0.32], "role": "trim", "tint": [[200, 165, 80], [110, 190, 205], [160, 120, 200]]},
-                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [[0.0, 0.2], [0.1, 0.4]], "radius": [0.16, 0.26], "role": "trim", "tint": [[200, 165, 80], [110, 190, 205], [160, 120, 200]]},
-                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[0.4, 0.65], [-0.35, -0.1]], "radius": [0.12, 0.2], "role": "trim", "tint": [[200, 165, 80], [110, 190, 205], [160, 120, 200]], "chance": 0.7},
-                    {"form": "disc", "at": [[-0.5, -0.35], [-0.15, 0.0]], "radius": [0.06, 0.09], "role": "light", "tint": [[255, 230, 140], [160, 245, 255], [220, 180, 255]], "alpha": 0.8, "blink": 5.0}
-                ]},
-                { "id": "glint", "shape": [
+                    {"form": "capsule", "at": [[0.3, 0.5], 0.0], "angle": [20, 70], "pivot": [-0.3, 0.0], "length": [0.5, 0.8], "width": [0.1, 0.16], "role": "panel", "chance": 0.7},
+                    {"form": "capsule", "at": [[-0.1, 0.1], 0.0], "length": [0.9, 1.2], "width": 0.05, "role": "trim", "tint": "$ore", "alpha": 0.75},
+                    {"form": "disc", "at": [[-0.4, 0.4], 0.0], "radius": [0.07, 0.11], "role": "light", "tint": "$ore", "alpha": 0.85, "blink": [3.5, 7.0]}
+                ]}},
+                { "id": "nodules", "shape": { "vars": { "ore": [[200, 165, 80], [110, 190, 205], [160, 120, 200], [200, 105, 75]] }, "parts": [
+                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [[-0.55, -0.35], [-0.25, 0.1]], "radius": [0.22, 0.32], "role": "trim", "tint": "$ore"},
+                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [[0.0, 0.2], [0.1, 0.4]], "radius": [0.16, 0.26], "role": "trim", "tint": "$ore"},
+                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[0.4, 0.65], [-0.35, -0.1]], "radius": [0.12, 0.2], "role": "trim", "tint": "$ore", "chance": 0.7},
+                    {"form": "disc", "at": [[-0.5, -0.35], [-0.15, 0.0]], "radius": [0.06, 0.09], "role": "light", "tint": "$ore", "alpha": 0.8, "blink": [3.5, 7.0]}
+                ]}},
+                { "id": "glint", "shape": { "vars": { "ore": [[255, 225, 150], [160, 235, 255], [220, 180, 255]], "cross": [0, 90] }, "parts": [
                     {"form": "disc", "radius": [0.35, 0.5], "role": "panel", "alpha": [0.5, 0.7]},
-                    {"form": "bar", "angle": [0, 90], "length": [0.6, 0.9], "width": 0.04, "role": "trim", "alpha": 0.6},
-                    {"form": "bar", "angle": [90, 180], "length": [0.4, 0.6], "width": 0.04, "role": "trim", "alpha": 0.45},
-                    {"form": "disc", "radius": [0.07, 0.1], "role": "light", "tint": [[255, 235, 170], [170, 240, 255], [230, 190, 255]], "alpha": 0.9, "blink": 4.5}
-                ]}
+                    {"form": "bar", "angle": "$cross", "length": [0.6, 0.9], "width": 0.04, "role": "trim", "alpha": 0.6},
+                    {"form": "bar", "angle": [70, 110], "length": [0.4, 0.6], "width": 0.04, "role": "trim", "alpha": 0.45},
+                    {"form": "disc", "radius": [0.07, 0.1], "role": "light", "tint": "$ore", "alpha": 0.9, "blink": [3.0, 6.5]}
+                ]}},
+                { "id": "geode", "shape": { "vars": { "ore": [[215, 175, 90], [120, 205, 220], [175, 130, 220], [210, 110, 85]], "gr": [0.12, 0.15] }, "parts": [
+                    {"form": "polygon", "sides": [6, 9], "angle": [0, 360], "radius": [0.55, 0.7], "role": "panel"},
+                    {"form": "polygon", "sides": 3, "radius": [0.07, 0.1], "role": "trim", "tint": "$ore", "alpha": 0.8,
+                     "row": {"count": [7, 10], "step": [0.0, "$gr"], "turn": 40, "centred": true}},
+                    {"form": "disc", "at": [[-0.08, 0.08], [-0.08, 0.08]], "radius": [0.06, 0.09], "role": "light", "tint": "$ore", "alpha": 0.85, "blink": [4.0, 8.0], "chance": 0.6}
+                ]}}
             ]
         },
         {
@@ -222,17 +267,22 @@
                     {"form": "polygon", "sides": [3, 5], "angle": [0, 360], "at": [[0.1, 0.3], [-0.3, -0.1]], "radius": [0.35, 0.5], "role": "trim", "tint": [[230, 245, 255], [215, 240, 250]], "alpha": [0.6, 0.85]},
                     {"form": "capsule", "angle": [0, 180], "length": [0.6, 0.9], "width": 0.04, "role": "panel", "alpha": [0.4, 0.6], "chance": 0.7}
                 ]},
-                { "id": "shard", "shape": [
-                    {"form": "chevron", "angle": [0, 360], "length": [1.5, 1.8], "width": [0.6, 0.85], "role": "hull", "tint": [[190, 215, 235], [175, 205, 230], [205, 225, 240]]},
-                    {"form": "chevron", "angle": [0, 360], "at": [[-0.3, 0.3], [-0.3, 0.3]], "length": [0.8, 1.1], "width": [0.35, 0.5], "role": "trim", "tint": [[230, 245, 255], [210, 235, 250]], "alpha": [0.55, 0.8]},
+                { "id": "shard", "shape": { "vars": { "a": [0, 360] }, "parts": [
+                    {"form": "chevron", "angle": "$a", "length": [1.5, 1.8], "width": [0.6, 0.85], "role": "hull", "tint": [[190, 215, 235], [175, 205, 230], [205, 225, 240]]},
+                    {"form": "chevron", "angle": "$a", "at": [[-0.15, 0.15], [-0.15, 0.15]], "length": [0.8, 1.1], "width": [0.3, 0.45], "role": "trim", "tint": [[230, 245, 255], [210, 235, 250]], "alpha": [0.55, 0.8]},
                     {"form": "disc", "at": [[-0.2, 0.2], [-0.2, 0.2]], "radius": [0.05, 0.08], "role": "light", "tint": [235, 248, 255], "alpha": 0.7, "chance": 0.5}
-                ]},
-                { "id": "cluster", "shape": [
-                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [[-0.45, -0.3], [-0.2, 0.1]], "radius": [0.4, 0.55], "role": "hull", "tint": [[190, 215, 235], [205, 225, 240]]},
-                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[0.3, 0.5], [-0.35, -0.1]], "radius": [0.3, 0.42], "role": "hull", "tint": [[180, 210, 232], [200, 222, 240]]},
-                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[0.0, 0.25], [0.3, 0.55]], "radius": [0.22, 0.32], "role": "hull", "tint": [[195, 218, 238], [215, 232, 246]], "chance": 0.8},
+                ]}},
+                { "id": "cluster", "shape": { "vars": { "ice": [[190, 215, 235], [205, 225, 240], [180, 208, 232]] }, "parts": [
+                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [[-0.45, -0.3], [-0.2, 0.1]], "radius": [0.4, 0.55], "role": "hull", "tint": "$ice"},
+                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[0.3, 0.5], [-0.35, -0.1]], "radius": [0.3, 0.42], "role": "hull", "tint": "$ice"},
+                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[0.0, 0.25], [0.3, 0.55]], "radius": [0.22, 0.32], "role": "hull", "tint": "$ice", "chance": 0.8},
                     {"form": "polygon", "sides": 3, "angle": [0, 360], "at": [[-0.5, -0.3], [-0.15, 0.05]], "radius": [0.15, 0.22], "role": "trim", "tint": [235, 248, 255], "alpha": 0.7}
-                ]}
+                ]}},
+                { "id": "calved", "shape": { "vars": { "ice": [[190, 215, 235], [205, 225, 240], [175, 205, 230]] }, "parts": [
+                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "radius": [0.5, 0.6], "role": "hull", "tint": "$ice",
+                     "row": {"count": [3, 4], "step": [0.5, [-0.12, 0.12]], "turn": [-25, 25], "taper": [0.62, 0.75], "centred": true}},
+                    {"form": "polygon", "sides": 3, "angle": [0, 360], "at": [[-0.4, -0.1], [-0.15, 0.1]], "radius": [0.18, 0.25], "role": "trim", "tint": [230, 245, 255], "alpha": [0.55, 0.8]}
+                ]}}
             ]
         },
         {
@@ -241,51 +291,68 @@
             "tags": ["asteroid", "surface", "worked"],
             "sockets": ["face"],
             "variants": [
-                { "id": "gouge", "shape": [
-                    {"form": "capsule", "length": [1.1, 1.6], "width": [0.25, 0.5], "role": "panel"},
+                { "id": "gouge", "shape": { "vars": { "g": [-25, 25] }, "parts": [
+                    {"form": "capsule", "angle": "$g", "length": [1.1, 1.6], "width": [0.28, 0.4], "role": "panel"},
+                    {"form": "capsule", "at": [0.0, -0.15], "angle": "$g", "pivot": [0.0, 0.15], "length": [1.0, 1.3], "width": 0.05, "role": "trim", "alpha": [0.5, 0.75]},
                     {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[-0.75, -0.55], [-0.1, 0.1]], "radius": [0.15, 0.3], "role": "panel", "chance": 0.7},
-                    {"form": "capsule", "at": [0.0, -0.15], "length": [1.0, 1.3], "width": 0.05, "role": "trim", "alpha": [0.5, 0.75]},
-                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[0.6, 0.9], [0.15, 0.35]], "radius": [0.08, 0.15], "role": "trim", "alpha": 0.6, "chance": 0.6},
-                    {"form": "polygon", "sides": [3, 5], "angle": [0, 360], "at": [[0.2, 0.5], [0.3, 0.45]], "radius": [0.05, 0.1], "role": "trim", "alpha": 0.5, "chance": 0.5}
-                ]},
-                { "id": "pit", "shape": [
-                    {"form": "polygon", "sides": [6, 9], "angle": [0, 360], "radius": [0.7, 0.85], "role": "trim", "alpha": [0.55, 0.75]},
-                    {"form": "polygon", "sides": [6, 9], "angle": [0, 360], "at": [[0.0, 0.08], [0.0, 0.08]], "radius": [0.52, 0.64], "role": "panel"},
-                    {"form": "polygon", "sides": [5, 8], "angle": [0, 360], "at": [[0.04, 0.12], [0.04, 0.12]], "radius": [0.25, 0.35], "role": "panel", "alpha": 0.9},
-                    {"form": "disc", "at": [[-0.1, 0.2], [-0.1, 0.2]], "radius": [0.04, 0.06], "role": "light", "tint": [[255, 180, 80], [255, 220, 160]], "alpha": 0.8, "chance": 0.3}
-                ]},
+                    {"form": "polygon", "sides": [3, 5], "angle": [0, 360], "at": [[0.55, 0.8], [0.2, 0.35]], "radius": [0.05, 0.12], "role": "trim", "alpha": 0.6, "chance": 0.6,
+                     "row": {"count": [2, 3], "step": [0.16, 0.1], "taper": 0.7}}
+                ]}},
+                { "id": "pit", "shape": { "vars": { "s": [6, 9], "r": [0, 360], "ox": [0.0, 0.08], "oy": [0.0, 0.08] }, "parts": [
+                    {"form": "polygon", "sides": "$s", "angle": "$r", "radius": [0.7, 0.85], "role": "trim", "alpha": [0.55, 0.75]},
+                    {"form": "polygon", "sides": "$s", "angle": "$r", "at": ["$ox", "$oy"], "radius": [0.52, 0.64], "role": "panel"},
+                    {"form": "polygon", "sides": "$s", "angle": "$r", "at": ["$ox", "$oy"], "radius": [0.25, 0.35], "role": "panel", "alpha": 0.9},
+                    {"form": "disc", "at": ["$ox", "$oy"], "radius": [0.04, 0.06], "role": "light", "tint": [[255, 180, 80], [255, 220, 160]], "alpha": 0.8, "chance": 0.3}
+                ]}},
                 { "id": "benches", "shape": [
                     {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "radius": [0.8, 0.95], "role": "panel", "alpha": 0.85},
-                    {"form": "bar", "at": [[-0.1, 0.1], -0.36], "length": [0.9, 1.2], "width": 0.06, "role": "trim", "alpha": 0.6, "row": {"count": [3, 5], "step": [0.0, 0.18]}},
+                    {"form": "bar", "at": [[-0.1, 0.1], 0.0], "length": [0.9, 1.2], "width": 0.06, "role": "trim", "alpha": 0.6,
+                     "row": {"count": [3, 5], "step": [0.0, [0.15, 0.2]], "centred": true, "taper": [0.82, 0.95]}},
                     {"form": "polygon", "sides": [4, 5], "angle": [0, 360], "at": [[0.6, 0.85], [-0.6, -0.4]], "radius": [0.12, 0.18], "role": "hull", "chance": 0.5}
-                ]}
+                ]},
+                { "id": "boreholes", "shape": { "vars": { "a": [-30, 30] }, "parts": [
+                    {"form": "capsule", "angle": "$a", "length": [1.3, 1.6], "width": [0.3, 0.38], "role": "panel", "alpha": 0.7},
+                    {"form": "disc", "radius": [0.07, 0.1], "role": "panel",
+                     "row": {"count": [3, 6], "step": [0.24, 0.0], "centred": true}},
+                    {"form": "ring", "radius": [0.09, 0.12], "width": 0.03, "role": "trim", "alpha": 0.5,
+                     "row": {"count": [3, 6], "step": [0.24, 0.0], "centred": true}},
+                    {"form": "disc", "at": [[-0.4, 0.4], 0.0], "radius": 0.04, "role": "light", "tint": [255, 190, 90], "alpha": 0.75, "blink": [1.5, 3.0], "chance": 0.25}
+                ]}}
             ]
         },
         {
             "id": "nature.comet",
-            "note": "A head and a tail pointing away from the sun (-x). The coma glows; the dust tail curves and fades, the ion tail is straight and blue.",
+            "note": "A head and a tail pointing away from the sun (-x). The coma glows; the dust tail curves, spreads and thins, the ion tail is straight and blue.",
             "tags": ["comet", "glow"],
             "sockets": ["free"],
             "variants": [
-                { "id": "classic", "shape": [
+                { "id": "classic", "shape": { "vars": { "bend": [-6, 6] }, "parts": [
                     {"form": "chevron", "at": [-0.08, 0.0], "angle": [-5, 5], "length": [1.4, 1.6], "width": [0.55, 0.85], "role": "trim", "alpha": [0.15, 0.25]},
-                    {"form": "chevron", "at": [0.15, 0.0], "angle": [-3, 3], "length": [1.0, 1.2], "width": [0.25, 0.4], "role": "trim", "alpha": [0.3, 0.45]},
+                    {"form": "capsule", "at": [0.45, 0.0], "angle": 180, "length": [0.4, 0.44], "width": [0.12, 0.18], "role": "trim", "alpha": [0.25, 0.35],
+                     "row": {"count": [3, 5], "step": [-0.3, 0.0], "turn": "$bend", "taper": [0.75, 0.85]}},
                     {"form": "disc", "at": [0.7, 0.0], "radius": [0.25, 0.35], "role": "trim", "alpha": [0.3, 0.45]},
                     {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [0.72, 0.0], "radius": [0.1, 0.14], "role": "hull"}
-                ]},
+                ]}},
                 { "id": "twin-tail", "shape": [
-                    {"form": "chevron", "at": [-0.05, [0.1, 0.18]], "angle": [8, 16], "length": [1.3, 1.6], "width": [0.5, 0.7], "role": "trim", "tint": [[230, 210, 170], [220, 220, 200]], "alpha": [0.2, 0.3]},
+                    {"form": "capsule", "at": [0.4, 0.04], "angle": 180, "length": [0.4, 0.5], "width": [0.2, 0.26], "role": "trim", "tint": [[230, 210, 170], [220, 220, 200]], "alpha": [0.18, 0.26],
+                     "row": {"count": 5, "step": [-0.32, 0.0], "turn": [-11, -6], "taper": [1.04, 1.1]}},
                     {"form": "capsule", "at": [-0.15, 0.0], "length": [1.6, 1.8], "width": [0.05, 0.09], "role": "light", "tint": [[120, 180, 255], [140, 210, 255]], "alpha": [0.4, 0.6]},
                     {"form": "disc", "at": [0.75, 0.0], "radius": [0.22, 0.3], "role": "trim", "alpha": [0.35, 0.5]},
                     {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [0.76, 0.0], "radius": [0.08, 0.12], "role": "hull"}
                 ]},
-                { "id": "fan", "shape": [
-                    {"form": "chevron", "at": [-0.05, [-0.16, -0.08]], "angle": [6, 14], "length": [1.3, 1.6], "width": [0.3, 0.45], "role": "trim", "alpha": [0.15, 0.25]},
+                { "id": "fan", "shape": { "vars": { "spread": [6, 14] }, "parts": [
+                    {"form": "chevron", "at": [-0.05, [-0.16, -0.08]], "angle": "$spread", "length": [1.3, 1.6], "width": [0.3, 0.45], "role": "trim", "alpha": [0.15, 0.25]},
                     {"form": "chevron", "at": [0.0, [0.08, 0.16]], "angle": [-14, -6], "length": [1.2, 1.5], "width": [0.3, 0.45], "role": "trim", "alpha": [0.15, 0.25]},
-                    {"form": "arc", "at": [0.75, 0.0], "angle": [-12, 12], "radius": [0.35, 0.45], "width": [0.06, 0.1], "from": -70, "to": 70, "role": "trim", "alpha": [0.25, 0.4]},
+                    {"form": "arc", "at": [0.75, 0.0], "angle": [-12, 12], "radius": [0.35, 0.45], "width": [0.06, 0.1], "from": [-80, -55], "to": [55, 80], "role": "trim", "alpha": [0.25, 0.4]},
                     {"form": "disc", "at": [0.75, 0.0], "radius": [0.2, 0.28], "role": "trim", "alpha": 0.4},
                     {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [0.76, 0.0], "radius": [0.08, 0.12], "role": "hull"}
-                ]}
+                ]}},
+                { "id": "sungrazer", "shape": { "vars": { "bend": [-10, -4] }, "parts": [
+                    {"form": "capsule", "at": [0.55, 0.0], "angle": 180, "length": [0.38, 0.45], "width": [0.12, 0.16], "role": "trim", "alpha": [0.3, 0.42],
+                     "row": {"count": [5, 7], "step": [-0.27, 0.0], "turn": "$bend", "taper": [0.85, 0.92]}},
+                    {"form": "disc", "at": [0.8, 0.0], "radius": [0.16, 0.22], "role": "trim", "alpha": [0.45, 0.6]},
+                    {"form": "disc", "at": [0.82, 0.0], "radius": [0.06, 0.08], "role": "light", "tint": [[255, 250, 235], [235, 245, 255]], "alpha": 0.85}
+                ]}}
             ]
         },
         {
@@ -305,10 +372,15 @@
                     {"form": "capsule", "at": [[-0.3, 0.3], [-0.15, 0.15]], "angle": [-25, 25], "length": [0.8, 1.2], "width": [0.2, 0.32], "role": "trim", "alpha": [0.1, 0.15]},
                     {"form": "disc", "at": [[-0.6, -0.2], [-0.15, 0.15]], "radius": [0.25, 0.4], "role": "trim", "alpha": [0.08, 0.14], "chance": 0.7}
                 ]},
-                { "id": "curl", "shape": [
-                    {"form": "arc", "angle": [0, 360], "radius": [0.7, 0.9], "width": [0.25, 0.35], "from": 0, "to": 260, "role": "trim", "alpha": [0.08, 0.13]},
-                    {"form": "arc", "at": [[-0.15, 0.15], [-0.15, 0.15]], "angle": [0, 360], "radius": [0.4, 0.55], "width": [0.15, 0.22], "from": 0, "to": 220, "role": "trim", "alpha": [0.1, 0.15]},
+                { "id": "curl", "shape": { "vars": { "a": [0, 360] }, "parts": [
+                    {"form": "arc", "angle": "$a", "radius": [0.7, 0.9], "width": [0.25, 0.35], "from": 0, "to": [220, 290], "role": "trim", "alpha": [0.08, 0.13]},
+                    {"form": "arc", "at": [[-0.1, 0.1], [-0.1, 0.1]], "angle": "$a", "radius": [0.4, 0.55], "width": [0.15, 0.22], "from": [20, 60], "to": [200, 260], "role": "trim", "alpha": [0.1, 0.15]},
                     {"form": "capsule", "at": [[0.3, 0.7], [-0.9, -0.7]], "angle": [-25, 15], "length": [0.6, 1.0], "width": [0.15, 0.25], "role": "trim", "alpha": [0.07, 0.12], "chance": 0.7}
+                ]}},
+                { "id": "tongue", "shape": [
+                    {"form": "disc", "at": [-0.15, 0.0], "radius": [0.45, 0.55], "role": "trim", "alpha": [0.07, 0.11],
+                     "row": {"count": [5, 7], "step": [0.32, 0.0], "turn": [28, 45], "taper": [0.78, 0.86], "centred": true}},
+                    {"form": "disc", "at": [[-0.25, 0.25], [-0.25, 0.25]], "radius": [0.3, 0.42], "role": "trim", "alpha": [0.07, 0.11]}
                 ]}
             ]
         },
@@ -319,20 +391,26 @@
             "sockets": ["free"],
             "variants": [
                 { "id": "strand", "shape": [
-                    {"form": "capsule", "at": [[-0.5, -0.4], [-0.1, 0.1]], "angle": [-12, 0], "length": [0.9, 1.1], "width": [0.04, 0.07], "role": "trim", "alpha": [0.25, 0.4]},
-                    {"form": "capsule", "at": [[0.4, 0.5], [-0.1, 0.1]], "angle": [0, 14], "length": [0.9, 1.1], "width": [0.04, 0.07], "role": "trim", "alpha": [0.25, 0.4]},
+                    {"form": "capsule", "at": [0.0, [-0.1, 0.1]], "length": [0.5, 0.6], "width": [0.04, 0.07], "role": "trim", "alpha": [0.25, 0.4],
+                     "row": {"count": [3, 5], "step": [0.44, 0.0], "turn": [-10, 10], "centred": true}},
                     {"form": "capsule", "angle": [-8, 8], "length": [1.7, 1.9], "width": [0.18, 0.26], "role": "trim", "alpha": [0.05, 0.09]}
                 ]},
-                { "id": "arc", "shape": [
-                    {"form": "arc", "at": [0.0, 1.2], "angle": -90, "radius": [1.4, 1.5], "width": [0.04, 0.07], "from": -35, "to": 35, "role": "trim", "alpha": [0.25, 0.4]},
-                    {"form": "arc", "at": [0.0, 1.2], "angle": -90, "radius": [1.25, 1.33], "width": [0.03, 0.05], "from": -25, "to": 30, "role": "trim", "alpha": [0.15, 0.25], "chance": 0.7},
-                    {"form": "arc", "at": [0.0, 1.2], "angle": -90, "radius": [1.55, 1.7], "width": [0.2, 0.3], "from": -35, "to": 35, "role": "trim", "alpha": [0.04, 0.08]}
-                ]},
-                { "id": "braid", "shape": [
+                { "id": "arc", "shape": { "vars": { "r": [1.4, 1.5] }, "parts": [
+                    {"form": "arc", "at": [0.0, 1.2], "angle": -90, "radius": "$r", "width": [0.04, 0.07], "from": [-40, -28], "to": [28, 40], "role": "trim", "alpha": [0.25, 0.4]},
+                    {"form": "arc", "at": [0.0, 1.2], "angle": -90, "radius": [1.25, 1.33], "width": [0.03, 0.05], "from": [-30, -15], "to": [15, 32], "role": "trim", "alpha": [0.15, 0.25], "chance": 0.7},
+                    {"form": "arc", "at": [0.0, 1.2], "angle": -90, "radius": "$r", "width": [0.2, 0.3], "from": -35, "to": 35, "role": "trim", "alpha": [0.04, 0.08]}
+                ]}},
+                { "id": "braid", "shape": { "vars": { "twist": [3, 10] }, "parts": [
                     {"form": "capsule", "at": [0.0, [-0.12, -0.04]], "angle": [-10, -3], "length": [1.6, 1.9], "width": [0.03, 0.06], "role": "trim", "alpha": [0.25, 0.4]},
-                    {"form": "capsule", "at": [0.0, [0.04, 0.12]], "angle": [3, 10], "length": [1.6, 1.9], "width": [0.03, 0.06], "role": "trim", "alpha": [0.25, 0.4]},
+                    {"form": "capsule", "at": [0.0, [0.04, 0.12]], "angle": "$twist", "length": [1.6, 1.9], "width": [0.03, 0.06], "role": "trim", "alpha": [0.25, 0.4]},
                     {"form": "capsule", "at": [[0.2, 0.5], [0.1, 0.3]], "angle": [30, 60], "length": [0.5, 0.8], "width": 0.03, "role": "trim", "alpha": [0.15, 0.25], "chance": 0.6},
                     {"form": "capsule", "angle": [-5, 5], "length": [1.8, 2.0], "width": [0.25, 0.35], "role": "trim", "alpha": [0.04, 0.07]}
+                ]}},
+                { "id": "hook", "shape": [
+                    {"form": "capsule", "at": [-0.6, 0.0], "length": [0.4, 0.45], "width": [0.04, 0.06], "role": "trim", "alpha": [0.25, 0.4],
+                     "row": {"count": [5, 7], "step": [0.3, 0.0], "turn": [16, 26], "taper": [0.9, 0.97]}},
+                    {"form": "capsule", "at": [-0.6, 0.0], "length": [0.45, 0.5], "width": [0.16, 0.22], "role": "trim", "alpha": [0.04, 0.07],
+                     "row": {"count": 4, "step": [0.4, 0.0], "turn": 12}}
                 ]}
             ]
         },
@@ -342,21 +420,27 @@
             "tags": ["nebula", "dust"],
             "sockets": ["free"],
             "variants": [
-                { "id": "lane", "shape": [
-                    {"form": "capsule", "angle": [-12, 12], "length": [1.6, 1.9], "width": [0.3, 0.45], "role": "panel", "alpha": [0.2, 0.3]},
-                    {"form": "capsule", "at": [[-0.2, 0.2], [-0.06, 0.06]], "angle": [-8, 8], "length": [1.0, 1.4], "width": [0.12, 0.2], "role": "panel", "alpha": [0.25, 0.35]},
+                { "id": "lane", "shape": { "vars": { "a": [-12, 12] }, "parts": [
+                    {"form": "capsule", "angle": "$a", "length": [1.6, 1.9], "width": [0.3, 0.45], "role": "panel", "alpha": [0.2, 0.3]},
+                    {"form": "capsule", "at": [[-0.2, 0.2], 0.0], "angle": "$a", "length": [1.0, 1.4], "width": [0.12, 0.2], "role": "panel", "alpha": [0.25, 0.35]},
                     {"form": "disc", "at": [[-0.7, 0.7], [-0.15, 0.15]], "radius": [0.2, 0.3], "role": "panel", "alpha": [0.15, 0.25], "chance": 0.6}
-                ]},
+                ]}},
                 { "id": "fork", "shape": [
                     {"form": "capsule", "at": [-0.45, 0.0], "angle": [-6, 6], "length": [0.9, 1.1], "width": [0.25, 0.35], "role": "panel", "alpha": [0.2, 0.3]},
-                    {"form": "capsule", "at": [[0.35, 0.45], [-0.3, -0.18]], "angle": [-35, -18], "length": [0.8, 1.0], "width": [0.16, 0.24], "role": "panel", "alpha": [0.2, 0.3]},
-                    {"form": "capsule", "at": [[0.35, 0.45], [0.18, 0.3]], "angle": [18, 35], "length": [0.7, 1.0], "width": [0.14, 0.22], "role": "panel", "alpha": [0.2, 0.3]}
+                    {"form": "capsule", "at": [0.4, -0.22], "angle": [-35, -18], "pivot": [-0.45, 0.0], "length": [0.8, 1.0], "width": [0.16, 0.24], "role": "panel", "alpha": [0.2, 0.3]},
+                    {"form": "capsule", "at": [0.4, 0.22], "angle": [18, 35], "pivot": [-0.45, 0.0], "length": [0.7, 1.0], "width": [0.14, 0.22], "role": "panel", "alpha": [0.2, 0.3]}
                 ]},
-                { "id": "globule", "shape": [
+                { "id": "globule", "shape": { "vars": { "a": [0, 360] }, "parts": [
                     {"form": "disc", "radius": [0.5, 0.65], "role": "panel", "alpha": [0.15, 0.22]},
                     {"form": "polygon", "sides": [7, 10], "angle": [0, 360], "at": [[-0.1, 0.1], [-0.1, 0.1]], "radius": [0.32, 0.42], "role": "panel", "alpha": [0.3, 0.45]},
                     {"form": "chevron", "at": [[0.55, 0.75], 0.0], "angle": [-20, 20], "length": [0.6, 0.9], "width": [0.25, 0.4], "role": "panel", "alpha": [0.15, 0.22], "chance": 0.6},
-                    {"form": "arc", "angle": [0, 360], "radius": [0.6, 0.7], "width": 0.04, "from": -60, "to": 60, "role": "trim", "alpha": [0.2, 0.35]}
+                    {"form": "arc", "angle": "$a", "radius": [0.6, 0.7], "width": 0.04, "from": [-75, -45], "to": [45, 75], "role": "trim", "alpha": [0.2, 0.35]}
+                ]}},
+                { "id": "pillar", "shape": [
+                    {"form": "capsule", "at": [-0.7, 0.0], "length": [0.6, 0.7], "width": [0.5, 0.6], "role": "panel", "alpha": [0.18, 0.26],
+                     "row": {"count": 4, "step": [0.42, 0.0], "turn": [-8, 8], "taper": [0.75, 0.82]}},
+                    {"form": "disc", "at": [[0.55, 0.7], [-0.15, 0.15]], "radius": [0.1, 0.14], "role": "panel", "alpha": [0.3, 0.4]},
+                    {"form": "arc", "at": [[0.55, 0.7], 0.0], "angle": 0, "radius": [0.16, 0.2], "width": 0.03, "from": [-80, -50], "to": [50, 80], "role": "trim", "alpha": [0.25, 0.4], "chance": 0.6}
                 ]}
             ]
         },
@@ -372,18 +456,24 @@
                     {"form": "ring", "radius": [0.75, 0.85], "width": 0.03, "role": "trim", "alpha": [0.25, 0.4]},
                     {"form": "ring", "radius": [0.95, 1.0], "width": [0.08, 0.14], "role": "trim", "alpha": [0.08, 0.14]}
                 ]},
-                { "id": "einstein", "shape": [
+                { "id": "einstein", "shape": { "vars": { "rot": [0, 360], "r": [0.62, 0.7] }, "parts": [
                     {"form": "disc", "radius": [0.38, 0.48], "role": "panel", "tint": [[6, 6, 12], [10, 6, 16]]},
-                    {"form": "arc", "angle": [0, 360], "radius": [0.62, 0.7], "width": [0.05, 0.08], "from": 0, "to": 150, "role": "trim", "alpha": [0.55, 0.75]},
-                    {"form": "arc", "angle": [0, 360], "radius": [0.62, 0.7], "width": [0.04, 0.06], "from": 170, "to": 300, "role": "trim", "alpha": [0.4, 0.6]},
-                    {"form": "arc", "angle": [0, 360], "radius": [0.85, 0.95], "width": 0.03, "from": 0, "to": 100, "role": "trim", "alpha": [0.2, 0.35], "chance": 0.7},
+                    {"form": "arc", "angle": "$rot", "radius": "$r", "width": [0.05, 0.08], "from": [-10, 10], "to": [130, 160], "role": "trim", "alpha": [0.55, 0.75]},
+                    {"form": "arc", "angle": "$rot", "radius": "$r", "width": [0.04, 0.06], "from": [170, 190], "to": [290, 335], "role": "trim", "alpha": [0.4, 0.6]},
+                    {"form": "arc", "angle": "$rot", "radius": [0.85, 0.95], "width": 0.03, "from": [60, 90], "to": [150, 200], "role": "trim", "alpha": [0.2, 0.35], "chance": 0.7},
                     {"form": "disc", "at": [[-0.7, 0.7], [-0.7, 0.7]], "radius": [0.03, 0.05], "role": "light", "tint": [[230, 240, 255], [255, 230, 210]], "alpha": 0.8, "chance": 0.6}
-                ]},
+                ]}},
                 { "id": "throat", "shape": [
                     {"form": "ring", "radius": [0.9, 1.0], "width": [0.18, 0.26], "role": "trim", "alpha": [0.08, 0.14]},
-                    {"form": "ring", "radius": [0.6, 0.7], "width": [0.06, 0.09], "role": "light", "tint": [[150, 190, 255], [200, 160, 255], [140, 230, 220]], "alpha": [0.4, 0.6], "blink": 8.0},
+                    {"form": "ring", "radius": [0.6, 0.7], "width": [0.06, 0.09], "role": "light", "tint": [[150, 190, 255], [200, 160, 255], [140, 230, 220]], "alpha": [0.4, 0.6], "blink": [6.0, 11.0]},
                     {"form": "disc", "radius": [0.5, 0.58], "role": "panel", "tint": [[6, 6, 12], [10, 6, 16]]},
                     {"form": "ring", "radius": [0.3, 0.4], "width": 0.02, "role": "trim", "alpha": [0.15, 0.3], "chance": 0.7}
+                ]},
+                { "id": "ripple", "shape": [
+                    {"form": "ring", "radius": [0.95, 1.0], "width": [0.025, 0.04], "role": "trim", "alpha": [0.25, 0.4],
+                     "row": {"count": [3, 5], "step": [0.0, 0.0], "taper": [0.74, 0.82]}},
+                    {"form": "disc", "radius": [0.3, 0.36], "role": "panel", "tint": [[6, 6, 12], [10, 6, 16]]},
+                    {"form": "arc", "angle": [0, 360], "radius": [0.4, 0.45], "width": 0.03, "from": 0, "to": [80, 140], "role": "trim", "alpha": [0.5, 0.7], "spin": [-20, 20]}
                 ]}
             ]
         },
@@ -393,26 +483,32 @@
             "tags": ["anomaly", "glow"],
             "sockets": ["free"],
             "variants": [
-                { "id": "rift", "shape": [
-                    {"form": "chevron", "at": [0.4, 0.0], "angle": [-6, 6], "length": [1.0, 1.2], "width": [0.4, 0.6], "role": "trim", "alpha": [0.3, 0.45]},
-                    {"form": "chevron", "at": [0.35, 0.0], "angle": [-6, 6], "length": [0.9, 1.05], "width": [0.3, 0.45], "role": "panel", "tint": [[12, 8, 20], [8, 10, 18]]},
-                    {"form": "chevron", "at": [-0.4, 0.0], "angle": [174, 186], "length": [1.0, 1.2], "width": [0.4, 0.6], "role": "trim", "alpha": [0.3, 0.45]},
-                    {"form": "chevron", "at": [-0.35, 0.0], "angle": [174, 186], "length": [0.9, 1.05], "width": [0.3, 0.45], "role": "panel", "tint": [[12, 8, 20], [8, 10, 18]]},
-                    {"form": "capsule", "angle": [-4, 4], "length": [1.4, 1.8], "width": 0.03, "role": "light", "tint": [[200, 150, 255], [140, 230, 255], [255, 140, 200]], "alpha": [0.6, 0.85], "blink": 6.0},
+                { "id": "rift", "shape": { "vars": { "l": [-6, 6], "r": [174, 186], "glow": [[200, 150, 255], [140, 230, 255], [255, 140, 200]] }, "parts": [
+                    {"form": "chevron", "at": [0.4, 0.0], "angle": "$l", "length": [1.0, 1.2], "width": [0.4, 0.6], "role": "trim", "alpha": [0.3, 0.45]},
+                    {"form": "chevron", "at": [0.35, 0.0], "angle": "$l", "length": [0.9, 1.0], "width": [0.3, 0.4], "role": "panel", "tint": [[12, 8, 20], [8, 10, 18]]},
+                    {"form": "chevron", "at": [-0.4, 0.0], "angle": "$r", "length": [1.0, 1.2], "width": [0.4, 0.6], "role": "trim", "alpha": [0.3, 0.45]},
+                    {"form": "chevron", "at": [-0.35, 0.0], "angle": "$r", "length": [0.9, 1.0], "width": [0.3, 0.4], "role": "panel", "tint": [[12, 8, 20], [8, 10, 18]]},
+                    {"form": "capsule", "angle": [-4, 4], "length": [1.4, 1.8], "width": 0.03, "role": "light", "tint": "$glow", "alpha": [0.6, 0.85], "blink": [4.0, 9.0]},
                     {"form": "disc", "radius": [0.5, 0.7], "role": "trim", "alpha": [0.05, 0.09]}
-                ]},
-                { "id": "shards", "shape": [
-                    {"form": "polygon", "sides": 3, "filled": false, "angle": [0, 360], "at": [[-0.5, -0.2], [-0.4, 0.0]], "radius": [0.25, 0.4], "role": "trim", "alpha": 0.7},
-                    {"form": "polygon", "sides": 3, "filled": false, "angle": [0, 360], "at": [[0.15, 0.45], [-0.35, 0.0]], "radius": [0.2, 0.32], "role": "trim", "alpha": 0.6},
+                ]}},
+                { "id": "shards", "shape": { "vars": { "glow": [[200, 150, 255], [140, 230, 255], [255, 160, 210]] }, "parts": [
+                    {"form": "polygon", "sides": 3, "filled": false, "angle": [0, 360], "at": [[-0.5, -0.2], [-0.4, 0.0]], "radius": [0.25, 0.4], "role": "trim", "alpha": 0.7, "spin": [-8, 8]},
+                    {"form": "polygon", "sides": 3, "filled": false, "angle": [0, 360], "at": [[0.15, 0.45], [-0.35, 0.0]], "radius": [0.2, 0.32], "role": "trim", "alpha": 0.6, "spin": [-8, 8]},
                     {"form": "polygon", "sides": [3, 4], "filled": false, "angle": [0, 360], "at": [[-0.2, 0.2], [0.2, 0.5]], "radius": [0.25, 0.38], "role": "trim", "alpha": 0.65},
-                    {"form": "polygon", "sides": 3, "angle": [0, 360], "at": [[-0.15, 0.15], [-0.15, 0.15]], "radius": [0.08, 0.13], "role": "light", "tint": [[200, 150, 255], [140, 230, 255]], "alpha": 0.8}
-                ]},
+                    {"form": "polygon", "sides": 3, "angle": [0, 360], "at": [[-0.15, 0.15], [-0.15, 0.15]], "radius": [0.08, 0.13], "role": "light", "tint": "$glow", "alpha": 0.8, "blink": [2.5, 6.0]}
+                ]}},
                 { "id": "shimmer", "shape": [
                     {"form": "ring", "radius": [0.7, 0.85], "width": [0.03, 0.05], "role": "trim", "alpha": [0.4, 0.6]},
-                    {"form": "arc", "angle": [0, 360], "radius": [0.5, 0.6], "width": [0.04, 0.06], "from": 0, "to": 160, "role": "trim", "alpha": [0.3, 0.5]},
+                    {"form": "arc", "angle": [0, 360], "radius": [0.5, 0.6], "width": [0.04, 0.06], "from": 0, "to": [120, 200], "role": "trim", "alpha": [0.3, 0.5], "spin": [-30, 30]},
                     {"form": "polygon", "sides": [4, 6], "filled": false, "angle": [0, 360], "radius": [0.3, 0.4], "role": "trim", "alpha": [0.4, 0.6]},
-                    {"form": "disc", "radius": [0.08, 0.12], "role": "light", "tint": [[230, 200, 255], [190, 245, 255], [255, 220, 240]], "alpha": 0.9, "blink": 3.0}
-                ]}
+                    {"form": "disc", "radius": [0.08, 0.12], "role": "light", "tint": [[230, 200, 255], [190, 245, 255], [255, 220, 240]], "alpha": 0.9, "blink": [2.0, 4.5]}
+                ]},
+                { "id": "broken-ring", "shape": { "vars": { "seg": [0.3, 0.38] }, "parts": [
+                    {"form": "bar", "length": [0.16, 0.2], "width": 0.04, "angle": 90, "role": "trim", "alpha": [0.5, 0.7],
+                     "row": {"count": [6, 9], "step": [0.0, "$seg"], "turn": [36, 45], "centred": true}},
+                    {"form": "polygon", "sides": [3, 5], "filled": false, "angle": [0, 360], "radius": [0.18, 0.26], "role": "trim", "alpha": [0.35, 0.55], "spin": [-15, 15]},
+                    {"form": "disc", "radius": [0.05, 0.08], "role": "light", "tint": [[220, 190, 255], [180, 240, 255]], "alpha": 0.85, "blink": [2.5, 5.0], "chance": 0.7}
+                ]}}
             ]
         }
     ]
