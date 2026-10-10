@@ -762,19 +762,23 @@
             "material": "hull",
             "shape": {
                 "sections": [
-                    {"form": "capsule", "at": [0.05, 0.0], "length": 1.75, "width": 0.52, "role": "hull", "pitch": 0.16},
-                    {"form": "bar", "at": [-0.6, 0.0], "length": 0.4, "width": 0.84, "role": "panel", "pitch": 0.14, "minPixels": 20},
-                    {"form": "chevron", "at": [-0.32, 0.4], "angle": 130, "length": 0.62, "width": 0.36, "role": "panel", "mirror": true, "minPixels": 24, "z": -1}
+                    {"form": "bar", "at": [-0.26, 0.0], "length": 0.44, "width": 0.4, "role": "hull", "pitch": 0.14},
+                    {"form": "bar", "at": [0.17, 0.0], "length": 0.42, "width": 0.4, "role": "hull", "pitch": 0.14},
+                    {"form": "bar", "at": [0.55, 0.0], "length": 0.5, "width": 0.46, "role": "hull", "pitch": 0.14},
+                    {"form": "chevron", "at": [1.05, 0.0], "length": 0.5, "width": 0.46, "tip": 0.15, "role": "hull"},
+                    {"form": "bar", "at": [-0.69, 0.0], "length": 0.42, "width": 0.66, "role": "hull", "pitch": 0.12}
                 ],
                 "kit": { "symmetry": "bilateral", "plain": 0.5, "modules": [
-                    {"of": "hull.engine", "in": 0, "on": "end", "count": 1, "mount": "out", "turn": 180, "scale": 0.26, "z": -1},
-                    {"of": "hull.cargo", "in": 0, "on": "edge", "count": [0, 2], "mount": "centre", "turn": 90, "scale": 0.17, "z": -1},
-                    {"of": "#style", "in": 0, "on": "top", "count": [0, 1], "scale": 0.2},
-                    {"of": "hull.rcs", "in": 1, "on": "edge", "count": 2, "scale": 0.06, "turn": -90}
+                    {"of": "hull.engine", "in": 4, "on": "stern", "count": 1, "fit": true, "mount": "out", "turn": 180, "scale": 0.3, "z": -1},
+                    {"of": "hull.thruster", "in": 4, "on": "side", "count": 2, "fit": true, "mount": "out", "turn": 90, "scale": 0.14, "z": -1},
+                    {"of": "hull.cargo", "in": 1, "on": "spine", "count": 1, "fit": true, "scale": 0.24},
+                    {"of": "weapons.laser", "in": 2, "on": "side", "count": 2, "fit": true, "mount": "centre", "turn": 90, "scale": 0.15},
+                    {"of": "hull.rcs", "in": 3, "on": "edge", "count": 2, "fit": true, "scale": 0.05, "turn": -90},
+                    {"of": "hull.cockpit", "in": 2, "on": "front", "count": 1, "scale": 0.12},
+                    {"of": "#style", "in": 0, "on": "top", "count": [0, 1], "scale": 0.18}
                 ] },
                 "parts": [
-                    {"module": "hull.cockpit", "at": [0.6, 0.0], "scale": 0.13},
-                    {"form": "disc", "at": [-0.7, 0.33], "radius": 0.045, "role": "light", "mirror": true, "minPixels": 26}
+                    {"form": "disc", "at": [-0.81, 0.28], "radius": 0.045, "role": "light", "mirror": true, "minPixels": 26}
                 ]
             },
             "components": {}
@@ -797,14 +801,15 @@
                     {"form": "bar", "at": [-0.25, 0.0], "length": 0.95, "width": 0.24, "role": "panel", "alpha": 0.55, "pitch": 0.12, "minPixels": 20}
                 ],
                 "kit": { "symmetry": "bilateral", "plain": 0.5, "modules": [
-                    {"of": "hull.rcs", "in": 2, "on": "edge", "count": 2, "scale": 0.06, "turn": -90},
+                    {"of": "hull.engine", "in": 0, "on": "stern", "count": 1, "fit": true, "mount": "out", "turn": 180, "scale": 0.24, "z": -1},
+                    {"of": "hull.thruster", "in": 1, "on": "side", "count": 2, "fit": true, "mount": "centre", "turn": 68.45, "scale": 0.14, "z": -1},
+                    {"of": "weapons.laser", "in": 0, "on": "side", "count": 2, "fit": true, "mount": "centre", "turn": 77.9, "scale": 0.1},
+                    {"of": "hull.rcs", "in": 2, "on": "edge", "count": 2, "fit": true, "scale": 0.06, "turn": -90},
                     {"of": "hull.armour", "in": 2, "on": "edge", "count": [0, 1], "scale": 0.09, "turn": 90},
                     {"of": "hatch", "in": 2, "on": "top", "count": [0, 1], "scale": 0.06}
                 ] },
                 "parts": [
                     {"module": "hull.cockpit", "at": [0.42, 0.0], "scale": 0.16},
-                    {"module": "hull.engine", "at": [-0.95, 0.0], "scale": 0.24, "z": -1},
-                    {"module": "hull.thruster", "at": [-0.62, 0.72], "scale": 0.16, "mirror": true, "chance": 0.6, "z": -1},
                     {"module": "hull.fin", "at": [-0.55, 0.0], "scale": 0.18, "chance": 0.4},
                     {"form": "disc", "at": [-0.78, 0.3], "radius": 0.05, "role": "light", "mirror": true, "minPixels": 26}
                 ]

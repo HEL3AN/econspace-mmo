@@ -186,7 +186,7 @@
             "id": "hull.engine",
             "note": "A ship's main drive, exhaust along -x: a flared bell, a cluster of nozzles, an ion grid, a plasma throat in magnetic rings, a bell with an afterburner ring. Richer than the core 'engine': a housing, a nozzle, and a plume drawn only while thrusting.",
             "tags": ["propulsion"],
-            "sockets": ["end"],
+            "sockets": ["stern", "end"],
             "variants": [
                 { "id": "bell", "shape": [
                     {"form": "chevron", "at": [-0.35, 0.0], "length": [1.25, 1.4], "width": [0.95, 1.3], "role": "hull"},
@@ -265,7 +265,7 @@
             "id": "hull.thruster",
             "note": "A thruster pod hung off a hull or a wingtip, exhaust along -x: a nacelle, a gimballed can, a pair.",
             "tags": ["propulsion"],
-            "sockets": ["side", "end"],
+            "sockets": ["side", "stern", "end"],
             "variants": [
                 { "id": "nacelle", "shape": [
                     {"form": "chevron", "at": [-0.8, 0.0], "length": [0.6, 0.7], "width": [0.55, 0.7], "role": "panel"},

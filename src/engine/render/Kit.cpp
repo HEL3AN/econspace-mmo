@@ -35,6 +35,8 @@ struct Where
     int   source, copy, local;
     float spin;
     bool  closed = false;
+    bool  axial = false;
+    float axis = 0.0f;
 };
 
 void Line(std::vector<Socket>& out, int& lines, int section, const char* type,
@@ -42,7 +44,7 @@ void Line(std::vector<Socket>& out, int& lines, int section, const char* type,
 {
     for (size_t k = 0; k < at.size(); k++)
         out.push_back({ at[k], angle[k], type, section, lines, (int)k, size, w.source, w.copy,
-                        w.local, w.spin, w.closed });
+                        w.local, w.spin, w.closed, w.axial, w.axis });
     lines++;
     w.local++;
 }
@@ -168,6 +170,9 @@ std::vector<Socket> Sockets(const std::vector<Part>& sections)
             const Part& s = copies[copy];
             const int   si = index++;
             Where       w{ (int)source, (int)copy, 0, s.spin };
+            w.axial = s.form == Form::Bar || s.form == Form::Capsule || s.form == Form::Lattice ||
+                      s.form == Form::Chevron;
+            w.axis = s.angle;
             switch (s.form)
             {
                 case Form::Bar:
@@ -346,6 +351,56 @@ std::vector<Socket> Sockets(const std::vector<Part>& sections)
     return open;
 }
 
+bool IsSocketKind(const std::string& kind)
+{
+    for (const char* k : { "edge", "end", "top", "ring", "middle", "bow", "stern", "front", "side",
+                           "spine", "bottom" })
+        if (kind == k)
+            return true;
+    return false;
+}
+
+bool Offers(const std::vector<Socket>& sockets, size_t i, const std::string& kind)
+{
+    const Socket& s = sockets[i];
+    if (kind == s.type)
+        return true;
+    // Within 45 degrees of +x or of -x: forward, aft.
+    const float along = std::cos(s.angle * DEG2RAD);
+    if (kind == "bow" || kind == "stern")
+        return s.type == "end" && (kind == "bow" ? along > 0.7071f : along < -0.7071f);
+    if (kind == "bottom")
+        return s.type == "top";
+    if (!s.axial)
+        return false;
+    if (kind == "spine")
+        return s.type == "top";
+    // The rest are one place on a line: which one is read off the line's other sockets.
+    if (kind == "front")
+    {
+        if (s.type != "top" || std::fabs(std::cos(s.axis * DEG2RAD)) < 0.7071f)
+            return false;
+        for (const Socket& o : sockets)
+            if (o.line == s.line && o.pos.x > s.pos.x + 1e-4f)
+                return false;
+        return true;
+    }
+    if (kind == "side")
+    {
+        // The middle of what is open of the flank: where a section beneath covers the aft
+        // half of it, the side moves forward to the half that is there.
+        if (s.type != "edge")
+            return false;
+        std::vector<int> open;
+        for (const Socket& o : sockets)
+            if (o.line == s.line)
+                open.push_back(o.index);
+        std::sort(open.begin(), open.end());
+        return s.index == open[(open.size() - 1) / 2];
+    }
+    return false;
+}
+
 std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, int seed)
 {
     std::vector<Part> out;
@@ -374,7 +429,16 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
     const bool bilateral = kit.symmetry == "bilateral";
     const bool radial = kit.symmetry == "radial";
 
-    for (size_t e = 0; e < kit.entries.size(); e++)
+    // Function before looks (#279): the lines that decide what the object can do are placed
+    // first, so a drive or a hold never loses its place to trim. Each line keeps its own
+    // salt, so the order changes nothing about what the seed chooses.
+    std::vector<size_t> sequence;
+    for (int pass = 0; pass < 2; pass++)
+        for (size_t e = 0; e < kit.entries.size(); e++)
+            if (kit.entries[e].fit == (pass == 0))
+                sequence.push_back(e);
+
+    for (size_t e : sequence)
     {
         const KitEntry& entry = kit.entries[e];
         const int       salt = 7001 + (int)e * 13;
@@ -416,19 +480,26 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
         if (want <= 0)
             continue;
 
-        // The lines that can take it: one half of a bilateral object (the other is its
-        // mirror), the first copy of a radial one (the others repeat it).
+        // The sockets of that kind, and the lines that can take it: one half of a bilateral
+        // object (the other is its mirror), the first copy of a radial one (the others repeat
+        // it).
+        std::vector<char> fits(sockets.size(), 0);
+        for (size_t i = 0; i < sockets.size(); i++)
+            fits[i] = Offers(sockets, i, type);
         std::vector<int> lines;
-        for (const Socket& s : sockets)
-            if (s.type == type && (!bilateral || s.pos.y <= 1e-3f) && (!radial || s.copy == 0) &&
+        for (size_t i = 0; i < sockets.size(); i++)
+        {
+            const Socket& s = sockets[i];
+            if (fits[i] && (!bilateral || s.pos.y <= 1e-3f) && (!radial || s.copy == 0) &&
                 (entry.in < 0 || s.source == entry.in) &&
                 std::find(lines.begin(), lines.end(), s.line) == lines.end())
                 lines.push_back(s.line);
+        }
         auto freeOn = [&](int line)
         {
             int n = 0;
             for (size_t i = 0; i < sockets.size(); i++)
-                n += sockets[i].line == line && !used[i];
+                n += fits[i] && sockets[i].line == line && !used[i];
             return n;
         };
         // The longest free line first, then the order the sections were written in.
@@ -438,9 +509,10 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
         {
             float sum = 0.0f;
             int   n = 0;
-            for (const Socket& s : sockets)
-                if (s.line == line)
+            for (size_t i = 0; i < sockets.size(); i++)
+                if (fits[i] && sockets[i].line == line)
                 {
+                    const Socket& s = sockets[i];
                     const float   len = std::hypot(s.pos.x, s.pos.y);
                     const Vector2 nrm = Turn({ 1.0f, 0.0f }, s.angle);
                     sum += len > 1e-4f ? (s.pos.x * nrm.x + s.pos.y * nrm.y) / len : 0.0f;
@@ -525,7 +597,7 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
                 break;
             std::vector<size_t> all;
             for (size_t i = 0; i < sockets.size(); i++)
-                if (sockets[i].line == line)
+                if (fits[i] && sockets[i].line == line)
                     all.push_back(i);
             const bool offAxis = bilateral && sockets[all[0]].pos.y < -1e-3f;
             const int  n = std::min(offAxis ? (left + 1) / 2 : left, (int)all.size());
@@ -589,7 +661,7 @@ std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, in
                         continue;
                     i = all[best];
                 }
-                if (!room(sockets[i]))
+                if (!entry.fit && !room(sockets[i]))
                     continue;
                 const int twin = offAxis ? twinOf(i) : -1;
                 place(i);
