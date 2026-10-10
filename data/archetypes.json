@@ -11,10 +11,21 @@
             "size": 150000,
             "light": { "radius": 2480000, "intensity": 1.00 },
             "shape": [
-                {"form": "disc", "radius": 1.75, "role": "hull", "alpha": 0.13, "spin": 0.7},
-                {"form": "disc", "radius": 1.28, "role": "trim", "alpha": 0.3, "spin": -1.1},
-                {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"form": "capsule", "at": [1.25, 0.0], "repeat": 5, "angle": 90, "length": 0.55, "width": 0.12, "role": "trim", "spin": 2.0, "blink": 3.1, "jitterAngle": 12, "minPixels": 90}
+                {"form": "disc", "radius": 1.10, "role": "hull", "alpha": 0.091},
+                {"form": "disc", "radius": 1.20, "role": "hull", "alpha": 0.075},
+                {"form": "disc", "radius": 1.30, "role": "hull", "alpha": 0.061},
+                {"form": "disc", "radius": 1.40, "role": "hull", "alpha": 0.051},
+                {"form": "disc", "radius": 1.50, "role": "hull", "alpha": 0.042},
+                {"form": "disc", "radius": 1.60, "role": "hull", "alpha": 0.035},
+                {"form": "disc", "radius": 1.70, "role": "hull", "alpha": 0.028},
+                {"form": "disc", "radius": 1.80, "role": "hull", "alpha": 0.022},
+                {"form": "disc", "radius": 1.90, "role": "hull", "alpha": 0.019},
+                {"form": "disc", "radius": 2.00, "role": "hull", "alpha": 0.015},
+                {"form": "disc", "radius": 2.10, "role": "hull", "alpha": 0.012},
+                {"form": "disc", "radius": 2.20, "role": "hull", "alpha": 0.011},
+                {"form": "disc", "radius": 2.30, "role": "hull", "alpha": 0.009},
+                {"form": "disc", "radius": 2.40, "role": "hull", "alpha": 0.007},
+                {"form": "disc", "radius": 1.0, "role": "hull"}
             ],
             "components": {}
         },
@@ -29,10 +40,21 @@
             "size": 175000,
             "light": { "radius": 1920000, "intensity": 0.90 },
             "shape": [
-                {"form": "disc", "radius": 1.9, "role": "hull", "alpha": 0.15, "spin": 0.4},
-                {"form": "disc", "radius": 1.32, "role": "trim", "alpha": 0.28, "spin": -0.6},
-                {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"form": "capsule", "at": [1.35, 0.0], "repeat": 4, "angle": 90, "length": 0.7, "width": 0.16, "role": "trim", "spin": 1.1, "blink": 4.5, "jitterAngle": 18, "minPixels": 90}
+                {"form": "disc", "radius": 1.19, "role": "hull", "alpha": 0.091},
+                {"form": "disc", "radius": 1.30, "role": "hull", "alpha": 0.075},
+                {"form": "disc", "radius": 1.40, "role": "hull", "alpha": 0.061},
+                {"form": "disc", "radius": 1.51, "role": "hull", "alpha": 0.051},
+                {"form": "disc", "radius": 1.62, "role": "hull", "alpha": 0.042},
+                {"form": "disc", "radius": 1.73, "role": "hull", "alpha": 0.035},
+                {"form": "disc", "radius": 1.84, "role": "hull", "alpha": 0.028},
+                {"form": "disc", "radius": 1.94, "role": "hull", "alpha": 0.022},
+                {"form": "disc", "radius": 2.05, "role": "hull", "alpha": 0.019},
+                {"form": "disc", "radius": 2.16, "role": "hull", "alpha": 0.015},
+                {"form": "disc", "radius": 2.27, "role": "hull", "alpha": 0.012},
+                {"form": "disc", "radius": 2.38, "role": "hull", "alpha": 0.011},
+                {"form": "disc", "radius": 2.48, "role": "hull", "alpha": 0.009},
+                {"form": "disc", "radius": 2.59, "role": "hull", "alpha": 0.007},
+                {"form": "disc", "radius": 1.0, "role": "hull"}
             ],
             "components": {}
         },
@@ -47,10 +69,21 @@
             "size": 137500,
             "light": { "radius": 3120000, "intensity": 1.10 },
             "shape": [
-                {"form": "disc", "radius": 1.65, "role": "hull", "alpha": 0.12, "spin": 1.3},
-                {"form": "disc", "radius": 1.22, "role": "trim", "alpha": 0.32, "spin": -2.0},
-                {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"form": "capsule", "at": [1.2, 0.0], "repeat": 7, "angle": 90, "length": 0.45, "width": 0.09, "role": "trim", "spin": 3.4, "blink": 1.9, "jitterAngle": 10, "minPixels": 90}
+                {"form": "disc", "radius": 1.04, "role": "hull", "alpha": 0.091},
+                {"form": "disc", "radius": 1.14, "role": "hull", "alpha": 0.075},
+                {"form": "disc", "radius": 1.23, "role": "hull", "alpha": 0.061},
+                {"form": "disc", "radius": 1.33, "role": "hull", "alpha": 0.051},
+                {"form": "disc", "radius": 1.42, "role": "hull", "alpha": 0.042},
+                {"form": "disc", "radius": 1.52, "role": "hull", "alpha": 0.035},
+                {"form": "disc", "radius": 1.61, "role": "hull", "alpha": 0.028},
+                {"form": "disc", "radius": 1.71, "role": "hull", "alpha": 0.022},
+                {"form": "disc", "radius": 1.80, "role": "hull", "alpha": 0.019},
+                {"form": "disc", "radius": 1.90, "role": "hull", "alpha": 0.015},
+                {"form": "disc", "radius": 1.99, "role": "hull", "alpha": 0.012},
+                {"form": "disc", "radius": 2.09, "role": "hull", "alpha": 0.011},
+                {"form": "disc", "radius": 2.18, "role": "hull", "alpha": 0.009},
+                {"form": "disc", "radius": 2.28, "role": "hull", "alpha": 0.007},
+                {"form": "disc", "radius": 1.0, "role": "hull"}
             ],
             "components": {}
         },
@@ -401,7 +434,7 @@
             "sprite": "derelict",
             "color": [125, 118, 106, 255],
             "layer": 3,
-            "size": 520,
+            "size": 2600,
             "material": "hull",
             "shape": [
                 {"form": "bar", "at": [0.05, 0.0], "angle": -3, "length": 0.8, "width": 0.46, "role": "hull", "spin": -0.25},
@@ -422,7 +455,10 @@
                 {"form": "bar", "at": [0.3, 0.46], "angle": 35, "length": 0.2, "width": 0.07, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 34, "spin": -0.25},
                 {"form": "bar", "at": [-0.4, -0.38], "angle": -50, "length": 0.16, "width": 0.06, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 34, "spin": -0.25},
                 {"form": "bar", "at": [-0.6, 0.6], "angle": 70, "length": 0.14, "width": 0.06, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 50, "spin": -0.25},
-                {"form": "bar", "at": [1.0, 0.36], "angle": 10, "length": 0.12, "width": 0.05, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 50, "spin": -0.25}
+                {"form": "bar", "at": [1.0, 0.36], "angle": 10, "length": 0.12, "width": 0.05, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 50, "spin": -0.25},
+                {"form": "disc", "at": [0.62, 0.2], "radius": 0.022, "role": "light", "alpha": 0.8, "blink": 5.5, "minPixels": 60, "spin": -0.25},
+                {"form": "disc", "at": [-0.15, -0.21], "radius": 0.018, "role": "light", "alpha": 0.7, "blink": 7.0, "minPixels": 60, "spin": -0.25},
+                {"form": "disc", "at": [-1.02, 0.42], "radius": 0.02, "role": "light", "alpha": 0.6, "blink": 3.7, "minPixels": 60, "spin": -0.25}
             ],
             "components": {
                 "salvageable": { "range": 400 }

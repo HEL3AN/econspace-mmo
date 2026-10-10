@@ -27,7 +27,7 @@ namespace Gen
 // galaxy, and a player's structure would be standing in space that is no longer there.
 // Bump it whenever the output for a given seed changes -- the golden test will say so.
 inline constexpr int GENERATOR_VERSION =
-    4;  // 4: placement with reasons (#146); 3: satellites (#210)
+    5;  // 5: the leviathan dwarfs a station; 4: placement with reasons (#146)
 
 struct RegionParams
 {
