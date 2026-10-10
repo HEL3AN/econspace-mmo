@@ -219,6 +219,8 @@ struct Part
         Field field;
         float lo, hi;
         int   var = -1;
+        // "$r+[0.02, 0.06]": the variable's line plus this part's own roll in a range.
+        float plusLo = 0.0f, plusHi = 0.0f;
     };
     std::vector<Vary>  vary;
     std::vector<Color> palette;

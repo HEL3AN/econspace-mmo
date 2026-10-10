@@ -479,13 +479,16 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         // "$name", or a straight line of one: "-$a", "$w*0.5", "$r+0.05", "-$len/2+0.1".
         // Enough for a pair of jaws that open together, a rim a fixed step outside its
         // crater, a pivot at the end of a ranged length -- and no more: a shape is data, not
-        // a program. Sets the slope and offset; -1 having said why not.
-        auto variable = [&](const json& v, float& mul, float& add) -> int
+        // a program. The step may be a range, "$r+[0.02,0.06]", which this part rolls on
+        // its own: a shared size, a step outside it that differs from part to part. Sets
+        // the slope and the offset's range; -1 having said why not.
+        auto variable = [&](const json& v, float& mul, float& add, float& addHi) -> int
         {
             const std::string text = v.get<std::string>();
             size_t            at = 0;
             mul = 1.0f;
             add = 0.0f;
+            addHi = 0.0f;
             if (text[at] == '-')
             {
                 mul = -1.0f;
@@ -520,7 +523,24 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
                 mul *= op == '*' ? x : 1.0f / x;
                 rest = stop;
             }
-            if (*rest == '+' || *rest == '-')
+            if ((*rest == '+' || *rest == '-') && rest[1] == '[')
+            {
+                const float sign = *rest == '-' ? -1.0f : 1.0f;
+                const float a = std::strtof(rest + 2, &stop);
+                bool        ok = stop != rest + 2 && *stop == ',';
+                const char* second = ok ? stop + 1 : rest;
+                const float b = ok ? std::strtof(second, &stop) : 0.0f;
+                ok = ok && stop != second && *stop == ']';
+                if (!ok)
+                {
+                    error = "'" + text + "': a range is [min,max] after the sign";
+                    return -1;
+                }
+                add = sign * a;
+                addHi = sign * b;
+                rest = stop + 1;
+            }
+            else if (*rest == '+' || *rest == '-')
             {
                 add = std::strtof(rest, &stop);
                 if (stop == rest + 1)
@@ -528,13 +548,16 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
                     error = "'" + text + "': a number was expected after the sign";
                     return -1;
                 }
+                addHi = add;
                 rest = stop;
             }
+            else
+                addHi = add;
             if (*rest != '\0')
             {
                 error = "'" + text +
                         "' is \"$name\", optionally negated, times or over a "
-                        "number, plus or minus a number";
+                        "number, plus or minus a number or a [min,max] range";
                 return -1;
             }
             return k;
@@ -553,8 +576,8 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         {
             if (isVariable(v))
             {
-                float     mul = 1.0f, add = 0.0f;
-                const int k = variable(v, mul, add);
+                float     mul = 1.0f, add = 0.0f, addHi = 0.0f;
+                const int k = variable(v, mul, add, addHi);
                 if (k < 0)
                     return false;
                 if (!s.vars[k].palette.empty())
@@ -563,9 +586,9 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
                     return false;
                 }
                 // A line of a uniform roll is a uniform roll between the line's ends.
-                const float lo = s.vars[k].lo * mul + add, hi = s.vars[k].hi * mul + add;
-                dst = lo;
-                p.vary.push_back({ f, lo, hi, k });
+                const float lo = s.vars[k].lo * mul, hi = s.vars[k].hi * mul;
+                dst = lo + add;
+                p.vary.push_back({ f, lo, hi, k, add, addHi });
                 return true;
             }
             if (v.is_number())
@@ -666,8 +689,8 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
             const json& t = e["tint"];
             if (isVariable(t))
             {
-                float     mul = 1.0f, add = 0.0f;
-                const int k = variable(t, mul, add);
+                float     mul = 1.0f, add = 0.0f, addHi = 0.0f;
+                const int k = variable(t, mul, add, addHi);
                 if (k < 0)
                     return false;
                 if (s.vars[k].palette.empty())
@@ -814,7 +837,11 @@ bool Resolve(const Part& p, int seed, int salt, Part& out, const float* rolls)
         const Part::Vary& v = p.vary[k];
         const float u = (v.var >= 0 && rolls != nullptr) ? rolls[v.var]
                                                          : Hash01(seed, salt + 701 + (int)k * 17);
-        const float x = v.lo + (v.hi - v.lo) * u;
+        float       x = v.lo + (v.hi - v.lo) * u;
+        if (v.var >= 0)
+            x += v.plusHi == v.plusLo
+                     ? v.plusLo
+                     : v.plusLo + (v.plusHi - v.plusLo) * Hash01(seed, salt + 701 + (int)k * 17);
         switch (v.field)
         {
             case Part::Field::Radius: out.radius = x; break;
