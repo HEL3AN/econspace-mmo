@@ -219,6 +219,11 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
     // dock refuses a ship in warp.
     if (dist > arrive || s.ship->IsWarping())
     {
+        // Arrived where the target was, and it is not there any more: a planet and its
+        // satellites move (#210). The approach follows the target by id, so it is aimed
+        // again at where the target is now -- by then close enough to fly.
+        if (s.orderNavIssued && !s.ship->IsWarping() && !s.ship->IsAutopilotOn())
+            s.orderNavIssued = false;
         if (!s.orderNavIssued)
         {
             Proto::Command nav;

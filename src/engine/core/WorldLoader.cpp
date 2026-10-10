@@ -1,4 +1,6 @@
 #include "core/WorldLoader.h"
+
+#include "core/Orbits.h"
 #include "core/Archetype.h"
 
 #include "entities/Star.h"
@@ -127,6 +129,35 @@ static void ApplyArchetype(Entity& e, const json& o)
     e.SetArchetype(id);
 }
 
+// A satellite (#210): `"orbits": { "planet": i, "radius": r, "speed": s, "phase": p }`.
+// The position is then the planet's plus a turning offset, so "pos" may be left out; one
+// that is given is where the object stands until the clock first places it.
+static void ApplyOrbit(Entity& e, const json& o)
+{
+    if (!o.contains("orbits"))
+        return;
+    const json& j = o["orbits"];
+    if (!j.is_object() || !j.contains("planet") || !j.contains("radius"))
+    {
+        TraceLog(LOG_WARNING,
+                 "WorldLoader: '%s' has an orbits block without planet and radius "
+                 "-- left where it stands",
+                 o.value("name", std::string("an object")).c_str());
+        return;
+    }
+    Orbit orbit;
+    orbit.planet = j["planet"].get<int>();
+    orbit.radius = j["radius"].get<float>();
+    orbit.speed = j.value("speed", 0.0f);
+    orbit.phase = j.value("phase", 0.0f);
+    e.SetOrbit(orbit);
+}
+
+static Vector2 PosOf(const json& o)
+{
+    return o.contains("pos") ? Vec2FromJson(o["pos"]) : Vector2{ 0.0f, 0.0f };
+}
+
 // Builds entities from already-parsed JSON. Order: star, planets, stations,
 // asteroid fields, nebulae, derelicts, gates — the editor relies on it (entity
 // indices correspond to JSON elements).
@@ -165,7 +196,7 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
             // Color is optional: if not set, the planet's default type color is used.
             Color color = p.contains("color") ? ColorFromJson(p["color"]) : PlanetTypeColor(type);
             entities.push_back(std::make_unique<Planet>(
-                p.value("orbitRadius", 350000.0), p.value("orbitSpeed", 300.0),
+                p.value("orbitRadius", 350000.0), p.value("orbitSpeed", 30.0),
                 p.value("angle", 0.0), p.value("size", 15000.0), color,
                 ResourceFromString(p.value("deposit", std::string("Iron"))), type));
             ApplyArchetype(*entities.back(), p);
@@ -184,9 +215,10 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
                 TraceLog(LOG_WARNING,
                          "WorldLoader: station '%s' has unknown role '%s' -- built as TradeHub",
                          s.value("name", std::string("?")).c_str(), roleName.c_str());
-            entities.push_back(std::make_unique<Station>(Vec2FromJson(s["pos"]), (float)s["size"],
-                                                         s["name"], faction, role));
+            entities.push_back(
+                std::make_unique<Station>(PosOf(s), (float)s["size"], s["name"], faction, role));
             ApplyArchetype(*entities.back(), s);
+            ApplyOrbit(*entities.back(), s);
         }
     }
 
@@ -195,9 +227,10 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
         for (const json& f : data["asteroidFields"])
         {
             entities.push_back(
-                std::make_unique<AsteroidField>(Vec2FromJson(f["pos"]), (float)f["size"], f["name"],
+                std::make_unique<AsteroidField>(PosOf(f), (float)f["size"], f["name"],
                                                 ResourceFromString(f["resource"]), (int)f["ore"]));
             ApplyArchetype(*entities.back(), f);
+            ApplyOrbit(*entities.back(), f);
         }
     }
 
@@ -205,9 +238,10 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
     {
         for (const json& n : data["nebulae"])
         {
-            entities.push_back(std::make_unique<Nebula>(Vec2FromJson(n["pos"]), (float)n["radius"],
+            entities.push_back(std::make_unique<Nebula>(PosOf(n), (float)n["radius"],
                                                         n.value("name", std::string("Nebula"))));
             ApplyArchetype(*entities.back(), n);
+            ApplyOrbit(*entities.back(), n);
         }
     }
 
@@ -215,10 +249,11 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
     {
         for (const json& d : data["derelicts"])
         {
-            entities.push_back(std::make_unique<Derelict>(Vec2FromJson(d["pos"]),
-                                                          (float)d.value("size", 45.0), d["name"],
+            entities.push_back(std::make_unique<Derelict>(PosOf(d), (float)d.value("size", 45.0),
+                                                          d["name"],
                                                           (double)d.value("reward", 500.0)));
             ApplyArchetype(*entities.back(), d);
+            ApplyOrbit(*entities.back(), d);
         }
     }
 
@@ -233,5 +268,6 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
         }
     }
 
+    Orbits::Place(entities, 0.0);  // satellites without a "pos" need one before anything asks
     return entities;
 }

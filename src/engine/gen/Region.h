@@ -26,7 +26,7 @@ namespace Gen
 // from other rules is refused (#140): the same seed read by different rules is a different
 // galaxy, and a player's structure would be standing in space that is no longer there.
 // Bump it whenever the output for a given seed changes -- the golden test will say so.
-inline constexpr int GENERATOR_VERSION = 2;  // 2: system characters (#142)
+inline constexpr int GENERATOR_VERSION = 3;  // 3: satellites (#210); 2: characters (#142)
 
 struct RegionParams
 {

@@ -1,15 +1,20 @@
 #include <doctest/doctest.h>
 
 #include "core/Archetype.h"
+#include "entities/ShipType.h"
+#include "core/Orbits.h"
 #include "core/World.h"
 #include "core/WorldLoader.h"
 #include "entities/Entity.h"
 #include "gen/Region.h"
 #include "gen/Rng.h"
 
+#include "raymath.h"
+#include <algorithm>
 #include <cmath>
 #include <deque>
 #include <fstream>
+#include <map>
 #include <set>
 #include <string>
 
@@ -81,8 +86,8 @@ TEST_CASE("the rules have not changed without saying so")
     // old rules are then refused) and update the value here.
     const uint64_t h = Fnv1a(Dump(Gen::GenerateRegion(Params(1))));
     MESSAGE("region hash for seed 1: " << h);
-    CHECK(Gen::GENERATOR_VERSION == 2);
-    CHECK(h == 17574935309492413989ull);
+    CHECK(Gen::GENERATOR_VERSION == 3);
+    CHECK(h == 16759462980079661489ull);
 }
 
 TEST_CASE("every system can be reached from home, and every link has a gate on both ends")
@@ -126,6 +131,7 @@ TEST_CASE("every system can be reached from home, and every link has a gate on b
 
 TEST_CASE("nothing generated sits in a planet's path or past the system's edge")
 {
+    int satellites = 0;
     for (uint64_t seed = 1; seed <= 40; seed++)
     {
         const Gen::Region r = Gen::GenerateRegion(Params(seed));
@@ -135,6 +141,25 @@ TEST_CASE("nothing generated sits in a planet's path or past the system's edge")
             for (const char* group : { "gates", "asteroidFields", "derelicts" })
                 for (const auto& o : sys[group])
                 {
+                    CAPTURE(seed);
+                    CAPTURE(kv.first);
+                    CAPTURE(o.dump());
+                    // What was in a planet's path is that planet's satellite (#210): close
+                    // to it, clear of its surface, and never a gate.
+                    if (o.contains("orbits"))
+                    {
+                        satellites++;
+                        CHECK(std::string(group) != "gates");
+                        CHECK_FALSE(o.contains("pos"));
+                        const int i = o["orbits"]["planet"];
+                        REQUIRE(i >= 0);
+                        REQUIRE(i < (int)sys["planets"].size());
+                        const double ps = sys["planets"][i]["size"];
+                        const double radius = o["orbits"]["radius"], size = o["size"];
+                        CHECK(radius - size > ps);
+                        CHECK(radius + size <= ps * 1.5 + 12000.0);
+                        continue;
+                    }
                     const double x = o["pos"][0], y = o["pos"][1];
                     const double d = std::sqrt(x * x + y * y), size = o["size"];
                     CAPTURE(seed);
@@ -158,6 +183,74 @@ TEST_CASE("nothing generated sits in a planet's path or past the system's edge")
                 }
         }
     }
+    CHECK(satellites > 0);  // the rule is not dead code
+}
+
+TEST_CASE("two satellites of one planet keep to their own orbits (#210)")
+{
+    for (uint64_t seed = 1; seed <= 40; seed++)
+    {
+        const Gen::Region r = Gen::GenerateRegion(Params(seed));
+        for (const auto& kv : r.documents)
+        {
+            std::map<int, std::vector<std::pair<double, double>>> rings;  // planet -> [in, out]
+            for (const char* group : { "asteroidFields", "derelicts" })
+                for (const auto& o : kv.second[group])
+                    if (o.contains("orbits"))
+                    {
+                        const double radius = o["orbits"]["radius"], size = o["size"];
+                        rings[o["orbits"]["planet"].get<int>()].push_back(
+                            { radius - size, radius + size });
+                    }
+            for (auto& pr : rings)
+            {
+                std::sort(pr.second.begin(), pr.second.end());
+                for (size_t i = 1; i < pr.second.size(); i++)
+                {
+                    CAPTURE(seed);
+                    CAPTURE(kv.first);
+                    CHECK(pr.second[i].first > pr.second[i - 1].second);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("a satellite goes round its planet, and the planet round its star, by the clock (#210)")
+{
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const nlohmann::json sys = nlohmann::json::parse(R"({
+        "planets": [ { "type": "Gas", "size": 30000, "orbitRadius": 400000, "orbitSpeed": 400,
+                       "angle": 0.0, "deposit": "Iron" } ],
+        "derelicts": [ { "name": "Moonlet", "size": 50, "reward": 100,
+                         "orbits": { "planet": 0, "radius": 45000, "speed": 90, "phase": 1.0 } } ]
+    })");
+    auto                 e = WorldLoader::BuildSystem(sys);
+    REQUIRE(e.size() == 2);
+    const Entity& planet = *e[0];
+    const Entity& moon = *e[1];
+    REQUIRE(moon.GetOrbit().has_value());
+    // Built without a "pos": placed already, at world time zero.
+    CHECK(planet.GetPosition().x == doctest::Approx(400000.0f));
+    CHECK(Vector2Distance(moon.GetPosition(), planet.GetPosition()) == doctest::Approx(45000.0f));
+
+    for (double t : { 0.0, 600.0, 86400.0, 604800.0 })
+    {
+        CAPTURE(t);
+        Orbits::Place(e, t);
+        CHECK(Vector2Length(planet.GetPosition()) == doctest::Approx(400000.0f).epsilon(1e-4));
+        CHECK(Vector2Distance(moon.GetPosition(), planet.GetPosition()) ==
+              doctest::Approx(45000.0f).epsilon(1e-3));
+    }
+
+    // A function of time, not of how often it was asked: one jump to an hour is the same
+    // place as an hour of ticks.
+    auto stepped = WorldLoader::BuildSystem(sys);
+    for (int i = 1; i <= 3600; i++)
+        Orbits::Place(stepped, i * 1.0);
+    Orbits::Place(e, 3600.0);
+    CHECK(stepped[1]->GetPosition().x == doctest::Approx(e[1]->GetPosition().x));
+    CHECK(stepped[1]->GetPosition().y == doctest::Approx(e[1]->GetPosition().y));
 }
 
 TEST_CASE("a generated system is a system the game can build")
@@ -235,4 +328,38 @@ TEST_CASE("rare finds are rare, unique in a region, and found by somebody (#211)
         CHECK(regionsWith[f] >= seeds / 5);       // somebody finds one
         CHECK(regionsWith[f] <= seeds * 9 / 10);  // and not everybody
     }
+}
+
+TEST_CASE("a satellite is a place the slowest ship can reach (#210)")
+{
+    // A station that moves faster than a ship can fly is a station nobody docks at: its
+    // planet and its own turn together must stay well under the slowest hull's top speed.
+    float slowest = 1e9f;
+    for (const ShipType& t : GetShipCatalog())
+        slowest = std::min(slowest, t.stats.maxSpeed);
+    const double limit = slowest * 0.5;
+
+    auto check = [&](const nlohmann::json& sys)
+    {
+        for (const char* group : { "stations", "asteroidFields", "derelicts", "nebulae" })
+            if (sys.contains(group))
+                for (const auto& o : sys[group])
+                    if (o.contains("orbits"))
+                    {
+                        CAPTURE(o.dump());
+                        const auto& p = sys["planets"][o["orbits"]["planet"].get<int>()];
+                        CHECK(p["orbitSpeed"].get<double>() + o["orbits"].value("speed", 0.0) <
+                              limit);
+                    }
+    };
+    for (const char* name : { "core", "reach", "verge" })
+    {
+        CAPTURE(name);
+        std::ifstream f(std::string(TEST_DATA_DIR) + "systems/" + name + ".json");
+        REQUIRE(f.good());
+        check(nlohmann::json::parse(f));
+    }
+    for (uint64_t seed = 1; seed <= 20; seed++)
+        for (const auto& kv : Gen::GenerateRegion(Params(seed)).documents)
+            check(kv.second);
 }

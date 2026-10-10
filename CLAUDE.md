@@ -157,6 +157,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   every player verb takes the session it acts for. There is no "active system" either: a
   session carries the system it is in, and every system is stepped the same way. Anything
   reintroduced as a member of `Simulation` is shared by every player on the server.
+- **A planet and what orbits it are placed by the world clock** (#210). `Orbits::Place`
+  puts every planet at `f(world time)` and every satellite (an object with `orbits`) at its
+  planet plus a turning offset; nothing integrates them per tick. A satellite is in every
+  snapshot like a planet, so the client needs nothing new, and an order approaching one
+  is re-aimed after the drop-out because the target has moved since it was issued.
 - **Anything that moves is `f(time, seed)`** (#136), never integrated per frame. A part
   whose angle accumulated would drift between clients and two players would see the same
   station turned differently; as written nothing about motion crosses the wire. The turn is

@@ -84,13 +84,15 @@ void RandomDirection(Rng& rng, double& ux, double& uy)
     }
 }
 
-bool Clear(double x, double y, double size, const std::vector<Band>& bands,
-           const std::vector<Disc>& taken)
+// How far out from a planet its satellites may go (#210): a planet's path is wider than the
+// planet, because it takes what orbits it along.
+double MoonZone(double planetSize)
 {
-    const double r = std::sqrt(x * x + y * y);
-    for (const Band& b : bands)
-        if (std::fabs(r - b.radius) < b.size + size + CLEARANCE)
-            return false;
+    return planetSize * 1.5 + 12000.0;
+}
+
+bool ClearOfTaken(double x, double y, double size, const std::vector<Disc>& taken)
+{
     for (const Disc& d : taken)
     {
         const double dx = x - d.x, dy = y - d.y;
@@ -99,6 +101,40 @@ bool Clear(double x, double y, double size, const std::vector<Band>& bands,
             return false;
     }
     return true;
+}
+
+// The planet whose path (x, y) is in, or -1.
+int BandAt(double x, double y, double size, const std::vector<Band>& bands)
+{
+    const double r = std::sqrt(x * x + y * y);
+    for (size_t i = 0; i < bands.size(); i++)
+        if (std::fabs(r - bands[i].radius) < MoonZone(bands[i].size) + size + CLEARANCE)
+            return (int)i;
+    return -1;
+}
+
+bool Clear(double x, double y, double size, const std::vector<Band>& bands,
+           const std::vector<Disc>& taken)
+{
+    return BandAt(x, y, size, bands) < 0 && ClearOfTaken(x, y, size, taken);
+}
+
+// Room left around each planet for satellites, innermost first.
+struct Moons
+{
+    std::vector<double> next;   // the inner edge of the next free orbit
+    std::vector<double> limit;  // how far out a satellite may reach
+};
+
+Moons MoonsFor(const std::vector<Band>& bands)
+{
+    Moons m;
+    for (const Band& b : bands)
+    {
+        m.next.push_back(b.size + 4000.0);
+        m.limit.push_back(MoonZone(b.size));
+    }
+    return m;
 }
 
 // Somewhere between rMin and rMax from the star, out of every planet's path and clear of
@@ -130,6 +166,40 @@ bool Place(Rng& rng, double rMin, double rMax, double size, const std::vector<Ba
             continue;
         taken.push_back({ x, y, size });
         pos = json::array({ (int64_t)x, (int64_t)y });
+        return true;
+    }
+    return false;
+}
+
+// Somewhere between rMin and rMax, like Place -- but a spot in a planet's path is not
+// refused: the object belongs to that planet and orbits it (#210). Writes "pos" or
+// "orbits" into `obj`. A satellite's angle needs no sin or cos here; the loader turns it.
+bool PlaceOrOrbit(Rng& rng, double rMin, double rMax, double size, const std::vector<Band>& bands,
+                  Moons& moons, std::vector<Disc>& taken, json& obj)
+{
+    for (int attempt = 0; attempt < 96; attempt++)
+    {
+        double ux, uy;
+        RandomDirection(rng, ux, uy);
+        const double r = rng.Between(rMin, rMax);
+        const double x = Round(ux * r, 100.0), y = Round(uy * r, 100.0);
+        if (!ClearOfTaken(x, y, size, taken))
+            continue;
+        const int planet = BandAt(x, y, size, bands);
+        if (planet < 0)
+        {
+            taken.push_back({ x, y, size });
+            obj["pos"] = json::array({ (int64_t)x, (int64_t)y });
+            return true;
+        }
+        const double radius = Round(moons.next[planet] + size, 100.0);
+        if (radius + size > moons.limit[planet])
+            continue;  // this planet has no room left; somewhere else, then
+        moons.next[planet] = radius + size + 2000.0;
+        obj["orbits"] = { { "planet", planet },
+                          { "radius", (int64_t)radius },
+                          { "speed", rng.Range(20, 50) },
+                          { "phase", rng.Range(0, 65535) * (TWO_PI / 65536.0) } };
         return true;
     }
     return false;
@@ -415,7 +485,7 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
             planets.push_back({ { "type", type },
                                 { "size", size },
                                 { "orbitRadius", (int64_t)r },
-                                { "orbitSpeed", rng.Range(280, 520) },
+                                { "orbitSpeed", rng.Range(28, 52) },
                                 { "angle", rng.Range(0, 65535) * (TWO_PI / 65536.0) },
                                 { "deposit", DepositOf(type) } });
             bands.push_back({ r, (double)size });
@@ -440,6 +510,7 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
         for (const json& s : sys["stars"])
             taken.push_back(
                 { s["pos"][0].get<double>(), s["pos"][1].get<double>(), s["size"].get<double>() });
+    Moons moons = MoonsFor(bands);
 
     // Gates first: each faces the system it leads to, and their bearings are not free.
     {
@@ -493,16 +564,15 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
             if (character == Character::Frozen)
                 res = roll < 75 ? "Ice" : "Crystal";
             const int size = rng.Range(50, 75) * 100;
-            json      pos;
-            if (!Place(rng, 260000.0, 840000.0, size, bands, taken, pos))
+            json belt = { { "name", n.designation + " Belt " + std::string(1, (char)('A' + i)) },
+                          { "size", size },
+                          { "resource", res } };
+            // In a planet's path a belt is its ring -- a gas giant's, most often (#210).
+            if (!PlaceOrOrbit(rng, 260000.0, 840000.0, size, bands, moons, taken, belt))
                 continue;
-            belts.push_back(
-                { { "name", n.designation + " Belt " + std::string(1, (char)('A' + i)) },
-                  { "pos", pos },
-                  { "size", size },
-                  { "resource", res },
-                  { "ore", rng.Range(200, 400) + 40 * n.depth +
-                               (character == Character::BeltCluster ? 100 : 0) } });
+            belt["ore"] = rng.Range(200, 400) + 40 * n.depth +
+                          (character == Character::BeltCluster ? 100 : 0);
+            belts.push_back(belt);
         }
         sys["asteroidFields"] = belts;
     }
@@ -566,13 +636,12 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
             for (int i = 0; i < count; i++)
             {
                 const int size = rng.Range(30, 50);
-                json      pos;
-                if (!Place(rng, 200000.0, 850000.0, size, bands, taken, pos))
+                json      wreck = { { "size", size } };
+                if (!PlaceOrOrbit(rng, 200000.0, 850000.0, size, bands, moons, taken, wreck))
                     continue;
-                wrecks.push_back({ { "name", NAMES[rng.Range(0, 4)] },
-                                   { "pos", pos },
-                                   { "size", size },
-                                   { "reward", 1000 + 500 * n.depth + rng.Range(0, 8) * 100 } });
+                wreck["name"] = NAMES[rng.Range(0, 4)];
+                wreck["reward"] = 1000 + 500 * n.depth + rng.Range(0, 8) * 100;
+                wrecks.push_back(wreck);
             }
         }
         sys["derelicts"] = wrecks;
@@ -601,9 +670,37 @@ std::vector<Disc> TakenOf(const json& sys)
     for (const char* group : { "gates", "asteroidFields", "derelicts" })
         if (sys.contains(group))
             for (const json& o : sys[group])
-                taken.push_back({ o["pos"][0].get<double>(), o["pos"][1].get<double>(),
-                                  o["size"].get<double>() });
+                if (o.contains("pos"))  // a satellite moves; its planet's path covers it
+                    taken.push_back({ o["pos"][0].get<double>(), o["pos"][1].get<double>(),
+                                      o["size"].get<double>() });
     return taken;
+}
+
+// The room around a finished system's planets, less what already orbits them.
+Moons MoonsOf(const json& sys)
+{
+    Moons moons = MoonsFor(BandsOf(sys));
+    for (const char* group : { "asteroidFields", "derelicts" })
+        if (sys.contains(group))
+            for (const json& o : sys[group])
+                if (o.contains("orbits"))
+                {
+                    const int p = o["orbits"]["planet"].get<int>();
+                    if (p >= 0 && p < (int)moons.next.size())
+                        moons.next[p] =
+                            std::max(moons.next[p], o["orbits"]["radius"].get<double>() +
+                                                        o["size"].get<double>() + 2000.0);
+                }
+    return moons;
+}
+
+// Puts a find somewhere in `sys`, in a planet's path or out of it, and adds it.
+void PlaceFind(Rng& rng, json& sys, const char* group, double rMin, double rMax, json find)
+{
+    std::vector<Disc> taken = TakenOf(sys);
+    Moons             moons = MoonsOf(sys);
+    if (PlaceOrOrbit(rng, rMin, rMax, find["size"].get<double>(), BandsOf(sys), moons, taken, find))
+        sys[group].push_back(find);
 }
 
 // Which system gets it: deeper is likelier, and a barren system -- the one that otherwise has
@@ -652,15 +749,12 @@ void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Regi
         if (rng.Chance(45))
             if (const Node* n = PickHost(rng, nodes, region, 3))
             {
-                json&             sys = region.documents[n->id];
-                std::vector<Disc> taken = TakenOf(sys);
-                json              pos;
-                if (Place(rng, 250000.0, 820000.0, 520.0, BandsOf(sys), taken, pos))
-                    sys["derelicts"].push_back({ { "name", NAMES[rng.Range(0, 3)] },
-                                                 { "pos", pos },
-                                                 { "size", 520 },
-                                                 { "reward", 12000 + 1500 * n->depth },
-                                                 { "archetype", "derelict.leviathan" } });
+                const char* name = NAMES[rng.Range(0, 3)];
+                PlaceFind(rng, region.documents[n->id], "derelicts", 250000.0, 820000.0,
+                          { { "name", name },
+                            { "size", 520 },
+                            { "reward", 12000 + 1500 * n->depth },
+                            { "archetype", "derelict.leviathan" } });
             }
     }
 
@@ -672,16 +766,13 @@ void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Regi
         if (rng.Chance(55))
             if (const Node* n = PickHost(rng, nodes, region, 2))
             {
-                json&             sys = region.documents[n->id];
-                std::vector<Disc> taken = TakenOf(sys);
-                json              pos;
-                if (Place(rng, 260000.0, 840000.0, 6000.0, BandsOf(sys), taken, pos))
-                    sys["asteroidFields"].push_back({ { "name", NAMES[rng.Range(0, 3)] },
-                                                      { "pos", pos },
-                                                      { "size", 6000 },
-                                                      { "resource", "Crystal" },
-                                                      { "ore", 2400 + 200 * n->depth },
-                                                      { "archetype", "field.motherlode" } });
+                const char* name = NAMES[rng.Range(0, 3)];
+                PlaceFind(rng, region.documents[n->id], "asteroidFields", 260000.0, 840000.0,
+                          { { "name", name },
+                            { "size", 6000 },
+                            { "resource", "Crystal" },
+                            { "ore", 2400 + 200 * n->depth },
+                            { "archetype", "field.motherlode" } });
             }
     }
 
@@ -693,15 +784,12 @@ void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Regi
         if (rng.Chance(45))
             if (const Node* n = PickHost(rng, nodes, region, 2))
             {
-                json&             sys = region.documents[n->id];
-                std::vector<Disc> taken = TakenOf(sys);
-                json              pos;
-                if (Place(rng, 250000.0, 820000.0, 600.0, BandsOf(sys), taken, pos))
-                    sys["derelicts"].push_back({ { "name", NAMES[rng.Range(0, 3)] },
-                                                 { "pos", pos },
-                                                 { "size", 600 },
-                                                 { "reward", 8000 + 1000 * n->depth },
-                                                 { "archetype", "derelict.station_hulk" } });
+                const char* name = NAMES[rng.Range(0, 3)];
+                PlaceFind(rng, region.documents[n->id], "derelicts", 250000.0, 820000.0,
+                          { { "name", name },
+                            { "size", 600 },
+                            { "reward", 8000 + 1000 * n->depth },
+                            { "archetype", "derelict.station_hulk" } });
             }
     }
 
@@ -715,15 +803,16 @@ void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Regi
                 json&  sys = region.documents[n->id];
                 double outer = 0.0;
                 for (const json& pl : sys["planets"])
-                    outer =
-                        std::max(outer, pl["orbitRadius"].get<double>() + pl["size"].get<double>());
+                    outer = std::max(outer, pl["orbitRadius"].get<double>() +
+                                                MoonZone(pl["size"].get<double>()));
                 const double r = 800000.0;  // clear of the gates at 880 000 and beyond
-                // Added after everything else, so its path must miss what is already there:
-                // the same rule every planet keeps (Clear), applied the other way round.
-                bool clear = outer + 14000.0 + 60000.0 < r;
+                // Added after everything else, so its path -- and its satellites' (#210) --
+                // must miss what is already there: the rule every planet keeps (Clear),
+                // applied the other way round.
+                bool clear = outer + MoonZone(14000.0) + 30000.0 < r;
                 for (const Disc& d : TakenOf(sys))
                     if (std::fabs(std::sqrt(d.x * d.x + d.y * d.y) - r) <
-                        14000.0 + d.size + CLEARANCE)
+                        MoonZone(14000.0) + d.size + CLEARANCE)
                         clear = false;
                 if (clear)
                     sys["planets"].push_back(
@@ -731,7 +820,7 @@ void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Regi
                           { "type", "Rocky" },
                           { "size", 14000 },
                           { "orbitRadius", (int64_t)r },
-                          { "orbitSpeed", 60 },  // barely held
+                          { "orbitSpeed", 6 },  // barely held
                           { "angle", rng.Range(0, 65535) * (TWO_PI / 65536.0) },
                           { "deposit", "Crystal" },
                           { "archetype", "planet.rogue" } });

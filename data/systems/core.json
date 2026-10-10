@@ -2,21 +2,25 @@
     "asteroidFields": [
         {
             "name": "Inner Iron Belt",
+            "orbits": {
+                "phase": -0.644,
+                "planet": 1,
+                "radius": 22000,
+                "speed": 30
+            },
             "ore": 300,
-            "pos": [
-                282400,
-                -211800
-            ],
             "resource": "Iron",
             "size": 6000
         },
         {
             "name": "Meridian Ice Belt",
+            "orbits": {
+                "phase": -2.356,
+                "planet": 3,
+                "radius": 32200,
+                "speed": 30
+            },
             "ore": 280,
-            "pos": [
-                -404800,
-                -404800
-            ],
             "resource": "Ice",
             "size": 7200
         },
@@ -32,21 +36,25 @@
         },
         {
             "name": "Outer Crystal Belt",
+            "orbits": {
+                "phase": 2.82,
+                "planet": 4,
+                "radius": 51400,
+                "speed": 30
+            },
             "ore": 200,
-            "pos": [
-                -792800,
-                264200
-            ],
             "resource": "Crystal",
             "size": 8400
         },
         {
             "name": "Fringe Crystal Belt",
+            "orbits": {
+                "phase": -0.753,
+                "planet": 5,
+                "radius": 28300,
+                "speed": 30
+            },
             "ore": 180,
-            "pos": [
-                632100,
-                -592600
-            ],
             "resource": "Crystal",
             "size": 7800
         }
@@ -54,10 +62,12 @@
     "derelicts": [
         {
             "name": "Wreck of the Meridian",
-            "pos": [
-                -809600,
-                -170400
-            ],
+            "orbits": {
+                "phase": -2.934,
+                "planet": 4,
+                "radius": 40500,
+                "speed": 30
+            },
             "reward": 1500,
             "size": 45
         },
@@ -72,10 +82,12 @@
         },
         {
             "name": "Shattered Frigate",
-            "pos": [
-                -618100,
-                -618100
-            ],
+            "orbits": {
+                "phase": -2.356,
+                "planet": 5,
+                "radius": 28300,
+                "speed": 30
+            },
             "reward": 1800,
             "size": 45
         },
@@ -94,7 +106,7 @@
             "destination": "reach",
             "name": "Gate to Sigma Reach",
             "pos": [
-                938700,
+                948000,
                 0
             ],
             "size": 900
@@ -132,7 +144,7 @@
             "angle": 0.3,
             "deposit": "Iron",
             "orbitRadius": 288000,
-            "orbitSpeed": 300,
+            "orbitSpeed": 30,
             "size": 15000,
             "type": "Oceanic"
         },
@@ -140,7 +152,7 @@
             "angle": 2.0,
             "deposit": "Iron",
             "orbitRadius": 386000,
-            "orbitSpeed": 340,
+            "orbitSpeed": 34,
             "size": 12000,
             "type": "Rocky"
         },
@@ -148,7 +160,7 @@
             "angle": 4.2,
             "deposit": "Ice",
             "orbitRadius": 499000,
-            "orbitSpeed": 380,
+            "orbitSpeed": 38,
             "size": 21000,
             "type": "Ice"
         },
@@ -156,7 +168,7 @@
             "angle": 5.6,
             "deposit": "Crystal",
             "orbitRadius": 613000,
-            "orbitSpeed": 420,
+            "orbitSpeed": 42,
             "size": 18000,
             "type": "Lava"
         },
@@ -164,7 +176,7 @@
             "angle": 1.2,
             "deposit": "Iron",
             "orbitRadius": 776000,
-            "orbitSpeed": 480,
+            "orbitSpeed": 48,
             "size": 36000,
             "type": "Gas"
         },
@@ -172,7 +184,7 @@
             "angle": 3.7,
             "deposit": "Crystal",
             "orbitRadius": 906000,
-            "orbitSpeed": 520,
+            "orbitSpeed": 52,
             "size": 16500,
             "type": "Rocky"
         }
@@ -185,10 +197,12 @@
         {
             "faction": "TradersGuild",
             "name": "Aurora Hub",
-            "pos": [
-                309500,
-                77400
-            ],
+            "orbits": {
+                "phase": 0.245,
+                "planet": 0,
+                "radius": 19700,
+                "speed": 30
+            },
             "role": "TradeHub",
             "size": 700
         },
@@ -205,30 +219,36 @@
         {
             "faction": "Independent",
             "name": "Vyse Bastion",
-            "pos": [
-                245000,
-                -391800
-            ],
+            "orbits": {
+                "phase": -1.012,
+                "planet": 2,
+                "radius": 25600,
+                "speed": 30
+            },
             "role": "Military",
             "size": 600
         },
         {
             "faction": "Syndicate",
             "name": "Prospect Station",
-            "pos": [
-                -409600,
-                -409600
-            ],
+            "orbits": {
+                "phase": -2.356,
+                "planet": 3,
+                "radius": 22500,
+                "speed": 30
+            },
             "role": "MiningOutpost",
             "size": 500
         },
         {
             "faction": "TradersGuild",
             "name": "Frontier Post",
-            "pos": [
-                609200,
-                391600
-            ],
+            "orbits": {
+                "phase": 0.571,
+                "planet": 4,
+                "radius": 40500,
+                "speed": 30
+            },
             "role": "MiningOutpost",
             "size": 500
         }

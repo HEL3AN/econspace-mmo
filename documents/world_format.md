@@ -445,6 +445,29 @@ instead, each at its `pos`; each lights the system (#119). Planets orbit `(0,0)`
 |------|-----|----------|
 | `archetype` | string | Which archetype **of its kind** this object is, in place of its kind's ordinary one (#142): a derelict that is `derelict.leviathan`, a belt that is `field.motherlode`. A name that is not an archetype, or is one of another kind, is logged by name and ignored -- the object is built as usual. |
 
+### orbits — a planet's satellite
+
+A station, belt, nebula or derelict may orbit a planet instead of standing still (#210):
+
+```json
+"orbits": { "planet": 0, "radius": 19700, "speed": 30, "phase": 0.245 }
+```
+
+| Field | Type | Meaning |
+|------|-----|----------|
+| `planet` | int | index into this system's `planets[]` |
+| `radius` | number | distance from the planet's centre |
+| `speed` | number | along the circle, units per second (like `orbitSpeed`) |
+| `phase` | number | angle round the planet at world time zero, radians |
+
+`pos` is then left out: the position is the planet's plus a turning offset, a function of
+world time computed the same way by the server, the editor and the tests. **The rule is
+that an object in a planet's path belongs to that planet**: the generator makes it a
+satellite rather than moving it, and anything static keeps clear of the planet's whole
+path -- the planet and what orbits it. A planet's `orbitSpeed` plus its satellite's
+`speed` stays well under the slowest ship's top speed; a station that outruns every hull
+is a station nobody docks at. Gates never orbit: they are the topology.
+
 ### character (generated systems)
 A string the generator writes to say what kind of system it made (#142): `ordinary`,
 `binary`, `belt cluster`, `shrouded`, `graveyard`, `giants`, `frozen`, `barren`. Nothing
@@ -454,7 +477,7 @@ at runtime reads it; the survey screen (#141) and a reader of the document do.
 | Field | Type | Values / description |
 |------|-----|---------------------|
 | `orbitRadius` | number | orbit radius |
-| `orbitSpeed` | number | linear orbital speed |
+| `orbitSpeed` | number | linear orbital speed, units per second; tens, not hundreds, if anything orbits it |
 | `angle` | number | starting angle, radians |
 | `size` | number | planet radius |
 | `type` | string | `Rocky` (default), `Gas`, `Ice`, `Lava`, `Oceanic` |

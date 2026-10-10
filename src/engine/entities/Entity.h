@@ -5,7 +5,20 @@
 #include "render/Scene.h"
 #include "raylib.h"
 #include <memory>
+#include <optional>
 #include <string>
+
+// Where a satellite is: around which planet, how far out, how fast and from where (#210).
+// An object whose place is in a planet's path belongs to the planet rather than being moved
+// out of its way. `planet` is the planet's index in its system's "planets" array -- the
+// position in the file, so the data says it without knowing entity ids.
+struct Orbit
+{
+    int   planet = 0;
+    float radius = 0.0f;  // from the planet's centre
+    float speed = 0.0f;   // along the circle, units per second, as a planet's orbitSpeed
+    float phase = 0.0f;   // radians at world time zero
+};
 
 // Base class for everything that exists in space and knows how to draw itself:
 // star, planet, station, ship. Only subclasses are instantiated.
@@ -61,12 +74,17 @@ public:
     int  GetId() const { return id_; }
     void SetId(int id) { id_ = id; }
 
+    // A satellite's orbit, or nothing for an object that stands still (#210).
+    const std::optional<Orbit>& GetOrbit() const { return orbit_; }
+    void                        SetOrbit(const Orbit& o) { orbit_ = o; }
+
 protected:
-    Vector2    pos_;
-    float      size_;
-    Color      color_;
-    EntityKind kind_ = EntityKind::Unknown;
-    int        id_ = 0;
+    Vector2              pos_;
+    float                size_;
+    Color                color_;
+    EntityKind           kind_ = EntityKind::Unknown;
+    int                  id_ = 0;
+    std::optional<Orbit> orbit_;
     // Borrowed from the process-wide registry. Valid until the next Archetypes::Load(),
     // which every executable calls once at startup, before any world is built.
     const Archetype* archetype_ = nullptr;

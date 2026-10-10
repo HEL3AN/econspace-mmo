@@ -58,7 +58,7 @@
             "angle": 1.0,
             "deposit": "Iron",
             "orbitRadius": 320000,
-            "orbitSpeed": 320,
+            "orbitSpeed": 32,
             "size": 13500,
             "type": "Rocky"
         },
@@ -66,7 +66,7 @@
             "angle": 3.4,
             "deposit": "Ice",
             "orbitRadius": 483000,
-            "orbitSpeed": 400,
+            "orbitSpeed": 40,
             "size": 24000,
             "type": "Ice"
         }
@@ -79,10 +79,12 @@
         {
             "faction": "Syndicate",
             "name": "Reach Depot",
-            "pos": [
-                269800,
-                107900
-            ],
+            "orbits": {
+                "phase": 0.38,
+                "planet": 0,
+                "radius": 18100,
+                "speed": 30
+            },
             "role": "TradeHub",
             "size": 600
         }

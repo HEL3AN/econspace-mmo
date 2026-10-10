@@ -8,6 +8,9 @@
 #include <vector>
 
 #include "core/Archetype.h"
+#include "core/Orbits.h"
+#include "entities/Planet.h"
+#include "raymath.h"
 #include "core/Faction.h"
 #include "core/Archetype.h"
 #include "entities/AsteroidField.h"
@@ -315,6 +318,54 @@ TEST_CASE("a dock order across the system warps there, and docks once out of war
     for (int i = 0; i < 60 * 60 && f.s.HasRunningOrder(); i++)  // one simulated minute
         f.sim.StepPlayerOrder(f.s, f.World(), dt);
 
+    CHECK(f.s.orderStatus == Orders::Status::Done);
+    CHECK(f.s.IsDocked());
+}
+
+TEST_CASE("a dock order catches a station that orbits a planet (#210)")
+{
+    // The station moves the whole time the ship is on its way: a warp aimed where it was
+    // drops out where it no longer is, and the approach has to follow it by id. Before
+    // that, the order sat out of range forever with its one nav command spent.
+    Fixture f;
+    // As fast as the generator makes a planet, and far enough out that the trip is a warp.
+    f.World().entities.push_back(std::make_unique<Planet>(300000.0f, 52.0f, 0.0f, 15000.0f, WHITE,
+                                                          ResourceType::Iron, PlanetType::Rocky));
+    auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 600.0f, "Moon Dock",
+                                             FactionId::TradersGuild, StationRole::TradeHub);
+    station->SetId(44);
+    Orbit o;
+    o.planet = 0;
+    o.radius = 30000.0f;
+    o.speed = 50.0f;
+    station->SetOrbit(o);
+    f.World().entities.push_back(std::move(station));
+
+    double      t = 0.0;
+    const float dt = 1.0f / 60.0f;
+    Orbits::Place(f.World().entities, t);
+
+    Orders::Order dock;
+    dock.kind = Orders::Kind::Dock;
+    dock.targetId = 44;
+    REQUIRE(f.sim.GiveOrder(f.s, dock) > 0);
+
+    auto where = [&]()
+    {
+        for (const auto& e : f.World().entities)
+            if (e->GetId() == 44)
+                return e->GetPosition();
+        return Vector2{ 0.0f, 0.0f };
+    };
+    const Vector2 start = where();
+    for (int i = 0; i < 60 * 180 && f.s.HasRunningOrder(); i++)  // three simulated minutes
+    {
+        t += dt;
+        Orbits::Place(f.World().entities, t);
+        f.sim.StepPlayerOrder(f.s, f.World(), dt);
+    }
+
+    CHECK(Vector2Distance(start, where()) > 100.0f);  // it really did move
     CHECK(f.s.orderStatus == Orders::Status::Done);
     CHECK(f.s.IsDocked());
 }

@@ -5,6 +5,7 @@
 // population aggregate the spawn director reads and writes.
 
 #include "sim/Simulation.h"
+#include "core/Orbits.h"
 #include "sim/ClientSession.h"
 
 #include "core/World.h"
@@ -196,6 +197,10 @@ void Simulation::StepSystemAgents(SystemState& st, const std::vector<PlayerPrese
                                   std::vector<FireEvent>* fires, float dt)
 {
     StepNpcAi(st, players);
+
+    // Planets and what orbits them are where the clock says (#210), before anything this
+    // tick asks where a station or a belt is.
+    Orbits::Place(st.entities, time_);
 
     for (auto& e : st.entities)  // movement
         e->Update(dt);
