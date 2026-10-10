@@ -1,5 +1,7 @@
 #include "render/Silhouette.h"
 
+#include "render/Modules.h"
+
 #include "core/JsonKeys.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
@@ -262,16 +264,38 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
         }
         // A misspelled field would be read as absent and draw the default (#191), which
         // for a part is the kind of wrong nobody notices until it is the only one left.
-        if (!OnlyKnownKeys(e,
-                           { "form",   "role",        "at",          "sides",       "angle",
-                             "radius", "width",       "length",      "count",       "filled",
-                             "repeat", "mirror",      "minPixels",   "jitterAngle", "jitterScale",
-                             "alpha",  "orbitRadius", "orbitPeriod", "orbitPhase",  "orbitTilt",
-                             "lat",    "lon",         "spin",        "blink",       "onlyThrusting",
-                             "tint",   "from",        "to",          "row" },
+        if (!OnlyKnownKeys(e, { "form",          "role",        "at",          "sides",
+                                "angle",         "radius",      "width",       "length",
+                                "count",         "filled",      "repeat",      "mirror",
+                                "minPixels",     "jitterAngle", "jitterScale", "alpha",
+                                "orbitRadius",   "orbitPeriod", "orbitPhase",  "orbitTilt",
+                                "lat",           "lon",         "spin",        "blink",
+                                "onlyThrusting", "tint",        "from",        "to",
+                                "row",           "module",      "variant",     "scale" },
                            error))
             return false;
         Part p;
+        if (e.contains("module"))
+        {
+            // A module's name must mean something now, at load: a part that silently drew
+            // nothing because its module was misspelt is the kind of wrong nobody notices.
+            p.module = e.value("module", std::string());
+            p.variant = e.value("variant", std::string());
+            const Module* m = Modules::Find(p.module);
+            if (m == nullptr)
+            {
+                error = "unknown module '" + p.module + "'";
+                return false;
+            }
+            bool found = p.variant.empty();
+            for (const ModuleVariant& v : m->variants)
+                found = found || v.id == p.variant;
+            if (!found)
+            {
+                error = "module '" + p.module + "' has no variant '" + p.variant + "'";
+                return false;
+            }
+        }
         if (!FormFromName(e.value("form", std::string("disc")), p.form))
         {
             error = "unknown form '" + e.value("form", std::string()) + "'";
@@ -320,6 +344,7 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
             p.tint = { (unsigned char)t[0].get<int>(), (unsigned char)t[1].get<int>(),
                        (unsigned char)t[2].get<int>(), 255 };
         }
+        p.scale = e.value("scale", p.scale);
         p.arcFrom = e.value("from", p.arcFrom);
         p.arcTo = e.value("to", p.arcTo);
         if (e.contains("row"))
@@ -380,8 +405,102 @@ float Extent(const Shape& s)
     return reach;
 }
 
-std::vector<Piece> Compose(const Shape& s, const Pose& pose)
+// Every module part of a shape, replaced by the parts of the variant it stands for,
+// carried to where each copy of it goes (#240). Repeat, mirror and row place the module
+// as a whole; inside it, its own parts keep their arrangement, turned with it, scaled by
+// `scale`, reflected when the copy is a mirror image. The result has no module parts left
+// and goes through the ordinary composer.
+Shape ExpandModules(const Shape& in, const Pose& pose)
 {
+    Shape out;
+    out.axisTilt = in.axisTilt;
+    for (size_t i = 0; i < in.parts.size(); i++)
+    {
+        const Part& p = in.parts[i];
+        if (p.module.empty())
+        {
+            out.parts.push_back(p);
+            continue;
+        }
+        const Module* mod = Modules::Find(p.module);
+        if (mod == nullptr || mod->variants.empty())
+            continue;
+        const ModuleVariant* v = nullptr;
+        if (!p.variant.empty())
+        {
+            for (const ModuleVariant& c : mod->variants)
+                if (c.id == p.variant)
+                    v = &c;
+        }
+        else
+        {
+            // The object's choice, per module part: the same every frame and on every
+            // client, different from one object to the next.
+            const int n = (int)mod->variants.size();
+            v = &mod->variants[std::min(n - 1, (int)(Hash01(pose.seed, (int)i * 977 + 5) * n))];
+        }
+        if (v == nullptr)
+            continue;
+
+        const int   repeat = p.repeat < 1 ? 1 : p.repeat;
+        const int   sides = p.mirror ? 2 : 1;
+        const int   rows = p.rowCount < 1 ? 1 : p.rowCount;
+        const float turned = (float)std::fmod((double)p.spin * pose.time, 360.0);
+        for (int r = 0; r < repeat; r++)
+        {
+            const float rot = (360.0f / (float)repeat) * (float)r + turned;
+            const float cr = std::cos(rot * DEG2RAD), sr = std::sin(rot * DEG2RAD);
+            for (int m = 0; m < sides * rows; m++)
+            {
+                const int     k = m / sides;
+                const float   flip = (m % sides == 0) ? 1.0f : -1.0f;
+                const float   ox = p.at.x + p.rowStep.x * (float)k;
+                const float   oy = (p.at.y + p.rowStep.y * (float)k) * flip;
+                const Vector2 origin = { ox * cr - oy * sr, ox * sr + oy * cr };
+                const float   a = p.angle * flip + rot;
+                const float   ca = std::cos(a * DEG2RAD), sa = std::sin(a * DEG2RAD);
+                for (const Part& mp : v->shape.parts)
+                {
+                    Part        q = mp;
+                    const float lx = mp.at.x * p.scale, ly = mp.at.y * p.scale * flip;
+                    q.at = { origin.x + lx * ca - ly * sa, origin.y + lx * sa + ly * ca };
+                    q.angle = mp.angle * flip + a;
+                    q.radius *= p.scale;
+                    q.width *= p.scale;
+                    q.length *= p.scale;
+                    const float sx = mp.rowStep.x * p.scale, sy = mp.rowStep.y * p.scale * flip;
+                    q.rowStep = { sx * ca - sy * sa, sx * sa + sy * ca };
+                    if (flip < 0.0f)
+                    {
+                        q.arcFrom = -mp.arcTo;
+                        q.arcTo = -mp.arcFrom;
+                    }
+                    q.alpha *= p.alpha;
+                    if (q.tint.a == 0)
+                        q.tint = p.tint;
+                    // Seen when the MODULE is big enough to see, not the object: a hatch
+                    // a twentieth of a station appears as you approach it.
+                    const float own = mp.minPixels > 0.0f ? mp.minPixels : 10.0f;
+                    q.minPixels = std::fmax(p.minPixels, own / std::fmax(p.scale, 0.001f));
+                    q.repeat = 1;
+                    q.mirror = false;
+                    q.spin = 0.0f;
+                    out.parts.push_back(q);
+                }
+            }
+        }
+    }
+    return out;
+}
+
+std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
+{
+    bool hasModules = false;
+    for (const Part& p : shape.parts)
+        hasModules = hasModules || !p.module.empty();
+    const Shape  expanded = hasModules ? ExpandModules(shape, pose) : Shape{};
+    const Shape& s = hasModules ? expanded : shape;
+
     std::vector<Piece> out;
     if (s.Empty() || pose.size <= 0.0f)
         return out;

@@ -1,8 +1,10 @@
 #include <doctest/doctest.h>
 
 #include "core/Archetype.h"
+#include "render/Modules.h"
 #include "render/Silhouette.h"
 #include <cmath>
+#include <set>
 #include <nlohmann/json.hpp>
 #include <string>
 
@@ -693,4 +695,42 @@ TEST_CASE(
     CHECK_FALSE(error.empty());
     CHECK_FALSE(Render::ParseShape(
         nlohmann::json::parse(R"([ { "form": "disc", "tint": "red" } ])"), bad, error));
+}
+
+TEST_CASE("a module is placed by name, in a variant the seed picks (#240)")
+{
+    std::string error;
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+    CHECK(error.empty());
+    REQUIRE(Render::Modules::Find("hatch") != nullptr);
+    CHECK(Render::Modules::Find("hatch")->variants.size() >= 2);
+
+    // A round hatch, a tenth of the object, half a radius out: its parts land there.
+    const Render::Shape one = Parse(R"([
+        { "module": "hatch", "variant": "round", "at": [0.5, 0.0], "scale": 0.1 } ])");
+    const auto          pieces = Render::Compose(one, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 10.0f));
+    REQUIRE(pieces.size() == Render::Modules::Find("hatch")->variants[1].shape.parts.size());
+    for (const auto& p : pieces)
+    {
+        CHECK(p.pos.x == doctest::Approx(50.0f).epsilon(0.05));
+        CHECK(p.radius <= 10.0f);  // a tenth of a hundred-unit object
+    }
+
+    // Too small on screen, a module is not drawn at all: it fills in as you approach.
+    CHECK(Render::Compose(one, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 0.01f)).empty());
+
+    // Without a pinned variant the seed chooses, and different objects choose differently.
+    const Render::Shape any = Parse(R"([ { "module": "turret", "scale": 0.1 } ])");
+    std::set<size_t>    counts;
+    for (int seed = 1; seed <= 40; seed++)
+        counts.insert(Render::Compose(any, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 10.0f)).size());
+    CHECK(counts.size() >= 2);
+
+    // A name that means nothing is a load error, said by name.
+    Render::Shape bad;
+    CHECK_FALSE(
+        Render::ParseShape(nlohmann::json::parse(R"([ { "module": "hatchh" } ])"), bad, error));
+    CHECK(error.find("hatchh") != std::string::npos);
+    CHECK_FALSE(Render::ParseShape(
+        nlohmann::json::parse(R"([ { "module": "hatch", "variant": "oval" } ])"), bad, error));
 }
