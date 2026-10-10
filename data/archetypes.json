@@ -417,30 +417,42 @@
             "layer": 3,
             "size": 2600,
             "material": "hull",
-            "shape": [
-                {"form": "bar", "at": [0.05, 0.0], "angle": -3, "length": 0.8, "width": 0.46, "role": "hull", "spin": -0.25},
-                {"form": "bar", "at": [0.08, 0.12], "angle": -3, "length": 0.56, "width": 0.11, "role": "panel", "minPixels": 34, "spin": -0.25},
-                {"form": "bar", "at": [0.02, -0.13], "angle": -3, "length": 0.46, "width": 0.08, "role": "panel", "minPixels": 44, "spin": -0.25},
-                {"form": "capsule", "at": [0.08, -0.01], "angle": -3, "length": 0.66, "width": 0.035, "role": "trim", "minPixels": 50, "spin": -0.25},
-                {"form": "chevron", "at": [0.87, -0.12], "angle": -14, "length": 0.66, "width": 0.55, "role": "hull", "spin": -0.25},
-                {"form": "disc", "at": [0.8, -0.1], "radius": 0.085, "role": "panel", "minPixels": 44, "spin": -0.25},
-                {"form": "capsule", "at": [-0.31, 0.0], "angle": 87, "length": 0.6, "width": 0.035, "role": "antenna", "minPixels": 40, "spin": -0.25},
-                {"form": "capsule", "at": [-0.23, 0.01], "angle": 84, "length": 0.54, "width": 0.035, "role": "antenna", "minPixels": 40, "spin": -0.25},
-                {"form": "lattice", "at": [-0.5, 0.05], "angle": 10, "length": 0.32, "width": 0.16, "count": 3, "role": "panel", "minPixels": 30, "spin": -0.25},
-                {"form": "bar", "at": [-0.95, 0.24], "angle": 22, "length": 0.4, "width": 0.5, "role": "hull", "spin": -0.25},
-                {"form": "bar", "at": [-0.93, 0.25], "angle": 22, "length": 0.24, "width": 0.3, "role": "panel", "minPixels": 44, "spin": -0.25},
-                {"form": "disc", "at": [-1.18, 0.285], "radius": 0.09, "role": "panel", "minPixels": 30, "spin": -0.25},
-                {"form": "disc", "at": [-1.09, 0.05], "radius": 0.09, "role": "panel", "minPixels": 30, "spin": -0.25},
-                {"form": "capsule", "at": [-0.74, 0.17], "angle": 32, "length": 0.14, "width": 0.05, "role": "antenna", "minPixels": 44, "spin": -0.25},
-                {"form": "chevron", "at": [0.4, -0.44], "angle": 120, "length": 0.24, "width": 0.18, "role": "hull", "jitterAngle": 8, "minPixels": 30, "spin": -0.25},
-                {"form": "bar", "at": [0.3, 0.46], "angle": 35, "length": 0.2, "width": 0.07, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 34, "spin": -0.25},
-                {"form": "bar", "at": [-0.4, -0.38], "angle": -50, "length": 0.16, "width": 0.06, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 34, "spin": -0.25},
-                {"form": "bar", "at": [-0.6, 0.6], "angle": 70, "length": 0.14, "width": 0.06, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 50, "spin": -0.25},
-                {"form": "bar", "at": [1.0, 0.36], "angle": 10, "length": 0.12, "width": 0.05, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 50, "spin": -0.25},
-                {"form": "disc", "at": [0.62, 0.2], "radius": 0.022, "role": "light", "alpha": 0.8, "blink": 5.5, "minPixels": 60, "spin": -0.25},
-                {"form": "disc", "at": [-0.15, -0.21], "radius": 0.018, "role": "light", "alpha": 0.7, "blink": 7.0, "minPixels": 60, "spin": -0.25},
-                {"form": "disc", "at": [-1.02, 0.42], "radius": 0.02, "role": "light", "alpha": 0.6, "blink": 3.7, "minPixels": 60, "spin": -0.25}
-            ],
+            "shape": {
+                "sections": [
+                    {"form": "bar", "at": [0.05, 0.0], "angle": -3, "length": 0.8, "width": 0.46, "role": "hull", "pitch": 0.12, "spin": -0.25},
+                    {"form": "chevron", "at": [0.87, -0.12], "angle": -14, "length": 0.66, "width": 0.55, "role": "hull", "spin": -0.25},
+                    {"form": "bar", "at": [-0.95, 0.24], "angle": 22, "length": 0.4, "width": 0.5, "role": "hull", "pitch": 0.12, "spin": -0.25}
+                ],
+                "kit": { "symmetry": "none", "plain": 0.5, "modules": [
+                    {"of": "wreck.breach", "in": 0, "on": "top", "count": [1, 2], "scale": 0.08},
+                    {"of": "wreck.scorch", "in": 0, "on": "edge", "count": [1, 2], "scale": 0.1, "inset": 0.6},
+                    {"of": "wreck.dead-lights", "in": 0, "on": "edge", "count": [1, 2], "scale": 0.09, "turn": 90},
+                    {"of": "wreck.missing-plate", "in": 2, "on": "top", "count": [0, 1], "scale": 0.09},
+                    {"of": "wreck.sparking-cable", "in": 2, "on": "end", "count": [0, 1], "scale": 0.08, "inset": -0.5},
+                    {"of": "wreck.breach", "in": 1, "on": "end", "count": [0, 1], "scale": 0.08, "inset": 0.4}
+                ] },
+                "parts": [
+                    {"form": "bar", "at": [0.08, 0.12], "angle": -3, "length": 0.56, "width": 0.11, "role": "panel", "minPixels": 34, "spin": -0.25},
+                    {"form": "bar", "at": [0.02, -0.13], "angle": -3, "length": 0.46, "width": 0.08, "role": "panel", "minPixels": 44, "spin": -0.25},
+                    {"form": "capsule", "at": [0.08, -0.01], "angle": -3, "length": 0.66, "width": 0.035, "role": "trim", "minPixels": 50, "spin": -0.25},
+                    {"form": "disc", "at": [0.8, -0.1], "radius": 0.085, "role": "panel", "minPixels": 44, "spin": -0.25},
+                    {"form": "capsule", "at": [-0.31, 0.0], "angle": 87, "length": 0.6, "width": 0.035, "role": "antenna", "minPixels": 40, "spin": -0.25},
+                    {"form": "capsule", "at": [-0.23, 0.01], "angle": 84, "length": 0.54, "width": 0.035, "role": "antenna", "minPixels": 40, "spin": -0.25},
+                    {"form": "lattice", "at": [-0.5, 0.05], "angle": 10, "length": 0.32, "width": 0.16, "count": 3, "role": "panel", "minPixels": 30, "spin": -0.25},
+                    {"form": "bar", "at": [-0.93, 0.25], "angle": 22, "length": 0.24, "width": 0.3, "role": "panel", "minPixels": 44, "spin": -0.25},
+                    {"form": "disc", "at": [-1.18, 0.285], "radius": 0.09, "role": "panel", "minPixels": 30, "spin": -0.25},
+                    {"form": "disc", "at": [-1.09, 0.05], "radius": 0.09, "role": "panel", "minPixels": 30, "spin": -0.25},
+                    {"form": "capsule", "at": [-0.74, 0.17], "angle": 32, "length": 0.14, "width": 0.05, "role": "antenna", "minPixels": 44, "spin": -0.25},
+                    {"form": "chevron", "at": [0.4, -0.44], "angle": 120, "length": 0.24, "width": 0.18, "role": "hull", "jitterAngle": 8, "minPixels": 30, "spin": -0.25},
+                    {"form": "bar", "at": [0.3, 0.46], "angle": 35, "length": 0.2, "width": 0.07, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 34, "spin": -0.25},
+                    {"form": "bar", "at": [-0.4, -0.38], "angle": -50, "length": 0.16, "width": 0.06, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 34, "spin": -0.25},
+                    {"form": "bar", "at": [-0.6, 0.6], "angle": 70, "length": 0.14, "width": 0.06, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 50, "spin": -0.25},
+                    {"form": "bar", "at": [1.0, 0.36], "angle": 10, "length": 0.12, "width": 0.05, "role": "panel", "jitterAngle": 12, "jitterScale": 0.3, "minPixels": 50, "spin": -0.25},
+                    {"form": "disc", "at": [0.62, 0.2], "radius": 0.022, "role": "light", "alpha": 0.8, "blink": 5.5, "minPixels": 60, "spin": -0.25},
+                    {"form": "disc", "at": [-0.15, -0.21], "radius": 0.018, "role": "light", "alpha": 0.7, "blink": 7.0, "minPixels": 60, "spin": -0.25},
+                    {"form": "disc", "at": [-1.02, 0.42], "radius": 0.02, "role": "light", "alpha": 0.6, "blink": 3.7, "minPixels": 60, "spin": -0.25}
+                ]
+            },
             "components": {
                 "salvageable": { "range": 400 }
             }
@@ -580,15 +592,26 @@
             "layer": 6,
             "size": 16,
             "material": "hull",
-            "shape": [
-                {"form": "chevron", "at": [-1.05, 0.0], "angle": 180, "length": 0.9, "width": 0.5, "role": "light", "onlyThrusting": true},
-                {"form": "chevron", "at": [0.2, 0.0], "length": 2.1, "width": 0.9, "role": "hull"},
-                {"form": "chevron", "at": [-0.5, 0.62], "angle": 145, "length": 1.15, "width": 0.55, "role": "hull", "mirror": true, "minPixels": 24},
-                {"form": "capsule", "at": [-0.55, 0.72], "angle": 20, "length": 0.5, "width": 0.16, "role": "panel", "mirror": true, "minPixels": 44},
-                {"form": "bar", "at": [-0.78, 0.0], "length": 0.4, "width": 0.6, "role": "panel", "minPixels": 20},
-                {"form": "chevron", "at": [0.45, 0.0], "length": 0.85, "width": 0.4, "role": "trim", "minPixels": 40},
-                {"form": "disc", "at": [-0.98, 0.28], "radius": 0.1, "role": "light", "mirror": true, "minPixels": 26}
-            ],
+            "shape": {
+                "sections": [
+                    {"form": "chevron", "at": [0.2, 0.0], "length": 2.1, "width": 0.9, "role": "hull"},
+                    {"form": "chevron", "at": [-0.5, 0.62], "angle": 145, "length": 1.15, "width": 0.55, "role": "hull", "mirror": true, "minPixels": 24},
+                    {"form": "bar", "at": [-0.3, 0.0], "length": 1.0, "width": 0.34, "role": "panel", "pitch": 0.14, "minPixels": 20}
+                ],
+                "kit": { "symmetry": "bilateral", "plain": 0.5, "modules": [
+                    {"of": "hull.rcs", "in": 2, "on": "edge", "count": 2, "scale": 0.07, "turn": -90},
+                    {"of": "hull.armour", "in": 2, "on": "edge", "count": [0, 2], "scale": 0.1, "turn": 90},
+                    {"of": "hatch", "in": 2, "on": "top", "count": [0, 1], "scale": 0.06}
+                ] },
+                "parts": [
+                    {"form": "chevron", "at": [-1.05, 0.0], "angle": 180, "length": 0.9, "width": 0.5, "role": "light", "onlyThrusting": true},
+                    {"module": "hull.cockpit", "at": [0.42, 0.0], "scale": 0.16},
+                    {"module": "hull.engine", "at": [-0.88, 0.0], "scale": 0.24},
+                    {"module": "hull.thruster", "at": [-0.62, 0.72], "scale": 0.16, "mirror": true, "chance": 0.6},
+                    {"module": "hull.fin", "at": [-0.55, 0.0], "scale": 0.18, "chance": 0.4},
+                    {"form": "disc", "at": [-0.98, 0.28], "radius": 0.08, "role": "light", "mirror": true, "minPixels": 26}
+                ]
+            },
             "components": {}
         }
     ]
