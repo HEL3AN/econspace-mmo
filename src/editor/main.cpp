@@ -24,7 +24,7 @@ int main(int argc, char** argv)
     std::string shot;  // `shot FILE [frames N]`: save the view after N frames and exit
     int         frames = 30;
     std::string pack;  // `modules pack P seeds N`: one pack, each variant at N seeds
-    int         seeds = 1;
+    int         seeds = 3;
     for (int i = 1; i < argc; i++)
     {
         const std::string arg = argv[i];
