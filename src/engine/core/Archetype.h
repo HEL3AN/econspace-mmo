@@ -89,6 +89,11 @@ struct Visual
     // same bargain the rest of the archetype makes. Zero radius means it emits nothing.
     float lightRadius = 0.0f;     // world units at which its light has fallen to nothing
     float lightIntensity = 0.0f;  // brightness at the source
+    // Whether its light lights the object itself. False by default: a light at an object's
+    // own centre reaches every part of its hull at full strength from inside and flattens
+    // it, so a beacon is lit by the system's other lights like any hull. True keeps the
+    // object out of shading altogether, which is what a star is -- a light, not a surface.
+    bool lightSelf = false;
 
     // What it is made of (#122): a composition of parts, not one figure. Empty means the
     // backend falls back to the shape it used to compile in for this EntityKind.

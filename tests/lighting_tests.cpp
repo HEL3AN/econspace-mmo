@@ -140,3 +140,52 @@ TEST_CASE("what lights a system comes from the archetypes in it")
     scene.push_back(beacon);
     CHECK(Render::LightsFrom(scene).lights.size() == 2);
 }
+
+TEST_CASE("an object is not lit by its own light unless it says so")
+{
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    // A star is a light, not a surface: it lights itself, and so is never shaded.
+    CHECK(Archetypes::Find("star.yellow")->visual.lightSelf);
+
+    Render::Item sun;
+    sun.id = 1;
+    sun.pos = { -5000.0f, 0.0f };
+    sun.lightRadius = 20000.0f;
+    sun.lightIntensity = 1.0f;
+
+    Render::Item beacon;
+    beacon.id = 2;
+    beacon.pos = { 0.0f, 0.0f };
+    beacon.lightRadius = 900.0f;
+    beacon.lightIntensity = 0.8f;
+
+    Render::Item hull;  // something near the beacon that is not a light at all
+    hull.id = 3;
+    hull.pos = { 300.0f, 0.0f };
+
+    const Render::Lighting lg = Render::LightsFrom({ sun, beacon, hull });
+    REQUIRE(lg.lights.size() == 2);
+
+    // The beacon's light is its own, and leaving it out lights the beacon from the sun alone:
+    // a direction from outside, which is what gives a hull a lit side and a dark one.
+    const int own = lg.OwnLight(beacon);
+    REQUIRE(own == 1);
+    const Render::Lighting::Sample onBeacon = lg.At(beacon.pos, own);
+    CHECK(onBeacon.dir.x == doctest::Approx(-1.0f));
+    CHECK(onBeacon.strength < lg.At(beacon.pos).strength);
+
+    // Everything else is still lit by it: the hull beside it is lit toward the beacon.
+    CHECK(lg.OwnLight(hull) == -1);
+    CHECK(lg.At(hull.pos, lg.OwnLight(hull)).strength > 0.0f);
+
+    // Another object with the beacon's id somewhere else is not the beacon -- the gallery
+    // draws everything with one id.
+    Render::Item elsewhere = beacon;
+    elsewhere.pos = { 10.0f, 0.0f };
+    CHECK(lg.OwnLight(elsewhere) == -1);
+
+    // `self` keeps the old behaviour: the light is nobody's to leave out.
+    beacon.lightSelf = true;
+    const Render::Lighting selfLit = Render::LightsFrom({ sun, beacon });
+    CHECK(selfLit.OwnLight(beacon) == -1);
+}

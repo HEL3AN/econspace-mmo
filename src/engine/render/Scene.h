@@ -56,6 +56,7 @@ struct Item
     // looked up, because the thing that builds the light list has items and nothing else.
     float lightRadius = 0.0f;
     float lightIntensity = 0.0f;
+    bool  lightSelf = false;  // its light lights it too, and so it is never shaded
 
     float heading = 0.0f;    // radians; 0 for things that do not point anywhere
     float intensity = 1.0f;  // 0..1 — ore left in a belt, hull left on a ship, a looted wreck

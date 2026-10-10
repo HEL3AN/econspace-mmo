@@ -16,7 +16,7 @@ struct Contribution
 };
 }  // namespace
 
-Lighting::Sample Lighting::At(Vector2 p) const
+Lighting::Sample Lighting::At(Vector2 p, int skip) const
 {
     Sample out;
     if (lights.empty())
@@ -24,10 +24,13 @@ Lighting::Sample Lighting::At(Vector2 p) const
 
     std::vector<Contribution> got;
     got.reserve(lights.size());
-    for (const Light& l : lights)
+    for (size_t i = 0; i < lights.size(); i++)
     {
-        const float dx = l.pos.x - p.x, dy = l.pos.y - p.y;
-        const float dist = std::sqrt(dx * dx + dy * dy);
+        if ((int)i == skip)
+            continue;
+        const Light& l = lights[i];
+        const float  dx = l.pos.x - p.x, dy = l.pos.y - p.y;
+        const float  dist = std::sqrt(dx * dx + dy * dy);
         if (l.radius <= 0.0f || dist >= l.radius)
             continue;
 
@@ -86,8 +89,20 @@ Lighting LightsFrom(const std::vector<Item>& items, float ambient)
     out.ambient = ambient;
     for (const Item& it : items)
         if (it.lightRadius > 0.0f && it.lightIntensity > 0.0f)
-            out.lights.push_back({ it.pos, it.color, it.lightIntensity, it.lightRadius });
+            out.lights.push_back(
+                { it.pos, it.color, it.lightIntensity, it.lightRadius, !it.lightSelf, it.id });
     return out;
+}
+
+int Lighting::OwnLight(const Item& it) const
+{
+    for (size_t i = 0; i < lights.size(); i++)
+    {
+        const Light& l = lights[i];
+        if (l.sparesSource && l.source == it.id && l.pos.x == it.pos.x && l.pos.y == it.pos.y)
+            return (int)i;
+    }
+    return -1;
 }
 
 }  // namespace Render
