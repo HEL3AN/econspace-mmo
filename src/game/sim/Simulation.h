@@ -335,6 +335,10 @@ public:
     // point). Systems are already materialized, so no hydrate is needed.
     void ServerEnterSystem(ClientSession& s, const std::string& destId, const std::string& fromId);
 
+    // How close a body must be for a saved ship to be kept beside it rather than at a point
+    // in space (#258): within this of its surface.
+    static constexpr float NEAR_BODY_RANGE = 50000.0f;
+
     // Where a ship that has no better place to be appears in a system: beside its first
     // station, inside docking reach, so a new player's first choice is to dock or to
     // fly. A fixed point would do until the bodies grow (#159) -- then any constant lands

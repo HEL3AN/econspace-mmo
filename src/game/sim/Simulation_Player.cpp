@@ -727,6 +727,44 @@ void Simulation::SaveAccount(const ClientSession& s, const std::string& path) co
         j["place"] = { { "system", s.systemId },
                        { "pos", json::array({ s.ship->GetPosition().x, s.ship->GetPosition().y }) },
                        { "heading", s.ship->GetHeading() } };
+        // And where that was relative to the nearest body, because bodies move (#210): a
+        // ship left beside a station that orbits a planet came back further from it every
+        // time, since the station had gone on round and the ship had not (#258).
+        if (const SystemState* sys = SystemById(s.systemId))
+        {
+            const Vector2 at = s.ship->GetPosition();
+            const Entity* best = nullptr;
+            float         bestD = NEAR_BODY_RANGE;
+            for (const auto& e : sys->entities)
+            {
+                const EntityKind k = e->GetKind();
+                if (k == EntityKind::Npc || k == EntityKind::PlayerShip || k == EntityKind::Star)
+                    continue;
+                const float d = Vector2Distance(at, e->GetPosition()) - e->GetSize();
+                if (d < bestD)
+                {
+                    bestD = d;
+                    best = e.get();
+                }
+            }
+            if (best != nullptr)
+            {
+                // Named by kind, name and which of that name it is: planets share theirs.
+                int nth = 0;
+                for (const auto& e : sys->entities)
+                {
+                    if (e.get() == best)
+                        break;
+                    if (e->GetKind() == best->GetKind() && e->GetName() == best->GetName())
+                        nth++;
+                }
+                const Vector2 o = { at.x - best->GetPosition().x, at.y - best->GetPosition().y };
+                j["place"]["near"] = { { "kind", (int)best->GetKind() },
+                                       { "name", best->GetName() },
+                                       { "nth", nth },
+                                       { "offset", json::array({ o.x, o.y }) } };
+            }
+        }
 
         json cargo = json::array();
         for (ResourceType r : AllResourceTypes())
@@ -810,6 +848,24 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
                 s.ship->Teleport({ (float)pl["pos"][0], (float)pl["pos"][1] });
             else
                 s.ship->Teleport(SafeArrival(sys, &s));
+            // Beside the body it was left beside, wherever that body has got to (#258).
+            if (version >= 2 && pl.contains("near") && pl["near"].is_object())
+            {
+                const json& nr = pl["near"];
+                const int   kind = nr.value("kind", -1);
+                const auto  name = nr.value("name", std::string());
+                int         nth = nr.value("nth", 0);
+                if (const SystemState* state = SystemById(sys))
+                    for (const auto& e : state->entities)
+                        if ((int)e->GetKind() == kind && e->GetName() == name && nth-- == 0)
+                        {
+                            const json& o = nr["offset"];
+                            if (o.is_array() && o.size() >= 2)
+                                s.ship->Teleport({ e->GetPosition().x + (float)o[0],
+                                                   e->GetPosition().y + (float)o[1] });
+                            break;
+                        }
+            }
             s.ship->SetHeading((float)pl.value("heading", 0.0));
         }
     }
