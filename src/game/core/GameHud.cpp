@@ -343,12 +343,16 @@ void Game::SetupWindows()
     menu.draw = [this]() { contextMenu_.Draw(); };
     desk_.AddSurface(surface(WIN_CONTEXT, "", Layer::Popup, Ui::EscRule::Close), false, menu);
 
-    // F10's panel: over everything, and closing it writes what was tuned.
-    Ui::Desk::Surface look;
-    look.bounds = [this]() { return TreatmentPanelRect(); };
-    look.onClose = [this]() { SaveTreatment(); };
-    look.draw = [this]() { DrawTreatmentSettings(); };
-    desk_.AddSurface(surface(WIN_LOOK, "", Layer::Overlay, Ui::EscRule::Close), false, look);
+    // F10's panel (#120): a window like the others, on the one layer the treatment never
+    // reaches -- a settings window seen through the effect it is adjusting cannot be read
+    // while adjusting it. It groups and stacks with nothing below it for the same reason.
+    // No context: the look is tuned in space and docked alike.
+    WindowSpec look = panel(WIN_LOOK, "", Anchor::TopRight, { 332.0f, 16.0f, 320.0f, 520.0f });
+    look.layer = Layer::Overlay;
+    look.resizable = true;
+    look.minSize = { 260.0f, 200.0f };
+    desk_.AddWindow(look, "SCREEN TREATMENT", false,
+                    [this](Ui::Frame& f) { DrawTreatmentContent(f); });
 }
 
 // Changes the window size; if fullscreen mode is active — exits it first.
@@ -1250,31 +1254,17 @@ void Game::DrawGalaxyMap()
     }
 }
 
-// The screen treatment's settings, over everything and never treated themselves (#120).
-// A panel seen through the effect it is adjusting is a panel you cannot read while
-// adjusting it.
-Rectangle Game::TreatmentPanelRect() const
+// The screen treatment's settings (#120): the shared panel, and look.json written when a
+// change is let go of -- a slider being dragged would otherwise be sixty writes a second.
+void Game::DrawTreatmentContent(const Ui::Frame& f)
 {
-    const float w = 320.0f;
-    const float h = Render::TreatmentPanelHeight(treatment_, &materials_) + 24.0f;
-    return { (float)screenWidth_ - w - 16.0f, 60.0f, w, fminf(h, (float)screenHeight_ - 80.0f) };
-}
-
-void Game::DrawTreatmentSettings()
-{
-    const Rectangle panel = TreatmentPanelRect();
-
-    DrawRectangleRec(panel, Ui::PANEL_BG);
-    DrawRectangleLinesEx(panel, 1.0f, Ui::PANEL_BORDER);
-
-    BeginScissorMode((int)panel.x, (int)panel.y, (int)panel.width, (int)panel.height);
-    Render::DrawTreatmentPanel(
-        { panel.x + 12.0f, panel.y + 12.0f, panel.width - 24.0f, panel.height - 24.0f }, treatment_,
-        &materials_);
-    EndScissorMode();
-
-    Ui::Text("F10 closes and saves", (int)panel.x + 12, (int)(panel.y + panel.height - 16.0f), 10,
-             Ui::TEXT_DIM);
+    if (lookPanel_.Draw(f, treatment_, &materials_))
+        lookDirty_ = true;
+    if (lookDirty_ && !f.Down(MOUSE_BUTTON_LEFT))
+    {
+        SaveTreatment();
+        lookDirty_ = false;
+    }
 }
 
 // A world distance as the sensor screen says it: 2k, 250k, 1M.

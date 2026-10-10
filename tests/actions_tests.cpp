@@ -161,12 +161,12 @@ TEST_CASE("Actions: a point in space offers flying, warping, and what can be bui
 TEST_CASE("Actions: every button an agent could want is an econagent tool, and the gaps are known")
 {
     // The design rule (#297): a window offers nothing an agent cannot do. The interface's own
-    // verbs need no tool; the rest name one that exists, except the two listed here, which
-    // are owed one. Adding the tool is the way off this list.
+    // verbs need no tool; the rest name one that exists. A verb added without its tool goes
+    // on `owed` until it has one -- and the list is empty now, so keep it that way.
     const std::set<std::string> tools = AgentTools();
     REQUIRE_FALSE(tools.empty());
     const std::set<Verb> interfaceOnly{ Verb::Select, Verb::SetRange };
-    const std::set<Verb> owed{ Verb::Investigate };
+    const std::set<Verb> owed{};
 
     for (Verb v : { Verb::Select, Verb::Approach, Verb::Orbit, Verb::Keep, Verb::Follow,
                     Verb::SetRange, Verb::Warp, Verb::Dock, Verb::Mine, Verb::Attack,

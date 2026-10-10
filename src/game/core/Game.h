@@ -16,6 +16,7 @@
 #include "sim/Sensor.h"
 #include "sim/WorldClock.h"
 #include "render/Treatment.h"
+#include "render/TreatmentPanel.h"
 #include "player/Player.h"
 #include <string>
 #include "ui/ContextMenu.h"
@@ -312,13 +313,16 @@ private:
 
     // The screen treatment (#120). The world goes through it; the HUD does too only if the
     // player says so, because it carries numbers they fly by. F10 opens its settings, and
-    // closing them writes the file -- a look someone tuned and lost on exit is a look they
-    // will not tune twice.
+    // each change is written to the file as it is let go of -- a look someone tuned and
+    // lost on exit is a look they will not tune twice.
     // The shaders a material names (#121). Shared by the backends; null on a machine
     // whose driver refused them, which draws everything the way it drew before.
     Render::MaterialLibrary materials_;
 
-    Render::Treatment treatment_;
+    Render::Treatment      treatment_;
+    Render::TreatmentPanel lookPanel_;          // F10's window (#120)
+    bool                   lookDirty_ = false;  // changed, not yet written to look.json
+    void                   DrawTreatmentContent(const Ui::Frame& f);
 
     // Where the object the ship is holding station on (#157) currently is, from the
     // client's own proxies -- or null if it is holding station on nothing, or on something
@@ -330,8 +334,6 @@ private:
     void                    OrderHold(int mode, int targetId, float range);
     void                    ReleaseHold();
     mutable Sim::HoldTarget holdTarget_;
-    void                    DrawTreatmentSettings();
-    Rectangle               TreatmentPanelRect() const;
 
     // Radar state: zoom and absolute view center (does not follow the player).
     float   radarZoom_ = 1.0f;
