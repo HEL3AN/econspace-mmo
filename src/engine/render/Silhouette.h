@@ -188,7 +188,11 @@ struct Part
         ArcFrom,
         ArcTo,
         StepX,
-        StepY
+        StepY,
+        RowTurn,
+        RowTaper,
+        PivotX,
+        PivotY
     };
     // `var` is the shape's variable this range follows, or -1 for a roll of its own.
     struct Vary
@@ -201,6 +205,21 @@ struct Part
     std::vector<Color> palette;
     int                tintVar = -1;  // the palette's pick follows this variable
     float              chance = 1.0f;
+    // Parts in one `group` share the roll their `chance` is compared with, so a lamp and
+    // its housing come and go together. A group is a hidden variable of the shape.
+    int chanceVar = -1;
+
+    // The row bends by `rowTurn` degrees per copy -- an arc of ribs, a spiral arm, an atoll
+    // -- and each copy is `rowTaper` times the size of the one before: rays, tongues of
+    // lava, a glacier narrowing to its snout. Each copy also turns with the row.
+    float rowTurn = 0.0f;
+    float rowTaper = 1.0f;
+
+    // The point `angle` turns the part about, in the part's own frame before it is turned
+    // (so [-0.5, 0] on a bar of length 1 is its left end): a crane jib or a clamp jaw swings
+    // about its joint rather than about its middle.
+    bool    hasPivot = false;
+    Vector2 pivot = { 0.0f, 0.0f };
 
     // A row centred on its own `at` rather than starting there, so a row whose count is a
     // range stays balanced instead of growing off one end.

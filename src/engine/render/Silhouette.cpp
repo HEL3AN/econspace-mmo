@@ -330,7 +330,7 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
                      "alpha",   "orbitRadius", "orbitPeriod", "orbitPhase",  "orbitTilt",
                      "lat",     "lon",         "spin",        "blink",       "onlyThrusting",
                      "tint",    "from",        "to",          "row",         "module",
-                     "variant", "scale",       "chance" },
+                     "variant", "scale",       "chance",      "group",       "pivot" },
                 error))
             return false;
         Part p;
@@ -433,6 +433,37 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         p.sides = (int)sides;
         p.count = (int)count;
         p.chance = e.value("chance", p.chance);
+        if (e.contains("group"))
+        {
+            // A group is a variable nobody can name in data: "#" cannot start a "$" name.
+            const std::string name = "#" + e.value("group", std::string());
+            p.chanceVar = -1;
+            for (size_t k = 0; k < s.vars.size(); k++)
+                if (s.vars[k].name == name)
+                    p.chanceVar = (int)k;
+            if (p.chanceVar < 0)
+            {
+                Shape::Var g;
+                g.name = name;
+                g.lo = 0.0f;
+                g.hi = 1.0f;
+                s.vars.push_back(g);
+                p.chanceVar = (int)s.vars.size() - 1;
+            }
+        }
+        if (e.contains("pivot"))
+        {
+            const json& pv = e["pivot"];
+            if (!pv.is_array() || pv.size() != 2)
+            {
+                error = "\"pivot\" is [x, y]";
+                return false;
+            }
+            if (!num(pv[0], p.pivot.x, Part::Field::PivotX) ||
+                !num(pv[1], p.pivot.y, Part::Field::PivotY))
+                return false;
+            p.hasPivot = true;
+        }
         p.filled = e.value("filled", p.filled);
         p.repeat = e.value("repeat", p.repeat);
         p.mirror = e.value("mirror", p.mirror);
@@ -504,7 +535,8 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         if (e.contains("row"))
         {
             const json& r = e["row"];
-            if (!r.is_object() || !OnlyKnownKeys(r, { "count", "step", "centred" }, error) ||
+            if (!r.is_object() ||
+                !OnlyKnownKeys(r, { "count", "step", "centred", "turn", "taper" }, error) ||
                 !r.contains("step") || !r["step"].is_array() || r["step"].size() != 2)
             {
                 if (error.empty())
@@ -519,6 +551,9 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
                 !num(r["step"][1], p.rowStep.y, Part::Field::StepY))
                 return false;
             p.rowCentred = r.value("centred", false);
+            if ((r.contains("turn") && !num(r["turn"], p.rowTurn, Part::Field::RowTurn)) ||
+                (r.contains("taper") && !num(r["taper"], p.rowTaper, Part::Field::RowTaper)))
+                return false;
         }
         s.parts.push_back(p);
     }
@@ -576,8 +611,13 @@ std::vector<float> RollVars(const Shape& s, int seed, int salt)
 bool Resolve(const Part& p, int seed, int salt, Part& out, const float* rolls)
 {
     out = p;
-    if (p.chance < 1.0f && Hash01(seed, salt + 911) >= p.chance)
-        return false;
+    if (p.chance < 1.0f)
+    {
+        const float u =
+            (p.chanceVar >= 0 && rolls != nullptr) ? rolls[p.chanceVar] : Hash01(seed, salt + 911);
+        if (u >= p.chance)
+            return false;
+    }
     for (size_t k = 0; k < p.vary.size(); k++)
     {
         const Part::Vary& v = p.vary[k];
@@ -605,6 +645,10 @@ bool Resolve(const Part& p, int seed, int salt, Part& out, const float* rolls)
             case Part::Field::ArcTo: out.arcTo = x; break;
             case Part::Field::StepX: out.rowStep.x = x; break;
             case Part::Field::StepY: out.rowStep.y = x; break;
+            case Part::Field::RowTurn: out.rowTurn = x; break;
+            case Part::Field::RowTaper: out.rowTaper = x; break;
+            case Part::Field::PivotX: out.pivot.x = x; break;
+            case Part::Field::PivotY: out.pivot.y = x; break;
         }
     }
     if (!p.palette.empty())
@@ -613,7 +657,16 @@ bool Resolve(const Part& p, int seed, int salt, Part& out, const float* rolls)
             (p.tintVar >= 0 && rolls != nullptr) ? rolls[p.tintVar] : Hash01(seed, salt + 503);
         out.tint = p.palette[std::min(p.palette.size() - 1, (size_t)(u * p.palette.size()))];
     }
-    if (p.rowCentred && out.rowCount > 1)
+    if (out.hasPivot)
+    {
+        // Turned about the joint: the centre moves by however far the turn carries it.
+        const float c = std::cos(out.angle * DEG2RAD), sn = std::sin(out.angle * DEG2RAD);
+        const float px = out.pivot.x, py = out.pivot.y;
+        out.at = { out.at.x + px - (px * c - py * sn), out.at.y + py - (px * sn + py * c) };
+        out.hasPivot = false;
+    }
+    // A bent or tapering row is spelled out copy by copy (SpellRow), and centred there.
+    if (p.rowCentred && out.rowCount > 1 && out.rowTurn == 0.0f && out.rowTaper == 1.0f)
     {
         // The row's middle where `at` says, whatever count the roll gave it.
         const float half = 0.5f * (float)(out.rowCount - 1);
@@ -621,6 +674,49 @@ bool Resolve(const Part& p, int seed, int salt, Part& out, const float* rolls)
         out.rowCentred = false;
     }
     return true;
+}
+
+// A row that bends or tapers, as one part per copy (#240): each copy is placed a step on
+// from the last along a direction turned by `rowTurn` per copy, turned with it, and sized
+// by `rowTaper` to the power of its place. A straight even row is returned as it is, for
+// the composer to lay out as it always has.
+std::vector<Part> SpellRow(const Part& p)
+{
+    if (p.rowCount <= 1 || (p.rowTurn == 0.0f && p.rowTaper == 1.0f))
+        return { p };
+    std::vector<Part>    copies;
+    std::vector<Vector2> offsets;
+    Vector2              off = { 0.0f, 0.0f };
+    float                size = 1.0f;
+    for (int k = 0; k < p.rowCount; k++)
+    {
+        Part q = p;
+        q.rowCount = 1;
+        q.rowStep = { 0.0f, 0.0f };
+        q.rowCentred = false;
+        q.angle = p.angle + p.rowTurn * (float)k;
+        q.radius *= size;
+        q.width *= size;
+        q.length *= size;
+        q.scale *= size;
+        offsets.push_back(off);
+        copies.push_back(q);
+        const float t = p.rowTurn * (float)k * DEG2RAD;
+        const float c = std::cos(t), sn = std::sin(t);
+        off = { off.x + p.rowStep.x * c - p.rowStep.y * sn,
+                off.y + p.rowStep.x * sn + p.rowStep.y * c };
+        size *= p.rowTaper;
+    }
+    Vector2 shift = { 0.0f, 0.0f };
+    if (p.rowCentred)
+    {
+        for (const Vector2& o : offsets)
+            shift = { shift.x + o.x, shift.y + o.y };
+        shift = { shift.x / (float)offsets.size(), shift.y / (float)offsets.size() };
+    }
+    for (size_t k = 0; k < copies.size(); k++)
+        copies[k].at = { p.at.x + offsets[k].x - shift.x, p.at.y + offsets[k].y - shift.y };
+    return copies;
 }
 
 // A module laid on a planet's surface (#240): a base, a city, a crater field. Its own frame
@@ -639,40 +735,43 @@ void ExpandOnSphere(const Part& p, const ModuleVariant& v, int seed, int salt, S
     for (int k = 0; k < rows; k++)
         for (size_t j = 0; j < v.shape.parts.size(); j++)
         {
-            Part mp;
-            if (!Resolve(v.shape.parts[j], seed, salt + (int)j * 131, mp,
+            Part resolved;
+            if (!Resolve(v.shape.parts[j], seed, salt + (int)j * 131, resolved,
                          rolls.empty() ? nullptr : rolls.data()))
                 continue;
-            // A surface part is one point on the sphere, so a row inside the module is
-            // spelled out here rather than left to the composer.
-            const int own = mp.rowCount < 1 ? 1 : mp.rowCount;
-            for (int n = 0; n < own; n++)
+            for (const Part& mp : SpellRow(resolved))
             {
-                const float lx = (mp.at.x + mp.rowStep.x * (float)n) * p.scale;
-                const float ly = (mp.at.y + mp.rowStep.y * (float)n) * p.scale;
-                const float x = p.rowStep.x * (float)k + lx * ca - ly * sa;
-                const float y = p.rowStep.y * (float)k + lx * sa + ly * ca;
-                Part        q = mp;
-                q.surface = true;
-                // Screen y points south, and a degree of longitude narrows towards a pole.
-                q.lat = std::fmax(-89.0f, std::fmin(89.0f, p.lat - y * RAD2DEG));
-                q.lon = p.lon + x / std::fmax(0.2f, std::cos(q.lat * DEG2RAD)) * RAD2DEG;
-                q.at = { 0.0f, 0.0f };
-                q.angle = mp.angle + p.angle;
-                q.radius *= p.scale;
-                q.width *= p.scale;
-                q.length *= p.scale;
-                q.rowCount = 1;
-                q.rowStep = { 0.0f, 0.0f };
-                q.alpha *= p.alpha;
-                if (q.tint.a == 0)
-                    q.tint = p.tint;
-                const float seen = mp.minPixels > 0.0f ? mp.minPixels : 10.0f;
-                q.minPixels = std::fmax(p.minPixels, seen / std::fmax(p.scale, 0.001f));
-                q.repeat = p.repeat;
-                q.mirror = p.mirror;
-                q.spin = p.spin;
-                out.parts.push_back(q);
+                // A surface part is one point on the sphere, so a row inside the module is
+                // spelled out here rather than left to the composer.
+                const int own = mp.rowCount < 1 ? 1 : mp.rowCount;
+                for (int n = 0; n < own; n++)
+                {
+                    const float lx = (mp.at.x + mp.rowStep.x * (float)n) * p.scale;
+                    const float ly = (mp.at.y + mp.rowStep.y * (float)n) * p.scale;
+                    const float x = p.rowStep.x * (float)k + lx * ca - ly * sa;
+                    const float y = p.rowStep.y * (float)k + lx * sa + ly * ca;
+                    Part        q = mp;
+                    q.surface = true;
+                    // Screen y points south, and a degree of longitude narrows towards a pole.
+                    q.lat = std::fmax(-89.0f, std::fmin(89.0f, p.lat - y * RAD2DEG));
+                    q.lon = p.lon + x / std::fmax(0.2f, std::cos(q.lat * DEG2RAD)) * RAD2DEG;
+                    q.at = { 0.0f, 0.0f };
+                    q.angle = mp.angle + p.angle;
+                    q.radius *= p.scale;
+                    q.width *= p.scale;
+                    q.length *= p.scale;
+                    q.rowCount = 1;
+                    q.rowStep = { 0.0f, 0.0f };
+                    q.alpha *= p.alpha;
+                    if (q.tint.a == 0)
+                        q.tint = p.tint;
+                    const float seen = mp.minPixels > 0.0f ? mp.minPixels : 10.0f;
+                    q.minPixels = std::fmax(p.minPixels, seen / std::fmax(p.scale, 0.001f));
+                    q.repeat = p.repeat;
+                    q.mirror = p.mirror;
+                    q.spin = p.spin;
+                    out.parts.push_back(q);
+                }
             }
         }
 }
@@ -690,94 +789,101 @@ Shape ExpandModules(const Shape& in, const Pose& pose)
     const std::vector<float> top = RollVars(in, pose.seed, 9001);
     for (size_t i = 0; i < in.parts.size(); i++)
     {
-        Part p;
-        if (!Resolve(in.parts[i], pose.seed, (int)i * 977 + 3, p,
+        Part resolved;
+        if (!Resolve(in.parts[i], pose.seed, (int)i * 977 + 3, resolved,
                      top.empty() ? nullptr : top.data()))
             continue;
-        if (p.module.empty())
+        for (const Part& p : SpellRow(resolved))
         {
-            out.parts.push_back(p);
-            continue;
-        }
-        const Module* mod = Modules::Find(p.module);
-        if (mod == nullptr || mod->variants.empty())
-            continue;
-        const ModuleVariant* v = nullptr;
-        if (!p.variant.empty())
-        {
-            for (const ModuleVariant& c : mod->variants)
-                if (c.id == p.variant)
-                    v = &c;
-        }
-        else
-        {
-            // The object's choice, per module part: the same every frame and on every
-            // client, different from one object to the next.
-            const int n = (int)mod->variants.size();
-            v = &mod->variants[std::min(n - 1, (int)(Hash01(pose.seed, (int)i * 977 + 5) * n))];
-        }
-        if (v == nullptr)
-            continue;
-
-        if (p.surface)
-        {
-            ExpandOnSphere(p, *v, pose.seed, (int)i * 977 + 41, out);
-            continue;
-        }
-
-        const int   repeat = p.repeat < 1 ? 1 : p.repeat;
-        const int   sides = p.mirror ? 2 : 1;
-        const int   rows = p.rowCount < 1 ? 1 : p.rowCount;
-        const float turned = (float)std::fmod((double)p.spin * pose.time, 360.0);
-        // The module's variables, rolled per placement: two hatches on one hull may differ,
-        // the parts of one hatch may not. Every copy of a repeat or row shares the roll.
-        const std::vector<float> mrolls = RollVars(v->shape, pose.seed, (int)i * 977 + 61);
-        for (int r = 0; r < repeat; r++)
-        {
-            const float rot = (360.0f / (float)repeat) * (float)r + turned;
-            const float cr = std::cos(rot * DEG2RAD), sr = std::sin(rot * DEG2RAD);
-            for (int m = 0; m < sides * rows; m++)
+            if (p.module.empty())
             {
-                const int     k = m / sides;
-                const float   flip = (m % sides == 0) ? 1.0f : -1.0f;
-                const float   ox = p.at.x + p.rowStep.x * (float)k;
-                const float   oy = (p.at.y + p.rowStep.y * (float)k) * flip;
-                const Vector2 origin = { ox * cr - oy * sr, ox * sr + oy * cr };
-                const float   a = p.angle * flip + rot;
-                const float   ca = std::cos(a * DEG2RAD), sa = std::sin(a * DEG2RAD);
-                for (size_t j = 0; j < v->shape.parts.size(); j++)
+                out.parts.push_back(p);
+                continue;
+            }
+            const Module* mod = Modules::Find(p.module);
+            if (mod == nullptr || mod->variants.empty())
+                continue;
+            const ModuleVariant* v = nullptr;
+            if (!p.variant.empty())
+            {
+                for (const ModuleVariant& c : mod->variants)
+                    if (c.id == p.variant)
+                        v = &c;
+            }
+            else
+            {
+                // The object's choice, per module part: the same every frame and on every
+                // client, different from one object to the next.
+                const int n = (int)mod->variants.size();
+                v = &mod->variants[std::min(n - 1, (int)(Hash01(pose.seed, (int)i * 977 + 5) * n))];
+            }
+            if (v == nullptr)
+                continue;
+
+            if (p.surface)
+            {
+                ExpandOnSphere(p, *v, pose.seed, (int)i * 977 + 41, out);
+                continue;
+            }
+
+            const int   repeat = p.repeat < 1 ? 1 : p.repeat;
+            const int   sides = p.mirror ? 2 : 1;
+            const int   rows = p.rowCount < 1 ? 1 : p.rowCount;
+            const float turned = (float)std::fmod((double)p.spin * pose.time, 360.0);
+            // The module's variables, rolled per placement: two hatches on one hull may differ,
+            // the parts of one hatch may not. Every copy of a repeat or row shares the roll.
+            const std::vector<float> mrolls = RollVars(v->shape, pose.seed, (int)i * 977 + 61);
+            for (int r = 0; r < repeat; r++)
+            {
+                const float rot = (360.0f / (float)repeat) * (float)r + turned;
+                const float cr = std::cos(rot * DEG2RAD), sr = std::sin(rot * DEG2RAD);
+                for (int m = 0; m < sides * rows; m++)
                 {
-                    // Resolved once per module part, not per copy: a row of the same hatch
-                    // is a row of the same hatch, and rhythm is what reads as designed.
-                    Part mp;
-                    if (!Resolve(v->shape.parts[j], pose.seed, (int)i * 977 + (int)j * 131 + 41, mp,
-                                 mrolls.empty() ? nullptr : mrolls.data()))
-                        continue;
-                    Part        q = mp;
-                    const float lx = mp.at.x * p.scale, ly = mp.at.y * p.scale * flip;
-                    q.at = { origin.x + lx * ca - ly * sa, origin.y + lx * sa + ly * ca };
-                    q.angle = mp.angle * flip + a;
-                    q.radius *= p.scale;
-                    q.width *= p.scale;
-                    q.length *= p.scale;
-                    const float sx = mp.rowStep.x * p.scale, sy = mp.rowStep.y * p.scale * flip;
-                    q.rowStep = { sx * ca - sy * sa, sx * sa + sy * ca };
-                    if (flip < 0.0f)
+                    const int     k = m / sides;
+                    const float   flip = (m % sides == 0) ? 1.0f : -1.0f;
+                    const float   ox = p.at.x + p.rowStep.x * (float)k;
+                    const float   oy = (p.at.y + p.rowStep.y * (float)k) * flip;
+                    const Vector2 origin = { ox * cr - oy * sr, ox * sr + oy * cr };
+                    const float   a = p.angle * flip + rot;
+                    const float   ca = std::cos(a * DEG2RAD), sa = std::sin(a * DEG2RAD);
+                    for (size_t j = 0; j < v->shape.parts.size(); j++)
                     {
-                        q.arcFrom = -mp.arcTo;
-                        q.arcTo = -mp.arcFrom;
+                        // Resolved once per module part, not per copy: a row of the same hatch
+                        // is a row of the same hatch, and rhythm is what reads as designed.
+                        Part resolved;
+                        if (!Resolve(v->shape.parts[j], pose.seed, (int)i * 977 + (int)j * 131 + 41,
+                                     resolved, mrolls.empty() ? nullptr : mrolls.data()))
+                            continue;
+                        for (const Part& mp : SpellRow(resolved))
+                        {
+                            Part        q = mp;
+                            const float lx = mp.at.x * p.scale, ly = mp.at.y * p.scale * flip;
+                            q.at = { origin.x + lx * ca - ly * sa, origin.y + lx * sa + ly * ca };
+                            q.angle = mp.angle * flip + a;
+                            q.radius *= p.scale;
+                            q.width *= p.scale;
+                            q.length *= p.scale;
+                            const float sx = mp.rowStep.x * p.scale,
+                                        sy = mp.rowStep.y * p.scale * flip;
+                            q.rowStep = { sx * ca - sy * sa, sx * sa + sy * ca };
+                            if (flip < 0.0f)
+                            {
+                                q.arcFrom = -mp.arcTo;
+                                q.arcTo = -mp.arcFrom;
+                            }
+                            q.alpha *= p.alpha;
+                            if (q.tint.a == 0)
+                                q.tint = p.tint;
+                            // Seen when the MODULE is big enough to see, not the object: a hatch
+                            // a twentieth of a station appears as you approach it.
+                            const float own = mp.minPixels > 0.0f ? mp.minPixels : 10.0f;
+                            q.minPixels = std::fmax(p.minPixels, own / std::fmax(p.scale, 0.001f));
+                            q.repeat = 1;
+                            q.mirror = false;
+                            q.spin = 0.0f;
+                            out.parts.push_back(q);
+                        }
                     }
-                    q.alpha *= p.alpha;
-                    if (q.tint.a == 0)
-                        q.tint = p.tint;
-                    // Seen when the MODULE is big enough to see, not the object: a hatch
-                    // a twentieth of a station appears as you approach it.
-                    const float own = mp.minPixels > 0.0f ? mp.minPixels : 10.0f;
-                    q.minPixels = std::fmax(p.minPixels, own / std::fmax(p.scale, 0.001f));
-                    q.repeat = 1;
-                    q.mirror = false;
-                    q.spin = 0.0f;
-                    out.parts.push_back(q);
                 }
             }
         }
@@ -792,7 +898,8 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
         hasModules = hasModules || !p.module.empty();
     bool varies = hasModules;
     for (const Part& p : shape.parts)
-        varies = varies || !p.vary.empty() || !p.palette.empty() || p.chance < 1.0f || p.rowCentred;
+        varies = varies || !p.vary.empty() || !p.palette.empty() || p.chance < 1.0f ||
+                 p.rowCentred || p.rowTurn != 0.0f || p.rowTaper != 1.0f || p.hasPivot;
     // Ranges, palettes and chance are settled in the same pass that expands modules, so
     // everything below sees fixed numbers.
     const Shape  expanded = varies ? ExpandModules(shape, pose) : Shape{};
