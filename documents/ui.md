@@ -182,8 +182,9 @@ menu, the selected-item window's buttons, the overview's right click. `Game::Per
 turns a chosen action into a command. Each action names the econagent tool that does the
 same thing, and `actions_tests.cpp` checks those tools exist -- a window cannot offer what
 an agent cannot do. The verbs that only change what the interface shows (`Select`,
-`SetRange`) need no tool; the ones still owed one (`Attack`, `Investigate`) are listed in
-the test, and adding the tool is the only way off the list.
+`SetRange`) need no tool; every other verb has one (`Investigate` is `salvage`). A new verb
+that ships before its tool goes on the test's `owed` list, which is empty now, and adding
+the tool is the only way off it.
 
 A mission is a thing too: `Actions::ForMission` offers `Accept` (an offer, docked, with room)
 and `Hand in` (one the server says is ready), matched by `accept_mission` and
@@ -323,11 +324,22 @@ no window is written against Clay itself.
 ## Still placed by hand
 
 On `Ui::Layout`: status, overview, the selected item, missions, radar (its toolbar; the
-scope is a picture in a box the layout gives), settings, the station, market and hangar,
-and the map's and the sensor screen's heading, legend and news. The pictures themselves --
-the map's nodes and their labels, the sensor grid, the radar's scope -- are drawn by hand in
-the box their layout gives them. F10's panel is the one window still placed with
-coordinates.
+scope is a picture in a box the layout gives), settings, F10's screen treatment, the
+station, market and hangar, and the map's and the sensor screen's heading, legend and news.
+The pictures themselves -- the map's nodes and their labels, the sensor grid, the radar's
+scope -- are drawn by hand in the box their layout gives them. No window is placed with
+coordinates any more.
+
+## A window on the overlay layer
+
+F10's panel is an ordinary placed window -- it moves, resizes, collapses and is kept in
+`ui_layout.json` -- on `Layer::Overlay`, which the game draws after the screen treatment:
+a settings window seen through the effect it adjusts cannot be read while adjusting it.
+Grouping and stacking are per layer, so it never joins a window below it. It has no
+`context`: it is there in space and docked alike. Its content is
+`Render::TreatmentPanel`, which the editor's gallery draws too, in a box of its own since
+the editor has no desk. A change is written to `look.json` when the mouse lets go of it,
+not on every frame of a slider's drag.
 
 ## Seeing a window
 

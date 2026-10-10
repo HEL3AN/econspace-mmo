@@ -1,148 +1,145 @@
 #include "render/TreatmentPanel.h"
 
-#include "ui/Controls.h"
-#include "ui/UiTheme.h"
+#include "ui/Theme.h"
+
+#include <cstdio>
+#include <string>
 
 namespace Render
 {
 namespace
 {
-const float ROW = 22.0f;      // one line of text
-const float SLIDER = 32.0f;   // a slider and its label
-const float TOGGLE = 30.0f;   // a toggle and the gap after it
-const float PASS_GAP = 8.0f;  // between one pass block and the next
-
-float PassBlockHeight(bool expanded)
+std::string Format(const char* format, float v)
 {
-    return expanded ? (TOGGLE + SLIDER * 2.0f + PASS_GAP) : (TOGGLE + PASS_GAP);
+    char buf[48];
+    std::snprintf(buf, sizeof(buf), format, v);
+    return buf;
 }
 }  // namespace
 
-float TreatmentPanelHeight(const Treatment& t, const MaterialLibrary* materials)
+bool TreatmentPanel::Draw(const Ui::Frame& f, Treatment& t, const MaterialLibrary* materials)
 {
-    float h = ROW * 2.0f + TOGGLE * 2.0f + 16.0f;  // title, availability, two master toggles
-    for (const Pass& p : t.Config().chain)
-        h += PassBlockHeight(p.enabled);
-    h += ROW * (float)t.Problems().size();
-    if (materials != nullptr && !materials->Problems().empty())
-        h += ROW * (float)(materials->Problems().size() + 1);  // a heading, then each
-    h += TOGGLE;                                               // the reset row
-    return h;
-}
-
-bool DrawTreatmentPanel(Rectangle area, Treatment& t, const MaterialLibrary* materials)
-{
+    using Ui::Box;
+    using Ui::Size;
+    using Ui::TextStyle;
+    const Ui::Theme& th = Ui::CurrentTheme();
+    Ui::Layout&      L = layout_;
     TreatmentConfig& cfg = t.Config();
     bool             changed = false;
 
-    const float x = area.x;
-    const float w = area.width;
-    float       y = area.y;
-
-    Ui::Text("SCREEN TREATMENT", (int)x, (int)y, 13, Ui::ACCENT);
-    y += ROW;
-
-    if (!t.Available())
+    // A button as wide as it is tall: the arrows that reorder a pass.
+    auto square = [&](const std::string& id, const char* label)
     {
-        // Said plainly and in the place a player would look, rather than only in a log
-        // nobody reads. A machine whose driver refused the shaders is a machine that plays
-        // the game without them, and it should say so instead of looking broken.
-        Ui::Text("no passes on this machine - drawing without them", (int)x, (int)y, 11,
-                 Ui::TEXT_DIM);
-        y += ROW;
-    }
-    else
+        bool clicked = false;
+        L.Row(Box().Width(Size::Fixed(th.metrics.buttonHeight)),
+              [&] { clicked = L.Button(id, label); });
+        return clicked;
+    };
+    // An on/off switch: a button lit while it is on, saying which it is.
+    auto toggle = [&](const std::string& id, const std::string& label, bool& on)
     {
-        Ui::Text(TextFormat("%d passes in the chain", (int)cfg.chain.size()), (int)x, (int)y, 11,
-                 Ui::TEXT_DIM);
-        y += ROW;
-    }
-
-    // Every shader that failed on this machine, by name, at the top: the panel is taller
-    // than a small window and is clipped at the bottom, and this is the part that explains
-    // why the picture looks the way it does (#190).
-    for (const std::string& problem : t.Problems())
-    {
-        Ui::Text(problem.c_str(), (int)x, (int)y, 10, Ui::TEXT);
-        y += ROW;
-    }
-    if (materials != nullptr && !materials->Problems().empty())
-    {
-        Ui::Text("materials drawn plain:", (int)x, (int)y, 11, Ui::TEXT_DIM);
-        y += ROW;
-        for (const std::string& problem : materials->Problems())
-        {
-            Ui::Text(problem.c_str(), (int)x, (int)y, 10, Ui::TEXT);
-            y += ROW;
-        }
-    }
-
-    changed |=
-        Ui::Toggle({ x, y, w, 24.0f }, cfg.enabled ? "treatment on" : "treatment off (raw picture)",
-                   cfg.enabled);
-    y += TOGGLE;
-
-    // The HUD exclusion is a separate switch and not a pass, because it is not about how
-    // the effect looks: the HUD carries numbers people fly by, and a pixelated fuel gauge
-    // is a worse game whatever the chain is doing.
-    changed |= Ui::Toggle({ x, y, w, 24.0f }, cfg.treatHud ? "HUD treated too" : "HUD kept clean",
-                          cfg.treatHud);
-    y += TOGGLE + 6.0f;
-
-    for (size_t i = 0; i < cfg.chain.size(); i++)
-    {
-        Pass&      p = cfg.chain[i];
-        const bool have = t.Compiled(p.kind);
-
-        // Order is a decision: bloom before pixelation gives soft fat pixels, after it
-        // gives hard pixel edges that glow. So the arrows sit on every row rather than the
-        // order being fixed in code.
-        const float arrowW = 22.0f;
-        Rectangle   up{ x + w - arrowW * 2.0f - 4.0f, y, arrowW, 24.0f };
-        Rectangle   down{ x + w - arrowW, y, arrowW, 24.0f };
-
-        Rectangle   row{ x, y, w - arrowW * 2.0f - 8.0f, 24.0f };
-        const char* label =
-            have ? PassName(p.kind) : TextFormat("%s (unavailable)", PassName(p.kind));
-        bool on = p.enabled;
-        if (Ui::Toggle(row, label, on))
-        {
-            p.enabled = on;
-            changed = true;
-        }
-
-        if (Ui::SmallButton(up, "^") && i > 0)
-        {
-            cfg.MoveUp(i);
-            changed = true;
-        }
-        if (Ui::SmallButton(down, "v") && i + 1 < cfg.chain.size())
-        {
-            cfg.MoveDown(i);
-            changed = true;
-        }
-        y += TOGGLE;
-
-        if (p.enabled)
-        {
-            changed |=
-                Ui::Slider({ x + 12.0f, y, w - 12.0f, 28.0f }, "amount", p.amount, 0.0f, 1.0f);
-            y += SLIDER;
-            changed |= Ui::Slider({ x + 12.0f, y, w - 12.0f, 28.0f }, ScaleMeaning(p.kind), p.scale,
-                                  0.5f, 8.0f);
-            y += SLIDER;
-        }
-        y += PASS_GAP;
-    }
-
-    if (Ui::SmallButton({ x, y, 120.0f, 22.0f }, "reset to default"))
-    {
-        const bool hud = cfg.treatHud;
-        cfg = TreatmentConfig::Default();
-        cfg.treatHud = hud;  // a preference about the HUD, not part of the look
+        if (!L.Button(id, label + (on ? ": on" : ": off"), on))
+            return;
+        on = !on;
         changed = true;
-    }
+    };
 
+    L.Begin(f);
+    L.Scroll(
+        Box().Grow().Id("page").Gap(th.metrics.gap),
+        [&]
+        {
+            if (!t.Available())
+                // Said plainly and in the place a player would look, rather than only in a
+                // log nobody reads. A machine whose driver refused the shaders is a machine
+                // that plays the game without them, and it should say so instead of looking
+                // broken.
+                L.Text("No passes on this machine: the picture is drawn without them.",
+                       TextStyle::Body().Tint(th.colors.warn).Wrap());
+            else
+                L.Text(std::to_string(cfg.chain.size()) + " passes, applied top to bottom",
+                       TextStyle::Label());
+
+            // Every shader that failed on this machine, by name, at the top: this is the part
+            // that explains why the picture looks the way it does (#190).
+            const bool plain = materials != nullptr && !materials->Problems().empty();
+            if (!t.Problems().empty() || plain)
+                L.Column(Box().GrowX().Gap(th.metrics.rowGap),
+                         [&]
+                         {
+                             for (const std::string& problem : t.Problems())
+                                 L.Text(problem, TextStyle::Small().Tint(th.colors.warn).Wrap());
+                             if (!plain)
+                                 return;
+                             L.Text("MATERIALS DRAWN PLAIN", TextStyle::Label());
+                             for (const std::string& problem : materials->Problems())
+                                 L.Text(problem, TextStyle::Small().Tint(th.colors.warn).Wrap());
+                         });
+
+            // The HUD exclusion is a separate switch and not a pass, because it is not about
+            // how the effect looks: the HUD carries numbers people fly by, and a pixelated
+            // fuel gauge is a worse game whatever the chain is doing.
+            L.Row(Box().GrowX().Gap(th.metrics.rowGap),
+                  [&]
+                  {
+                      toggle("enabled", "Treatment", cfg.enabled);
+                      toggle("hud", "HUD treated", cfg.treatHud);
+                  });
+            if (!cfg.enabled)
+                L.Text("Off: the raw picture, every pass skipped.",
+                       TextStyle::Small().Tint(th.colors.dim).Wrap());
+
+            L.Divider();
+            for (size_t i = 0; i < cfg.chain.size(); i++)
+            {
+                Pass&             p = cfg.chain[i];
+                const std::string n = std::to_string(i);
+                L.Column(Box().GrowX().Gap(th.metrics.rowGap),
+                         [&]
+                         {
+                             // Order is a decision: bloom before pixelation gives soft fat
+                             // pixels, after it gives hard pixel edges that glow. So the
+                             // arrows sit on every row rather than the order being fixed in
+                             // code.
+                             L.Row(Box().GrowX().Gap(th.metrics.rowGap),
+                                   [&]
+                                   {
+                                       std::string name = PassName(p.kind);
+                                       if (!t.Compiled(p.kind))
+                                           name += " (unavailable)";
+                                       toggle("pass" + n, name, p.enabled);
+                                       if (square("up" + n, "^") && i > 0)
+                                       {
+                                           cfg.MoveUp(i);
+                                           changed = true;
+                                       }
+                                       if (square("down" + n, "v") && i + 1 < cfg.chain.size())
+                                       {
+                                           cfg.MoveDown(i);
+                                           changed = true;
+                                       }
+                                   });
+                             if (!p.enabled)
+                                 return;
+                             L.Field("amount", Format("%.2f", p.amount), th.colors.text);
+                             changed |= L.Slider("amount" + n, p.amount, 0.0f, 1.0f);
+                             L.Field(ScaleMeaning(p.kind), Format("%.2f", p.scale), th.colors.text);
+                             // By ratio: 0.5 to 1 is as large a step as 4 to 8.
+                             changed |= L.Slider("scale" + n, p.scale, 0.5f, 8.0f, true);
+                         });
+            }
+
+            L.Divider();
+            if (L.Button("reset", "Reset to default"))
+            {
+                const bool hud = cfg.treatHud;
+                cfg = TreatmentConfig::Default();
+                cfg.treatHud = hud;  // a preference about the HUD, not part of the look
+                changed = true;
+            }
+        });
+    L.End();
+    L.Draw();
     return changed;
 }
 

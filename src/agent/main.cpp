@@ -16,6 +16,8 @@
 #include "agent/Jsonrpc.h"
 #include "agent/Session.h"
 
+#include "core/Actions.h"  // WARP_MIN: when a move is worth a warp
+#include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
 #include "core/WorldLoader.h"
@@ -1017,6 +1019,72 @@ std::vector<Tool> BuildTools()
               return GiveOrder(c, "attack");
           } });
 
+    tools.push_back(
+        { "salvage",
+          "Search a wreck (a derelict observe marks 'lootable') and take what it pays. A wreck "
+          "is searched once, by whoever gets there first, and everyone sees it searched "
+          "after. Within its reach this searches it now and says what it paid. Out of reach "
+          "it flies there instead (a move_to order, warping when far): wait_for_event until "
+          "it arrives, then call salvage again.",
+          Obj({ { "derelict_id", Num("derelict id from observe") } }, { "derelict_id" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              const int  id = (int)NumberOr(args, "derelict_id", 0);
+              const auto it = g_session.Layout().find(id);
+              // What can be salvaged is a component (#34), as the server decides it; a
+              // derelict's own state is whether it has been taken already.
+              const Archetype* type =
+                  it == g_session.Layout().end() ? nullptr : Archetypes::Find(it->second.archetype);
+              if (it == g_session.Layout().end() ||
+                  it->second.kind != Proto::EntityKind::Derelict ||
+                  (type != nullptr && !type->Has(Component::Salvageable)))
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "no wreck #" + std::to_string(id) + " in this system" };
+              const Proto::EntityLayout& wreck = it->second;
+              if (wreck.looted)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    wreck.name + " has been searched already; nothing is left" };
+              const Proto::PlayerView& p = g_session.Snapshot().player;
+              if (p.docked)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "docked; undock first" };
+
+              const float reach = wreck.size + (type != nullptr ? type->salvageRange : 0.0f);
+              const float dx = wreck.pos.x - p.pos.x, dy = wreck.pos.y - p.pos.y;
+              const float dist = std::sqrt(dx * dx + dy * dy);
+              if (dist > reach)
+              {
+                  // Out of reach: the same thing the client's Investigate does -- go there
+                  // first. The stop is well inside the reach, so arriving is enough.
+                  Proto::Command c = OrderCommand(Orders::Kind::MoveTo);
+                  c.orderTarget = id;
+                  c.orderStopDist = wreck.size + (reach - wreck.size) * 0.5f;
+                  c.orderWarp = dist > Actions::WARP_MIN;  // as far as the menu offers a warp
+                  char head[160];
+                  std::snprintf(head, sizeof(head),
+                                "salvage: %s is %.0f away and the reach is %.0f; flying there. ",
+                                wreck.name.c_str(), dist, reach);
+                  return head + GiveOrder(c, "move_to") + " Then call salvage again.";
+              }
+
+              const std::string name = wreck.name;  // the layout may change under a pump
+              const double      before = p.money;
+              Proto::Command    c;
+              c.lootId = id;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "salvage: " + why;
+              // The answer is the money and the wreck's state, both in the snapshot that
+              // acknowledged the command: the server applies it before it builds the next.
+              const double paid = g_session.Snapshot().player.money - before;
+              const auto   now = g_session.Layout().find(id);
+              if (now != g_session.Layout().end() && now->second.looted)
+                  return "salvage: searched " + name + ", +" + Money(paid);
+              return "salvage: the server did not let you search " + name +
+                     " -- someone may have got there first, or the ship drifted out of reach; "
+                     "call observe";
+          } });
+
     return tools;
 }
 
@@ -1242,8 +1310,26 @@ int Selftest(const std::vector<Tool>& tools)
                           nothing.find("no structure") != std::string::npos;
     note("blueprints, deploy and dismantle", building);
 
+    // 7) Salvage (#297): a wreck that is not there is named as such, and one that is gets
+    // searched or approached -- whichever its distance calls for. Which wrecks a system has
+    // depends on the region, so the second half runs only where there is one.
+    g_phase = "salvaging";
+    bool salvage =
+        RunTool(tools, "salvage", Rpc::Json{ { "derelict_id", 999999 } }).find("no wreck") !=
+        std::string::npos;
+    for (const auto& kv : g_session.Layout())
+        if (kv.second.kind == Proto::EntityKind::Derelict && !kv.second.looted)
+        {
+            const std::string r =
+                RunTool(tools, "salvage", Rpc::Json{ { "derelict_id", kv.first } });
+            salvage =
+                salvage && (r.find(docked ? "undock first" : "salvage:") != std::string::npos);
+            break;
+        }
+    note("salvage", salvage);
+
     const bool ok = observed && stationId != 0 && ordered && arrived && refused && docked &&
-                    listed && accepted && unaffordable && noBounty && building;
+                    listed && accepted && unaffordable && noBounty && building && salvage;
     // A failure that is really a lost connection should say so, rather than leave a list of
     // FAILs to be read as five separate bugs.
     if (!ok && !g_session.ByeReason().empty())

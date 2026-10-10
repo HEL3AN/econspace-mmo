@@ -54,13 +54,11 @@ const char* ToolFor(Verb verb)
         case Verb::HandIn: return "complete_mission";
         case Verb::Dismantle: return "dismantle";
         case Verb::Attack: return "attack";
+        case Verb::Investigate: return "salvage";
         // The interface's own: they change what a window shows, not the world. An agent
         // names a thing by its id and a range by a number, and needs neither.
         case Verb::Select:
         case Verb::SetRange: return "";
-        // Not yet a tool: an agent cannot salvage. Listed in the test, so adding the tool is
-        // the only way off the list.
-        case Verb::Investigate: return "";
     }
     return "";
 }
