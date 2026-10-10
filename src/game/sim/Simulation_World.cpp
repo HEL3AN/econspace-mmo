@@ -542,3 +542,85 @@ bool Simulation::NameSystem(ClientSession& s, const std::string& name)
     s.RecordEvent(Ev::Kind::Notice, "Named " + designation + " " + name);
     return true;
 }
+
+// --- Authoritative world mutation (#38) ---
+
+bool Simulation::IsMutableKind(EntityKind k)
+{
+    switch (k)
+    {
+        case EntityKind::Station:
+        case EntityKind::Field:
+        case EntityKind::Nebula:
+        case EntityKind::Derelict: return true;
+        // Bodies are the generator's, and satellites find their planet by its place in the
+        // file (#210): one more or one fewer planet moves every moon in the system. A gate
+        // is an edge of the route graph, which is the galaxy index's, not the system's.
+        case EntityKind::Star:
+        case EntityKind::Planet:
+        case EntityKind::Gate:
+        // Not static at all: ships come and go through the snapshot.
+        case EntityKind::Npc:
+        case EntityKind::PlayerShip:
+        case EntityKind::Unknown: return false;
+    }
+    return false;
+}
+
+int Simulation::AddStatic(const std::string& systemId, std::unique_ptr<Entity> e,
+                          const std::string& owner)
+{
+    SystemState* st = SystemById(systemId);
+    if (st == nullptr || !e || !IsMutableKind(e->GetKind()))
+        return 0;
+    // Always a fresh id, whatever the object came with: ids are never reused, which is
+    // what lets a delta name an object without saying which one of two it meant.
+    const int id = NextAgentId();
+    e->SetId(id);
+    e->SetOwner(owner);
+    st->entities.push_back(std::move(e));
+    st->pendingAdded.insert(id);
+    st->layoutRev++;
+    return id;
+}
+
+bool Simulation::RemoveStatic(const std::string& systemId, int id)
+{
+    SystemState* st = SystemById(systemId);
+    if (st == nullptr || id == 0)
+        return false;
+    auto it = std::find_if(st->entities.begin(), st->entities.end(),
+                           [id](const std::unique_ptr<Entity>& e) { return e->GetId() == id; });
+    if (it == st->entities.end() || !IsMutableKind((*it)->GetKind()))
+        return false;
+
+    // Nobody is left inside a station that no longer exists. Undocked where it stood,
+    // which is where their ship already is.
+    for (auto& kv : sessions_)
+    {
+        ClientSession& s = kv.second;
+        if (s.systemId == systemId && s.dockedStationId == id)
+        {
+            s.dockedStationId = 0;
+            s.RecordEvent(Ev::Kind::Undocked, (*it)->GetName() + " is gone; you are in space");
+        }
+    }
+    st->defenceCooldown.erase(id);
+    st->entities.erase(it);
+    st->pendingAdded.erase(id);  // added and gone again before anyone was told: only gone
+    st->pendingChanged.erase(id);
+    st->pendingRemoved.insert(id);
+    st->layoutRev++;
+    return true;
+}
+
+void Simulation::MarkStaticChanged(SystemState& st, int id)
+{
+    if (id == 0)
+        return;
+    // An object nobody has been told about yet goes out whole, as it is now; it is still
+    // a change to the layer, so the revision moves either way.
+    if (st.pendingAdded.count(id) == 0)
+        st.pendingChanged.insert(id);
+    st.layoutRev++;
+}

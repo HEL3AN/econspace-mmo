@@ -200,6 +200,64 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
     return snap;
 }
 
+// One object of the static layer as the wire describes it. False for anything that is not
+// in the layout at all -- an NPC, a player's ship. Shared by the whole layout and by a
+// delta, so an object a delta announces is described exactly as a later layout would.
+static bool DescribeStatic(const Entity& e, Proto::EntityLayout& el)
+{
+    el.id = e.GetId();
+    el.pos = e.GetPosition();
+    el.size = e.GetSize();
+    el.color = e.GetColor();
+    el.name = e.GetName();
+    el.archetype = e.GetArchetype() != nullptr ? e.GetArchetype()->id : std::string();
+    el.owner = e.GetOwner();
+
+    // No `default:` on purpose, unlike the snapshot above. There the kind is copied
+    // wholesale and the cases only add optional fields; here every kind has to be
+    // decided in or out of the static layout, and a new one silently dropped would be
+    // an entity the client never draws. Let the compiler ask the question.
+    el.kind = e.GetKind();
+    switch (e.GetKind())
+    {
+        case EntityKind::Star: el.subType = (int)static_cast<const Star&>(e).GetStarType(); break;
+        case EntityKind::Planet:
+        {
+            const Planet& p = static_cast<const Planet&>(e);
+            el.subType = (int)p.GetPlanetType();
+            el.orbitRadius = p.GetOrbitRadius();
+            el.resource = (int)p.GetDeposit();
+            break;
+        }
+        case EntityKind::Station:
+        {
+            const Station& st = static_cast<const Station&>(e);
+            el.faction = st.GetFaction();
+            el.subType = (int)st.GetRole();
+            break;
+        }
+        case EntityKind::Field:
+            el.resource = (int)static_cast<const AsteroidField&>(e).GetResource();
+            break;
+        case EntityKind::Gate: el.dest = static_cast<const JumpGate&>(e).GetDestination(); break;
+        case EntityKind::Nebula: break;
+        case EntityKind::Derelict:
+        {
+            // The name and the state apart (#38): a client rebuilding the wreck sets it
+            // searched itself, and the name it was given must not say so already.
+            const Derelict& d = static_cast<const Derelict&>(e);
+            el.name = d.GetBaseName();
+            el.reward = d.GetReward();
+            el.looted = d.IsLooted();
+            break;
+        }
+        case EntityKind::Npc:         // dynamic: created by the client from the snapshot
+        case EntityKind::PlayerShip:  // never a world entity
+        case EntityKind::Unknown: return false;
+    }
+    return true;
+}
+
 Proto::SystemLayout Simulation::BuildLayout(const std::string& systemId) const
 {
     Proto::SystemLayout lay;
@@ -208,63 +266,49 @@ Proto::SystemLayout Simulation::BuildLayout(const std::string& systemId) const
     if (it == systems_.end())
         return lay;
 
+    lay.rev = it->second.layoutRev;
     for (const auto& e : it->second.entities)
     {
-        // NPCs — dynamics (created by the client from the snapshot), not in the static layout.
-        if (e->GetKind() == EntityKind::Npc)
-            continue;
-
         Proto::EntityLayout el;
-        el.id = e->GetId();
-        el.pos = e->GetPosition();
-        el.size = e->GetSize();
-        el.color = e->GetColor();
-        el.name = e->GetName();
-        el.archetype = e->GetArchetype() != nullptr ? e->GetArchetype()->id : std::string();
-
-        // No `default:` on purpose, unlike the snapshot above. There the kind is copied
-        // wholesale and the cases only add optional fields; here every kind has to be
-        // decided in or out of the static layout, and a new one silently dropped would be
-        // an entity the client never draws. Let the compiler ask the question.
-        el.kind = e->GetKind();
-        switch (e->GetKind())
-        {
-            case EntityKind::Star:
-                el.subType = (int)static_cast<const Star*>(e.get())->GetStarType();
-                break;
-            case EntityKind::Planet:
-            {
-                const Planet* p = static_cast<const Planet*>(e.get());
-                el.subType = (int)p->GetPlanetType();
-                el.orbitRadius = p->GetOrbitRadius();
-                el.resource = (int)p->GetDeposit();
-                break;
-            }
-            case EntityKind::Station:
-            {
-                const Station* st = static_cast<const Station*>(e.get());
-                el.faction = st->GetFaction();
-                el.subType = (int)st->GetRole();
-                break;
-            }
-            case EntityKind::Field:
-                el.resource = (int)static_cast<const AsteroidField*>(e.get())->GetResource();
-                break;
-            case EntityKind::Gate:
-                el.dest = static_cast<const JumpGate*>(e.get())->GetDestination();
-                break;
-            case EntityKind::Nebula: break;
-            case EntityKind::Derelict:
-                el.reward = static_cast<const Derelict*>(e.get())->GetReward();
-                break;
-            case EntityKind::Npc:         // dynamic — skipped above, listed so the switch is total
-            case EntityKind::PlayerShip:  // never a world entity
-            case EntityKind::Unknown: continue;
-        }
-
-        lay.entities.push_back(el);
+        if (DescribeStatic(*e, el))
+            lay.entities.push_back(std::move(el));
     }
     return lay;
+}
+
+std::vector<Proto::LayoutDelta> Simulation::TakeLayoutDeltas()
+{
+    std::vector<Proto::LayoutDelta> out;
+    for (auto& kv : systems_)
+    {
+        SystemState& st = kv.second;
+        if (st.pendingAdded.empty() && st.pendingChanged.empty() && st.pendingRemoved.empty())
+            continue;
+
+        Proto::LayoutDelta d;
+        d.systemId = kv.first;
+        d.rev = st.layoutRev;
+        // Described as they are now, not as they were when the change was recorded: two
+        // changes to one object since the last delta are one entry, and an object added and
+        // removed again in between is only a removal.
+        for (const auto& e : st.entities)
+        {
+            const int  id = e->GetId();
+            const bool added = st.pendingAdded.count(id) > 0;
+            if (!added && st.pendingChanged.count(id) == 0)
+                continue;
+            Proto::EntityLayout el;
+            if (DescribeStatic(*e, el))
+                (added ? d.added : d.changed).push_back(std::move(el));
+        }
+        d.removed.assign(st.pendingRemoved.begin(), st.pendingRemoved.end());
+
+        st.pendingAdded.clear();
+        st.pendingChanged.clear();
+        st.pendingRemoved.clear();
+        out.push_back(std::move(d));
+    }
+    return out;
 }
 
 Proto::GalaxyState Simulation::BuildGalaxyState()

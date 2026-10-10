@@ -15,7 +15,12 @@ Render::Item Derelict::Describe() const
     return it;
 }
 
+std::string Derelict::DisplayName(const std::string& baseName, bool looted)
+{
+    return looted ? (baseName + " (searched)") : baseName;
+}
+
 std::string Derelict::GetName() const
 {
-    return looted_ ? (name_ + " (searched)") : name_;
+    return DisplayName(name_, looted_);
 }

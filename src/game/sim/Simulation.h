@@ -180,6 +180,33 @@ public:
     // included here (they are snapshot dynamics).
     Proto::SystemLayout BuildLayout(const std::string& systemId) const;
 
+    // --- Authoritative world mutation (#38) ---
+    // The static layer of a system -- what the layout describes -- can change while people
+    // are in it. These are the only ways it does, and each records what changed so the
+    // next LayoutDelta tells everyone standing there. Not to be called from inside a pass
+    // over the system's entities: adding or removing one moves the others.
+    //
+    // A structure, a belt, a cloud or a wreck may come and go. A star, a planet and a gate
+    // may not, yet: bodies are the generator's and satellites name their planet by its
+    // place in the file (#210), and a gate is a link in the galaxy's route graph.
+    static bool IsMutableKind(EntityKind k);
+    // Puts an object into a system on behalf of `owner` (an account name; empty for the
+    // world itself) and gives it an id. Returns the id, or 0 when refused: no such system,
+    // or a kind that may not be added.
+    int AddStatic(const std::string& systemId, std::unique_ptr<Entity> e, const std::string& owner);
+    // Takes one out. Anyone docked at it is undocked first and told why -- the station
+    // they were inside no longer exists. False when there is no such object or it may
+    // not be removed.
+    bool RemoveStatic(const std::string& systemId, int id);
+    // Something the layout carries about an object changed in place -- a wreck was
+    // searched. The caller has already changed it; this only says so.
+    void MarkStaticChanged(SystemState& st, int id);
+    // Everything that changed since the last call, one delta per system that changed,
+    // each describing its objects as they are now. The host sends these BEFORE building
+    // the snapshots that follow, which is the whole ordering guarantee: a snapshot never
+    // reaches a client ahead of the change it reflects.
+    std::vector<Proto::LayoutDelta> TakeLayoutDeltas();
+
     // M4e-3c: galaxy snapshot (statistics of all systems + news) for the networked
     // client's galaxy map. Not const: refreshes the aggregates' population (RecountAgg).
     Proto::GalaxyState BuildGalaxyState();

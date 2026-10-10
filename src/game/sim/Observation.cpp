@@ -113,7 +113,8 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
                 name = it->second.name;
             if (e.kind == Proto::EntityKind::Gate && !it->second.dest.empty())
                 extra = "  to " + it->second.dest;
-            else if (e.kind == Proto::EntityKind::Derelict && it->second.reward > 0.0)
+            else if (e.kind == Proto::EntityKind::Derelict && it->second.reward > 0.0 &&
+                     !it->second.looted)  // a searched wreck says so once it is (#38)
                 extra = "  lootable";
         }
     }

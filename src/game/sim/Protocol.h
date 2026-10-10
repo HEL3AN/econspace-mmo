@@ -28,7 +28,7 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    13;  // 13: uncharted systems (#144); 12: index from the server (#206)
+    14;  // 14: layout revisions and LayoutDelta (#38); 13: uncharted systems (#144)
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).
@@ -277,13 +277,60 @@ struct EntityLayout
     // or an agent that knows the archetype can ask the registry instead of guessing from
     // the kind -- which a dock a player builds (#44) would not match.
     std::string archetype;
+    // Who put it there (#38): an account name, or empty for the world itself -- everything
+    // the region and the data files make. Carried so a client can tell a player's structure
+    // from the world's without asking; what an owner may do with it is the server's call.
+    std::string owner;
+    bool        looted = false;  // derelict: already searched -- a wreck changes once (#38)
 };
 
 // Full static "layout" of a system — what the client builds the world proxy from.
 struct SystemLayout
 {
-    std::string               systemId;
+    std::string systemId;
+    // How many times this system's static layer has changed since the server started
+    // (#38). A delta carries the revision it brings the system to, so a client that was
+    // sent a layout already containing a change can tell the delta about it is old news.
+    int                       rev = 0;
     std::vector<EntityLayout> entities;
+};
+
+// What changed in a system's static layer since the last delta (#38): sent to everyone
+// standing in that system, in between the snapshots, instead of the whole layout again.
+//
+// `added` and `changed` are both the object's whole current description, so applying one
+// is a replace rather than a patch, and applying it twice is the same as once. They are
+// kept apart because they mean different things to a player -- a structure appearing is
+// news, a wreck being searched is not.
+//
+// The ordering guarantee lives on the server: a delta is sent before any snapshot built
+// after the change, on the same ordered connection, so a client never sees a snapshot
+// that refers to an object its layout does not have -- or misses that one is gone.
+struct LayoutDelta
+{
+    std::string               systemId;
+    int                       rev = 0;  // the revision this delta brings the system to
+    std::vector<EntityLayout> added;
+    std::vector<EntityLayout> changed;
+    std::vector<int>          removed;
+};
+
+// A client's copy of the static layer of the system it is in, kept current by layouts and
+// deltas. Both clients -- the game and econagent -- keep one, so the rule for applying a
+// delta lives here once rather than twice.
+struct LayoutMirror
+{
+    std::string                 systemId;
+    int                         rev = 0;
+    std::map<int, EntityLayout> byId;
+
+    // A whole layout replaces everything: it is sent on entering a system.
+    void Reset(const SystemLayout& lay);
+    // Applies a delta for this system that is newer than what is held. False -- and
+    // nothing touched -- for a delta about another system (one sent just before a jump)
+    // or one the layout already included (a layout built after the change, sent before
+    // the delta about it).
+    bool Apply(const LayoutDelta& d);
 };
 
 // Per-system statistics for the galaxy map (M4e-3c): dynamics the server computes
@@ -331,6 +378,8 @@ std::string EncodeSnapshot(const Snapshot& s);
 bool        DecodeSnapshot(const std::string& s, Snapshot& out);
 std::string EncodeLayout(const SystemLayout& s);
 bool        DecodeLayout(const std::string& s, SystemLayout& out);
+std::string EncodeLayoutDelta(const LayoutDelta& d);
+bool        DecodeLayoutDelta(const std::string& s, LayoutDelta& out);
 std::string EncodeGalaxy(const GalaxyState& s);
 bool        DecodeGalaxy(const std::string& s, GalaxyState& out);
 
@@ -343,8 +392,8 @@ bool        DecodeGalaxy(const std::string& s, GalaxyState& out);
 std::string EncodeUniverse(const WorldLoader::Universe& u);
 bool        DecodeUniverse(const std::string& s, WorldLoader::Universe& out);
 
-// Message type from the "t" field ("cmd"/"snap"/"layout"/"galaxy"/"universe"); "" — broken/unknown.
-// For dispatching incoming transport messages on the client side. Reports the type
+// Message type from the "t" field ("cmd"/"snap"/"layout"/"ldelta"/"galaxy"/"universe"); "" —
+// broken/unknown. For dispatching incoming transport messages on the client side. Reports the type
 // regardless of version, so a mismatch can be diagnosed rather than looking like garbage.
 std::string MessageType(const std::string& s);
 

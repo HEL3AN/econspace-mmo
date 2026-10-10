@@ -75,7 +75,7 @@ The world stops being written and starts being generated. In order: the seed and
 
 ### M4 — Constructible galaxy
 
-World mutation and `LayoutDelta` (#38–#41), and the rules about players fighting (#94). Today `SystemLayout` is sent once, on entering a system, so there is no message that says a structure now exists — that is the concrete blocker for everything players build.
+World mutation and `LayoutDelta` (#38–#41), and the rules about players fighting (#94). The server can now add, change and remove a static object while players watch, and a `LayoutDelta` tells them before any snapshot that reflects it (#38, first slice); what remains of #38 is making those changes survive a restart.
 
 ### M8 — The builder
 

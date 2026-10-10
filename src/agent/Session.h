@@ -49,7 +49,7 @@ public:
     bool SendAndConfirm(const Proto::Command& c, double timeoutSeconds);
 
     const Proto::Snapshot&                    Snapshot() const { return snapshot_; }
-    const std::map<int, Proto::EntityLayout>& Layout() const { return layout_; }
+    const std::map<int, Proto::EntityLayout>& Layout() const { return layout_.byId; }
     const Proto::GalaxyState&                 Galaxy() const { return galaxy_; }
     // The galaxy index as the server sent it (#206): names, map positions and links. Not
     // read from data/universe.json -- a generated region exists only on the server. Empty
@@ -76,7 +76,7 @@ public:
 private:
     std::unique_ptr<Net::TcpConnection> conn_;
     Proto::Snapshot                     snapshot_;
-    std::map<int, Proto::EntityLayout>  layout_;
+    Proto::LayoutMirror                 layout_;  // kept current by deltas (#38)
     Proto::GalaxyState                  galaxy_;
     WorldLoader::Universe               universe_;
     std::vector<Ev::Event>              journal_;

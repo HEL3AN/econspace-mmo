@@ -74,6 +74,12 @@ public:
     int  GetId() const { return id_; }
     void SetId(int id) { id_ = id; }
 
+    // Who put it there (#38): an account name, or empty for the world itself -- everything
+    // a data file or the generator made. The server sets it; what an owner may do with
+    // the object is a rule of the simulation, not of the object.
+    const std::string& GetOwner() const { return owner_; }
+    void               SetOwner(const std::string& owner) { owner_ = owner; }
+
     // A satellite's orbit, or nothing for an object that stands still (#210).
     const std::optional<Orbit>& GetOrbit() const { return orbit_; }
     void                        SetOrbit(const Orbit& o) { orbit_ = o; }
@@ -85,6 +91,7 @@ protected:
     EntityKind           kind_ = EntityKind::Unknown;
     int                  id_ = 0;
     std::optional<Orbit> orbit_;
+    std::string          owner_;
     // Borrowed from the process-wide registry. Valid until the next Archetypes::Load(),
     // which every executable calls once at startup, before any world is built.
     const Archetype* archetype_ = nullptr;

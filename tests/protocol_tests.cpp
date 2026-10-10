@@ -641,3 +641,157 @@ TEST_CASE("the galaxy index survives the wire, without the server's file names")
         CHECK_FALSE(Proto::DecodeUniverse("not json", r));
     }
 }
+
+// #38: the static layer changes while people are in the system, and the change travels as a
+// delta rather than as the whole layout again.
+TEST_CASE("a layout delta survives the wire")
+{
+    Proto::LayoutDelta d;
+    d.systemId = "core";
+    d.rev = 7;
+    Proto::EntityLayout depot;
+    depot.id = 501;
+    depot.kind = EntityKind::Station;
+    depot.pos = { 900.0f, -300.0f };
+    depot.size = 60.0f;
+    depot.name = "Hunter's Depot";
+    depot.archetype = "station.trade_hub";
+    depot.owner = "hunter";
+    d.added.push_back(depot);
+    Proto::EntityLayout wreck;
+    wreck.id = 44;
+    wreck.kind = EntityKind::Derelict;
+    wreck.name = "Hauler Wreck";
+    wreck.reward = 300.0;
+    wreck.looted = true;
+    d.changed.push_back(wreck);
+    d.removed = { 12, 13 };
+
+    Proto::LayoutDelta r;
+    REQUIRE(Proto::DecodeLayoutDelta(Proto::EncodeLayoutDelta(d), r));
+    CHECK(Proto::MessageType(Proto::EncodeLayoutDelta(d)) == "ldelta");
+    CHECK(r.systemId == "core");
+    CHECK(r.rev == 7);
+    REQUIRE(r.added.size() == 1);
+    CHECK(r.added[0].id == 501);
+    CHECK(r.added[0].kind == EntityKind::Station);
+    CHECK(r.added[0].owner == "hunter");
+    CHECK(r.added[0].archetype == "station.trade_hub");
+    CHECK(r.added[0].pos.x == doctest::Approx(900.0f));
+    REQUIRE(r.changed.size() == 1);
+    CHECK(r.changed[0].looted);
+    CHECK(r.changed[0].owner.empty());  // the world's, said by saying nothing
+    CHECK(r.removed == std::vector<int>{ 12, 13 });
+
+    SUBCASE("a whole layout carries its revision, and an owner")
+    {
+        Proto::SystemLayout l;
+        l.systemId = "core";
+        l.rev = 3;
+        l.entities.push_back(depot);
+        Proto::SystemLayout back;
+        REQUIRE(Proto::DecodeLayout(Proto::EncodeLayout(l), back));
+        CHECK(back.rev == 3);
+        REQUIRE(back.entities.size() == 1);
+        CHECK(back.entities[0].owner == "hunter");
+    }
+
+    SUBCASE("it is not mistaken for another message")
+    {
+        Proto::LayoutDelta x;
+        CHECK_FALSE(Proto::DecodeLayoutDelta(Proto::EncodeLayout(Proto::SystemLayout{}), x));
+        CHECK_FALSE(Proto::DecodeLayoutDelta("not json", x));
+    }
+}
+
+TEST_CASE("a client applies a delta once, to the system it is about")
+{
+    Proto::SystemLayout lay;
+    lay.systemId = "core";
+    lay.rev = 4;
+    Proto::EntityLayout station;
+    station.id = 8;
+    station.kind = EntityKind::Station;
+    station.name = "Aurora Hub";
+    lay.entities.push_back(station);
+    Proto::EntityLayout wreck;
+    wreck.id = 9;
+    wreck.kind = EntityKind::Derelict;
+    wreck.name = "Hauler Wreck";
+    lay.entities.push_back(wreck);
+
+    Proto::LayoutMirror m;
+    m.Reset(lay);
+    REQUIRE(m.byId.size() == 2);
+
+    Proto::LayoutDelta d;
+    d.systemId = "core";
+    d.rev = 6;
+    Proto::EntityLayout depot;
+    depot.id = 20;
+    depot.kind = EntityKind::Station;
+    depot.name = "Depot";
+    d.added.push_back(depot);
+    d.removed.push_back(8);
+    wreck.looted = true;
+    d.changed.push_back(wreck);
+
+    REQUIRE(m.Apply(d));
+    CHECK(m.rev == 6);
+    CHECK(m.byId.count(8) == 0);
+    CHECK(m.byId.count(20) == 1);
+    CHECK(m.byId.at(9).looted);
+
+    SUBCASE("a delta the layout already included is old news")
+    {
+        // A layout built after a change and sent before the delta about it: the delta
+        // must not take anything back.
+        Proto::LayoutDelta stale = d;
+        stale.removed = { 20 };
+        CHECK_FALSE(m.Apply(stale));
+        CHECK(m.byId.count(20) == 1);
+    }
+
+    SUBCASE("a delta about the system just left changes nothing")
+    {
+        Proto::LayoutDelta other;
+        other.systemId = "rim";
+        other.rev = 99;
+        other.removed = { 9 };
+        CHECK_FALSE(m.Apply(other));
+        CHECK(m.byId.count(9) == 1);
+        CHECK(m.rev == 6);
+    }
+
+    SUBCASE("an object added and gone again in between is gone")
+    {
+        // The server folds both into a removal; a client that had it from a layout loses
+        // it, and one that never had it loses nothing.
+        Proto::LayoutDelta gone;
+        gone.systemId = "core";
+        gone.rev = 8;
+        gone.removed = { 20, 777 };
+        REQUIRE(m.Apply(gone));
+        CHECK(m.byId.count(20) == 0);
+        CHECK(m.byId.size() == 1);
+    }
+
+    SUBCASE("the completed snapshot follows the layout, searched wreck and all")
+    {
+        Proto::Snapshot s;
+        s.systemId = "core";
+        Proto::CompleteFromLayout(s, m.byId);
+        REQUIRE(s.entities.size() == 2);
+        bool sawWreck = false;
+        for (const Proto::EntitySnapshot& e : s.entities)
+        {
+            CHECK(e.id != 8);  // the removed station does not come back
+            if (e.id == 9)
+            {
+                sawWreck = true;
+                CHECK(e.name == "Hauler Wreck (searched)");
+            }
+        }
+        CHECK(sawWreck);
+    }
+}
