@@ -238,7 +238,12 @@ void Game::Run()
             }
         }
 
+        const bool shooting = !shotPath_.empty();
+        if (shooting && shotTarget_.id == 0)
+            shotTarget_ = LoadRenderTexture(screenWidth_, screenHeight_);
         BeginDrawing();
+        if (shooting)
+            BeginTextureMode(shotTarget_);
         ClearBackground(BLACK);
 
         // Everything between Begin and End goes through the chain. The HUD is drawn
@@ -250,7 +255,7 @@ void Game::Run()
         // The station screen is interface, not world, so it goes through the chain only if
         // the player asked for the interface to be treated. Otherwise the chain would be
         // running over an empty scene and laying grain behind a menu.
-        const bool useChain = flying || treatHud;
+        const bool useChain = (flying || treatHud) && !shooting;
 
         if (useChain)
             treatment_.Begin(screenWidth_, screenHeight_);
@@ -275,6 +280,22 @@ void Game::Run()
         if (treatmentPanelOpen_)
             DrawTreatmentSettings();
 
+        if (shooting)
+        {
+            EndTextureMode();
+            if (--shotFrames_ <= 0)
+            {
+                Image shot = LoadImageFromTexture(shotTarget_.texture);
+                ImageFlipVertical(&shot);  // a render texture is stored upside down
+                ImageFormat(&shot, PIXELFORMAT_UNCOMPRESSED_R8G8B8);  // no stray alpha
+                if (!ExportImage(shot, shotPath_.c_str()))
+                    TraceLog(LOG_WARNING, "Could not write %s", shotPath_.c_str());
+                UnloadImage(shot);
+                UnloadRenderTexture(shotTarget_);
+                EndDrawing();
+                break;
+            }
+        }
         EndDrawing();
     }
 }
