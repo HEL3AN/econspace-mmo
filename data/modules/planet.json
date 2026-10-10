@@ -277,13 +277,13 @@
                     {"form": "disc", "radius": [0.3, 0.4], "role": "trim", "tint": [245, 246, 250], "alpha": 0.65},
                     {"form": "disc", "radius": [0.08, 0.12], "role": "panel", "alpha": 0.9}
                 ]}},
-                { "id": "vortex", "shape": [
-                    {"form": "disc", "radius": [0.95, 1.05], "role": "panel", "alpha": [0.25, 0.4]},
-                    {"form": "disc", "at": [0.06, 0.0], "radius": [0.7, 0.8], "role": "trim", "alpha": 0.35},
-                    {"form": "disc", "at": [0.1, 0.02], "radius": [0.48, 0.56], "role": "panel", "alpha": 0.55},
-                    {"form": "disc", "at": [0.12, 0.03], "radius": [0.24, 0.3], "role": "hull", "tint": [[200, 120, 90], [220, 180, 130], [120, 140, 190]], "alpha": 0.85},
-                    {"form": "disc", "at": [0.13, 0.03], "radius": [0.06, 0.1], "role": "panel"}
-                ]},
+                { "id": "vortex", "shape": { "vars": { "cx": [0.06, 0.16], "cy": [-0.04, 0.04], "tw": [4, 7], "n": [10, 13], "core": [[196, 128, 92], [210, 160, 118], [226, 204, 168]] }, "parts": [
+                    {"form": "disc", "radius": [0.42, 0.46], "role": "panel", "alpha": 0.16, "row": {"count": 3, "step": [0.32, 0.0], "centred": true}},
+                    {"form": "disc", "at": [0.2, -0.2], "radius": 0.11, "role": "trim", "alpha": 0.6, "row": {"count": "$n", "step": [0.08, 0.0], "turn": "$tw", "taper": 0.92, "taperStep": true}},
+                    {"form": "disc", "at": [-0.2, 0.2], "radius": 0.11, "role": "trim", "alpha": 0.6, "row": {"count": "$n", "step": [-0.08, 0.0], "turn": "$tw", "taper": 0.92, "taperStep": true}},
+                    {"form": "disc", "at": [-0.02, 0.0], "radius": [0.26, 0.29], "role": "trim", "alpha": 1.0, "row": {"count": 3, "step": [0.2, 0.0], "centred": true}},
+                    {"form": "disc", "at": ["$cx", "$cy"], "radius": [0.15, 0.17], "role": "hull", "tint": "$core", "alpha": 1.0, "row": {"count": 3, "step": [0.08, 0.0], "centred": true}}
+                ]}},
                 { "id": "thunderhead", "shape": [
                     {"form": "disc", "at": [-0.3, 0.0], "radius": [0.5, 0.6], "role": "trim", "tint": [225, 228, 235], "alpha": 0.55},
                     {"form": "disc", "at": [0.3, 0.15], "radius": [0.45, 0.55], "role": "trim", "tint": [235, 238, 244], "alpha": 0.6},
