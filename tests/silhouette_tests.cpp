@@ -449,6 +449,104 @@ TEST_CASE("a surface feature lives on the sphere: across the face, round the bac
     }
 }
 
+TEST_CASE("a surface feature ends at the limb: its outline is cut to the body's disc (#240)")
+{
+    // A large storm near the limb is still a whole ellipse, and drawn as one it bulged past
+    // the planet's edge. Soft or solid, what is drawn is its outline cut to the body.
+    for (const std::string soft : { "false", "true" })
+    {
+        INFO("soft: ", soft);
+        const std::string   text = std::string(R"({ "tilt": 15, "parts": [
+            { "form": "disc", "radius": 1.0 },
+            { "form": "disc", "lat": 20, "lon": 0, "radius": 0.45, "spin": 10.0, "soft": )") +
+                                   soft + "} ]}";
+        const Render::Shape s = Parse(text.c_str());
+        Render::Pose        p = At({ 50.0f, -20.0f }, 100.0f, 0.3f, 1, 1.0f);
+
+        bool cut = false, whole = false, seen = false;
+        for (int i = 0; i < 360; i++)
+        {
+            p.time = (float)i * 0.1f;
+            for (const Render::Piece& piece : Render::Compose(s, p))
+            {
+                if (!piece.surface)
+                    continue;
+                seen = true;
+                CHECK(piece.soft == (soft == "true"));
+                const std::vector<Vector2> outline = Render::SurfaceOutline(piece);
+                REQUIRE(outline.size() >= 3);
+                const Vector2 from = Render::SurfaceFanCentre(piece, outline);
+                if (Dist(piece.pos, piece.bodyPos) < 99.0f)
+                    CHECK(Dist(from, piece.pos) < 1e-4f);  // a glow is brightest at its centre
+                bool allOnRim = true;
+                for (size_t k = 0; k < outline.size(); k++)
+                {
+                    // Inside the body, and inside the very polygon it is drawn as.
+                    CHECK(Dist(outline[k], piece.bodyPos) <= 100.0f + 0.01f);
+                    allOnRim = allOnRim && Render::EllipseReach(piece, outline[k]) > 0.999f;
+                    // Convex around where it is fanned from, so the fan covers it.
+                    const Vector2 a = outline[k], b = outline[(k + 1) % outline.size()];
+                    const Vector2 a0 = outline[0], b0 = outline[1];
+                    const float   cross =
+                        (a.x - from.x) * (b.y - from.y) - (a.y - from.y) * (b.x - from.x);
+                    const float cross0 =
+                        (a0.x - from.x) * (b0.y - from.y) - (a0.y - from.y) * (b0.x - from.x);
+                    CHECK(cross * cross0 >= -1e-3f);
+                }
+                (allOnRim ? whole : cut) = true;
+            }
+        }
+        CHECK(seen);
+        CHECK(whole);  // facing the viewer, nothing to cut
+        CHECK(cut);    // at the limb, cut
+    }
+
+    SUBCASE("a soft part on the sphere is foreshortened and hidden round the back like any")
+    {
+        const Render::Shape s = Parse(R"({ "tilt": 0, "parts": [
+            { "form": "disc", "radius": 1.0 },
+            { "form": "disc", "lat": 0, "lon": 0, "radius": 0.2, "spin": 10.0, "soft": true }
+        ]})");
+        Render::Pose        p = At({ 0, 0 }, 100.0f, 0.0f, 1, 1.0f);
+        int                 hidden = 0;
+        float               mostSquashed = 1.0f;
+        for (int i = 0; i < 72; i++)
+        {
+            p.time = (float)i * 0.5f;
+            const std::vector<Render::Piece> pieces = Render::Compose(s, p);
+            if (pieces.size() == 1)
+                hidden++;
+            for (const Render::Piece& piece : pieces)
+                if (piece.soft)
+                    mostSquashed = std::fmin(mostSquashed, piece.squash);
+        }
+        CHECK(hidden > 10);
+        CHECK(mostSquashed < 0.4f);
+    }
+
+    SUBCASE("a round piece off the sphere has no surface outline")
+    {
+        Render::Piece off;
+        off.radius = 10.0f;
+        CHECK(Render::SurfaceOutline(off).empty());
+    }
+}
+
+TEST_CASE("a point on a body faces the light as the hull material says it does")
+{
+    // Used where there is no shader, so a glow on a planet still goes dark on the night side.
+    const Vector2 toRight{ 1.0f, 0.0f };
+    const float   centre = Render::SurfaceFacing({ 0.0f, 0.0f }, toRight);
+    const float   litLimb = Render::SurfaceFacing({ 0.95f, 0.0f }, toRight);
+    const float   darkLimb = Render::SurfaceFacing({ -0.95f, 0.0f }, toRight);
+    CHECK(centre > 0.2f);
+    CHECK(centre < 1.0f);
+    CHECK(litLimb > centre);
+    CHECK(darkLimb == doctest::Approx(0.0f));
+    // No direction at all is lit from everywhere, not from nowhere (#119).
+    CHECK(Render::SurfaceFacing({ -0.95f, 0.0f }, { 0.0f, 0.0f }) == doctest::Approx(1.0f));
+}
+
 TEST_CASE("a latitude band is projected, so it narrows to the poles and never leaves the body")
 {
     // A band drawn as a bar crosses the limb and reads as a stripe painted on a circle. A
