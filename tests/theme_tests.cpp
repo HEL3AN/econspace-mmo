@@ -42,6 +42,8 @@ TEST_CASE("the shipped theme loads, and says what the built-in one says")
     CHECK(t.metrics.titleHeight == d.metrics.titleHeight);
     CHECK(t.metrics.rowHeight == d.metrics.rowHeight);
     CHECK(t.metrics.scrollbar == d.metrics.scrollbar);
+    CHECK(t.metrics.snap == d.metrics.snap);
+    CHECK(t.metrics.tabWidth == d.metrics.tabWidth);
     CHECK(t.fontSize.body == d.fontSize.body);
     CHECK(t.fonts.regular == d.fonts.regular);
 }

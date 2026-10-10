@@ -59,6 +59,8 @@ struct Theme
         float resizeGrip = 14.0f;  // the corner a resizable window is dragged by
         float rowHeight = 20.0f;   // a table's row
         float scrollbar = 4.0f;    // the width of a scroll indicator
+        float snap = 12.0f;        // how near an edge a dragged window jumps to it
+        float tabWidth = 112.0f;   // the widest a tab of a stacked window is
     } metrics;
 
     struct FontSizes

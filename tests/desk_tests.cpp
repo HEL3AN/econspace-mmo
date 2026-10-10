@@ -339,3 +339,279 @@ TEST_CASE("Desk: a widget under a window that does not own the mouse sees no hov
     CHECK_FALSE(Ui::Frame(d.Rect(back), owner == back).Hovered(r));
     CHECK(Ui::Frame(d.Rect(front), owner == front).Hovered(r));
 }
+
+// --- Window behaviour (#297): snapping, groups, stacks, pinning, collapsing ---------------
+
+TEST_CASE("Desk: a dragged edge snaps to the screen and to another window, not from afar")
+{
+    const std::vector<Rectangle> other{ { 100, 100, 200, 200 } };
+    // 6 right of the other's right edge and 5 below its top: beside it, in line with it.
+    Vector2 d = Ui::SnapOffset({ { 306, 105, 200, 200 } }, other, 1280, 720, 12);
+    CHECK(d.x == doctest::Approx(-6));
+    CHECK(d.y == doctest::Approx(-5));
+    // Out of reach on both axes: nothing.
+    d = Ui::SnapOffset({ { 330, 160, 200, 200 } }, other, 1280, 720, 12);
+    CHECK(d.x == doctest::Approx(0));
+    CHECK(d.y == doctest::Approx(0));
+    // Into a corner of the screen.
+    d = Ui::SnapOffset({ { 1075, 515, 200, 200 } }, {}, 1280, 720, 12);
+    CHECK(d.x == doctest::Approx(5));
+    CHECK(d.y == doctest::Approx(5));
+    // A window far below is not an edge to snap beside, however near its x.
+    d = Ui::SnapOffset({ { 304, 600, 100, 50 } }, other, 1280, 720, 12);
+    CHECK(d.x == doctest::Approx(0));
+
+    CHECK(Ui::Touching({ 100, 100, 200, 200 }, { 300, 150, 100, 100 }));  // side by side
+    CHECK(Ui::Touching({ 100, 100, 200, 200 }, { 150, 300, 100, 100 }));  // one above the other
+    CHECK_FALSE(Ui::Touching({ 100, 100, 200, 200 }, { 300, 300, 100, 100 }));  // corners only
+    CHECK_FALSE(Ui::Touching({ 100, 100, 200, 200 }, { 304, 100, 100, 100 }));  // a gap
+}
+
+TEST_CASE("Desk: a window snapped to another joins it, they move together, and Shift parts them")
+{
+    DeskLayout d;
+    const int  a = d.Add(Panel("a", Anchor::TopLeft, { 100, 100, 200, 200 }), true);
+    const int  b = d.Add(Panel("b", Anchor::TopLeft, { 500, 100, 200, 200 }), true);
+    CHECK(d.Group(a) == std::vector<int>{ a });
+
+    REQUIRE(d.BeginMove(b, false));
+    d.MoveTo({ 306, 105 });  // let go near a: it snaps flush
+    CHECK(Equal(d.Rect(b), { 300, 100, 200, 200 }));
+    CHECK(d.EndMove({ 350, 110 }) == DeskLayout::NONE);  // not onto a title: not stacked
+    CHECK(d.Group(a) == std::vector<int>{ a, b });
+
+    // Either one drags both.
+    REQUIRE(d.BeginMove(a, false));
+    d.MoveTo({ 150, 300 });
+    d.EndMove({ 160, 310 });
+    CHECK(Equal(d.Rect(a), { 150, 300, 200, 200 }));
+    CHECK(Equal(d.Rect(b), { 350, 300, 200, 200 }));
+    // Raising one brings its group forward.
+    const int c = d.Add(Panel("c", Anchor::TopLeft, { 0, 0, 900, 700 }), true);
+    d.Raise(a);
+    CHECK(d.Order() == std::vector<int>{ c, b, a });
+
+    // Shift: b goes alone, and the group of one left behind is no group.
+    REQUIRE(d.BeginMove(b, true));
+    CHECK(d.Group(a) == std::vector<int>{ a });
+    d.MoveTo({ 800, 300 });
+    d.EndMove({ 810, 310 });
+    CHECK(Equal(d.Rect(a), { 150, 300, 200, 200 }));
+    CHECK(d.Group(b) == std::vector<int>{ b });
+}
+
+TEST_CASE("Desk: a group keeps together after a restart, at another screen size and UI scale")
+{
+    auto build = [](DeskLayout& d, int& a, int& b)
+    {
+        a = d.Add(Panel("a", Anchor::TopRight, { 16, 16, 264, 200 }), true);
+        b = d.Add(Panel("b", Anchor::TopLeft, { 100, 400, 264, 200 }), true);
+    };
+    DeskLayout before;
+    int        a = 0, b = 0;
+    build(before, a, b);
+    REQUIRE(before.BeginMove(b, false));
+    before.MoveTo({ 1003, 220 });  // under a, on the right
+    before.EndMove({ 1100, 230 });
+    CHECK(Equal(before.Rect(b), { 1000, 216, 264, 200 }));
+    REQUIRE(before.Group(a).size() == 2);
+    // One anchor for the group, from where the group is: b came from the left, and on a
+    // wider screen would otherwise be left behind there.
+    nlohmann::json file;
+    DeskLayout::WriteFile(file, "pilot", before);
+    CHECK(file["accounts"]["pilot"]["b"]["anchor"] == "top_right");
+    CHECK(file["accounts"]["pilot"]["b"]["group"] == "a");
+
+    DeskLayout  after;
+    std::string error;
+    build(after, a, b);
+    REQUIRE(DeskLayout::ReadFile(nlohmann::json::parse(file.dump()), "pilot", after, error));
+    CHECK(after.Group(b) == std::vector<int>{ a, b });
+    after.SetScreen(1920, 1080);
+    CHECK(Equal(after.Rect(b), { 1640, 216, 264, 200 }));
+    CHECK(Ui::Touching(after.Rect(a), after.Rect(b)));
+    after.SetUnit(1.5f);
+    CHECK(Ui::Touching(after.Rect(a), after.Rect(b)));
+}
+
+TEST_CASE("Desk: a pinned window is not moved, resized or closed by Esc, and anchors its group")
+{
+    DeskLayout d;
+    WindowSpec spec = Panel("a", Anchor::TopLeft, { 100, 100, 200, 200 });
+    spec.resizable = true;
+    const int a = d.Add(spec, true);
+    const int b = d.Add(Panel("b", Anchor::TopLeft, { 500, 100, 200, 200 }), true);
+    REQUIRE(d.BeginMove(b, false));
+    d.MoveTo({ 300, 100 });
+    d.EndMove({ 350, 110 });
+    REQUIRE(d.Group(a).size() == 2);
+
+    d.SetPinned(a, true);
+    CHECK_FALSE(d.BeginMove(a, false));
+    d.Resize(a, 400, 400);
+    CHECK(Equal(d.Rect(a), { 100, 100, 200, 200 }));
+    // Esc passes over it to the window behind.
+    d.Raise(a);
+    CHECK(d.Escape() == b);
+    CHECK(d.IsOpen(a));
+    d.SetOpen(b, true);
+
+    // Dragging the other one takes it out of the group; the pinned one stays.
+    REQUIRE(d.BeginMove(b, false));
+    d.MoveTo({ 700, 400 });
+    d.EndMove({ 710, 410 });
+    CHECK(Equal(d.Rect(a), { 100, 100, 200, 200 }));
+    CHECK(Equal(d.Rect(b), { 700, 400, 200, 200 }));
+    CHECK(d.Group(a) == std::vector<int>{ a });
+
+    nlohmann::json file;
+    DeskLayout::WriteFile(file, "pilot", d);
+    DeskLayout after;
+    after.Add(spec, true);
+    std::string error;
+    REQUIRE(DeskLayout::ReadFile(nlohmann::json::parse(file.dump()), "pilot", after, error));
+    CHECK(after.Pinned(0));
+}
+
+TEST_CASE("Desk: a collapsed window is its title bar, and opens out to the size it had")
+{
+    DeskLayout d;
+    WindowSpec top = Panel("top", Anchor::TopLeft, { 100, 100, 200, 300 });
+    top.resizable = true;
+    const int t = d.Add(top, true);
+    const int low = d.Add(Panel("low", Anchor::BottomLeft, { 400, 16, 200, 300 }), true);
+
+    d.SetCollapsed(t, true);
+    CHECK(Equal(d.Rect(t), { 100, 100, 200, 26 }));
+    d.Resize(t, 500, 500);  // no grip while collapsed
+    CHECK(Equal(d.Rect(t), { 100, 100, 200, 26 }));
+    // Moved while collapsed, it opens out where it was moved to.
+    REQUIRE(d.BeginMove(t, false));
+    d.MoveTo({ 150, 200 });
+    d.EndMove({ 160, 210 });
+    d.SetCollapsed(t, false);
+    CHECK(Equal(d.Rect(t), { 150, 200, 200, 300 }));
+
+    // From the bottom too, the title stays where the top of the window was.
+    d.SetCollapsed(low, true);
+    CHECK(Equal(d.Rect(low), { 400, 404, 200, 26 }));
+    // Under the cursor only where it is drawn.
+    CHECK(d.HitTest({ 450, 500 }) == DeskLayout::NONE);
+
+    nlohmann::json file;
+    DeskLayout::WriteFile(file, "pilot", d);
+    DeskLayout after;
+    after.Add(top, true);
+    const int   low2 = after.Add(Panel("low", Anchor::BottomLeft, { 400, 16, 200, 300 }), true);
+    std::string error;
+    REQUIRE(DeskLayout::ReadFile(nlohmann::json::parse(file.dump()), "pilot", after, error));
+    CHECK(after.Collapsed(low2));
+    CHECK(Equal(after.Rect(low2), { 400, 404, 200, 26 }));
+    after.SetCollapsed(low2, false);
+    CHECK(Equal(after.Rect(low2), { 400, 404, 200, 300 }));
+}
+
+TEST_CASE("Desk: a window let go on another's title becomes a tab of it, and comes out again")
+{
+    DeskLayout d;
+    const int  one = d.Add(Panel("one", Anchor::TopLeft, { 100, 100, 250, 300 }), true);
+    const int  two = d.Add(Panel("two", Anchor::TopLeft, { 500, 100, 250, 300 }), true);
+    const int  three = d.Add(Panel("three", Anchor::TopLeft, { 800, 400, 200, 200 }), true);
+
+    REQUIRE(d.BeginMove(two, false));
+    d.MoveTo({ 150, 108 });
+    CHECK(d.DropTarget({ 160, 115 }) == one);               // over one's title bar
+    CHECK(d.DropTarget({ 160, 200 }) == DeskLayout::NONE);  // over its body
+    CHECK(d.EndMove({ 160, 115 }) == one);
+
+    CHECK(d.FrameOf(one) == std::vector<int>{ one, two });
+    CHECK(Equal(d.Rect(two), d.Rect(one)));
+    CHECK(d.ActiveTab(one) == two);  // what was dropped is in front
+    CHECK_FALSE(d.Shown(one));
+    CHECK(d.HitTest({ 200, 200 }) == two);
+
+    d.Raise(one);  // its tab clicked
+    CHECK(d.Shown(one));
+    CHECK_FALSE(d.Shown(two));
+    // Closing the tab in front shows the next; a closed tab is not in the strip.
+    CHECK(d.Escape() == one);
+    CHECK(d.Shown(two));
+    CHECK(d.Tabs(one) == std::vector<int>{ two });
+    d.SetOpen(one, true);
+    d.Raise(one);
+
+    // The stack moves, pins and collapses as one.
+    REQUIRE(d.BeginMove(two, false));
+    d.MoveTo({ 300, 300 });
+    d.EndMove({ 310, 310 });
+    CHECK(Equal(d.Rect(one), { 300, 300, 250, 300 }));
+    d.SetPinned(two, true);
+    CHECK(d.Pinned(one));
+    d.SetPinned(one, false);
+    d.SetCollapsed(one, true);
+    CHECK(d.Collapsed(two));
+    d.SetCollapsed(two, false);
+
+    // Saved and read back: the same stack, the same tab in front.
+    nlohmann::json file;
+    DeskLayout::WriteFile(file, "pilot", d);
+    {
+        DeskLayout  after;
+        std::string error;
+        const int   o = after.Add(Panel("one", Anchor::TopLeft, { 100, 100, 250, 300 }), true);
+        const int   t = after.Add(Panel("two", Anchor::TopLeft, { 500, 100, 250, 300 }), true);
+        after.Add(Panel("three", Anchor::TopLeft, { 800, 400, 200, 200 }), true);
+        REQUIRE(DeskLayout::ReadFile(nlohmann::json::parse(file.dump()), "pilot", after, error));
+        CHECK(after.FrameOf(t) == std::vector<int>{ o, t });
+        CHECK(after.ActiveTab(t) == o);
+        CHECK(Equal(after.Rect(t), { 300, 300, 250, 300 }));
+    }
+
+    // Pulled out, it is a window of its own where it was.
+    d.Unstack(two);
+    CHECK(d.FrameOf(one) == std::vector<int>{ one });
+    CHECK(d.Shown(one));
+    CHECK(d.Shown(two));
+
+    // A group is not stacked onto anything: only one frame can become tabs.
+    REQUIRE(d.BeginMove(two, false));
+    d.MoveTo({ 700, 50 });  // out of the way
+    d.EndMove({ 710, 60 });
+    REQUIRE(d.BeginMove(three, false));
+    d.MoveTo({ 550, 400 });  // beside one
+    d.EndMove({ 560, 410 });
+    REQUIRE(d.Group(three).size() == 2);
+    REQUIRE(d.BeginMove(three, false));
+    d.MoveTo({ 150, 108 });
+    CHECK(d.DropTarget({ 160, 115 }) == DeskLayout::NONE);
+    d.EndMove({ 160, 115 });
+    CHECK(d.FrameOf(one) == std::vector<int>{ one });
+}
+
+TEST_CASE("Desk: a stack or a group that comes back with one window in it is forgotten")
+{
+    GameDesk             g;
+    const nlohmann::json windows = {
+        { "status", { { "stack", "status" }, { "tab", 1 }, { "front", true } } },
+        { "overview", { { "group", "nothing_else" } } },
+    };
+    g.d.Load(windows);
+    CHECK(g.d.FrameOf(g.status) == std::vector<int>{ g.status });
+    CHECK(g.d.Group(g.overview) == std::vector<int>{ g.overview });
+    CHECK(g.d.Shown(g.status));
+}
+
+TEST_CASE("Desk: a dragged window snaps against the menu bar, and is not grouped with it")
+{
+    WindowSpec bar = Surface("menubar", Layer::Modal, EscRule::Ignore);
+    bar.snapTarget = true;
+    DeskLayout d;
+    const int  menu = d.Add(bar, true);
+    d.SetRect(menu, { 0, 0, 46, 720 });
+    const int w = d.Add(Panel("w", Anchor::TopLeft, { 300, 300, 200, 200 }), true);
+    REQUIRE(d.BeginMove(w, false));
+    d.MoveTo({ 52, 300 });
+    d.EndMove({ 60, 310 });
+    CHECK(d.Rect(w).x == doctest::Approx(46));
+    CHECK(d.Group(w) == std::vector<int>{ w });  // an edge, not a group
+}

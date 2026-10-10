@@ -294,7 +294,10 @@ void Game::SetupWindows()
     bar.bounds = [this]() { return Rectangle{ 0.0f, 0.0f, MENU_BAR_W, (float)screenHeight_ }; };
     bar.isOpen = [this]() { return mode_ == GameMode::Flying && !hudHidden_; };
     bar.draw = [this]() { DrawMenuBar(); };
-    desk_.AddSurface(surface(WIN_MENUBAR, "", Layer::Modal, Ui::EscRule::Ignore), false, bar);
+    // A window dragged to the left snaps against it rather than sliding under it.
+    WindowSpec barSpec = surface(WIN_MENUBAR, "", Layer::Modal, Ui::EscRule::Ignore);
+    barSpec.snapTarget = true;
+    desk_.AddSurface(barSpec, false, bar);
 
     Ui::Desk::Surface menu;
     menu.bounds = [this]() { return contextMenu_.Bounds(); };

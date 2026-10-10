@@ -63,7 +63,19 @@ struct WindowSpec
     // view, and a panel showing through it is a panel nobody can use and that hides part of
     // it (the map, the sensor screen, the station).
     bool covers = false;
+    // A surface whose edges a dragged window snaps to (the menu bar). A placed window always
+    // is one; a surface that covers the view or comes and goes under the cursor is not.
+    bool snapTarget = false;
 };
+
+// The smallest move, no longer than `reach` on either axis, that lays an edge of one of
+// `moving` on an edge of the screen or of one of `others` -- beside it or in line with it.
+// Each axis is decided on its own, so a window can snap into a corner. Pure: the drag and
+// the tests call the same thing.
+Vector2 SnapOffset(const std::vector<Rectangle>& moving, const std::vector<Rectangle>& others,
+                   float screenW, float screenH, float reach);
+// Two windows share an edge: one ends where the other begins, and they overlap along it.
+bool Touching(Rectangle a, Rectangle b);
 
 class DeskLayout
 {
@@ -115,14 +127,75 @@ public:
     int Owner() const { return owner_; }
 
     // Esc: the top window whose rule is Close is closed and returned. A Block stops the
-    // search, Ignore is passed over. NONE if nothing was closed.
+    // search, Ignore is passed over, and so is a pinned window: it was put there to stay.
+    // NONE if nothing was closed.
     int Escape();
+
+    // --- Window behaviour (#297) ----------------------------------------------------------
+    // Every placed window has all of it; a spec asks for none of it.
+    //
+    // A *frame* is what the player sees as one window: a window on its own, or a stack of
+    // them sharing one place and shown as tabs. A *group* is frames snapped edge to edge,
+    // which move together. Both are remembered, not worked out from where things are: a
+    // group stays a group when one of its windows is collapsed and no longer touches the
+    // next, and two windows that merely happen to touch are not one.
+
+    // The title bar's height in units, for a collapsed window and for dropping onto a title;
+    // how near (units) a dragged edge has to come to another to snap to it.
+    void SetTitleHeight(float units) { titleUnits_ = units; }
+    void SetSnapDistance(float units) { snapUnits_ = units; }
+
+    // Pinned: not moved by a drag, not resized, not torn out of its stack, not closed by Esc.
+    // Collapsed: only the title bar is shown; the size is kept for when it opens out. Both
+    // belong to the frame, so they apply to every tab of a stack.
+    bool Pinned(int h) const { return entries_[h].pinned; }
+    void SetPinned(int h, bool pinned);
+    bool Collapsed(int h) const { return entries_[h].collapsed; }
+    void SetCollapsed(int h, bool collapsed);
+
+    // The windows of h's frame, in tab order, open or not; just {h} when it is on its own.
+    std::vector<int> FrameOf(int h) const;
+    // The open windows of h's frame in tab order: what its tab strip shows.
+    std::vector<int> Tabs(int h) const;
+    // The tab in front: the open window of h's frame raised last. NONE if none is open.
+    int ActiveTab(int h) const;
+    // Drawn and under the cursor: open, not covered, and the tab in front of its frame.
+    bool Shown(int h) const;
+    // h (with its whole frame) becomes tabs of onto's frame, in front, at onto's place.
+    // Refused (false) for a window that is not placed, onto another layer, or onto itself.
+    bool Stack(int h, int onto);
+    // h leaves its stack and its group, where it is; a stack left with one window is none.
+    void Unstack(int h);
+    // Every window that moves with h, h's frame included.
+    std::vector<int> Group(int h) const;
+    // h's frame leaves its group, where it is.
+    void Ungroup(int h);
+
+    // A drag of h's title bar. `alone` takes h's frame out of its group first (the player
+    // held Shift); a group with a pinned window in it does not move, so h leaves it the same
+    // way. False if h is pinned: nothing moves.
+    bool BeginMove(int h, bool alone);
+    bool Moving() const { return move_.h != NONE; }
+    int  MovingWindow() const { return move_.h; }
+    // h's top left would be here: everything moving goes by as much, snapped to an edge
+    // within reach.
+    void MoveTo(Vector2 topLeft);
+    // The drag is let go with the cursor at `mouse`. Over another window's title bar, a
+    // single frame is stacked onto it (and that window is returned); otherwise whatever it
+    // now touches joins its group, and the group takes one anchor so that it keeps together
+    // when the screen changes. NONE when nothing was stacked.
+    int EndMove(Vector2 mouse);
+    // The window whose title bar the cursor is over, that the frame being moved would be
+    // stacked onto if it were let go here; NONE if none, or if a whole group is moving.
+    int DropTarget(Vector2 mouse) const;
 
     // Something kept per account moved, opened or closed since the last call.
     bool TakeChanged();
 
-    // One account's windows: { id: { open, anchor, offset, size } }. Load ignores an
-    // unknown id or a field of the wrong type, and keeps every window reachable.
+    // One account's windows: { id: { open, anchor, offset, size, pinned, collapsed, group,
+    // stack, tab, front } }; a group or a stack is named by the id of one of its windows.
+    // Load ignores an unknown id or a field of the wrong type, keeps every window reachable,
+    // and forgets a group or a stack that comes back with one window in it.
     nlohmann::json Save() const;
     void           Load(const nlohmann::json& windows);
 
@@ -145,12 +218,29 @@ private:
         Vector2    offset{ 0.0f, 0.0f };
         Vector2    size{ 0.0f, 0.0f };
         Rectangle  rect{ 0.0f, 0.0f, 0.0f, 0.0f };
+        int        stack = 0;  // 0: alone; otherwise every window with the same number
+        int        tab = 0;    // its place in the stack's tab strip
+        int        group = 0;  // 0: in no group
+        bool       pinned = false;
+        bool       collapsed = false;
     };
 
     bool      Placed(const Entry& e) const { return e.spec.place.width > 0.0f; }
     void      Place(Entry& e) const;    // rect from anchor, offset and size, kept reachable
     void      Unplace(Entry& e) const;  // offset from rect, for the anchor it has
     Rectangle Reachable(Rectangle r) const;
+    float     TitlePx() const { return titleUnits_ * unit_; }
+    Anchor    AnchorFor(Rectangle r) const;
+    void      SettleAll(const std::vector<int>& windows);  // one anchor for all of them
+    void      Dissolve();                                  // a stack or a group of one is none
+    void      Touched(const Entry& e);  // something kept per account may have changed
+
+    struct Move
+    {
+        int                    h = NONE;
+        std::vector<int>       windows;  // everything that moves, h's frame included
+        std::vector<Rectangle> start;    // where each was when the drag began
+    };
 
     std::vector<Entry> entries_;
     int                nextZ_ = 0;
@@ -159,6 +249,10 @@ private:
     int                owner_ = NONE;
     bool               captured_ = false;
     bool               changed_ = false;
+    float              titleUnits_ = 26.0f;
+    float              snapUnits_ = 12.0f;
+    int                nextStack_ = 0, nextTab_ = 0, nextGroup_ = 0;
+    Move               move_;
 };
 
 }  // namespace Ui

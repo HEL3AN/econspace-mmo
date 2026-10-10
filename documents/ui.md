@@ -12,7 +12,7 @@ lives in `src/engine/ui/`.
 | Scale | `Theme.h` (`Ui::Scale`, `Ui::Px`) | how many pixels a layout unit is |
 | Fonts | `Fonts.h` | the typeface, rasterised at each size it is used at |
 | Desk | `Desk.h`, `DeskLayout.h` | which windows exist, where, which is in front, who has the mouse, Esc |
-| Window | `Window.h` | the frame: title bar, close button, resize grip |
+| Window | `Window.h` | the frame: title bar or tab strip, pin, collapse and close buttons, resize grip |
 | Layout | `Layout.h` | rows, columns, text and widgets inside a window, solved by Clay |
 
 ## Declaring a window
@@ -174,6 +174,41 @@ popup, or the world (#297, slice 1). Inside a window's content:
 - Hand-written widgets read `f.Pressed()`, `f.Hovered(rect)`, `f.Wheel()`; the older
   `Ui::Slider`/`Toggle`/`Button` read `Ui::MouseScope`, which the window sets.
 - Nothing reads `IsMouseButtonPressed` directly: that is how a click went through a window.
+
+## Window behaviour
+
+A window placed on the desk (a spec with a `place`) gets all of this without asking: there is
+no flag to turn it on and no code to write in the window. The rules live in `DeskLayout`,
+which draws nothing, so `desk_tests.cpp` holds every one of them; `Desk` only turns the
+mouse into calls.
+
+| The player | What happens | `DeskLayout` |
+|---|---|---|
+| drags a title bar near an edge | it snaps to the screen, the menu bar, or another window -- beside it or in line with it, each axis on its own (`metrics.snap` units) | `BeginMove`, `MoveTo`, `SnapOffset` |
+| lets go touching another window | the two are a **group**: dragging either moves both, and a press on one brings the group forward | `EndMove`, `Group` |
+| holds Shift while dragging | the window leaves its group and goes alone | `BeginMove(h, true)`, `Ungroup` |
+| lets go on another window's title bar | it becomes a **tab** of that window: one frame, one place, the tab strip in the title bar | `DropTarget`, `Stack` |
+| pulls a tab out of the title bar | it comes away under the cursor as a window of its own | `Unstack` |
+| clicks the pin | the window is **pinned**: no drag, no resize, no tab torn out, and Esc passes over it. A group with a pinned window in it stays put; dragging one of the others takes that one out | `SetPinned` |
+| clicks the bar button, or double-clicks the title | the window **collapses** to its title bar, keeping its size for when it opens out; the title stays where the top was | `SetCollapsed` |
+
+- **A frame and a group are remembered, not inferred.** Two windows that merely touch are
+  not a group, and a group stays one when a collapsed window no longer reaches the next.
+- **Stacks share a frame.** Its tabs have one place, one pin and one collapse; the tab in
+  front is the open one raised last (`ActiveTab`), and only it is drawn and under the cursor
+  (`Shown`). Closing it shows the next; a closed tab drops out of the strip and comes back
+  in front when it is opened again. A whole group is not stacked onto anything.
+- **A group has one anchor**, chosen from where the whole group is when it is let go, so a
+  change of resolution moves it as one rather than pulling the left half left and the right
+  half right. Places are in units, so it keeps together at another UI scale too.
+- **The menu bar** brings forward a window hidden behind another tab of its stack rather
+  than closing it (`Desk::Toggle`).
+- **Saved** in `ui_layout.json` with the rest: `pinned`, `collapsed`, and a `group` and a
+  `stack` named by the id of one of their windows (plus `tab` order and the `front` tab). A
+  group or a stack that comes back with one window in it is forgotten. Reset layout undoes
+  all of it.
+- A surface is an edge to snap against only if its spec says `snapTarget` (the menu bar);
+  it never joins a group.
 
 ## Screens cover the windows
 

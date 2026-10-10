@@ -47,8 +47,12 @@ public:
     // The screen size, where the surfaces are and whether they are open, and who owns the
     // mouse -- hit-tested against where things were drawn last.
     void BeginFrame();
-    // Window frames: a press raises the window it lands on, the close button closes it, the
-    // title bar drags it, and a resizable window's corner grip resizes it.
+    // Window frames: a press raises the window it lands on (and its group), the close button
+    // closes it, the pin pins it, the bar button or a double click on the title collapses it,
+    // and a resizable window's corner grip resizes it. The title bar drags it -- with its
+    // group, or alone with Shift held -- snapping to edges; let go on another window's
+    // title, it becomes a tab of that one. A tab pulled out of the title bar comes away as a
+    // window of its own. Every window placed on the desk behaves so; none asks to.
     void HandleMouse();
     // Closes the top thing Esc closes; true if something was. A text field that holds the
     // keyboard takes the Esc instead: it lets go, and nothing closes.
@@ -61,7 +65,8 @@ public:
 
     bool IsOpen(const std::string& id) const;
     void SetOpen(const std::string& id, bool open);  // opening one raises it
-    void Toggle(const std::string& id) { SetOpen(id, !IsOpen(id)); }
+    // Opens or closes it -- except a tab hidden behind another, which is brought to the front.
+    void Toggle(const std::string& id);
     bool Owns(const std::string& id) const;  // owns the mouse this frame
     bool WorldOwnsMouse() const { return layout_.Owner() == DeskLayout::NONE; }
     // A frame for a surface that lays out a field of its own (the map's name field): its
@@ -103,7 +108,10 @@ private:
     Focus             focus_;
     std::vector<Item> items_;  // by handle
     int               dragging_ = DeskLayout::NONE;
-    bool              resizing_ = false;  // the drag is of the corner, not the title bar
+    bool              resizing_ = false;             // the drag is of the corner, not the title bar
+    int               tabPress_ = DeskLayout::NONE;  // a tab held, not yet pulled out
+    int               lastTitle_ = DeskLayout::NONE;  // for a double click on a title
+    double            lastTitleTime_ = -1.0;
     Vector2           dragOffset_{ 0.0f, 0.0f };
     std::string       file_;
     std::string       account_;
