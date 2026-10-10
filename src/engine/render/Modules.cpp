@@ -101,6 +101,15 @@ bool LoadFile(const std::string& path, std::string& error)
         {
             ModuleVariant v;
             v.id = vj.is_object() ? vj.value("id", std::string()) : std::string();
+            if (vj.is_object())
+                for (auto it = vj.begin(); it != vj.end(); ++it)
+                    if (it.key() != "id" && it.key() != "shape" && it.key() != "note")
+                    {
+                        // A misspelt key on a variant would otherwise pass in silence.
+                        error = "module '" + id + "' variant '" + v.id + "': unknown field \"" +
+                                it.key() + "\"";
+                        return false;
+                    }
             if (v.id.empty() || !vj.contains("shape"))
             {
                 error = "module '" + id + "': a variant needs an \"id\" and a \"shape\"";
