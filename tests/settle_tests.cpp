@@ -9,6 +9,7 @@
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
+#include "entities/Ship.h"
 #include "entities/ShipType.h"
 #include "entities/Structure.h"
 #include "sim/ClientSession.h"

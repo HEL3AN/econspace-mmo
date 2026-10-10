@@ -106,6 +106,9 @@ public:
     FactionMind& MindOf(FactionId f) { return minds_[(int)f]; }
     // Surveys and settlements under way, by id (#295).
     const std::map<int, Plan>& Plans() const { return plans_; }
+    // What an outpost costs a faction's stock (#295): its blueprint's cost, counted as one
+    // number. Zero when there is no outpost blueprint, which means no faction can settle.
+    static float OutpostCost();
     // The world's history, oldest first, capped (#295). Everything the news feed says is
     // here too, with a time and a sequence number; surveys are here and not in the feed.
     const std::vector<ChronicleEntry>& Chronicle() const { return chronicle_; }
@@ -586,9 +589,6 @@ private:
     // False when the system turns out not to be one it may settle, or there is no room.
     bool Settle(FactionId f, const std::string& from, const std::string& to);
     void ResolveSettle(const Plan& p);
-    // What an outpost costs a faction's stock: its blueprint's cost, counted as one number.
-    // Zero when there is no outpost blueprint, which means no faction can settle.
-    static float OutpostCost();
     // `f` takes a system: its controller, and the security a change of hands brings.
     static void TakeControl(SystemAggregate& a, FactionId f);
     void        Record(const std::string& kind, int faction, const std::string& system,
