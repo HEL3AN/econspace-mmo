@@ -38,6 +38,23 @@ constexpr float SUPPRESS_DECAY = 0.97f;           // suppression falloff per coa
 constexpr float DANGER_SEC = 0.35f;               // below this the system is "unsafe" (ambushes)
 constexpr float SPAWN_MIN_PLAYER_DIST = 2600.0f;  // do not spawn closer to the player
 constexpr float MAINT_STEP = 2.0f;                // coarse world maintenance period
+constexpr int   DIRECTOR_BUDGET = 2;              // ships the director adds to a system a pass
+
+// A cold system's losses per pass (#295), per pirate and per ship of the other side: what
+// the hot world showed when measured -- seeds 3 and 7, two hours each, every system hot,
+// 75 000 system-passes, every death counted by role against the populations that met. Ships
+// in a system a million units across seldom meet: 27 traders, 4 miners, 2 pirates and one
+// policeman died in all that time.
+constexpr float COLD_TRADER_LOSS = 6e-5f;    // traders lost, per pirate per trader
+constexpr float COLD_MINER_LOSS = 6e-6f;     // miners lost, per pirate per miner
+constexpr float COLD_PIRATE_LOSS = 1.5e-5f;  // pirates lost, per pirate per policeman
+constexpr float COLD_POLICE_LOSS = 7e-6f;    // police lost, per pirate per policeman
+
+// A system a gate into is an ambush spot: the pirates hold it, or its security is low.
+bool Dangerous(const SystemAggregate& a)
+{
+    return a.controller == FactionId::Pirates || a.security < DANGER_SEC;
+}
 
 float ClampF(float v, float lo, float hi)
 {
@@ -278,6 +295,8 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
 void Simulation::StepSystemAgents(SystemState& st, const std::vector<PlayerPresence>& players,
                                   std::vector<FireEvent>* fires, float dt)
 {
+    if (!IsHot(st))
+        return;  // nobody to step: the coarse pass keeps a cold system (#295)
     StepNpcAi(st, players);
 
     // Planets and what orbits them are where the clock says (#210), before anything this
@@ -343,6 +362,8 @@ void Simulation::StepWorldMacro()
 
 void Simulation::RecountAgg(SystemState& st)
 {
+    if (!IsHot(st))
+        return;
     int tr = 0, mi = 0, po = 0, pi = 0;
     for (auto& e : st.entities)
         if (NpcShip* n = e->GetKind() == EntityKind::Npc ? static_cast<NpcShip*>(e.get()) : nullptr)
@@ -377,8 +398,7 @@ Simulation::SpawnNodes Simulation::GatherNodes(const SystemState& st) const
             auto dest = systems_.find(g->GetDestination());
             if (dest != systems_.end())
             {
-                const SystemAggregate& da = dest->second.agg;
-                if (da.controller == FactionId::Pirates || da.security < DANGER_SEC)
+                if (Dangerous(dest->second.agg))
                     nd.dangerGates.push_back(p);  // border with low-sec — ambush spot
             }
         }
@@ -438,6 +458,79 @@ void Simulation::SpawnNpcInto(SystemState& st, Vector2 pos, FactionId faction, N
     st.entities.push_back(std::move(npc));
 }
 
+Simulation::Room Simulation::RoomOf(const SpawnNodes& nd)
+{
+    Room r;
+    r.lanes = nd.stations.size() + nd.gates.size();
+    r.fields = nd.fields.size();
+    // PirateSpots: the periphery and the gates into danger, else the belts.
+    r.dark = !nd.fields.empty() || !nd.dangerGates.empty();
+    return r;
+}
+
+Simulation::Room Simulation::RoomOf(const SystemState& st) const
+{
+    Room r;
+    r.lanes = (size_t)(st.profile.stations + st.profile.gates);
+    r.fields = (size_t)st.profile.belts;
+    r.dark = r.fields > 0;
+    // A gate leads to each neighbour; one into danger is where an ambush belongs.
+    for (const std::string& n : Neighbors(st.id))
+    {
+        if (r.dark)
+            break;
+        auto it = systems_.find(n);
+        r.dark = it != systems_.end() && Dangerous(it->second.agg);
+    }
+    return r;
+}
+
+Simulation::Population Simulation::PopulationOf(const SystemState& st, const Room& room) const
+{
+    const SystemAggregate& agg = st.agg;
+    const float            sec = agg.security;
+    const FactionId        ctrl = agg.controller;
+    const bool             lawful = Factions::IsLawful(ctrl);
+    Population             p;
+
+    // Armed ships come from what each faction has committed here (#231), not from a formula
+    // of security: the lawful as police under whichever of them is strongest here, the
+    // pirates as pirates.
+    p.policeFaction = lawful ? ctrl : FactionId::TradersGuild;
+    float lawPresence = 0.0f, strongestLaw = 0.0f;
+    for (int f = 0; f < FACTION_COUNT; f++)
+        if (Factions::IsLawful((FactionId)f))
+        {
+            lawPresence += agg.presence[f];
+            if (agg.presence[f] > strongestLaw)
+            {
+                strongestLaw = agg.presence[f];
+                p.policeFaction = (FactionId)f;
+            }
+        }
+    p.tradeFaction = lawful ? ctrl : FactionId::Independent;
+    const int traders = (ctrl == FactionId::Pirates) ? 1 : (int)roundf(2.0f + sec * 4.0f);
+
+    // "Pressure": recent losses temporarily cut the target (recovers in MaintainWorld).
+    p.traders = (int)roundf(traders * (1.0f - agg.supTraders));
+    p.miners = (int)roundf(2.0f * (1.0f - agg.supMiners));
+    p.police = (int)roundf(roundf(lawPresence) * (1.0f - agg.supPolice));
+    p.pirates =
+        (int)roundf(roundf(agg.presence[(int)FactionId::Pirates]) * (1.0f - agg.supPirates));
+
+    // Nowhere to put them, none of them: traders need two ends of a lane, miners a belt,
+    // police a beat, pirates somewhere dark.
+    if (room.lanes < 2)
+        p.traders = 0;
+    if (room.fields == 0)
+        p.miners = 0;
+    if (room.lanes + room.fields < 2)
+        p.police = 0;
+    if (!room.dark)
+        p.pirates = 0;
+    return p;
+}
+
 // Spawn director: tops up a system's population to targets by security/controller,
 // accounting for the "pressure" from losses. A pirate system loses trade/police; a strong
 // lawful neighbor sends reinforcements (police), which leads to reconquest.
@@ -450,38 +543,8 @@ void Simulation::TopUpSystem(SystemState& st, const std::vector<Vector2>& avoid)
     patrolRoute.insert(patrolRoute.end(), nd.fields.begin(), nd.fields.end());
     std::vector<Vector2> hot = PirateSpots(nd);
 
-    const SystemAggregate& agg = st.agg;
-    const float            sec = agg.security;
-    FactionId              ctrl = agg.controller;
-    bool                   lawful = Factions::IsLawful(ctrl);
-
-    // Armed ships come from what each faction has committed here (#231), not from a formula
-    // of security: the lawful as police under whichever of them is strongest here, the
-    // pirates as pirates.
-    FactionId policeFac = lawful ? ctrl : FactionId::TradersGuild;
-    float     lawPresence = 0.0f, strongestLaw = 0.0f;
-    for (int f = 0; f < FACTION_COUNT; f++)
-        if (Factions::IsLawful((FactionId)f))
-        {
-            lawPresence += agg.presence[f];
-            if (agg.presence[f] > strongestLaw)
-            {
-                strongestLaw = agg.presence[f];
-                policeFac = (FactionId)f;
-            }
-        }
-    st.agg.policeFaction = policeFac;
-    int       policeTarget = (int)roundf(lawPresence);
-    int       piratesTarget = (int)roundf(agg.presence[(int)FactionId::Pirates]);
-    int       tradersTarget = (ctrl == FactionId::Pirates) ? 1 : (int)roundf(2.0f + sec * 4.0f);
-    int       minersTarget = 2;
-    FactionId tradeFac = lawful ? ctrl : FactionId::Independent;
-
-    // "Pressure": recent losses temporarily cut the target (recovers in MaintainWorld).
-    tradersTarget = (int)roundf(tradersTarget * (1.0f - agg.supTraders));
-    minersTarget = (int)roundf(minersTarget * (1.0f - agg.supMiners));
-    policeTarget = (int)roundf(policeTarget * (1.0f - agg.supPolice));
-    piratesTarget = (int)roundf(piratesTarget * (1.0f - agg.supPirates));
+    const Population target = PopulationOf(st, RoomOf(nd));
+    st.agg.policeFaction = target.policeFaction;
 
     // Current population by role.
     int tr = 0, mi = 0, po = 0, pi = 0;
@@ -500,41 +563,89 @@ void Simulation::TopUpSystem(SystemState& st, const std::vector<Vector2>& avoid)
     { return v[RandRange(0, (int)v.size() - 1)]; };
 
     // Top up by no more than a couple of units per step (smoothly, no bursts).
-    int  budget = 2;
+    int  budget = DIRECTOR_BUDGET;
     auto canSpawn = [&]() { return budget > 0; };
 
-    if (lanes.size() >= 2)
-        while (tr < tradersTarget && canSpawn())
-        {
-            SpawnNpcInto(st, pick(lanes), tradeFac, NpcRole::Trader, lanes);
-            tr++;
-            budget--;
-        }
-    if (!nd.fields.empty())
-        while (mi < minersTarget && canSpawn())
-        {
-            Vector2              spot = pick(nd.fields);
-            std::vector<Vector2> near = { spot };
-            SpawnNpcInto(st, spot, FactionId::Independent, NpcRole::Miner, near);
-            mi++;
-            budget--;
-        }
-    if (patrolRoute.size() >= 2)
-        while (po < policeTarget && canSpawn())
-        {
-            SpawnNpcInto(st, pick(patrolRoute), policeFac, NpcRole::Police, patrolRoute);
-            po++;
-            budget--;
-        }
-    if (!hot.empty())
-        while (pi < piratesTarget && canSpawn())
-        {
-            Vector2              spot = PirateSpawnPos(hot, avoid);
-            std::vector<Vector2> patrol = { spot };
-            SpawnNpcInto(st, spot, FactionId::Pirates, NpcRole::Pirate, patrol);
-            pi++;
-            budget--;
-        }
+    while (tr < target.traders && canSpawn())
+    {
+        SpawnNpcInto(st, pick(lanes), target.tradeFaction, NpcRole::Trader, lanes);
+        tr++;
+        budget--;
+    }
+    while (mi < target.miners && canSpawn())
+    {
+        Vector2              spot = pick(nd.fields);
+        std::vector<Vector2> near = { spot };
+        SpawnNpcInto(st, spot, FactionId::Independent, NpcRole::Miner, near);
+        mi++;
+        budget--;
+    }
+    while (po < target.police && canSpawn())
+    {
+        SpawnNpcInto(st, pick(patrolRoute), target.policeFaction, NpcRole::Police, patrolRoute);
+        po++;
+        budget--;
+    }
+    while (pi < target.pirates && canSpawn())
+    {
+        Vector2              spot = PirateSpawnPos(hot, avoid);
+        std::vector<Vector2> patrol = { spot };
+        SpawnNpcInto(st, spot, FactionId::Pirates, NpcRole::Pirate, patrol);
+        pi++;
+        budget--;
+    }
+}
+
+void Simulation::ColdLosses(SystemState& st)
+{
+    // Expected losses over one pass, from the rates the hot world shows: pirates raid
+    // traders and miners and trade shots with police, each pair at its own rate. They are
+    // small -- a system is a million units across and ships seldom meet -- and they are the
+    // same losses a hot system counts, so the faction step and the pressure see no seam.
+    SystemAggregate& a = st.agg;
+    const float      pirates = a.pirates, police = a.police;
+    if (pirates <= 0.0f)
+        return;
+    const float lostPirates = std::min(pirates, COLD_PIRATE_LOSS * pirates * police);
+    const float lostPolice = std::min(police, COLD_POLICE_LOSS * pirates * police);
+    const float lostTraders = std::min(a.traders, COLD_TRADER_LOSS * pirates * a.traders);
+    const float lostMiners = std::min(a.miners, COLD_MINER_LOSS * pirates * a.miners);
+    a.pirates -= lostPirates;
+    a.police -= lostPolice;
+    a.traders -= lostTraders;
+    a.miners -= lostMiners;
+    AccumSuppress(a.supTraders, lostTraders);
+    AccumSuppress(a.supMiners, lostMiners);
+    AccumSuppress(a.supPolice, lostPolice);
+    AccumSuppress(a.supPirates, lostPirates);
+    a.lostPirates += lostPirates;
+    a.lostPolice += lostPolice;
+}
+
+void Simulation::ColdTopUp(SystemState& st)
+{
+    // The spawn director, as numbers: up towards what it keeps here by the couple of ships a
+    // pass it would send, and never down. In a hot system a ship stays until somebody
+    // destroys it, whatever the director would send now; a cold one keeps the same count,
+    // so that a system does not change its character by being looked at.
+    const Population target = PopulationOf(st, RoomOf(st));
+    SystemAggregate& a = st.agg;
+    a.policeFaction = target.policeFaction;
+    float budget = (float)DIRECTOR_BUDGET;
+    auto  topUp = [&](float& count, int want)
+    {
+        const float step = std::min(std::max(0.0f, (float)want - count), budget);
+        count += step;
+        budget -= step;
+    };
+    topUp(a.traders, target.traders);
+    topUp(a.miners, target.miners);
+    topUp(a.police, target.police);
+    topUp(a.pirates, target.pirates);
+
+    // What every tick would have done to the rest of it: prices recover, bodies move on.
+    st.market.Recover(MAINT_STEP);
+    Orbits::Place(st.entities, time_);
 }
 
 void Simulation::MaintainWorld(float dt, MaintainCost* cost)
@@ -545,6 +656,11 @@ void Simulation::MaintainWorld(float dt, MaintainCost* cost)
     // one place elapsed time can accumulate without being counted twice or not at all.
     time_ += dt;
     maintAccum_ += dt;
+    // Wherever a player is, the system is hot, and stays so for a while after (#295). Most
+    // ways into a system warm it on arrival; this catches the rest.
+    for (const auto& sv : sessions_)
+        if (SystemState* st = SystemById(sv.second.systemId))
+            Warm(*st);
     StepStructures();  // every tick: a site finishes when the clock says, not two seconds on
     Lap(cost ? &cost->structures : nullptr, lap);
     while (maintAccum_ >= MAINT_STEP)
@@ -552,8 +668,14 @@ void Simulation::MaintainWorld(float dt, MaintainCost* cost)
         if (cost != nullptr)
             cost->passes++;
         // Recount the real populations; accumulate losses since the last step as "pressure".
+        // A cold system has no ships to count, and its losses are arithmetic.
         for (auto& kv : systems_)
         {
+            if (!IsHot(kv.second))
+            {
+                ColdLosses(kv.second);
+                continue;
+            }
             SystemAggregate& a = kv.second.agg;
             float prevTr = a.traders, prevMi = a.miners, prevPo = a.police, prevPi = a.pirates;
             RecountAgg(kv.second);
@@ -577,6 +699,14 @@ void Simulation::MaintainWorld(float dt, MaintainCost* cost)
             a.supMiners *= SUPPRESS_DECAY;
             a.supPolice *= SUPPRESS_DECAY;
             a.supPirates *= SUPPRESS_DECAY;
+            // Nobody here for long enough: the ships are counted and let go.
+            if (IsHot(kv.second) && !allHot_ && time_ >= kv.second.warmUntil)
+                Cool(kv.second);
+            if (!IsHot(kv.second))
+            {
+                ColdTopUp(kv.second);
+                continue;
+            }
             // Player-avoidance, per system: everyone standing in this one.
             std::vector<Vector2> avoid;
             for (const auto& sv : sessions_)

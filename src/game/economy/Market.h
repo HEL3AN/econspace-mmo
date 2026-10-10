@@ -20,6 +20,9 @@ public:
 
     // Prices gradually return to their base values.
     void Update(float dt);
+    // The same recovery over `seconds` at once, as the ticks of a cold system would have
+    // made it (#295): one call where there would have been sixty a second.
+    void Recover(float seconds);
 
 private:
     std::map<ResourceType, double> prices_;

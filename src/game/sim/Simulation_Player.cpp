@@ -9,6 +9,7 @@
 #include "sim/ClientSession.h"
 #include "sim/PlayerStep.h"
 
+#include "core/Orbits.h"
 #include "core/World.h"
 #include "economy/Resource.h"
 #include "entities/AsteroidField.h"
@@ -108,6 +109,8 @@ ClientSession& Simulation::CreateSession(const std::string& systemId, Vector2 po
     s.systemId = systemId;
     s.ownedShips = { 0 };  // everyone starts owning the starter (#5)
     s.currentShip = 0;
+    if (SystemState* st = SystemById(systemId))
+        Warm(*st);  // a player is here now (#295)
     return s;
 }
 
@@ -724,6 +727,12 @@ void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId, 
     if (!s.ship)
         return;
 
+    // A cold system's bodies were placed at its last coarse pass; where the ship arrives
+    // is reckoned from where they are now. Its ships are made once the arrival is known, so
+    // none is dropped on top of the player (#295).
+    SystemState& dest = systems_[destId];
+    if (!IsHot(dest))
+        Orbits::Place(dest.entities, time_);
     float heading = s.ship->GetHeading();
     s.ship->Teleport(ArrivalFrom(destId, fromId, &s, &heading));
     s.ship->SetHeading(heading);
@@ -733,10 +742,11 @@ void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId, 
     s.missions.ClearOffers();  // clear the board of the station we left; active missions
                                // survive the jump (they address stations by id) — otherwise
                                // Bounty/Delivery into another system would be uncompletable
+    Warm(dest);
 
     // The first ship into a system beyond the wormhole (#143): from now on it is part of
     // the contested world, and that it was reached at all is news.
-    SystemAggregate& agg = systems_[destId].agg;
+    SystemAggregate& agg = dest.agg;
     if (!agg.visited)
     {
         agg.visited = true;
@@ -978,6 +988,11 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
         if (!sys.empty() && HasSystem(sys))
         {
             s.systemId = sys;
+            // The bodies of a cold system where they are now, not at its last coarse pass
+            // (#295); its ships are made on the next tick, around the player once placed.
+            SystemState& state = systems_[sys];
+            if (!IsHot(state))
+                Orbits::Place(state.entities, time_);
             // A position from before #159 is in a system forty times smaller, where every
             // body has since moved and grown; kept, it would put the ship inside a star.
             if (version >= 2 && pl.contains("pos") && pl["pos"].is_array() && pl["pos"].size() >= 2)
@@ -991,16 +1006,15 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
                 const int   kind = nr.value("kind", -1);
                 const auto  name = nr.value("name", std::string());
                 int         nth = nr.value("nth", 0);
-                if (const SystemState* state = SystemById(sys))
-                    for (const auto& e : state->entities)
-                        if ((int)e->GetKind() == kind && e->GetName() == name && nth-- == 0)
-                        {
-                            const json& o = nr["offset"];
-                            if (o.is_array() && o.size() >= 2)
-                                s.ship->Teleport({ e->GetPosition().x + (float)o[0],
-                                                   e->GetPosition().y + (float)o[1] });
-                            break;
-                        }
+                for (const auto& e : state.entities)
+                    if ((int)e->GetKind() == kind && e->GetName() == name && nth-- == 0)
+                    {
+                        const json& o = nr["offset"];
+                        if (o.is_array() && o.size() >= 2)
+                            s.ship->Teleport({ e->GetPosition().x + (float)o[0],
+                                               e->GetPosition().y + (float)o[1] });
+                        break;
+                    }
             }
             s.ship->SetHeading((float)pl.value("heading", 0.0));
         }

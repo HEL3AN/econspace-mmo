@@ -29,6 +29,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <csignal>
@@ -269,7 +270,8 @@ static bool HiddenInCover(Simulation& sim, const ClientSession& s)
 // Every system is stepped the same way; the only difference between them is who happens
 // to be standing in one (#3). NPCs see those players, shoot at them, and the beams are
 // collected per system so each client is told about its own sky. A system with nobody in
-// it keeps living, which is the premise of the whole galaxy.
+// it keeps living, which is the premise of the whole galaxy -- once nobody has been there
+// for a minute, as numbers in the coarse pass rather than as ships stepped here (#295).
 static void HostStepWorld(Simulation& sim, float dt,
                           std::map<std::string, std::vector<FireEvent>>& fires)
 {
@@ -291,6 +293,9 @@ static void HostStepWorld(Simulation& sim, float dt,
     static const std::vector<Simulation::PlayerPresence> kEmpty;
     for (auto& kv : sim.Systems())
     {
+        // A cold system has no ships, and its prices recover in the coarse pass (#295).
+        if (!Simulation::IsHot(kv.second))
+            continue;
         auto                                           it = present.find(kv.first);
         const std::vector<Simulation::PlayerPresence>& players =
             (it == present.end()) ? kEmpty : it->second;
@@ -1521,23 +1526,31 @@ int main(int argc, char** argv)
         return OrderSelftest();
     if (argc > 1 && std::string(argv[1]) == "regiondump")
         return RegionDump(argc > 2 ? std::strtoull(argv[2], nullptr, 10) : 1);
-    // econserver macrobench [N ...] [--seconds S] [--seed X]: what the galaxy costs to run
-    // with a region of N systems and nobody connected (#295). Without N, 20 100 500 1000.
+    // econserver macrobench [N ...] [--seconds S] [--seed X] [--players K] [--hot]: what the
+    // galaxy costs to run with a region of N systems and nobody connected, or K players each
+    // in a system of their own; --hot keeps every system hot (#295). Without N, 20 100 500
+    // 1000.
     if (argc > 1 && std::string(argv[1]) == "macrobench")
     {
         std::vector<int> sizes;
         double           seconds = 120.0;
         uint64_t         seed = 1;
+        bool             allHot = false;
+        int              players = 0;
         for (int i = 2; i < argc; i++)
             if (std::string(argv[i]) == "--seconds" && i + 1 < argc)
                 seconds = atof(argv[++i]);
             else if (std::string(argv[i]) == "--seed" && i + 1 < argc)
                 seed = std::strtoull(argv[++i], nullptr, 10);
+            else if (std::string(argv[i]) == "--players" && i + 1 < argc)
+                players = std::max(0, atoi(argv[++i]));
+            else if (std::string(argv[i]) == "--hot")
+                allHot = true;
             else if (atoi(argv[i]) > 0)
                 sizes.push_back(atoi(argv[i]));
         if (sizes.empty())
             sizes = { 20, 100, 500, 1000 };
-        return MacroBench(sizes, seconds, seed);
+        return MacroBench(sizes, seconds, seed, allHot, players);
     }
     if (argc > 1 && std::string(argv[1]) == "host")
     {
@@ -1574,31 +1587,37 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    // econserver <ticks> [--seed N] [--news]: with a seed, the region beyond the wormhole
-    // too; with --news, the galactic news as it happens, stamped, instead of the periodic
-    // tables -- how a living world is watched over hours (#231).
+    // econserver <ticks> [--seed N] [--news] [--hot]: with a seed, the region beyond the
+    // wormhole too; with --news, the galactic news as it happens, stamped, instead of the
+    // periodic tables -- how a living world is watched over hours (#231). Nobody is
+    // connected, so every system is cold (#295); --hot keeps them all hot as they were
+    // before, to compare the two.
     int      ticks = (argc > 1) ? atoi(argv[1]) : 3600;
     uint64_t regionSeed = 0;
-    bool     newsOnly = false;
+    bool     newsOnly = false, allHot = false;
     for (int i = 2; i < argc; i++)
         if (std::string(argv[i]) == "--seed" && i + 1 < argc)
             regionSeed = std::strtoull(argv[++i], nullptr, 10);
         else if (std::string(argv[i]) == "--news")
             newsOnly = true;
+        else if (std::string(argv[i]) == "--hot")
+            allHot = true;
 
     Simulation sim;
     sim.LoadUniverse(dataDir + "universe.json");
     if (regionSeed != 0)
         sim.AttachRegion(regionSeed, dataDir + "systems/");
     sim.Seed(0xC0FFEEu);
+    sim.SetAllHot(allHot);
     sim.InitGalaxy();
-    sim.MaterializeAllSystems(dataDir + "systems/");  // real entities of all systems
+    sim.MaterializeAllSystems(dataDir + "systems/");
 
     const float dt = 1.0f / 60.0f;  // = SIM_DT: server tick as in the game
     long long   seen = 0;           // the history already printed, by seq
 
-    printf("EconSpace headless server — %d systems, %d ticks (real agents)\n",
-           (int)sim.Universe().systems.size(), ticks);
+    printf("EconSpace headless server — %d systems, %d ticks (%s)\n",
+           (int)sim.Universe().systems.size(), ticks,
+           allHot ? "every system hot" : "nobody here: every system cold");
 
     int printEvery = ticks / 20;
     if (printEvery < 1)
@@ -1606,7 +1625,7 @@ int main(int argc, char** argv)
 
     for (int i = 0; i < ticks; i++)
     {
-        // The server simulates ALL systems (no player) + coarse world maintenance.
+        // The systems with ships (none, unless --hot) + coarse world maintenance.
         for (auto& kv : sim.Systems())
             sim.StepSystemAgents(kv.second, {}, nullptr, dt);
         sim.MaintainWorld(dt);
@@ -1625,7 +1644,7 @@ int main(int argc, char** argv)
             printf("\n[tick %d / t=%.1fs]\n", i, i * dt);
             for (auto& kv : sim.Systems())
             {
-                sim.RecountAgg(kv.second);  // fresh real numbers for printing
+                sim.RecountAgg(kv.second);  // fresh real numbers for printing, where hot
                 const SystemAggregate& a = kv.second.agg;
                 printf("  %-10s sec %.2f  pir %2d  pol %2d  trd %2d  econ %3.0f%%  ctrl %s\n",
                        kv.first.c_str(), a.security, (int)a.pirates, (int)a.police, (int)a.traders,

@@ -111,19 +111,24 @@ struct SystemProfile
     bool                   outpostSite = false;  // anyone's outpost stands or is going up
 };
 
-// State of a single star system inside the simulation. Level of detail:
-//  - cold: only `agg` (entities empty) — for systems without the player;
-//  - hot:  full `entities` (materialized on player entry).
-// `agg` always lives; `entities` are filled on entry (hydrate) and cleared
-// on exit (dehydrate, writing the numbers back into `agg`).
+// State of a single star system inside the simulation. Level of detail (#295):
+//  - cold: the static layer (stations, bodies, gates, structures) and `agg`, and no ships.
+//    Its population is the aggregate's numbers, kept by arithmetic once a coarse pass.
+//  - hot:  the same plus real NPC ships, stepped every tick. A system is hot while a
+//    player is in it and for a while after (Simulation::COOL_AFTER).
+// `agg` always lives; ships are made from it when a system warms (hydrate) and counted back
+// into it when it cools (dehydrate).
 struct SystemState
 {
     std::string                          id;
     std::vector<std::unique_ptr<Entity>> entities;
     Market                               market;
-    bool                                 populated = false;  // entities filled (hot)
+    bool                                 populated = false;  // NPC ships exist (hot)
     SystemAggregate                      agg;                // cold state (always)
     SystemProfile                        profile;            // static summary, not saved
+    // The world time until which a hot system stays hot with nobody in it: pushed on by
+    // every tick a player is here. Transient -- a restart begins with every system cold.
+    double warmUntil = 0.0;
 
     // Seconds until each defensive object fires again, by entity id (#193). Transient:
     // a station that has just been hydrated is simply ready.

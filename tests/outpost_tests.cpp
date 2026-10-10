@@ -307,7 +307,8 @@ TEST_CASE("an orbital outpost moves with its planet and is still its satellite a
         return Vector2{ 0.0f, 0.0f };
     };
     a->SetTime(a->Time() + 3600.0);
-    a->StepSystemAgents(*a->SystemById(where), {}, nullptr, 1.0f / 60.0f);  // the clock places it
+    // The clock places it: every tick in a hot system, every coarse pass in a cold one (#295).
+    a->MaintainWorld(2.0f);
     const Structure* moved = OutpostIn(*a, where);
     REQUIRE(moved != nullptr);
     const Vector2 expect =
