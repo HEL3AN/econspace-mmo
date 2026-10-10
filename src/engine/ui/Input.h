@@ -2,6 +2,8 @@
 
 #include "raylib.h"
 
+#include <string_view>
+
 // Who the mouse belongs to while something is being drawn (#297).
 //
 // Every widget in this UI draws and reads the mouse in the same call, so a row in a window
@@ -32,24 +34,35 @@ bool  MousePressed(int button);  // pressed this frame, and the mouse is ours
 bool  MouseDown(int button);
 float MouseWheel();
 
+class Focus;
+
 // What a window's content is handed: where it may draw, and the mouse as far as it is
-// concerned. Pressed() and Hovered() are false unless the window owns the mouse.
+// concerned. Pressed() and Hovered() are false unless the window owns the mouse. A frame
+// from the desk also carries the keyboard focus and the window's id, which is what a text
+// field inside it needs to take the keyboard (#297); without them a field cannot be typed in.
 class Frame
 {
 public:
-    Frame(Rectangle area, bool owner) : area_(area), owner_(owner) {}
+    Frame(Rectangle area, bool owner, Focus* focus = nullptr, std::string_view id = {})
+        : area_(area), owner_(owner), focus_(focus), id_(id)
+    {
+    }
 
-    Rectangle Area() const { return area_; }
-    bool      Owner() const { return owner_; }
-    Vector2   Mouse() const { return GetMousePosition(); }  // for coordinates, not for clicks
-    bool      Hovered(Rectangle r) const;
-    bool      Pressed(int button = MOUSE_BUTTON_LEFT) const;
-    bool      Down(int button = MOUSE_BUTTON_LEFT) const;
-    float     Wheel() const;
+    Rectangle        Area() const { return area_; }
+    bool             Owner() const { return owner_; }
+    Focus*           KeyboardFocus() const { return focus_; }
+    std::string_view Id() const { return id_; }
+    Vector2 Mouse() const { return GetMousePosition(); }  // for coordinates, not for clicks
+    bool    Hovered(Rectangle r) const;
+    bool    Pressed(int button = MOUSE_BUTTON_LEFT) const;
+    bool    Down(int button = MOUSE_BUTTON_LEFT) const;
+    float   Wheel() const;
 
 private:
-    Rectangle area_;
-    bool      owner_;
+    Rectangle        area_;
+    bool             owner_;
+    Focus*           focus_;
+    std::string_view id_;
 };
 
 }  // namespace Ui

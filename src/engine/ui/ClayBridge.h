@@ -50,7 +50,7 @@ extern "C"
         float       radius;
         float       borderColor[4];
         uint16_t    borderWidth;
-        uint8_t     scrollY; /* clips its children and scrolls them with the wheel */
+        uint8_t     scrollY; /* clips its children on both axes and scrolls them up and down */
     } UiClayElement;
 
     typedef struct UiClayText
@@ -116,6 +116,11 @@ extern "C"
      * begin and end), and where is it (asked after end). */
     int uiclay_pointer_over(UiClay* c, const char* id, int32_t length, uint32_t index);
     int uiclay_box(UiClay* c, const char* id, int32_t length, uint32_t index, float out[4]);
+    /* A scrolling element's state, as the last layout left it: out[0] how far it is scrolled
+     * down, out[1] the height of its view, out[2] the height of its content. 0 if there is
+     * no such scroll container. Setting moves it; the next layout shows the change. */
+    int  uiclay_scroll(UiClay* c, const char* id, int32_t length, uint32_t index, float out[3]);
+    void uiclay_set_scroll(UiClay* c, const char* id, int32_t length, uint32_t index, float offset);
 
 #ifdef __cplusplus
 }

@@ -18,8 +18,10 @@ public:
 
     // `owner`: this window owns the mouse this frame. Its content is told so through the
     // frame, and nothing in it highlights or reacts otherwise. `resizable` draws the grip
-    // in the bottom right corner.
-    void Draw(Rectangle bounds, bool owner, bool resizable = false) const;
+    // in the bottom right corner. `focus` and `id` are handed to the content's frame, so a
+    // text field in it can take the keyboard.
+    void Draw(Rectangle bounds, bool owner, bool resizable = false, Ui::Focus* focus = nullptr,
+              std::string_view id = {}) const;
 
     static Rectangle TitleBar(Rectangle bounds);
     static Rectangle CloseButton(Rectangle bounds);

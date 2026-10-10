@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 
 namespace Ui
 {
@@ -145,7 +147,11 @@ void Layout::Begin(const Frame& frame)
     p.pos = frame.Mouse();
     p.down = frame.Down(MOUSE_BUTTON_LEFT);
     p.pressed = frame.Pressed(MOUSE_BUTTON_LEFT);
+    p.rightPressed = frame.Pressed(MOUSE_BUTTON_RIGHT);
     p.wheel = frame.Wheel();
+    p.dt = GetFrameTime();
+    if (frame.KeyboardFocus() != nullptr)
+        UseFocus(frame.KeyboardFocus(), frame.Id());
     Begin(frame.Area(), Ui::Scale(), p);
 }
 
@@ -162,6 +168,15 @@ void Layout::Begin(Rectangle area, float scale, const Pointer& pointer)
     strings_.clear();
     commands_.clear();
     depth_ = 0;
+    keysFed_ = false;
+    if (!pointer.owned || !pointer.down)
+        active_.clear();  // a drag ends with the button
+    if (!tipSeen_)
+    {
+        tipKey_.clear();  // the cursor has left what it rested on
+        tipTime_ = 0.0f;
+    }
+    tipSeen_ = false;
     open_ = clay_ != nullptr;
     if (!open_)
         return;
@@ -172,7 +187,7 @@ void Layout::Begin(Rectangle area, float scale, const Pointer& pointer)
     const float wheel =
         pointer.owned ? pointer.wheel * U(CurrentTheme().fontSize.body) * 3.0f : 0.0f;
     uiclay_begin(clay_, std::max(area.width, 1.0f), std::max(area.height, 1.0f), px, py,
-                 pointer.owned && pointer.down, wheel, GetFrameTime());
+                 pointer.owned && pointer.down, wheel, pointer.dt);
 
     // The root: the whole area, its children in a column, as a window's content is.
     Box root;
@@ -396,6 +411,21 @@ Rectangle Layout::BoxOf(std::string_view id, uint32_t index) const
 
 void Layout::Draw() const
 {
+    // Clips nest -- a table's cells inside its scrolling body -- and raylib has one scissor
+    // rectangle, so the stack is kept here: each clip is the intersection with the one it is
+    // inside, and ending one puts its parent's back.
+    std::vector<Rectangle> clips;
+    auto                   scissor = [&clips]()
+    {
+        if (clips.empty())
+        {
+            EndScissorMode();
+            return;
+        }
+        const Rectangle& r = clips.back();
+        BeginScissorMode((int)r.x, (int)r.y, (int)std::max(0.0f, r.width),
+                         (int)std::max(0.0f, r.height));
+    };
     for (const DrawCommand& c : commands_)
     {
         // Edges rounded rather than sizes, so a row of boxes stays a row: rounding each width
@@ -439,11 +469,574 @@ void Layout::Draw() const
                 break;
             }
             case DrawCommand::Kind::ClipBegin:
-                BeginScissorMode((int)r.x, (int)r.y, (int)r.width, (int)r.height);
+            {
+                Rectangle clip = r;
+                if (!clips.empty())
+                {
+                    const Rectangle& o = clips.back();
+                    const float      x0 = std::max(clip.x, o.x), y0 = std::max(clip.y, o.y);
+                    const float      x1 = std::min(clip.x + clip.width, o.x + o.width);
+                    const float      y1 = std::min(clip.y + clip.height, o.y + o.height);
+                    clip = { x0, y0, std::max(0.0f, x1 - x0), std::max(0.0f, y1 - y0) };
+                }
+                clips.push_back(clip);
+                scissor();
                 break;
-            case DrawCommand::Kind::ClipEnd: EndScissorMode(); break;
+            }
+            case DrawCommand::Kind::ClipEnd:
+                if (!clips.empty())
+                    clips.pop_back();
+                scissor();
+                break;
         }
     }
+}
+
+// --- The widget library (#297, slice 3) ------------------------------------------------
+// Each widget is built from boxes and text like everything else in a layout, asks about the
+// mouse through the same one-frame-behind ids, and keeps no state a caller has to know
+// about: what it remembers between frames (a drag, a number being typed, how long the
+// cursor has rested) is the layout's.
+
+namespace
+{
+std::string g_tip;
+Vector2     g_tipAt{ 0.0f, 0.0f };
+
+// Long enough not to flicker up while the cursor crosses a list on its way somewhere else.
+constexpr float TOOLTIP_DELAY = 0.45f;
+
+std::string Key(std::string_view id, uint32_t index)
+{
+    std::string k(id);
+    k += '#';
+    k += std::to_string(index);
+    return k;
+}
+
+bool NumberChar(char c)
+{
+    return (c >= '0' && c <= '9') || c == '.' || c == '-';
+}
+
+std::string Format(const char* format, float value)
+{
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), format, value);
+    return buf;
+}
+
+constexpr Color CLEAR{ 0, 0, 0, 0 };
+}  // namespace
+
+void PostTooltip(std::string_view text, Vector2 at)
+{
+    g_tip.assign(text);
+    g_tipAt = at;
+}
+
+const std::string& PendingTooltip()
+{
+    return g_tip;
+}
+
+void ClearTooltip()
+{
+    g_tip.clear();
+}
+
+void DrawTooltip()
+{
+    if (g_tip.empty())
+        return;
+    const Theme&  t = CurrentTheme();
+    const float   px = (float)FontPx(t.fontSize.label * Scale());
+    const Vector2 size = MeasureString(Face::Regular, px, g_tip);
+    const float   pad = Px(t.metrics.gap * 0.75f);
+    Rectangle     box{ g_tipAt.x + Px(12.0f), g_tipAt.y + Px(18.0f), size.x + 2.0f * pad,
+                       size.y + 2.0f * pad };
+    // On the screen, whichever corner of the cursor that takes.
+    if (box.x + box.width > (float)GetScreenWidth())
+        box.x = std::max(0.0f, g_tipAt.x - box.width - Px(4.0f));
+    if (box.y + box.height > (float)GetScreenHeight())
+        box.y = std::max(0.0f, g_tipAt.y - box.height - Px(4.0f));
+    box.x = std::round(box.x), box.y = std::round(box.y);
+    DrawRectangleRec(box, t.colors.title);
+    DrawRectangleLinesEx(box, std::max(1.0f, Px(t.metrics.border)), t.colors.border);
+    DrawString(Face::Regular, g_tip, { box.x + pad, box.y + pad }, px, t.colors.text);
+    g_tip.clear();
+}
+
+std::string Ellipsize(std::string_view text, float maxPx,
+                      const std::function<float(std::string_view)>& width)
+{
+    if (maxPx <= 0.0f || width(text) <= maxPx)
+        return std::string(text);
+    std::string s(text);
+    while (!s.empty() && width(s + "..") > maxPx)
+        s.pop_back();
+    while (!s.empty() && s.back() == ' ')
+        s.pop_back();  // "Alpha .." reads worse than "Alpha.."
+    return s + "..";
+}
+
+float Layout::TextWidthPx(const TextStyle& style, std::string_view text) const
+{
+    return measure_(style.face, (float)FontPx(style.size * scale_), text).x;
+}
+
+void Layout::UseFocus(Focus* focus, std::string_view owner)
+{
+    focus_ = focus;
+    owner_.assign(owner);
+}
+
+void Layout::FeedKeys(const KeyInput& keys)
+{
+    keys_ = keys;
+    keysFed_ = true;
+}
+
+KeyInput Layout::Keys()
+{
+    if (!keysFed_)
+        return ReadKeys();
+    keysFed_ = false;  // typing reaches one field, once
+    return keys_;
+}
+
+void Layout::TakeFocus(std::string_view id)
+{
+    if (focus_ != nullptr)
+        focus_->Take(owner_, id);
+}
+
+bool Layout::HasFocus(std::string_view id) const
+{
+    return focus_ != nullptr && focus_->Holds(owner_, id);
+}
+
+// --- Scrolling --------------------------------------------------------------------------
+
+float Layout::ScrollGutter() const
+{
+    const Theme& t = CurrentTheme();
+    return t.metrics.scrollbar + t.metrics.rowGap;
+}
+
+void Layout::ScrollBegin(const Box& box)
+{
+    const Theme&      t = CurrentTheme();
+    const std::string bar = box.id + "~bar";
+    float             sc[3] = { 0.0f, 0.0f, 0.0f };
+    const bool have = open_ && !box.id.empty() &&
+                      uiclay_scroll(clay_, box.id.data(), (int32_t)box.id.size(), box.index, sc);
+    if (have && sc[2] > sc[1] + 0.5f)
+    {
+        // Dragging the indicator: the thumb follows the cursor, centred on it. Set before
+        // the container opens, so this frame already shows where it went.
+        const std::string key = Key(bar, box.index);
+        if (pointer_.pressed && Hovered(bar, box.index))
+            active_ = key;
+        if (active_ == key && pointer_.down)
+        {
+            const Rectangle b = BoxOf(bar, box.index);
+            const float     thumb = b.height * sc[1] / sc[2];
+            const float     room = std::max(1.0f, b.height - thumb);
+            const float f = std::clamp((pointer_.pos.y - b.y - thumb * 0.5f) / room, 0.0f, 1.0f);
+            uiclay_set_scroll(clay_, box.id.data(), (int32_t)box.id.size(), box.index,
+                              f * (sc[2] - sc[1]));
+        }
+    }
+
+    Box outer;
+    outer.width = box.width;
+    outer.height = box.height;
+    outer.gap = t.metrics.rowGap;
+    Open(outer);
+    Box inner = box;
+    inner.column = true;
+    inner.scrollY = true;
+    inner.width = Size::Grow();
+    inner.height = Size::Grow();
+    Open(inner);
+}
+
+void Layout::ScrollEnd(const Box& box)
+{
+    Close();  // the scrolling column
+    const Theme&      t = CurrentTheme();
+    const std::string bar = box.id + "~bar";
+    float             sc[3] = { 0.0f, 0.0f, 0.0f };
+    const bool        overflow =
+        open_ && !box.id.empty() &&
+        uiclay_scroll(clay_, box.id.data(), (int32_t)box.id.size(), box.index, sc) &&
+        sc[2] > sc[1] + 0.5f;
+    const float r = t.metrics.scrollbar * 0.5f;
+    Column(Box()
+               .Id(bar, box.index)
+               .Width(Size::Fixed(t.metrics.scrollbar))
+               .Height(Size::Grow())
+               .Fill(overflow ? t.colors.track : CLEAR)
+               .Radius(r),
+           [&]
+           {
+               if (!overflow)
+                   return;
+               const float off = std::clamp(sc[0] / sc[2], 0.0f, 1.0f);
+               const float shown = std::clamp(sc[1] / sc[2], 0.05f, 1.0f);
+               const bool  hot = active_ == Key(bar, box.index) || Hovered(bar, box.index);
+               if (off > 0.0f)
+               {
+                   Open(Box().Width(Size::Grow()).Height(Size::Percent(off)));
+                   Close();
+               }
+               Open(Box()
+                        .Width(Size::Grow())
+                        .Height(Size::Percent(shown))
+                        .Fill(hot ? t.colors.accent : t.colors.dim)
+                        .Radius(r));
+               Close();
+           });
+    Close();  // the row holding both
+}
+
+// --- Table ------------------------------------------------------------------------------
+
+TableEvents Layout::Table(const TableSpec& s)
+{
+    TableEvents       ev;
+    const Theme&      t = CurrentTheme();
+    const float       pad = t.metrics.gap * 0.5f;
+    const std::string head = s.id + "~h", row = s.id + "~r", body = s.id + "~b";
+    const int         cols = (int)s.columns.size();
+
+    // A heading clicked: sort by it, or turn the order round if it already sorts.
+    if (s.sort != nullptr)
+        for (int c = 0; c < cols; c++)
+            if (s.columns[c].sortable && Clicked(head, (uint32_t)c))
+            {
+                if (s.sort->column != c)
+                {
+                    s.sort->column = c;
+                    s.sort->descending = false;
+                    ev.sorted = true;
+                }
+                else if (s.reversible)
+                {
+                    s.sort->descending = !s.sort->descending;
+                    ev.sorted = true;
+                }
+            }
+
+    Column(Box().Grow(),
+           [&]
+           {
+               Row(Box().GrowX(),
+                   [&]
+                   {
+                       for (int c = 0; c < cols; c++)
+                       {
+                           const TableColumn& col = s.columns[c];
+                           const bool         on = s.sort && col.sortable && s.sort->column == c;
+                           const bool         hover = col.sortable && Hovered(head, (uint32_t)c);
+                           std::string        label = col.label;
+                           if (on)
+                               label += s.sort->descending ? " ^" : " v";
+                           Row(Box()
+                                   .Id(head, (uint32_t)c)
+                                   .Width(col.width)
+                                   .Height(Size::Fixed(t.metrics.rowHeight))
+                                   .Pad(pad, pad, 0.0f, 0.0f)
+                                   .Align(col.align, Align::Center),
+                               [&]
+                               {
+                                   Text(label, TextStyle::Small().Tint(on || hover ? t.colors.accent
+                                                                                   : t.colors.dim));
+                               });
+                       }
+                       // The indicator's room, so the headings stand over their columns.
+                       Open(Box().Width(Size::Fixed(ScrollGutter())).Height(Size::Fixed(1.0f)));
+                       Close();
+                   });
+               Divider();
+               if (s.rows == 0 && !s.empty.empty())
+                   Row(Box().GrowX().Pad(pad, t.metrics.rowGap),
+                       [&] { Text(s.empty, TextStyle::Small()); });
+
+               // A row scrolled out of sight is still somewhere; only the body's view counts.
+               const Rectangle view = BoxOf(body);
+               const bool inView = pointer_.owned && CheckCollisionPointRec(pointer_.pos, view);
+               Scroll(Box().Id(body).Grow(),
+                      [&]
+                      {
+                          for (int r = 0; r < s.rows; r++)
+                          {
+                              const bool hover = inView && Hovered(row, (uint32_t)r);
+                              if (hover)
+                              {
+                                  if (s.tooltip)
+                                      Tooltip(row, s.tooltip(r), (uint32_t)r);
+                                  ev.hovered = r;
+                                  if (pointer_.pressed)
+                                      ev.clicked = r;
+                                  if (pointer_.rightPressed)
+                                      ev.rightClicked = r;
+                              }
+                              Color fill = s.rowFill ? s.rowFill(r) : CLEAR;
+                              if (fill.a == 0 && hover)
+                                  fill = t.colors.hover;
+                              Row(Box()
+                                      .Id(row, (uint32_t)r)
+                                      .GrowX()
+                                      .Height(Size::Fixed(t.metrics.rowHeight))
+                                      .Fill(fill),
+                                  [&]
+                                  {
+                                      for (int c = 0; c < cols; c++)
+                                      {
+                                          const TableColumn& col = s.columns[c];
+                                          const Cell         cell = s.cell ? s.cell(r, c) : Cell();
+                                          TextStyle st = TextStyle::Body().Tint(cell.color);
+                                          st.face = cell.face;
+                                          // As wide as its heading was laid out last frame.
+                                          const float room =
+                                              BoxOf(head, (uint32_t)c).width - 2.0f * U(pad);
+                                          const std::string text =
+                                              Ellipsize(cell.text, room, [&](std::string_view x)
+                                                        { return TextWidthPx(st, x); });
+                                          Row(Box()
+                                                  .Width(col.width)
+                                                  .Height(Size::Grow())
+                                                  .Pad(pad, pad, 0.0f, 0.0f)
+                                                  .Align(col.align, Align::Center),
+                                              [&] { Text(text, st); });
+                                      }
+                                  });
+                          }
+                      });
+           });
+    return ev;
+}
+
+// --- Tabs -------------------------------------------------------------------------------
+
+bool Layout::Tabs(std::string_view id, const std::vector<std::string>& labels, int& selected)
+{
+    const Theme& t = CurrentTheme();
+    bool         changed = false;
+    Row(Box().GrowX().Gap(t.metrics.rowGap),
+        [&]
+        {
+            for (int i = 0; i < (int)labels.size(); i++)
+            {
+                const bool hover = Hovered(id, (uint32_t)i);
+                if (hover && pointer_.pressed && i != selected)
+                {
+                    selected = i;
+                    changed = true;
+                }
+                const bool on = i == selected;
+                Row(Box()
+                        .Id(id, (uint32_t)i)
+                        .Pad(t.metrics.gap * 0.75f, t.metrics.rowGap)
+                        .Align(Align::Center, Align::Center)
+                        .Fill(on      ? t.colors.selected
+                              : hover ? t.colors.hover
+                                      : t.colors.title)
+                        .Radius(t.metrics.radius),
+                    [&]
+                    {
+                        Text(labels[i], TextStyle::Label().Tint(on      ? t.colors.accent
+                                                                : hover ? t.colors.text
+                                                                        : t.colors.dim));
+                    });
+            }
+        });
+    return changed;
+}
+
+// --- Fields -----------------------------------------------------------------------------
+
+void Layout::FieldBox(std::string_view id, std::string_view shown, bool dim, bool focused,
+                      Size width)
+{
+    const Theme& t = CurrentTheme();
+    const bool   hover = Hovered(id);
+    const float  pad = t.metrics.gap * 0.75f;
+    TextStyle    style = TextStyle::Body().Tint(dim ? t.colors.dim : t.colors.text);
+    std::string  text(shown);
+    if (focused)
+        text += '|';  // the caret: always at the end, since there is no cursor to move
+    // Longer than the box: the end shows, where the typing is. Measured against the box the
+    // previous frame laid out.
+    const float room = BoxOf(id).width - 2.0f * U(pad);
+    while (room > 0.0f && text.size() > 1 && TextWidthPx(style, text) > room)
+        text.erase(0, 1);
+    Row(Box()
+            .Id(id)
+            .Width(width)
+            .Height(Size::Fixed(t.metrics.buttonHeight))
+            .Pad(pad, 0.0f)
+            .Align(Align::Start, Align::Center)
+            .Fill(t.colors.title)
+            .Border(focused ? t.colors.accent
+                    : hover ? t.colors.dim
+                            : t.colors.border,
+                    t.metrics.border)
+            .Radius(t.metrics.radius),
+        [&] { Text(text, style); });
+}
+
+EditResult Layout::TextField(std::string_view id, std::string& text, const TextFieldOptions& o)
+{
+    EditResult r;
+    if (focus_ != nullptr && Clicked(id))
+        focus_->Take(owner_, id);
+    const bool focused = HasFocus(id);
+    if (focused)
+    {
+        focus_->Seen(owner_, id);
+        r = EditText(text, Keys(), o.maxLength, o.accept);
+        if (r.submitted)
+            focus_->Release(Focus::Blur::Submit);
+    }
+    if (focus_ != nullptr)
+        focus_->TakeBlur(owner_, id);  // a text field edits in place: a loss changes nothing
+    const bool placeholder = text.empty() && !focused;
+    FieldBox(id, placeholder ? std::string_view(o.placeholder) : std::string_view(text),
+             placeholder, focused && !r.submitted, o.width);
+    return r;
+}
+
+bool Layout::NumberField(std::string_view id, float& value, float lo, float hi, const char* format)
+{
+    bool              changed = false;
+    const std::string key(id);
+    // What was typed becomes the value -- if it is a number -- clamped to what is allowed.
+    auto commit = [&]()
+    {
+        auto it = edits_.find(key);
+        if (it == edits_.end())
+            return;
+        const char* begin = it->second.c_str();
+        char*       end = nullptr;
+        const float v = std::strtof(begin, &end);
+        if (end != begin)
+        {
+            const float c = std::clamp(v, lo, hi);
+            changed = c != value;
+            value = c;
+        }
+        edits_.erase(it);
+    };
+
+    const Focus::Blur lost = focus_ != nullptr ? focus_->TakeBlur(owner_, id) : Focus::Blur::None;
+    if (lost == Focus::Blur::Cancel)
+        edits_.erase(key);
+    else if (lost != Focus::Blur::None)
+        commit();
+
+    if (focus_ != nullptr && Clicked(id))
+        focus_->Take(owner_, id);
+    const bool focused = HasFocus(id);
+    if (focused)
+    {
+        focus_->Seen(owner_, id);
+        // Typing starts from nothing, with the old value shown dim until the first key: a
+        // field that had to be emptied before a new number could go in is two steps for one.
+        std::string&     edit = edits_[key];
+        const EditResult r = EditText(edit, Keys(), 16, NumberChar);
+        if (r.submitted)
+        {
+            commit();
+            focus_->Release(Focus::Blur::Submit);
+            focus_->TakeBlur(owner_, id);
+        }
+    }
+
+    const auto  it = edits_.find(key);
+    const bool  typing = HasFocus(id) && it != edits_.end() && !it->second.empty();
+    const bool  showOld = !typing;
+    std::string shown = typing ? it->second : Format(format, value);
+    FieldBox(id, shown, showOld && HasFocus(id), HasFocus(id), Size::Grow());
+    return changed;
+}
+
+bool Layout::Slider(std::string_view id, float& value, float lo, float hi, bool logarithmic)
+{
+    if (!(hi > lo))
+        return false;
+    const Theme& t = CurrentTheme();
+    const bool   log = logarithmic && lo > 0.0f;
+    auto         toFrac = [&](float v)
+    {
+        v = std::clamp(v, lo, hi);
+        return log ? std::log(v / lo) / std::log(hi / lo) : (v - lo) / (hi - lo);
+    };
+    auto fromFrac = [&](float f) { return log ? lo * std::pow(hi / lo, f) : lo + (hi - lo) * f; };
+
+    bool              changed = false;
+    const std::string key = Key(id, 0);
+    const Rectangle   last = BoxOf(id);  // where the track was: what the cursor is measured on
+    if (pointer_.pressed && Hovered(id))
+        active_ = key;
+    if (active_ == key && pointer_.down && last.width > 0.0f)
+    {
+        const float f = std::clamp((pointer_.pos.x - last.x) / last.width, 0.0f, 1.0f);
+        const float v = fromFrac(f);
+        if (v != value)
+        {
+            value = v;
+            changed = true;
+        }
+    }
+
+    const bool  hot = active_ == key || Hovered(id);
+    const float knob = t.metrics.barHeight;
+    const float line = std::max(2.0f, t.metrics.barHeight * 0.5f);
+    // The filled part is a fraction of the track less the knob, so the knob ends at the end.
+    const float room = last.width > 0.0f ? std::max(0.0f, 1.0f - U(knob) / last.width) : 1.0f;
+    const float f = toFrac(value) * room;
+    Row(Box()
+            .Id(id)
+            .GrowX()
+            .Height(Size::Fixed(t.metrics.buttonHeight))
+            .Align(Align::Start, Align::Center),
+        [&]
+        {
+            if (f > 0.0f)
+            {
+                Open(Box().Width(Size::Percent(f)).Height(Size::Fixed(line)).Fill(t.colors.accent));
+                Close();
+            }
+            Open(Box()
+                     .Width(Size::Fixed(knob))
+                     .Height(Size::Fixed(knob * 2.0f))
+                     .Fill(hot ? t.colors.text : t.colors.accent)
+                     .Radius(t.metrics.radius));
+            Close();
+            Open(Box().Width(Size::Grow()).Height(Size::Fixed(line)).Fill(t.colors.track));
+            Close();
+        });
+    return changed;
+}
+
+void Layout::Tooltip(std::string_view id, std::string_view text, uint32_t index)
+{
+    if (text.empty() || !Hovered(id, index))
+        return;
+    const std::string key = Key(id, index);
+    if (tipKey_ != key)
+    {
+        tipKey_ = key;
+        tipTime_ = 0.0f;
+    }
+    else
+        tipTime_ += pointer_.dt;
+    tipSeen_ = true;
+    if (tipTime_ >= TOOLTIP_DELAY)
+        PostTooltip(text, pointer_.pos);
 }
 
 }  // namespace Ui

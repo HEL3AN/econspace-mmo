@@ -6,7 +6,9 @@
 #include <functional>
 
 // Right-click context menu on an object: a vertical list of actions.
-// Opens at the cursor, closes on selecting an item or clicking elsewhere.
+// Opens at the cursor, closes on selecting an item or clicking elsewhere. It knows nothing
+// about what the actions are: the game builds the list from the same model its other
+// windows and the agent's tools use (Actions::For, #297).
 class ContextMenu
 {
 public:
@@ -32,5 +34,6 @@ public:
 private:
     bool              open_ = false;
     Vector2           pos_ = { 0.0f, 0.0f };
+    float             width_ = 0.0f;  // the longest label, set on Open
     std::vector<Item> items_;
 };

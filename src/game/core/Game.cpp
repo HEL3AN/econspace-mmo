@@ -13,6 +13,7 @@
 #include "core/Blueprint.h"
 #include "core/World.h"
 #include "core/WorldLoader.h"
+#include "core/Actions.h"
 #include "entities/Star.h"
 #include "entities/Planet.h"
 #include "entities/Station.h"
@@ -405,13 +406,30 @@ void Game::HandleInput(float dt)
         OrderWarp(startWarpTarget_, 500.0f);
         startWarpFrames_ = -1;
     }
-
-    // Naming a system takes the keyboard: its letters are not hotkeys (#145).
-    if (naming_)
+    if (startSelectFrames_ > 0 && --startSelectFrames_ == 0)
     {
-        HandleNaming();
-        return;
+        // The nearest thing that is not this ship: the overview's first row.
+        const std::vector<Overview::Row> rows = Overview::Build(
+            snapshot_.entities, snapshot_.player.pos, Overview::Filter::All,
+            Overview::Sort::Distance, [](const Proto::EntitySnapshot&) { return false; });
+        for (const Overview::Row& r : rows)
+            if ((selected_ = FindEntityById(r.entity->id)) != nullptr)
+                break;
+        if (selected_ != nullptr)
+        {
+            desk_.SetOpen(WIN_TARGET, true);
+            if (startMenu_)
+                OpenContextMenu(selected_, { screenWidth_ * 0.42f, screenHeight_ * 0.3f });
+        }
+        startSelectFrames_ = -1;
     }
+
+    // A text field that has the keyboard -- the map's name field, the range being typed --
+    // takes every key: its letters are not hotkeys and its W is not thrust (#145, #297).
+    // The mouse still works; only the keys are its.
+    const bool typing = desk_.KeyboardTaken();
+    auto       key = [typing](int k) { return !typing && IsKeyPressed(k); };
+    auto       held = [typing](int k) { return !typing && IsKeyDown(k); };
 
     // The desk has chosen who the mouse belongs to (#297): a popup, a window, a screen, or
     // -- when none of them is under the cursor -- the world. The map and the sensor screen
@@ -425,41 +443,42 @@ void Game::HandleInput(float dt)
 
     // Combat/mining/docking intents go into the command (applied by the simulation
     // step, accounting for warp etc.), rather than calling ship methods directly.
-    if (IsKeyPressed(KEY_X))
+    if (key(KEY_X))
         cmd_.toggleStabilizer = true;
 
-    if (IsKeyPressed(KEY_M))
+    if (key(KEY_M))
         cmd_.toggleMining = true;
 
-    if (IsKeyPressed(KEY_F))
+    if (key(KEY_F))
     {
         cmd_.toggleWeapon = true;
         weaponOn_ = !weaponOn_;  // optimistic: the snapshot confirms it
     }
 
-    if (IsKeyPressed(KEY_T))
+    if (key(KEY_T))
         desk_.Toggle(WIN_TARGET);
 
-    if (IsKeyPressed(KEY_O))
+    if (key(KEY_O))
         desk_.Toggle(WIN_OVERVIEW);
 
-    if (IsKeyPressed(KEY_R))
+    if (key(KEY_R))
         desk_.Toggle(WIN_RADAR);
 
-    if (IsKeyPressed(KEY_J))
+    if (key(KEY_J))
         desk_.Toggle(WIN_MISSIONS);
 
-    if (IsKeyPressed(KEY_G))
+    if (key(KEY_G))
         desk_.Toggle(WIN_MAP);
     // The sensor screen (#123); Esc closes it too (HandleEscape).
-    if (IsKeyPressed(KEY_V))
+    if (key(KEY_V))
         desk_.Toggle(WIN_SENSOR);
     // While it is open, the mouse points at cells rather than at the world behind them.
     const bool onSensor = desk_.Owns(WIN_SENSOR);
-    if (desk_.IsOpen(WIN_MAP) && IsKeyPressed(KEY_N) && CanNameHere())
+    if (desk_.IsOpen(WIN_MAP) && key(KEY_N) && CanNameHere())
     {
-        naming_ = true;
+        // The field is drawn on the map, which takes it from here (DrawGalaxyMap).
         nameBuf_.clear();
+        desk_.KeyboardFocus().Take(WIN_MAP, "name");
         while (GetCharPressed() != 0)
         {
             // the N that opened the field is not the name's first letter
@@ -484,17 +503,17 @@ void Game::HandleInput(float dt)
         rig_.Pan({ m.x - panLast_.x, m.y - panLast_.y });
         panLast_ = m;
     }
-    if (IsKeyPressed(KEY_C))
+    if (key(KEY_C))
         rig_.Recenter();
 
     // Held control axes: W — thrust, S — brake, A/D — turn. Written into the
     // command; the server applies it to the ship in the tick (Simulation::StepPlayerShip).
-    cmd_.thrust = IsKeyDown(KEY_W) || IsKeyDown(KEY_UP);
-    cmd_.brake = IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN);
+    cmd_.thrust = held(KEY_W) || held(KEY_UP);
+    cmd_.brake = held(KEY_S) || held(KEY_DOWN);
     cmd_.turn = 0.0f;
-    if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT))
+    if (held(KEY_A) || held(KEY_LEFT))
         cmd_.turn -= 1.0f;
-    if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT))
+    if (held(KEY_D) || held(KEY_RIGHT))
         cmd_.turn += 1.0f;
 
     // Combat target — the selected object (by id). The server fires at it in StepPlayerFire (over
@@ -587,7 +606,7 @@ void Game::HandleInput(float dt)
         }
         if (playerShip_->IsWarping())
             nearbyStation_ = nullptr;  // docking is unavailable while warping
-        if (nearbyStation_ != nullptr && IsKeyPressed(KEY_E))
+        if (nearbyStation_ != nullptr && key(KEY_E))
             cmd_.dock = true;
     }
 }
@@ -691,203 +710,136 @@ void Game::ReleaseHold()
     OrderAutopilot(playerShip_->GetPosition(), 1.0f);
 }
 
-// The distances a hold is offered at, as multiples of the target's own radius. Written
-// against the object rather than in absolute units so the same menu is sensible beside a
-// sixteen-unit ship and a station forty times larger -- and so it survives the system
-// growing (M9) without every number in it becoming wrong.
-static const float HOLD_RANGES[] = { 2.0f, 5.0f, 12.0f };
-
-// Builds the context menu for an object: common actions plus actions
-// depending on the target's type (station, field, NPC).
-void Game::OpenContextMenu(Entity* target)
+Actions::Target Game::ActionTarget(const Entity& e) const
 {
-    std::vector<ContextMenu::Item> items;
-
-    // Common actions for any object.
-    items.push_back({ "Target", [this, target]()
-                      {
-                          selected_ = target;
-                          desk_.SetOpen(WIN_TARGET, true);
-                      } });
-    items.push_back({ "Approach", [this, target]()
-                      { OrderAutopilot(target->GetPosition(), target->GetSize() + 70.0f); } });
-
-    // The two standing behaviours. Every fight is flown as one of these and there was no
-    // way to ask for either of them.
-    const int   tid = target->GetId();
-    const float base = target->GetSize();
-    if (tid != 0)
+    Actions::Target t;
+    t.id = e.GetId();
+    t.kind = e.GetKind();
+    t.pos = e.GetPosition();
+    t.size = e.GetSize();
+    t.name = e.GetName();
+    if (t.kind == EntityKind::Derelict)
+        t.looted = static_cast<const Derelict&>(e).IsLooted();
+    if (t.kind == EntityKind::Gate)
     {
-        for (float mult : HOLD_RANGES)
-        {
-            const float range = base * mult;
-            items.push_back({ TextFormat("Orbit at %.0f", range),
-                              [this, tid, range]() { OrderHold(3, tid, range); } });
-        }
-        // Named for what it does (#309): hold this distance from it, wherever it goes.
-        items.push_back({ TextFormat("Hold %.0f from it", base * HOLD_RANGES[1]),
-                          [this, tid, base]() { OrderHold(4, tid, base * HOLD_RANGES[1]); } });
-        // Matching its velocity as well as its distance: the one that stays with a station
-        // going round a planet rather than arriving behind it (#298).
-        items.push_back({ TextFormat("Follow at %.0f", base * HOLD_RANGES[1]),
-                          [this, tid, base]() { OrderHold(5, tid, base * HOLD_RANGES[1]); } });
-        // Any distance, not just the presets.
-        const std::string name = target->GetName();
-        items.push_back({ "Hold at a range...", [this, tid, base, name]()
-                          {
-                              rangePicker_.Open(GetMousePosition(), name, base,
-                                                base * HOLD_RANGES[1],
-                                                [this, tid](int mode, float range)
-                                                { OrderHold(mode, tid, range); });
-                          } });
+        const std::string& dest = static_cast<const JumpGate&>(e).GetDestination();
+        for (const auto& s : universe_.systems)
+            if (s.id == dest)
+                t.destinationName = s.name;
     }
-
-    // Warp — only if the target is far enough (Approach suffices up close). The drop
-    // distance is offered rather than assumed: arriving on top of a station and arriving
-    // far enough out to look at it first are different intentions.
-    float wdx = target->GetPosition().x - playerShip_->GetPosition().x;
-    float wdy = target->GetPosition().y - playerShip_->GetPosition().y;
-    if (sqrtf(wdx * wdx + wdy * wdy) > 1800.0f)
-    {
-        items.push_back({ "Warp to", [this, target]()
-                          { OrderWarp(target->GetPosition(), target->GetSize() + 70.0f); } });
-        items.push_back({ TextFormat("Warp to, %.0f out", base * HOLD_RANGES[2]),
-                          [this, target, base]()
-                          { OrderWarp(target->GetPosition(), base * HOLD_RANGES[2]); } });
-    }
-
-    // Kind-specific actions. Listed exhaustively rather than with a `default:` so that a
-    // new kind of object — the point of #44 — cannot quietly ship with an empty menu.
-    switch (target->GetKind())
-    {
-        case EntityKind::Station:
-        {
-            Station* st = static_cast<Station*>(target);
-            // Docking is server-authoritative: in range we send the intent and the server
-            // decides (including the reputation gate); out of range we approach first, which
-            // is the whole point of the menu item — the E key only works once already close.
-            items.push_back({ "Dock", [this, st]()
-                              {
-                                  float dx = st->GetPosition().x - playerShip_->GetPosition().x;
-                                  float dy = st->GetPosition().y - playerShip_->GetPosition().y;
-                                  if (sqrtf(dx * dx + dy * dy) <= DockReach(*st))
-                                      cmd_.dock = true;
-                                  else  // far — first approach via autopilot
-                                      OrderAutopilot(st->GetPosition(), st->GetSize() + 60.0f);
-                              } });
-            break;
-        }
-        case EntityKind::Field:
-        {
-            AsteroidField* af = static_cast<AsteroidField*>(target);
-            items.push_back({ "Mine here", [this, af]()
-                              {
-                                  OrderAutopilot(af->GetPosition(), af->GetSize() + 30.0f);
-                                  if (!snapshot_.player.mining)  // enable mining via command
-                                      cmd_.toggleMining = true;
-                              } });
-            break;
-        }
-        case EntityKind::Npc:
-        {
-            NpcShip* npc = static_cast<NpcShip*>(target);
-            items.push_back({ "Attack", [this, npc]()
-                              {
-                                  selected_ = npc;
-                                  desk_.SetOpen(WIN_TARGET, true);
-                                  if (!weaponOn_)
-                                      cmd_.toggleWeapon = true;
-                                  weaponOn_ = true;
-                              } });
-            break;
-        }
-        case EntityKind::Derelict:
-        {
-            Derelict* dr = static_cast<Derelict*>(target);
-            if (!dr->IsLooted())
-                items.push_back({ "Investigate", [this, dr]()
-                                  {
-                                      float dx = dr->GetPosition().x - playerShip_->GetPosition().x;
-                                      float dy = dr->GetPosition().y - playerShip_->GetPosition().y;
-                                      if (sqrtf(dx * dx + dy * dy) <= dr->GetSize() + 120.0f)
-                                          cmd_.lootId =
-                                              dr->GetId();  // salvage order (server will verify)
-                                      else                  // far — approach first
-                                          OrderAutopilot(dr->GetPosition(), dr->GetSize() + 40.0f);
-                                  } });
-            break;
-        }
-        case EntityKind::Gate:
-        {
-            JumpGate*   g = static_cast<JumpGate*>(target);
-            std::string dest = g->GetDestination();
-            std::string label = "Jump";
-            for (const auto& s : universe_.systems)
-                if (s.id == dest)
-                {
-                    label = "Jump to " + s.name;
-                    break;
-                }
-            items.push_back({ label, [this, g]()
-                              {
-                                  float dx = g->GetPosition().x - playerShip_->GetPosition().x;
-                                  float dy = g->GetPosition().y - playerShip_->GetPosition().y;
-                                  if (sqrtf(dx * dx + dy * dy) <= g->GetSize() + 200.0f)
-                                      cmd_.jumpGateId =
-                                          g->GetId();  // jump order (server will verify)
-                                  else                 // far — warp to the gate
-                                      OrderWarp(g->GetPosition(), g->GetSize() + 120.0f);
-                              } });
-            break;
-        }
-        // Nothing to do with one yet but go there; taking one down is the next slice (#39).
-        case EntityKind::Structure: break;
-        // Scenery and the player's own ship: fly-to and warp-to, already added above, are all
-        // there is to do with them.
-        case EntityKind::Star:
-        case EntityKind::Planet:
-        case EntityKind::Nebula:
-        case EntityKind::PlayerShip:
-        case EntityKind::Unknown: break;
-    }
-
-    contextMenu_.Open(GetMousePosition(), std::move(items));
+    return t;
 }
 
-// RMB menu on empty space: fly or warp to the chosen point.
+// Does one of the actions Actions::For offered (#297). Everything here becomes a command
+// for the server, apart from Select and SetRange, which are the interface's own. Where an
+// action depends on how close the ship is -- dock, jump, salvage -- the client asks the
+// question it can answer (is it in reach?) and the server decides the rest.
+void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
+{
+    using Actions::Verb;
+    Entity* target = targetId != 0 ? FindEntityById(targetId) : nullptr;
+    auto    distanceTo = [this](const Entity* e)
+    {
+        const float dx = e->GetPosition().x - playerShip_->GetPosition().x;
+        const float dy = e->GetPosition().y - playerShip_->GetPosition().y;
+        return sqrtf(dx * dx + dy * dy);
+    };
+    switch (a.verb)
+    {
+        case Verb::FlyHere: OrderAutopilot(point, a.distance); return;
+        case Verb::WarpHere: OrderWarp(point, a.distance); return;
+        case Verb::Build:
+            cmd_.deploy = a.blueprint;
+            cmd_.deployPos = point;
+            return;
+        default: break;
+    }
+    if (target == nullptr)
+        return;  // gone since the menu opened
+    switch (a.verb)
+    {
+        case Verb::Select:
+            selected_ = target;
+            desk_.SetOpen(WIN_TARGET, true);
+            break;
+        case Verb::Approach: OrderAutopilot(target->GetPosition(), a.distance); break;
+        case Verb::Orbit:
+        case Verb::Keep:
+        case Verb::Follow: OrderHold(Actions::HoldMode(a.verb), target->GetId(), a.distance); break;
+        case Verb::SetRange:
+            // Any distance, not just the presets: the selected-item window's range field,
+            // with the keyboard already in it.
+            selected_ = target;
+            holdRange_ = a.distance;
+            holdRangeFor_ = target->GetId();
+            desk_.SetOpen(WIN_TARGET, true);
+            desk_.KeyboardFocus().Take(WIN_TARGET, "range");
+            break;
+        case Verb::Warp: OrderWarp(target->GetPosition(), a.distance); break;
+        case Verb::Dock:
+            // Docking is server-authoritative: in range we send the intent and the server
+            // decides (including the reputation gate); out of range we approach first, which
+            // is the whole point of the menu item -- the E key only works once already close.
+            if (distanceTo(target) <= DockReach(*target))
+                cmd_.dock = true;
+            else
+                OrderAutopilot(target->GetPosition(), target->GetSize() + 60.0f);
+            break;
+        case Verb::Mine:
+            OrderAutopilot(target->GetPosition(), target->GetSize() + 30.0f);
+            if (!snapshot_.player.mining)  // enable mining via command
+                cmd_.toggleMining = true;
+            break;
+        case Verb::Attack:
+            selected_ = target;
+            desk_.SetOpen(WIN_TARGET, true);
+            if (!weaponOn_)
+                cmd_.toggleWeapon = true;
+            weaponOn_ = true;
+            break;
+        case Verb::Investigate:
+            if (distanceTo(target) <= target->GetSize() + 120.0f)
+                cmd_.lootId = target->GetId();  // salvage order (server will verify)
+            else                                // far — approach first
+                OrderAutopilot(target->GetPosition(), target->GetSize() + 40.0f);
+            break;
+        case Verb::Jump:
+            if (distanceTo(target) <= target->GetSize() + 200.0f)
+                cmd_.jumpGateId = target->GetId();  // jump order (server will verify)
+            else                                    // far — warp to the gate
+                OrderWarp(target->GetPosition(), target->GetSize() + 120.0f);
+            break;
+        case Verb::FlyHere:
+        case Verb::WarpHere:
+        case Verb::Build: break;  // handled above: they need no target
+    }
+}
+
+// The right-click menu on an object: every action Actions::For offers for it, the same list
+// the selected-item window shows as buttons.
+void Game::OpenContextMenu(Entity* target)
+{
+    OpenContextMenu(target, GetMousePosition());
+}
+
+void Game::OpenContextMenu(Entity* target, Vector2 at)
+{
+    std::vector<ContextMenu::Item> items;
+    const int                      id = target->GetId();
+    for (const Actions::Action& a : Actions::For(ActionTarget(*target), playerShip_->GetPosition()))
+        items.push_back({ a.label, [this, a, id]() { Perform(a, id, { 0.0f, 0.0f }); } });
+    contextMenu_.Open(at, std::move(items));
+}
+
+// The right-click menu on empty space: fly or warp there, or build something.
 void Game::OpenContextMenuAt(Vector2 worldPoint)
 {
     std::vector<ContextMenu::Item> items;
-
-    items.push_back({ "Fly here", [this, worldPoint]() { OrderAutopilot(worldPoint, 18.0f); } });
-
-    float dx = worldPoint.x - playerShip_->GetPosition().x;
-    float dy = worldPoint.y - playerShip_->GetPosition().y;
-    if (sqrtf(dx * dx + dy * dy) > 1800.0f)
-    {
-        items.push_back({ "Warp here", [this, worldPoint]() { OrderWarp(worldPoint, 60.0f); } });
-    }
-
-    // Build here (#39): every blueprint whose reach the point is within, with what it costs.
-    // Only the reach is checked here, so the menu does not offer what could never work; the
-    // rest -- the hold, the room, the caps -- the server decides and says in the journal.
-    if (mode_ == GameMode::Flying)
-        for (const Blueprint& bp : Blueprints::All())
-        {
-            if (sqrtf(dx * dx + dy * dy) > bp.reach)
-                continue;
-            std::string cost;
-            for (const auto& c : bp.cost)
-                cost += (cost.empty() ? "" : ", ") + std::to_string(c.second) + " " +
-                        ResourceName(c.first);
-            const std::string id = bp.id;
-            items.push_back({ "Build " + bp.name + " (" + cost + ")", [this, id, worldPoint]()
-                              {
-                                  cmd_.deploy = id;
-                                  cmd_.deployPos = worldPoint;
-                              } });
-        }
-
+    const std::vector<Blueprint>   none;
+    for (const Actions::Action& a :
+         Actions::ForPoint(worldPoint, playerShip_->GetPosition(),
+                           mode_ == GameMode::Flying ? Blueprints::All() : none))
+        items.push_back({ a.label, [this, a, worldPoint]() { Perform(a, 0, worldPoint); } });
     contextMenu_.Open(GetMousePosition(), std::move(items));
 }
 
@@ -908,7 +860,7 @@ void Game::SaveTreatment()
 // there rather than letting it reach the windows behind it.
 void Game::HandleEscape()
 {
-    if (!IsKeyPressed(KEY_ESCAPE) || naming_)  // the name field takes its own Esc
+    if (!IsKeyPressed(KEY_ESCAPE))  // a text field with the keyboard takes it (Desk::Escape)
         return;
     desk_.Escape();
 }
@@ -919,26 +871,6 @@ bool Game::CanNameHere() const
         if (si.id == snapshot_.systemId)
             return !pilotName_.empty() && si.discoverer == pilotName_ && si.designation.empty();
     return false;
-}
-
-void Game::HandleNaming()
-{
-    for (int c = GetCharPressed(); c != 0; c = GetCharPressed())
-        if (c >= 32 && c < 127 && nameBuf_.size() < 24)
-            nameBuf_ += (char)c;
-    if (IsKeyPressed(KEY_BACKSPACE) && !nameBuf_.empty())
-        nameBuf_.pop_back();
-    if (IsKeyPressed(KEY_ESCAPE))
-        naming_ = false;
-    if (IsKeyPressed(KEY_ENTER) && !nameBuf_.empty())
-    {
-        // The server checks it and says why not in the journal, which flashes here; a name
-        // it accepts comes back to everyone in the galaxy index. It rides on the next
-        // numbered input like any one-shot intent: a command of its own would be one more
-        // tick of movement the server steps and this client never predicted.
-        cmd_.nameSystem = nameBuf_;
-        naming_ = false;
-    }
 }
 
 void Game::UpdateShipDrawPose()

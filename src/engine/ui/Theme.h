@@ -24,13 +24,14 @@ struct Theme
         Color title{ 34, 38, 52, 255 };    // its title bar
         Color accent{ 92, 170, 232, 255 };
         Color text{ 222, 226, 234, 255 };
-        Color dim{ 132, 142, 158, 255 };   // labels, and whatever is off
-        Color good{ 120, 210, 130, 255 };  // healthy, complete
-        Color warn{ 232, 190, 90, 255 };   // attention
-        Color bad{ 230, 90, 80, 255 };     // damage, failure
-        Color money{ 255, 203, 0, 255 };   // credits, wherever they are shown
-        Color track{ 80, 86, 100, 110 };   // the empty part of a bar or slider
-        Color hover{ 92, 170, 232, 40 };   // under the cursor
+        Color dim{ 132, 142, 158, 255 };     // labels, and whatever is off
+        Color good{ 120, 210, 130, 255 };    // healthy, complete
+        Color warn{ 232, 190, 90, 255 };     // attention
+        Color bad{ 230, 90, 80, 255 };       // damage, failure
+        Color money{ 255, 203, 0, 255 };     // credits, wherever they are shown
+        Color track{ 80, 86, 100, 110 };     // the empty part of a bar or slider
+        Color hover{ 92, 170, 232, 40 };     // under the cursor
+        Color selected{ 92, 170, 232, 56 };  // the chosen row of a table, the open tab
     } colors;
 
     // Allegiance, as the *instruments* say it (#117): the overview, the radar, the sensor
@@ -56,6 +57,8 @@ struct Theme
         float barHeight = 8.0f;     // a progress bar
         float buttonHeight = 26.0f;
         float resizeGrip = 14.0f;  // the corner a resizable window is dragged by
+        float rowHeight = 20.0f;   // a table's row
+        float scrollbar = 4.0f;    // the width of a scroll indicator
     } metrics;
 
     struct FontSizes

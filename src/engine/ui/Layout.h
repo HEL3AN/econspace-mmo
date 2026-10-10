@@ -1,6 +1,7 @@
 #pragma once
 
 #include "raylib.h"
+#include "ui/Focus.h"
 #include "ui/Fonts.h"
 #include "ui/Input.h"
 #include "ui/Theme.h"
@@ -8,6 +9,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -78,7 +80,10 @@ struct Box
     Color       borderColor{ 0, 0, 0, 0 };
     float       border = 0.0f;
     float       radius = 0.0f;
-    bool        scrollY = false;
+    // Clips its children and scrolls them with the wheel. Clay keeps at most ten clipping
+    // elements per layout, so this is for a window's list, not for every cell of it: a
+    // table cuts its cells short with Ellipsize instead.
+    bool scrollY = false;
 
     Box& Id(std::string_view s, uint32_t i = 0)
     {
@@ -175,6 +180,81 @@ struct TextStyle
     }
 };
 
+// --- What the widgets take and give ----------------------------------------------------
+
+// A table's column: its heading, how wide it is (the same rule as a box's), where its text
+// sits, and whether clicking the heading sorts by it.
+struct TableColumn
+{
+    std::string label;
+    Size        width = Size::Grow();
+    Align       align = Align::Start;
+    bool        sortable = false;
+};
+
+// What a cell says, and in what colour.
+struct Cell
+{
+    std::string text;
+    Color       color{ 255, 255, 255, 255 };
+    Face        face = Face::Regular;
+};
+
+// Which column a table is sorted by. The table changes it when a heading is clicked; the
+// rows themselves come from the caller's model, which reads it.
+struct TableSort
+{
+    int  column = 0;
+    bool descending = false;
+};
+
+struct TableSpec
+{
+    std::string                              id;  // unique in its layout
+    std::vector<TableColumn>                 columns;
+    int                                      rows = 0;
+    std::function<Cell(int row, int column)> cell;
+    // A row's background: the selected one, the one being flown to; alpha 0 for none.
+    std::function<Color(int row)> rowFill;
+    // Optional. Clicking a sortable heading sorts by it; clicking it again turns the order
+    // round only if `reversible` -- the overview's model always puts hostiles first, and
+    // a reversed list would put them last.
+    TableSort*  sort = nullptr;
+    bool        reversible = false;
+    std::string empty;  // said instead of rows when there are none
+    // Optional: what a row says when the cursor rests on it -- the whole of a name cut short.
+    std::function<std::string(int row)> tooltip;
+};
+
+// What happened to a table this frame; -1 for nothing.
+struct TableEvents
+{
+    int  hovered = -1;
+    int  clicked = -1;       // left button
+    int  rightClicked = -1;  // right button: the place for a context menu
+    bool sorted = false;     // the sort changed
+};
+
+struct TextFieldOptions
+{
+    std::string placeholder;  // shown dim while it is empty and not being typed in
+    size_t      maxLength = 64;
+    Size        width = Size::Grow();
+    bool (*accept)(char) = nullptr;  // which characters it takes; null for every printable one
+};
+
+// The tooltip asked for this frame, drawn over everything by DrawTooltip at the end of the
+// frame -- after the popups, so no window can sit on top of it. PendingTooltip is for tests.
+void               PostTooltip(std::string_view text, Vector2 at);
+void               DrawTooltip();
+const std::string& PendingTooltip();
+void               ClearTooltip();
+
+// Shortens text to fit `maxPx`, ending it in "..": a name that runs into the next column
+// reads as one word with it. `width` measures a string in pixels.
+std::string Ellipsize(std::string_view text, float maxPx,
+                      const std::function<float(std::string_view)>& width);
+
 // What End() produces: rectangles, outlines, text and clipping, in screen pixels.
 struct DrawCommand
 {
@@ -218,9 +298,11 @@ public:
     {
         bool    owned = false;
         Vector2 pos{ 0.0f, 0.0f };
-        bool    down = false;
-        bool    pressed = false;
+        bool    down = false;     // the left button
+        bool    pressed = false;  // ...went down this frame
+        bool    rightPressed = false;
         float   wheel = 0.0f;
+        float   dt = 0.0f;  // seconds since the last frame: tooltips wait, scrolling glides
     };
     void Begin(Rectangle area, float scale, const Pointer& pointer);
     void Begin(Rectangle area, float scale);  // no pointer at all: a test, or a picture
@@ -260,6 +342,53 @@ public:
     // A small on/off indicator: filled when on.
     void Chip(std::string_view label, bool on, Color onColor);
 
+    // --- Widgets for windows that list, choose and type -------------------------------
+    // A column that scrolls with the wheel, with an indicator beside it that shows how much
+    // there is and where the view is, and can be dragged. `box` needs an id; its children
+    // are laid out top to bottom. The indicator's room is kept even when everything fits,
+    // so nothing shifts sideways when a list grows past the window.
+    template <typename F> void Scroll(Box box, F&& children)
+    {
+        ScrollBegin(box);
+        children();
+        ScrollEnd(box);
+    }
+    float ScrollGutter() const;  // units: the room the indicator takes beside the content
+
+    // Headings (clickable to sort), a divider, and rows that scroll. Each cell's text is
+    // cut short with ".." to its column. Returns what the mouse did to it.
+    TableEvents Table(const TableSpec& spec);
+
+    // A strip of tabs; `selected` changes when one is clicked. True on that frame.
+    bool Tabs(std::string_view id, const std::vector<std::string>& labels, int& selected);
+
+    // A line of text the player types in. Clicking it takes the keyboard (the frame must
+    // come from the desk); Enter submits and lets go, Esc lets go (the desk handles Esc).
+    EditResult TextField(std::string_view id, std::string& text,
+                         const TextFieldOptions& options = TextFieldOptions());
+    // Hands the keyboard to a field, as if it had been clicked: N on the map does this.
+    void TakeFocus(std::string_view id);
+    bool HasFocus(std::string_view id) const;
+
+    // A number typed in. While it is being typed it is text; Enter, or a click anywhere
+    // else, takes the value (clamped to [lo, hi]); Esc puts the old one back. True on the
+    // frame the value changed.
+    bool NumberField(std::string_view id, float& value, float lo, float hi,
+                     const char* format = "%.0f");
+    // A value on a track, dragged anywhere along it. `logarithmic` spaces it by ratio, for
+    // a range or a zoom where 1 to 2 is as large a step as 1000 to 2000 (lo must be > 0).
+    // True on the frames the value changed.
+    bool Slider(std::string_view id, float& value, float lo, float hi, bool logarithmic = false);
+
+    // A tooltip for the element with this id: shown once it has been under the cursor for a
+    // moment, beside the cursor, over everything.
+    void Tooltip(std::string_view id, std::string_view text, uint32_t index = 0);
+
+    // A keyboard focus for a layout with no desk behind it (a test), and this frame's typing
+    // in place of the real keyboard's.
+    void UseFocus(Focus* focus, std::string_view owner);
+    void FeedKeys(const KeyInput& keys);
+
     // --- Asking about it -----------------------------------------------------------
     bool      Hovered(std::string_view id, uint32_t index = 0) const;
     bool      Clicked(std::string_view id, uint32_t index = 0) const;
@@ -274,6 +403,12 @@ public:
 private:
     std::string_view Keep(std::string_view s);  // alive until the next Begin
     void             Report(std::string_view message);
+    void             ScrollBegin(const Box& box);
+    void             ScrollEnd(const Box& box);
+    KeyInput         Keys();  // this frame's typing, for the field with the focus
+    float            TextWidthPx(const TextStyle& style, std::string_view text) const;
+    // The box a text or number field is drawn as.
+    void FieldBox(std::string_view id, std::string_view shown, bool dim, bool focused, Size width);
 
     UiClay*                  clay_ = nullptr;
     Measure                  measure_;
@@ -285,6 +420,16 @@ private:
     int                      depth_ = 0;
     bool                     open_ = false;
     std::string              lastError_;
+
+    Focus*      focus_ = nullptr;
+    std::string owner_;  // the window's id, which the focus is held under
+    bool        keysFed_ = false;
+    KeyInput    keys_;
+    std::string active_;  // a slider or a scroll indicator being dragged, until release
+    std::map<std::string, std::string> edits_;   // number fields being typed in: the text so far
+    std::string                        tipKey_;  // what the cursor has rested on, and for how long
+    float                              tipTime_ = 0.0f;
+    bool                               tipSeen_ = false;
 
     friend struct LayoutCallbacks;
 };

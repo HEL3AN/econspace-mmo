@@ -240,27 +240,44 @@ void Game::SetupWindows()
     status.resizable = true;
     status.minSize = { 200.0f, 150.0f };
     desk_.AddWindow(status, "STATUS", true, [this](Ui::Frame& f) { DrawStatusContent(f); });
-    desk_.AddWindow(panel(WIN_TARGET, "TGT", Anchor::TopRight, { 16.0f, 16.0f, 264.0f, 196.0f }),
-                    "TARGET", false, [this](Ui::Frame& f) { DrawTargetContent(f.Area()); });
+    // The selected item and the overview, one above the other on the right, as EVE has them:
+    // pick from the list, act from the window above it (#297). Both are laid out by
+    // Ui::Layout, so both can be any size.
+    WindowSpec target =
+        panel(WIN_TARGET, "TGT", Anchor::TopRight, { 16.0f, 16.0f, 300.0f, 300.0f });
+    target.resizable = true;
+    target.minSize = { 240.0f, 160.0f };
+    desk_.AddWindow(target, "SELECTED ITEM", false, [this](Ui::Frame& f) { DrawTargetContent(f); });
     // Open from the start: it is the instrument a player flies by (#157), and a player who
     // has to know a key exists before they can navigate has not been told how to play.
-    desk_.AddWindow(panel(WIN_OVERVIEW, "OVR", Anchor::TopRight, { 16.0f, 224.0f, 264.0f, 400.0f }),
-                    "OVERVIEW", true, [this](Ui::Frame& f) { DrawOverviewContent(f); });
+    WindowSpec overview =
+        panel(WIN_OVERVIEW, "OVR", Anchor::TopRight, { 16.0f, 328.0f, 300.0f, 376.0f });
+    overview.resizable = true;
+    overview.minSize = { 260.0f, 160.0f };
+    desk_.AddWindow(overview, "OVERVIEW", true, [this](Ui::Frame& f) { DrawOverviewContent(f); });
     desk_.AddWindow(panel(WIN_RADAR, "RAD", Anchor::TopLeft, { 56.0f, 344.0f, 264.0f, 288.0f }),
                     "RADAR", false, [this](Ui::Frame& f) { DrawRadarContent(f); });
     desk_.AddWindow(panel(WIN_MISSIONS, "MIS", Anchor::TopRight, { 16.0f, 360.0f, 264.0f, 264.0f }),
                     "MISSIONS", false, [this](Ui::Frame& f) { DrawMissionsContent(f.Area()); });
 
     // The two screens cover the world view and the windows; whichever opened last is on top.
+    // Covering means the windows are not drawn at all while one is open: the map is drawn
+    // translucent over the world, and the panels used to show through it (#297).
+    auto screen = [&surface](const char* id, const char* label, Ui::EscRule esc)
+    {
+        WindowSpec s = surface(id, label, Layer::Screen, esc);
+        s.covers = true;
+        return s;
+    };
     Ui::Desk::Surface map;
     map.bounds = fullScreen;
     map.draw = [this]() { DrawGalaxyMap(); };
-    desk_.AddSurface(surface(WIN_MAP, "MAP", Layer::Screen, Ui::EscRule::Close), false, map);
+    desk_.AddSurface(screen(WIN_MAP, "MAP", Ui::EscRule::Close), false, map);
     Ui::Desk::Surface sensor;
     sensor.bounds = [this]()
     { return Rectangle{ MENU_BAR_W, 0.0f, screenWidth_ - MENU_BAR_W, (float)screenHeight_ }; };
     sensor.draw = [this]() { DrawSensorScreen(); };
-    desk_.AddSurface(surface(WIN_SENSOR, "SNS", Layer::Screen, Ui::EscRule::Close), false, sensor);
+    desk_.AddSurface(screen(WIN_SENSOR, "SNS", Ui::EscRule::Close), false, sensor);
 
     desk_.AddWindow(panel(WIN_SETTINGS, "SET", Anchor::Top, { 0.0f, 100.0f, 300.0f, 380.0f }),
                     "SETTINGS", false, [this](Ui::Frame& f) { DrawSettingsContent(f.Area()); });
@@ -270,7 +287,7 @@ void Game::SetupWindows()
     Ui::Desk::Surface station;
     station.bounds = fullScreen;
     station.isOpen = [this]() { return mode_ == GameMode::Docked; };
-    desk_.AddSurface(surface(WIN_STATION, "", Layer::Screen, Ui::EscRule::Block), false, station);
+    desk_.AddSurface(screen(WIN_STATION, "", Ui::EscRule::Block), false, station);
 
     // Above the screens it opens; Esc passes over it.
     Ui::Desk::Surface bar;
@@ -285,12 +302,6 @@ void Game::SetupWindows()
     menu.onClose = [this]() { contextMenu_.Close(); };
     menu.draw = [this]() { contextMenu_.Draw(); };
     desk_.AddSurface(surface(WIN_CONTEXT, "", Layer::Popup, Ui::EscRule::Close), false, menu);
-    Ui::Desk::Surface range;
-    range.bounds = [this]() { return rangePicker_.Bounds(); };
-    range.isOpen = [this]() { return rangePicker_.IsOpen(); };
-    range.onClose = [this]() { rangePicker_.Close(); };
-    range.draw = [this]() { rangePicker_.Draw(); };
-    desk_.AddSurface(surface(WIN_RANGE, "", Layer::Popup, Ui::EscRule::Close), false, range);
 
     // F10's panel: over everything, and closing it writes what was tuned.
     Ui::Desk::Surface look;
@@ -543,219 +554,269 @@ void Game::DrawRadarContent(const Ui::Frame& f)
     DrawCircleLines((int)rc.x, (int)rc.y, 3.0f, ric);
 }
 
-// List of system objects, sorted by distance; click — select.
+// The overview (#157), on Ui::Layout (#297): the filters as tabs, and a table that sorts by
+// its headings and scrolls -- the playtest found the old list cut off where the window
+// ended. What goes in it and in what order is Overview::Build's, which a test can hold;
+// this only draws it. Read from the snapshot (M4c); a click maps back to the proxy by id.
 void Game::DrawOverviewContent(const Ui::Frame& f)
 {
-    // The overview is the instrument a player flies by (#157): pick a thing from the list,
-    // then choose what to do about it with a right click. What goes in it and in what order
-    // is decided by Overview::Build, which a test can hold; this only draws it. Read from the
-    // snapshot (M4c), not from the live objects; a click maps back to the proxy by id.
-    // The frame answers for the mouse: a row under another window neither lights up nor
-    // takes the click meant for the window in front (#297).
-    const Rectangle area = f.Area();
-    const Vector2   sp = snapshot_.player.pos;
-    const bool      clicked = f.Pressed(MOUSE_BUTTON_LEFT);
-    const bool      rclicked = f.Pressed(MOUSE_BUTTON_RIGHT);
-    const int       rowH = 20;
-    float           y = area.y;
+    using Ui::Box;
+    using Ui::Size;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    Ui::Layout&      L = overviewLayout_;
 
-    // --- Tabs -------------------------------------------------------------------------
-    {
-        float x = area.x;
-        for (Overview::Filter filter : Overview::AllFilters())
-        {
-            const char* label = Overview::Label(filter);
-            const float w = (float)Ui::TextWidth(label, 13) + 14.0f;
-            Rectangle   tab{ x, y, w, 20.0f };
-            const bool  on = (overviewFilter_ == filter);
-            const bool  over = f.Hovered(tab);
-            DrawRectangleRec(tab, on ? Fade(Ui::ACCENT, 0.25f)
-                                     : (over ? Fade(Ui::ACCENT, 0.10f) : Fade(Ui::TITLE_BG, 0.6f)));
-            Ui::Text(label, (int)x + 7, (int)y + 3, 13, on ? Ui::ACCENT : Ui::TEXT_DIM);
-            if (over && clicked)
-                overviewFilter_ = filter;
-            x += w + 3.0f;
-        }
-        y += 24.0f;
-    }
+    const std::vector<Overview::Filter>& filters = Overview::AllFilters();
+    std::vector<std::string>             tabs;
+    for (Overview::Filter filter : filters)
+        tabs.push_back(Overview::Label(filter));
+    overviewTab_ = std::clamp(overviewTab_, 0, (int)filters.size() - 1);
 
-    // --- Column headers: click to sort --------------------------------------------------
-    {
-        struct Col
-        {
-            const char*    label;
-            Overview::Sort sort;
-            float          x;
-        };
-        const Col cols[] = { { "name", Overview::Sort::Name, area.x + 4.0f },
-                             { "type", Overview::Sort::Kind, area.x + area.width * 0.58f },
-                             { "dist", Overview::Sort::Distance, area.x + area.width - 40.0f } };
-        for (const Col& c : cols)
-        {
-            const bool on = (overviewSort_ == c.sort);
-            Rectangle  hit{ c.x - 2.0f, y, 52.0f, 16.0f };
-            Ui::Text(TextFormat("%s%s", c.label, on ? " v" : ""), (int)c.x, (int)y, 11,
-                     on ? Ui::ACCENT : Ui::TEXT_DIM);
-            if (clicked && f.Hovered(hit))
-                overviewSort_ = c.sort;
-        }
-        y += 16.0f;
-        DrawLineEx({ area.x, y }, { area.x + area.width, y }, 1.0f, Fade(Ui::PANEL_BORDER, 0.6f));
-        y += 3.0f;
-    }
-
-    // --- Rows -------------------------------------------------------------------------
+    // The table's columns are the model's sorts.
+    static const Overview::Sort      SORTS[] = { Overview::Sort::Name, Overview::Sort::Kind,
+                                                 Overview::Sort::Distance };
     const std::vector<Overview::Row> rows = Overview::Build(
-        snapshot_.entities, sp, overviewFilter_, overviewSort_,
-        [this](const Proto::EntitySnapshot& e)
+        snapshot_.entities, snapshot_.player.pos, filters[overviewTab_],
+        SORTS[std::clamp(overviewSort_.column, 0, 2)], [this](const Proto::EntitySnapshot& e)
         { return e.kind == Proto::EntityKind::Npc && HostileToPlayerFaction(e.faction); });
 
-    const int selId = selected_ != nullptr ? selected_->GetId() : 0;
-    for (const Overview::Row& r : rows)
+    const int  selId = selected_ != nullptr ? selected_->GetId() : 0;
+    const bool holding = playerShip_ && playerShip_->GetHoldMode() != HoldMode::None;
+    const int  heldId = holding ? playerShip_->GetHoldTargetId() : 0;
+
+    Ui::TableSpec table;
+    table.id = "overview";
+    table.columns = { { "name", Size::Grow(), Ui::Align::Start, true },
+                      { "type", Size::Fixed(72.0f), Ui::Align::Start, true },
+                      { "dist", Size::Fixed(56.0f), Ui::Align::End, true } };
+    table.rows = (int)rows.size();
+    table.sort = &overviewSort_;
+    table.empty = filters[overviewTab_] == Overview::Filter::Hostile ? "nothing hostile in sight"
+                                                                     : "nothing here";
+    table.cell = [&](int r, int c)
     {
-        if (y + rowH > area.y + area.height)
-            break;  // doesn't fit — truncate the list
-        const Proto::EntitySnapshot& e = *r.entity;
-        Rectangle                    row{ area.x, y, area.width, (float)rowH };
-
-        // Marked when the ship is holding station on it: a standing order with no visible
-        // sign of running is an order a player cannot trust.
-        const bool held = (playerShip_ && e.id != 0 && playerShip_->GetHoldTargetId() == e.id &&
-                           playerShip_->GetHoldMode() != HoldMode::None);
-        if (e.id != 0 && e.id == selId)
-            DrawRectangleRec(row, Fade(Ui::ACCENT, 0.22f));
-        else if (held)
-            DrawRectangleRec(row, Fade(Ui::ACCENT, 0.12f));
-        else if (f.Hovered(row))
-            DrawRectangleRec(row, Fade(Ui::ACCENT, 0.06f));
-
-        // Hostiles in red, because this list is where allegiance belongs: the instrument, not
-        // the world view (#117).
-        const Color nameCol = r.hostile ? HOSTILE : (held ? Ui::ACCENT : Ui::TEXT);
-        // Clipped short of the type column, ending in "..": a name that runs into the next
-        // column reads as one word with the type.
-        std::string name = r.name;
-        const int   nameRoom = (int)(area.width * 0.58f) - 10;
-        if (Ui::TextWidth(name.c_str(), 14) > nameRoom)
+        const Overview::Row& row = rows[r];
+        const bool           held = row.entity->id != 0 && row.entity->id == heldId;
+        switch (c)
         {
-            while (!name.empty() && Ui::TextWidth((name + "..").c_str(), 14) > nameRoom)
-                name.pop_back();
-            name += "..";
+            // Hostiles in the instruments' hostile colour, because this list is where
+            // allegiance belongs: the instrument, not the world view (#117). What the ship is
+            // holding station on is marked: a standing order with no visible sign of running
+            // is an order a player cannot trust.
+            case 0:
+                return Ui::Cell{ row.name, row.hostile ? t.standing.hostile
+                                           : held      ? t.colors.accent
+                                                       : t.colors.text };
+            case 1: return Ui::Cell{ row.kind, t.colors.dim };
+            default:
+                // Thousands past ten thousand: a column of seven-digit numbers is one nobody
+                // reads.
+                return Ui::Cell{ row.distance >= 10000.0f
+                                     ? TextFormat("%.0fk", row.distance / 1000.0f)
+                                     : TextFormat("%.0f", row.distance),
+                                 t.colors.dim };
         }
-        Ui::Text(name.c_str(), (int)area.x + 4, (int)y + 3, 14, nameCol);
-        Ui::Text(r.kind.c_str(), (int)(area.x + area.width * 0.58f), (int)y + 4, 12, Ui::TEXT_DIM);
-        // Thousands past ten thousand: a column of seven-digit numbers is one nobody reads.
-        const char* d = r.distance >= 10000.0f ? TextFormat("%.0fk", r.distance / 1000.0f)
-                                               : TextFormat("%.0f", r.distance);
-        Ui::Text(d, (int)(area.x + area.width) - Ui::TextWidth(d, 14) - 4, (int)y + 3, 14,
-                 Ui::TEXT_DIM);
+    };
+    table.rowFill = [&](int r)
+    {
+        const int id = rows[r].entity->id;
+        if (id != 0 && id == selId)
+            return t.colors.selected;
+        if (id != 0 && id == heldId)
+            return t.colors.hover;
+        return Color{ 0, 0, 0, 0 };
+    };
+    // The whole name and the exact distance, for a row cut short.
+    table.tooltip = [&](int r)
+    { return std::string(TextFormat("%s  -  %.0f", rows[r].name.c_str(), rows[r].distance)); };
 
-        if (f.Hovered(row))
-        {
-            if (clicked)
-            {
-                selected_ = FindEntityById(e.id);
-                if (selected_ != nullptr)
-                    desk_.SetOpen(WIN_TARGET, true);
-            }
-            else if (rclicked)  // the actions on this thing: approach, orbit, warp, dock...
-            {
-                selected_ = FindEntityById(e.id);
-                if (selected_ != nullptr)
-                    OpenContextMenu(selected_);
-            }
-        }
-        y += rowH;
-    }
-
-    if (rows.empty())
-        Ui::Text(overviewFilter_ == Overview::Filter::Hostile ? "nothing hostile in sight"
-                                                              : "nothing here",
-                 (int)area.x + 4, (int)y + 4, 12, Ui::TEXT_DIM);
+    L.Begin(f);
+    L.Column(Box().Grow().Gap(t.metrics.gap),
+             [&]
+             {
+                 L.Tabs("tabs", tabs, overviewTab_);
+                 const Ui::TableEvents ev = L.Table(table);
+                 // Left: select it. Right: what to do about it -- approach, orbit, warp, dock.
+                 const int hit = ev.clicked >= 0 ? ev.clicked : ev.rightClicked;
+                 if (hit >= 0)
+                 {
+                     selected_ = FindEntityById(rows[hit].entity->id);
+                     if (selected_ != nullptr && ev.clicked >= 0)
+                         desk_.SetOpen(WIN_TARGET, true);
+                     else if (selected_ != nullptr)
+                         OpenContextMenu(selected_);
+                 }
+             });
+    L.End();
+    L.Draw();
 }
 
-void Game::DrawTargetContent(Rectangle area)
+// The selected-item window (#297), as EVE has it: what the target is, and what to do about
+// it. The buttons are Actions::For -- the list the right-click menu shows and the agent's
+// tools mirror -- and the range control is the one the orbit, keep and follow buttons use,
+// the player's own distance rather than one of the menu's three presets (#298).
+void Game::DrawTargetContent(const Ui::Frame& f)
 {
-    int x = (int)area.x;
-    int y = (int)area.y;
+    using Ui::Box;
+    using Ui::Size;
+    using Ui::TextStyle;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    Ui::Layout&      L = targetLayout_;
 
-    // Read the selected target from the snapshot by id (M4c). If it's not there (vanished) —
+    // Read the selected target from the snapshot by id (M4c). If it's not there (vanished),
     // there's no target.
-    int                          selId = selected_ != nullptr ? selected_->GetId() : 0;
+    const int                    selId = selected_ != nullptr ? selected_->GetId() : 0;
     const Proto::EntitySnapshot* e = nullptr;
-    if (selId != 0)
-        for (const auto& es : snapshot_.entities)
-            if (es.id == selId)
-            {
-                e = &es;
-                break;
-            }
+    for (const auto& es : snapshot_.entities)
+        if (selId != 0 && es.id == selId)
+        {
+            e = &es;
+            break;
+        }
 
+    L.Begin(f);
     if (e == nullptr)
     {
-        Ui::Text("No target selected", x, y, 16, Ui::TEXT_DIM);
+        L.Text("No target selected", TextStyle::Body().Tint(t.colors.dim));
+        L.End();
+        L.Draw();
         return;
     }
 
-    Ui::Text(e->name.c_str(), x, y, 20, Ui::ACCENT);
-    y += 30;
-
-    float dx = e->pos.x - snapshot_.player.pos.x;
-    float dy = e->pos.y - snapshot_.player.pos.y;
-    Ui::Text(TextFormat("Distance  %.0f", sqrtf(dx * dx + dy * dy)), x, y, 16, Ui::TEXT);
-    y += 26;
-
-    if (e->kind == Proto::EntityKind::Npc)
+    // A new target starts at its own default range; the player's choice stays with the
+    // target it was made for.
+    if (holdRangeFor_ != e->id)
     {
-        Ui::Text(TextFormat("Faction  %s", FactionName(e->faction).c_str()), x, y, 16,
-                 FactionColor(e->faction));
-        y += 26;
-        bool hostile = HostileToPlayerFaction(e->faction);
-        Ui::Text(hostile ? "Hostile" : "Neutral", x, y, 14,
-                 hostile ? Color{ 230, 41, 55, 255 } : Ui::TEXT_DIM);
-        y += 24;
-        float hf = e->hullFrac;
-        Ui::Text("Hull", x, y, 14, Ui::TEXT_DIM);
-        DrawRectangle(x, y + 16, (int)area.width, 9, Fade(GRAY, 0.35f));
-        DrawRectangle(x, y + 16, (int)(area.width * hf), 9, hf > 0.3f ? LIME : RED);
+        holdRange_ = Actions::DefaultRange(e->size);
+        holdRangeFor_ = e->id;
     }
-    else if (e->kind == Proto::EntityKind::Station)
-    {
-        Ui::Text(TextFormat("Faction  %s", FactionName(e->faction).c_str()), x, y, 16,
-                 FactionColor(e->faction));
-    }
-    else if (e->kind == Proto::EntityKind::Structure)
-    {
-        const auto l = layout_.byId.find(e->id);
-        if (l != layout_.byId.end())
+    // From just outside the object to far enough to stand off a planet; nearer than anything
+    // a sublight hold would take minutes to cross. The overview and a warp cover the rest.
+    const float lo = std::max(e->size * 1.1f, 30.0f);
+    const float hi = std::max(60000.0f, lo * 4.0f);
+    holdRange_ = std::clamp(holdRange_, lo, hi);
+
+    const std::vector<Actions::Action> actions =
+        selected_ != nullptr ? Actions::For(ActionTarget(*selected_), playerShip_->GetPosition())
+                             : std::vector<Actions::Action>();
+    const float              dist = Vector2Distance(e->pos, snapshot_.player.pos);
+    const Sensor::Allegiance allegiance = Sensor::Classify(*e, ViewerStanding());
+    const bool               heldHere =
+        playerShip_->GetHoldMode() != HoldMode::None && playerShip_->GetHoldTargetId() == e->id;
+
+    L.Column(
+        Box().Grow().ScrollY().Id("target").Gap(t.metrics.gap),
+        [&]
         {
-            const Proto::EntityLayout& el = l->second;
-            const bool                 mine = el.owner == pilotName_;
-            Ui::Text(mine ? "Yours" : TextFormat("Built by  %s", el.owner.c_str()), x, y, 16,
-                     mine ? Color{ 120, 235, 130, 255 } : Ui::TEXT);
-            y += 26;
-            const double now = worldClock_.Now(GetTime());
-            if (el.completesAt > now)
+            L.Text(e->name.empty() ? Overview::KindWord(*e) : e->name, TextStyle::Title());
+            L.Field("Distance", TextFormat("%.0f", dist), t.colors.text);
+
+            if (e->kind == Proto::EntityKind::Npc || e->kind == Proto::EntityKind::Station)
+                // Allegiance, in the instruments' colours (#117).
+                L.Field("Faction", FactionName(e->faction), Sensor::ColorOf(allegiance));
+            if (e->kind == Proto::EntityKind::Npc)
             {
-                // The site's progress is the clock's, not a figure the server sends (#136).
-                const double span = el.completesAt - el.startedAt;
-                const float  f = span > 0.0 ? (float)((now - el.startedAt) / span) : 1.0f;
-                Ui::Text(TextFormat("Building  %.0f s left", el.completesAt - now), x, y, 14,
-                         Ui::TEXT_DIM);
-                DrawRectangle(x, y + 16, (int)area.width, 9, Fade(GRAY, 0.35f));
-                DrawRectangle(x, y + 16, (int)(area.width * Clamp(f, 0.0f, 1.0f)), 9,
-                              Color{ 255, 170, 40, 255 });
+                L.Field("Hull", TextFormat("%.0f%%", e->hullFrac * 100.0f), t.colors.text);
+                L.Bar(e->hullFrac, e->hullFrac > 0.3f ? t.colors.good : t.colors.bad);
             }
-            else if (el.expiresAt > 0.0)
-                Ui::Text(TextFormat("Stands  %.0f min more", (el.expiresAt - now) / 60.0), x, y, 14,
-                         Ui::TEXT_DIM);
-        }
-    }
-    else if (e->kind == Proto::EntityKind::Field && e->ore >= 0)
-    {
-        Ui::Text(TextFormat("Ore  %s", ResourceName((ResourceType)e->ore).c_str()), x, y, 16,
-                 Ui::TEXT);
-    }
+            else if (e->kind == Proto::EntityKind::Structure)
+            {
+                const auto l = layout_.byId.find(e->id);
+                if (l != layout_.byId.end())
+                {
+                    const Proto::EntityLayout& el = l->second;
+                    const bool                 mine = el.owner == pilotName_;
+                    L.Field("Built by", mine ? "you" : el.owner,
+                            mine ? t.standing.own : t.colors.text);
+                    const double now = worldClock_.Now(GetTime());
+                    if (el.completesAt > now)
+                    {
+                        // The site's progress is the clock's, not a figure the server sends
+                        // (#136).
+                        const double span = el.completesAt - el.startedAt;
+                        const float  p = span > 0.0 ? (float)((now - el.startedAt) / span) : 1.0f;
+                        L.Field("Building", TextFormat("%.0f s left", el.completesAt - now),
+                                t.colors.dim);
+                        L.Bar(Clamp(p, 0.0f, 1.0f), t.colors.warn);
+                    }
+                    else if (el.expiresAt > 0.0)
+                        L.Field("Stands", TextFormat("%.0f min more", (el.expiresAt - now) / 60.0),
+                                t.colors.dim);
+                }
+            }
+            else if (e->kind == Proto::EntityKind::Field && e->ore >= 0)
+                L.Field("Ore", ResourceName((ResourceType)e->ore), t.colors.text);
+
+            // --- Holding station at the player's own range ---------------------------
+            if (e->id != 0)
+            {
+                L.Divider();
+                L.Text("RANGE", TextStyle::Label());
+                L.Row(Box().GrowX().Gap(t.metrics.gap).Align(Ui::Align::Start, Ui::Align::Center),
+                      [&]
+                      {
+                          // By ratio: 200 to 400 is as large a step as 20 000 to 40 000.
+                          L.Column(Box().GrowX(),
+                                   [&] { L.Slider("rangeSlider", holdRange_, lo, hi, true); });
+                          L.Column(Box().Width(Size::Fixed(72.0f)),
+                                   [&] { L.NumberField("range", holdRange_, lo, hi); });
+                      });
+                L.Row(Box().GrowX().Gap(t.metrics.rowGap),
+                      [&]
+                      {
+                          struct Hold
+                          {
+                              const char*   id;
+                              const char*   label;
+                              Actions::Verb verb;
+                              const char*   tip;
+                          };
+                          static const Hold holds[] = {
+                              { "orbit", "Orbit", Actions::Verb::Orbit, "Circle it at this range" },
+                              { "keep", "Keep", Actions::Verb::Keep,
+                                "Hold this distance from it, moving only as much as that takes" },
+                              { "follow", "Follow", Actions::Verb::Follow,
+                                "Hold this distance and match its velocity" },
+                          };
+                          for (const Hold& h : holds)
+                          {
+                              // Lit while it is the order the ship is flying.
+                              const bool on = heldHere && Actions::HoldMode(h.verb) ==
+                                                              (int)playerShip_->GetHoldMode() + 2;
+                              if (L.Button(h.id, h.label, on))
+                              {
+                                  Actions::Action a;
+                                  a.verb = h.verb;
+                                  a.distance = holdRange_;
+                                  Perform(a, e->id, { 0.0f, 0.0f });
+                              }
+                              L.Tooltip(h.id, h.tip);
+                          }
+                      });
+            }
+
+            // --- Everything else that can be done about it ----------------------------
+            // Two to a row: the list is the menu's, less what this window already shows.
+            std::vector<const Actions::Action*> rest;
+            for (const Actions::Action& a : actions)
+                if (a.verb != Actions::Verb::Select && a.verb != Actions::Verb::SetRange &&
+                    Actions::HoldMode(a.verb) == 0)
+                    rest.push_back(&a);
+            if (!rest.empty())
+                L.Divider();
+            for (size_t i = 0; i < rest.size(); i += 2)
+                L.Row(Box().GrowX().Gap(t.metrics.rowGap),
+                      [&]
+                      {
+                          for (size_t k = i; k < std::min(rest.size(), i + 2); k++)
+                          {
+                              const std::string id = "act" + std::to_string(k);
+                              if (L.Button(id, rest[k]->label))
+                                  Perform(*rest[k], e->id, { 0.0f, 0.0f });
+                          }
+                      });
+        });
+    L.End();
+    L.Draw();
 }
 
 // Menu bar input: clicking a button toggles the window or screen it stands for. The buttons
@@ -965,7 +1026,8 @@ void Game::DrawHud()
         Ui::Text(w, (screenWidth_ - Ui::TextWidth(w, 22)) / 2, 38, 22, SKYBLUE);
     }
 
-    desk_.Draw(Ui::Layer::Popup);  // the context menu and the range picker, over the windows
+    desk_.Draw(Ui::Layer::Popup);  // the context menu, over the windows
+    Ui::DrawTooltip();             // over everything the HUD draws
 
     // Current system and its security level (top center).
     if (const WorldLoader::SystemInfo* si = CurrentSystemInfo())
@@ -1366,6 +1428,7 @@ void Game::DrawGalaxyMap()
     // Graph area — almost the whole screen (with margin for the title and menu bar).
     Rectangle area{ MENU_BAR_W + 60.0f, 100.0f, screenWidth_ - MENU_BAR_W - 120.0f,
                     screenHeight_ - 160.0f };
+    Vector2   nameAt{ -1.0f, -1.0f };  // where the name field goes, while it is being typed in
 
     // Extents in mapPos.
     float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
@@ -1538,12 +1601,46 @@ void Game::DrawGalaxyMap()
             Ui::Text(TextFormat("found by %s", s.discoverer.c_str()), (int)p.x + 14,
                      (int)p.y + (cur ? 52 : 38), 12, Ui::TEXT_DIM);
         if (cur && CanNameHere())
-            Ui::Text(naming_ ? TextFormat("name: %s_   [Enter] / [Esc]", nameBuf_.c_str())
-                             : "[N] name this system",
-                     (int)p.x + 14, (int)p.y + 66, 14, Ui::ACCENT);
+        {
+            if (desk_.KeyboardFocus().Holds(WIN_MAP, "name"))
+                nameAt = { p.x + 14.0f, p.y + 60.0f };  // the field is drawn after the clip
+            else
+                Ui::Text("[N] name this system", (int)p.x + 14, (int)p.y + 66, 14, Ui::ACCENT);
+        }
     }
 
     EndScissorMode();
+
+    // The name field (#145): a Ui::Layout text field with the keyboard routed to it by the
+    // desk (#297). Enter sends the name on the next numbered input; Esc, or a click
+    // elsewhere, puts it away.
+    if (nameAt.x >= 0.0f)
+    {
+        const Ui::Theme& t = Ui::CurrentTheme();
+        const Rectangle  area{ nameAt.x, nameAt.y, Ui::Px(260.0f),
+                               Ui::Px(t.metrics.buttonHeight + t.fontSize.small * 1.6f +
+                                      t.metrics.rowGap) };
+        Ui::Layout&      L = mapNameLayout_;
+        L.Begin(desk_.SurfaceFrame(WIN_MAP, area));
+        L.Column(Ui::Box().Grow().Gap(t.metrics.rowGap),
+                 [&]
+                 {
+                     Ui::TextFieldOptions o;
+                     o.maxLength = 24;
+                     o.placeholder = "a name for this system";
+                     const Ui::EditResult r = L.TextField("name", nameBuf_, o);
+                     // The server checks it and says why not in the journal, which flashes
+                     // here; a name it accepts comes back to everyone in the galaxy index. It
+                     // rides on the next numbered input like any one-shot intent: a command of
+                     // its own would be one more tick of movement the server steps and this
+                     // client never predicted.
+                     if (r.submitted && !nameBuf_.empty())
+                         cmd_.nameSystem = nameBuf_;
+                     L.Text("[Enter] name it   [Esc] cancel", Ui::TextStyle::Small());
+                 });
+        L.End();
+        L.Draw();
+    }
 
     // Galactic news feed (system captures/reconquests), from the server's galaxy snapshot.
     const std::vector<std::string>& news = galaxyState_.events;
