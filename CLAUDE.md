@@ -53,9 +53,12 @@ These are decisions, not open questions. Plan on top of them.
 ## Build and run
 
 ```sh
-cmake -S . -B build -G "MinGW Makefiles"   # first build fetches and builds raylib + nlohmann/json
+cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Debug   # development and tests; first build fetches raylib + nlohmann/json
 cmake --build build
 ctest --test-dir build --output-on-failure
+
+cmake -S . -B build-release -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release   # playtests, published builds, any FPS measurement
+cmake --build build-release
 
 ./build/bin/server/econserver.exe host 50800        # authoritative server, this machine only
 ./build/bin/server/econserver.exe host 50800 --public   # ...reachable from other machines (#187)
@@ -82,6 +85,12 @@ ctest --test-dir build --output-on-failure
 ./build/bin/server/econserver.exe regiondump 8     # the region seed 8 makes, as JSON (it is never saved)
 ./build/bin/server/econserver.exe macrobench 1000  # cost per tick/pass with a 1000-system region, nobody on (#295)
 ```
+
+**Two builds, two jobs** (owner, 2026-10-10). `build/` is Debug: development, tests, screenshots
+and debugging -- asserts on, symbols in. `build-release/` is Release (`-O3`): playtests, builds
+published on GitHub, and **every performance number** -- an unoptimized build is two to five times
+slower and points at the wrong costs (#296). A build with no `CMAKE_BUILD_TYPE` is neither: no
+optimisation and no symbols, so always name one.
 
 Windows/MinGW and Linux/GCC, both built by CI (#12). The transport picks winsock or
 Berkeley sockets at compile time; `ws2_32` is linked only on Windows. On Windows, close a

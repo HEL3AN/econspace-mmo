@@ -28,3 +28,4 @@ documents/private/
 # Parallel agents work in worktrees here; never part of the repository.
 .claude/worktrees/
 __pycache__/
+build-release/
