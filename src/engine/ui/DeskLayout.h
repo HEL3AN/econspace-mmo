@@ -51,12 +51,14 @@ struct WindowSpec
     std::string menuLabel;  // its button on the menu bar; empty for none
     Layer       layer = Layer::Panels;
     Anchor      anchor = Anchor::TopLeft;
-    // Distance from the anchor (x, y) and size (width, height). Zero size means the desk
-    // does not place it: its owner says where it is every frame (SetRect).
+    // Distance from the anchor (x, y) and size (width, height), in layout units: pixels at
+    // a UI scale of 1 (SetUnit). Zero size means the desk does not place it: its owner says
+    // where it is every frame (SetRect), in pixels.
     Rectangle place{ 0.0f, 0.0f, 0.0f, 0.0f };
     EscRule   esc = EscRule::Close;
     bool      persist = false;    // its place and open state are kept per account
     bool      resizable = false;  // a saved size is restored only if the player could make one
+    Vector2   minSize{ 160.0f, 96.0f };  // units; a resizable window is never made smaller
 };
 
 class DeskLayout
@@ -79,11 +81,19 @@ public:
 
     // The screen the windows are placed on; a change re-places every placed window from
     // its anchor, so a resolution change keeps each one at its edge.
-    void      SetScreen(float width, float height);
+    void SetScreen(float width, float height);
+    // How many pixels a layout unit is: the UI scale (#297). A change re-places every placed
+    // window, so a larger interface has larger windows; what is saved stays in units, and
+    // a layout made at one scale is the same layout at another.
+    void      SetUnit(float pixels);
+    float     Unit() const { return unit_; }
     Rectangle Rect(int h) const { return entries_[h].rect; }
     // Where a window is now: dragged, or drawn somewhere its owner decided. Keeps its anchor;
     // a placed window is kept reachable.
     void SetRect(int h, Rectangle r);
+    // The player is dragging its corner: a new size with the top left kept, no smaller than
+    // the spec's minimum and no larger than the screen.
+    void Resize(int h, float width, float height);
     // A drag has ended: the window takes the anchor nearest to where it was left, so it
     // stays in that corner from then on.
     void Settle(int h);
@@ -138,6 +148,7 @@ private:
     std::vector<Entry> entries_;
     int                nextZ_ = 0;
     float              screenW_ = 1280.0f, screenH_ = 720.0f;
+    float              unit_ = 1.0f;
     int                owner_ = NONE;
     bool               captured_ = false;
     bool               changed_ = false;

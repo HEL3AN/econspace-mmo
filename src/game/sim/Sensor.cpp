@@ -1,6 +1,7 @@
 #include "sim/Sensor.h"
 
 #include "render/TextBackend.h"
+#include "ui/Theme.h"
 
 #include <algorithm>
 #include <cmath>
@@ -31,15 +32,17 @@ Allegiance Classify(const Proto::EntitySnapshot& e, const Standing& viewer)
 
 Color ColorOf(Allegiance a)
 {
+    // The theme's standing colours (#297): one place for them, data/ui_theme.json.
+    const Ui::Theme::Standing& s = Ui::CurrentTheme().standing;
     switch (a)
     {
-        case Allegiance::Own: return { 120, 235, 130, 255 };
-        case Allegiance::Friendly: return { 90, 170, 255, 255 };
-        case Allegiance::Neutral: return { 215, 215, 205, 255 };
-        case Allegiance::Hostile: return { 230, 90, 80, 255 };
+        case Allegiance::Own: return s.own;
+        case Allegiance::Friendly: return s.friendly;
+        case Allegiance::Neutral: return s.neutral;
+        case Allegiance::Hostile: return s.hostile;
         case Allegiance::Unowned: break;
     }
-    return { 125, 135, 155, 255 };
+    return s.unowned;
 }
 
 const char* Word(Allegiance a)

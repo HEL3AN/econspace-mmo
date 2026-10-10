@@ -8,38 +8,70 @@ Window::Window(std::string title, Content content)
 
 Rectangle Window::TitleBar(Rectangle b)
 {
-    return { b.x, b.y, b.width, (float)Ui::TITLE_HEIGHT };
+    return { b.x, b.y, b.width, Ui::Px(Ui::CurrentTheme().metrics.titleHeight) };
 }
 
 Rectangle Window::CloseButton(Rectangle b)
 {
-    float s = (float)Ui::TITLE_HEIGHT;
+    const float s = Ui::Px(Ui::CurrentTheme().metrics.titleHeight);
     return { b.x + b.width - s, b.y, s, s };
 }
 
 Rectangle Window::ContentArea(Rectangle b)
 {
-    float p = (float)Ui::PADDING;
-    float t = (float)Ui::TITLE_HEIGHT;
+    const float p = Ui::Px(Ui::CurrentTheme().metrics.padding);
+    const float t = Ui::Px(Ui::CurrentTheme().metrics.titleHeight);
     return { b.x + p, b.y + t + p, b.width - 2 * p, b.height - t - 2 * p };
 }
 
-void Window::Draw(Rectangle bounds, bool owner) const
+Rectangle Window::ResizeGrip(Rectangle b)
 {
-    DrawRectangleRec(bounds, Ui::PANEL_BG);
-    DrawRectangleRec(TitleBar(bounds), Ui::TITLE_BG);
-    DrawRectangleLinesEx(bounds, 1.0f, Ui::PANEL_BORDER);
+    const float s = Ui::Px(Ui::CurrentTheme().metrics.resizeGrip);
+    return { b.x + b.width - s, b.y + b.height - s, s, s };
+}
 
-    Ui::Text(title_.c_str(), (int)bounds.x + Ui::PADDING, (int)bounds.y + 6, 16, Ui::TEXT);
+void Window::Draw(Rectangle bounds, bool owner, bool resizable) const
+{
+    const Ui::Theme& t = Ui::CurrentTheme();
+    DrawRectangleRec(bounds, t.colors.panel);
+    const Rectangle bar = TitleBar(bounds);
+    DrawRectangleRec(bar, t.colors.title);
+    DrawRectangleLinesEx(bounds, 1.0f, t.colors.border);
 
-    Rectangle cb = CloseButton(bounds);
-    bool      hover = owner && CheckCollisionPointRec(GetMousePosition(), cb);
-    Ui::Text("x", (int)cb.x + 9, (int)cb.y + 6, 16, hover ? Ui::ACCENT : Ui::TEXT_DIM);
+    const float px = Ui::Px(t.fontSize.title);
+    Ui::DrawString(Ui::Face::Strong, title_,
+                   { bounds.x + Ui::Px(t.metrics.padding), bar.y + (bar.height - px) * 0.5f }, px,
+                   t.colors.text);
+
+    // The close button is drawn, not written: a cross is the same at every size and in
+    // every font.
+    const Rectangle cb = CloseButton(bounds);
+    const bool      hover = owner && CheckCollisionPointRec(GetMousePosition(), cb);
+    const float     arm = cb.height * 0.16f;
+    const Vector2   c{ cb.x + cb.width * 0.5f, cb.y + cb.height * 0.5f };
+    const Color     xc = hover ? t.colors.accent : t.colors.dim;
+    const float     thick = Ui::Px(1.5f);
+    DrawLineEx({ c.x - arm, c.y - arm }, { c.x + arm, c.y + arm }, thick, xc);
+    DrawLineEx({ c.x - arm, c.y + arm }, { c.x + arm, c.y - arm }, thick, xc);
 
     if (content_)
     {
         Ui::MouseScope scope(owner);  // the controls inside read the same answer
         Ui::Frame      frame(ContentArea(bounds), owner);
         content_(frame);
+    }
+
+    if (resizable)
+    {
+        // Three short diagonals in the corner, the grip every desktop draws.
+        const Rectangle g = ResizeGrip(bounds);
+        const bool      over = owner && CheckCollisionPointRec(GetMousePosition(), g);
+        const Color     gc = over ? t.colors.accent : t.colors.border;
+        const float     x1 = g.x + g.width - 3.0f, y1 = g.y + g.height - 3.0f;
+        for (int i = 1; i <= 3; i++)
+        {
+            const float d = g.width * 0.25f * (float)i;
+            DrawLineEx({ x1 - d, y1 }, { x1, y1 - d }, 1.0f, gc);
+        }
     }
 }

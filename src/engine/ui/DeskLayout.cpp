@@ -118,16 +118,27 @@ Rectangle DeskLayout::Reachable(Rectangle r) const
     return r;
 }
 
+void DeskLayout::SetUnit(float pixels)
+{
+    if (pixels <= 0.0f || pixels == unit_)
+        return;
+    unit_ = pixels;
+    for (Entry& e : entries_)
+        if (Placed(e))
+            Place(e);
+}
+
 void DeskLayout::Place(Entry& e) const
 {
-    Rectangle r{ 0.0f, 0.0f, e.size.x, e.size.y };
+    const Vector2 off{ e.offset.x * unit_, e.offset.y * unit_ };
+    Rectangle     r{ 0.0f, 0.0f, e.size.x * unit_, e.size.y * unit_ };
     if (IsLeft(e.anchor))
-        r.x = e.offset.x;
+        r.x = off.x;
     else if (IsRight(e.anchor))
-        r.x = screenW_ - e.offset.x - r.width;
+        r.x = screenW_ - off.x - r.width;
     else
-        r.x = screenW_ * 0.5f + e.offset.x - r.width * 0.5f;
-    r.y = IsBottom(e.anchor) ? screenH_ - e.offset.y - r.height : e.offset.y;
+        r.x = screenW_ * 0.5f + off.x - r.width * 0.5f;
+    r.y = IsBottom(e.anchor) ? screenH_ - off.y - r.height : off.y;
     e.rect = Reachable(r);
 }
 
@@ -141,7 +152,8 @@ void DeskLayout::Unplace(Entry& e) const
     else
         e.offset.x = r.x + r.width * 0.5f - screenW_ * 0.5f;
     e.offset.y = IsBottom(e.anchor) ? screenH_ - r.y - r.height : r.y;
-    e.size = { r.width, r.height };
+    e.offset = { e.offset.x / unit_, e.offset.y / unit_ };
+    e.size = { r.width / unit_, r.height / unit_ };
 }
 
 void DeskLayout::SetRect(int h, Rectangle r)
@@ -153,6 +165,18 @@ void DeskLayout::SetRect(int h, Rectangle r)
         e.rect = Reachable(r);  // a drag cannot lose a window off the edge
         Unplace(e);
     }
+}
+
+void DeskLayout::Resize(int h, float width, float height)
+{
+    Entry& e = entries_[h];
+    if (!Placed(e) || !e.spec.resizable)
+        return;
+    Rectangle     r = e.rect;
+    const Vector2 min{ e.spec.minSize.x * unit_, e.spec.minSize.y * unit_ };
+    r.width = std::clamp(width, min.x, std::max(screenW_, min.x));
+    r.height = std::clamp(height, min.y, std::max(screenH_, min.y));
+    SetRect(h, r);
 }
 
 void DeskLayout::Settle(int h)
@@ -282,7 +306,7 @@ void DeskLayout::Load(const nlohmann::json& windows)
             Vector2 size;
             if (e.spec.resizable && w.contains("size") && pair(w["size"], size) && size.x > 0.0f &&
                 size.y > 0.0f)
-                e.size = size;
+                e.size = { std::max(size.x, e.spec.minSize.x), std::max(size.y, e.spec.minSize.y) };
             Place(e);
         }
     }

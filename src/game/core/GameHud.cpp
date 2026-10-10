@@ -40,8 +40,8 @@ static const float MENU_BAR_W = 46.0f;
 static const float MENU_BTN = 36.0f;
 static const float MENU_STEP = 46.0f;
 // Hostile, as the instruments say it: the overview, the radar, the sensor screen (#117).
-static const Color HOSTILE = Sensor::ColorOf(Sensor::Allegiance::Hostile);
-static const float MENU_TOP = 12.0f;
+static const Color& HOSTILE = Ui::MutableTheme().standing.hostile;
+static const float  MENU_TOP = 12.0f;
 
 void Game::DrawStarfield()
 {
@@ -234,8 +234,12 @@ void Game::SetupWindows()
 
     // Registered in the menu bar's order. The places are the ones the windows have always
     // had at 1280 x 720; anchored, they now keep to their side at any other size.
-    desk_.AddWindow(panel(WIN_STATUS, "STA", Anchor::TopLeft, { 56.0f, 16.0f, 264.0f, 312.0f }),
-                    "STATUS", true, [this](Ui::Frame& f) { DrawStatusContent(f.Area()); });
+    // The status window is laid out by Ui::Layout (#297), so it can be any size: resizable,
+    // and no smaller than two gauges and a field.
+    WindowSpec status = panel(WIN_STATUS, "STA", Anchor::TopLeft, { 56.0f, 16.0f, 264.0f, 312.0f });
+    status.resizable = true;
+    status.minSize = { 200.0f, 150.0f };
+    desk_.AddWindow(status, "STATUS", true, [this](Ui::Frame& f) { DrawStatusContent(f); });
     desk_.AddWindow(panel(WIN_TARGET, "TGT", Anchor::TopRight, { 16.0f, 16.0f, 264.0f, 196.0f }),
                     "TARGET", false, [this](Ui::Frame& f) { DrawTargetContent(f.Area()); });
     // Open from the start: it is the instrument a player flies by (#157), and a player who
@@ -258,7 +262,7 @@ void Game::SetupWindows()
     sensor.draw = [this]() { DrawSensorScreen(); };
     desk_.AddSurface(surface(WIN_SENSOR, "SNS", Layer::Screen, Ui::EscRule::Close), false, sensor);
 
-    desk_.AddWindow(panel(WIN_SETTINGS, "SET", Anchor::Top, { 0.0f, 100.0f, 300.0f, 300.0f }),
+    desk_.AddWindow(panel(WIN_SETTINGS, "SET", Anchor::Top, { 0.0f, 100.0f, 300.0f, 380.0f }),
                     "SETTINGS", false, [this](Ui::Frame& f) { DrawSettingsContent(f.Area()); });
 
     // Docked: a screen of its own, drawn by Run. Esc stops at it, because leaving it is
@@ -342,6 +346,32 @@ void Game::DrawSettingsContent(Rectangle area)
     Button fsBtn(Rectangle{ area.x, (float)y, area.width, 30.0f },
                  fs ? "Fullscreen: ON" : "Fullscreen: off", []() { ToggleBorderlessWindowed(); });
     fsBtn.Process();
+    y += 42;
+
+    // The interface's own scale, times whatever the display asks for (#297). It reaches the
+    // windows laid out with Ui::Layout and every window's frame; the screens still placed
+    // by hand follow as they move onto the layout.
+    Ui::Text(TextFormat("INTERFACE SCALE   %.0f%%", Ui::Scale() * 100.0f), x, y, 14, Ui::TEXT_DIM);
+    y += 22;
+    static const float scales[] = { 1.0f, 1.25f, 1.5f, 2.0f };
+    const float        bw = (area.width - 3 * 6.0f) / 4.0f;
+    for (int i = 0; i < 4; i++)
+    {
+        const float s = scales[i];
+        const bool  current = !uiScaleLocked_ && fabsf(Ui::UserScale() - s) < 0.01f;
+        Button      b(Rectangle{ area.x + i * (bw + 6.0f), (float)y, bw, 30.0f },
+                      TextFormat("%.0f%%%s", s * 100.0f, current ? "*" : ""),
+                      [this, s]()
+                      {
+                     Ui::OverrideDisplayScale(0.0f);  // a --uiscale run is over
+                     uiScaleLocked_ = false;
+                     Ui::SetUserScale(s);
+                     if (uiSettingsWritable_ && !Ui::SaveUiSettings(uiSettingsPath_))
+                         TraceLog(LOG_WARNING, "UI settings: cannot write %s",
+                                  uiSettingsPath_.c_str());
+                      });
+        b.Process();
+    }
     y += 42;
 
     Button resetBtn(Rectangle{ area.x, (float)y, area.width, 30.0f }, "Reset window layout",
@@ -773,57 +803,98 @@ void Game::DrawMenuBar()
     }
 }
 
-// Client navigation orders: write the intent into the command; the server applies it
-// to the ship in the simulation step (Simulation::StepPlayerShip), not the client directly.
-void Game::DrawStatusContent(Rectangle area)
+// The status window, declared with Ui::Layout (#297) -- the first window that is, and the
+// pattern for the rest: no coordinates, every size and colour from the theme, and a layout
+// that follows the window. Narrow, it is one column; wide enough, the ship's condition and
+// its systems sit side by side. Too short for its content, it scrolls rather than clipping.
+//
+// Everything is read from the snapshot or the account mirror; nothing here gives an order.
+void Game::DrawStatusContent(const Ui::Frame& f)
 {
-    int x = (int)area.x;
-    int y = (int)area.y;
-    int barW = (int)area.width;
+    using Ui::Box;
+    using Ui::Size;
+    using Ui::TextStyle;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    Ui::Layout&      L = statusLayout_;
 
-    float shFrac = playerShip_->GetShields() / playerShip_->GetMaxShields();
-    Ui::Text("SHIELDS", x, y, 14, Ui::TEXT_DIM);
-    DrawRectangle(x, y + 16, barW, 9, Fade(GRAY, 0.35f));
-    DrawRectangle(x, y + 16, (int)(barW * shFrac), 9, Ui::ACCENT);
-    y += 32;
-
-    float hFrac = playerShip_->GetHull() / playerShip_->GetMaxHull();
-    Ui::Text("HULL", x, y, 14, Ui::TEXT_DIM);
-    DrawRectangle(x, y + 16, barW, 9, Fade(GRAY, 0.35f));
-    DrawRectangle(x, y + 16, (int)(barW * hFrac), 9, hFrac > 0.3f ? LIME : RED);
-    y += 38;
-
-    Ui::Text(TextFormat("Speed   %.0f", playerShip_->GetSpeed()), x, y, 16, Ui::TEXT);
-    y += 22;
-    Ui::Text(TextFormat("Money   %.0f", player_.GetMoney()), x, y, 16, GOLD);
-    y += 22;
-    // Cargo — from the snapshot: playerShip_'s hold isn't synced; the server collects ore into
-    // its own ship and the snapshot carries the current volume.
-    Ui::Text(TextFormat("Cargo   %d / %d", snapshot_.player.cargoUsed, snapshot_.player.cargoCap),
-             x, y, 16, Ui::TEXT);
-    y += 24;
-
+    const float   shFrac = playerShip_->GetShields() / playerShip_->GetMaxShields();
+    const float   hFrac = playerShip_->GetHull() / playerShip_->GetMaxHull();
     const Skills& sk = player_.GetSkills();
-    Ui::Text(TextFormat("Skills  P%d  M%d  T%d", sk.GetLevel(SkillType::Piloting),
-                        sk.GetLevel(SkillType::Mining), sk.GetLevel(SkillType::Trading)),
-             x, y, 14, Ui::TEXT_DIM);
-    y += 26;
+    // Toggles from the snapshot (server-authoritative; the predicted playerShip_ would
+    // flicker over the network due to replaying one-shot commands).
+    const bool stab = snapshot_.player.stabilizer;
+    const bool mine = snapshot_.player.mining;
 
-    // Stabilizer/mining toggles — from the snapshot (server-authoritative; the predicted
-    // playerShip_ would flicker over the network due to replaying one-shot commands).
-    bool stab = snapshot_.player.stabilizer;
-    bool mine = snapshot_.player.mining;
-    Ui::Text(TextFormat("stabilizer  %s", stab ? "ON" : "off"), x, y, 14,
-             stab ? Ui::ACCENT : Ui::TEXT_DIM);
-    y += 18;
-    Ui::Text(TextFormat("mining  %s", mine ? "ON" : "off"), x, y, 14,
-             mine ? Ui::ACCENT : Ui::TEXT_DIM);
-    y += 18;
-    Ui::Text(TextFormat("weapon  %s", weaponOn_ ? "ON" : "off"), x, y, 14,
-             weaponOn_ ? Ui::ACCENT : Ui::TEXT_DIM);
-    y += 18;
-    if (playerShip_->IsAutopilotOn())
-        Ui::Text("autopilot  ON", x, y, 14, GREEN);
+    // A labelled bar: what it measures, how much, and the bar itself.
+    auto gauge = [&](const char* label, float frac, Color c)
+    {
+        L.Column(Box().GrowX().Gap(t.metrics.rowGap),
+                 [&]
+                 {
+                     L.Field(label, TextFormat("%.0f%%", frac * 100.0f), t.colors.text);
+                     L.Bar(frac, c);
+                 });
+    };
+    auto condition = [&]
+    {
+        L.Column(Box().GrowX().Gap(t.metrics.gap),
+                 [&]
+                 {
+                     gauge("Shields", shFrac, t.colors.accent);
+                     gauge("Hull", hFrac, hFrac > 0.3f ? t.colors.good : t.colors.bad);
+                     L.Divider();
+                     L.Field("Speed", TextFormat("%.0f", playerShip_->GetSpeed()), t.colors.text);
+                     L.Field("Money", TextFormat("%.0f", player_.GetMoney()), t.colors.money);
+                     // From the snapshot: the server collects ore into its own ship.
+                     L.Field("Cargo",
+                             TextFormat("%d / %d", snapshot_.player.cargoUsed,
+                                        snapshot_.player.cargoCap),
+                             t.colors.text);
+                 });
+    };
+    auto systems = [&]
+    {
+        L.Column(Box().GrowX().Gap(t.metrics.gap),
+                 [&]
+                 {
+                     L.Field("Skills",
+                             TextFormat("P%d  M%d  T%d", sk.GetLevel(SkillType::Piloting),
+                                        sk.GetLevel(SkillType::Mining),
+                                        sk.GetLevel(SkillType::Trading)),
+                             t.colors.dim);
+                     L.Row(Box().GrowX().Gap(t.metrics.rowGap),
+                           [&]
+                           {
+                               L.Chip("STAB", stab, t.colors.accent);
+                               L.Chip("MINE", mine, t.colors.accent);
+                               L.Chip("WPN", weaponOn_, t.colors.accent);
+                               L.Chip("AUTO", playerShip_->IsAutopilotOn(), t.colors.good);
+                           });
+                 });
+    };
+
+    // Wide enough for two columns of fields that each still read as label ... value.
+    const bool wide = f.Area().width >= Ui::Px(420.0f);
+    L.Begin(f);
+    L.Column(Box().Grow().ScrollY().Id("status").Gap(t.metrics.gap),
+             [&]
+             {
+                 if (wide)
+                     L.Row(Box().GrowX().Gap(t.metrics.padding * 2.0f),
+                           [&]
+                           {
+                               condition();
+                               systems();
+                           });
+                 else
+                 {
+                     condition();
+                     L.Divider();
+                     systems();
+                 }
+             });
+    L.End();
+    L.Draw();
 }
 
 // A scale bar, bottom right, and a reminder of how to get back when the camera has been
@@ -1591,8 +1662,8 @@ void Game::DrawSensorScreen()
     // counted off the screen.
     const Rectangle grid{ sensorOrigin_.x, sensorOrigin_.y, cols * cellPx, rows * cellPx };
     DrawRectangleLinesEx(grid, 1.0f, Fade(Ui::PANEL_BORDER, 0.7f));
-    const Font    font = Ui::GetFont();
-    const float   glyphPx = cellPx * 1.15f;
+    // Each character set at its own size from the strong face, so it is as crisp as text.
+    const float   glyphPx = (float)Ui::FontPx(cellPx * 1.15f);
     const int     cx = cols / 2, cy = rows / 2;
     const Vector2 mouse = GetMousePosition();
     const int     selId = selected_ != nullptr ? selected_->GetId() : 0;
@@ -1611,10 +1682,10 @@ void Game::DrawSensorScreen()
                                    Fade(Ui::TEXT_DIM, 0.45f));
                 continue;
             }
-            const char    glyph[2] = { c.glyph, '\0' };
-            const Vector2 ext = MeasureTextEx(font, glyph, glyphPx, 0.0f);
-            DrawTextEx(font, glyph, { mid.x - ext.x * 0.5f, mid.y - ext.y * 0.5f }, glyphPx, 0.0f,
-                       Sensor::ColorOf(c.allegiance));
+            const std::string_view glyph(&c.glyph, 1);
+            const Vector2          ext = Ui::MeasureString(Ui::Face::Strong, glyphPx, glyph);
+            Ui::DrawString(Ui::Face::Strong, glyph, { mid.x - ext.x * 0.5f, mid.y - ext.y * 0.5f },
+                           glyphPx, Sensor::ColorOf(c.allegiance));
             const Rectangle box{ px, py, cellPx, cellPx };
             if (c.id != 0 && c.id == selId)
                 DrawRectangleLinesEx(box, 1.0f, WHITE);
@@ -1657,8 +1728,8 @@ void Game::DrawSensorScreen()
     {
         if (ly > screenHeight_ - 40)
             break;
-        const char glyph[2] = { l.glyph, '\0' };
-        DrawTextEx(font, glyph, { (float)lx, (float)ly - 2.0f }, 18.0f, 0.0f, Ui::TEXT);
+        Ui::DrawString(Ui::Face::Strong, std::string_view(&l.glyph, 1),
+                       { (float)lx, (float)ly - 1.0f }, 16.0f, Ui::TEXT);
         Ui::Text(l.kind, lx + 18, ly, 14, Ui::TEXT);
         ly += 20;
     }
