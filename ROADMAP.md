@@ -53,9 +53,9 @@ An honest snapshot of where EconSpace is and where it is going. The project inve
 
 In the order they are meant to be done.
 
-### M6 — The look *(eight of ten done)*
+### M6 — The look *(nine of ten done)*
 
-Glyphs have their **sensor screen** (`V`): the surroundings projected onto a fixed grid, the one job they are genuinely good at, and the place where colour means allegiance as the pilot looking sees it (#123, #117). Left of #123: the world view stops offering glyphs at all, now that they have somewhere better to be. Queued behind it: shape derived from what an object does (#137), damage that takes parts off (#138), and variation that changes a silhouette rather than nudging it (#139).
+Glyphs have their **sensor screen** (`V`): the surroundings projected onto a fixed grid, the one job they are genuinely good at, and the place where colour means allegiance as the pilot looking sees it (#123, #117). The world view no longer offers glyphs at all: the generated look is the only one, and Esc closes what is on top rather than quitting the game. Queued behind it: shape derived from what an object does (#137), damage that takes parts off (#138), and variation that changes a silhouette rather than nudging it (#139).
 
 ### M9 — The scale of a system *(in progress)*
 

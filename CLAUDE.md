@@ -29,8 +29,8 @@ These are decisions, not open questions. Plan on top of them.
   never to the object.
 - **AI agents are first-class players** (#42). The game ships its own MCP server,
   `econagent`, written in C++ so the wire protocol stays a single source of truth.
-- **A system is becoming a million units across, and you travel by choosing from a list**
-  (M9). Until #159 lands, the code still says `SYSTEM_RADIUS = 25000`.
+- **A system is a million units across, and you travel by choosing from a list**
+  (M9). `SYSTEM_RADIUS` is `1000000` (#159).
   Scale was a hostage of travel time -- one speed meant everything had to be within a
   minute of flying. Warp already exists and is server-authoritative; what was missing is
   the interaction, taken from EVE: the overview is the instrument and a selection carries
@@ -60,7 +60,7 @@ ctest --test-dir build --output-on-failure
 ./build/bin/server/econserver.exe host 50800        # authoritative server, this machine only
 ./build/bin/server/econserver.exe host 50800 --public   # ...reachable from other machines (#187)
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2   # account + secret
-./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --shapes --shot f.png --frames 120  # save frame 120, exit (--nohud: world only)
+./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --shot f.png --frames 120  # save frame 120, exit (--nohud: world only)
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --sensor 2000000 --shot s.png  # the sensor screen (V), 2M across
 ./build/bin/editor/worldeditor.exe
 ./build/bin/editor/worldeditor.exe gallery           # every archetype at once, for tuning a look (F3)
