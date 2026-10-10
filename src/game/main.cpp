@@ -116,6 +116,10 @@ int main(int argc, char** argv)
     }
 
     {
+        // A shot comes from a render texture; a hidden window keeps a scripted run from
+        // stealing focus from whoever is using the machine (#293).
+        if (!shot.empty())
+            SetConfigFlags(FLAG_WINDOW_HIDDEN);
         Game game(std::move(conn));
         game.SetPilotName(account);
         if (startZoom > 0.0f)
