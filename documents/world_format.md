@@ -243,7 +243,7 @@ and works at any size — a ninety-unit station and a sixteen-unit ship use the 
 
 | Field | Type | Description |
 |------|-----|----------|
-| `form` | string | `disc`, `ring`, `polygon`, `capsule`, `chevron`, `bar`, `lattice`, `band` |
+| `form` | string | `disc`, `ring`, `polygon`, `capsule`, `chevron`, `bar`, `lattice`, `band`, `arc` |
 | `role` | string | `hull` (the object's colour), `panel` (darker), `trim` (lighter), `light` (emissive, never shaded), `antenna` (thin and dim) |
 | `at` | [x, y] | offset from the centre, in radii |
 | `angle` | number | the part's own rotation, degrees |
@@ -262,6 +262,9 @@ and works at any size — a ninety-unit station and a sixteen-unit ship use the 
 | `lat`, `lon` | number | degrees; giving either puts the part **on the sphere** instead of on the disc (see below) |
 | `orbitRadius` | number | in radii; non-zero makes this part **orbit** the body instead of sitting on it, and `at` is then ignored |
 | `orbitPeriod` | number | seconds for one lap |
+| `tint` | [r,g,b] | the part's own colour instead of the object's: a red lamp on a grey hull, hot cracks on a dark world (#214) |
+| `from`, `to` | number | `arc` only: the segment's start and end, degrees, measured like `angle` |
+| `row` | object | `{ "count": n, "step": [dx, dy] }`: n copies along a line, each `step` further (in radii, before the object turns). Ribs, ports, containers (#214) |
 | `orbitPhase` | number | 0..1, where in the lap it starts |
 | `orbitTilt` | number | 0 is edge-on (a line across the body), 1 is seen from above; in between is where it passes behind |
 | `spin` | number | degrees per second this part turns about the object's centre |

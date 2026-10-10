@@ -38,7 +38,8 @@ enum class Form
     Chevron,  // a triangle -- noses, fins, thrust
     Bar,      // a rectangle -- panels, plating
     Lattice,  // a run of cross-struts between two points -- trusses
-    Band      // a latitude band on a sphere -- a gas giant's belts, an ice cap (#166)
+    Band,     // a latitude band on a sphere -- a gas giant's belts, an ice cap (#166)
+    Arc       // a ring segment from one angle to another -- a broken dock, a flare (#214)
 };
 
 const char* FormName(Form f);
@@ -139,6 +140,22 @@ struct Part
     float spin = 0.0f;            // degrees per second about the object's centre
     float blink = 0.0f;           // seconds per cycle; 0 is a steady light
     bool  onlyThrusting = false;  // drawn only while the object's engine is burning
+
+    // A part's own colour (#214), in place of the object's: hot cracks on a dark world,
+    // crystal glints in a grey belt, a red warning lamp on a grey hull. Still an art
+    // decision about the object (#117), never a faction tag; alpha 0 means "the object's".
+    Color tint = { 0, 0, 0, 0 };
+
+    // Arc: from and to, in degrees, measured like `angle` (0 along +x, counter-clockwise
+    // on screen as every other angle in the grammar).
+    float arcFrom = 0.0f;
+    float arcTo = 90.0f;
+
+    // A row (#214): copies along a line, beside `repeat`'s copies around the centre. The
+    // ribs down a hull, a line of ports, a stack of containers -- each copy `rowStep`
+    // further on, in the object's radii, before the object turns.
+    int     rowCount = 1;
+    Vector2 rowStep = { 0.0f, 0.0f };
 };
 
 struct Shape
@@ -196,6 +213,10 @@ struct Piece
     // A band is not a primitive: it is the visible part of a latitude strip, projected.
     // Stored as a strip -- upper edge and lower edge alternating -- in world coordinates.
     std::vector<Vector2> strip;
+
+    Color tint = { 0, 0, 0, 0 };  // the part's own colour, alpha 0 for the object's
+    float arcFrom = 0.0f;         // Arc, world degrees
+    float arcTo = 90.0f;
 };
 
 // How large a piece is *for shading*, which is not the same as how far it reaches.

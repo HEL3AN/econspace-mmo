@@ -20,7 +20,7 @@ struct NamedForm
 const NamedForm FORMS[] = {
     { Form::Disc, "disc" },       { Form::Ring, "ring" },       { Form::Polygon, "polygon" },
     { Form::Capsule, "capsule" }, { Form::Chevron, "chevron" }, { Form::Bar, "bar" },
-    { Form::Lattice, "lattice" }, { Form::Band, "band" },
+    { Form::Lattice, "lattice" }, { Form::Band, "band" },       { Form::Arc, "arc" },
 };
 
 struct NamedRole
@@ -194,6 +194,7 @@ float ShadeRadius(const Piece& p)
     {
         case Form::Disc:
         case Form::Ring:
+        case Form::Arc:
         case Form::Polygon: return p.radius;
         case Form::Band: return p.bodyRadius;
         case Form::Capsule:
@@ -210,6 +211,7 @@ Vector2 Axis(const Piece& p)
     {
         case Form::Disc:
         case Form::Ring:
+        case Form::Arc:
         case Form::Polygon:
         case Form::Band: return { 0.0f, 0.0f };
         case Form::Capsule:
@@ -260,13 +262,14 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
         }
         // A misspelled field would be read as absent and draw the default (#191), which
         // for a part is the kind of wrong nobody notices until it is the only one left.
-        if (!OnlyKnownKeys(
-                e, { "form",   "role",        "at",          "sides",       "angle",
-                     "radius", "width",       "length",      "count",       "filled",
-                     "repeat", "mirror",      "minPixels",   "jitterAngle", "jitterScale",
-                     "alpha",  "orbitRadius", "orbitPeriod", "orbitPhase",  "orbitTilt",
-                     "lat",    "lon",         "spin",        "blink",       "onlyThrusting" },
-                error))
+        if (!OnlyKnownKeys(e,
+                           { "form",   "role",        "at",          "sides",       "angle",
+                             "radius", "width",       "length",      "count",       "filled",
+                             "repeat", "mirror",      "minPixels",   "jitterAngle", "jitterScale",
+                             "alpha",  "orbitRadius", "orbitPeriod", "orbitPhase",  "orbitTilt",
+                             "lat",    "lon",         "spin",        "blink",       "onlyThrusting",
+                             "tint",   "from",        "to",          "row" },
+                           error))
             return false;
         Part p;
         if (!FormFromName(e.value("form", std::string("disc")), p.form))
@@ -306,6 +309,32 @@ bool ParseShape(const json& j, Shape& out, std::string& error)
         p.spin = e.value("spin", p.spin);
         p.blink = e.value("blink", p.blink);
         p.onlyThrusting = e.value("onlyThrusting", p.onlyThrusting);
+        if (e.contains("tint"))
+        {
+            const json& t = e["tint"];
+            if (!t.is_array() || t.size() < 3)
+            {
+                error = "\"tint\" is a colour, [r, g, b]";
+                return false;
+            }
+            p.tint = { (unsigned char)t[0].get<int>(), (unsigned char)t[1].get<int>(),
+                       (unsigned char)t[2].get<int>(), 255 };
+        }
+        p.arcFrom = e.value("from", p.arcFrom);
+        p.arcTo = e.value("to", p.arcTo);
+        if (e.contains("row"))
+        {
+            const json& r = e["row"];
+            if (!r.is_object() || !OnlyKnownKeys(r, { "count", "step" }, error) ||
+                !r.contains("step") || !r["step"].is_array() || r["step"].size() != 2)
+            {
+                if (error.empty())
+                    error = "\"row\" is { \"count\": n, \"step\": [dx, dy] }";
+                return false;
+            }
+            p.rowCount = r.value("count", 1);
+            p.rowStep = { r["step"][0].get<float>(), r["step"][1].get<float>() };
+        }
         s.parts.push_back(p);
     }
 
@@ -318,7 +347,11 @@ float Extent(const Shape& s)
     float reach = 1.0f;
     for (const Part& p : s.parts)
     {
-        const float from = std::sqrt(p.at.x * p.at.x + p.at.y * p.at.y);
+        // The far end of a row is as far as the part reaches.
+        const float endX = p.at.x + p.rowStep.x * (float)(std::max(1, p.rowCount) - 1);
+        const float endY = p.at.y + p.rowStep.y * (float)(std::max(1, p.rowCount) - 1);
+        const float from = std::fmax(std::sqrt(p.at.x * p.at.x + p.at.y * p.at.y),
+                                     std::sqrt(endX * endX + endY * endY));
 
         // Only the measurements this form actually uses. Every part carries a default for
         // all of them, so taking the largest would have an arm reaching a full radius past
@@ -328,6 +361,7 @@ float Extent(const Shape& s)
         {
             case Form::Disc:
             case Form::Ring:
+            case Form::Arc:
             case Form::Polygon: own = p.radius; break;
             case Form::Band: own = 1.0f; break;
             case Form::Capsule:
@@ -401,12 +435,16 @@ std::vector<Piece> Compose(const Shape& s, const Pose& pose)
             const float turn = (spin + wobble) * DEG2RAD + pose.heading;
             const float cs = std::cos(turn), sn = std::sin(turn);
 
-            // Once, or twice reflected across the object's own axis.
+            // Once, or twice reflected across the object's own axis -- and each of those
+            // once per place along a row (#214).
             const int sides = p.mirror ? 2 : 1;
-            for (int m = 0; m < sides; m++)
+            const int rows = p.rowCount < 1 ? 1 : p.rowCount;
+            for (int m = 0; m < sides * rows; m++)
             {
-                const float flip = (m == 0) ? 1.0f : -1.0f;
-                const float ax = p.at.x, ay = p.at.y * flip;
+                const int   k = m / sides;  // place along the row
+                const float flip = (m % sides == 0) ? 1.0f : -1.0f;
+                const float ax = p.at.x + p.rowStep.x * (float)k;
+                const float ay = (p.at.y + p.rowStep.y * (float)k) * flip;
 
                 Piece piece;
                 piece.form = p.form;
@@ -421,6 +459,10 @@ std::vector<Piece> Compose(const Shape& s, const Pose& pose)
                 piece.width = p.width * size * scale;
                 piece.length = p.length * size * scale;
                 piece.brightness = brightness;
+                piece.tint = p.tint;
+                // An arc's ends turn with the part, and a mirrored arc runs the other way.
+                piece.arcFrom = flip > 0.0f ? piece.angle + p.arcFrom : piece.angle - p.arcTo;
+                piece.arcTo = flip > 0.0f ? piece.angle + p.arcTo : piece.angle - p.arcFrom;
 
                 // On the sphere rather than on the disc (#166). The planet's own turn
                 // carries a surface part across the face and round the back, so where it is
@@ -496,7 +538,7 @@ std::vector<Piece> Compose(const Shape& s, const Pose& pose)
                     // Every repeat and every mirror is spread evenly around the lap, so
                     // three moons are three moons rather than three moons on top of one
                     // another.
-                    const float spread = (float)(r * sides + m) / (float)(repeat * sides);
+                    const float spread = (float)(r * sides + m % sides) / (float)(repeat * sides);
                     const float lap = (float)std::fmod(
                         pose.time / period + p.orbitPhase + spread + Hash01(seed, salt + 29), 1.0);
                     const float a = lap * 2.0f * PI;
