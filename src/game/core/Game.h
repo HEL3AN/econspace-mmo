@@ -82,6 +82,18 @@ public:
     // Start with the galaxy map open (--map): for seeing the index the server sent without
     // a hand on the keyboard.
     void StartOnMap() { galaxyMapOpen_ = true; }
+    // Save the frame drawn after N frames to a PNG and exit (--shot FILE --frames N): the
+    // editor's mechanism, for pictures of the game itself. The frame is drawn into a
+    // texture of its own, because with the screen off the window's pixels read back blank,
+    // and without the screen treatment, which keeps a target of its own.
+    void TakeShot(const std::string& path, int frames)
+    {
+        shotPath_ = path;
+        shotFrames_ = frames;
+    }
+    // Draw the world alone, without the HUD (--nohud): for a picture of the place rather
+    // than of the instruments. Nothing else changes; the windows still exist.
+    void HideHud() { hudHidden_ = true; }
     // Who this client is logged in as: a discoverer may name what they found (#145).
     void SetPilotName(const std::string& n) { pilotName_ = n; }
     ~Game();
@@ -192,6 +204,12 @@ private:
     Vector2    startWarpTarget_ = { 0.0f, 0.0f };
     int        startWarpFrames_ = -1;  // counts down to the --warp order; -1 when there is none
     WorldClock worldClock_;            // the server's clock, eased (#192)
+
+    // --shot: where the frame goes (empty when not shooting), and how many frames are left.
+    std::string     shotPath_;
+    int             shotFrames_ = 60;
+    RenderTexture2D shotTarget_ = {};
+    bool            hudHidden_ = false;  // --nohud
 
     // How the world is presented (#35). Glyphs are the game's look (#36); shapes remain
     // reachable with F2, as the alternative backend the sprite path hangs off.

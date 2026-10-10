@@ -60,6 +60,7 @@ ctest --test-dir build --output-on-failure
 ./build/bin/server/econserver.exe host 50800        # authoritative server, this machine only
 ./build/bin/server/econserver.exe host 50800 --public   # ...reachable from other machines (#187)
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2   # account + secret
+./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --shapes --shot f.png --frames 120  # save frame 120, exit (--nohud: world only)
 ./build/bin/editor/worldeditor.exe
 ./build/bin/editor/worldeditor.exe gallery           # every archetype at once, for tuning a look (F3)
 ./build/bin/editor/worldeditor.exe gallery shapes    # ...on the shape backend (F2 switches; F10 = screen treatment)

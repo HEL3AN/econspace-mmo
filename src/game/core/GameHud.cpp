@@ -806,6 +806,8 @@ void Game::DrawScaleBar()
 
 void Game::DrawHud()
 {
+    if (hudHidden_)
+        return;
     DrawScaleBar();
     for (auto& w : windows_)
         w->Draw();

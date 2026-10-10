@@ -15,6 +15,21 @@ You fly a ship in a persistent galaxy: mine, trade, run missions, fight, build r
 
 ---
 
+## Screenshots
+
+| | |
+|---|---|
+| ![A trade hub, with the status window and the overview](media/trade-hub.png) | ![An oceanic planet and its moon, lit by the system's star](media/planet-and-moon.png) |
+| A trade hub orbiting its planet; the overview lists everything in the system by distance. | A planet and its moon, lit from the side by the system's own star. |
+| ![The wormhole's mouth at the edge of the home system](media/wormhole.png) | ![The galaxy map](media/galaxy-map.png) |
+| The wormhole at the edge of the home system: beyond it, the region is generated and uncharted. | The galaxy map — security, piracy and economy per system, and who holds it. |
+| ![Fifty-four generated systems on one screen](media/survey.png) | ![The station pack of the module library](media/module-library-station.png) |
+| The editor's survey: fifty-four systems from three seeds, flagged when one comes out empty, thin or a twin. | The module library: every part is data, drawn here at three seeds each. |
+
+More in [media/](media/). Pictures are taken by the game and the editor themselves (`--shot`, `shot`), without the screen treatment.
+
+---
+
 ## Start here
 
 The repository has several documents at the top. Each owns one thing:
