@@ -1121,3 +1121,113 @@ TEST_CASE("a variant with a field nobody reads is refused (#240)")
     std::remove("variant_test_tmp/modules.json");
     REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
 }
+
+TEST_CASE(
+    "a section exposes sockets: edges, ends and a centreline on a block, a rim on a disc (#240)")
+{
+    Render::Part bar;
+    bar.form = Render::Form::Bar;
+    bar.length = 1.0f;
+    bar.width = 0.2f;
+    bar.section = true;
+    const auto s = Render::Sockets({ bar });
+    int        edges = 0, ends = 0, tops = 0;
+    for (const auto& k : s)
+    {
+        edges += k.type == "edge";
+        ends += k.type == "end";
+        tops += k.type == "top";
+        if (k.type == "edge")
+            CHECK(std::fabs(std::fabs(k.pos.y) - 0.1f) < 1e-4f);  // on the long sides
+    }
+    CHECK(ends == 2);
+    CHECK(edges == 2 * tops);
+    CHECK(tops >= 3);
+
+    Render::Part disc;
+    disc.form = Render::Form::Disc;
+    disc.radius = 0.6f;
+    disc.section = true;
+    for (const auto& k : Render::Sockets({ disc }))
+        if (k.type == "edge")
+            CHECK(Dist(k.pos, { 0.0f, 0.0f }) == doctest::Approx(0.6f).epsilon(0.01));
+}
+
+TEST_CASE("a kit places modules by seed: in mirrored pairs, evenly, leaving room plain (#240)")
+{
+    std::string error;
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+    const Render::Shape       ship = Parse(R"({
+        "sections": [ { "form": "bar", "length": 1.6, "width": 0.4, "pitch": 0.2 } ],
+        "kit": { "symmetry": "bilateral", "plain": 0.4,
+                 "modules": [ { "of": "hatch", "count": [2, 6], "on": "edge" } ] },
+        "parts": [] })");
+    std::vector<Render::Part> sections;
+    for (const auto& p : ship.parts)
+        if (p.section)
+            sections.push_back(p);
+    REQUIRE(sections.size() == 1);
+    const size_t    sockets = Render::Sockets(sections).size();
+    std::set<int>   counts;
+    std::set<float> firstX;
+    for (int seed = 1; seed <= 30; seed++)
+    {
+        const auto placed = Render::PlaceKit(ship.kit, sections, seed);
+        counts.insert((int)placed.size());
+        // Never more than the plain rule allows on the section.
+        CHECK(placed.size() <= (size_t)((float)sockets * 0.6f) + 1);
+        // Bilateral: every module on one side has its reflection on the other.
+        int mirrored = 0;
+        for (const auto& p : placed)
+            mirrored += p.mirrorOnly;
+        CHECK(mirrored * 2 == (int)placed.size());
+        // One variant along the whole line: a row of the same hatch.
+        for (const auto& p : placed)
+            CHECK(p.variant == placed[0].variant);
+        if (!placed.empty())
+            firstX.insert(placed[0].at.x);
+        // The same seed is the same object.
+        CHECK(Render::PlaceKit(ship.kit, sections, seed).size() == placed.size());
+    }
+    CHECK(counts.size() >= 2);
+    CHECK(firstX.size() >= 2);
+
+    // Composed, the kit's modules are drawn like written ones: more than the section alone.
+    CHECK(Render::Compose(ship, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 3, 10.0f)).size() > 1);
+
+    Render::Shape bad;
+    CHECK_FALSE(Render::ParseShape(nlohmann::json::parse(R"({ "sections": [], "parts": [],
+            "kit": { "modules": [ { "of": "hatchh" } ] } })"),
+                                   bad, error));
+    CHECK(error.find("hatchh") != std::string::npos);
+    CHECK_FALSE(Render::ParseShape(
+        nlohmann::json::parse(R"({ "parts": [], "kit": { "modules": [ { "of": "#nothing" } ] } })"),
+        bad, error));
+}
+
+TEST_CASE("a radial kit puts the same module in the same place on every arm (#240)")
+{
+    std::string error;
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+    const Render::Shape       hub = Parse(R"({
+        "sections": [ { "form": "bar", "at": [0.8, 0], "length": 0.8, "width": 0.2, "repeat": 3 } ],
+        "kit": { "symmetry": "radial", "modules": [ { "of": "hatch", "count": 2, "on": "edge" } ] },
+        "parts": [] })");
+    std::vector<Render::Part> sections;
+    for (const auto& p : hub.parts)
+        if (p.section)
+            sections.push_back(p);
+    for (int seed = 1; seed <= 10; seed++)
+    {
+        const auto placed = Render::PlaceKit(hub.kit, sections, seed);
+        REQUIRE(placed.size() == 6);  // two per arm, three arms
+        // Each placement has partners at the same distance from the centre.
+        for (const auto& p : placed)
+        {
+            int same = 0;
+            for (const auto& q : placed)
+                same += std::fabs(Dist(p.at, { 0, 0 }) - Dist(q.at, { 0, 0 })) < 1e-3f;
+            CHECK(same >= 3);
+        }
+    }
+}

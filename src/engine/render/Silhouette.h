@@ -254,7 +254,70 @@ struct Part
     // A row centred on its own `at` rather than starting there, so a row whose count is a
     // range stays balanced instead of growing off one end.
     bool rowCentred = false;
+
+    // A section of the silhouette (#240 phase 3): drawn like any part, and it exposes
+    // sockets a kit places modules on. `pitch` is the socket spacing, in object radii.
+    bool  section = false;
+    float pitch = 0.0f;
+
+    // Only the reflected copy of a mirrored part: how a kit places the twin of a module on a
+    // bilateral object, so the module's own shape is reflected and not merely turned.
+    bool mirrorOnly = false;
 };
+
+// A place on a section where a module can go: an `edge` along a long side, an `end`, a
+// `top` along a centreline or an inner ring, a `ring` round a rim. Facing outward.
+struct Socket
+{
+    Vector2     pos;
+    float       angle;  // degrees, outward
+    std::string type;
+    int         section;  // which placed copy of which section
+    int         line;     // sockets in one row share a line; modules spread along it
+    int         index;
+    float       size;  // the spacing, which bounds how big a module there may be
+    // Which written section it came from, which repeat or mirror copy of it, and which line
+    // within that copy: what a radial kit uses to put the same module on every arm.
+    int source = 0;
+    int copy = 0;
+    int localLine = 0;
+};
+
+// One line of a kit: a module (by id, or any carrying a tag), how many, on which sockets.
+struct KitEntry
+{
+    std::string of;
+    bool        byTag = false;
+    float       lo = 1.0f, hi = 1.0f;  // count, every whole number in it equally likely
+    std::string on;                    // socket type; empty: the module's first
+    float       scale = 0.0f;          // module radius; 0: from the socket spacing
+    float       turn = 0.0f;           // degrees added to the socket's outward direction
+    std::string variant;               // pinned; empty: the seed picks one for the whole line
+    int         in = -1;               // only on this section (its index); -1: any
+    // How far in from the socket the module's centre sits, in module radii: 1 puts the
+    // whole module on the hull (a hatch, a window), 0 centres it on the edge, -1 hangs it
+    // outside (a docking arm, a dish on a boom).
+    float inset = 1.0f;
+};
+
+// What an archetype says about its modules instead of placing them (#240 phase 3): the
+// seed decides where, within these rules -- modules go in even rows along one line, in
+// mirrored pairs when the object is bilateral, and each section keeps `plain` of its
+// sockets empty. That last rule is the one against mush.
+struct Kit
+{
+    // "bilateral" mirrors every placement across the axis; "radial" repeats it on every
+    // copy of a repeated section, and a count is then per copy; "none" places freely.
+    std::string           symmetry = "none";
+    float                 plain = 0.4f;
+    std::vector<KitEntry> entries;
+};
+
+// The sockets of a set of (resolved) sections, in a fixed order.
+std::vector<Socket> Sockets(const std::vector<Part>& sections);
+
+// The module parts a kit places on these sections for this seed.
+std::vector<Part> PlaceKit(const Kit& kit, const std::vector<Part>& sections, int seed);
 
 // The part as this object has it: ranges chosen, a colour picked, and false when the part's
 // chance says it is not there. Same seed and salt, same answer, on every client (#240).
@@ -279,6 +342,8 @@ struct Shape
         std::vector<Color> palette;  // set for a colour variable
     };
     std::vector<Var> vars;
+
+    Kit kit;
 
     // How far the body's north pole is tipped toward the viewer, in degrees. It is a
     // property of the body rather than of a part -- every feature on one planet shares

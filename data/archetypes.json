@@ -253,15 +253,27 @@
             "layer": 4,
             "size": 700,
             "material": "hull",
-            "shape": [
-                {"form": "polygon", "sides": 6, "radius": 0.55, "role": "hull"},
-                {"form": "polygon", "sides": 6, "radius": 0.4, "role": "panel", "angle": 30, "minPixels": 50},
-                {"form": "capsule", "at": [0.85, 0.0], "repeat": 3, "length": 0.75, "width": 0.14, "role": "hull", "jitterAngle": 4},
-                {"form": "disc", "at": [1.3, 0.0], "repeat": 3, "radius": 0.22, "role": "panel", "jitterAngle": 4, "jitterScale": 0.08, "minPixels": 40},
-                {"form": "ring", "radius": 1.55, "width": 0.08, "role": "trim", "minPixels": 34, "spin": 3.0},
-                {"form": "disc", "at": [1.55, 0.0], "repeat": 6, "radius": 0.055, "role": "light", "minPixels": 60, "spin": 3.0, "blink": 2.4},
-                {"form": "capsule", "at": [0.0, -0.75], "angle": 90, "length": 0.5, "width": 0.05, "role": "antenna", "minPixels": 70}
-            ],
+            "shape": {
+                "sections": [
+                    {"form": "polygon", "sides": 6, "radius": 0.55, "role": "hull", "pitch": 0.2},
+                    {"form": "capsule", "at": [0.85, 0.0], "repeat": 3, "length": 0.75, "width": 0.16, "role": "hull", "pitch": 0.15},
+                    {"form": "disc", "at": [1.3, 0.0], "repeat": 3, "radius": 0.24, "role": "panel", "pitch": 0.16}
+                ],
+                "kit": { "symmetry": "radial", "plain": 0.45, "modules": [
+                    {"of": "windows", "in": 1, "on": "edge", "count": [1, 2], "turn": 90, "scale": 0.09},
+                    {"of": "station.dock", "in": 2, "on": "edge", "count": 1, "scale": 0.13, "inset": -0.6},
+                    {"of": "light.nav", "in": 2, "on": "edge", "count": [1, 2], "scale": 0.05},
+                    {"of": "hatch", "in": 0, "on": "edge", "count": [2, 3], "turn": 90, "scale": 0.07},
+                    {"of": "station.comms", "in": 0, "on": "top", "count": 1, "scale": 0.16},
+                    {"of": "station.storage", "in": 0, "on": "top", "count": [0, 1], "scale": 0.14},
+                    {"of": "radiator", "in": 1, "on": "edge", "count": [0, 1], "turn": 90, "scale": 0.08}
+                ] },
+                "parts": [
+                    {"form": "polygon", "sides": 6, "radius": 0.4, "role": "panel", "angle": 30, "minPixels": 50},
+                    {"form": "ring", "radius": 1.55, "width": 0.08, "role": "trim", "minPixels": 34, "spin": 3.0},
+                    {"form": "disc", "at": [1.55, 0.0], "repeat": 6, "radius": 0.055, "role": "light", "minPixels": 60, "spin": 3.0, "blink": 2.4}
+                ]
+            },
             "components": {
                 "dockable": { "range": 250 },
                 "market": {},
