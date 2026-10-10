@@ -152,7 +152,10 @@ bool ParseTheme(const nlohmann::json& j, Theme& into, std::string& error)
                       { "money", &c.money },
                       { "track", &c.track },
                       { "hover", &c.hover },
-                      { "selected", &c.selected } },
+                      { "selected", &c.selected },
+                      { "backdrop", &c.backdrop },
+                      { "shade", &c.shade },
+                      { "sensor", &c.sensor } },
                     error))
         return false;
 
@@ -180,7 +183,8 @@ bool ParseTheme(const nlohmann::json& j, Theme& into, std::string& error)
                        { "rowHeight", &m.rowHeight },
                        { "scrollbar", &m.scrollbar },
                        { "snap", &m.snap },
-                       { "tabWidth", &m.tabWidth } },
+                       { "tabWidth", &m.tabWidth },
+                       { "sidePanel", &m.sidePanel } },
                      error))
         return false;
 

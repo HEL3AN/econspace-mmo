@@ -247,6 +247,9 @@ void Game::SetupWindows()
         panel(WIN_TARGET, "TGT", Anchor::TopRight, { 16.0f, 16.0f, 300.0f, 300.0f });
     target.resizable = true;
     target.minSize = { 240.0f, 160.0f };
+    // The windows that look at space are space's: docked, they are put away and come back
+    // as they were on undocking (#297). The station's windows take their place.
+    target.context = CTX_SPACE;
     desk_.AddWindow(target, "SELECTED ITEM", false, [this](Ui::Frame& f) { DrawTargetContent(f); });
     // Open from the start: it is the instrument a player flies by (#157), and a player who
     // has to know a key exists before they can navigate has not been told how to play.
@@ -254,12 +257,14 @@ void Game::SetupWindows()
         panel(WIN_OVERVIEW, "OVR", Anchor::TopRight, { 16.0f, 328.0f, 300.0f, 376.0f });
     overview.resizable = true;
     overview.minSize = { 260.0f, 160.0f };
+    overview.context = CTX_SPACE;
     desk_.AddWindow(overview, "OVERVIEW", true, [this](Ui::Frame& f) { DrawOverviewContent(f); });
     // The radar is a picture drawn by hand inside a layout (#297): its toolbar is laid out,
     // the scope takes whatever room is left, so it can be any size.
     WindowSpec radar = panel(WIN_RADAR, "RAD", Anchor::TopLeft, { 56.0f, 344.0f, 264.0f, 288.0f });
     radar.resizable = true;
     radar.minSize = { 180.0f, 180.0f };
+    radar.context = CTX_SPACE;
     desk_.AddWindow(radar, "RADAR", false, [this](Ui::Frame& f) { DrawRadarContent(f); });
     // A list of missions and the chosen one in full: one above the other when narrow, side
     // by side when wide. Beside the selected item rather than on top of the overview, which
@@ -287,24 +292,44 @@ void Game::SetupWindows()
     sensor.bounds = [this]()
     { return Rectangle{ MENU_BAR_W, 0.0f, screenWidth_ - MENU_BAR_W, (float)screenHeight_ }; };
     sensor.draw = [this]() { DrawSensorScreen(); };
-    desk_.AddSurface(screen(WIN_SENSOR, "SNS", Ui::EscRule::Close), false, sensor);
+    WindowSpec sensorSpec = screen(WIN_SENSOR, "SNS", Ui::EscRule::Close);
+    sensorSpec.context = CTX_SPACE;  // a readout of the space around the ship
+    desk_.AddSurface(sensorSpec, false, sensor);
 
     WindowSpec settings = panel(WIN_SETTINGS, "SET", Anchor::Top, { 0.0f, 100.0f, 340.0f, 400.0f });
     settings.resizable = true;
     settings.minSize = { 260.0f, 240.0f };
     desk_.AddWindow(settings, "SETTINGS", false, [this](Ui::Frame& f) { DrawSettingsContent(f); });
 
-    // Docked: a screen of its own, drawn by Run. Esc stops at it, because leaving it is
-    // undocking, an order to the server (#285).
-    Ui::Desk::Surface station;
-    station.bounds = fullScreen;
-    station.isOpen = [this]() { return mode_ == GameMode::Docked; };
-    desk_.AddSurface(screen(WIN_STATION, "", Ui::EscRule::Block), false, station);
+    // Docked (#297): the station is windows like any other, in the "docked" context -- there
+    // while the ship is berthed, put away as they were when it leaves. They used to be one
+    // screen over everything; now they can be moved, resized, grouped and stacked as tabs,
+    // and the missions window stands beside them. Where the target and overview windows
+    // are in space, which are put away while docked.
+    WindowSpec station =
+        panel(WIN_STATION, "STN", Anchor::TopLeft, { 56.0f, 344.0f, 264.0f, 300.0f });
+    station.resizable = true;
+    station.minSize = { 220.0f, 200.0f };
+    station.context = CTX_DOCKED;
+    desk_.AddWindow(station, "STATION", true, [this](Ui::Frame& f) { DrawStationContent(f); });
+    WindowSpec market =
+        panel(WIN_MARKET, "MKT", Anchor::TopRight, { 16.0f, 16.0f, 300.0f, 320.0f });
+    market.resizable = true;
+    market.minSize = { 240.0f, 220.0f };
+    market.context = CTX_DOCKED;
+    desk_.AddWindow(market, "MARKET", true, [this](Ui::Frame& f) { DrawMarketContent(f); });
+    WindowSpec hangar =
+        panel(WIN_HANGAR, "HGR", Anchor::TopRight, { 16.0f, 344.0f, 608.0f, 300.0f });
+    hangar.resizable = true;
+    hangar.minSize = { 240.0f, 220.0f };
+    hangar.context = CTX_DOCKED;
+    desk_.AddWindow(hangar, "HANGAR", true, [this](Ui::Frame& f) { DrawHangarContent(f); });
 
-    // Above the screens it opens; Esc passes over it.
+    // Above the screens it opens; Esc passes over it. Docked too: it opens the station's
+    // windows again once they have been closed.
     Ui::Desk::Surface bar;
     bar.bounds = [this]() { return Rectangle{ 0.0f, 0.0f, MENU_BAR_W, (float)screenHeight_ }; };
-    bar.isOpen = [this]() { return mode_ == GameMode::Flying && !hudHidden_; };
+    bar.isOpen = [this]() { return !hudHidden_; };
     bar.draw = [this]() { DrawMenuBar(); };
     // A window dragged to the left snaps against it rather than sliding under it.
     WindowSpec barSpec = surface(WIN_MENUBAR, "", Layer::Modal, Ui::EscRule::Ignore);
@@ -775,7 +800,9 @@ void Game::DrawHud()
 {
     if (hudHidden_)
         return;
-    if (!desk_.IsOpen(WIN_SENSOR))
+    // Docked, the windows stand in the station's hall: nothing here is about flying.
+    const bool flying = mode_ == GameMode::Flying;
+    if (flying && !desk_.IsOpen(WIN_SENSOR))
         DrawScaleBar();  // a scale for the world view; the sensor screen states its own
     desk_.Draw(Ui::Layer::Panels);
 
@@ -787,7 +814,7 @@ void Game::DrawHud()
     desk_.Draw(Ui::Layer::Modal);  // the menu bar
 
     // Docking prompt.
-    if (nearbyStation_ != nullptr)
+    if (flying && nearbyStation_ != nullptr && !desk_.IsOpen(WIN_MAP))
     {
         const char* prompt = TextFormat("Press E to dock at %s", nearbyStation_->GetName().c_str());
         int         tw = Ui::TextWidth(prompt, 20);
@@ -795,7 +822,7 @@ void Game::DrawHud()
     }
 
     // Warp effect — simple and legible, in screen coordinates.
-    WarpPhase wp = playerShip_->GetWarpPhase();
+    WarpPhase wp = flying ? playerShip_->GetWarpPhase() : WarpPhase::None;
     if (wp == WarpPhase::Aligning)
     {
         // Label + spin-up progress bar.
@@ -843,7 +870,7 @@ void Game::DrawHud()
 
     // What the ship is holding station on, and how well (#157, #298). A standing behaviour
     // runs until something releases it, so it has to be visible the whole time it does.
-    if (playerShip_->GetHoldMode() != HoldMode::None)
+    if (flying && playerShip_->GetHoldMode() != HoldMode::None)
     {
         // Said as what it does (#309): a keep holds a distance from the target, and "keeping
         // at range" left the player to guess which distance and why the ship moved.
@@ -872,283 +899,86 @@ void Game::DrawHud()
     }
 }
 
-void Game::DrawStationScreen()
-{
-    DrawRectangle(0, 0, screenWidth_, screenHeight_, Color{ 8, 9, 14, 255 });
-
-    int       px = 60, py = 40;
-    int       pw = screenWidth_ - 120, ph = screenHeight_ - 80;
-    Rectangle panel{ (float)px, (float)py, (float)pw, (float)ph };
-
-    // Outer panel and title bar — in the window-UI style.
-    DrawRectangleRec(panel, Ui::PANEL_BG);
-    DrawRectangleRec(Rectangle{ (float)px, (float)py, (float)pw, 56.0f }, Ui::TITLE_BG);
-    DrawRectangleLinesEx(panel, 1.0f, Ui::PANEL_BORDER);
-
-    int contentX = px + 24;
-
-    Ui::Text(dockedStation_->GetName().c_str(), contentX, py + 9, 28, Ui::ACCENT);
-
-    FactionId stationFaction = dockedStation_->GetFaction();
-    float     stationRep = player_.GetReputation(stationFaction);
-    RepTier   stationTier = Factions::TierOf(stationRep);
-    // Docked means attached (#298): the ship is berthed on the station and goes where it
-    // goes. Said here, because a station on an orbit is moving the whole time the player is
-    // reading its market, and the ship with it.
-    const float       carried = Vector2Length(snapshot_.player.vel);
-    const std::string attached =
-        carried > 0.5f ? std::string(TextFormat("ATTACHED, moving with it at %.0f u/s", carried))
-                       : std::string("ATTACHED");
-    Ui::Text(TextFormat("DOCKED  ·  %s  ·  %s  ·  %s  ·  %s (%d)", attached.c_str(),
-                        StationRoleName(dockedStation_->GetRole()).c_str(),
-                        FactionName(stationFaction).c_str(),
-                        Factions::TierName(stationTier).c_str(), (int)stationRep),
-             contentX, py + 39, 14, Factions::TierColor(stationTier));
-
-    // Reputation makes buying a ship cheaper. Selling needs no multiplier here: the server
-    // prices a sale, and the revenue arrives with its acknowledgement.
-    const float buyMul = ShipPriceMultiplier(stationTier);
-
-    const char* moneyStr = TextFormat("Money  %.0f", player_.GetMoney());
-    Ui::Text(moneyStr, px + pw - Ui::TextWidth(moneyStr, 22) - 24, py + 10, 22, GOLD);
-    {
-        const Skills& sk = player_.GetSkills();
-        const char*   skillsStr =
-            TextFormat("Pilot %d    Mining %d    Trade %d", sk.GetLevel(SkillType::Piloting),
-                       sk.GetLevel(SkillType::Mining), sk.GetLevel(SkillType::Trading));
-        Ui::Text(skillsStr, px + pw - Ui::TextWidth(skillsStr, 14) - 24, py + 40, 14, Ui::TEXT_DIM);
-    }
-
-    // --- Wanted: pay this station's faction bounty to clear the WANTED status ---
-    if (player_.IsWanted(stationFaction))
-    {
-        double bounty = player_.GetBounty(stationFaction);
-        Ui::Text(TextFormat("WANTED by %s  ·  bounty %.0f cr", FactionName(stationFaction).c_str(),
-                            bounty),
-                 contentX, py + 62, 15, Color{ 230, 41, 55, 255 });
-        Button payBtn(Rectangle{ (float)(contentX + 360), (float)(py + 58), 180.0f, 24.0f },
-                      TextFormat("Pay bounty (%.0f)", bounty),
-                      [this, stationFaction]()
-                      {
-                          // The account is on the server — pay via command. Whether it was
-                          // paid, or why not, comes back as a journal entry (#219), which
-                          // ApplySnapshot flashes; saying "paid" here would be a guess.
-                          Proto::Command c;
-                          c.payBountyFaction = (int)stationFaction;
-                          clientLink_->Send(Proto::EncodeCommand(c));
-                      });
-        payBtn.Process();
-    }
-
-    // --- Mission board: right column if the window is wide enough ---
-    int boardW = pw - 760;
-    if (boardW > 460)
-        boardW = 460;
-    if (boardW >= 220)
-        DrawMissionBoard(px + pw - boardW - 24, py + 84, boardW);
-
-    // --- Market: selling mined ore from the hold. Prices and cargo come from the
-    // snapshot, which is the only place the client has them. ---
-    Ui::Text("MARKET", contentX, py + 84, 20, Ui::TEXT);
-    int rowY = py + 116;
-    int resIdx = 0;
-    for (ResourceType type : AllResourceTypes())
-    {
-        int   cargo = resIdx < (int)snapshot_.player.cargoByType.size()
-                          ? snapshot_.player.cargoByType[resIdx]
-                          : 0;
-        float price =
-            resIdx < (int)snapshot_.marketPrices.size() ? snapshot_.marketPrices[resIdx] : 0.0f;
-        Ui::Text(
-            TextFormat("%-9s   price %.1f    cargo %d", ResourceName(type).c_str(), price, cargo),
-            contentX, rowY + 7, 18, cargo > 0 ? Ui::TEXT : Ui::TEXT_DIM);
-
-        if (cargo > 0)
-        {
-            Button sellBtn(Rectangle{ (float)(contentX + 420), (float)rowY, 130.0f, 30.0f },
-                           "Sell all",
-                           [this, type, cargo]()
-                           {
-                               // Selling is an order to the server; ApplyTradeAcks credits
-                               // the revenue on acknowledgement (at the server's price).
-                               Proto::Command c;
-                               c.sellType = (int)type;
-                               c.sellAmount = cargo;
-                               clientLink_->Send(Proto::EncodeCommand(c));
-                           });
-            sellBtn.Process();
-        }
-        rowY += 40;
-        resIdx++;
-    }
-
-    // --- Hangar: buying ships ---
-    const std::vector<ShipType>& catalog = GetShipCatalog();
-    int                          hangarY = rowY + 18;
-    Ui::Text("HANGAR", contentX, hangarY, 20, Ui::TEXT);
-    Ui::Text(TextFormat("Current ship: %s", catalog[CurrentShipIndex()].name.c_str()), contentX,
-             hangarY + 28, 14, Ui::ACCENT);
-
-    int shipY = hangarY + 56;
-    for (size_t i = 0; i < catalog.size(); i++)
-    {
-        const ShipType& t = catalog[i];
-        bool            current = ((int)i == CurrentShipIndex());
-
-        Ui::Text(TextFormat("%-9s   speed %.0f   cargo %d   mining %.1f", t.name.c_str(),
-                            t.stats.maxSpeed, t.stats.cargoCapacity, t.stats.miningRate),
-                 contentX, shipY + 7, 18, current ? Color{ 120, 210, 130, 255 } : Ui::TEXT);
-
-        Rectangle btnRect{ (float)(contentX + 540), (float)shipY, 160.0f, 30.0f };
-        if (current)
-        {
-            Ui::Text("CURRENT", contentX + 540, shipY + 7, 16, Color{ 120, 210, 130, 255 });
-        }
-        else if (OwnsShip((int)i))
-        {
-            // Ship already owned — switching is free.
-            Button switchBtn(btnRect, "Switch",
-                             [this, i]()
-                             {
-                                 Proto::Command c;
-                                 c.refitShip = (int)i;
-                                 clientLink_->Send(Proto::EncodeCommand(c));
-                             });
-            switchBtn.Process();
-        }
-        else
-        {
-            Button buyBtn(btnRect, TextFormat("Buy (%.0f)", t.price * buyMul),
-                          [this, i]()
-                          {
-                              // The purchase is server-authoritative: the server charges,
-                              // records the ship as owned and refits (BuyShip); the
-                              // snapshot brings all three back (#5).
-                              Proto::Command c;
-                              c.buyShip = (int)i;
-                              clientLink_->Send(Proto::EncodeCommand(c));
-                              // No local bookkeeping and no local refusal: the server says
-                              // whether it agreed, and why not, in the journal (#219) -- it
-                              // knows the money and the hold, the client only mirrors them.
-                          });
-            buyBtn.Process();
-        }
-        shipY += 38;
-    }
-
-    Button undockBtn(Rectangle{ (float)contentX, (float)(py + ph - 60), 200.0f, 40.0f }, "Undock",
-                     [this]() { Undock(); });
-    undockBtn.Process();
-}
-
-// Station mission board: a list of offers with an Accept button on each.
-void Game::DrawMissionBoard(int x, int y, int w)
-{
-    Ui::Text("MISSIONS", x, y, 20, Ui::TEXT);
-
-    const std::vector<Mission>& offers = missions_.Offers();
-    int                         rowY = y + 32;
-    const int                   rowH = 76;
-
-    // Defer accepting until the loop ends: Accept mutates offers_, which we're iterating.
-    int toAccept = -1;
-    for (size_t i = 0; i < offers.size(); i++)
-    {
-        const Mission& m = offers[i];
-
-        Rectangle box{ (float)x, (float)rowY, (float)w, (float)(rowH - 8) };
-        DrawRectangleRec(box, Fade(Ui::TITLE_BG, 0.5f));
-        DrawRectangleLinesEx(box, 1.0f, Ui::PANEL_BORDER);
-
-        Ui::Text(m.title.c_str(), x + 10, rowY + 7, 16, FactionColor(m.faction));
-        Ui::Text(m.description.c_str(), x + 10, rowY + 29, 14, Ui::TEXT);
-        Ui::Text(TextFormat("Reward  %.0f cr   rep +%.0f", m.rewardMoney, m.rewardRep), x + 10,
-                 rowY + 49, 13, GOLD);
-
-        Button accept(Rectangle{ (float)(x + w - 96), (float)(rowY + 38), 86.0f, 26.0f }, "Accept",
-                      [&toAccept, i]() { toAccept = (int)i; });
-        accept.Process();
-
-        rowY += rowH;
-    }
-    if (toAccept >= 0)
-    {
-        // Accepting is a server mutation (missions are authoritative).
-        Proto::Command c;
-        c.acceptOffer = toAccept;
-        clientLink_->Send(Proto::EncodeCommand(c));
-    }
-
-    // --- Turn-in: active missions completable at this station ---
-    rowY += 8;
-    Ui::Text("READY TO TURN IN", x, rowY, 16, Ui::TEXT);
-    rowY += 26;
-
-    const std::vector<Mission>& active = missions_.Active();
-    int                         toComplete = -1;
-    bool                        anyReady = false;
-    for (size_t i = 0; i < active.size(); i++)
-    {
-        const Mission& m = active[i];
-        // The server determines readiness (m.completable from the snapshot); the client hold is
-        // a mirror and not always accurate, so it is not consulted here.
-        if (!m.completable)
-            continue;
-        anyReady = true;
-
-        Rectangle box{ (float)x, (float)rowY, (float)w, 36.0f };
-        DrawRectangleRec(box, Fade(Ui::TITLE_BG, 0.5f));
-        DrawRectangleLinesEx(box, 1.0f, Ui::PANEL_BORDER);
-
-        Ui::Text(m.description.c_str(), x + 10, rowY + 4, 14, Ui::TEXT);
-        Ui::Text(TextFormat("+%.0f cr", m.rewardMoney), x + 10, rowY + 20, 12, GOLD);
-
-        Button complete(Rectangle{ (float)(x + w - 104), (float)(rowY + 5), 94.0f, 26.0f },
-                        "Complete", [&toComplete, i]() { toComplete = (int)i; });
-        complete.Process();
-
-        rowY += 44;
-    }
-    if (!anyReady)
-    {
-        Ui::Text("Nothing to turn in here.", x, rowY, 13, Ui::TEXT_DIM);
-        rowY += 20;
-    }
-    if (toComplete >= 0)
-    {
-        // Turn-in is a server mutation (the reward lands in the server-side account).
-        Proto::Command c;
-        c.completeMission = toComplete;
-        clientLink_->Send(Proto::EncodeCommand(c));
-    }
-
-    Ui::Text(TextFormat("Active missions: %d / %d", (int)missions_.Active().size(),
-                        MissionSystem::MAX_ACTIVE),
-             x, rowY + 4, 14, Ui::TEXT_DIM);
-}
-
-// Full-screen galaxy star map (EVE-style): dimmed background,
-// systems as nodes by mapPos, gate links as lines, the current system highlighted.
+// Full-screen galaxy star map (EVE-style): dimmed background, systems as nodes by mapPos,
+// gate links as lines, the current system highlighted. The map itself is a picture drawn by
+// hand; around it, the heading, the legend and the news are laid out (#297), and the
+// picture takes whatever room they leave.
 void Game::DrawGalaxyMap()
 {
-    // Full-screen dimming background.
-    DrawRectangle(0, 0, screenWidth_, screenHeight_, Color{ 6, 8, 14, 235 });
+    using Ui::Box;
+    using Ui::Size;
+    using Ui::TextStyle;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    DrawRectangle(0, 0, screenWidth_, screenHeight_, t.colors.shade);
 
-    Ui::Text("GALAXY MAP", MENU_BAR_W + 24, 24, 28, Ui::ACCENT);
-    Ui::Text("drag to pan, wheel to zoom   ·   [G]/[Esc] close", MENU_BAR_W + 24, 58, 14,
-             Ui::TEXT_DIM);
+    // Galactic news (system captures, reconquests) from the server's galaxy snapshot, newest
+    // first. A column of its own that wraps and scrolls: a long line used to run off the
+    // right of the screen.
+    const std::vector<std::string>& news = galaxyState_.events;
+    Ui::Layout&                     L = mapLayout_;
+    L.Begin(desk_.SurfaceFrame(
+        WIN_MAP, { MENU_BAR_W, 0.0f, screenWidth_ - MENU_BAR_W, (float)screenHeight_ }));
+    L.Column(Box().Grow().Pad(t.metrics.padding * 2.0f).Gap(t.metrics.gap),
+             [&]
+             {
+                 L.Row(Box().GrowX().Gap(t.metrics.padding).Align(Ui::Align::Start, Ui::Align::End),
+                       [&]
+                       {
+                           L.Text("GALAXY MAP", TextStyle::Heading().Tint(t.colors.accent));
+                           L.Text("drag to pan  ·  wheel to zoom  ·  [G] / [Esc] close",
+                                  TextStyle::Small().Tint(t.colors.dim));
+                       });
+                 L.Row(Box().Grow().Gap(t.metrics.padding * 2.0f),
+                       [&]
+                       {
+                           L.Row(Box().Id("graph").Grow(), [] {});
+                           L.Column(
+                               Box()
+                                   .Width(Size::Fixed(t.metrics.sidePanel))
+                                   .Height(Size::Grow())
+                                   .Pad(t.metrics.padding)
+                                   .Gap(t.metrics.gap)
+                                   .Fill(t.colors.panel)
+                                   .Border(t.colors.border, t.metrics.border)
+                                   .Radius(t.metrics.radius),
+                               [&]
+                               {
+                                   L.Text("LEGEND", TextStyle::Label());
+                                   const TextStyle note = TextStyle::Small().Wrap();
+                                   L.Text("Filled: charted. A ring alone: uncharted -- a gate "
+                                          "leads there, and nothing more is known.",
+                                          note);
+                                   L.Text("The ring's colour is who holds the system.", note);
+                                   L.Text("sec, pir, econ: security, pirates, prosperity.", note);
+                                   L.Divider();
+                                   L.Text("GALACTIC NEWS", TextStyle::Label());
+                                   L.Scroll(
+                                       Box().Grow().Id("news").Gap(t.metrics.gap),
+                                       [&]
+                                       {
+                                           if (news.empty())
+                                               L.Text("Nothing has changed hands yet.",
+                                                      TextStyle::Small().Tint(t.colors.dim).Wrap());
+                                           for (size_t i = news.size(); i-- > 0;)
+                                               L.Text(news[i], TextStyle::Small().Wrap());
+                                       });
+                               });
+                       });
+             });
+    L.End();
+    // The picture's room; the furniture around it is drawn over the shade.
+    const Rectangle area = L.BoxOf("graph");
+    L.Draw();
 
     const std::vector<WorldLoader::SystemInfo>& systems = universe_.systems;
-    if (systems.empty())
+    if (systems.empty() || area.width <= 0.0f || area.height <= 0.0f)
     {
-        Ui::Text("No galaxy data", screenWidth_ / 2 - 60, screenHeight_ / 2, 16, Ui::TEXT_DIM);
+        const char* none = "No galaxy data";
+        Ui::Text(none, (int)(area.x + (area.width - Ui::TextWidth(none, 16)) * 0.5f),
+                 (int)(area.y + area.height * 0.5f), 16, t.colors.dim);
         return;
     }
-
-    // Graph area — almost the whole screen (with margin for the title and menu bar).
-    Rectangle area{ MENU_BAR_W + 60.0f, 100.0f, screenWidth_ - MENU_BAR_W - 120.0f,
-                    screenHeight_ - 160.0f };
-    Vector2   nameAt{ -1.0f, -1.0f };  // where the name field goes, while it is being typed in
+    Vector2 nameAt{ -1.0f, -1.0f };  // where the name field goes, while it is being typed in
 
     // Extents in mapPos.
     float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
@@ -1394,19 +1224,18 @@ void Game::DrawGalaxyMap()
     // elsewhere, puts it away.
     if (nameAt.x >= 0.0f)
     {
-        const Ui::Theme& t = Ui::CurrentTheme();
-        const Rectangle  area{ nameAt.x, nameAt.y, Ui::Px(260.0f),
+        const Rectangle field{ nameAt.x, nameAt.y, Ui::Px(260.0f),
                                Ui::Px(t.metrics.buttonHeight + t.fontSize.small * 1.6f +
                                       t.metrics.rowGap) };
-        Ui::Layout&      L = mapNameLayout_;
-        L.Begin(desk_.SurfaceFrame(WIN_MAP, area));
-        L.Column(Ui::Box().Grow().Gap(t.metrics.rowGap),
+        Ui::Layout&     N = mapNameLayout_;
+        N.Begin(desk_.SurfaceFrame(WIN_MAP, field));
+        N.Column(Ui::Box().Grow().Gap(t.metrics.rowGap),
                  [&]
                  {
                      Ui::TextFieldOptions o;
                      o.maxLength = 24;
                      o.placeholder = "a name for this system";
-                     const Ui::EditResult r = L.TextField("name", nameBuf_, o);
+                     const Ui::EditResult r = N.TextField("name", nameBuf_, o);
                      // The server checks it and says why not in the journal, which flashes
                      // here; a name it accepts comes back to everyone in the galaxy index. It
                      // rides on the next numbered input like any one-shot intent: a command of
@@ -1414,25 +1243,10 @@ void Game::DrawGalaxyMap()
                      // client never predicted.
                      if (r.submitted && !nameBuf_.empty())
                          cmd_.nameSystem = nameBuf_;
-                     L.Text("[Enter] name it   [Esc] cancel", Ui::TextStyle::Small());
+                     N.Text("[Enter] name it   [Esc] cancel", Ui::TextStyle::Small());
                  });
-        L.End();
-        L.Draw();
-    }
-
-    // Galactic news feed (system captures/reconquests), from the server's galaxy snapshot.
-    const std::vector<std::string>& news = galaxyState_.events;
-    if (!news.empty())
-    {
-        int nx = screenWidth_ - 320;
-        int ny = 100;
-        Ui::Text("GALACTIC NEWS", nx, ny, 14, Ui::ACCENT);
-        ny += 22;
-        for (size_t i = news.size(); i-- > 0;)  // newest on top
-        {
-            Ui::Text(news[i].c_str(), nx, ny, 12, Ui::TEXT_DIM);
-            ny += 18;
-        }
+        N.End();
+        N.Draw();
     }
 }
 
@@ -1481,16 +1295,23 @@ static std::string SensorUnits(float u)
 // lays the grid out on the screen and draws it.
 void Game::DrawSensorScreen()
 {
-    const float left = MENU_BAR_W;
-    const float width = (float)screenWidth_ - left;
+    using Ui::Box;
+    using Ui::Size;
+    using Ui::TextStyle;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    const Rectangle  screen{ MENU_BAR_W, 0.0f, screenWidth_ - MENU_BAR_W, (float)screenHeight_ };
     // Opaque: a readout over a picture of the same place would be two answers at once.
-    DrawRectangle((int)left, 0, (int)width, screenHeight_, Color{ 5, 10, 9, 255 });
+    DrawRectangleRec(screen, t.colors.sensor);
 
-    const float legendW = 200.0f;
-    const float top = 92.0f;
-    const float cellPx = 16.0f;
-    Rectangle   area{ left + 24.0f, top, width - 48.0f - legendW,
-                      (float)screenHeight_ - top - 24.0f };
+    // The grid fills the room the heading and the legend leave, as it was laid out last
+    // frame: the picture is scanned before the legend that lists what is in it is declared.
+    // Before the first layout, a guess at the same room.
+    Rectangle area = sensorArea_;
+    if (area.width <= 0.0f || area.height <= 0.0f)
+        area = { screen.x + Ui::Px(24.0f), Ui::Px(80.0f),
+                 screen.width - Ui::Px(48.0f + t.metrics.sidePanel),
+                 screen.height - Ui::Px(104.0f) };
+    const float cellPx = Ui::Px(16.0f);
 
     // Odd counts, so the ship has a cell of its own in the middle rather than a corner.
     int cols = std::max(9, (int)(area.width / cellPx));
@@ -1526,17 +1347,90 @@ void Game::DrawSensorScreen()
     sensorOrigin_ = { area.x + (area.width - cols * cellPx) * 0.5f,
                       area.y + (area.height - rows * cellPx) * 0.5f };
 
+    // The heading, and beside the grid the legend: what the colours mean, then what the
+    // characters on the screen stand for (#297).
     const std::string across = SensorUnits(sensorRange_);
     const std::string cell = SensorUnits(sensorPicture_.UnitsPerCell());
-    Ui::Text("SENSORS", (int)left + 24, 24, 28, Ui::ACCENT);
-    Ui::Text(TextFormat("%s across  ·  %s a cell  ·  wheel: range  ·  click: select  ·  [V] close",
-                        across.c_str(), cell.c_str()),
-             (int)left + 24, 58, 14, Ui::TEXT_DIM);
+    Ui::Layout&       L = sensorLayout_;
+    L.Begin(desk_.SurfaceFrame(WIN_SENSOR, screen));
+    L.Column(
+        Box().Grow().Pad(t.metrics.padding * 2.0f).Gap(t.metrics.gap),
+        [&]
+        {
+            L.Row(Box().GrowX().Gap(t.metrics.padding).Align(Ui::Align::Start, Ui::Align::End),
+                  [&]
+                  {
+                      L.Text("SENSORS", TextStyle::Heading().Tint(t.colors.accent));
+                      L.Text(across + " across  ·  " + cell +
+                                 " a cell  ·  wheel: range  ·  click: select  ·  [V] close",
+                             TextStyle::Small().Tint(t.colors.dim));
+                  });
+            L.Row(Box().Grow().Gap(t.metrics.padding * 2.0f),
+                  [&]
+                  {
+                      L.Row(Box().Id("grid").Grow(), [] {});
+                      L.Column(
+                          Box()
+                              .Width(Size::Fixed(t.metrics.sidePanel))
+                              .Height(Size::Grow())
+                              .Pad(t.metrics.padding)
+                              .Gap(t.metrics.gap)
+                              .Fill(t.colors.panel)
+                              .Border(t.colors.border, t.metrics.border)
+                              .Radius(t.metrics.radius),
+                          [&]
+                          {
+                              L.Text("ALLEGIANCE", TextStyle::Label());
+                              for (Sensor::Allegiance a :
+                                   { Sensor::Allegiance::Own, Sensor::Allegiance::Friendly,
+                                     Sensor::Allegiance::Neutral, Sensor::Allegiance::Hostile,
+                                     Sensor::Allegiance::Unowned })
+                                  L.Row(Box()
+                                            .GrowX()
+                                            .Gap(t.metrics.gap)
+                                            .Align(Ui::Align::Start, Ui::Align::Center),
+                                        [&]
+                                        {
+                                            L.Row(Box()
+                                                      .Width(Size::Fixed(t.metrics.barHeight))
+                                                      .Height(Size::Fixed(t.metrics.barHeight))
+                                                      .Fill(Sensor::ColorOf(a)),
+                                                  [] {});
+                                            L.Text(Sensor::Word(a), TextStyle::Body());
+                                        });
+                              L.Divider();
+                              L.Text("IN VIEW", TextStyle::Label());
+                              L.Scroll(
+                                  Box().Grow().Id("inview").Gap(t.metrics.rowGap),
+                                  [&]
+                                  {
+                                      if (sensorPicture_.legend.empty())
+                                          L.Text("Nothing within range.",
+                                                 TextStyle::Small().Tint(t.colors.dim));
+                                      for (const Sensor::LegendEntry& l : sensorPicture_.legend)
+                                          L.Row(Box().GrowX().Gap(t.metrics.gap),
+                                                [&]
+                                                {
+                                                    L.Row(Box().Width(Size::Fixed(t.fontSize.body)),
+                                                          [&]
+                                                          {
+                                                              L.Text(std::string(1, l.glyph),
+                                                                     TextStyle::Strong());
+                                                          });
+                                                    L.Text(l.kind, TextStyle::Body());
+                                                });
+                                  });
+                          });
+                  });
+        });
+    L.End();
+    sensorArea_ = L.BoxOf("grid");  // where the grid goes from the next frame on
+    L.Draw();
 
     // The frame, and a faint lattice every fourth cell from the ship, so a distance can be
     // counted off the screen.
     const Rectangle grid{ sensorOrigin_.x, sensorOrigin_.y, cols * cellPx, rows * cellPx };
-    DrawRectangleLinesEx(grid, 1.0f, Fade(Ui::PANEL_BORDER, 0.7f));
+    DrawRectangleLinesEx(grid, 1.0f, Fade(t.colors.border, 0.7f));
     // Each character set at its own size from the strong face, so it is as crisp as text.
     const float   glyphPx = (float)Ui::FontPx(cellPx * 1.15f);
     const int     cx = cols / 2, cy = rows / 2;
@@ -1554,7 +1448,7 @@ void Game::DrawSensorScreen()
             {
                 if ((x - cx) % 4 == 0 && (y - cy) % 4 == 0)
                     DrawRectangleV({ mid.x - 0.5f, mid.y - 0.5f }, { 1.0f, 1.0f },
-                                   Fade(Ui::TEXT_DIM, 0.45f));
+                                   Fade(t.colors.dim, 0.45f));
                 continue;
             }
             const std::string_view glyph(&c.glyph, 1);
@@ -1563,7 +1457,7 @@ void Game::DrawSensorScreen()
                            glyphPx, Sensor::ColorOf(c.allegiance));
             const Rectangle box{ px, py, cellPx, cellPx };
             if (c.id != 0 && c.id == selId)
-                DrawRectangleLinesEx(box, 1.0f, WHITE);
+                DrawRectangleLinesEx(box, 1.0f, t.colors.text);
             if (c.id != 0 && Ui::MouseOver(box))
                 hoverId = c.id;
         }
@@ -1576,38 +1470,13 @@ void Game::DrawSensorScreen()
             {
                 const float       d = std::hypot(e.pos.x - own.pos.x, e.pos.y - own.pos.y);
                 const std::string dist = SensorUnits(d);
-                const char*       label =
-                    TextFormat("%s  %s", e.name.empty() ? Overview::KindWord(e) : e.name.c_str(),
-                               dist.c_str());
-                Ui::Text(label, (int)mouse.x + 14, (int)mouse.y - 6, 14, Ui::TEXT);
+                const std::string label =
+                    (e.name.empty() ? std::string(Overview::KindWord(e)) : e.name) + "  " + dist;
+                const float px = (float)Ui::FontPx(Ui::Px(t.fontSize.body));
+                Ui::DrawString(Ui::Face::Regular, label,
+                               { mouse.x + Ui::Px(14.0f), mouse.y - px * 0.5f }, px, t.colors.text);
                 break;
             }
-
-    // The legend: what the colours mean, then what the characters on the screen stand for.
-    int lx = (int)(area.x + area.width + 24.0f);
-    int ly = (int)top;
-    Ui::Text("ALLEGIANCE", lx, ly, 14, Ui::TEXT_DIM);
-    ly += 22;
-    for (Sensor::Allegiance a :
-         { Sensor::Allegiance::Own, Sensor::Allegiance::Friendly, Sensor::Allegiance::Neutral,
-           Sensor::Allegiance::Hostile, Sensor::Allegiance::Unowned })
-    {
-        DrawRectangle(lx, ly + 3, 10, 10, Sensor::ColorOf(a));
-        Ui::Text(Sensor::Word(a), lx + 18, ly, 14, Ui::TEXT);
-        ly += 20;
-    }
-    ly += 14;
-    Ui::Text("IN VIEW", lx, ly, 14, Ui::TEXT_DIM);
-    ly += 22;
-    for (const Sensor::LegendEntry& l : sensorPicture_.legend)
-    {
-        if (ly > screenHeight_ - 40)
-            break;
-        Ui::DrawString(Ui::Face::Strong, std::string_view(&l.glyph, 1),
-                       { (float)lx, (float)ly - 1.0f }, 16.0f, Ui::TEXT);
-        Ui::Text(l.kind, lx + 18, ly, 14, Ui::TEXT);
-        ly += 20;
-    }
 }
 
 bool Game::SensorPick(Vector2 screen, int& id, Vector2& world) const

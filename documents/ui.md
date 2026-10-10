@@ -240,10 +240,57 @@ mouse into calls.
 
 ## Screens cover the windows
 
-A spec with `covers = true` -- the map, the sensor screen, the station -- hides every window
-on a lower layer while it is open: they are neither drawn nor under the cursor
-(`DeskLayout::Covered`). The map is drawn translucent over the world, and the panels used to
-show through it. The menu bar is on a higher layer and stays.
+A spec with `covers = true` -- the map, the sensor screen -- hides every window on a lower
+layer while it is open: they are neither drawn nor under the cursor (`DeskLayout::Covered`).
+The map is drawn translucent over the world, and the panels used to show through it. The
+menu bar is on a higher layer and stays.
+
+A screen is a picture with furniture around it. The furniture -- the heading, the legend,
+the news -- is a `Ui::Layout` over the whole screen, with a box (`Id("graph")`, `Id("grid")`)
+that takes whatever room it leaves; the picture is drawn by hand in `BoxOf` that box, as the
+radar's scope is in its window. The layout gets its mouse from `desk_.SurfaceFrame(id,
+area)`, so the news scrolls only while the map owns the mouse. A side column is
+`metrics.sidePanel` wide, and its text wraps: a long line in the news used to run off the
+right of the screen. When the picture has to be made before the legend that lists what is in
+it (the sensor screen scans, then lists what it found), it uses the box from the frame
+before, and a guess on the first frame.
+
+## Where a window belongs
+
+Some windows only mean something in one place: a market is the station's, an overview looks
+at space. A spec says so with `context` (`"docked"`, `"space"`; empty for everywhere), and the
+game turns the contexts on and off at the start of every frame
+(`desk_.SetContext(CTX_DOCKED, docked)`). Out of its context a window is closed, off the menu
+bar and never under the cursor, but **whether it was open is remembered**: undocking puts the
+market away and docking again brings it back where it was, and the file keeps it as the
+player left it, because where the player is is not something they arranged. Every context is
+off until it is turned on. Opening a window out of its context (`--open market` while flying)
+only promises to open it when the context returns. The rule is `DeskLayout`'s, and
+`desk_tests.cpp` holds it.
+
+## Docked
+
+Docked, there is no world to draw: the station's hall stands in for it (`DrawStationHall`,
+`colors.backdrop`, the station's name large and quiet), and the windows stand in the hall.
+The station is not a screen any more but windows in the `docked` context, each resizable, and
+grouped or stacked as tabs like any other:
+
+| Window | Id | What it is for |
+|---|---|---|
+| Station | `station` | whose it is and what they think of this pilot, the account, a bounty to pay, **Undock** |
+| Market | `market` | a table of commodities (price, hold, what the hold is worth here); sell an amount or all |
+| Hangar | `hangar` | a table of hulls (flown, owned, or the price here); switch, or buy |
+| Missions | `missions` | the same window as in space, opened on the board's offers or on a mission to hand in |
+
+Status, missions, settings and the map are in no context and stay; the selected item, the
+overview, the radar and the sensor screen are `space`'s and come back on undocking as they
+were. The station window always opens on docking, because it is where undocking is; the
+missions window opens when the station has work or a mission can be handed in.
+
+What the market and hangar list is `StationList` (`src/game/core/StationList.h`), tested in
+`station_list_tests.cpp`: a sale pays the price times the trading skill times the standing
+multiplier, the server's sum, and a hull whose hold is smaller than the cargo, or that costs
+more than the account holds, says so instead of offering a button the server would refuse.
 
 ## Theme and scale
 
@@ -276,14 +323,17 @@ no window is written against Clay itself.
 ## Still placed by hand
 
 On `Ui::Layout`: status, overview, the selected item, missions, radar (its toolbar; the
-scope is a picture in a box the layout gives), settings, and the map's name field. F10's
-panel and the screens (map, sensor, station) still draw with coordinates. They take the font
-and the theme's colours already; they move onto `Ui::Layout` one at a time, and then follow
-the scale inside as well as outside.
+scope is a picture in a box the layout gives), settings, the station, market and hangar,
+and the map's and the sensor screen's heading, legend and news. The pictures themselves --
+the map's nodes and their labels, the sensor grid, the radar's scope -- are drawn by hand in
+the box their layout gives them. F10's panel is the one window still placed with
+coordinates.
 
 ## Seeing a window
 
 Synthetic input does not reach the client's window, so a picture of one is asked for on the
 command line: `econspace connect ... --open radar,missions,settings --uiscale 1.5 --shot
 f.png`. `--open` takes the desk's ids, and opening a window this way is remembered in
-`ui_layout.json` like opening it by hand.
+`ui_layout.json` like opening it by hand. The docked windows are there once the ship is
+docked: `--dock` flies to the nearest station and docks, so `--dock --frames 900 --shot
+s.png` is a picture of them.

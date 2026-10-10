@@ -615,3 +615,64 @@ TEST_CASE("Desk: a dragged window snaps against the menu bar, and is not grouped
     CHECK(d.Rect(w).x == doctest::Approx(46));
     CHECK(d.Group(w) == std::vector<int>{ w });  // an edge, not a group
 }
+
+TEST_CASE("Desk: a window in a context is there only while it is on, and opens as it was left")
+{
+    DeskLayout d;
+    WindowSpec market = Panel("market", Anchor::TopRight, { 16, 16, 300, 320 });
+    market.context = "docked";
+    WindowSpec hangar = Panel("hangar", Anchor::TopRight, { 16, 344, 300, 300 });
+    hangar.context = "docked";
+    WindowSpec overview = Panel("overview", Anchor::TopRight, { 16, 16, 300, 376 });
+    overview.context = "space";
+    const int m = d.Add(market, true);
+    const int h = d.Add(hangar, false);
+    const int o = d.Add(overview, true);
+    const int s = d.Add(Panel("status", Anchor::TopLeft, { 56, 16, 264, 312 }), true);
+
+    // Every context starts off: nothing in one is open yet, and the rest are as they were.
+    CHECK_FALSE(d.IsOpen(m));
+    CHECK_FALSE(d.IsOpen(o));
+    CHECK(d.IsOpen(s));
+    CHECK(d.HitTest({ 1100, 100 }) == DeskLayout::NONE);
+
+    // Flying: the overview is there; the market is not, and opening it only promises.
+    d.SetContext("space", true);
+    CHECK(d.IsOpen(o));
+    d.SetOpen(h, true);
+    CHECK_FALSE(d.IsOpen(h));
+    CHECK(d.TakeChanged());
+
+    // Docked: the station's windows open -- the one opened in space too -- and the
+    // overview goes, remembered.
+    d.SetContext("space", false);
+    d.SetContext("docked", true);
+    CHECK(d.IsOpen(m));
+    CHECK(d.IsOpen(h));
+    CHECK_FALSE(d.IsOpen(o));
+    CHECK(d.HitTest({ 1100, 100 }) == m);
+    // Nothing the player arranged changed: where they are is not a layout.
+    CHECK_FALSE(d.TakeChanged());
+
+    // Saved while docked, the overview is still open in the file; read back while flying,
+    // the market waits for the next dock.
+    d.SetOpen(m, false);
+    const nlohmann::json saved = d.Save();
+    CHECK(saved["overview"]["open"] == true);
+    CHECK(saved["hangar"]["open"] == true);
+    CHECK(saved["market"]["open"] == false);
+
+    DeskLayout again;
+    const int  m2 = again.Add(market, true);
+    const int  h2 = again.Add(hangar, false);
+    const int  o2 = again.Add(overview, false);
+    again.Load(saved);
+    again.SetContext("space", true);
+    CHECK(again.IsOpen(o2));
+    CHECK_FALSE(again.IsOpen(h2));
+    again.SetContext("space", false);
+    again.SetContext("docked", true);
+    CHECK(again.IsOpen(h2));
+    CHECK_FALSE(again.IsOpen(m2));
+    CHECK_FALSE(again.IsOpen(o2));
+}

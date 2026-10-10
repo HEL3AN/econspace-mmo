@@ -290,7 +290,7 @@ std::vector<Desk::MenuSlot> Desk::MenuSlots() const
 {
     std::vector<MenuSlot> slots;
     for (int h = 0; h < layout_.Count(); h++)
-        if (!layout_.Spec(h).menuLabel.empty())
+        if (!layout_.Spec(h).menuLabel.empty() && layout_.Available(h))
             slots.push_back({ layout_.Spec(h).id, layout_.Spec(h).menuLabel, layout_.IsOpen(h) });
     return slots;
 }

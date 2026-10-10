@@ -68,6 +68,9 @@ public:
     // Opens or closes it -- except a tab hidden behind another, which is brought to the front.
     void Toggle(const std::string& id);
     bool Owns(const std::string& id) const;  // owns the mouse this frame
+    // Where the player is, for the windows that belong somewhere (WindowSpec::context): the
+    // station's windows are there while docked, space's while flying. Before BeginFrame.
+    void SetContext(const std::string& name, bool active) { layout_.SetContext(name, active); }
     bool WorldOwnsMouse() const { return layout_.Owner() == DeskLayout::NONE; }
     // A frame for a surface that lays out a field of its own (the map's name field): its
     // area, whether it owns the mouse, and the keyboard focus.
@@ -80,7 +83,8 @@ public:
     bool   KeyboardTaken() const { return focus_.Taken(); }
     void   ResetLayout() { layout_.Reset(); }
 
-    // The menu bar's buttons, in the order they were registered.
+    // The menu bar's buttons, in the order they were registered: those in a context that
+    // is on, or in none.
     struct MenuSlot
     {
         std::string id;

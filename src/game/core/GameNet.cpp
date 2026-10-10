@@ -345,12 +345,26 @@ void Game::BuildClientSnapshot()
             {
                 mode_ = GameMode::Docked;
                 dockedStation_ = s;
+                // The station's windows come back as they were left (#297); its own window
+                // always, because it is where undocking is. The missions window opens on
+                // what there is to do here: a mission to hand in, or the board's offers.
+                desk_.SetOpen(WIN_STATION, true);
+                bool ready = false;
+                for (const Proto::MissionView& m : snapshot_.missionActive)
+                    ready = ready || m.completable;
+                if (ready || !snapshot_.missionOffers.empty())
+                {
+                    missionsTab_ = ready ? 0 : 1;
+                    desk_.SetOpen(WIN_MISSIONS, true);
+                }
+                hangarSel_ = -1;  // the hull being flown, until another is chosen
             }
         }
         else if (!p.docked && mode_ == GameMode::Docked)
         {
             mode_ = GameMode::Flying;
             dockedStation_ = nullptr;
+            missionsTab_ = 0;  // the board was the station's
         }
     }
 }

@@ -66,6 +66,11 @@ struct WindowSpec
     // A surface whose edges a dragged window snaps to (the menu bar). A placed window always
     // is one; a surface that covers the view or comes and goes under the cursor is not.
     bool snapTarget = false;
+    // Where it belongs: empty for everywhere, otherwise a context the game turns on and off
+    // ("docked", "space"). Out of its context a window is closed and not on the menu bar --
+    // a market is the station's, an overview is space's -- and whether it was open is
+    // remembered, saved as it was, and given back when the context returns.
+    std::string context;
 };
 
 // The smallest move, no longer than `reach` on either axis, that lays an edge of one of
@@ -90,8 +95,18 @@ public:
     const WindowSpec& Spec(int h) const { return entries_[h].spec; }
 
     bool IsOpen(int h) const { return entries_[h].open; }
+    // Out of its context, opening a window only promises to open it when the context returns.
     void SetOpen(int h, bool open);
     void Raise(int h);  // to the front of its layer
+
+    // Turns a context on or off (WindowSpec::context). Off, its open windows close and are
+    // remembered; on, they open again where they were. Nothing saved changes either way: a
+    // context is where the player is, not something they arranged. Every context is off
+    // until it is turned on.
+    void SetContext(const std::string& name, bool active);
+    bool ContextActive(const std::string& name) const;
+    bool Available(int h) const;  // in a context that is on, or in none
+
     // Every window, bottom to top: by layer, then by when it was raised.
     std::vector<int> Order() const;
     // Open, but under something on a higher layer that covers the view: not drawn, and
@@ -223,6 +238,7 @@ private:
         int        group = 0;  // 0: in no group
         bool       pinned = false;
         bool       collapsed = false;
+        bool       held = false;  // open, but out of its context: opens when it returns
     };
 
     bool      Placed(const Entry& e) const { return e.spec.place.width > 0.0f; }
@@ -242,17 +258,18 @@ private:
         std::vector<Rectangle> start;    // where each was when the drag began
     };
 
-    std::vector<Entry> entries_;
-    int                nextZ_ = 0;
-    float              screenW_ = 1280.0f, screenH_ = 720.0f;
-    float              unit_ = 1.0f;
-    int                owner_ = NONE;
-    bool               captured_ = false;
-    bool               changed_ = false;
-    float              titleUnits_ = 26.0f;
-    float              snapUnits_ = 12.0f;
-    int                nextStack_ = 0, nextTab_ = 0, nextGroup_ = 0;
-    Move               move_;
+    std::vector<Entry>       entries_;
+    int                      nextZ_ = 0;
+    float                    screenW_ = 1280.0f, screenH_ = 720.0f;
+    float                    unit_ = 1.0f;
+    int                      owner_ = NONE;
+    bool                     captured_ = false;
+    bool                     changed_ = false;
+    float                    titleUnits_ = 26.0f;
+    float                    snapUnits_ = 12.0f;
+    int                      nextStack_ = 0, nextTab_ = 0, nextGroup_ = 0;
+    Move                     move_;
+    std::vector<std::string> contexts_;  // the ones that are on
 };
 
 }  // namespace Ui

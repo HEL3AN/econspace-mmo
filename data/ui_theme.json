@@ -12,7 +12,10 @@
         "money": "#FFCB00",
         "track": "#5056646E",
         "hover": "#5CAAE828",
-        "selected": "#5CAAE838"
+        "selected": "#5CAAE838",
+        "backdrop": "#08090E",
+        "shade": "#06080EEB",
+        "sensor": "#050A09"
     },
     "standing": {
         "own": "#78EB82",
@@ -34,7 +37,8 @@
         "rowHeight": 20,
         "scrollbar": 4,
         "snap": 12,
-        "tabWidth": 112
+        "tabWidth": 112,
+        "sidePanel": 240
     },
     "fontSize": {
         "small": 11,
