@@ -147,6 +147,13 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     if (c.debugMoney)
         s.account.AddMoney(1000.0);
 
+    // Naming the system the ship is in (#145), as its discoverer. Not a station verb: the
+    // map offers it in flight, and filed under the docked ones it was dropped without a
+    // word for everyone not at a station (#308). The server says why it refuses, in the
+    // journal; an accepted name reaches everyone in the galaxy index.
+    if (!c.nameSystem.empty())
+        sim.NameSystem(s, c.nameSystem);
+
     // Station trade/hangar: sell, refit, buy, pay off bounty. Account effects
     // (money/skill/reputation/bounty) are applied by the core in account_ (server-authoritative).
     if (s.IsDocked())
@@ -162,8 +169,6 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
             sim.SwitchShip(s, c.refitShip);  // only to a ship this account owns (#5)
         if (c.buyShip >= 0)
             sim.BuyShip(s, c.buyShip);  // purchase (deducts money)
-        if (!c.nameSystem.empty())
-            sim.NameSystem(s, c.nameSystem);  // as the discoverer (#145)
         if (c.payBountyFaction >= 0)
             sim.PayBounty(s, (FactionId)c.payBountyFaction);  // clear bounty
         if (c.acceptOffer >= 0)
@@ -912,6 +917,11 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed)
         if (sim.TakeChartsChanged())
         {
             BroadcastUniverse(clients, sim, net);
+            // A system charted or named is a claim made once, for good: it is written now
+            // rather than at the next checkpoint, so a crash cannot take it back (#308).
+            // It happens a handful of times in a session, so the write costs nothing.
+            sim.SaveWorld(worldPath);
+            worldSaveAcc = 0.0;
             galaxyAcc = 1.0;  // and the statistics that now include it, straight away
         }
         if (galaxyAcc >= 1.0)
@@ -1126,6 +1136,103 @@ static int HostSelftest()
            gotLayout ? "OK" : "FAIL", snapHasWorld ? "OK" : "FAIL", moved ? "OK" : "FAIL",
            worldAgreed ? "OK" : "FAIL", deployed ? "OK" : "FAIL");
     return (gotLayout && snapHasWorld && moved && worldAgreed && deployed) ? 0 : 1;
+}
+
+// Naming through the wire (#308): a pilot in flight -- not at a station -- names the system
+// it discovered. A refused name comes back with its reason in the journal the snapshot
+// carries; an accepted one comes back in the galaxy index and survives a save and a load.
+// Run as part of: econserver hosttest.
+static int HostNameSelftest()
+{
+    const std::string dataDir = SIM_DATA_DIR;
+    Simulation        sim;
+    SetupHostSim(sim, dataDir);
+    ClientSession&    s = SetupHostPlayer(sim);
+    const std::string home = s.systemId;
+    std::string       entry;  // the first system beyond the wormhole
+    for (const auto& l : sim.Universe().links)
+        if (l.a == home && l.b.rfind("w1-", 0) == 0)
+            entry = l.b;
+        else if (l.b == home && l.a.rfind("w1-", 0) == 0)
+            entry = l.a;
+    if (entry.empty())
+    {
+        printf("Name selftest: no region system next to %s => FAIL\n", home.c_str());
+        return 1;
+    }
+    s.accountName = "namer";
+    s.ship->SetPilotName("namer");          // as a login sets it
+    sim.ServerEnterSystem(s, entry, home);  // first in: the discoverer
+    sim.TakeChartsChanged();                // charting it is not what is tested
+
+    LocalTransport link;
+    int            lastSeq = 0, lastEvent = 0, seq = 0;
+    std::string    heard;  // what the journal told the client
+    bool           indexSent = false;
+    auto           send = [&](const std::string& name)
+    {
+        Proto::Command c;
+        c.seq = ++seq;
+        c.nameSystem = name;
+        link.Client().Send(Proto::EncodeCommand(c));
+        std::vector<Proto::TradeAck>                  acks;
+        std::map<std::string, std::vector<FireEvent>> fires;
+        HostDrainInputs(link.Server(), sim, s, 1.0f / 60.0f, lastSeq, acks, fires);
+        // As RunHost does it: the index when it changed, the journal in the snapshot.
+        if (sim.TakeChartsChanged())
+        {
+            link.Server().Send(Proto::EncodeUniverse(sim.KnownUniverse()));
+            indexSent = true;
+        }
+        Proto::Snapshot snap = sim.BuildSnapshot(s, s.systemId);
+        snap.events = s.EventsSince(lastEvent);
+        if (!snap.events.empty())
+            lastEvent = snap.events.back().seq;
+        link.Server().Send(Proto::EncodeSnapshot(snap));
+    };
+    auto receive = [&](std::string& nameSeen)
+    {
+        std::string msg;
+        while (link.Client().Poll(msg))
+        {
+            const std::string     t = Proto::MessageType(msg);
+            Proto::Snapshot       snap;
+            WorldLoader::Universe u;
+            if (t == "snap" && Proto::DecodeSnapshot(msg, snap))
+                for (const Ev::Event& e : snap.events)
+                    heard = e.text;
+            else if (t == "universe" && Proto::DecodeUniverse(msg, u))
+                for (const auto& si : u.systems)
+                    if (si.id == entry)
+                        nameSeen = si.name;
+        }
+    };
+
+    std::string seen;
+    send("9 Lives");  // not a name: refused, and the pilot is told why
+    receive(seen);
+    const std::string refusal = heard;
+    const bool        refusedSaid =
+        !indexSent && refusal.rfind("Not named:", 0) == 0 && refusal.size() > 11;
+    const bool inFlight = !s.IsDocked();
+    send("Selftest Haven");
+    receive(seen);
+    const bool named = indexSent && seen == "Selftest Haven";
+
+    const std::string path = std::string(GetApplicationDirectory()) + "nametest_tmp.json";
+    sim.SaveWorld(path);
+    Simulation again;
+    SetupHostSim(again, dataDir, path);
+    bool kept = false;
+    for (const auto& si : again.KnownUniverse().systems)
+        kept = kept || (si.id == entry && si.name == "Selftest Haven");
+    std::remove(path.c_str());
+
+    printf("Name selftest: in-flight %s, refusal-said %s (\"%s\"), named-for-all %s, "
+           "kept %s\n",
+           inFlight ? "OK" : "FAIL", refusedSaid ? "OK" : "FAIL", refusal.c_str(),
+           named ? "OK" : "FAIL", kept ? "OK" : "FAIL");
+    return (inFlight && refusedSaid && named && kept) ? 0 : 1;
 }
 
 // Account persistence smoke test (no network, M4f-3): write the account to a file and
@@ -1397,7 +1504,11 @@ int main(int argc, char** argv)
     // Protocol/TCP regression tests moved to the `tests` target (ctest); here —
     // only server modes and batch simulation.
     if (argc > 1 && std::string(argv[1]) == "hosttest")
-        return HostSelftest();
+    {
+        const int host = HostSelftest();
+        const int name = HostNameSelftest();
+        return host != 0 ? host : name;
+    }
     if (argc > 1 && std::string(argv[1]) == "accttest")
         return AccountSelftest();
     if (argc > 1 && std::string(argv[1]) == "worldtest")
