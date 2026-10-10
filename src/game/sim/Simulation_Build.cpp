@@ -303,13 +303,13 @@ bool Simulation::DamageStructure(SystemState& st, int id, float damage, ClientSe
     }
 
     // Destroyed. Everything about it is read before it is gone.
-    const std::string owner = t->GetOwner();
-    const std::string name = t->GetName();
-    const std::string systemId = st.id;
-    const Vector2     at = t->GetPosition();
-    const float       size = t->GetSize();
-    const Blueprint*  bp = t->GetBlueprint();
-    const bool        wasSite = t->IsBuilding();
+    const std::string          owner = t->GetOwner();
+    const std::string          name = t->GetName();
+    const std::string          systemId = st.id;
+    const Vector2              at = t->GetPosition();
+    const float                size = t->GetSize();
+    const Blueprint*           bp = t->GetBlueprint();
+    const bool                 wasSite = t->IsBuilding();
     const std::optional<Orbit> orbit = t->GetOrbit();  // an orbital outpost's (#318)
     if (crime)
         ChargeAttack(*by, law, true);
