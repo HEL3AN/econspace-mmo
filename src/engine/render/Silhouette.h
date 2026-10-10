@@ -186,25 +186,50 @@ struct Part
         Spin,
         Blink,
         ArcFrom,
-        ArcTo
+        ArcTo,
+        StepX,
+        StepY
     };
+    // `var` is the shape's variable this range follows, or -1 for a roll of its own.
     struct Vary
     {
         Field field;
         float lo, hi;
+        int   var = -1;
     };
     std::vector<Vary>  vary;
     std::vector<Color> palette;
+    int                tintVar = -1;  // the palette's pick follows this variable
     float              chance = 1.0f;
+
+    // A row centred on its own `at` rather than starting there, so a row whose count is a
+    // range stays balanced instead of growing off one end.
+    bool rowCentred = false;
 };
 
 // The part as this object has it: ranges chosen, a colour picked, and false when the part's
 // chance says it is not there. Same seed and salt, same answer, on every client (#240).
-bool Resolve(const Part& p, int seed, int salt, Part& out);
+//
+// `rolls` holds one value in [0, 1) per variable of the shape the part belongs to (see
+// RollVars); without it a part that names a variable rolls on its own.
+bool Resolve(const Part& p, int seed, int salt, Part& out, const float* rolls = nullptr);
 
 struct Shape
 {
     std::vector<Part> parts;
+
+    // Named values rolled once per object and shared by every part that names them (#240):
+    // `"vars": { "tubes": [2, 6], "paint": [[200, 80, 40], [60, 90, 160]] }`, then
+    // `"count": "$tubes"` on the tubes and on their caps, `"tint": "$paint"` on both
+    // stripes. Without them every range is rolled on its own, and a wing's hull and its
+    // trim come out at two different sweeps. In a module the roll is per placed copy.
+    struct Var
+    {
+        std::string        name;
+        float              lo = 0.0f, hi = 0.0f;
+        std::vector<Color> palette;  // set for a colour variable
+    };
+    std::vector<Var> vars;
 
     // How far the body's north pole is tipped toward the viewer, in degrees. It is a
     // property of the body rather than of a part -- every feature on one planet shares
@@ -215,6 +240,9 @@ struct Shape
 
     bool Empty() const { return parts.empty(); }
 };
+
+// One roll per variable of the shape, for this object and this copy.
+std::vector<float> RollVars(const Shape& s, int seed, int salt);
 
 // A part placed in the world: everything the backend needs, with no fractions left in it.
 struct Piece
