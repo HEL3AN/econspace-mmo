@@ -401,8 +401,18 @@ void Simulation::SaveWorld(const std::string& path) const
         for (int f = 0; f < FACTION_COUNT; f++)
         {
             json intel = json::object();
+            // Not what it sees for itself -- its holdings and where its ships are: the
+            // faction looks at those again before it next decides anything, and in a
+            // region the pirates have overrun they are most of the file.
             for (const auto& kv : minds_[f].intel)
+            {
+                const auto st = systems_.find(kv.first);
+                if (st != systems_.end() &&
+                    ((st->second.agg.claimed && st->second.agg.controller == (FactionId)f) ||
+                     st->second.agg.presence[f] >= 1.0f))
+                    continue;
                 intel[kv.first] = IntelJson(kv.second);
+            }
             minds[Factions::Id((FactionId)f)] = { { "intel", std::move(intel) } };
         }
         j["factions"] = std::move(minds);

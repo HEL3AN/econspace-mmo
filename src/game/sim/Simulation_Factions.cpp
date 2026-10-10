@@ -292,10 +292,9 @@ void Simulation::Think(FactionId f)
 {
     const int          fi = (int)f;
     const Temperament& t = Factions::TemperamentOf(f);
-    if (t.appetite <= 0.0f)
-        return;  // holds what it has and reaches for nothing
-    FactionMind& mind = minds_[fi];
+    FactionMind&       mind = minds_[fi];
 
+    // What it sees for itself is never out of date -- and is not saved, for that reason.
     int holdings = 0;
     for (auto& kv : systems_)
     {
@@ -305,6 +304,8 @@ void Simulation::Think(FactionId f)
         if (held || a.presence[fi] >= 1.0f)
             mind.intel[kv.first] = Observe(kv.second);
     }
+    if (t.appetite <= 0.0f)
+        return;  // holds what it has and reaches for nothing
 
     // What it already has under way: one survey of a system at a time, and no more at once
     // than its holdings can send.

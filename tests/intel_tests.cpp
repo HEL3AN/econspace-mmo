@@ -270,10 +270,15 @@ TEST_CASE("what factions know and what they have under way survive a restart (#2
     {
         const auto& was = a->MindOf((FactionId)fi).intel;
         const auto& is = b.MindOf((FactionId)fi).intel;
-        REQUIRE(was.size() == is.size());
+        // All but what it sees for itself, which it looks at again before it decides.
+        for (const auto& kv : is)
+            CHECK(was.count(kv.first) == 1);
         for (const auto& kv : was)
         {
             CAPTURE(kv.first);
+            const SystemAggregate& here = a->SystemById(kv.first)->agg;
+            if ((here.claimed && here.controller == (FactionId)fi) || here.presence[fi] >= 1.0f)
+                continue;
             REQUIRE(is.count(kv.first) == 1);
             const Intel& i = is.at(kv.first);
             CHECK(i.seenAt == doctest::Approx(kv.second.seenAt));
