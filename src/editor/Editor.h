@@ -81,6 +81,9 @@ public:
     // screenshot of the fine detail is taken without a click. Unknown: the grid, and a log
     // line saying so.
     void FocusGallery(const std::string& which, float zoom = 1.0f);
+    // `gallery card ID seed N [sockets]`: which object of the type, and its sockets shown.
+    void SetGallerySeed(int seed) { gallerySeed_ = seed; }
+    void ShowGallerySockets() { gallerySockets_ = true; }
 
 private:
     // Reference to a JSON element: array category and index (star uses index=-1).
@@ -218,7 +221,13 @@ private:
     bool    galleryFocus_ = false;
     float   galleryZoom_ = 1.0f;           // 1 = the object fitted to the view
     Vector2 galleryPan_ = { 0.0f, 0.0f };  // world units, from the object's centre
-    bool    archetypesDirty_ = false;
+    // Which object of the type is drawn ([ and ] step it): a kit and every range decide by
+    // the seed, so one seed says nothing about whether the rules make sense (#240).
+    int gallerySeed_ = 0;
+    // Draw the sockets a type's sections offer, coloured by kind (K): how a kit's choices
+    // are judged -- why a hatch is where it is.
+    bool gallerySockets_ = false;
+    bool archetypesDirty_ = false;
     // Archetype id -> the look keys edited since the last save.
     std::map<std::string, std::set<std::string>> lookEdits_;
 

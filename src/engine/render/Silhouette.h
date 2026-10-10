@@ -260,6 +260,11 @@ struct Part
     bool  section = false;
     float pitch = 0.0f;
 
+    // Draw order (#240): parts are drawn by depth, then by this, then as written. Below 0 is
+    // under the hull -- an engine block whose nozzle shows behind it, a wing beneath the
+    // fuselage -- above 0 on it.
+    int z = 0;
+
     // Only the reflected copy of a mirrored part: how a kit places the twin of a module on a
     // bilateral object, so the module's own shape is reflected and not merely turned.
     bool mirrorOnly = false;
@@ -284,6 +289,9 @@ struct Socket
     // The section's own turn, which a module placed here shares: a derelict that tumbles
     // carries its breaches round with it.
     float spin = 0.0f;
+    // A rim that goes all the way round has no middle: modules on it spread from the place
+    // that faces furthest out from the object instead.
+    bool closed = false;
 };
 
 // One line of a kit: a module (by id, or any carrying a tag), how many, on which sockets.
@@ -297,10 +305,14 @@ struct KitEntry
     float       turn = 0.0f;           // degrees added to the socket's outward direction
     std::string variant;               // pinned; empty: the seed picks one for the whole line
     int         in = -1;               // only on this section (its index); -1: any
-    // How far in from the socket the module's centre sits, in module radii: 1 puts the
-    // whole module on the hull (a hatch, a window), 0 centres it on the edge, -1 hangs it
-    // outside (a docking arm, a dish on a boom).
-    float inset = 1.0f;
+    // How the module meets the socket, by its own bounding box: "on" lies wholly on the
+    // hull with its edge at the hull's (a hatch, a window), "out" starts at the edge and
+    // stands out from it (a docking arm, an engine, a dish on a boom), "centre" is centred
+    // on the socket. A socket inside the hull (`top`) always centres.
+    std::string mount = "on";
+    // Draw order against the rest of the object: below 0 under the hull (engines, wings,
+    // pods hung beneath it), above 0 over it.
+    int z = 1;
 };
 
 // What an archetype says about its modules instead of placing them (#240 phase 3): the
@@ -401,6 +413,8 @@ struct Piece
 
     // Faded out on the lit side of the body it belongs to; the backend knows the light.
     bool onlyDark = false;
+
+    int z = 0;  // draw order after depth (see Part::z)
 
     // A band is not a primitive: it is the visible part of a latitude strip, projected.
     // Stored as a strip -- upper edge and lower edge alternating -- in world coordinates.

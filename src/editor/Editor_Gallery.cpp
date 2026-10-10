@@ -206,6 +206,7 @@ Render::Item Editor::GalleryItem(const Archetype& a, Vector2 pos, float size) co
     it.intensity = galleryIntensity_;
     it.heading = galleryHeading_;
     it.thrusting = galleryThrusting_;
+    it.id = gallerySeed_;
     return it;
 }
 
@@ -241,6 +242,12 @@ void Editor::HandleGalleryInput()
             galleryZoom_ = 1.0f;
             galleryPan_ = { 0.0f, 0.0f };
         }
+        if (IsKeyPressed(KEY_RIGHT_BRACKET))
+            gallerySeed_++;
+        if (IsKeyPressed(KEY_LEFT_BRACKET))
+            gallerySeed_--;
+        if (IsKeyPressed(KEY_K))
+            gallerySockets_ = !gallerySockets_;
         if (overPanel || m.y < kGridTop)
             return;  // the panel and the zoom slider take their own mouse
 
@@ -343,6 +350,29 @@ void Editor::DrawGalleryFocus()
     BeginMode2D(cam);
     Render::Present({ GalleryItem(a, { 0.0f, 0.0f }, size) }, GalleryLighting({ 0.0f, 0.0f }, size),
                     cam, *backend_);
+    if (gallerySockets_)
+    {
+        // Where the sections offer a place, coloured by kind, with a tick for which way it
+        // faces. Ranges are drawn at their low end, as the module box is measured.
+        std::vector<Render::Part> sections;
+        for (const Render::Part& p : a.visual.shape.parts)
+            if (p.section)
+                sections.push_back(p);
+        const float px = 1.0f / cam.zoom;
+        for (const Render::Socket& s : Render::Sockets(sections))
+        {
+            const Color   c = s.type == "edge"  ? Color{ 90, 200, 255, 255 }
+                              : s.type == "end" ? Color{ 255, 170, 60, 255 }
+                              : s.type == "top" ? Color{ 140, 255, 140, 255 }
+                                                : Color{ 230, 120, 255, 255 };
+            const Vector2 at = { s.pos.x * size, s.pos.y * size };
+            DrawCircleV(at, 3.0f * px, c);
+            DrawLineEx(at,
+                       { at.x + cosf(s.angle * DEG2RAD) * 9.0f * px,
+                         at.y + sinf(s.angle * DEG2RAD) * 9.0f * px },
+                       1.5f * px, c);
+        }
+    }
     EndMode2D();
     EndScissorMode();
 }

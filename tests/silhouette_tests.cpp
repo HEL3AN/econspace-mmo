@@ -1231,3 +1231,29 @@ TEST_CASE("a radial kit puts the same module in the same place on every arm (#24
         }
     }
 }
+
+TEST_CASE("a kit mounts a module by its box and draws it in its layer (#240)")
+{
+    std::string error;
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+    // "on": the hatches lie wholly on the hull, inside its edge, however each hatch is drawn
+    // about its own origin.
+    const Render::Shape hull = Parse(R"({
+        "sections": [ { "form": "bar", "length": 2.0, "width": 0.6, "pitch": 0.2 } ],
+        "kit": { "symmetry": "bilateral", "modules": [
+            { "of": "hatch", "on": "edge", "count": 2, "scale": 0.08, "z": 2 } ] },
+        "parts": [] })");
+    for (int seed = 1; seed <= 8; seed++)
+        for (const Render::Piece& p :
+             Render::Compose(hull, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 10.0f)))
+            if (p.z == 2)
+                CHECK(std::fabs(p.pos.y) <= 30.0f + 0.5f);  // inside the 60-wide hull
+
+    // A part below the hull is drawn before it, whatever order it was written in.
+    const Render::Shape layered = Parse(R"([
+        { "form": "disc", "radius": 1.0 },
+        { "form": "bar", "role": "panel", "at": [-1, 0], "z": -1 } ])");
+    const auto pieces = Render::Compose(layered, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 1.0f));
+    REQUIRE(pieces.size() == 2);
+    CHECK(pieces[0].form == Render::Form::Bar);
+}

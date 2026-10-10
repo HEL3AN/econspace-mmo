@@ -47,6 +47,10 @@ int main(int argc, char** argv)
         }
         else if (arg == "card" && i + 1 < argc)
             card = argv[++i];
+        else if (arg == "seed" && i + 1 < argc)
+            editor.SetGallerySeed(std::atoi(argv[++i]));  // which object of a type
+        else if (arg == "sockets")
+            editor.ShowGallerySockets();
         else if (arg == "pack" && i + 1 < argc)
             pack = argv[++i];
         else if (arg == "seeds" && i + 1 < argc)
