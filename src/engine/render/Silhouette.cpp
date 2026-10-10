@@ -776,6 +776,10 @@ float Extent(const Shape& s)
             case Form::Bar:
             case Form::Lattice: own = std::fmax(p.length, p.width) * 0.5f; break;
         }
+        // A module is as big as its scale, not as its unused `radius` (#240): read as a
+        // part, every rock in a belt reached a whole object radius past its place.
+        if (!p.module.empty())
+            own = p.scale;
         // A surface part sits on the unit sphere whatever its `at` says.
         if (p.surface)
         {
