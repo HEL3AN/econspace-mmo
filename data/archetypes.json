@@ -53,12 +53,12 @@
             "size": 137500,
             "light": { "radius": 3120000, "intensity": 1.10 },
             "shape": { "vars": { "eq": [0, 360] }, "parts": [
-                {"form": "disc", "radius": 2.46, "role": "hull", "soft": true, "alpha": 0.32},
-                {"form": "disc", "radius": 1.58, "role": "hull", "soft": true, "alpha": 0.4},
-                {"form": "disc", "radius": 1.18, "role": "trim", "soft": true, "tint": [225, 240, 255], "alpha": 0.5, "minPixels": 30},
-                {"module": "nature.prominence", "variant": "hedgerow", "at": [1.1, 0], "pivot": [-1.1, 0], "angle": "$eq", "scale": [0.26, 0.34], "tint": [235, 245, 255], "minPixels": 50, "chance": 0.5},
-                {"module": "nature.corona-streamer", "except": ["fan"], "at": [1.3, 0], "pivot": [-1.3, 0], "angle": "$eq+90", "repeat": 2, "scale": [0.55, 0.7], "tint": [215, 232, 255], "minPixels": 50},
-                {"form": "disc", "radius": 1.0, "role": "hull"}
+                {"form": "disc", "radius": 2.0, "role": "hull", "soft": true, "alpha": 0.34},
+                {"form": "disc", "radius": 1.5, "role": "trim", "soft": true, "tint": [170, 210, 255], "alpha": 0.6},
+                {"form": "disc", "radius": 1.18, "role": "light", "soft": true, "tint": [225, 240, 255], "alpha": 0.85},
+                {"module": "nature.corona-streamer", "except": ["fan"], "at": [1.3, 0], "pivot": [-1.3, 0], "angle": "$eq+90", "repeat": 2, "scale": [0.55, 0.7], "tint": [110, 175, 255], "minPixels": 50},
+                {"form": "disc", "radius": 1.0, "role": "hull"},
+                {"form": "disc", "radius": 0.9, "role": "light", "soft": true, "tint": [245, 250, 255], "alpha": 0.95}
             ] },
             "components": {}
         },
@@ -99,7 +99,7 @@
             "layer": 1,
             "size": 36000,
             "material": "hull",
-            "shape": { "tilt": 20, "vars": { "s": [0, 360] }, "parts": [
+            "shape": { "tilt": 20, "vars": { "s": [0, 360], "g": [-22, -15] }, "parts": [
                 {"form": "disc", "radius": 1.0, "role": "hull"},
                 {"form": "band", "lat": 52, "width": 10, "role": "panel", "minPixels": 30},
                 {"form": "band", "lat": 30, "width": 12, "role": "panel", "minPixels": 30},
@@ -107,9 +107,13 @@
                 {"form": "band", "lat": -6, "width": 14, "role": "panel", "minPixels": 30},
                 {"form": "band", "lat": -26, "width": 9, "role": "trim", "minPixels": 40},
                 {"form": "band", "lat": -46, "width": 12, "role": "panel", "minPixels": 30},
-                {"module": "planet.storm", "variant": "vortex", "lat": [-22, -14], "lon": "$s", "angle": [-8, 8], "scale": [0.36, 0.44], "spin": 9.0, "minPixels": 40},
-                {"module": "planet.storm", "variant": "vortex", "lat": [32, 38], "lon": "$s+170", "angle": [-8, 8], "scale": [0.16, 0.2], "spin": 9.0, "minPixels": 60},
-                {"module": "planet.storm", "lat": [-40, -32], "lon": "$s+260", "scale": [0.12, 0.16], "spin": 9.0, "minPixels": 80, "chance": 0.6},
+                {"form": "disc", "lat": "$g", "lon": "$s-6", "radius": 0.15, "role": "trim", "tint": [238, 222, 192], "alpha": 0.45, "spin": 9.0, "minPixels": 30},
+                {"form": "disc", "lat": "$g", "lon": "$s+6", "radius": 0.15, "role": "trim", "tint": [238, 222, 192], "alpha": 0.45, "spin": 9.0, "minPixels": 30},
+                {"module": "planet.storm", "variant": "vortex", "lat": "$g", "lon": "$s", "angle": [-8, 8], "scale": [0.32, 0.36], "spin": 9.0, "minPixels": 30},
+                {"module": "planet.storm", "variant": "vortex", "lat": [28, 34], "lon": "$s+180", "angle": [-8, 8], "scale": [0.24, 0.28], "spin": 9.0, "minPixels": 40},
+                {"module": "planet.storm", "variant": "cyclone", "lat": [38, 44], "lon": "$s+95", "angle": [-8, 8], "scale": [0.14, 0.17], "spin": 9.0, "minPixels": 50},
+                {"module": "planet.storm", "variant": "vortex", "lat": [-42, -36], "lon": "$s+270", "angle": [-8, 8], "scale": [0.18, 0.22], "spin": 9.0, "minPixels": 50},
+                {"module": "planet.storm", "variant": "thunderhead", "lat": [6, 12], "lon": "$s+320", "scale": [0.1, 0.13], "spin": 9.0, "minPixels": 80, "chance": 0.6},
                 {"form": "disc", "radius": 0.075, "role": "trim", "repeat": 3, "orbitRadius": 1.45, "orbitPeriod": 3000.0, "orbitTilt": 0.28, "jitterScale": 0.3, "minPixels": 50}
             ] },
             "components": {}
@@ -632,8 +636,8 @@
             "material": "hull",
             "shape": {
                 "sections": [
-                    {"form": "arc", "radius": 1.0, "width": 0.07, "from": -40, "to": 40, "angle": 45, "repeat": 4, "role": "trim", "pitch": 0.22},
-                    {"form": "bar", "at": [1.06, 0.0], "angle": 180, "repeat": 4, "length": 0.46, "width": 0.26, "role": "panel", "pitch": 0.12, "z": 1}
+                    {"form": "arc", "radius": 0.98, "width": 0.22, "from": -40, "to": 40, "angle": 45, "repeat": 4, "role": "hull", "pitch": 0.22},
+                    {"form": "bar", "at": [1.04, 0.0], "angle": 180, "repeat": 4, "length": 0.54, "width": 0.36, "role": "panel", "pitch": 0.12, "z": 1}
                 ],
                 "kit": { "symmetry": "radial", "plain": 0.45, "modules": [
                     {"of": "gate.pylon", "in": 1, "on": "end", "count": 1, "mount": "out", "scale": 0.26},
@@ -641,7 +645,7 @@
                     {"of": "gate.warning-beacon", "in": 1, "on": "top", "count": [0, 1], "scale": 0.075, "z": 2}
                 ] },
                 "parts": [
-                    {"module": "gate.ring-segment", "at": [0.7071, 0.7071], "angle": 45, "repeat": 4, "scale": 0.714, "z": -1},
+                    {"module": "gate.ring-segment", "at": [0.7071, 0.7071], "angle": 45, "repeat": 4, "scale": 0.714},
                     {"module": "gate.field", "scale": 0.74, "z": -2, "minPixels": 30},
                     {"form": "ring", "radius": 0.78, "width": 0.05, "role": "trim", "minPixels": 34, "spin": -14.0},
                     {"module": "gate.buoy", "at": [1.7, 0.3], "scale": 0.08, "mirror": true, "repeat": 2, "row": {"count": 2, "step": [0.36, 0.0]}}
