@@ -147,6 +147,7 @@ That process speaks MCP on stdio. To hand it to Claude Code: `claude mcp add eco
 | `F` | weapon on / off | | wheel | zoom, from a hull to a whole system |
 | left click | select | | middle-drag | look away from the ship |
 | right click | actions on an object — approach, **orbit**, **keep at range**, warp, dock, jump, mine | | `C` | camera back to the ship |
+| | | | `V` | sensor screen — the surroundings on a grid, coloured by how you stand with them; wheel steps the range |
 | | | | `F2` | shapes ⇄ glyphs |
 | | | | `F10` | screen treatment settings |
 | `F1` | debug: add money | | `F11` | fullscreen |

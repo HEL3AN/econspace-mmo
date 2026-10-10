@@ -1,5 +1,6 @@
 // EconSpace — entry point. All logic lives in the Game class.
 //   econspace connect <host> <port> <name> <secret> [--zoom Z] [--shapes] [--warp X Y] [--map]
+//   [--sensor [RANGE]]
 //   [--shot FILE [--frames N]] [--nohud] —
 //   connect to an econserver host
 //
@@ -26,6 +27,9 @@ static int Usage(const char* exe)
                  "      --shapes   start on the shape backend (F2 switches)\n"
                  "      --warp X Y warp to the point (X, Y) two seconds after joining\n"
                  "      --map      start with the galaxy map open (G/Esc closes it)\n"
+                 "      --sensor [RANGE]\n"
+                 "                 start with the sensor screen open (V closes it), RANGE\n"
+                 "                 world units across\n"
                  "      --shot FILE [--frames N]\n"
                  "                 save frame N (default 60) to FILE as a PNG and exit\n"
                  "      --nohud    draw the world without the HUD\n"
@@ -51,6 +55,8 @@ int main(int argc, char** argv)
     bool              shapes = false;
     bool              warp = false;
     bool              map = false;
+    bool              sensor = false;
+    float             sensorRange = 0.0f;  // 0: the default
     Vector2           warpTo = { 0.0f, 0.0f };
     std::string       shot;
     int               frames = 60;
@@ -62,6 +68,12 @@ int main(int argc, char** argv)
             shapes = true;
         else if (std::strcmp(argv[i], "--map") == 0)
             map = true;
+        else if (std::strcmp(argv[i], "--sensor") == 0)
+        {
+            sensor = true;
+            if (i + 1 < argc && argv[i + 1][0] != '-')
+                sensorRange = (float)std::atof(argv[++i]);
+        }
         else if (std::strcmp(argv[i], "--shot") == 0 && i + 1 < argc)
             shot = argv[++i];
         else if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc)
@@ -114,6 +126,8 @@ int main(int argc, char** argv)
             game.StartWithWarp(warpTo);
         if (map)
             game.StartOnMap();
+        if (sensor)
+            game.StartOnSensor(sensorRange);
         if (!shot.empty())
             game.TakeShot(shot, frames);
         if (nohud)

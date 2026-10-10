@@ -70,31 +70,44 @@ GridBackend::GridBackend(int width, int height, float span, Vector2 center)
       span_(span > 0.0f ? span : 1.0f), center_(center)
 {
     cells_.assign((size_t)width_ * (size_t)height_, ' ');
+    ids_.assign((size_t)width_ * (size_t)height_, 0);
 }
 
 void GridBackend::Begin()
 {
     cells_.assign((size_t)width_ * (size_t)height_, ' ');
+    ids_.assign((size_t)width_ * (size_t)height_, 0);
 }
 
-void GridBackend::Draw(const Item& item)
+bool GridBackend::CellOf(Vector2 world, int& x, int& y) const
 {
     // Square cells: the vertical scale follows the horizontal one rather than stretching
     // to fill the height, or a circular orbit would come out as an ellipse.
     const float unitsPerCell = span_ / (float)width_;
 
-    const float dx = item.pos.x - center_.x;
-    const float dy = item.pos.y - center_.y;
+    x = (int)std::lround((world.x - center_.x) / unitsPerCell) + width_ / 2;
+    y = (int)std::lround((world.y - center_.y) / unitsPerCell) + height_ / 2;
+    return x >= 0 && x < width_ && y >= 0 && y < height_;
+}
 
-    const int cx = (int)std::lround(dx / unitsPerCell) + width_ / 2;
-    const int cy = (int)std::lround(dy / unitsPerCell) + height_ / 2;
-
-    if (cx < 0 || cx >= width_ || cy < 0 || cy >= height_)
+void GridBackend::Draw(const Item& item)
+{
+    int cx = 0, cy = 0;
+    if (!CellOf(item.pos, cx, cy))
         return;  // off-screen
 
     // Later items win the cell. Present() has already sorted by layer, so this is the
     // higher layer overwriting the lower one — a station in front of a nebula.
-    cells_[(size_t)cy * (size_t)width_ + (size_t)cx] = item.glyph.empty() ? '?' : item.glyph[0];
+    const size_t i = (size_t)cy * (size_t)width_ + (size_t)cx;
+    cells_[i] = item.glyph.empty() ? '?' : item.glyph[0];
+    ids_[i] = item.id;
+}
+
+int GridBackend::IdAt(int x, int y) const
+{
+    if (x < 0 || x >= width_ || y < 0 || y >= height_)
+        return 0;
+    return ids_[(size_t)y * (size_t)width_ + (size_t)x];
 }
 
 char GridBackend::At(int x, int y) const

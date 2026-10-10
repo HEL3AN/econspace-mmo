@@ -320,7 +320,8 @@ void Game::HandleInput(float dt)
     // The context menu is handled first — it sits above the whole UI.
     // We call all handlers explicitly so short-circuit || doesn't skip them.
     bool overMenu = contextMenu_.Update();
-    bool overWin = !galaxyMapOpen_ && HandleWindows();  // the map is modal
+    // The map is modal; the sensor screen covers the windows, so they take no clicks.
+    bool overWin = !galaxyMapOpen_ && !sensorOpen_ && HandleWindows();
     bool overBar = HandleMenuBar();
     bool overUi = overMenu || overWin || overBar || galaxyMapOpen_;
 
@@ -352,6 +353,11 @@ void Game::HandleInput(float dt)
 
     if (IsKeyPressed(KEY_G))
         galaxyMapOpen_ = !galaxyMapOpen_;
+    // The sensor screen (#123). Not Esc: raylib quits on it.
+    if (IsKeyPressed(KEY_V))
+        sensorOpen_ = !sensorOpen_;
+    // While it is open, the mouse points at cells rather than at the world behind them.
+    const bool onSensor = sensorOpen_ && !overUi;
     if (galaxyMapOpen_ && IsKeyPressed(KEY_ESCAPE))
         galaxyMapOpen_ = false;
     if (galaxyMapOpen_ && IsKeyPressed(KEY_N) && CanNameHere())
@@ -366,14 +372,16 @@ void Game::HandleInput(float dt)
 
     // Over a window, the wheel and the drag go to the window (the radar has its own).
     float wheel = GetMouseWheelMove();
-    if (wheel != 0.0f && !overUi)
+    if (wheel != 0.0f && onSensor)
+        sensorRange_ = Sensor::StepRange(sensorRange_, wheel > 0.0f ? -1 : 1);  // in is closer
+    else if (wheel != 0.0f && !overUi && !sensorOpen_)
         rig_.Zoom(wheel, GetMousePosition());
 
     // Middle button looks away; C comes back. Left and right are already select and the
     // context menu, and looking around is not worth taking either of them.
     if (IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE) && !overUi)
         panLast_ = GetMousePosition();
-    if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) && !overUi)
+    if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) && !overUi && !sensorOpen_)
     {
         const Vector2 m = GetMousePosition();
         rig_.Pan({ m.x - panLast_.x, m.y - panLast_.y });
@@ -397,9 +405,36 @@ void Game::HandleInput(float dt)
     // directly).
     cmd_.targetId = selected_ != nullptr ? selected_->GetId() : 0;
 
+    // On the sensor screen a click picks a cell: what is in it is selected, and a right
+    // click opens the same menu the world view would -- on the thing, or on the place.
+    if (onSensor && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+    {
+        int     id = 0;
+        Vector2 at = { 0.0f, 0.0f };
+        if (SensorPick(GetMousePosition(), id, at))
+        {
+            selected_ = FindEntityById(id);
+            if (selected_ != nullptr)
+                targetWin_->SetOpen(true);
+        }
+    }
+    if (onSensor && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))
+    {
+        int     id = 0;
+        Vector2 at = { 0.0f, 0.0f };
+        if (SensorPick(GetMousePosition(), id, at))
+        {
+            Entity* target = FindEntityById(id);
+            if (target != nullptr)
+                OpenContextMenu(target);
+            else
+                OpenContextMenuAt(at);
+        }
+    }
+
     // Left click — select the object under the cursor (unless over the UI). Search the
     // snapshot (M4c); the action applies to the live entity by id.
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !overUi)
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !overUi && !sensorOpen_)
     {
         Vector2 worldMouse = GetScreenToWorld2D(GetMousePosition(), camera_);
         selected_ = nullptr;
@@ -415,7 +450,7 @@ void Game::HandleInput(float dt)
     }
 
     // Right click: on an object — context menu; on empty space — autopilot.
-    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && !overUi)
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && !overUi && !sensorOpen_)
     {
         Vector2 worldMouse = GetScreenToWorld2D(GetMousePosition(), camera_);
         int     hitId = 0;
@@ -496,6 +531,14 @@ bool Game::HostileToPlayerFaction(FactionId f) const
         return true;
     RepTier t = Factions::TierOf(player_.GetReputation(f));
     return t == RepTier::Hostile || t == RepTier::Hated;
+}
+
+Sensor::Standing Game::ViewerStanding() const
+{
+    Sensor::Standing s;
+    s.hostile = [this](FactionId f) { return HostileToPlayerFaction(f); };
+    s.tier = [this](FactionId f) { return Factions::TierOf(player_.GetReputation(f)); };
+    return s;
 }
 
 Station* Game::StationById(int id) const
