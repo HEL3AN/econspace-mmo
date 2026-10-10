@@ -22,6 +22,7 @@
 #include "ui/Desk.h"
 #include "ui/Layout.h"
 #include "core/Actions.h"
+#include <algorithm>
 #include <deque>
 #include <map>
 #include <vector>
@@ -107,6 +108,19 @@ public:
         if (range > 0.0f)
             sensorRange_ = Sensor::StepRange(range, 0);
     }
+    // Start with these windows open (--open radar,missions): a picture of a window needs it
+    // open, and synthetic clicks do not reach a hidden window. Ids as the desk knows them.
+    void StartWithWindows(const std::string& ids)
+    {
+        size_t from = 0;
+        while (from <= ids.size())
+        {
+            const size_t comma = std::min(ids.find(',', from), ids.size());
+            if (comma > from)
+                desk_.SetOpen(ids.substr(from, comma - from), true);
+            from = comma + 1;
+        }
+    }
     // Save the frame drawn after N frames to a PNG and exit (--shot FILE --frames N): the
     // editor's mechanism, for pictures of the game itself. The frame is drawn into a
     // texture of its own, because with the screen off the window's pixels read back blank,
@@ -146,11 +160,11 @@ private:
     void DrawStationScreen();
     void DrawMissionBoard(int x, int y, int w);  // mission board at the station
 
-    void SetupWindows();                       // puts every window, screen and popup on the desk
-    void HandleMenuBar();                      // menu bar input: a button toggles its window
-    void DrawMenuBar();                        // vertical menu bar on the left
-    void ApplyResolution(int w, int h);        // changes the window size
-    void DrawSettingsContent(Rectangle area);  // contents of the settings window
+    void SetupWindows();                         // puts every window, screen and popup on the desk
+    void HandleMenuBar();                        // menu bar input: a button toggles its window
+    void DrawMenuBar();                          // vertical menu bar on the left
+    void ApplyResolution(int w, int h);          // changes the window size
+    void DrawSettingsContent(const Ui::Frame&);  // display, interface and keys, as tabs
     void OpenContextMenu(Entity* target);  // right-click action menu on an object, at the cursor
     void OpenContextMenu(Entity* target, Vector2 at);
     void OpenContextMenuAt(Vector2 worldPoint);  // right-click menu on empty space
@@ -166,7 +180,7 @@ private:
     void DrawTargetContent(const Ui::Frame& f);    // the selected item: what it is, what to do
     void DrawOverviewContent(const Ui::Frame& f);  // list of objects in the system
     void DrawRadarContent(const Ui::Frame& f);     // system radar minimap
-    void DrawMissionsContent(Rectangle area);      // log of active missions
+    void DrawMissionsContent(const Ui::Frame& f);  // missions taken and offered, and one in full
     void DrawGalaxyMap();                          // full-screen star map
     void DrawSensorScreen();                       // the sensor grid (#123)
     // The sensor cell under a screen point, from the last picture drawn: the id of what is
@@ -176,6 +190,10 @@ private:
     bool CanNameHere() const;  // in a system this pilot found and nobody has named (#145)
     void HandleEscape();       // Esc closes whatever is on top, and never quits
     void SaveTreatment();      // writes what was tuned in F10's panel
+
+    // The windows in GameWindows.cpp (#297).
+    void  ApplyUiScale(float s);             // the player's own UI scale, saved for this machine
+    Color StandingColor(FactionId f) const;  // a faction as the instruments say it (#117)
 
     void Undock();
 
@@ -376,6 +394,19 @@ private:
     Ui::Layout overviewLayout_{ 8192 };  // a row is seven elements, and a system has many rows
     Ui::Layout targetLayout_;
     Ui::Layout mapNameLayout_;  // the map's name field
+
+    // Missions, radar and settings (#297).
+    Ui::Layout missionsLayout_;
+    Ui::Layout radarLayout_;
+    Ui::Layout settingsLayout_;
+    int        missionsTab_ = 0;            // 0 the missions taken, 1 the docked station's board
+    int        missionsSel_[2] = { 0, 0 };  // the mission chosen on each
+    Rectangle  radarScope_ = { 0.0f, 0.0f, 0.0f, 0.0f };  // where the radar's picture was drawn
+    int        settingsTab_ = 0;
+    // The UI scale while its slider is held: applied on release, because a scale applied
+    // while dragging moves the slider out from under the cursor.
+    float scaleDraft_ = 1.0f;
+    bool  scaleDragging_ = false;
     // The overview's tab and sort (#157), kept across frames and windows being reopened.
     int           overviewTab_ = 0;           // into Overview::AllFilters()
     Ui::TableSort overviewSort_{ 2, false };  // by distance

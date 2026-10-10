@@ -2,7 +2,7 @@
 //   econspace connect <host> <port> <name> <secret> [--zoom Z] [--warp X Y] [--map]
 //   [--select] [--menu] [--sensor [RANGE]]
 //   [--shot FILE [--frames N]] [--nohud] [--treated] [--perf] [--notreat] [--size W H]
-//   [--uiscale S] —
+//   [--uiscale S] [--open IDS] —
 //   connect to an econserver host
 //
 // Connecting is mandatory: the world lives on an authoritative server and the
@@ -43,6 +43,7 @@ static int Usage(const char* exe)
                  "      --size W H open the window at W x H\n"
                  "      --uiscale S\n"
                  "                 the interface at scale S, whatever the display asks for\n"
+                 "      --open IDS start with these windows open, e.g. radar,missions,settings\n"
                  "\n"
                  "Start a server first:\n"
                  "  econserver host 50800\n",
@@ -76,6 +77,7 @@ int main(int argc, char** argv)
     bool              treated = false;
     int               width = 0, height = 0;
     float             uiScale = 0.0f;  // 0: the player's setting times the display's
+    std::string       openWindows;     // --open radar,missions,settings
     for (int i = 6; i < argc; i++)
         if (std::strcmp(argv[i], "--zoom") == 0 && i + 1 < argc)
             startZoom = (float)std::atof(argv[++i]);
@@ -115,6 +117,8 @@ int main(int argc, char** argv)
         }
         else if (std::strcmp(argv[i], "--uiscale") == 0 && i + 1 < argc)
             uiScale = (float)std::atof(argv[++i]);
+        else if (std::strcmp(argv[i], "--open") == 0 && i + 1 < argc)
+            openWindows = argv[++i];
         else if (std::strcmp(argv[i], "--warp") == 0 && i + 2 < argc)
         {
             warpTo = { (float)std::atof(argv[i + 1]), (float)std::atof(argv[i + 2]) };
@@ -171,6 +175,8 @@ int main(int argc, char** argv)
             game.StartWithSelection(menu);
         if (sensor)
             game.StartOnSensor(sensorRange);
+        if (!openWindows.empty())
+            game.StartWithWindows(openWindows);
         if (!shot.empty())
             game.TakeShot(shot, frames, treated);
         if (nohud)

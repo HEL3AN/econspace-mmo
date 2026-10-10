@@ -232,8 +232,11 @@ add_executable(econspace
     src/game/core/Game.cpp
     src/game/core/GameNet.cpp
     src/game/core/GameHud.cpp
+    src/game/core/GameWindows.cpp  # missions, radar and settings, on Ui::Layout (#297)
     src/game/core/Actions.cpp      # what can be done about a thing: one list for every window (#297)
     src/game/sim/Overview.cpp      # what the overview lists and in what order (#157)
+    src/game/sim/MissionList.cpp   # what the missions window lists (#297)
+    src/game/sim/Observation.cpp   # what a mission still needs, in the agent's words (#297)
     src/game/sim/Sensor.cpp        # the sensor screen's grid and allegiance colours (#123)
     src/game/sim/PlayerStep.cpp
     src/game/sim/WarpPath.cpp
@@ -376,10 +379,12 @@ add_executable(tests
     tests/intel_tests.cpp          # what factions know, and surveying (#295)
     tests/widget_tests.cpp         # tables, tabs, fields, sliders and the keyboard focus (#297)
     tests/actions_tests.cpp        # one list of actions, each matched by an agent's tool (#297)
+    tests/mission_list_tests.cpp   # what the missions window lists (#297)
     tests/settle_tests.cpp         # stock, outposts, and claims that need one (#295)
     tests/outpost_tests.cpp        # outposts placed by purpose, and what each looks like (#318)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
+    src/game/sim/MissionList.cpp   # the missions window's rows, tested without one (#297)
     src/game/core/Actions.cpp      # the actions every window offers, tested without one (#297)
     src/game/sim/Sensor.cpp        # the sensor screen, tested without a window (#123)
     # The simulation itself is under test now, not only the wire (#10). That pulls in its

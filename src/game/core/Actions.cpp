@@ -1,6 +1,7 @@
 #include "core/Actions.h"
 
 #include "economy/Resource.h"
+#include "missions/MissionSystem.h"
 
 #include <cmath>
 #include <cstdio>
@@ -49,6 +50,8 @@ const char* ToolFor(Verb verb)
         case Verb::Mine: return "mine";
         case Verb::Jump: return "travel_to_system";
         case Verb::Build: return "deploy";
+        case Verb::Accept: return "accept_mission";
+        case Verb::HandIn: return "complete_mission";
         // The interface's own: they change what a window shows, not the world. An agent
         // names a thing by its id and a range by a number, and needs neither.
         case Verb::Select:
@@ -135,6 +138,28 @@ std::vector<Action> For(const Target& t, Vector2 from)
         case EntityKind::Nebula:
         case EntityKind::PlayerShip:
         case EntityKind::Unknown: break;
+    }
+    return out;
+}
+
+std::vector<Action> ForMission(const MissionTarget& m)
+{
+    std::vector<Action> out;
+    if (m.index < 0)
+        return out;
+    // The server decides both; these are offered only where they could work, so a button
+    // is not a refusal waiting to happen.
+    if (m.offer && m.docked && m.active < MissionSystem::MAX_ACTIVE)
+    {
+        Action a = Make(Verb::Accept, "Accept");
+        a.mission = m.index;
+        out.push_back(a);
+    }
+    if (!m.offer && m.ready)
+    {
+        Action a = Make(Verb::HandIn, "Hand in");
+        a.mission = m.index;
+        out.push_back(a);
     }
     return out;
 }
