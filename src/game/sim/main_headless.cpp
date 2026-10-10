@@ -1473,8 +1473,8 @@ int main(int argc, char** argv)
     sim.InitGalaxy();
     sim.MaterializeAllSystems(dataDir + "systems/");  // real entities of all systems
 
-    const float              dt = 1.0f / 60.0f;  // = SIM_DT: server tick as in the game
-    std::vector<std::string> seen;               // the news already printed
+    const float dt = 1.0f / 60.0f;  // = SIM_DT: server tick as in the game
+    long long   seen = 0;           // the history already printed, by seq
 
     printf("EconSpace headless server — %d systems, %d ticks (real agents)\n",
            (int)sim.Universe().systems.size(), ticks);
@@ -1491,23 +1491,14 @@ int main(int argc, char** argv)
         sim.MaintainWorld(dt);
 
         if (newsOnly)
-        {
-            // The list is capped, so what is new is what follows the last line seen.
-            const std::vector<std::string>& ev = sim.Events();
-            size_t                          from = 0;
-            if (!seen.empty())
-                for (size_t k = ev.size(); k-- > 0;)
-                    if (ev[k] == seen.back())
-                    {
-                        from = k + 1;
-                        break;
-                    }
-            for (size_t k = from; k < ev.size(); k++)
-            {
-                printf("  %6.0f min  %s\n", sim.Time() / 60.0, ev[k].c_str());
-                seen.push_back(ev[k]);
-            }
-        }
+            // The history is numbered (#295): what is new is what follows the last entry
+            // printed, surveys included.
+            for (const ChronicleEntry& e : sim.Chronicle())
+                if (e.seq > seen)
+                {
+                    printf("  %6.0f min  %s\n", e.time / 60.0, e.text.c_str());
+                    seen = e.seq;
+                }
         if (!newsOnly && (i % printEvery == 0 || i == ticks - 1))
         {
             printf("\n[tick %d / t=%.1fs]\n", i, i * dt);

@@ -4,15 +4,18 @@
 #include "sim/SystemState.h"
 #include "sim/Protocol.h"
 #include "sim/Events.h"
+#include "sim/FactionMind.h"
 #include "sim/Orders.h"
 #include "sim/ClientSession.h"
 #include "sim/SaveSchema.h"
 #include "sim/PlayerStep.h"
 #include "player/Player.h"
 #include "missions/MissionSystem.h"
+#include <array>
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -87,7 +90,24 @@ public:
         float                  traffic = 0.0f, ore = 0.0f, salvage = 0.0f;  // each 0..1
         std::vector<FactionId> defenders;  // owners of defensive stations
     };
+    // What a system offers as it is -- the truth, which no faction reads directly any more
+    // (#295): it is what a faction sees when it looks.
     SystemOffer OfferOf(const SystemState& st) const;  // reads st.profile, never the entities
+    // What a system offers as a faction last saw it.
+    static SystemOffer OfferOf(const Intel& seen);
+    // What anyone looking at a system now would see, stamped with the time.
+    Intel Observe(const SystemState& st) const;
+    // What a faction knows (#295): its holdings, where its ships are, and what its surveys
+    // brought back, each as of when it was seen.
+    const FactionMind& MindOf(FactionId f) const { return minds_[(int)f]; }
+    // ...and for a test, to plant a belief. What is planted before the first macro pass
+    // stands; the seeding only adds what is missing.
+    FactionMind& MindOf(FactionId f) { return minds_[(int)f]; }
+    // Surveys under way, by id (#295).
+    const std::map<int, Plan>& Plans() const { return plans_; }
+    // The world's history, oldest first, capped (#295). Everything the news feed says is
+    // here too, with a time and a sequence number; surveys are here and not in the feed.
+    const std::vector<ChronicleEntry>& Chronicle() const { return chronicle_; }
     // Counts what a system's static layer holds (#295). Called when the layer is built
     // and whenever it changes; see SystemProfile.
     static SystemProfile ProfileOf(const SystemState& st);
@@ -517,6 +537,28 @@ private:
     unsigned int         rng_ = 0x1234567u;  // RNG state
 
     std::vector<std::string> events_;  // recent galaxy events (capped)
+
+    // What each faction knows, and what it has set in motion (#295). Saved. Seeded with
+    // its holdings and their neighbours the first time the faction step runs, when the
+    // static layers they are read from exist -- or, for an older save, the first time
+    // after it is loaded.
+    std::array<FactionMind, FACTION_COUNT> minds_;
+    bool                                   mindsSeeded_ = false;
+    std::map<int, Plan>                    plans_;
+    // Plans by when they are due, then by id: a pass pops what is due and looks at
+    // nothing else. Not saved -- remade from plans_.
+    std::set<std::pair<double, int>> due_;
+    int                              nextPlanId_ = 1;
+    std::vector<ChronicleEntry>      chronicle_;
+    long long                        chronicleSeq_ = 0;
+
+    void        SeedMinds();
+    void        Think(FactionId f);
+    void        ResolveDuePlans();
+    void        ResolveSurvey(const Plan& p);
+    void        Record(const std::string& kind, int faction, const std::string& system,
+                       const std::string& text);
+    std::string DescribeSurvey(const Intel& seen, FactionId by) const;
 
     void        SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& info);
     std::string SystemName(const std::string& id) const;

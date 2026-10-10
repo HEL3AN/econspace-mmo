@@ -129,6 +129,7 @@ void Load(const std::string& path)
                 m.ore = v.value("ore", m.ore);
                 m.salvage = v.value("salvage", m.salvage);
                 m.unclaimed = v.value("unclaimed", m.unclaimed);
+                m.curiosity = t.value("curiosity", m.curiosity);
             }
             if (j.contains("color") && j["color"].size() >= 3)
                 g_color[i] = Color{ (unsigned char)j["color"][0], (unsigned char)j["color"][1],
