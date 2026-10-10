@@ -101,7 +101,7 @@ A part in an archetype's shape uses one instead of a form:
 parts may use `row` but not `repeat`, `mirror`, orbits or the sphere (those place things
 about the object's centre). A module is drawn once it is about 10 px across on screen
 (its parts' own `minPixels` count in the module's pixels), so it fills in as you approach.
-`tags` and `sockets` are for the automatic placement of phase 3 of #240.
+`tags` and `sockets` are for the automatic placement of phase 3 of #240. `handed` marks one of a left/right pair (see Handed modules below).
 
 `variants` and `except` narrow the seed's choice without taking it away: an engine that may
 be a bell or a cluster but never an ion drive. Every id must be one of the module's variants,
@@ -239,7 +239,9 @@ socket exactly where two sections meet still belongs to its own.
 
 Each kit line names a module (`"of": "id"`, or `"#tag"` for any module carrying the tag), a
 `count` (a range: every whole number in it equally likely), the socket type `on` (default: the
-module's first `sockets` entry), and optionally `in` (only on that section, by index), `scale`
+module's first `sockets` entry), and optionally `in` (only on that section, by index, or on any
+of a list of them: `[2, 3]` -- a hold spread over two keel sections is one line, not two that
+each think they are all of it), `scale`
 (module radius, default from the pitch), `turn` (degrees added to the outward direction),
 `mount` (how the module meets the socket, measured by the module's own box rather than its
 origin -- the box of what its parts draw: a circle, ring or polygon by its radius, an arc by
@@ -261,11 +263,27 @@ line.
 line of sockets of its kind; on a straight line its modules are spread evenly and symmetric
 about the middle, on a closed rim they spread from the socket that faces furthest out from the
 object (a pod's dock is on its far side, not facing the hub); a placed module covers the
-sockets under it, so nothing is put on top of it; each section keeps `plain` (default 0.4) of its sockets empty; with
-`"symmetry": "bilateral"` every module on one side is mirrored onto the other, its shape
-reflected, and with `"radial"` a placement on one copy of a repeated section is repeated on
-every copy (the count is then per copy). An unknown module or a tag nobody carries is a load
-error. A module placed on a socket shares its section's `spin`, so it turns with it.
+sockets under its **footprint** -- its box, turned with it and with the corners rounded off, not a circle round it: a pod laid along a keel covers the
+keel and leaves the flanks beside it -- so nothing is put on top of it; each section keeps
+`plain` (default 0.4) of its sockets empty; with `"symmetry": "bilateral"` every module on one
+side is mirrored onto the other, its shape reflected and drawn from the same part, so the two
+share every roll (a pod of three tanks is not mirrored by a pod of two), and with `"radial"` a
+placement on one copy of a repeated section is repeated on every copy (the count is then per
+copy). An unknown module or a tag nobody carries is a load error. A module placed on a socket
+shares its section's `spin`, so it turns with it.
+
+**Pairs (#279).** On a bilateral object an **even count is pairs**: lines off the axis are
+tried before lines on it, so two engines are the pair of nacelles rather than one on the block
+between them and one beside it. A straight line that crosses the axis -- the face of a
+crossbar -- is two half lines meeting there: its -y half is placed and the other is the
+mirror, and the place on the axis takes the odd one of an odd count and nothing else.
+
+**Handed modules (#279).** A module that says `"handed": true` is one of a left/right pair:
+it is drawn as the one on the +y side (a wing, root at the hull and tip outward), and a
+bilateral kit places that drawing on the +y socket and its reflection on the -y one, as one
+mirrored part. A line's `turn` is measured from the drawing as it stands there, so no turn is
+the wing as drawn, swept the way it was drawn on both sides. Never `repeat: 2`, which puts the
+second wing in front of the nose.
 
 **Except where it carries function (#279).** A kit line that says `"fit": true` is a drive, a
 hold, a weapon: what the object can do depends on it, so the seed may choose how it looks but
@@ -426,6 +444,7 @@ registry says *what it is and what it can do*, once, for every object of that ki
 | `color` | [r, g, b, a] | 0..255; `a` defaults to 255 |
 | `layer` | int | draw order, lowest first; the same number means the same thing in every backend |
 | `shape` | array | **optional** — what the object is made of, as a list of parts. Omit it and the backend falls back to the figure it used to compile in for this kind. See below |
+| `design` | string | **optional**, ships only — the ship design it is drawn from, by id in `data/ships.json` (#279). Its shape is then the design's, laid out from the design's sections when the archetypes load, and an archetype that names a design may not also write a `shape` (`documents/ship_design.md`) |
 | `material` | string | **optional** — the material that shades it, by id from `data/materials.json`. Omit it and the object is drawn plain. An id `materials.json` does not define also draws plain, and the client and editor log it by name at startup |
 | `light` | object | **optional** — this object lights the system: `radius` (world units at which its light has fallen to nothing), `intensity` (default 1.0) and `self` (default false: whether it lights itself). Omit it and the object emits nothing. See below |
 | `size` | number | default radius when the instance does not give its own |

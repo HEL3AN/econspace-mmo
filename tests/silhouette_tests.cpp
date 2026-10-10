@@ -1396,11 +1396,10 @@ TEST_CASE("a kit places modules by seed: in mirrored pairs, evenly, leaving room
         counts.insert((int)placed.size());
         // Never more than the plain rule allows on the section.
         CHECK(placed.size() <= (size_t)((float)sockets * 0.6f) + 1);
-        // Bilateral: every module on one side has its reflection on the other.
-        int mirrored = 0;
+        // Bilateral: every module on one side has its reflection on the other -- one part
+        // drawn both ways, so the two share every roll (#279).
         for (const auto& p : placed)
-            mirrored += p.mirrorOnly;
-        CHECK(mirrored * 2 == (int)placed.size());
+            CHECK((p.mirror && !p.mirrorOnly));
         // One variant along the whole line: a row of the same hatch.
         for (const auto& p : placed)
             CHECK(p.variant == placed[0].variant);

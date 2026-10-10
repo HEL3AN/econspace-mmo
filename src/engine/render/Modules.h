@@ -37,12 +37,20 @@ struct ModuleVariant
 
 struct Module
 {
-    std::string                id;
-    std::string                pack;  // the file it came from: "modules", "weapons", ...
-    std::vector<std::string>   tags;
-    std::vector<std::string>   sockets;  // where it fits on a section (phase 3 of #240)
+    std::string              id;
+    std::string              pack;  // the file it came from: "modules", "weapons", ...
+    std::vector<std::string> tags;
+    std::vector<std::string> sockets;  // where it fits on a section (phase 3 of #240)
+    // Drawn as one of a left/right pair -- the one on the +y side, a wing with its root at the
+    // hull and its tip outward -- whose other half is its reflection (#279). A bilateral kit
+    // places both from one mirrored part; never `repeat: 2`, which puts the second in front.
+    bool                       handed = false;
     std::vector<ModuleVariant> variants;
 };
+
+// What a variant covers in its own unit, measured from the pieces it composes into rather
+// than from circles round them (see Modules.cpp): a bar by its corners, a chevron by its own.
+Rectangle MeasuredBounds(const Shape& s);
 
 namespace Modules
 {

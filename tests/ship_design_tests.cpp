@@ -214,8 +214,9 @@ TEST_CASE("a ship's look never decides what it can do: its function is in fixed 
                     int want = 0, got = 0;
                     for (const Render::KitEntry& o : shape.kit.entries)
                         want += o.fit && o.of == e.of ? (int)o.lo : 0;
+                    // A mirrored pair is one part drawn twice.
                     for (const Render::Part& p : placed)
-                        got += p.module == e.of;
+                        got += p.module == e.of ? (p.mirror && !p.mirrorOnly ? 2 : 1) : 0;
                     CHECK(got == want);
                 }
         }
@@ -291,4 +292,276 @@ TEST_CASE("a mistake in the ship catalogue is a load error, not a default")
                     .empty());
     CHECK(ErrorAfter([](nlohmann::json& j) { j["modules"].push_back(j["modules"][0]); })
               .find("twice") != std::string::npos);
+}
+
+// --- Step 3: frames per class, a design drawn from its sections (#279) ---------------------
+
+namespace
+{
+nlohmann::json& SectionJson(nlohmann::json& j, const char* id)
+{
+    for (auto& s : j["sections"])
+        if (s["id"] == id)
+            return s;
+    FAIL("no section " << id);
+    return j;
+}
+
+nlohmann::json& FrameJson(nlohmann::json& j, const char* id)
+{
+    for (auto& f : j["frames"])
+        if (f["id"] == id)
+            return f;
+    FAIL("no frame " << id);
+    return j;
+}
+
+std::vector<Render::Part> SectionsOf(const Render::Shape& s)
+{
+    std::vector<Render::Part> out;
+    for (const Render::Part& p : s.parts)
+        if (p.section)
+            out.push_back(p);
+    return out;
+}
+}  // namespace
+
+TEST_CASE("every design keeps its class's silhouette, and the barge alone is heavy at the bow")
+{
+    const Ships::Catalogue c = Shipped();
+    for (const Ships::Design& d : c.designs)
+    {
+        CAPTURE(d.id);
+        const Ships::Frame*     f = c.FindFrame(d.frame);
+        const Ships::Silhouette s = Ships::Measure(c, d);
+        CHECK(s.length >= f->minAspect * s.width);
+        CHECK((s.massAt > 0.0f) == f->bowHeavy);
+    }
+    // Every class but the barge is at least 1.6 long for its width: no oval as a main body.
+    for (const Ships::Frame& f : c.frames)
+        if (!f.bowHeavy)
+            CHECK(f.minAspect >= 1.6f);
+}
+
+TEST_CASE("a hull that breaks its class rule is a load error, not a ship that looks wrong")
+{
+    // Too short for a frigate: the oval the NPCs were.
+    CHECK(ErrorAfter([](nlohmann::json& j) { FrameJson(j, "frigate")["minAspect"] = 9.0; })
+              .find("long") != std::string::npos);
+    // A hauler carrying its mass at the bow is a barge, and only a barge may.
+    CHECK(ErrorAfter([](nlohmann::json& j) { FrameJson(j, "barge").erase("bowHeavy"); })
+              .find("forward") != std::string::npos);
+    // A hull off the axis without its mirror, or turned across it, is not bilateral.
+    CHECK(ErrorAfter([](nlohmann::json& j)
+                     { SectionJson(j, "stern.twin")["shape"]["sections"][1].erase("mirror"); })
+              .find("bilateral") != std::string::npos);
+    CHECK(ErrorAfter([](nlohmann::json& j)
+                     { SectionJson(j, "bow.blunt")["shape"]["sections"][1]["angle"] = 90; })
+              .find("bilateral") != std::string::npos);
+    // Mirrored, never repeated: `repeat: 2` puts the second wing in front of the nose.
+    CHECK(ErrorAfter([](nlohmann::json& j)
+                     { SectionJson(j, "mid.spine")["shape"]["sections"][0]["repeat"] = 2; })
+              .find("repeat") != std::string::npos);
+    // The hull is the same for every ship of a design: the seed rolls the trim, not the hull.
+    CHECK(ErrorAfter(
+              [](nlohmann::json& j)
+              { SectionJson(j, "mid.spine")["shape"]["sections"][0]["length"] = { 0.6, 0.8 }; })
+              .find("fixed") != std::string::npos);
+    // A section is drawn as something; a class says how long it is.
+    CHECK_FALSE(
+        ErrorAfter([](nlohmann::json& j) { SectionJson(j, "mid.spine").erase("shape"); }).empty());
+    CHECK_FALSE(
+        ErrorAfter([](nlohmann::json& j) { FrameJson(j, "hauler").erase("minAspect"); }).empty());
+    CHECK_FALSE(
+        ErrorAfter([](nlohmann::json& j)
+                   { SectionJson(j, "mid.spine")["shape"]["parst"] = nlohmann::json::array(); })
+            .empty());
+    // One stern: an aft end belongs to the stern section, a forward one to the bow.
+    CHECK(ErrorAfter([](nlohmann::json& j) { SectionJson(j, "mid.keel")["sockets"]["stern"] = 1; })
+              .find("stern") != std::string::npos);
+    CHECK_FALSE(
+        ErrorAfter([](nlohmann::json& j) { SectionJson(j, "stern.twin")["sockets"]["end"] = 1; })
+            .empty());
+    // How a module meets a socket is a known look, on a known kind.
+    CHECK_FALSE(
+        ErrorAfter([](nlohmann::json& j) { j["modules"][1]["look"]["stern"]["mnt"] = "out"; })
+            .empty());
+    CHECK_FALSE(ErrorAfter([](nlohmann::json& j) { j["modules"][1]["look"]["aft"] = {}; }).empty());
+}
+
+TEST_CASE("a design is drawn from its sections, laid stern to bow, with its fit pinned on them")
+{
+    std::string error;
+    REQUIRE_MESSAGE(Render::Modules::Load(DataFile("modules.json"), error), error);
+    const Ships::Catalogue c = Shipped();
+    for (const Ships::Design& d : c.designs)
+    {
+        CAPTURE(d.id);
+        nlohmann::json shape;
+        REQUIRE_MESSAGE(Ships::ShapeOf(c, d, shape, error), error);
+        Render::Shape s;
+        REQUIRE_MESSAGE(Render::ParseShape(shape, s, error), error);
+        CHECK(s.kit.symmetry == "bilateral");
+
+        // Every fit line is a kit line that carries function, with the design's count, on
+        // the hull parts of the sections at its position and nowhere else.
+        int fitLines = 0;
+        for (const Render::KitEntry& e : s.kit.entries)
+            if (e.fit)
+            {
+                const Ships::FitLine& f = d.fit[(size_t)fitLines++];
+                CHECK(e.of == f.module);
+                CHECK((int)e.lo == f.count);
+                CHECK(e.on == f.on);
+                CHECK_FALSE(e.in.empty());
+            }
+        CHECK(fitLines == (int)d.fit.size());
+
+        // The bow is forward of the stern, and the whole is centred on its length.
+        Render::Shape hullOnly;
+        hullOnly.parts = SectionsOf(s);
+        const std::vector<Render::Part>& hull = hullOnly.parts;
+        const Rectangle                  box = Render::MeasuredBounds(hullOnly);
+        CHECK(box.x + 0.5f * box.width == doctest::Approx(0.0f).epsilon(0.01));
+        CHECK(hull.front().at.x > hull.back().at.x);
+    }
+}
+
+TEST_CASE("the ship archetypes drawn from designs are those designs")
+{
+    REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
+    const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+    int                     drawn = 0;
+    for (const Ships::Design& d : c.designs)
+        for (const Archetype& a : Archetypes::All())
+            if (a.design == d.id)
+            {
+                drawn++;
+                CAPTURE(a.id);
+                nlohmann::json json;
+                std::string    error;
+                REQUIRE(Ships::ShapeOf(c, d, json, error));
+                Render::Shape s;
+                REQUIRE(Render::ParseShape(json, s, error));
+                CHECK(a.visual.shape.parts.size() == s.parts.size());
+                CHECK(a.visual.shape.kit.entries.size() == s.kit.entries.size());
+            }
+    CHECK(drawn == (int)c.designs.size());
+}
+
+TEST_CASE("a wing is one of a pair: placed once, drawn both ways, swept the same (#279)")
+{
+    std::string error;
+    REQUIRE_MESSAGE(Render::Modules::Load(DataFile("modules.json"), error), error);
+    REQUIRE(Render::Modules::Find("hull.wing")->handed);
+    Render::Shape ship;
+    REQUIRE_MESSAGE(Render::ParseShape(nlohmann::json::parse(R"({
+            "sections": [ { "form": "bar", "length": 1.2, "width": 0.4, "pitch": 0.15 } ],
+            "kit": { "symmetry": "bilateral", "modules": [
+                { "of": "hull.wing", "on": "side", "count": 2, "mount": "out", "scale": 0.3 } ] },
+            "parts": [] })"),
+                                       ship, error),
+                    error);
+    for (int seed = 1; seed <= 8; seed++)
+    {
+        CAPTURE(seed);
+        const std::vector<Render::Part> placed = Render::PlaceKit(ship.kit, SectionsOf(ship), seed);
+        REQUIRE(placed.size() == 1);
+        // Placed as the +y wing as drawn, its pair its reflection: no turn of its own, so the
+        // drawing's sweep is the wing's sweep on both sides.
+        CHECK(placed[0].mirror);
+        CHECK_FALSE(placed[0].mirrorOnly);
+        CHECK(placed[0].at.y > 0.0f);
+        CHECK(placed[0].angle == doctest::Approx(0.0f));
+    }
+}
+
+TEST_CASE("a module covers the sockets under its footprint, not a circle round it (#279)")
+{
+    // A pod laid along a keel is long and narrow: it covers the keel's spine, and the flanks
+    // beside it stay free for the thrusters a circle as wide as the pod is long would take.
+    std::string error;
+    REQUIRE_MESSAGE(Render::Modules::Load(DataFile("modules.json"), error), error);
+    Render::Shape ship;
+    REQUIRE_MESSAGE(Render::ParseShape(nlohmann::json::parse(R"({
+            "sections": [ { "form": "bar", "length": 0.9, "width": 0.36, "pitch": 0.13 } ],
+            "kit": { "symmetry": "bilateral", "plain": 0.0, "modules": [
+                { "of": "hull.cargo", "variant": "pods", "on": "spine", "count": 1, "fit": true, "scale": 0.22 },
+                { "of": "hull.rcs", "on": "edge", "count": 4, "fit": true, "scale": 0.04, "turn": -90 } ] },
+            "parts": [] })"),
+                                       ship, error),
+                    error);
+    const std::vector<Render::Part> placed = Render::PlaceKit(ship.kit, SectionsOf(ship), 1);
+    int                             rcs = 0;
+    for (const Render::Part& p : placed)
+        rcs += p.module == "hull.rcs" ? (p.mirror ? 2 : 1) : 0;
+    CHECK(rcs == 4);
+}
+
+TEST_CASE("a bilateral kit puts an even count in pairs and an odd one's odd module on the axis")
+{
+    std::string error;
+    REQUIRE_MESSAGE(Render::Modules::Load(DataFile("modules.json"), error), error);
+    // A stern block with a nacelle each side: two engines are the nacelles' pair, not one on
+    // the block and one beside it; three are the pair and the block.
+    auto engines = [&](int count)
+    {
+        Render::Shape ship;
+        REQUIRE_MESSAGE(Render::ParseShape(
+                            nlohmann::json::parse(
+                                R"({
+            "sections": [ { "form": "bar", "length": 0.3, "width": 0.34 },
+                          { "form": "bar", "at": [-0.03, 0.2], "length": 0.36, "width": 0.15, "mirror": true } ],
+            "kit": { "symmetry": "bilateral", "modules": [
+                { "of": "hull.engine", "on": "stern", "count": )" +
+                                std::to_string(count) +
+                                R"(, "fit": true, "mount": "out", "turn": 180, "scale": 0.1 } ] },
+            "parts": [] })"),
+                            ship, error),
+                        error);
+        int onAxis = 0, paired = 0;
+        for (const Render::Part& p : Render::PlaceKit(ship.kit, SectionsOf(ship), 3))
+            (p.mirror ? paired : onAxis) += p.mirror ? 2 : 1;
+        return std::make_pair(onAxis, paired);
+    };
+    CHECK(engines(2) == std::make_pair(0, 2));
+    CHECK(engines(3) == std::make_pair(1, 2));
+
+    // A crossbar across the axis is two half lines: four modules on its face are two pairs.
+    Render::Shape bar;
+    REQUIRE_MESSAGE(Render::ParseShape(nlohmann::json::parse(R"({
+            "sections": [ { "form": "bar", "angle": 90, "length": 1.0, "width": 0.2, "pitch": 0.16 } ],
+            "kit": { "symmetry": "bilateral", "modules": [
+                { "of": "hull.rcs", "on": "edge", "count": 4, "fit": true, "scale": 0.04 } ] },
+            "parts": [] })"),
+                                       bar, error),
+                    error);
+    for (const Render::Part& p : Render::PlaceKit(bar.kit, SectionsOf(bar), 1))
+    {
+        CHECK(p.mirror);
+        CHECK(p.at.y < 0.0f);
+    }
+}
+
+TEST_CASE("a kit line may name several sections")
+{
+    std::string error;
+    REQUIRE_MESSAGE(Render::Modules::Load(DataFile("modules.json"), error), error);
+    Render::Shape s;
+    REQUIRE_MESSAGE(Render::ParseShape(nlohmann::json::parse(R"({
+            "sections": [ { "form": "bar", "at": [0.5, 0], "length": 0.8, "width": 0.2 },
+                          { "form": "bar", "at": [-0.5, 0], "length": 0.8, "width": 0.2 } ],
+            "kit": { "symmetry": "bilateral", "modules": [
+                { "of": "hull.cargo", "in": [0, 1], "on": "side", "count": 4, "fit": true, "scale": 0.15 } ] },
+            "parts": [] })"),
+                                       s, error),
+                    error);
+    REQUIRE(s.kit.entries[0].in == std::vector<int>{ 0, 1 });
+    int pods = 0;
+    for (const Render::Part& p : Render::PlaceKit(s.kit, SectionsOf(s), 1))
+        pods += p.mirror ? 2 : 1;
+    CHECK(pods == 4);
+    CHECK_FALSE(Render::ParseShape(nlohmann::json::parse(R"({ "sections": [], "parts": [],
+            "kit": { "modules": [ { "of": "hull.cargo", "in": "keel" } ] } })"),
+                                   s, error));
 }

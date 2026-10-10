@@ -537,7 +537,26 @@ static bool ParseKit(const json& k, Kit& kit, std::string& error)
         if (!ParseVariantLists(m, of, std::string("kit line '") + (e.byTag ? "#" : "") + e.of + "'",
                                e.variant, e.variants, e.except, error))
             return false;
-        e.in = m.value("in", -1);
+        // One section by its index, or several: [2, 3].
+        if (m.contains("in"))
+        {
+            const json& in = m["in"];
+            bool        ok = in.is_number_integer() || (in.is_array() && !in.empty());
+            if (in.is_number_integer())
+                e.in.push_back(in.get<int>());
+            else if (ok)
+                for (const json& x : in)
+                {
+                    ok = ok && x.is_number_integer();
+                    if (ok)
+                        e.in.push_back(x.get<int>());
+                }
+            if (!ok)
+            {
+                error = "a kit line's \"in\" is a section's index or a list of them";
+                return false;
+            }
+        }
         e.mount = m.value("mount", e.mount);
         if (e.mount != "on" && e.mount != "out" && e.mount != "centre")
         {
@@ -1558,8 +1577,11 @@ uint64_t Fingerprint(const Shape& s)
     for (const KitEntry& e : s.kit.entries)
     {
         f.S(e.of), f.B(e.byTag), f.F(e.lo), f.F(e.hi), f.S(e.on), f.F(e.scale), f.F(e.turn);
-        f.S(e.variant), f.L(e.variants), f.L(e.except), f.I(e.in), f.S(e.when), f.S(e.prefer);
+        f.S(e.variant), f.L(e.variants), f.L(e.except), f.S(e.when), f.S(e.prefer);
         f.S(e.mount), f.I(e.z), f.B(e.fit);
+        f.I((int)e.in.size());
+        for (int in : e.in)
+            f.I(in);
     }
     return f.h;
 }

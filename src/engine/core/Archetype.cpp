@@ -14,6 +14,7 @@ namespace
 {
 std::vector<Archetype> g_archetypes;
 std::string            g_error;
+Ships::Catalogue       g_ships;
 
 EntityKind KindFromString(const std::string& s)
 {
@@ -74,7 +75,7 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
     // is the same silent wrong object an unknown component is (#191).
     if (!OnlyKnownKeys(j,
                        { "id", "name", "kind", "glyph", "sprite", "layer", "style", "material",
-                         "shape", "light", "color", "size", "world", "components" },
+                         "shape", "design", "light", "color", "size", "world", "components" },
                        err))
     {
         err = "archetype '" + a.id + "': " + err;
@@ -106,7 +107,30 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
     }
     a.visual.material = j.value("material", std::string());
 
-    if (j.contains("shape"))
+    // A ship drawn from a design (#279) is the design's shape: written twice, the two would
+    // disagree about what the ship is.
+    if (j.contains("design"))
+    {
+        a.design = j["design"].is_string() ? j["design"].get<std::string>() : std::string();
+        const Ships::Design* d = g_ships.FindDesign(a.design);
+        if (d == nullptr || j.contains("shape"))
+        {
+            err =
+                "archetype '" + a.id + "': " +
+                (d == nullptr ? "design '" + a.design + "' is not in ships.json"
+                              : std::string("a ship drawn from a design has no shape of its own"));
+            return false;
+        }
+        json        shape;
+        std::string why;
+        if (!Ships::ShapeOf(g_ships, *d, shape, why) ||
+            !Render::ParseShape(shape, a.visual.shape, why))
+        {
+            err = "archetype '" + a.id + "': design '" + a.design + "': " + why;
+            return false;
+        }
+    }
+    else if (j.contains("shape"))
     {
         std::string why;
         if (!Render::ParseShape(j["shape"], a.visual.shape, why))
@@ -319,6 +343,11 @@ const std::vector<Component>& AllComponents()
 
 namespace Archetypes
 {
+const Ships::Catalogue& ShipCatalogue()
+{
+    return g_ships;
+}
+
 bool Load(const std::string& path)
 {
     g_error.clear();
@@ -331,6 +360,15 @@ bool Load(const std::string& path)
             slash == std::string::npos ? std::string() : path.substr(0, slash + 1);
         std::string why;
         if (!Render::Modules::Load(dir + "modules.json", why))
+        {
+            g_error = why;
+            return false;
+        }
+        // Then the ship designs, which ship archetypes are drawn from. Nothing has to have
+        // them; a file that is there and wrong is an error.
+        g_ships = Ships::Catalogue();
+        if (std::ifstream(dir + "ships.json").is_open() &&
+            !Ships::Load(dir + "ships.json", g_ships, why))
         {
             g_error = why;
             return false;

@@ -90,7 +90,9 @@ void Measure(const Piece& p, float lo[2], float hi[2])
     }
 }
 
-Rectangle Bounds(const Shape& s)
+}  // namespace
+
+Rectangle MeasuredBounds(const Shape& s)
 {
     Pose pose;
     pose.size = 1.0f;
@@ -104,6 +106,8 @@ Rectangle Bounds(const Shape& s)
     return { lo[0], lo[1], hi[0] - lo[0], hi[1] - lo[1] };
 }
 
+namespace
+{
 std::vector<std::string> Strings(const json& o, const char* key)
 {
     std::vector<std::string> out;
@@ -170,7 +174,7 @@ bool LoadFile(const std::string& path, std::string& error)
         }
         for (auto it = mj.begin(); it != mj.end(); ++it)
             if (it.key() != "id" && it.key() != "tags" && it.key() != "sockets" &&
-                it.key() != "variants" && it.key() != "note")
+                it.key() != "variants" && it.key() != "note" && it.key() != "handed")
             {
                 error = "module '" + id + "': unknown field \"" + it.key() + "\"";
                 return false;
@@ -185,6 +189,12 @@ bool LoadFile(const std::string& path, std::string& error)
         m.pack = pack;
         m.tags = Strings(mj, "tags");
         m.sockets = Strings(mj, "sockets");
+        if (mj.contains("handed") && !mj["handed"].is_boolean())
+        {
+            error = "module '" + id + "': \"handed\" is true or false";
+            return false;
+        }
+        m.handed = mj.value("handed", false);
         if (!mj.contains("variants") || !mj["variants"].is_array() || mj["variants"].empty())
         {
             error = "module '" + id + "' has no variants";
@@ -225,7 +235,7 @@ bool LoadFile(const std::string& path, std::string& error)
                             "sphere or be modules themselves";
                     return false;
                 }
-            v.bounds = Bounds(v.shape);
+            v.bounds = MeasuredBounds(v.shape);
             m.variants.push_back(std::move(v));
         }
         g_modules.push_back(std::move(m));
