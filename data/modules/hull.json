@@ -6,70 +6,70 @@
             "tags": ["structure", "nose"],
             "sockets": ["front"],
             "variants": [
-                { "id": "blunt", "shape": [
-                    {"form": "capsule", "at": [0.05, 0.0], "length": [1.0, 1.6], "width": [0.8, 1.2], "role": "hull"},
-                    {"form": "bar", "at": [-0.6, 0.0], "length": 0.55, "width": [0.75, 1.1], "role": "panel"},
-                    {"form": "bar", "at": [[-0.3, 0.0], 0.0], "angle": 90, "length": [0.75, 1.05], "width": 0.06, "role": "trim", "alpha": 0.7},
+                { "id": "blunt", "shape": { "vars": { "w": [0.8, 1.15] }, "parts": [
+                    {"form": "capsule", "at": [0.05, 0.0], "length": [1.0, 1.6], "width": "$w", "role": "hull"},
+                    {"form": "bar", "at": [-0.6, 0.0], "length": 0.55, "width": "$w", "role": "panel"},
+                    {"form": "bar", "at": [[-0.3, 0.0], 0.0], "angle": 90, "length": "$w", "width": 0.06, "role": "trim", "alpha": 0.7},
                     {"form": "capsule", "at": [0.45, 0.0], "length": [0.2, 0.5], "width": [0.28, 0.44], "role": "trim"},
                     {"form": "disc", "at": [0.88, 0.0], "radius": 0.06, "role": "light", "tint": [[255, 70, 50], [235, 240, 255]], "chance": 0.5}
-                ]},
-                { "id": "needle", "shape": [
-                    {"form": "chevron", "at": [0.15, 0.0], "length": [1.3, 1.75], "width": [0.45, 0.85], "role": "hull"},
+                ]}},
+                { "id": "needle", "shape": { "vars": { "w": [0.45, 0.85] }, "parts": [
+                    {"form": "chevron", "at": [0.15, 0.0], "length": [1.3, 1.75], "width": "$w", "role": "hull"},
                     {"form": "chevron", "at": [0.05, 0.0], "length": [0.7, 1.0], "width": [0.2, 0.34], "role": "trim"},
-                    {"form": "bar", "at": [-0.78, 0.0], "length": 0.45, "width": [0.45, 0.85], "role": "panel"},
+                    {"form": "bar", "at": [-0.78, 0.0], "length": 0.45, "width": "$w", "role": "panel"},
                     {"form": "bar", "at": [-0.3, 0.0], "angle": 90, "length": [0.4, 0.6], "width": 0.07, "role": "panel", "chance": 0.5},
                     {"form": "capsule", "at": [1.15, 0.0], "length": [0.35, 0.7], "width": 0.05, "role": "antenna", "chance": 0.6}
-                ]},
-                { "id": "hammerhead", "shape": [
+                ]}},
+                { "id": "hammerhead", "shape": { "vars": { "span": [1.45, 1.9] }, "parts": [
                     {"form": "bar", "at": [-0.35, 0.0], "length": 1.2, "width": [0.35, 0.65], "role": "hull"},
-                    {"form": "bar", "at": [0.5, 0.0], "length": [0.35, 0.6], "width": [1.5, 1.9], "role": "hull"},
-                    {"form": "bar", "at": [0.5, 0.0], "length": 0.16, "width": [1.3, 1.5], "role": "panel"},
-                    {"form": "disc", "at": [0.5, -0.82], "radius": [0.14, 0.2], "role": "trim", "row": {"count": 2, "step": [0.0, 1.64]}},
+                    {"form": "bar", "at": [0.5, 0.0], "length": [0.35, 0.6], "width": "$span", "role": "hull"},
+                    {"form": "bar", "at": [0.5, 0.0], "length": 0.16, "width": [1.2, 1.35], "role": "panel"},
+                    {"form": "disc", "at": [0.5, 0.0], "radius": [0.14, 0.2], "role": "trim", "row": {"count": 2, "step": [0.0, "$span"], "centred": true}},
                     {"form": "disc", "at": [0.75, 0.0], "radius": 0.07, "role": "light", "tint": [[120, 220, 255], [255, 200, 90]], "alpha": 0.85, "chance": 0.6}
-                ]},
-                { "id": "split", "shape": [
+                ]}},
+                { "id": "split", "shape": { "vars": { "gap": [0.56, 0.78] }, "parts": [
                     {"form": "bar", "at": [-0.6, 0.0], "length": 0.75, "width": [0.95, 1.1], "role": "hull"},
-                    {"form": "capsule", "at": [0.25, -0.34], "length": [0.9, 1.4], "width": [0.22, 0.38], "role": "hull", "row": {"count": 2, "step": [0.0, 0.68]}},
-                    {"form": "bar", "at": [-0.23, 0.0], "length": 0.12, "width": 0.5, "role": "panel"},
-                    {"form": "capsule", "at": [0.85, -0.34], "length": 0.2, "width": 0.14, "role": "trim", "row": {"count": 2, "step": [0.0, 0.68]}},
+                    {"form": "capsule", "at": [0.25, 0.0], "length": [1.1, 1.4], "width": [0.22, 0.36], "role": "hull", "row": {"count": 2, "step": [0.0, "$gap"], "centred": true}},
+                    {"form": "bar", "at": [-0.23, 0.0], "length": 0.12, "width": "$gap", "role": "panel"},
+                    {"form": "capsule", "at": [0.8, 0.0], "length": 0.2, "width": 0.14, "role": "trim", "row": {"count": 2, "step": [0.0, "$gap"], "centred": true}},
                     {"form": "disc", "at": [0.1, 0.0], "radius": [0.06, 0.1], "role": "light", "tint": [[255, 90, 60], [140, 210, 255]], "alpha": 0.8, "chance": 0.5}
-                ]}
+                ]}}
             ]
         },
         {
             "id": "hull.wing",
-            "note": "One wing, root along -y and tip toward +y; an archetype mirrors it for the pair. Swept back, delta, a stub with a hardpoint, or folded at a hinge.",
+            "note": "One wing, root along -y and tip toward +y; an archetype mirrors it for the pair. Swept back, delta, a stub with a hardpoint, or folded at a hinge. Every swept part turns about the wing root by one shared angle.",
             "tags": ["structure", "wing"],
             "sockets": ["side"],
             "variants": [
-                { "id": "swept", "shape": [
-                    {"form": "bar", "at": [-0.12, 0.0], "angle": 112, "length": [1.7, 2.0], "width": [0.38, 0.6], "role": "hull"},
-                    {"form": "bar", "at": [-0.32, -0.02], "angle": 112, "length": [1.1, 1.5], "width": 0.14, "role": "panel"},
-                    {"form": "bar", "at": [0.02, 0.02], "angle": 112, "length": 1.6, "width": 0.05, "role": "trim"},
-                    {"form": "capsule", "at": [-0.4, 0.85], "length": [0.6, 0.9], "width": 0.2, "role": "trim", "chance": 0.4},
-                    {"form": "disc", "at": [-0.42, 0.88], "radius": 0.07, "role": "light", "tint": [[60, 255, 110], [255, 50, 40]], "blink": 2.4, "chance": 0.5}
-                ]},
-                { "id": "delta", "shape": [
-                    {"form": "chevron", "at": [-0.15, -0.05], "angle": 107, "length": [1.6, 1.95], "width": [1.3, 1.75], "role": "hull"},
-                    {"form": "chevron", "at": [-0.25, -0.15], "angle": 107, "length": [0.9, 1.15], "width": [0.6, 0.85], "role": "panel"},
+                { "id": "swept", "shape": { "vars": { "sweep": [100, 125], "chord": [0.38, 0.6] }, "parts": [
+                    {"form": "bar", "at": [1.175, -0.9], "pivot": [-0.925, 0.0], "angle": "$sweep", "length": 1.85, "width": "$chord", "role": "hull"},
+                    {"form": "bar", "at": [1.0, -0.78], "pivot": [-0.75, -0.12], "angle": "$sweep", "length": [1.1, 1.4], "width": 0.14, "role": "panel"},
+                    {"form": "bar", "at": [1.1, -1.04], "pivot": [-0.85, 0.14], "angle": "$sweep", "length": 1.6, "width": 0.05, "role": "trim"},
+                    {"form": "disc", "at": [1.97, -0.9], "pivot": [-1.72, 0.0], "angle": "$sweep", "radius": 0.14, "role": "trim", "chance": 0.4},
+                    {"form": "disc", "at": [1.97, -0.9], "pivot": [-1.72, 0.0], "angle": "$sweep", "radius": 0.07, "role": "light", "tint": [[60, 255, 110], [255, 50, 40]], "blink": [2.0, 2.8], "chance": 0.5}
+                ]}},
+                { "id": "delta", "shape": { "vars": { "sweep": [100, 118] }, "parts": [
+                    {"form": "chevron", "at": [1.01, -0.91], "pivot": [-0.9, 0.0], "angle": "$sweep", "length": 1.8, "width": [1.3, 1.75], "role": "hull"},
+                    {"form": "chevron", "at": [0.76, -0.91], "pivot": [-0.65, 0.0], "angle": "$sweep", "length": 1.0, "width": [0.6, 0.85], "role": "panel"},
                     {"form": "capsule", "at": [0.0, 0.15], "length": [0.7, 1.0], "width": 0.16, "role": "trim", "chance": 0.5},
-                    {"form": "disc", "at": [-0.4, 0.7], "radius": 0.06, "role": "light", "tint": [[60, 255, 110], [255, 50, 40]], "blink": 2.4, "chance": 0.5}
-                ]},
+                    {"form": "disc", "at": [1.61, -0.91], "pivot": [-1.5, 0.0], "angle": "$sweep", "radius": 0.06, "role": "light", "tint": [[60, 255, 110], [255, 50, 40]], "blink": [2.0, 2.8], "chance": 0.5}
+                ]}},
                 { "id": "stub", "shape": [
                     {"form": "bar", "at": [0.0, -0.35], "angle": 90, "length": [1.0, 1.3], "width": [0.45, 0.75], "role": "hull"},
                     {"form": "bar", "at": [0.0, -0.35], "angle": 90, "length": 0.9, "width": 0.12, "role": "panel"},
-                    {"form": "capsule", "at": [[-0.1, 0.15], 0.45], "length": [0.9, 1.5], "width": [0.26, 0.42], "role": "trim"},
-                    {"form": "capsule", "at": [0.05, 0.45], "length": [0.4, 0.7], "width": 0.08, "role": "panel", "chance": 0.5},
-                    {"form": "disc", "at": [0.85, 0.45], "radius": 0.08, "role": "panel", "chance": 0.6}
+                    {"form": "capsule", "at": [0.0, 0.45], "length": [1.1, 1.4], "width": [0.26, 0.42], "role": "trim"},
+                    {"form": "capsule", "at": [0.05, 0.45], "length": [0.4, 0.7], "width": 0.08, "role": "panel", "chance": 0.5, "group": "warhead"},
+                    {"form": "disc", "at": [0.6, 0.45], "radius": 0.08, "role": "panel", "chance": 0.6, "group": "warhead"}
                 ]},
-                { "id": "folded", "shape": [
+                { "id": "folded", "shape": { "vars": { "fold": [105, 150] }, "parts": [
                     {"form": "bar", "at": [0.0, -0.5], "angle": 90, "length": 0.95, "width": [0.45, 0.65], "role": "hull"},
-                    {"form": "bar", "at": [-0.3, 0.4], "angle": [116, 134], "length": [0.9, 1.1], "width": [0.32, 0.5], "role": "hull"},
-                    {"form": "disc", "at": [-0.6, 0.82], "radius": 0.06, "role": "light", "tint": [[60, 255, 110], [255, 50, 40]], "blink": 2.4, "chance": 0.4},
+                    {"form": "bar", "at": [0.5, 0.0], "pivot": [-0.5, 0.0], "angle": "$fold", "length": [0.9, 1.1], "width": [0.32, 0.5], "role": "hull"},
+                    {"form": "disc", "at": [0.92, 0.0], "pivot": [-0.92, 0.0], "angle": "$fold", "radius": 0.06, "role": "light", "tint": [[60, 255, 110], [255, 50, 40]], "blink": [2.0, 2.8], "chance": 0.4},
                     {"form": "disc", "at": [0.0, 0.0], "radius": [0.2, 0.26], "role": "trim"},
                     {"form": "disc", "at": [0.0, 0.0], "radius": 0.1, "role": "panel"},
                     {"form": "bar", "at": [0.0, -0.5], "angle": 90, "length": 0.7, "width": 0.08, "role": "panel"}
-                ]}
+                ]}}
             ]
         },
         {
@@ -78,49 +78,58 @@
             "tags": ["structure"],
             "sockets": ["top", "edge"],
             "variants": [
-                { "id": "blade", "shape": [
-                    {"form": "bar", "at": [-0.3, 0.0], "length": [0.9, 1.3], "width": [0.18, 0.34], "role": "hull"},
-                    {"form": "chevron", "at": [0.55, 0.0], "length": [0.4, 0.9], "width": [0.18, 0.34], "role": "hull"},
+                { "id": "blade", "shape": { "vars": { "w": [0.18, 0.34] }, "parts": [
+                    {"form": "bar", "at": [-0.3, 0.0], "length": [0.9, 1.3], "width": "$w", "role": "hull"},
+                    {"form": "chevron", "at": [0.55, 0.0], "length": [0.4, 0.9], "width": "$w", "role": "hull"},
                     {"form": "bar", "at": [-0.3, 0.0], "length": 1.0, "width": 0.05, "role": "trim"},
-                    {"form": "bar", "at": [-0.7, 0.0], "length": 0.5, "width": [0.36, 0.5], "role": "panel", "chance": 0.5},
-                    {"form": "disc", "at": [-0.9, 0.0], "radius": 0.07, "role": "light", "tint": [255, 50, 40], "blink": 1.8, "chance": 0.4}
-                ]},
-                { "id": "swept", "shape": [
-                    {"form": "chevron", "at": [-0.1, 0.0], "angle": 180, "length": [1.4, 1.9], "width": [0.4, 0.8], "role": "hull"},
-                    {"form": "bar", "at": [0.6, 0.0], "length": 0.4, "width": [0.26, 0.4], "role": "panel"},
+                    {"form": "bar", "at": [-0.7, 0.0], "length": 0.5, "width": [0.36, 0.5], "role": "panel", "chance": 0.5, "group": "root"},
+                    {"form": "disc", "at": [-0.9, 0.0], "radius": 0.07, "role": "light", "tint": [255, 50, 40], "blink": [1.4, 2.2], "chance": 0.3, "group": "root"}
+                ]}},
+                { "id": "swept", "shape": { "vars": { "w": [0.4, 0.8] }, "parts": [
+                    {"form": "chevron", "at": [-0.1, 0.0], "angle": 180, "length": [1.4, 1.9], "width": "$w", "role": "hull"},
+                    {"form": "bar", "at": [0.6, 0.0], "length": 0.4, "width": "$w", "role": "panel"},
                     {"form": "chevron", "at": [-0.4, 0.0], "angle": 180, "length": 0.8, "width": 0.2, "role": "trim"},
                     {"form": "capsule", "at": [-0.95, 0.0], "length": [0.3, 0.6], "width": 0.05, "role": "antenna", "chance": 0.5}
-                ]},
-                { "id": "twin", "shape": [
-                    {"form": "bar", "at": [0.0, -0.4], "length": [1.1, 1.7], "width": [0.16, 0.26], "role": "hull", "row": {"count": 2, "step": [0.0, 0.8]}},
-                    {"form": "bar", "at": [[-0.45, 0.1], 0.0], "angle": 90, "length": 0.85, "width": [0.12, 0.3], "role": "panel"},
-                    {"form": "bar", "at": [0.0, -0.4], "length": 1.1, "width": 0.05, "role": "trim", "row": {"count": 2, "step": [0.0, 0.8]}},
-                    {"form": "bar", "at": [0.7, -0.4], "length": 0.14, "width": 0.18, "role": "light", "tint": [255, 170, 40], "alpha": 0.8, "chance": 0.4, "row": {"count": 2, "step": [0.0, 0.8]}}
+                ]}},
+                { "id": "twin", "shape": { "vars": { "gap": [0.62, 0.9] }, "parts": [
+                    {"form": "bar", "at": [0.0, 0.0], "length": [1.1, 1.6], "width": [0.16, 0.26], "role": "hull", "row": {"count": 2, "step": [0.0, "$gap"], "centred": true}},
+                    {"form": "bar", "at": [[-0.45, 0.1], 0.0], "angle": 90, "length": "$gap", "width": [0.12, 0.3], "role": "panel"},
+                    {"form": "bar", "at": [0.0, 0.0], "length": 1.05, "width": 0.05, "role": "trim", "row": {"count": 2, "step": [0.0, "$gap"], "centred": true}},
+                    {"form": "bar", "at": [0.48, 0.0], "length": 0.14, "width": 0.18, "role": "light", "tint": [255, 170, 40], "alpha": 0.8, "chance": 0.4, "row": {"count": 2, "step": [0.0, "$gap"], "centred": true}}
+                ]}},
+                { "id": "comb", "shape": [
+                    {"form": "bar", "at": [0.0, 0.0], "length": 1.8, "width": 0.2, "role": "panel"},
+                    {"form": "chevron", "at": [-0.6, 0.0], "angle": 180, "length": [0.6, 0.75], "width": [0.5, 0.65], "role": "hull", "row": {"count": [3, 4], "step": [0.42, 0.0], "taper": [0.72, 0.86]}},
+                    {"form": "bar", "at": [0.0, 0.0], "length": 1.7, "width": 0.04, "role": "trim"}
                 ]}
             ]
         },
         {
             "id": "hull.keel",
-            "note": "The spine a ship is hung on, along x: ribbed, segmented, or an open truss.",
+            "note": "The spine a ship is hung on, along x: ribbed, segmented, an open truss, or vertebrae narrowing toward the bow.",
             "tags": ["structure"],
             "sockets": ["spine"],
             "variants": [
                 { "id": "ribbed", "shape": [
                     {"form": "bar", "length": 1.95, "width": [0.28, 0.36], "role": "hull"},
-                    {"form": "bar", "at": [-0.75, 0.0], "angle": 90, "length": [0.55, 0.75], "width": 0.09, "role": "trim", "row": {"count": [4, 6], "step": [0.3, 0.0]}},
+                    {"form": "bar", "at": [0.0, 0.0], "angle": 90, "length": [0.55, 0.75], "width": 0.09, "role": "trim", "row": {"count": [4, 6], "step": [[0.28, 0.34], 0.0], "centred": true}},
                     {"form": "bar", "length": 1.8, "width": 0.06, "role": "panel"}
                 ]},
-                { "id": "segmented", "shape": [
+                { "id": "segmented", "shape": { "vars": { "n": [3, 4], "s": [0.42, 0.52] }, "parts": [
                     {"form": "bar", "length": 1.9, "width": 0.12, "role": "panel"},
-                    {"form": "polygon", "at": [-0.7, 0.0], "sides": [5, 8], "radius": [0.17, 0.28], "role": "hull", "row": {"count": [3, 4], "step": [0.467, 0.0]}},
-                    {"form": "disc", "at": [-0.7, 0.0], "radius": 0.08, "role": "trim", "row": {"count": 4, "step": [0.467, 0.0]}}
-                ]},
-                { "id": "truss", "shape": [
-                    {"form": "lattice", "length": 1.95, "width": [0.4, 0.55], "count": [5, 8], "role": "antenna"},
-                    {"form": "bar", "at": [-0.9, 0.0], "angle": 90, "length": 0.6, "width": 0.12, "role": "hull"},
-                    {"form": "bar", "at": [0.9, 0.0], "angle": 90, "length": 0.6, "width": 0.12, "role": "hull"},
+                    {"form": "polygon", "at": [0.0, 0.0], "sides": [5, 8], "radius": [0.17, 0.28], "role": "hull", "row": {"count": "$n", "step": ["$s", 0.0], "centred": true}},
+                    {"form": "disc", "at": [0.0, 0.0], "radius": 0.08, "role": "trim", "row": {"count": "$n", "step": ["$s", 0.0], "centred": true}}
+                ]}},
+                { "id": "truss", "shape": { "vars": { "w": [0.4, 0.58] }, "parts": [
+                    {"form": "lattice", "length": 1.95, "width": "$w", "count": [5, 8], "role": "antenna"},
+                    {"form": "bar", "at": [0.0, 0.0], "angle": 90, "length": "$w", "width": 0.12, "role": "hull", "row": {"count": 2, "step": [1.8, 0.0], "centred": true}},
                     {"form": "capsule", "at": [0.0, 0.0], "length": [0.4, 0.8], "width": 0.2, "role": "panel", "chance": 0.5}
-                ]}
+                ]}},
+                { "id": "vertebrae", "shape": { "vars": { "t": [0.74, 0.86] }, "parts": [
+                    {"form": "bar", "length": 1.9, "width": 0.08, "role": "panel"},
+                    {"form": "polygon", "at": [-0.78, 0.0], "sides": [4, 6], "radius": [0.27, 0.34], "role": "hull", "row": {"count": 5, "step": [0.4, 0.0], "taper": "$t"}},
+                    {"form": "disc", "at": [-0.78, 0.0], "radius": 0.09, "role": "trim", "row": {"count": 5, "step": [0.4, 0.0], "taper": "$t"}}
+                ]}}
             ]
         },
         {
@@ -129,22 +138,22 @@
             "tags": ["structure", "armour"],
             "sockets": ["edge", "side"],
             "variants": [
-                { "id": "plates", "shape": [
-                    {"form": "bar", "length": 1.95, "width": [0.45, 0.75], "role": "panel"},
-                    {"form": "bar", "at": [-0.72, 0.0], "length": [0.3, 0.44], "width": [0.4, 0.68], "role": "hull", "row": {"count": 4, "step": [0.48, 0.0]}},
-                    {"form": "bar", "at": [0.0, -0.3], "length": 1.95, "width": 0.05, "role": "trim", "alpha": 0.7},
-                    {"form": "disc", "at": [-0.72, 0.0], "radius": 0.05, "role": "trim", "chance": 0.5, "row": {"count": 4, "step": [0.48, 0.0]}}
-                ]},
-                { "id": "slab", "shape": [
-                    {"form": "bar", "length": [1.7, 1.95], "width": [0.6, 0.8], "role": "hull"},
-                    {"form": "chevron", "at": [0.95, 0.0], "length": 0.3, "width": [0.6, 0.8], "role": "hull"},
-                    {"form": "bar", "at": [-0.6, 0.0], "angle": 90, "length": 0.5, "width": 0.06, "role": "panel", "row": {"count": 3, "step": [0.6, 0.0]}},
-                    {"form": "bar", "at": [0.0, 0.3], "length": 1.7, "width": 0.08, "role": "trim"}
-                ]},
+                { "id": "plates", "shape": { "vars": { "w": [0.45, 0.72], "n": [3, 5], "s": [0.4, 0.47] }, "parts": [
+                    {"form": "bar", "length": 1.95, "width": "$w", "role": "panel"},
+                    {"form": "bar", "at": [0.0, 0.0], "length": [0.3, 0.36], "width": "$w", "role": "hull", "row": {"count": "$n", "step": ["$s", 0.0], "centred": true}},
+                    {"form": "bar", "at": [0.0, 0.0], "length": 1.95, "width": 0.04, "role": "trim", "alpha": 0.7, "row": {"count": 2, "step": [0.0, "$w"], "centred": true}},
+                    {"form": "disc", "at": [0.0, 0.0], "radius": 0.05, "role": "trim", "chance": 0.5, "row": {"count": "$n", "step": ["$s", 0.0], "centred": true}}
+                ]}},
+                { "id": "slab", "shape": { "vars": { "w": [0.6, 0.8] }, "parts": [
+                    {"form": "bar", "length": [1.7, 1.95], "width": "$w", "role": "hull"},
+                    {"form": "chevron", "at": [0.95, 0.0], "length": 0.3, "width": "$w", "role": "hull"},
+                    {"form": "bar", "at": [0.0, 0.0], "angle": 90, "length": 0.5, "width": 0.06, "role": "panel", "row": {"count": [2, 4], "step": [[0.5, 0.6], 0.0], "centred": true}},
+                    {"form": "bar", "at": [0.0, 0.25], "length": 1.7, "width": 0.08, "role": "trim"}
+                ]}},
                 { "id": "hazard", "shape": [
                     {"form": "bar", "length": 1.9, "width": [0.5, 0.6], "role": "hull"},
                     {"form": "bar", "length": 1.9, "width": 0.36, "role": "panel"},
-                    {"form": "bar", "at": [-0.8, 0.0], "angle": 60, "length": 0.4, "width": 0.1, "role": "trim", "tint": [[230, 170, 40], [210, 60, 40], [220, 220, 210]], "row": {"count": [4, 7], "step": [0.27, 0.0]}}
+                    {"form": "bar", "at": [0.0, 0.0], "angle": 60, "length": 0.4, "width": 0.1, "role": "trim", "tint": [[230, 170, 40], [210, 60, 40], [220, 220, 210]], "row": {"count": [4, 7], "step": [0.27, 0.0], "centred": true}}
                 ]}
             ]
         },
@@ -154,23 +163,23 @@
             "tags": ["habitat", "cockpit"],
             "sockets": ["top", "front"],
             "variants": [
-                { "id": "bubble", "shape": [
-                    {"form": "capsule", "length": [0.5, 0.8], "width": [0.95, 1.15], "role": "trim"},
+                { "id": "bubble", "shape": { "vars": { "w": [0.95, 1.15] }, "parts": [
+                    {"form": "capsule", "length": [0.5, 0.8], "width": "$w", "role": "trim"},
                     {"form": "capsule", "at": [0.05, 0.0], "length": [0.4, 0.7], "width": [0.75, 0.9], "role": "panel"},
-                    {"form": "bar", "at": [-0.2, 0.0], "angle": 90, "length": 0.9, "width": 0.07, "role": "trim", "chance": 0.6},
+                    {"form": "bar", "at": [-0.2, 0.0], "angle": 90, "length": "$w", "width": 0.07, "role": "trim", "chance": 0.6},
                     {"form": "disc", "at": [0.3, -0.18], "radius": [0.08, 0.12], "role": "light", "tint": [[200, 230, 255], [170, 255, 230]], "alpha": [0.35, 0.55]}
-                ]},
+                ]}},
                 { "id": "slit", "shape": [
                     {"form": "chevron", "at": [0.1, 0.0], "length": [1.5, 1.8], "width": [0.9, 1.1], "role": "hull"},
                     {"form": "chevron", "at": [0.25, 0.0], "length": 0.7, "width": 0.4, "role": "panel"},
                     {"form": "bar", "at": [0.15, 0.0], "angle": 90, "length": [0.35, 0.5], "width": 0.06, "role": "light", "tint": [[140, 220, 255], [255, 210, 140]], "alpha": 0.8}
                 ]},
-                { "id": "armoured", "shape": [
-                    {"form": "polygon", "sides": [6, 8], "radius": [0.8, 0.9], "role": "hull"},
-                    {"form": "polygon", "sides": [6, 8], "radius": 0.62, "role": "panel"},
-                    {"form": "bar", "at": [0.5, -0.24], "angle": 90, "length": 0.14, "width": 0.08, "role": "trim", "row": {"count": [3, 4], "step": [0.0, 0.16]}},
+                { "id": "armoured", "shape": { "vars": { "sides": [6, 8] }, "parts": [
+                    {"form": "polygon", "sides": "$sides", "radius": [0.8, 0.9], "role": "hull"},
+                    {"form": "polygon", "sides": "$sides", "radius": 0.62, "role": "panel"},
+                    {"form": "bar", "at": [0.5, 0.0], "angle": 90, "length": 0.14, "width": 0.08, "role": "trim", "row": {"count": [3, 4], "step": [0.0, 0.16], "centred": true}},
                     {"form": "disc", "at": [-0.3, 0.0], "radius": 0.07, "role": "light", "tint": [255, 70, 50], "alpha": 0.7, "chance": 0.4}
-                ]}
+                ]}}
             ]
         },
         {
@@ -187,27 +196,27 @@
                     {"form": "bar", "at": [[0.4, 0.7], 0.0], "angle": 90, "length": 0.6, "width": 0.07, "role": "trim", "chance": 0.5},
                     {"form": "chevron", "at": [-1.4, 0.0], "angle": 180, "length": [0.7, 1.0], "width": [0.55, 0.75], "role": "light", "tint": [[120, 190, 255], [255, 170, 80]], "alpha": 0.75, "onlyThrusting": true}
                 ]},
-                { "id": "cluster", "shape": [
-                    {"form": "chevron", "at": [-0.4, -0.5], "length": [0.8, 1.0], "width": [0.26, 0.34], "role": "hull", "row": {"count": 4, "step": [0.0, 0.333]}},
+                { "id": "cluster", "shape": { "vars": { "n": [3, 5], "s": [0.28, 0.33] }, "parts": [
+                    {"form": "chevron", "at": [-0.4, 0.0], "length": [0.8, 1.0], "width": [0.24, 0.3], "role": "hull", "row": {"count": "$n", "step": [0.0, "$s"], "centred": true}},
                     {"form": "bar", "at": [0.45, 0.0], "length": 0.9, "width": [1.25, 1.5], "role": "panel"},
                     {"form": "bar", "at": [0.0, 0.0], "angle": 90, "length": [1.3, 1.5], "width": 0.1, "role": "trim"},
                     {"form": "bar", "at": [0.45, 0.0], "angle": 90, "length": 0.9, "width": 0.07, "role": "trim", "chance": 0.5},
-                    {"form": "disc", "at": [-0.95, -0.5], "radius": 0.15, "role": "light", "tint": [[120, 190, 255], [180, 140, 255]], "alpha": 0.8, "onlyThrusting": true, "row": {"count": 4, "step": [0.0, 0.333]}}
-                ]},
+                    {"form": "disc", "at": [-0.95, 0.0], "radius": 0.14, "role": "light", "tint": [[120, 190, 255], [180, 140, 255]], "alpha": 0.8, "onlyThrusting": true, "row": {"count": "$n", "step": [0.0, "$s"], "centred": true}}
+                ]}},
                 { "id": "ion-grid", "shape": [
                     {"form": "bar", "at": [0.35, 0.0], "length": 0.9, "width": [1.0, 1.2], "role": "panel"},
                     {"form": "bar", "at": [-0.25, 0.0], "length": 0.3, "width": [1.6, 1.8], "role": "hull"},
-                    {"form": "bar", "at": [-0.25, -0.66], "length": 0.2, "width": 0.16, "role": "trim", "row": {"count": 5, "step": [0.0, 0.33]}},
+                    {"form": "bar", "at": [-0.25, 0.0], "length": 0.2, "width": 0.16, "role": "trim", "row": {"count": [4, 6], "step": [0.0, [0.27, 0.32]], "centred": true}},
                     {"form": "bar", "at": [-0.48, 0.0], "length": 0.08, "width": 1.6, "role": "light", "tint": [[110, 220, 255], [150, 255, 210]], "alpha": [0.3, 0.45]},
                     {"form": "bar", "at": [-0.85, 0.0], "length": [0.5, 0.8], "width": 1.5, "role": "light", "tint": [110, 220, 255], "alpha": 0.35, "onlyThrusting": true}
                 ]},
-                { "id": "plasma", "shape": [
+                { "id": "plasma", "shape": { "vars": { "glow": [[200, 120, 255], [255, 110, 200], [120, 230, 255]] }, "parts": [
                     {"form": "capsule", "at": [0.3, 0.0], "length": [1.0, 1.2], "width": [0.55, 0.7], "role": "hull"},
                     {"form": "bar", "at": [-0.5, 0.0], "length": 0.5, "width": [0.3, 0.4], "role": "panel"},
-                    {"form": "bar", "at": [-0.65, 0.0], "length": 0.1, "width": [0.8, 1.0], "role": "trim", "row": {"count": [2, 3], "step": [0.22, 0.0]}},
-                    {"form": "disc", "at": [-0.8, 0.0], "radius": [0.12, 0.17], "role": "light", "tint": [[200, 120, 255], [255, 110, 200], [120, 230, 255]], "alpha": 0.75},
-                    {"form": "chevron", "at": [-1.2, 0.0], "angle": 180, "length": [0.9, 1.3], "width": 0.4, "role": "light", "tint": [[200, 120, 255], [255, 110, 200]], "alpha": 0.6, "onlyThrusting": true}
-                ]},
+                    {"form": "bar", "at": [-0.35, 0.0], "length": 0.1, "width": [0.85, 1.0], "role": "trim", "row": {"count": [2, 4], "step": [-0.17, 0.0], "taper": [0.78, 0.9]}},
+                    {"form": "disc", "at": [-0.8, 0.0], "radius": [0.12, 0.17], "role": "light", "tint": "$glow", "alpha": 0.75},
+                    {"form": "chevron", "at": [-1.2, 0.0], "angle": 180, "length": [0.9, 1.3], "width": 0.4, "role": "light", "tint": "$glow", "alpha": 0.6, "onlyThrusting": true}
+                ]}},
                 { "id": "afterburner", "shape": [
                     {"form": "capsule", "at": [0.3, 0.0], "length": [0.9, 1.15], "width": [0.65, 0.8], "role": "hull"},
                     {"form": "bar", "at": [0.3, 0.0], "angle": 90, "length": [0.6, 0.75], "width": 0.06, "role": "panel", "chance": 0.6},
@@ -220,15 +229,12 @@
         },
         {
             "id": "hull.rcs",
-            "note": "Reaction control: small nozzles in four directions on a block, for turning rather than going.",
+            "note": "Reaction control: small nozzles round a hub or on a block, for turning rather than going.",
             "tags": ["propulsion", "rcs"],
             "sockets": ["edge", "top"],
             "variants": [
                 { "id": "quad", "shape": [
-                    {"form": "chevron", "at": [0.0, 0.58], "angle": -90, "length": [0.45, 0.55], "width": [0.28, 0.4], "role": "trim"},
-                    {"form": "chevron", "at": [0.0, -0.58], "angle": 90, "length": [0.45, 0.55], "width": [0.28, 0.4], "role": "trim"},
-                    {"form": "chevron", "at": [0.58, 0.0], "angle": 180, "length": [0.45, 0.55], "width": [0.28, 0.4], "role": "trim"},
-                    {"form": "chevron", "at": [-0.58, 0.0], "angle": 0, "length": [0.45, 0.55], "width": [0.28, 0.4], "role": "trim"},
+                    {"form": "chevron", "at": [0.0, 0.0], "length": [0.45, 0.55], "width": [0.28, 0.4], "role": "trim", "row": {"count": 4, "step": [0.58, -0.58], "turn": 90, "centred": true}},
                     {"form": "polygon", "sides": [4, 8], "angle": 45, "radius": [0.38, 0.48], "role": "panel"},
                     {"form": "disc", "radius": [0.1, 0.16], "role": "hull"}
                 ]},
@@ -240,12 +246,19 @@
                     {"form": "disc", "at": [0.2, 0.25], "radius": 0.07, "role": "light", "tint": [255, 170, 40], "alpha": 0.8, "chance": 0.3}
                 ]},
                 { "id": "strip", "shape": [
-                    {"form": "chevron", "at": [-0.45, -0.45], "angle": 90, "length": [0.4, 0.5], "width": [0.24, 0.32], "role": "trim", "row": {"count": 2, "step": [0.9, 0.0]}},
-                    {"form": "chevron", "at": [-0.45, 0.45], "angle": -90, "length": [0.4, 0.5], "width": [0.24, 0.32], "role": "trim", "row": {"count": 2, "step": [0.9, 0.0]}},
+                    {"form": "chevron", "at": [0.0, -0.45], "angle": 90, "length": [0.4, 0.5], "width": [0.24, 0.32], "role": "trim", "row": {"count": 2, "step": [0.9, 0.0], "centred": true}},
+                    {"form": "chevron", "at": [0.0, 0.45], "angle": -90, "length": [0.4, 0.5], "width": [0.24, 0.32], "role": "trim", "row": {"count": 2, "step": [0.9, 0.0], "centred": true}},
                     {"form": "bar", "length": [1.4, 1.7], "width": [0.4, 0.5], "role": "hull"},
                     {"form": "bar", "length": 1.2, "width": 0.07, "role": "panel"},
                     {"form": "disc", "at": [0.0, 0.0], "radius": [0.1, 0.16], "role": "trim", "chance": 0.6}
-                ]}
+                ]},
+                { "id": "ring", "shape": { "vars": { "r": [0.42, 0.5] }, "parts": [
+                    {"form": "chevron", "at": [0.0, 0.0], "length": 0.34, "width": [0.2, 0.26], "role": "trim", "row": {"count": 6, "step": [0.3, -0.52], "turn": 60, "centred": true}},
+                    {"form": "disc", "radius": "$r", "role": "panel"},
+                    {"form": "ring", "radius": "$r", "width": 0.06, "role": "trim"},
+                    {"form": "disc", "radius": [0.16, 0.22], "role": "hull"},
+                    {"form": "disc", "at": [0.0, 0.0], "radius": 0.06, "role": "light", "tint": [255, 170, 40], "alpha": 0.8, "blink": [1.2, 2.0], "chance": 0.3}
+                ]}}
             ]
         },
         {
@@ -261,19 +274,19 @@
                     {"form": "bar", "at": [-0.6, 0.0], "length": 0.14, "width": [0.55, 0.75], "role": "trim"},
                     {"form": "chevron", "at": [-1.4, 0.0], "angle": 180, "length": [0.5, 0.8], "width": 0.5, "role": "light", "tint": [[120, 190, 255], [255, 170, 80]], "alpha": 0.75, "onlyThrusting": true}
                 ]},
-                { "id": "gimbal", "shape": [
-                    {"form": "disc", "at": [0.25, 0.0], "radius": [0.5, 0.6], "role": "hull"},
-                    {"form": "ring", "at": [0.25, 0.0], "radius": [0.5, 0.6], "width": 0.08, "role": "trim"},
-                    {"form": "chevron", "at": [-0.4, 0.0], "angle": [-15, 15], "length": 0.6, "width": 0.55, "role": "panel"},
-                    {"form": "disc", "at": [-0.85, 0.0], "radius": 0.22, "role": "light", "tint": [120, 190, 255], "alpha": 0.8, "onlyThrusting": true}
-                ]},
-                { "id": "twin", "shape": [
-                    {"form": "bar", "at": [0.25, 0.0], "length": [0.4, 0.7], "width": 0.7, "role": "panel"},
-                    {"form": "chevron", "at": [-0.8, -0.32], "length": 0.55, "width": [0.36, 0.46], "role": "trim", "row": {"count": 2, "step": [0.0, 0.64]}},
-                    {"form": "capsule", "at": [0.0, -0.32], "length": [0.8, 1.1], "width": [0.3, 0.4], "role": "hull", "row": {"count": 2, "step": [0.0, 0.64]}},
-                    {"form": "bar", "at": [0.2, -0.32], "length": 0.5, "width": 0.06, "role": "panel", "chance": 0.5, "row": {"count": 2, "step": [0.0, 0.64]}},
-                    {"form": "disc", "at": [-1.1, -0.32], "radius": 0.16, "role": "light", "tint": [[120, 190, 255], [255, 170, 80]], "alpha": 0.8, "onlyThrusting": true, "row": {"count": 2, "step": [0.0, 0.64]}}
-                ]}
+                { "id": "gimbal", "shape": { "vars": { "r": [0.5, 0.6], "g": [-18, 18] }, "parts": [
+                    {"form": "chevron", "at": [-0.4, 0.0], "pivot": [0.3, 0.0], "angle": "$g", "length": 0.6, "width": 0.55, "role": "panel"},
+                    {"form": "disc", "at": [0.25, 0.0], "radius": "$r", "role": "hull"},
+                    {"form": "ring", "at": [0.25, 0.0], "radius": "$r", "width": 0.08, "role": "trim"},
+                    {"form": "disc", "at": [-0.85, 0.0], "pivot": [0.75, 0.0], "angle": "$g", "radius": 0.22, "role": "light", "tint": [120, 190, 255], "alpha": 0.8, "onlyThrusting": true}
+                ]}},
+                { "id": "twin", "shape": { "vars": { "gap": [0.58, 0.72] }, "parts": [
+                    {"form": "bar", "at": [0.25, 0.0], "length": [0.4, 0.7], "width": "$gap", "role": "panel"},
+                    {"form": "chevron", "at": [-0.8, 0.0], "length": 0.55, "width": [0.36, 0.46], "role": "trim", "row": {"count": 2, "step": [0.0, "$gap"], "centred": true}},
+                    {"form": "capsule", "at": [0.0, 0.0], "length": [0.8, 1.1], "width": [0.3, 0.4], "role": "hull", "row": {"count": 2, "step": [0.0, "$gap"], "centred": true}},
+                    {"form": "bar", "at": [0.2, 0.0], "length": 0.5, "width": 0.06, "role": "panel", "chance": 0.5, "row": {"count": 2, "step": [0.0, "$gap"], "centred": true}},
+                    {"form": "disc", "at": [-1.1, 0.0], "radius": 0.16, "role": "light", "tint": [[120, 190, 255], [255, 170, 80]], "alpha": 0.8, "onlyThrusting": true, "row": {"count": 2, "step": [0.0, "$gap"], "centred": true}}
+                ]}}
             ]
         },
         {
@@ -282,22 +295,22 @@
             "tags": ["cargo"],
             "sockets": ["side", "spine"],
             "variants": [
-                { "id": "pods", "shape": [
+                { "id": "pods", "shape": { "vars": { "n": [3, 4], "s": [0.42, 0.5] }, "parts": [
                     {"form": "bar", "length": 1.95, "width": 0.1, "role": "panel"},
-                    {"form": "capsule", "at": [-0.68, 0.0], "angle": 90, "length": [0.3, 0.5], "width": [0.3, 0.38], "role": "hull", "tint": [[150, 150, 150], [180, 120, 60], [90, 120, 150]], "row": {"count": [3, 4], "step": [0.45, 0.0]}},
-                    {"form": "bar", "at": [-0.68, 0.0], "length": 0.36, "width": 0.05, "role": "panel", "chance": 0.6, "row": {"count": [3, 4], "step": [0.45, 0.0]}}
-                ]},
+                    {"form": "capsule", "at": [0.0, 0.0], "angle": 90, "length": [0.3, 0.5], "width": [0.3, 0.38], "role": "hull", "tint": [[150, 150, 150], [180, 120, 60], [90, 120, 150]], "row": {"count": "$n", "step": ["$s", 0.0], "centred": true}},
+                    {"form": "bar", "at": [0.0, 0.0], "length": 0.36, "width": 0.05, "role": "panel", "chance": 0.6, "row": {"count": "$n", "step": ["$s", 0.0], "centred": true}}
+                ]}},
                 { "id": "frame", "shape": [
                     {"form": "lattice", "length": 1.95, "width": [0.9, 1.05], "count": 5, "role": "antenna"},
-                    {"form": "bar", "at": [-0.58, -0.22], "length": 0.36, "width": 0.38, "role": "hull", "tint": [[190, 110, 50], [70, 110, 170], [200, 180, 80]], "row": {"count": [2, 4], "step": [0.39, 0.0]}},
-                    {"form": "bar", "at": [-0.58, 0.22], "length": 0.36, "width": 0.38, "role": "hull", "tint": [[160, 70, 60], [80, 130, 110], [110, 110, 120]], "chance": 0.7, "row": {"count": [1, 4], "step": [0.39, 0.0]}}
+                    {"form": "bar", "at": [0.0, -0.22], "length": 0.36, "width": 0.38, "role": "hull", "tint": [[190, 110, 50], [70, 110, 170], [200, 180, 80]], "row": {"count": [2, 4], "step": [0.39, 0.0], "centred": true}},
+                    {"form": "bar", "at": [0.0, 0.22], "length": 0.36, "width": 0.38, "role": "hull", "tint": [[160, 70, 60], [80, 130, 110], [110, 110, 120]], "chance": 0.7, "row": {"count": [1, 4], "step": [0.39, 0.0], "centred": true}}
                 ]},
-                { "id": "tanks", "shape": [
+                { "id": "tanks", "shape": { "vars": { "n": [2, 3], "r": [0.27, 0.36] }, "parts": [
                     {"form": "bar", "length": 1.9, "width": [0.12, 0.2], "role": "panel"},
-                    {"form": "disc", "at": [-0.6, 0.0], "radius": [0.27, 0.38], "role": "hull", "row": {"count": 3, "step": [0.6, 0.0]}},
-                    {"form": "ring", "at": [-0.6, 0.0], "radius": [0.27, 0.38], "width": 0.05, "role": "panel", "row": {"count": 3, "step": [0.6, 0.0]}},
-                    {"form": "disc", "at": [-0.6, 0.0], "radius": [0.08, 0.12], "role": "trim", "tint": [[230, 170, 40], [200, 200, 205], [90, 160, 120]], "chance": 0.6, "row": {"count": 3, "step": [0.6, 0.0]}}
-                ]}
+                    {"form": "disc", "at": [0.0, 0.0], "radius": "$r", "role": "hull", "row": {"count": "$n", "step": [0.62, 0.0], "centred": true}},
+                    {"form": "ring", "at": [0.0, 0.0], "radius": "$r", "width": 0.05, "role": "panel", "row": {"count": "$n", "step": [0.62, 0.0], "centred": true}},
+                    {"form": "disc", "at": [0.0, 0.0], "radius": [0.08, 0.12], "role": "trim", "tint": [[230, 170, 40], [200, 200, 205], [90, 160, 120]], "chance": 0.6, "row": {"count": "$n", "step": [0.62, 0.0], "centred": true}}
+                ]}}
             ]
         },
         {
@@ -309,17 +322,16 @@
                 { "id": "deck", "shape": [
                     {"form": "bar", "length": [1.6, 1.85], "width": [1.0, 1.2], "role": "trim"},
                     {"form": "bar", "at": [0.08, 0.0], "length": [1.5, 1.7], "width": [0.82, 1.0], "role": "panel"},
-                    {"form": "bar", "at": [-0.55, 0.0], "length": 0.2, "width": 0.06, "role": "trim", "alpha": 0.7, "row": {"count": [3, 5], "step": [0.3, 0.0]}},
-                    {"form": "bar", "at": [0.0, -0.3], "length": [1.2, 1.4], "width": 0.04, "role": "trim", "alpha": 0.5, "chance": 0.6, "row": {"count": 2, "step": [0.0, 0.6]}},
+                    {"form": "bar", "at": [-0.1, 0.0], "length": 0.2, "width": 0.06, "role": "trim", "alpha": 0.7, "row": {"count": [3, 5], "step": [0.3, 0.0], "centred": true}},
+                    {"form": "bar", "at": [0.0, 0.0], "length": [1.2, 1.4], "width": 0.04, "role": "trim", "alpha": 0.5, "chance": 0.6, "row": {"count": 2, "step": [0.0, 0.6], "centred": true}},
                     {"form": "bar", "at": [0.88, 0.0], "angle": 90, "length": 0.9, "width": 0.05, "role": "light", "tint": [[120, 220, 255], [255, 190, 90]], "alpha": 0.6}
                 ]},
-                { "id": "clamshell", "shape": [
+                { "id": "clamshell", "shape": { "vars": { "door": [0.4, 0.48] }, "parts": [
                     {"form": "bar", "length": 1.8, "width": 1.2, "role": "hull"},
-                    {"form": "bar", "at": [0.0, -0.32], "length": 1.6, "width": [0.4, 0.48], "role": "panel"},
-                    {"form": "bar", "at": [0.0, 0.32], "length": 1.6, "width": [0.4, 0.48], "role": "panel"},
+                    {"form": "bar", "at": [0.0, 0.0], "length": 1.6, "width": "$door", "role": "panel", "row": {"count": 2, "step": [0.0, 0.64], "centred": true}},
                     {"form": "bar", "length": 1.6, "width": [0.04, 0.14], "role": "light", "tint": [255, 200, 120], "alpha": 0.6},
-                    {"form": "disc", "at": [0.8, -0.5], "radius": 0.06, "role": "light", "tint": [255, 170, 40], "blink": 1.2, "chance": 0.5}
-                ]},
+                    {"form": "disc", "at": [0.8, -0.5], "radius": 0.06, "role": "light", "tint": [255, 170, 40], "blink": [1.0, 1.5], "chance": 0.5}
+                ]}},
                 { "id": "tube", "shape": [
                     {"form": "capsule", "length": [1.5, 1.7], "width": [0.6, 0.75], "role": "hull"},
                     {"form": "bar", "at": [0.1, 0.0], "length": 1.5, "width": [0.3, 0.4], "role": "panel"},
@@ -330,59 +342,66 @@
         },
         {
             "id": "hull.collar",
-            "note": "A docking collar: where a ship meets a station. A plain ring, a clamp with jaws, or a ring at the end of an extending boom.",
+            "note": "A docking collar: where a ship meets a station. A plain ring, a clamp with jaws, a ring at the end of an extending boom, or an iris of petals.",
             "tags": ["docking"],
             "sockets": ["top", "end", "edge"],
             "variants": [
-                { "id": "ring", "shape": [
-                    {"form": "disc", "radius": [0.75, 0.85], "role": "panel"},
-                    {"form": "ring", "radius": [0.75, 0.85], "width": [0.14, 0.2], "role": "trim"},
+                { "id": "ring", "shape": { "vars": { "r": [0.75, 0.85] }, "parts": [
+                    {"form": "disc", "radius": "$r", "role": "panel"},
+                    {"form": "ring", "radius": "$r", "width": [0.14, 0.2], "role": "trim"},
                     {"form": "disc", "radius": [0.32, 0.4], "role": "hull"},
-                    {"form": "disc", "at": [0.6, 0.0], "radius": 0.06, "role": "light", "tint": [[60, 255, 110], [255, 200, 90]], "blink": 2.0, "chance": 0.6}
-                ]},
+                    {"form": "disc", "at": [0.6, 0.0], "radius": 0.06, "role": "light", "tint": [[60, 255, 110], [255, 200, 90]], "blink": [1.6, 2.6], "chance": 0.6}
+                ]}},
                 { "id": "clamp", "shape": [
                     {"form": "ring", "radius": [0.55, 0.65], "width": [0.1, 0.16], "role": "trim"},
                     {"form": "disc", "radius": 0.45, "role": "panel"},
                     {"form": "polygon", "sides": [3, 6], "radius": [0.15, 0.25], "role": "hull", "chance": 0.6},
-                    {"form": "bar", "at": [0.0, -0.75], "length": [0.35, 0.45], "width": 0.3, "role": "hull", "row": {"count": 2, "step": [0.0, 1.5]}},
-                    {"form": "bar", "at": [-0.75, 0.0], "angle": 90, "length": [0.35, 0.45], "width": 0.3, "role": "hull", "row": {"count": 2, "step": [1.5, 0.0]}}
+                    {"form": "bar", "at": [0.0, 0.0], "length": [0.35, 0.45], "width": 0.3, "role": "hull", "row": {"count": 4, "step": [0.75, 0.75], "turn": 90, "centred": true}}
                 ]},
                 { "id": "boom", "shape": [
                     {"form": "bar", "at": [-0.35, 0.0], "length": [1.0, 1.3], "width": [0.22, 0.3], "role": "hull"},
                     {"form": "bar", "at": [-0.6, 0.0], "angle": 90, "length": 0.4, "width": 0.07, "role": "panel", "row": {"count": 3, "step": [0.22, 0.0]}},
                     {"form": "ring", "at": [0.5, 0.0], "radius": [0.45, 0.52], "width": 0.12, "role": "trim"},
                     {"form": "disc", "at": [0.5, 0.0], "radius": 0.3, "role": "panel"}
+                ]},
+                { "id": "iris", "shape": [
+                    {"form": "disc", "radius": 0.8, "role": "panel"},
+                    {"form": "chevron", "at": [0.0, 0.0], "angle": 67.5, "length": [0.36, 0.46], "width": [0.3, 0.38], "role": "hull", "row": {"count": 8, "step": [0.42, 0.0], "turn": 45, "centred": true}},
+                    {"form": "ring", "radius": 0.8, "width": [0.1, 0.14], "role": "trim"},
+                    {"form": "disc", "radius": [0.08, 0.14], "role": "light", "tint": [[60, 255, 110], [120, 200, 255]], "alpha": 0.7, "chance": 0.4}
                 ]}
             ]
         },
         {
             "id": "hull.gear",
-            "note": "Landing gear for ships that set down on a surface, seen from above: skids, a tripod of pads, or folding legs.",
+            "note": "Landing gear for ships that set down on a surface, seen from above: skids, a tripod of pads, folding legs, or four splayed legs.",
             "tags": ["utility", "landing"],
             "sockets": ["bottom", "side"],
             "variants": [
-                { "id": "skids", "shape": [
-                    {"form": "capsule", "at": [0.0, -0.6], "length": [1.3, 1.6], "width": [0.14, 0.2], "role": "trim", "row": {"count": 2, "step": [0.0, 1.2]}},
-                    {"form": "bar", "at": [-0.4, 0.0], "angle": 90, "length": 1.2, "width": 0.07, "role": "panel", "row": {"count": 2, "step": [0.8, 0.0]}},
+                { "id": "skids", "shape": { "vars": { "gap": [1.0, 1.3] }, "parts": [
+                    {"form": "capsule", "at": [0.0, 0.0], "length": [1.3, 1.6], "width": [0.14, 0.2], "role": "trim", "row": {"count": 2, "step": [0.0, "$gap"], "centred": true}},
+                    {"form": "bar", "at": [0.0, 0.0], "angle": 90, "length": "$gap", "width": 0.07, "role": "panel", "row": {"count": 2, "step": [0.8, 0.0], "centred": true}},
                     {"form": "bar", "length": [0.3, 0.6], "width": [0.25, 0.4], "role": "hull"},
-                    {"form": "disc", "at": [-0.65, -0.6], "radius": 0.13, "role": "panel", "chance": 0.5, "row": {"count": 2, "step": [0.0, 1.2]}}
-                ]},
+                    {"form": "disc", "at": [-0.65, 0.0], "radius": 0.13, "role": "panel", "chance": 0.5, "row": {"count": 2, "step": [0.0, "$gap"], "centred": true}}
+                ]}},
                 { "id": "tripod", "shape": [
-                    {"form": "bar", "at": [0.35, 0.0], "length": 0.7, "width": [0.06, 0.12], "role": "panel"},
-                    {"form": "bar", "at": [-0.18, 0.3], "angle": 120, "length": 0.7, "width": 0.07, "role": "panel"},
-                    {"form": "bar", "at": [-0.18, -0.3], "angle": 240, "length": 0.7, "width": 0.07, "role": "panel"},
-                    {"form": "disc", "at": [0.75, 0.0], "radius": 0.19, "role": "trim"},
-                    {"form": "disc", "at": [-0.375, 0.65], "radius": 0.19, "role": "trim"},
-                    {"form": "disc", "at": [-0.375, -0.65], "radius": 0.19, "role": "trim"},
+                    {"form": "bar", "at": [0.0, 0.0], "length": 0.7, "width": [0.06, 0.12], "role": "panel", "row": {"count": 3, "step": [-0.525, 0.303], "turn": 120, "centred": true}},
+                    {"form": "disc", "at": [0.0, 0.0], "radius": [0.16, 0.22], "role": "trim", "row": {"count": 3, "step": [-1.125, 0.65], "turn": 120, "centred": true}},
+                    {"form": "disc", "at": [0.0, 0.0], "radius": 0.07, "role": "panel", "chance": 0.6, "row": {"count": 3, "step": [-1.125, 0.65], "turn": 120, "centred": true}},
                     {"form": "polygon", "sides": [5, 8], "radius": [0.24, 0.36], "role": "hull"}
                 ]},
-                { "id": "legs", "shape": [
+                { "id": "legs", "shape": { "vars": { "lw": [0.07, 0.13], "foot": [0.3, 0.5] }, "parts": [
                     {"form": "bar", "at": [0.0, 0.0], "length": [0.6, 1.0], "width": [0.3, 0.45], "role": "hull"},
-                    {"form": "bar", "at": [-0.5, 0.45], "angle": 132, "length": 0.95, "width": [0.07, 0.13], "role": "panel"},
-                    {"form": "bar", "at": [-0.5, -0.45], "angle": 228, "length": 0.95, "width": [0.07, 0.13], "role": "panel"},
-                    {"form": "bar", "at": [-0.85, 0.8], "length": [0.3, 0.5], "width": 0.14, "role": "trim"},
-                    {"form": "bar", "at": [-0.85, -0.8], "length": [0.3, 0.5], "width": 0.14, "role": "trim"},
-                    {"form": "disc", "at": [0.3, 0.0], "radius": 0.06, "role": "light", "tint": [255, 170, 40], "blink": 1.5, "chance": 0.3}
+                    {"form": "bar", "at": [-0.5, 0.45], "angle": 132, "length": 0.95, "width": "$lw", "role": "panel"},
+                    {"form": "bar", "at": [-0.5, -0.45], "angle": 228, "length": 0.95, "width": "$lw", "role": "panel"},
+                    {"form": "bar", "at": [-0.85, 0.0], "length": "$foot", "width": 0.14, "role": "trim", "row": {"count": 2, "step": [0.0, 1.6], "centred": true}},
+                    {"form": "disc", "at": [0.3, 0.0], "radius": 0.06, "role": "light", "tint": [255, 170, 40], "blink": [1.2, 1.8], "chance": 0.3}
+                ]}},
+                { "id": "quad", "shape": [
+                    {"form": "bar", "at": [0.0, 0.0], "angle": 45, "length": 0.8, "width": [0.07, 0.12], "role": "panel", "row": {"count": 4, "step": [-0.566, 0.0], "turn": 90, "centred": true}},
+                    {"form": "disc", "at": [0.0, 0.0], "radius": [0.13, 0.19], "role": "trim", "row": {"count": 4, "step": [-1.16, 0.0], "turn": 90, "centred": true}},
+                    {"form": "polygon", "sides": 4, "radius": [0.3, 0.4], "role": "hull"},
+                    {"form": "disc", "radius": [0.08, 0.14], "role": "panel", "chance": 0.5}
                 ]}
             ]
         }
