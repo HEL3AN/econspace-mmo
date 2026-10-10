@@ -76,7 +76,7 @@ void Editor::DrawHud()
         bool      overMb = CheckCollisionPointRec(GetMousePosition(), mb);
         DrawRectangleRec(mb, overMb ? Fade(Ui::ACCENT, 0.2f) : Ui::TITLE_BG);
         DrawRectangleLinesEx(mb, 1.0f, Ui::PANEL_BORDER);
-        Ui::Text((mode_ == Mode::Galaxy) ? "→ System view" : "→ Galaxy map", (int)mb.x + 10,
+        Ui::Text((mode_ == Mode::Galaxy) ? "System view >" : "Galaxy map >", (int)mb.x + 10,
                  (int)mb.y + 8, 14, Ui::TEXT);
         if (overMb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
             EnterGalaxyMode(mode_ != Mode::Galaxy);
@@ -86,7 +86,7 @@ void Editor::DrawHud()
     bool      overGb = CheckCollisionPointRec(GetMousePosition(), gb);
     DrawRectangleRec(gb, overGb ? Fade(Ui::ACCENT, 0.2f) : Ui::TITLE_BG);
     DrawRectangleLinesEx(gb, 1.0f, (mode_ == Mode::Gallery) ? Ui::ACCENT : Ui::PANEL_BORDER);
-    Ui::Text((mode_ == Mode::Gallery) ? "→ Back" : "→ Gallery", (int)gb.x + 10, (int)gb.y + 8, 14,
+    Ui::Text((mode_ == Mode::Gallery) ? "< Back" : "Gallery >", (int)gb.x + 10, (int)gb.y + 8, 14,
              (mode_ == Mode::Gallery) ? Ui::ACCENT : Ui::TEXT);
     if (overGb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
         EnterGalleryMode(mode_ != Mode::Gallery);

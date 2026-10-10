@@ -21,6 +21,12 @@ namespace Ui
 bool Slider(Rectangle r, const char* label, float& value, float lo, float hi,
             const char* fmt = "%.2f");
 
+// The same, with the track spaced by ratio rather than by difference: for a value such as a
+// zoom, where 1 to 2 is as large a step as 8 to 16. Shows and returns the value itself.
+// `lo` must be above zero.
+bool LogSlider(Rectangle r, const char* label, float& value, float lo, float hi,
+               const char* fmt = "%.2f");
+
 // Returns true on the frame it was clicked.
 bool Toggle(Rectangle r, const char* label, bool& value);
 

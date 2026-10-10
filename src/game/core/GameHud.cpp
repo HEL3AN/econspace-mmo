@@ -941,7 +941,7 @@ void Game::DrawStationScreen()
                           Proto::Command c;
                           c.payBountyFaction = (int)stationFaction;
                           clientLink_->Send(Proto::EncodeCommand(c));
-                          FlashMessage("Bounty paid — record cleared");
+                          FlashMessage("Bounty paid: record cleared");
                       });
         payBtn.Process();
     }

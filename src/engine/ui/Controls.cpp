@@ -2,6 +2,7 @@
 
 #include "ui/UiTheme.h"
 #include "raymath.h"
+#include <cmath>
 
 namespace Ui
 {
@@ -31,6 +32,19 @@ bool Slider(Rectangle r, const char* label, float& value, float lo, float hi, co
         }
     }
     return false;
+}
+
+bool LogSlider(Rectangle r, const char* label, float& value, float lo, float hi, const char* fmt)
+{
+    // Slider moves the logarithm along the track and prints nothing (an empty format); the
+    // number printed is the value itself, never its logarithm.
+    float       t = std::log(fmaxf(value, lo));
+    const float tlo = std::log(lo), thi = std::log(hi);
+    const bool  changed = Slider(r, label, t, tlo, thi, "");
+    if (changed)
+        value = Clamp(std::exp(t), lo, hi);
+    Text(TextFormat(fmt, value), (int)(r.x + r.width - 54), (int)r.y, 12, TEXT);
+    return changed;
 }
 
 bool Toggle(Rectangle r, const char* label, bool& value)

@@ -355,8 +355,8 @@ void Editor::DrawGalleryFocusBar()
     const float      size = a.defaultSize > 0.0f ? a.defaultSize : 100.0f;
 
     DrawRectangleLinesEx(box, 1.0f, Ui::PANEL_BORDER);
-    Ui::Slider({ 16.0f, 96.0f, 300.0f, 28.0f }, "zoom (x fitted)", galleryZoom_, kZoomMin, kZoomMax,
-               "%.2f");
+    Ui::LogSlider({ 16.0f, 96.0f, 300.0f, 28.0f }, "zoom (x fitted)", galleryZoom_, kZoomMin,
+                  kZoomMax, "%.2f");
 
     // What minPixels is compared against (Silhouette.cpp): the object's diameter on the
     // screen. Shown as a number, with what it hides, because a part missing at one size and
