@@ -1623,3 +1623,30 @@ TEST_CASE("whoever gets there first names it, once, for everyone (#145)")
     CHECK(kept);
     std::remove(path.c_str());
 }
+
+TEST_CASE("a ship left beside a moving body is found beside it again (#258)")
+{
+    // A station that orbits a planet (#210) goes on round while its visitor is logged out.
+    // Saved as a point in space, the ship came back further from it every time.
+    Fixture f;
+    auto    hub = std::make_unique<Station>(Vector2{ 400000.0f, 0.0f }, 700.0f, "Aurora Hub",
+                                            FactionId::TradersGuild, StationRole::TradeHub);
+    Entity* station = hub.get();
+    f.World().entities.push_back(std::move(hub));
+    const Vector2 was = station->GetPosition();
+    f.s.ship->Teleport({ was.x + 1000.0f, was.y - 120.0f });
+
+    const std::string path = "account_near_tmp.json";
+    f.sim.SaveAccount(f.s, path);
+
+    // Meanwhile the station moves on, a long way.
+    station->SetPosition({ was.x + 15000.0f, was.y + 9000.0f });
+
+    ClientSession& back = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                              GetShipCatalog()[0].stats);
+    REQUIRE(f.sim.LoadAccount(back, path) == Save::Result::Ok);
+    std::remove(path.c_str());
+
+    CHECK(back.ship->GetPosition().x == doctest::Approx(was.x + 16000.0f));
+    CHECK(back.ship->GetPosition().y == doctest::Approx(was.y + 8880.0f));
+}
