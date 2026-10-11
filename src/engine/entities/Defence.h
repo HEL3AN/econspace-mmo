@@ -25,9 +25,9 @@ enum class Engage
 
 struct Defence
 {
-    // An allow-list is a list of names: it is cut to this many, each at most NAME_MAX long.
+    // An allow-list is a list of names: it is cut to this many, each at most NAME_LENGTH_MAX long.
     static constexpr int   LIST_MAX = 32;
-    static constexpr int   NAME_MAX = 24;
+    static constexpr int   NAME_LENGTH_MAX = 24;
     static constexpr float THRESHOLD_MIN = -100.0f;
     static constexpr float THRESHOLD_MAX = 100.0f;
 

@@ -68,13 +68,13 @@ std::string DefenceProblem(const Defence& d)
     if ((int)d.players.size() > Defence::LIST_MAX || (int)d.factions.size() > Defence::LIST_MAX)
         return "an allow-list holds at most " + std::to_string(Defence::LIST_MAX) + " names";
     for (const std::string& p : d.players)
-        if (p.empty() || (int)p.size() > Defence::NAME_MAX)
+        if (p.empty() || (int)p.size() > Defence::NAME_LENGTH_MAX)
             return "a player's name on the allow-list is 1 to " +
-                   std::to_string(Defence::NAME_MAX) + " characters";
+                   std::to_string(Defence::NAME_LENGTH_MAX) + " characters";
     FactionId f;
     for (const std::string& id : d.factions)
         if (!Factions::Find(id, f))
-            return "there is no faction '" + id.substr(0, Defence::NAME_MAX) + "'";
+            return "there is no faction '" + id.substr(0, Defence::NAME_LENGTH_MAX) + "'";
     return std::string();
 }
 
