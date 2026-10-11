@@ -320,3 +320,62 @@ TEST_CASE("a nebula hides a player from other players, not only from NPCs (#341)
     hider.ship->Teleport({ at.x + 20000.0f, at.y });
     CHECK(sees(seeker));
 }
+
+TEST_CASE("connections are limited in all and per address (#341)")
+{
+    Host::Gate::Limits l;
+    l.maxClients = 5;
+    l.maxPerAddress = 2;
+    const Host::Gate gate(l);
+    CHECK(gate.RefuseConnection(0, 0).empty());
+    CHECK(gate.RefuseConnection(4, 1).empty());
+    CHECK_FALSE(gate.RefuseConnection(4, 2).empty());                   // this address has its two
+    CHECK_FALSE(gate.RefuseConnection(5, 0).empty());                   // the server is full
+    CHECK(gate.RefuseConnection(5, 0) != gate.RefuseConnection(4, 2));  // and says which
+}
+
+TEST_CASE("new accounts from one address are limited per hour (#341)")
+{
+    Host::Gate::Limits l;
+    l.registrationsPerHour = 3;
+    Host::Gate gate(l);
+    for (int i = 0; i < 3; i++)
+    {
+        REQUIRE(gate.MayRegister("10.0.0.1", 100.0 + i));
+        gate.Registered("10.0.0.1", 100.0 + i);
+    }
+    CHECK_FALSE(gate.MayRegister("10.0.0.1", 200.0));
+    CHECK(gate.MayRegister("10.0.0.2", 200.0));                 // another address is not held to it
+    CHECK(gate.MayRegister("10.0.0.1", 100.0 + 3600.0 + 1.0));  // an hour on, it may again
+}
+
+TEST_CASE("each failed login doubles the wait before the next, and a success clears it (#341)")
+{
+    Host::Gate        gate;
+    const std::string a = "10.0.0.1";
+    CHECK(gate.LoginWait(a, "pilot", 0.0) == 0.0);
+    gate.LoginFailed(a, "pilot", 0.0);
+    CHECK(gate.LoginWait(a, "pilot", 0.0) == doctest::Approx(1.0));
+    CHECK(gate.LoginWait(a, "pilot", 1.0) == 0.0);
+    gate.LoginFailed(a, "pilot", 1.0);
+    CHECK(gate.LoginWait(a, "pilot", 1.0) == doctest::Approx(2.0));
+    gate.LoginFailed(a, "pilot", 3.0);
+    CHECK(gate.LoginWait(a, "pilot", 3.0) == doctest::Approx(4.0));
+    for (int i = 0; i < 20; i++)
+        gate.LoginFailed(a, "pilot", 10.0);
+    CHECK(gate.LoginWait(a, "pilot", 10.0) == doctest::Approx(gate.GetLimits().maxBackoff));
+
+    // Only that account from that address: the owner elsewhere, and other names, are free.
+    CHECK(gate.LoginWait("10.0.0.2", "pilot", 10.0) == 0.0);
+    CHECK(gate.LoginWait(a, "ann", 10.0) == 0.0);
+
+    gate.LoginSucceeded(a, "pilot");
+    CHECK(gate.LoginWait(a, "pilot", 10.0) == 0.0);
+
+    // An hour of quiet forgets a run of failures.
+    gate.LoginFailed(a, "ann", 0.0);
+    gate.LoginFailed(a, "ann", 0.0);
+    gate.Expire(4000.0);
+    gate.LoginFailed(a, "ann", 4000.0);
+    CHECK(gate.LoginWait(a, "ann", 4000.0) == doctest::Approx(1.0));
+}

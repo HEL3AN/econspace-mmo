@@ -158,3 +158,42 @@ TEST_CASE("dialing a port nobody answers on gives up within its deadline")
     CHECK_FALSE(c);
     CHECK(took < 5.0);
 }
+
+TEST_CASE("the server's side of a connection is held to its own, tighter limits (#341)")
+{
+    REQUIRE(Net::Startup());
+    Net::TcpListener listener;
+    REQUIRE(listener.Listen(0));
+    const unsigned long long raw = RawSocket::Connect(listener.Port());
+    REQUIRE(raw != 0);
+    std::unique_ptr<Net::TcpConnection> server;
+    for (int i = 0; i < 100000 && !server; i++)
+        server = listener.Accept();
+    REQUIRE(server);
+    // Who it is, for the per-address limits.
+    CHECK(server->PeerAddress() == "127.0.0.1");
+
+    // 64 KB and one byte: under the default cap, over the server's.
+    server->SetLimits(Net::TcpConnection::SERVER_MAX_FRAME_BYTES,
+                      Net::TcpConnection::SERVER_MAX_SEND_BACKLOG);
+    const uint32_t    n = (uint32_t)(Net::TcpConnection::SERVER_MAX_FRAME_BYTES + 1);
+    const std::string header = { (char)((n >> 24) & 0xFF), (char)((n >> 16) & 0xFF),
+                                 (char)((n >> 8) & 0xFF), (char)(n & 0xFF) };
+    REQUIRE(RawSocket::Send(raw, header + "whatever"));
+    std::string out;
+    for (int i = 0; i < 100000 && server->Alive(); i++)
+        server->Poll(out);
+    CHECK_FALSE(server->Alive());
+    RawSocket::Close(raw);
+}
+
+TEST_CASE("a port that is being listened on cannot be taken by a second listener (#341)")
+{
+    // With SO_REUSEADDR on Windows a second server could bind a port already in use, and
+    // connections went to whichever of the two accepted first.
+    REQUIRE(Net::Startup());
+    Net::TcpListener first;
+    REQUIRE(first.Listen(0));
+    Net::TcpListener second;
+    CHECK_FALSE(second.Listen(first.Port()));
+}

@@ -384,6 +384,8 @@ struct HostClient
     // (#341). The session is saved and ended when that runs out, or when its owner logs in
     // again -- which displaces it like any other earlier connection.
     bool lingering = false;
+    // The missions this client was last sent (#341), so they go out only when they change.
+    std::string lastMissions;
 
     // The login in progress (#106). A name has been claimed and a challenge sent; none of
     // it means anything until the proof arrives.
@@ -599,16 +601,23 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
            isPublic ? "open to other machines"
                     : "this machine only (add --public to let other machines connect)");
 
+    using clock = std::chrono::steady_clock;
     std::vector<HostClient> clients;
+    // Connection, registration and login limits (#341). Its clock is the server's uptime.
+    Host::Gate gate;
+    const auto started = clock::now();
+    double     gateExpireAcc = 0.0;
+    int        refusedConnections = 0;  // since the last line about them
+    double     refusalLogAcc = 0.0;
 
     NetStats    net;
     double      snapshotAcc = 0.0;   // time since the last round of snapshots
     double      worldSaveAcc = 0.0;  // world checkpoint timer
     const float dt = 1.0f / 60.0f;
-    using clock = std::chrono::steady_clock;
-    auto   prev = clock::now();
-    double acc = 0.0;
-    double galaxyAcc = 0.0;  // galaxy-snapshot broadcast timer (map statistics)
+    auto        prev = clock::now();
+    double      acc = 0.0;
+    double      galaxyAcc = 0.0;  // galaxy-snapshot broadcast timer (map statistics)
+    std::string lastGalaxy;       // what the last broadcast said
 
     while (g_stopRequested == 0)
     {
@@ -621,12 +630,47 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
 
         // Everyone waiting, not one per iteration: two clients arriving in the same
         // millisecond is the ordinary case, not a race to be lost.
+        const double uptime = std::chrono::duration<double>(now - started).count();
         while (std::unique_ptr<Net::TcpConnection> c = listener.Accept())
         {
+            c->SetLimits(Net::TcpConnection::SERVER_MAX_FRAME_BYTES,
+                         Net::TcpConnection::SERVER_MAX_SEND_BACKLOG);
+            int total = 0, same = 0;
+            for (const HostClient& other : clients)
+                if (other.conn && other.conn->Alive())
+                {
+                    total++;
+                    same += other.conn->PeerAddress() == c->PeerAddress() ? 1 : 0;
+                }
+            const std::string refusal = gate.RefuseConnection(total, same);
+            if (!refusal.empty())
+            {
+                // Told why, then closed: a full server is not a crashed one.
+                Proto::Bye bye;
+                bye.reason = refusal;
+                c->Send(Proto::EncodeBye(bye));
+                refusedConnections++;
+                continue;
+            }
             HostClient hc;
             hc.conn = std::move(c);
             clients.push_back(std::move(hc));
             printf("Client connected; waiting for hello.\n");
+        }
+        // One line now and then, not one per refusal: a flood would otherwise be a log flood.
+        refusalLogAcc += frame;
+        if (refusedConnections > 0 && refusalLogAcc >= 10.0)
+        {
+            printf("Refused %d connection(s) over the limits (%d in all, %d per address).\n",
+                   refusedConnections, gate.GetLimits().maxClients, gate.GetLimits().maxPerAddress);
+            refusedConnections = 0;
+            refusalLogAcc = 0.0;
+        }
+        gateExpireAcc += frame;
+        if (gateExpireAcc >= 60.0)
+        {
+            gateExpireAcc = 0.0;
+            gate.Expire(uptime);
         }
 
         // Inputs. Each received command is one player tick (1:1 with client prediction),
@@ -677,6 +721,21 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                         hc.conn.reset();
                         break;
                     }
+                    // Failed logins slow the next one down (#341): a wrong answer already
+                    // costs a socket, and now a wait that doubles each time.
+                    const std::string& from = hc.conn->PeerAddress();
+                    if (const double wait = gate.LoginWait(from, h.account, uptime); wait > 0.0)
+                    {
+                        Proto::Bye bye;
+                        bye.reason = "Too many failed logins for that account; try again in " +
+                                     std::to_string((int)std::ceil(wait)) + " s";
+                        hc.conn->Send(Proto::EncodeBye(bye));
+                        printf("%s: refused -- %.0f s of backoff left for %s.\n", h.account.c_str(),
+                               wait, from.c_str());
+                        hc.pendingAccount = h.account;
+                        hc.conn.reset();
+                        break;
+                    }
                     // A name is a claim, not a login (#106). Nothing is created here and
                     // nobody is disturbed: the challenge goes out, and everything that
                     // costs anyone anything waits for the proof.
@@ -724,6 +783,18 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                         hc.conn.reset();
                         break;
                     }
+                    if (hc.isNewAccount && !gate.MayRegister(from, uptime))
+                    {
+                        // Accounts are free; a script that makes them by the thousand is
+                        // what makes them cost something (#341).
+                        Proto::Bye bye;
+                        bye.reason = "Too many new accounts from your address; try again later";
+                        hc.conn->Send(Proto::EncodeBye(bye));
+                        printf("%s: refused -- %s has made its new accounts for the hour.\n",
+                               h.account.c_str(), from.c_str());
+                        hc.conn.reset();
+                        break;
+                    }
                     if (hc.isNewAccount)
                         chal.salt = Auth::MakeSalt();  // this login will set the secret
                     chal.isNew = hc.isNewAccount;
@@ -756,10 +827,14 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                         hc.conn->Send(Proto::EncodeBye(bye));
                         printf("%s: refused (%s).\n", hc.pendingAccount.c_str(),
                                hc.isNewAccount ? "bad registration" : "wrong secret");
+                        gate.LoginFailed(hc.conn->PeerAddress(), hc.pendingAccount, uptime);
                         hc.conn.reset();
                         break;
                     }
                     const Proto::Hello h{ hc.pendingAccount };
+                    gate.LoginSucceeded(hc.conn->PeerAddress(), h.account);
+                    if (hc.isNewAccount)
+                        gate.Registered(hc.conn->PeerAddress(), uptime);
 
                     // One account, one session (#105). Two connections claiming the same
                     // name used to get a ship each and the whole balance each, and
@@ -901,8 +976,11 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
 
         snapshotAcc += frame;
         const bool sendSnapshots = snapshotAcc >= SNAPSHOT_INTERVAL;
+        // The interval is taken off, not the whole of it (#341): zeroing threw away the part
+        // of a frame past the deadline, and with frames of 4 ms and up that came to 16
+        // snapshots a second rather than 20. A long stall still sends one round, not a burst.
         if (sendSnapshots)
-            snapshotAcc = 0.0;
+            snapshotAcc = std::min(snapshotAcc - SNAPSHOT_INTERVAL, SNAPSHOT_INTERVAL);
 
         for (HostClient& hc : clients)
         {
@@ -930,6 +1008,11 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
             snap.events = s->EventsSince(hc.lastEventSeq);
             if (!snap.events.empty())
                 hc.lastEventSeq = snap.events.back().seq;
+            // The mission board and log change a few times a session; they were sent twenty
+            // times a second. Now only when they differ from what this client has (#341).
+            const std::string missions = Proto::MissionsKey(snap);
+            snap.missionsIncluded = missions != hc.lastMissions;
+            hc.lastMissions = missions;
             const std::string enc = Proto::EncodeSnapshot(snap);
             net.snapshots += (double)enc.size();
             net.snapCount++;
@@ -952,9 +1035,13 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
         if (galaxyAcc >= 1.0)
         {
             galaxyAcc = 0.0;
-            if (!clients.empty())
+            // Only when it changed (#341): a client is sent the whole map at login, and a
+            // galaxy that has not moved in a second is the same map again.
+            const std::string g =
+                clients.empty() ? std::string() : Proto::EncodeGalaxy(sim.BuildGalaxyState());
+            if (!g.empty() && g != lastGalaxy)
             {
-                const std::string g = Proto::EncodeGalaxy(sim.BuildGalaxyState());
+                lastGalaxy = g;
                 for (HostClient& hc : clients)
                     if (hc.sessionId != 0 && hc.conn)
                     {

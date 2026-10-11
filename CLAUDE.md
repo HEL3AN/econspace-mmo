@@ -194,7 +194,9 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   chose, so `TcpConnection` caps it and drops the connection rather than buffering; the
   send backlog is capped the same way. The host grants each client a budget of player
   ticks, because one command is one tick of movement and a client that sends faster than
-  the simulation runs would simply move faster than everyone else.
+  the simulation runs would simply move faster than everyone else. The server's side is
+  tighter (64 KB frames, 1 MB backlog), and `Host::Gate` limits connections in all and per
+  address, new accounts per address per hour, and retries after a wrong secret (#341).
 - **A system nobody is in has no NPC ships** (#295). A system is hot while a player is in it
   and for `Simulation::COOL_AFTER` after the last one leaves; every other system is cold and
   keeps its ships as numbers, advanced by the coarse pass. Entering warms it from those

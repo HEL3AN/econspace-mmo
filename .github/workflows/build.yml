@@ -78,7 +78,9 @@ jobs:
       - name: Configure
         # -Werror only in CI: warnings stay visible but non-fatal for local work, while
         # nothing warning-dirty can reach main.
-        run: cmake -S . -B build -G "MinGW Makefiles" -DWARNINGS_AS_ERRORS=ON
+        # A named build type (#341): with none, CMake builds with no optimisation and no
+        # symbols, which is neither the build anyone develops with nor the one they ship.
+        run: cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Debug -DWARNINGS_AS_ERRORS=ON
 
       - name: Build
         run: cmake --build build
@@ -209,7 +211,7 @@ jobs:
           restore-keys: ccache-${{ runner.os }}-
 
       - name: Configure
-        run: cmake -S . -B build -DWARNINGS_AS_ERRORS=ON
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DWARNINGS_AS_ERRORS=ON
 
       - name: Build
         # A bare -j starts every compile at once; bound it by the cores, or the runner swaps and hangs.
@@ -330,6 +332,50 @@ jobs:
   # there, so this job is mostly about Apple Clang, which is strict about different things
   # than GCC. What it cannot check is the picture: a runner has no display. "Builds and
   # passes" is true here; "looks right on a Mac" needs somebody with a Mac.
+  # The address and undefined-behaviour sanitizers over the tests and the server's own
+  # smoke tests (#341). A server parsing what strangers send is where an out-of-bounds read
+  # stops being a crash and starts being a hole; this is the job that sees one before a
+  # player does. Warnings are the Linux job's business, so they are not errors here.
+  sanitizers:
+    name: Linux (ASan + UBSan)
+    runs-on: ubuntu-latest
+    env:
+      ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install raylib's build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends             ccache libasound2-dev libgl1-mesa-dev libglu1-mesa-dev libwayland-dev             libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxkbcommon-dev             libxrandr-dev
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: deps-asan-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer"
+          "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"
+
+      - name: Build
+        run: cmake --build build -j "$(nproc)"
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Server smoke tests
+        timeout-minutes: 15
+        run: |
+          ./build/bin/server/econserver hosttest
+          ./build/bin/server/econserver accttest
+          ./build/bin/server/econserver worldtest
+          ./build/bin/server/econserver ordertest
+
   macos:
     name: macOS (Apple Clang)
     runs-on: macos-latest
@@ -344,7 +390,7 @@ jobs:
           key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configure
-        run: cmake -S . -B build -DWARNINGS_AS_ERRORS=ON
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DWARNINGS_AS_ERRORS=ON
 
       - name: Build
         # A bare -j starts every compile at once; on a 3-core, 7 GB macOS runner that swaps until the job times out.

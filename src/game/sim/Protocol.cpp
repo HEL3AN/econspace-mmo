@@ -305,58 +305,82 @@ bool DecodeBye(const std::string& s, Bye& out)
 
 std::string EncodeCommand(const Command& c)
 {
+    // Only what differs from a command that says nothing (#341). A client sends sixty of
+    // these a second and nearly every field of nearly every one is its default; the decoder
+    // reads an absent field as exactly that default, so leaving it out says the same thing
+    // in a quarter of the bytes. The sequence number is always there: it is what the
+    // server acknowledges.
     json j;
     Stamp(j, "cmd");
     j["seq"] = c.seq;
-    j["thrust"] = c.thrust;
-    j["turn"] = c.turn;
-    j["brake"] = c.brake;
-    j["tStab"] = c.toggleStabilizer;
-    j["tMine"] = c.toggleMining;
-    j["tWeap"] = c.toggleWeapon;
-    j["dock"] = c.dock;
-    j["undock"] = c.undock;
-    j["target"] = c.targetId;
-    j["navMode"] = c.navMode;
-    j["nav"] = V2(c.navTarget);
-    j["navStop"] = c.navStopDist;
+    auto flag = [&](const char* key, bool v)
+    {
+        if (v)
+            j[key] = true;
+    };
+    auto number = [&](const char* key, int v, int def)
+    {
+        if (v != def)
+            j[key] = v;
+    };
+    auto point = [&](const char* key, Vector2 v)
+    {
+        if (v.x != 0.0f || v.y != 0.0f)
+            j[key] = V2(v);
+    };
+    flag("thrust", c.thrust);
+    if (c.turn != 0.0f)
+        j["turn"] = c.turn;
+    flag("brake", c.brake);
+    flag("tStab", c.toggleStabilizer);
+    flag("tMine", c.toggleMining);
+    flag("tWeap", c.toggleWeapon);
+    flag("dock", c.dock);
+    flag("undock", c.undock);
+    number("target", c.targetId, 0);
+    number("navMode", c.navMode, 0);
+    point("nav", c.navTarget);
+    if (c.navStopDist != 0.0f)
+        j["navStop"] = c.navStopDist;
     if (c.navViaSet)  // only on the one command that orders a bent warp
         j["navVia"] = V2(c.navVia);
-    // Only written when a hold is being ordered: a command is sent sixty times a
-    // second and two more fields on every one of them is real bandwidth (#16).
     if (c.navHoldId != 0)
     {
         j["navHold"] = c.navHoldId;
         j["navRange"] = Round2(c.navRange);
     }
-    j["gate"] = c.jumpGateId;
-    j["loot"] = c.lootId;
-    j["sellType"] = c.sellType;
-    j["sellAmt"] = c.sellAmount;
-    j["refit"] = c.refitShip;
-    j["buy"] = c.buyShip;
-    j["payB"] = c.payBountyFaction;
+    number("gate", c.jumpGateId, 0);
+    number("loot", c.lootId, 0);
+    number("sellType", c.sellType, -1);
+    number("sellAmt", c.sellAmount, 0);
+    number("refit", c.refitShip, -1);
+    number("buy", c.buyShip, -1);
+    number("payB", c.payBountyFaction, -1);
     if (!c.nameSystem.empty())
         j["nameSys"] = c.nameSystem;
-    j["dbgMoney"] = c.debugMoney;
-    j["acceptM"] = c.acceptOffer;
-    j["completeM"] = c.completeMission;
-    j["ordKind"] = c.orderKind;
-    j["ordTarget"] = c.orderTarget;
-    j["ordPoint"] = V2(c.orderPoint);
-    j["ordStop"] = c.orderStopDist;
-    j["ordWarp"] = c.orderWarp;
-    j["ordFull"] = c.orderUntilFull;
-    j["ordDest"] = c.orderDestSystem;
-    if (!c.orderBlueprint.empty())  // only on the command that orders a build
+    flag("dbgMoney", c.debugMoney);
+    number("acceptM", c.acceptOffer, -1);
+    number("completeM", c.completeMission, -1);
+    if (c.orderKind != 0)  // an order's fields mean something only with an order
     {
-        j["ordBp"] = c.orderBlueprint;
-        if (!c.orderName.empty())
-            j["ordName"] = c.orderName;
+        j["ordKind"] = c.orderKind;
+        number("ordTarget", c.orderTarget, 0);
+        point("ordPoint", c.orderPoint);
+        if (c.orderStopDist != 120.0f)
+            j["ordStop"] = c.orderStopDist;
+        flag("ordWarp", c.orderWarp);
+        flag("ordFull", c.orderUntilFull);
+        if (!c.orderDestSystem.empty())
+            j["ordDest"] = c.orderDestSystem;
+        if (!c.orderBlueprint.empty())
+        {
+            j["ordBp"] = c.orderBlueprint;
+            if (!c.orderName.empty())
+                j["ordName"] = c.orderName;
+        }
+        flag("ordSafe", c.orderAvoidDanger);
     }
-    if (c.orderAvoidDanger)  // only when asked: a command goes out sixty times a second
-        j["ordSafe"] = true;
-    j["ordAbort"] = c.abortOrder;
+    flag("ordAbort", c.abortOrder);
     if (!c.deploy.empty())  // one command in a great many
     {
         j["deploy"] = c.deploy;
@@ -364,8 +388,7 @@ std::string EncodeCommand(const Command& c)
         if (!c.deployName.empty())
             j["deployName"] = c.deployName;
     }
-    if (c.dismantleId != 0)
-        j["dismantle"] = c.dismantleId;
+    number("dismantle", c.dismantleId, 0);
     return j.dump();
 }
 
@@ -626,15 +649,39 @@ std::string EncodeSnapshot(const Snapshot& s)
             { { "type", a.type }, { "sold", a.sold }, { "gross", a.gross }, { "rev", a.revenue } });
     j["trade"] = acks;
 
-    json offers = json::array();
-    for (const MissionView& m : s.missionOffers)
-        offers.push_back(MissionJson(m));
-    j["mOffers"] = offers;
-    json activeM = json::array();
-    for (const MissionView& m : s.missionActive)
-        activeM.push_back(MissionJson(m));
-    j["mActive"] = activeM;
+    // Absent means unchanged since the last snapshot that had them (#341).
+    if (s.missionsIncluded)
+    {
+        json offers = json::array();
+        for (const MissionView& m : s.missionOffers)
+            offers.push_back(MissionJson(m));
+        j["mOffers"] = offers;
+        json activeM = json::array();
+        for (const MissionView& m : s.missionActive)
+            activeM.push_back(MissionJson(m));
+        j["mActive"] = activeM;
+    }
     return j.dump();
+}
+
+std::string MissionsKey(const Snapshot& s)
+{
+    json k = json::array();
+    for (const MissionView& m : s.missionOffers)
+        k.push_back(MissionJson(m));
+    k.push_back(nullptr);  // the boundary: an offer taken moves from one list to the other
+    for (const MissionView& m : s.missionActive)
+        k.push_back(MissionJson(m));
+    return k.dump();
+}
+
+void CarryMissions(Snapshot& incoming, const Snapshot& previous)
+{
+    if (incoming.missionsIncluded)
+        return;
+    incoming.missionOffers = previous.missionOffers;
+    incoming.missionActive = previous.missionActive;
+    incoming.missionsIncluded = true;
 }
 
 bool DecodeSnapshot(const std::string& s, Snapshot& out)
@@ -748,6 +795,7 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
             out.tradeAcks.push_back(a);
         }
 
+    out.missionsIncluded = j.contains("mOffers") || j.contains("mActive");
     out.missionOffers.clear();
     if (j.contains("mOffers") && j["mOffers"].is_array())
         for (const json& mj : j["mOffers"])
