@@ -22,8 +22,8 @@
 // Two Haulers of one design carry the same hold whichever hatches they wear.
 //
 // NPCs fly designs (#279 step 4): a faction's doctrine names the designs each NPC role flies,
-// and an NPC's speed, hull and guns are its design's. The player's ships still use the
-// hand-typed GetShipCatalog(), and a test holds the derived numbers within 10% of it.
+// and an NPC's speed, hull and guns are its design's. So do players (step 5): the hangar is a
+// list of designs, and GetShipCatalog() is read off it.
 namespace Ships
 {
 // What a part contributes. Each is summed over the ship; a part may contribute nothing.
@@ -124,6 +124,23 @@ struct Rules
     // The share of its top speed an NPC flies its rounds at. A ship on a job is not racing,
     // and today's traffic moves at about half what the same hull does under a player.
     float cruise = 0.5f;
+    // What a ship has under a player over the same design under a crew (#279 step 5): this
+    // much more structure, and a gun of this much a shot that fitted guns add to. They are
+    // what every player hull had before ships were designs -- 100 hull, 16 a shot -- less what
+    // the frames already give.
+    float playerHull = 0.0f;
+    float playerGun = 0.0f;
+};
+
+// A hull a station sells to players (#279 step 5). An account owns hulls by their place in
+// the hangar list, so the order is the id: a hull is added at the end and never moved.
+struct HangarEntry
+{
+    std::string design;
+    // The list price in credits, before standing (ShipPriceMultiplier). What a station
+    // charges for a design is the market's question, not the part list's: the first entry is
+    // the starter, given to every pilot, and a fast hull is dear for being fast.
+    float price = 0.0f;
 };
 
 // The NPC roles a doctrine names designs for, in the game's NpcRole order. The armed ones are
@@ -141,12 +158,13 @@ struct Doctrine
 
 struct Catalogue
 {
-    Rules                   rules;
-    std::vector<ModulePart> modules;
-    std::vector<Section>    sections;
-    std::vector<Frame>      frames;
-    std::vector<Design>     designs;
-    std::vector<Doctrine>   doctrines;
+    Rules                    rules;
+    std::vector<ModulePart>  modules;
+    std::vector<Section>     sections;
+    std::vector<Frame>       frames;
+    std::vector<Design>      designs;
+    std::vector<Doctrine>    doctrines;
+    std::vector<HangarEntry> hangar;  // what players fly; the first is the starter
 
     const ModulePart* FindModule(const std::string& id) const;
     const Section*    FindSection(const std::string& id) const;
@@ -175,8 +193,11 @@ struct Stats
     float hull = 0.0f;    // NpcShip's hull
     float damage = 0.0f;  // per volley, against a ship
     float cruise = 0.0f;  // what an NPC flies its rounds at: maxSpeed * rules.cruise
-    Cost  cost;           // every part's, summed, in ResourceType order
-    int   parts = 0;      // frame, sections and every fitted module counted once each
+    // The same under a player: hull + rules.playerHull, damage + rules.playerGun.
+    float playerHull = 0.0f;
+    float playerDamage = 0.0f;
+    Cost  cost;       // every part's, summed, in ResourceType order
+    int   parts = 0;  // frame, sections and every fitted module counted once each
     float buildSeconds = 0.0f;
 };
 

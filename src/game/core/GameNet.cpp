@@ -276,6 +276,13 @@ void Game::BuildClientSnapshot()
                                             [&](const Proto::Command& c)
                                             { return c.seq <= p.lastInput; }),
                              pendingInputs_.end());
+        // The hull being flown, before anything is replayed: prediction flies the ship by
+        // the same derived numbers the server does (#279 step 5), and it used to fly every
+        // hull as the starter -- a Courier predicted at a Scout's speed and was pulled back.
+        const std::vector<ShipType>& catalog = GetShipCatalog();
+        if (p.shipIndex >= 0 && p.shipIndex < (int)catalog.size() &&
+            playerShip_->GetStats().design != catalog[p.shipIndex].stats.design)
+            playerShip_->Refit(catalog[p.shipIndex].stats);
         playerShip_->ApplyView(p.pos, p.heading, p.vel, p.hull, p.shields);
         // Warp/AP are server-authoritative: we mirror the server's warp scale and don't keep
         // our own. Applied BEFORE replay so unacked orders (which the server hasn't seen yet)
@@ -488,9 +495,12 @@ void Game::ReconcileClientWorld()
             if (es.kind == Proto::EntityKind::PlayerShip)
             {
                 // Another player (#4). A Ship rather than an NpcShip, so it describes
-                // itself with the player glyph and carries the pilot's name; its stats do
-                // not matter here -- everything drawn about it comes from the snapshot.
-                auto other = std::make_unique<Ship>(es.pos, GetShipCatalog()[0].stats);
+                // itself with the player glyph and carries the pilot's name; it is the hull
+                // the snapshot says it flies (#279 step 5), which is what it looks like --
+                // everything else drawn about it comes from the snapshot.
+                const ShipType* hull = ShipTypeOf(es.design);
+                auto            other = std::make_unique<Ship>(
+                    es.pos, hull != nullptr ? hull->stats : GetShipCatalog()[0].stats);
                 other->SetHeading(es.heading);
                 other->SetHull(es.hullFrac * other->GetMaxHull());
                 other->SetPilotName(es.name);
@@ -532,6 +542,10 @@ void Game::ReconcileClientWorld()
         else if (proxy->GetKind() == EntityKind::PlayerShip)
         {
             Ship* sh = static_cast<Ship*>(proxy);
+            // A pilot who switched hulls in view is another shape from now on.
+            if (sh->GetStats().design != es.design)
+                if (const ShipType* hull = ShipTypeOf(es.design))
+                    sh->Refit(hull->stats);
             sh->SetHull(es.hullFrac * sh->GetMaxHull());
         }
     }

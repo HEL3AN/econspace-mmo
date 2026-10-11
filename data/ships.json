@@ -6,7 +6,9 @@
         "buildSecondsPerMass": 4,
         "buildSecondsPerPart": 6,
         "plain": 0.5,
-        "cruise": 0.47
+        "cruise": 0.47,
+        "playerHull": 48,
+        "playerGun": 16
     },
     "modules": [
         { "id": "hull.cockpit", "mass": 2, "cost": { "Iron": 4, "Ice": 2 },
@@ -182,7 +184,7 @@
           } }
     ],
     "frames": [
-        { "id": "interceptor", "class": "interceptor", "mass": 8, "mids": [1, 1], "minAspect": 1.6, "provides": { "mining": 2, "hull": 40 }, "cost": { "Iron": 30 } },
+        { "id": "interceptor", "class": "interceptor", "mass": 8, "mids": [1, 1], "minAspect": 1.6, "provides": { "mining": 2, "hull": 44 }, "cost": { "Iron": 30 } },
         { "id": "frigate", "class": "frigate", "mass": 10, "mids": [1, 2], "minAspect": 2.0, "provides": { "mining": 2, "hull": 48 }, "cost": { "Iron": 40 } },
         { "id": "hauler", "class": "hauler", "mass": 16, "mids": [2, 4], "minAspect": 3.0, "provides": { "mining": 2, "hull": 60 }, "cost": { "Iron": 60 } },
         { "id": "barge", "class": "barge", "mass": 14, "mids": [1, 2], "minAspect": 1.2, "bowHeavy": true, "provides": { "mining": 2, "hull": 60 }, "cost": { "Iron": 50 } },
@@ -271,6 +273,12 @@
                 { "module": "hull.thruster", "in": "stern", "on": "stern", "count": 1 }
             ]
         }
+    ],
+    "hangar": [
+        { "design": "scout", "price": 0 },
+        { "design": "courier", "price": 2500 },
+        { "design": "hauler", "price": 3000 },
+        { "design": "miner", "price": 4200 }
     ],
     "doctrines": {
         "default": {

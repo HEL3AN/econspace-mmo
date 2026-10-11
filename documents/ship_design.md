@@ -4,13 +4,13 @@ A ship is a **design**, and what it can do is read off its parts (#279, M8 groun
 file holds the parts' function and the designs built from them; `Ships::Derive`
 (`src/engine/core/ShipDesign.h`) turns a design into stats, cost and build time.
 
-**Status — step 4 of #279.** A design decides what its ship looks like (each section is
-drawn, a frame lays them end to end and holds the hull to its class's silhouette) and, for
-NPCs, what it can do: a faction's **doctrine** names the designs each NPC role flies, and an
-NPC's speed, hull and guns are its design's. `ship.npc`, the one shape every role used to
-share, is gone. The player's ships still use the hand-typed `GetShipCatalog()`
-(`src/game/entities/ShipType.cpp`), and `tests/ship_design_tests.cpp` holds the four player
-designs within 10% of it until that switch.
+**Status — step 5 of #279.** A design decides what its ship looks like (each section is
+drawn, a frame lays them end to end and holds the hull to its class's silhouette) and what it
+can do, for NPCs and players alike: a faction's **doctrine** names the designs each NPC role
+flies, the **hangar** names the designs a station sells to players, and every ship's speed,
+handling, hold, hull and guns are its design's. `ship.npc`, the one shape every role used to
+share, is gone, and so is the hand-typed player catalogue: `GetShipCatalog()`
+(`src/game/entities/ShipType.cpp`) is read off the hangar.
 
 ## The model
 
@@ -82,6 +82,9 @@ draws nothing.
 | `bowHeavy` | frame | optional, default false; the class may carry its mass forward of the middle |
 | `plain` | rules | the share of a drawn ship's sockets its trim leaves empty |
 | `cruise` | rules | the share of its top speed an NPC flies its rounds at |
+| `playerHull` | rules | the structure a ship has under a player over the same design under a crew |
+| `playerGun` | rules | the shot a player's ship fires with no guns fitted; fitted guns add to it |
+| `hangar` | top level | what a station sells to players, in order: `{ "design", "price" }`, the starter first — see "The hangar" |
 | `fit[].scale` | design | optional; how big the module is drawn, over its `look` |
 | `frame`, `bow`, `mid`, `stern` | design | the frame and one section per position; `mid` is a list |
 | `fit[].module` | design | a `modules` id |
@@ -108,11 +111,13 @@ All sums run over the frame, every section and every fitted module × its count.
 | structure | Σ hull | `NpcShip` hull |
 | volley | Σ damage — what one volley takes off a ship | `NpcShip` damage |
 | cruise | top speed × `cruise` | `NpcShip` speed |
+| structure under a player | Σ hull + `playerHull` | `hull` |
+| a player's shot | Σ damage + `playerGun` | `damage` |
 | cost | Σ cost per resource | — |
 | build time | `buildSecondsPerMass × mass + buildSecondsPerPart × parts` | — |
 
 The constants are in `rules` so they are tuned with the parts. The hangar price in credits
-stays the catalog's; what a station charges for a design is the market's question, not
+is the hangar's (below); what a station charges for a design is the market's question, not
 the part list's.
 
 ## Load errors
@@ -162,6 +167,60 @@ placing every fit line in full at every seed. A wing is a **handed** module: one
 placed as the +y one as drawn and the other as its reflection (`world_format.md`).
 
 An archetype draws a design by naming it — `"design": "courier"` instead of a `shape`.
+
+## The hangar: what players fly
+
+```json
+"hangar": [
+    { "design": "scout", "price": 0 },
+    { "design": "courier", "price": 2500 },
+    { "design": "hauler", "price": 3000 },
+    { "design": "miner", "price": 4200 }
+]
+```
+
+The hulls a station sells to players, each a design and its list price in credits (what a
+station charges is that times the buyer's standing, `ShipPriceMultiplier`). The first is the
+**starter**, which every pilot owns. An account owns hulls **by their place in this list**,
+so the order is the id: a hull is added at the end and never moved or taken out, or every
+save that owns one would own another.
+
+`GetShipCatalog()` is read off it: a hull's name is its design's, and its speed, handling,
+hold, mining, hull and gun are `Ships::Derive`'s. The server flies a player's ship by those
+numbers, the client predicts its own with the same ones (`Sim::StepPlayerShip`), and the
+hangar window and the agent's `hangar` tool show them -- one source, so a number a pilot is
+shown is the number the ship flies by.
+
+A ship under a player is the same design an NPC would fly, with two differences that are the
+pilot's, not the parts': `playerHull` more structure (the shields are every player ship's, as
+before), and a gun of `playerGun` a shot that a fitted gun adds its damage to. They are what
+every player hull had before hulls were designs -- 100 hull and 16 a shot -- less what the
+frames already give, so a hauler is now a little tougher than a courier because its frame is.
+
+`ship.player` names the starter's design instead of a shape of its own: it says what a
+player's ship *is* (its glyph, layer and size), and the design it flies says what it looks
+like -- the shape of the `Npc` archetype that draws that design. The snapshot carries the
+design of every other player's ship, so a Hauler is a hauler to everyone. A hangar design no
+`Npc` archetype draws is a load error, as a doctrine's is.
+
+Load errors: no hangar or an empty one, an entry that is not a design, a design in it twice,
+a missing or negative price, and any other field.
+
+**Before and after.** The hand-typed numbers against the derived ones (price unchanged):
+
+| Hull | Thrust | Turn | Top speed | Stabiliser | Hold | Mining | Hull | Shot |
+|------|------|------|------|------|------|------|------|------|
+| Scout, before | 340 | 3.2 | 440 | 600 | 50 | 3 | 100 | 16 |
+| Scout, after | 340 | 3.28 | 438 | 600 | 50 | 3 | 96 | 16 |
+| Courier, before | 480 | 4.2 | 620 | 820 | 35 | 2 | 100 | 16 |
+| Courier, after | 480 | 4.50 | 606 | 823 | 35 | 2 | 92 | 16 |
+| Hauler, before | 220 | 2.2 | 300 | 380 | 200 | 2 | 100 | 16 |
+| Hauler, after | 227 | 2.13 | 302 | 389 | 200 | 2 | 108 | 16 |
+| Miner, before | 260 | 2.6 | 360 | 460 | 120 | 7 | 100 | 16 |
+| Miner, after | 263 | 2.46 | 345 | 450 | 120 | 7 | 108 | 16 |
+
+The worst is the Courier's turn, +7%; a test holds every number within 10%. The interceptor
+frame's structure went from 40 to 44 for it -- no NPC flies one.
 
 ## Doctrines: what NPCs fly
 
@@ -246,4 +305,11 @@ split bow.
    NPC's speed, hull and guns are its design's, the snapshot carries the design, and
    `ship.npc` is retired (not kept as a fallback: an unknown design falls back to the
    doctrine's pick). Raider and cruiser frames, with their sections.
-4. **Switch `ShipStats` to the derived stats**: `GetShipCatalog()` reads designs.
+4. **Player ships are designs** -- done (step 5). The hangar lists designs, `GetShipCatalog()`
+   is derived from it, `ship.player` is drawn as the design it flies, and the client predicts
+   its own ship with the same numbers the server flies it by.
+5. **Fitting** (next): a player changes the fit of a hull they own. The seam is `ShipStats`
+   -- everything the game reads about a player's ship comes through it, from `Derive` -- so a
+   refit is a design per ship rather than per hangar entry, and a fitted gun adds to
+   `playerGun` the way it adds to an NPC's volley. A per-ship design has to travel with the
+   account (a save version) and in the snapshot (`design` is an id today).

@@ -184,10 +184,15 @@ Archetype* Mutable(const std::string& id);
 // that name a design are drawn from. Empty when there is no such file.
 const Ships::Catalogue& ShipCatalogue();
 
-// The archetype that draws a ship design (#279 step 4): what an NPC flying it looks like.
-// Every design a doctrine names has one -- Load refuses a doctrine whose ship nobody draws.
-// Null for a design no archetype names.
+// The Npc archetype that draws a ship design (#279 step 4): what an NPC flying it looks like,
+// and the shape a player's ship of that design borrows (step 5). Every design a doctrine names
+// or the hangar sells has one -- Load refuses either whose ship nobody draws. Null for a
+// design no Npc archetype names.
 const Archetype* ForDesign(const std::string& design);
+
+// Counts the loads, so something built from the registry -- the hangar catalog -- can tell
+// that what it was built from has been replaced.
+unsigned Generation();
 
 // Every archetype declaring the given component.
 std::vector<const Archetype*> With(Component c);

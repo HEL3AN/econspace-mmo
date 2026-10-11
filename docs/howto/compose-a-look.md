@@ -87,11 +87,12 @@ There are two symmetries, and they are not interchangeable:
   the way its nose points). That is what a ship is.
 
 For the relay's arrays, straight up and straight down, the two happen to agree. For anything
-at an angle they do not. The player's ship has a swept wing at `"at": [-0.5, 0.62], "angle":
-145` with `mirror: true`; write it as `repeat: 2` instead and the second wing is the first one
-rotated half a turn — **in front of the nose, pointing forward**. That is what it did the first
-time a ship was written that way. Try it in the gallery on `ship.player`; it is a quick way to
-see the difference for good.
+at an angle they do not. The player's first ship had a swept wing at `"at": [-0.5, 0.62],
+"angle": 145` with `mirror: true`; write it as `repeat: 2` instead and the second wing is the
+first one rotated half a turn — **in front of the nose, pointing forward**. That is what it did
+the first time a ship was written that way. Try it in the gallery on any ship's part; it is a
+quick way to see the difference for good. (Ships are designs now, `documents/ship_design.md`,
+and a section's hull refuses `repeat` outright.)
 
 ### The mast and the dish: placing one part
 

@@ -196,6 +196,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         es.heading = other.ship->GetHeading();
         es.size = other.ship->GetSize();
         es.name = other.ship->GetName();
+        es.design = other.ship->GetStats().design;  // what it is drawn as (#279 step 5)
         es.hullFrac = other.ship->GetMaxHull() > 0.0f
                           ? other.ship->GetHull() / other.ship->GetMaxHull()
                           : 1.0f;

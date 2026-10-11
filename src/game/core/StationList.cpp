@@ -40,6 +40,9 @@ std::vector<HangarRow> Hangar(const std::vector<ShipType>& catalog, const std::v
         r.speed = t.stats.maxSpeed;
         r.cargo = t.stats.cargoCapacity;
         r.mining = t.stats.miningRate;
+        r.turn = t.stats.turnSpeed;
+        r.hull = t.stats.hull;
+        r.damage = t.stats.damage;
         r.price = t.price * mul;
         const bool mine = i == 0 || std::find(owned.begin(), owned.end(), i) != owned.end();
         r.berth = i == current ? Berth::Current : mine ? Berth::Owned : Berth::ForSale;

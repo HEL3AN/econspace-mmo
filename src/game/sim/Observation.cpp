@@ -343,8 +343,12 @@ std::string DescribeHangar(const View& view)
                          p.money >= t.price * mul ? "" : " (cannot afford)");
         else
             status = Fmt("list price %.0f cr", t.price);
-        out += Fmt("  [%d] %-8s speed %.0f  cargo %d  mining %.1f/s  %s\n", (int)i, t.name.c_str(),
-                   t.stats.maxSpeed, t.stats.cargoCapacity, t.stats.miningRate, status.c_str());
+        // The hull's numbers are its design's (#279 step 5), the ones the server flies it by.
+        out +=
+            Fmt("  [%d] %-8s speed %.0f  turn %.1f  cargo %d  mining %.1f/s  hull %.0f  "
+                "guns %.0f/shot  %s\n",
+                (int)i, t.name.c_str(), t.stats.maxSpeed, t.stats.turnSpeed, t.stats.cargoCapacity,
+                t.stats.miningRate, t.stats.hull, t.stats.damage, status.c_str());
     }
     return out;
 }

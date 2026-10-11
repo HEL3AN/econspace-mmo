@@ -2,6 +2,8 @@
 
 #include "core/StationList.h"
 
+#include "core/Archetype.h"
+#include <string>
 #include <vector>
 
 // What the station's market and hangar windows list (#297), decided without a window.
@@ -41,6 +43,8 @@ TEST_CASE("StationList: the market lists every commodity, and what selling it pa
 TEST_CASE(
     "StationList: the hangar says which hull is flown, which are owned, and what the rest cost")
 {
+    // The hangar is data/ships.json's (#279 step 5), read with the archetypes.
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
     const std::vector<ShipType>& catalog = GetShipCatalog();
     REQUIRE(catalog.size() >= 3);
 
@@ -62,6 +66,11 @@ TEST_CASE(
     CHECK(rows[1].index == 1);
     CHECK(rows[1].name == catalog[1].name);
     CHECK(rows[1].cargo == catalog[1].stats.cargoCapacity);
+    // Every number the window shows is the hull's, read off its design: one source.
+    CHECK(rows[1].speed == doctest::Approx(catalog[1].stats.maxSpeed));
+    CHECK(rows[1].turn == doctest::Approx(catalog[1].stats.turnSpeed));
+    CHECK(rows[1].hull == doctest::Approx(catalog[1].stats.hull));
+    CHECK(rows[1].damage == doctest::Approx(catalog[1].stats.damage));
 
     // A hold smaller than what is carried is said before the server refuses it (#219).
     for (const StationList::HangarRow& r : rows)

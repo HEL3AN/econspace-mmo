@@ -1047,6 +1047,7 @@ TEST_CASE("an order whose destination is already reached finishes at once")
 // point once.
 TEST_CASE("a ship can hold station on something, and keeps holding it")
 {
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));  // the hangar
     Ship s({ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
     s.SetStabilizerOn(true);
 

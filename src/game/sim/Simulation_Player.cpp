@@ -34,9 +34,9 @@ namespace
 // Player combat (server logic). The weapon's range is not here: it is in
 // Sim::PLAYER_WEAPON_RANGE, shared because the client draws the targeting circle from it.
 // Every other reach -- docking, mining, salvage, a gate -- belongs to the object being
-// reached and comes from its archetype (#34).
-constexpr float PLAYER_WEAPON_DAMAGE = 16.0f;  // player shot damage
-constexpr float PLAYER_FIRE_INTERVAL = 0.5f;   // cooldown between player shots
+// reached and comes from its archetype (#34). What a shot takes off is the ship's: its
+// design's guns under a player (#279 step 5, ShipStats::damage).
+constexpr float PLAYER_FIRE_INTERVAL = 0.5f;  // cooldown between player shots
 
 // A station as a save names it (#227): the system it is in, its name, and which of that
 // name it is there. An entity id comes from a counter that interleaves every system's
@@ -216,7 +216,7 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
             ev->hitLawful = true;
             ev->hitFaction = law;
         }
-        if (DamageStructure(st, targetId, PLAYER_WEAPON_DAMAGE, &s) && ev != nullptr &&
+        if (DamageStructure(st, targetId, s.ship->GetDamage(), &s) && ev != nullptr &&
             ev->hitLawful)
         {
             ev->killedLawful = true;
@@ -226,7 +226,7 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
     }
 
     NpcShip* target = static_cast<NpcShip*>(found);
-    target->TakeDamage(PLAYER_WEAPON_DAMAGE);
+    target->TakeDamage(s.ship->GetDamage());
 
     // Account effects: attacking a lawful target is a crime; a kill is mission credit
     // (pirate) or a serious crime (lawful). Applied to the session's account, which is the

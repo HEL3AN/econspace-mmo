@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "core/Archetype.h"
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
 #include "sim/PlayerStep.h"
@@ -12,6 +13,16 @@
 
 namespace
 {
+// The starter's numbers, which are its design's (#279 step 5): read off data/ships.json,
+// which comes in with the archetypes.
+ShipStats Starter()
+{
+    if (GetShipCatalog().empty())
+        Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json");
+    REQUIRE_FALSE(GetShipCatalog().empty());
+    return GetShipCatalog()[0].stats;
+}
+
 struct WarpRun
 {
     float seconds = 0.0f;   // from the order to the drop-out, alignment included
@@ -22,7 +33,7 @@ struct WarpRun
 
 WarpRun Warp(float distance, float drop)
 {
-    Ship        ship({ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+    Ship        ship({ 0.0f, 0.0f }, Starter());
     const float dt = Sim::SIM_DT;
     ship.EngageWarp({ distance, 0.0f }, drop);
     WarpRun run;
@@ -66,7 +77,7 @@ TEST_CASE("a warp that has arrived has ended: never still warping at a standstil
         {
             CAPTURE(from.x);
             CAPTURE(drop);
-            Ship ship(from, GetShipCatalog()[0].stats);
+            Ship ship(from, Starter());
             ship.EngageWarp({ 948000.0f, 0.0f }, drop);
             int  still = 0;
             bool moved = false;
@@ -104,7 +115,7 @@ TEST_CASE("a warp picked up mid-flight from a snapshot continues exactly as the 
     // snapshot does not carry, the client would compute a different flight and every
     // correction would be a visible jump at a hundred thousand units a second.
     const float dt = Sim::SIM_DT;
-    Ship        server({ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+    Ship        server({ 0.0f, 0.0f }, Starter());
     // Bent around a star, and picked up during the first leg: the bend is part of what a
     // snapshot has to carry.
     const std::vector<WarpPath::Body> star = { { { 300000.0f, 0.0f }, 150000.0f } };
@@ -116,7 +127,7 @@ TEST_CASE("a warp picked up mid-flight from a snapshot continues exactly as the 
     REQUIRE(server.GetWarpPhase() == WarpPhase::Warping);
     REQUIRE(server.HasWarpVia());
 
-    Ship client({ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+    Ship client({ 0.0f, 0.0f }, Starter());
     client.ApplyView(server.GetPosition(), server.GetHeading(), server.GetVelocity(), 100.0f,
                      100.0f);
     client.ApplyNavView((int)server.GetWarpPhase(), server.GetWarpAlignTimer(),
@@ -141,7 +152,7 @@ TEST_CASE("a warp bent around the star never enters it, and arrives (#160)")
     Vector2                           via{};
     REQUIRE(WarpPath::Via(from, to, star, via));
 
-    Ship ship(from, GetShipCatalog()[0].stats);
+    Ship ship(from, Starter());
     ship.EngageWarp(to, 500.0f, true, via);
     float nearest = 1e30f, seconds = 0.0f;
     for (int i = 0; i < 60 * 60 && ship.IsWarping(); i++)
