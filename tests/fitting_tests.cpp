@@ -1,6 +1,5 @@
 #include <doctest/doctest.h>
 
-#include <cstdio>
 #include <fstream>
 #include <set>
 #include <string>
@@ -19,6 +18,7 @@
 #include "sim/Protocol.h"
 #include "sim/SaveSchema.h"
 #include "sim/Simulation.h"
+#include "temp_dir.h"
 
 // A ship flies a design of its own, filed by a hash of its content (#279 fitting, option B):
 // the id, the definition on the wire, the store that keeps it and the account that names it.
@@ -168,7 +168,8 @@ TEST_CASE("the store files a design once, under its hash, and keeps it while it 
     SUBCASE("designs.json keeps them, and their users, across a restart")
     {
         store.SetUsers("alice", { id });
-        const std::string path = "designs_tmp.json";
+        const TempDir     tmp;
+        const std::string path = tmp.Path("designs.json");
         store.Save(path);
         DesignStore back;
         REQUIRE(back.Load(path) == Save::Result::Ok);
@@ -188,8 +189,7 @@ TEST_CASE("the store files a design once, under its hash, and keeps it while it 
         }
         DesignStore later;
         CHECK(later.Load(path) == Save::Result::TooNew);
-        std::remove(path.c_str());
-        CHECK(DesignStore().Load("no_such_designs.json") == Save::Result::Missing);
+        CHECK(DesignStore().Load(tmp.Path("no_such_designs.json")) == Save::Result::Missing);
     }
 }
 
@@ -234,7 +234,8 @@ TEST_CASE("an account's ships are designs, and older accounts load as stock ones
 {
     Fixture f;
     f.s.accountName = "fitter";
-    const std::string path = "account_fitting_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("account_fitting.json");
 
     // Version 3, and version 4 from the faction registry (#355), both list hull indices.
     auto older = [&](const char* text)
@@ -307,5 +308,4 @@ TEST_CASE("an account's ships are designs, and older accounts load as stock ones
             told = told || e.text.find("stock fit") != std::string::npos;
         CHECK(told);
     }
-    std::remove(path.c_str());
 }
