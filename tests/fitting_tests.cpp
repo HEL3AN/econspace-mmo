@@ -453,7 +453,7 @@ TEST_CASE("a refit is priced by the modules it adds and takes out")
 TEST_CASE("the server refits only at a shipyard, charges for it, and the ship flies the fit")
 {
     Fixture f;
-    f.sim.MaterializeAllSystems(std::string(TEST_DATA_DIR) + "systems/");
+    f.sim.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
     const Station* yard = StationThat(f, true);
     REQUIRE_MESSAGE(yard != nullptr, "the start system has a shipyard");
     const int seq = f.s.LastEventSeq();

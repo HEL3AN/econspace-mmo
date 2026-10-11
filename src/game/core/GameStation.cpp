@@ -516,8 +516,13 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
                 L.Row(Box().GrowX().Gap(t.metrics.gap),
                       [&]
                       {
-                          L.Text(m, TextStyle::Body().Tint(n > 0 ? t.colors.text : t.colors.dim));
-                          L.Spacer();
+                          // The name in a column of its own, so the buttons line up row to row.
+                          L.Row(Box().Width(Size::Percent(0.45f)),
+                                [&]
+                                {
+                                    L.Text(m, TextStyle::Body().Tint(n > 0 ? t.colors.text
+                                                                           : t.colors.dim));
+                                });
                           if (L.Button("dec" + std::to_string(k), "-") && n > 0)
                               change(g, m, -std::min(step, n));
                           L.Text(std::to_string(n), TextStyle::Body().Tint(t.colors.text));
