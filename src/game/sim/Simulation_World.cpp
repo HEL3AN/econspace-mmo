@@ -237,6 +237,7 @@ void Simulation::Cool(SystemState& st)
                       st.entities.end());
     st.defenceCooldown.clear();
     st.provokedBy.clear();
+    st.provokedByNpc.clear();
     st.policeCalledUntil = 0.0;
     st.populated = false;
     for (auto& kv : plans_)  // a siege's warships went with the rest
@@ -1424,6 +1425,7 @@ bool Simulation::RemoveStatic(const std::string& systemId, int id)
     }
     st->defenceCooldown.erase(id);
     st->provokedBy.erase(id);
+    st->provokedByNpc.erase(id);
     // One of the world's own stays gone across a restart; one added since simply stops
     // being saved.
     const auto key = st->keys.find(id);

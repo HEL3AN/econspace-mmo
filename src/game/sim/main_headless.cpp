@@ -602,18 +602,39 @@ static const double NET_REPORT_INTERVAL = 10.0;
 // share one ordered connection, so a snapshot can never arrive ahead of the change it
 // reflects. Nobody in a system means nobody is told -- whoever arrives later is sent the
 // whole layout, which already has it. Counted as layout traffic.
+//
+// What only an owner may read is cut for everyone else (#340): one message for the system,
+// and one of their own for a client whose structure's allow-list the delta carries.
 static void SendLayoutDeltas(std::vector<HostClient>& clients, Simulation& sim, NetStats& net)
 {
     for (const Proto::LayoutDelta& d : sim.TakeLayoutDeltas())
     {
-        const std::string msg = Proto::EncodeLayoutDelta(d);
+        Proto::LayoutDelta shared = d;
+        const bool         cut = Proto::ForViewer(shared, std::string());
+        const std::string  msg = Proto::EncodeLayoutDelta(shared);
         for (HostClient& hc : clients)
             if (hc.sessionId != 0 && hc.conn && hc.layoutSystem == d.systemId)
             {
-                net.layouts += (double)msg.size();
-                hc.conn->Send(msg);
+                std::string theirs = msg;
+                if (cut && Proto::OwnsPrivate(d, hc.account))
+                {
+                    Proto::LayoutDelta own = d;
+                    Proto::ForViewer(own, hc.account);
+                    theirs = Proto::EncodeLayoutDelta(own);
+                }
+                net.layouts += (double)theirs.size();
+                hc.conn->Send(theirs);
             }
     }
+}
+
+// The whole layout of a system, as `account` may read it (#340).
+static std::string LayoutFor(const Simulation& sim, const std::string& systemId,
+                             const std::string& account)
+{
+    Proto::SystemLayout lay = sim.BuildLayout(systemId);
+    Proto::ForViewer(lay, account);
+    return Proto::EncodeLayout(lay);
 }
 
 // The galaxy index goes to one client: at login, before its first layout, so by the time
@@ -683,7 +704,7 @@ static void JoinPlayer(Simulation& sim, HostClient& hc, const std::string& start
     }
     hc.wasDocked = s.IsDocked();
     SendUniverse(hc, sim, net);  // the index first: the layout names a system
-    const std::string lay = Proto::EncodeLayout(sim.BuildLayout(s.systemId));
+    const std::string lay = LayoutFor(sim, s.systemId, hc.account);
     const std::string gal = Proto::EncodeGalaxy(sim.BuildGalaxyState());
     net.layouts += (double)lay.size();
     net.galaxies += (double)gal.size();
@@ -1361,7 +1382,7 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
             // now", and waiting 50 ms to say so would draw the old system for a moment.
             if (layoutDirty[hc.sessionId] || s->systemId != hc.layoutSystem)
             {
-                const std::string lay = Proto::EncodeLayout(sim.BuildLayout(s->systemId));
+                const std::string lay = LayoutFor(sim, s->systemId, hc.account);
                 net.layouts += (double)lay.size();
                 hc.conn->Send(lay);
                 hc.layoutSystem = s->systemId;
@@ -1573,7 +1594,15 @@ static int HostSelftest()
     ClientSession& s = SetupHostPlayer(sim);
 
     LocalTransport link;
-    link.Server().Send(Proto::EncodeLayout(sim.BuildLayout(s.systemId)));
+    s.accountName = "selftest";
+    link.Server().Send(LayoutFor(sim, s.systemId, s.accountName));
+    // What anyone else in the system is sent, as RunHost cuts it (#340).
+    Proto::LayoutMirror stranger;
+    {
+        Proto::SystemLayout lay;
+        if (Proto::DecodeLayout(LayoutFor(sim, s.systemId, "stranger"), lay))
+            stranger.Reset(lay);
+    }
 
     Proto::Command thrust;
     thrust.thrust = true;
@@ -1588,9 +1617,37 @@ static int HostSelftest()
     std::vector<bool> serverHad;
     // And a player lays one down through the wire (#39): a command, the server's rules, a
     // delta back. The hold is stocked and the name set as a login would set it.
-    s.accountName = "selftest";
     s.ship->AddCargo(ResourceType::Iron, 10);
     bool tryDeploy = Blueprints::Find("buoy") != nullptr;
+    // ...and an armed one, whose rules of engagement are set through the wire too (#340): the
+    // owner is sent its allow-list and nobody else is.
+    const Blueprint* battery = Blueprints::Find("battery");
+    if (battery != nullptr)
+        for (const auto& cost : battery->cost)
+            s.ship->AddCargo(cost.first, cost.second);
+    int batteryId = 0;
+    // Somewhere the rules allow, found by asking them: the ship starts beside a station that
+    // orbits a planet, and nothing may stand in a satellite's path. The ship is put there
+    // first, as if it had flown -- this tests the wire, not travel.
+    auto placeFor = [&](const Blueprint& bp, Proto::Command& c)
+    {
+        const Vector2 from = s.ship->GetPosition();
+        for (int k = 0; k < 400 && c.deploy.empty(); k++)
+        {
+            const Vector2 p = { 150000.0f + 9100.0f * (float)(k % 20),
+                                -90000.0f + 9300.0f * (float)(k / 20) };
+            s.ship->Teleport(p);
+            const Vector2 near = { p.x + bp.reach * 0.5f, p.y };
+            if (sim.PlacementProblem(s, bp, near).empty())
+            {
+                c.deploy = bp.id;
+                c.deployPos = near;
+            }
+        }
+        if (c.deploy.empty())
+            s.ship->Teleport(from);
+        return !c.deploy.empty();
+    };
 
     int         lastSeq = 0;
     const float dt = 1.0f / 60.0f;
@@ -1599,27 +1656,18 @@ static int HostSelftest()
         thrust.seq = i + 1;  // client: numbered input
         Proto::Command c = thrust;
         if (i == 100 && tryDeploy)
+            tryDeploy = placeFor(*Blueprints::Find("buoy"), c);
+        if (i == 104 && battery != nullptr && !placeFor(*battery, c))
+            battery = nullptr;
+        if (i == 108 && battery != nullptr)
         {
-            // Somewhere the rules allow, found by asking them: the ship starts beside a
-            // station that orbits a planet, and nothing may stand in a satellite's path. The
-            // ship is put there first, as if it had flown -- this tests the wire, not travel.
-            const Blueprint& bp = *Blueprints::Find("buoy");
-            const Vector2    from = s.ship->GetPosition();
-            for (int k = 0; k < 400 && c.deploy.empty(); k++)
-            {
-                const Vector2 p = { 150000.0f + 9100.0f * (float)(k % 20),
-                                    -90000.0f + 9300.0f * (float)(k / 20) };
-                s.ship->Teleport(p);
-                const Vector2 near = { p.x + bp.reach * 0.5f, p.y };
-                if (sim.PlacementProblem(s, bp, near).empty())
-                {
-                    c.deploy = bp.id;
-                    c.deployPos = near;
-                }
-            }
-            if (c.deploy.empty())
-                s.ship->Teleport(from);
-            tryDeploy = !c.deploy.empty();
+            for (const auto& kv : sim.SystemById(s.systemId)->entities)
+                if (kv->GetKind() == EntityKind::Structure && kv->GetOwner() == s.accountName &&
+                    static_cast<const Structure&>(*kv).GetBlueprintId() == battery->id)
+                    batteryId = kv->GetId();
+            c.defenceId = batteryId;
+            c.defence.engage = Engage::Strangers;
+            c.defence.players = { "friend" };
         }
         link.Client().Send(Proto::EncodeCommand(c));
         std::vector<Proto::TradeAck>                  acks;
@@ -1634,10 +1682,19 @@ static int HostSelftest()
                 "selftest");
         if (i == 80)
             sim.RemoveStatic(s.systemId, builtId);
-        // As RunHost does it: the deltas first, then the snapshot (#38).
+        // As RunHost does it: the deltas first, then the snapshot (#38), each cut for whoever
+        // it goes to (#340).
         for (const Proto::LayoutDelta& d : sim.TakeLayoutDeltas())
             if (d.systemId == s.systemId)
-                link.Server().Send(Proto::EncodeLayoutDelta(d));
+            {
+                Proto::LayoutDelta own = d, shared = d;
+                Proto::ForViewer(own, s.accountName);
+                Proto::ForViewer(shared, "stranger");
+                link.Server().Send(Proto::EncodeLayoutDelta(own));
+                Proto::LayoutDelta heard;
+                if (Proto::DecodeLayoutDelta(Proto::EncodeLayoutDelta(shared), heard))
+                    stranger.Apply(heard);
+            }
         Proto::Snapshot snap = sim.BuildSnapshot(s, s.systemId);
         snap.player.lastInput = lastSeq;
         link.Server().Send(Proto::EncodeSnapshot(snap));
@@ -1677,15 +1734,25 @@ static int HostSelftest()
     for (const auto& kv : mirror.byId)
         deployed = deployed || (kv.second.kind == EntityKind::Structure &&
                                 kv.second.owner == "selftest" && kv.second.completesAt > 0.0);
+    // The battery's rules reached its owner whole, and everyone else without the list.
+    bool rules = false;
+    if (batteryId != 0 && mirror.byId.count(batteryId) && stranger.byId.count(batteryId))
+    {
+        const Defence& own = mirror.byId.at(batteryId).defence;
+        const Defence& seen = stranger.byId.at(batteryId).defence;
+        rules = own.engage == Engage::Strangers &&
+                own.players == std::vector<std::string>{ "friend" } &&
+                seen.engage == Engage::Strangers && seen.players.empty();
+    }
     Vector2 endPos = s.ship->GetPosition();
     bool    moved = (endPos.x != startPos.x || endPos.y != startPos.y);
     bool    snapHasWorld = gotSnap && !lastSnap.entities.empty();
 
     printf("Host selftest: layout %s, snapshot %s, player-moved %s, world-changes %s, "
-           "deploy %s\n",
+           "deploy %s, battery rules %s\n",
            gotLayout ? "OK" : "FAIL", snapHasWorld ? "OK" : "FAIL", moved ? "OK" : "FAIL",
-           worldAgreed ? "OK" : "FAIL", deployed ? "OK" : "FAIL");
-    return (gotLayout && snapHasWorld && moved && worldAgreed && deployed) ? 0 : 1;
+           worldAgreed ? "OK" : "FAIL", deployed ? "OK" : "FAIL", rules ? "OK" : "FAIL");
+    return (gotLayout && snapHasWorld && moved && worldAgreed && deployed && rules) ? 0 : 1;
 }
 
 // Naming through the wire (#308): a pilot in flight -- not at a station -- names the system

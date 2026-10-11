@@ -22,6 +22,17 @@
             "placement": { "reach": 600, "clearance": 400, "bodyClearance": 5000, "perSystem": 8 }
         },
         {
+            "id": "battery",
+            "name": "Defence Battery",
+            "archetype": "structure.battery",
+            "builders": ["player"],
+            "cost": { "Iron": 24, "Crystal": 6 },
+            "buildSeconds": 180,
+            "hull": 1500,
+            "wreck": "derelict.wreck",
+            "placement": { "reach": 600, "clearance": 800, "bodyClearance": 5000, "perSystem": 4 }
+        },
+        {
             "id": "outpost",
             "name": "Outpost",
             "archetype": "structure.outpost",

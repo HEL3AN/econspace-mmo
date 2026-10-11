@@ -73,6 +73,32 @@ bool Simulation::SetDefence(ClientSession& s, int id, const Defence& d)
     return true;
 }
 
+void Simulation::ProvokeGuards(SystemState& st, const ClientSession& victim, Vector2 at,
+                               int bySession, int byNpc)
+{
+    if (victim.accountName.empty())
+        return;
+    for (const auto& e : st.entities)
+    {
+        if (e->GetKind() != EntityKind::Structure || e->GetOwner() != victim.accountName ||
+            static_cast<const Structure&>(*e).IsBuilding())
+            continue;
+        const Archetype* a = e->GetArchetype();
+        if (a == nullptr || !a->Has(Component::Defensive) || a->weaponDamage <= 0.0f)
+            continue;
+        // In its reach: where it could have answered from, measured as its own fire is.
+        const float reach = e->GetSize() + a->weaponRange;
+        const float dx = at.x - e->GetPosition().x, dy = at.y - e->GetPosition().y;
+        if (dx * dx + dy * dy > reach * reach)
+            continue;
+        const double until = time_ + PROVOKED_SECONDS;
+        if (bySession != 0 && bySession != victim.id)
+            st.provokedBy[e->GetId()][bySession] = until;
+        if (byNpc != 0)
+            st.provokedByNpc[e->GetId()][byNpc] = until;
+    }
+}
+
 bool Simulation::OwnerStanding(const std::string& account, FactionId f, float& out) const
 {
     for (const auto& kv : sessions_)

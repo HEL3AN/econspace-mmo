@@ -30,7 +30,9 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    27;  // 27: a structure's rules of engagement, set by a command and carried in its layout;
+    28;  // 28: a structure's allow-list is in its owner's layout only; anyone else's has its
+         // mode and threshold with the lists empty (#340); 27: a structure's rules of
+         // engagement, set by a command and carried in its layout;
          // whether a system is claimed, in the galaxy stats (#340); 26: a refit, the whole fit
          // asked for in a command (#279 fitting); 25: a login may be
          // answered with the starts to choose from, and a ship exists only once one is chosen
@@ -403,6 +405,17 @@ struct LayoutDelta
     std::vector<EntityLayout> changed;
     std::vector<int>          removed;
 };
+
+// What of the static layer only its owner may read (#340): an armed structure's allow-list,
+// which says whom its owner trusts. Everyone in a system is sent the same layout and the
+// same deltas, so the server cuts them for each viewer before they go: an entity `viewer`
+// does not own keeps its mode and threshold, and its lists are emptied. An empty `viewer`
+// owns nothing. True when anything was cut.
+bool ForViewer(std::vector<EntityLayout>& v, const std::string& viewer);
+bool ForViewer(SystemLayout& lay, const std::string& viewer);
+bool ForViewer(LayoutDelta& d, const std::string& viewer);
+// Whether the delta carries anything only `account` may read, so theirs is not everyone's.
+bool OwnsPrivate(const LayoutDelta& d, const std::string& account);
 
 // A client's copy of the static layer of the system it is in, kept current by layouts and
 // deltas. Both clients -- the game and econagent -- keep one, so the rule for applying a

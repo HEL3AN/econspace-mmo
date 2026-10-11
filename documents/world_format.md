@@ -776,9 +776,12 @@ the docking, mining or jump pass being edited (#44).
 
 Hostile, for `defensive`, means what it means to an NPC of the station's faction: a player
 by their own account (wanted by it, or at a hostile reputation), an NPC by the relation
-matrix. A docked player or one hidden in cover is not shot at. Only a station fires today,
-because who a battery shoots for is a question of ownership, and ownership is still a
-station's own field (#41).
+matrix. A docked player or one hidden in cover is not shot at. A faction's outpost fires the
+same way, for its faction. A player's armed structure -- the `battery` blueprint -- has no
+side to take, so it fires as its owner's rules of engagement say (#340): hold, return fire
+(the default), enemies on sight, or everyone not on the allow-list. Return fire answers
+whoever shot at the structure in the last minute, and whoever shot its owner's ship inside
+its reach. The allow-list is sent to the owner only; everyone else's layout carries the mode.
 
 `storage` is **reserved**: it is parsed and checked, so data written with it now stays
 valid, but no pass reads it yet -- holding cargo off a ship arrives with the player-mutable
@@ -1060,6 +1063,10 @@ that has nowhere to go in the system falls back to an open point. The place is d
 `Gen::Rng` keyed by faction, system and purpose, so the same world settles the same places.
 A structure that orbits carries `orbits` in `world.json` like any other satellite; the damage
 it has taken is state beside it, and a destroyed one leaves its wreck on the same orbit.
+
+A player's only armed blueprint is the **defence battery** (`battery`, #340): a small gun
+platform, below an outpost in reach (1200), damage (4 a second) and hull (1500), at about two
+and a half beacons' cost. It is not an outpost: it claims nothing and no faction builds it.
 
 Every outpost leaves a `derelict.outpost_ruin` when destroyed. Their hulls differ by what they
 are for: a watch post and a salvage post are light (3000), an ordinary, mining or orbital

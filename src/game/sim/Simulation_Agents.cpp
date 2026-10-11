@@ -199,29 +199,29 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
         if (!npc->IsAlive() || !npc->IsCombatant() || !npc->ReadyToFire())
             continue;
 
-        Vector2    npos = npc->GetPosition();
-        float      bestD = PIRATE_WEAPON_RANGE;
-        Combatant* target = nullptr;
-        int        targetSession = 0;  // 0 means the target is an NPC
+        Vector2              npos = npc->GetPosition();
+        float                bestD = PIRATE_WEAPON_RANGE;
+        Combatant*           target = nullptr;
+        const ClientSession* targetPlayer = nullptr;  // null means the target is an NPC
 
-        auto consider = [&](Combatant* c, int sessionId)
+        auto consider = [&](Combatant* c, const ClientSession* player)
         {
             float d = Dist(c->GetPosition(), npos);
             if (d <= bestD)
             {
                 bestD = d;
                 target = c;
-                targetSession = sessionId;
+                targetPlayer = player;
             }
         };
 
         for (const PlayerPresence& p : players)
             if (p.ship != nullptr && p.session != nullptr && !p.hidden &&
                 AccountHostileToFaction(*p.session, npc->GetFaction()))
-                consider(p.ship, p.session->id);
+                consider(p.ship, p.session);
         for (NpcShip* other : ships)
             if (other != npc && other->IsAlive() && NpcHostileToNpc(npc, other))
-                consider(other, 0);
+                consider(other, nullptr);
 
         if (target == nullptr)
         {
@@ -254,8 +254,11 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
 
         // What a volley takes off is the design's guns (#279 step 4); a player is hit a sixth
         // harder than a ship of its own kind, as before, so one raider is a threat on its own.
+        const int targetSession = targetPlayer != nullptr ? targetPlayer->id : 0;
         target->TakeDamage(npc->GetDamage() * (targetSession != 0 ? PLAYER_DAMAGE_SCALE : 1.0f));
         npc->ResetFireTimer();
+        if (targetPlayer != nullptr)  // the player's own guns nearby answer it (#340)
+            ProvokeGuards(st, *targetPlayer, target->GetPosition(), 0, npc->GetId());
         if (fires != nullptr)
         {
             FireEvent fe;
@@ -316,14 +319,16 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
             ships = AliveShips(st);
             gathered = true;
         }
-        const auto provoked = st.provokedBy.find(e->GetId());
-        auto       shotAtUs = [&](int session)
+        // Who shot at it, or at its owner's ship within its reach (#340), lately.
+        auto lately = [&](const std::map<int, std::map<int, double>>& book, int who)
         {
-            if (provoked == st.provokedBy.end())
+            const auto of = book.find(e->GetId());
+            if (of == book.end())
                 return false;
-            const auto when = provoked->second.find(session);
-            return when != provoked->second.end() && time_ < when->second;
+            const auto when = of->second.find(who);
+            return when != of->second.end() && time_ < when->second;
         };
+        auto                 shotAtUs = [&](int session) { return lately(st.provokedBy, session); };
         const Vector2        spos = e->GetPosition();
         float                bestD = e->GetSize() + a->weaponRange;
         Combatant*           target = nullptr;
@@ -399,6 +404,8 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
                 if (rel == Stance::Hostile || rel == Stance::War)
                     consider(n, nullptr, n, false);
             }
+            else if (lately(st.provokedByNpc, n->GetId()))
+                consider(n, nullptr, n, false);  // it shot the owner: answering, not first
             else if (rules != nullptr && strikesFirstAt(n->GetFaction()))
                 consider(n, nullptr, n, true);
         }
@@ -412,6 +419,12 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
         cooldown = DEFENCE_PERIOD;
         if (firstStrike)
             ChargeFirstStrike(st, *e, targetPlayer, targetNpc, !target->IsAlive());
+        // A player's battery that hits another player's ship is its owner shooting: that
+        // player's own guns nearby answer the owner, as they would the owner's ship (#340).
+        if (!sided && targetPlayer != nullptr)
+            for (const auto& kv : sessions_)
+                if (!account.empty() && kv.second.accountName == account)
+                    ProvokeGuards(st, *targetPlayer, target->GetPosition(), kv.second.id, 0);
         const int targetSession = targetPlayer != nullptr ? targetPlayer->id : 0;
         if (fires != nullptr)
         {
