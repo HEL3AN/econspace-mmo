@@ -195,6 +195,8 @@ json EntityLayoutsJson(const std::vector<Proto::EntityLayout>& v)
             ej["bp"] = e.blueprint;
         if (e.damage > 0.0f)
             ej["dmg"] = e.damage;
+        if (!e.defence.IsDefault())
+            ej["def"] = DefenceJson(e.defence);
         ents.push_back(std::move(ej));
     }
     return ents;
@@ -230,6 +232,8 @@ std::vector<Proto::EntityLayout> ToEntityLayouts(const json& j, const char* key)
         e.expiresAt = ej.value("exp", 0.0);
         e.blueprint = ej.value("bp", std::string());
         e.damage = ej.value("dmg", 0.0f);
+        if (ej.contains("def"))
+            DefenceFrom(ej["def"], e.defence);  // what it cannot read leaves the default
         out.push_back(std::move(e));
     }
     return out;
@@ -495,6 +499,11 @@ std::string EncodeCommand(const Command& c)
             j["deployName"] = c.deployName;
     }
     number("dismantle", c.dismantleId, 0);
+    if (c.defenceId != 0)
+    {
+        j["defId"] = c.defenceId;
+        j["def"] = DefenceJson(c.defence);
+    }
     return j.dump();
 }
 
@@ -667,6 +676,9 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadPoint(j, "deployAt", out.deployPos);
     ok = ok && ReadText(j, "deployName", out.deployName);
     ok = ok && ReadInt(j, "dismantle", 0, 0, ID_MAX, out.dismantleId);
+    ok = ok && ReadInt(j, "defId", 0, 0, ID_MAX, out.defenceId);
+    if (ok && j.contains("def"))
+        ok = DefenceFrom(j["def"], out.defence);
     return ok;
 }
 }  // namespace
@@ -1054,7 +1066,8 @@ std::string EncodeGalaxy(const GalaxyState& s)
                         { "sec", g.security },
                         { "pir", g.pirates },
                         { "prosp", g.prosperity },
-                        { "ctrl", FacJ(g.controller) } });
+                        { "ctrl", FacJ(g.controller) },
+                        { "claim", g.claimed } });
     j["sys"] = sys;
     j["news"] = s.events;
     return j.dump();
@@ -1076,6 +1089,7 @@ bool DecodeGalaxy(const std::string& s, GalaxyState& out)
             g.pirates = gj.value("pir", 0);
             g.prosperity = gj.value("prosp", 0.5f);
             g.controller = ToFac(gj.value("ctrl", json()));
+            g.claimed = gj.value("claim", false);
             out.systems.push_back(g);
         }
     out.events = j.value("news", std::vector<std::string>{});

@@ -276,12 +276,15 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
     for (auto& e : st.entities)
     {
         // Who a battery shoots at depends on whose it is. A station is its faction's; a
-        // structure (#39) is a faction's when a faction built it, and otherwise has no side
-        // to take -- it only answers whoever has been shooting at it. A site has no guns yet.
+        // structure (#39) is a faction's when a faction built it, and keeps its doctrine.
+        // Otherwise it has no side to take: it fires as its owner's rules of engagement say
+        // (#340) -- by default only back at whoever has been shooting at it. A site has no
+        // guns yet.
         if (!e->Has(Component::Defensive))
             continue;
-        FactionId owner = Factions::Unaffiliated();
-        bool      sided = false;
+        FactionId      owner = Factions::Unaffiliated();
+        bool           sided = false;
+        const Defence* rules = nullptr;
         if (e->GetKind() == EntityKind::Station)
         {
             owner = static_cast<const Station*>(e.get())->GetFaction();
@@ -289,9 +292,16 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
         }
         else if (e->GetKind() == EntityKind::Structure)
         {
-            if (static_cast<const Structure&>(*e).IsBuilding())
+            const Structure& t = static_cast<const Structure&>(*e);
+            if (t.IsBuilding())
                 continue;
             sided = Outposts::FactionOf(e->GetOwner(), owner);
+            if (!sided)
+            {
+                rules = &t.GetDefence();
+                if (rules->engage == Engage::Hold)
+                    continue;
+            }
         }
         else
             continue;
@@ -314,34 +324,83 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
             const auto when = provoked->second.find(session);
             return when != provoked->second.end() && time_ < when->second;
         };
-        const Vector2 spos = e->GetPosition();
-        float         bestD = e->GetSize() + a->weaponRange;
-        Combatant*    target = nullptr;
-        int           targetSession = 0;
+        const Vector2        spos = e->GetPosition();
+        float                bestD = e->GetSize() + a->weaponRange;
+        Combatant*           target = nullptr;
+        const ClientSession* targetPlayer = nullptr;
+        NpcShip*             targetNpc = nullptr;
+        bool                 firstStrike = false;  // not answering a shot: the owner's own choice
 
-        auto consider = [&](Combatant* c, int sessionId)
+        auto consider = [&](Combatant* c, const ClientSession* player, NpcShip* npc, bool first)
         {
             float d = Dist(c->GetPosition(), spos);
             if (d <= bestD)
             {
                 bestD = d;
                 target = c;
-                targetSession = sessionId;
+                targetPlayer = player;
+                targetNpc = npc;
+                firstStrike = first;
             }
         };
+
+        // A player's structure: whom its owner's rules name, never the owner. Who shot at it
+        // lately is answered in every mode but hold fire; the rest is a first strike.
+        const std::string& account = e->GetOwner();
+        auto               enemyOfOwner = [&](FactionId f)
+        {
+            if (f == Factions::Pirates())
+                return true;  // everyone's enemy, as they are to every player
+            float standing = 0.0f;
+            return OwnerStanding(account, f, standing) && standing < rules->threshold;
+        };
+        auto strikesFirst = [&](const ClientSession& p)
+        {
+            if (rules->engage == Engage::Strangers)
+                return !rules->Allows(p.accountName);
+            if (rules->engage == Engage::Enemies)
+                for (FactionId f : Factions::All())
+                    if (Factions::IsLawful(f) && p.account.IsWanted(f))
+                        return true;  // wanted by the law: fair game
+            return false;
+        };
+        auto strikesFirstAt = [&](FactionId f)
+        {
+            if (rules->engage == Engage::Strangers)
+                return !rules->Allows(f);
+            return rules->engage == Engage::Enemies && enemyOfOwner(f);
+        };
+
         for (const PlayerPresence& p : players)
-            if (p.ship != nullptr && p.session != nullptr && !p.hidden && p.ship->IsAlive() &&
-                ((sided && AccountHostileToFaction(*p.session, owner)) || shotAtUs(p.session->id)))
-                consider(p.ship, p.session->id);
+        {
+            if (p.ship == nullptr || p.session == nullptr || p.hidden || !p.ship->IsAlive())
+                continue;
+            if (sided)
+            {
+                if (AccountHostileToFaction(*p.session, owner) || shotAtUs(p.session->id))
+                    consider(p.ship, p.session, nullptr, false);
+            }
+            else if (account.empty() || p.session->accountName != account)
+            {
+                if (shotAtUs(p.session->id))
+                    consider(p.ship, p.session, nullptr, false);
+                else if (rules != nullptr && strikesFirst(*p.session))
+                    consider(p.ship, p.session, nullptr, true);
+            }
+        }
         for (NpcShip* n : ships)
         {
-            if (!sided)
-                break;
-            const Stance rel = Factions::Relation(owner, n->GetFaction());
             // Besiegers are the siege's arithmetic to count, not the battery's (#295).
-            if (n->IsAlive() && n->GetRole() != NpcRole::Warship &&
-                (rel == Stance::Hostile || rel == Stance::War))
-                consider(n, 0);
+            if (!n->IsAlive() || n->GetRole() == NpcRole::Warship)
+                continue;
+            if (sided)
+            {
+                const Stance rel = Factions::Relation(owner, n->GetFaction());
+                if (rel == Stance::Hostile || rel == Stance::War)
+                    consider(n, nullptr, n, false);
+            }
+            else if (rules != nullptr && strikesFirstAt(n->GetFaction()))
+                consider(n, nullptr, n, true);
         }
 
         if (target == nullptr)
@@ -351,6 +410,9 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
         }
         target->TakeDamage(a->weaponDamage * DEFENCE_PERIOD);
         cooldown = DEFENCE_PERIOD;
+        if (firstStrike)
+            ChargeFirstStrike(st, *e, targetPlayer, targetNpc, !target->IsAlive());
+        const int targetSession = targetPlayer != nullptr ? targetPlayer->id : 0;
         if (fires != nullptr)
         {
             FireEvent fe;
@@ -361,6 +423,48 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
             fires->push_back(fe);
         }
     }
+}
+
+void Simulation::ChargeFirstStrike(SystemState& st, const Entity& structure,
+                                   const ClientSession* player, const NpcShip* npc, bool killed)
+{
+    // The crime is against whoever's law protects the target, by #41's table: a lawful
+    // faction's ship is that faction's wherever it is; a player is protected by the law of the
+    // system they are in, unless that law has no quarrel with firing on them -- they are
+    // wanted by it, or it holds them hostile.
+    FactionId victim;
+    if (npc != nullptr)
+    {
+        victim = npc->GetFaction();
+        if (!Factions::IsLawful(victim))
+            return;
+    }
+    else if (player != nullptr)
+    {
+        victim = st.agg.controller;
+        if (!st.agg.claimed || !Factions::IsLawful(victim) ||
+            AccountHostileToFaction(*player, victim))
+            return;
+    }
+    else
+        return;
+    const std::string& account = structure.GetOwner();
+    ChargeOwner(account, victim, false);
+    if (killed)
+        ChargeOwner(account, victim, true);
+
+    // Said to the owner once a minute, not once a volley.
+    double& told = st.crimeToldUntil[structure.GetId()];
+    if (time_ < told)
+        return;
+    told = time_ + PROVOKED_SECONDS;
+    for (auto& kv : sessions_)
+        if (kv.second.accountName == account)
+            kv.second.RecordEvent(
+                Ev::Kind::Notice,
+                structure.GetName() + " in " + SystemName(st.id) + " is firing first on " +
+                    (npc != nullptr ? FactionName(victim) + " ships" : player->accountName) +
+                    ": a crime against " + FactionName(victim) + ", on your account");
 }
 
 bool Simulation::CallPolice(SystemState& st, ClientSession& by, FactionId law)
@@ -827,6 +931,7 @@ void Simulation::MaintainWorld(float dt, MaintainCost* cost)
         if (SystemState* st = SystemById(sv.second.systemId))
             Warm(*st);
     StepStructures();  // every tick: a site finishes when the clock says, not two seconds on
+    StepOwners();      // ...and an owner who is back pays for what their structures did (#340)
     Lap(cost ? &cost->structures : nullptr, lap);
     while (maintAccum_ >= MAINT_STEP)
     {

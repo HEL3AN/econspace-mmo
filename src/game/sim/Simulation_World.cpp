@@ -526,6 +526,9 @@ nlohmann::json StateOf(const Entity& e)
         s["looted"] = true;
     if (e.GetKind() == EntityKind::Structure && static_cast<const Structure&>(e).GetDamage() > 0.0f)
         s["damage"] = static_cast<const Structure&>(e).GetDamage();
+    if (e.GetKind() == EntityKind::Structure &&
+        !static_cast<const Structure&>(e).GetDefence().IsDefault())  // (#340)
+        s["defence"] = DefenceJson(static_cast<const Structure&>(e).GetDefence());
     return s;
 }
 
@@ -538,6 +541,10 @@ void ApplyState(Entity& e, const nlohmann::json& s)
         static_cast<Derelict&>(e).SetLooted();
     if (e.GetKind() == EntityKind::Structure)
         static_cast<Structure&>(e).SetDamage(s.value("damage", 0.0f));
+    Defence d;  // rules it cannot read are the default: it fires back, as before #340
+    if (e.GetKind() == EntityKind::Structure && s.contains("defence") &&
+        DefenceFrom(s["defence"], d))
+        static_cast<Structure&>(e).SetDefence(d);
 }
 
 // A faction by the id factions.json gives it, or false for one this build does not have:
@@ -825,6 +832,9 @@ bool Simulation::SaveWorld(const std::string& path) const
         changes[kv.first] = std::move(c);
     }
     j["changes"] = std::move(changes);
+    // What the world remembers of structures' owners while they are away (#340).
+    if (!owners_.empty())
+        j["owners"] = OwnersJson();
 
     // Beside the real file, then renamed over it, with older copies kept (#341): a crash
     // mid-write used to leave a truncated world that the next boot replaced with a new galaxy.
@@ -849,6 +859,7 @@ Save::Result Simulation::LoadWorld(const std::string& path)
     Reset();
     InitGalaxy();  // skeletons with default aggregates for all systems
     time_ = j.value("simTime", 0.0);
+    OwnersFrom(j.value("owners", json()));  // (#340)
     for (auto it = j["galaxy"].begin(); it != j["galaxy"].end(); ++it)
     {
         const std::string& sid = it.key();

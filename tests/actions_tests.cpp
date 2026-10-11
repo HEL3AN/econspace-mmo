@@ -131,10 +131,16 @@ TEST_CASE("Actions: your own structure is taken apart, anyone else's is attacked
     CHECK(dismantle->label == "Dismantle (back: 5 Iron)");
     CHECK(dismantle->tool == "dismantle");
     CHECK_FALSE(Has(own, Verb::Attack));
+    CHECK_FALSE(Has(own, Verb::Defence));  // no guns, no rules of engagement (#340)
+    t.armed = true;
+    const Action* roe = Find(Actions::For(t, from), Verb::Defence);
+    REQUIRE(roe != nullptr);
+    CHECK(roe->tool == "set_defence");
 
     t.mine = false;
     const std::vector<Action> theirs = Actions::For(t, from);
     CHECK_FALSE(Has(theirs, Verb::Dismantle));
+    CHECK_FALSE(Has(theirs, Verb::Defence));
     const Action* attack = Find(theirs, Verb::Attack);
     REQUIRE(attack != nullptr);
     CHECK(attack->tool == "attack");
@@ -177,10 +183,11 @@ TEST_CASE("Actions: every button an agent could want is an econagent tool, and t
     const std::set<Verb> interfaceOnly{ Verb::Select, Verb::SetRange };
     const std::set<Verb> owed{};
 
-    for (Verb v : { Verb::Select, Verb::Approach, Verb::Orbit, Verb::Keep, Verb::Follow,
-                    Verb::SetRange, Verb::Warp, Verb::Dock, Verb::Mine, Verb::Attack,
-                    Verb::Investigate, Verb::Jump, Verb::FlyHere, Verb::WarpHere, Verb::Build,
-                    Verb::Accept, Verb::HandIn, Verb::Dismantle, Verb::Refit })
+    for (Verb v :
+         { Verb::Select,      Verb::Approach, Verb::Orbit,     Verb::Keep,     Verb::Follow,
+           Verb::SetRange,    Verb::Warp,     Verb::Dock,      Verb::Mine,     Verb::Attack,
+           Verb::Investigate, Verb::Jump,     Verb::FlyHere,   Verb::WarpHere, Verb::Build,
+           Verb::Accept,      Verb::HandIn,   Verb::Dismantle, Verb::Refit,    Verb::Defence })
     {
         const std::string tool = Actions::ToolFor(v);
         INFO("verb " << (int)v << " tool '" << tool << "'");

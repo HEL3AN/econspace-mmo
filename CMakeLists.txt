@@ -147,6 +147,7 @@ add_library(engine STATIC
     src/engine/entities/Derelict.cpp
     src/engine/entities/JumpGate.cpp
     src/engine/entities/Structure.cpp  # anything a player built (#39)
+    src/engine/entities/Defence.cpp    # its owner's rules of engagement (#340)
     src/engine/economy/Resource.cpp
     src/engine/render/Textures.cpp
     src/engine/render/Scene.cpp        # what an object looks like, apart from who draws it (#35)
@@ -278,6 +279,7 @@ add_executable(econserver
     src/game/sim/Simulation_Factions.cpp  # factions reach where value outweighs risk (#231)
     src/game/sim/Simulation_Player.cpp    # the server-side player verbs and account (#17)
     src/game/sim/Simulation_Build.cpp     # construction: sites, their rules and their end (#39)
+    src/game/sim/Simulation_Defence.cpp   # a structure's rules of engagement, and its owner (#340)
     src/game/sim/Simulation_Outposts.cpp  # where a faction's outpost stands, by purpose (#318)
     src/game/sim/Simulation_Sieges.cpp    # what keeping an outpost costs, and sieges (#295)
     src/game/sim/Simulation_Migration.cpp # ships a system has too many of leave (#295)
@@ -386,6 +388,7 @@ add_executable(tests
     tests/warp_path_tests.cpp
     tests/clock_tests.cpp
     tests/build_tests.cpp          # construction: blueprints, sites, the clock (#39)
+    tests/defence_tests.cpp        # rules of engagement for a structure (#340)
     tests/ship_design_tests.cpp    # ship designs and the stats derived from them (#279)
     tests/desk_tests.cpp           # the window manager: z-order, the mouse, Esc, layout (#297)
     tests/theme_tests.cpp          # the UI theme's strict loading, and the scale (#297)
@@ -420,6 +423,7 @@ add_executable(tests
     src/game/sim/Simulation_Factions.cpp  # factions reach where value outweighs risk (#231)
     src/game/sim/Simulation_Player.cpp    # the server-side player verbs and account (#17)
     src/game/sim/Simulation_Build.cpp     # construction: sites, their rules and their end (#39)
+    src/game/sim/Simulation_Defence.cpp   # a structure's rules of engagement, and its owner (#340)
     src/game/sim/Simulation_Outposts.cpp  # where a faction's outpost stands, by purpose (#318)
     src/game/sim/Simulation_Sieges.cpp    # what keeping an outpost costs, and sieges (#295)
     src/game/sim/Simulation_Migration.cpp # ships a system has too many of leave (#295)

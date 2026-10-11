@@ -297,6 +297,9 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     // ...and taken apart by its owner, the same way.
     if (c.dismantleId != 0)
         sim.Dismantle(s, c.dismantleId);
+    // ...and told whom to fire at (#340).
+    if (c.defenceId != 0)
+        sim.SetDefence(s, c.defenceId, c.defence);
 
     // Player fire: on a shot — a beam event into the snapshot (client draws it blue).
     // Account effects (mission credit/reputation) are not yet applied on the server (3c-ii).

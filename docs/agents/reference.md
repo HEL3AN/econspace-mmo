@@ -211,6 +211,18 @@ Take apart a site or structure you built, from within its blueprint's reach. Wha
 |---|---|---|---|
 | `structure_id` | number | yes | structure id from observe |
 
+### `set_defence`
+
+Set the rules of engagement of an armed structure you built, from anywhere in its system: 'hold' never fires; 'return' (the default) fires back at whoever shot at it in the last minute; 'enemies' also fires first at ships of factions you stand below `threshold` with (and pirates), and at players wanted by a lawful faction; 'strangers' fires at everyone but you and the allow-list. It only fires where somebody is. Firing first is your crime, even while you are away: on a lawful faction's ships wherever they are, and on an innocent player in a system a lawful faction holds -- reputation and bounty with that faction per hit, more for a kill. The answer says what the mode costs in that system.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `allow_factions` | array |  | strangers: faction ids it holds fire for, e.g. 'Independent' |
+| `allow_players` | array |  | strangers: account names it holds fire for |
+| `mode` | string | yes | 'hold', 'return', 'enemies' or 'strangers' |
+| `structure_id` | number | yes | structure id from observe |
+| `threshold` | number |  | enemies: fire on factions your standing with is below this, -100 to 100 (default -10, where hostile begins) |
+
 ### `attack`
 
 Close to weapon range of a ship or a structure and fire until it is destroyed. Finishes when it is gone; aborts like any order if the hull gets critical. A destroyed structure leaves a wreck where it fits. Shooting what a lawful faction owns, or a player's structure in a system a lawful faction holds, is a crime: reputation and bounty with that faction, per hit and more for the kill. Your own structures are dismantled, not attacked.

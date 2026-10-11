@@ -328,12 +328,12 @@ void Simulation::ChargeAttack(ClientSession& s, FactionId victim, bool killed)
 {
     if (killed)
     {
-        s.account.AddReputation(victim, -3.0f);
-        s.account.AddBounty(victim, 50.0);
+        s.account.AddReputation(victim, -Crime::KILL_STANDING);
+        s.account.AddBounty(victim, Crime::KILL_BOUNTY);
         return;
     }
-    s.account.AddReputation(victim, -0.4f);
-    s.account.AddBounty(victim, 5.0);
+    s.account.AddReputation(victim, -Crime::HIT_STANDING);
+    s.account.AddBounty(victim, Crime::HIT_BOUNTY);
 }
 
 Simulation::PlayerMiningResult Simulation::StepPlayerMining(ClientSession& s, SystemState& st,

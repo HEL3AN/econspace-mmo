@@ -214,7 +214,9 @@ private:
     void OrderAutopilot(Vector2 target, float stopDist);  // fly to a point
     void OrderWarp(Vector2 target, float dropDist);       // warp to a point
     void DrawStatusContent(const Ui::Frame& f);           // contents of the status window
-    void DrawTargetContent(const Ui::Frame& f);    // the selected item: what it is, what to do
+    void DrawTargetContent(const Ui::Frame& f);  // the selected item: what it is, what to do
+    // ...and, for one's own armed structure, its rules of engagement and what they cost (#340)
+    void DrawDefenceControls(Ui::Layout& L, const Proto::EntityLayout& el);
     void DrawOverviewContent(const Ui::Frame& f);  // list of objects in the system
     void DrawRadarContent(const Ui::Frame& f);     // system radar minimap
     void DrawMissionsContent(const Ui::Frame& f);  // missions taken and offered, and one in full
@@ -501,6 +503,12 @@ private:
     // player's own, starting from the target's default and kept until the target changes.
     float holdRange_ = 0.0f;
     int   holdRangeFor_ = 0;  // the target it was chosen for
+    // The rules of engagement being edited in that window (#340): the structure's as the
+    // layout last said, until the player changes them and they are sent.
+    int         defenceFor_ = 0;
+    float       defenceThreshold_ = 0.0f;
+    std::string defenceList_;
+    Defence     defenceSeen_;  // what the layout said when they were read from it
 
     std::string pilotName_;  // the account this client logged in as
     std::string nameBuf_;    // the map's name field (#145), while it has the keyboard

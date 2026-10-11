@@ -1,5 +1,6 @@
 #pragma once
 
+#include "entities/Defence.h"
 #include "entities/Entity.h"
 #include <string>
 
@@ -63,6 +64,11 @@ public:
     // 0..1 of its hull still standing at `now`; 0 is destroyed.
     float HullFraction(double now) const;
 
+    // Its owner's rules of engagement (#340). Meaningful for a player's armed structure; a
+    // faction's keeps its doctrine whatever this says.
+    const Defence& GetDefence() const { return defence_; }
+    void           SetDefence(Defence d) { defence_ = std::move(d); }
+
 private:
     std::string name_;
     std::string builds_;
@@ -71,4 +77,5 @@ private:
     double      startedAt_ = 0.0;
     double      completesAt_ = 0.0;  // 0: built
     double      expiresAt_ = 0.0;    // 0: permanent
+    Defence     defence_;
 };
