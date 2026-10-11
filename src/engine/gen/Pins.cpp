@@ -1,5 +1,6 @@
 #include "gen/Pins.h"
 
+#include <algorithm>
 #include <map>
 #include <set>
 
@@ -11,7 +12,7 @@ using json = nlohmann::json;
 
 const std::set<std::string> OBJECT_LISTS = { "planets", "stations",  "asteroidFields",
                                              "nebulae", "derelicts", "gates" };
-const std::set<std::string> PIN_FIELDS = { "system", "seed", "mode", "document", "note" };
+const std::set<std::string> PIN_FIELDS = { "system", "slot", "seed", "mode", "document", "note" };
 
 // The record of one list, if `origins` has one -- looked up, never made: an empty list has
 // no entry, and making one would make two equal records compare unequal.
@@ -239,7 +240,33 @@ bool WellFormed(const json& pin, const std::string& where, std::vector<std::stri
         problems.push_back(where + ": \"seed\" must be a whole number");
         ok = false;
     }
+    if (ok && pin.contains("slot"))
+    {
+        const int named = SlotOf(pin["system"].get<std::string>());
+        if (!(pin["slot"].is_number_integer() && pin["slot"].get<long long>() >= 0 &&
+              pin["slot"].get<long long>() < 1000000))
+        {
+            problems.push_back(where + ": \"slot\" must be a whole number");
+            ok = false;
+        }
+        else if (named >= 0 && named != pin["slot"].get<int>())
+        {
+            // r3-2-1 is in slot 3 whatever the pin says; one of the two is a mistake.
+            problems.push_back(where + ": \"slot\" " + std::to_string(pin["slot"].get<int>()) +
+                               " is not the slot of " + pin["system"].get<std::string>());
+            ok = false;
+        }
+    }
     return ok;
+}
+
+// The slot a pin is for (#342): its own "slot", else the one its system's id names, else 0
+// -- where every pin was before there were slots.
+int PinSlot(const json& pin)
+{
+    if (pin.contains("slot"))
+        return pin["slot"].get<int>();
+    return std::max(0, SlotOf(pin["system"].get<std::string>()));
 }
 
 // Applies one pin, then holds the result to CheckPinned: a pin that would break the
@@ -287,7 +314,9 @@ void ApplyPins(Region& region, const json& pins, uint64_t seed, std::vector<std:
         if (!WellFormed(pin, where, problems))
             continue;
         if (pin.contains("seed") && pin["seed"].get<uint64_t>() != seed)
-            continue;  // for another region
+            continue;  // for another world
+        if (PinSlot(pin) != region.slot)
+            continue;  // for another region of it -- perhaps one not open yet
 
         const std::string id = pin["system"];
         auto              sys = region.documents.find(id);
@@ -439,6 +468,8 @@ json PinFor(const std::string& system, uint64_t seed, const json& base, const js
     json pin = { { "system", system },
                  { "seed", seed },
                  { "note", "written by the world editor (#237)" } };
+    if (SlotOf(system) >= 0)
+        pin["slot"] = SlotOf(system);
     if (!expressible)
     {
         pin["mode"] = "replace";

@@ -119,7 +119,7 @@ TEST_CASE("survey: consecutive seeds, every system of each region, in the index'
     REQUIRE(run.size() == (size_t)(3 * base.systems));
     CHECK(run.front().seed == 5);
     CHECK(run.back().seed == 7);
-    CHECK(run.front().id == "w1-1");
+    CHECK(run.front().id == "r0-1-1");
     CHECK(run.front().depth == 1);
     CHECK(run.front().designation == "W-1.1");
     for (const Gen::SurveySystem& s : run)

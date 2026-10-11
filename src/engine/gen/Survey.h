@@ -28,7 +28,7 @@ struct RegionParams;
 struct SurveySystem
 {
     uint64_t       seed = 0;
-    std::string    id;           // "w3-2"
+    std::string    id;           // "r0-3-2"
     std::string    designation;  // "W-3.2", from the galaxy index entry
     int            depth = 0;
     nlohmann::json doc;  // the system document, in the shape of data/systems/*.json

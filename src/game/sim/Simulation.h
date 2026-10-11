@@ -67,8 +67,18 @@ public:
     // start system's own file, so the wormhole is not placed in a planet's path.
     // `systems` overrides how many systems the region has (0: the generator's own number);
     // only a benchmark asks for another, since a saved world records the seed and not this.
+    // The region fills skeleton slot 0 (#342).
     void AttachRegion(uint64_t seed, const std::string& systemsDir, int systems = 0);
+    // The region of skeleton slot `slot` (#342), hung off `homeId` -- a hand-written system
+    // or a generated one of another region -- by a wormhole. What is in it is the same
+    // whatever else is open and whenever it opens; only its place on the map follows home.
+    // False, and nothing changes, when the slot is open already, home does not exist, or a
+    // region of another seed is attached.
+    bool AttachRegion(uint64_t seed, int slot, const std::string& homeId,
+                      const std::string& systemsDir, int systems = 0);
     bool HasRegion() const { return hasRegion_; }
+    // The slots whose regions are attached, ascending.
+    const std::set<int>& OpenSlots() const { return openSlots_; }
     // The generated systems as the loader reads them, by id (#140) -- for tools.
     const std::map<std::string, std::string>& RegionDocuments() const { return regionDocs_; }
     uint64_t                                  RegionSeed() const { return regionSeed_; }
@@ -736,11 +746,14 @@ private:
     bool                               hasRegion_ = false;
     uint64_t                           regionSeed_ = 0;
     std::map<std::string, std::string> regionDocs_;  // generated system documents, as JSON (#140)
-    std::string                        wormhole_;    // the gate added to the start system, as JSON
+    std::set<int>                      openSlots_;   // skeleton slots attached (#342)
     std::map<std::string, SystemState> systems_;     // state by system id
     int                                agentIdCounter_ = 0;
     // The links, by system (#295): what Neighbors reads.
     std::map<std::string, std::vector<std::string>> neighbors_;
+    // Wormhole mouths, as JSON, by the system they were opened from -- hand-written or
+    // generated: a region's own documents are never changed by another region opening.
+    std::map<std::string, std::vector<std::string>> wormholes_;
 
     // One per connected player (#3). A std::map because the verbs take a ClientSession&,
     // and a session must not move under one while the world is being stepped.

@@ -6,6 +6,7 @@
 #include "core/World.h"
 #include "core/WorldLoader.h"
 #include "entities/Entity.h"
+#include "gen/Galaxy.h"
 #include "gen/Pins.h"
 #include "gen/Region.h"
 #include "gen/Rng.h"
@@ -24,10 +25,11 @@
 
 namespace
 {
-Gen::RegionParams Params(uint64_t seed)
+Gen::RegionParams Params(uint64_t seed, int slot = 0)
 {
     Gen::RegionParams p;
     p.seed = seed;
+    p.slot = slot;
     p.homeId = "core";
     return p;
 }
@@ -80,15 +82,173 @@ TEST_CASE("the same seed makes the same region, byte for byte")
 
 TEST_CASE("the rules have not changed without saying so")
 {
-    // A golden value. CI computes it on three compilers (MinGW, GCC, Apple Clang): if it
+    // Golden values. CI computes them on three compilers (MinGW, GCC, Apple Clang): if one
     // differs between them, the generator is not deterministic across platforms, which is
-    // the one thing it must be. If it differs after a change to the rules, that change made
+    // the one thing it must be. If one differs after a change to the rules, that change made
     // a different galaxy from the same seed -- bump Gen::GENERATOR_VERSION (saves from the
     // old rules are then refused) and update the value here.
-    const uint64_t h = Fnv1a(Dump(Gen::GenerateRegion(Params(1))));
-    MESSAGE("region hash for seed 1: " << h);
-    CHECK(Gen::GENERATOR_VERSION == 5);
-    CHECK(h == 13600593835554633938ull);
+    //
+    // Split by what they cover (#342): the skeleton, and a region per slot, so a change to
+    // one breaks only its own hash and says which part of the galaxy moved.
+    CHECK(Gen::GENERATOR_VERSION == 6);
+    const uint64_t skeleton = Fnv1a(Gen::SkeletonJson(Gen::GenerateGalaxySkeleton(1, 100)).dump());
+    MESSAGE("skeleton hash for seed 1, 100 slots: " << skeleton);
+    CHECK(skeleton == 3947093538462403513ull);
+    const uint64_t GOLDEN[] = { 4509086354049687864ull, 1460290403585921612ull,
+                                15657950903510894036ull };
+    for (int slot = 0; slot < 3; slot++)
+    {
+        CAPTURE(slot);
+        const uint64_t h = Fnv1a(Dump(Gen::GenerateRegion(Params(1, slot))));
+        MESSAGE("region hash for seed 1, slot " << slot << ": " << h);
+        CHECK(h == GOLDEN[slot]);
+    }
+}
+
+TEST_CASE("the skeleton: every slot reaches slot 0, and a bigger cap only adds (#342)")
+{
+    for (uint64_t seed : { 1ull, 2ull, 77ull })
+    {
+        CAPTURE(seed);
+        const Gen::GalaxySkeleton small = Gen::GenerateGalaxySkeleton(seed, 40);
+        const Gen::GalaxySkeleton big = Gen::GenerateGalaxySkeleton(seed, 200);
+        REQUIRE(small.slots.size() == 40);
+        REQUIRE(big.slots.size() == 200);
+        CHECK(Gen::SkeletonJson(small) == Gen::SkeletonJson(Gen::GenerateGalaxySkeleton(seed, 40)));
+
+        // Raising the cap never moves a slot, nor changes a link between two that existed.
+        for (size_t i = 0; i < small.slots.size(); i++)
+        {
+            CAPTURE(i);
+            CHECK(small.slots[i].mapX == big.slots[i].mapX);
+            CHECK(small.slots[i].mapY == big.slots[i].mapY);
+            CHECK(small.slots[i].inward == big.slots[i].inward);
+        }
+        std::vector<std::pair<int, int>> bigInside;
+        for (const auto& l : big.links)
+            if (l.second < 40)
+                bigInside.push_back(l);
+        CHECK(bigInside == small.links);
+
+        // One piece: following `inward` from any slot ends at 0, a ring at a time, and every
+        // inward step is a link.
+        std::set<std::pair<int, int>> links(big.links.begin(), big.links.end());
+        for (const Gen::Slot& s : big.slots)
+        {
+            CAPTURE(s.index);
+            if (s.index == 0)
+            {
+                CHECK(s.inward == -1);
+                continue;
+            }
+            REQUIRE(s.inward >= 0);
+            CHECK(s.inward < s.index);
+            CHECK(big.slots[(size_t)s.inward].ring == s.ring - 1);
+            CHECK(links.count({ s.inward, s.index }) == 1);
+            CHECK(s.neighbours.size() <= 6);
+        }
+        // Neighbours are what the links say, both ways.
+        for (const auto& l : big.links)
+        {
+            const auto& a = big.slots[(size_t)l.first].neighbours;
+            const auto& b = big.slots[(size_t)l.second].neighbours;
+            CHECK(std::count(a.begin(), a.end(), l.second) == 1);
+            CHECK(std::count(b.begin(), b.end(), l.first) == 1);
+        }
+        // Slots are apart on the map: two regions side by side do not overlap.
+        for (size_t i = 0; i < 40; i++)
+            for (size_t j = i + 1; j < 40; j++)
+            {
+                const double dx = big.slots[i].mapX - big.slots[j].mapX;
+                const double dy = big.slots[i].mapY - big.slots[j].mapY;
+                CHECK(dx * dx + dy * dy > 1500.0 * 1500.0);
+            }
+    }
+    CHECK(Gen::SkeletonJson(Gen::GenerateGalaxySkeleton(1, 50)) !=
+          Gen::SkeletonJson(Gen::GenerateGalaxySkeleton(2, 50)));
+}
+
+TEST_CASE("a region is its slot's, whatever else opened and in whatever order (#342)")
+{
+    // Generated forwards, backwards and interleaved, each slot's region is the same: its
+    // keys start from (seed, slot), never from what came before it.
+    std::map<int, std::string> forwards, backwards;
+    for (int slot = 0; slot < 5; slot++)
+        forwards[slot] = Dump(Gen::GenerateRegion(Params(9, slot)));
+    for (int slot = 4; slot >= 0; slot--)
+        backwards[slot] = Dump(Gen::GenerateRegion(Params(9, slot)));
+    CHECK(forwards == backwards);
+    CHECK(Dump(Gen::GenerateRegion(Params(9, 3))) == forwards[3]);
+    CHECK(forwards[0] != forwards[1]);  // and two slots are two regions
+
+    // Ids are galaxy-wide and say their slot; a player still reads a designation.
+    const Gen::Region r = Gen::GenerateRegion(Params(9, 12));
+    CHECK(r.slot == 12);
+    CHECK(r.entryId == "r12-1-1");
+    for (const auto& kv : r.documents)
+    {
+        CAPTURE(kv.first);
+        CHECK(Gen::SlotOf(kv.first) == 12);
+        CHECK(Gen::DepthOf(kv.first) >= 1);
+        CHECK(kv.first.rfind("r12-", 0) == 0);
+    }
+    CHECK(r.systems[0]["name"] == "R12 W-1.1");
+    CHECK(Gen::GenerateRegion(Params(9, 0)).systems[0]["name"] == "W-1.1");
+
+    // Self-contained: written out and read back, it is the same region, so an opened one can
+    // be kept as it was made rather than remade by later rules.
+    Gen::Region back;
+    REQUIRE(Gen::RegionFromJson(nlohmann::json::parse(Gen::RegionToJson(r).dump()), back));
+    CHECK(Dump(back) == Dump(r));
+    CHECK(back.slot == 12);
+    CHECK_FALSE(Gen::RegionFromJson(nlohmann::json::object(), back));
+    CHECK(back.slot == 12);  // untouched by a document that is not a region
+
+    CHECK(Gen::SystemId(3, 2, 1) == "r3-2-1");
+    CHECK(Gen::SlotOf("r3-2-1") == 3);
+    CHECK(Gen::DepthOf("r3-2-1") == 2);
+    CHECK(Gen::DepthOf("r0-10-4") == 10);
+    for (const char* notGenerated : { "core", "w2-1", "r3-2", "r3-2-1x", "r-2-1", "reach" })
+    {
+        CAPTURE(notGenerated);
+        CHECK(Gen::SlotOf(notGenerated) == -1);
+        CHECK(Gen::DepthOf(notGenerated) == 0);
+    }
+}
+
+TEST_CASE("a pin is for one slot: its own, or the one its system names (#342)")
+{
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    Gen::Region       r = Gen::GenerateRegion(Params(7, 2));
+    const std::string id = r.entryId;  // r2-1-1
+    nlohmann::json    pins = { { "pins", nlohmann::json::array() } };
+    pins["pins"].push_back({ { "system", id }, { "document", { { "character", "by id" } } } });
+    pins["pins"].push_back(
+        { { "system", id }, { "slot", 2 }, { "document", { { "character", "by slot" } } } });
+    // For a region that is not open: waits, quietly.
+    pins["pins"].push_back({ { "system", "r5-1-1" }, { "document", { { "character", "x" } } } });
+    pins["pins"].push_back(
+        { { "system", "r5-1-1" }, { "slot", 5 }, { "document", { { "character", "x" } } } });
+    // An id that names no slot is slot 0's, as every pin was before slots.
+    pins["pins"].push_back({ { "system", "w1-1" }, { "document", { { "character", "x" } } } });
+    // Contradicting its own id, or not a slot at all: refused, and said, wherever applied.
+    pins["pins"].push_back(
+        { { "system", id }, { "slot", 4 }, { "document", { { "character", "wrong" } } } });
+    pins["pins"].push_back(
+        { { "system", id }, { "slot", "two" }, { "document", { { "character", "wrong" } } } });
+    std::vector<std::string> problems;
+    Gen::ApplyPins(r, pins, 7, problems);
+    CHECK(r.documents[id]["character"] == "by slot");
+    CHECK(problems.size() == 2);
+    for (const std::string& p : problems)
+        MESSAGE(p);
+
+    // In slot 0 the w1-1 pin is read -- and slot 0 has no such system any more.
+    Gen::Region first = Gen::GenerateRegion(Params(7, 0));
+    problems.clear();
+    Gen::ApplyPins(first, pins, 7, problems);
+    CHECK(problems.size() == 3);
+    CHECK(first.documents[first.entryId]["character"] != "by slot");
 }
 
 TEST_CASE("every system can be reached from home, and every link has a gate on both ends")

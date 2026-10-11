@@ -304,16 +304,17 @@ quietly losing to the generator.
 
 ```json
 { "pins": [
-    { "system": "w1-1", "document": { "derelicts": [ { "name": "The First Expedition",
-                                                       "pos": [500000, 500000], "size": 60, "reward": 1500 } ] } },
-    { "system": "w2-1", "seed": 7, "mode": "replace", "document": { "star": { "type": "Blue", "size": 120000 } } }
+    { "system": "r0-1-1", "document": { "derelicts": [ { "name": "The First Expedition",
+                                                         "pos": [500000, 500000], "size": 60, "reward": 1500 } ] } },
+    { "system": "r0-2-1", "slot": 0, "seed": 7, "mode": "replace", "document": { "star": { "type": "Blue", "size": 120000 } } }
 ] }
 ```
 
 | Field | Meaning |
 |------|----------|
-| `system` | The generated system's id (`w3-2`). Required. |
-| `seed` | Apply only in the region this seed makes. If absent, the pin applies for every seed. |
+| `system` | The generated system's id, `r<slot>-<depth>-<k>` (`r0-3-2`: slot 0, ring 3, second system) (#342). Required. |
+| `slot` | The skeleton slot of the region the pin is for. If absent, the slot the system's id names -- and slot 0 for an id that names none, which is where every pin was before slots. A pin for a slot that is not open waits for it; a `slot` that contradicts the id is refused. |
+| `seed` | Apply only in the world this seed makes. If absent, the pin applies for every seed. |
 | `mode` | `merge` (the default) or `replace`; see below. |
 | `document` | System JSON, in the same format as `systems/<id>.json`. |
 | `note` | Free text for whoever reads the file. |
@@ -350,7 +351,7 @@ pin added later changes the region the next time the server starts.
 ### Writing pins with the world editor (#237)
 
 `worldeditor region 7` opens the system through the wormhole of the region seed 7 makes
-(`region 7 system w2-1` opens another; in the survey, **E** on an enlarged card opens that
+(`region 7 system r0-2-1` opens another; in the survey, **E** on an enlarged card opens that
 one). It is the system the server would build: generated, then every pin on top. The
 ordinary tools work on it -- drag, the palette, the property panel, Del -- and an object a
 pin changes is ringed amber, one a pin adds green; everything else is the generator's and
@@ -776,7 +777,10 @@ Every section is optional (an entire array may be omitted). `pos` is `[x, y]` in
 `color` is `[r, g, b]` (0–255).
 
 A system beyond the wormhole is not a file: the server generates it from the world's seed
-(#140) in exactly this format, so everything below describes both.
+(#140) in exactly this format, so everything below describes both. Each generated region
+fills one **slot** of the galaxy's skeleton and is made from (seed, slot) alone (#342); its
+systems' ids are `r<slot>-<depth>-<k>`. `econserver galaxydump <seed> [slot ...]` prints the
+skeleton and the regions named, and `econserver regiondump <seed> [slot]` one region.
 
 ```json
 {

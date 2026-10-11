@@ -1655,6 +1655,74 @@ TEST_CASE("the region hangs off the start system by a wormhole, and its seed is 
     CHECK(rules == Gen::GENERATOR_VERSION);
 }
 
+static void CheckEveryJumpArrivesAtTheGateBack(Simulation& sim);
+
+TEST_CASE("any skeleton slot attaches, the same whatever opened first (#342)")
+{
+    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    auto              fresh = [&](Simulation& sim)
+    { sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json"); };
+
+    // Slot 0 behind the start, slot 5 off the start too, in both orders.
+    Simulation a, b;
+    fresh(a);
+    fresh(b);
+    const std::string start = a.Universe().startId;
+    REQUIRE(a.AttachRegion(7, 0, start, systems));
+    REQUIRE(a.AttachRegion(7, 5, start, systems));
+    REQUIRE(b.AttachRegion(7, 5, start, systems));
+    REQUIRE(b.AttachRegion(7, 0, start, systems));
+    CHECK(a.RegionDocuments() == b.RegionDocuments());
+    CHECK(a.OpenSlots() == std::set<int>{ 0, 5 });
+
+    // Refused, and nothing changes: a slot twice, another seed, a home that is not there.
+    const size_t before = a.Universe().systems.size();
+    CHECK_FALSE(a.AttachRegion(7, 5, start, systems));
+    CHECK_FALSE(a.AttachRegion(8, 6, start, systems));
+    CHECK_FALSE(a.AttachRegion(7, 6, "nowhere", systems));
+    CHECK(a.Universe().systems.size() == before);
+
+    // A slot opened from inside another region: its mouth is in that region's system, and
+    // what is in it is what it would have been from anywhere else.
+    std::string deep;
+    for (const auto& kv : a.RegionDocuments())
+        if (Gen::SlotOf(kv.first) == 0 &&
+            (deep.empty() || Gen::DepthOf(kv.first) > Gen::DepthOf(deep)))
+            deep = kv.first;
+    const std::string deepDoc = a.RegionDocuments().at(deep);
+    REQUIRE(a.AttachRegion(7, 1, deep, systems));
+    REQUIRE(b.AttachRegion(7, 1, deep, systems));
+    CHECK(a.RegionDocuments() == b.RegionDocuments());
+    // Slot 0's documents are slot 0's alone: the mouth is the opening's, kept beside them,
+    // so a region can be kept as it was when it opened.
+    CHECK(a.RegionDocuments().at(deep) == deepDoc);
+
+    // The whole galaxy holds together: every gate leads somewhere that leads back.
+    a.InitGalaxy();
+    a.MaterializeAllSystems(systems);
+    bool mouth = false;
+    for (const auto& e : a.SystemById(deep)->entities)
+        if (e->GetKind() == EntityKind::Gate)
+            mouth = mouth || static_cast<JumpGate*>(e.get())->GetDestination() == "r1-1-1";
+    CHECK(mouth);
+    CheckEveryJumpArrivesAtTheGateBack(a);
+
+    // An account saved in a system the new rules do not have -- a pre-#342 id -- starts at
+    // the start, with everything else it had.
+    const TempDir     tmp;
+    const std::string path = tmp.Path("account_old_region.json");
+    {
+        std::ofstream out(path);
+        out << R"({"money":250,"place":{"system":"w2-1","pos":[9.0,9.0]}})";
+    }
+    ClientSession& s = a.CreateSession(start, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+    REQUIRE(a.LoadAccount(s, path) == Save::Result::Ok);
+    CHECK(s.systemId == start);
+    CHECK(s.account.GetMoney() == doctest::Approx(250.0));
+}
+
 // Every link, both ways: jump through each gate the way the host does -- passing the
 // session's own system id as where it came from -- and the ship must appear beside the gate
 // that leads back, facing away from it (#310). Hand-written systems, the wormhole and a
@@ -1817,9 +1885,9 @@ TEST_CASE("players are told only what somebody has charted (#144)")
     };
     std::string entry;  // the far side of the wormhole
     for (const auto& l : sim.Universe().links)
-        if (l.a == sim.Universe().startId && l.b.rfind("w1-", 0) == 0)
+        if (l.a == sim.Universe().startId && Gen::DepthOf(l.b) == 1)
             entry = l.b;
-        else if (l.b == sim.Universe().startId && l.a.rfind("w1-", 0) == 0)
+        else if (l.b == sim.Universe().startId && Gen::DepthOf(l.a) == 1)
             entry = l.a;
     REQUIRE_FALSE(entry.empty());
 
@@ -2131,9 +2199,9 @@ TEST_CASE("whoever gets there first names it, once, for everyone (#145)")
     const std::string home = sim.Universe().startId;
     std::string       entry;
     for (const auto& l : sim.Universe().links)
-        if (l.a == home && l.b.rfind("w1-", 0) == 0)
+        if (l.a == home && Gen::DepthOf(l.b) == 1)
             entry = l.b;
-        else if (l.b == home && l.a.rfind("w1-", 0) == 0)
+        else if (l.b == home && Gen::DepthOf(l.a) == 1)
             entry = l.a;
     REQUIRE_FALSE(entry.empty());
 

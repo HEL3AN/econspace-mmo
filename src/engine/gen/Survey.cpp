@@ -18,7 +18,7 @@ std::vector<SurveySystem> GenerateSurvey(const RegionParams& base, uint64_t firs
         p.seed = firstSeed + (uint64_t)i;
         const Region region = GenerateRegion(p);
         // The index is the generator's order (ring by ring); the documents map is sorted
-        // by id, which would put w10-1 before w2-1.
+        // by id, which would put r0-10-1 before r0-2-1.
         for (const json& entry : region.systems)
         {
             SurveySystem s;
