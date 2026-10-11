@@ -85,7 +85,8 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     }
     Ui::LoadAssets(dataDir_, Ui::ThemeSetting());
     themes_ = Ui::ListThemes(Ui::ThemeDir());
-    Factions::Load(dataDir_ + "factions.json");  // faction properties/relations
+    if (!Factions::Load(dataDir_ + "factions.json"))  // faction properties/relations
+        TraceLog(LOG_ERROR, "Factions: %s", Factions::Error().c_str());
     // Before any entity exists -- and the player's own ship is one. It used to be built
     // seventeen lines above this call, under this same comment, which made it the one
     // object in the client with no archetype: no glyph, no sprite, no components (#127).
@@ -752,7 +753,7 @@ const WorldLoader::SystemInfo* Game::CurrentSystemInfo() const
 // only has the entity's faction) and for a live NPC.
 bool Game::HostileToPlayerFaction(FactionId f) const
 {
-    if (f == FactionId::Pirates)
+    if (f == Factions::Pirates())
         return true;
     if (player_.IsWanted(f))
         return true;

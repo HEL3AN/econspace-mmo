@@ -4,6 +4,7 @@
 #include "economy/Resource.h"
 #include "player/Player.h"
 #include "player/Skills.h"
+#include "factions_named.h"
 
 // Game logic, not the wire. Until now the only covered code was the protocol and the
 // transport, so the rules a player actually feels — what selling does to a price, whether
@@ -60,31 +61,31 @@ TEST_CASE("an account tracks money, standing and what it owes")
 
     SUBCASE("a bounty makes you wanted until it is paid off")
     {
-        CHECK_FALSE(p.IsWanted(FactionId::TradersGuild));
-        p.AddBounty(FactionId::TradersGuild, 50.0);
-        CHECK(p.IsWanted(FactionId::TradersGuild));
+        CHECK_FALSE(p.IsWanted(Fac::TradersGuild()));
+        p.AddBounty(Fac::TradersGuild(), 50.0);
+        CHECK(p.IsWanted(Fac::TradersGuild()));
         // Other factions do not care what one of them thinks of you.
-        CHECK_FALSE(p.IsWanted(FactionId::Pirates));
+        CHECK_FALSE(p.IsWanted(Fac::Pirates()));
 
-        p.SetBounty(FactionId::TradersGuild, 0.0);
-        CHECK_FALSE(p.IsWanted(FactionId::TradersGuild));
+        p.SetBounty(Fac::TradersGuild(), 0.0);
+        CHECK_FALSE(p.IsWanted(Fac::TradersGuild()));
     }
 
     SUBCASE("bounty decays but never goes negative")
     {
-        p.AddBounty(FactionId::TradersGuild, 5.0);
+        p.AddBounty(Fac::TradersGuild(), 5.0);
         for (int i = 0; i < 100; i++)
             p.DecayBounty(1.0);
-        CHECK(p.GetBounty(FactionId::TradersGuild) == doctest::Approx(0.0));
-        CHECK(p.GetBounty(FactionId::TradersGuild) >= 0.0);
+        CHECK(p.GetBounty(Fac::TradersGuild()) == doctest::Approx(0.0));
+        CHECK(p.GetBounty(Fac::TradersGuild()) >= 0.0);
     }
 
     SUBCASE("reputation is per faction and signed")
     {
-        p.AddReputation(FactionId::TradersGuild, 4.0f);
-        p.AddReputation(FactionId::Pirates, -6.0f);
-        CHECK(p.GetReputation(FactionId::TradersGuild) == doctest::Approx(4.0f));
-        CHECK(p.GetReputation(FactionId::Pirates) == doctest::Approx(-6.0f));
+        p.AddReputation(Fac::TradersGuild(), 4.0f);
+        p.AddReputation(Fac::Pirates(), -6.0f);
+        CHECK(p.GetReputation(Fac::TradersGuild()) == doctest::Approx(4.0f));
+        CHECK(p.GetReputation(Fac::Pirates()) == doctest::Approx(-6.0f));
     }
 }
 

@@ -8,6 +8,7 @@
 #include "entities/Station.h"
 #include "render/Scene.h"
 #include "render/TextBackend.h"
+#include "factions_named.h"
 #include <string>
 
 // Before the presentation seam existed, "does the world look right?" was answerable only
@@ -26,8 +27,7 @@ TEST_CASE("an entity describes itself without drawing anything")
 {
     LoadRegistry();
 
-    Station hub({ 100.0f, 0.0f }, 90.0f, "Aurora Hub", FactionId::TradersGuild,
-                StationRole::TradeHub);
+    Station hub({ 100.0f, 0.0f }, 90.0f, "Aurora Hub", Fac::TradersGuild(), StationRole::TradeHub);
     hub.SetId(7);
 
     Render::Item it = hub.Describe();
@@ -60,7 +60,7 @@ TEST_CASE("the text backend renders a scene with no window")
 {
     LoadRegistry();
 
-    Station  hub({ 0.0f, -1000.0f }, 90.0f, "Aurora Hub", FactionId::TradersGuild,
+    Station  hub({ 0.0f, -1000.0f }, 90.0f, "Aurora Hub", Fac::TradersGuild(),
                  StationRole::TradeHub);
     JumpGate gate({ 2000.0f, 0.0f }, 150.0f, "Gate to Sigma Reach", "reach");
 
@@ -104,8 +104,7 @@ TEST_CASE("layers decide what covers what, in every backend at once")
     // A station and a nebula in the same place. The station sits on a higher layer, so it
     // is the one you see -- the rule that used to be implicit in the order entities
     // happened to be stored in.
-    Station  hub({ 0.0f, 0.0f }, 90.0f, "Aurora Hub", FactionId::TradersGuild,
-                 StationRole::TradeHub);
+    Station  hub({ 0.0f, 0.0f }, 90.0f, "Aurora Hub", Fac::TradersGuild(), StationRole::TradeHub);
     JumpGate gate({ 0.0f, 0.0f }, 150.0f, "Gate", "reach");
     REQUIRE(hub.Describe().layer > gate.Describe().layer);
 
@@ -122,9 +121,8 @@ TEST_CASE("layers decide what covers what, in every backend at once")
 
     SUBCASE("position maps to a cell, and off-grid objects are dropped rather than clamped")
     {
-        Station far({ 400.0f, 0.0f }, 90.0f, "Far", FactionId::Independent, StationRole::TradeHub);
-        Station away({ 90000.0f, 0.0f }, 90.0f, "Away", FactionId::Independent,
-                     StationRole::TradeHub);
+        Station far({ 400.0f, 0.0f }, 90.0f, "Far", Fac::Independent(), StationRole::TradeHub);
+        Station away({ 90000.0f, 0.0f }, 90.0f, "Away", Fac::Independent(), StationRole::TradeHub);
         Render::Present({ far.Describe(), away.Describe() }, grid);
         CHECK(grid.At(8, 4) == '#');  // 400 units east at 100 units per cell
         CHECK(grid.At(4, 4) == ' ');  // nothing at the centre
@@ -153,8 +151,7 @@ TEST_CASE("an entity built without the registry has no look, and that is disting
 {
     LoadRegistry();
 
-    Station withRegistry({ 0.0f, 0.0f }, 90.0f, "Hub", FactionId::Independent,
-                         StationRole::TradeHub);
+    Station withRegistry({ 0.0f, 0.0f }, 90.0f, "Hub", Fac::Independent(), StationRole::TradeHub);
     REQUIRE(withRegistry.GetArchetype() != nullptr);
     CHECK(withRegistry.Describe().glyph == "#");
 

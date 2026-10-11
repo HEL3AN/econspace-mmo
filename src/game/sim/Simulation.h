@@ -113,10 +113,10 @@ public:
     Intel Observe(const SystemState& st) const;
     // What a faction knows (#295): its holdings, where its ships are, and what its surveys
     // brought back, each as of when it was seen.
-    const FactionMind& MindOf(FactionId f) const { return minds_[(int)f]; }
+    const FactionMind& MindOf(FactionId f) const { return minds_[f]; }
     // ...and for a test, to plant a belief or a stock. What is planted before the first
     // macro pass stands; the seeding only adds what is missing.
-    FactionMind& MindOf(FactionId f) { return minds_[(int)f]; }
+    FactionMind& MindOf(FactionId f) { return minds_[f]; }
     // Surveys, settlements and sieges under way, by id (#295).
     const std::map<int, Plan>& Plans() const { return plans_; }
     // What an outpost costs a faction's stock (#295): its blueprint's cost, counted as one
@@ -297,7 +297,7 @@ public:
         long long   id = 0;
         std::string from, to;
         NpcRole     role = NpcRole::Trader;
-        FactionId   faction = FactionId::Independent;
+        FactionId   faction = Factions::Unaffiliated();
         double      leftAt = 0.0, arrivesAt = 0.0;
         // While it is still turning for the gate in a hot system: which ship it is, and when it
         // goes. Transient -- a restart begins cold, and every migrant has gone by then.
@@ -470,10 +470,10 @@ public:
     struct PlayerCombatEvents
     {
         bool      hitLawful = false;  // hit a lawful target (a crime)
-        FactionId hitFaction = FactionId::Independent;
+        FactionId hitFaction = Factions::Unaffiliated();
         bool      killedPirate = false;  // killed a pirate (mission credit)
         bool      killedLawful = false;  // killed a lawful target (a serious crime)
-        FactionId killedFaction = FactionId::Independent;
+        FactionId killedFaction = Factions::Unaffiliated();
         Vector2   shotFrom = { 0.0f, 0.0f };  // player's shot beam (for render/snapshot)
         Vector2   shotTo = { 0.0f, 0.0f };
     };
@@ -694,8 +694,8 @@ private:
         // ...and before the pressure, by role (NpcRole's first four): what it keeps once the
         // losses are forgotten. What it holds above this leaves (#295).
         std::array<int, 4> keep{};
-        FactionId          policeFaction = FactionId::TradersGuild;
-        FactionId          tradeFaction = FactionId::Independent;
+        FactionId          policeFaction = Factions::DefaultPolice();
+        FactionId          tradeFaction = Factions::Unaffiliated();
     };
     // Where a system has room for each role: lane ends (stations and gates), belts, and
     // whether anywhere is dark enough for pirates (a belt, or a gate into danger). A hot
@@ -779,9 +779,9 @@ private:
     // its holdings and their neighbours the first time the faction step runs, when the
     // static layers they are read from exist -- or, for an older save, the first time
     // after it is loaded.
-    std::array<FactionMind, FACTION_COUNT> minds_;
-    bool                                   mindsSeeded_ = false;
-    std::map<int, Plan>                    plans_;
+    PerFaction<FactionMind> minds_;
+    bool                    mindsSeeded_ = false;
+    std::map<int, Plan>     plans_;
     // Plans by when they are due, then by id: a pass pops what is due and looks at
     // nothing else. Not saved -- remade from plans_.
     std::set<std::pair<double, int>> due_;
@@ -846,11 +846,11 @@ private:
     bool CallPolice(SystemState& st, ClientSession& by, FactionId law);
     // `f` takes a system: its controller, and the security a change of hands brings.
     static void TakeControl(SystemAggregate& a, FactionId f);
-    void        Record(const std::string& kind, int faction, const std::string& system,
-                       const std::string& text);
+    void        Record(const std::string& kind, std::optional<FactionId> faction,
+                       const std::string& system, const std::string& text);
     // News: the feed every client shows, and the history, which keeps who and where.
-    void        Announce(const std::string& kind, int faction, const std::string& system,
-                         const std::string& text);
+    void        Announce(const std::string& kind, std::optional<FactionId> faction,
+                         const std::string& system, const std::string& text);
     std::string DescribeSurvey(const Intel& seen, FactionId by) const;
 
     // What attacking something of a lawful faction's costs the attacker with that faction:

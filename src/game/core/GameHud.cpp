@@ -855,9 +855,9 @@ void Game::DrawLocation()
                       : sec >= 0.2f ? t.colors.warn
                                     : t.colors.bad;
     std::string wanted;
-    for (int i = 0; i < Factions::Count(); i++)
-        if (player_.IsWanted((FactionId)i))
-            wanted += (wanted.empty() ? "" : ", ") + FactionName((FactionId)i);
+    for (FactionId f : Factions::All())
+        if (player_.IsWanted(f))
+            wanted += (wanted.empty() ? "" : ", ") + FactionName(f);
 
     Ui::Layout& L = locationLayout_;
     L.Begin({ MenuBarW(), 0.0f, screenWidth_ - MenuBarW(), (float)screenHeight_ }, Ui::Scale());
@@ -1249,7 +1249,7 @@ void Game::DrawGalaxyMap()
         bool      haveStats = false;
         float     security = 0.0f, prosperity = 0.0f;
         int       pirates = 0;
-        FactionId controller = FactionId::Independent;
+        FactionId controller = Factions::Unaffiliated();
         for (const Proto::GalaxySystemStat& g : galaxyState_.systems)
             if (g.id == s.id)
             {

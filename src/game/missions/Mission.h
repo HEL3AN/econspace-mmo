@@ -19,9 +19,9 @@ enum class MissionType
 struct Mission
 {
     MissionType type = MissionType::Bounty;
-    FactionId   faction = FactionId::Independent;  // issuer (the station's faction)
-    std::string title;                             // short heading for lists
-    std::string description;                       // what needs to be done
+    FactionId   faction = Factions::Unaffiliated();  // issuer (the station's faction)
+    std::string title;                               // short heading for lists
+    std::string description;                         // what needs to be done
 
     // Stations by stable id (Entity::GetId), not by pointer: a mission must
     // survive the network (the client has no live server objects) and saving (M4f-2).

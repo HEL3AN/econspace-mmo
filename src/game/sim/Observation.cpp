@@ -78,7 +78,7 @@ bool HostileToPlayer(const Proto::EntitySnapshot& e, const Proto::PlayerView& p)
     if (RoleName(e.role) == std::string("pirate"))
         return true;
 
-    size_t idx = (size_t)e.faction;
+    const size_t idx = (size_t)e.faction.Index();
     if (idx < p.bounty.size() && p.bounty[idx] > 0.0)
         return true;
     if (idx < p.reputation.size())
@@ -222,7 +222,7 @@ std::string MissionLine(const Obs::View& view, size_t index, const Proto::Missio
     std::string out = Fmt("  [%d] %s: %s -- %s\n", (int)index, MissionKind(m.type), m.title.c_str(),
                           m.description.c_str());
     out += Fmt("       reward %.0f cr, %s standing %+.1f; hand in at %s\n", m.rewardMoney,
-               FactionName((FactionId)m.faction).c_str(), m.rewardRep,
+               FactionName(m.faction).c_str(), m.rewardRep,
                StationName(view, HandInStation(m)).c_str());
     return out;
 }
@@ -235,9 +235,9 @@ namespace Obs
 FactionId DockedFaction(const View& view)
 {
     if (view.snapshot == nullptr || view.layout == nullptr || !view.snapshot->player.docked)
-        return FactionId::Independent;
+        return Factions::Unaffiliated();
     auto it = view.layout->find(view.snapshot->player.dockedStationId);
-    return it == view.layout->end() ? FactionId::Independent : it->second.faction;
+    return it == view.layout->end() ? Factions::Unaffiliated() : it->second.faction;
 }
 
 std::string MissionNeeds(const View& view, const Proto::MissionView& m)
@@ -322,8 +322,9 @@ std::string DescribeHangar(const View& view)
     // Outside a station the prices are the catalog's: what a station charges depends on who
     // owns it, and there is no station to ask.
     const FactionId sf = DockedFaction(view);
-    const float     standing = (size_t)sf < p.reputation.size() ? p.reputation[(size_t)sf] : 0.0f;
-    const float     mul = p.docked ? ShipPriceMultiplier(Factions::TierOf(standing)) : 1.0f;
+    const float     standing =
+        (size_t)sf.Index() < p.reputation.size() ? p.reputation[(size_t)sf.Index()] : 0.0f;
+    const float mul = p.docked ? ShipPriceMultiplier(Factions::TierOf(standing)) : 1.0f;
 
     std::string out =
         p.docked
@@ -522,10 +523,13 @@ std::string Describe(const View& view, Detail detail)
     if (detail == Detail::Full)
     {
         out += Fmt("STANDING\n");
-        for (size_t i = 0; i < p.reputation.size(); i++)
+        for (FactionId f : Factions::All())
         {
+            const size_t i = (size_t)f.Index();
+            if (i >= p.reputation.size())
+                break;
             double owed = i < p.bounty.size() ? p.bounty[i] : 0.0;
-            out += Fmt("  %-16s %+.1f%s\n", FactionName((FactionId)i).c_str(), p.reputation[i],
+            out += Fmt("  %-16s %+.1f%s\n", FactionName(f).c_str(), p.reputation[i],
                        owed > 0.0 ? Fmt("  WANTED, bounty %.0f cr", owed).c_str() : "");
         }
     }

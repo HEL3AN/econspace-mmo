@@ -17,21 +17,22 @@ public:
     Skills&       GetSkills() { return skills_; }
     const Skills& GetSkills() const { return skills_; }
 
-    float GetReputation(FactionId faction) const { return reputation_[(int)faction]; }
-    void  AddReputation(FactionId faction, float amount) { reputation_[(int)faction] += amount; }
-    void  SetReputation(FactionId faction, float value) { reputation_[(int)faction] = value; }
+    float GetReputation(FactionId faction) const { return reputation_[faction]; }
+    void  AddReputation(FactionId faction, float amount) { reputation_[faction] += amount; }
+    void  SetReputation(FactionId faction, float value) { reputation_[faction] = value; }
 
     // Wanted status: the bounty on the player's head accrued with a faction.
-    double GetBounty(FactionId faction) const { return bounty_[(int)faction]; }
-    void   AddBounty(FactionId faction, double amount) { bounty_[(int)faction] += amount; }
-    void   SetBounty(FactionId faction, double value) { bounty_[(int)faction] = value; }
-    bool   IsWanted(FactionId faction) const { return bounty_[(int)faction] > 0.0; }
+    double GetBounty(FactionId faction) const { return bounty_[faction]; }
+    void   AddBounty(FactionId faction, double amount) { bounty_[faction] += amount; }
+    void   SetBounty(FactionId faction, double value) { bounty_[faction] = value; }
+    bool   IsWanted(FactionId faction) const { return bounty_[faction] > 0.0; }
 
     // Wanted status slowly decays over time (minor offenses are forgotten).
     void DecayBounty(double amount)
     {
-        for (double& b : bounty_)
+        for (FactionId f : Factions::All())
         {
+            double& b = bounty_[f];
             b -= amount;
             if (b < 0.0)
                 b = 0.0;
@@ -39,8 +40,8 @@ public:
     }
 
 private:
-    double money_;
-    Skills skills_;
-    float  reputation_[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-    double bounty_[4] = { 0.0, 0.0, 0.0, 0.0 };
+    double             money_;
+    Skills             skills_;
+    PerFaction<float>  reputation_;
+    PerFaction<double> bounty_;
 };

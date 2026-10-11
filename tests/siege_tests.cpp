@@ -22,6 +22,7 @@
 #include "sim/FactionMind.h"
 #include "sim/Simulation.h"
 #include "temp_dir.h"
+#include "factions_named.h"
 
 // Outposts over time (#295, slice 5): an outpost costs its faction something every period, one
 // nobody supplies falls into ruin, a lost outpost takes its claim with it, and a faction may
@@ -33,7 +34,7 @@ const std::string DATA = TEST_DATA_DIR;
 
 void LoadRegistries()
 {
-    Factions::Load(DATA + "factions.json");
+    REQUIRE(Factions::Load(DATA + "factions.json"));
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
     REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
 }
@@ -109,7 +110,7 @@ Scene GuildOutpostNextToPirates(Simulation& sim)
     {
         if (!s.den.empty())
             break;
-        if (!kv.second.agg.claimed || kv.second.agg.controller != FactionId::Pirates)
+        if (!kv.second.agg.claimed || kv.second.agg.controller != Fac::Pirates())
             continue;
         for (const std::string& n : sim.Neighbors(kv.first))
             if (n != sim.Universe().startId && !sim.SystemById(n)->agg.claimed)
@@ -121,16 +122,16 @@ Scene GuildOutpostNextToPirates(Simulation& sim)
     }
     REQUIRE_FALSE(s.den.empty());
     const Simulation::OutpostSpot spot =
-        sim.FindOutpostSpot(FactionId::TradersGuild, Outposts::Purpose::Open, s.den, s.frontier);
+        sim.FindOutpostSpot(Fac::TradersGuild(), Outposts::Purpose::Open, s.den, s.frontier);
     REQUIRE(spot.found);
     const Blueprint* bp = Blueprints::Find(Outposts::BLUEPRINT);
     auto t = std::make_unique<Structure>(spot.at, 0.0f, "Traders Guild Outpost", bp->archetype);
     t->SetBlueprint(bp->id);
-    s.outpost = sim.AddStatic(s.frontier, std::move(t), Outposts::OwnerOf(FactionId::TradersGuild));
+    s.outpost = sim.AddStatic(s.frontier, std::move(t), Outposts::OwnerOf(Fac::TradersGuild()));
     REQUIRE(s.outpost != 0);
     SystemAggregate& a = sim.SystemById(s.frontier)->agg;
     a.claimed = true;
-    a.controller = FactionId::TradersGuild;
+    a.controller = Fac::TradersGuild();
     return s;
 }
 
@@ -146,37 +147,36 @@ const Plan* SiegeBy(const Simulation& sim, FactionId f)
 // thin, and the pirates knowing it: within a period or two they lay siege.
 const Plan* PiratesBesiege(Simulation& sim, const Scene& s)
 {
-    const float cap = Factions::TemperamentOf(FactionId::Pirates).capacity;
-    for (int pass = 0; pass < 3 * PERIOD && SiegeBy(sim, FactionId::Pirates) == nullptr; pass++)
+    const float cap = Factions::TemperamentOf(Fac::Pirates()).capacity;
+    for (int pass = 0; pass < 3 * PERIOD && SiegeBy(sim, Fac::Pirates()) == nullptr; pass++)
     {
         // Only the den has anything to spare, so the den is where the pirates act from, and
         // the frontier is all they know of beyond their holdings: nothing else to choose.
         for (auto& kv : sim.Systems())
         {
-            const bool held =
-                kv.second.agg.claimed && kv.second.agg.controller == FactionId::Pirates;
-            kv.second.agg.presence[(int)FactionId::Pirates] = kv.first == s.den ? cap
-                                                              : held            ? cap * 0.6f
-                                                                                : 0.0f;
+            const bool held = kv.second.agg.claimed && kv.second.agg.controller == Fac::Pirates();
+            kv.second.agg.presence[Fac::Pirates()] = kv.first == s.den ? cap
+                                                     : held            ? cap * 0.6f
+                                                                       : 0.0f;
             if (!held && kv.first != s.frontier)
-                sim.MindOf(FactionId::Pirates).intel.erase(kv.first);
+                sim.MindOf(Fac::Pirates()).intel.erase(kv.first);
         }
         SystemAggregate& a = sim.SystemById(s.frontier)->agg;
-        a.presence[(int)FactionId::TradersGuild] = 1.0f;
-        a.presence[(int)FactionId::Pirates] = 0.0f;
-        sim.MindOf(FactionId::Pirates).stock = Simulation::OutpostCost() * 2.0f;
-        sim.MindOf(FactionId::Pirates).intel[s.frontier] = sim.Observe(*sim.SystemById(s.frontier));
+        a.presence[Fac::TradersGuild()] = 1.0f;
+        a.presence[Fac::Pirates()] = 0.0f;
+        sim.MindOf(Fac::Pirates()).stock = Simulation::OutpostCost() * 2.0f;
+        sim.MindOf(Fac::Pirates()).intel[s.frontier] = sim.Observe(*sim.SystemById(s.frontier));
         Pass(sim);
     }
-    const Plan* p = SiegeBy(sim, FactionId::Pirates);
+    const Plan* p = SiegeBy(sim, Fac::Pirates());
     REQUIRE(p != nullptr);
     // ...and a jump later they are at it.
     CHECK_FALSE(p->arrived);
-    for (int pass = 0; pass < 2 * PERIOD && SiegeBy(sim, FactionId::Pirates) != nullptr &&
-                       !SiegeBy(sim, FactionId::Pirates)->arrived;
+    for (int pass = 0; pass < 2 * PERIOD && SiegeBy(sim, Fac::Pirates()) != nullptr &&
+                       !SiegeBy(sim, Fac::Pirates())->arrived;
          pass++)
         Pass(sim);
-    p = SiegeBy(sim, FactionId::Pirates);
+    p = SiegeBy(sim, Fac::Pirates());
     REQUIRE(p != nullptr);
     REQUIRE(p->arrived);
     return p;
@@ -236,13 +236,13 @@ TEST_CASE("a held outpost is paid for every period, and mends what it was hit fo
     // Paid for out of the stock, a period's mending at a time.
     for (int pass = 0; pass < PERIOD; pass++)
     {
-        sim->MindOf(FactionId::TradersGuild).stock = 10.0f;
+        sim->MindOf(Fac::TradersGuild()).stock = 10.0f;
         Pass(*sim);
     }
     CHECK(OutpostIn(*sim, s.frontier)->GetDamage() < hull * 0.3f);
     CHECK(OutpostIn(*sim, s.frontier)->GetDamage() ==
           doctest::Approx(hull * (0.3f - Blueprints::UpkeepRules().repair)));
-    CHECK(sim->MindOf(FactionId::TradersGuild).unsupplied.empty());
+    CHECK(sim->MindOf(Fac::TradersGuild()).unsupplied.empty());
 }
 
 TEST_CASE("an outpost nobody pays for falls into ruin, cold, and takes its claim with it (#295)")
@@ -252,7 +252,7 @@ TEST_CASE("an outpost nobody pays for falls into ruin, cold, and takes its claim
     REQUIRE_FALSE(Simulation::IsHot(*sim->SystemById(s.frontier)));
     const float hull = OutpostIn(*sim, s.frontier)->MaxHull(sim->Time());
 
-    auto broke = [&]() { sim->MindOf(FactionId::TradersGuild).stock = 0.0f; };
+    auto broke = [&]() { sim->MindOf(Fac::TradersGuild()).stock = 0.0f; };
     for (int pass = 0; pass < PERIOD; pass++)
     {
         broke();
@@ -262,7 +262,7 @@ TEST_CASE("an outpost nobody pays for falls into ruin, cold, and takes its claim
     CHECK(OutpostIn(*sim, s.frontier)->GetDamage() ==
           doctest::Approx(hull * Blueprints::UpkeepRules().decay));
     CHECK(Told(*sim, "upkeep", s.frontier, "cannot pay"));
-    CHECK(sim->MindOf(FactionId::TradersGuild).unsupplied.size() == 1);
+    CHECK(sim->MindOf(Fac::TradersGuild()).unsupplied.size() == 1);
     // Said once, not every period.
     for (int pass = 0; pass < PERIOD; pass++)
     {
@@ -286,7 +286,7 @@ TEST_CASE("an outpost nobody pays for falls into ruin, cold, and takes its claim
     CHECK(Told(*sim, "upkeep", s.frontier, "fell into ruin"));
     CHECK_FALSE(sim->SystemById(s.frontier)->agg.claimed);
     CHECK(Told(*sim, "claim", s.frontier, "no longer holds"));
-    CHECK(sim->MindOf(FactionId::TradersGuild).unsupplied.empty());
+    CHECK(sim->MindOf(Fac::TradersGuild()).unsupplied.empty());
     CHECK_FALSE(Simulation::IsHot(*sim->SystemById(s.frontier)));  // nobody had to be there
 }
 
@@ -295,10 +295,10 @@ TEST_CASE(
 {
     auto        sim = World();
     const Scene s = GuildOutpostNextToPirates(*sim);
-    sim->SystemById(s.frontier)->agg.controller = FactionId::Syndicate;
+    sim->SystemById(s.frontier)->agg.controller = Fac::Syndicate();
     for (int pass = 0; pass < PERIOD; pass++)
     {
-        sim->MindOf(FactionId::TradersGuild).stock = Simulation::OutpostCost();
+        sim->MindOf(Fac::TradersGuild()).stock = Simulation::OutpostCost();
         Pass(*sim);
     }
     CHECK(OutpostIn(*sim, s.frontier)->GetDamage() > 0.0f);
@@ -312,18 +312,18 @@ TEST_CASE("a lost outpost undoes the claim it anchored, and only shakes one it d
         auto         sim = World();
         const Scene  s = GuildOutpostNextToPirates(*sim);
         SystemState& st = *sim->SystemById(s.frontier);
-        st.agg.presence[(int)FactionId::TradersGuild] = 4.0f;
+        st.agg.presence[Fac::TradersGuild()] = 4.0f;
         CHECK(sim->DamageStructure(st, s.outpost, 1.0e9f, nullptr));
         CHECK_FALSE(st.agg.claimed);
-        CHECK(st.agg.presence[(int)FactionId::TradersGuild] ==
+        CHECK(st.agg.presence[Fac::TradersGuild()] ==
               doctest::Approx(4.0f * (1.0f - Blueprints::SiegeRules().shock)));
         CHECK(Told(*sim, "lost", s.frontier, "Traders Guild lost its outpost"));
         CHECK(Told(*sim, "claim", s.frontier, "Traders Guild no longer holds"));
         // ...and it remembers where it was beaten when it thinks of building there again.
-        CHECK(sim->MindOf(FactionId::TradersGuild).lostAt.count(s.frontier) == 1);
-        CHECK(Intelligence::LossRisk(sim->MindOf(FactionId::TradersGuild).lostAt, s.frontier,
+        CHECK(sim->MindOf(Fac::TradersGuild()).lostAt.count(s.frontier) == 1);
+        CHECK(Intelligence::LossRisk(sim->MindOf(Fac::TradersGuild()).lostAt, s.frontier,
                                      sim->Time()) == doctest::Approx(Intelligence::LOSS_RISK));
-        CHECK(Intelligence::LossRisk(sim->MindOf(FactionId::TradersGuild).lostAt, s.frontier,
+        CHECK(Intelligence::LossRisk(sim->MindOf(Fac::TradersGuild()).lostAt, s.frontier,
                                      sim->Time() + Intelligence::LOSS_MEMORY) == 0.0f);
         bool news = false;
         for (const std::string& line : sim->Events())
@@ -338,12 +338,12 @@ TEST_CASE("a lost outpost undoes the claim it anchored, and only shakes one it d
         REQUIRE(bp != nullptr);
         auto t =
             std::make_unique<Structure>(Vector2{ -400000.0f, 0.0f }, 0.0f, "Watch", bp->archetype);
-        REQUIRE(sim->AddStatic(s.frontier, std::move(t),
-                               Outposts::OwnerOf(FactionId::TradersGuild)) != 0);
+        REQUIRE(sim->AddStatic(s.frontier, std::move(t), Outposts::OwnerOf(Fac::TradersGuild())) !=
+                0);
         SystemState& st = *sim->SystemById(s.frontier);
         CHECK(sim->DamageStructure(st, s.outpost, 1.0e9f, nullptr));
         CHECK(st.agg.claimed);
-        CHECK(st.agg.controller == FactionId::TradersGuild);
+        CHECK(st.agg.controller == Fac::TradersGuild());
         CHECK(Told(*sim, "claim", s.frontier, "is shaken"));
     }
 }
@@ -352,23 +352,23 @@ TEST_CASE("a held system with its holder's outpost standing is not taken by stre
 {
     auto        sim = World();
     const Scene s = GuildOutpostNextToPirates(*sim);
-    const float cap = Factions::TemperamentOf(FactionId::Pirates).capacity;
+    const float cap = Factions::TemperamentOf(Fac::Pirates()).capacity;
     auto        swarm = [&](int passes)
     {
         for (int i = 0; i < passes; i++)
         {
             SystemAggregate& a = sim->SystemById(s.frontier)->agg;
-            a.presence[(int)FactionId::Pirates] = cap * 3.0f;
-            a.presence[(int)FactionId::TradersGuild] = 0.5f;
-            for (int fi = 0; fi < FACTION_COUNT; fi++)
-                sim->MindOf((FactionId)fi).stock = 0.0f;        // nobody besieges or builds
-            sim->MindOf(FactionId::TradersGuild).stock = 1.0f;  // ...but the upkeep is paid
+            a.presence[Fac::Pirates()] = cap * 3.0f;
+            a.presence[Fac::TradersGuild()] = 0.5f;
+            for (FactionId fi : Factions::All())
+                sim->MindOf(fi).stock = 0.0f;               // nobody besieges or builds
+            sim->MindOf(Fac::TradersGuild()).stock = 1.0f;  // ...but the upkeep is paid
             Pass(*sim);
         }
     };
     swarm(Simulation::ContestPasses() + 10);
     CHECK(sim->SystemById(s.frontier)->agg.claimed);
-    CHECK(sim->SystemById(s.frontier)->agg.controller == FactionId::TradersGuild);
+    CHECK(sim->SystemById(s.frontier)->agg.controller == Fac::TradersGuild());
 }
 
 TEST_CASE("pirates besiege a thin garrison's outpost, cold, and bring it and the claim down "
@@ -381,21 +381,21 @@ TEST_CASE("pirates besiege a thin garrison's outpost, cold, and bring it and the
 
     CHECK(plan.target == s.frontier);
     CHECK(plan.from == s.den);
-    CHECK(plan.against == FactionId::TradersGuild);
+    CHECK(plan.against == Fac::TradersGuild());
     CHECK(plan.site == sim->StaticKey(s.frontier, s.outpost));
     CHECK(plan.force >= 1.5f);
     CHECK(plan.dueAt > plan.startedAt + Blueprints::SiegeRules().seconds - 1.0);
-    CHECK(sim->MindOf(FactionId::Pirates).stock < stock);
-    CHECK(sim->SystemById(s.frontier)->agg.presence[(int)FactionId::Pirates] >= plan.force - 0.5f);
+    CHECK(sim->MindOf(Fac::Pirates()).stock < stock);
+    CHECK(sim->SystemById(s.frontier)->agg.presence[Fac::Pirates()] >= plan.force - 0.5f);
     CHECK(Told(*sim, "siege", s.frontier, "Pirates laid siege to the Traders Guild outpost"));
-    CHECK(sim->SiegeForceIn(s.frontier, FactionId::Pirates) == doctest::Approx(plan.force));
+    CHECK(sim->SiegeForceIn(s.frontier, Fac::Pirates()) == doctest::Approx(plan.force));
 
     // Worn down where nobody is, before the besiegers' time is up.
     RunUntil(*sim, plan.dueAt - sim->Time(),
              [&]() { return OutpostIn(*sim, s.frontier) == nullptr; });
     CHECK(OutpostIn(*sim, s.frontier) == nullptr);
     CHECK(sim->Time() < plan.dueAt);
-    CHECK(SiegeBy(*sim, FactionId::Pirates) == nullptr);
+    CHECK(SiegeBy(*sim, Fac::Pirates()) == nullptr);
     CHECK(Told(*sim, "siege", s.frontier, "Pirates destroyed the Traders Guild outpost"));
     CHECK_FALSE(sim->SystemById(s.frontier)->agg.claimed);
     CHECK(Wrecked(*sim, s.frontier));
@@ -411,11 +411,11 @@ TEST_CASE("a siege that runs out of time is given up, and the outpost mends (#29
     RunUntil(*sim, plan.dueAt - sim->Time() + 10.0,
              [&]()
              {
-                 sim->SystemById(s.frontier)->agg.presence[(int)FactionId::TradersGuild] =
+                 sim->SystemById(s.frontier)->agg.presence[Fac::TradersGuild()] =
                      plan.force / Blueprints::SiegeRules().defence + 1.0f;
-                 return SiegeBy(*sim, FactionId::Pirates) == nullptr;
+                 return SiegeBy(*sim, Fac::Pirates()) == nullptr;
              });
-    CHECK(SiegeBy(*sim, FactionId::Pirates) == nullptr);
+    CHECK(SiegeBy(*sim, Fac::Pirates()) == nullptr);
     REQUIRE(OutpostIn(*sim, s.frontier) != nullptr);
     CHECK((Told(*sim, "siege", s.frontier, "gave up the siege") ||
            Told(*sim, "siege", s.frontier, "drove the Pirates besiegers")));
@@ -443,21 +443,21 @@ TEST_CASE("where somebody is, a siege is warships a player can watch and shoot d
         return out;
     };
     std::vector<NpcShip*> fleet = warships();
-    REQUIRE((int)fleet.size() == (int)std::lround(SiegeBy(*sim, FactionId::Pirates)->force));
+    REQUIRE((int)fleet.size() == (int)std::lround(SiegeBy(*sim, Fac::Pirates())->force));
     for (const NpcShip* n : fleet)
     {
-        CHECK(n->GetFaction() == FactionId::Pirates);
+        CHECK(n->GetFaction() == Fac::Pirates());
         CHECK(n->GetDesign() == "cruiser");  // the doctrine's warship
     }
 
     // One shot down: the siege is a ship weaker, and so is the pirates' strength there.
-    const float force = SiegeBy(*sim, FactionId::Pirates)->force;
-    const float there = sim->SystemById(s.frontier)->agg.presence[(int)FactionId::Pirates];
+    const float force = SiegeBy(*sim, Fac::Pirates())->force;
+    const float there = sim->SystemById(s.frontier)->agg.presence[Fac::Pirates()];
     fleet[0]->TakeDamage(1.0e6f);
     Pass(*sim);
-    REQUIRE(SiegeBy(*sim, FactionId::Pirates) != nullptr);
-    CHECK(SiegeBy(*sim, FactionId::Pirates)->force < force - 0.9f);
-    CHECK(sim->SystemById(s.frontier)->agg.presence[(int)FactionId::Pirates] < there - 0.9f);
+    REQUIRE(SiegeBy(*sim, Fac::Pirates()) != nullptr);
+    CHECK(SiegeBy(*sim, Fac::Pirates())->force < force - 0.9f);
+    CHECK(sim->SystemById(s.frontier)->agg.presence[Fac::Pirates()] < there - 0.9f);
     CHECK(warships().size() == fleet.size() - 1);
 
     // The player leaves; the system cools and the siege goes on as numbers -- and their ships
@@ -466,13 +466,12 @@ TEST_CASE("where somebody is, a siege is warships a player can watch and shoot d
     RunUntil(*sim, Simulation::COOL_AFTER + 10.0,
              [&]() { return !Simulation::IsHot(*sim->SystemById(s.frontier)); });
     REQUIRE_FALSE(Simulation::IsHot(*sim->SystemById(s.frontier)));
-    if (SiegeBy(*sim, FactionId::Pirates) != nullptr)
+    if (SiegeBy(*sim, Fac::Pirates()) != nullptr)
     {
         sim->CreateSession(s.frontier, sim->SafeArrival(s.frontier), GetShipCatalog()[0].stats);
         Pass(*sim);
-        if (SiegeBy(*sim, FactionId::Pirates) != nullptr)
-            CHECK((int)warships().size() ==
-                  (int)std::lround(SiegeBy(*sim, FactionId::Pirates)->force));
+        if (SiegeBy(*sim, Fac::Pirates()) != nullptr)
+            CHECK((int)warships().size() == (int)std::lround(SiegeBy(*sim, Fac::Pirates())->force));
     }
     (void)plan;
 }
@@ -502,8 +501,8 @@ TEST_CASE("a siege and what a faction cannot supply survive a restart (#295)")
     auto              a = World();
     const Scene       s = GuildOutpostNextToPirates(*a);
     const Plan        plan = *PiratesBesiege(*a, s);
-    a->MindOf(FactionId::Syndicate).unsupplied.insert("W-1.1/+7");
-    a->MindOf(FactionId::Syndicate).lostAt[s.frontier] = 123.0;
+    a->MindOf(Fac::Syndicate()).unsupplied.insert("W-1.1/+7");
+    a->MindOf(Fac::Syndicate()).lostAt[s.frontier] = 123.0;
     a->SaveWorld(path);
 
     Simulation b;
@@ -515,13 +514,13 @@ TEST_CASE("a siege and what a faction cannot supply survive a restart (#295)")
     REQUIRE(b.Plans().count(plan.id) == 1);
     const Plan back = b.Plans().at(plan.id);
     CHECK(back.kind == Plan::Kind::Siege);
-    CHECK(back.against == FactionId::TradersGuild);
+    CHECK(back.against == Fac::TradersGuild());
     CHECK(back.site == plan.site);
     CHECK(back.from == plan.from);
-    CHECK(back.force == doctest::Approx(SiegeBy(*a, FactionId::Pirates)->force));
+    CHECK(back.force == doctest::Approx(SiegeBy(*a, Fac::Pirates())->force));
     CHECK(back.dueAt == doctest::Approx(plan.dueAt));
-    CHECK(b.MindOf(FactionId::Syndicate).unsupplied.count("W-1.1/+7") == 1);
-    CHECK(b.MindOf(FactionId::Syndicate).lostAt.at(s.frontier) == doctest::Approx(123.0));
+    CHECK(b.MindOf(Fac::Syndicate()).unsupplied.count("W-1.1/+7") == 1);
+    CHECK(b.MindOf(Fac::Syndicate()).lostAt.at(s.frontier) == doctest::Approx(123.0));
     REQUIRE(back.lent.size() == plan.lent.size());
     CHECK(back.lent[0].from == plan.lent[0].from);
     CHECK(back.lent[0].force == doctest::Approx(plan.lent[0].force));
@@ -548,8 +547,8 @@ Ring PirateBaseRingedByTheGuild(Simulation& sim)
 {
     Ring r;
     for (const auto& kv : sim.Systems())
-        if (r.den.empty() && kv.second.agg.claimed &&
-            kv.second.agg.controller == FactionId::Pirates && sim.Neighbors(kv.first).size() >= 2)
+        if (r.den.empty() && kv.second.agg.claimed && kv.second.agg.controller == Fac::Pirates() &&
+            sim.Neighbors(kv.first).size() >= 2)
             r.den = kv.first;
     REQUIRE_FALSE(r.den.empty());
     std::set<std::string> near;
@@ -566,18 +565,18 @@ Ring PirateBaseRingedByTheGuild(Simulation& sim)
             continue;
         SystemAggregate& a = kv.second.agg;
         a.claimed = true;
-        a.controller = near.count(kv.first) != 0 ? FactionId::TradersGuild : FactionId::Independent;
+        a.controller = near.count(kv.first) != 0 ? Fac::TradersGuild() : Fac::Independent();
         if (near.count(kv.first) != 0)
             r.holdings.push_back(kv.first);
     }
     const Simulation::OutpostSpot spot = sim.FindOutpostSpot(
-        FactionId::Pirates, Outposts::Purpose::Hidden, sim.Neighbors(r.den)[0], r.den);
+        Fac::Pirates(), Outposts::Purpose::Hidden, sim.Neighbors(r.den)[0], r.den);
     REQUIRE(spot.found);
     const Blueprint* bp = Blueprints::Find("outpost_hidden");
     REQUIRE(bp != nullptr);
     auto t = std::make_unique<Structure>(spot.at, 0.0f, "Pirate Base", bp->archetype);
     t->SetBlueprint(bp->id);
-    REQUIRE(sim.AddStatic(r.den, std::move(t), Outposts::OwnerOf(FactionId::Pirates)) != 0);
+    REQUIRE(sim.AddStatic(r.den, std::move(t), Outposts::OwnerOf(Fac::Pirates())) != 0);
     return r;
 }
 
@@ -585,20 +584,19 @@ Ring PirateBaseRingedByTheGuild(Simulation& sim)
 // for a siege but not for an outpost and fresh word of everything -- until it musters.
 const Plan* GuildMusters(Simulation& sim, const Ring& r)
 {
-    const float cap = Factions::TemperamentOf(FactionId::TradersGuild).capacity;
-    for (int pass = 0; pass < 3 * PERIOD && SiegeBy(sim, FactionId::TradersGuild) == nullptr;
-         pass++)
+    const float cap = Factions::TemperamentOf(Fac::TradersGuild()).capacity;
+    for (int pass = 0; pass < 3 * PERIOD && SiegeBy(sim, Fac::TradersGuild()) == nullptr; pass++)
     {
         for (const std::string& h : r.holdings)
-            sim.SystemById(h)->agg.presence[(int)FactionId::TradersGuild] = cap;
-        sim.SystemById(r.den)->agg.presence[(int)FactionId::Pirates] =
-            Factions::TemperamentOf(FactionId::Pirates).capacity;
-        sim.MindOf(FactionId::TradersGuild).stock = Simulation::SiegeCost() * 1.2f;
+            sim.SystemById(h)->agg.presence[Fac::TradersGuild()] = cap;
+        sim.SystemById(r.den)->agg.presence[Fac::Pirates()] =
+            Factions::TemperamentOf(Fac::Pirates()).capacity;
+        sim.MindOf(Fac::TradersGuild()).stock = Simulation::SiegeCost() * 1.2f;
         for (const auto& kv : sim.Systems())
-            sim.MindOf(FactionId::TradersGuild).intel[kv.first] = sim.Observe(kv.second);
+            sim.MindOf(Fac::TradersGuild()).intel[kv.first] = sim.Observe(kv.second);
         Pass(sim);
     }
-    const Plan* p = SiegeBy(sim, FactionId::TradersGuild);
+    const Plan* p = SiegeBy(sim, Fac::TradersGuild());
     REQUIRE(p != nullptr);
     return p;
 }
@@ -617,14 +615,14 @@ TEST_CASE("a siege is lent by the holdings within reach, nearest first (#295)")
 {
     auto                     sim = World();
     const Ring               r = PirateBaseRingedByTheGuild(*sim);
-    const float              cap = Factions::TemperamentOf(FactionId::TradersGuild).capacity;
+    const float              cap = Factions::TemperamentOf(Fac::TradersGuild()).capacity;
     const Blueprints::Siege& rules = Blueprints::SiegeRules();
     for (const std::string& h : r.holdings)
-        sim->SystemById(h)->agg.presence[(int)FactionId::TradersGuild] = cap;
+        sim->SystemById(h)->agg.presence[Fac::TradersGuild()] = cap;
 
     std::string                   via;
     const std::vector<Plan::Lent> lent =
-        sim->PoolFor(FactionId::TradersGuild, r.den, rules.pool * cap, &via);
+        sim->PoolFor(Fac::TradersGuild(), r.den, rules.pool * cap, &via);
     REQUIRE(lent.size() >= 2);  // one holding's surplus is not what it asked for
     float sum = 0.0f;
     for (size_t i = 0; i < lent.size(); i++)
@@ -643,9 +641,9 @@ TEST_CASE("a siege is lent by the holdings within reach, nearest first (#295)")
 
     // A holding with nothing over its home guard lends nothing; another faction's, nothing.
     for (const std::string& h : r.holdings)
-        sim->SystemById(h)->agg.presence[(int)FactionId::TradersGuild] = cap * 0.6f;
-    CHECK(sim->PoolFor(FactionId::TradersGuild, r.den, rules.pool * cap).empty());
-    CHECK(sim->PoolFor(FactionId::Syndicate, r.den, rules.pool * cap).empty());
+        sim->SystemById(h)->agg.presence[Fac::TradersGuild()] = cap * 0.6f;
+    CHECK(sim->PoolFor(Fac::TradersGuild(), r.den, rules.pool * cap).empty());
+    CHECK(sim->PoolFor(Fac::Syndicate(), r.den, rules.pool * cap).empty());
 }
 
 TEST_CASE("a lawful faction pools its holdings to bring down a pirate base, and the force comes "
@@ -653,10 +651,10 @@ TEST_CASE("a lawful faction pools its holdings to bring down a pirate base, and 
 {
     auto        sim = World();
     const Ring  r = PirateBaseRingedByTheGuild(*sim);
-    const float cap = Factions::TemperamentOf(FactionId::TradersGuild).capacity;
+    const float cap = Factions::TemperamentOf(Fac::TradersGuild()).capacity;
     const Plan  plan = *GuildMusters(*sim, r);
 
-    CHECK(plan.against == FactionId::Pirates);
+    CHECK(plan.against == Fac::Pirates());
     CHECK(plan.target == r.den);
     REQUIRE(plan.lent.size() >= 2);
     CHECK_FALSE(plan.arrived);
@@ -667,21 +665,20 @@ TEST_CASE("a lawful faction pools its holdings to bring down a pirate base, and 
         hops = std::max(hops, l.hops);
         lent += l.force;
         // Each holding is short of what it lent, and stays so while it is away.
-        CHECK(sim->LentFrom(l.from, FactionId::TradersGuild) == doctest::Approx(l.force));
+        CHECK(sim->LentFrom(l.from, Fac::TradersGuild()) == doctest::Approx(l.force));
     }
     CHECK(plan.force == doctest::Approx(lent));
     CHECK(plan.force > cap * Blueprints::SiegeRules().commit);  // more than one holding sends
     CHECK(plan.arrivesAt ==
           doctest::Approx(plan.startedAt + hops * Blueprints::SiegeRules().hop).epsilon(1e-6));
     CHECK(Told(*sim, "siege", r.den, "Traders Guild sent"));
-    CHECK(sim->SiegeForceIn(r.den, FactionId::TradersGuild) == 0.0f);  // still on the way
+    CHECK(sim->SiegeForceIn(r.den, Fac::TradersGuild()) == 0.0f);  // still on the way
 
     // A period on, the lenders have not made good what they lent.
     for (int pass = 0; pass < PERIOD; pass++)
         Pass(*sim);
     for (const Plan::Lent& l : plan.lent)
-        CHECK(sim->SystemById(l.from)->agg.presence[(int)FactionId::TradersGuild] <=
-              cap - l.force + 0.05f);
+        CHECK(sim->SystemById(l.from)->agg.presence[Fac::TradersGuild()] <= cap - l.force + 0.05f);
 
     // It arrives when the farthest has, and the base falls -- where nobody is.
     RunUntil(*sim, plan.dueAt - sim->Time() + 10.0,
@@ -689,13 +686,13 @@ TEST_CASE("a lawful faction pools its holdings to bring down a pirate base, and 
     CHECK(OutpostIn(*sim, r.den) == nullptr);
     CHECK(Told(*sim, "siege", r.den, "Traders Guild laid siege to the Pirates hidden base"));
     CHECK(Told(*sim, "siege", r.den, "Traders Guild destroyed the Pirates"));
-    CHECK(SiegeBy(*sim, FactionId::TradersGuild) == nullptr);
+    CHECK(SiegeBy(*sim, Fac::TradersGuild()) == nullptr);
     const SystemAggregate& den = sim->SystemById(r.den)->agg;
-    const bool             pirates = den.claimed && den.controller == FactionId::Pirates;
+    const bool             pirates = den.claimed && den.controller == Fac::Pirates();
     CHECK_FALSE(pirates);
 
     // ...and what is left of the force goes home, each holding its share, minus the losses.
-    const std::vector<const Plan*> returns = ReturnsOf(*sim, FactionId::TradersGuild);
+    const std::vector<const Plan*> returns = ReturnsOf(*sim, Fac::TradersGuild());
     REQUIRE_FALSE(returns.empty());
     float                        back = 0.0f;
     std::map<std::string, float> before, owed;
@@ -704,17 +701,17 @@ TEST_CASE("a lawful faction pools its holdings to bring down a pirate base, and 
         back += p->force;
         CHECK(p->from == r.den);
         owed[p->target] += p->force;
-        before[p->target] = sim->SystemById(p->target)->agg.presence[(int)FactionId::TradersGuild];
+        before[p->target] = sim->SystemById(p->target)->agg.presence[Fac::TradersGuild()];
     }
     CHECK(back <= lent + 1e-3f);
     CHECK(back > 0.5f * lent);
     RunUntil(*sim, hops * Blueprints::SiegeRules().hop + 10.0,
-             [&]() { return ReturnsOf(*sim, FactionId::TradersGuild).empty(); });
-    CHECK(ReturnsOf(*sim, FactionId::TradersGuild).empty());
+             [&]() { return ReturnsOf(*sim, Fac::TradersGuild()).empty(); });
+    CHECK(ReturnsOf(*sim, Fac::TradersGuild()).empty());
     for (const auto& kv : owed)
     {
-        CHECK(sim->LentFrom(kv.first, FactionId::TradersGuild) == 0.0f);
-        CHECK(sim->SystemById(kv.first)->agg.presence[(int)FactionId::TradersGuild] >
+        CHECK(sim->LentFrom(kv.first, Fac::TradersGuild()) == 0.0f);
+        CHECK(sim->SystemById(kv.first)->agg.presence[Fac::TradersGuild()] >
               before[kv.first] + 0.5f * kv.second);
     }
 }
@@ -731,18 +728,18 @@ TEST_CASE("a pooled siege falls the same whether anybody watches or not, and whe
         RunUntil(*sim, plan.arrivesAt - sim->Time() + 3.0,
                  [&]()
                  {
-                     const Plan* p = SiegeBy(*sim, FactionId::TradersGuild);
+                     const Plan* p = SiegeBy(*sim, Fac::TradersGuild());
                      return p == nullptr || p->arrived;
                  });
-        REQUIRE(SiegeBy(*sim, FactionId::TradersGuild) != nullptr);
-        REQUIRE(SiegeBy(*sim, FactionId::TradersGuild)->arrived);
+        REQUIRE(SiegeBy(*sim, Fac::TradersGuild()) != nullptr);
+        REQUIRE(SiegeBy(*sim, Fac::TradersGuild())->arrived);
         if (hot == 1)
         {
             int warships = 0;
             for (const auto& e : sim->SystemById(r.den)->entities)
                 if (e->GetKind() == EntityKind::Npc &&
                     static_cast<const NpcShip&>(*e).GetRole() == NpcRole::Warship &&
-                    static_cast<const NpcShip&>(*e).GetFaction() == FactionId::TradersGuild)
+                    static_cast<const NpcShip&>(*e).GetFaction() == Fac::TradersGuild())
                     warships++;
             CHECK(warships == std::min(8, (int)std::lround(plan.force)));
         }
@@ -766,11 +763,11 @@ TEST_CASE("a siege still on its way finds the outpost gone and turns back (#295)
     REQUIRE(base != nullptr);
     CHECK(sim->DamageStructure(*sim->SystemById(r.den), base->GetId(), 1.0e9f, nullptr));
     RunUntil(*sim, plan.arrivesAt - sim->Time() + 3.0,
-             [&]() { return SiegeBy(*sim, FactionId::TradersGuild) == nullptr; });
-    CHECK(SiegeBy(*sim, FactionId::TradersGuild) == nullptr);
+             [&]() { return SiegeBy(*sim, Fac::TradersGuild()) == nullptr; });
+    CHECK(SiegeBy(*sim, Fac::TradersGuild()) == nullptr);
     CHECK(Told(*sim, "siege", r.den, "turned back"));
     float back = 0.0f;
-    for (const Plan* p : ReturnsOf(*sim, FactionId::TradersGuild))
+    for (const Plan* p : ReturnsOf(*sim, Fac::TradersGuild()))
         back += p->force;
     CHECK(back == doctest::Approx(plan.force));  // nobody fought: everybody goes home
 }

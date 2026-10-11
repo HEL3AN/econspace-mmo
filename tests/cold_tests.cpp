@@ -18,6 +18,7 @@
 #include "sim/ClientSession.h"
 #include "sim/FactionMind.h"
 #include "sim/Simulation.h"
+#include "factions_named.h"
 
 // Cold systems (#295, slice 4): NPC ships exist only where a player is, and for a minute
 // after; everywhere else the population, its losses, the market and the bodies are kept as
@@ -30,7 +31,7 @@ const std::string DATA = TEST_DATA_DIR;
 std::unique_ptr<Simulation> ColdWorld(uint64_t seed = 7, bool allHot = false)
 {
     SetRandomSeed(0xC0FFEEu);
-    Factions::Load(DATA + "factions.json");
+    REQUIRE(Factions::Load(DATA + "factions.json"));
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
     REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
     auto sim = std::make_unique<Simulation>();
@@ -176,7 +177,7 @@ TEST_CASE("a system's ships are drawn from the system and the time, not the orde
         sim->Warm(*sim->SystemById(dest));
         std::vector<std::tuple<int, int, float, float, std::string>> out;
         for (const NpcShip* n : ShipsIn(*sim, dest))
-            out.emplace_back((int)n->GetRole(), (int)n->GetFaction(), n->GetPosition().x,
+            out.emplace_back((int)n->GetRole(), n->GetFaction().Index(), n->GetPosition().x,
                              n->GetPosition().y, n->GetDesign());  // and what it flies (#279)
         return out;
     };
@@ -269,20 +270,20 @@ TEST_CASE("a cold system's fights are losses, counted as a hot system counts the
             st = &kv.second;
     REQUIRE(st != nullptr);
     SystemAggregate& a = st->agg;
-    const int        law = (int)a.controller;
-    a.presence[(int)FactionId::Pirates] = 8.0f;
+    const FactionId  law = a.controller;
+    a.presence[Fac::Pirates()] = 8.0f;
     a.presence[law] = 8.0f;
     a.pirates = 8.0f;
     a.police = 8.0f;
     a.traders = 6.0f;
-    const float pirates = a.presence[(int)FactionId::Pirates];
+    const float pirates = a.presence[Fac::Pirates()];
 
     // One pass: a little of each side is gone, the director feels it as pressure, and the
     // faction step takes it out of the presence the pirates had committed.
     sim->MaintainWorld(2.0f);
     CHECK(a.supPirates > 0.0f);
     CHECK(a.supTraders > 0.0f);
-    CHECK(a.presence[(int)FactionId::Pirates] < pirates);
+    CHECK(a.presence[Fac::Pirates()] < pirates);
     CHECK_FALSE(Simulation::IsHot(*st));
 }
 
@@ -304,7 +305,7 @@ TEST_CASE("a warmed system's ships fly their doctrine's designs, the same on eve
                                            (unsigned)nth[role]++));
             REQUIRE(n->GetArchetype() != nullptr);
             CHECK(n->GetArchetype()->design == n->GetDesign());
-            out.emplace_back(role, (int)n->GetFaction(), n->GetDesign());
+            out.emplace_back(role, n->GetFaction().Index(), n->GetDesign());
         }
         return out;
     };

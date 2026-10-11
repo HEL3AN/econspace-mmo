@@ -35,6 +35,7 @@
 #include "sim/Orders.h"
 #include "sim/Simulation.h"
 #include "temp_dir.h"
+#include "factions_named.h"
 
 // The authoritative rules, tested where they live rather than through a socket.
 //
@@ -58,7 +59,7 @@ struct Fixture
     // must be bound in the initializer list -- so the setup lives here.
     ClientSession& MakeSim()
     {
-        Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+        REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
         // Before InitGalaxy: entity constructors look themselves up in the registry, and
         // passes like docking ask for a component rather than for a class (#34).
         Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json");
@@ -78,8 +79,8 @@ struct Fixture
 TEST_CASE("the player only fires at a target in range, with the weapon on")
 {
     Fixture f;
-    auto    npc = std::make_unique<NpcShip>(Vector2{ 100.0f, 0.0f }, FactionId::Pirates,
-                                            NpcRole::Pirate, std::vector<Vector2>{});
+    auto npc = std::make_unique<NpcShip>(Vector2{ 100.0f, 0.0f }, Fac::Pirates(), NpcRole::Pirate,
+                                         std::vector<Vector2>{});
     npc->SetId(77);
     NpcShip* target = npc.get();
     f.World().entities.push_back(std::move(npc));
@@ -164,7 +165,7 @@ TEST_CASE("docking is refused at range and granted up close")
 {
     Fixture f;
     auto    station = std::make_unique<Station>(Vector2{ 5000.0f, 0.0f }, 60.0f, "Depot",
-                                                FactionId::TradersGuild, StationRole::TradeHub);
+                                                Fac::TradersGuild(), StationRole::TradeHub);
     station->SetId(33);
     f.World().entities.push_back(std::move(station));
 
@@ -188,18 +189,18 @@ TEST_CASE("a hostile reputation closes the station door")
 {
     Fixture f;
     auto    station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
-                                                FactionId::TradersGuild, StationRole::TradeHub);
+                                                Fac::TradersGuild(), StationRole::TradeHub);
     station->SetId(34);
     f.World().entities.push_back(std::move(station));
 
     // Hated is the tier that refuses; Hostile still admits. Pinning both directions keeps
     // a threshold change from silently locking players out or letting everyone in.
-    f.s.account.SetReputation(FactionId::TradersGuild, -100.0f);
-    REQUIRE(Factions::TierOf(f.s.account.GetReputation(FactionId::TradersGuild)) == RepTier::Hated);
+    f.s.account.SetReputation(Fac::TradersGuild(), -100.0f);
+    REQUIRE(Factions::TierOf(f.s.account.GetReputation(Fac::TradersGuild())) == RepTier::Hated);
     CHECK(f.sim.StepPlayerDock(f.s, f.World()) == 0);
     CHECK_FALSE(f.s.IsDocked());
 
-    f.s.account.SetReputation(FactionId::TradersGuild, 0.0f);
+    f.s.account.SetReputation(Fac::TradersGuild(), 0.0f);
     CHECK(f.sim.StepPlayerDock(f.s, f.World()) == 34);
 }
 
@@ -213,7 +214,7 @@ TEST_CASE("selling moves ore out of the hold and money into the account")
     // Docked at something that trades. The market is a component now, and asking for one
     // is what makes it mean anything (#34).
     auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
-                                             FactionId::TradersGuild, StationRole::TradeHub);
+                                             Fac::TradersGuild(), StationRole::TradeHub);
     station->SetId(64);
     f.World().entities.push_back(std::move(station));
     REQUIRE(f.sim.StepPlayerDock(f.s, f.World()) == 64);
@@ -284,7 +285,7 @@ TEST_CASE("a dock order flies the ship in and docks it")
 {
     Fixture f;
     auto    station = std::make_unique<Station>(Vector2{ 4000.0f, 0.0f }, 60.0f, "Depot",
-                                                FactionId::TradersGuild, StationRole::TradeHub);
+                                                Fac::TradersGuild(), StationRole::TradeHub);
     station->SetId(42);
     f.World().entities.push_back(std::move(station));
 
@@ -314,7 +315,7 @@ TEST_CASE("a dock order across the system warps there, and docks once out of war
     // refuses it -- an order that acted the moment it was in range failed right there.
     Fixture f;
     auto    station = std::make_unique<Station>(Vector2{ 300000.0f, 0.0f }, 600.0f, "Far Depot",
-                                                FactionId::TradersGuild, StationRole::TradeHub);
+                                                Fac::TradersGuild(), StationRole::TradeHub);
     station->SetId(43);
     f.World().entities.push_back(std::move(station));
 
@@ -342,7 +343,7 @@ TEST_CASE("a dock order catches a station that orbits a planet (#210)")
     f.World().entities.push_back(std::make_unique<Planet>(300000.0f, 52.0f, 0.0f, 15000.0f, WHITE,
                                                           ResourceType::Iron, PlanetType::Rocky));
     auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 600.0f, "Moon Dock",
-                                             FactionId::TradersGuild, StationRole::TradeHub);
+                                             Fac::TradersGuild(), StationRole::TradeHub);
     station->SetId(44);
     Orbit o;
     o.planet = 0;
@@ -401,7 +402,7 @@ TEST_CASE("two players in one galaxy are two players")
     SUBCASE("one player docking leaves the other in flight")
     {
         auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
-                                                 FactionId::TradersGuild, StationRole::TradeHub);
+                                                 Fac::TradersGuild(), StationRole::TradeHub);
         station->SetId(91);
         f.World().entities.push_back(std::move(station));
 
@@ -441,7 +442,7 @@ TEST_CASE("an account remembers where the player was, not just what they own")
 
     // A mission is handed in at a station the galaxy has, or it is dropped on load (#227).
     auto hub = std::make_unique<Station>(Vector2{ 9000.0f, 0.0f }, 700.0f, "Aurora Hub",
-                                         FactionId::TradersGuild, StationRole::TradeHub);
+                                         Fac::TradersGuild(), StationRole::TradeHub);
     hub->SetId(33);
     f.World().entities.push_back(std::move(hub));
 
@@ -532,7 +533,7 @@ TEST_CASE("players in the same system are in each other's snapshots")
     SUBCASE("a docked player is not in the sky")
     {
         auto station = std::make_unique<Station>(Vector2{ 400.0f, 0.0f }, 60.0f, "Depot",
-                                                 FactionId::TradersGuild, StationRole::TradeHub);
+                                                 Fac::TradersGuild(), StationRole::TradeHub);
         station->SetId(77);
         f.World().entities.push_back(std::move(station));
         REQUIRE(f.sim.StepPlayerDock(other, f.World()) == 77);
@@ -811,7 +812,7 @@ TEST_CASE("a hull too small for the cargo is refused, not overloaded (#219)")
 TEST_CASE("station business answers in the journal, yes or no (#219)")
 {
     Fixture         f;
-    const FactionId guild = FactionId::TradersGuild;
+    const FactionId guild = Fac::TradersGuild();
 
     SUBCASE("a bounty that is not owed is not paid, and the player is told")
     {
@@ -869,7 +870,7 @@ TEST_CASE("one player cannot take the whole board (#219)")
 {
     Fixture f;
     auto    station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
-                                                FactionId::TradersGuild, StationRole::TradeHub);
+                                                Fac::TradersGuild(), StationRole::TradeHub);
     station->SetId(91);
     f.World().entities.push_back(std::move(station));
 
@@ -999,7 +1000,7 @@ TEST_CASE("how far a thing can be used is the thing's business, not the code's")
         // A station is not salvage and does not lead anywhere, and neither pass should
         // need to know what a station is to say so.
         auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
-                                                 FactionId::TradersGuild, StationRole::TradeHub);
+                                                 Fac::TradersGuild(), StationRole::TradeHub);
         station->SetId(74);
         f.World().entities.push_back(std::move(station));
 
@@ -1016,7 +1017,7 @@ TEST_CASE("an order whose destination is already reached finishes at once")
     // never comes.
     Fixture f;
     auto    station = std::make_unique<Station>(Vector2{ 100.0f, 0.0f }, 60.0f, "Depot",
-                                                FactionId::TradersGuild, StationRole::TradeHub);
+                                                Fac::TradersGuild(), StationRole::TradeHub);
     station->SetId(88);
     f.World().entities.push_back(std::move(station));
 
@@ -1222,7 +1223,7 @@ Entity* AddOrbitingStation(Fixture& f)
     f.World().entities.push_back(std::make_unique<Planet>(300000.0f, 52.0f, 0.0f, 15000.0f, WHITE,
                                                           ResourceType::Iron, PlanetType::Rocky));
     auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 600.0f, "Moon Dock",
-                                             FactionId::TradersGuild, StationRole::TradeHub);
+                                             Fac::TradersGuild(), StationRole::TradeHub);
     station->SetId(44);
     Orbit o;
     o.planet = 0;
@@ -1598,7 +1599,7 @@ TEST_CASE("keep and orbit round a moving planet: the server and the prediction a
 
 TEST_CASE("the region hangs off the start system by a wormhole, and its seed is saved (#140)")
 {
-    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
     const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
 
@@ -1784,7 +1785,7 @@ TEST_CASE("a jump arrives beside the gate that leads back, in every kind of syst
     }
     auto region = [](uint64_t seed)
     {
-        Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+        REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
         REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
         const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
         Simulation        sim;
@@ -1810,7 +1811,7 @@ TEST_CASE("the region is not decided in its first minutes, and a first ship is n
     // Seen with the first generated region: within seconds of a start, the macro model
     // handed most of the region to the pirates and the news opened with eight seizures --
     // a world that had run its course before any player arrived.
-    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
     REQUIRE(Blueprints::Load(std::string(TEST_DATA_DIR) + "blueprints.json"));  // outposts
     const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
@@ -1864,7 +1865,7 @@ TEST_CASE("the region is not decided in its first minutes, and a first ship is n
 
 TEST_CASE("players are told only what somebody has charted (#144)")
 {
-    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
     const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
 
@@ -1973,8 +1974,8 @@ TEST_CASE("a defensive station fires on hostiles near it, and only on them (#193
     REQUIRE(mil->weaponDamage > 0.0f);
 
     const Vector2 at{ 40000.0f, 0.0f };  // clear of anything the start system holds
-    auto          station = std::make_unique<Station>(at, 600.0f, "Bastion", FactionId::Independent,
-                                                      StationRole::Military);
+    auto          station =
+        std::make_unique<Station>(at, 600.0f, "Bastion", Fac::Independent(), StationRole::Military);
     station->SetId(90);
     Station* bastion = station.get();
     f.World().entities.push_back(std::move(station));
@@ -1996,19 +1997,19 @@ TEST_CASE("a defensive station fires on hostiles near it, and only on them (#193
 
     SUBCASE("a pirate in range is hit, once a second")
     {
-        NpcShip* pirate = addNpc(reach - 50.0f, FactionId::Pirates, NpcRole::Pirate, 91);
+        NpcShip* pirate = addNpc(reach - 50.0f, Fac::Pirates(), NpcRole::Pirate, 91);
         for (int i = 0; i < 60; i++)  // one second: exactly one shot
             f.sim.StepStationDefence(f.World(), nobody, &fires, dt);
         CHECK(fires.size() == 1);
         CHECK(pirate->GetHull() == doctest::Approx(pirate->GetMaxHull() - mil->weaponDamage));
         REQUIRE_FALSE(fires.empty());
-        CHECK(fires[0].shooterFaction == FactionId::Independent);
+        CHECK(fires[0].shooterFaction == Fac::Independent());
         CHECK(fires[0].targetSessionId == 0);
     }
 
     SUBCASE("a pirate out of range is not")
     {
-        NpcShip* pirate = addNpc(reach + 50.0f, FactionId::Pirates, NpcRole::Pirate, 91);
+        NpcShip* pirate = addNpc(reach + 50.0f, Fac::Pirates(), NpcRole::Pirate, 91);
         for (int i = 0; i < 120; i++)
             f.sim.StepStationDefence(f.World(), nobody, &fires, dt);
         CHECK(fires.empty());
@@ -2017,7 +2018,7 @@ TEST_CASE("a defensive station fires on hostiles near it, and only on them (#193
 
     SUBCASE("a friendly trader alongside is left alone")
     {
-        NpcShip* trader = addNpc(100.0f, FactionId::TradersGuild, NpcRole::Trader, 92);
+        NpcShip* trader = addNpc(100.0f, Fac::TradersGuild(), NpcRole::Trader, 92);
         for (int i = 0; i < 120; i++)
             f.sim.StepStationDefence(f.World(), nobody, &fires, dt);
         CHECK(fires.empty());
@@ -2036,7 +2037,7 @@ TEST_CASE("a defensive station fires on hostiles near it, and only on them (#193
             f.sim.StepStationDefence(f.World(), players, &fires, dt);
         CHECK(fires.empty());
 
-        f.s.account.AddBounty(FactionId::Independent, 100.0);  // wanted by the owner
+        f.s.account.AddBounty(Fac::Independent(), 100.0);  // wanted by the owner
         for (int i = 0; i < 60; i++)
             f.sim.StepStationDefence(f.World(), players, &fires, dt);
         REQUIRE(fires.size() == 1);
@@ -2059,13 +2060,12 @@ TEST_CASE("a defensive station fires on hostiles near it, and only on them (#193
     SUBCASE("a station without the component never fires")
     {
         auto hub = std::make_unique<Station>(Vector2{ -40000.0f, 0.0f }, 600.0f, "Hub",
-                                             FactionId::Independent, StationRole::TradeHub);
+                                             Fac::Independent(), StationRole::TradeHub);
         hub->SetId(93);
         REQUIRE_FALSE(hub->Has(Component::Defensive));
         f.World().entities.push_back(std::move(hub));
-        auto npc =
-            std::make_unique<NpcShip>(Vector2{ -40000.0f + 700.0f, 0.0f }, FactionId::Pirates,
-                                      NpcRole::Pirate, std::vector<Vector2>{});
+        auto npc = std::make_unique<NpcShip>(Vector2{ -40000.0f + 700.0f, 0.0f }, Fac::Pirates(),
+                                             NpcRole::Pirate, std::vector<Vector2>{});
         npc->SetId(94);
         NpcShip* pirate = npc.get();
         f.World().entities.push_back(std::move(npc));
@@ -2080,7 +2080,7 @@ TEST_CASE("a defensive station fires on hostiles near it, and only on them (#193
 TEST_CASE("a system changes hands only after the balance has held for a while (#225)")
 {
     // Tau Verge, at security 0.3, fell to the pirates ten seconds into a fresh world.
-    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
     REQUIRE(Blueprints::Load(std::string(TEST_DATA_DIR) + "blueprints.json"));  // outposts
     const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
@@ -2091,14 +2091,14 @@ TEST_CASE("a system changes hands only after the balance has held for a while (#
     sim.MaterializeAllSystems(systems);
     REQUIRE(sim.SystemById("verge") != nullptr);
     const FactionId start = sim.SystemById("verge")->agg.controller;
-    REQUIRE(start != FactionId::Pirates);
+    REQUIRE(start != Fac::Pirates());
 
     int fell = -1;
     for (int s = 1; s <= 20 * 60 && fell < 0; s++)  // up to twenty simulated minutes
     {
         for (int i = 0; i < 60; i++)
             sim.MaintainWorld(1.0f / 60.0f);
-        if (sim.SystemById("verge")->agg.controller == FactionId::Pirates)
+        if (sim.SystemById("verge")->agg.controller == Fac::Pirates())
             fell = s;
     }
     MESSAGE("Tau Verge fell after " << fell << " s");
@@ -2107,7 +2107,7 @@ TEST_CASE("a system changes hands only after the balance has held for a while (#
 
 TEST_CASE("factions reach a step at a time, where the prize is worth the risk (#231)")
 {
-    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
     REQUIRE(Blueprints::Load(std::string(TEST_DATA_DIR) + "blueprints.json"));  // outposts
     const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
@@ -2144,7 +2144,7 @@ TEST_CASE("factions reach a step at a time, where the prize is worth the risk (#
                 adjacent = adjacent || held[n] == now;
             CHECK(adjacent);
             // The Independents hold what they have and reach for nothing.
-            CHECK(now != FactionId::Independent);
+            CHECK(now != Fac::Independent());
         }
         for (auto& kv : sim.Systems())
             held[kv.first] = kv.second.agg.controller;
@@ -2153,7 +2153,7 @@ TEST_CASE("factions reach a step at a time, where the prize is worth the risk (#
                     << " in the first ten minutes");
     CHECK(changes > 0);  // the world does go on without players
     CHECK(early <= 1);   // ...but nothing is decided at once
-    CHECK(sim.SystemById("verge")->agg.controller == FactionId::Independent);
+    CHECK(sim.SystemById("verge")->agg.controller == Fac::Independent());
 }
 
 TEST_CASE("a player is not respawned beside a station that would shoot them (#224)")
@@ -2165,7 +2165,7 @@ TEST_CASE("a player is not respawned beside a station that would shoot them (#22
                               { return e->GetKind() == EntityKind::Station; }),
                ents.end());
     auto fort = std::make_unique<Station>(Vector2{ 300000.0f, 0.0f }, 600.0f, "Outpost",
-                                          FactionId::Independent, StationRole::Military);
+                                          Fac::Independent(), StationRole::Military);
     REQUIRE(fort->Has(Component::Defensive));
     const Vector2 at = fort->GetPosition();
     const float   reach = fort->GetSize() + fort->GetArchetype()->weaponRange;
@@ -2176,8 +2176,8 @@ TEST_CASE("a player is not respawned beside a station that would shoot them (#22
     CHECK(Vector2Distance(f.sim.SafeArrival(f.s.systemId, &f.s), at) < reach);
 
     // Hated by its owner: anywhere but in its sights.
-    f.s.account.SetReputation(FactionId::Independent, -80.0f);
-    REQUIRE(f.sim.AccountHostileToFaction(f.s, FactionId::Independent));
+    f.s.account.SetReputation(Fac::Independent(), -80.0f);
+    REQUIRE(f.sim.AccountHostileToFaction(f.s, Fac::Independent()));
     CHECK(Vector2Distance(f.sim.SafeArrival(f.s.systemId, &f.s), at) > reach + 10000.0f);
 
     // And a respawn uses it.
@@ -2187,7 +2187,7 @@ TEST_CASE("a player is not respawned beside a station that would shoot them (#22
 
 TEST_CASE("whoever gets there first names it, once, for everyone (#145)")
 {
-    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
     const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
     Simulation        sim;
@@ -2265,7 +2265,7 @@ TEST_CASE("a ship left beside a moving body is found beside it again (#258)")
     // Saved as a point in space, the ship came back further from it every time.
     Fixture f;
     auto    hub = std::make_unique<Station>(Vector2{ 400000.0f, 0.0f }, 700.0f, "Aurora Hub",
-                                            FactionId::TradersGuild, StationRole::TradeHub);
+                                            Fac::TradersGuild(), StationRole::TradeHub);
     Entity* station = hub.get();
     f.World().entities.push_back(std::move(hub));
     const Vector2 was = station->GetPosition();
@@ -2292,7 +2292,7 @@ namespace
 {
 std::unique_ptr<Station> MakeDepot(Vector2 at)
 {
-    return std::make_unique<Station>(at, 60.0f, "Depot", FactionId::TradersGuild,
+    return std::make_unique<Station>(at, 60.0f, "Depot", Fac::TradersGuild(),
                                      StationRole::TradeHub);
 }
 
@@ -2368,7 +2368,7 @@ TEST_CASE("what may not change is refused, not half-changed (#38)")
     CHECK(f.sim.AddStatic(sys, std::move(planet), "hunter") == 0);
     // A ship is not part of the static layer at all.
     CHECK(f.sim.AddStatic(sys,
-                          std::make_unique<NpcShip>(Vector2{ 0.0f, 0.0f }, FactionId::Pirates,
+                          std::make_unique<NpcShip>(Vector2{ 0.0f, 0.0f }, Fac::Pirates(),
                                                     NpcRole::Pirate, std::vector<Vector2>{}),
                           "") == 0);
     CHECK(f.sim.AddStatic("no-such-system", MakeDepot({ 0.0f, 0.0f }), "") == 0);
@@ -2520,7 +2520,7 @@ TEST_CASE("a saved mission finds its stations again in a world numbered differen
     // Entity ids come from one counter that runs through every system's stations and the
     // NPCs hydrated beside them, so another run can number the same station differently.
     // A mission saved by id would then point at the wrong station, or at none.
-    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
     const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
     auto              build = [&](Simulation& sim, int shift)
@@ -2644,7 +2644,7 @@ namespace
 // entity already built pointing into the registry it replaced.
 void LoadRegistries()
 {
-    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
 }
 
@@ -2792,7 +2792,7 @@ TEST_CASE("a world saved before changes were kept loads as the data describes it
 
 TEST_CASE("the macro layer reads a system's profile and the link index, not the world (#295)")
 {
-    Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
     const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
     Simulation        sim;

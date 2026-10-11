@@ -382,7 +382,32 @@ break a rule is refused with the reason, rather than written for the server to r
 ```
 
 `relations` gives each pair a stance (`War`, `Hostile`, `Neutral`, `Friendly`, `Ally`), and
-`repTiers` the reputation thresholds.
+`repTiers` the reputation thresholds. A pair nobody lists is allied with itself, hostile
+to the pirates, and neutral otherwise.
+
+Factions are data (#355): the code names none of them. The parts the world gives a faction
+to play are `roles`, each naming a faction by `id`:
+
+```json
+"roles": { "unaffiliated": "Independent", "pirates": "Pirates",
+           "police": "TradersGuild", "traders": "TradersGuild" }
+```
+
+| Role | Meaning |
+|------|---------|
+| `unaffiliated` | owns what nobody owns: a station with no `faction`, a system nobody holds. **Listed first.** |
+| `pirates` | spawned as the pirates; what a lawless system's unrest feeds |
+| `police` | patrols a system whose holder is not `lawful` |
+| `traders` | trades on every lane, beside the system's own faction and the unaffiliated |
+
+A faction's `id` is what saves, the wire and other data files call it, and never changes;
+its order in the file is not something any of them depends on. A region's natives and an
+admin's pack add their own factions at runtime, after the file's.
+
+Loading is strict (#191, #357): a missing or unparsable file, an unknown field anywhere, a
+faction listed twice, a relation or role naming a faction that is not listed, or a stance
+that is not one of the five is a load error. The server stops on it; the client and the
+editor log it and keep the factions they had.
 
 ### temperament — the same machinery for every faction (#231)
 
@@ -856,7 +881,7 @@ at runtime reads it; the survey screen (#141) and a reader of the document do.
 | `name` | string | name |
 | `pos` | [x,y] | position |
 | `size` | number | radius |
-| `faction` | string | `Independent` (default), `TradersGuild`, `Syndicate` |
+| `faction` | string | a faction `id` from `factions.json`; default the `unaffiliated` one. An unknown id is logged by name and built as the unaffiliated |
 | `role` | string | `TradeHub` (default), `MiningOutpost`, `Shipyard`, `Military` |
 
 > `Pirates` as a station/object faction cannot be set in JSON — pirates are spawned by

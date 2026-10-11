@@ -86,21 +86,21 @@ bool Hostile(FactionId a, FactionId b)
 // presence drifts towards this however nobody sends them, and no further.
 float Unrest(const SystemAggregate& a)
 {
-    const float cap = Factions::TemperamentOf(FactionId::Pirates).capacity;
+    const float cap = Factions::TemperamentOf(Factions::Pirates()).capacity;
     return std::max(0.0f, 0.6f - a.security) * cap * 0.4f;
 }
 }  // namespace
 
 void Simulation::SeedPresence(SystemAggregate& a)
 {
-    a.presence.fill(0.0f);
+    a.presence.Clear();
     // Half strength to begin with: a fresh world grows into its numbers rather than
     // starting at them, so nothing is decided in its first minutes (#143, #225). Nobody's
     // system has nobody's garrison.
     if (a.claimed)
-        a.presence[(int)a.controller] = Factions::TemperamentOf(a.controller).capacity * 0.5f;
-    if (a.controller != FactionId::Pirates)
-        a.presence[(int)FactionId::Pirates] = Unrest(a);
+        a.presence[a.controller] = Factions::TemperamentOf(a.controller).capacity * 0.5f;
+    if (a.controller != Factions::Pirates())
+        a.presence[Factions::Pirates()] = Unrest(a);
 }
 
 SystemProfile Simulation::ProfileOf(const SystemState& st)
@@ -154,9 +154,9 @@ void Simulation::TakeControl(SystemAggregate& a, FactionId f)
     a.controller = f;
     a.claimed = true;
     a.contested = 0;
-    if (f == FactionId::Pirates)
+    if (f == Factions::Pirates())
         a.baseSecurity = std::min(a.baseSecurity, 0.15f);
-    else if (was == FactionId::Pirates)
+    else if (was == Factions::Pirates())
         a.baseSecurity = std::max(a.baseSecurity, 0.5f);
 }
 
@@ -198,8 +198,8 @@ Intel Simulation::Observe(const SystemState& st) const
     return i;
 }
 
-void Simulation::Record(const std::string& kind, int faction, const std::string& system,
-                        const std::string& text)
+void Simulation::Record(const std::string& kind, std::optional<FactionId> faction,
+                        const std::string& system, const std::string& text)
 {
     ChronicleEntry e;
     e.seq = ++chronicleSeq_;
@@ -225,7 +225,7 @@ void Simulation::SeedMinds()
         const SystemAggregate& a = kv.second.agg;
         if (!a.claimed)
             continue;
-        FactionMind& m = minds_[(int)a.controller];
+        FactionMind& m = minds_[a.controller];
         m.intel[kv.first] = Observe(kv.second);
         for (const std::string& nid : Neighbors(kv.first))
         {
@@ -254,11 +254,9 @@ std::string Simulation::DescribeSurvey(const Intel& seen, FactionId by) const
         add("held by nobody");
     else if (seen.controller != by)
         add("held by " + FactionName(seen.controller));
-    for (int g = 0; g < FACTION_COUNT; g++)
-        if ((FactionId)g != by && seen.presence[g] >= 1.0f &&
-            !(seen.claimed && (FactionId)g == seen.controller))
-            add((FactionId)g == FactionId::Pirates ? std::string("pirates")
-                                                   : FactionName((FactionId)g) + " ships");
+    for (FactionId g : Factions::All())
+        if (g != by && seen.presence[g] >= 1.0f && !(seen.claimed && g == seen.controller))
+            add(g == Factions::Pirates() ? std::string("pirates") : FactionName(g) + " ships");
     return text.empty() ? "nothing of note" : text;
 }
 
@@ -268,8 +266,8 @@ void Simulation::ResolveSurvey(const Plan& p)
     if (st == systems_.end())
         return;  // the galaxy no longer has it; the survey comes back with nothing
     const Intel seen = Observe(st->second);
-    minds_[(int)p.faction].intel[p.target] = seen;
-    Record("survey", (int)p.faction, p.target,
+    minds_[p.faction].intel[p.target] = seen;
+    Record("survey", p.faction, p.target,
            FactionName(p.faction) + " surveyed " + SystemName(p.target) + ": " +
                DescribeSurvey(seen, p.faction));
 }
@@ -307,7 +305,7 @@ bool Simulation::Settle(FactionId f, const std::string& from, const std::string&
 {
     SystemState* st = SystemById(to);
     const float  cost = OutpostCost();
-    FactionMind& mind = minds_[(int)f];
+    FactionMind& mind = minds_[f];
     if (st == nullptr || cost <= 0.0f || mind.stock < cost)
         return false;
     const Intel& seen = mind.intel[to] = Observe(*st);
@@ -352,7 +350,7 @@ bool Simulation::Settle(FactionId f, const std::string& from, const std::string&
     p.site = StaticKey(to, id);
     plans_[p.id] = p;
     due_.insert({ p.dueAt, p.id });
-    Record("settle", (int)f, to,
+    Record("settle", f, to,
            FactionName(f) + " began " + Outposts::Called(purpose) + " in " + SystemName(to));
     return true;
 }
@@ -376,7 +374,7 @@ void Simulation::ResolveSettle(const Plan& p)
     const std::string who = FactionName(p.faction), where = SystemName(p.target);
     if (site == nullptr)
     {
-        Record("settle", (int)p.faction, p.target,
+        Record("settle", p.faction, p.target,
                who + " lost the outpost it was building in " + where);
         return;
     }
@@ -392,17 +390,17 @@ void Simulation::ResolveSettle(const Plan& p)
     SystemAggregate& a = st->agg;
     if (a.claimed)
     {
-        Record("settle", (int)p.faction, p.target,
+        Record("settle", p.faction, p.target,
                who + " finished an outpost in " + where + ", but " +
                    (a.controller == p.faction ? std::string("it holds it already")
                                               : FactionName(a.controller) + " holds it"));
         return;
     }
     TakeControl(a, p.faction);
-    minds_[(int)p.faction].intel[p.target] = Observe(*st);
+    minds_[p.faction].intel[p.target] = Observe(*st);
     Outposts::Purpose purpose = Outposts::Purpose::Open;
     Outposts::PurposeOf(site->GetBuilds(), purpose);
-    Announce("settle", (int)p.faction, p.target,
+    Announce("settle", p.faction, p.target,
              who + " founded " + Outposts::Called(purpose) + " in " + where);
 }
 
@@ -414,12 +412,12 @@ void Simulation::StepFactions()
     {
         SystemAggregate& a = kv.second.agg;
         if (a.lostPirates > 0.0f)
-            a.presence[(int)FactionId::Pirates] =
-                std::max(0.0f, a.presence[(int)FactionId::Pirates] - a.lostPirates);
+            a.presence[Factions::Pirates()] =
+                std::max(0.0f, a.presence[Factions::Pirates()] - a.lostPirates);
         if (a.lostPolice > 0.0f)
         {
             const FactionId law = a.policeFaction;
-            a.presence[(int)law] = std::max(0.0f, a.presence[(int)law] - a.lostPolice);
+            a.presence[law] = std::max(0.0f, a.presence[law] - a.lostPolice);
         }
         a.lostPirates = a.lostPolice = 0.0f;
     }
@@ -430,12 +428,13 @@ void Simulation::StepFactions()
     StepSieges();
 
     // Each faction thinks once a period, on a pass of its own (#295): spread across the
-    // period rather than all on one pass, so no pass carries more than one of them.
-    static_assert(FACTION_COUNT <= FACTION_PERIOD, "more than one faction would think per pass");
+    // period rather than all on one pass, so no pass carries more than one of them -- while
+    // there are no more factions than passes in a period; past that, some share one.
     const int phase = ++factionPasses_ % FACTION_PERIOD;
-    for (int fi = 0; fi < FACTION_COUNT; fi++)
-        if (phase == fi * FACTION_PERIOD / FACTION_COUNT)
-            Think((FactionId)fi);
+    const int count = Factions::Count();
+    for (FactionId f : Factions::All())
+        if (phase == f.Index() * FACTION_PERIOD / count)
+            Think(f);
     if (phase != 0)
         return;
 
@@ -452,7 +451,7 @@ void Simulation::StepFactions()
         if (!a.claimed)
             continue;
         const float ore = std::min(1.0f, kv.second.profile.belts / 3.0f);
-        float&      stock = minds_[(int)a.controller].stock;
+        float&      stock = minds_[a.controller].stock;
         stock = std::min(storable, stock + INCOME_BASE * (1.0f + a.prosperity + ore));
     }
 
@@ -481,11 +480,11 @@ void Simulation::StepFactions()
     for (auto& kv : systems_)
     {
         SystemAggregate& a = kv.second.agg;
-        for (int f = 0; f < FACTION_COUNT; f++)
+        for (FactionId f : Factions::All())
         {
-            const Temperament& t = Factions::TemperamentOf((FactionId)f);
+            const Temperament& t = Factions::TemperamentOf(f);
             float&             p = a.presence[f];
-            if ((FactionId)f == a.controller && a.claimed)
+            if (f == a.controller && a.claimed)
             {
                 const auto  away = lent.find(kv.first);
                 const float keep =
@@ -494,7 +493,7 @@ void Simulation::StepFactions()
             }
             else
             {
-                const float floor = (FactionId)f == FactionId::Pirates ? Unrest(a) : 0.0f;
+                const float floor = f == Factions::Pirates() ? Unrest(a) : 0.0f;
                 p = p > floor ? p - (p - floor) * FADE : p + (floor - p) * t.growth;
             }
             if (p < SPARSE)
@@ -511,9 +510,8 @@ void Simulation::StepFactions()
 // outpost in a neighbour nobody holds where its ships already are.
 void Simulation::Think(FactionId f)
 {
-    const int          fi = (int)f;
     const Temperament& t = Factions::TemperamentOf(f);
-    FactionMind&       mind = minds_[fi];
+    FactionMind&       mind = minds_[f];
 
     // What it sees for itself is never out of date -- and is not saved, for that reason.
     int holdings = 0, outposts = 0;
@@ -524,7 +522,7 @@ void Simulation::Think(FactionId f)
         holdings += held ? 1 : 0;
         outposts += (int)std::count(kv.second.profile.outposts.begin(),
                                     kv.second.profile.outposts.end(), f);
-        if (held || a.presence[fi] >= 1.0f)
+        if (held || a.presence[f] >= 1.0f)
             mind.intel[kv.first] = Observe(kv.second);
     }
     if (t.appetite <= 0.0f)
@@ -568,7 +566,7 @@ void Simulation::Think(FactionId f)
     Act         act = Act::None;
     float       bestScore = 0.0f;
     std::string from, to, why;
-    FactionId   enemy = FactionId::Independent;
+    FactionId   enemy = Factions::Unaffiliated();
     // A siege's force, by the system it would be against: who would lend it, and the way in.
     std::map<std::string, std::pair<std::vector<Plan::Lent>, std::string>> pools;
     std::vector<Plan::Lent>                                                lend;
@@ -578,7 +576,7 @@ void Simulation::Think(FactionId f)
         const SystemAggregate& home = kv.second.agg;
         if (!home.claimed || home.controller != f)
             continue;
-        const float surplus = home.presence[fi] - t.capacity * HOME_GUARD;
+        const float surplus = home.presence[f] - t.capacity * HOME_GUARD;
         for (const std::string& nid : Neighbors(kv.first))
         {
             if (systems_.count(nid) == 0)
@@ -609,8 +607,8 @@ void Simulation::Think(FactionId f)
                     t.curiosity + (rival && canSiege ? t.unclaimed : 0.0f), seen, time_);
                 float hostile = 0.0f;
                 if (seen != nullptr)
-                    for (int g = 0; g < FACTION_COUNT; g++)
-                        if (Hostile(f, (FactionId)g))
+                    for (FactionId g : Factions::All())
+                        if (Hostile(f, g))
                             hostile += seen->presence[g];
                 const float risk = Intelligence::UNSEEN_RISK + 0.5f * hostile / t.capacity;
                 const float score = value - risk / t.appetite;
@@ -634,18 +632,18 @@ void Simulation::Think(FactionId f)
             // already come in strength -- it sees the place for itself, so what it knows is
             // fresh. Worth what the place is worth; the risk is what is there against it,
             // net of its own ships, which is why settling beats sending more of them.
-            if (canSettle && !seen->claimed && seen->presence[fi] >= t.capacity * SETTLE_PRESENCE)
+            if (canSettle && !seen->claimed && seen->presence[f] >= t.capacity * SETTLE_PRESENCE)
             {
                 float hostile = 0.0f;
-                for (int g = 0; g < FACTION_COUNT; g++)
-                    if (Hostile(f, (FactionId)g))
+                for (FactionId g : Factions::All())
+                    if (Hostile(f, g))
                         hostile += seen->presence[g];
                 int guns = 0;
                 for (FactionId d : o.defenders)
                     if (d != f)
                         guns++;
                 // ...and where it lost an outpost not long ago, the memory of that (slice 5).
-                const float risk = std::max(0.0f, hostile - seen->presence[fi]) / t.capacity +
+                const float risk = std::max(0.0f, hostile - seen->presence[f]) / t.capacity +
                                    0.5f * guns + (Factions::IsLawful(f) ? 0.0f : seen->security) +
                                    Intelligence::LossRisk(mind.lostAt, nid, time_);
                 const float score = value - Intelligence::BelievedRisk(
@@ -671,7 +669,7 @@ void Simulation::Think(FactionId f)
                 {
                     if (!Hostile(f, g) || (seen->claimed && seen->controller != g))
                         continue;
-                    const float garrison = seen->presence[(int)g];
+                    const float garrison = seen->presence[g];
                     // It asks its holdings within reach for all the rules let a siege have.
                     auto pool = pools.find(nid);
                     if (pool == pools.end())
@@ -734,9 +732,8 @@ void Simulation::Think(FactionId f)
             if (surplus < 0.5f)
                 continue;
             float hostile = 0.0f;
-            for (int g = 0; g < FACTION_COUNT; g++)
-                if (Hostile(f, (FactionId)g) ||
-                    ((FactionId)g == seen->controller && seen->controller != f))
+            for (FactionId g : Factions::All())
+                if (Hostile(f, g) || (g == seen->controller && seen->controller != f))
                     hostile += seen->presence[g];
             int guns = 0;
             for (FactionId d : o.defenders)
@@ -774,9 +771,9 @@ void Simulation::Think(FactionId f)
     {
         // How long it takes is drawn from what it is -- this faction, that system, this
         // minute of the world's clock -- never from how many draws came before.
-        Gen::Rng rng(
-            Gen::Key(SURVEY_KEY, (uint64_t)fi, Intelligence::KeyOf(to), (uint64_t)(time_ / 60.0)));
-        Plan p;
+        Gen::Rng rng(Gen::Key(SURVEY_KEY, (uint64_t)f.Index(), Intelligence::KeyOf(to),
+                              (uint64_t)(time_ / 60.0)));
+        Plan     p;
         p.id = nextPlanId_++;
         p.kind = Plan::Kind::Survey;
         p.faction = f;
@@ -820,10 +817,10 @@ void Simulation::Think(FactionId f)
     if (dest.agg.claimed && (dest.agg.controller == f || !Hostile(f, dest.agg.controller)))
         return;
     const float move =
-        std::min(home.presence[fi] - t.capacity * HOME_GUARD, t.capacity * MOVE_SHARE);
-    const bool first = dest.agg.presence[fi] < 1.0f && dest.agg.presence[fi] + move >= 1.0f;
-    home.presence[fi] -= move;
-    dest.agg.presence[fi] += move;
+        std::min(home.presence[f] - t.capacity * HOME_GUARD, t.capacity * MOVE_SHARE);
+    const bool first = dest.agg.presence[f] < 1.0f && dest.agg.presence[f] + move >= 1.0f;
+    home.presence[f] -= move;
+    dest.agg.presence[f] += move;
     if (first)
         PushEvent(FactionName(f) + " move into " + SystemName(to) +
                   (why.empty() ? std::string() : ": " + why));
@@ -839,15 +836,15 @@ void Simulation::StepControl(bool settling)
         SystemAggregate& a = kv.second.agg;
         // Nobody's system goes to whoever has held it longest in strength; a held one only
         // to an enemy of its holder.
-        const float held = a.claimed ? a.presence[(int)a.controller] : 0.0f;
+        const float held = a.claimed ? a.presence[a.controller] : 0.0f;
         FactionId   challenger = a.controller;
         float       strongest = 0.0f;
-        for (int g = 0; g < FACTION_COUNT; g++)
-            if ((!a.claimed || Hostile((FactionId)g, a.controller)) &&
-                ((FactionId)g != a.controller || !a.claimed) && a.presence[g] > strongest)
+        for (FactionId g : Factions::All())
+            if ((!a.claimed || Hostile(g, a.controller)) && (g != a.controller || !a.claimed) &&
+                a.presence[g] > strongest)
             {
                 strongest = a.presence[g];
-                challenger = (FactionId)g;
+                challenger = g;
             }
         // And a faction must really have come: half its own capacity committed, which the
         // local trouble a lawless system breeds by itself (Unrest) never reaches. A gang is
@@ -873,7 +870,7 @@ void Simulation::StepControl(bool settling)
         TakeControl(a, challenger);
         if (!settling)
             PushEvent(!wasClaimed ? FactionName(challenger) + " claim " + SystemName(kv.first)
-                      : challenger == FactionId::Pirates
+                      : challenger == Factions::Pirates()
                           ? "Pirates seized " + SystemName(kv.first)
                           : SystemName(kv.first) + " taken by " + FactionName(challenger));
     }
@@ -919,7 +916,7 @@ std::vector<Plan::Lent> Simulation::PoolFor(FactionId f, const std::string& targ
         if (kv.second.first == 0 || !a.claimed || a.controller != f)
             continue;
         const float spare =
-            std::min(a.presence[(int)f] - t.capacity * HOME_GUARD, t.capacity * r.commit);
+            std::min(a.presence[f] - t.capacity * HOME_GUARD, t.capacity * r.commit);
         if (spare >= MIN_LEND)
             offers.push_back({ kv.second.first, kv.first, spare });
     }

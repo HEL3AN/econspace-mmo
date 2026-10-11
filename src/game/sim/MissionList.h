@@ -27,9 +27,9 @@ struct Row
     int         index = 0;
     std::string title;
     std::string description;
-    std::string kind;                              // "bounty", "mining", "delivery"
-    std::string status;                            // how far along: "2 / 5", "ready", "deliver"
-    FactionId   faction = FactionId::Independent;  // who gave it
+    std::string kind;                                // "bounty", "mining", "delivery"
+    std::string status;                              // how far along: "2 / 5", "ready", "deliver"
+    FactionId   faction = Factions::Unaffiliated();  // who gave it
     double      reward = 0.0;
     float       rep = 0.0f;
     // How much of a count is done, 0..1; negative when there is nothing to count (a

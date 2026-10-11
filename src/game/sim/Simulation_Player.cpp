@@ -267,7 +267,7 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
     // costs the shooter is decided by whose law it stands under, not by its owner's colour.
     if (found->GetKind() == EntityKind::Structure)
     {
-        FactionId law = FactionId::Independent;
+        FactionId law = Factions::Unaffiliated();
         if (LawOver(st, static_cast<const Structure&>(*found), s.accountName, law) && ev != nullptr)
         {
             ev->hitLawful = true;
@@ -467,7 +467,7 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, System
 
     // Net revenue into this session's account: trading-skill multiplier and the
     // reputation of the station's faction, found by the id docking recorded.
-    FactionId sf = FactionId::Independent;
+    FactionId sf = Factions::Unaffiliated();
     for (auto& e : st.entities)
         if (e->GetId() == s.dockedStationId)
         {
@@ -576,7 +576,7 @@ bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
         return false;
 
     // Price multiplier by the docked station's faction reputation.
-    FactionId sf = FactionId::Independent;
+    FactionId sf = Factions::Unaffiliated();
     for (auto& e : SystemOf(s)->entities)
         if (e->GetId() == s.dockedStationId)
         {
@@ -606,7 +606,7 @@ bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
 
 bool Simulation::AccountHostileToFaction(const ClientSession& s, FactionId f) const
 {
-    if (f == FactionId::Pirates)
+    if (f == Factions::Pirates())
         return true;
     if (s.account.IsWanted(f))
         return true;
@@ -953,14 +953,15 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path) co
     j["version"] = Save::ACCOUNT_VERSION;
     j["money"] = s.account.GetMoney();
 
-    json rep = json::array();
-    for (int i = 0; i < 4; i++)
-        rep.push_back(s.account.GetReputation((FactionId)i));
+    // By faction id (#355): an index is this process's registry order, which a later one --
+    // with a region's natives added -- does not share.
+    json rep = json::object(), bounty = json::object();
+    for (FactionId f : Factions::All())
+    {
+        rep[Factions::Id(f)] = s.account.GetReputation(f);
+        bounty[Factions::Id(f)] = s.account.GetBounty(f);
+    }
     j["reputation"] = rep;
-
-    json bounty = json::array();
-    for (int i = 0; i < 4; i++)
-        bounty.push_back(s.account.GetBounty((FactionId)i));
     j["bounty"] = bounty;
 
     const Skills& sk = s.account.GetSkills();
@@ -1034,7 +1035,7 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path) co
     json missions = json::array();
     for (const Mission& m : s.missions.Active())
         missions.push_back({ { "type", (int)m.type },
-                             { "faction", (int)m.faction },
+                             { "faction", Factions::Id(m.faction) },
                              { "title", m.title },
                              { "description", m.description },
                              { "giver", StationRefOf(systems_, m.giverStationId) },
@@ -1067,12 +1068,24 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
         return Save::Result::TooNew;
 
     s.account.SetMoney(j.value("money", 500.0));
-    if (j.contains("reputation"))
-        for (int i = 0; i < 4 && i < (int)j["reputation"].size(); i++)
-            s.account.SetReputation((FactionId)i, (float)j["reputation"][i]);
-    if (j.contains("bounty"))
-        for (int i = 0; i < 4 && i < (int)j["bounty"].size(); i++)
-            s.account.SetBounty((FactionId)i, (double)j["bounty"][i]);
+    // A version 3 file and older lists them by the compiled index; a newer one by id.
+    const auto perFaction = [&](const char* key, const auto& set)
+    {
+        const json v = j.value(key, json());
+        FactionId  f;
+        if (v.is_array())
+            for (size_t i = 0; i < v.size(); i++)
+            {
+                if (v[i].is_number() && Factions::FromLegacyIndex((int)i, f))
+                    set(f, v[i].get<double>());
+            }
+        else if (v.is_object())
+            for (auto it = v.begin(); it != v.end(); ++it)
+                if (it->is_number() && Factions::Find(it.key(), f))
+                    set(f, it->get<double>());
+    };
+    perFaction("reputation", [&](FactionId f, double x) { s.account.SetReputation(f, (float)x); });
+    perFaction("bounty", [&](FactionId f, double x) { s.account.SetBounty(f, x); });
     if (j.contains("skills"))
     {
         Skills& sk = s.account.GetSkills();
@@ -1176,7 +1189,11 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
                 continue;
             Mission m;
             m.type = (MissionType)mj.value("type", 0);
-            m.faction = (FactionId)mj.value("faction", 0);
+            const json fj = mj.value("faction", json());
+            if (fj.is_number_integer())
+                Factions::FromLegacyIndex(fj.get<int>(), m.faction);  // version 3 and older
+            else if (fj.is_string())
+                Factions::Find(fj.get<std::string>(), m.faction);
             m.title = mj.value("title", std::string());
             m.description = mj.value("description", std::string());
             m.resource = ResourceFromName(mj.value("resource", std::string()));

@@ -9,6 +9,7 @@
 #include "entities/Star.h"
 #include "economy/Resource.h"
 #include "temp_dir.h"
+#include "factions_named.h"
 #include <cstdio>
 #include <fstream>
 #include <raylib.h>
@@ -125,8 +126,7 @@ TEST_CASE("entities pick up their archetype on construction")
 {
     REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
 
-    Station hub({ 0.0f, 0.0f }, 90.0f, "Aurora Hub", FactionId::TradersGuild,
-                StationRole::TradeHub);
+    Station hub({ 0.0f, 0.0f }, 90.0f, "Aurora Hub", Fac::TradersGuild(), StationRole::TradeHub);
     CHECK(hub.GetArchetype() != nullptr);
     CHECK(hub.Has(Component::Dockable));
     CHECK(hub.Has(Component::Market));
@@ -134,8 +134,7 @@ TEST_CASE("entities pick up their archetype on construction")
 
     // A military station is the same class and a different archetype — which is the whole
     // point: what it can do comes from data, not from its type.
-    Station fort({ 0.0f, 0.0f }, 80.0f, "Vyse Bastion", FactionId::Independent,
-                 StationRole::Military);
+    Station fort({ 0.0f, 0.0f }, 80.0f, "Vyse Bastion", Fac::Independent(), StationRole::Military);
     CHECK(fort.Has(Component::Defensive));
     CHECK_FALSE(hub.Has(Component::Defensive));
 
@@ -269,8 +268,8 @@ TEST_CASE("colour in the world is the archetype's, not the owner's (#117)")
     // The same kind of station under two flags. Allegiance depends on who is looking, so a
     // colour that carried it would be wrong for one of the two players looking at it; the
     // world view shows what the thing is, and the instruments say whose side it is on.
-    Station guild({ 0.0f, 0.0f }, 700.0f, "Hub", FactionId::TradersGuild, StationRole::TradeHub);
-    Station pirate({ 0.0f, 0.0f }, 700.0f, "Den", FactionId::Pirates, StationRole::TradeHub);
+    Station guild({ 0.0f, 0.0f }, 700.0f, "Hub", Fac::TradersGuild(), StationRole::TradeHub);
+    Station pirate({ 0.0f, 0.0f }, 700.0f, "Den", Fac::Pirates(), StationRole::TradeHub);
     const Render::Item a = guild.Describe(), b = pirate.Describe();
     CHECK(a.color.r == b.color.r);
     CHECK(a.color.g == b.color.g);

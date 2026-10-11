@@ -4,6 +4,7 @@
 #include "entities/ShipType.h"
 #include "missions/Mission.h"
 #include "sim/Observation.h"
+#include "factions_named.h"
 
 #include <cstdio>
 #include <string>
@@ -105,7 +106,7 @@ TEST_CASE("a bounty makes that faction's ships read as hostile")
     Proto::Snapshot       s = BaseSnapshot();
     Proto::EntitySnapshot police = Ent(70, Proto::EntityKind::Npc, { 500.0f, 0.0f }, "Patrol");
     police.role = 2;  // NpcRole::Police
-    police.faction = (FactionId)1;
+    police.faction = Fac::TradersGuild();
     s.entities.push_back(police);
 
     Obs::View v;
@@ -235,7 +236,7 @@ struct Docked
         layout[3].id = 3;
         layout[3].kind = Proto::EntityKind::Station;
         layout[3].name = "Vale Station";
-        layout[3].faction = FactionId::Syndicate;
+        layout[3].faction = Fac::Syndicate();
         v.snapshot = &s;
         v.layout = &layout;
     }
@@ -245,7 +246,7 @@ Proto::MissionView Job(MissionType type, int giver, int dest, int target, int pr
 {
     Proto::MissionView m;
     m.type = (int)type;
-    m.faction = (int)FactionId::Syndicate;
+    m.faction = Fac::Syndicate();
     m.title = "A job";
     m.description = "Do the thing";
     m.giverStationId = giver;
@@ -298,7 +299,7 @@ TEST_CASE("outside a station there is no board, but the missions taken are still
     CHECK(Has(out, "[0] bounty"));
     // Enough pirates, but the hand-in is at the giver.
     CHECK(Has(out, "needs: dock at Vale Station (#3)"));
-    CHECK(Obs::DockedFaction(d.v) == FactionId::Independent);
+    CHECK(Obs::DockedFaction(d.v) == Fac::Independent());
 }
 
 TEST_CASE("the hangar quotes the price this player would be charged here (#109)")
@@ -308,9 +309,9 @@ TEST_CASE("the hangar quotes the price this player would be charged here (#109)"
     REQUIRE(GetShipCatalog().size() > 2);
     d.s.player.ownedShips = { 0, 2 };
     d.s.player.money = 100000.0;
-    d.s.player.reputation[(int)FactionId::Syndicate] = 60.0f;  // allied with the owner
+    d.s.player.reputation[(size_t)Fac::Syndicate().Index()] = 60.0f;  // allied with the owner
 
-    CHECK(Obs::DockedFaction(d.v) == FactionId::Syndicate);
+    CHECK(Obs::DockedFaction(d.v) == Fac::Syndicate());
     const std::string out = Obs::DescribeHangar(d.v);
     CHECK(Has(out, "owned by Syndicate"));
     CHECK(Has(out, "FLYING"));

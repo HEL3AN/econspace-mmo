@@ -363,11 +363,11 @@ FactionId FactionArg(const Rpc::Json& args)
         throw Rpc::Error{ Rpc::INVALID_PARAMS, "faction is a name, e.g. 'Syndicate'" };
     const std::string want = Lower(args["faction"].get<std::string>());
     std::string       known;
-    for (int i = 0; i < 4; i++)
+    for (FactionId f : Factions::All())
     {
-        const std::string name = FactionName((FactionId)i);
-        if (Lower(name) == want)
-            return (FactionId)i;
+        const std::string name = FactionName(f);
+        if (Lower(name) == want || Lower(Factions::Id(f)) == want)
+            return f;
         known += (known.empty() ? "" : ", ") + name;
     }
     throw Rpc::Error{ Rpc::INVALID_PARAMS, "no faction called '" +
@@ -700,8 +700,9 @@ std::vector<Tool> BuildTools()
                                     "you already own a " + t.name + "; use switch_ship" };
               const Proto::PlayerView& p = g_session.Snapshot().player;
               const FactionId          sf = Obs::DockedFaction(CurrentView());
-              const float              standing =
-                  (size_t)sf < p.reputation.size() ? p.reputation[(size_t)sf] : 0.0f;
+              const float              standing = (size_t)sf.Index() < p.reputation.size()
+                                                      ? p.reputation[(size_t)sf.Index()]
+                                                      : 0.0f;
               const double price = t.price * ShipPriceMultiplier(Factions::TierOf(standing));
               if (p.money < price)
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "a " + t.name + " costs " + Money(price) +
@@ -768,14 +769,15 @@ std::vector<Tool> BuildTools()
               RequireDocked("paying a bounty");
               const FactionId          f = FactionArg(args);
               const Proto::PlayerView& p = g_session.Snapshot().player;
-              const double owed = (size_t)f < p.bounty.size() ? p.bounty[(size_t)f] : 0.0;
+              const double             owed =
+                  (size_t)f.Index() < p.bounty.size() ? p.bounty[(size_t)f.Index()] : 0.0;
               if (owed <= 0.0)
               {
                   std::string wanted;
-                  for (size_t i = 0; i < p.bounty.size(); i++)
-                      if (p.bounty[i] > 0.0)
-                          wanted += (wanted.empty() ? "" : ", ") + FactionName((FactionId)i) + " " +
-                                    Money(p.bounty[i]);
+                  for (FactionId g : Factions::All())
+                      if ((size_t)g.Index() < p.bounty.size() && p.bounty[(size_t)g.Index()] > 0.0)
+                          wanted += (wanted.empty() ? "" : ", ") + FactionName(g) + " " +
+                                    Money(p.bounty[(size_t)g.Index()]);
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                     FactionName(f) + " has no bounty on you" +
                                         (wanted.empty() ? std::string("; nobody does")
@@ -788,12 +790,13 @@ std::vector<Tool> BuildTools()
 
               const int      seq = g_session.LastEventSeq();
               Proto::Command c;
-              c.payBountyFaction = (int)f;
+              c.payBountyFaction = Factions::Id(f);
               std::string why;
               if (!Confirm(c, why))
                   return "pay_bounty: " + why;
               const Proto::PlayerView& after = g_session.Snapshot().player;
-              const double left = (size_t)f < after.bounty.size() ? after.bounty[(size_t)f] : 0.0;
+              const double             left =
+                  (size_t)f.Index() < after.bounty.size() ? after.bounty[(size_t)f.Index()] : 0.0;
               if (left > 0.0)
                   return Refused("pay_bounty", seq,
                                  "the server did not take the payment; call observe with "
@@ -1449,7 +1452,8 @@ int main(int argc, char** argv)
     const std::string secret = (argc >= 6) ? argv[5] : "agent-local";
 
     std::string dataDir = AGENT_DATA_DIR;
-    Factions::Load(dataDir + "factions.json");
+    if (!Factions::Load(dataDir + "factions.json"))
+        Rpc::Log("econagent: " + Factions::Error());
     // Read locally too: describing an object to a model means saying what it can do, and
     // that lives in the archetype rather than in the snapshot.
     if (!Archetypes::Load(dataDir + "archetypes.json"))

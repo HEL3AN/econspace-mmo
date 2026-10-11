@@ -41,11 +41,11 @@ float Simulation::Rand01()
 
 void Simulation::PushEvent(const std::string& msg)
 {
-    Announce("news", -1, std::string(), msg);
+    Announce("news", std::nullopt, std::string(), msg);
 }
 
-void Simulation::Announce(const std::string& kind, int faction, const std::string& system,
-                          const std::string& text)
+void Simulation::Announce(const std::string& kind, std::optional<FactionId> faction,
+                          const std::string& system, const std::string& text)
 {
     events_.push_back(text);
     if (events_.size() > 8)

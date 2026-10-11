@@ -480,9 +480,8 @@ void Editor::DrawPropertyPanel()
         // The faction list comes from the registry (lawful, no pirates): id as the
         // value, name as the label.
         std::vector<std::string> facIds, facNames;
-        for (int fi = 0; fi < Factions::Count(); fi++)
+        for (FactionId f : Factions::All())
         {
-            FactionId f = (FactionId)fi;
             if (!Factions::IsLawful(f))
                 continue;
             facIds.push_back(Factions::Id(f));

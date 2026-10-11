@@ -3,6 +3,7 @@
 #include "core/World.h"
 #include "render/TextBackend.h"
 #include "sim/Sensor.h"
+#include "factions_named.h"
 #include <cstring>
 #include <map>
 
@@ -61,16 +62,16 @@ TEST_CASE("allegiance is a reading of the viewer's standing, not a property of t
 {
     // One station, two viewers: the same snapshot reads differently to each, which is the
     // whole reason the colour lives in the instrument and not on the object.
-    const Proto::EntitySnapshot hub = Snap(Proto::EntityKind::Station, FactionId::TradersGuild);
+    const Proto::EntitySnapshot hub = Snap(Proto::EntityKind::Station, Fac::TradersGuild());
 
     Sensor::Standing friendOfGuild;
-    friendOfGuild.hostile = [](FactionId f) { return f == FactionId::Pirates; };
+    friendOfGuild.hostile = [](FactionId f) { return f == Fac::Pirates(); };
     friendOfGuild.tier = [](FactionId f)
-    { return f == FactionId::TradersGuild ? RepTier::Allied : RepTier::Neutral; };
+    { return f == Fac::TradersGuild() ? RepTier::Allied : RepTier::Neutral; };
 
     Sensor::Standing wantedByGuild;
     wantedByGuild.hostile = [](FactionId f)
-    { return f == FactionId::Pirates || f == FactionId::TradersGuild; };
+    { return f == Fac::Pirates() || f == Fac::TradersGuild(); };
     wantedByGuild.tier = [](FactionId) { return RepTier::Neutral; };
 
     CHECK(Sensor::Classify(hub, friendOfGuild) == Sensor::Allegiance::Friendly);
@@ -78,9 +79,9 @@ TEST_CASE("allegiance is a reading of the viewer's standing, not a property of t
 
     SUBCASE("ships read the same way stations do")
     {
-        const Proto::EntitySnapshot pirate = Snap(Proto::EntityKind::Npc, FactionId::Pirates);
+        const Proto::EntitySnapshot pirate = Snap(Proto::EntityKind::Npc, Fac::Pirates());
         CHECK(Sensor::Classify(pirate, friendOfGuild) == Sensor::Allegiance::Hostile);
-        const Proto::EntitySnapshot miner = Snap(Proto::EntityKind::Npc, FactionId::Independent);
+        const Proto::EntitySnapshot miner = Snap(Proto::EntityKind::Npc, Fac::Independent());
         CHECK(Sensor::Classify(miner, friendOfGuild) == Sensor::Allegiance::Neutral);
     }
 
@@ -90,14 +91,14 @@ TEST_CASE("allegiance is a reading of the viewer's standing, not a property of t
              { Proto::EntityKind::Star, Proto::EntityKind::Planet, Proto::EntityKind::Field,
                Proto::EntityKind::Gate, Proto::EntityKind::Nebula, Proto::EntityKind::Derelict })
         {
-            CHECK(Sensor::Classify(Snap(k, FactionId::Pirates), wantedByGuild) ==
+            CHECK(Sensor::Classify(Snap(k, Fac::Pirates()), wantedByGuild) ==
                   Sensor::Allegiance::Unowned);
         }
     }
 
     SUBCASE("another pilot is neutral until players have standings")
     {
-        CHECK(Sensor::Classify(Snap(Proto::EntityKind::PlayerShip, FactionId::Pirates),
+        CHECK(Sensor::Classify(Snap(Proto::EntityKind::PlayerShip, Fac::Pirates()),
                                friendOfGuild) == Sensor::Allegiance::Neutral);
     }
 

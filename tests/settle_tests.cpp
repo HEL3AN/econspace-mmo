@@ -16,6 +16,7 @@
 #include "sim/FactionMind.h"
 #include "sim/Simulation.h"
 #include "temp_dir.h"
+#include "factions_named.h"
 
 // Settling (#295, slice 3): a faction's holdings yield a stock, the stock pays for an outpost
 // in a system nobody holds, the outpost is a structure everyone there can see while it goes
@@ -27,7 +28,7 @@ const std::string DATA = TEST_DATA_DIR;
 
 void LoadRegistries()
 {
-    Factions::Load(DATA + "factions.json");
+    REQUIRE(Factions::Load(DATA + "factions.json"));
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
     REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
 }
@@ -62,7 +63,7 @@ bool Holds(const Simulation& sim, FactionId f, const std::string& id)
 std::string GuildFrontier(const Simulation& sim)
 {
     for (const auto& kv : sim.Systems())
-        if (Holds(sim, FactionId::TradersGuild, kv.first))
+        if (Holds(sim, Fac::TradersGuild(), kv.first))
             for (const std::string& n : sim.Neighbors(kv.first))
                 if (!sim.SystemById(n)->agg.claimed)
                     return n;
@@ -98,14 +99,14 @@ std::string GuildSettles(Simulation& sim)
 {
     const std::string frontier = GuildFrontier(sim);
     REQUIRE_FALSE(frontier.empty());
-    const float cap = Factions::TemperamentOf(FactionId::TradersGuild).capacity;
-    for (int pass = 0; pass < 30 && SettlementOf(sim, FactionId::TradersGuild) == nullptr; pass++)
+    const float cap = Factions::TemperamentOf(Fac::TradersGuild()).capacity;
+    for (int pass = 0; pass < 30 && SettlementOf(sim, Fac::TradersGuild()) == nullptr; pass++)
     {
-        sim.SystemById(frontier)->agg.presence[(int)FactionId::TradersGuild] = cap;
-        sim.MindOf(FactionId::TradersGuild).stock = Simulation::OutpostCost();
+        sim.SystemById(frontier)->agg.presence[Fac::TradersGuild()] = cap;
+        sim.MindOf(Fac::TradersGuild()).stock = Simulation::OutpostCost();
         Pass(sim);
     }
-    const Plan* p = SettlementOf(sim, FactionId::TradersGuild);
+    const Plan* p = SettlementOf(sim, Fac::TradersGuild());
     REQUIRE(p != nullptr);
     REQUIRE(p->target == frontier);
     return frontier;
@@ -143,9 +144,9 @@ TEST_CASE("an outpost is built by factions; no player is offered one (#295)")
 
     // The owner a faction's structure carries reads back as the faction, and an account's
     // does not.
-    FactionId f = FactionId::Independent;
-    CHECK(Outposts::FactionOf(Outposts::OwnerOf(FactionId::Syndicate), f));
-    CHECK(f == FactionId::Syndicate);
+    FactionId f = Fac::Independent();
+    CHECK(Outposts::FactionOf(Outposts::OwnerOf(Fac::Syndicate()), f));
+    CHECK(f == Fac::Syndicate());
     CHECK_FALSE(Outposts::FactionOf("hunter", f));
     CHECK_FALSE(Outposts::FactionOf("faction:Nobody", f));
 }
@@ -155,10 +156,10 @@ TEST_CASE("holdings yield a stock, and what cannot be stored is not income (#295
     auto sim = World();
     Pass(*sim, 30 * 3);  // three periods
     const float cost = Simulation::OutpostCost();
-    CHECK(sim->MindOf(FactionId::TradersGuild).stock > 0.0f);
-    CHECK(sim->MindOf(FactionId::Pirates).stock > 0.0f);
-    for (int fi = 0; fi < FACTION_COUNT; fi++)
-        CHECK(sim->MindOf((FactionId)fi).stock <= 2.0f * cost + 1e-3f);
+    CHECK(sim->MindOf(Fac::TradersGuild()).stock > 0.0f);
+    CHECK(sim->MindOf(Fac::Pirates()).stock > 0.0f);
+    for (FactionId fi : Factions::All())
+        CHECK(sim->MindOf(fi).stock <= 2.0f * cost + 1e-3f);
 }
 
 TEST_CASE("strength alone does not claim a system nobody held; a finished outpost does (#295)")
@@ -166,14 +167,14 @@ TEST_CASE("strength alone does not claim a system nobody held; a finished outpos
     auto              sim = World();
     const std::string frontier = GuildFrontier(*sim);
     REQUIRE_FALSE(frontier.empty());
-    const float cap = Factions::TemperamentOf(FactionId::TradersGuild).capacity;
+    const float cap = Factions::TemperamentOf(Fac::TradersGuild()).capacity;
     auto        hold = [&](int passes)
     {
         for (int i = 0; i < passes; i++)
         {
-            sim->SystemById(frontier)->agg.presence[(int)FactionId::TradersGuild] = cap * 2.0f;
-            for (int fi = 0; fi < FACTION_COUNT; fi++)
-                sim->MindOf((FactionId)fi).stock = 0.0f;  // nobody has anything to build with
+            sim->SystemById(frontier)->agg.presence[Fac::TradersGuild()] = cap * 2.0f;
+            for (FactionId fi : Factions::All())
+                sim->MindOf(fi).stock = 0.0f;  // nobody has anything to build with
             Pass(*sim);
         }
     };
@@ -185,7 +186,7 @@ TEST_CASE("strength alone does not claim a system nobody held; a finished outpos
                                             Blueprints::Find(Outposts::BLUEPRINT)->archetype);
     site->StartBuilding(sim->Time(), sim->Time() + 1.0e6);
     const int siteId =
-        sim->AddStatic(frontier, std::move(site), Outposts::OwnerOf(FactionId::TradersGuild));
+        sim->AddStatic(frontier, std::move(site), Outposts::OwnerOf(Fac::TradersGuild()));
     REQUIRE(siteId != 0);
     hold(Simulation::ContestPasses() + 5);
     CHECK_FALSE(sim->SystemById(frontier)->agg.claimed);
@@ -196,9 +197,9 @@ TEST_CASE("strength alone does not claim a system nobody held; a finished outpos
                 frontier,
                 std::make_unique<Structure>(Vector2{ 500000.0f, 500000.0f }, 0.0f, "Outpost",
                                             Blueprints::Find(Outposts::BLUEPRINT)->archetype),
-                Outposts::OwnerOf(FactionId::TradersGuild)) != 0);
+                Outposts::OwnerOf(Fac::TradersGuild())) != 0);
     hold(Simulation::ContestPasses() + 5);
-    CHECK(Holds(*sim, FactionId::TradersGuild, frontier));
+    CHECK(Holds(*sim, Fac::TradersGuild(), frontier));
 }
 
 TEST_CASE("a faction settles where it has come, everyone sees the site, and finished it is a "
@@ -207,14 +208,14 @@ TEST_CASE("a faction settles where it has come, everyone sees the site, and fini
     auto              sim = World();
     const float       cost = Simulation::OutpostCost();
     const std::string frontier = GuildSettles(*sim);
-    const Plan        plan = *SettlementOf(*sim, FactionId::TradersGuild);
+    const Plan        plan = *SettlementOf(*sim, Fac::TradersGuild());
 
     // Paid for, and standing there as a site anyone entering the system is sent.
-    CHECK(sim->MindOf(FactionId::TradersGuild).stock < cost);
+    CHECK(sim->MindOf(Fac::TradersGuild()).stock < cost);
     const Structure* site = OutpostIn(*sim, frontier);
     REQUIRE(site != nullptr);
     CHECK(site->IsBuilding());
-    CHECK(site->GetOwner() == Outposts::OwnerOf(FactionId::TradersGuild));
+    CHECK(site->GetOwner() == Outposts::OwnerOf(Fac::TradersGuild()));
     CHECK(site->GetCompletesAt() == doctest::Approx(plan.dueAt));
     CHECK(sim->StaticKey(frontier, site->GetId()) == plan.site);
     bool sent = false;
@@ -223,7 +224,7 @@ TEST_CASE("a faction settles where it has come, everyone sees the site, and fini
         {
             sent = true;
             CHECK(e.kind == EntityKind::Structure);
-            CHECK(e.owner == Outposts::OwnerOf(FactionId::TradersGuild));
+            CHECK(e.owner == Outposts::OwnerOf(Fac::TradersGuild()));
             CHECK(e.completesAt == doctest::Approx(plan.dueAt));
         }
     CHECK(sent);
@@ -233,12 +234,12 @@ TEST_CASE("a faction settles where it has come, everyone sees the site, and fini
     // One at a time: no second settlement while the first goes up, whatever the stock.
     for (int pass = 0; pass < 60; pass++)
     {
-        sim->MindOf(FactionId::TradersGuild).stock = cost * 2.0f;
+        sim->MindOf(Fac::TradersGuild()).stock = cost * 2.0f;
         Pass(*sim);
         int settling = 0;
         for (const auto& kv : sim->Plans())
             settling +=
-                kv.second.kind == Plan::Kind::Settle && kv.second.faction == FactionId::TradersGuild
+                kv.second.kind == Plan::Kind::Settle && kv.second.faction == Fac::TradersGuild()
                     ? 1
                     : 0;
         CHECK(settling <= 1);
@@ -249,13 +250,13 @@ TEST_CASE("a faction settles where it has come, everyone sees the site, and fini
         Pass(*sim);
     REQUIRE(OutpostIn(*sim, frontier) != nullptr);
     CHECK_FALSE(OutpostIn(*sim, frontier)->IsBuilding());
-    CHECK(Holds(*sim, FactionId::TradersGuild, frontier));
+    CHECK(Holds(*sim, Fac::TradersGuild(), frontier));
     bool founded = false, news = false;
     for (const ChronicleEntry& e : sim->Chronicle())
         if (e.kind == "settle" && e.system == frontier && Says(e.text, "Traders Guild", "founded"))
         {
             founded = true;
-            CHECK(e.faction == (int)FactionId::TradersGuild);
+            CHECK(e.faction == std::optional<FactionId>(Fac::TradersGuild()));
             CHECK(e.time >= plan.dueAt);
         }
     for (const std::string& line : sim->Events())
@@ -268,11 +269,11 @@ TEST_CASE("a settlement whose site is lost claims nothing (#295)")
 {
     auto              sim = World();
     const std::string frontier = GuildSettles(*sim);
-    const Plan        plan = *SettlementOf(*sim, FactionId::TradersGuild);
+    const Plan        plan = *SettlementOf(*sim, Fac::TradersGuild());
     REQUIRE(sim->RemoveStatic(frontier, OutpostIn(*sim, frontier)->GetId()));
     while (sim->Time() < plan.dueAt + 4.0)
         Pass(*sim);
-    CHECK(SettlementOf(*sim, FactionId::TradersGuild) == nullptr);
+    CHECK(SettlementOf(*sim, Fac::TradersGuild()) == nullptr);
     CHECK_FALSE(sim->SystemById(frontier)->agg.claimed);
     bool lost = false;
     for (const ChronicleEntry& e : sim->Chronicle())
@@ -287,8 +288,8 @@ TEST_CASE("a settlement and the stock survive a restart, and the outpost finishe
     const std::string path = tmp.Path("settle_world.json");
     auto              a = World();
     const std::string frontier = GuildSettles(*a);
-    const Plan        plan = *SettlementOf(*a, FactionId::TradersGuild);
-    const float       stock = a->MindOf(FactionId::TradersGuild).stock;
+    const Plan        plan = *SettlementOf(*a, Fac::TradersGuild());
+    const float       stock = a->MindOf(Fac::TradersGuild()).stock;
     a->SaveWorld(path);
 
     Simulation b;
@@ -302,11 +303,11 @@ TEST_CASE("a settlement and the stock survive a restart, and the outpost finishe
     CHECK(back.kind == Plan::Kind::Settle);
     CHECK(back.site == plan.site);
     CHECK(back.dueAt == doctest::Approx(plan.dueAt));
-    CHECK(b.MindOf(FactionId::TradersGuild).stock == doctest::Approx(stock));
+    CHECK(b.MindOf(Fac::TradersGuild()).stock == doctest::Approx(stock));
     const Structure* site = OutpostIn(b, frontier);
     REQUIRE(site != nullptr);
     CHECK(site->IsBuilding());
-    CHECK(site->GetOwner() == Outposts::OwnerOf(FactionId::TradersGuild));
+    CHECK(site->GetOwner() == Outposts::OwnerOf(Fac::TradersGuild()));
     CHECK(b.StaticKey(frontier, site->GetId()) == plan.site);
 
     // The structure step's queue was remade from the site's time line.
@@ -317,7 +318,7 @@ TEST_CASE("a settlement and the stock survive a restart, and the outpost finishe
     b.StepStructures();
     CHECK_FALSE(OutpostIn(b, frontier)->IsBuilding());
     Pass(b, 10);  // a few plans resolve per pass, and the surveys came due as well
-    CHECK(Holds(b, FactionId::TradersGuild, frontier));
+    CHECK(Holds(b, Fac::TradersGuild(), frontier));
 }
 
 TEST_CASE("a world saved before factions had a stock loads, and they start from nothing (#295)")
@@ -342,8 +343,8 @@ TEST_CASE("a world saved before factions had a stock loads, and they start from 
     sim.LoadUniverse(DATA + "universe.json");
     REQUIRE(sim.LoadWorld(path) == Save::Result::Ok);
     sim.MaterializeAllSystems(DATA + "systems/");
-    for (int fi = 0; fi < FACTION_COUNT; fi++)
-        CHECK(sim.MindOf((FactionId)fi).stock == 0.0f);
+    for (FactionId fi : Factions::All())
+        CHECK(sim.MindOf(fi).stock == 0.0f);
     REQUIRE(sim.Plans().count(3) == 1);
     CHECK(sim.Plans().at(3).kind == Plan::Kind::Survey);
 

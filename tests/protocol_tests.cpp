@@ -7,6 +7,7 @@
 #include "sim/HostRules.h"
 #include "sim/Orders.h"
 #include "sim/Protocol.h"
+#include "factions_named.h"
 
 #include <cmath>
 #include <string>
@@ -27,7 +28,7 @@ TEST_CASE("command round-trips through JSON")
     c.sellAmount = 15;
     c.refitShip = 4;
     c.buyShip = 3;
-    c.payBountyFaction = 1;
+    c.payBountyFaction = "TradersGuild";
     c.debugMoney = true;
     c.acceptOffer = 2;
     c.completeMission = 5;
@@ -47,7 +48,7 @@ TEST_CASE("command round-trips through JSON")
     CHECK(r.sellAmount == 15);
     CHECK(r.refitShip == 4);
     CHECK(r.buyShip == 3);
-    CHECK(r.payBountyFaction == 1);
+    CHECK(r.payBountyFaction == "TradersGuild");
     CHECK(r.debugMoney);
     CHECK(r.acceptOffer == 2);
     CHECK(r.completeMission == 5);
@@ -79,7 +80,7 @@ TEST_CASE("snapshot round-trips through JSON")
     {
         Proto::MissionView mv;
         mv.type = 2;
-        mv.faction = 1;
+        mv.faction = Fac::TradersGuild();
         mv.title = "Delivery";
         mv.giverStationId = 11;
         mv.destStationId = 22;
@@ -98,14 +99,14 @@ TEST_CASE("snapshot round-trips through JSON")
                            { 1.0f, 2.0f },
                            0.5f,
                            30.0f,
-                           FactionId::Pirates,
+                           Fac::Pirates(),
                            3,
                            0.75f,
                            -1,
                            "Pirate",
                            "raider" });
-    s.fires.push_back({ { 0.0f, 0.0f }, { 1.0f, 2.0f }, FactionId::Pirates, true, false });
-    s.fires.push_back({ { 5.0f, 5.0f }, { 9.0f, 9.0f }, FactionId::Independent, false, true });
+    s.fires.push_back({ { 0.0f, 0.0f }, { 1.0f, 2.0f }, Fac::Pirates(), true, false });
+    s.fires.push_back({ { 5.0f, 5.0f }, { 9.0f, 9.0f }, Fac::Independent(), false, true });
     s.events.push_back(Ev::Event{ 7, Ev::Kind::Docked, "hello" });
     s.marketPrices = { 10.0f, 20.0f, 30.0f };
 
@@ -117,7 +118,7 @@ TEST_CASE("snapshot round-trips through JSON")
     CHECK(r.player.weaponOn);
     REQUIRE(r.entities.size() == 1);
     CHECK(r.entities[0].id == 5);
-    CHECK(r.entities[0].faction == FactionId::Pirates);
+    CHECK(r.entities[0].faction == Fac::Pirates());
     CHECK(r.entities[0].design == "raider");  // what the client draws it as (#279)
     REQUIRE(r.fires.size() == 2);
     CHECK(r.fires[0].targetIsPlayer);
@@ -166,8 +167,8 @@ TEST_CASE("snapshot round-trips through JSON")
 TEST_CASE("galaxy state round-trips through JSON")
 {
     Proto::GalaxyState g;
-    g.systems.push_back({ "core", 0.85f, 2, 0.7f, FactionId::TradersGuild });
-    g.systems.push_back({ "rim", 0.2f, 9, 0.3f, FactionId::Pirates });
+    g.systems.push_back({ "core", 0.85f, 2, 0.7f, Fac::TradersGuild() });
+    g.systems.push_back({ "rim", 0.2f, 9, 0.3f, Fac::Pirates() });
     g.events.push_back("Pirates seized Rim");
 
     Proto::GalaxyState r;
@@ -175,9 +176,9 @@ TEST_CASE("galaxy state round-trips through JSON")
     REQUIRE(r.systems.size() == 2);
     CHECK(r.systems[0].id == "core");
     CHECK(r.systems[0].security == doctest::Approx(0.85f));
-    CHECK(r.systems[0].controller == FactionId::TradersGuild);
+    CHECK(r.systems[0].controller == Fac::TradersGuild());
     CHECK(r.systems[1].pirates == 9);
-    CHECK(r.systems[1].controller == FactionId::Pirates);
+    CHECK(r.systems[1].controller == Fac::Pirates());
     REQUIRE(r.events.size() == 1);
     CHECK(r.events[0] == "Pirates seized Rim");
 }
@@ -350,7 +351,7 @@ TEST_CASE("a snapshot leaves out what the layout already says")
     npc.id = 20;
     npc.kind = EntityKind::Npc;
     npc.pos = { 0.0f, 0.0f };
-    npc.faction = FactionId::Pirates;
+    npc.faction = Fac::Pirates();
     npc.role = 3;
     npc.name = "pirate";
     npc.size = 14.0f;
@@ -371,17 +372,17 @@ TEST_CASE("a snapshot leaves out what the layout already says")
     el.kind = EntityKind::Station;
     el.name = "Aurora Hub";
     el.size = 90.0f;
-    el.faction = FactionId::TradersGuild;
+    el.faction = Fac::TradersGuild();
     layout[8] = el;
 
     Proto::CompleteFromLayout(back, layout);
     CHECK(back.entities[0].name == "Aurora Hub");  // ...and back afterwards
     CHECK(back.entities[0].size == doctest::Approx(90.0f));
-    CHECK(back.entities[0].faction == FactionId::TradersGuild);
+    CHECK(back.entities[0].faction == Fac::TradersGuild());
 
     // An entity the layout does not describe is left exactly as it arrived.
     CHECK(back.entities[1].name == "pirate");
-    CHECK(back.entities[1].faction == FactionId::Pirates);
+    CHECK(back.entities[1].faction == Fac::Pirates());
     CHECK(back.entities[1].role == 3);
     CHECK(back.entities[1].size == doctest::Approx(14.0f));
 }
@@ -439,7 +440,7 @@ TEST_CASE("an object that cannot move is not described again every tick")
     station.pos = { 100.0f, 200.0f };
     station.size = 90.0f;
     station.name = "Aurora Hub";
-    station.faction = FactionId::TradersGuild;
+    station.faction = Fac::TradersGuild();
     layout[8] = station;
 
     Proto::EntityLayout belt;
@@ -465,7 +466,7 @@ TEST_CASE("an object that cannot move is not described again every tick")
     CHECK(st->name == "Aurora Hub");
     CHECK(st->pos.x == doctest::Approx(100.0f));
     CHECK(st->size == doctest::Approx(90.0f));
-    CHECK(st->faction == FactionId::TradersGuild);
+    CHECK(st->faction == Fac::TradersGuild());
     CHECK(Find(13) != nullptr);
     CHECK(Find(13)->ore == 0);   // a belt still says what it holds
     CHECK(Find(20) != nullptr);  // and the NPC is untouched
@@ -548,13 +549,11 @@ TEST_CASE("a command a client made up is clamped or refused, never trusted (#341
     }
     SUBCASE("an index past the end of a list is no index")
     {
-        REQUIRE(decode("\"payB\":1000,\"sellType\":99,\"ordKind\":77,\"navMode\":9", c));
-        CHECK(c.payBountyFaction == -1);
+        REQUIRE(decode("\"sellType\":99,\"ordKind\":77,\"navMode\":9", c));
         CHECK(c.sellType == -1);
         CHECK(c.orderKind == 0);
         CHECK(c.navMode == 0);
-        REQUIRE(decode("\"payB\":-5,\"target\":-3,\"seq\":99999999999", c));
-        CHECK(c.payBountyFaction == -1);
+        REQUIRE(decode("\"target\":-3,\"seq\":99999999999", c));
         CHECK(c.targetId == 0);
         CHECK(c.seq == 0);
     }
@@ -565,6 +564,7 @@ TEST_CASE("a command a client made up is clamped or refused, never trusted (#341
         CHECK_FALSE(decode("\"seq\":\"x\"", c));
         CHECK_FALSE(decode("\"thrust\":1", c));
         CHECK_FALSE(decode("\"nameSys\":[]", c));
+        CHECK_FALSE(decode("\"payB\":3", c));  // a faction is named, never numbered (#355)
         CHECK_FALSE(decode("\"turn\":\"fast\"", c));
         CHECK(Proto::MessageVersion("{\"v\":\"21\",\"t\":\"cmd\"}") == 0);
         CHECK(Proto::MessageType("{\"v\":21,\"t\":7}").empty());
@@ -581,7 +581,7 @@ TEST_CASE("a command a client made up is clamped or refused, never trusted (#341
         sent.turn = -0.5f;
         sent.navMode = 2;
         sent.navTarget = { 123456.0f, -98765.0f };
-        sent.payBountyFaction = 3;
+        sent.payBountyFaction = "Pirates";
         sent.sellType = 2;
         sent.orderKind = (int)Orders::Kind::Build;
         REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(sent), c));
@@ -589,7 +589,7 @@ TEST_CASE("a command a client made up is clamped or refused, never trusted (#341
         CHECK(c.turn == -0.5f);
         CHECK(c.navMode == 2);
         CHECK(c.navTarget.x == 123456.0f);
-        CHECK(c.payBountyFaction == 3);
+        CHECK(c.payBountyFaction == "Pirates");
         CHECK(c.sellType == 2);
         CHECK(c.orderKind == (int)Orders::Kind::Build);
     }
@@ -911,7 +911,7 @@ TEST_CASE("a command that says nothing is a few bytes, and still says it (#341)"
     REQUIRE(Proto::DecodeCommand(wire, back));
     CHECK(back.seq == 1234);
     CHECK(back.sellType == -1);
-    CHECK(back.payBountyFaction == -1);
+    CHECK(back.payBountyFaction.empty());
     CHECK(back.orderStopDist == 120.0f);
     CHECK(back.orderKind == 0);
     CHECK_FALSE(back.thrust);

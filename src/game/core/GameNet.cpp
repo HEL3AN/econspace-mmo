@@ -307,10 +307,12 @@ void Game::BuildClientSnapshot()
         // the snapshot, the client only displays them (mutations moved to the server via
         // commands/Step).
         player_.SetMoney(p.money);
-        for (int i = 0; i < 4 && i < (int)p.reputation.size(); i++)
-            player_.SetReputation((FactionId)i, p.reputation[i]);
-        for (int i = 0; i < 4 && i < (int)p.bounty.size(); i++)
-            player_.SetBounty((FactionId)i, p.bounty[i]);
+        for (FactionId f : Factions::All())
+        {
+            const size_t i = (size_t)f.Index();
+            player_.SetReputation(f, i < p.reputation.size() ? p.reputation[i] : 0.0f);
+            player_.SetBounty(f, i < p.bounty.size() ? p.bounty[i] : 0.0);
+        }
         if (p.skillXp.size() >= 3)
         {
             player_.GetSkills().SetXp(SkillType::Piloting, p.skillXp[0]);
@@ -324,7 +326,7 @@ void Game::BuildClientSnapshot()
         {
             Mission m;
             m.type = (MissionType)v.type;
-            m.faction = (FactionId)v.faction;
+            m.faction = v.faction;
             m.title = v.title;
             m.description = v.description;
             m.giverStationId = v.giverStationId;

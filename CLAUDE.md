@@ -281,6 +281,12 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   own rectangle reacts to clicks meant for the window in front of it -- use
   `Ui::MouseOver`/`MousePressed` or the frame's `Hovered`/`Pressed`. Esc is the desk's too:
   a new window or screen is registered with an `EscRule`, not added to a hand-written chain.
+- **A faction is a registry entry, not an enum** (#355). `FactionId` is an index into the
+  registry `data/factions.json` fills and a generated region or a pack extends at runtime,
+  so it means nothing outside the process: saves and the wire name a faction by its string
+  id (`Factions::Id`). The code names no faction -- who owns what nobody owns, who the
+  pirates are, whose police patrol a lawless system are `roles` in the file. Store a value
+  per faction in `PerFaction<T>` and iterate `Factions::All()`.
 - **Load `Archetypes` before building a world.** Entity constructors look themselves up
   in the registry, so an entity built before the load has no components and no glyph —
   it would silently be undockable and invisible rather than fail.

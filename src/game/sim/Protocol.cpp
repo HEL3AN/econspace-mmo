@@ -47,6 +47,46 @@ Vector2 ToV2(const json& j, Vector2 def = { 0.0f, 0.0f })
     return def;
 }
 
+// A faction crosses the wire by its string id, never by this process's index (#355): the
+// two ends load their registries separately. An id the reader does not have reads as the
+// unaffiliated faction -- permissive, like every other field.
+json FacJ(FactionId f)
+{
+    return Factions::Id(f);
+}
+
+FactionId ToFac(const json& j)
+{
+    FactionId f = Factions::Unaffiliated();
+    if (j.is_string())
+        Factions::Find(j.get<std::string>(), f);
+    return f;
+}
+
+// A value per faction, as { id: value }; out is indexed by this process's registry.
+template <class T> json PerFactionJson(const std::vector<T>& v)
+{
+    json o = json::object();
+    for (FactionId f : Factions::All())
+        if ((size_t)f.Index() < v.size())
+            o[Factions::Id(f)] = v[(size_t)f.Index()];
+    return o;
+}
+
+template <class T> std::vector<T> ToPerFaction(const json& j)
+{
+    std::vector<T> out((size_t)Factions::Count(), T{});
+    if (!j.is_object())
+        return out;
+    for (auto it = j.begin(); it != j.end(); ++it)
+    {
+        FactionId f;
+        if (it->is_number() && Factions::Find(it.key(), f))
+            out[(size_t)f.Index()] = it->get<T>();
+    }
+    return out;
+}
+
 json Col(Color c)
 {
     return json::array({ c.r, c.g, c.b, c.a });
@@ -131,7 +171,7 @@ json EntityLayoutsJson(const std::vector<Proto::EntityLayout>& v)
                     { "size", e.size },
                     { "col", Col(e.color) },
                     { "name", e.name },
-                    { "fac", (int)e.faction },
+                    { "fac", FacJ(e.faction) },
                     { "sub", e.subType },
                     { "orbit", e.orbitRadius },
                     { "res", e.resource },
@@ -176,7 +216,7 @@ std::vector<Proto::EntityLayout> ToEntityLayouts(const json& j, const char* key)
         e.size = ej.value("size", 0.0f);
         e.color = ToCol(ej.value("col", json::array()));
         e.name = ej.value("name", std::string());
-        e.faction = (FactionId)ej.value("fac", 0);
+        e.faction = ToFac(ej.value("fac", json()));
         e.subType = ej.value("sub", 0);
         e.orbitRadius = ej.value("orbit", 0.0f);
         e.resource = ej.value("res", -1);
@@ -197,7 +237,7 @@ std::vector<Proto::EntityLayout> ToEntityLayouts(const json& j, const char* key)
 
 json MissionJson(const Proto::MissionView& m)
 {
-    return { { "type", m.type },        { "fac", m.faction },          { "title", m.title },
+    return { { "type", m.type },        { "fac", FacJ(m.faction) },    { "title", m.title },
              { "desc", m.description }, { "giver", m.giverStationId }, { "dest", m.destStationId },
              { "res", m.resource },     { "tc", m.targetCount },       { "prog", m.progress },
              { "rm", m.rewardMoney },   { "rr", m.rewardRep },         { "done", m.completable } };
@@ -207,7 +247,7 @@ Proto::MissionView ToMission(const json& mj)
 {
     Proto::MissionView m;
     m.type = mj.value("type", 0);
-    m.faction = mj.value("fac", 0);
+    m.faction = ToFac(mj.value("fac", json()));
     m.title = mj.value("title", std::string());
     m.description = mj.value("desc", std::string());
     m.giverStationId = mj.value("giver", 0);
@@ -355,7 +395,8 @@ std::string EncodeCommand(const Command& c)
     number("sellAmt", c.sellAmount, 0);
     number("refit", c.refitShip, -1);
     number("buy", c.buyShip, -1);
-    number("payB", c.payBountyFaction, -1);
+    if (!c.payBountyFaction.empty())
+        j["payB"] = c.payBountyFaction;
     if (!c.nameSystem.empty())
         j["nameSys"] = c.nameSystem;
     flag("dbgMoney", c.debugMoney);
@@ -514,7 +555,7 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadInt(j, "sellAmt", 0, 0, ID_MAX, out.sellAmount);
     ok = ok && ReadInt(j, "refit", -1, 0, ID_MAX, out.refitShip);
     ok = ok && ReadInt(j, "buy", -1, 0, ID_MAX, out.buyShip);
-    ok = ok && ReadInt(j, "payB", -1, 0, FACTION_COUNT - 1, out.payBountyFaction);
+    ok = ok && ReadText(j, "payB", out.payBountyFaction);
     ok = ok && ReadText(j, "nameSys", out.nameSystem);
     ok = ok && ReadBool(j, "dbgMoney", out.debugMoney);
     ok = ok && ReadInt(j, "acceptM", -1, 0, ID_MAX, out.acceptOffer);
@@ -589,8 +630,8 @@ std::string EncodeSnapshot(const Snapshot& s)
                     { "lastInput", p.lastInput },
                     { "cargoT", p.cargoByType },
                     { "money", p.money },
-                    { "rep", p.reputation },
-                    { "bounty", p.bounty },
+                    { "rep", PerFactionJson(p.reputation) },
+                    { "bounty", PerFactionJson(p.bounty) },
                     { "skillXp", p.skillXp },
                     { "ordKind", p.orderKind },
                     { "ordStatus", p.orderStatus },
@@ -612,8 +653,8 @@ std::string EncodeSnapshot(const Snapshot& s)
             ej["hdg"] = Round3(e.heading);
         if (e.size != 0.0f)
             ej["size"] = Round2(e.size);
-        if (e.faction != FactionId::Independent)
-            ej["fac"] = (int)e.faction;
+        if (e.faction != Factions::Unaffiliated())
+            ej["fac"] = FacJ(e.faction);
         if (e.role != -1)
             ej["role"] = e.role;
         if (e.hullFrac != 1.0f)
@@ -632,7 +673,7 @@ std::string EncodeSnapshot(const Snapshot& s)
     for (const FireEvent& f : s.fires)
         fires.push_back({ { "from", V2(f.from) },
                           { "to", V2(f.to) },
-                          { "fac", (int)f.shooterFaction },
+                          { "fac", FacJ(f.shooterFaction) },
                           { "pl", f.targetIsPlayer },
                           { "mine", f.fromPlayer } });
     j["fires"] = fires;
@@ -727,8 +768,8 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
         p.lastInput = pj.value("lastInput", 0);
         p.cargoByType = pj.value("cargoT", std::vector<int>{});
         p.money = pj.value("money", 0.0);
-        p.reputation = pj.value("rep", std::vector<float>{});
-        p.bounty = pj.value("bounty", std::vector<double>{});
+        p.reputation = ToPerFaction<float>(pj.value("rep", json()));
+        p.bounty = ToPerFaction<double>(pj.value("bounty", json()));
         p.skillXp = pj.value("skillXp", std::vector<float>{});
         p.orderKind = pj.value("ordKind", 0);
         p.orderStatus = pj.value("ordStatus", 0);
@@ -748,7 +789,7 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
             e.pos = ToV2(ej.value("pos", json::array()));
             e.heading = ej.value("hdg", 0.0f);
             e.size = ej.value("size", 0.0f);
-            e.faction = (FactionId)ej.value("fac", 0);
+            e.faction = ToFac(ej.value("fac", json()));
             e.role = ej.value("role", -1);
             e.hullFrac = ej.value("hullFrac", 1.0f);
             e.ore = ej.value("ore", -1);
@@ -764,7 +805,7 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
             FireEvent f;
             f.from = ToV2(fj.value("from", json::array()));
             f.to = ToV2(fj.value("to", json::array()));
-            f.shooterFaction = (FactionId)fj.value("fac", 0);
+            f.shooterFaction = ToFac(fj.value("fac", json()));
             f.targetIsPlayer = fj.value("pl", false);
             f.fromPlayer = fj.value("mine", false);
             out.fires.push_back(f);
@@ -895,7 +936,7 @@ std::string EncodeGalaxy(const GalaxyState& s)
                         { "sec", g.security },
                         { "pir", g.pirates },
                         { "prosp", g.prosperity },
-                        { "ctrl", (int)g.controller } });
+                        { "ctrl", FacJ(g.controller) } });
     j["sys"] = sys;
     j["news"] = s.events;
     return j.dump();
@@ -916,7 +957,7 @@ bool DecodeGalaxy(const std::string& s, GalaxyState& out)
             g.security = gj.value("sec", 0.5f);
             g.pirates = gj.value("pir", 0);
             g.prosperity = gj.value("prosp", 0.5f);
-            g.controller = (FactionId)gj.value("ctrl", 0);
+            g.controller = ToFac(gj.value("ctrl", json()));
             out.systems.push_back(g);
         }
     out.events = j.value("news", std::vector<std::string>{});
@@ -1016,7 +1057,7 @@ void CompleteFromLayout(Snapshot& s, const std::map<int, EntityLayout>& layout)
             e.name = ShownName(l);
         if (e.size == 0.0f)
             e.size = l.size;
-        if (e.faction == FactionId::Independent)
+        if (e.faction == Factions::Unaffiliated())
             e.faction = l.faction;
         if (e.ore == -1)
             e.ore = l.resource;

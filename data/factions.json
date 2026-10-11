@@ -9,6 +9,7 @@
         { "id": "Pirates",      "name": "Pirates",      "color": [255, 161, 0],   "lawful": false, "kind": "Pirate",
           "temperament": { "appetite": 1.4, "capacity": 6, "growth": 0.08, "curiosity": 0.3, "values": { "traffic": 1.0, "salvage": 0.6, "unclaimed": 0.4 } } }
     ],
+    "roles": { "unaffiliated": "Independent", "pirates": "Pirates", "police": "TradersGuild", "traders": "TradersGuild" },
     "relations": [
         ["TradersGuild", "Pirates",   "War"],
         ["Syndicate",    "Pirates",   "War"],

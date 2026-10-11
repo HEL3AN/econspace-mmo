@@ -66,7 +66,7 @@ public:
     float              GetDamage() const { return damage_; }  // per volley, against a ship
     float              GetSpeed() const { return speed_; }
     AiState            GetState() const { return state_; }
-    bool               IsPirate() const { return faction_ == FactionId::Pirates; }
+    bool               IsPirate() const { return faction_ == Factions::Pirates(); }
     float              GetHeading() const { return heading_; }  // heading (for snapshots/render)
     void               SetHeading(float h) { heading_ = h; }    // for proxy reconciliation
 

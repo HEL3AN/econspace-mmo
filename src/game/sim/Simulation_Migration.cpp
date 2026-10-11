@@ -196,8 +196,8 @@ void Simulation::StepMigration()
             m.to = to;
             m.role = (NpcRole)r;
             // Under the flag the director would have sent it under.
-            m.faction = m.role == NpcRole::Pirate   ? FactionId::Pirates
-                        : m.role == NpcRole::Miner  ? FactionId::Independent
+            m.faction = m.role == NpcRole::Pirate   ? Factions::Pirates()
+                        : m.role == NpcRole::Miner  ? Factions::Unaffiliated()
                         : m.role == NpcRole::Police ? flags.policeFaction
                                                     : flags.tradeFaction;
             m.leftAt = time_;

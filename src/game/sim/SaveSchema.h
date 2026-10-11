@@ -47,12 +47,19 @@ namespace Save
 //    on their way are counted only in the world's "migrants". A version 9 build would drop
 //    them -- every ship between systems, gone -- and write the world back so. An older file
 //    has nobody on the way.
-inline constexpr int WORLD_VERSION = 10;
+// 11: a system's controller and every presence are by faction id, not by index (#355). A
+//    version 10 build would read the ids as nothing and hand every system to the
+//    unaffiliated faction. An older file's numbers are read in the order the factions were
+//    compiled in: Independent, TradersGuild, Syndicate, Pirates.
+inline constexpr int WORLD_VERSION = 11;
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.
 // 3: a mission names its stations by system and station rather than by entity id, which
 //    holds for one server run only (#227). An older one keeps its ids, as it always did.
-inline constexpr int ACCOUNT_VERSION = 3;
+// 4: reputation and bounty are objects by faction id, and a mission names its faction by id
+//    (#355). An older file's lists and numbers are read in the order the factions were
+//    compiled in: Independent, TradersGuild, Syndicate, Pirates.
+inline constexpr int ACCOUNT_VERSION = 4;
 
 // A file with no version at all: everything written before this existed. Those files are
 // a strict subset of version 1, so they are read as-is rather than migrated.

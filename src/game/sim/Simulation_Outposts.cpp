@@ -91,8 +91,8 @@ Simulation::OutpostSpot Simulation::FindOutpostSpot(FactionId f, Outposts::Purpo
         return spot;
     const Archetype* arch = Archetypes::Find(bp->archetype);
     const float      own = arch != nullptr ? arch->defaultSize : 0.0f;
-    Gen::Rng         rng(
-        Gen::Key(OUTPOST_KEY, (uint64_t)f, Intelligence::KeyOf(systemId), (uint64_t)purpose));
+    Gen::Rng         rng(Gen::Key(OUTPOST_KEY, (uint64_t)f.Index(), Intelligence::KeyOf(systemId),
+                                  (uint64_t)purpose));
 
     std::vector<const Entity*>        gates, wrecks, clouds;
     std::vector<const AsteroidField*> belts;
