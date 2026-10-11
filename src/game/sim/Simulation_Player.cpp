@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <set>
 
 namespace
 {
@@ -112,6 +113,7 @@ ClientSession& Simulation::CreateSession(const std::string& systemId, Vector2 po
     s.systemId = systemId;
     s.ownedShips = { 0 };  // everyone starts owning the starter (#5)
     s.currentShip = 0;
+    s.shipDesigns.clear();  // flying its stock design (#279 fitting)
     if (SystemState* st = SystemById(systemId))
         Warm(*st);  // a player is here now (#295)
     return s;
@@ -489,14 +491,15 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, System
 // Refit swaps stats and leaves the cargo alone, so without this a full Hauler became a Scout
 // carrying four times its capacity. Refusing keeps "a hold never holds more than it can"
 // true without deciding for the player which ore to throw away.
-static bool HoldFits(ClientSession& s, const ShipType& t, const std::string& verb)
+static bool HoldFits(ClientSession& s, const std::string& name, const ShipStats& stats,
+                     const std::string& verb)
 {
     const int used = s.ship->GetCargoUsed();
-    if (used <= t.stats.cargoCapacity)
+    if (used <= stats.cargoCapacity)
         return true;
     s.RecordEvent(Ev::Kind::Notice, verb + " refused: the hold carries " + std::to_string(used) +
-                                        " and a " + t.name + " holds " +
-                                        std::to_string(t.stats.cargoCapacity) +
+                                        " and a " + name + " holds " +
+                                        std::to_string(stats.cargoCapacity) +
                                         "; sell or hand in cargo first");
     return false;
 }
@@ -520,12 +523,64 @@ bool Simulation::SwitchShip(ClientSession& s, int catalogIndex)
     }
     if (catalogIndex == s.currentShip)
         return true;
-    if (!HoldFits(s, t, "Switch to " + t.name))
+    // The ship in that berth, as it was last fitted (#279 fitting).
+    ShipStats stats = t.stats;
+    ShipStatsFor(s.DesignOf(catalogIndex), stats);
+    if (!HoldFits(s, t.name, stats, "Switch to " + t.name))
         return false;
-    s.ship->Refit(t.stats);
+    s.ship->Refit(stats);
     s.currentShip = catalogIndex;
     s.RecordEvent(Ev::Kind::Notice, "Now flying the " + t.name);
     return true;
+}
+
+bool Simulation::ShipStatsFor(const std::string& design, ShipStats& out) const
+{
+    const Ships::Design* d = designs_.Find(design);
+    std::string          why;
+    return d != nullptr && PlayerStats(*d, out, why);
+}
+
+void Simulation::FlyDesign(ClientSession& s, int hull, const std::string& design)
+{
+    s.shipDesigns[hull] = design;
+    ShipStats stats;
+    if (s.ship && hull == s.currentShip && ShipStatsFor(design, stats))
+        s.ship->Refit(stats);
+}
+
+void Simulation::SaveDesigns(const std::string& path)
+{
+    std::set<std::string> live;
+    for (const auto& [id, s] : sessions_)
+        for (const auto& [hull, design] : s.shipDesigns)
+            live.insert(design);
+    designs_.Prune(live);
+    designs_.Save(path);
+}
+
+Save::Result Simulation::LoadDesigns(const std::string& path)
+{
+    return designs_.Load(path);
+}
+
+std::vector<Proto::DesignDef> Simulation::DesignDefsFor(const Proto::Snapshot& snap,
+                                                        std::set<std::string>& sent) const
+{
+    std::vector<Proto::DesignDef> out;
+    auto                          need = [&](const std::string& id)
+    {
+        if (!designs_.Holds(id) || !sent.insert(id).second)
+            return;
+        Proto::DesignDef def;
+        def.design = *designs_.Find(id);
+        out.push_back(std::move(def));
+    };
+    for (const std::string& id : snap.player.shipDesigns)
+        need(id);
+    for (const Proto::EntitySnapshot& e : snap.entities)
+        need(e.design);
+    return out;
 }
 
 void Simulation::StepPlayerAccountTick(ClientSession& s, float dt)
@@ -572,7 +627,7 @@ bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
         return false;
     }
     // Checked before charging: a purchase that cannot be flown away is not a purchase.
-    if (!HoldFits(s, t, "Purchase of a " + t.name))
+    if (!HoldFits(s, t.name, t.stats, "Purchase of a " + t.name))
         return false;
 
     // Price multiplier by the docked station's faction reputation.
@@ -597,6 +652,7 @@ bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
     }
     s.account.AddMoney(-price);
     s.ownedShips.push_back(catalogIndex);
+    s.shipDesigns[catalogIndex] = t.stats.design;  // a new ship is the stock one
     s.ship->Refit(t.stats);
     s.currentShip = catalogIndex;
     s.RecordEvent(Ev::Kind::Notice,
@@ -946,7 +1002,7 @@ Vector2 Simulation::SafeArrival(const std::string& systemId, const ClientSession
     return { 0.0f, clear };
 }
 
-bool Simulation::SaveAccount(const ClientSession& s, const std::string& path) const
+bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
 {
     using nlohmann::json;
     json j;
@@ -1026,8 +1082,20 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path) co
     if (!s.authStored.empty())
         j["auth"] = { { "salt", s.authSalt }, { "stored", s.authStored } };
 
-    j["ships"] = s.ownedShips;
+    // Each ship as the design it flies (#279 fitting). The design itself is in designs.json,
+    // which is told this account names it, so it is kept for as long as the file says so.
+    json                  ships = json::array();
+    std::set<std::string> named;
+    for (int hull : s.ownedShips)
+    {
+        const std::string design = s.DesignOf(hull);
+        ships.push_back({ { "hull", hull }, { "design", design } });
+        named.insert(design);
+    }
+    j["ships"] = ships;
     j["ship"] = s.currentShip;
+    if (!s.accountName.empty())
+        designs_.SetUsers(s.accountName, named);
 
     // A mission addresses its stations by id while the server runs -- that is what lets
     // one survive a jump -- but an id is good for one run only (#227). The save names them
@@ -1146,23 +1214,56 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
     // to the starter -- which is what such an account was, since nothing else was kept.
     // No schema bump for that reason: an older reader ignores these keys and a newer one
     // defaults them, which is the case the version deliberately does not cover (#20).
+    //
+    // Since version 5 each ship names the design it flies (#279 fitting); before, a ship was
+    // its hull index and flew the stock design, which is what it is read as.
     if (j.contains("ships") && j["ships"].is_array())
     {
         s.ownedShips.clear();
+        s.shipDesigns.clear();
+        const int hulls = (int)GetShipCatalog().size();
         for (const auto& v : j["ships"])
-            if (v.is_number_integer())
+        {
+            int         idx = -1;
+            std::string design;
+            if (version < 5 && v.is_number_integer())
+                idx = v.get<int>();
+            else if (version >= 5 && v.is_object())
             {
-                const int idx = v.get<int>();
-                if (idx >= 0 && idx < (int)GetShipCatalog().size() && !s.Owns(idx))
-                    s.ownedShips.push_back(idx);
+                idx = v.value("hull", -1);
+                design = v.value("design", std::string());
             }
+            if (idx < 0 || idx >= hulls || s.Owns(idx))
+                continue;
+            s.ownedShips.push_back(idx);
+            const std::string stock = GetShipCatalog()[idx].stats.design;
+            // A design the server no longer has -- or one that is not this hull's -- is
+            // not flown as something else: the ship is its hull's stock design again, and
+            // the player is told.
+            if (design.empty() || design == stock)
+                continue;
+            ShipStats stats;
+            if (designs_.Find(design) == nullptr || HullOf(design) != idx ||
+                !ShipStatsFor(design, stats))
+            {
+                s.RecordEvent(Ev::Kind::Notice, "Your " + GetShipCatalog()[idx].name +
+                                                    "'s fit is no longer valid; it is back to "
+                                                    "its stock fit");
+                continue;
+            }
+            s.shipDesigns[idx] = design;
+        }
         if (s.ownedShips.empty())
             s.ownedShips.push_back(0);
     }
     const int wanted = j.value("ship", 0);
     s.currentShip = s.Owns(wanted) ? wanted : s.ownedShips.front();
     if (s.ship)
-        s.ship->Refit(GetShipCatalog()[s.currentShip].stats);
+    {
+        ShipStats stats = GetShipCatalog()[s.currentShip].stats;
+        ShipStatsFor(s.DesignOf(s.currentShip), stats);
+        s.ship->Refit(stats);
+    }
 
     // Cargo is refilled through AddCargo rather than written in, so a hold that shrank
     // between sessions -- a smaller ship, a changed catalog -- drops the overflow instead

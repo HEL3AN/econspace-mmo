@@ -43,10 +43,19 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <set>
 #include <memory>
 #include <string>
 #include <random>
 #include <thread>
+
+// The designs players' ships fly (#279 fitting) live beside the world they are flown in.
+static std::string DesignsPath(const std::string& worldPath)
+{
+    const size_t slash = worldPath.find_last_of("/\\");
+    return (slash == std::string::npos ? std::string() : worldPath.substr(0, slash + 1)) +
+           "designs.json";
+}
 
 // How often the galaxy is written to world.json while the server runs (seconds).
 static const double WORLD_SAVE_INTERVAL = 60.0;
@@ -125,6 +134,23 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
             break;
         case Host::WorldStart::Fresh: break;
         case Host::WorldStart::Refused: fprintf(stderr, "FATAL: %s\n", why.c_str()); exit(1);
+    }
+    // Before any account loads: an account names its ships' designs and nothing more. A
+    // file from a later build, or a damaged one, is refused like the world's, for the same
+    // reason -- the next checkpoint would write this build's reading of it back (#20, #341).
+    if (!worldPath.empty())
+    {
+        const Save::Result designs = sim.LoadDesigns(DesignsPath(worldPath));
+        if (designs == Save::Result::TooNew || designs == Save::Result::Corrupt)
+        {
+            fprintf(stderr,
+                    "FATAL: %s is %s (this build speaks designs schema v%d).\n"
+                    "Move it aside or upgrade the server; it has NOT been modified.\n",
+                    DesignsPath(worldPath).c_str(),
+                    designs == Save::Result::TooNew ? "from a newer build" : "damaged",
+                    Save::DESIGNS_VERSION);
+            exit(1);
+        }
     }
     sim.MaterializeAllSystems(dataDir + "systems/");
 }
@@ -384,6 +410,7 @@ struct HostClient
     // is what sends the new one: an agent that travelled by order used to keep the old
     // system's stations in its picture of the new one.
     std::string                         layoutSystem;
+    std::set<std::string>               sentDesigns;  // DesignDefs this client has (#279)
     std::unique_ptr<Net::TcpConnection> conn;
     int                                 sessionId = 0;  // 0 until the hello arrives
     std::string                         account;
@@ -1086,6 +1113,14 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
             const std::string missions = Proto::MissionsKey(snap);
             snap.missionsIncluded = missions != hc.lastMissions;
             hc.lastMissions = missions;
+            // What a design the snapshot names is, before the snapshot names it (#279).
+            // Counted as layout: it is static description, sent once.
+            for (const Proto::DesignDef& def : sim.DesignDefsFor(snap, hc.sentDesigns))
+            {
+                const std::string d = Proto::EncodeDesignDef(def);
+                net.layouts += (double)d.size();
+                hc.conn->Send(d);
+            }
             const std::string enc = Proto::EncodeSnapshot(snap);
             net.snapshots += (double)enc.size();
             net.snapCount++;
@@ -1102,6 +1137,7 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
             // rather than at the next checkpoint, so a crash cannot take it back (#308).
             // It happens a handful of times in a session, so the write costs nothing.
             sim.SaveWorld(worldPath);
+            sim.SaveDesigns(DesignsPath(worldPath));
             worldSaveAcc = 0.0;
             galaxyAcc = 1.0;  // and the statistics that now include it, straight away
         }
@@ -1136,6 +1172,7 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
         {
             worldSaveAcc = 0.0;
             sim.SaveWorld(worldPath);
+            sim.SaveDesigns(DesignsPath(worldPath));
         }
 
         // A disconnect ends one session, not the server and not anyone else's game -- after
@@ -1214,6 +1251,7 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
             if (!hc.accountReadOnly)
                 sim.SaveAccount(*s, AccountPath(hc.account));
     sim.SaveWorld(worldPath);
+    sim.SaveDesigns(DesignsPath(worldPath));
     printf("\nShutting down. World and accounts saved.\n");
     Net::Shutdown();
     return 0;

@@ -8,6 +8,7 @@
 #include "sim/FactionMind.h"
 #include "sim/Orders.h"
 #include "sim/ClientSession.h"
+#include "sim/DesignStore.h"
 #include "sim/SaveSchema.h"
 #include "sim/PlayerStep.h"
 #include "player/Player.h"
@@ -642,10 +643,31 @@ public:
     // Money, skills, reputation and wanted levels; where the player was and what they were
     // carrying (#49); which ships they own and which one they are flying (#5). Without it
     // a session would begin from nothing every time somebody connected.
-    // Atomic like the world, keeping one older copy.
+    // Atomic like the world, keeping one older copy. Not const: the designs the account's
+    // ships fly are noted as its own (DesignStore).
     static constexpr int ACCOUNT_BACKUPS = 1;
-    bool                 SaveAccount(const ClientSession& s, const std::string& path) const;
+    bool                 SaveAccount(const ClientSession& s, const std::string& path);
     Save::Result         LoadAccount(ClientSession& s, const std::string& path);
+
+    // The designs players' ships fly (#279 fitting), kept beside the world in designs.json.
+    // SaveDesigns drops first what no save names and no live ship flies, so a design lives
+    // exactly as long as a ship that might fly it. Load it before any account.
+    DesignStore&       Designs() { return designs_; }
+    const DesignStore& Designs() const { return designs_; }
+    void               SaveDesigns(const std::string& path);
+    Save::Result       LoadDesigns(const std::string& path);
+    // What a ship of this design is under a player (PlayerStats), for a design filed here
+    // or a stock one. False for an id that is neither.
+    bool ShipStatsFor(const std::string& design, ShipStats& out) const;
+    // Flies an owned hull as `design`: the session's record and, if it is the hull being
+    // flown, the ship itself. The design must already be filed (or stock).
+    void FlyDesign(ClientSession& s, int hull, const std::string& design);
+    // The definitions a client has to be sent before this snapshot, because it names them
+    // and they are not stock: every player design the snapshot names that is not in `sent`,
+    // which it is added to (#279 fitting). The host keeps `sent` per connection, and sends
+    // these first -- the same promise LayoutDelta keeps (#38).
+    std::vector<Proto::DesignDef> DesignDefsFor(const Proto::Snapshot& snap,
+                                                std::set<std::string>& sent) const;
 
     // Feed of galactic events (system seizures/reconquests) — for showing to the player.
     const std::vector<std::string>& Events() const { return events_; }
@@ -684,6 +706,8 @@ public:
     }
 
 private:
+    DesignStore designs_;
+
     // What the spawn director keeps in a system (#295): how many ships of each role, after
     // the pressure of recent losses, and under whose flags. Zero for a role the system has
     // nowhere to put. A hot system is topped up towards it a couple of ships a pass; a cold

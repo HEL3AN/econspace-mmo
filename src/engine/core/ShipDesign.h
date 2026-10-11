@@ -223,6 +223,21 @@ bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error)
 // a module the render library does not have is an error.
 bool ShapeOf(const Catalogue& c, const Design& d, nlohmann::json& out, std::string& error);
 
+// A design as data, the shape ships.json writes it in, and back (#279 fitting). What a server
+// files and sends a client is exactly this, so the reader is the catalogue's own: a design
+// from the wire with a field nobody knows is refused like one in the file (#191).
+nlohmann::json ToJson(const Design& d);
+bool           FromJson(const nlohmann::json& j, Design& out, std::string& error);
+
+// A design a player made is filed under a hash of what it is (#279, option B): its frame,
+// sections and fit -- not its id or its name -- so two pilots who arrive at the same fit
+// fly one design, and an id names one design for good. "u:" and eight hex digits, from a
+// 32-bit FNV-1a of the canonical JSON: the same on every compiler, which is the point.
+// A stock design (one in ships.json) keeps the id the file gives it.
+std::string ContentId(const Design& d);
+// Whether an id is one ContentId makes, rather than a stock design's.
+bool IsPlayerDesign(const std::string& id);
+
 // How a design's hull measures against its frame's class rule.
 struct Silhouette
 {

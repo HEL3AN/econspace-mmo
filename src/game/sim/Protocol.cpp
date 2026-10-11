@@ -638,6 +638,7 @@ std::string EncodeSnapshot(const Snapshot& s)
                     { "ordId", p.orderId },
                     { "ordDetail", p.orderDetail },
                     { "ships", p.ownedShips },
+                    { "shipDesigns", p.shipDesigns },
                     { "ship", p.shipIndex } };
     if (p.warpViaSet)  // only during the first leg of a bent warp
         j["player"]["warpVia"] = V2(p.warpVia);
@@ -776,6 +777,7 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
         p.orderId = pj.value("ordId", 0);
         p.orderDetail = pj.value("ordDetail", std::string());
         p.ownedShips = pj.value("ships", std::vector<int>{});
+        p.shipDesigns = pj.value("shipDesigns", std::vector<std::string>{});
         p.shipIndex = pj.value("ship", 0);
     }
 
@@ -898,6 +900,30 @@ bool DecodeLayoutDelta(const std::string& s, LayoutDelta& out)
         for (const json& r : j["rem"])
             if (r.is_number_integer())
                 out.removed.push_back(r.get<int>());
+    return true;
+}
+
+std::string EncodeDesignDef(const DesignDef& d)
+{
+    json j;
+    Stamp(j, "design");
+    j["design"] = Ships::ToJson(d.design);
+    return j.dump();
+}
+
+bool DecodeDesignDef(const std::string& s, DesignDef& out)
+{
+    json j;
+    if (!OpenEnvelope(s, j) || j.value("t", std::string()) != "design" || !j.contains("design"))
+        return false;
+    Ships::Design d;
+    std::string   why;
+    if (!Ships::FromJson(j["design"], d, why))
+        return false;
+    // A player design's id is what it is; one that says otherwise is not that design.
+    if (!Ships::IsPlayerDesign(d.id) || Ships::ContentId(d) != d.id)
+        return false;
+    out.design = std::move(d);
     return true;
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Faction.h"
+#include "core/ShipDesign.h"
 
 #include <string>
 #include <vector>
@@ -39,6 +40,20 @@ const std::vector<ShipType>& GetShipCatalog();
 // The hull in the catalog that is `design`, or null: what a client makes of the design the
 // snapshot says another player's ship is.
 const ShipType* ShipTypeOf(const std::string& design);
+
+// What a design is under a player: Ships::Derive, with the player's hull and gun (#279 step
+// 5). One function because the server flies a ship by these numbers and the client predicts
+// its own with them; computed twice two ways, prediction would pull the ship back.
+bool PlayerStats(const Ships::Design& d, ShipStats& out, std::string& error);
+
+// The same for a design by id: a stock one, or one this process has been told about
+// (Archetypes::AddDesign). False when it is neither.
+bool StatsOfDesign(const std::string& design, ShipStats& out);
+
+// The hangar hull a design is built on (#279 fitting): the entry whose design has the same
+// frame and sections. A refit changes the fit and never the hull, so every ship a player
+// flies has one; -1 for a design that is no hull's.
+int HullOf(const std::string& design);
 
 // What a station charges for a ship, as a multiple of the catalog price, given the buyer's
 // standing with the station's owner. One function because three places need the same number

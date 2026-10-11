@@ -21,27 +21,58 @@ const std::vector<ShipType>& GetShipCatalog()
     {
         // The catalogue that loaded validated every design, so each one derives.
         const Ships::Design* d = ships.FindDesign(h.design);
-        Ships::Stats         s;
+        ShipType             t;
         std::string          why;
-        if (d == nullptr || !Ships::Derive(ships, *d, s, why))
+        if (d == nullptr || !PlayerStats(*d, t.stats, why))
             continue;
-        ShipType t;
         t.name = d->name;
         t.price = h.price;
-        t.stats.thrustPower = s.acceleration;
-        t.stats.turnSpeed = s.turnSpeed;
-        t.stats.maxSpeed = s.maxSpeed;
-        t.stats.rcsAccel = s.rcsAccel;
-        t.stats.cargoCapacity = s.cargoCapacity;
-        t.stats.miningRate = s.miningRate;
-        t.stats.hull = s.playerHull;
-        t.stats.damage = s.playerDamage;
-        t.stats.design = d->id;
         catalog.push_back(std::move(t));
     }
     builtFrom = Archetypes::Generation();
     built = true;
     return catalog;
+}
+
+bool PlayerStats(const Ships::Design& d, ShipStats& out, std::string& error)
+{
+    Ships::Stats s;
+    if (!Ships::Derive(Archetypes::ShipCatalogue(), d, s, error))
+        return false;
+    out = ShipStats();
+    out.thrustPower = s.acceleration;
+    out.turnSpeed = s.turnSpeed;
+    out.maxSpeed = s.maxSpeed;
+    out.rcsAccel = s.rcsAccel;
+    out.cargoCapacity = s.cargoCapacity;
+    out.miningRate = s.miningRate;
+    out.hull = s.playerHull;
+    out.damage = s.playerDamage;
+    out.design = d.id;
+    return true;
+}
+
+bool StatsOfDesign(const std::string& design, ShipStats& out)
+{
+    const Ships::Design* d = Archetypes::FindDesign(design);
+    std::string          why;
+    return d != nullptr && PlayerStats(*d, out, why);
+}
+
+int HullOf(const std::string& design)
+{
+    const Ships::Design* d = Archetypes::FindDesign(design);
+    if (d == nullptr)
+        return -1;
+    const std::vector<Ships::HangarEntry>& hangar = Archetypes::ShipCatalogue().hangar;
+    for (size_t i = 0; i < hangar.size(); i++)
+    {
+        const Ships::Design* stock = Archetypes::ShipCatalogue().FindDesign(hangar[i].design);
+        if (stock != nullptr && stock->frame == d->frame && stock->bow == d->bow &&
+            stock->mids == d->mids && stock->stern == d->stern)
+            return (int)i;
+    }
+    return -1;
 }
 
 const ShipType* ShipTypeOf(const std::string& design)

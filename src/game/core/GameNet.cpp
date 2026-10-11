@@ -214,6 +214,16 @@ void Game::BuildClientSnapshot()
         {
             Proto::DecodeGalaxy(msg, galaxyState_);  // per-system stats for the map
         }
+        else if (type == "design")
+        {
+            // A design a player made (#279 fitting), sent before any snapshot that names
+            // it: from here on it is drawn and derived like a stock one.
+            Proto::DesignDef def;
+            std::string      why;
+            if (Proto::DecodeDesignDef(msg, def) && !Archetypes::AddDesign(def.design, why))
+                TraceLog(LOG_WARNING, "Design %s from the server: %s", def.design.id.c_str(),
+                         why.c_str());
+        }
         else if (type == "bye")
         {
             // Said out loud rather than left as a silent disconnect: being displaced from
@@ -281,10 +291,19 @@ void Game::BuildClientSnapshot()
         // The hull being flown, before anything is replayed: prediction flies the ship by
         // the same derived numbers the server does (#279 step 5), and it used to fly every
         // hull as the starter -- a Courier predicted at a Scout's speed and was pulled back.
-        const std::vector<ShipType>& catalog = GetShipCatalog();
-        if (p.shipIndex >= 0 && p.shipIndex < (int)catalog.size() &&
-            playerShip_->GetStats().design != catalog[p.shipIndex].stats.design)
-            playerShip_->Refit(catalog[p.shipIndex].stats);
+        // A refit is a design of its own (#279 fitting), and the server sent what it is first.
+        {
+            std::string design;
+            for (size_t i = 0; i < p.ownedShips.size() && i < p.shipDesigns.size(); i++)
+                if (p.ownedShips[i] == p.shipIndex)
+                    design = p.shipDesigns[i];
+            const std::vector<ShipType>& catalog = GetShipCatalog();
+            if (design.empty() && p.shipIndex >= 0 && p.shipIndex < (int)catalog.size())
+                design = catalog[p.shipIndex].stats.design;
+            ShipStats stats;
+            if (playerShip_->GetStats().design != design && StatsOfDesign(design, stats))
+                playerShip_->Refit(stats);
+        }
         playerShip_->ApplyView(p.pos, p.heading, p.vel, p.hull, p.shields);
         // Warp/AP are server-authoritative: we mirror the server's warp scale and don't keep
         // our own. Applied BEFORE replay so unacked orders (which the server hasn't seen yet)
@@ -502,9 +521,9 @@ void Game::ReconcileClientWorld()
                 // itself with the player glyph and carries the pilot's name; it is the hull
                 // the snapshot says it flies (#279 step 5), which is what it looks like --
                 // everything else drawn about it comes from the snapshot.
-                const ShipType* hull = ShipTypeOf(es.design);
-                auto            other = std::make_unique<Ship>(
-                    es.pos, hull != nullptr ? hull->stats : GetShipCatalog()[0].stats);
+                ShipStats stats = GetShipCatalog()[0].stats;
+                StatsOfDesign(es.design, stats);
+                auto other = std::make_unique<Ship>(es.pos, stats);
                 other->SetHeading(es.heading);
                 other->SetHull(es.hullFrac * other->GetMaxHull());
                 other->SetPilotName(es.name);
@@ -547,9 +566,9 @@ void Game::ReconcileClientWorld()
         {
             Ship* sh = static_cast<Ship*>(proxy);
             // A pilot who switched hulls in view is another shape from now on.
-            if (sh->GetStats().design != es.design)
-                if (const ShipType* hull = ShipTypeOf(es.design))
-                    sh->Refit(hull->stats);
+            ShipStats stats;
+            if (sh->GetStats().design != es.design && StatsOfDesign(es.design, stats))
+                sh->Refit(stats);
             sh->SetHull(es.hullFrac * sh->GetMaxHull());
         }
     }

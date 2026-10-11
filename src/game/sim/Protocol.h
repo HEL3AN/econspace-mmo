@@ -2,6 +2,7 @@
 
 #include "raylib.h"
 #include "core/Faction.h"
+#include "core/ShipDesign.h"
 #include "core/WorldLoader.h"  // Universe, the galaxy index
 #include <map>
 #include "entities/EntityKind.h"
@@ -28,15 +29,16 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    23;  // 23: a faction is named by its string id, never by index (#355); 22: a snapshot
-         // without missions means they are unchanged, and a command leaves out every field at
-         // its default (#341); 21: the build order, with its blueprint and name
-         // (#39); 20: a ship flies a design of its own (#279, PR #334); 19: player hulls are
-         // designs -- a hull index means derived stats, and another player's ship carries its
-         // design (#279 step 5); 18: an NPC's ship design (#279); 17: dismantling, a structure's
-         // blueprint and damage, the attack order
-         // (#39); 16: follow (nav 5, hold 3) and hold orders (#298); 15: structures and deploying
-         // them (#39); 14: layout revisions and LayoutDelta (#38)
+    24;  // 24: a ship flies a design of its own, filed by a hash of its content; a DesignDef
+         // tells a client what one is before any snapshot names it (#279 fitting); 23: a faction
+         // is named by its string id, never by index (#355); 22: a snapshot without missions
+         // means they are unchanged, and a command leaves out every field at its default
+         // (#341); 21: the build order, with its blueprint and name (#39); 20: reserved for
+         // #279's design ids, which landed as 24; 19: player hulls are designs -- a hull index
+         // means derived stats, and another player's ship carries its design (#279 step 5); 18:
+         // an NPC's ship design (#279); 17: dismantling, a structure's blueprint and damage, the
+         // attack order (#39); 16: follow (nav 5, hold 3) and hold orders (#298); 15: structures
+         // and deploying them (#39); 14: layout revisions and LayoutDelta (#38)
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).
@@ -190,6 +192,10 @@ struct PlayerView
     // meant it survived nothing and could be disagreed with.
     std::vector<int> ownedShips;
     int              shipIndex = 0;
+    // The design each of those hulls flies, in the same order (#279 fitting): the hull's
+    // stock design until it is refitted, then one the server filed. Every id here that is
+    // not a stock one has had its DesignDef sent first.
+    std::vector<std::string> shipDesigns;
 
     Vector2 pos = { 0.0f, 0.0f };
     Vector2 vel = { 0.0f, 0.0f };
@@ -395,6 +401,16 @@ struct GalaxyState
     std::vector<std::string>      events;
 };
 
+// What a design a player made is (#279 fitting), sent once per connection the first time a
+// client meets its id, and before any snapshot that names it -- the rule LayoutDelta keeps
+// (#38). A stock design is never sent: both sides read it from ships.json. The id is a hash
+// of the design (Ships::ContentId), and a decoder checks it, so a definition can never
+// rename another one.
+struct DesignDef
+{
+    Ships::Design design;  // design.id is the id
+};
+
 // JSON serialization. Decode* return false on a broken/unsuitable message.
 // Fills in what the per-tick snapshot deliberately leaves out (#16, #97). A star does not
 // move, change name or change owner, so a snapshot carries neither those fields nor, for
@@ -427,6 +443,8 @@ std::string EncodeLayout(const SystemLayout& s);
 bool        DecodeLayout(const std::string& s, SystemLayout& out);
 std::string EncodeLayoutDelta(const LayoutDelta& d);
 bool        DecodeLayoutDelta(const std::string& s, LayoutDelta& out);
+std::string EncodeDesignDef(const DesignDef& d);
+bool        DecodeDesignDef(const std::string& s, DesignDef& out);
 std::string EncodeGalaxy(const GalaxyState& s);
 bool        DecodeGalaxy(const std::string& s, GalaxyState& out);
 
@@ -439,7 +457,8 @@ bool        DecodeGalaxy(const std::string& s, GalaxyState& out);
 std::string EncodeUniverse(const WorldLoader::Universe& u);
 bool        DecodeUniverse(const std::string& s, WorldLoader::Universe& out);
 
-// Message type from the "t" field ("cmd"/"snap"/"layout"/"ldelta"/"galaxy"/"universe"); "" —
+// Message type from the "t" field ("cmd"/"snap"/"layout"/"ldelta"/"design"/"galaxy"/
+// "universe"); "" —
 // broken/unknown. For dispatching incoming transport messages on the client side. Reports the type
 // regardless of version, so a mismatch can be diagnosed rather than looking like garbage.
 std::string MessageType(const std::string& s);
