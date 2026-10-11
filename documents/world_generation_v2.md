@@ -391,6 +391,15 @@ Each slice is its own PR with green CI, and the game works after every one.
    - Bump `WORLD_VERSION`.
    - Seal opened regions into `regions/<slot>.json`.
    - A 24 h `econserver` run shows the pacing.
+   - *As built:* `base` is the whole edge's, shared among its regions by a strain the seed
+     gives each slot, so an empty world grows at one pace however long its edge is; a region
+     starts part way into its first tide (also by its slot), so the edge does not break all
+     on one day. Faction surveys count a quarter of a visit toward exploration. A region held
+     back by the young mouths or the 6 h gap waits at the threshold rather than gathering
+     without end. The next slot is the lowest-numbered free neighbour. The skeleton has its
+     own version (`Gen::SKELETON_VERSION`): it is never sealed, so changing it still refuses
+     a world. Admin: `tide`, `open [region]`, `pause`, `resume` on the server's console, and
+     `econserver regenerate <region>` with the server stopped.
 4. **S4 — mouths and Anchors.**
    - An unstable mouth with a timer and a ship-class limit.
    - An `anchor` blueprint for factions and players.

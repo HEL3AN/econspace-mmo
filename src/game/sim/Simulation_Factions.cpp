@@ -267,6 +267,7 @@ void Simulation::ResolveSurvey(const Plan& p)
         return;  // the galaxy no longer has it; the survey comes back with nothing
     const Intel seen = Observe(st->second);
     minds_[p.faction].intel[p.target] = seen;
+    NoteSurvey(p.target);  // the region's tide feels it (#342 S3)
     Record("survey", p.faction, p.target,
            FactionName(p.faction) + " surveyed " + SystemName(p.target) + ": " +
                DescribeSurvey(seen, p.faction));

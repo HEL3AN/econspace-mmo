@@ -2,13 +2,12 @@
 
 #include "sim/Protocol.h"
 #include "sim/SaveSchema.h"
+#include "sim/Simulation.h"
 
 #include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
-
-class Simulation;
 
 // The server's rules about who may come in and whether the world may start (#341), out of
 // the host loop so a test can hold them to account. Each of these was a way to lose or steal
@@ -65,6 +64,14 @@ enum class WorldStart
     Refused
 };
 WorldStart OpenWorld(Simulation& sim, const std::string& path, std::string& why);
+
+// Where a world's regions are sealed (#342 S3): `regions/` beside its world.json.
+std::string RegionsDir(const std::string& worldPath);
+// Why a saved world cannot be made by this build, or empty when it can. Its skeleton must be
+// of this build's rules -- it is never sealed. Its regions may be of any rules if every one
+// in its log is sealed under `sealDir`; a world of other region rules with one that is not,
+// or one from before the log, would be remade differently, and is refused.
+std::string WorldRulesRefusal(const Simulation::WorldHeader& header, const std::string& sealDir);
 
 // Who may connect, register and try a secret, and how often (#341). A server reachable
 // from the internet is reachable by anyone with a loop: without limits one address could

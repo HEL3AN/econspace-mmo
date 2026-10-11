@@ -33,7 +33,8 @@ struct Blueprint;
 namespace Gen
 {
 struct Region;
-}
+struct RegionParams;
+}  // namespace Gen
 enum class NpcRole;
 
 // Authoritative galaxy simulation. Owns the state of systems and the galaxy index;
@@ -82,11 +83,59 @@ public:
     // region of another seed is attached.
     bool AttachRegion(uint64_t seed, int slot, const std::string& homeId,
                       const std::string& systemsDir, int systems = 0);
+    // --- The opening log (#342 S3; Simulation_Tide.cpp) ---
+    // Every region open in the world, in the order it opened: the world is its seed plus
+    // this, then the pins, then what was changed. Saved in world.json.
+    struct RegionOpening
+    {
+        int         slot = 0;
+        double      openedAt = 0.0;  // world time
+        int         parent = -1;     // the slot whose mouth leads in; -1 for a centre
+        std::string mouth;           // the system of the parent the wormhole is in
+        std::string state = "open";  // S4: unstable, anchored, drifted
+        std::string by = "world";    // world (it opened with the world), tide, admin
+        std::string why;             // what the tide was made of, when it was the tide
+    };
+    const std::vector<RegionOpening>& OpeningLog() const { return openings_; }
+
+    // A world file's header, read before the galaxy is made from it: its seed, the rules'
+    // versions, its centres, its log and its growth settings. False when the file is missing
+    // or has no seed.
+    struct WorldHeader
+    {
+        uint64_t                   seed = 0;
+        int                        generator = 0;  // GENERATOR_VERSION it was made under
+        int                        skeleton = 0;   // SKELETON_VERSION; 0 before S3
+        int                        centres = -1;   // -1 when it does not say
+        std::vector<RegionOpening> log;            // empty before S3
+        int                        maxRegions = 0, maxSystems = 0;  // 0: not set
+    };
+    static bool ReadWorldHeader(const std::string& path, WorldHeader& out);
+
+    // Sealing (#342 S3). A region is written to `<dir>/<slot>.json` the moment it opens, as
+    // the generator made it (before pins), and a world loaded from its log reads it from
+    // there rather than remaking it: a later build's rules change only regions opened later.
+    // Empty (the default): not sealed at all -- a test, a benchmark, the batch mode.
+    void               SetSealDir(const std::string& dir) { sealDir_ = dir; }
+    const std::string& SealDir() const { return sealDir_; }
+    // A sealed region's file, read: false for one that is not, or is another world's.
+    static bool ReadSealed(const std::string& path, uint64_t seed, Gen::Region& out);
+    static bool ReadSealedText(const std::string& text, uint64_t seed, Gen::Region& out);
+    // Where slot `slot` is sealed under `dir`.
+    static std::string SealedPath(const std::string& dir, int slot);
+    // The sealed file of an open slot, as text; empty when it has none.
+    std::string SealedText(int slot) const;
+
     // A world's galaxy (#342 S2): the skeleton of `params`, every civilisation centre in it
     // and the frontier region opened beside each, with data/pins.json applied (`dataDir`).
     // Nothing hand-written is needed. Call on an empty Simulation, before InitGalaxy or
     // LoadWorld. False when the skeleton has no centre to start in.
-    bool OpenGalaxy(const Gen::WorldParams& params, const std::string& dataDir);
+    //
+    // With a `log` (a saved world, S3) it is that world's regions instead, in the order they
+    // opened, each read from its sealed file under SealDir when there is one and made
+    // afresh -- and sealed -- when not. Without one, every region is made afresh and sealed.
+    bool OpenGalaxy(const Gen::WorldParams& params, const std::string& dataDir,
+                    const std::vector<RegionOpening>& log = {});
     // Opens skeleton slot `slot` from the open slot `from`, its wormhole in the system of
     // `from` that faces it (Gen::MouthSystem) -- how the tide will open one (S3). False when
     // `from` is not open or `slot` cannot be.
@@ -111,6 +160,50 @@ public:
     const std::vector<StartPoint>& Starts() const { return starts_; }
     // Whether `systemId` is one of them.
     bool IsStart(const std::string& systemId) const;
+
+    // --- The tide (#342 S3; Simulation_Tide.cpp, rules in WorldRules.h) ---
+    // What one region's tide is, and what it was made of since its last mouth.
+    struct RegionTide
+    {
+        double tide = 0.0;
+        double fromTime = 0.0, fromPlayers = 0.0, fromExplore = 0.0, fromSurveys = 0.0;
+        int    surveys = 0;            // faction surveys of the region this period
+        double lastMouthAt = -1.0e18;  // when it last opened one
+    };
+    const std::map<int, RegionTide>& Tides() const { return tides_; }
+    // Where the tide breaks through now: threshold * (1 + open regions / maxRegions).
+    double TideThreshold() const;
+    // An open region with a free slot beside it in the skeleton.
+    bool IsEdgeRegion(int slot) const;
+    // How many young mouths the world allows (1 + players / playersPerMouth), and has.
+    int MouthsAllowed() const;
+    int YoungMouths() const;
+    // The cap (server settings): no slot opens once the world has this many regions or
+    // systems. 0 leaves one as it was; the defaults are the skeleton's size and 2000.
+    void SetGrowthCap(int maxRegions, int maxSystems);
+    int  MaxRegions() const { return maxRegions_; }
+    int  MaxSystems() const { return maxSystems_; }
+    bool AtCap() const;
+    // Tide that crossed the threshold at the cap and had nowhere to go, kept for the roaming
+    // holes of S9.
+    double SurplusTide() const { return surplusTide_; }
+    // Admin: growth stopped -- no tide gathers and no mouth opens until it is resumed. Saved.
+    void PauseGrowth(bool paused) { growthPaused_ = paused; }
+    bool GrowthPaused() const { return growthPaused_; }
+    // Admin: open a mouth now from region `fromSlot` (-1: the edge region whose tide is
+    // highest), whatever its tide, the gap and the young mouths; never past the cap. The slot
+    // opened, or -1 with `why` saying why not.
+    int OpenMouthNow(int fromSlot, std::string& why);
+    // The slots opened while the world ran, since the last call: the host tells everyone of
+    // them -- the galaxy index, then the gate's delta -- before any snapshot that needs them.
+    std::vector<int> TakeOpenedRegions();
+    // Admin, with the server stopped (#342 S3): seals slot `slot` afresh under this build's
+    // rules, from where its log entry says it opened. Refused, with `why`, while a player
+    // structure stands in it, or for a slot that is not open. The caller drops what the save
+    // knew of its systems.
+    bool RegenerateRegion(int slot, std::string& why);
+    // The systems of an open region, in the order it lists them.
+    std::vector<std::string> RegionSystems(int slot) const;
 
     bool HasRegion() const { return hasRegion_; }
     // The slots whose regions are attached, ascending.
@@ -827,7 +920,61 @@ private:
     std::vector<StartPoint>            starts_;
     // Hangs a generated region in the galaxy: its index entries, links and documents, and
     // the mouth of its wormhole beside home.
-    void                               AddRegion(const Gen::Region& region);
+    void AddRegion(const Gen::Region& region);
+
+    // Growth (#342 S3; Simulation_Tide.cpp).
+    std::string                  dataDir_;  // OpenGalaxy's: pins and systems for a region opening
+    std::string                  sealDir_;
+    std::vector<RegionOpening>   openings_;
+    std::map<int, std::string>   sealedIn_;     // read from files for a log replay, not yet used
+    std::map<int, RegionTide>    tides_;        // saved
+    std::set<std::string>        explored_;     // systems a player has been in (saved)
+    std::set<std::string>        surveyed_;     // ...and those a faction surveyed (saved)
+    std::map<int, std::set<int>> playersSeen_;  // sessions per region this period
+    std::vector<int>             openedNow_;
+    int                          tidePasses_ = 0;
+    int                          maxRegions_ = 0, maxSystems_ = 2000;
+    double                       surplusTide_ = 0.0;
+    bool                         growthPaused_ = false;
+    // The region of `slot`, made: read from its sealed file when the log replay has one,
+    // else generated by `params` and sealed (kept, and written under SealDir).
+    Gen::Region MakeSealed(int slot, const Gen::RegionParams& params);
+    void        Seal(const Gen::Region& region);
+    // An open region's systems and where they lie, as far as Gen::MouthSystem asks.
+    Gen::Region RegionView(int slot) const;
+    // A centre, made and hung in the galaxy with its start.
+    void OpenCentre(int slot);
+    // The opening appended to the log, by whom and why.
+    void LogOpening(int slot, const std::string& mouth, const std::string& by,
+                    const std::string& why);
+    // Systems a region opened while the world runs: their aggregates, their static layers,
+    // and the gate in the parent's mouth system, told to whoever stands there.
+    void MaterializeOpened(int slot);
+    void MaterializeSystem(const WorldLoader::SystemInfo& info, const std::string& systemsDir);
+    // The free slot a mouth from `fromSlot` opens into: its lowest-numbered free neighbour
+    // that is not a centre; -1 for none.
+    int NextSlotFrom(int fromSlot) const;
+    // Opens the next slot from `fromSlot` now, and says so in the chronicle; -1 when it
+    // could not.
+    int OpenNext(int fromSlot, const std::string& by, const std::string& why);
+    // Once a coarse pass: who is where; once a period, the tide and what it opens.
+    void StepTide(double passSeconds);
+    // A region's tide, begun where the seed says for its slot if it has none yet.
+    RegionTide& TideOf(int slot);
+    // A faction surveyed `systemId`: the tide of its region feels it.
+    void NoteSurvey(const std::string& systemId);
+    // How far an edge region's tide is staggered from the rest: the seed's, per slot.
+    double StrainOf(int slot) const;
+    // The share of a region's systems explored, faction surveys at their weight.
+    double ExploredShare(int slot) const;
+    // The params region `slot` is generated with, opened from `homeId` (empty for a centre):
+    // its kind and law from the skeleton, its place and its wormhole's from home. False when
+    // home is not a system of this galaxy. `homeDoc` must outlive the generation.
+    bool ParamsFor(int slot, const std::string& homeId, const std::string& systemsDir,
+                   Gen::RegionParams& params, nlohmann::json& homeDoc) const;
+    bool materialized_ = false;  // MaterializeAllSystems has run
+    void SaveGrowth(nlohmann::json& j) const;
+    void LoadGrowth(const nlohmann::json& j);
     std::map<std::string, SystemState> systems_;  // state by system id
     int                                agentIdCounter_ = 0;
     // The links, by system (#295): what Neighbors reads.

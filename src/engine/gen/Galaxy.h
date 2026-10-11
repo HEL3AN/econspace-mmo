@@ -30,6 +30,13 @@ enum class SlotKind
     Centre,
 };
 
+// The version of the skeleton's rules (#342 S3), apart from the regions'. A region opened is
+// sealed -- kept as it was made -- so changing the regions' rules (GENERATOR_VERSION) no
+// longer changes a live world; the skeleton is never sealed, so changing where slots are or
+// which are centres still does, and a world saved under other skeleton rules is refused.
+// Bump it whenever SkeletonJson changes for a given seed -- the golden test will say so.
+inline constexpr int SKELETON_VERSION = 1;
+
 // How many civilisation centres a world has (#342): an admin chooses 1 to 6, 3 unless told.
 inline constexpr int DEFAULT_CENTRES = 3;
 inline constexpr int MAX_CENTRES = 6;
