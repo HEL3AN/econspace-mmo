@@ -641,3 +641,36 @@ Lighting and materials are scale-free. A composition is written in fractions of 
 radius, so a station grows five times without one edit to its shape. And bigger objects are
 finally *room* for detail -- at ninety units across there was nowhere to put any.
 
+
+## 2026-10-11 — The world grows by regions, and a mouth stays only if someone anchors it
+
+**Decision.** World generation v2 (#342), option B, chosen by the owner. Full design:
+`documents/world_generation_v2.md`. The parts:
+- **No base systems.** No hand-written base is required; each server generates a whole
+  world.
+- **The skeleton and region contents.** A seed lays out a skeleton of region slots up to
+  an admin cap. A region's contents are `f(seed, slot)` and are generated only when the
+  region opens.
+- **The tide.** Each edge region builds "tide" pressure from time, players and
+  exploration. When it crosses the threshold, an unstable mouth opens into the next slot.
+- **Anchors.** A mouth collapses after a day unless a faction or a player builds an
+  Anchor on it. An unanchored region drifts and is reached by roaming holes.
+- **Living new regions.** A new region is alive from the first minute: a native minor
+  faction with stations and markets, then expeditions from neighbours whose outposts grow
+  into markets and stations.
+- **Starts.** Several generated civilisation centres are starts.
+- **Admin content.** Admin content is validated packs plus pins.
+- **The faction registry.** Factions become a registry immediately; the owner declined a
+  temporary "houses of the four" step: "we are not in a hurry".
+
+**Why.** The owner's view of the world was different from what had been built: a fixed
+hand-written core plus one fixed region of 18 systems, with nothing beyond the wormhole.
+Option B is the only option considered in which growth is both guaranteed (the tide) and a
+decision players and factions make (the Anchor). It reuses what #295 built: plans,
+structures, sieges, the chronicle. It keeps the original premise that the game begins when
+a wormhole opens; that moment now repeats.
+
+**Cost.** About ten slices, plus two for the faction registry. Today's world is refused
+once slice 1 bumps `GENERATOR_VERSION`. Only a dev server lives today, so a new world is
+cheaper than a converter. Open questions remain on behaviour at the cap, sealing opened
+regions into the save, and whether the old three systems ship as a default pack.
