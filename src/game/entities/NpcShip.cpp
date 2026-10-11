@@ -4,6 +4,12 @@
 #include "render/Textures.h"
 #include <cmath>
 
+namespace
+{
+// How fast an NPC crosses a long leg at warp (#159).
+constexpr float NPC_WARP_SPEED = 60000.0f;
+}  // namespace
+
 const char* NpcRoleId(NpcRole role)
 {
     switch (role)
@@ -104,6 +110,21 @@ void NpcShip::Update(float dt)
     if (fireTimer_ > 0.0f)
         fireTimer_ -= dt;
 
+    // On its way out (#295): nothing turns it from the gate, and it warps to it -- as a long
+    // leg is crossed -- to go straight through.
+    if (leaving_)
+    {
+        const float dx = aiPoint_.x - pos_.x, dy = aiPoint_.y - pos_.y;
+        const float dist = sqrtf(dx * dx + dy * dy);
+        if (dist < 1.0f)
+            return;
+        heading_ = atan2f(dy, dx);
+        const float step = dist < NPC_WARP_SPEED * dt ? dist : NPC_WARP_SPEED * dt;
+        pos_.x += dx / dist * step;
+        pos_.y += dy / dist * step;
+        return;
+    }
+
     // Pursuit: hold firing range so we shoot rather than ram.
     if (state_ == AiState::Pursue)
     {
@@ -151,7 +172,6 @@ void NpcShip::Update(float dt)
     // flown, so an NPC arrives the way a player sees one arrive.
     constexpr float WARP_FROM = World::WARP_WORTH_IT;
     constexpr float WARP_DROP = 3000.0f;
-    constexpr float NPC_WARP_SPEED = 60000.0f;
     float           step = (dist > WARP_FROM ? NPC_WARP_SPEED : speed_) * dt;
     if (dist > WARP_FROM && step > dist - WARP_DROP)
         step = dist - WARP_DROP;

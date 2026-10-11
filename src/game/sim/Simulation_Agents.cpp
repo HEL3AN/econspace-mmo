@@ -490,7 +490,9 @@ void Simulation::RecountAgg(SystemState& st)
         return;
     int tr = 0, mi = 0, po = 0, pi = 0;
     for (auto& e : st.entities)
-        if (NpcShip* n = e->GetKind() == EntityKind::Npc ? static_cast<NpcShip*>(e.get()) : nullptr)
+        if (NpcShip* n = e->GetKind() == EntityKind::Npc && !static_cast<NpcShip&>(*e).IsLeaving()
+                             ? static_cast<NpcShip*>(e.get())
+                             : nullptr)
             switch (n->GetRole())
             {
                 case NpcRole::Trader: tr++; break;
@@ -510,7 +512,8 @@ int Simulation::LivePirates(const SystemState& st)
     int n = 0;
     for (const auto& e : st.entities)
         if (e->GetKind() == EntityKind::Npc &&
-            static_cast<const NpcShip*>(e.get())->GetRole() == NpcRole::Pirate)
+            static_cast<const NpcShip*>(e.get())->GetRole() == NpcRole::Pirate &&
+            !static_cast<const NpcShip*>(e.get())->IsLeaving())  // the system's, as RecountAgg
             n++;
     return n;
 }
@@ -658,22 +661,24 @@ Simulation::Population Simulation::PopulationOf(const SystemState& st, const Roo
     p.tradeFaction = lawful ? ctrl : FactionId::Independent;
     const int traders = (ctrl == FactionId::Pirates) ? 1 : (int)roundf(2.0f + sec * 4.0f);
 
+    // What it keeps once the losses are forgotten (#295): what it holds above this leaves.
+    p.keep = { traders, 2, (int)roundf(lawPresence), (int)roundf(here[(int)FactionId::Pirates]) };
     // "Pressure": recent losses temporarily cut the target (recovers in MaintainWorld).
-    p.traders = (int)roundf(traders * (1.0f - agg.supTraders));
-    p.miners = (int)roundf(2.0f * (1.0f - agg.supMiners));
-    p.police = (int)roundf(roundf(lawPresence) * (1.0f - agg.supPolice));
-    p.pirates = (int)roundf(roundf(here[(int)FactionId::Pirates]) * (1.0f - agg.supPirates));
+    p.traders = (int)roundf(p.keep[0] * (1.0f - agg.supTraders));
+    p.miners = (int)roundf(p.keep[1] * (1.0f - agg.supMiners));
+    p.police = (int)roundf(p.keep[2] * (1.0f - agg.supPolice));
+    p.pirates = (int)roundf(p.keep[3] * (1.0f - agg.supPirates));
 
     // Nowhere to put them, none of them: traders need two ends of a lane, miners a belt,
     // police a beat, pirates somewhere dark.
     if (room.lanes < 2)
-        p.traders = 0;
+        p.traders = p.keep[0] = 0;
     if (room.fields == 0)
-        p.miners = 0;
+        p.miners = p.keep[1] = 0;
     if (room.lanes + room.fields < 2)
-        p.police = 0;
+        p.police = p.keep[2] = 0;
     if (!room.dark)
-        p.pirates = 0;
+        p.pirates = p.keep[3] = 0;
     return p;
 }
 
@@ -695,7 +700,9 @@ void Simulation::TopUpSystem(SystemState& st, const std::vector<Vector2>& avoid)
     // Current population by role.
     int tr = 0, mi = 0, po = 0, pi = 0;
     for (auto& e : st.entities)
-        if (NpcShip* n = e->GetKind() == EntityKind::Npc ? static_cast<NpcShip*>(e.get()) : nullptr)
+        if (NpcShip* n = e->GetKind() == EntityKind::Npc && !static_cast<NpcShip&>(*e).IsLeaving()
+                             ? static_cast<NpcShip*>(e.get())
+                             : nullptr)
             switch (n->GetRole())
             {
                 case NpcRole::Trader: tr++; break;
@@ -711,6 +718,16 @@ void Simulation::TopUpSystem(SystemState& st, const std::vector<Vector2>& avoid)
     // Top up by no more than a couple of units per step (smoothly, no bursts).
     int  budget = DIRECTOR_BUDGET;
     auto canSpawn = [&]() { return budget > 0; };
+
+    // A role a neighbour has ships to spare of comes from next door, not from nowhere (#295).
+    if (st.fromNextDoor[(int)NpcRole::Trader])
+        tr = std::max(tr, target.traders);
+    if (st.fromNextDoor[(int)NpcRole::Miner])
+        mi = std::max(mi, target.miners);
+    if (st.fromNextDoor[(int)NpcRole::Police])
+        po = std::max(po, target.police);
+    if (st.fromNextDoor[(int)NpcRole::Pirate])
+        pi = std::max(pi, target.pirates);
 
     while (tr < target.traders && canSpawn())
     {
@@ -768,26 +785,28 @@ void Simulation::ColdLosses(SystemState& st)
     a.lostPolice += lostPolice;
 }
 
-void Simulation::ColdTopUp(SystemState& st)
+void Simulation::ColdTopUp(SystemState& st, const Population& target)
 {
     // The spawn director, as numbers: up towards what it keeps here by the couple of ships a
     // pass it would send, and never down. In a hot system a ship stays until somebody
     // destroys it, whatever the director would send now; a cold one keeps the same count,
     // so that a system does not change its character by being looked at.
-    const Population target = PopulationOf(st, RoomOf(st));
     SystemAggregate& a = st.agg;
     a.policeFaction = target.policeFaction;
     float budget = (float)DIRECTOR_BUDGET;
-    auto  topUp = [&](float& count, int want)
+    // A role a neighbour has ships to spare of comes from next door, not from nowhere (#295).
+    auto topUp = [&](float& count, int want, NpcRole role)
     {
+        if (st.fromNextDoor[(int)role])
+            return;
         const float step = std::min(std::max(0.0f, (float)want - count), budget);
         count += step;
         budget -= step;
     };
-    topUp(a.traders, target.traders);
-    topUp(a.miners, target.miners);
-    topUp(a.police, target.police);
-    topUp(a.pirates, target.pirates);
+    topUp(a.traders, target.traders, NpcRole::Trader);
+    topUp(a.miners, target.miners, NpcRole::Miner);
+    topUp(a.police, target.police, NpcRole::Police);
+    topUp(a.pirates, target.pirates, NpcRole::Pirate);
 
     // What every tick would have done to the rest of it: prices recover, bodies move on.
     st.market.Recover(MAINT_STEP);
@@ -830,15 +849,19 @@ void Simulation::MaintainWorld(float dt, MaintainCost* cost)
             AccumSuppress(a.supPolice, prevPo - a.police);
             AccumSuppress(a.supPirates, prevPi - a.pirates);
             // What was destroyed, for the faction step: strength a faction committed and
-            // lost (#231). A fall in the count is a loss -- ships do not leave a system.
+            // lost (#231). A fall in the count is a loss -- a ship that leaves (#295) was taken
+            // off the count when it set out, so it is not one.
             a.lostPirates += std::max(0.0f, prevPi - a.pirates);
             a.lostPolice += std::max(0.0f, prevPo - a.police);
         }
         Lap(cost ? &cost->recount : nullptr, lap);
         StepWorldMacro();
         Lap(cost ? &cost->macro : nullptr, lap);
+        StepMigration();  // before the director, which leaves to next door what it can spare
+        size_t nth = 0;
         for (auto& kv : systems_)
         {
+            const Population& target = passTargets_[nth++];
             // Recovery: the pressure slowly subsides.
             SystemAggregate& a = kv.second.agg;
             a.supTraders *= SUPPRESS_DECAY;
@@ -850,7 +873,7 @@ void Simulation::MaintainWorld(float dt, MaintainCost* cost)
                 Cool(kv.second);
             if (!IsHot(kv.second))
             {
-                ColdTopUp(kv.second);
+                ColdTopUp(kv.second, target);
                 continue;
             }
             // Player-avoidance, per system: everyone standing in this one.

@@ -43,7 +43,11 @@ namespace Save
 // 9: the wreck of a structure decays at an instant it carries (#41). A version 8 build would
 //    keep the wrecks for ever and write them back without it. An older file's wrecks are
 //    given their time from the moment it loads.
-inline constexpr int WORLD_VERSION = 9;
+// 10: ships leave a system that has too many for a neighbour that lacks them (#295), and those
+//    on their way are counted only in the world's "migrants". A version 9 build would drop
+//    them -- every ship between systems, gone -- and write the world back so. An older file
+//    has nobody on the way.
+inline constexpr int WORLD_VERSION = 10;
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.
 // 3: a mission names its stations by system and station rather than by entity id, which

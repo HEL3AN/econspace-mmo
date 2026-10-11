@@ -90,6 +90,20 @@ public:
     void Engage(Vector2 targetPos);    // fly to the target and hold firing range
     void FleeFrom(Vector2 threatPos);  // run from the threat at full speed
     void StandDown();                  // no threats — resume normal work (patrol)
+    // Leaving the system (#295): it turns for the gate at `gate` and flies there, whatever
+    // else is going on, until the world takes it away. It is no longer the system's.
+    void Leave(Vector2 gate)
+    {
+        leaving_ = true;
+        aiPoint_ = gate;
+    }
+    bool IsLeaving() const { return leaving_; }
+    // ...and is at the gate, to go through it.
+    bool AtGate() const
+    {
+        const float dx = aiPoint_.x - pos_.x, dy = aiPoint_.y - pos_.y;
+        return leaving_ && dx * dx + dy * dy < 1.0f;
+    }
 
     bool ReadyToFire() const { return fireTimer_ <= 0.0f; }
     void ResetFireTimer() { fireTimer_ = 0.9f; }
@@ -114,4 +128,5 @@ private:
     float       maxHull_ = 60.0f;
     float       hull_ = 60.0f;
     float       fireTimer_ = 0.0f;
+    bool        leaving_ = false;
 };

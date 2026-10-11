@@ -17,5 +17,6 @@
         ["TradersGuild", "Independent", "Friendly"],
         ["Syndicate",    "Independent", "Neutral"]
     ],
+    "migration": { "trader": 240, "miner": 360, "patrol": 300, "pirate": 300, "travel": 90, "align": 40 },
     "repTiers": { "hated": -50, "hostile": -10, "liked": 10, "allied": 50 }
 }

@@ -17,6 +17,7 @@ Color       g_color[N] = { Color{ 200, 200, 200, 255 }, Color{ 0, 228, 48, 255 }
 bool        g_lawful[N] = { true, true, true, false };
 std::string g_kind[N] = { "Independent", "Major", "Major", "Pirate" };
 Temperament g_temperament[N];  // all hold and none reach out until the file says otherwise
+Migration   g_migration;
 
 // Relations matrix. By default: hostile toward pirates, neutral among each other,
 // allied with oneself.
@@ -92,6 +93,11 @@ const Temperament& TemperamentOf(FactionId f)
     return g_temperament[(int)f];
 }
 
+const Migration& MigrationRules()
+{
+    return g_migration;
+}
+
 void Load(const std::string& path)
 {
     if (!g_relationsInit)
@@ -135,6 +141,24 @@ void Load(const std::string& path)
                 g_color[i] = Color{ (unsigned char)j["color"][0], (unsigned char)j["color"][1],
                                     (unsigned char)j["color"][2], 255 };
         }
+
+    // Where ships a system has too many of go, and how fast (#295). A negative number is not
+    // a rate: it is ignored, and the default stands.
+    if (data.contains("migration") && data["migration"].is_object())
+    {
+        const json& m = data["migration"];
+        auto        read = [&](const char* key, float& out)
+        {
+            if (m.contains(key) && m[key].is_number() && m[key].get<double>() >= 0.0)
+                out = m[key].get<float>();
+        };
+        read("trader", g_migration.trader);
+        read("miner", g_migration.miner);
+        read("patrol", g_migration.patrol);
+        read("pirate", g_migration.pirate);
+        read("travel", g_migration.travel);
+        read("align", g_migration.align);
+    }
 
     // Reputation tier thresholds.
     if (data.contains("repTiers"))
