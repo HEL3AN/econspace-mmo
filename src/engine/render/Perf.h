@@ -44,6 +44,9 @@ enum class Section
     Compose,  // Compose(): sections, kits and modules expanded, pieces placed
     Soft,     // glows: gradient discs and soft surface fans
     Surface,  // marks on a sphere, cut to the body's disc
+    Solve,    // inside the HUD: Clay laying out a window's content (Layout::End)
+    Paint,    // ...painting what it laid out (Layout::Draw), the text included
+    Text,     // ...every run of text drawn, wherever from (Ui::DrawString)
     Count
 };
 
@@ -58,6 +61,7 @@ enum class Counter
     Surface,      // surface pieces cut to their body
     Passes,       // treatment passes run (each one a full-screen fill)
     CacheMisses,  // shapes expanded from scratch rather than reused
+    Clips,        // HUD scissor changes: each one flushes the batch, a draw call or more
     Count
 };
 

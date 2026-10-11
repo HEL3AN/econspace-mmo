@@ -327,6 +327,103 @@ TEST_CASE("Ellipsize: a short text is left alone, a long one ends in ..")
     CHECK(Ui::Ellipsize("Alpha", 0.0f, width) == "Alpha");  // not laid out yet: nothing to cut to
 }
 
+TEST_CASE("Ellipsize: the cut is found by halving, at the same place as letter by letter")
+{
+    int  calls = 0;
+    auto width = [&calls](std::string_view s)
+    {
+        calls++;
+        return 7.0f * (float)s.size();
+    };
+    const std::string name(200, 'x');
+    for (float room : { 7.0f, 20.0f, 70.0f, 700.0f, 1399.0f })
+    {
+        calls = 0;
+        const std::string cut = Ui::Ellipsize(name, room, width);
+        // The longest run that fits with its dots, or none at all.
+        const size_t keep = room >= 14.0f ? (size_t)(room / 7.0f) - 2 : 0;
+        CHECK(cut == std::string(keep, 'x') + "..");
+        CHECK(calls <= 10);  // was one measure per letter lost: up to two hundred
+    }
+    // Never inside a letter: "é" is two bytes, and half of it is not a letter.
+    auto              bytes = [](size_t n) { return [n](size_t k) { return k <= n; }; };
+    const std::string word = "ab\xC3\xA9"
+                             "cd";
+    CHECK(Ui::CutPoint(word, bytes(3)) == 2);
+    CHECK(Ui::CutPoint(word, bytes(4)) == 4);
+    CHECK(Ui::CutPoint(word, bytes(0)) == 0);
+    CHECK(Ui::CutPoint(word, bytes(99)) == word.size());
+}
+
+TEST_CASE("MeasureCache: a text measured once is not measured again")
+{
+    Ui::MeasureCache                cache;
+    int                             calls = 0;
+    const Ui::MeasureCache::Measure measure = [&calls](Ui::Face, float px, std::string_view t)
+    {
+        calls++;
+        return Vector2{ 0.5f * px * (float)t.size(), px };
+    };
+    CHECK(cache.Get(Ui::Face::Regular, 14.0f, "Jita", measure).x == doctest::Approx(28.0f));
+    CHECK(cache.Get(Ui::Face::Regular, 14.0f, "Jita", measure).x == doctest::Approx(28.0f));
+    CHECK(calls == 1);
+    // Another face, size or text is another measure.
+    cache.Get(Ui::Face::Numbers, 14.0f, "Jita", measure);
+    cache.Get(Ui::Face::Regular, 16.0f, "Jita", measure);
+    cache.Get(Ui::Face::Regular, 14.0f, "Jita IV", measure);
+    CHECK(calls == 4);
+    CHECK(cache.Size() == 4);
+    cache.Clear();
+    cache.Get(Ui::Face::Regular, 14.0f, "Jita", measure);
+    CHECK(calls == 5);
+}
+
+TEST_CASE("Table: its columns are measured once, and again when a row or the fonts change")
+{
+    Layout l;
+    int    calls = 0;
+    float  perChar = 0.5f;
+    l.SetMeasure(
+        [&](Ui::Face, float px, std::string_view text)
+        {
+            calls++;
+            return Vector2{ perChar * px * (float)text.size(), px };
+        });
+    std::vector<std::string> names{ "Alpha", "Beta", "Gamma" };
+    auto                     frame = [&]
+    {
+        Ui::TableSpec s;
+        s.id = "t";
+        s.columns = { { "name", Size::Fit(), Ui::Align::Start, false },
+                      { "dist", Size::Grow(), Ui::Align::End, false } };
+        s.rows = (int)names.size();
+        s.cell = [&](int r, int c) { return Ui::Cell{ c == 0 ? names[r] : "1 km", WHITE }; };
+        l.Begin(AREA, 1.0f);
+        l.Table(s);
+        l.End();
+        return l.BoxOf("t~h", 0).width;
+    };
+    const float first = frame();
+    frame();
+    calls = 0;
+    CHECK(frame() == doctest::Approx(first));
+    CHECK(calls == 0);  // nothing changed: every measure kept
+
+    names[1] = "Betelgeuse";  // a wider row: the column fits it
+    const float wider = frame();
+    CHECK(wider > first);
+
+    // A theme switch brings other fonts: what the old ones measured is forgotten.
+    perChar = 1.0f;
+    CHECK(frame() == doctest::Approx(wider));  // the same fonts as far as the layout knows
+    Ui::LoadFonts(Ui::FontFiles{});
+    Ui::UnloadFonts();
+    calls = 0;
+    frame();
+    CHECK(calls > 0);
+    CHECK(frame() > wider);
+}
+
 TEST_CASE("Tabs: a click on a tab selects it")
 {
     Layout l;

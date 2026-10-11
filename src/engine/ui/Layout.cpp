@@ -1,5 +1,6 @@
 #include "ui/Layout.h"
 
+#include "render/Perf.h"
 #include "ui/ClayBridge.h"
 
 #include <algorithm>
@@ -17,6 +18,52 @@ Face FaceOf(uint16_t fontId)
 {
     return fontId < FACE_COUNT ? (Face)fontId : Face::Regular;
 }
+
+// Where a draw command falls against the clip it is in (Layout::Draw).
+enum class Place : uint8_t
+{
+    Skip,      // draws nothing, or nothing the clip would let through
+    Inside,    // wholly inside: needs no scissor
+    Crossing,  // across the clip's edge: drawn under it
+    Cut,       // across the clip's edge, and simple enough to cut to it without a scissor
+};
+
+Rectangle Intersect(const Rectangle& a, const Rectangle& b)
+{
+    const float x0 = std::max(a.x, b.x), y0 = std::max(a.y, b.y);
+    const float x1 = std::min(a.x + a.width, b.x + b.width);
+    const float y1 = std::min(a.y + a.height, b.y + b.height);
+    return { x0, y0, std::max(0.0f, x1 - x0), std::max(0.0f, y1 - y0) };
+}
+
+bool Contains(const Rectangle& a, const Rectangle& b)
+{
+    return b.x >= a.x && b.y >= a.y && b.x + b.width <= a.x + a.width &&
+           b.y + b.height <= a.y + a.height;
+}
+
+bool Overlaps(const Rectangle& a, const Rectangle& b)
+{
+    return b.x < a.x + a.width && b.x + b.width > a.x && b.y < a.y + a.height &&
+           b.y + b.height > a.y;
+}
+
+// FNV-1a over whatever a cached result was computed from.
+struct Hasher
+{
+    uint64_t h = 1469598103934665603ull;
+    Hasher&  Bytes(const void* data, size_t n)
+    {
+        const unsigned char* p = static_cast<const unsigned char*>(data);
+        for (size_t i = 0; i < n; i++)
+            h = (h ^ p[i]) * 1099511628211ull;
+        return *this;
+    }
+    Hasher& Add(int v) { return Bytes(&v, sizeof(v)); }
+    Hasher& Add(float v) { return Bytes(&v, sizeof(v)); }
+    // The length first, so "ab"+"c" and "a"+"bc" differ.
+    Hasher& Add(std::string_view s) { return Add((int)s.size()).Bytes(s.data(), s.size()); }
+};
 }  // namespace
 
 struct LayoutCallbacks
@@ -205,6 +252,8 @@ void Layout::Begin(Rectangle area, float scale, const Pointer& pointer)
     if (fontGeneration_ != FontGeneration())
     {
         uiclay_forget_measures(clay_);
+        measured_.Clear();
+        fits_.clear();
         fontGeneration_ = FontGeneration();
     }
     // The wheel is in notches; a notch scrolls three rows of body text.
@@ -231,6 +280,7 @@ const std::vector<DrawCommand>& Layout::End()
     Close();  // the root, opened by Begin
     open_ = false;
 
+    Render::Perf::Scope  timed(Render::Perf::Section::Solve);
     const UiClayCommand* cmds = nullptr;
     const int32_t        n = uiclay_end(clay_, &cmds);
     commands_.reserve((size_t)n);
@@ -477,28 +527,125 @@ Rectangle Layout::BoxOf(std::string_view id, uint32_t index) const
 
 void Layout::Draw() const
 {
+    Render::Perf::Scope timed(Render::Perf::Section::Paint);
     // Clips nest -- a table's cells inside its scrolling body -- and raylib has one scissor
     // rectangle, so the stack is kept here: each clip is the intersection with the one it is
-    // inside, and ending one puts its parent's back.
+    // inside.
+    //
+    // A scissor flushes the batch, and on an Intel UHD 620 a flush costs a tenth to a quarter
+    // of a millisecond of CPU (#363) -- ten of them were half the HUD. So a clip is set only
+    // for what actually crosses its edge: what is wholly inside is drawn as it is, what is
+    // wholly outside is not drawn at all, and the pixels are the ones a scissor would leave.
+    // Most windows' content fits, and only a scrolled table's edge rows need one.
+    const size_t           n = commands_.size();
+    std::vector<Rectangle> box(n), ink(n), clipOf(n);
+    std::vector<Place>     place(n, Place::Skip);
     std::vector<Rectangle> clips;
-    auto                   scissor = [&clips]()
+    for (size_t i = 0; i < n; i++)
     {
-        if (clips.empty())
-        {
-            EndScissorMode();
-            return;
-        }
-        const Rectangle& r = clips.back();
-        BeginScissorMode((int)r.x, (int)r.y, (int)std::max(0.0f, r.width),
-                         (int)std::max(0.0f, r.height));
-    };
-    for (const DrawCommand& c : commands_)
-    {
+        const DrawCommand& c = commands_[i];
         // Edges rounded rather than sizes, so a row of boxes stays a row: rounding each width
         // on its own lets the errors add up and the last box poke past its parent.
         const float     x0 = std::round(c.box.x), y0 = std::round(c.box.y);
         const Rectangle r{ x0, y0, std::round(c.box.x + c.box.width) - x0,
                            std::round(c.box.y + c.box.height) - y0 };
+        box[i] = r;
+        // What a command can colour: never outside this, though not every pixel inside it.
+        Rectangle at{ 0.0f, 0.0f, 0.0f, 0.0f };
+        switch (c.kind)
+        {
+            case DrawCommand::Kind::Rect:
+                if (c.color.a == 0 || r.width <= 0.0f || r.height <= 0.0f)
+                    break;
+                at = r;
+                if ((c.paint & PAINT_GLOW) && CurrentTheme().style.glow > 0.0f)
+                    at = { r.x - U(6.0f), r.y - U(6.0f), r.width + 2.0f * U(6.0f),
+                           r.height + 2.0f * U(6.0f) };
+                if (c.paint & PAINT_RAISED)
+                    at.height += 1.0f;
+                break;
+            case DrawCommand::Kind::Border:
+                if (c.color.a != 0 && r.width > 0.0f && r.height > 0.0f)
+                    at = r;
+                break;
+            case DrawCommand::Kind::Text:
+                at =
+                    TextInk(c.face, c.text, { r.x, CentredTop(c.face, c.px, r.y, r.height) }, c.px);
+                break;
+            case DrawCommand::Kind::ClipBegin:
+                clips.push_back(clips.empty() ? r : Intersect(r, clips.back()));
+                continue;
+            case DrawCommand::Kind::ClipEnd:
+                if (!clips.empty())
+                    clips.pop_back();
+                continue;
+        }
+        ink[i] = at;
+        if (at.width <= 0.0f || at.height <= 0.0f)
+            continue;  // nothing to draw
+        if (clips.empty())
+            place[i] = Place::Inside;
+        else if (!Overlaps(clips.back(), at))
+            continue;  // all of it would be cut
+        else if (Contains(clips.back(), at))
+            place[i] = Place::Inside;
+        else
+        {
+            // A plain rectangle and a run of letters are cut here instead, to the same pixels:
+            // a row half scrolled out of a table is all this ever is.
+            const bool plain =
+                c.kind == DrawCommand::Kind::Rect && c.paint == 0 && c.radius <= 0.0f;
+            const bool letters = c.kind == DrawCommand::Kind::Text && FaceReady(c.face);
+            place[i] = plain || letters ? Place::Cut : Place::Crossing;
+            clipOf[i] = clips.back();
+            if (place[i] == Place::Cut)
+                ink[i] = Intersect(ink[i], clipOf[i]);
+        }
+    }
+
+    bool      on = false;  // the scissor raylib has
+    Rectangle cur{ 0.0f, 0.0f, 0.0f, 0.0f };
+    auto      setScissor = [&](const Rectangle* want)
+    {
+        if (want == nullptr)
+        {
+            if (on)
+                EndScissorMode();
+            on = false;
+            return;
+        }
+        if (on && want->x == cur.x && want->y == cur.y && want->width == cur.width &&
+            want->height == cur.height)
+            return;
+        Render::Perf::Count(Render::Perf::Counter::Clips);
+        BeginScissorMode((int)want->x, (int)want->y, (int)std::max(0.0f, want->width),
+                         (int)std::max(0.0f, want->height));
+        on = true;
+        cur = *want;
+    };
+    for (size_t i = 0; i < n; i++)
+    {
+        const DrawCommand& c = commands_[i];
+        const Rectangle&   r = box[i];
+        switch (place[i])
+        {
+            case Place::Skip: continue;
+            case Place::Inside:
+            case Place::Cut:
+                if (on && !Contains(cur, ink[i]))
+                    setScissor(nullptr);
+                break;
+            case Place::Crossing: setScissor(&clipOf[i]); break;
+        }
+        if (place[i] == Place::Cut)
+        {
+            if (c.kind == DrawCommand::Kind::Text)
+                DrawString(c.face, c.text, { r.x, CentredTop(c.face, c.px, r.y, r.height) }, c.px,
+                           c.color, &clipOf[i]);
+            else
+                DrawRectangleRec(Intersect(r, clipOf[i]), c.color);
+            continue;
+        }
         switch (c.kind)
         {
             case DrawCommand::Kind::Rect:
@@ -547,27 +694,10 @@ void Layout::Draw() const
                 break;
             }
             case DrawCommand::Kind::ClipBegin:
-            {
-                Rectangle clip = r;
-                if (!clips.empty())
-                {
-                    const Rectangle& o = clips.back();
-                    const float      x0 = std::max(clip.x, o.x), y0 = std::max(clip.y, o.y);
-                    const float      x1 = std::min(clip.x + clip.width, o.x + o.width);
-                    const float      y1 = std::min(clip.y + clip.height, o.y + o.height);
-                    clip = { x0, y0, std::max(0.0f, x1 - x0), std::max(0.0f, y1 - y0) };
-                }
-                clips.push_back(clip);
-                scissor();
-                break;
-            }
-            case DrawCommand::Kind::ClipEnd:
-                if (!clips.empty())
-                    clips.pop_back();
-                scissor();
-                break;
+            case DrawCommand::Kind::ClipEnd: break;  // placed above
         }
     }
+    setScissor(nullptr);
 }
 
 // --- The widget library (#297, slice 3) ------------------------------------------------
@@ -656,14 +786,44 @@ void DrawTooltip()
     g_tip.clear();
 }
 
+size_t CutPoint(std::string_view text, const std::function<bool(size_t)>& fits)
+{
+    // On a letter's first byte: a cut inside one would draw half a letter as another.
+    auto letter = [&](size_t n)
+    {
+        while (n > 0 && n < text.size() && ((unsigned char)text[n] & 0xC0) == 0x80)
+            n--;
+        return n;
+    };
+    // A longer run is never narrower, so the longest that fits is found by halving: a long
+    // name in a narrow column used to be measured once per letter it lost (#363).
+    size_t lo = 0, hi = text.size();
+    while (lo < hi)
+    {
+        const size_t mid = lo + (hi - lo + 1) / 2;
+        if (fits(letter(mid)))
+            lo = mid;
+        else
+            hi = mid - 1;
+    }
+    return letter(lo);
+}
+
 std::string Ellipsize(std::string_view text, float maxPx,
                       const std::function<float(std::string_view)>& width)
 {
     if (maxPx <= 0.0f || width(text) <= maxPx)
         return std::string(text);
-    std::string s(text);
-    while (!s.empty() && width(s + "..") > maxPx)
-        s.pop_back();
+    std::string s;  // one buffer for every length tried
+    s.reserve(text.size() + 2);
+    const size_t n = CutPoint(text,
+                              [&](size_t k)
+                              {
+                                  s.assign(text.data(), k);
+                                  s += "..";
+                                  return width(s) <= maxPx;
+                              });
+    s.assign(text.data(), n);
     while (!s.empty() && s.back() == ' ')
         s.pop_back();  // "Alpha .." reads worse than "Alpha.."
     return s + "..";
@@ -671,7 +831,7 @@ std::string Ellipsize(std::string_view text, float maxPx,
 
 float Layout::TextWidthPx(const TextStyle& style, std::string_view text) const
 {
-    return measure_(style.face, (float)FontPx(style.size * scale_), text).x;
+    return measured_.Get(style.face, (float)FontPx(style.size * scale_), text, measure_).x;
 }
 
 void Layout::UseFocus(Focus* focus, std::string_view owner)
@@ -835,32 +995,69 @@ TableEvents Layout::Table(const TableSpec& s)
                 }
             }
 
+    // Every cell asked for once: the columns are fitted to them and the rows drawn from them.
+    std::vector<Cell> cells;
+    const int         rows = s.cell ? std::max(s.rows, 0) : 0;
+    cells.reserve((size_t)rows * (size_t)cols);
+    for (int r = 0; r < rows; r++)
+        for (int c = 0; c < cols; c++)
+            cells.push_back(s.cell(r, c));
+    const Cell none;
+    auto       cellAt = [&](int r, int c) -> const Cell&
+    { return r < rows ? cells[(size_t)r * (size_t)cols + (size_t)c] : none; };
+
     // A Fit column measured across every row, then laid out as Fixed: fitted row by row,
     // each row's cell would be as wide as its own text and the column would not line up.
-    std::vector<Size> widths;
+    // The widths follow from the headings, the Fit columns' cells, the scale and the fonts
+    // (Begin forgets them all when the fonts change), so they are fitted again only when one
+    // of those has changed (#363).
+    Hasher key;
+    key.Add(scale_).Add(U(pad)).Add(cols);
     for (int c = 0; c < cols; c++)
     {
         const TableColumn& col = s.columns[c];
         if (col.width.kind != Size::Kind::Fit)
-        {
-            widths.push_back(col.width);
             continue;
-        }
-        // The heading with room for the sort mark it may carry.
-        float widest = TextWidthPx(TextStyle::Caption(), col.label + (col.sortable ? " v" : ""));
-        for (int r = 0; r < s.rows && s.cell; r++)
+        key.Add(c).Add(col.width.min).Add(col.width.max).Add(col.sortable ? 1 : 0);
+        key.Add(col.label).Add(TextStyle::Caption().size).Add((int)col.align);
+        for (int r = 0; r < rows; r++)
         {
-            const Cell cell = s.cell(r, c);
-            widest = std::max(widest, TextWidthPx(CellStyle(col, cell), cell.text));
+            const Cell& cell = cellAt(r, c);
+            key.Add((int)cell.face).Add(cell.text);
         }
-        // The padding as the layout will round it, and a pixel for rounding the width, so the
-        // text gets every pixel it measured.
-        float units = std::ceil((widest + 2.0f * U(pad) + 1.0f) / std::max(scale_, 0.01f));
-        units = std::max(units, col.width.min);
-        if (col.width.max > 0.0f)
-            units = std::min(units, col.width.max);
-        widths.push_back(Size::Fixed(units));
+        key.Add(TextStyle::Body().size);
     }
+    ColumnFit& fit = fits_[s.id];
+    if (fit.key != key.h || fit.widths.size() != (size_t)cols)
+    {
+        fit.key = key.h;
+        fit.widths.clear();
+        for (int c = 0; c < cols; c++)
+        {
+            const TableColumn& col = s.columns[c];
+            if (col.width.kind != Size::Kind::Fit)
+            {
+                fit.widths.push_back(col.width);
+                continue;
+            }
+            // The heading with room for the sort mark it may carry.
+            float widest =
+                TextWidthPx(TextStyle::Caption(), col.label + (col.sortable ? " v" : ""));
+            for (int r = 0; r < rows; r++)
+            {
+                const Cell& cell = cellAt(r, c);
+                widest = std::max(widest, TextWidthPx(CellStyle(col, cell), cell.text));
+            }
+            // The padding as the layout will round it, and a pixel for rounding the width, so
+            // the text gets every pixel it measured.
+            float units = std::ceil((widest + 2.0f * U(pad) + 1.0f) / std::max(scale_, 0.01f));
+            units = std::max(units, col.width.min);
+            if (col.width.max > 0.0f)
+                units = std::min(units, col.width.max);
+            fit.widths.push_back(Size::Fixed(units));
+        }
+    }
+    const std::vector<Size>& widths = fit.widths;
 
     Column(Box().Grow(),
            [&]
@@ -950,7 +1147,7 @@ TableEvents Layout::Table(const TableSpec& s)
                                       for (int c = 0; c < cols; c++)
                                       {
                                           const TableColumn& col = s.columns[c];
-                                          const Cell         cell = s.cell ? s.cell(r, c) : Cell();
+                                          const Cell&        cell = cellAt(r, c);
                                           const TextStyle    st = CellStyle(col, cell);
                                           // As wide as its heading was laid out last frame.
                                           const float room =
@@ -1088,8 +1285,27 @@ void Layout::FieldBox(std::string_view id, std::string_view shown, bool dim, boo
     // Longer than the box: the end shows, where the typing is. Measured against the box the
     // previous frame laid out.
     const float room = BoxOf(id).width - 2.0f * U(pad);
-    while (room > 0.0f && text.size() > 1 && TextWidthPx(style, text) > room)
-        text.erase(0, 1);
+    if (room > 0.0f && text.size() > 1 && TextWidthPx(style, text) > room)
+    {
+        // The first letter to show: found by halving, as Ellipsize finds its cut (#363).
+        const std::string_view all(text);
+        auto                   letter = [&](size_t n)
+        {
+            while (n < all.size() - 1 && ((unsigned char)all[n] & 0xC0) == 0x80)
+                n++;
+            return n;
+        };
+        size_t lo = 1, hi = all.size() - 1;
+        while (lo < hi)
+        {
+            const size_t mid = lo + (hi - lo) / 2;
+            if (TextWidthPx(style, all.substr(letter(mid))) <= room)
+                hi = mid;
+            else
+                lo = mid + 1;
+        }
+        text.erase(0, letter(lo));
+    }
     Row(Box()
             .Id(id)
             .Width(width)

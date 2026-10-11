@@ -5,6 +5,7 @@
 #include "ui/Fonts.h"
 #include "ui/Input.h"
 #include "ui/Paint.h"
+#include "ui/TextCache.h"
 #include "ui/Theme.h"
 
 #include <cstdint>
@@ -284,6 +285,10 @@ void               ClearTooltip();
 // reads as one word with it. `width` measures a string in pixels.
 std::string Ellipsize(std::string_view text, float maxPx,
                       const std::function<float(std::string_view)>& width);
+// How many bytes of `text` the longest leading run that `fits` keeps -- found by halving,
+// since a longer run is never narrower, and always on a letter's first byte. A run of none
+// is taken to fit.
+size_t CutPoint(std::string_view text, const std::function<bool(size_t)>& fits);
 
 // What End() produces: rectangles, outlines, text and clipping, in screen pixels.
 struct DrawCommand
@@ -320,7 +325,12 @@ public:
     Layout(const Layout&) = delete;
     Layout& operator=(const Layout&) = delete;
 
-    void SetMeasure(Measure m) { measure_ = std::move(m); }
+    void SetMeasure(Measure m)
+    {
+        measure_ = std::move(m);
+        measured_.Clear();
+        fits_.clear();
+    }
 
     // Starts a frame inside a window, at the current UI scale; the mouse is the window's.
     void Begin(const Frame& frame);
@@ -452,13 +462,21 @@ private:
     // The box a text or number field is drawn as.
     void FieldBox(std::string_view id, std::string_view shown, bool dim, bool focused, Size width);
 
-    UiClay*                  clay_ = nullptr;
-    Measure                  measure_;
-    std::deque<std::string>  strings_;
-    std::vector<DrawCommand> commands_;
-    std::vector<Color>       glows_;
-    int fontGeneration_ = -1;  // the fonts Clay's kept measures are of  // the glow colours boxes
-                               // asked for this frame, by index
+    UiClay*              clay_ = nullptr;
+    Measure              measure_;
+    mutable MeasureCache measured_;  // what TextWidthPx was told, until the fonts change
+    // A table's fitted column widths and what they were fitted to (#363): measured again only
+    // when a row, a heading, the scale or the fonts change.
+    struct ColumnFit
+    {
+        uint64_t          key = 0;
+        std::vector<Size> widths;
+    };
+    std::map<std::string, ColumnFit> fits_;
+    std::deque<std::string>          strings_;
+    std::vector<DrawCommand>         commands_;
+    std::vector<Color> glows_;         // the glow colours boxes asked for this frame, by index
+    int         fontGeneration_ = -1;  // the fonts Clay's kept measures (and measured_) are of
     Rectangle   area_{ 0.0f, 0.0f, 0.0f, 0.0f };
     float       scale_ = 1.0f;
     Pointer     pointer_;
