@@ -133,7 +133,8 @@ TEST_CASE("Actions: your own structure is taken apart, anyone else's is attacked
     CHECK_FALSE(Has(own, Verb::Attack));
     CHECK_FALSE(Has(own, Verb::Defence));  // no guns, no rules of engagement (#340)
     t.armed = true;
-    const Action* roe = Find(Actions::For(t, from), Verb::Defence);
+    const std::vector<Action> armed = Actions::For(t, from);
+    const Action*             roe = Find(armed, Verb::Defence);
     REQUIRE(roe != nullptr);
     CHECK(roe->tool == "set_defence");
 
