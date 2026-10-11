@@ -402,6 +402,8 @@ private:
 
     Proto::Command  cmd_;       // client: the player's intent this frame (from input)
     Proto::Snapshot snapshot_;  // snapshot of the player's system for rendering/UI (M4c)
+    // The states snapshots arrive as deltas against (#349); acknowledged once a frame.
+    Proto::SnapshotReceiver snapIn_;
     // Client↔server transport: netConn_ is the TCP link to the econserver host, and
     // clientLink_ is the end the client sends commands on and receives snapshots/layout from.
     std::unique_ptr<Net::TcpConnection> netConn_;

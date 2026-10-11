@@ -82,7 +82,11 @@ struct ClientSession
     bool HasRunningOrder() const { return orderStatus == Orders::Status::Running; }
     bool IsDocked() const { return dockedStationId != 0; }
 
-    bool  weaponOn = false;
+    bool weaponOn = false;
+    // What the player has selected, as its last command said (#349): told about in full at
+    // every snapshot wherever it is, because a target on the far list would be a target
+    // seen once a second.
+    int   selectedId = 0;
     float fireTimer = 0.0f;       // weapon cooldown
     float miningProgress = 0.0f;  // accumulator of ore-unit fractions
     int   dockedStationId = 0;    // 0 means in flight

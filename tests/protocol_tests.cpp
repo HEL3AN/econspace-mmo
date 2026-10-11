@@ -399,9 +399,10 @@ TEST_CASE("positions are sent to a precision a player could see")
     e.heading = 1.23456f;
     s.entities.push_back(e);
 
+    // Integers in hundredths since #349: both ends hold exactly what was on the wire.
     const std::string wire = Proto::EncodeSnapshot(s);
     CHECK(wire.find("2615.7900390625") == std::string::npos);
-    CHECK(wire.find("2615.79") != std::string::npos);
+    CHECK(wire.find("261579") != std::string::npos);
 
     Proto::Snapshot back;
     REQUIRE(Proto::DecodeSnapshot(wire, back));
@@ -933,38 +934,4 @@ TEST_CASE("a command that says nothing is a few bytes, and still says it (#341)"
     CHECK(back.orderPoint.x == 10.0f);
     CHECK(back.sellType == 0);
     CHECK(back.refitShip == 0);
-}
-
-TEST_CASE("missions travel only when they change, and the client keeps the last ones (#341)")
-{
-    Proto::Snapshot    first;
-    Proto::MissionView m;
-    m.title = "Deliver ice";
-    first.missionActive.push_back(m);
-    const std::string key = Proto::MissionsKey(first);
-
-    Proto::Snapshot same = first;
-    CHECK(Proto::MissionsKey(same) == key);
-    same.missionsIncluded = false;
-    const std::string wire = Proto::EncodeSnapshot(same);
-    CHECK(wire.find("mActive") == std::string::npos);
-
-    Proto::Snapshot got;
-    REQUIRE(Proto::DecodeSnapshot(wire, got));
-    CHECK_FALSE(got.missionsIncluded);
-    CHECK(got.missionActive.empty());
-    Proto::CarryMissions(got, first);
-    REQUIRE(got.missionActive.size() == 1);
-    CHECK(got.missionActive[0].title == "Deliver ice");
-
-    // An offer taken is a change, even though the count of missions is the same.
-    Proto::Snapshot taken;
-    taken.missionOffers.push_back(m);
-    CHECK(Proto::MissionsKey(taken) != key);
-    // A list emptied is sent, empty, and read as empty -- not as "unchanged".
-    Proto::Snapshot emptied;
-    REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(emptied), got));
-    CHECK(got.missionsIncluded);
-    Proto::CarryMissions(got, first);
-    CHECK(got.missionActive.empty());
 }

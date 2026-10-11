@@ -84,6 +84,7 @@ public:
 private:
     std::unique_ptr<Net::TcpConnection> conn_;
     Proto::Snapshot                     snapshot_;
+    Proto::SnapshotReceiver             snapIn_;  // the states deltas are based on (#349)
     Proto::LayoutMirror                 layout_;  // kept current by deltas (#38)
     Proto::GalaxyState                  galaxy_;
     WorldLoader::Universe               universe_;

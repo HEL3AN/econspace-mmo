@@ -253,8 +253,9 @@ void Game::BuildClientSnapshot()
         }
         else if (type == "snap")
         {
+            // A delta rebuilt onto the state it names (#349): from here on it is whole.
             Proto::Snapshot s;
-            if (!Proto::DecodeSnapshot(msg, s))
+            if (!snapIn_.Decode(msg, s))
                 continue;
             // The static half of each entity is not on the wire; it is in the layout we
             // were sent on entry (#16).
@@ -269,14 +270,14 @@ void Game::BuildClientSnapshot()
             // network, and interpolating by them made everything nearby speed up and slow
             // down -- a smoothed hitch every couple of seconds.
             snapBuffer_.push_back({ s.time, s.entities });
-            // Missions come only when they change (#341): the last snapshot's stand.
-            Proto::CarryMissions(s, gotSnap ? incoming : snapshot_);
             incoming = std::move(s);
             gotSnap = true;
         }
     }
     if (gotSnap)
     {
+        // What the next delta is based on: once per frame, however many arrived.
+        clientLink_->Send(Proto::EncodeAck({ snapIn_.Latest() }));
         snapshot_ = std::move(incoming);
         worldClock_.Observe(snapshot_.time, GetTime());
         // A buffer of snapshots with server timestamps — for interpolating non-own

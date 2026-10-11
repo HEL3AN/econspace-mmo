@@ -368,6 +368,7 @@ enable_testing()
 add_executable(tests
     tests/test_main.cpp
     tests/protocol_tests.cpp
+    tests/snapshot_delta_tests.cpp  # deltas against an acknowledged state, the area of interest (#349)
     tests/auth_tests.cpp
     tests/net_tests.cpp
     tests/raw_socket.cpp           # a peer that ignores the framing rules (#14)

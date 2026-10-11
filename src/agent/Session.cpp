@@ -43,6 +43,7 @@ void Session::Pump()
         return;
 
     std::string msg;
+    bool        gotSnap = false;
     while (conn_->Poll(msg))
     {
         // Version first. Without this check a mismatch would decode into defaults and look
@@ -86,8 +87,9 @@ void Session::Pump()
         if (type == "snap")
         {
             Proto::Snapshot s;
-            if (!Proto::DecodeSnapshot(msg, s))
+            if (!snapIn_.Decode(msg, s))  // a delta, rebuilt onto what it names (#349)
                 continue;
+            gotSnap = true;
             // Names, sizes and ore live in the layout, not in every tick (#16).
             Proto::CompleteFromLayout(s, layout_.byId);
             // Journal entries accumulate here rather than being replaced: two snapshots may
@@ -101,7 +103,6 @@ void Session::Pump()
                 }
             if (journal_.size() > 512)
                 journal_.erase(journal_.begin(), journal_.begin() + (journal_.size() - 512));
-            Proto::CarryMissions(s, snapshot_);  // sent only when they change (#341)
             snapshot_ = std::move(s);
             haveSnapshot_ = true;
         }
@@ -142,6 +143,10 @@ void Session::Pump()
                 universe_ = std::move(u);
         }
     }
+    // What the next delta is based on (#349). An agent between tool calls acknowledges
+    // nothing, and is sent whole snapshots until it pumps again.
+    if (gotSnap)
+        conn_->Send(Proto::EncodeAck({ snapIn_.Latest() }));
 }
 
 bool Session::WaitUntil(const std::function<bool()>& done, double timeoutSeconds)
