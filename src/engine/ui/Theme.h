@@ -249,5 +249,10 @@ void               SetThemeSetting(const std::string& id);
 // two passes over a quarter of it every frame, which a laptop's GPU feels.
 bool BlurSetting();
 void SetBlurSetting(bool on);
+// "Brackets in space" (#361): standing brackets on the ships in the world view, and the
+// marker on the player's own. On until the player turns them off -- they are how a ship
+// that is three pixels long is found at all.
+bool BracketSetting();
+void SetBracketSetting(bool on);
 
 }  // namespace Ui

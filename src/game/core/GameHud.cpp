@@ -178,24 +178,8 @@ void Game::DrawWorld()
     ship.heading = shipDrawHeading_;
     shapeBackend_.Draw(ship);
 
-    // Ship marker — only at far zoom, when the sprite collapses to a
-    // dot. Semi-transparent "ping" rings spread out from the ship and fade;
-    // the size in screen pixels is divided by zoom to stay constant.
-    if (camera_.zoom < 0.5f)
-    {
-        float   zoomFade = Clamp((0.5f - camera_.zoom) / 0.46f, 0.0f, 1.0f);
-        float   t = (float)GetTime();
-        Vector2 sp = playerShip_->GetPosition();
-
-        // Two phase-shifted rings — a continuous soft ripple.
-        for (int k = 0; k < 2; k++)
-        {
-            float phase = fmodf(t * 0.7f + k * 0.5f, 1.0f);
-            float rWorld = (4.0f + phase * 26.0f) / camera_.zoom;
-            float alpha = (1.0f - phase) * 0.30f * zoomFade;
-            DrawCircleLines(sp.x, sp.y, rWorld, Fade(GREEN, alpha));
-        }
-    }
+    // The ship's marker is an instrument and is drawn with them, over the world in screen
+    // space (DrawSpaceBrackets), so it reads the same at every zoom.
 
     EndMode2D();
     Render::Perf::Mark(Render::Perf::Phase::Overlay);
@@ -408,9 +392,24 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
     const bool holding = playerShip_ && playerShip_->GetHoldMode() != HoldMode::None;
     const int  heldId = holding ? playerShip_->GetHoldTargetId() : 0;
 
+    // Whose each row is, as this pilot sees it: the chip before the name (#361), in the
+    // same standing colours as the radar and the brackets in the world view.
+    const Sensor::Standing standing = ViewerStanding();
+    auto                   chipOf = [&](const Proto::EntitySnapshot& e) -> Color
+    {
+        if (e.kind == Proto::EntityKind::Structure)
+        {
+            const auto l = layout_.byId.find(e.id);
+            const bool mine = l != layout_.byId.end() && l->second.owner == pilotName_;
+            return mine ? t.standing.own : t.standing.neutral;
+        }
+        const Sensor::Allegiance a = Sensor::Classify(e, standing);
+        return a == Sensor::Allegiance::Unowned ? Color{ 0, 0, 0, 0 } : Sensor::ColorOf(a);
+    };
+
     Ui::TableSpec table;
     table.id = "overview";
-    table.columns = { { "name", Size::Grow(), Ui::Align::Start, true },
+    table.columns = { { "name", Size::Grow(), Ui::Align::Start, true, true },
                       { "type", Size::Fit(0.0f, 96.0f), Ui::Align::Start, true },
                       { "dist", Size::Fit(), Ui::Align::End, true } };
     table.rows = (int)rows.size();
@@ -428,9 +427,13 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
             // holding station on is marked: a standing order with no visible sign of running
             // is an order a player cannot trust.
             case 0:
-                return Ui::Cell{ row.name, row.hostile ? t.standing.hostile
-                                           : held      ? t.colors.accent
-                                                       : t.colors.text };
+            {
+                Ui::Cell cell{ row.name, row.hostile ? t.standing.hostile
+                                         : held      ? t.colors.accent
+                                                     : t.colors.text };
+                cell.chip = chipOf(*row.entity);
+                return cell;
+            }
             case 1: return Ui::Cell{ row.kind, t.colors.dim };
             default: return Ui::Cell{ Ui::Distance(row.distance), t.colors.dim };
         }
@@ -888,12 +891,124 @@ void Game::DrawLocation()
     L.Draw();
 }
 
+namespace
+{
+// Four corner marks around a square `r` from its centre to each side: a bracket, which
+// says "this one" without covering what it marks.
+void CornerBracket(Vector2 c, float r, float arm, float thick, Color col)
+{
+    for (int sx = -1; sx <= 1; sx += 2)
+        for (int sy = -1; sy <= 1; sy += 2)
+        {
+            const Vector2 k{ c.x + sx * r, c.y + sy * r };
+            DrawLineEx(k, { k.x - sx * arm, k.y }, thick, col);
+            DrawLineEx(k, { k.x, k.y - sy * arm }, thick, col);
+        }
+}
+
+// 0 at or below `lo`, 1 at or above `hi`, smooth between, on a log scale: the zoom and the
+// distances here run over three orders of magnitude.
+float LogRamp(float v, float lo, float hi)
+{
+    if (v <= lo)
+        return 0.0f;
+    if (v >= hi)
+        return 1.0f;
+    const float t = std::log(v / lo) / std::log(hi / lo);
+    return t * t * (3.0f - 2.0f * t);
+}
+}  // namespace
+
+// The marker on the player's own ship and the standing brackets on the others (#361).
+//
+// The world view keeps objects in their art colours (#117), and that left a ship thirty
+// pixels long in the colour of the station behind it, and no way to see from the picture
+// which of the ships around it would shoot. Both are instrument readings, as in EVE: the
+// bracket says whose a ship is *to this pilot*, in the theme's standing colours that the
+// radar and the overview use, and nothing about the ship itself changes.
+//
+// The rules. Sizes are pixels through the interface's scale, so a bracket reads the same at
+// every zoom: never smaller than a few pixels round the ship, never inside a ship drawn
+// large. Your own ship is always marked. Another is bracketed while it is on screen;
+// zoomed out to a whole system, and far from you, a bracket fades -- a hundred full-strength
+// brackets over a system map would be the only thing on it -- except a hostile one, which
+// keeps most of its strength and is drawn heavier, because it is the reason to look.
+void Game::DrawSpaceBrackets()
+{
+    if (!Ui::BracketSetting() || !playerShip_)
+        return;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    const float      zoom = camera_.zoom;
+    const float      thin = std::max(1.0f, Ui::Px(1.0f));
+
+    const Sensor::Standing standing = ViewerStanding();
+    const Vector2          own = playerShip_->GetPosition();
+    const float            zoomFade = LogRamp(zoom, 0.002f, 0.03f);
+    for (const auto& e : clientWorld_)
+    {
+        const EntityKind kind = e->GetKind();
+        if (kind != EntityKind::Npc && kind != EntityKind::PlayerShip)
+            continue;
+        const Vector2 sp = GetWorldToScreen2D(e->GetPosition(), camera_);
+        const float   r = std::max(e->GetSize() * zoom + Ui::Px(3.0f), Ui::Px(7.0f));
+        if (sp.x < -r || sp.y < -r || sp.x > screenWidth_ + r || sp.y > screenHeight_ + r)
+            continue;
+
+        Proto::EntitySnapshot probe;  // all Classify reads is the kind and the side
+        probe.kind =
+            kind == EntityKind::Npc ? Proto::EntityKind::Npc : Proto::EntityKind::PlayerShip;
+        if (kind == EntityKind::Npc)
+            probe.faction = static_cast<const NpcShip&>(*e).GetFaction();
+        const Sensor::Allegiance a = Sensor::Classify(probe, standing);
+        const bool               hostile = a == Sensor::Allegiance::Hostile;
+
+        // Subtle further than a fight is from you: full within a few weapon ranges, about
+        // half by the time it is across a neighbourhood.
+        const float dist = Vector2Distance(e->GetPosition(), own);
+        const float nearFade = 1.0f - 0.55f * LogRamp(dist, 2000.0f, 30000.0f);
+        float       alpha =
+            hostile ? 0.95f * std::max(0.7f, std::min(nearFade, 1.0f)) * std::max(0.7f, zoomFade)
+                    : 0.6f * nearFade * zoomFade;
+        if (alpha < 0.03f)
+            continue;
+        CornerBracket(sp, r, Ui::Px(hostile ? 4.0f : 3.0f), hostile ? 2.0f * thin : thin,
+                      Fade(Sensor::ColorOf(a), alpha));
+    }
+
+    // Your own ship, last, so it is on top: a bracket a little larger than the others, the
+    // way the nose points, and the way the ship is actually going -- not the same thing in
+    // a ship that turns faster than it changes course.
+    const Vector2 sp = GetWorldToScreen2D(shipDrawPos_, camera_);
+    const float   r = std::max(playerShip_->GetSize() * zoom + Ui::Px(5.0f), Ui::Px(11.0f));
+    const Color   col = t.standing.own;
+    CornerBracket(sp, r, Ui::Px(4.0f), thin, Fade(col, 0.85f));
+    const Vector2 nose{ std::cos(shipDrawHeading_), std::sin(shipDrawHeading_) };
+    const float   tick0 = r * 1.15f, tick1 = tick0 + Ui::Px(7.0f);
+    DrawLineEx({ sp.x + nose.x * tick0, sp.y + nose.y * tick0 },
+               { sp.x + nose.x * tick1, sp.y + nose.y * tick1 }, 2.0f * thin, col);
+    const Vector2 v = playerShip_->GetVelocity();
+    const float   speed = Vector2Length(v);
+    const float   top = std::max(playerShip_->GetStats().maxSpeed, 1.0f);
+    if (speed > top * 0.02f)
+    {
+        // As long as the ship is fast, to a limit: in warp the line is simply at its longest.
+        const Vector2 dir{ v.x / speed, v.y / speed };
+        const float   len = Ui::Px(6.0f) + Ui::Px(22.0f) * std::min(1.0f, speed / top);
+        const Vector2 a{ sp.x + dir.x * r, sp.y + dir.y * r };
+        const Vector2 b{ sp.x + dir.x * (r + len), sp.y + dir.y * (r + len) };
+        DrawLineEx(a, b, thin, Fade(col, 0.55f));
+        DrawCircleV(b, 1.5f * thin, Fade(col, 0.8f));
+    }
+}
+
 void Game::DrawHud()
 {
     if (hudHidden_)
         return;
     // Docked, the windows stand in the station's hall: nothing here is about flying.
     const bool flying = mode_ == GameMode::Flying;
+    if (flying && !desk_.IsOpen(WIN_SENSOR) && !desk_.IsOpen(WIN_MAP))
+        DrawSpaceBrackets();
     if (flying && !desk_.IsOpen(WIN_SENSOR))
         DrawScaleBar();  // a scale for the world view; the sensor screen states its own
     DrawLocation();      // under the windows: one dragged over it covers it, never mixes with it

@@ -14,6 +14,17 @@ struct Contribution
     Vector2 dir;
     Color   color;
 };
+// The colour a surface takes from a light (#361): the light's colour moved toward a grey as
+// bright as its brightest channel, so only SURFACE_SATURATION of its hue survives. The grey
+// is the brightest channel rather than the average, so the cap takes colour out without
+// taking light out -- a multiply by it never makes a surface darker than the light did.
+Color SurfaceTint(Color light)
+{
+    const float grey = (float)std::max({ light.r, light.g, light.b });
+    const float k = Lighting::SURFACE_SATURATION;
+    auto        toward = [&](unsigned char c) { return (unsigned char)(grey + (c - grey) * k); };
+    return { toward(light.r), toward(light.g), toward(light.b), light.a };
+}
 }  // namespace
 
 Lighting::Sample Lighting::At(Vector2 p, int skip) const
@@ -80,6 +91,7 @@ Lighting::Sample Lighting::At(Vector2 p, int skip) const
         out.tint = { (unsigned char)std::min(255.0f, r / total),
                      (unsigned char)std::min(255.0f, g / total),
                      (unsigned char)std::min(255.0f, b / total), 255 };
+    out.surface = SurfaceTint(out.tint);
     return out;
 }
 

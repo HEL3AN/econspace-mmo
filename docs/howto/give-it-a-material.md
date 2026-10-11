@@ -180,7 +180,8 @@ there is no surface left to shade.
 | `item.screenSize` | `float` | this part's radius on screen, pixels |
 | `item.axis` | `vec2` | unit vector along an elongated part; zero for a round one |
 | `light.dir` | `vec2` | unit vector toward the strongest light at this part; zero if none |
-| `light.tint` | `vec4` | the colour of the light arriving |
+| `light.tint` | `vec4` | the colour of the light arriving: for a rim or a glow |
+| `light.surface` | `vec4` | what that light does to an albedo -- its hue capped by `Lighting::SURFACE_SATURATION` (#361) |
 | `light.strength` | `float` | 0..1, how much of it arrives |
 | `light.ambient` | `float` | the floor — nothing is drawn darker |
 | `clock.time` | `float` | seconds |

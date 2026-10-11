@@ -976,6 +976,17 @@ TableEvents Layout::Table(const TableSpec& s)
     const float       pad = t.metrics.gap * 0.5f;
     const std::string head = s.id + "~h", row = s.id + "~r", body = s.id + "~b";
     const int         cols = (int)s.columns.size();
+    // A column's chip (#361): a square about the height of a capital, and a gap after it.
+    constexpr float CHIP = 7.0f, CHIP_GAP = 5.0f;
+    auto            chipRoom = [&](const TableColumn& col)
+    { return col.chips ? U(CHIP) + U(CHIP_GAP) : 0.0f; };
+    auto chip = [&](const TableColumn& col, Color c)
+    {
+        if (!col.chips)
+            return;
+        Open(Box().Width(Size::Fixed(CHIP)).Height(Size::Fixed(CHIP)).Fill(c));
+        Close();
+    };
 
     // A heading clicked: sort by it, or turn the order round if it already sorts.
     if (s.sort != nullptr)
@@ -1019,6 +1030,7 @@ TableEvents Layout::Table(const TableSpec& s)
         if (col.width.kind != Size::Kind::Fit)
             continue;
         key.Add(c).Add(col.width.min).Add(col.width.max).Add(col.sortable ? 1 : 0);
+        key.Add(col.chips ? 1 : 0);  // a chip's room widens the column (#361)
         key.Add(col.label).Add(TextStyle::Caption().size).Add((int)col.align);
         for (int r = 0; r < rows; r++)
         {
@@ -1048,6 +1060,7 @@ TableEvents Layout::Table(const TableSpec& s)
                 const Cell& cell = cellAt(r, c);
                 widest = std::max(widest, TextWidthPx(CellStyle(col, cell), cell.text));
             }
+            widest += chipRoom(col);
             // The padding as the layout will round it, and a pixel for rounding the width, so
             // the text gets every pixel it measured.
             float units = std::ceil((widest + 2.0f * U(pad) + 1.0f) / std::max(scale_, 0.01f));
@@ -1088,7 +1101,8 @@ TableEvents Layout::Table(const TableSpec& s)
                            // left to run under the next one.
                            const TextStyle hs = TextStyle::Caption().Tint(
                                on || hover ? t.colors.accent : t.colors.dim);
-                           const float room = BoxOf(head, (uint32_t)c).width - 2.0f * U(pad);
+                           const float room =
+                               BoxOf(head, (uint32_t)c).width - 2.0f * U(pad) - chipRoom(col);
                            if (BoxOf(head, (uint32_t)c).width > 0.0f)
                                label = Ellipsize(label, room, [&](std::string_view x)
                                                  { return TextWidthPx(hs, x); });
@@ -1097,8 +1111,13 @@ TableEvents Layout::Table(const TableSpec& s)
                                    .Width(widths[c])
                                    .Height(Size::Fixed(t.metrics.rowHeight))
                                    .Pad(pad, pad, 0.0f, 0.0f)
+                                   .Gap(col.chips ? CHIP_GAP : 0.0f)
                                    .Align(col.align, Align::Center),
-                               [&] { Text(label, hs); });
+                               [&]
+                               {
+                                   chip(col, CLEAR);  // the heading over the text, not the chip
+                                   Text(label, hs);
+                               });
                        }
                        // The indicator's room, so the headings stand over their columns.
                        Open(Box().Width(Size::Fixed(ScrollGutter())).Height(Size::Fixed(1.0f)));
@@ -1150,8 +1169,8 @@ TableEvents Layout::Table(const TableSpec& s)
                                           const Cell&        cell = cellAt(r, c);
                                           const TextStyle    st = CellStyle(col, cell);
                                           // As wide as its heading was laid out last frame.
-                                          const float room =
-                                              BoxOf(head, (uint32_t)c).width - 2.0f * U(pad);
+                                          const float       room = BoxOf(head, (uint32_t)c).width -
+                                                                   2.0f * U(pad) - chipRoom(col);
                                           const std::string text =
                                               Ellipsize(cell.text, room, [&](std::string_view x)
                                                         { return TextWidthPx(st, x); });
@@ -1159,8 +1178,13 @@ TableEvents Layout::Table(const TableSpec& s)
                                                   .Width(widths[c])
                                                   .Height(Size::Grow())
                                                   .Pad(pad, pad, 0.0f, 0.0f)
+                                                  .Gap(col.chips ? CHIP_GAP : 0.0f)
                                                   .Align(col.align, Align::Center),
-                                              [&] { Text(text, st); });
+                                              [&]
+                                              {
+                                                  chip(col, cell.chip);
+                                                  Text(text, st);
+                                              });
                                       }
                                   });
                           }

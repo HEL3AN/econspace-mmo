@@ -41,7 +41,8 @@ enum class Source
     ItemAxis,        // vec2 -- which way an elongated part runs; zero means it is round
 
     LightDir,       // vec2, unit vector toward the strongest light (#119)
-    LightTint,      // vec4, 0..1 -- the colour of the light arriving
+    LightTint,      // vec4, 0..1 -- the colour of the light arriving: a rim, a glow
+    LightSurface,   // vec4, 0..1 -- what that light does to an albedo, its hue capped (#361)
     LightStrength,  // float, 0..1
     LightAmbient,   // float -- the floor nothing goes below
 

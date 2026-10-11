@@ -577,6 +577,24 @@ void Game::DrawSettingsContent(const Ui::Frame& f)
                                            : "This theme's windows are solid; the blur is for "
                                              "glass ones.",
                              t.colors.dim);
+                        // The instruments over the world view (#361): the marker on the
+                        // player's own ship and the standing brackets on the others.
+                        const bool bracketsOn = Ui::BracketSetting();
+                        L.FormRow(
+                            "Brackets in space",
+                            [&]
+                            {
+                                if (L.Button("brackets", bracketsOn ? "On" : "Off", bracketsOn))
+                                {
+                                    Ui::SetBracketSetting(!bracketsOn);
+                                    if (uiSettingsWritable_ && !Ui::SaveUiSettings(uiSettingsPath_))
+                                        TraceLog(LOG_WARNING, "UI settings: cannot write %s",
+                                                 uiSettingsPath_.c_str());
+                                }
+                            });
+                        hint("A mark on your ship, and on every ship in view one in the colour "
+                             "of its standing toward you.",
+                             t.colors.dim);
                         L.FormRow("Interface scale",
                                   [&]
                                   {
