@@ -90,7 +90,7 @@
     ],
     "limits": { "perAccount": 12 },
     "dismantle": { "refund": 0.5 },
-    "destruction": { "siteHull": 0.25, "wreckShare": 0.25 },
+    "destruction": { "siteHull": 0.25, "wreckShare": 0.25, "wreckSeconds": 21600 },
     "upkeep": { "share": 0.006, "decay": 0.04, "repair": 0.02 },
     "siege": { "cost": 0.5, "seconds": 900, "jitter": 120, "commit": 0.5, "dps": 6,
                "defence": 0.15, "attrition": 0.0002, "shock": 0.5,

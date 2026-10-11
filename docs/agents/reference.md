@@ -189,6 +189,17 @@ Close to weapon range of a ship or a structure and fire until it is destroyed. F
 |---|---|---|---|
 | `target_id` | number | yes | ship or structure id from observe |
 
+### `build`
+
+A standing order to build: fly to a point (warping when far) and lay down a site from a blueprint there, out of the hold, as deploy does. Finishes when the site is down -- the site then finishes by itself after the build time, so you may leave at once; wait_for_event wakes on 'order_done' and later on 'built'. Refused, with the reason, before it flies if the hold is short, the place is taken, too close to something or in a planet's path; fails on arrival if that changed on the way. blueprints lists what can be built.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `blueprint` | string | yes | blueprint id from blueprints, e.g. 'beacon' |
+| `name` | string |  | what to call it (default: the blueprint's name); 3 to 24 characters, letters, digits, spaces, ' and - |
+| `x` | number | yes | where, world x |
+| `y` | number | yes | where, world y |
+
 ### `salvage`
 
 Search a wreck (a derelict observe marks 'lootable') and take what it pays. A wreck is searched once, by whoever gets there first, and everyone sees it searched after. Within its reach this searches it now and says what it paid. Out of reach it flies there instead (a move_to order, warping when far): wait_for_event until it arrives, then call salvage again.

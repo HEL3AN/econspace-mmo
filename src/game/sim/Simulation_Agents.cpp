@@ -6,6 +6,7 @@
 
 #include "sim/Simulation.h"
 #include "core/Archetype.h"
+#include "core/Faction.h"
 #include "core/Orbits.h"
 #include "sim/ClientSession.h"
 
@@ -33,6 +34,12 @@ constexpr float PLAYER_DAMAGE_SCALE = 7.0f / 6.0f;
 constexpr float NPC_AGGRO_RANGE = 3500.0f;   // AI target detection radius
 constexpr float NPC_THREAT_RANGE = 2000.0f;  // distance at which peaceful ones flee
 constexpr float DEFENCE_PERIOD = 1.0f;       // seconds between a station's shots
+// Answering an attack on a structure (#39): how many patrols come, how far from the shooter
+// they drop out of warp -- inside NPC_AGGRO_RANGE, so they engage at once -- and how long one
+// call holds before another shot brings more.
+constexpr int   POLICE_RESPONSE = 2;
+constexpr float POLICE_DROP_DISTANCE = 1500.0f;
+constexpr float POLICE_CALL_SECONDS = 60.0f;
 
 // Spawn director. "Pressure": losses in a role raise the suppression of its spawn,
 // which then slowly recovers — the player/battles really change the population.
@@ -268,9 +275,25 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
     bool                  gathered = false;
     for (auto& e : st.entities)
     {
-        // Who a battery shoots at depends on whose it is, and ownership is still
-        // Station-specific state (#41) -- so a defensive object with no owner is inert.
-        if (!e->Has(Component::Defensive) || e->GetKind() != EntityKind::Station)
+        // Who a battery shoots at depends on whose it is. A station is its faction's; a
+        // structure (#39) is a faction's when a faction built it, and otherwise has no side
+        // to take -- it only answers whoever has been shooting at it. A site has no guns yet.
+        if (!e->Has(Component::Defensive))
+            continue;
+        FactionId owner = FactionId::Independent;
+        bool      sided = false;
+        if (e->GetKind() == EntityKind::Station)
+        {
+            owner = static_cast<const Station*>(e.get())->GetFaction();
+            sided = true;
+        }
+        else if (e->GetKind() == EntityKind::Structure)
+        {
+            if (static_cast<const Structure&>(*e).IsBuilding())
+                continue;
+            sided = Outposts::FactionOf(e->GetOwner(), owner);
+        }
+        else
             continue;
         const Archetype* a = e->GetArchetype();
         float&           cooldown = st.defenceCooldown[e->GetId()];
@@ -283,11 +306,18 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
             ships = AliveShips(st);
             gathered = true;
         }
-        const FactionId owner = static_cast<const Station*>(e.get())->GetFaction();
-        const Vector2   spos = e->GetPosition();
-        float           bestD = e->GetSize() + a->weaponRange;
-        Combatant*      target = nullptr;
-        int             targetSession = 0;
+        const auto provoked = st.provokedBy.find(e->GetId());
+        auto       shotAtUs = [&](int session)
+        {
+            if (provoked == st.provokedBy.end())
+                return false;
+            const auto when = provoked->second.find(session);
+            return when != provoked->second.end() && time_ < when->second;
+        };
+        const Vector2 spos = e->GetPosition();
+        float         bestD = e->GetSize() + a->weaponRange;
+        Combatant*    target = nullptr;
+        int           targetSession = 0;
 
         auto consider = [&](Combatant* c, int sessionId)
         {
@@ -301,10 +331,12 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
         };
         for (const PlayerPresence& p : players)
             if (p.ship != nullptr && p.session != nullptr && !p.hidden && p.ship->IsAlive() &&
-                AccountHostileToFaction(*p.session, owner))
+                ((sided && AccountHostileToFaction(*p.session, owner)) || shotAtUs(p.session->id)))
                 consider(p.ship, p.session->id);
         for (NpcShip* n : ships)
         {
+            if (!sided)
+                break;
             const Stance rel = Factions::Relation(owner, n->GetFaction());
             // Besiegers are the siege's arithmetic to count, not the battery's (#295).
             if (n->IsAlive() && n->GetRole() != NpcRole::Warship &&
@@ -329,6 +361,59 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
             fires->push_back(fe);
         }
     }
+}
+
+bool Simulation::CallPolice(SystemState& st, ClientSession& by, FactionId law)
+{
+    // Only where there are ships to send (#295): a cold system has none, and nobody can be
+    // shooting in one anyway -- whoever is shooting has made it hot.
+    if (!IsHot(st) || !by.ship || time_ < st.policeCalledUntil)
+        return false;
+    const Vector2 scene = by.ship->GetPosition();
+
+    // The patrols that would act on this shooter, as they act on a ship's attacker: whoever
+    // the crime made wanted by them. Nearest first; one already in sight of the shooter
+    // needs no call.
+    std::vector<NpcShip*> answer;
+    for (NpcShip* n : AliveShips(st))
+    {
+        if (n->GetRole() != NpcRole::Police || !AccountHostileToFaction(by, n->GetFaction()))
+            continue;
+        if (Dist(n->GetPosition(), scene) <= NPC_AGGRO_RANGE)
+        {
+            st.policeCalledUntil = time_ + POLICE_CALL_SECONDS;
+            return false;
+        }
+        answer.push_back(n);
+    }
+    if (answer.empty())
+        return false;
+    std::sort(answer.begin(), answer.end(),
+              [&](const NpcShip* a, const NpcShip* b)
+              {
+                  const float da = Dist(a->GetPosition(), scene);
+                  const float db = Dist(b->GetPosition(), scene);
+                  return da != db ? da < db : a->GetId() < b->GetId();
+              });
+    if ((int)answer.size() > POLICE_RESPONSE)
+        answer.resize(POLICE_RESPONSE);
+
+    // A system is a million units across and a patrol flies at sublight: a structure is
+    // answered by warp. They drop out around the shooter, inside the range at which a patrol
+    // engages, and the AI does the rest -- the same as for any wanted ship in sight.
+    static const Vector2 BEARINGS[] = { { 1.0f, 0.0f }, { -1.0f, 0.0f }, { 0.0f, 1.0f } };
+    for (size_t i = 0; i < answer.size(); i++)
+    {
+        const Vector2 b = BEARINGS[i % 3];
+        answer[i]->SetPosition(
+            { scene.x + b.x * POLICE_DROP_DISTANCE, scene.y + b.y * POLICE_DROP_DISTANCE });
+        answer[i]->Engage(scene);
+    }
+    st.policeCalledUntil = time_ + POLICE_CALL_SECONDS;
+    by.RecordEvent(Ev::Kind::UnderAttack, FactionName(answer[0]->GetFaction()) +
+                                              " police answer the attack on " + FactionName(law) +
+                                              " property");
+    return true;
 }
 
 void Simulation::StepSystemAgents(SystemState& st, const std::vector<PlayerPresence>& players,

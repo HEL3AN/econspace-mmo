@@ -4,6 +4,7 @@
 #include "core/Blueprint.h"
 #include "core/Faction.h"
 #include "entities/Derelict.h"
+#include "entities/NpcShip.h"
 #include "entities/Planet.h"
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
@@ -13,6 +14,9 @@
 #include "sim/Protocol.h"
 #include "sim/Simulation.h"
 #include "temp_dir.h"
+
+#include "raymath.h"
+#include <nlohmann/json.hpp>
 
 #include <cmath>
 #include <cstdio>
@@ -766,4 +770,280 @@ TEST_CASE("damage and wrecks outlive a restart; a command and a layout carry the
             CHECK(e.blueprint == "beacon");
         }
     CHECK(seen);
+}
+
+TEST_CASE("a build order flies to the spot and lays the site down there (#39)")
+{
+    LoadRegistries();
+    Simulation sim;
+    StartServer(sim, "");
+    ClientSession&   s = Builder(sim, "hunter");
+    const Blueprint& beacon = *Blueprints::Find("beacon");
+    Stock(s);
+    const Vector2 at = FreeSpot(sim, s, beacon);
+    s.ship->Teleport({ at.x + 20000.0f, at.y });
+    REQUIRE_FALSE(sim.PlacementProblem(s, beacon, at).empty());   // out of reach from here
+    REQUIRE(sim.PlacementProblem(s, beacon, at, false).empty());  // ...and nothing else
+    const int iron = Held(s, ResourceType::Iron);
+
+    Orders::Order o;
+    o.kind = Orders::Kind::Build;
+    o.point = at;
+    o.blueprint = "beacon";
+    o.name = "Waypoint";
+    auto run = [&]()
+    {
+        sim.GiveOrder(s, o);
+        for (int i = 0; i < 60 * 180 && s.orderStatus == Orders::Status::Running; i++)
+            sim.StepPlayerOrder(s, *sim.SystemOf(s), 1.0f / 60.0f);
+    };
+
+    SUBCASE("it arrives and builds, and the site is the deploy verb's")
+    {
+        run();
+        CHECK(s.orderStatus == Orders::Status::Done);
+        CHECK(s.orderDetail.find("laid down") != std::string::npos);
+        const Structure* site = nullptr;
+        for (const auto& e : sim.SystemById(s.systemId)->entities)
+            if (e->GetKind() == EntityKind::Structure && e->GetName() == "Waypoint")
+                site = static_cast<const Structure*>(e.get());
+        REQUIRE(site != nullptr);
+        CHECK(site->GetOwner() == "hunter");
+        CHECK(site->IsBuilding());
+        CHECK(site->GetPosition().x == doctest::Approx(at.x));
+        CHECK(site->GetPosition().y == doctest::Approx(at.y));
+        CHECK(Held(s, ResourceType::Iron) == iron - 10);
+    }
+    SUBCASE("a hold that cannot pay is refused before it flies")
+    {
+        s.ship->ClearCargo();
+        const Vector2 from = s.ship->GetPosition();
+        run();
+        CHECK(s.orderStatus == Orders::Status::Failed);
+        CHECK(s.orderDetail.find("the hold has") != std::string::npos);
+        CHECK(s.ship->GetPosition().x == doctest::Approx(from.x));
+    }
+    SUBCASE("a blueprint that does not exist, or is a faction's, is refused")
+    {
+        o.blueprint = "cathedral";
+        run();
+        CHECK(s.orderStatus == Orders::Status::Failed);
+        o.blueprint = "outpost";
+        run();
+        CHECK(s.orderStatus == Orders::Status::Failed);
+        CHECK(sim.StructuresOwnedBy("hunter") == 0);
+    }
+
+    // On the wire: the order names its blueprint and what to call the site.
+    Proto::Command c;
+    c.orderKind = (int)Orders::Kind::Build;
+    c.orderPoint = at;
+    c.orderBlueprint = "beacon";
+    c.orderName = "Waypoint";
+    Proto::Command back;
+    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
+    CHECK(back.orderKind == (int)Orders::Kind::Build);
+    CHECK(back.orderBlueprint == "beacon");
+    CHECK(back.orderName == "Waypoint");
+    CHECK(std::string(Orders::KindName(Orders::Kind::Build)) == "build");
+}
+
+TEST_CASE("an armed structure fires back, and the police answer an attack on one (#39)")
+{
+    LoadRegistries();
+    Simulation sim;
+    StartServer(sim, "");
+    ClientSession&    s = Builder(sim, "hunter");
+    ClientSession&    ann = Builder(sim, "ann");
+    const std::string sys = s.systemId;
+    const Blueprint&  beacon = *Blueprints::Find("beacon");
+    const Blueprint&  outpost = *Blueprints::Find("outpost");
+    REQUIRE(Archetypes::Find(outpost.archetype)->Has(Component::Defensive));
+    Stock(s);
+    const Vector2 at = FreeSpot(sim, s, beacon);
+    const float   dt = 1.0f / 60.0f;
+
+    Simulation::PlayerPresence p;
+    p.session = &ann;
+    p.ship = ann.ship.get();
+    const std::vector<Simulation::PlayerPresence> players{ p };
+    std::vector<FireEvent>                        fires;
+    auto put = [&](const std::string& owner, Vector2 where, bool site)
+    {
+        auto o = std::make_unique<Structure>(where, 0.0f, "Outpost", outpost.archetype);
+        o->SetBlueprint(outpost.id);
+        if (site)
+            o->StartBuilding(sim.Time(), sim.Time() + 600.0);
+        return sim.AddStatic(sys, std::move(o), owner);
+    };
+    auto defend = [&]()
+    {
+        for (int i = 0; i < 120; i++)
+            sim.StepStationDefence(*sim.SystemById(sys), players, &fires, dt);
+    };
+
+    SUBCASE("a player's armed structure answers only whoever shot at it, for a while")
+    {
+        Law(sim, sys, false, FactionId::Independent);
+        const int id = put("hunter", at, false);
+        ann.ship->Teleport({ at.x + 400.0f, at.y });
+        defend();
+        CHECK(fires.empty());  // in range, and nobody's enemy
+
+        REQUIRE(Shoot(sim, ann, id));
+        const float before = ann.ship->GetShields() + ann.ship->GetHull();
+        defend();
+        REQUIRE_FALSE(fires.empty());
+        CHECK(fires[0].targetSessionId == ann.id);
+        CHECK(ann.ship->GetShields() + ann.ship->GetHull() < before);
+
+        fires.clear();
+        sim.SetTime(sim.Time() + Simulation::PROVOKED_SECONDS + 1.0);
+        defend();
+        CHECK(fires.empty());
+    }
+    SUBCASE("a faction's fires on its enemies unprovoked; a site has no guns yet")
+    {
+        put(Outposts::OwnerOf(FactionId::Pirates), at, true);
+        ann.ship->Teleport({ at.x + 400.0f, at.y });
+        defend();
+        CHECK(fires.empty());
+        put(Outposts::OwnerOf(FactionId::Pirates), { at.x, at.y + 600.0f }, false);
+        defend();
+        REQUIRE_FALSE(fires.empty());
+        CHECK(fires[0].shooterFaction == FactionId::Pirates);
+    }
+    SUBCASE("the police come by warp to a crime against a structure, where it is hot")
+    {
+        const int id = sim.Deploy(s, "beacon", at, "Lantern");
+        REQUIRE(id != 0);
+        ann.ship->Teleport({ at.x + 100.0f, at.y });
+        sim.Warm(*sim.SystemById(sys));
+        FactionId law = FactionId::Independent;
+        bool      patrols = false;
+        for (const auto& e : sim.SystemById(sys)->entities)
+            if (e->GetKind() == EntityKind::Npc &&
+                static_cast<const NpcShip&>(*e).GetRole() == NpcRole::Police)
+            {
+                law = static_cast<const NpcShip&>(*e).GetFaction();
+                patrols = true;
+            }
+        REQUIRE(patrols);
+        Law(sim, sys, true, law);
+        auto near = [&]()
+        {
+            int n = 0;
+            for (const auto& e : sim.SystemById(sys)->entities)
+                if (e->GetKind() == EntityKind::Npc &&
+                    static_cast<const NpcShip&>(*e).GetRole() == NpcRole::Police &&
+                    Vector2Distance(e->GetPosition(), ann.ship->GetPosition()) < 3500.0f)
+                    n++;
+            return n;
+        };
+        REQUIRE(near() == 0);
+
+        const int seq = ann.LastEventSeq();
+        REQUIRE(Shoot(sim, ann, id));
+        const int came = near();
+        CHECK(came >= 1);
+        CHECK(came <= 2);
+        bool told = false;
+        for (const Ev::Event& e : ann.EventsSince(seq))
+            told = told || e.text.find("police answer") != std::string::npos;
+        CHECK(told);
+        Shoot(sim, ann, id);  // one call brings them; the next shot brings no more
+        CHECK(near() == came);
+    }
+    SUBCASE("no law broken, nobody comes")
+    {
+        const int id = sim.Deploy(s, "beacon", at, "Lantern");
+        REQUIRE(id != 0);
+        ann.ship->Teleport({ at.x + 100.0f, at.y });
+        sim.Warm(*sim.SystemById(sys));
+        Law(sim, sys, false, FactionId::Independent);
+        const int seq = ann.LastEventSeq();
+        REQUIRE(Shoot(sim, ann, id));
+        for (const Ev::Event& e : ann.EventsSince(seq))
+            CHECK(e.text.find("police answer") == std::string::npos);
+    }
+}
+
+TEST_CASE(
+    "a structure's wreck decays on the clock, cold, and keeps its time across a restart (#41)")
+{
+    LoadRegistries();
+    const std::string path = "world_wreck_decay_tmp.json";
+    Simulation        a;
+    StartServer(a, "");
+    ClientSession&    s = Builder(a, "hunter");
+    ClientSession&    ann = Builder(a, "ann");
+    const std::string sys = s.systemId;
+    const Blueprint&  beacon = *Blueprints::Find("beacon");
+    REQUIRE(Blueprints::Rules().wreckSeconds > 0.0f);
+    Stock(s);
+    const Vector2 at = FreeSpot(a, s, beacon);
+    const int     id = a.Deploy(s, "beacon", at, "Gone");
+    REQUIRE(id != 0);
+    ann.ship->Teleport(at);
+    for (int i = 0; i < 100 && StructureById(a, sys, id) != nullptr; i++)
+        Shoot(a, ann, id);
+    REQUIRE(StructureById(a, sys, id) == nullptr);
+    const Derelict* w = Wrecks(a, sys).back();
+    REQUIRE(w->GetBaseName() == "Wreck of Gone");
+    const double end = w->GetExpiresAt();
+    CHECK(end == doctest::Approx(a.Time() + Blueprints::Rules().wreckSeconds));
+    for (const Derelict* d : Wrecks(a, sys))  // the world's own wrecks are the map's, and stay
+        if (d != w)
+            CHECK(d->GetExpiresAt() == 0.0);
+    a.SaveWorld(path);
+
+    auto wreckIn = [](Simulation& sim, const std::string& in) -> const Derelict*
+    {
+        for (const Derelict* d : Wrecks(sim, in))
+            if (d->GetBaseName() == "Wreck of Gone")
+                return d;
+        return nullptr;
+    };
+
+    SUBCASE("a restart keeps the instant, and the system goes on with nobody in it")
+    {
+        Simulation b;
+        StartServer(b, path);
+        const Derelict* back = wreckIn(b, sys);
+        REQUIRE(back != nullptr);
+        CHECK(back->GetExpiresAt() == doctest::Approx(end));
+        CHECK_FALSE(Simulation::IsHot(*b.SystemById(sys)));
+        b.SetTime(end - 1.0);
+        b.StepStructures();
+        CHECK(wreckIn(b, sys) != nullptr);
+        b.SetTime(end);
+        b.StepStructures();
+        CHECK(wreckIn(b, sys) == nullptr);
+        b.SaveWorld(path);  // ...and it does not come back with the next restart
+        Simulation c;
+        StartServer(c, path);
+        CHECK(wreckIn(c, sys) == nullptr);
+    }
+    SUBCASE("a wreck from a save before the rule is given its time from the load")
+    {
+        nlohmann::json j;
+        {
+            std::ifstream in(path);
+            j = nlohmann::json::parse(in);
+        }
+        j["version"] = 8;
+        for (auto& added : j["changes"][sys]["added"])
+            if (added["array"] == "derelicts")
+                added["object"].erase("expiresAt");
+        {
+            std::ofstream out(path);
+            out << j.dump();
+        }
+        Simulation b;
+        StartServer(b, path);
+        const Derelict* back = wreckIn(b, sys);
+        REQUIRE(back != nullptr);
+        CHECK(back->GetExpiresAt() == doctest::Approx(b.Time() + Blueprints::Rules().wreckSeconds));
+    }
+    std::remove(path.c_str());
 }

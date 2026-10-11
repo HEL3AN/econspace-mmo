@@ -6,6 +6,7 @@
 #include "sim/WarpPath.h"
 
 #include "core/Archetype.h"
+#include "core/Blueprint.h"
 #include "core/World.h"
 #include "entities/Entity.h"
 #include "entities/JumpGate.h"
@@ -252,6 +253,29 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
         const Archetype* a = target != nullptr ? target->GetArchetype() : nullptr;
         arrive = size + (a != nullptr ? a->extractRange : 0.0f);
     }
+    else if (s.order.kind == Orders::Kind::Build)
+    {
+        // Everything but the distance is asked before flying anywhere: a hold that cannot pay,
+        // or a spot that is taken, is better said now than at the end of a warp. Asked again
+        // on every fresh approach, since the world changes under a long one.
+        const Blueprint* bp = Blueprints::Find(s.order.blueprint);
+        if (bp == nullptr || !bp->byPlayers)
+        {
+            finish(Orders::Status::Failed, "there is no blueprint '" + s.order.blueprint + "'");
+            return;
+        }
+        if (!s.orderNavIssued)
+        {
+            const std::string why = PlacementProblem(s, *bp, s.order.point, false);
+            if (!why.empty())
+            {
+                finish(Orders::Status::Failed, why);
+                return;
+            }
+        }
+        // Well inside the reach, so the ship that stops short of its aim is still in it.
+        arrive = bp->reach * 0.6f;
+    }
     else if (s.order.kind == Orders::Kind::Attack)
     {
         // Something to shoot at, and within the weapon's reach of it -- a structure from its
@@ -345,6 +369,24 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             }
             if (!s.order.untilFull)
                 finish(Orders::Status::Done, "mined");
+            return;
+        }
+
+        case Orders::Kind::Build:
+        {
+            Sim::StepPlayerShip(*s.ship, Proto::Command{}, 1.0f, dt);
+            const Blueprint&  bp = *Blueprints::Find(s.order.blueprint);
+            const std::string why = PlacementProblem(s, bp, s.order.point);
+            if (!why.empty())
+            {
+                finish(Orders::Status::Failed, why);
+                return;
+            }
+            const int id = Deploy(s, bp.id, s.order.point, s.order.name);
+            if (id == 0)
+                finish(Orders::Status::Failed, "the system would not take it");
+            else
+                finish(Orders::Status::Done, "site #" + std::to_string(id) + " laid down");
             return;
         }
 

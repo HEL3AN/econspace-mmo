@@ -202,6 +202,8 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
         o.untilFull = c.orderUntilFull;
         o.destSystem = c.orderDestSystem;
         o.avoidDanger = c.orderAvoidDanger;
+        o.blueprint = c.orderBlueprint;
+        o.name = c.orderName;
         sim.GiveOrder(s, o);
     }
 

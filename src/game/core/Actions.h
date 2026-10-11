@@ -38,7 +38,7 @@ enum class Verb
     Jump,         // a gate
     FlyHere,      // a point in space
     WarpHere,
-    Build,      // lay down a blueprint at a point (#39)
+    Build,      // lay down a blueprint at a point (#39), flying there first if it is far
     Accept,     // take an offer from the board of the station the ship is docked at
     HandIn,     // hand in an active mission, for its reward
     Dismantle,  // take one's own structure apart for a refund (#39)

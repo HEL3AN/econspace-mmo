@@ -221,6 +221,8 @@ void Game::Run()
                 cmd_.jumpGateId = cmd_.lootId = 0;
                 cmd_.deploy.clear();
                 cmd_.dismantleId = 0;
+                cmd_.orderKind = 0;  // a build order (#39) is given once
+                cmd_.orderBlueprint.clear();
             }
             simAccumulator_ -= SIM_DT;
         }
@@ -822,8 +824,16 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
         case Verb::FlyHere: OrderAutopilot(point, a.distance); return;
         case Verb::WarpHere: OrderWarp(point, a.distance); return;
         case Verb::Build:
-            cmd_.deploy = a.blueprint;
-            cmd_.deployPos = point;
+            if (a.distance <= 0.0f)  // in reach: laid down now
+            {
+                cmd_.deploy = a.blueprint;
+                cmd_.deployPos = point;
+                return;
+            }
+            // Out of reach: a standing order the server flies and lays down on arrival (#39).
+            cmd_.orderKind = (int)Orders::Kind::Build;
+            cmd_.orderPoint = point;
+            cmd_.orderBlueprint = a.blueprint;
             return;
         // The missions are the server's (M4f-2): a one-off command, and the next snapshot
         // says whether it was taken.

@@ -134,6 +134,12 @@ struct SystemState
     // Seconds until each defensive object fires again, by entity id (#193). Transient:
     // a station that has just been hydrated is simply ready.
     std::map<int, float> defenceCooldown;
+    // Who has shot at each structure lately, by structure id: session id -> the world time
+    // until which an armed structure fires back at them (#39). Transient, like the cooldown.
+    std::map<int, std::map<int, double>> provokedBy;
+    // Until when the police here are already answering an attack on a structure (#39): one
+    // call brings them, and the next shot does not bring more. Transient.
+    double policeCalledUntil = 0.0;
 
     // The static layer's revision and what changed in it since the last LayoutDelta went
     // out (#38), by entity id. Transient like the rest of a hot system: a restart begins

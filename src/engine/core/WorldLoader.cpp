@@ -263,6 +263,7 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
             entities.push_back(std::make_unique<Derelict>(PosOf(d), (float)d.value("size", 45.0),
                                                           d["name"],
                                                           (double)d.value("reward", 500.0)));
+            static_cast<Derelict&>(*entities.back()).SetExpiresAt(d.value("expiresAt", 0.0));
             ApplyArchetype(*entities.back(), d);
             ApplyOrbit(*entities.back(), d);
         }
@@ -375,6 +376,8 @@ nlohmann::json WorldLoader::DescribeObject(const Entity& e, std::string& array)
             o["name"] = d.GetBaseName();  // searched or not is state, not description
             o["size"] = d.GetSize();
             o["reward"] = d.GetReward();
+            if (d.GetExpiresAt() > 0.0)  // a structure's wreck decays (#41)
+                o["expiresAt"] = d.GetExpiresAt();
             break;
         }
         case EntityKind::Structure:

@@ -6,6 +6,7 @@
 #include "sim/Simulation.h"
 #include "sim/Names.h"
 
+#include "core/Blueprint.h"
 #include "core/Orbits.h"
 #include "core/World.h"
 #include "entities/AsteroidField.h"
@@ -228,6 +229,8 @@ void Simulation::Cool(SystemState& st)
                                      { return e->GetKind() == EntityKind::Npc; }),
                       st.entities.end());
     st.defenceCooldown.clear();
+    st.provokedBy.clear();
+    st.policeCalledUntil = 0.0;
     st.populated = false;
     for (auto& kv : plans_)  // a siege's warships went with the rest
         if (kv.second.target == st.id)
@@ -767,7 +770,18 @@ Save::Result Simulation::LoadWorld(const std::string& path)
                 continue;
             }
             SystemState& st = systems_[it.key()];
-            const json&  c = it.value();
+            json         c = it.value();
+            // Before version 9 a structure's wreck lay for ever. Every wreck a save added is one
+            // (nothing else adds them), and each is given its time from now: the clock starts
+            // when the rule does, rather than taking away at once what a player may be flying
+            // to.
+            if (j.value("version", Save::UNVERSIONED) < 9 && c.contains("added") &&
+                c["added"].is_array() && Blueprints::Rules().wreckSeconds > 0.0f)
+                for (json& a : c["added"])
+                    if (a.is_object() && a.value("array", std::string()) == "derelicts" &&
+                        a.contains("object") && a["object"].is_object() &&
+                        !a["object"].contains("expiresAt"))
+                        a["object"]["expiresAt"] = time_ + Blueprints::Rules().wreckSeconds;
             if (c.contains("removed") && c["removed"].is_array())
                 for (const json& k : c["removed"])
                     if (k.is_string())
@@ -1051,6 +1065,7 @@ bool Simulation::RemoveStatic(const std::string& systemId, int id)
         }
     }
     st->defenceCooldown.erase(id);
+    st->provokedBy.erase(id);
     // One of the world's own stays gone across a restart; one added since simply stops
     // being saved.
     const auto key = st->keys.find(id);

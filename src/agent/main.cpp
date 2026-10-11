@@ -1020,6 +1020,54 @@ std::vector<Tool> BuildTools()
           } });
 
     tools.push_back(
+        { "build",
+          "A standing order to build: fly to a point (warping when far) and lay down a site "
+          "from a blueprint there, out of the hold, as deploy does. Finishes when the site is "
+          "down -- the site then finishes by itself after the build time, so you may leave at "
+          "once; wait_for_event wakes on 'order_done' and later on 'built'. Refused, with the "
+          "reason, before it flies if the hold is short, the place is taken, too close to "
+          "something or in a planet's path; fails on arrival if that changed on the way. "
+          "blueprints lists what can be built.",
+          Obj({ { "blueprint", Str("blueprint id from blueprints, e.g. 'beacon'") },
+                { "x", Num("where, world x") },
+                { "y", Num("where, world y") },
+                { "name", Str("what to call it (default: the blueprint's name); 3 to 24 "
+                              "characters, letters, digits, spaces, ' and -") } },
+              { "blueprint", "x", "y" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              const std::string id = args.contains("blueprint") && args["blueprint"].is_string()
+                                         ? args["blueprint"].get<std::string>()
+                                         : std::string();
+              const Blueprint*  bp = Blueprints::Find(id);
+              if (bp == nullptr)
+              {
+                  std::string known;
+                  for (const Blueprint& b : Blueprints::All())
+                      known += (known.empty() ? "" : ", ") + b.id;
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "no blueprint '" + id + "'; known: " + known };
+              }
+              const std::string name = args.contains("name") && args["name"].is_string()
+                                           ? args["name"].get<std::string>()
+                                           : std::string();
+              std::string       why;
+              if (!name.empty() && !Names::ValidSystemName(name, why))
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, why };
+              if (!args.contains("x") || !args.contains("y"))
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "say where: x and y" };
+              // A docked ship takes no orders; the station is left first.
+              if (g_session.Snapshot().player.docked)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "docked; undock first" };
+              Proto::Command c = OrderCommand(Orders::Kind::Build);
+              c.orderPoint = { (float)NumberOr(args, "x", 0.0), (float)NumberOr(args, "y", 0.0) };
+              c.orderBlueprint = bp->id;
+              c.orderName = name;
+              return GiveOrder(c, "build");
+          } });
+
+    tools.push_back(
         { "salvage",
           "Search a wreck (a derelict observe marks 'lootable') and take what it pays. A wreck "
           "is searched once, by whoever gets there first, and everyone sees it searched "
@@ -1302,13 +1350,19 @@ int Selftest(const std::vector<Tool>& tools)
     g_phase = "reading the blueprints";
     const std::string bps = RunTool(tools, "blueprints", Rpc::Json::object());
     const std::string fromDock = RunTool(tools, "deploy", Rpc::Json{ { "blueprint", "beacon" } });
+    // ...nor ordered from there, and an order that cannot be paid for is refused before it
+    // flies (#39).
+    const std::string buildOrder =
+        RunTool(tools, "build", Rpc::Json{ { "blueprint", "beacon" }, { "x", 0 }, { "y", 0 } });
     // ...and nothing is taken apart that is not there to take (#39).
     const std::string nothing =
         RunTool(tools, "dismantle", Rpc::Json{ { "structure_id", 999999 } });
-    const bool building = bps.find("beacon") != std::string::npos &&
-                          (!docked || fromDock.find("undock first") != std::string::npos) &&
-                          nothing.find("no structure") != std::string::npos;
-    note("blueprints, deploy and dismantle", building);
+    const bool building =
+        bps.find("beacon") != std::string::npos &&
+        (!docked || fromDock.find("undock first") != std::string::npos) &&
+        (buildOrder.find(docked ? "undock first" : "build:") != std::string::npos) &&
+        nothing.find("no structure") != std::string::npos;
+    note("blueprints, deploy, build and dismantle", building);
 
     // 7) Salvage (#297): a wreck that is not there is named as such, and one that is gets
     // searched or approached -- whichever its distance calls for. Which wrecks a system has
