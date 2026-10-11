@@ -21,6 +21,7 @@
 #include "sim/ClientSession.h"
 #include "sim/FactionMind.h"
 #include "sim/Simulation.h"
+#include "temp_dir.h"
 
 // Outposts over time (#295, slice 5): an outpost costs its faction something every period, one
 // nobody supplies falls into ruin, a lost outpost takes its claim with it, and a faction may
@@ -204,7 +205,8 @@ TEST_CASE("upkeep and sieges are rules in the data, and a wrong one does not loa
     CHECK(Simulation::SiegeCost() > 0.0f);
     CHECK(Simulation::SiegeCost() < Simulation::OutpostCost());
 
-    const std::string path = "siege_rules_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("siege_rules.json");
     auto              refused = [&](const std::string& extra)
     {
         {
@@ -212,7 +214,6 @@ TEST_CASE("upkeep and sieges are rules in the data, and a wrong one does not loa
             out << "{ \"blueprints\": [], " << extra << " }";
         }
         const bool ok = Blueprints::Load(path);
-        std::remove(path.c_str());
         return !ok;
     };
     CHECK(refused("\"upkeep\": { \"share\": 0.01, \"decay\": 2 }"));         // a share over 1
@@ -496,7 +497,8 @@ TEST_CASE("a siege goes the same way whether anybody watches or not (#295)")
 
 TEST_CASE("a siege and what a faction cannot supply survive a restart (#295)")
 {
-    const std::string path = "siege_world_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("siege_world.json");
     auto              a = World();
     const Scene       s = GuildOutpostNextToPirates(*a);
     const Plan        plan = *PiratesBesiege(*a, s);
@@ -509,7 +511,6 @@ TEST_CASE("a siege and what a faction cannot supply survive a restart (#295)")
     b.AttachRegion(7, DATA + "systems/");
     REQUIRE(b.LoadWorld(path) == Save::Result::Ok);
     b.MaterializeAllSystems(DATA + "systems/");
-    std::remove(path.c_str());
 
     REQUIRE(b.Plans().count(plan.id) == 1);
     const Plan back = b.Plans().at(plan.id);

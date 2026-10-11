@@ -20,6 +20,7 @@
 #include "gen/Region.h"
 #include "sim/FactionMind.h"
 #include "sim/Simulation.h"
+#include "temp_dir.h"
 
 // Outposts placed by purpose (#318): what a faction valued in a system decides what it
 // builds there, the purpose decides where, and each purpose looks like what it is for.
@@ -274,7 +275,8 @@ TEST_CASE("each purpose leads to its place, every place is legal, and the same w
 TEST_CASE("an orbital outpost moves with its planet and is still its satellite after a restart "
           "(#318)")
 {
-    const std::string path = "outpost_world_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("outpost_world.json");
     auto              a = MakeWorld(7);
     // A system with a planet that has room for one more moon.
     std::string             where;
@@ -325,7 +327,6 @@ TEST_CASE("an orbital outpost moves with its planet and is still its satellite a
     b.AttachRegion(7, DATA + "systems/");
     REQUIRE(b.LoadWorld(path) == Save::Result::Ok);
     b.MaterializeAllSystems(DATA + "systems/");
-    std::remove(path.c_str());
     const Structure* back = OutpostIn(b, where);
     REQUIRE(back != nullptr);
     CHECK(back->GetBuilds() == bp->archetype);

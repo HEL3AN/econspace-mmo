@@ -15,6 +15,7 @@
 #include "sim/ClientSession.h"
 #include "sim/FactionMind.h"
 #include "sim/Simulation.h"
+#include "temp_dir.h"
 
 // Settling (#295, slice 3): a faction's holdings yield a stock, the stock pays for an outpost
 // in a system nobody holds, the outpost is a structure everyone there can see while it goes
@@ -282,7 +283,8 @@ TEST_CASE("a settlement whose site is lost claims nothing (#295)")
 
 TEST_CASE("a settlement and the stock survive a restart, and the outpost finishes on time (#295)")
 {
-    const std::string path = "settle_world_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("settle_world.json");
     auto              a = World();
     const std::string frontier = GuildSettles(*a);
     const Plan        plan = *SettlementOf(*a, FactionId::TradersGuild);
@@ -294,7 +296,6 @@ TEST_CASE("a settlement and the stock survive a restart, and the outpost finishe
     b.AttachRegion(7, DATA + "systems/");
     REQUIRE(b.LoadWorld(path) == Save::Result::Ok);
     b.MaterializeAllSystems(DATA + "systems/");
-    std::remove(path.c_str());
 
     REQUIRE(b.Plans().count(plan.id) == 1);
     const Plan back = b.Plans().at(plan.id);
@@ -322,7 +323,8 @@ TEST_CASE("a settlement and the stock survive a restart, and the outpost finishe
 TEST_CASE("a world saved before factions had a stock loads, and they start from nothing (#295)")
 {
     LoadRegistries();
-    const std::string path = "settle_old_world_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("settle_old_world.json");
     {
         Simulation probe;
         probe.LoadUniverse(DATA + "universe.json");
@@ -351,7 +353,6 @@ TEST_CASE("a world saved before factions had a stock loads, and they start from 
         std::ifstream in(path);
         text.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     }
-    std::remove(path.c_str());
     CHECK(Save::WORLD_VERSION >= 6);
     CHECK(text.find("\"version\": " + std::to_string(Save::WORLD_VERSION)) != std::string::npos);
     CHECK(text.find("\"stock\"") != std::string::npos);

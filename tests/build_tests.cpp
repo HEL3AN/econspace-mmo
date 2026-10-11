@@ -12,6 +12,7 @@
 #include "sim/ClientSession.h"
 #include "sim/Protocol.h"
 #include "sim/Simulation.h"
+#include "temp_dir.h"
 
 #include <cmath>
 #include <cstdio>
@@ -93,13 +94,13 @@ Structure* StructureById(Simulation& sim, const std::string& sys, int id)
 
 bool LoadBlueprintsInline(const std::string& body)
 {
-    const std::string path = "blueprints_test_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("blueprints_test.json");
     {
         std::ofstream f(path);
         f << body;
     }
     const bool ok = Blueprints::Load(path);
-    std::remove(path.c_str());
     return ok;
 }
 }  // namespace
@@ -351,7 +352,8 @@ TEST_CASE("a site is finished by the clock, and everyone is told (#39)")
 TEST_CASE("a site outlives a restart and still finishes on time (#39)")
 {
     LoadRegistries();
-    const std::string path = "world_build_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("world_build.json");
     Simulation        a;
     StartServer(a, "");
     ClientSession&    s = Builder(a, "hunter");
@@ -371,7 +373,6 @@ TEST_CASE("a site outlives a restart and still finishes on time (#39)")
 
     Simulation b;
     StartServer(b, path);
-    std::remove(path.c_str());
     const Proto::SystemLayout lay = b.BuildLayout(sys);
     int                       found = 0;
     for (const Proto::EntityLayout& e : lay.entities)
@@ -704,7 +705,8 @@ TEST_CASE("an attack order closes in and fires until the target is gone (#39)")
 TEST_CASE("damage and wrecks outlive a restart; a command and a layout carry them (#39)")
 {
     LoadRegistries();
-    const std::string path = "world_teardown_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("world_teardown.json");
     Simulation        a;
     StartServer(a, "");
     ClientSession&    s = Builder(a, "hunter");
@@ -731,7 +733,6 @@ TEST_CASE("damage and wrecks outlive a restart; a command and a layout carry the
 
     Simulation b;
     StartServer(b, path);
-    std::remove(path.c_str());
     bool dented = false, wreck = false, ghost = false;
     for (const Proto::EntityLayout& e : b.BuildLayout(sys).entities)
     {

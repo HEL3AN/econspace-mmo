@@ -5,6 +5,7 @@
 #include "entities/Station.h"
 #include "render/Material.h"
 #include "render/Silhouette.h"
+#include "temp_dir.h"
 #include <nlohmann/json.hpp>
 #include <cstdio>
 #include <fstream>
@@ -21,17 +22,17 @@ std::string DataFile(const char* name)
     return std::string(TEST_DATA_DIR) + name;
 }
 
-// The registry with one extra entry appended, written to the build tree. Returns Load()'s
+// The registry with one extra entry appended, written to a temp folder. Returns Load()'s
 // verdict; the shipped registry is reloaded afterwards so later tests see the real one.
 bool LoadWithEntry(const std::string& entry)
 {
-    const std::string path = "load_mistake_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("load_mistake.json");
     {
         std::ofstream f(path);
         f << R"({"archetypes":[)" << entry << "]}";
     }
     const bool ok = Archetypes::Load(path);
-    std::remove(path.c_str());
     return ok;
 }
 

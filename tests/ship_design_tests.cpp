@@ -170,6 +170,21 @@ TEST_CASE("a player's ship flies, takes hits and looks as its design says")
     const Render::Item drawn = ship.Describe();
     CHECK(drawn.shape == &Archetypes::ForDesign(catalog[2].stats.design)->visual.shape);
     CHECK(drawn.kind == EntityKind::PlayerShip);
+
+    // ...and its size: a hull is as big as an NPC flying that design, so a Hauler is drawn
+    // and picked bigger than a Courier rather than every hull at one size.
+    for (const ShipType& t : catalog)
+    {
+        ship.Refit(t.stats);
+        const Archetype* look = Archetypes::ForDesign(t.stats.design);
+        REQUIRE(look != nullptr);
+        CHECK(ship.GetSize() == doctest::Approx(look->defaultSize));
+        CHECK(ship.Describe().size == doctest::Approx(look->defaultSize));
+    }
+    ship.Refit(catalog[1].stats);  // the courier
+    const float courier = ship.GetSize();
+    ship.Refit(catalog[2].stats);  // the hauler
+    CHECK(ship.GetSize() > courier);
 }
 
 TEST_CASE("the hangar: a list of designs, the starter first, and a mistake is a load error")

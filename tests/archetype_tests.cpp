@@ -8,6 +8,7 @@
 #include "entities/Planet.h"
 #include "entities/Star.h"
 #include "economy/Resource.h"
+#include "temp_dir.h"
 #include <cstdio>
 #include <fstream>
 #include <raylib.h>
@@ -26,18 +27,17 @@ std::string DataFile(const char* name)
 }
 
 // Writes a throwaway archetype file and loads it. Returns Load()'s verdict. The file goes
-// to the working directory (the build tree under ctest), never into data/ — a crashed
-// test must not leave a bogus archetype where the game would read it.
+// to a temp folder of its own, never into data/ — a crashed test must not leave a bogus
+// archetype where the game would read it.
 bool LoadInline(const std::string& body)
 {
-    const std::string path = "archetypes_test_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("archetypes.json");
     {
         std::ofstream f(path);
         f << body;
     }
-    bool ok = Archetypes::Load(path);
-    std::remove(path.c_str());
-    return ok;
+    return Archetypes::Load(path);
 }
 }  // namespace
 
@@ -287,17 +287,18 @@ TEST_CASE("colour in the world is the archetype's, not the owner's (#117)")
 TEST_CASE("what an object can do decides part of what it wears (#137, #240 phase 5)")
 {
     // In a directory of its own, with a module library beside it: the loader reads both.
-    MakeDirectory("when_test_tmp");
+    const TempDir     tmp;
+    const std::string file = tmp.Path("archetypes.json");
     {
-        std::ofstream m("when_test_tmp/modules.json");
+        std::ofstream m(tmp.Path("modules.json"));
         m << R"({ "modules": [ { "id": "turret", "variants": [ { "id": "a", "shape": [
               { "form": "disc", "radius": 0.5 } ] } ] },
               { "id": "crate", "variants": [ { "id": "a", "shape": [
               { "form": "bar", "length": 1 } ] } ] } ] })";
     }
-    auto write = [](const char* components, const char* when)
+    auto write = [&file](const char* components, const char* when)
     {
-        std::ofstream f("when_test_tmp/archetypes.json");
+        std::ofstream f(file);
         f << R"({ "archetypes": [ { "id": "station.test", "kind": "Station", "shape": {
               "sections": [ { "form": "disc", "radius": 0.8 } ],
               "kit": { "modules": [
@@ -308,22 +309,20 @@ TEST_CASE("what an object can do decides part of what it wears (#137, #240 phase
           << components << " } ] }";
     };
     write(R"({ "defensive": {} })", "defensive");
-    REQUIRE(Archetypes::Load("when_test_tmp/archetypes.json"));
+    REQUIRE(Archetypes::Load(file));
     CHECK(Archetypes::Find("station.test")->visual.shape.kit.entries.size() == 2);
 
     write(R"({ "market": {} })", "defensive");  // not defensive: no turrets
-    REQUIRE(Archetypes::Load("when_test_tmp/archetypes.json"));
+    REQUIRE(Archetypes::Load(file));
     CHECK(Archetypes::Find("station.test")->visual.shape.kit.entries.size() == 1);
 
     write(R"({ "market": {} })", "!defensive");  // and the other way round
-    REQUIRE(Archetypes::Load("when_test_tmp/archetypes.json"));
+    REQUIRE(Archetypes::Load(file));
     CHECK(Archetypes::Find("station.test")->visual.shape.kit.entries.size() == 2);
 
     write(R"({ "market": {} })", "defensve");  // a misspelling is an error
-    CHECK_FALSE(Archetypes::Load("when_test_tmp/archetypes.json"));
+    CHECK_FALSE(Archetypes::Load(file));
     CHECK(Archetypes::Error().find("defensve") != std::string::npos);
 
-    std::remove("when_test_tmp/archetypes.json");
-    std::remove("when_test_tmp/modules.json");
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
 }
