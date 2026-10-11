@@ -97,7 +97,16 @@ float CentredTop(const LineMetrics& m, float top, float height);
 // Measure and draw at a size in pixels. The text needs no terminating zero. A measure is
 // as wide as the pen's advance and as tall as LineMetrics::height; `pos` is the top left.
 Vector2 MeasureString(Face face, float px, std::string_view text);
-void    DrawString(Face face, std::string_view text, Vector2 pos, float px, Color color);
+// With `clip`, only what falls inside it is drawn -- the pixels a scissor would leave, with
+// no scissor: setting one flushes the batch (#363). Ignored by raylib's fallback font, which
+// a face without its file draws in (FaceReady says which).
+void DrawString(Face face, std::string_view text, Vector2 pos, float px, Color color,
+                const Rectangle* clip = nullptr);
+bool FaceReady(Face face);
+// The pixels DrawString with the same arguments can colour, as a rectangle: the letters'
+// own bounds rather than the line's, so a clip knows whether it would cut any of them. Empty
+// for a run with nothing to draw.
+Rectangle TextInk(Face face, std::string_view text, Vector2 pos, float px);
 
 // One large, filtered atlas for text that is scaled freely rather than set at a size:
 // the glyphs of the world view, which grow and shrink with the camera.

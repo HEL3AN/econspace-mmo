@@ -134,6 +134,9 @@ const char* SectionName(Section s)
         case Section::Compose: return "compose";
         case Section::Soft: return "soft";
         case Section::Surface: return "surface";
+        case Section::Solve: return "solve";
+        case Section::Paint: return "paint";
+        case Section::Text: return "text";
         case Section::Count: break;
     }
     return "?";
@@ -152,6 +155,7 @@ const char* CounterName(Counter c)
         case Counter::Surface: return "surface";
         case Counter::Passes: return "passes";
         case Counter::CacheMisses: return "expanded";
+        case Counter::Clips: return "clips";
         case Counter::Count: break;
     }
     return "?";
@@ -266,8 +270,9 @@ std::string Report(const Summary& s)
     }
     for (int i = 0; i < (int)Section::Count; i++)
     {
-        std::snprintf(buf, sizeof buf, "    %-8s %7.2f  (cpu, inside world)\n",
-                      SectionName((Section)i), s.sectionMs[i]);
+        std::snprintf(buf, sizeof buf, "    %-8s %7.2f  (cpu, inside %s)\n",
+                      SectionName((Section)i), s.sectionMs[i],
+                      i >= (int)Section::Solve ? "hud" : "world");
         out += buf;
     }
     out += " ";

@@ -1,5 +1,8 @@
 #include "ui/Fonts.h"
 
+#include "render/Perf.h"
+#include "rlgl.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -469,17 +472,13 @@ Vector2 MeasureString(Face face, float px, std::string_view text)
     return Walk(face, p, text, [](const Sized&, int, float, float) {});
 }
 
-void DrawString(Face face, std::string_view text, Vector2 pos, float px, Color color)
+namespace
 {
-    const int p = FontPx(px);
-    // On whole pixels, so the atlas lands on the screen's grid.
-    const float x0 = std::floor(pos.x + 0.5f), y0 = std::floor(pos.y + 0.5f);
-    if (!g_loaded || !g_faces[(int)face].ok)
-    {
-        const std::string s(text);
-        DrawTextEx(GetFontDefault(), s.c_str(), { x0, y0 }, (float)p, 1.0f, color);
-        return;
-    }
+// Every glyph of a run with something to draw, as the quad it is drawn in: the atlas cell
+// (its padding included) and where on the screen, the run's top left at (x0, y0).
+template <typename F>
+void Quads(Face face, int p, std::string_view text, float x0, float y0, F&& quad)
+{
     Walk(face, p, text,
          [&](const Sized& s, int slot, float x, float y)
          {
@@ -498,9 +497,96 @@ void DrawString(Face face, std::string_view text, Vector2 pos, float px, Color c
              const float     gy = y0 + y + (float)font.glyphs[g].offsetY;
              const Rectangle src{ r.x - pad, r.y - pad, r.width + 2.0f * pad,
                                   r.height + 2.0f * pad };
-             DrawTexturePro(font.texture, src, { gx - pad, gy - pad, src.width, src.height },
-                            { 0.0f, 0.0f }, 0.0f, color);
+             quad(src, Rectangle{ gx - pad, gy - pad, src.width, src.height });
          });
+}
+}  // namespace
+
+bool FaceReady(Face face)
+{
+    return g_loaded && g_faces[(int)face].ok;
+}
+
+void DrawString(Face face, std::string_view text, Vector2 pos, float px, Color color,
+                const Rectangle* clip)
+{
+    Render::Perf::Scope timed(Render::Perf::Section::Text);
+    const int           p = FontPx(px);
+    // On whole pixels, so the atlas lands on the screen's grid.
+    const float x0 = std::floor(pos.x + 0.5f), y0 = std::floor(pos.y + 0.5f);
+    if (!g_loaded || !g_faces[(int)face].ok)
+    {
+        const std::string s(text);
+        DrawTextEx(GetFontDefault(), s.c_str(), { x0, y0 }, (float)p, 1.0f, color);
+        return;
+    }
+    // One run of quads on one texture (#363): what DrawTexturePro does per glyph -- the same
+    // corners, the same texture coordinates -- with the texture bound and the batch opened once
+    // for the run rather than once a letter. Room for every byte as a glyph is made first,
+    // since a batch must not be flushed half way through a quad.
+    const Font& atlas = SizedAt(face, p).font;
+    if (atlas.texture.id == 0)
+        return;
+    const float tw = (float)atlas.texture.width, th = (float)atlas.texture.height;
+    rlCheckRenderBatchLimit(4 * (int)text.size());
+    rlSetTexture(atlas.texture.id);
+    rlBegin(RL_QUADS);
+    rlColor4ub(color.r, color.g, color.b, color.a);
+    rlNormal3f(0.0f, 0.0f, 1.0f);
+    Quads(face, p, text, x0, y0,
+          [&](Rectangle src, Rectangle dst)
+          {
+              if (clip != nullptr)
+              {
+                  // The atlas is drawn a texel to a pixel, so cutting the quad cuts its cell by
+                  // as many texels: what is left samples exactly what it sampled before.
+                  const float l = std::max(dst.x, clip->x), t = std::max(dst.y, clip->y);
+                  const float r = std::min(dst.x + dst.width, clip->x + clip->width);
+                  const float b = std::min(dst.y + dst.height, clip->y + clip->height);
+                  if (l >= r || t >= b)
+                      return;
+                  if (l != dst.x || t != dst.y || r != dst.x + dst.width || b != dst.y + dst.height)
+                  {
+                      src = { src.x + (l - dst.x), src.y + (t - dst.y), r - l, b - t };
+                      dst = { l, t, r - l, b - t };
+                  }
+              }
+              const float l = dst.x, t = dst.y, r = dst.x + dst.width, b = dst.y + dst.height;
+              rlTexCoord2f(src.x / tw, src.y / th);
+              rlVertex2f(l, t);
+              rlTexCoord2f(src.x / tw, (src.y + src.height) / th);
+              rlVertex2f(l, b);
+              rlTexCoord2f((src.x + src.width) / tw, (src.y + src.height) / th);
+              rlVertex2f(r, b);
+              rlTexCoord2f((src.x + src.width) / tw, src.y / th);
+              rlVertex2f(r, t);
+          });
+    rlEnd();
+    rlSetTexture(0);
+}
+
+Rectangle TextInk(Face face, std::string_view text, Vector2 pos, float px)
+{
+    const int   p = FontPx(px);
+    const float x0 = std::floor(pos.x + 0.5f), y0 = std::floor(pos.y + 0.5f);
+    if (!g_loaded || !g_faces[(int)face].ok)
+    {
+        // raylib's own font: its letters stay in the box it measures, a size's margin aside.
+        const Vector2 m = MeasureString(face, px, text);
+        return { x0 - (float)p, y0 - (float)p, m.x + 2.0f * (float)p, m.y + 2.0f * (float)p };
+    }
+    float lx = 0.0f, ty = 0.0f, rx = 0.0f, by = 0.0f;
+    bool  any = false;
+    Quads(face, p, text, x0, y0,
+          [&](const Rectangle&, const Rectangle& d)
+          {
+              lx = any ? std::min(lx, d.x) : d.x;
+              ty = any ? std::min(ty, d.y) : d.y;
+              rx = any ? std::max(rx, d.x + d.width) : d.x + d.width;
+              by = any ? std::max(by, d.y + d.height) : d.y + d.height;
+              any = true;
+          });
+    return any ? Rectangle{ lx, ty, rx - lx, by - ty } : Rectangle{ x0, y0, 0.0f, 0.0f };
 }
 
 const Font& GlyphFont()
