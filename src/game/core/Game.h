@@ -25,6 +25,7 @@
 #include "ui/Layout.h"
 #include "ui/UiTheme.h"  // UseTheme, for --theme
 #include "core/Actions.h"
+#include "core/Prediction.h"
 #include "core/Faction.h"
 #include "core/Goal.h"
 #include "economy/Resource.h"
@@ -416,9 +417,9 @@ private:
     ITransport*   clientLink_ = nullptr;
     // Client prediction/reconciliation of the own ship (M4e, per Gambetta):
     // inputs are numbered and kept until the server acks them, so unacked ones can be
-    // replayed over the authoritative state (without snapping backward).
-    unsigned int                inputSeq_ = 0;
-    std::vector<Proto::Command> pendingInputs_;
+    // replayed over the authoritative state (without snapping backward). No window in it,
+    // so a test drives it against a Simulation (#358).
+    Prediction prediction_;
     // Client-side proxy world entities: rendered instead of the server's live objects.
     // Statics are built from the received layout, dynamics (NPCs) from the snapshot; positions
     // are updated from the snapshot by id (M4d-3c). There is no local simulation to clone.
