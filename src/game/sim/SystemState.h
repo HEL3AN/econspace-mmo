@@ -131,6 +131,13 @@ struct SystemState
     // every tick a player is here. Transient -- a restart begins with every system cold.
     double warmUntil = 0.0;
 
+    // Ships that leave (#295), by role (NpcRole's first four), as of this coarse pass: how many
+    // it holds above what it keeps, how many it lacks of what the director would send counting
+    // those on their way in, and whether a neighbour has one to spare -- then the director
+    // leaves that role to next door. Transient: remade every pass before anything reads it.
+    std::array<float, 4> spare{}, lack{};
+    std::array<bool, 4>  fromNextDoor{};
+
     // Seconds until each defensive object fires again, by entity id (#193). Transient:
     // a station that has just been hydrated is simply ready.
     std::map<int, float> defenceCooldown;

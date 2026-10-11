@@ -187,7 +187,10 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   numbers before the first snapshot. So a test about ships, combat or per-tick agents in a
   system no session is in must call `SetAllHot(true)` or `Warm` first, and per-tick calls
   such as `StepSystemAgents` do nothing there -- use `MaintainWorld` for what the world does
-  on its own.
+  on its own. Ships above what a system keeps leave for a neighbour that lacks them
+  (`StepMigration`): a migrant is taken off the source's count when it sets out and is counted
+  nowhere until it arrives, and a ship turning for the gate (`NpcShip::IsLeaving`) is not
+  the system's -- a recount that counted it would read its going as a loss.
 - **A siege is arithmetic, and its warships only show it** (#295). The outpost's damage and
   both sides' losses come from the coarse pass in a hot system as in a cold one; the
   `Warship` NPCs a hot system shows hold fire on other NPCs and are not shot by stations, and

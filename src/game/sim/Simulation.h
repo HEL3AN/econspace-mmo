@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/WorldLoader.h"
+#include "entities/NpcShip.h"
 #include "sim/SystemState.h"
 #include "sim/Protocol.h"
 #include "sim/Events.h"
@@ -274,6 +275,29 @@ public:
     // nobody is in. Set before MaterializeAllSystems.
     void SetAllHot(bool all) { allHot_ = all; }
     bool AllHot() const { return allHot_; }
+
+    // --- Ships that leave (#295; Simulation_Migration.cpp) ---
+    // A system holding more ships of a role than it keeps sends one at a time to a neighbour
+    // that lacks them, at most one per role per the interval factions.json gives. Where the
+    // system is cold that is a number taken off it; where it is hot, a real ship turns for the
+    // gate and is gone. Either way it is on its way for `travel` seconds, counted nowhere, and
+    // then counts where it arrives -- as a ship coming in through the gate if somebody is there.
+    struct Migrant
+    {
+        long long   id = 0;
+        std::string from, to;
+        NpcRole     role = NpcRole::Trader;
+        FactionId   faction = FactionId::Independent;
+        double      leftAt = 0.0, arrivesAt = 0.0;
+        // While it is still turning for the gate in a hot system: which ship it is, and when it
+        // goes. Transient -- a restart begins cold, and every migrant has gone by then.
+        int    shipId = 0;
+        double jumpAt = 0.0;
+    };
+    const std::map<long long, Migrant>& Migrants() const { return migrants_; }
+    // How many ships of `role` the director keeps in a system, before the pressure of recent
+    // losses: what it holds above this is surplus, and leaves.
+    int KeepOf(const std::string& systemId, NpcRole role) const;
 
     // M4: builds the WORLD snapshot of a system (entities with id/kind/position, etc.) for
     // the client. Player state and fire events are added by the caller (the client owns the
@@ -656,9 +680,12 @@ private:
     // one is simply that.
     struct Population
     {
-        int       traders = 0, miners = 0, police = 0, pirates = 0;
-        FactionId policeFaction = FactionId::TradersGuild;
-        FactionId tradeFaction = FactionId::Independent;
+        int traders = 0, miners = 0, police = 0, pirates = 0;
+        // ...and before the pressure, by role (NpcRole's first four): what it keeps once the
+        // losses are forgotten. What it holds above this leaves (#295).
+        std::array<int, 4> keep{};
+        FactionId          policeFaction = FactionId::TradersGuild;
+        FactionId          tradeFaction = FactionId::Independent;
     };
     // Where a system has room for each role: lane ends (stations and gates), belts, and
     // whether anywhere is dark enough for pirates (a belt, or a gate into danger). A hot
@@ -672,11 +699,26 @@ private:
     static Room RoomOf(const SpawnNodes& nd);
     Room        RoomOf(const SystemState& st) const;
     Population  PopulationOf(const SystemState& st, const Room& room) const;
+
+    // Ships leaving (#295): those on their way, by id and by when they arrive. Saved.
+    std::map<long long, Migrant>           migrants_;
+    std::set<std::pair<double, long long>> arrivals_;
+    long long                              nextMigrant_ = 1;
+    // What the director keeps in each system this pass, in the order of systems_: worked out
+    // once by StepMigration and read by the cold director after it. Transient.
+    std::vector<Population> passTargets_;
+    // Once a pass, before the director: who leaves, who has gone, who has arrived.
+    void StepMigration();
+    // A migrant has come: a number in a cold system, a ship at the gate in a hot one.
+    void ArriveMigrant(const Migrant& m);
+    // A ship of `role` made in a hot system at `at`, given the work its role does there.
+    void SpawnRoleAt(SystemState& st, NpcRole role, FactionId faction, Vector2 at);
     // A cold system's coarse pass (#295): what its ships would have done to each other in
     // the time, as expected losses -- counted as losses are in a hot one -- and then the
     // spawn director's arithmetic in place of its ships.
     void ColdLosses(SystemState& st);
-    void ColdTopUp(SystemState& st);
+    // `target` is what PopulationOf says for it this pass (StepMigration worked it out).
+    void ColdTopUp(SystemState& st, const Population& target);
     // A hot system nobody has been in for COOL_AFTER: its ships are counted into the
     // aggregate and let go.
     void Cool(SystemState& st);

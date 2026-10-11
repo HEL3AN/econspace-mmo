@@ -34,6 +34,21 @@ struct Temperament
     float curiosity = 0.0f;
 };
 
+// Ships a system has more of than it keeps leave for a neighbour that lacks them (#295): the
+// `migration` section of factions.json. For each role, at most one ship leaves a system per
+// that many seconds (0: that role never leaves); `travel` is how long the journey takes from
+// the moment it sets out, and `align` the longest a real ship, where somebody is to see it,
+// takes to warp to the gate before it is gone -- it goes through as soon as it is there.
+struct Migration
+{
+    float trader = 240.0f;
+    float miner = 360.0f;
+    float patrol = 300.0f;
+    float pirate = 300.0f;
+    float travel = 90.0f;
+    float align = 40.0f;
+};
+
 // Stance between two factions (for combat/hostility logic).
 enum class Stance
 {
@@ -70,6 +85,7 @@ bool               IsLawful(FactionId f);
 std::string        Kind(FactionId f);
 Stance             Relation(FactionId a, FactionId b);
 const Temperament& TemperamentOf(FactionId f);
+const Migration&   MigrationRules();
 
 // Player reputation tiers.
 RepTier     TierOf(float rep);

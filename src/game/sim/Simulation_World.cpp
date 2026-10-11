@@ -236,6 +236,9 @@ void Simulation::Cool(SystemState& st)
     for (auto& kv : plans_)  // a siege's warships went with the rest
         if (kv.second.target == st.id)
             kv.second.fielded = 0;
+    for (auto& kv : migrants_)  // ...and a ship turning for the gate is through it (#295)
+        if (kv.second.from == st.id)
+            kv.second.shipId = 0;
 }
 
 void Simulation::AttachRegion(uint64_t seed, const std::string& systemsDir, int systems)
@@ -561,6 +564,19 @@ bool Simulation::SaveWorld(const std::string& path) const
     }
     j["plans"] = std::move(plans);
     j["nextPlan"] = nextPlanId_;
+    // Ships on their way between systems (#295): counted nowhere else, so lost if not here.
+    json migrants = json::array();
+    for (const auto& kv : migrants_)
+    {
+        const Migrant& m = kv.second;
+        migrants.push_back({ { "from", m.from },
+                             { "to", m.to },
+                             { "role", NpcRoleId(m.role) },
+                             { "faction", Factions::Id(m.faction) },
+                             { "leftAt", m.leftAt },
+                             { "arrivesAt", m.arrivesAt } });
+    }
+    j["migrants"] = std::move(migrants);
     json history = json::array();
     for (const ChronicleEntry& e : chronicle_)
         history.push_back(
@@ -736,6 +752,31 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             due_.insert({ p.dueAt, p.id });
         }
     nextPlanId_ = std::max(1, j.value("nextPlan", 1));
+    if (j.contains("migrants") && j["migrants"].is_array())
+        for (const json& mj : j["migrants"])
+        {
+            Migrant m;
+            if (!mj.is_object() || !mj.contains("faction") ||
+                !FactionByName(mj["faction"], m.faction))
+                continue;
+            m.from = mj.value("from", std::string());
+            m.to = mj.value("to", std::string());
+            const std::string role = mj.value("role", std::string());
+            bool              known = false;
+            for (NpcRole r : { NpcRole::Trader, NpcRole::Miner, NpcRole::Police, NpcRole::Pirate })
+                if (role == NpcRoleId(r))
+                {
+                    m.role = r;
+                    known = true;
+                }
+            if (!known || !HasSystem(m.to))
+                continue;
+            m.leftAt = mj.value("leftAt", 0.0);
+            m.arrivesAt = mj.value("arrivesAt", 0.0);
+            m.id = nextMigrant_++;
+            migrants_[m.id] = m;
+            arrivals_.insert({ m.arrivesAt, m.id });
+        }
     for (const auto& kv : plans_)
         nextPlanId_ = std::max(nextPlanId_, kv.first + 1);
     if (j.contains("chronicle") && j["chronicle"].is_array())
@@ -802,6 +843,8 @@ void Simulation::Reset()
         m = FactionMind();
     mindsSeeded_ = false;
     plans_.clear();
+    migrants_.clear();
+    arrivals_.clear();
     due_.clear();
     nextPlanId_ = 1;
     chronicle_.clear();
