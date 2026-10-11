@@ -490,14 +490,17 @@ private:
     std::map<std::string, ColumnFit> fits_;
     std::deque<std::string>          strings_;
     std::vector<DrawCommand>         commands_;
-    std::vector<Color> glows_;         // the glow colours boxes asked for this frame, by index
-    int         fontGeneration_ = -1;  // the fonts Clay's kept measures (and measured_) are of
-    Rectangle   area_{ 0.0f, 0.0f, 0.0f, 0.0f };
-    float       scale_ = 1.0f;
-    Pointer     pointer_;
-    int         depth_ = 0;
-    bool        open_ = false;
-    std::string lastError_;
+    std::vector<Color> glows_;       // the glow colours boxes asked for this frame, by index
+    int       fontGeneration_ = -1;  // the fonts Clay's kept measures (and measured_) are of
+    Rectangle area_{ 0.0f, 0.0f, 0.0f, 0.0f };
+    float     scale_ = 1.0f;
+    Pointer   pointer_;
+    int       depth_ = 0;
+    // One per element open, true for the column a scrolling box puts its children in: closing
+    // that box closes both (Open).
+    std::vector<bool> scrollContent_;
+    bool              open_ = false;
+    std::string       lastError_;
 
     Focus*      focus_ = nullptr;
     std::string owner_;  // the window's id, which the focus is held under

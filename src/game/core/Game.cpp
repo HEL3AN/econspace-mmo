@@ -166,6 +166,15 @@ void Game::Run()
         // click reaches the window in front of it and nothing behind.
         desk_.SetContext(CTX_DOCKED, mode_ == GameMode::Docked);
         desk_.SetContext(CTX_SPACE, mode_ == GameMode::Flying);
+        // Opened on docking for what there is to do, it is a tab of the market (#364): the
+        // station's windows came back in front of it just now, so it is brought forward.
+        if (missionsForward_)
+        {
+            missionsForward_ = false;
+            const int h = desk_.Layout().Find(WIN_MISSIONS);
+            if (h != Ui::DeskLayout::NONE && desk_.IsOpen(WIN_MISSIONS) && !desk_.Layout().Shown(h))
+                desk_.Toggle(WIN_MISSIONS);  // a hidden tab is brought to the front
+        }
         desk_.BeginFrame();
 
         // Debug commands (work in any mode).
@@ -967,6 +976,14 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
             else
                 c.completeMission = a.mission;
             clientLink_->Send(Proto::EncodeCommand(c));
+            // Once round the loop: the goal prompt goes after a few (#364). Counted when
+            // the player asks, which is offered only when the server says it would work.
+            if (a.verb == Verb::HandIn && Ui::GoalLearned() < Goal::LEARNED_AFTER)
+            {
+                Ui::SetGoalLearned(Ui::GoalLearned() + 1);
+                if (uiSettingsWritable_ && !Ui::SaveUiSettings(uiSettingsPath_))
+                    TraceLog(LOG_WARNING, "UI settings: cannot write %s", uiSettingsPath_.c_str());
+            }
             return;
         }
         // The server checks the fit, prices it and charges; the snapshot brings the new
@@ -1066,7 +1083,14 @@ void Game::OpenContextMenu(Entity* target, Vector2 at)
     const int                      id = target->GetId();
     for (const Actions::Action& a : Actions::For(ActionTarget(*target), playerShip_->GetPosition()))
         items.push_back({ a.label, [this, a, id]() { Perform(a, id, { 0.0f, 0.0f }); } });
-    contextMenu_.Open(at, std::move(items));
+    // Headed with what it is about (#365): the name the overview gives it, and how far.
+    std::string name = target->GetName();
+    if (name.empty())
+        for (const Proto::EntitySnapshot& e : snapshot_.entities)
+            if (e.id == id)
+                name = Overview::KindWord(e);
+    const float dist = Vector2Distance(target->GetPosition(), playerShip_->GetPosition());
+    contextMenu_.Open(at, std::move(items), Actions::Heading(name, dist));
 }
 
 // The right-click menu on empty space: fly or warp there, or build something.
@@ -1078,7 +1102,9 @@ void Game::OpenContextMenuAt(Vector2 worldPoint)
          Actions::ForPoint(worldPoint, playerShip_->GetPosition(),
                            mode_ == GameMode::Flying ? Blueprints::All() : none))
         items.push_back({ a.label, [this, a, worldPoint]() { Perform(a, 0, worldPoint); } });
-    contextMenu_.Open(GetMousePosition(), std::move(items));
+    contextMenu_.Open(
+        GetMousePosition(), std::move(items),
+        Actions::Heading("Open space", Vector2Distance(worldPoint, playerShip_->GetPosition())));
 }
 
 void Game::SaveTreatment()

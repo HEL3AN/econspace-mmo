@@ -238,7 +238,22 @@ int DeskLayout::Add(const WindowSpec& spec, bool open)
         entries_[h].held = open;
         entries_[h].open = false;
     }
+    StackDefaults(h);
     return h;
+}
+
+void DeskLayout::StackDefaults(int h)
+{
+    // A default is not something the player arranged: nothing new to write.
+    const bool changed = changed_;
+    // The stack takes the place of the window named.
+    const std::string& onto = entries_[h].spec.tabOf;
+    if (!onto.empty())
+        Stack(h, Find(onto));
+    for (int o = 0; o < (int)entries_.size(); o++)
+        if (o != h && entries_[o].spec.tabOf == entries_[h].spec.id)
+            Stack(o, h);
+    changed_ = changed;
 }
 
 int DeskLayout::Find(const std::string& id) const
@@ -498,6 +513,9 @@ void DeskLayout::Reset()
         Place(e);
         Touched(e);
     }
+    for (int h = 0; h < (int)entries_.size(); h++)
+        if (!entries_[h].spec.tabOf.empty() && Placed(entries_[h]))
+            Stack(h, Find(entries_[h].spec.tabOf));
 }
 
 bool DeskLayout::AtDefault(const Entry& e) const
@@ -956,7 +974,8 @@ void DeskLayout::Load(const nlohmann::json& windows)
         if (it == windows.end() || !it->is_object())
             continue;
         const nlohmann::json& w = *it;
-        flag(w, "open", e.open);
+        if (e.spec.reopen)
+            flag(w, "open", e.open);
         if (!Available(h))
         {
             e.held = e.open;

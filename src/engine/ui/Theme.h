@@ -294,5 +294,12 @@ void SetBlurSetting(bool on);
 // that is three pixels long is found at all.
 bool BracketSetting();
 void SetBracketSetting(bool on);
+// The goal prompt (#364): the line under the location plate that says what to do next. On
+// until the player turns it off, or has handed in enough missions to have learned the loop
+// -- how many is counted here, so the prompt does not come back with the next session.
+bool GoalSetting();
+void SetGoalSetting(bool on);
+int  GoalLearned();
+void SetGoalLearned(int n);
 
 }  // namespace Ui

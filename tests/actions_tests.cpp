@@ -171,7 +171,82 @@ TEST_CASE("Actions: a point in space offers flying, warping, and what can be bui
     const Action* order = Find(far, Verb::Build);
     REQUIRE(order != nullptr);
     CHECK(order->distance == doctest::Approx(500.0f));
-    CHECK(order->label.find("Fly there") == 0);
+    CHECK(order->label.find("Build Beacon") == 0);  // named by its verb first (#365)
+    CHECK(order->label.find("flying there first") != std::string::npos);
+}
+
+namespace
+{
+// Every action a menu could offer, from every list: each kind of thing near and far, its own
+// structure and someone else's, a point near and far, a mission either way, a refit.
+std::vector<Action> EveryAction()
+{
+    std::vector<Action> all;
+    auto add = [&all](const std::vector<Action>& a) { all.insert(all.end(), a.begin(), a.end()); };
+    for (EntityKind k :
+         { EntityKind::Unknown, EntityKind::Star, EntityKind::Planet, EntityKind::Station,
+           EntityKind::Field, EntityKind::Gate, EntityKind::Nebula, EntityKind::Derelict,
+           EntityKind::Npc, EntityKind::PlayerShip, EntityKind::Structure })
+    {
+        Target t = Thing(k);
+        add(Actions::For(t, { 0.0f, 0.0f }));
+        add(Actions::For(t, { 4950.0f, 0.0f }));
+        t.mine = t.armed = true;
+        t.refund = "5 Iron";
+        t.destinationName = "Vela";
+        add(Actions::For(t, { 0.0f, 0.0f }));
+    }
+    Blueprint beacon;
+    beacon.id = "beacon";
+    beacon.name = "Beacon";
+    beacon.reach = 500.0f;
+    add(Actions::ForPoint({ 100.0f, 0.0f }, { 0.0f, 0.0f }, { beacon }));
+    add(Actions::ForPoint({ 9000.0f, 0.0f }, { 0.0f, 0.0f }, { beacon }));
+    Actions::MissionTarget m;
+    m.index = 0;
+    m.offer = m.docked = true;
+    add(Actions::ForMission(m));
+    m.offer = false;
+    m.ready = true;
+    add(Actions::ForMission(m));
+    add(Actions::ForRefit({ Ships::FitLine{} }, true, true));
+    return all;
+}
+}  // namespace
+
+TEST_CASE("Actions: one name per action, whichever list offers it (#365)")
+{
+    // A label is the verb's one name, and after it only what tells two of a verb apart. The
+    // selected-item window's buttons say the name alone, so "Keep" there and "Hold 3500 from
+    // it" in the menu cannot happen again.
+    const std::vector<Action> all = EveryAction();
+    std::set<Verb>            seen;
+    for (const Action& a : all)
+    {
+        const std::string name = Actions::Name(a.verb);
+        INFO("label '" << a.label << "' verb " << (int)a.verb);
+        REQUIRE_FALSE(name.empty());
+        CHECK(a.label.rfind(name, 0) == 0);
+        CHECK((a.label.size() == name.size() || a.label[name.size()] == ' '));
+        seen.insert(a.verb);
+    }
+    CHECK(seen.size() == 20);  // every verb was offered somewhere above
+
+    // And no two verbs share a name: the name is what the player tells them apart by.
+    std::set<std::string> names;
+    for (Verb v : seen)
+        CHECK(names.insert(Actions::Name(v)).second);
+
+    const std::vector<Action> station = Actions::For(Thing(EntityKind::Station), { 0.0f, 0.0f });
+    const Action*             keep = Find(station, Verb::Keep);
+    REQUIRE(keep != nullptr);
+    CHECK(keep->label == "Hold at 500");
+}
+
+TEST_CASE("Actions: a menu is headed with what it is about and how far (#365)")
+{
+    CHECK(Actions::Heading("Aurora Hub", 12500.0f) == "Aurora Hub  12.5k");
+    CHECK(Actions::Heading("belt", 340.0f) == "belt  340");
 }
 
 TEST_CASE("Actions: every button an agent could want is an econagent tool, and the gaps are known")

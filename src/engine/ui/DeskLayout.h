@@ -57,9 +57,13 @@ struct WindowSpec
     // where it is every frame (SetRect), in pixels.
     Rectangle place{ 0.0f, 0.0f, 0.0f, 0.0f };
     EscRule   esc = EscRule::Close;
-    bool      persist = false;    // its place and open state are kept per account
-    bool      resizable = false;  // a saved size is restored only if the player could make one
-    Vector2   minSize{ 160.0f, 96.0f };  // units; a resizable window is never made smaller
+    bool      persist = false;  // its place and open state are kept per account
+    // Whether a saved "open" is given back next session. Its place is kept either way; a
+    // settings window is something opened for a moment, and finding it open on the next
+    // login is finding it in the way (#364).
+    bool    reopen = true;
+    bool    resizable = false;         // a saved size is restored only if the player could make one
+    Vector2 minSize{ 160.0f, 96.0f };  // units; a resizable window is never made smaller
     // While it is open, every window on a lower layer is hidden: it is drawn over the whole
     // view, and a panel showing through it is a panel nobody can use and that hides part of
     // it (the map, the sensor screen, the station).
@@ -72,6 +76,11 @@ struct WindowSpec
     // a market is the station's, an overview is space's -- and whether it was open is
     // remembered, saved as it was, and given back when the context returns.
     std::string context;
+    // Starts as a tab of this window (its id), at that window's place: a default layout that
+    // tiles rather than piles, such as the station's market and hangar (#364). Only a
+    // default -- a saved layout that names the window decides, and the player can pull the
+    // tab out. Either window may be registered first.
+    std::string tabOf;
 };
 
 // The smallest move, no longer than `reach` on either axis, that lays an edge of one of
@@ -144,7 +153,7 @@ public:
     // A drag has ended: the window takes the anchor nearest to where it was left, so it
     // stays in that corner from then on.
     void Settle(int h);
-    void Reset();  // every placed window back where its spec puts it
+    void Reset();  // every placed window back where its spec puts it, tabs in their stacks
 
     // A window that opens where its spec puts it is first made to end on the screen if it
     // can be resized, then, if it is over a window already shown on its layer, moves to the
@@ -267,6 +276,7 @@ private:
         bool       seek = false;  // has just opened: Arrange looks for room for it
     };
     bool AtDefault(const Entry& e) const;  // where its spec puts it, alone
+    void StackDefaults(int h);             // h's WindowSpec::tabOf, and any that name h
 
     bool      Placed(const Entry& e) const { return e.spec.place.width > 0.0f; }
     void      Place(Entry& e) const;    // rect from anchor, offset and size, kept reachable

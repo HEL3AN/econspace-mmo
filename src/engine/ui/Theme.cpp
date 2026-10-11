@@ -22,6 +22,8 @@ bool            g_blur = false;
 bool            g_brackets = true;
 bool            g_colourBlind = false;
 Theme::Standing g_themeStanding;  // the theme in use's own, under the palette
+bool            g_goal = true;
+int             g_goalLearned = 0;
 
 int Hex(char c)
 {
@@ -507,6 +509,10 @@ bool LoadUiSettings(const std::string& path, std::string& error)
         g_brackets = j["brackets"].get<bool>();
     if (j.contains("colourBlind") && j["colourBlind"].is_boolean())
         SetColourBlindSetting(j["colourBlind"].get<bool>());
+    if (j.contains("goal") && j["goal"].is_boolean())
+        g_goal = j["goal"].get<bool>();
+    if (j.contains("goalLearned") && j["goalLearned"].is_number_integer())
+        g_goalLearned = std::max(0, j["goalLearned"].get<int>());
     return true;
 }
 
@@ -588,6 +594,26 @@ void SetBracketSetting(bool on)
     g_brackets = on;
 }
 
+bool GoalSetting()
+{
+    return g_goal;
+}
+
+void SetGoalSetting(bool on)
+{
+    g_goal = on;
+}
+
+int GoalLearned()
+{
+    return g_goalLearned;
+}
+
+void SetGoalLearned(int n)
+{
+    g_goalLearned = std::max(0, n);
+}
+
 const std::string& ThemeSetting()
 {
     return g_theme;
@@ -608,6 +634,8 @@ bool SaveUiSettings(const std::string& path)
     j["blur"] = g_blur;
     j["brackets"] = g_brackets;
     j["colourBlind"] = g_colourBlind;
+    j["goal"] = g_goal;
+    j["goalLearned"] = g_goalLearned;
     std::ofstream out(path);
     if (!out)
         return false;
