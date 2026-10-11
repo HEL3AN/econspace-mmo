@@ -676,8 +676,8 @@ void Game::DrawDefenceControls(Ui::Layout& L, const Proto::EntityLayout& el)
     static const char*  tips[] = {
         "Never fires, not even back",
         "Fires back at whoever shot at it in the last minute",
-        "Also fires first at factions you stand below the threshold with, and at players "
-        "wanted by a lawful faction",
+        ("Also fires first at factions you stand below the threshold with, and at players "
+         "wanted by a lawful faction"),
         "Fires at everyone but you and the names on the allow-list",
     };
     for (int row = 0; row < 2; row++)
