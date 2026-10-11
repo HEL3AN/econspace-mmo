@@ -108,6 +108,7 @@ struct SystemProfile
     // The owner of each finished faction outpost (#295), one entry per outpost: what a
     // claim on a system nobody held needs. A site still being built is not one yet.
     std::vector<FactionId> outposts;
+    std::vector<int>       outpostIds;           // ...and which entity each is, in the same order
     bool                   outpostSite = false;  // anyone's outpost stands or is going up
 };
 

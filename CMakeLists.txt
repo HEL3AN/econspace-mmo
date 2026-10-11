@@ -273,6 +273,7 @@ add_executable(econserver
     src/game/sim/Simulation_Player.cpp    # the server-side player verbs and account (#17)
     src/game/sim/Simulation_Build.cpp     # construction: sites, their rules and their end (#39)
     src/game/sim/Simulation_Outposts.cpp  # where a faction's outpost stands, by purpose (#318)
+    src/game/sim/Simulation_Sieges.cpp    # what keeping an outpost costs, and sieges (#295)
     src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
     src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/PlayerStep.cpp
@@ -385,6 +386,7 @@ add_executable(tests
     tests/mission_list_tests.cpp   # what the missions window lists (#297)
     tests/station_list_tests.cpp   # what the market and hangar windows list (#297)
     tests/settle_tests.cpp         # stock, outposts, and claims that need one (#295)
+    tests/siege_tests.cpp          # upkeep, decay and sieges of outposts (#295)
     tests/outpost_tests.cpp        # outposts placed by purpose, and what each looks like (#318)
     tests/cold_tests.cpp           # ships only where a player is; the rest as numbers (#295)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
@@ -404,6 +406,7 @@ add_executable(tests
     src/game/sim/Simulation_Player.cpp    # the server-side player verbs and account (#17)
     src/game/sim/Simulation_Build.cpp     # construction: sites, their rules and their end (#39)
     src/game/sim/Simulation_Outposts.cpp  # where a faction's outpost stands, by purpose (#318)
+    src/game/sim/Simulation_Sieges.cpp    # what keeping an outpost costs, and sieges (#295)
     src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
     src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/PlayerStep.cpp

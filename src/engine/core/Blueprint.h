@@ -88,6 +88,46 @@ struct Teardown
 };
 const Teardown& Rules();
 
+// Keeping a faction's outpost standing (#295, slice 5): the file's `upkeep` section. One set
+// for every outpost, like the teardown rules. Applied once a faction period -- a minute -- by
+// the coarse pass, so an outpost in a system nobody is in is kept, or let go, all the same.
+struct Upkeep
+{
+    // What one outpost costs its faction's stock each period, as a share of what it cost to
+    // build. Paid only for an outpost in a system the faction holds: one standing in somebody
+    // else's system, or nobody's, is cut off and paid for by nobody.
+    float share = 0.006f;
+    // The share of its hull an outpost nobody supplies loses each period. At zero it is a
+    // ruin, like one shot down -- slowly enough that the faction may yet win it back.
+    float decay = 0.04f;
+    // The share of its hull a supplied outpost mends each period: damage that is not followed
+    // up is repaired, so a siege has to be sustained to bring one down.
+    float repair = 0.02f;
+};
+const Upkeep& UpkeepRules();
+
+// A faction attacking another's outpost (#295, slice 5): the file's `siege` section. A siege is
+// strength a faction sends to stand at the outpost and wear it down; where nobody is it is
+// arithmetic, where somebody is it is ships. Both read these numbers.
+struct Siege
+{
+    float cost = 0.5f;       // stock it takes to mount one, as a share of what an outpost costs
+    float seconds = 900.0f;  // how long the besiegers stay before they give up
+    float jitter = 120.0f;   // ...plus up to this much more, drawn from what is decided
+    // The most of its capacity a faction sends, out of what its holding can spare: a siege
+    // leaves home as guarded as a move does.
+    float commit = 0.5f;
+    float dps = 6.0f;  // hull a besieging ship takes off an outpost per second
+    // How many besiegers each defending ship ties up: what is left over fires at the outpost.
+    float defence = 0.15f;
+    // Ships lost per second, per ship of the other side, by both sides while it lasts.
+    float attrition = 0.0002f;
+    // What losing an outpost costs the faction that held the system, as a share of its
+    // strength there: a claim that rested on it is gone, and one that did not is weaker.
+    float shock = 0.5f;
+};
+const Siege& SiegeRules();
+
 // What an owner gets back for dismantling it, per resource, at `progress` 0..1 of the build
 // and `hullFraction` of its hull still standing -- what was shot off is gone. Rounded down,
 // so taking a thing apart never makes material. One function, for the server that pays it and

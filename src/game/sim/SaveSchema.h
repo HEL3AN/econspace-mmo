@@ -30,7 +30,12 @@ namespace Save
 //    structure's owner may be a faction (#295, slice 3). A version 5 build would drop the
 //    settlements and the stock, leave the sites standing with nobody waiting on them, and
 //    write the world back so. An older file loads with factions that have saved nothing.
-inline constexpr int WORLD_VERSION = 6;
+// 7: a plan may be a siege of another faction's outpost, a faction keeps the outposts it can
+//    no longer supply and where it lost one, and an outpost's damage may be decay (#295,
+//    slice 5). A version 6
+//    build would drop the sieges with their committed force still counted as presence, and
+//    write the world back so. An older file loads with no siege under way.
+inline constexpr int WORLD_VERSION = 7;
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.
 // 3: a mission names its stations by system and station rather than by entity id, which

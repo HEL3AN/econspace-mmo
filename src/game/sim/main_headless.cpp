@@ -1701,10 +1701,15 @@ int main(int argc, char** argv)
                         }
                     return d;
                 };
-                printf("  %-10s %-24s %-20s r %7.0f  gate %7.0f  belt %7.0f  wreck %7.0f%s\n",
+                // ...and how much of it is left (#295, slice 5): upkeep mends it, decay and
+                // sieges wear it down.
+                const Structure& t = static_cast<const Structure&>(*e);
+                printf("  %-10s %-24s %-20s hull %3.0f%%  r %7.0f  gate %7.0f  belt %7.0f  wreck "
+                       "%7.0f%s\n",
                        kv.first.c_str(), e->GetName().c_str(), Outposts::Called(purpose),
-                       std::hypot(at.x, at.y), nearest(EntityKind::Gate),
-                       nearest(EntityKind::Field), nearest(EntityKind::Derelict),
+                       t.HullFraction(sim.Time()) * 100.0f, std::hypot(at.x, at.y),
+                       nearest(EntityKind::Gate), nearest(EntityKind::Field),
+                       nearest(EntityKind::Derelict),
                        e->GetOrbit() ? ("  orbits planet " + std::to_string(e->GetOrbit()->planet) +
                                         " at " + std::to_string((int)e->GetOrbit()->radius))
                                            .c_str()
