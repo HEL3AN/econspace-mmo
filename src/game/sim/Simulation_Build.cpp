@@ -287,6 +287,12 @@ bool Simulation::LawOver(const SystemState& st, const Structure& t, const std::s
 
 bool Simulation::DamageStructure(SystemState& st, int id, float damage, ClientSession* by)
 {
+    return HitStructure(st, id, damage, by, Loss::Attack, FactionId::Independent);
+}
+
+bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSession* by, Loss cause,
+                              FactionId attacker)
+{
     Structure* t = StructureIn(st, id);
     if (t == nullptr || damage <= 0.0f)
         return false;
@@ -311,6 +317,8 @@ bool Simulation::DamageStructure(SystemState& st, int id, float damage, ClientSe
     const Blueprint*           bp = t->GetBlueprint();
     const bool                 wasSite = t->IsBuilding();
     const std::optional<Orbit> orbit = t->GetOrbit();  // an orbital outpost's (#318)
+    const std::string          builds = t->GetBuilds();
+    const std::string          key = StaticKey(st.id, id);
     if (crime)
         ChargeAttack(*by, law, true);
     if (!RemoveStatic(systemId, id))
@@ -345,11 +353,48 @@ bool Simulation::DamageStructure(SystemState& st, int id, float damage, ClientSe
     if (by != nullptr)
         by->RecordEvent(Ev::Kind::Notice, "Destroyed " + name);
     FactionId f;
-    if (Outposts::FactionOf(owner, f))
+    if (!Outposts::FactionOf(owner, f))
+        return true;
+    // A faction's outpost (#295): the history says who lost what, and how. A site lost is a
+    // settlement that will not happen; a finished one lost shakes the claim it anchored.
+    const std::string where = SystemName(systemId);
+    minds_[(int)f].lostAt[systemId] = time_;  // remembered when it thinks of building here again
+    if (wasSite)
+    {
         Record("lost", (int)f, systemId,
-               FactionName(f) +
-                   (wasSite ? " lost the outpost it was building in " : " lost its outpost in ") +
-                   SystemName(systemId));
+               FactionName(f) + " lost the outpost it was building in " + where);
+        for (auto p = plans_.begin(); p != plans_.end(); ++p)
+            if (p->second.kind == Plan::Kind::Settle && p->second.target == systemId &&
+                p->second.site == key)
+            {
+                plans_.erase(p);  // said here; its due entry finds nothing
+                break;
+            }
+        return true;
+    }
+    Outposts::Purpose purpose = Outposts::Purpose::Open;
+    Outposts::PurposeOf(builds, purpose);
+    std::string noun = Outposts::Called(purpose);  // "a watch post" -> "watch post"
+    noun = noun.substr(noun.find(' ') + 1);
+    switch (cause)
+    {
+        case Loss::Siege:
+            Announce("siege", (int)attacker, systemId,
+                     FactionName(attacker) + " destroyed the " + FactionName(f) + " " + noun +
+                         " in " + where);
+            break;
+        case Loss::Decay:
+            Announce("upkeep", (int)f, systemId,
+                     FactionName(f) + " lost its " + noun + " in " + where +
+                         ": unsupplied, it fell into ruin");
+            break;
+        case Loss::Attack:
+            Announce("lost", (int)f, systemId,
+                     FactionName(f) + " lost its " + noun + " in " + where);
+            break;
+    }
+    minds_[(int)f].unsupplied.erase(systemId + "/" + key);
+    ShakeClaim(*SystemById(systemId), f);
     return true;
 }
 

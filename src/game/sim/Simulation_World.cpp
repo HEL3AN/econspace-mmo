@@ -214,6 +214,8 @@ void Simulation::Warm(SystemState& st)
     // The aggregate keeps fractions of a ship; the system now holds whole ones. Counted
     // here, so the next pass does not read the rounding as ships lost.
     RecountAgg(st);
+    // A siege under way here is ships too, at the outpost (#295, slice 5).
+    FieldSieges(st);
 }
 
 void Simulation::Cool(SystemState& st)
@@ -227,6 +229,9 @@ void Simulation::Cool(SystemState& st)
                       st.entities.end());
     st.defenceCooldown.clear();
     st.populated = false;
+    for (auto& kv : plans_)  // a siege's warships went with the rest
+        if (kv.second.target == st.id)
+            kv.second.fielded = 0;
 }
 
 void Simulation::AttachRegion(uint64_t seed, const std::string& systemsDir, int systems)
@@ -390,22 +395,40 @@ bool FactionByName(const nlohmann::json& v, FactionId& f)
     return Factions::Id(f) == v.get<std::string>();
 }
 
+const char* PlanKindName(Plan::Kind k)
+{
+    switch (k)
+    {
+        case Plan::Kind::Settle: return "settle";
+        case Plan::Kind::Siege: return "siege";
+        case Plan::Kind::Survey: break;
+    }
+    return "survey";
+}
+bool PlanKindFrom(const std::string& name, Plan::Kind& out)
+{
+    for (Plan::Kind k : { Plan::Kind::Survey, Plan::Kind::Settle, Plan::Kind::Siege })
+        if (name == PlanKindName(k))
+        {
+            out = k;
+            return true;
+        }
+    return false;
+}
+
 nlohmann::json IntelJson(const Intel& i)
 {
-    nlohmann::json defenders = nlohmann::json::array();
+    nlohmann::json defenders = nlohmann::json::array(), outposts = nlohmann::json::array();
     for (FactionId d : i.defenders)
         defenders.push_back(Factions::Id(d));
-    return { { "seenAt", i.seenAt },
-             { "traffic", i.traffic },
-             { "security", i.security },
-             { "belts", i.belts },
-             { "wrecks", i.wrecks },
-             { "stations", i.stations },
-             { "planets", i.planets },
-             { "gates", i.gates },
-             { "defenders", defenders },
-             { "presence", i.presence },
-             { "controller", Factions::Id(i.controller) },
+    for (FactionId o : i.outposts)
+        outposts.push_back(Factions::Id(o));
+    return { { "seenAt", i.seenAt },     { "traffic", i.traffic },
+             { "security", i.security }, { "belts", i.belts },
+             { "wrecks", i.wrecks },     { "stations", i.stations },
+             { "planets", i.planets },   { "gates", i.gates },
+             { "defenders", defenders }, { "outposts", outposts },
+             { "presence", i.presence }, { "controller", Factions::Id(i.controller) },
              { "claimed", i.claimed } };
 }
 
@@ -426,6 +449,13 @@ Intel IntelFrom(const nlohmann::json& j)
             FactionId f;
             if (FactionByName(d, f))
                 i.defenders.push_back(f);
+        }
+    if (j.contains("outposts") && j["outposts"].is_array())
+        for (const auto& o : j["outposts"])
+        {
+            FactionId f;
+            if (FactionByName(o, f))
+                i.outposts.push_back(f);
         }
     if (j.contains("presence") && j["presence"].is_array() && j["presence"].size() == FACTION_COUNT)
         for (int f = 0; f < FACTION_COUNT; f++)
@@ -488,7 +518,9 @@ void Simulation::SaveWorld(const std::string& path) const
                 intel[kv.first] = IntelJson(kv.second);
             }
             minds[Factions::Id((FactionId)f)] = { { "intel", std::move(intel) },
-                                                  { "stock", minds_[f].stock } };
+                                                  { "stock", minds_[f].stock },
+                                                  { "unsupplied", minds_[f].unsupplied },
+                                                  { "lostAt", minds_[f].lostAt } };
         }
         j["factions"] = std::move(minds);
     }
@@ -497,7 +529,7 @@ void Simulation::SaveWorld(const std::string& path) const
     {
         const Plan& p = kv.second;
         json        pj = { { "id", p.id },
-                           { "kind", p.kind == Plan::Kind::Settle ? "settle" : "survey" },
+                           { "kind", PlanKindName(p.kind) },
                            { "faction", Factions::Id(p.faction) },
                            { "from", p.from },
                            { "target", p.target },
@@ -505,6 +537,11 @@ void Simulation::SaveWorld(const std::string& path) const
                            { "dueAt", p.dueAt } };
         if (!p.site.empty())
             pj["site"] = p.site;
+        if (p.kind == Plan::Kind::Siege)
+        {
+            pj["against"] = Factions::Id(p.against);
+            pj["force"] = p.force;
+        }
         plans.push_back(std::move(pj));
     }
     j["plans"] = std::move(plans);
@@ -633,6 +670,14 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             // A version 5 world has no stock: its factions begin saving from nothing.
             const json& stock = it.value().value("stock", json(0.0));
             minds_[(int)f].stock = stock.is_number() ? std::max(0.0f, stock.get<float>()) : 0.0f;
+            const json& cut = it.value().value("unsupplied", json::array());
+            for (const json& k : cut)
+                if (k.is_string())
+                    minds_[(int)f].unsupplied.insert(k.get<std::string>());
+            const json& lost = it.value().value("lostAt", json::object());
+            for (auto l = lost.begin(); lost.is_object() && l != lost.end(); ++l)
+                if (HasSystem(l.key()) && l.value().is_number())
+                    minds_[(int)f].lostAt[l.key()] = l.value().get<double>();
         }
     }
     if (j.contains("plans") && j["plans"].is_array())
@@ -640,18 +685,21 @@ Save::Result Simulation::LoadWorld(const std::string& path)
         {
             Plan              p;
             const std::string kind = pj.is_object() ? pj.value("kind", std::string()) : "";
-            if ((kind != "survey" && kind != "settle") || !pj.contains("faction") ||
+            if (!PlanKindFrom(kind, p.kind) || !pj.contains("faction") ||
                 !FactionByName(pj["faction"], p.faction))
                 continue;
             p.id = pj.value("id", 0);
-            p.kind = kind == "settle" ? Plan::Kind::Settle : Plan::Kind::Survey;
             p.from = pj.value("from", std::string());
             p.target = pj.value("target", std::string());
             p.startedAt = pj.value("startedAt", 0.0);
             p.dueAt = pj.value("dueAt", 0.0);
             p.site = pj.value("site", std::string());
+            if (p.kind == Plan::Kind::Siege &&
+                (!pj.contains("against") || !FactionByName(pj["against"], p.against)))
+                continue;
+            p.force = std::max(0.0f, pj.value("force", 0.0f));
             if (p.id <= 0 || plans_.count(p.id) != 0 || !HasSystem(p.target) ||
-                (p.kind == Plan::Kind::Settle && p.site.empty()))
+                (p.kind != Plan::Kind::Survey && p.site.empty()))
                 continue;
             plans_[p.id] = p;
             due_.insert({ p.dueAt, p.id });

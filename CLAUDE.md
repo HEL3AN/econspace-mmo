@@ -185,6 +185,12 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   system no session is in must call `SetAllHot(true)` or `Warm` first, and per-tick calls
   such as `StepSystemAgents` do nothing there -- use `MaintainWorld` for what the world does
   on its own.
+- **A siege is arithmetic, and its warships only show it** (#295). The outpost's damage and
+  both sides' losses come from the coarse pass in a hot system as in a cold one; the
+  `Warship` NPCs a hot system shows hold fire on other NPCs and are not shot by stations, and
+  their beams at the outpost take nothing off. A player shooting one down (or the outpost) is
+  the one thing that changes a siege's course. Let them fight NPCs and a watched siege goes
+  differently from an unwatched one.
 - **Per-player state lives in `ClientSession`, not in `Simulation`** (#3). The ship, the
   account, the missions, the standing order and the event journal belong to a session, and
   every player verb takes the session it acts for. There is no "active system" either: a

@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -28,22 +29,25 @@ struct Intel
     int                              belts = 0, wrecks = 0, stations = 0;
     int                              planets = 0, gates = 0;  // what an outpost is for (#318)
     std::vector<FactionId>           defenders;               // owners of defensive stations
-    std::array<float, FACTION_COUNT> presence{};              // each faction's ships there
+    std::vector<FactionId>           outposts;  // owners of finished outposts: what a siege is for
+    std::array<float, FACTION_COUNT> presence{};  // each faction's ships there
     FactionId                        controller = FactionId::Independent;
     bool                             claimed = false;
 };
 
 // Something a faction has set in motion that ends at a time (#295). A survey exists only
 // as this record: nobody flies it. A settlement is this record and an outpost site standing
-// in the target system, which anyone there can see. Each has an origin and a due time so
-// that a real expedition (#295's variant B) can carry one later -- leave `from`, travel,
+// in the target system, which anyone there can see. A siege is this record and, where somebody
+// is to see it, the warships standing at the outpost it is against. Each has an origin and a due
+// time so that a real expedition (#295's variant B) can carry one later -- leave `from`, travel,
 // arrive by `dueAt` -- without the decision or the result changing. Saved.
 struct Plan
 {
     enum class Kind
     {
         Survey,
-        Settle  // an outpost is being built; finished, it claims the system
+        Settle,  // an outpost is being built; finished, it claims the system
+        Siege    // strength sent to bring down another faction's outpost (slice 5)
     };
     int         id = 0;
     Kind        kind = Kind::Survey;
@@ -51,9 +55,17 @@ struct Plan
     std::string from;                          // the holding it set out from
     std::string target;                        // the system it is about
     double      startedAt = 0.0, dueAt = 0.0;  // world time
-    // A settlement's site, by the key a save knows it by ("+3"): an entity id does not
-    // survive a restart, and the plan has to find its site after one.
+    // A settlement's site, or the outpost a siege is against, by the key a save knows it by
+    // ("+3"): an entity id does not survive a restart, and the plan has to find it after one.
     std::string site;
+    // A siege's: whose outpost it is, and the strength still standing before it, in ships.
+    // The force is part of the faction's presence in the target -- the same ships, counted
+    // once -- set apart from what the spawn director makes police or pirates of.
+    FactionId against = FactionId::Independent;
+    float     force = 0.0f;
+    // How many of its ships are real, while the target is hot: what a pass counts the
+    // living against. Transient -- a cold system has none, and a restart begins cold.
+    int fielded = 0;
 };
 
 // One faction's knowledge, by system id, and what it has to spend. Saved.
@@ -63,6 +75,12 @@ struct FactionMind
     // Materials and credits as one number (#295): what its holdings yield, and what an
     // outpost costs. It is what bounds expansion -- a timer does not.
     float stock = 0.0f;
+    // Its outposts it can no longer supply, by system and key ("W-1.1/+3") (slice 5): the
+    // history says so once when one is cut off, not every period it stays so. Saved.
+    std::set<std::string> unsupplied;
+    // When it last lost an outpost, or a site, in each system (slice 5): a faction remembers
+    // where it was beaten, and thinks twice before building there again. Saved.
+    std::map<std::string, double> lostAt;
 };
 
 // Outposts (#295, slice 3): a faction's claim on a system nobody held is a structure (#39)
@@ -209,6 +227,18 @@ inline constexpr double STALE = 900.0;
 // What a faction fears in a place it has not seen lately, beyond what it did see there:
 // anything could have moved in since.
 inline constexpr float UNSEEN_RISK = 0.25f;
+// What a faction fears in a system where it has lost an outpost (#295, slice 5), at the moment
+// of the loss, fading to nothing over LOSS_MEMORY.
+inline constexpr float  LOSS_RISK = 2.0f;
+inline constexpr double LOSS_MEMORY = 10800.0;
+inline float            LossRisk(const std::map<std::string, double>& lostAt, const std::string& id,
+                                 double now)
+{
+    const auto it = lostAt.find(id);
+    if (it == lostAt.end())
+        return 0.0f;
+    return LOSS_RISK * (float)std::max(0.0, 1.0 - (now - it->second) / LOSS_MEMORY);
+}
 
 // How old a piece of intel is, in units of STALE.
 inline float Staleness(const Intel& i, double now)

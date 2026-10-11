@@ -106,11 +106,16 @@ public:
     // ...and for a test, to plant a belief or a stock. What is planted before the first
     // macro pass stands; the seeding only adds what is missing.
     FactionMind& MindOf(FactionId f) { return minds_[(int)f]; }
-    // Surveys and settlements under way, by id (#295).
+    // Surveys, settlements and sieges under way, by id (#295).
     const std::map<int, Plan>& Plans() const { return plans_; }
     // What an outpost costs a faction's stock (#295): its blueprint's cost, counted as one
     // number. Zero when there is no outpost blueprint, which means no faction can settle.
     static float OutpostCost();
+    // What mounting a siege costs (#295, slice 5): the siege rules' share of an outpost.
+    static float SiegeCost();
+    // The strength of `f` in a system that is besieging an outpost there rather than
+    // patrolling it: warships where the system is hot, never the director's police or pirates.
+    float SiegeForceIn(const std::string& systemId, FactionId f) const;
     // Where `f` would build an outpost for `purpose` in `systemId`, arriving from `from`
     // (#318): by the richest belt, between the gates, round a planet, by the wrecks, out of
     // sight, or at an open point -- always somewhere SpotProblem allows, and for a satellite
@@ -343,6 +348,14 @@ public:
     // holding the rules' share of the cost, and the structure goes through RemoveStatic.
     // Returns true when this hit destroyed it.
     bool DamageStructure(SystemState& st, int id, float damage, ClientSession* by);
+    // How a structure was brought down, for what the history says of a faction's outpost: by
+    // somebody's guns, by a faction's siege, or by nobody supplying it.
+    enum class Loss
+    {
+        Attack,
+        Siege,
+        Decay
+    };
 
     // M4e-3c: galaxy snapshot (statistics of all systems + news) for the networked
     // client's galaxy map. Not const: refreshes the aggregates' population (RecountAgg).
@@ -688,6 +701,32 @@ private:
     // False when the system turns out not to be one it may settle, or there is no room.
     bool Settle(FactionId f, const std::string& from, const std::string& to);
     void ResolveSettle(const Plan& p);
+
+    // --- Keeping outposts, and sieges (#295, slice 5; Simulation_Sieges.cpp) ---
+    // Once a period: every finished faction outpost is paid for from its faction's stock or
+    // is not, and mends or decays accordingly.
+    void StepUpkeep();
+    // Once a pass: each siege wears its outpost down by the arithmetic both a cold and a hot
+    // system read, counts the ships a player has shot down, and ends when it has won or lost.
+    void StepSieges();
+    // `f` sends `force` from `from` against `against`'s outpost `site` in `to`, and pays.
+    void BeginSiege(FactionId f, const std::string& from, const std::string& to, FactionId against,
+                    const std::string& site, float force);
+    // A siege's time is up with the outpost still standing.
+    void ResolveSiege(const Plan& p);
+    // What is left of a siege goes home: its ships, where they are real, leave the system.
+    void RecallSiege(const Plan& p);
+    // A hot system's siege made real: warships of the besieger at the outpost -- or, for one
+    // that has just arrived, at the gate it came through.
+    void FieldSiege(SystemState& st, Plan& p, bool arriving);
+    void FieldSieges(SystemState& st);
+    // The outpost a save knows by `key` in a system, if it still stands.
+    Structure* StructureByKey(SystemState& st, const std::string& key) const;
+    // A faction's finished outpost is gone: a claim on the system that rested on it goes, and
+    // one that rests on something else as well is weaker.
+    void ShakeClaim(SystemState& st, FactionId f);
+    bool HitStructure(SystemState& st, int id, float damage, ClientSession* by, Loss cause,
+                      FactionId attacker);
     // `f` takes a system: its controller, and the security a change of hands brings.
     static void TakeControl(SystemAggregate& a, FactionId f);
     void        Record(const std::string& kind, int faction, const std::string& system,

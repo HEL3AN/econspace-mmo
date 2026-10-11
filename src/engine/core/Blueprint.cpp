@@ -14,6 +14,8 @@ std::vector<Blueprint> g_blueprints;
 std::vector<Blueprint> g_forPlayers;  // the ones a player may build, as All() lists them
 int                    g_perAccount = 0;
 Blueprints::Teardown   g_teardown;
+Blueprints::Upkeep     g_upkeep;
+Blueprints::Siege      g_siege;
 std::string            g_error;
 
 // A non-negative number, or a load error naming the field: a cost of "ten" read as zero
@@ -199,7 +201,8 @@ bool Load(const std::string& path)
         return false;
     }
     std::string err;
-    if (!OnlyKnownKeys(j, { "blueprints", "limits", "dismantle", "destruction" }, err))
+    if (!OnlyKnownKeys(j, { "blueprints", "limits", "dismantle", "destruction", "upkeep", "siege" },
+                       err))
     {
         g_error = path + ": " + err;
         return false;
@@ -267,6 +270,41 @@ bool Load(const std::string& path)
         }
     }
 
+    Blueprints::Upkeep upkeep;
+    if (j.contains("upkeep"))
+    {
+        const json& u = j["upkeep"];
+        if (!u.is_object() || !OnlyKnownKeys(u, { "share", "decay", "repair" }, err) ||
+            !ReadShare(u, "share", upkeep.share, err) ||
+            !ReadShare(u, "decay", upkeep.decay, err) ||
+            !ReadShare(u, "repair", upkeep.repair, err))
+        {
+            g_error = path + ": upkeep: " + (err.empty() ? "not an object" : err);
+            return false;
+        }
+    }
+    Blueprints::Siege siege;
+    if (j.contains("siege"))
+    {
+        const json& s = j["siege"];
+        if (!s.is_object() ||
+            !OnlyKnownKeys(
+                s,
+                { "cost", "seconds", "jitter", "commit", "dps", "defence", "attrition", "shock" },
+                err) ||
+            !ReadNumber(s, "cost", siege.cost, err) ||
+            !ReadNumber(s, "seconds", siege.seconds, err) ||
+            !ReadNumber(s, "jitter", siege.jitter, err) ||
+            !ReadShare(s, "commit", siege.commit, err) || !ReadNumber(s, "dps", siege.dps, err) ||
+            !ReadNumber(s, "defence", siege.defence, err) ||
+            !ReadShare(s, "attrition", siege.attrition, err) ||
+            !ReadShare(s, "shock", siege.shock, err))
+        {
+            g_error = path + ": siege: " + (err.empty() ? "not an object" : err);
+            return false;
+        }
+    }
+
     g_forPlayers.clear();
     for (const Blueprint& b : loaded)
         if (b.byPlayers)
@@ -274,6 +312,8 @@ bool Load(const std::string& path)
     g_blueprints = std::move(loaded);
     g_perAccount = perAccount;
     g_teardown = teardown;
+    g_upkeep = upkeep;
+    g_siege = siege;
     return true;
 }
 
@@ -306,6 +346,16 @@ int PerAccount()
 const Teardown& Rules()
 {
     return g_teardown;
+}
+
+const Upkeep& UpkeepRules()
+{
+    return g_upkeep;
+}
+
+const Siege& SiegeRules()
+{
+    return g_siege;
 }
 
 std::vector<std::pair<ResourceType, int>> Refund(const Blueprint& bp, float progress,

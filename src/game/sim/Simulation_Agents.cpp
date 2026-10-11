@@ -17,6 +17,7 @@
 #include "entities/NpcShip.h"
 #include "entities/Ship.h"
 #include "entities/Station.h"
+#include "entities/Structure.h"
 
 #include <algorithm>
 #include <chrono>
@@ -101,6 +102,12 @@ std::vector<NpcShip*> AliveShips(SystemState& st)
 
 bool Simulation::NpcHostileToNpc(const NpcShip* a, const NpcShip* b)
 {
+    // A siege's warships (#295, slice 5) and the garrison they face fight by the siege's
+    // arithmetic, the same whether or not anyone is here to see it; shooting at each other on
+    // top would make a watched siege go differently from an unwatched one. They are the
+    // siege's face, and a player is the one thing in the system that can change its course.
+    if (a->GetRole() == NpcRole::Warship || b->GetRole() == NpcRole::Warship)
+        return false;
     Stance s = Factions::Relation(a->GetFaction(), b->GetFaction());
     return s == Stance::Hostile || s == Stance::War;
 }
@@ -210,7 +217,33 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
                 consider(other, 0);
 
         if (target == nullptr)
+        {
+            // A besieger with nothing to fight fires on the outpost it was sent against
+            // (#295, slice 5). The beam is the siege's: what the outpost loses is the siege's
+            // arithmetic, the same where nobody is, so the shot itself takes nothing off.
+            if (npc->GetRole() != NpcRole::Warship || fires == nullptr)
+                continue;
+            for (const auto& e : st.entities)
+            {
+                FactionId owner;
+                if (e->GetKind() != EntityKind::Structure ||
+                    !Outposts::FactionOf(e->GetOwner(), owner) ||
+                    !Outposts::IsOutpost(static_cast<const Structure&>(*e).GetBuilds()))
+                    continue;
+                const Stance rel = Factions::Relation(npc->GetFaction(), owner);
+                if ((rel != Stance::Hostile && rel != Stance::War) ||
+                    Dist(e->GetPosition(), npos) > PIRATE_WEAPON_RANGE + e->GetSize())
+                    continue;
+                npc->ResetFireTimer();
+                FireEvent fe;
+                fe.from = npos;
+                fe.to = e->GetPosition();
+                fe.shooterFaction = npc->GetFaction();
+                fires->push_back(fe);
+                break;
+            }
             continue;
+        }
 
         // What a volley takes off is the design's guns (#279 step 4); a player is hit a sixth
         // harder than a ship of its own kind, as before, so one raider is a threat on its own.
@@ -273,7 +306,9 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
         for (NpcShip* n : ships)
         {
             const Stance rel = Factions::Relation(owner, n->GetFaction());
-            if (n->IsAlive() && (rel == Stance::Hostile || rel == Stance::War))
+            // Besiegers are the siege's arithmetic to count, not the battery's (#295).
+            if (n->IsAlive() && n->GetRole() != NpcRole::Warship &&
+                (rel == Stance::Hostile || rel == Stance::War))
                 consider(n, 0);
         }
 
@@ -377,7 +412,7 @@ void Simulation::RecountAgg(SystemState& st)
                 case NpcRole::Miner: mi++; break;
                 case NpcRole::Police: po++; break;
                 case NpcRole::Pirate: pi++; break;
-                case NpcRole::Warship: po++; break;  // combat factions — count as "police"
+                case NpcRole::Warship: break;  // a siege's, kept by its plan (#295)
             }
     st.agg.traders = (float)tr;
     st.agg.miners = (float)mi;
@@ -509,14 +544,19 @@ Simulation::Population Simulation::PopulationOf(const SystemState& st, const Roo
     // of security: the lawful as police under whichever of them is strongest here, the
     // pirates as pirates.
     p.policeFaction = lawful ? ctrl : FactionId::TradersGuild;
+    // A faction's strength here that is besieging an outpost (#295, slice 5) is its siege's
+    // warships, not police or pirates the director makes.
+    std::array<float, FACTION_COUNT> here = agg.presence;
+    for (int f = 0; f < FACTION_COUNT; f++)
+        here[f] = std::max(0.0f, here[f] - SiegeForceIn(st.id, (FactionId)f));
     float lawPresence = 0.0f, strongestLaw = 0.0f;
     for (int f = 0; f < FACTION_COUNT; f++)
         if (Factions::IsLawful((FactionId)f))
         {
-            lawPresence += agg.presence[f];
-            if (agg.presence[f] > strongestLaw)
+            lawPresence += here[f];
+            if (here[f] > strongestLaw)
             {
-                strongestLaw = agg.presence[f];
+                strongestLaw = here[f];
                 p.policeFaction = (FactionId)f;
             }
         }
@@ -527,8 +567,7 @@ Simulation::Population Simulation::PopulationOf(const SystemState& st, const Roo
     p.traders = (int)roundf(traders * (1.0f - agg.supTraders));
     p.miners = (int)roundf(2.0f * (1.0f - agg.supMiners));
     p.police = (int)roundf(roundf(lawPresence) * (1.0f - agg.supPolice));
-    p.pirates =
-        (int)roundf(roundf(agg.presence[(int)FactionId::Pirates]) * (1.0f - agg.supPirates));
+    p.pirates = (int)roundf(roundf(here[(int)FactionId::Pirates]) * (1.0f - agg.supPirates));
 
     // Nowhere to put them, none of them: traders need two ends of a lane, miners a belt,
     // police a beat, pirates somewhere dark.
@@ -568,7 +607,7 @@ void Simulation::TopUpSystem(SystemState& st, const std::vector<Vector2>& avoid)
                 case NpcRole::Miner: mi++; break;
                 case NpcRole::Police: po++; break;
                 case NpcRole::Pirate: pi++; break;
-                case NpcRole::Warship: po++; break;
+                case NpcRole::Warship: break;  // a siege's, not the director's (#295)
             }
 
     auto pick = [&](const std::vector<Vector2>& v) -> Vector2

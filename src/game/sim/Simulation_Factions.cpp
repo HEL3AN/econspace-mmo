@@ -66,6 +66,9 @@ constexpr float STOCK_OUTPOSTS = 2.0f;
 // A faction settles only where it has really come: half its capacity committed, the bar
 // a capture by strength has always had (StepControl). A gang is not a settlement.
 constexpr float SETTLE_PRESENCE = 0.5f;
+// A faction spends on something new only what it has beyond this many periods of keeping the
+// outposts it has (#295, slice 5).
+constexpr float UPKEEP_RESERVE = 10.0f;
 
 bool Hostile(FactionId a, FactionId b)
 {
@@ -117,7 +120,10 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
                 p.outpostSite = true;
                 FactionId owner;
                 if (!t.IsBuilding() && Outposts::FactionOf(t.GetOwner(), owner))
+                {
                     p.outposts.push_back(owner);
+                    p.outpostIds.push_back(t.GetId());
+                }
                 break;
             }
             default: break;
@@ -179,6 +185,7 @@ Intel Simulation::Observe(const SystemState& st) const
     i.planets = st.profile.planets;
     i.gates = st.profile.gates;
     i.defenders = st.profile.defenders;
+    i.outposts = st.profile.outposts;
     i.presence = st.agg.presence;
     i.controller = st.agg.controller;
     i.claimed = st.agg.claimed;
@@ -281,6 +288,7 @@ void Simulation::ResolveDuePlans()
         {
             case Plan::Kind::Survey: ResolveSurvey(p); break;
             case Plan::Kind::Settle: ResolveSettle(p); break;
+            case Plan::Kind::Siege: ResolveSiege(p); break;
         }
     }
 }
@@ -412,6 +420,7 @@ void Simulation::StepFactions()
     if (!mindsSeeded_)
         SeedMinds();
     ResolveDuePlans();
+    StepSieges();
 
     // Each faction thinks once a period, on a pass of its own (#295): spread across the
     // period rather than all on one pass, so no pass carries more than one of them.
@@ -422,6 +431,10 @@ void Simulation::StepFactions()
             Think((FactionId)fi);
     if (phase != 0)
         return;
+
+    // Once a period, what factions have built is paid for out of what they saved, or is not
+    // (slice 5) -- the bill comes before this period's yield, which is next period's to spend.
+    StepUpkeep();
 
     // Once a period, holdings yield (#295): something for being held, more for trade and
     // for ore. What a faction cannot store is not income.
@@ -471,12 +484,14 @@ void Simulation::Think(FactionId f)
     FactionMind&       mind = minds_[fi];
 
     // What it sees for itself is never out of date -- and is not saved, for that reason.
-    int holdings = 0;
+    int holdings = 0, outposts = 0;
     for (auto& kv : systems_)
     {
         const SystemAggregate& a = kv.second.agg;
         const bool             held = a.claimed && a.controller == f;
         holdings += held ? 1 : 0;
+        outposts += (int)std::count(kv.second.profile.outposts.begin(),
+                                    kv.second.profile.outposts.end(), f);
         if (held || a.presence[fi] >= 1.0f)
             mind.intel[kv.first] = Observe(kv.second);
     }
@@ -486,27 +501,43 @@ void Simulation::Think(FactionId f)
     // What it already has under way: one survey of a system at a time, and no more at once
     // than its holdings can send.
     std::set<std::string> surveying;
-    bool                  settling = false;
+    bool                  settling = false, besieging = false;
     for (const auto& kv : plans_)
         if (kv.second.faction == f && kv.second.kind == Plan::Kind::Survey)
             surveying.insert(kv.second.target);
         else if (kv.second.faction == f && kv.second.kind == Plan::Kind::Settle)
             settling = true;
+        else if (kv.second.faction == f && kv.second.kind == Plan::Kind::Siege)
+            besieging = true;
     const bool canSurvey = (int)surveying.size() < 1 + holdings / PLANS_PER_HOLDINGS;
-    // One outpost at a time, and only with the stock to pay for it.
+    // One outpost at a time, and only with the stock to pay for it -- over and above what
+    // keeping the ones it has will cost for a while (slice 5): a faction that spends its
+    // upkeep on a new outpost loses an old one.
     const float cost = OutpostCost();
-    const bool  canSettle = !settling && cost > 0.0f && mind.stock >= cost;
+    const float reserve = UPKEEP_RESERVE * Blueprints::UpkeepRules().share * cost * (float)outposts;
+    const bool  canSettle = !settling && cost > 0.0f && mind.stock >= cost + reserve;
+    // One siege at a time, paid for like a settlement (slice 5).
+    const Blueprints::Siege& siege = Blueprints::SiegeRules();
+    const bool canSiege = !besieging && cost > 0.0f && mind.stock >= SiegeCost() + reserve;
+    // What it believes an outpost takes to bring down: it cannot see which kind it is from
+    // next door, so the ordinary one's hull, mended as a supplied one is.
+    const Blueprint* plain = Blueprints::Find(Outposts::BLUEPRINT);
+    const float      wall = plain != nullptr ? plain->hull : 0.0f;
+    const float      mend = Blueprints::UpkeepRules().repair * wall / (FACTION_PERIOD * 2.0f);
 
     enum class Act
     {
         None,
         Move,
         Survey,
-        Settle
+        Settle,
+        Siege
     };
     Act         act = Act::None;
     float       bestScore = 0.0f;
     std::string from, to, why;
+    FactionId   enemy = FactionId::Independent;
+    float       force = 0.0f;
     for (auto& kv : systems_)
     {
         const SystemAggregate& home = kv.second.agg;
@@ -519,6 +550,15 @@ void Simulation::Think(FactionId f)
                 continue;
             const auto   k = mind.intel.find(nid);
             const Intel* seen = k == mind.intel.end() ? nullptr : &k->second;
+            // What stands next door is no secret (slice 5): an outpost is built to be seen,
+            // and word of one comes through the gate. Who is there in strength, and how much
+            // of it, a faction still has to go and look at.
+            if (k != mind.intel.end())
+                k->second.outposts = systems_.at(nid).profile.outposts;
+            bool rival = false;  // an enemy's outpost stands there
+            if (seen != nullptr)
+                for (FactionId g : seen->outposts)
+                    rival = rival || Hostile(f, g);
 
             // Looking: worth its curiosity where it has never been, and again as what it
             // saw goes stale -- unless what it saw was a friend's or a neutral's, which it
@@ -528,8 +568,11 @@ void Simulation::Think(FactionId f)
                                 (seen->controller == f || !Hostile(f, seen->controller));
             if (canSurvey && !closed && surveying.count(nid) == 0)
             {
-                const float value = Intelligence::SurveyValue(t.curiosity, seen, time_);
-                float       hostile = 0.0f;
+                // An enemy's outpost next door is worth watching: what it would take to
+                // bring down is what its garrison is now, not what it was (slice 5).
+                const float value = Intelligence::SurveyValue(
+                    t.curiosity + (rival && canSiege ? t.unclaimed : 0.0f), seen, time_);
+                float hostile = 0.0f;
                 if (seen != nullptr)
                     for (int g = 0; g < FACTION_COUNT; g++)
                         if (Hostile(f, (FactionId)g))
@@ -566,8 +609,10 @@ void Simulation::Think(FactionId f)
                 for (FactionId d : o.defenders)
                     if (d != f)
                         guns++;
+                // ...and where it lost an outpost not long ago, the memory of that (slice 5).
                 const float risk = std::max(0.0f, hostile - seen->presence[fi]) / t.capacity +
-                                   0.5f * guns + (Factions::IsLawful(f) ? 0.0f : seen->security);
+                                   0.5f * guns + (Factions::IsLawful(f) ? 0.0f : seen->security) +
+                                   Intelligence::LossRisk(mind.lostAt, nid, time_);
                 const float score = value - Intelligence::BelievedRisk(
                                                 risk, Intelligence::Staleness(*seen, time_)) /
                                                 t.appetite;
@@ -579,6 +624,47 @@ void Simulation::Think(FactionId f)
                     to = nid;
                 }
             }
+
+            // Besieging (slice 5): an enemy's outpost next door, which it has seen, can reach
+            // with what its holding spares, and can bring down before its besiegers give up.
+            // Worth what the system is worth with nobody's claim on it and one more wreck in
+            // it -- which is what is left when the outpost falls; the risk is the garrison,
+            // the guns and the time it would take.
+            if (canSiege && wall > 0.0f)
+                for (FactionId g : seen->outposts)
+                {
+                    if (!Hostile(f, g) || (seen->claimed && seen->controller != g))
+                        continue;
+                    const float sent = std::min(surplus, t.capacity * siege.commit);
+                    const float garrison = seen->presence[(int)g];
+                    const float firing = sent - siege.defence * garrison;
+                    const float rate = firing * siege.dps - (seen->claimed ? mend : 0.0f);
+                    if (sent < 1.5f || firing <= 0.0f || rate <= 0.0f ||
+                        wall / rate > siege.seconds)
+                        break;
+                    int guns = 0;
+                    for (FactionId d : o.defenders)
+                        if (d != f)
+                            guns++;
+                    const float worth = t.traffic * o.traffic + t.ore * o.ore +
+                                        t.salvage * std::min(1.0f, o.salvage + 0.25f) + t.unclaimed;
+                    // The garrison is the law there: the lawless fear it, and nothing more.
+                    const float risk =
+                        garrison / t.capacity + 0.5f * guns + wall / rate / siege.seconds;
+                    const float score = worth - Intelligence::BelievedRisk(
+                                                    risk, Intelligence::Staleness(*seen, time_)) /
+                                                    t.appetite;
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        act = Act::Siege;
+                        from = kv.first;
+                        to = nid;
+                        enemy = g;
+                        force = sent;
+                    }
+                    break;  // one outpost in a system is what it would besiege
+                }
 
             // Reaching: only where it has looked, and only with strength to spare -- and
             // only into a system it may take: nobody's, or an enemy's. Never a friend's or
@@ -645,6 +731,22 @@ void Simulation::Think(FactionId f)
         Settle(f, from, to);
         return;
     }
+    if (act == Act::Siege)
+    {
+        // Arriving, it sees the place as it is: the outpost may have gone since, or the
+        // system be a friend's now. Then it does nothing this period.
+        SystemState& dest = systems_[to];
+        mind.intel[to] = Observe(dest);
+        if (dest.agg.claimed && (dest.agg.controller == f || !Hostile(f, dest.agg.controller)))
+            return;
+        for (size_t i = 0; i < dest.profile.outposts.size(); i++)
+            if (dest.profile.outposts[i] == enemy)
+            {
+                BeginSiege(f, from, to, enemy, StaticKey(to, dest.profile.outpostIds[i]), force);
+                return;
+            }
+        return;
+    }
     if (act != Act::Move)
         return;
 
@@ -666,8 +768,8 @@ void Simulation::Think(FactionId f)
 }
 
 // 3. Who holds a system: the controller, until a hostile faction has had the upper hand
-//    there for CONTEST_PASSES in a row (#225). Capture of a held system stays a matter of
-//    strength until sieges of outposts arrive (#295's slice 5).
+//    there for CONTEST_PASSES in a row (#225) -- unless the holder has an outpost there, which
+//    has to fall first (#295's slice 5).
 void Simulation::StepControl(bool settling)
 {
     for (auto& kv : systems_)
@@ -694,7 +796,12 @@ void Simulation::StepControl(bool settling)
         const auto& outposts = kv.second.profile.outposts;
         const bool  anchored =
             a.claimed || std::find(outposts.begin(), outposts.end(), challenger) != outposts.end();
-        const bool upper = (challenger != a.controller || !a.claimed) && anchored &&
+        // And a held system whose holder has an outpost standing in it is not taken by
+        // strength at all (slice 5): the outpost is the claim, and it has to be brought down
+        // first -- by a siege, or by anyone's guns.
+        const bool fortified = a.claimed && std::find(outposts.begin(), outposts.end(),
+                                                      a.controller) != outposts.end();
+        const bool upper = (challenger != a.controller || !a.claimed) && anchored && !fortified &&
                            strongest > held * 1.5f + 1.0f &&
                            strongest >= Factions::TemperamentOf(challenger).capacity * 0.5f;
         a.contested = upper ? a.contested + 1 : 0;
