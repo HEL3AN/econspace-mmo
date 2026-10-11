@@ -1,6 +1,7 @@
 #pragma once
 
-#include "raylib.h"  // Color: a plain struct, nothing here draws
+#include "raylib.h"    // Color: a plain struct, nothing here draws
+#include "ui/Fonts.h"  // TextCase
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -28,8 +29,52 @@ namespace Ui
 struct FaceSpec
 {
     std::string file;
-    bool        upper = false;    // set in capitals, whatever the text says
-    float       tracking = 0.0f;  // extra room between letters, in ems
+    TextCase    textCase = TextCase::AsWritten;  // "case": as written, capitals, a sentence
+    float       tracking = 0.0f;                 // extra room between letters, in ems
+};
+
+// What a theme's frame and widgets look like where a number cannot say it: a few renderer
+// tokens, each a word from a short list, drawn once in Window.cpp and the widgets (Paint.h).
+// A word not on its list is a load error, like an unknown field.
+enum class Corner
+{
+    Square,   // no corner is rounded or cut, whatever the radii say
+    Rounded,  // widgets by metrics.radius, windows by metrics.windowRadius
+    Chamfer,  // the top-left and bottom-right corners cut at 45 degrees, by the same radii
+};
+enum class TitleBar
+{
+    Solid,  // colors.title, the width of the window
+    Fade,   // colors.title fading out to the right, over the panel
+    Clear,  // the panel itself, with a rule under it
+};
+enum class TabStyle
+{
+    Underline,  // a strip on a rule, the chosen tab lit and underlined (metrics.tabMark)
+    Boxed,      // each tab a box of its own, the chosen one lit
+    Filled,     // boxes on a strip of the border colour, the chosen one solid accent
+    Segmented,  // one sunken track, the chosen tab a raised plate in it
+};
+enum class LineStyle
+{
+    Solid,
+    Dashed,
+};
+enum class BarStyle
+{
+    Solid,
+    Striped,  // segments, in a frame of the border colour
+};
+enum class Shadow
+{
+    None,
+    Soft,    // a wide, faint shadow below the window
+    Offset,  // a hard copy of the window, down and to the right
+};
+enum class PanelStyle
+{
+    Flat,
+    Glass,  // a sheen down from the top, and the cut corners drawn in the accent
 };
 
 struct Theme
@@ -53,6 +98,7 @@ struct Theme
         Color track{ 42, 51, 64, 90 };        // the empty part of a bar or slider
         Color hover{ 141, 178, 216, 26 };     // under the cursor
         Color selected{ 141, 178, 216, 46 };  // the chosen row of a table, the open tab
+        Color onAccent{ 11, 15, 20, 255 };    // text on a solid accent fill
         Color backdrop{ 6, 8, 12, 255 };      // behind the windows where there is no world: docked
         Color shade{ 6, 8, 14, 235 };         // over the world, under a screen drawn on it: the map
         Color sensor{ 5, 10, 9, 255 };        // the sensor screen's ground: opaque, a readout
@@ -80,16 +126,18 @@ struct Theme
         float border = 1.0f;        // outlines
         float barHeight = 5.0f;     // a progress bar
         float buttonHeight = 22.0f;
-        float resizeGrip = 12.0f;  // the corner a resizable window is dragged by
-        float rowHeight = 19.0f;   // a table's row
-        float scrollbar = 4.0f;    // the width of a scroll indicator
-        float snap = 12.0f;        // how near an edge a dragged window jumps to it
-        float tabWidth = 120.0f;   // the widest a tab of a stacked window is
-        float sidePanel = 260.0f;  // a screen's column of legends and news beside its picture
-        float menuBar = 64.0f;     // the strip of window buttons down the left edge
-        float formLabel = 104.0f;  // the column of labels on the left of a form (FormRow)
-        float titleMark = 2.0f;    // an accent stripe down the left of a title bar; 0 for none
-        float tabMark = 2.0f;      // an accent line under the chosen tab; 0 for none
+        float resizeGrip = 12.0f;   // the corner a resizable window is dragged by
+        float rowHeight = 19.0f;    // a table's row
+        float scrollbar = 4.0f;     // the width of a scroll indicator
+        float snap = 12.0f;         // how near an edge a dragged window jumps to it
+        float tabWidth = 120.0f;    // the widest a tab of a stacked window is
+        float sidePanel = 260.0f;   // a screen's column of legends and news beside its picture
+        float menuBar = 64.0f;      // the strip of window buttons down the left edge
+        float formLabel = 104.0f;   // the column of labels on the left of a form (FormRow)
+        float titleMark = 2.0f;     // an accent stripe down the left of a title bar; 0 for none
+        float tabMark = 2.0f;       // the line under the chosen tab, in the underline style
+        float windowRadius = 0.0f;  // a window's corners, rounded or cut (style.corner)
+        float rowMark = 0.0f;       // an accent bar down the left of a table's lit row
     } metrics;
 
     // In pixels of em at a scale of 1, as CSS means a font size (Ui::Fonts).
@@ -109,7 +157,7 @@ struct Theme
     {
         FaceSpec regular{ "fonts/BarlowSemiCondensed-Regular.ttf" };
         FaceSpec strong{ "fonts/BarlowSemiCondensed-SemiBold.ttf" };
-        FaceSpec heading{ "fonts/BarlowCondensed-SemiBold.ttf", true, 0.1f };
+        FaceSpec heading{ "fonts/BarlowCondensed-SemiBold.ttf", TextCase::Upper, 0.1f };
         FaceSpec numbers{ "fonts/BarlowSemiCondensedTnum-Regular.ttf" };
     } fonts;
 
@@ -122,6 +170,28 @@ struct Theme
         // the rasteriser gave.
         float gamma = 1.2f;
     } text;
+
+    struct Style
+    {
+        Corner     corner = Corner::Square;
+        TitleBar   titleBar = TitleBar::Solid;
+        TabStyle   tabs = TabStyle::Underline;
+        LineStyle  divider = LineStyle::Solid;
+        BarStyle   bar = BarStyle::Solid;
+        Shadow     shadow = Shadow::None;
+        PanelStyle panel = PanelStyle::Flat;
+        // 0..1: how strongly titles, the chosen tab, the lit row and bars glow in their own
+        // colour. 0 draws no glow at all, and costs nothing.
+        float glow = 0.0f;
+        // The panel over the blurred world, when the player has "Blur behind windows" on
+        // (Ui::BlurSetting) and the theme offers it: the colour the blur shows through. A
+        // theme without one (null in the file) never blurs.
+        bool  blurs = false;
+        Color blurPanel{ 0, 0, 0, 0 };
+    } style;
+
+    // A widget's corner radius as a layout should draw it: none for square corners.
+    float WidgetRadius() const { return style.corner == Corner::Square ? 0.0f : metrics.radius; }
 };
 
 // Reads a theme. Strict both ways: an unknown field is an error, because read leniently a
@@ -137,7 +207,8 @@ Theme&       MutableTheme();
 const Theme& CurrentTheme();
 
 // The themes a player can pick: every file in `dir` (data/ui_themes/) that loads, in the
-// order of their ids. A file that does not load is left out, and said in `problems`.
+// order of their ids after the default, which comes first. A file that does not load is left
+// out, and said in `problems`.
 struct ThemeEntry
 {
     std::string id, name;
@@ -162,7 +233,8 @@ float Px(float units);                // units to pixels at the current scale, r
 constexpr float MIN_USER_SCALE = 0.75f;
 constexpr float MAX_USER_SCALE = 2.5f;
 
-// This machine's interface settings: { "version": 1, "scale": 1.25, "theme": "fleet" }.
+// This machine's interface settings: { "version": 1, "scale": 1.25, "theme": "fleet",
+// "blur": false }.
 // Next to the executable like the window layout, because they belong to the display, not
 // the account. A missing file is not an error; a file from a newer build is read for
 // nothing and the caller should not write over it.
@@ -172,5 +244,10 @@ bool          SaveUiSettings(const std::string& path);
 // The theme the settings name: DEFAULT_THEME until a file or the player says otherwise.
 const std::string& ThemeSetting();
 void               SetThemeSetting(const std::string& id);
+// "Blur behind windows": the world under a window blurred, in a theme that offers it
+// (style.blurPanel). Off until the player turns it on -- it costs a copy of the world and
+// two passes over a quarter of it every frame, which a laptop's GPU feels.
+bool BlurSetting();
+void SetBlurSetting(bool on);
 
 }  // namespace Ui

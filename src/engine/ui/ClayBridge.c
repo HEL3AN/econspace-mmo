@@ -127,6 +127,12 @@ static Clay_Color Rgba(const float c[4])
     return out;
 }
 
+void uiclay_forget_measures(UiClay* c)
+{
+    Clay_SetCurrentContext(c->context);
+    Clay_ResetMeasureTextCache();
+}
+
 void uiclay_open(const UiClayElement* e)
 {
     Clay_ElementDeclaration d;
@@ -151,6 +157,7 @@ void uiclay_open(const UiClayElement* e)
                                 : e->alignY == UICLAY_END  ? CLAY_ALIGN_Y_BOTTOM
                                                            : CLAY_ALIGN_Y_TOP;
     d.backgroundColor = Rgba(e->fill);
+    d.userData = (void*)(uintptr_t)e->paint;
     d.cornerRadius.topLeft = d.cornerRadius.topRight = e->radius;
     d.cornerRadius.bottomLeft = d.cornerRadius.bottomRight = e->radius;
     if (e->borderWidth > 0)
@@ -220,6 +227,7 @@ int32_t uiclay_end(UiClay* c, const UiClayCommand** out)
         o->w = rc->boundingBox.width;
         o->h = rc->boundingBox.height;
         o->id = rc->id;
+        o->paint = (uint32_t)(uintptr_t)rc->userData;
         switch (rc->commandType)
         {
             case CLAY_RENDER_COMMAND_TYPE_RECTANGLE:

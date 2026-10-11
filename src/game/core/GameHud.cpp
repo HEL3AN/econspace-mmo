@@ -703,7 +703,7 @@ void Game::DrawMenuBar()
                                              : t.colors.panel)
                                .Border(open || hover ? t.colors.accent : t.colors.border,
                                        t.metrics.border)
-                               .Radius(t.metrics.radius),
+                               .ThemeCorners(),
                            [&]
                            {
                                Ui::TextStyle st = Ui::TextStyle::Caption().Tint(
@@ -869,7 +869,7 @@ void Game::DrawLocation()
                            .Align(Ui::Align::Center, Ui::Align::Start)
                            .Fill(t.colors.panel)
                            .Border(t.colors.border, t.metrics.border)
-                           .Radius(t.metrics.radius),
+                           .ThemeCorners(),
                        [&]
                        {
                            L.Row(
@@ -1015,7 +1015,7 @@ void Game::DrawGalaxyMap()
                                    .Gap(t.metrics.gap)
                                    .Fill(t.colors.panel)
                                    .Border(t.colors.border, t.metrics.border)
-                                   .Radius(t.metrics.radius),
+                                   .ThemeCorners(),
                                [&]
                                {
                                    L.Text("LEGEND", TextStyle::Label());
@@ -1438,7 +1438,7 @@ void Game::DrawSensorScreen()
                               .Gap(t.metrics.gap)
                               .Fill(t.colors.panel)
                               .Border(t.colors.border, t.metrics.border)
-                              .Radius(t.metrics.radius),
+                              .ThemeCorners(),
                           [&]
                           {
                               L.Text("ALLEGIANCE", TextStyle::Label());

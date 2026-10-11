@@ -1,4 +1,5 @@
 #include "ui/UiTheme.h"
+#include "ui/Paint.h"
 
 namespace
 {
@@ -21,7 +22,7 @@ bool Ui::UseTheme(const std::string& id)
     const FaceSpec* faces[FACE_COUNT] = { &c.fonts.regular, &c.fonts.strong, &c.fonts.heading,
                                           &c.fonts.numbers };
     for (int i = 0; i < FACE_COUNT; i++)
-        files.faces[i] = { g_dataDir + faces[i]->file, faces[i]->upper, faces[i]->tracking };
+        files.faces[i] = { g_dataDir + faces[i]->file, faces[i]->textCase, faces[i]->tracking };
     files.gamma = c.text.gamma;
     LoadFonts(files);
     return ok;
@@ -42,6 +43,7 @@ void Ui::LoadAssets(const std::string& dataDir, const std::string& themeId)
 void Ui::UnloadAssets()
 {
     UnloadFonts();
+    UnloadPaint();
 }
 
 void Ui::Text(const char* text, int x, int y, int size, Color color)

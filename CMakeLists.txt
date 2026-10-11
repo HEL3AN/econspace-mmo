@@ -157,6 +157,7 @@ add_library(engine STATIC
     src/engine/render/MaterialLibrary.cpp  # ...and the half that compiles and binds
     src/engine/render/TreatmentConfig.cpp  # the pass chain as data -- the testable half (#120)
     src/engine/render/Treatment.cpp        # ...and the half that talks to the GPU
+    src/engine/render/Backdrop.cpp         # the world blurred once, for glass windows (#297)
     src/engine/render/TreatmentPanel.cpp   # its settings, drawn by the game and the editor
     src/engine/render/GlyphBackend.cpp
     src/engine/render/TextBackend.cpp  # no raylib drawing calls: agents and tests are headless
@@ -165,6 +166,7 @@ add_library(engine STATIC
     src/engine/ui/Button.cpp
     src/engine/ui/Controls.cpp         # sliders and toggles, wanted by more than one screen
     src/engine/ui/Window.cpp
+    src/engine/ui/Paint.cpp            # chamfers, glow, shadows, dashes: a theme's renderer tokens
     src/engine/ui/ContextMenu.cpp
     src/engine/ui/Input.cpp            # who the mouse belongs to while something draws (#297)
     src/engine/ui/Focus.cpp            # ...and who the keyboard belongs to: one text field

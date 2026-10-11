@@ -51,6 +51,7 @@ extern "C"
         float       borderColor[4];
         uint16_t    borderWidth;
         uint8_t     scrollY; /* clips its children on both axes and scrolls them up and down */
+        uint32_t    paint;   /* passed through to its commands untouched: how to draw them */
     } UiClayElement;
 
     typedef struct UiClayText
@@ -83,6 +84,7 @@ extern "C"
         int32_t     textLength;
         uint16_t    fontId, fontSize, lineHeight;
         uint32_t    id;
+        uint32_t    paint; /* the element's, as it was declared */
     } UiClayCommand;
 
     typedef struct UiClaySize
@@ -109,6 +111,9 @@ extern "C"
     void uiclay_close(void);
     /* The text must stay alive until uiclay_end's commands have been drawn. */
     void uiclay_text(const char* text, int32_t length, const UiClayText* t);
+    /* Forgets every text measurement Clay has kept: after the fonts change (a theme switched),
+     * a width it remembers for a word is the old font's. */
+    void uiclay_forget_measures(UiClay* c);
     /* Lays out and returns the commands, valid until the next uiclay_begin on this context. */
     int32_t uiclay_end(UiClay* c, const UiClayCommand** out);
 

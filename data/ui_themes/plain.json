@@ -15,6 +15,7 @@
         "track": "#5056646E",
         "hover": "#5CAAE828",
         "selected": "#5CAAE838",
+        "onAccent": "#08090E",
         "backdrop": "#08090E",
         "shade": "#06080EEB",
         "sensor": "#050A09"
@@ -44,7 +45,9 @@
         "menuBar": 64,
         "formLabel": 112,
         "titleMark": 0,
-        "tabMark": 0
+        "tabMark": 0,
+        "windowRadius": 0,
+        "rowMark": 0
     },
     "fontSize": {
         "small": 11,
@@ -54,13 +57,24 @@
         "heading": 20
     },
     "fonts": {
-        "regular": { "file": "fonts/Inter-Regular.ttf", "upper": false, "tracking": 0 },
-        "strong": { "file": "fonts/Inter-SemiBold.ttf", "upper": false, "tracking": 0 },
-        "heading": { "file": "fonts/Inter-SemiBold.ttf", "upper": false, "tracking": 0 },
-        "numbers": { "file": "fonts/Inter-Regular.ttf", "upper": false, "tracking": 0 }
+        "regular": { "file": "fonts/Inter-Regular.ttf", "case": "as-written", "tracking": 0 },
+        "strong": { "file": "fonts/Inter-SemiBold.ttf", "case": "as-written", "tracking": 0 },
+        "heading": { "file": "fonts/Inter-SemiBold.ttf", "case": "as-written", "tracking": 0 },
+        "numbers": { "file": "fonts/Inter-Regular.ttf", "case": "as-written", "tracking": 0 }
     },
     "text": {
         "lineHeight": 1.4,
         "gamma": 1.25
+    },
+    "style": {
+        "corner": "rounded",
+        "titleBar": "solid",
+        "tabStyle": "boxed",
+        "divider": "solid",
+        "barStyle": "solid",
+        "shadow": "none",
+        "panel": "flat",
+        "glow": 0,
+        "blurPanel": null
     }
 }

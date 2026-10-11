@@ -15,6 +15,7 @@
 #include "sim/Overview.h"
 #include "sim/Sensor.h"
 #include "sim/WorldClock.h"
+#include "render/Backdrop.h"
 #include "render/Treatment.h"
 #include "render/TreatmentPanel.h"
 #include "player/Player.h"
@@ -22,6 +23,7 @@
 #include "ui/ContextMenu.h"
 #include "ui/Desk.h"
 #include "ui/Layout.h"
+#include "ui/UiTheme.h"  // UseTheme, for --theme
 #include "core/Actions.h"
 #include "core/Faction.h"
 #include "economy/Resource.h"
@@ -151,6 +153,16 @@ public:
     // Open at a given size (--size W H): a measurement at the resolution of the machine it
     // is about, rather than at the default window's.
     void SetResolution(int w, int h) { ApplyResolution(w, h); }
+    // This theme for one run (--theme ID), whatever ui_settings.json says: a picture of each
+    // theme without touching the file. Not saved.
+    void SetThemeForRun(const std::string& id) { Ui::UseTheme(id); }
+    // "Blur behind windows" on for one run (--blur). Not saved unless Settings saves.
+    void SetBlurForRun(bool on) { Ui::SetBlurSetting(on); }
+    // A left click at (x, y) on frame `frame` (--click X Y FRAME), played into raylib's own
+    // input state: the desk, the layouts and the widgets see it exactly as they see the
+    // mouse, which a click sent to the window from outside never reaches (a hidden window
+    // has no focus to give it). For checking, in a real client, what a click does.
+    void AddScriptedClick(float x, float y, int frame) { clicks_.push_back({ x, y, frame }); }
     // Who this client is logged in as: a discoverer may name what they found (#145), and
     // the window layout is kept per account (#297).
     void SetPilotName(const std::string& n);
@@ -320,7 +332,10 @@ private:
     // whose driver refused them, which draws everything the way it drew before.
     Render::MaterialLibrary materials_;
 
-    Render::Treatment      treatment_;
+    Render::Treatment treatment_;
+    // The world blurred once a frame, under the windows of a glass theme, while the player has
+    // "Blur behind windows" on (#297). Captured only when it will be used.
+    Render::Backdrop       backdrop_;
     Render::TreatmentPanel lookPanel_;          // F10's window (#120)
     bool                   lookDirty_ = false;  // changed, not yet written to look.json
     void                   DrawTreatmentContent(const Ui::Frame& f);
@@ -438,6 +453,15 @@ private:
     Ui::Layout  locationLayout_;
     std::string menuToggle_;  // a menu button clicked while the bar was drawn: toggled next frame
     std::vector<Ui::ThemeEntry> themes_;  // the ones Settings offers, read once at start
+    // --click X Y FRAME: where and on which frame, counted from the first.
+    struct ScriptedClick
+    {
+        float x, y;
+        int   frame;
+    };
+    std::vector<ScriptedClick> clicks_;
+    int                        frameIndex_ = 0;
+    void                       PlayScriptedClicks();
     std::string themeToUse_;       // chosen in Settings while it was drawn: switched to next frame
     int         missionsTab_ = 0;  // 0 the missions taken, 1 the docked station's board
     int         missionsSel_[2] = { 0, 0 };                // the mission chosen on each

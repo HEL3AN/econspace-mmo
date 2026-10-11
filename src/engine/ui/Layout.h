@@ -4,6 +4,7 @@
 #include "ui/Focus.h"
 #include "ui/Fonts.h"
 #include "ui/Input.h"
+#include "ui/Paint.h"
 #include "ui/Theme.h"
 
 #include <cstdint>
@@ -84,6 +85,10 @@ struct Box
     // elements per layout, so this is for a window's list, not for every cell of it: a
     // table cuts its cells short with Ellipsize instead.
     bool scrollY = false;
+    // How the fill and outline are drawn beyond a colour: Ui::PaintFlag bits (Paint.h), and
+    // the colour of a glow when it is not the fill's own.
+    uint8_t paint = 0;
+    Color   glow{ 0, 0, 0, 0 };
 
     Box& Id(std::string_view s, uint32_t i = 0)
     {
@@ -143,6 +148,26 @@ struct Box
     Box& ScrollY()
     {
         scrollY = true;
+        return *this;
+    }
+    Box& Paint(uint8_t flags)
+    {
+        paint = (uint8_t)(paint | flags);
+        return *this;
+    }
+    Box& Glow(Color c)
+    {
+        glow = c;
+        return *this;
+    }
+    // A widget's corners as the theme draws them (style.corner): rounded by metrics.radius,
+    // cut by it, or square.
+    Box& ThemeCorners()
+    {
+        const Theme& t = CurrentTheme();
+        radius = t.WidgetRadius();
+        if (t.style.corner == Corner::Chamfer)
+            paint = (uint8_t)(paint | PAINT_CHAMFER);
         return *this;
     }
 };
@@ -278,7 +303,9 @@ struct DrawCommand
     float            width = 0.0f;  // of an outline
     std::string_view text;
     Face             face = Face::Regular;
-    float            px = 0.0f;  // the font size, already scaled
+    float            px = 0.0f;           // the font size, already scaled
+    uint8_t          paint = 0;           // Ui::PaintFlag bits, from the box
+    Color            glow{ 0, 0, 0, 0 };  // a glow's colour; alpha 0 for the fill's own
 };
 
 class Layout
@@ -429,12 +456,15 @@ private:
     Measure                  measure_;
     std::deque<std::string>  strings_;
     std::vector<DrawCommand> commands_;
-    Rectangle                area_{ 0.0f, 0.0f, 0.0f, 0.0f };
-    float                    scale_ = 1.0f;
-    Pointer                  pointer_;
-    int                      depth_ = 0;
-    bool                     open_ = false;
-    std::string              lastError_;
+    std::vector<Color>       glows_;
+    int fontGeneration_ = -1;  // the fonts Clay's kept measures are of  // the glow colours boxes
+                               // asked for this frame, by index
+    Rectangle   area_{ 0.0f, 0.0f, 0.0f, 0.0f };
+    float       scale_ = 1.0f;
+    Pointer     pointer_;
+    int         depth_ = 0;
+    bool        open_ = false;
+    std::string lastError_;
 
     Focus*      focus_ = nullptr;
     std::string owner_;  // the window's id, which the focus is held under

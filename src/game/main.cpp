@@ -2,7 +2,7 @@
 //   econspace connect <host> <port> <name> <secret> [--zoom Z] [--warp X Y] [--map]
 //   [--select] [--menu] [--sensor [RANGE]]
 //   [--shot FILE [--frames N]] [--nohud] [--treated] [--perf] [--notreat] [--size W H]
-//   [--uiscale S] [--open IDS] —
+//   [--uiscale S] [--open IDS] [--theme ID] [--blur] [--click X Y FRAME]... —
 //   connect to an econserver host
 //
 // Connecting is mandatory: the world lives on an authoritative server and the
@@ -17,6 +17,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <vector>
 
 static int Usage(const char* exe)
 {
@@ -45,6 +46,10 @@ static int Usage(const char* exe)
                  "      --uiscale S\n"
                  "                 the interface at scale S, whatever the display asks for\n"
                  "      --open IDS start with these windows open, e.g. radar,missions,settings\n"
+                 "      --theme ID the interface in data/ui_themes/ID.json for this run\n"
+                 "      --blur     blur the world behind the windows, in a theme that offers it\n"
+                 "      --click X Y FRAME\n"
+                 "                 a left click at (X, Y) on frame FRAME; repeatable\n"
                  "\n"
                  "Start a server first:\n"
                  "  econserver host 50800\n",
@@ -78,8 +83,16 @@ int main(int argc, char** argv)
     bool              notreat = false;
     bool              treated = false;
     int               width = 0, height = 0;
-    float             uiScale = 0.0f;  // 0: the player's setting times the display's
-    std::string       openWindows;     // --open radar,missions,settings
+    std::string       theme;  // --theme: for this run only
+    bool              blur = false;
+    struct Click
+    {
+        float x, y;
+        int   frame;
+    };
+    std::vector<Click> clicks;          // --click X Y FRAME, any number of them
+    float              uiScale = 0.0f;  // 0: the player's setting times the display's
+    std::string        openWindows;     // --open radar,missions,settings
     for (int i = 6; i < argc; i++)
         if (std::strcmp(argv[i], "--zoom") == 0 && i + 1 < argc)
             startZoom = (float)std::atof(argv[++i]);
@@ -123,6 +136,16 @@ int main(int argc, char** argv)
             uiScale = (float)std::atof(argv[++i]);
         else if (std::strcmp(argv[i], "--open") == 0 && i + 1 < argc)
             openWindows = argv[++i];
+        else if (std::strcmp(argv[i], "--theme") == 0 && i + 1 < argc)
+            theme = argv[++i];
+        else if (std::strcmp(argv[i], "--blur") == 0)
+            blur = true;
+        else if (std::strcmp(argv[i], "--click") == 0 && i + 3 < argc)
+        {
+            clicks.push_back({ (float)std::atof(argv[i + 1]), (float)std::atof(argv[i + 2]),
+                               std::atoi(argv[i + 3]) });
+            i += 3;
+        }
         else if (std::strcmp(argv[i], "--warp") == 0 && i + 2 < argc)
         {
             warpTo = { (float)std::atof(argv[i + 1]), (float)std::atof(argv[i + 2]) };
@@ -183,6 +206,12 @@ int main(int argc, char** argv)
             game.StartOnSensor(sensorRange);
         if (!openWindows.empty())
             game.StartWithWindows(openWindows);
+        if (!theme.empty())
+            game.SetThemeForRun(theme);
+        if (blur)
+            game.SetBlurForRun(true);
+        for (const Click& c : clicks)
+            game.AddScriptedClick(c.x, c.y, c.frame);
         if (!shot.empty())
             game.TakeShot(shot, frames, treated);
         if (nohud)
