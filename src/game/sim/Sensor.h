@@ -4,6 +4,7 @@
 #include "render/Scene.h"
 #include "sim/Protocol.h"
 #include <functional>
+#include <string>
 #include <vector>
 
 // The sensor screen (#123): the system around the ship projected onto a fixed grid of
@@ -63,12 +64,15 @@ struct Cell
     char       glyph = ' ';
     int        id = 0;  // 0: empty, or the viewer's own ship
     Allegiance allegiance = Allegiance::Unowned;
+    // Moved off the cell its position falls in, because something else holds that one
+    // (#366): a moon beside its planet, a ship beside the station it is docked at.
+    bool offset = false;
 };
 
 struct LegendEntry
 {
     char        glyph;
-    const char* kind;
+    std::string kind;
 };
 
 struct Picture
@@ -77,8 +81,9 @@ struct Picture
     int               height = 0;
     float             span = 0.0f;  // world units across the grid
     std::vector<Cell> cells;        // row-major
-    // One line per glyph on the screen, in the order first seen. Only what is in view: a
-    // key to characters that are not there is noise.
+    // One line per glyph on the screen, in the order first seen, and never two lines for
+    // one glyph or two glyphs under one word (#366). Only what is in view: a key to
+    // characters that are not there is noise.
     std::vector<LegendEntry> legend;
 
     const Cell& At(int x, int y) const;
@@ -87,12 +92,17 @@ struct Picture
 
 // How each id in the scene reads; the client answers it from the snapshot by Classify.
 using AllegianceOf = std::function<Allegiance(int id)>;
+// What each id is called as a type ("Gas Giant"), from its archetype; empty if unknown. The
+// legend asks only to tell apart two glyphs whose class of thing is the same word.
+using TypeNameOf = std::function<std::string(int id)>;
 
 // Projects `items` onto a `width` x `height` grid `span` units across, centred on `own` --
 // the viewer's ship, which always occupies the centre cell. Items outside the grid are
-// dropped rather than piled on its edge (GridBackend's rule), and where two share a cell the
-// higher layer wins (Present's rule). The world colour of an item is never read.
+// dropped rather than piled on its edge (GridBackend's rule). Where two fall in one cell the
+// higher layer keeps it (Present's rule) and the other moves to a free neighbouring cell on
+// the side it actually lies (#366); it is hidden only when all eight are taken. The world
+// colour of an item is never read.
 Picture Scan(std::vector<Render::Item> items, const Render::Item& own, int width, int height,
-             float span, const AllegianceOf& allegianceOf);
+             float span, const AllegianceOf& allegianceOf, const TypeNameOf& typeNameOf = {});
 
 }  // namespace Sensor

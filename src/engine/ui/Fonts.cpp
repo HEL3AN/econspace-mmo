@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <map>
 #include <unordered_map>
 #include <vector>
@@ -223,6 +224,10 @@ Sized Rasterise(FaceData& f, int px)
         lut[i] = (unsigned char)std::lround(255.0 * std::pow(i / 255.0, 1.0 / g_gamma));
     const std::vector<int>& cps = Codepoints();
     const int               n = (int)cps.size();
+    // The atlas's row height. raylib packs a row exactly as tall as the size it is given, and
+    // a glyph that reaches past the ascender or the descender -- '|' does in most faces --
+    // would be packed over the top of the row beneath it (#366).
+    int        tallest = raster;
     GlyphInfo* glyphs = (GlyphInfo*)MemAlloc((unsigned int)(sizeof(GlyphInfo) * n * PHASES));
     for (int p = 0; p < PHASES; p++)
         for (int i = 0; i < n; i++)
@@ -253,13 +258,14 @@ Sized Rasterise(FaceData& f, int px)
             g.offsetY = (int)baseline + yoff;
             g.advanceX = 0;  // never read: the walk advances by the exact widths
             g.image = { data, w, h, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE };
+            tallest = std::max(tallest, h);
         }
     Font font{};
     font.baseSize = raster;
     font.glyphCount = n * PHASES;
     font.glyphPadding = PADDING;
     font.glyphs = glyphs;
-    Image atlas = GenImageFontAtlas(glyphs, &font.recs, font.glyphCount, raster, PADDING, 0);
+    Image atlas = GenImageFontAtlas(glyphs, &font.recs, font.glyphCount, tallest, PADDING, 0);
     font.texture = LoadTextureFromImage(atlas);
     UnloadImage(atlas);
     // Drawn at exactly the size it was rasterised at, on whole pixels: point sampling
@@ -275,6 +281,59 @@ Sized Rasterise(FaceData& f, int px)
         s.advance[i] = (float)adv * s.scale;
     }
     return s;
+}
+
+// The world's glyph font, built here rather than by LoadFontFromMemory (#366): raylib packs
+// that atlas in rows exactly `GLYPH_PX` tall and warns about every glyph taller than that --
+// '|', at every start -- before packing it over the row beneath. Rasterised the same way
+// raylib would (scaled to the line, offsets from the ascender), into rows that fit.
+Font BuildGlyphFont(FaceData& f)
+{
+    const float             scale = stbtt_ScaleForPixelHeight(&f.info, (float)GLYPH_PX);
+    const int               baseline = (int)((float)f.ascent * scale);
+    const std::vector<int>& cps = Codepoints();
+    const int               n = (int)cps.size();
+    constexpr int           GLYPH_PADDING = 4;  // raylib's own, so mipmaps do not bleed either
+    int                     tallest = GLYPH_PX;
+    GlyphInfo*              glyphs = (GlyphInfo*)MemAlloc((unsigned int)(sizeof(GlyphInfo) * n));
+    for (int i = 0; i < n; i++)
+    {
+        GlyphInfo&     g = glyphs[i];
+        int            w = 0, h = 0, xoff = 0, yoff = 0;
+        unsigned char* bm = f.glyph[(size_t)i] == 0
+                                ? nullptr
+                                : stbtt_GetGlyphBitmap(&f.info, scale, scale, f.glyph[(size_t)i],
+                                                       &w, &h, &xoff, &yoff);
+        const bool     ink = bm != nullptr && w > 0 && h > 0;
+        if (!ink)
+        {
+            w = h = 1;
+            xoff = yoff = 0;
+        }
+        unsigned char* data = (unsigned char*)MemAlloc((unsigned int)(w * h));
+        if (ink)
+            std::memcpy(data, bm, (size_t)(w * h));
+        if (bm != nullptr)
+            STBTT_free(bm, nullptr);
+        int adv = 0, lsb = 0;
+        if (f.glyph[(size_t)i] != 0)
+            stbtt_GetGlyphHMetrics(&f.info, f.glyph[(size_t)i], &adv, &lsb);
+        g.value = cps[(size_t)i];
+        g.offsetX = xoff;
+        g.offsetY = baseline + yoff;
+        g.advanceX = (int)((float)adv * scale);
+        g.image = { data, w, h, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE };
+        tallest = std::max(tallest, h);
+    }
+    Font font{};
+    font.baseSize = GLYPH_PX;
+    font.glyphCount = n;
+    font.glyphPadding = GLYPH_PADDING;
+    font.glyphs = glyphs;
+    Image atlas = GenImageFontAtlas(glyphs, &font.recs, n, tallest, GLYPH_PADDING, 0);
+    font.texture = LoadTextureFromImage(atlas);
+    UnloadImage(atlas);
+    return font;
 }
 
 const Sized& SizedAt(Face face, int px)
@@ -596,8 +655,7 @@ const Font& GlyphFont()
         g_glyphLoaded = true;
         FaceData& f = g_faces[(int)Face::Strong];
         if (f.ok)
-            g_glyph = LoadFontFromMemory(".ttf", f.file.data(), (int)f.file.size(), GLYPH_PX,
-                                         Codepoints().data(), (int)Codepoints().size());
+            g_glyph = BuildGlyphFont(f);
         if (g_glyph.texture.id == 0)
             g_glyph = GetFontDefault();
         if (!IsDefault(g_glyph))

@@ -1,11 +1,13 @@
 #include <doctest/doctest.h>
 
+#include "core/Archetype.h"
 #include "core/World.h"
 #include "render/TextBackend.h"
 #include "sim/Sensor.h"
 #include "factions_named.h"
 #include <cstring>
 #include <map>
+#include <string>
 
 // The sensor screen (#123) is the world projected onto a grid, coloured by allegiance as the
 // viewer sees it (#117). Both halves are decided without a window, so they are tested here.
@@ -153,31 +155,154 @@ TEST_CASE("the screen is the world around the ship, coloured by who is looking")
     CHECK(p.At(5, 1).glyph == 'v');
     CHECK(p.At(5, 1).allegiance == Sensor::Allegiance::Hostile);
 
-    // The viewer always holds the centre, even with something parked on top of it.
+    // The viewer always holds the centre, even with something parked on top of it -- which
+    // moves aside rather than vanishing (#366).
     CHECK(p.At(5, 5).glyph == 'A');
     CHECK(p.At(5, 5).allegiance == Sensor::Allegiance::Own);
+    CHECK_FALSE(p.At(5, 5).offset);
+    CHECK(p.At(6, 5).id == 5);
+    CHECK(p.At(6, 5).offset);
+    // ...and so does the nebula under the station.
+    CHECK(p.At(9, 5).id == 3);
+    CHECK_FALSE(p.At(8, 5).offset);
 
     // Off the grid is dropped rather than smeared onto the edge.
     int marks = 0;
     for (const Sensor::Cell& c : p.cells)
         if (c.glyph != ' ')
             marks++;
-    CHECK(marks == 3);
+    CHECK(marks == 5);
 
-    // The legend lists what is on the screen and nothing else: no star, no nebula (it is
-    // hidden under the station), the viewer first.
+    // The legend lists what is on the screen and nothing else: no star, the viewer first.
     REQUIRE_FALSE(p.legend.empty());
     CHECK(p.legend[0].glyph == 'A');
+    CHECK(p.legend[0].kind == "you");
     bool star = false, station = false, ship = false;
     for (const Sensor::LegendEntry& l : p.legend)
     {
         star |= l.glyph == '*';
-        station |= (l.glyph == '#' && std::strcmp(l.kind, "station") == 0);
-        ship |= (l.glyph == 'v' && std::strcmp(l.kind, "ship") == 0);
+        station |= (l.glyph == '#' && l.kind == "station");
+        ship |= (l.glyph == 'v' && l.kind == "ship");
     }
     CHECK_FALSE(star);
     CHECK(station);
     CHECK(ship);
+}
+
+TEST_CASE("two things in one cell are both on the screen, each on its own side (#366)")
+{
+    // 11 cells of 100 units; the ship at the origin, the centre cell (5, 5).
+    const Render::Item own = Thing(0, EntityKind::PlayerShip, 0.0f, 0.0f, 'A');
+    const auto         scan = [&](std::vector<Render::Item> scene)
+    {
+        return Sensor::Scan(std::move(scene), own, 11, 11, 1100.0f,
+                            [](int) { return Sensor::Allegiance::Unowned; });
+    };
+
+    SUBCASE("a moon lies east of its planet: it is drawn east of it")
+    {
+        const Sensor::Picture p = scan({ Thing(1, EntityKind::Planet, 300.0f, 0.0f, 'o', 1),
+                                         Thing(2, EntityKind::Station, 330.0f, 0.0f, '#', 4) });
+        // The station is the higher layer and keeps the cell; the planet gives way on the
+        // side it lies from the station -- west.
+        CHECK(p.At(8, 5).id == 2);
+        CHECK(p.At(7, 5).id == 1);
+        CHECK(p.At(7, 5).offset);
+    }
+    SUBCASE("south of it: south")
+    {
+        const Sensor::Picture p = scan({ Thing(1, EntityKind::Planet, 300.0f, 0.0f, 'o', 1),
+                                         Thing(2, EntityKind::Station, 300.0f, -30.0f, '#', 4) });
+        CHECK(p.At(8, 5).id == 2);
+        CHECK(p.At(8, 6).id == 1);  // +y is down the screen
+    }
+    SUBCASE("a neighbour already taken is passed over for the next best")
+    {
+        const Sensor::Picture p = scan({ Thing(3, EntityKind::Field, 200.0f, 0.0f, '%', 2),
+                                         Thing(1, EntityKind::Planet, 270.0f, 0.0f, 'o', 1),
+                                         Thing(2, EntityKind::Station, 300.0f, 0.0f, '#', 4) });
+        CHECK(p.At(8, 5).id == 2);
+        CHECK(p.At(7, 5).id == 3);
+        // West is the belt's, so the planet takes a corner on the west side.
+        const int nw = p.At(7, 4).id, sw = p.At(7, 6).id;
+        CHECK((nw == 1 || sw == 1));
+    }
+    SUBCASE("a cell hemmed in on every side keeps the one on top and hides the rest")
+    {
+        std::vector<Render::Item> scene;
+        for (int i = 0; i < 10; i++)
+            scene.push_back(Thing(10 + i, EntityKind::Npc, 300.0f, 300.0f, 'v', 5));
+        const Sensor::Picture p = scan(scene);
+        int                   shown = 0;
+        for (const Sensor::Cell& c : p.cells)
+            if (c.id >= 10)
+                shown++;
+        CHECK(shown == 9);
+    }
+}
+
+TEST_CASE("the legend has one line per glyph and never one word for two (#366)")
+{
+    const Render::Item own = Thing(0, EntityKind::PlayerShip, 0.0f, 0.0f, 'A');
+    // A rocky planet, an ice planet, a gas giant and a buoy that shares the planets' glyph.
+    const std::vector<Render::Item> scene = {
+        Thing(1, EntityKind::Planet, 300.0f, 0.0f, 'o', 1),
+        Thing(2, EntityKind::Planet, -300.0f, 0.0f, 'o', 1),
+        Thing(3, EntityKind::Planet, 0.0f, 300.0f, 'O', 1),
+        Thing(4, EntityKind::Structure, 0.0f, -300.0f, 'o', 4),
+        Thing(5, EntityKind::Gate, 400.0f, 400.0f, 'H', 3),
+    };
+    const std::map<int, std::string> types = { { 1, "Rocky Planet" },
+                                               { 2, "Ice Planet" },
+                                               { 3, "Gas Giant" },
+                                               { 4, "Buoy" },
+                                               { 5, "Jump Gate" } };
+    const Sensor::Picture            p = Sensor::Scan(
+        scene, own, 11, 11, 1100.0f, [](int) { return Sensor::Allegiance::Unowned; },
+        [&](int id) { return types.at(id); });
+
+    std::map<char, std::string> byGlyph;
+    for (const Sensor::LegendEntry& l : p.legend)
+    {
+        CHECK_MESSAGE(byGlyph.count(l.glyph) == 0, "glyph listed twice: ", l.glyph);
+        byGlyph[l.glyph] = l.kind;
+    }
+    CHECK(byGlyph['A'] == "you");
+    CHECK(byGlyph['H'] == "gate");
+    // 'o' is several things, and says so; 'O' would have been "planet" too, so it is named.
+    CHECK(byGlyph['o'] == "structure, planet");
+    CHECK(byGlyph['O'] == "gas giant");
+
+    SUBCASE("with only planets of one glyph each, the word is enough")
+    {
+        const Sensor::Picture q = Sensor::Scan(
+            { Thing(1, EntityKind::Planet, 300.0f, 0.0f, 'o', 1) }, own, 11, 11, 1100.0f,
+            [](int) { return Sensor::Allegiance::Unowned; }, [&](int id) { return types.at(id); });
+        REQUIRE(q.legend.size() == 2);
+        CHECK(q.legend[1].kind == "planet");
+    }
+}
+
+TEST_CASE("a gate and a planet are different characters on the sensor screen (#366)")
+{
+    // '0' and 'O' are one shape in most faces, and a gate read as a planet is a pilot
+    // warping to the wrong thing. No two kinds share a glyph that another kind's could be
+    // mistaken for, and a gate shares none with anything.
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const char* confusable[][2] = { { "0", "O" }, { "0", "o" }, { "1", "l" },
+                                    { "1", "I" }, { "l", "|" }, { "I", "|" } };
+    std::map<std::string, EntityKind> kindOf;
+    for (const Archetype& a : Archetypes::All())
+        kindOf.emplace(a.visual.glyph, a.kind);
+    for (const auto& pair : confusable)
+    {
+        const bool both = kindOf.count(pair[0]) > 0 && kindOf.count(pair[1]) > 0;
+        CHECK_MESSAGE(!both, "'", pair[0], "' and '", pair[1], "' are both in use");
+    }
+    for (const Archetype* gate : Archetypes::OfKind(EntityKind::Gate))
+        for (const Archetype& a : Archetypes::All())
+            if (a.kind != EntityKind::Gate)
+                CHECK_MESSAGE(a.visual.glyph != gate->visual.glyph, a.id, " looks like a gate");
 }
 
 TEST_CASE("the range steps through fixed scales and stops at the ends")

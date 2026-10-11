@@ -1161,63 +1161,92 @@ TableEvents Layout::Table(const TableSpec& s)
                // A row scrolled out of sight is still somewhere; only the body's view counts.
                const Rectangle view = BoxOf(body);
                const bool inView = pointer_.owned && CheckCollisionPointRec(pointer_.pos, view);
-               Scroll(Box().Id(body).Grow(),
+
+               // Whole rows (#366): the body is as tall as the rows that fit in the room it
+               // was given last frame, and a scroll stops on a row's edge, so the last row
+               // is never cut in half by the bottom of the window. A notch of the wheel that
+               // ended mid-row goes on to the next edge in the direction it was going.
+               const std::string bodyRoom = s.id + "~room";
+               const float       rowPx = U(t.metrics.rowHeight);
+               const Rectangle   roomBox = BoxOf(bodyRoom);
+               Box               bodyBox = Box().Id(body).Grow();
+               if (rowPx > 0.0f && roomBox.height >= rowPx && scale_ > 0.0f)
+                   bodyBox.Height(Size::Fixed(std::floor(roomBox.height / rowPx) * rowPx / scale_));
+               float sc[3] = { 0.0f, 0.0f, 0.0f };
+               if (rowPx > 0.0f && open_ &&
+                   uiclay_scroll(clay_, body.data(), (int32_t)body.size(), 0, sc))
+               {
+                   const float most = std::max(0.0f, sc[2] - sc[1]);
+                   float to = sc[0] > fit.scrolled ? std::ceil(sc[0] / rowPx - 0.01f) * rowPx
+                                                   : std::floor(sc[0] / rowPx + 0.01f) * rowPx;
+                   to = std::clamp(to, 0.0f, most);
+                   if (std::fabs(to - sc[0]) > 0.5f)
+                       uiclay_set_scroll(clay_, body.data(), (int32_t)body.size(), 0, to);
+                   fit.scrolled = to;
+               }
+               Column(Box().Id(bodyRoom).Grow(),
                       [&]
                       {
-                          for (int r = 0; r < s.rows; r++)
-                          {
-                              const bool hover = inView && Hovered(row, (uint32_t)r);
-                              if (hover)
-                              {
-                                  if (s.tooltip)
-                                      Tooltip(row, s.tooltip(r), (uint32_t)r);
-                                  ev.hovered = r;
-                                  if (pointer_.pressed)
-                                      ev.clicked = r;
-                                  if (pointer_.rightPressed)
-                                      ev.rightClicked = r;
-                              }
-                              Color      fill = s.rowFill ? s.rowFill(r) : CLEAR;
-                              const bool lit = fill.a > 0;
-                              if (!lit && hover)
-                                  fill = t.colors.hover;
-                              Row(Box()
-                                      .Id(row, (uint32_t)r)
-                                      .GrowX()
-                                      .Height(Size::Fixed(t.metrics.rowHeight))
-                                      .Fill(fill)
-                                      // Glass lights a row from its mark, fading across.
-                                      .Paint(lit && t.style.panel == PanelStyle::Glass
-                                                 ? PAINT_FADE_RIGHT
-                                                 : 0),
-                                  [&]
-                                  {
-                                      markRoom(lit ? t.colors.accent : CLEAR);
-                                      for (int c = 0; c < cols; c++)
-                                      {
-                                          const TableColumn& col = s.columns[c];
-                                          const Cell&        cell = cellAt(r, c);
-                                          const TextStyle    st = CellStyle(col, cell);
-                                          // As wide as its heading was laid out last frame.
-                                          const float       room = BoxOf(head, (uint32_t)c).width -
-                                                                   2.0f * U(pad) - chipRoom(col);
-                                          const std::string text =
-                                              Ellipsize(cell.text, room, [&](std::string_view x)
-                                                        { return TextWidthPx(st, x); });
-                                          Row(Box()
-                                                  .Width(widths[c])
-                                                  .Height(Size::Grow())
-                                                  .Pad(pad, pad, 0.0f, 0.0f)
-                                                  .Gap(col.chips ? CHIP_GAP : 0.0f)
-                                                  .Align(col.align, Align::Center),
-                                              [&]
-                                              {
-                                                  chip(col, cell.chip, cell.chipMark);
-                                                  Text(text, st);
-                                              });
-                                      }
-                                  });
-                          }
+                          Scroll(bodyBox,
+                                 [&]
+                                 {
+                                     for (int r = 0; r < s.rows; r++)
+                                     {
+                                         const bool hover = inView && Hovered(row, (uint32_t)r);
+                                         if (hover)
+                                         {
+                                             if (s.tooltip)
+                                                 Tooltip(row, s.tooltip(r), (uint32_t)r);
+                                             ev.hovered = r;
+                                             if (pointer_.pressed)
+                                                 ev.clicked = r;
+                                             if (pointer_.rightPressed)
+                                                 ev.rightClicked = r;
+                                         }
+                                         Color      fill = s.rowFill ? s.rowFill(r) : CLEAR;
+                                         const bool lit = fill.a > 0;
+                                         if (!lit && hover)
+                                             fill = t.colors.hover;
+                                         Row(Box()
+                                                 .Id(row, (uint32_t)r)
+                                                 .GrowX()
+                                                 .Height(Size::Fixed(t.metrics.rowHeight))
+                                                 .Fill(fill)
+                                                 // Glass lights a row from its mark, fading across.
+                                                 .Paint(lit && t.style.panel == PanelStyle::Glass
+                                                            ? PAINT_FADE_RIGHT
+                                                            : 0),
+                                             [&]
+                                             {
+                                                 markRoom(lit ? t.colors.accent : CLEAR);
+                                                 for (int c = 0; c < cols; c++)
+                                                 {
+                                                     const TableColumn& col = s.columns[c];
+                                                     const Cell&        cell = cellAt(r, c);
+                                                     const TextStyle    st = CellStyle(col, cell);
+                                                     // As wide as its heading was laid out last
+                                                     // frame.
+                                                     const float room =
+                                                         BoxOf(head, (uint32_t)c).width -
+                                                         2.0f * U(pad) - chipRoom(col);
+                                                     const std::string text = Ellipsize(
+                                                         cell.text, room, [&](std::string_view x)
+                                                         { return TextWidthPx(st, x); });
+                                                     Row(Box()
+                                                             .Width(widths[c])
+                                                             .Height(Size::Grow())
+                                                             .Pad(pad, pad, 0.0f, 0.0f)
+                                                             .Gap(col.chips ? CHIP_GAP : 0.0f)
+                                                             .Align(col.align, Align::Center),
+                                                         [&]
+                                                         {
+                                                             chip(col, cell.chip, cell.chipMark);
+                                                             Text(text, st);
+                                                         });
+                                                 }
+                                             });
+                                     }
+                                 });
                       });
            });
     return ev;

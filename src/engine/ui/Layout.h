@@ -486,6 +486,7 @@ private:
     {
         uint64_t          key = 0;
         std::vector<Size> widths;
+        float             scrolled = 0.0f;  // the body's offset, as last put on a whole row
     };
     std::map<std::string, ColumnFit> fits_;
     std::deque<std::string>          strings_;

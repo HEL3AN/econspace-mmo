@@ -1305,7 +1305,11 @@ void Game::DrawGalaxyMap()
     using Ui::Size;
     using Ui::TextStyle;
     const Ui::Theme& t = Ui::CurrentTheme();
-    DrawRectangle(0, 0, screenWidth_, screenHeight_, t.colors.shade);
+    // Opaque, as the sensor screen is (#366): the shade alone let a bright ship sprite show
+    // through the middle of the map, a second picture of a different place.
+    Color ground = t.colors.shade;
+    ground.a = 255;
+    DrawRectangle(0, 0, screenWidth_, screenHeight_, ground);
 
     // Galactic news (system captures, reconquests) from the server's galaxy snapshot, newest
     // first. A column of its own that wraps and scrolls: a long line used to run off the
@@ -1368,12 +1372,24 @@ void Game::DrawGalaxyMap()
     const Rectangle area = L.BoxOf("graph");
     L.Draw();
 
+    // The picture's own text, at the theme's sizes and the player's scale like every window
+    // (#366): a system's name a step above body text, what is known about it at the label
+    // size, the naming hint at body size. Hand-placed pixel sizes stayed at 16 and 12 on a
+    // screen where everything else had grown, and read as specks. Every offset around a
+    // node is in the same units, so the lines under a name move apart as the text grows.
+    const float k = Ui::Scale();
+    auto        u = [k](float units) { return units * k; };
+    const int   namePx = (int)Ui::Px(t.fontSize.body + 3.0f);
+    const int   notePx = (int)Ui::Px(t.fontSize.label + 1.0f);
+    const int   hintPx = (int)Ui::Px(t.fontSize.body + 1.0f);
+    const float line = (float)notePx + u(3.0f);  // one line of notes under the name
+
     const std::vector<WorldLoader::SystemInfo>& systems = universe_.systems;
     if (systems.empty() || area.width <= 0.0f || area.height <= 0.0f)
     {
         const char* none = "No galaxy data";
-        Ui::Text(none, (int)(area.x + (area.width - Ui::TextWidth(none, 16)) * 0.5f),
-                 (int)(area.y + area.height * 0.5f), 16, t.colors.dim);
+        Ui::Text(none, (int)(area.x + (area.width - Ui::TextWidth(none, namePx)) * 0.5f),
+                 (int)(area.y + area.height * 0.5f), namePx, t.colors.dim);
         return;
     }
     Vector2 nameAt{ -1.0f, -1.0f };  // where the name field goes, while it is being typed in
@@ -1388,7 +1404,7 @@ void Game::DrawGalaxyMap()
         maxY = fmaxf(maxY, s.mapPos.y);
     }
     float spanX = fmaxf(1.0f, maxX - minX), spanY = fmaxf(1.0f, maxY - minY);
-    float pad = 80.0f;
+    float pad = u(80.0f);
     float baseScale = fminf((area.width - 2 * pad) / spanX, (area.height - 2 * pad) / spanY);
 
     // On first display: where you are, close enough to read your own civilisation and the
@@ -1404,6 +1420,39 @@ void Game::DrawGalaxyMap()
             {
                 galaxyCenter_ = s.mapPos;
                 galaxyZoom_ = Clamp(fmaxf(spanX, spanY) / NEAR_SPAN, 1.0f, MAX_ZOOM);
+                // Better: everything within two jumps fills the picture, with room beside the
+                // outermost nodes for their names (#366). A fixed span left the neighbourhood
+                // a knot in the middle of an empty screen.
+                std::vector<std::string> near = { s.id };
+                for (int hop = 0; hop < 2; hop++)
+                {
+                    const size_t known = near.size();
+                    for (const auto& l : universe_.links)
+                        for (size_t i = 0; i < known; i++)
+                        {
+                            if (l.a == near[i] &&
+                                std::find(near.begin(), near.end(), l.b) == near.end())
+                                near.push_back(l.b);
+                            else if (l.b == near[i] &&
+                                     std::find(near.begin(), near.end(), l.a) == near.end())
+                                near.push_back(l.a);
+                        }
+                }
+                float reachX = 0.0f, reachY = 0.0f;
+                for (const auto& o : systems)
+                    if (std::find(near.begin(), near.end(), o.id) != near.end())
+                    {
+                        reachX = fmaxf(reachX, fabsf(o.mapPos.x - s.mapPos.x));
+                        reachY = fmaxf(reachY, fabsf(o.mapPos.y - s.mapPos.y));
+                    }
+                const float roomX = area.width * 0.5f - u(150.0f);
+                const float roomY = area.height * 0.5f - u(40.0f);
+                if (reachX + reachY > 0.0f && roomX > 0.0f && roomY > 0.0f && baseScale > 0.0f)
+                {
+                    const float fit = fminf(reachX > 0.0f ? roomX / reachX : 1e9f,
+                                            reachY > 0.0f ? roomY / reachY : 1e9f);
+                    galaxyZoom_ = Clamp(fit / baseScale, 1.0f, MAX_ZOOM);
+                }
             }
         galaxyInit_ = true;
     }
@@ -1496,7 +1545,7 @@ void Game::DrawGalaxyMap()
     {
         if (s->id == activeSys)
             return 0;
-        return CheckCollisionPointCircle(m, toScreen(s->mapPos), 12.0f) ? 1 : 2;
+        return CheckCollisionPointCircle(m, toScreen(s->mapPos), u(12.0f)) ? 1 : 2;
     };
     std::stable_sort(order.begin(), order.end(),
                      [&](const WorldLoader::SystemInfo* a, const WorldLoader::SystemInfo* b)
@@ -1509,6 +1558,14 @@ void Game::DrawGalaxyMap()
                 return false;
         return true;
     };
+    // Every node first: a label never runs across another system's disc (#366). A label
+    // starts clear of its own node, so this costs it nothing.
+    for (const auto& s : systems)
+    {
+        const Vector2 q = toScreen(s.mapPos);
+        const float   r = u(11.0f);
+        claimed.push_back({ q.x - r, q.y - r, 2.0f * r, 2.0f * r });
+    }
 
     // System nodes.
     for (const WorldLoader::SystemInfo* sp : order)
@@ -1516,23 +1573,29 @@ void Game::DrawGalaxyMap()
         const WorldLoader::SystemInfo& s = *sp;
         Vector2                        p = toScreen(s.mapPos);
         bool                           cur = (s.id == activeSys);
-        const bool                     hovered = CheckCollisionPointCircle(m, p, 12.0f);
+        const bool                     hovered = CheckCollisionPointCircle(m, p, u(12.0f));
         const float                    room = nearestOnScreen(s);
-        bool                           detail = cur || hovered || room >= 110.0f;
-        bool                           named = cur || hovered || room >= 45.0f;
-        float                          lx = p.x + 14.0f;  // where its labels start
+        bool                           detail = cur || hovered || room >= u(110.0f);
+        bool                           named = cur || hovered || room >= u(45.0f);
+        const float                    gapX = u(14.0f);  // from the node to its labels
+        float                          lx = p.x + gapX;  // where its labels start
+        // The name is centred on the node; line `i` of what is known sits under it.
+        const float nameY = p.y - (float)namePx * 0.5f;
+        auto        lineY = [&](int i)
+        { return (int)(p.y + (float)namePx * 0.5f + u(2.0f) + (float)(i - 1) * line); };
         {
             // What its labels would cover: the name line, and the lines under it.
-            float nameW = (float)Ui::TextWidth(s.name.c_str(), 16);
+            float nameW = (float)Ui::TextWidth(s.name.c_str(), namePx);
             if (!s.designation.empty())
-                nameW += 8.0f + (float)Ui::TextWidth(s.designation.c_str(), 12);
-            const float     detailW = fmaxf(nameW, s.charted ? 190.0f : 80.0f);
-            const float     bottom = !s.charted ? 24.0f
-                                     : cur      ? (CanNameHere() ? 82.0f : 66.0f)
-                                                : (s.discoverer.empty() ? 38.0f : 52.0f);
-            const Rectangle nameBox{ p.x + 14.0f, p.y - 8.0f, nameW, 18.0f };
-            const Rectangle leftBox{ p.x - 14.0f - nameW, p.y - 8.0f, nameW, 18.0f };
-            const Rectangle detailBox{ p.x + 14.0f, p.y - 8.0f, detailW, bottom + 8.0f };
+                nameW += u(8.0f) + (float)Ui::TextWidth(s.designation.c_str(), notePx);
+            const float     detailW = fmaxf(nameW, u(s.charted ? 190.0f : 80.0f));
+            const int       lines = !s.charted ? 1
+                                    : cur      ? (CanNameHere() ? 5 : 4)
+                                               : (s.discoverer.empty() ? 2 : 3);
+            const float     bottom = (float)lineY(lines) + line - nameY;
+            const Rectangle nameBox{ p.x + gapX, nameY, nameW, (float)namePx + u(2.0f) };
+            const Rectangle leftBox{ p.x - gapX - nameW, nameY, nameW, (float)namePx + u(2.0f) };
+            const Rectangle detailBox{ p.x + gapX, nameY, detailW, bottom };
             // In order: everything to the right, the name to the right, the name to the left
             // of the node. A label that fits nowhere is left to the cursor.
             if (!cur && !hovered)
@@ -1556,25 +1619,26 @@ void Game::DrawGalaxyMap()
         // knows -- an empty ring and a designation, no numbers.
         if (!s.charted)
         {
-            DrawCircleLines((int)p.x, (int)p.y, 7.0f, Ui::TEXT_DIM);
+            DrawCircleLines((int)p.x, (int)p.y, u(7.0f), Ui::TEXT_DIM);
             if (named)
             {
-                Ui::Text(s.name.c_str(), (int)lx, (int)p.y - 8, 16, Ui::TEXT_DIM);
+                Ui::Text(s.name.c_str(), (int)lx, (int)nameY, namePx, Ui::TEXT_DIM);
                 if (detail)
-                    Ui::Text("uncharted", (int)lx, (int)p.y + 10, 12, Ui::TEXT_DIM);
+                    Ui::Text("uncharted", (int)lx, lineY(1), notePx, Ui::TEXT_DIM);
             }
             continue;
         }
-        DrawCircleV(p, cur ? 10.0f : 7.0f, cur ? Ui::ACCENT : Ui::TEXT_DIM);
+        DrawCircleV(p, u(cur ? 10.0f : 7.0f), cur ? Ui::ACCENT : Ui::TEXT_DIM);
         if (cur)
-            DrawCircleLines((int)p.x, (int)p.y, 16.0f, Fade(Ui::ACCENT, 0.6f));
+            DrawCircleLines((int)p.x, (int)p.y, u(16.0f), Fade(Ui::ACCENT, 0.6f));
         if (named)
         {
-            Ui::Text(s.name.c_str(), (int)lx, (int)p.y - 8, 16, cur ? Ui::ACCENT : Ui::TEXT);
-            // A named system keeps its designation beside the name (#145).
+            Ui::Text(s.name.c_str(), (int)lx, (int)nameY, namePx, cur ? Ui::ACCENT : Ui::TEXT);
+            // A named system keeps its designation beside the name (#145), on its baseline.
             if (!s.designation.empty())
-                Ui::Text(s.designation.c_str(), (int)lx + 8 + Ui::TextWidth(s.name.c_str(), 16),
-                         (int)p.y - 6, 12, Ui::TEXT_DIM);
+                Ui::Text(s.designation.c_str(),
+                         (int)(lx + u(8.0f)) + Ui::TextWidth(s.name.c_str(), namePx),
+                         (int)(nameY + (float)(namePx - notePx) * 0.75f), notePx, Ui::TEXT_DIM);
         }
 
         // Live summary: security/pirates/economy/controller, from the server's galaxy
@@ -1593,15 +1657,16 @@ void Game::DrawGalaxyMap()
                 controller = g.controller;
                 break;
             }
+        const float ring = u(cur ? 13.0f : 10.0f);
         // A system held by a faction that would shoot this pilot says so by shape as well as
         // by the ring's colour (#362): the hostile triangle over the ring, as on the radar.
         const bool hostileHeld = haveStats && HostileToPlayerFaction(controller);
         if (hostileHeld)
-            Ui::DrawMark({ p.x, p.y - (cur ? 13.0f : 10.0f) - 6.0f }, 4.5f, Ui::Mark::Triangle,
+            Ui::DrawMark({ p.x, p.y - ring - u(6.0f) }, u(4.5f), Ui::Mark::Triangle,
                          t.standing.hostile);
         if (haveStats && !detail)
             // Crowded: the controller only as the ring's colour.
-            DrawCircleLines((int)p.x, (int)p.y, 10.0f, Fade(FactionColor(controller), 0.7f));
+            DrawCircleLines((int)p.x, (int)p.y, ring, Fade(FactionColor(controller), 0.7f));
         else if (haveStats)
         {
             Color secCol = security >= 0.7f   ? Color{ 120, 210, 130, 255 }
@@ -1609,25 +1674,24 @@ void Game::DrawGalaxyMap()
                                               : Color{ 230, 120, 60, 255 };
             Ui::Text(
                 TextFormat("sec %.2f  pir %d  econ %.0f%%", security, pirates, prosperity * 100.0f),
-                (int)lx, (int)p.y + 10, 12, secCol);
+                (int)lx, lineY(1), notePx, secCol);
             // Territory controller (L3) — in the faction's color.
-            Ui::Text(FactionName(controller).c_str(), (int)lx, (int)p.y + 24, 12,
+            Ui::Text(FactionName(controller).c_str(), (int)lx, lineY(2), notePx,
                      FactionColor(controller));
             // The node ring is tinted with the controller's color.
-            DrawCircleLines((int)p.x, (int)p.y, cur ? 13.0f : 10.0f,
-                            Fade(FactionColor(controller), 0.7f));
+            DrawCircleLines((int)p.x, (int)p.y, ring, Fade(FactionColor(controller), 0.7f));
         }
         if (cur)
-            Ui::Text("you are here", (int)lx, (int)p.y + 38, 12, Ui::TEXT_DIM);
+            Ui::Text("you are here", (int)lx, lineY(3), notePx, Ui::TEXT_DIM);
         if (detail && !s.discoverer.empty())
-            Ui::Text(TextFormat("found by %s", s.discoverer.c_str()), (int)lx,
-                     (int)p.y + (cur ? 52 : 38), 12, Ui::TEXT_DIM);
+            Ui::Text(TextFormat("found by %s", s.discoverer.c_str()), (int)lx, lineY(cur ? 4 : 3),
+                     notePx, Ui::TEXT_DIM);
         if (cur && CanNameHere())
         {
             if (desk_.KeyboardFocus().Holds(WIN_MAP, "name"))
-                nameAt = { lx, p.y + 60.0f };  // the field is drawn after the clip
+                nameAt = { lx, (float)lineY(4) + line * 0.5f };  // drawn after the clip
             else
-                Ui::Text("[N] name this system", (int)lx, (int)p.y + 66, 14, Ui::ACCENT);
+                Ui::Text("[N] name this system", (int)lx, lineY(5), hintPx, Ui::ACCENT);
         }
     }
 
@@ -1728,21 +1792,31 @@ void Game::DrawSensorScreen()
     for (const auto& e : snapshot_.entities)
         reads[e.id] = Sensor::Classify(e, me);
 
-    std::vector<Render::Item> scene;
+    std::vector<Render::Item>  scene;
+    std::map<int, std::string> typeNames;  // for the legend to tell two planets' glyphs apart
     scene.reserve(clientWorld_.size());
     for (const auto& e : clientWorld_)
+    {
         scene.push_back(e->Describe());
+        if (e->GetArchetype() != nullptr)
+            typeNames[e->GetId()] = e->GetArchetype()->name;
+    }
     Render::Item own = playerShip_->Describe();
     own.pos = shipDrawPos_;
 
     sensorCentre_ = own.pos;
-    sensorPicture_ =
-        Sensor::Scan(std::move(scene), own, cols, rows, sensorRange_,
-                     [&](int id)
-                     {
-                         auto it = reads.find(id);
-                         return it != reads.end() ? it->second : Sensor::Allegiance::Unowned;
-                     });
+    sensorPicture_ = Sensor::Scan(
+        std::move(scene), own, cols, rows, sensorRange_,
+        [&](int id)
+        {
+            auto it = reads.find(id);
+            return it != reads.end() ? it->second : Sensor::Allegiance::Unowned;
+        },
+        [&](int id)
+        {
+            auto it = typeNames.find(id);
+            return it != typeNames.end() ? it->second : std::string();
+        });
     sensorCellPx_ = cellPx;
     sensorOrigin_ = { area.x + (area.width - cols * cellPx) * 0.5f,
                       area.y + (area.height - rows * cellPx) * 0.5f };
@@ -1792,9 +1866,12 @@ void Game::DrawSensorScreen()
                                         [&]
                                         {
                                             L.Row(Box()
-                                                      .Width(Size::Fixed(t.metrics.barHeight))
-                                                      .Height(Size::Fixed(t.metrics.barHeight))
-                                                      .Fill(Sensor::ColorOf(a)),
+                                                      // The radar's shape, at a size a
+                                                      // shape can be told by (#366).
+                                                      .Width(Size::Fixed(t.fontSize.label))
+                                                      .Height(Size::Fixed(t.fontSize.label))
+                                                      .Fill(Sensor::ColorOf(a))
+                                                      .Mark(StandingMark(a)),
                                                   [] {});
                                             L.Text(Sensor::Word(a), TextStyle::Body());
                                         });
@@ -1855,6 +1932,12 @@ void Game::DrawSensorScreen()
             const Vector2          ext = Ui::MeasureString(Ui::Face::Strong, glyphPx, glyph);
             Ui::DrawString(Ui::Face::Strong, glyph, { mid.x - ext.x * 0.5f, mid.y - ext.y * 0.5f },
                            glyphPx, Sensor::ColorOf(c.allegiance));
+            // A thing with a side carries its standing's shape as well as its colour, the
+            // radar's and the overview's (#362), small in the cell's corner (#366).
+            const Ui::Mark mark = StandingMark(c.allegiance);
+            if (mark != Ui::Mark::None && c.allegiance != Sensor::Allegiance::Own)
+                Ui::DrawMark({ px + cellPx - Ui::Px(2.5f), py + Ui::Px(2.5f) }, Ui::Px(2.5f), mark,
+                             Sensor::ColorOf(c.allegiance));
             const Rectangle box{ px, py, cellPx, cellPx };
             if (c.id != 0 && c.id == selId)
                 DrawRectangleLinesEx(box, 1.0f, t.colors.text);
