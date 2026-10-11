@@ -255,9 +255,11 @@ bool Load(const std::string& path)
     if (j.contains("destruction"))
     {
         const json& d = j["destruction"];
-        if (!d.is_object() || !OnlyKnownKeys(d, { "siteHull", "wreckShare" }, err) ||
+        if (!d.is_object() ||
+            !OnlyKnownKeys(d, { "siteHull", "wreckShare", "wreckSeconds" }, err) ||
             !ReadShare(d, "siteHull", teardown.siteHull, err) ||
-            !ReadShare(d, "wreckShare", teardown.wreckShare, err))
+            !ReadShare(d, "wreckShare", teardown.wreckShare, err) ||
+            !ReadNumber(d, "wreckSeconds", teardown.wreckSeconds, err))
         {
             g_error = path + ": destruction: " + (err.empty() ? "not an object" : err);
             return false;

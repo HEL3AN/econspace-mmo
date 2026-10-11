@@ -180,11 +180,13 @@ public:
     void StepNpcCombat(SystemState& st, const std::vector<PlayerPresence>& players,
                        std::vector<FireEvent>* fires);
 
-    // Fixed defences (#193): anything `defensive` that belongs to a faction -- today, a
-    // station -- fires at the nearest hostile ship within its radius plus its range, once
-    // a second, for its archetype's damage per second. Hostile means what it means to an
-    // NPC of that faction: a player by their own account, an NPC by the relation matrix.
-    // A hidden or docked player is not in `players`, so is not shot at.
+    // Fixed defences (#193): anything `defensive` -- a station, or a finished structure whose
+    // archetype is armed (#39) -- fires at the nearest hostile ship within its radius plus
+    // its range, once a second, for its archetype's damage per second. Hostile means what it
+    // means to an NPC of the owning faction: a player by their own account, an NPC by the
+    // relation matrix. A structure also fires back at any player who has shot at it lately,
+    // which is all a player's own has to go on. A hidden or docked player is not in
+    // `players`, so is not shot at.
     void StepStationDefence(SystemState& st, const std::vector<PlayerPresence>& players,
                             std::vector<FireEvent>* fires, float dt);
 
@@ -317,7 +319,10 @@ public:
     // when they may: undocked and not warping, within the blueprint's reach, clear of
     // bodies and the paths they sweep, clear of what others use, under the caps, and with
     // the cost in the hold. Shared by Deploy and the tests, so both say the same thing.
-    std::string PlacementProblem(const ClientSession& s, const Blueprint& bp, Vector2 at) const;
+    // `fromHere` false leaves out the reach: whether it could be laid down once the ship is
+    // there, which is what a build order asks before it flies.
+    std::string PlacementProblem(const ClientSession& s, const Blueprint& bp, Vector2 at,
+                                 bool fromHere = true) const;
     // Lays down a construction site of `blueprint` at `at`, named `name` (empty -- the
     // blueprint's name), owned by the session's account. Takes the cost from the hold and
     // answers in the journal either way. Returns the site's id, or 0 when refused.
@@ -396,6 +401,8 @@ public:
     // Player weapon range lives in sim/PlayerStep.h — a single source shared with the
     // client, which draws the targeting circle from it.
     static constexpr float PLAYER_WEAPON_RANGE = Sim::PLAYER_WEAPON_RANGE;
+    // How long an armed structure keeps firing back at a player who shot at it (#39).
+    static constexpr float PROVOKED_SECONDS = 60.0f;
 
     // Facts of the player's combat: the server applies damage and credits reputation, bounty
     // and mission progress to the session's account itself; these are reported so the client
@@ -698,8 +705,8 @@ private:
     // nothing else (#295). Not saved: remade when the static layers are built, from the time
     // lines the structures carry. An entry whose structure has gone is skipped.
     std::set<std::tuple<double, int, std::string>> structureDue_;
-    // Puts a structure's coming instants on the queue; anything else is ignored. Whatever
-    // changes a structure's time line after it is added schedules it again.
+    // Puts a structure's coming instants on the queue, and a wreck's end (#41); anything else
+    // is ignored. Whatever changes a time line after it is added schedules it again.
     void ScheduleStructure(const std::string& systemId, const Entity& e);
 
     void SeedMinds();
@@ -743,6 +750,11 @@ private:
     void ShakeClaim(SystemState& st, FactionId f);
     bool HitStructure(SystemState& st, int id, float damage, ClientSession* by, Loss cause,
                       FactionId attacker);
+    // A crime against a structure under `law` (#39): the system's patrols that are now
+    // hostile to the shooter -- those whose law it broke, as for a ship -- come by warp, the
+    // nearest few dropping out beside the shooter. Only in a hot system, once a while per
+    // system, and not when a patrol is already in sight. True when anyone answered.
+    bool CallPolice(SystemState& st, ClientSession& by, FactionId law);
     // `f` takes a system: its controller, and the security a change of hands brings.
     static void TakeControl(SystemAggregate& a, FactionId f);
     void        Record(const std::string& kind, int faction, const std::string& system,

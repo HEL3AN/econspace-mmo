@@ -23,8 +23,16 @@ public:
     void   SetLooted() { looted_ = true; }
     double GetReward() const { return reward_; }
 
+    // When it is gone by itself (#41): the wreck of a structure decays, so a world players
+    // can shoot at does not fill up with ruins. An instant of the world clock, like a
+    // structure's own end (#136), and part of what it is rather than its state; 0 -- it
+    // stays until somebody removes it.
+    double GetExpiresAt() const { return expiresAt_; }
+    void   SetExpiresAt(double t) { expiresAt_ = t; }
+
 private:
     std::string name_;
     double      reward_;
     bool        looted_ = false;
+    double      expiresAt_ = 0.0;
 };

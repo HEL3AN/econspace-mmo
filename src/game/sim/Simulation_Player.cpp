@@ -852,13 +852,22 @@ Vector2 Simulation::SafeArrival(const std::string& systemId, const ClientSession
                 clear = std::max(clear, sqrtf(s.x * s.x + s.y * s.y) + e->GetSize() + 60000.0f);
             }
     // And out of reach of every gun that would fire: the first of eight bearings at that
-    // distance that no hostile defensive station covers.
+    // distance that no hostile defensive station, or armed faction outpost (#39), covers.
+    auto armedAgainstUs = [&](const Entity& e)
+    {
+        if (e.GetKind() == EntityKind::Station)
+            return !takesUs(e);
+        FactionId f;
+        return e.GetKind() == EntityKind::Structure && who != nullptr &&
+               !static_cast<const Structure&>(e).IsBuilding() &&
+               Outposts::FactionOf(e.GetOwner(), f) && AccountHostileToFaction(*who, f);
+    };
     auto underFire = [&](Vector2 at)
     {
         if (sys == nullptr)
             return false;
         for (const auto& e : sys->entities)
-            if (e->GetKind() == EntityKind::Station && !takesUs(*e) && e->Has(Component::Defensive))
+            if (e->Has(Component::Defensive) && armedAgainstUs(*e))
             {
                 const Archetype* a = e->GetArchetype();
                 const float      reach = e->GetSize() + (a != nullptr ? a->weaponRange : 0.0f);

@@ -37,7 +37,11 @@ enum class Kind
     // Close to weapon range of a ship or a structure and fire until it is gone (#39). The
     // weapon is armed for the order and disarmed when it ends; firing is the same server
     // verb a client's trigger drives, with the same consequences.
-    Attack
+    Attack,
+    // Fly to a point and lay down a blueprint there (#39): the same server verb as `deploy`,
+    // with the same checks, done on arrival. It finishes when the site is down -- the site
+    // finishes by the clock with nobody there, so the ship is free to leave at once.
+    Build
 };
 
 inline bool IsHold(Kind k)
@@ -66,6 +70,11 @@ struct Order
     // shorter one, which is the difference between a hauler and a courier that arrives.
     std::string destSystem;
     bool        avoidDanger = false;
+
+    // Build only: which blueprint, and what to call the site (empty -- the blueprint's name).
+    // Where is `point`.
+    std::string blueprint;
+    std::string name;
 };
 
 // Hull fraction below which a running order gives up.

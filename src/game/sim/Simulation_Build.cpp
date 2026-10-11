@@ -47,8 +47,8 @@ int Simulation::StructuresOwnedBy(const std::string& account) const
     return n;
 }
 
-std::string Simulation::PlacementProblem(const ClientSession& s, const Blueprint& bp,
-                                         Vector2 at) const
+std::string Simulation::PlacementProblem(const ClientSession& s, const Blueprint& bp, Vector2 at,
+                                         bool fromHere) const
 {
     const SystemState* st = SystemOf(s);
     if (st == nullptr || !s.ship)
@@ -61,7 +61,7 @@ std::string Simulation::PlacementProblem(const ClientSession& s, const Blueprint
         return "not while warping";
 
     const float fromShip = Distance(at, s.ship->GetPosition());
-    if (fromShip > bp.reach)
+    if (fromHere && fromShip > bp.reach)
         return "too far from the ship (" + Whole(fromShip) + " of at most " + Whole(bp.reach) + ")";
     const std::string where = SpotProblem(*st, bp, at);
     if (!where.empty())
@@ -299,7 +299,13 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
     FactionId  law = FactionId::Independent;
     const bool crime = by != nullptr && LawOver(st, *t, by->accountName, law);
     if (crime)
+    {
         ChargeAttack(*by, law, false);
+        CallPolice(st, *by, law);  // ...and the law comes, as it does for a ship
+    }
+    // An armed structure fires back at whoever shot it (StepStationDefence), for a while.
+    if (by != nullptr && by->accountName != t->GetOwner())
+        st.provokedBy[id][by->id] = time_ + PROVOKED_SECONDS;
 
     t->TakeDamage(damage);
     if (t->HullFraction(time_) > 0.0f)
@@ -338,6 +344,10 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
         {
             auto wreck = std::make_unique<Derelict>(at, size, "Wreck of " + name, worth);
             wreck->SetArchetype(bp->wreck);
+            // ...for a while (#41): ruins nobody clears would pile up for ever. An instant on
+            // the clock, so it goes on time in a system nobody is in.
+            if (Blueprints::Rules().wreckSeconds > 0.0f)
+                wreck->SetExpiresAt(time_ + Blueprints::Rules().wreckSeconds);
             // What was a satellite leaves its wreck on the same orbit: it is where the clock
             // puts it (#210), and a still one would sit in the band the satellites sweep.
             if (orbit)
@@ -400,6 +410,13 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
 
 void Simulation::ScheduleStructure(const std::string& systemId, const Entity& e)
 {
+    if (e.GetKind() == EntityKind::Derelict)
+    {
+        const double end = static_cast<const Derelict&>(e).GetExpiresAt();
+        if (end > 0.0)
+            structureDue_.insert({ end, e.GetId(), systemId });
+        return;
+    }
     if (e.GetKind() != EntityKind::Structure)
         return;
     const Structure& t = static_cast<const Structure&>(e);
@@ -431,9 +448,16 @@ void Simulation::StepStructures()
         if (st == nullptr)
             continue;
         Structure* t = nullptr;
+        Derelict*  wreck = nullptr;
         for (const auto& e : st->entities)
             if (e->GetId() == id && e->GetKind() == EntityKind::Structure)
                 t = static_cast<Structure*>(e.get());
+            else if (e->GetId() == id && e->GetKind() == EntityKind::Derelict)
+                wreck = static_cast<Derelict*>(e.get());
+        // A wreck's time is up (#41): it is gone, searched or not, whether anyone is here to
+        // see it or not -- this queue runs in every system on the same clock.
+        if (wreck != nullptr && wreck->GetExpiresAt() > 0.0 && time_ >= wreck->GetExpiresAt())
+            RemoveStatic(systemId, id);
         if (t == nullptr)
             continue;  // taken away before its time came
 

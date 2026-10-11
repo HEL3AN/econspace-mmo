@@ -49,7 +49,7 @@ const char* ToolFor(Verb verb)
         case Verb::Dock: return "dock";
         case Verb::Mine: return "mine";
         case Verb::Jump: return "travel_to_system";
-        case Verb::Build: return "deploy";
+        case Verb::Build: return "build";
         case Verb::Accept: return "accept_mission";
         case Verb::HandIn: return "complete_mission";
         case Verb::Dismantle: return "dismantle";
@@ -180,18 +180,18 @@ std::vector<Action> ForPoint(Vector2 point, Vector2 from, const std::vector<Blue
     if (d > WARP_MIN)
         out.push_back(Make(Verb::WarpHere, "Warp here", 60.0f));
 
-    // Every blueprint whose reach the point is within, with what it costs. Only the reach is
-    // checked here, so the menu does not offer what could never work; the rest -- the hold,
-    // the room, the caps -- the server decides and says in the journal.
+    // Every blueprint, with what it costs: laid down at once within its reach, and beyond it
+    // a build order that flies there first (#39). The rest -- the hold, the room, the caps --
+    // the server decides and says in the journal.
     for (const Blueprint& bp : blueprints)
     {
-        if (d > bp.reach)
-            continue;
         std::string cost;
         for (const auto& c : bp.cost)
             cost +=
                 (cost.empty() ? "" : ", ") + std::to_string(c.second) + " " + ResourceName(c.first);
-        Action a = Make(Verb::Build, "Build " + bp.name + " (" + cost + ")");
+        Action a = Make(Verb::Build, (d > bp.reach ? "Fly there, build " : "Build ") + bp.name +
+                                         " (" + cost + ")");
+        a.distance = d > bp.reach ? bp.reach : 0.0f;  // nonzero: it is an order, not a deploy
         a.blueprint = bp.id;
         out.push_back(a);
     }

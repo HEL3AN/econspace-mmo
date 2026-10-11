@@ -40,7 +40,10 @@ namespace Save
 //    would drop the returns -- every ship coming home, lost -- and read a siege still on its
 //    way as standing at the outpost already. An older file's sieges are read as lent by the
 //    holding they set out from, a jump away, and already there.
-inline constexpr int WORLD_VERSION = 8;
+// 9: the wreck of a structure decays at an instant it carries (#41). A version 8 build would
+//    keep the wrecks for ever and write them back without it. An older file's wrecks are
+//    given their time from the moment it loads.
+inline constexpr int WORLD_VERSION = 9;
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.
 // 3: a mission names its stations by system and station rather than by entity id, which

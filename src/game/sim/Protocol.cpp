@@ -306,6 +306,12 @@ std::string EncodeCommand(const Command& c)
     j["ordWarp"] = c.orderWarp;
     j["ordFull"] = c.orderUntilFull;
     j["ordDest"] = c.orderDestSystem;
+    if (!c.orderBlueprint.empty())  // only on the command that orders a build
+    {
+        j["ordBp"] = c.orderBlueprint;
+        if (!c.orderName.empty())
+            j["ordName"] = c.orderName;
+    }
     if (c.orderAvoidDanger)  // only when asked: a command goes out sixty times a second
         j["ordSafe"] = true;
     j["ordAbort"] = c.abortOrder;
@@ -362,6 +368,8 @@ bool DecodeCommand(const std::string& s, Command& out)
     out.orderUntilFull = j.value("ordFull", false);
     out.orderDestSystem = j.value("ordDest", std::string());
     out.orderAvoidDanger = j.value("ordSafe", false);
+    out.orderBlueprint = j.value("ordBp", std::string());
+    out.orderName = j.value("ordName", std::string());
     out.abortOrder = j.value("ordAbort", false);
     out.deploy = j.value("deploy", std::string());
     out.deployPos = j.contains("deployAt") ? ToV2(j["deployAt"]) : Vector2{ 0.0f, 0.0f };

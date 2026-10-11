@@ -138,7 +138,7 @@ TEST_CASE("Actions: your own structure is taken apart, anyone else's is attacked
     CHECK(attack->tool == "attack");
 }
 
-TEST_CASE("Actions: a point in space offers flying, warping, and what can be built in reach")
+TEST_CASE("Actions: a point in space offers flying, warping, and what can be built there")
 {
     Blueprint beacon;
     beacon.id = "beacon";
@@ -153,9 +153,16 @@ TEST_CASE("Actions: a point in space offers flying, warping, and what can be bui
     REQUIRE(build != nullptr);
     CHECK(build->blueprint == "beacon");
 
+    CHECK(build->distance == 0.0f);  // in reach: laid down at once
+    CHECK(build->tool == "build");
+
+    // Out of reach it is a build order, which flies there first (#39).
     const std::vector<Action> far = Actions::ForPoint({ 9000.0f, 0.0f }, { 0.0f, 0.0f }, bps);
     CHECK(Has(far, Verb::WarpHere));
-    CHECK_FALSE(Has(far, Verb::Build));
+    const Action* order = Find(far, Verb::Build);
+    REQUIRE(order != nullptr);
+    CHECK(order->distance == doctest::Approx(500.0f));
+    CHECK(order->label.find("Fly there") == 0);
 }
 
 TEST_CASE("Actions: every button an agent could want is an econagent tool, and the gaps are known")

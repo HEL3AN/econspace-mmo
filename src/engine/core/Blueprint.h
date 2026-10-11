@@ -85,6 +85,10 @@ struct Teardown
     // The share of the cost a destroyed structure's wreck holds, in credits at the base
     // price -- less than the refund, so shooting your own down never beats dismantling it.
     float wreckShare = 0.25f;
+    // World seconds a structure's wreck lies where it fell before it is gone (#41): long
+    // enough to be found and searched, short enough that the map does not fill with ruins.
+    // 0 -- it stays until somebody removes it.
+    float wreckSeconds = 21600.0f;
 };
 const Teardown& Rules();
 

@@ -28,11 +28,12 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    19;  // 19: player hulls are designs -- a hull index means derived stats, and another
-         // player's ship carries its design (#279 step 5); 18: an NPC's ship design (#279); 17:
-         // dismantling, a structure's blueprint and damage, the attack order (#39); 16: follow (nav
-         // 5, hold 3) and hold orders (#298); 15: structures and deploying them (#39); 14: layout
-         // revisions and LayoutDelta (#38)
+    21;  // 21: the build order, with its blueprint and name (#39); 20: a ship flies a design of
+         // its own (#279, PR #334); 19: player hulls are designs -- a hull index means derived
+         // stats, and another player's ship carries its design (#279 step 5); 18: an NPC's ship
+         // design (#279); 17: dismantling, a structure's blueprint and damage, the attack order
+         // (#39); 16: follow (nav 5, hold 3) and hold orders (#298); 15: structures and deploying
+         // them (#39); 14: layout revisions and LayoutDelta (#38)
 
 // --- Command: client -> server, every tick ---
 // The first thing a client says, before any command: who it is (#3).
@@ -139,7 +140,10 @@ struct Command
     // #171 nothing on the wire could ask it to, so `travel_to_system`'s avoid_danger was
     // accepted, advertised to models in a prompt, and silently dropped.
     bool orderAvoidDanger = false;
-    bool abortOrder = false;  // drop whatever is running
+    // Build: the blueprint, and what to call the site (#39). The point is `orderPoint`.
+    std::string orderBlueprint;
+    std::string orderName;
+    bool        abortOrder = false;  // drop whatever is running
 
     // Lay down a construction site (#39): the blueprint's id, where, and what to call it
     // (empty -- the blueprint's name). Empty `deploy` -- not this command. The server checks
