@@ -13,10 +13,14 @@
 // generator would be a bug nobody could see -- and a pin that cannot apply says so.
 //
 // data/pins.json:
-//   { "pins": [ { "system": "w1-1", "seed": 7, "mode": "merge", "document": { ... } } ] }
+//   { "pins": [ { "system": "r0-1-1", "slot": 0, "seed": 7, "mode": "merge",
+//                 "document": { ... } } ] }
 //
-//   system    the generated system's id; required.
-//   seed      only for the region this seed makes; absent, for every seed.
+//   system    the generated system's id, "r<slot>-<depth>-<k>" (#342); required.
+//   slot      the skeleton slot of the region it is for; absent, the slot its system's id
+//             names (0 for an id that names none). A pin for a slot that is not open yet
+//             waits for it; one that contradicts its system's id is refused.
+//   seed      only for the world this seed makes; absent, for every seed.
 //   mode      "merge" (default): keep the generated system and add to it -- an array
 //             (planets, stations, asteroidFields, nebulae, derelicts, gates) appends its
 //             objects, and an object naming "replaces": "<name>" takes the place of the
@@ -38,9 +42,9 @@
 //     A satellite left orbiting a planet the system does not have refuses the pin.
 namespace Gen
 {
-// Applies every pin that matches `seed` to `region`, in file order. Each problem -- an
-// unknown system, mode or field, a "replaces" with nothing to replace -- is one line in
-// `problems`, and that pin (or that object) is not applied.
+// Applies every pin that matches `seed` and the region's slot to `region`, in file order. Each
+// problem -- an unknown system, mode or field, a "replaces" with nothing to replace -- is one line
+// in `problems`, and that pin (or that object) is not applied.
 void ApplyPins(Region& region, const nlohmann::json& pins, uint64_t seed,
                std::vector<std::string>& problems);
 

@@ -89,7 +89,7 @@ cmake --build build-release
 ./build/bin/editor/worldeditor.exe survey 1 shapes   # ~50 generated systems from seeds 1.., flagged empty/thin/twin (F4)
 ./build/bin/editor/worldeditor.exe gallery shapes card planet.rocky shot out.png  # save that view and exit; works with the screen off
 ./build/bin/editor/worldeditor.exe gallery shapes card station.trade_hub seed 3 sockets  # one object of a type, its kit sockets shown ([ ] seed, K sockets)
-./build/bin/editor/worldeditor.exe region 7 system w2-1   # edit a generated system; Ctrl+S saves the difference as a pin in data/pins.json
+./build/bin/editor/worldeditor.exe region 7 system r0-2-1   # edit a generated system; Ctrl+S saves the difference as a pin in data/pins.json
 ./build/bin/editor/worldeditor.exe region 7 map shot r.png   # its whole region as a map, pinned systems ringed (F5; click a system to edit it)
 ./build/bin/editor/worldeditor.exe gallery shapes card ship.player thrusting shot s.png  # ...with its engines lit
 
@@ -100,6 +100,7 @@ cmake --build build-release
 ./build/bin/server/econserver.exe worldtest         # galaxy persistence + clock
 ./build/bin/server/econserver.exe ordertest         # standing orders, routes, journal
 ./build/bin/server/econserver.exe regiondump 8     # the region seed 8 makes, as JSON (it is never saved)
+./build/bin/server/econserver.exe galaxydump 8 0 4 --cap 100  # its skeleton of slots, and the regions of slots 0 and 4 (#342)
 ./build/bin/server/econserver.exe macrobench 1000  # cost per tick/pass with a 1000-system region, nobody on (#295)
 ```
 
@@ -153,9 +154,12 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   (#140). `src/engine/gen/` writes the same JSON the loaders read, from a seed saved in
   `world.json`; the region itself is never saved, it is remade. So: randomness only from
   `Gen::Rng` keyed by *what* is generated (never by order), no `sin`/`cos`/`exp`, no
-  `std::` distributions, no unordered containers. A golden hash in `gen_tests.cpp` runs on
-  three compilers in CI; when a rule changes the output, bump `Gen::GENERATOR_VERSION` --
-  a world saved under other rules is then refused rather than silently remade differently.
+  `std::` distributions, no unordered containers. A region fills a slot of the galaxy's
+  skeleton and every key starts from (seed, slot) (#342), so what is in it never depends on
+  which other regions opened first. Golden hashes in `gen_tests.cpp` (the skeleton, and a
+  region per slot) run on three compilers in CI; when a rule changes the output, bump
+  `Gen::GENERATOR_VERSION` -- a world saved under other rules is then refused rather than
+  silently remade differently.
 - **`econagent` owns stdout.** It is the JSON-RPC channel; one stray `printf` or raylib
   trace on it corrupts the stream and the client reports a parse error rather than the
   line that caused it. All diagnostics go to stderr, and raylib's logger is redirected

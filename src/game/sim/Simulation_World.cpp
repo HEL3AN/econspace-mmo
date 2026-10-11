@@ -18,6 +18,7 @@
 #include "entities/Ship.h"
 #include "entities/Station.h"
 
+#include "gen/Galaxy.h"
 #include "gen/Pins.h"
 #include "gen/Region.h"
 #include "gen/Rng.h"
@@ -243,14 +244,29 @@ void Simulation::Cool(SystemState& st)
 
 void Simulation::AttachRegion(uint64_t seed, const std::string& systemsDir, int systems)
 {
+    AttachRegion(seed, 0, universe_.startId, systemsDir, systems);
+}
+
+bool Simulation::AttachRegion(uint64_t seed, int slot, const std::string& homeId,
+                              const std::string& systemsDir, int systems)
+{
+    // One world, one seed: two seeds would be two galaxies sharing ids (#342).
+    if (slot < 0 || openSlots_.count(slot) != 0 || (hasRegion_ && seed != regionSeed_))
+        return false;
     const WorldLoader::SystemInfo* home = nullptr;
     for (const auto& info : universe_.systems)
-        if (info.id == universe_.startId)
+        if (info.id == homeId)
             home = &info;
-    if (home == nullptr || hasRegion_)
-        return;
+    if (home == nullptr)
+        return false;
 
+    // Home's own document, so the wormhole is not placed in a planet's path: its file, or
+    // what the generator made of it.
+    const auto     generatedHome = regionDocs_.find(home->id);
     nlohmann::json homeDoc;
+    if (generatedHome != regionDocs_.end())
+        homeDoc = nlohmann::json::parse(generatedHome->second, nullptr, false);
+    else
     {
         std::ifstream in(systemsDir + home->file);
         if (in.is_open())
@@ -258,14 +274,29 @@ void Simulation::AttachRegion(uint64_t seed, const std::string& systemsDir, int 
     }
     Gen::RegionParams params;
     params.seed = seed;
+    params.slot = slot;
     params.homeId = home->id;
     params.homeMap = home->mapPos;
+    // Only what never moves counts as known -- the hand-written systems -- so where a region
+    // lies does not depend on which others opened before it. From a generated home it grows
+    // the way the skeleton says its slot lies.
     for (const auto& info : universe_.systems)
-        params.knownMap.push_back(info.mapPos);
-    params.homeSystem = homeDoc.is_discarded() ? nullptr : &homeDoc;
+        if (regionDocs_.count(info.id) == 0)
+            params.knownMap.push_back(info.mapPos);
+    if (generatedHome != regionDocs_.end() && Gen::SlotOf(home->id) >= 0)
+    {
+        double hx, hy, sx, sy;
+        Gen::SlotMapPoint(seed, Gen::SlotOf(home->id), hx, hy);
+        Gen::SlotMapPoint(seed, slot, sx, sy);
+        params.bearing = { (float)(sx - hx), (float)(sy - hy) };
+    }
+    params.homeSystem = homeDoc.is_object() ? &homeDoc : nullptr;
     if (systems > 0)
         params.systems = systems;
     Gen::Region region = Gen::GenerateRegion(params);
+    // `home` points into universe_.systems, which the region's entries are about to grow.
+    const std::string homeKey = home->id;
+    home = nullptr;
 
     // Then the hand-written exceptions, always after (#147): data/pins.json beside the
     // systems directory. Every pin that cannot apply is said, by name.
@@ -298,12 +329,18 @@ void Simulation::AttachRegion(uint64_t seed, const std::string& systemsDir, int 
         universe_.links.push_back({ l[0].get<std::string>(), l[1].get<std::string>() });
     IndexLinks();
     // Kept as text: the header stays free of the JSON library, and a document is parsed
-    // once, when its system is built.
+    // once, when its system is built. A region's documents are its own and are never
+    // touched once made (Gen::RegionToJson is the whole of it), so a region can be kept as
+    // it was when it opened.
     for (const auto& kv : region.documents)
         regionDocs_[kv.first] = kv.second.dump();
-    wormhole_ = region.wormhole.dump();
+    // The wormhole's mouth belongs to the opening, not to home's region: it is kept beside
+    // home -- a file or another region's document -- and added when home is built.
+    wormholes_[homeKey].push_back(region.wormhole.dump());
     regionSeed_ = seed;
     hasRegion_ = true;
+    openSlots_.insert(slot);
+    return true;
 }
 
 bool Simulation::ReadWorldSeed(const std::string& path, uint64_t& seed, int& generator)
@@ -327,22 +364,29 @@ void Simulation::MaterializeAllSystems(const std::string& systemsDir)
         st.id = info.id;
         if (st.entities.empty())
         {
-            auto doc = regionDocs_.find(info.id);
-            if (doc != regionDocs_.end())
-                st.entities =
-                    WorldLoader::BuildSystem(nlohmann::json::parse(doc->second));  // (#140)
-            else if (hasRegion_ && info.id == universe_.startId)
-            {
-                // The start system as written, plus the wormhole's mouth.
-                std::ifstream  in(systemsDir + info.file);
-                nlohmann::json home = nlohmann::json::parse(in, nullptr, false);
-                if (home.is_discarded())
-                    home = nlohmann::json::object();
-                home["gates"].push_back(nlohmann::json::parse(wormhole_));
-                st.entities = WorldLoader::BuildSystem(home);
-            }
-            else
+            auto       doc = regionDocs_.find(info.id);
+            const auto mouths = wormholes_.find(info.id);
+            if (doc == regionDocs_.end() && mouths == wormholes_.end())
                 st.entities = WorldLoader::LoadSystem(systemsDir + info.file);
+            else
+            {
+                // A generated system (#140) or a hand-written one as written, plus the mouths
+                // of the wormholes opened from it (#342).
+                nlohmann::json sys;
+                if (doc != regionDocs_.end())
+                    sys = nlohmann::json::parse(doc->second);
+                else
+                {
+                    std::ifstream in(systemsDir + info.file);
+                    sys = nlohmann::json::parse(in, nullptr, false);
+                }
+                if (!sys.is_object())
+                    sys = nlohmann::json::object();
+                if (mouths != wormholes_.end())
+                    for (const std::string& gate : mouths->second)
+                        sys["gates"].push_back(nlohmann::json::parse(gate));
+                st.entities = WorldLoader::BuildSystem(sys);
+            }
             WorldLoader::NamePlanets(st.entities, SystemName(info.id));  // (#259)
             // Ids here rather than in HydrateSystem, in the same order as ever, because what a
             // save changed is replayed by id-bearing objects before any NPC exists.

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <utility>
 
 namespace Gen
 {
@@ -31,6 +32,7 @@ enum Purpose : uint64_t
     CHARACTER = 17,
     FINDS = 18,
     RUINS = 19,
+    REGION = 20,  // a slot's key, from the world's seed
 };
 
 struct Band  // the ring a planet sweeps
@@ -53,14 +55,12 @@ struct Node
     double      mapX = 0.0, mapY = 0.0;
 };
 
-std::string Designation(int depth, int k)
+// What a player calls a system until somebody names it (#145). The first region keeps the
+// bare "W-2.3"; any other says which region it is in, since the ids are galaxy-wide.
+std::string Designation(int slot, int depth, int k)
 {
-    return "W-" + std::to_string(depth) + "." + std::to_string(k);
-}
-
-std::string IdFor(int depth, int k)
-{
-    return "w" + std::to_string(depth) + "-" + std::to_string(k);
+    const std::string w = "W-" + std::to_string(depth) + "." + std::to_string(k);
+    return slot == 0 ? w : "R" + std::to_string(slot) + " " + w;
 }
 
 double Round(double v, double step)
@@ -257,7 +257,7 @@ std::vector<Node> Topology(const RegionParams& params, json& links)
     Rng               rng(Key(params.seed, TOPOLOGY));
     std::vector<Node> nodes;
     // Ring 1 is one system: what is on the far side of the wormhole.
-    nodes.push_back({ IdFor(1, 1), Designation(1, 1), 1, 0 });
+    nodes.push_back({ SystemId(params.slot, 1, 1), Designation(params.slot, 1, 1), 1, 0 });
     links.push_back(json::array({ params.homeId, nodes[0].id }));
 
     std::vector<size_t> prevRing = { 0 };
@@ -269,7 +269,8 @@ std::vector<Node> Topology(const RegionParams& params, json& links)
         std::vector<size_t> ring;
         for (int k = 1; k <= width; k++)
         {
-            Node         n{ IdFor(depth, k), Designation(depth, k), depth, (int)nodes.size() };
+            Node n{ SystemId(params.slot, depth, k), Designation(params.slot, depth, k), depth,
+                    (int)nodes.size() };
             const size_t parent = prevRing[(size_t)rng.Range(0, (int)prevRing.size() - 1)];
             links.push_back(json::array({ nodes[parent].id, n.id }));
             ring.push_back(nodes.size());
@@ -311,7 +312,15 @@ void PlaceOnMap(const RegionParams& params, std::vector<Node>& nodes)
             d = c;
         }
     }
-    const double dx = DIRS[d][0], dy = DIRS[d][1];
+    double dx = DIRS[d][0], dy = DIRS[d][1];
+    // A bearing given -- from the skeleton, towards the region's slot -- wins.
+    const double bl = std::sqrt((double)params.bearing.x * params.bearing.x +
+                                (double)params.bearing.y * params.bearing.y);
+    if (bl > 0.0)
+    {
+        dx = params.bearing.x / bl;
+        dy = params.bearing.y / bl;
+    }
     const double px = -dy, py = dx;  // across the bearing
 
     std::map<int, int> perRing;
@@ -997,16 +1006,96 @@ void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Regi
 
 }  // namespace
 
-int DepthOf(const std::string& id)
+std::string SystemId(int slot, int depth, int k)
 {
-    if (id.size() < 2 || id[0] != 'w')
-        return 0;
-    return std::atoi(id.c_str() + 1);
+    return "r" + std::to_string(slot) + "-" + std::to_string(depth) + "-" + std::to_string(k);
 }
 
-Region GenerateRegion(const RegionParams& params)
+namespace
 {
-    Region            region;
+// "r<slot>-<depth>-<k>" taken apart; false for anything else.
+bool ParseId(const std::string& id, int& slot, int& depth, int& k)
+{
+    if (id.size() < 6 || id[0] != 'r')
+        return false;
+    int    parts[3] = { 0, 0, 0 };
+    size_t at = 1;
+    for (int i = 0; i < 3; i++)
+    {
+        const size_t begin = at;
+        while (at < id.size() && id[at] >= '0' && id[at] <= '9')
+            at++;
+        if (at == begin || at - begin > 6)
+            return false;
+        parts[i] = std::atoi(id.c_str() + begin);
+        if (i < 2)
+        {
+            if (at >= id.size() || id[at] != '-')
+                return false;
+            at++;
+        }
+    }
+    if (at != id.size())
+        return false;
+    slot = parts[0];
+    depth = parts[1];
+    k = parts[2];
+    return true;
+}
+}  // namespace
+
+nlohmann::json RegionToJson(const Region& region)
+{
+    json docs = json::object();
+    for (const auto& kv : region.documents)
+        docs[kv.first] = kv.second;
+    return {
+        { "slot", region.slot }, { "systems", region.systems }, { "links", region.links },
+        { "documents", docs },   { "entry", region.entryId },   { "wormhole", region.wormhole }
+    };
+}
+
+bool RegionFromJson(const nlohmann::json& doc, Region& out)
+{
+    if (!doc.is_object() || !doc.contains("slot") || !doc["slot"].is_number_integer() ||
+        !doc.contains("systems") || !doc["systems"].is_array() || !doc.contains("links") ||
+        !doc["links"].is_array() || !doc.contains("documents") || !doc["documents"].is_object() ||
+        !doc.contains("entry") || !doc["entry"].is_string() || !doc.contains("wormhole") ||
+        !doc["wormhole"].is_object())
+        return false;
+    Region r;
+    r.slot = doc["slot"].get<int>();
+    r.systems = doc["systems"];
+    r.links = doc["links"];
+    for (auto it = doc["documents"].begin(); it != doc["documents"].end(); ++it)
+        r.documents[it.key()] = it.value();
+    r.entryId = doc["entry"].get<std::string>();
+    r.wormhole = doc["wormhole"];
+    out = std::move(r);
+    return true;
+}
+
+int DepthOf(const std::string& id)
+{
+    int slot, depth, k;
+    return ParseId(id, slot, depth, k) ? depth : 0;
+}
+
+int SlotOf(const std::string& id)
+{
+    int slot, depth, k;
+    return ParseId(id, slot, depth, k) ? slot : -1;
+}
+
+Region GenerateRegion(const RegionParams& worldParams)
+{
+    // Every stream below starts from the slot's own key (#342): two slots of one world are as
+    // unrelated as two worlds, and neither depends on whether the other has been made.
+    RegionParams params = worldParams;
+    params.seed = Key(worldParams.seed, (uint64_t)worldParams.slot, REGION);
+
+    Region region;
+    region.slot = params.slot;
     std::vector<Node> nodes = Topology(params, region.links);
     PlaceOnMap(params, nodes);
     region.entryId = nodes.front().id;
