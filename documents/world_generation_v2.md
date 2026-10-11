@@ -150,9 +150,21 @@ reaches it sooner.
   up to the cap.
 - Each slot has its own key, so raising the cap only extends the outer rings and never
   moves existing slots.
-- At the cap no new regions open. The tide keeps working, but becomes roaming holes
-  between existing regions: new short routes.
-- Whether abandoned regions may collapse and free their slot is an open question.
+- **At the cap** (decided 2026-10-11), two things happen together:
+  - The tide that cannot open a new slot feeds **more and more frequent roaming holes**
+    between existing regions: new short routes, so the map keeps changing.
+  - **Dead regions drift away and free their slot.** A region counts as dead only when
+    nobody has visited for N days and no player structure stands there. The chronicle
+    warns days ahead and its gates weaken; then it detaches, and a new region may open in
+    the freed slot.
+- **A drifting region is archived, not deleted** (the owner's idea).
+  - **What is kept:** its sealed documents and a snapshot of its state (structures,
+    wrecks, names, history).
+  - **Coming back:** when a slot opens, the tide may bring an archived region back
+    instead of a fresh one, possibly into a different slot, since it drifted.
+  - **How it returns:** decayed. Faction structures are ruins or derelict stations, old
+    wrecks remain, player-given names stay, and the chronicle records the return.
+  - Exploring then includes the archaeology of the server's own past.
 
 **Determinism.**
 - **The skeleton** is `f(world seed, slot)`, generated whole at world creation. It is
@@ -333,7 +345,7 @@ a radius of 1e6; the galaxy map has its own scale.
 
 | What | What happens to it |
 |---|---|
-| The 3 hand-written systems | become the bundled pack `data/packs/helios/` (Helios Core, Sigma Reach, Tau Verge) with `"start"` on Helios Core; whether it is on by default is open; `data/universe.json` stops being required |
+| The 3 hand-written systems | **removed entirely** (owner, 2026-10-11): no Helios pack; `data/universe.json` and `data/systems/` stop being content (the pack format still exists for admins) |
 | The W-* region | its generator becomes the "frontier region" type; old ids like `w2-1` become `r<slot>-2-1` |
 | `GENERATOR_VERSION` | bumped in slice 1; an old world is refused, as designed (#140); the golden hash splits into skeleton and per-region hashes |
 | `world.json` | refused with a clear message; only a dev server lives today, so a new world is cheaper than a converter; `WORLD_VERSION` bumped for the opening log, tide and Anchors |
@@ -341,11 +353,17 @@ a radius of 1e6; the galaxy map has its own scale.
 | `data/pins.json` | empty, nothing to carry; the format gains `slot` |
 | CLAUDE.md, DECISIONS.md, ROADMAP | the M7 premise is rewritten (done with this document) |
 
-**Sealing (open question).** An MMO world lives for months, and `GENERATOR_VERSION` refuses
-it whenever the rules change. One answer is to seal: when a region opens, its generated
-documents go to their own file, `regions/<slot>.json`, so new rules apply only to new
-regions. That breaks "the region is never saved" for opened regions, so it is for the owner
-to decide.
+**Sealing (decided 2026-10-11: yes).** An MMO world lives for months, and
+`GENERATOR_VERSION` would otherwise refuse it whenever the rules change, which is a wipe.
+
+- **The rule:** when a region opens, its generated documents go to their own file,
+  `regions/<slot>.json`, and are read from there from then on.
+- **Generator changes:** new rules apply only to regions opened later. The skeleton and
+  unopened slots still come from the seed.
+- **Size:** about 40 KB per region in the save.
+- **Bugs:** a generation bug stays in already-opened regions. An admin command
+  regenerates a region, but only one with no player structures.
+- **Archived regions** are kept the same way (see "The cap").
 
 ## Slice plan
 
@@ -361,7 +379,7 @@ Each slice is its own PR with green CI, and the game works after every one.
 2. **S2 — civilisation centres and starts.**
    - A "centre" region type: stations, markets, an owner, high security.
    - 3 centres by default.
-   - Helios moves into `data/packs/helios/`.
+   - The three hand-written systems are removed; no base content is required.
    - Start choice on login (`PROTO_VERSION`), with account migration.
    - Survey (F4) shows the centres.
    - After this slice no base systems are required.
@@ -371,12 +389,14 @@ Each slice is its own PR with green CI, and the game works after every one.
      all clients.
    - Chronicle lines and admin commands.
    - Bump `WORLD_VERSION`.
+   - Seal opened regions into `regions/<slot>.json`.
    - A 24 h `econserver` run shows the pacing.
 4. **S4 — mouths and Anchors.**
    - An unstable mouth with a timer and a ship-class limit.
    - An `anchor` blueprint for factions and players.
    - An Anchor faction plan in the value-against-risk step.
-   - Collapse and drift.
+   - Collapse and drift, archiving a drifted region with its state, and its decayed
+     return.
    - Sieging an Anchor.
 5. **S5 — native factions.**
    - A minor faction per frontier region, in the faction registry.
@@ -410,14 +430,13 @@ Each slice is its own PR with green CI, and the game works after every one.
 
 ## Open questions
 
-1. **At the cap:** does the world stop growing (growth goes into roaming holes only), or
-   can abandoned regions collapse and free their slot?
-2. **Sealing:** should opened regions' generated documents be kept in the save, so that a
-   generator update does not refuse a live world?
-3. **Helios:** should the three hand-written systems be a pack on by default, a pack the
-   admin chooses, or removed?
-
-(Answered on 2026-10-11: option B; a faction registry straight away.)
+All answered by the owner on 2026-10-11:
+- option B;
+- a faction registry straight away;
+- Helios removed entirely;
+- opened regions are sealed into the save;
+- at the cap, more roaming holes, and dead regions drift away to an archive from which
+  they can return, decayed.
 
 ## How others do it
 
