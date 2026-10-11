@@ -84,6 +84,10 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
         uiSettingsWritable_ = Ui::LoadUiSettings(uiSettingsPath_, error);
         if (!uiSettingsWritable_)
             TraceLog(LOG_WARNING, "UI settings: %s", error.c_str());
+        // No scale chosen yet: start from what this screen suggests (#362). A choice in
+        // Settings always wins, and --uiscale overrides both for one run.
+        if (!Ui::UserScaleChosen())
+            Ui::UseAutoUserScale(AutoUiScale());
     }
     Ui::LoadAssets(dataDir_, Ui::ThemeSetting());
     themes_ = Ui::ListThemes(Ui::ThemeDir());

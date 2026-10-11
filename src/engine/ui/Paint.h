@@ -66,6 +66,27 @@ void UnloadPaint();
 // A colour at a fraction of its alpha.
 Color Faded(Color c, float alpha);
 
+// --- Standing as a shape (#362) ---------------------------------------------------------
+// An instrument never says whose a thing is by colour alone: a red "hostile" and a green
+// "you" are one colour to a deuteranope. So every standing also has a shape, the same on
+// the radar, in the overview's chip and on the world view's brackets. Which standing is
+// which shape is the game's (it knows the standings); the shapes are drawn here.
+enum class Mark : uint8_t
+{
+    None,
+    Ring,      // a dot in a ring: you
+    Circle,    // friendly
+    Diamond,   // neutral
+    Triangle,  // hostile, pointing up
+    Square,
+};
+// Filled, `radius` from the centre to the shape's furthest point.
+void DrawMark(Vector2 centre, float radius, Mark mark, Color color);
+
+// A hostile bracket's notch (#362): a small triangle pointing in, centred on the top edge of
+// a bracket `r` from `centre` -- a shape on a bracket that is otherwise only a colour.
+void DrawNotch(Vector2 centre, float r, float size, Color color);
+
 // --- The blurred world behind the windows -------------------------------------------------
 // Set by whoever drew the world (the game, when the player has the blur on and the theme
 // offers it), cleared at the end of the frame. While it is set, a window's panel is that

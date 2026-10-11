@@ -167,6 +167,8 @@ public:
     void SetThemeForRun(const std::string& id) { Ui::UseTheme(id); }
     // "Blur behind windows" on for one run (--blur). Not saved unless Settings saves.
     void SetBlurForRun(bool on) { Ui::SetBlurSetting(on); }
+    // The colour-blind standing palette (--cblind), for a picture of it.
+    void SetColourBlindForRun(bool on) { Ui::SetColourBlindSetting(on); }
     // A left click at (x, y) on frame `frame` (--click X Y FRAME), played into raylib's own
     // input state: the desk, the layouts and the widgets see it exactly as they see the
     // mouse, which a click sent to the window from outside never reaches (a hidden window
@@ -235,8 +237,11 @@ private:
     void SaveTreatment();      // writes what was tuned in F10's panel
 
     // The windows in GameWindows.cpp (#297).
-    void  ApplyUiScale(float s);             // the player's own UI scale, saved for this machine
+    void  ApplyUiScale(float s);  // the player's own UI scale, saved; <= 0: the automatic one
+    float AutoUiScale() const;    // what this screen suggests (#362)
     Color StandingColor(FactionId f) const;  // a faction as the instruments say it (#117)
+    // ...and the shape that says it without colour (#362): radar, overview chips, brackets.
+    static Ui::Mark StandingMark(Sensor::Allegiance a);
 
     void Undock();
 

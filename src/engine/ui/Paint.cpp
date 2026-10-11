@@ -95,6 +95,43 @@ Color Faded(Color c, float alpha)
     return c;
 }
 
+void DrawMark(Vector2 centre, float radius, Mark mark, Color color)
+{
+    if (color.a == 0 || radius <= 0.0f)
+        return;
+    switch (mark)
+    {
+        case Mark::None: break;
+        case Mark::Ring:
+            DrawCircleV(centre, radius * 0.45f, color);
+            DrawRing(centre, radius * 0.8f, radius, 0.0f, 360.0f, 24, color);
+            break;
+        case Mark::Circle: DrawCircleV(centre, radius * 0.85f, color); break;
+        // A diamond and a triangle have less area than a circle the same size across; a
+        // little larger, they read as the same weight.
+        case Mark::Diamond: DrawPoly(centre, 4, radius, 0.0f, color); break;
+        case Mark::Triangle:
+            DrawPoly({ centre.x, centre.y + radius * 0.15f }, 3, radius * 1.1f, -90.0f, color);
+            break;
+        case Mark::Square:
+        {
+            const float h = radius * 0.75f;
+            DrawRectangleV({ centre.x - h, centre.y - h }, { 2.0f * h, 2.0f * h }, color);
+            break;
+        }
+    }
+}
+
+void DrawNotch(Vector2 centre, float r, float size, Color color)
+{
+    if (color.a == 0 || size <= 0.0f)
+        return;
+    // Its base on the bracket's top edge, its point into the bracket: counter-clockwise, as
+    // raylib wants a triangle, with y down.
+    const float y = centre.y - r;
+    DrawTriangle({ centre.x - size, y }, { centre.x, y + size }, { centre.x + size, y }, color);
+}
+
 void FillShape(Rectangle r, Corner corner, float radius, Color color)
 {
     if (color.a == 0 || r.width <= 0.0f || r.height <= 0.0f)

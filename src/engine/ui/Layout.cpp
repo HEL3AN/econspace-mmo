@@ -292,7 +292,8 @@ const std::vector<DrawCommand>& Layout::End()
         d.color = ToColor(c.color);
         d.radius = c.radius;
         d.paint = (uint8_t)(c.paint & 0xFF);
-        const uint32_t glow = c.paint >> 8;
+        d.mark = (Mark)(c.paint >> 24);
+        const uint32_t glow = (c.paint >> 8) & 0xFFFF;
         if (glow > 0 && glow <= glows_.size())
             d.glow = glows_[glow - 1];
         switch (c.kind)
@@ -355,9 +356,10 @@ void Layout::Open(const Box& b)
         e.borderWidth = U16(std::max(1.0f, U(b.border)));
     }
     e.scrollY = b.scrollY ? 1 : 0;
-    // The paint flags in the low byte; above them, which glow colour, counted from 1.
-    e.paint = b.paint;
-    if ((b.paint & PAINT_GLOW) && b.glow.a > 0)
+    // The paint flags in the low byte; above them, which glow colour, counted from 1; the
+    // mark in the top byte.
+    e.paint = b.paint | ((uint32_t)b.mark << 24);
+    if ((b.paint & PAINT_GLOW) && b.glow.a > 0 && glows_.size() < 0xFFFF)
     {
         glows_.push_back(b.glow);
         e.paint |= (uint32_t)glows_.size() << 8;
@@ -593,8 +595,8 @@ void Layout::Draw() const
         {
             // A plain rectangle and a run of letters are cut here instead, to the same pixels:
             // a row half scrolled out of a table is all this ever is.
-            const bool plain =
-                c.kind == DrawCommand::Kind::Rect && c.paint == 0 && c.radius <= 0.0f;
+            const bool plain = c.kind == DrawCommand::Kind::Rect && c.paint == 0 &&
+                               c.radius <= 0.0f && c.mark == Mark::None;
             const bool letters = c.kind == DrawCommand::Kind::Text && FaceReady(c.face);
             place[i] = plain || letters ? Place::Cut : Place::Crossing;
             clipOf[i] = clips.back();
@@ -652,6 +654,12 @@ void Layout::Draw() const
             {
                 if (c.color.a == 0 || r.width <= 0.0f || r.height <= 0.0f)
                     break;
+                if (c.mark != Mark::None)
+                {
+                    DrawMark({ r.x + r.width * 0.5f, r.y + r.height * 0.5f },
+                             std::min(r.width, r.height) * 0.5f, c.mark, c.color);
+                    break;
+                }
                 const Corner corner = (c.paint & PAINT_CHAMFER) ? Corner::Chamfer
                                       : c.radius > 0.0f         ? Corner::Rounded
                                                                 : Corner::Square;
@@ -976,15 +984,16 @@ TableEvents Layout::Table(const TableSpec& s)
     const float       pad = t.metrics.gap * 0.5f;
     const std::string head = s.id + "~h", row = s.id + "~r", body = s.id + "~b";
     const int         cols = (int)s.columns.size();
-    // A column's chip (#361): a square about the height of a capital, and a gap after it.
-    constexpr float CHIP = 7.0f, CHIP_GAP = 5.0f;
+    // A column's chip (#361): a mark about the height of a capital -- a square, or the
+    // standing's shape (#362) -- and a gap after it.
+    constexpr float CHIP = 9.0f, CHIP_GAP = 5.0f;
     auto            chipRoom = [&](const TableColumn& col)
     { return col.chips ? U(CHIP) + U(CHIP_GAP) : 0.0f; };
-    auto chip = [&](const TableColumn& col, Color c)
+    auto chip = [&](const TableColumn& col, Color c, Mark m)
     {
         if (!col.chips)
             return;
-        Open(Box().Width(Size::Fixed(CHIP)).Height(Size::Fixed(CHIP)).Fill(c));
+        Open(Box().Width(Size::Fixed(CHIP)).Height(Size::Fixed(CHIP)).Fill(c).Mark(m));
         Close();
     };
 
@@ -1115,7 +1124,8 @@ TableEvents Layout::Table(const TableSpec& s)
                                    .Align(col.align, Align::Center),
                                [&]
                                {
-                                   chip(col, CLEAR);  // the heading over the text, not the chip
+                                   chip(col, CLEAR,
+                                        Mark::None);  // the heading over the text, not the chip
                                    Text(label, hs);
                                });
                        }
@@ -1182,7 +1192,7 @@ TableEvents Layout::Table(const TableSpec& s)
                                                   .Align(col.align, Align::Center),
                                               [&]
                                               {
-                                                  chip(col, cell.chip);
+                                                  chip(col, cell.chip, cell.chipMark);
                                                   Text(text, st);
                                               });
                                       }

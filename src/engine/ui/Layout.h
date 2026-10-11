@@ -90,6 +90,9 @@ struct Box
     // the colour of a glow when it is not the fill's own.
     uint8_t paint = 0;
     Color   glow{ 0, 0, 0, 0 };
+    // The fill drawn as a standing's shape, fitted in the box (Ui::DrawMark): a chip that
+    // says whose a row is by shape as well as colour (#362).
+    Ui::Mark mark = Ui::Mark::None;
 
     Box& Id(std::string_view s, uint32_t i = 0)
     {
@@ -159,6 +162,11 @@ struct Box
     Box& Glow(Color c)
     {
         glow = c;
+        return *this;
+    }
+    Box& Mark(Ui::Mark m)
+    {
+        mark = m;
         return *this;
     }
     // A widget's corners as the theme draws them (style.corner): rounded by metrics.radius,
@@ -233,7 +241,8 @@ struct Cell
     std::string text;
     Color       color{ 255, 255, 255, 255 };
     Face        face = Face::Regular;
-    Color       chip{ 0, 0, 0, 0 };  // in a column with `chips`; alpha 0 for none
+    Color       chip{ 0, 0, 0, 0 };     // in a column with `chips`; alpha 0 for none
+    Mark        chipMark = Mark::None;  // its shape (#362); None for a square
 };
 
 // Which column a table is sorted by. The table changes it when a heading is clicked; the
@@ -313,9 +322,10 @@ struct DrawCommand
     float            width = 0.0f;  // of an outline
     std::string_view text;
     Face             face = Face::Regular;
-    float            px = 0.0f;           // the font size, already scaled
-    uint8_t          paint = 0;           // Ui::PaintFlag bits, from the box
-    Color            glow{ 0, 0, 0, 0 };  // a glow's colour; alpha 0 for the fill's own
+    float            px = 0.0f;              // the font size, already scaled
+    uint8_t          paint = 0;              // Ui::PaintFlag bits, from the box
+    Color            glow{ 0, 0, 0, 0 };     // a glow's colour; alpha 0 for the fill's own
+    Ui::Mark         mark = Ui::Mark::None;  // the fill drawn as this shape instead (Box::Mark)
 };
 
 class Layout

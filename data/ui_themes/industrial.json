@@ -21,11 +21,11 @@
         "sensor": "#080A08"
     },
     "standing": {
-        "own": "#9CC46A",
+        "own": "#6FD3DA",
         "friendly": "#6BB3E0",
         "neutral": "#D8D0C0",
         "hostile": "#E2553F",
-        "unowned": "#7C7466"
+        "unowned": "#8A8273"
     },
     "metrics": {
         "titleHeight": 28,

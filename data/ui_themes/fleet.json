@@ -21,7 +21,7 @@
         "sensor": "#050A09"
     },
     "standing": {
-        "own": "#7FD68F",
+        "own": "#67D4E0",
         "friendly": "#6FA8E8",
         "neutral": "#C9CCC4",
         "hostile": "#E0604F",

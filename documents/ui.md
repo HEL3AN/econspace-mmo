@@ -404,6 +404,36 @@ executable) times the display's DPI. It sizes every window frame, every window's
 and size on the desk (kept in units, so a layout made at one scale is the same layout at
 another), and everything inside a `Ui::Layout`. `--uiscale S` sets it for one run.
 
+Until the player chooses a scale, the setting is **automatic** (#362, `Ui::AutoUserScale`):
+at least what the monitor's height suggests -- 1080 lines 1.25, 1440 1.5, 2160 2 -- with the
+display's own DPI counted first, so a 1080p laptop at 125% gets 1.25 from Windows and a
+factor of 1, and the same laptop at 100% gets the factor 1.25. Settings shows it as the
+"Automatic" button. Only a chosen scale is written to `ui_settings.json` (version 2), and
+it always wins; a version-1 file wrote 1 whether or not anyone had chosen it, so a 1 in one
+reads as no choice.
+
+## Legibility
+
+Held by `theme_tests.cpp` for every theme in the folder, so a new theme that fails them
+fails the build (#362):
+
+- **Contrast.** Every colour text is written in -- `text`, `dim`, `accent`, `good`, `warn`,
+  `bad`, `money`, each `standing` -- is at least 4.5:1 (WCAG AA) against the panel laid over
+  the backdrop, and `titleText` and `dim` against the title bar. `Ui::Contrast` computes it.
+- **Size.** `fontSize.body` and `fontSize.title` are at least 13 px at a scale of 1.
+- **Standing is never colour alone.** "Own" is cyan in every theme, not the green that a
+  deuteranope cannot tell from hostile red, and each standing is a shape as well
+  (`Ui::Mark`, `Game::StandingMark`): you a dot in a ring, friendly a circle, neutral a
+  diamond, hostile a triangle. The same shapes are the radar's ship blips and the
+  overview's chips; a hostile station on the radar and a hostile-held system on the map
+  carry the triangle over their own shape, and a hostile ship's bracket in the world view
+  has a notch. The radar labels the blip under the cursor with its name, distance and
+  standing in words.
+- **Colour-blind palette** (Settings, Interface; `"colourBlind"` in `ui_settings.json`;
+  `--cblind` for one run): `Ui::ColourBlindStanding()`, orange and blue with a white "own",
+  laid over whichever theme is in use (`Ui::AdoptStanding`) and taken off again. It is
+  checked against every theme's panel like the theme's own colours.
+
 ## Fonts
 
 A theme names four faces (`Ui::Face`), each a file in `data/fonts/` with two settings, its
