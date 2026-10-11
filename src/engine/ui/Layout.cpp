@@ -182,6 +182,7 @@ void Layout::Begin(Rectangle area, float scale, const Pointer& pointer)
     pointer_ = pointer;
     strings_.clear();
     commands_.clear();
+    glows_.clear();
     depth_ = 0;
     keysFed_ = false;
     if (!pointer.owned || !pointer.down)
@@ -198,6 +199,14 @@ void Layout::Begin(Rectangle area, float scale, const Pointer& pointer)
     // A pointer the layout does not own is somewhere it can never be.
     const float px = pointer.owned ? pointer.pos.x - area.x : -1.0e6f;
     const float py = pointer.owned ? pointer.pos.y - area.y : -1.0e6f;
+    // Clay keeps what each word measured. A theme switched since then has other fonts, and
+    // its words would be laid out at the old ones' widths: values cut short, labels run
+    // into each other.
+    if (fontGeneration_ != FontGeneration())
+    {
+        uiclay_forget_measures(clay_);
+        fontGeneration_ = FontGeneration();
+    }
     // The wheel is in notches; a notch scrolls three rows of body text.
     const float wheel =
         pointer.owned ? pointer.wheel * U(CurrentTheme().fontSize.body) * 3.0f : 0.0f;
@@ -232,6 +241,10 @@ const std::vector<DrawCommand>& Layout::End()
         d.box = { area_.x + c.x, area_.y + c.y, c.w, c.h };
         d.color = ToColor(c.color);
         d.radius = c.radius;
+        d.paint = (uint8_t)(c.paint & 0xFF);
+        const uint32_t glow = c.paint >> 8;
+        if (glow > 0 && glow <= glows_.size())
+            d.glow = glows_[glow - 1];
         switch (c.kind)
         {
             case UICLAY_CMD_RECT: d.kind = DrawCommand::Kind::Rect; break;
@@ -292,6 +305,13 @@ void Layout::Open(const Box& b)
         e.borderWidth = U16(std::max(1.0f, U(b.border)));
     }
     e.scrollY = b.scrollY ? 1 : 0;
+    // The paint flags in the low byte; above them, which glow colour, counted from 1.
+    e.paint = b.paint;
+    if ((b.paint & PAINT_GLOW) && b.glow.a > 0)
+    {
+        glows_.push_back(b.glow);
+        e.paint |= (uint32_t)glows_.size() << 8;
+    }
     uiclay_open(&e);
     depth_++;
 }
@@ -334,20 +354,29 @@ void Layout::Bar(float fraction, Color color)
 {
     const Theme& t = CurrentTheme();
     const float  f = std::clamp(fraction, 0.0f, 1.0f);
-    Row(Box()
-            .GrowX()
-            .Height(Size::Fixed(t.metrics.barHeight))
-            .Fill(t.colors.track)
-            .Radius(t.metrics.radius),
+    // Rounded only in a rounded theme: a bar is too thin to cut.
+    const float radius = t.style.corner == Corner::Rounded ? t.metrics.radius : 0.0f;
+    Box         track = Box().GrowX().Height(Size::Fixed(t.metrics.barHeight)).Radius(radius);
+    Box fill = Box().Width(Size::Percent(f)).Height(Size::Grow()).Fill(color).Radius(radius);
+    if (t.style.bar == BarStyle::Striped)
+    {
+        // Segments in a frame: a gauge on a panel rather than a strip of colour.
+        const float frame = t.metrics.border;
+        track.Height(Size::Fixed(t.metrics.barHeight + 2.0f * frame + 2.0f))
+            .Border(t.colors.border, 1.0f)
+            .Pad(2.0f);
+        fill.Paint(PAINT_STRIPED);
+    }
+    else
+        track.Fill(t.colors.track);
+    if (t.style.glow > 0.0f)
+        fill.Paint(PAINT_GLOW);
+    Row(track,
         [&]
         {
             if (f > 0.0f)
             {
-                Open(Box()
-                         .Width(Size::Percent(f))
-                         .Height(Size::Grow())
-                         .Fill(color)
-                         .Radius(t.metrics.radius));
+                Open(fill);
                 Close();
             }
         });
@@ -367,7 +396,10 @@ void Layout::Field(std::string_view label, std::string_view value, Color valueCo
 void Layout::Divider()
 {
     const Theme& t = CurrentTheme();
-    Open(Box().GrowX().Height(Size::Fixed(t.metrics.border)).Fill(t.colors.border));
+    Box          line = Box().GrowX().Height(Size::Fixed(t.metrics.border)).Fill(t.colors.border);
+    if (t.style.divider == LineStyle::Dashed)
+        line.Paint(PAINT_DASHED);
+    Open(line);
     Close();
 }
 
@@ -383,7 +415,10 @@ bool Layout::Button(std::string_view id, std::string_view label, bool highlighte
             .Align(Align::Center, Align::Center)
             .Fill(hover ? t.colors.hover : t.colors.title)
             .Border(highlighted || hover ? t.colors.accent : t.colors.border, t.metrics.border)
-            .Radius(t.metrics.radius),
+            .ThemeCorners()
+            // The lit one glows in a glowing theme: what is on stands out of the row.
+            .Paint(highlighted && t.style.glow > 0.0f ? PAINT_GLOW : 0)
+            .Glow(t.colors.accent),
         [&] { Text(label, TextStyle::Caption().Tint(hover ? t.colors.accent : t.colors.text)); });
     return hover && pointer_.pressed;
 }
@@ -397,7 +432,7 @@ void Layout::Chip(std::string_view label, bool on, Color onColor)
             .Align(Align::Center, Align::Center)
             .Fill(on ? Fade(onColor, 0.22f) : Color{ 0, 0, 0, 0 })
             .Border(on ? onColor : t.colors.track, t.metrics.border)
-            .Radius(t.metrics.radius),
+            .ThemeCorners(),
         [&] { Text(label, TextStyle::Caption().Tint(on ? onColor : t.colors.dim)); });
 }
 
@@ -405,7 +440,9 @@ void Layout::FormRowBegin(std::string_view label)
 {
     const Theme& t = CurrentTheme();
     Open(Box().GrowX().Gap(t.metrics.gap).Align(Align::Start, Align::Center));
-    Row(Box().Width(Size::Fixed(t.metrics.formLabel)), [&] { Text(label, TextStyle::Label()); });
+    // A label longer than its column wraps under itself rather than running into the controls.
+    Row(Box().Width(Size::Fixed(t.metrics.formLabel)),
+        [&] { Text(label, TextStyle::Label().Wrap()); });
     Open(Box().GrowX().Gap(t.metrics.rowGap).Align(Align::Start, Align::Center));
 }
 
@@ -462,33 +499,45 @@ void Layout::Draw() const
         const float     x0 = std::round(c.box.x), y0 = std::round(c.box.y);
         const Rectangle r{ x0, y0, std::round(c.box.x + c.box.width) - x0,
                            std::round(c.box.y + c.box.height) - y0 };
-        const float     shorter = std::max(1.0f, std::min(r.width, r.height));
-        const float     roundness = std::min(1.0f, 2.0f * c.radius / shorter);
         switch (c.kind)
         {
             case DrawCommand::Kind::Rect:
+            {
                 if (c.color.a == 0 || r.width <= 0.0f || r.height <= 0.0f)
                     break;
-                if (c.radius > 0.0f)
-                    DrawRectangleRounded(r, roundness, 6, c.color);
+                const Corner corner = (c.paint & PAINT_CHAMFER) ? Corner::Chamfer
+                                      : c.radius > 0.0f         ? Corner::Rounded
+                                                                : Corner::Square;
+                const float  glow = CurrentTheme().style.glow;
+                if ((c.paint & PAINT_GLOW) && glow > 0.0f)
+                {
+                    Color g = c.glow.a > 0 ? c.glow : c.color;
+                    g.a = (unsigned char)(255.0f * glow);
+                    DrawGlow(r, corner, c.radius, g, U(6.0f));
+                }
+                if (c.paint & PAINT_RAISED)
+                    FillShape({ r.x, r.y + 1.0f, r.width, r.height }, corner, c.radius,
+                              Color{ 0, 0, 0, 100 });
+                if (c.paint & PAINT_DASHED)
+                    DrawDashes(r, c.color, U(10.0f), U(4.0f));
+                else if (c.paint & PAINT_STRIPED)
+                    DrawStripes(r, c.color, U(6.0f), U(2.0f));
+                else if (c.paint & PAINT_FADE_RIGHT)
+                    FillFadeRight(r, c.color);
+                else if (c.paint & PAINT_FADE_UP)
+                    FillFadeUp(r, c.color);
                 else
-                    DrawRectangleRec(r, c.color);
+                    FillShape(r, corner, c.radius, c.color);
                 break;
+            }
             case DrawCommand::Kind::Border:
                 if (c.color.a == 0)
                     break;
-                if (c.radius > 0.0f)
-                {
-                    // raylib draws a rounded outline outside its rectangle and a square one
-                    // inside; inset, both stay within the box Clay gave them.
-                    const Rectangle in{ r.x + c.width, r.y + c.width, r.width - 2.0f * c.width,
-                                        r.height - 2.0f * c.width };
-                    const float     s = std::max(1.0f, std::min(in.width, in.height));
-                    DrawRectangleRoundedLinesEx(in, std::min(1.0f, 2.0f * c.radius / s), 6, c.width,
-                                                c.color);
-                }
-                else
-                    DrawRectangleLinesEx(r, c.width, c.color);
+                OutlineShape(r,
+                             (c.paint & PAINT_CHAMFER) ? Corner::Chamfer
+                             : c.radius > 0.0f         ? Corner::Rounded
+                                                       : Corner::Square,
+                             c.radius, c.width, c.color);
                 break;
             case DrawCommand::Kind::Text:
             {
@@ -699,11 +748,28 @@ void Layout::ScrollBegin(const Box& box)
     inner.scrollY = true;
     inner.width = Size::Grow();
     inner.height = Size::Grow();
+    inner.gap = 0.0f;
     Open(inner);
+    // The children in a column exactly as wide as the view was last frame. The view clips
+    // sideways, and a clipped axis lets its children be as wide as they like: a line of text
+    // meant to wrap ran on past the window's edge instead, and took every row with it.
+    const Rectangle view = BoxOf(box.id, box.index);
+    Box             content;
+    content.column = true;
+    content.gap = box.gap;
+    content.alignX = box.alignX;
+    content.alignY = box.alignY;
+    content.width = Size::Grow();
+    if (view.width > 0.0f && scale_ > 0.0f)
+        content.width =
+            Size::Fixed(std::max(0.0f, view.width - U(box.padLeft) - U(box.padRight)) / scale_);
+    content.height = Size::Grow();
+    Open(content);
 }
 
 void Layout::ScrollEnd(const Box& box)
 {
+    Close();  // the children's column
     Close();  // the scrolling column
     const Theme&      t = CurrentTheme();
     const std::string bar = box.id + "~bar";
@@ -799,9 +865,20 @@ TableEvents Layout::Table(const TableSpec& s)
     Column(Box().Grow(),
            [&]
            {
+               // A theme that marks the lit row keeps the mark's room on every row, and over
+               // them, so the columns stay under their headings.
+               const float rowMark = t.metrics.rowMark;
+               auto        markRoom = [&](Color c)
+               {
+                   if (rowMark <= 0.0f)
+                       return;
+                   Open(Box().Width(Size::Fixed(rowMark)).Height(Size::Grow()).Fill(c));
+                   Close();
+               };
                Row(Box().GrowX(),
                    [&]
                    {
+                       markRoom(CLEAR);
                        for (int c = 0; c < cols; c++)
                        {
                            const TableColumn& col = s.columns[c];
@@ -854,16 +931,22 @@ TableEvents Layout::Table(const TableSpec& s)
                                   if (pointer_.rightPressed)
                                       ev.rightClicked = r;
                               }
-                              Color fill = s.rowFill ? s.rowFill(r) : CLEAR;
-                              if (fill.a == 0 && hover)
+                              Color      fill = s.rowFill ? s.rowFill(r) : CLEAR;
+                              const bool lit = fill.a > 0;
+                              if (!lit && hover)
                                   fill = t.colors.hover;
                               Row(Box()
                                       .Id(row, (uint32_t)r)
                                       .GrowX()
                                       .Height(Size::Fixed(t.metrics.rowHeight))
-                                      .Fill(fill),
+                                      .Fill(fill)
+                                      // Glass lights a row from its mark, fading across.
+                                      .Paint(lit && t.style.panel == PanelStyle::Glass
+                                                 ? PAINT_FADE_RIGHT
+                                                 : 0),
                                   [&]
                                   {
+                                      markRoom(lit ? t.colors.accent : CLEAR);
                                       for (int c = 0; c < cols; c++)
                                       {
                                           const TableColumn& col = s.columns[c];
@@ -893,12 +976,26 @@ TableEvents Layout::Table(const TableSpec& s)
 
 bool Layout::Tabs(std::string_view id, const std::vector<std::string>& labels, int& selected)
 {
-    const Theme& t = CurrentTheme();
-    bool         changed = false;
-    // A theme with a tab mark draws the strip as a line of tabs on a rule, the chosen one
-    // underlined; without one, each tab is a filled box of its own.
-    const float mark = t.metrics.tabMark;
-    Row(Box().GrowX().Gap(mark > 0.0f ? 0.0f : t.metrics.rowGap),
+    const Theme&   t = CurrentTheme();
+    const TabStyle style = t.style.tabs;
+    const bool     underline = style == TabStyle::Underline;
+    const float    mark = std::max(t.metrics.tabMark, 1.0f);
+    bool           changed = false;
+    // The strip the tabs stand in (style.tabStyle): on a rule, side by side, in a frame of
+    // the border colour, or in one sunken track only as wide as they are.
+    Box strip;
+    switch (style)
+    {
+        case TabStyle::Underline: strip.GrowX(); break;
+        case TabStyle::Boxed: strip.GrowX().Gap(t.metrics.rowGap); break;
+        case TabStyle::Filled:
+            strip.GrowX().Gap(t.metrics.border).Pad(t.metrics.border).Fill(t.colors.border);
+            break;
+        case TabStyle::Segmented:
+            strip.Gap(2.0f).Pad(3.0f).Fill(t.colors.track).Radius(t.WidgetRadius() + 3.0f);
+            break;
+    }
+    Row(strip,
         [&]
         {
             for (int i = 0; i < (int)labels.size(); i++)
@@ -910,32 +1007,46 @@ bool Layout::Tabs(std::string_view id, const std::vector<std::string>& labels, i
                     changed = true;
                 }
                 const bool on = i == selected;
-                Column(Box()
-                           .Id(id, (uint32_t)i)
-                           .Fill(on            ? t.colors.selected
-                                 : hover       ? t.colors.hover
-                                 : mark > 0.0f ? CLEAR
-                                               : t.colors.title)
-                           .Radius(t.metrics.radius),
+                Color      fill = on ? t.colors.selected : hover ? t.colors.hover : CLEAR;
+                Color      ink = on ? t.colors.accent : hover ? t.colors.text : t.colors.dim;
+                Box        tab = Box().Id(id, (uint32_t)i).Column().ThemeCorners();
+                switch (style)
+                {
+                    case TabStyle::Underline:
+                        // Glass lights the chosen tab from its rule up, rather than all over.
+                        if (on && t.style.panel == PanelStyle::Glass)
+                            tab.Paint(PAINT_FADE_UP);
+                        break;
+                    case TabStyle::Boxed:
+                        if (!on && !hover)
+                            fill = t.colors.title;
+                        break;
+                    case TabStyle::Filled:
+                        fill = on ? t.colors.accent : t.colors.title;
+                        ink = on ? t.colors.onAccent : hover ? t.colors.accent : t.colors.dim;
+                        break;
+                    case TabStyle::Segmented:
+                        fill = on ? t.colors.title : hover ? t.colors.hover : CLEAR;
+                        ink = on || hover ? t.colors.text : t.colors.dim;
+                        if (on)
+                            tab.Paint(PAINT_RAISED);
+                        break;
+                }
+                Column(tab.Fill(fill),
                        [&]
                        {
                            Row(Box()
                                    .Pad(t.metrics.gap * 1.25f, t.metrics.rowGap)
                                    .Align(Align::Center, Align::Center),
-                               [&]
-                               {
-                                   Text(labels[i],
-                                        TextStyle::Caption().Tint(on      ? t.colors.accent
-                                                                  : hover ? t.colors.text
-                                                                          : t.colors.dim));
-                               });
+                               [&] { Text(labels[i], TextStyle::Caption().Tint(ink)); });
                            // As tall on every tab, so their labels stay in one line.
-                           if (mark > 0.0f)
+                           if (underline)
                                Column(Box()
                                           .GrowX()
                                           .Height(Size::Fixed(mark))
                                           .Align(Align::Start, Align::End)
-                                          .Fill(on ? t.colors.accent : CLEAR),
+                                          .Fill(on ? t.colors.accent : CLEAR)
+                                          .Paint(on && t.style.glow > 0.0f ? PAINT_GLOW : 0),
                                       [&]
                                       {
                                           if (on)
@@ -948,7 +1059,7 @@ bool Layout::Tabs(std::string_view id, const std::vector<std::string>& labels, i
                                       });
                        });
             }
-            if (mark > 0.0f)  // the rule runs on under the rest of the strip
+            if (underline)  // the rule runs on under the rest of the strip
                 Column(Box().GrowX().Height(Size::Grow()).Align(Align::Start, Align::End),
                        [&]
                        {
@@ -990,7 +1101,7 @@ void Layout::FieldBox(std::string_view id, std::string_view shown, bool dim, boo
                     : hover ? t.colors.dim
                             : t.colors.border,
                     t.metrics.border)
-            .Radius(t.metrics.radius),
+            .ThemeCorners(),
         [&] { Text(text, style); });
 }
 
@@ -1120,7 +1231,7 @@ bool Layout::Slider(std::string_view id, float& value, float lo, float hi, bool 
                      .Width(Size::Fixed(knob))
                      .Height(Size::Fixed(knob * 2.0f))
                      .Fill(hot ? t.colors.text : t.colors.accent)
-                     .Radius(t.metrics.radius));
+                     .Radius(t.style.corner == Corner::Rounded ? t.metrics.radius : 0.0f));
             Close();
             Open(Box().Width(Size::Grow()).Height(Size::Fixed(line)).Fill(t.colors.track));
             Close();

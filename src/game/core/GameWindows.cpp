@@ -543,14 +543,40 @@ void Game::DrawSettingsContent(const Ui::Frame& f)
                     else
                     {
                         // Every theme in data/ui_themes/; the one in use lit.
+                        // One under another: five names in a line are wider than the window.
                         L.FormRow("Theme",
                                   [&]
                                   {
-                                      for (size_t i = 0; i < themes_.size(); i++)
-                                          if (L.Button("theme" + std::to_string(i), themes_[i].name,
-                                                       themes_[i].id == t.id))
-                                              themeToUse_ = themes_[i].id;
+                                      L.Column(Box().GrowX().Gap(t.metrics.rowGap),
+                                               [&]
+                                               {
+                                                   for (size_t i = 0; i < themes_.size(); i++)
+                                                       if (L.Button("theme" + std::to_string(i),
+                                                                    themes_[i].name,
+                                                                    themes_[i].id == t.id))
+                                                           themeToUse_ = themes_[i].id;
+                                               });
                                   });
+                        // Off until asked for: the world is drawn into a texture and blurred
+                        // every frame, which a laptop's GPU feels (#297).
+                        const bool blurOn = Ui::BlurSetting();
+                        L.FormRow("Blur behind windows",
+                                  [&]
+                                  {
+                                      if (L.Button("blur", blurOn ? "On" : "Off", blurOn))
+                                      {
+                                          Ui::SetBlurSetting(!blurOn);
+                                          if (uiSettingsWritable_ &&
+                                              !Ui::SaveUiSettings(uiSettingsPath_))
+                                              TraceLog(LOG_WARNING, "UI settings: cannot write %s",
+                                                       uiSettingsPath_.c_str());
+                                      }
+                                  });
+                        hint(t.style.blurs ? "The world under a window, frosted. It costs a copy "
+                                             "of the world every frame; off on a slow GPU."
+                                           : "This theme's windows are solid; the blur is for "
+                                             "glass ones.",
+                             t.colors.dim);
                         L.FormRow("Interface scale",
                                   [&]
                                   {
@@ -568,15 +594,32 @@ void Game::DrawSettingsContent(const Ui::Frame& f)
                         L.FormRow("",
                                   [&]
                                   {
-                                      for (int i = 0; i < 4; i++)
-                                      {
-                                          const float s = scales[i];
-                                          const bool  current =
-                                              !uiScaleLocked_ && fabsf(Ui::UserScale() - s) < 0.01f;
-                                          if (L.Button("scale" + std::to_string(i),
-                                                       TextFormat("%.0f%%", s * 100.0f), current))
-                                              ApplyUiScale(s);
-                                      }
+                                      // Four in a line when there is room, two by two
+                                      // otherwise: in a wider face four ran off the window.
+                                      Box group = Box().GrowX().Gap(t.metrics.rowGap);
+                                      if (!wide)
+                                          group.Column();
+                                      L.Open(group);
+                                      for (int row = 0; row < (wide ? 1 : 2); row++)
+                                          L.Row(
+                                              Box().GrowX().Gap(t.metrics.rowGap),
+                                              [&]
+                                              {
+                                                  const int n = wide ? 4 : 2;
+                                                  for (int k = 0; k < n; k++)
+                                                  {
+                                                      const int   i = row * n + k;
+                                                      const float s = scales[i];
+                                                      const bool  current =
+                                                          !uiScaleLocked_ &&
+                                                          fabsf(Ui::UserScale() - s) < 0.01f;
+                                                      if (L.Button("scale" + std::to_string(i),
+                                                                   TextFormat("%.0f%%", s * 100.0f),
+                                                                   current))
+                                                          ApplyUiScale(s);
+                                                  }
+                                              });
+                                      L.Close();
                                   });
                         if (uiScaleLocked_)
                             hint("Set for this run by --uiscale; choosing one here keeps it.",

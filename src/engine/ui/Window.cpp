@@ -1,8 +1,10 @@
 #include "ui/Window.h"
 #include "ui/Layout.h"  // Ellipsize
+#include "ui/Paint.h"
 #include "ui/UiTheme.h"
 
 #include <algorithm>
+#include <cmath>
 
 Window::Window(std::string title, Content content)
     : title_(std::move(title)), content_(std::move(content))
@@ -61,12 +63,57 @@ void Window::Draw(Rectangle bounds, const Chrome& chrome, Ui::Focus* focus,
     const Ui::Theme& t = Ui::CurrentTheme();
     const bool       owner = chrome.owner;
     const Vector2    mouse = GetMousePosition();
-    DrawRectangleRec(bounds, t.colors.panel);
+    // The frame's shape, from the theme's tokens (style.*): its corners, its shadow, how its
+    // title bar is filled, whether it is glass.
+    const Ui::Corner corner = t.style.corner;
+    const float      wr = corner == Ui::Corner::Square ? 0.0f : Ui::Px(t.metrics.windowRadius);
+    const float      cut = corner == Ui::Corner::Chamfer ? wr : 0.0f;
+    const float      line = std::max(1.0f, std::floor(t.metrics.border * Ui::Scale()));
+    const bool       glass = t.style.panel == Ui::PanelStyle::Glass;
+    const Color      glow = Ui::Faded(t.colors.accent, t.style.glow);
+
+    Ui::DrawShadow(bounds, corner, wr, t.style.shadow, Ui::Scale());
+    // The body. Over the blurred world when there is one and the theme is made for it: the
+    // blur is opaque, so the window behind never shows through, only the world.
+    const Ui::Backdrop& backdrop = Ui::CurrentBackdrop();
+    if (t.style.blurs && backdrop.texture != nullptr)
+    {
+        Ui::FillShapeFromScreen(bounds, corner, wr, *backdrop.texture, backdrop.screen, WHITE);
+        Ui::FillShape(bounds, corner, wr, t.style.blurPanel);
+    }
+    else
+        Ui::FillShape(bounds, corner, wr, t.colors.panel);
+    if (glass)  // a sheen from the top, as light on a pane
+        Ui::FillTopBand({ bounds.x, bounds.y, bounds.width, bounds.height * 0.4f }, cut,
+                        Color{ 255, 255, 255, 16 }, Color{ 255, 255, 255, 3 }, false);
+
     const Rectangle bar = TitleBar(bounds);
-    DrawRectangleRec(bar, t.colors.title);
+    switch (t.style.titleBar)
+    {
+        case Ui::TitleBar::Solid:
+            if (corner == Ui::Corner::Rounded && wr > 0.0f)
+            {
+                // Rounded on top only: a rounded bar, its lower half squared off.
+                Ui::FillShape(bar, corner, wr, t.colors.title);
+                DrawRectangleRec({ bar.x, bar.y + bar.height * 0.5f, bar.width, bar.height * 0.5f },
+                                 t.colors.title);
+            }
+            else
+                Ui::FillTopBand(bar, cut, t.colors.title, t.colors.title, true);
+            break;
+        case Ui::TitleBar::Fade:
+            Ui::FillTopBand(bar, cut, t.colors.title, Ui::Faded(t.colors.title, 0.0f), true);
+            break;
+        case Ui::TitleBar::Clear:
+            if (!chrome.collapsed)
+                DrawRectangleRec({ bar.x, bar.y + bar.height - line, bar.width, line },
+                                 t.colors.border);
+            break;
+    }
     if (t.metrics.titleMark > 0.0f)  // the theme marks a title bar with a stripe down its left
-        DrawRectangleRec({ bar.x, bar.y, std::max(1.0f, Ui::Px(t.metrics.titleMark)), bar.height },
-                         t.colors.accent);
+        DrawRectangleRec(
+            { bar.x, bar.y + cut, std::max(1.0f, Ui::Px(t.metrics.titleMark)), bar.height - cut },
+            t.colors.accent);
 
     const float px = Ui::Px(t.fontSize.title);
     const float pad = Ui::Px(t.metrics.padding);
@@ -80,8 +127,29 @@ void Window::Draw(Rectangle bounds, const Chrome& chrome, Ui::Focus* focus,
             const Rectangle tr = TabRect(bounds, i, n);
             const bool      front = i == chrome.activeTab;
             const bool      over = owner && CheckCollisionPointRec(mouse, tr);
+            Color           ink = front ? t.colors.titleText : t.colors.dim;
             if (front)
-                DrawRectangleRec(tr, t.colors.panel);
+                switch (t.style.tabs)
+                {
+                    case Ui::TabStyle::Filled:
+                        DrawRectangleRec(tr, t.colors.accent);
+                        ink = t.colors.onAccent;
+                        break;
+                    case Ui::TabStyle::Segmented:
+                    {
+                        // A raised plate in the bar, as the tabs inside a window are.
+                        const float     in = Ui::Px(3.0f);
+                        const Rectangle plate{ tr.x + in, tr.y + in, tr.width - 2.0f * in,
+                                               tr.height - 2.0f * in };
+                        Ui::FillShape({ plate.x, plate.y + 1.0f, plate.width, plate.height },
+                                      Ui::Corner::Rounded, Ui::Px(t.metrics.radius),
+                                      Color{ 0, 0, 0, 100 });
+                        Ui::FillShape(plate, Ui::Corner::Rounded, Ui::Px(t.metrics.radius),
+                                      t.colors.title);
+                        break;
+                    }
+                    default: DrawRectangleRec(tr, t.colors.panel); break;
+                }
             else if (over)
                 DrawRectangleRec(tr, t.colors.hover);
             if (i > 0)
@@ -89,10 +157,12 @@ void Window::Draw(Rectangle bounds, const Chrome& chrome, Ui::Focus* focus,
                            t.colors.border);
             const float       inner = pad * 0.5f;
             const std::string label = Ui::Ellipsize(chrome.tabs[i], tr.width - 2.0f * inner, width);
-            Ui::DrawString(Ui::Face::Heading, label,
-                           { tr.x + inner, Ui::CentredTop(Ui::Face::Heading, px, tr.y, tr.height) },
-                           px, front ? t.colors.titleText : t.colors.dim);
-            if (front)
+            Ui::DrawGlowString(
+                Ui::Face::Heading, label,
+                { tr.x + inner, Ui::CentredTop(Ui::Face::Heading, px, tr.y, tr.height) }, px, ink,
+                front ? glow : Color{ 0, 0, 0, 0 });
+            if (front &&
+                (t.style.tabs == Ui::TabStyle::Underline || t.style.tabs == Ui::TabStyle::Boxed))
                 DrawLineEx({ tr.x, tr.y + 1.0f }, { tr.x + tr.width, tr.y + 1.0f }, 2.0f,
                            t.colors.accent);
         }
@@ -100,11 +170,21 @@ void Window::Draw(Rectangle bounds, const Chrome& chrome, Ui::Focus* focus,
     else
     {
         const std::string& title = chrome.tabs.size() == 1 ? chrome.tabs[0] : title_;
-        Ui::DrawString(Ui::Face::Heading, title,
-                       { bounds.x + pad, Ui::CentredTop(Ui::Face::Heading, px, bar.y, bar.height) },
-                       px, t.colors.titleText);
+        Ui::DrawGlowString(
+            Ui::Face::Heading, title,
+            { bounds.x + pad, Ui::CentredTop(Ui::Face::Heading, px, bar.y, bar.height) }, px,
+            t.colors.titleText, glow);
     }
-    DrawRectangleLinesEx(bounds, 1.0f, t.colors.border);
+    Ui::OutlineShape(bounds, corner, wr, line, t.colors.border);
+    if (glass && cut > 0.0f)
+    {
+        // The cut corners drawn in the accent: what makes the plate read as one.
+        DrawLineEx({ bounds.x, bounds.y + cut }, { bounds.x + cut, bounds.y }, line,
+                   t.colors.accent);
+        DrawLineEx({ bounds.x + bounds.width - cut, bounds.y + bounds.height },
+                   { bounds.x + bounds.width, bounds.y + bounds.height - cut }, line,
+                   t.colors.accent);
+    }
     if (chrome.dropTarget)  // let go here and it becomes a tab of this
         DrawRectangleLinesEx(bar, Ui::Px(2.0f), t.colors.accent);
 

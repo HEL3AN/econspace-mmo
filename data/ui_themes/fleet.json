@@ -15,6 +15,7 @@
         "track": "#2A33405A",
         "hover": "#8DB2D81A",
         "selected": "#8DB2D82E",
+        "onAccent": "#0B0F14",
         "backdrop": "#06080C",
         "shade": "#06080EEB",
         "sensor": "#050A09"
@@ -44,7 +45,9 @@
         "menuBar": 64,
         "formLabel": 104,
         "titleMark": 2,
-        "tabMark": 2
+        "tabMark": 2,
+        "windowRadius": 0,
+        "rowMark": 0
     },
     "fontSize": {
         "small": 11,
@@ -54,13 +57,24 @@
         "heading": 21
     },
     "fonts": {
-        "regular": { "file": "fonts/BarlowSemiCondensed-Regular.ttf", "upper": false, "tracking": 0 },
-        "strong": { "file": "fonts/BarlowSemiCondensed-SemiBold.ttf", "upper": false, "tracking": 0 },
-        "heading": { "file": "fonts/BarlowCondensed-SemiBold.ttf", "upper": true, "tracking": 0.1 },
-        "numbers": { "file": "fonts/BarlowSemiCondensedTnum-Regular.ttf", "upper": false, "tracking": 0 }
+        "regular": { "file": "fonts/BarlowSemiCondensed-Regular.ttf", "case": "as-written", "tracking": 0 },
+        "strong": { "file": "fonts/BarlowSemiCondensed-SemiBold.ttf", "case": "as-written", "tracking": 0 },
+        "heading": { "file": "fonts/BarlowCondensed-SemiBold.ttf", "case": "upper", "tracking": 0.1 },
+        "numbers": { "file": "fonts/BarlowSemiCondensedTnum-Regular.ttf", "case": "as-written", "tracking": 0 }
     },
     "text": {
         "lineHeight": 1.35,
         "gamma": 1.2
+    },
+    "style": {
+        "corner": "square",
+        "titleBar": "solid",
+        "tabStyle": "underline",
+        "divider": "solid",
+        "barStyle": "solid",
+        "shadow": "none",
+        "panel": "flat",
+        "glow": 0,
+        "blurPanel": null
     }
 }

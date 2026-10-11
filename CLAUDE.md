@@ -68,6 +68,7 @@ cmake --build build-release
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --perf --frames 240  # CPU+GPU ms per phase to stderr (F9 in game; --notreat, --size W H; --treated puts a shot through the treatment)
 ./build/bin/editor/worldeditor.exe gallery shapes perf frames 200   # the same for the editor (`time T` freezes the clock, `treated` shot)
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --sensor 2000000 --shot s.png  # the sensor screen (V), 2M across
+./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --theme glass --blur --open settings --click 565 141 60 --shot t.png --frames 90  # a UI theme for one run; a click played into raylib's input on frame 60
 ./build/bin/editor/worldeditor.exe
 ./build/bin/editor/worldeditor.exe gallery           # every archetype at once, for tuning a look (F3)
 ./build/bin/editor/worldeditor.exe gallery shapes    # ...on the shape backend (F2 switches; F10 = screen treatment)

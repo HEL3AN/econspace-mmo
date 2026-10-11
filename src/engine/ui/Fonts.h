@@ -35,13 +35,27 @@ enum class Face
 };
 constexpr int FACE_COUNT = 4;
 
+// How a face sets the letters it is given. `Sentence` is for a theme that writes its titles
+// as a sentence: its first letter is a capital ("dist" is "Dist"), and a run written all in
+// capitals ("SELECTED ITEM", as the code names windows) keeps only that one; a run that has
+// any small letter in it is a name or a sentence already ("Jita IV") and keeps the rest.
+enum class TextCase
+{
+    AsWritten,
+    Upper,     // capitals, whatever the text says
+    Sentence,  // capitals written as a sentence
+};
+
+// The letters of `text` as a face in this case draws them: what a test can hold of the rule.
+std::string SetCase(TextCase c, std::string_view text);
+
 struct FontFiles
 {
     // One per Face, in its order: the file, and how text in it is set.
     struct File
     {
         std::string path;
-        bool        upper = false;    // capitals, whatever the text says
+        TextCase    textCase = TextCase::AsWritten;
         float       tracking = 0.0f;  // extra room between letters, in ems
     } faces[FACE_COUNT];
     // Above 1 thickens the coverage of every glyph's edge: pale text on a dark ground blended
@@ -52,6 +66,9 @@ struct FontFiles
 // After InitWindow. A face whose file is missing falls back to raylib's own font and says
 // so in the log: the game still runs, but nothing should ship like that.
 void LoadFonts(const FontFiles& files);
+// Counts LoadFonts calls: whatever measured text and kept the measure (Clay does, per layout)
+// compares this to know its widths are another font's.
+int  FontGeneration();
 void UnloadFonts();
 bool FontsLoaded();
 

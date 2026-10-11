@@ -1,0 +1,80 @@
+{
+    "name": "Industrial",
+    "colors": {
+        "panel": "#100F0E",
+        "border": "#3A332B",
+        "title": "#1B1815",
+        "titleText": "#E8E0D2",
+        "accent": "#F29A2E",
+        "text": "#E8E0D2",
+        "dim": "#8F8574",
+        "good": "#9CC46A",
+        "warn": "#F2C230",
+        "bad": "#E2553F",
+        "money": "#FFD27A",
+        "track": "#3A332B88",
+        "hover": "#F29A2E1A",
+        "selected": "#F29A2E2E",
+        "onAccent": "#151008",
+        "backdrop": "#0A0908",
+        "shade": "#0A0908EB",
+        "sensor": "#080A08"
+    },
+    "standing": {
+        "own": "#9CC46A",
+        "friendly": "#6BB3E0",
+        "neutral": "#D8D0C0",
+        "hostile": "#E2553F",
+        "unowned": "#7C7466"
+    },
+    "metrics": {
+        "titleHeight": 28,
+        "padding": 10,
+        "gap": 8,
+        "rowGap": 4,
+        "radius": 0,
+        "border": 2,
+        "barHeight": 6,
+        "buttonHeight": 26,
+        "resizeGrip": 12,
+        "rowHeight": 20,
+        "scrollbar": 4,
+        "snap": 12,
+        "tabWidth": 120,
+        "sidePanel": 270,
+        "menuBar": 72,
+        "formLabel": 124,
+        "titleMark": 6,
+        "tabMark": 2,
+        "windowRadius": 0,
+        "rowMark": 4
+    },
+    "fontSize": {
+        "small": 11,
+        "label": 12,
+        "body": 13,
+        "title": 14,
+        "heading": 24
+    },
+    "fonts": {
+        "regular": { "file": "fonts/ChakraPetch-Regular.ttf", "case": "as-written", "tracking": 0 },
+        "strong": { "file": "fonts/ChakraPetch-SemiBold.ttf", "case": "as-written", "tracking": 0 },
+        "heading": { "file": "fonts/ChakraPetch-SemiBold.ttf", "case": "upper", "tracking": 0.06 },
+        "numbers": { "file": "fonts/IBMPlexMono-Medium.ttf", "case": "as-written", "tracking": 0 }
+    },
+    "text": {
+        "lineHeight": 1.35,
+        "gamma": 1.2
+    },
+    "style": {
+        "corner": "square",
+        "titleBar": "solid",
+        "tabStyle": "filled",
+        "divider": "dashed",
+        "barStyle": "striped",
+        "shadow": "offset",
+        "panel": "flat",
+        "glow": 0,
+        "blurPanel": null
+    }
+}

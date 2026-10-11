@@ -101,6 +101,7 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     materials_.Load(dataDir_);  // one shader per material (#121)
     shapeBackend_.SetMaterials(&materials_);
     treatment_.Load(dataDir_);  // shaders and the pass chain (#120); safe if neither exists
+    backdrop_.Load(dataDir_);   // the blur under glass windows (#297); coarser without its shader
 
     // The authoritative ship lives on the server. This one is the client's prediction of
     // it: the same Ship type, stepped with the same Sim::StepPlayerShip, corrected by
@@ -136,6 +137,7 @@ Game::~Game()
 {
     netConn_.reset();  // close the socket; main() unloads winsock after we're gone
     Tex::Unload();
+    backdrop_.Unload();
     Ui::UnloadAssets();
     CloseWindow();
 }
@@ -145,6 +147,7 @@ void Game::Run()
     {
         Render::Perf::BeginFrame();
         float dt = GetFrameTime();
+        PlayScriptedClicks();
 
         // Pick up the current window size (it may have been resized with the mouse).
         screenWidth_ = GetScreenWidth();
@@ -278,6 +281,17 @@ void Game::Run()
         const bool shooting = !shotPath_.empty();
         if (shooting && shotTarget_.id == 0)
             shotTarget_ = LoadRenderTexture(screenWidth_, screenHeight_);
+        // Glass windows over a blurred world (#297): the world is drawn once into a texture of
+        // its own and blurred, before anything else is drawn this frame, and the frame then
+        // draws that texture in its place. Only in flight, only when the player asked for it
+        // and the theme is glass -- otherwise none of it is paid for.
+        const bool blur = mode_ == GameMode::Flying && !hudHidden_ && Ui::BlurSetting() &&
+                          Ui::CurrentTheme().style.blurs;
+        if (blur)
+            backdrop_.Capture(screenWidth_, screenHeight_, [this]() { DrawWorld(); });
+        Ui::SetBackdrop(blur ? Ui::Backdrop{ &backdrop_.Blurred(),
+                                             { (float)screenWidth_, (float)screenHeight_ } }
+                             : Ui::Backdrop{});
         BeginDrawing();
         if (shooting)
             BeginTextureMode(shotTarget_);
@@ -297,7 +311,9 @@ void Game::Run()
 
         if (useChain)
             treatment_.Begin(screenWidth_, screenHeight_, shooting ? &shotTarget_ : nullptr);
-        if (flying)
+        if (flying && blur)
+            backdrop_.Present();
+        else if (flying)
             DrawWorld();
         else
             DrawStationHall();
@@ -371,6 +387,38 @@ void Game::Run()
             }
         }
     }
+}
+
+void Game::PlayScriptedClicks()
+{
+    // raylib's own event numbers (AutomationEventType, private to rcore.c in 5.5).
+    constexpr unsigned int MOUSE_UP = 5, MOUSE_DOWN = 6, MOUSE_AT = 7;
+    for (const ScriptedClick& c : clicks_)
+    {
+        AutomationEvent e{};
+        // Over the place two frames early, so whatever is under it is under the cursor
+        // before the press; down on the frame, up on the next.
+        if (frameIndex_ >= c.frame - 2 && frameIndex_ <= c.frame + 1)
+        {
+            e.type = MOUSE_AT;
+            e.params[0] = (int)c.x;
+            e.params[1] = (int)c.y;
+            PlayAutomationEvent(e);
+        }
+        e.params[0] = MOUSE_BUTTON_LEFT;
+        if (frameIndex_ == c.frame)
+        {
+            e.type = MOUSE_DOWN;
+            PlayAutomationEvent(e);
+            TraceLog(LOG_INFO, "Scripted click at %.0f, %.0f (frame %d)", c.x, c.y, c.frame);
+        }
+        else if (frameIndex_ == c.frame + 1)
+        {
+            e.type = MOUSE_UP;
+            PlayAutomationEvent(e);
+        }
+    }
+    frameIndex_++;
 }
 
 void Game::MeasurePerf(int frames)

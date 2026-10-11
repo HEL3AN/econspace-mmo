@@ -16,6 +16,7 @@ namespace
 float       g_userScale = 1.0f;
 float       g_displayOverride = 0.0f;
 std::string g_theme = DEFAULT_THEME;
+bool        g_blur = false;
 
 int Hex(char c)
 {
@@ -116,6 +117,28 @@ bool ReadStrings(const nlohmann::json& j, const char* section, const Fields<std:
     }
     return true;
 }
+
+// A renderer token: one word from a short list. A word not on it is an error that names the
+// words that are, so a misspelt "chamfred" is not silently drawn square.
+template <typename E>
+bool ReadToken(const nlohmann::json& v, const std::string& what,
+               const std::vector<std::pair<const char*, E>>& words, E& out, std::string& error)
+{
+    std::string list;
+    for (const auto& w : words)
+    {
+        if (v.is_string() && v.get<std::string>() == w.first)
+        {
+            out = w.second;
+            return true;
+        }
+        list += (list.empty() ? "" : ", ") + std::string(w.first);
+    }
+    error = what + ": expected one of " + list;
+    if (v.is_string())
+        error += ", not '" + v.get<std::string>() + "'";
+    return false;
+}
 }  // namespace
 
 bool ParseColor(const std::string& s, Color& out)
@@ -138,8 +161,10 @@ bool ParseTheme(const nlohmann::json& j, Theme& into, std::string& error)
 {
     Theme t;  // filled whole, then copied: a failure leaves `into` as it was
     t.id = into.id;
-    if (!CheckKeys(j, "theme",
-                   { "name", "colors", "standing", "metrics", "fontSize", "fonts", "text" }, error))
+    if (!CheckKeys(
+            j, "theme",
+            { "name", "colors", "standing", "metrics", "fontSize", "fonts", "text", "style" },
+            error))
         return false;
     if (!j["name"].is_string() || j["name"].get<std::string>().empty())
     {
@@ -164,6 +189,7 @@ bool ParseTheme(const nlohmann::json& j, Theme& into, std::string& error)
                       { "track", &c.track },
                       { "hover", &c.hover },
                       { "selected", &c.selected },
+                      { "onAccent", &c.onAccent },
                       { "backdrop", &c.backdrop },
                       { "shade", &c.shade },
                       { "sensor", &c.sensor } },
@@ -199,7 +225,9 @@ bool ParseTheme(const nlohmann::json& j, Theme& into, std::string& error)
                        { "menuBar", &m.menuBar },
                        { "formLabel", &m.formLabel },
                        { "titleMark", &m.titleMark },
-                       { "tabMark", &m.tabMark } },
+                       { "tabMark", &m.tabMark },
+                       { "windowRadius", &m.windowRadius },
+                       { "rowMark", &m.rowMark } },
                      error))
         return false;
 
@@ -230,19 +258,18 @@ bool ParseTheme(const nlohmann::json& j, Theme& into, std::string& error)
     {
         const std::string     section = std::string("fonts.") + face.first;
         const nlohmann::json& fj = j["fonts"][face.first];
-        if (!CheckKeys(fj, section.c_str(), { "file", "upper", "tracking" }, error))
+        if (!CheckKeys(fj, section.c_str(), { "file", "case", "tracking" }, error))
             return false;
         if (!ReadStrings({ { "file", fj["file"] } }, section.c_str(),
                          { { "file", &face.second->file } }, error) ||
             !ReadNumbers({ { "tracking", fj["tracking"] } }, section.c_str(),
-                         { { "tracking", &face.second->tracking } }, error))
+                         { { "tracking", &face.second->tracking } }, error) ||
+            !ReadToken(fj["case"], section + ".case",
+                       { { "as-written", TextCase::AsWritten },
+                         { "upper", TextCase::Upper },
+                         { "sentence", TextCase::Sentence } },
+                       face.second->textCase, error))
             return false;
-        if (!fj["upper"].is_boolean())
-        {
-            error = section + ".upper: expected true or false";
-            return false;
-        }
-        face.second->upper = fj["upper"].get<bool>();
     }
 
     if (!ReadNumbers(j["text"], "text",
@@ -253,6 +280,60 @@ bool ParseTheme(const nlohmann::json& j, Theme& into, std::string& error)
         error = "text: lineHeight is at least 1, gamma between 0.5 and 3";
         return false;
     }
+
+    const nlohmann::json& sj = j["style"];
+    Theme::Style&         st = t.style;
+    if (!CheckKeys(sj, "style",
+                   { "corner", "titleBar", "tabStyle", "divider", "barStyle", "shadow", "panel",
+                     "glow", "blurPanel" },
+                   error))
+        return false;
+    if (!ReadToken(sj["corner"], "style.corner",
+                   { { "square", Corner::Square },
+                     { "rounded", Corner::Rounded },
+                     { "chamfer", Corner::Chamfer } },
+                   st.corner, error) ||
+        !ReadToken(sj["titleBar"], "style.titleBar",
+                   { { "solid", TitleBar::Solid },
+                     { "fade", TitleBar::Fade },
+                     { "clear", TitleBar::Clear } },
+                   st.titleBar, error) ||
+        !ReadToken(sj["tabStyle"], "style.tabStyle",
+                   { { "underline", TabStyle::Underline },
+                     { "boxed", TabStyle::Boxed },
+                     { "filled", TabStyle::Filled },
+                     { "segmented", TabStyle::Segmented } },
+                   st.tabs, error) ||
+        !ReadToken(sj["divider"], "style.divider",
+                   { { "solid", LineStyle::Solid }, { "dashed", LineStyle::Dashed } }, st.divider,
+                   error) ||
+        !ReadToken(sj["barStyle"], "style.barStyle",
+                   { { "solid", BarStyle::Solid }, { "striped", BarStyle::Striped } }, st.bar,
+                   error) ||
+        !ReadToken(
+            sj["shadow"], "style.shadow",
+            { { "none", Shadow::None }, { "soft", Shadow::Soft }, { "offset", Shadow::Offset } },
+            st.shadow, error) ||
+        !ReadToken(sj["panel"], "style.panel",
+                   { { "flat", PanelStyle::Flat }, { "glass", PanelStyle::Glass } }, st.panel,
+                   error) ||
+        !ReadNumbers({ { "glow", sj["glow"] } }, "style", { { "glow", &st.glow } }, error))
+        return false;
+    if (st.glow > 1.0f)
+    {
+        error = "style.glow: between 0 and 1";
+        return false;
+    }
+    // A colour, or null for a theme that never blurs what is behind its windows.
+    st.blurs = !sj["blurPanel"].is_null();
+    if (st.blurs)
+    {
+        if (!ReadColors({ { "blurPanel", sj["blurPanel"] } }, "style",
+                        { { "blurPanel", &st.blurPanel } }, error))
+            return false;
+    }
+    else
+        st.blurPanel = { 0, 0, 0, 0 };
 
     into = t;
     return true;
@@ -301,6 +382,8 @@ std::vector<ThemeEntry> ListThemes(const std::string& dir, std::string* problems
         else if (problems != nullptr)
             *problems += error + "\n";
     }
+    std::stable_partition(themes.begin(), themes.end(),
+                          [](const ThemeEntry& e) { return e.id == DEFAULT_THEME; });
     return themes;
 }
 
@@ -378,7 +461,19 @@ bool LoadUiSettings(const std::string& path, std::string& error)
         SetUserScale(j["scale"].get<float>());
     if (j.contains("theme") && j["theme"].is_string() && !j["theme"].get<std::string>().empty())
         g_theme = j["theme"].get<std::string>();
+    if (j.contains("blur") && j["blur"].is_boolean())
+        g_blur = j["blur"].get<bool>();
     return true;
+}
+
+bool BlurSetting()
+{
+    return g_blur;
+}
+
+void SetBlurSetting(bool on)
+{
+    g_blur = on;
 }
 
 const std::string& ThemeSetting()
@@ -397,6 +492,7 @@ bool SaveUiSettings(const std::string& path)
     j["version"] = UI_SETTINGS_VERSION;
     j["scale"] = g_userScale;
     j["theme"] = g_theme;
+    j["blur"] = g_blur;
     std::ofstream out(path);
     if (!out)
         return false;

@@ -32,7 +32,7 @@ struct Sized
 struct FaceData
 {
     std::string                path;
-    bool                       upper = false;    // set in capitals
+    TextCase                   textCase = TextCase::AsWritten;
     float                      tracking = 0.0f;  // ems between letters
     std::vector<unsigned char> file;             // the TTF, read once and rasterised per size
     stbtt_fontinfo             info{};
@@ -50,6 +50,7 @@ float    g_gamma = 1.0f;
 Font     g_glyph{};
 bool     g_glyphLoaded = false;
 bool     g_loaded = false;
+int      g_generation = 0;
 
 constexpr int MIN_PX = 6;
 constexpr int MAX_PX = 160;
@@ -120,6 +121,21 @@ int Upper(int cp)
     if (cp >= 0xE0 && cp <= 0xFE && cp != 0xF7)
         return cp - 32;
     return cp;
+}
+
+// ...and the small letter of a capital, the other way round.
+int Lower(int cp)
+{
+    if (cp >= 'A' && cp <= 'Z')
+        return cp + 32;
+    if (cp >= 0xC0 && cp <= 0xDE && cp != 0xD7)
+        return cp + 32;
+    return cp;
+}
+
+bool IsSmallLetter(int cp)
+{
+    return Upper(cp) != cp;
 }
 
 bool IsDefault(const Font& font)
@@ -280,6 +296,44 @@ float Kerning(FaceData& f, int slotA, int slotB)
     return (float)it->second;
 }
 
+// Sets the letters of one run as a face's case says (TextCase), one code point at a time.
+class CaseSetter
+{
+public:
+    CaseSetter(TextCase c, std::string_view text) : case_(c)
+    {
+        // A run is set as a sentence only if it is all capitals; one small letter says the
+        // capitals in it are meant (a name), and it is drawn as written.
+        if (c == TextCase::Sentence)
+        {
+            lower_ = true;
+            for (size_t i = 0; i < text.size() && lower_;)
+                lower_ = !IsSmallLetter(NextCodepoint(text, i));
+        }
+    }
+    int operator()(int cp)
+    {
+        if (case_ == TextCase::Upper)
+            return Upper(cp);
+        if (case_ != TextCase::Sentence)
+            return cp;
+        // A sentence that starts with a letter starts with a capital ("1280 x 720" does not);
+        // the letters after it are small if the run was all capitals, and as written otherwise.
+        const bool first = first_ && cp != ' ';
+        if (first)
+            first_ = false;
+        const bool letter = Lower(cp) != cp || Upper(cp) != cp;
+        if (!letter)
+            return cp;
+        return first ? Upper(cp) : lower_ ? Lower(cp) : cp;
+    }
+
+private:
+    TextCase case_;
+    bool     lower_ = false;
+    bool     first_ = true;
+};
+
 // Walks a run of text glyph by glyph: where each one goes, relative to the run's top left.
 // Measuring and drawing are the same walk, so a measure is exactly what is drawn.
 template <typename F> Vector2 Walk(Face face, int px, std::string_view text, F&& glyph)
@@ -288,9 +342,10 @@ template <typename F> Vector2 Walk(Face face, int px, std::string_view text, F&&
     const Sized& s = SizedAt(face, px);
     float        x = 0.0f, y = 0.0f, widest = 0.0f;
     int          prev = -1;
+    CaseSetter   setCase(f.textCase, text);
     for (size_t i = 0; i < text.size();)
     {
-        const int cp = NextCodepoint(text, i);
+        const int cp = setCase(NextCodepoint(text, i));
         if (cp == '\n')
         {
             widest = std::max(widest, x);
@@ -299,7 +354,7 @@ template <typename F> Vector2 Walk(Face face, int px, std::string_view text, F&&
             prev = -1;
             continue;
         }
-        const int slot = SlotOf(f.upper ? Upper(cp) : cp);
+        const int slot = SlotOf(cp);
         // Tracking goes between letters, never after the last: a label centred in a button
         // would otherwise sit left of its middle by one letter's tracking.
         if (prev >= 0)
@@ -319,10 +374,11 @@ void LoadFonts(const FontFiles& files)
     for (int i = 0; i < FACE_COUNT; i++)
     {
         ReadFace(g_faces[i], files.faces[i].path);
-        g_faces[i].upper = files.faces[i].upper;
+        g_faces[i].textCase = files.faces[i].textCase;
         g_faces[i].tracking = files.faces[i].tracking;
     }
     g_loaded = true;
+    g_generation++;
 }
 
 void UnloadFonts()
@@ -340,9 +396,39 @@ void UnloadFonts()
     g_loaded = false;
 }
 
+int FontGeneration()
+{
+    return g_generation;
+}
+
 bool FontsLoaded()
 {
     return g_loaded;
+}
+
+std::string SetCase(TextCase c, std::string_view text)
+{
+    CaseSetter  setCase(c, text);
+    std::string out;
+    for (size_t i = 0; i < text.size();)
+    {
+        const int cp = setCase(NextCodepoint(text, i));
+        // Back to UTF-8: the atlas holds nothing above three bytes.
+        if (cp < 0x80)
+            out += (char)cp;
+        else if (cp < 0x800)
+        {
+            out += (char)(0xC0 | (cp >> 6));
+            out += (char)(0x80 | (cp & 0x3F));
+        }
+        else
+        {
+            out += (char)(0xE0 | (cp >> 12));
+            out += (char)(0x80 | ((cp >> 6) & 0x3F));
+            out += (char)(0x80 | (cp & 0x3F));
+        }
+    }
+    return out;
 }
 
 int FontPx(float px)

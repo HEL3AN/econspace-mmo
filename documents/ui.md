@@ -9,6 +9,7 @@ lives in `src/engine/ui/`.
 | Piece | File | What it is for |
 |---|---|---|
 | Theme | `Theme.h`, `data/ui_themes/*.json` | every colour, gap, radius, font size and typeface, by name; switchable |
+| Paint | `Paint.h` | what a theme's renderer tokens draw: cut and rounded corners, glow, shadow, dashes, stripes, the blur |
 | Scale | `Theme.h` (`Ui::Scale`, `Ui::Px`) | how many pixels a layout unit is |
 | Fonts | `Fonts.h` | the typeface, rasterised at each size it is used at |
 | Desk | `Desk.h`, `DeskLayout.h` | which windows exist, where, which is in front, who has the mouse, Esc |
@@ -74,7 +75,8 @@ void Game::DrawMissions(const Ui::Frame& f)
   a function on `Layout` built from boxes and text, never from coordinates.
 - **A form** is `FormRow` lines: `L.FormRow("Resolution", [&] { ...buttons... })` puts the
   label in a column `metrics.formLabel` wide and the controls beside it, so every line of
-  the form lines up; an empty label puts a note under the controls (Settings). Full-width
+  the form lines up (a label longer than the column wraps under itself); an empty label puts
+  a note under the controls (Settings). Full-width
   buttons under a heading left most of a settings window empty.
 - **Adapting.** A layout follows the window, so a window can be any size. For a real change
   of arrangement, branch on the area: the status window puts its two halves side by side
@@ -119,7 +121,9 @@ values come from the window's model.
 - **Scroll** lays its children out top to bottom, scrolls them with the wheel, and puts an
   indicator beside them that shows how much there is and where the view is; it can be
   dragged. Its room is kept even when everything fits, so a list that grows past the window
-  does not shift sideways. Clay keeps at most ten clipping elements per layout, so a window
+  does not shift sideways. Its children are laid out exactly as wide as its view was the
+  frame before: the view clips sideways, and a clipped axis let them be as wide as they liked,
+  so a note meant to wrap ran past the window's edge and took every row with it. Clay keeps at most ten clipping elements per layout, so a window
   scrolls a list, not every cell of it.
 - **Table** is headings, a divider and rows in a `Scroll`:
 
@@ -321,9 +325,19 @@ more than the account holds, says so instead of offering a button the server wou
 
 A theme is one whole file in `data/ui_themes/`, named by its id: colours, metrics, font
 sizes, the four faces and how text is set. The player picks one in Settings (Interface,
-Theme), and the choice is kept in `ui_settings.json`. `fleet` ("Fleet console") is the
-default; `plain` is the earlier Inter look. A new theme is a new file and nothing else --
-Settings lists whatever is in the folder and loads.
+Theme), and the choice is kept in `ui_settings.json`. Five ship, the four styles the owner
+chose from (#297) and the earlier look:
+
+| Id | Name | Faces | What it looks like |
+|---|---|---|---|
+| `fleet` | Fleet console (**the default**) | Barlow Condensed, Barlow Semi Condensed | dense, steel blue, square, 1 px frames, an accent stripe on each title |
+| `glass` | Glass HUD | Oxanium, Exo 2 | cyan on dark glass, chamfered corners, a soft glow on titles and the selection; blur behind windows as a setting |
+| `industrial` | Industrial | Chakra Petch, IBM Plex Mono for figures | amber, 2 px frames, solid chosen tabs, dashed dividers, striped bars, a hard shadow |
+| `clean` | Clean modern | IBM Plex Sans | rounded, a soft shadow, segmented tabs, titles in sentence case |
+| `plain` | Plain | Inter | the earlier look |
+
+A new theme is a new file and nothing else -- Settings lists whatever is in the folder and
+loads, the default first.
 
 Switching is a reload with no restart (`Ui::UseTheme`): the file is read, the theme in use
 is replaced, and every font is rasterised again. It happens between frames (Settings asks
@@ -331,21 +345,57 @@ for it while it is drawn, the game switches at the start of the next one), becau
 layout half declared in one theme must not finish in another. **Nothing keeps a theme value
 past a frame**: windows ask `Ui::CurrentTheme()` as they draw, the colour names in
 `UiTheme.h` are references into the theme in use, and the desk is told the title height,
-snap and gap every frame.
+snap and gap every frame. One thing did keep something: Clay remembers what each word
+measured, per layout, and after a switch the same face at the same size is another font --
+values were cut short and labels ran together until the window was reopened. A layout now
+compares `Ui::FontGeneration()` when it begins and makes Clay forget its measures when the
+fonts have changed (`layout_tests.cpp` holds it).
 
 A theme file is read strictly: an unknown field or a missing one is a load error (a theme
 that fails keeps the one in use; at start, the default, and failing that the built-in
 values in `Theme.h`, which are the same as `fleet.json`). Colours are `"#RRGGBB"` or
-`"#RRGGBBAA"`, and a window's `panel` is opaque in every shipped theme -- translucent, the
-text of the window behind ran into the one in front. The `standing` colours are allegiance
+`"#RRGGBBAA"`, and a window's `panel` is opaque in every shipped theme but glass, whose
+panel lets a few percent through -- translucent, the text of the window behind ran into the
+one in front. The `standing` colours are allegiance
 as the *instruments* say it -- radar, overview, sensor screen, target panel -- and never an
 object's colour in the world view (#117).
 
-A theme can turn a few things in the frame on and off, by number rather than by code:
-`metrics.titleMark` (an accent stripe down a title bar), `metrics.tabMark` (tabs as a
-strip on a rule, the chosen one underlined, rather than filled boxes), `metrics.radius`.
-A look that needs more than a switch -- chamfered corners, a glow, blur behind a window --
-is a renderer change in `Window.cpp` and the widgets, read from a new token.
+A theme turns a few things in the frame on and off by number: `metrics.titleMark` (an
+accent stripe down a title bar), `metrics.tabMark` (how thick the chosen tab's underline
+is), `metrics.rowMark` (an accent bar down the left of a table's lit row),
+`metrics.radius` (a widget's corner) and `metrics.windowRadius` (a window's). What a number
+cannot say is a **renderer token** in `style`: one word from a short list, drawn once in
+`Window.cpp` and the widgets through `Paint.h`, so a theme that says "chamfer" gets the same
+cut on a window, a button and a tab. A word not on its list is a load error that names the
+words that are.
+
+| Token | Words | What it changes |
+|---|---|---|
+| `corner` | `square`, `rounded`, `chamfer` | every frame and widget: square whatever the radii say; rounded by them; cut at 45 degrees, top left and bottom right, by them |
+| `titleBar` | `solid`, `fade`, `clear` | the title bar: `colors.title`; that colour fading out to the right; the panel with a rule under it |
+| `tabStyle` | `underline`, `boxed`, `filled`, `segmented` | tabs, in a window and in a stack's title bar: a strip on a rule, the chosen one underlined; separate boxes; boxes in a frame of the border colour, the chosen one solid accent with `colors.onAccent` text; one sunken track with the chosen tab a raised plate |
+| `divider` | `solid`, `dashed` | `Layout::Divider` and a table's rule |
+| `barStyle` | `solid`, `striped` | `Layout::Bar`: a strip on its track; segments in a frame |
+| `shadow` | `none`, `soft`, `offset` | under each window: nothing; one blurred square stretched round it (a nine-patch, so it costs one fill); a hard copy down and to the right |
+| `panel` | `flat`, `glass` | glass adds a sheen down from the top, a lit row and a chosen tab that fade, and the cut corners drawn in the accent |
+| `glow` | 0 to 1 | a halo on titles, the chosen tab's underline, a lit button and bars; 0 draws none and costs nothing |
+| `blurPanel` | a colour, or `null` | the panel over the blurred world; `null` is a theme that never blurs |
+
+A widget asks for its corners with `Box::ThemeCorners()` rather than `Radius(metrics.radius)`,
+and a box can ask the painter for more with `Box::Paint(Ui::PAINT_...)` -- the flags travel
+through Clay untouched to `DrawCommand::paint`. Fleet console and Plain are these tokens set to
+what they drew before, and their frames are pixel for pixel what they were.
+
+**Blur behind windows** is a setting (Settings, Interface; `"blur"` in `ui_settings.json`;
+`--blur` for one run), off by default because it is paid for every frame. While it is on, in
+flight, in a theme with a `blurPanel`, the game draws the world once into a texture of its
+own (`Render::Backdrop`), halves it twice and blurs the quarter-size copy across and down with
+bloom's blur shader, then draws that texture where the world would have been drawn. Every
+window samples the same small texture under its own shape (`Ui::CurrentBackdrop`) and lays
+`blurPanel` over it. The blur is opaque, so the window behind never shows through, only the
+world. Without the shader the copy is shrunk to a sixteenth instead and bilinear filtering
+blurs it more coarsely -- the setting never needs a shader. Docked, there is no world under
+the windows and the setting does nothing.
 
 `Ui::Scale()` is the player's setting (Settings, saved in `ui_settings.json` next to the
 executable) times the display's DPI. It sizes every window frame, every window's place
@@ -354,7 +404,8 @@ another), and everything inside a `Ui::Layout`. `--uiscale S` sets it for one ru
 
 ## Fonts
 
-A theme names four faces (`Ui::Face`), each a file in `data/fonts/` with two settings:
+A theme names four faces (`Ui::Face`), each a file in `data/fonts/` with two settings, its
+`case` and its `tracking`:
 
 | Face | For | Fleet console |
 |---|---|---|
@@ -363,8 +414,11 @@ A theme names four faces (`Ui::Face`), each a file in `data/fonts/` with two set
 | `heading` | window titles, tabs, buttons, column headings, a screen's heading | Barlow Condensed SemiBold, capitals, tracked 0.1 em |
 | `numbers` | figures in a column aligned to the end | Barlow Semi Condensed with tabular figures |
 
-`upper` sets a face in capitals whatever the text says, and `tracking` adds room between
-letters (in ems, between letters only -- never after the last, or a centred label sits off
+`case` is `as-written`, `upper` (capitals, whatever the text says) or `sentence`: the first
+letter a capital, and a run written all in capitals -- the code names its windows
+"SELECTED ITEM" -- set as a sentence, "Selected item"; a run with any small letter in it is
+a name ("Jita IV") and keeps the rest as written (`Ui::SetCase`, tested). `tracking` adds room
+between letters (in ems, between letters only -- never after the last, or a centred label sits off
 centre). Both belong to the face, so every heading follows without a widget knowing.
 `TextStyle::Caption()` is the heading face at the label size: what names a control rather
 than a value.
@@ -392,11 +446,43 @@ pip install opentype-feature-freezer
 pyftfeatfreeze -f tnum -S -U Tnum BarlowSemiCondensed-Regular.ttf BarlowSemiCondensedTnum-Regular.ttf
 ```
 
-The fonts are under the SIL Open Font License: `data/fonts/OFL.txt` (Inter) and
-`data/fonts/OFL-Barlow.txt` (Barlow, which has no reserved font name, so the renamed copy
-may be shipped). `Ui::Text(text, x, y, px, colour)` remains for the editor's screens placed
+The other styles' fonts, and what was done to each:
+
+| File | From | Done to it |
+|---|---|---|
+| `Oxanium-SemiBold.ttf` | google/fonts `ofl/oxanium`, a variable font | the 600 instance, with `fonttools varLib.instancer Oxanium[wght].ttf wght=600 --update-name-table`; its figures are tabular already |
+| `Exo2-Regular.ttf`, `Exo2-SemiBold.ttf` | google/fonts `ofl/exo2`, a variable font | the 400 and 600 instances, the same way |
+| `Exo2Tnum-Regular.ttf` | `Exo2-Regular.ttf` | `pyftfeatfreeze -f tnum -S -U Tnum`, as Barlow; Exo 2's tabular four is 615 units wide where the other figures are 620, so its advance was set to 620 and the outline moved 2 units right (fontTools, a few lines) |
+| `ChakraPetch-Regular.ttf`, `-SemiBold.ttf` | google/fonts `ofl/chakrapetch` | nothing; Industrial sets figures in Plex Mono |
+| `IBMPlexMono-Medium.ttf` | google/fonts `ofl/ibmplexmono` | nothing: monospaced |
+| `IBMPlexSans-Regular.ttf`, `-SemiBold.ttf` | IBM's own release, `IBM/plex` `packages/plex-sans/fonts/complete/ttf` | nothing; its figures are tabular already |
+
+Google Fonts has IBM Plex Sans only as a variable font, and an instance cut from it is a
+Modified Version under the OFL -- which may not carry the reserved name "Plex". IBM's own
+static files are shipped unmodified instead.
+
+The fonts are under the SIL Open Font License: `data/fonts/OFL.txt` (Inter),
+`OFL-Barlow.txt`, `OFL-Oxanium.txt`, `OFL-Exo2.txt`, `OFL-ChakraPetch.txt` (none of which
+reserves a name, so the instanced and renamed copies may be shipped) and `OFL-IBMPlex.txt`
+(Plex Mono and Sans, reserved font name "Plex", shipped unmodified). `Ui::Text(text, x, y, px, colour)` remains for the editor's screens placed
 by hand; new code uses `Layout::Text`. World glyphs that grow with the camera use
 `Ui::GlyphFont()`, one large filtered atlas.
+
+## Checking a theme
+
+`--theme ID` runs the client in a theme for one run (not saved), `--blur` turns the blur on,
+and `--click X Y FRAME` (repeatable) plays a left click into raylib's own input state on that
+frame -- a click sent to the window from outside never reaches it, and a shot's window is
+hidden. With them a theme switch is checked the way a player makes it: Settings open, a click
+on Interface, a click on a theme, a shot. Every theme was switched to and from at runtime that
+way, the blur toggled in glass, and back to Fleet console with nothing out of place.
+
+What the HUD costs, measured in a Release build at 1920 x 1080 with the status, selected-item,
+overview, missions, settings and radar windows open (median of three runs, CPU and GPU ms of
+the HUD phase, and the whole frame): every theme is within a millisecond of Fleet console's on
+the CPU; the soft shadow and the glow cost a little GPU; the blur costs one extra copy of the
+world and four small passes. The HUD's CPU time is mostly per-frame text work that does not
+depend on the theme -- see #297 for the numbers and what to look at.
 
 ## Clay
 

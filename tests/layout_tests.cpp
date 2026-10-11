@@ -218,3 +218,65 @@ TEST_CASE("two layouts keep their own state")
     CHECK(a.BoxOf("x").width == doctest::Approx(10.0f));
     CHECK(b.BoxOf("x").width == doctest::Approx(50.0f));
 }
+
+TEST_CASE("a layout measures its text again once the fonts have changed")
+{
+    // Clay keeps what each word measured. After a theme switch the same face at the same size
+    // is another font, and a width kept from the old one cut values short (#297).
+    Layout l;
+    float  perChar = 0.5f;
+    l.SetMeasure([&perChar](Ui::Face, float px, std::string_view text)
+                 { return Vector2{ perChar * px * (float)text.size(), px }; });
+    auto width = [&]
+    {
+        l.Begin(AREA, 1.0f);
+        l.Row(Box().Id("row"), [&] { l.Text("abcd", TextStyle::Body()); });
+        l.End();
+        return l.BoxOf("row").width;
+    };
+    const float before = width();
+    perChar = 1.0f;
+    CHECK(width() == doctest::Approx(before));  // the same fonts: the kept measure stands
+    Ui::LoadFonts(Ui::FontFiles{});  // no files: nothing is read, but the fonts are new ones
+    Ui::UnloadFonts();
+    CHECK(width() == doctest::Approx(2.0f * before));
+}
+
+TEST_CASE("a theme's renderer tokens reach the draw commands")
+{
+    Ui::Theme&      t = Ui::MutableTheme();
+    const Ui::Theme saved = t;
+    t.style.corner = Ui::Corner::Chamfer;
+    t.metrics.radius = 6.0f;
+    t.style.divider = Ui::LineStyle::Dashed;
+    t.style.bar = Ui::BarStyle::Striped;
+    t.style.glow = 0.5f;
+
+    Layout l;
+    Monospaced(l);
+    l.Begin(AREA, 1.0f);
+    l.Column(Box().Grow(),
+             [&]
+             {
+                 l.Button("b", "Go", true);
+                 l.Divider();
+                 l.Bar(0.5f, t.colors.good);
+             });
+    bool chamferedButton = false, dashed = false, striped = false, glowing = false;
+    for (const DrawCommand& c : l.End())
+    {
+        if (c.kind != DrawCommand::Kind::Rect)
+            continue;
+        chamferedButton = chamferedButton || ((c.paint & Ui::PAINT_CHAMFER) && c.radius == 6.0f);
+        dashed = dashed || (c.paint & Ui::PAINT_DASHED);
+        striped = striped || (c.paint & Ui::PAINT_STRIPED);
+        // The lit button glows in the accent, not in its own dark fill.
+        glowing = glowing || ((c.paint & Ui::PAINT_GLOW) && c.glow.r == t.colors.accent.r &&
+                              c.glow.a == t.colors.accent.a);
+    }
+    t = saved;
+    CHECK(chamferedButton);
+    CHECK(dashed);
+    CHECK(striped);
+    CHECK(glowing);
+}

@@ -1,0 +1,80 @@
+{
+    "name": "Clean modern",
+    "colors": {
+        "panel": "#171A20",
+        "border": "#2C313B",
+        "title": "#262B35",
+        "titleText": "#E4E7EC",
+        "accent": "#8FA8FF",
+        "text": "#E4E7EC",
+        "dim": "#8C93A0",
+        "good": "#7CCB98",
+        "warn": "#E6C07A",
+        "bad": "#E27C7C",
+        "money": "#EBCB7F",
+        "track": "#2C313B",
+        "hover": "#8FA8FF14",
+        "selected": "#8FA8FF26",
+        "onAccent": "#0F1322",
+        "backdrop": "#0C0E12",
+        "shade": "#0C0E12EB",
+        "sensor": "#060A0A"
+    },
+    "standing": {
+        "own": "#7CCB98",
+        "friendly": "#7FB2F0",
+        "neutral": "#D4D6DA",
+        "hostile": "#E27C7C",
+        "unowned": "#7F8693"
+    },
+    "metrics": {
+        "titleHeight": 30,
+        "padding": 13,
+        "gap": 10,
+        "rowGap": 5,
+        "radius": 5,
+        "border": 1,
+        "barHeight": 6,
+        "buttonHeight": 28,
+        "resizeGrip": 14,
+        "rowHeight": 23,
+        "scrollbar": 4,
+        "snap": 12,
+        "tabWidth": 130,
+        "sidePanel": 270,
+        "menuBar": 72,
+        "formLabel": 124,
+        "titleMark": 0,
+        "tabMark": 2,
+        "windowRadius": 9,
+        "rowMark": 0
+    },
+    "fontSize": {
+        "small": 11,
+        "label": 12,
+        "body": 13,
+        "title": 14,
+        "heading": 22
+    },
+    "fonts": {
+        "regular": { "file": "fonts/IBMPlexSans-Regular.ttf", "case": "as-written", "tracking": 0 },
+        "strong": { "file": "fonts/IBMPlexSans-SemiBold.ttf", "case": "as-written", "tracking": 0 },
+        "heading": { "file": "fonts/IBMPlexSans-SemiBold.ttf", "case": "sentence", "tracking": 0 },
+        "numbers": { "file": "fonts/IBMPlexSans-Regular.ttf", "case": "as-written", "tracking": 0 }
+    },
+    "text": {
+        "lineHeight": 1.4,
+        "gamma": 1.25
+    },
+    "style": {
+        "corner": "rounded",
+        "titleBar": "clear",
+        "tabStyle": "segmented",
+        "divider": "solid",
+        "barStyle": "solid",
+        "shadow": "soft",
+        "panel": "flat",
+        "glow": 0,
+        "blurPanel": null
+    }
+}

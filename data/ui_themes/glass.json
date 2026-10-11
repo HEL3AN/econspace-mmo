@@ -1,0 +1,80 @@
+{
+    "name": "Glass HUD",
+    "colors": {
+        "panel": "#08141CF4",
+        "border": "#3FD6E640",
+        "title": "#0F2A36C0",
+        "titleText": "#3FD6E6",
+        "accent": "#3FD6E6",
+        "text": "#E2F4F8",
+        "dim": "#7FA3B0",
+        "good": "#5BE3A0",
+        "warn": "#F2C14E",
+        "bad": "#FF5C6C",
+        "money": "#FFD166",
+        "track": "#3FD6E61A",
+        "hover": "#3FD6E61C",
+        "selected": "#3FD6E633",
+        "onAccent": "#03161A",
+        "backdrop": "#03070B",
+        "shade": "#03070BEB",
+        "sensor": "#040A0C"
+    },
+    "standing": {
+        "own": "#5BE3A0",
+        "friendly": "#4FA8FF",
+        "neutral": "#D8E4E8",
+        "hostile": "#FF5C6C",
+        "unowned": "#6F8A96"
+    },
+    "metrics": {
+        "titleHeight": 28,
+        "padding": 11,
+        "gap": 8,
+        "rowGap": 4,
+        "radius": 7,
+        "border": 1,
+        "barHeight": 4,
+        "buttonHeight": 26,
+        "resizeGrip": 12,
+        "rowHeight": 21,
+        "scrollbar": 4,
+        "snap": 12,
+        "tabWidth": 130,
+        "sidePanel": 270,
+        "menuBar": 76,
+        "formLabel": 124,
+        "titleMark": 0,
+        "tabMark": 2,
+        "windowRadius": 12,
+        "rowMark": 2
+    },
+    "fontSize": {
+        "small": 11,
+        "label": 12,
+        "body": 13,
+        "title": 13,
+        "heading": 24
+    },
+    "fonts": {
+        "regular": { "file": "fonts/Exo2-Regular.ttf", "case": "as-written", "tracking": 0 },
+        "strong": { "file": "fonts/Exo2-SemiBold.ttf", "case": "as-written", "tracking": 0 },
+        "heading": { "file": "fonts/Oxanium-SemiBold.ttf", "case": "upper", "tracking": 0.1 },
+        "numbers": { "file": "fonts/Exo2Tnum-Regular.ttf", "case": "as-written", "tracking": 0 }
+    },
+    "text": {
+        "lineHeight": 1.35,
+        "gamma": 1.2
+    },
+    "style": {
+        "corner": "chamfer",
+        "titleBar": "fade",
+        "tabStyle": "underline",
+        "divider": "solid",
+        "barStyle": "solid",
+        "shadow": "none",
+        "panel": "glass",
+        "glow": 0.4,
+        "blurPanel": "#08141CB0"
+    }
+}
