@@ -8,7 +8,7 @@ lives in `src/engine/ui/`.
 
 | Piece | File | What it is for |
 |---|---|---|
-| Theme | `Theme.h`, `data/ui_theme.json` | every colour, gap, radius and font size, by name |
+| Theme | `Theme.h`, `data/ui_themes/*.json` | every colour, gap, radius, font size and typeface, by name; switchable |
 | Scale | `Theme.h` (`Ui::Scale`, `Ui::Px`) | how many pixels a layout unit is |
 | Fonts | `Fonts.h` | the typeface, rasterised at each size it is used at |
 | Desk | `Desk.h`, `DeskLayout.h` | which windows exist, where, which is in front, who has the mouse, Esc |
@@ -22,7 +22,8 @@ A window is registered once, in `Game::SetupWindows`, with a spec and a content 
 ```cpp
 Ui::WindowSpec spec;
 spec.id = "missions";              // stable: saved layouts, the menu bar and agents use it
-spec.menuLabel = "MIS";            // its button on the menu bar; empty for none
+spec.menuLabel = "Missions";       // its button on the menu bar; empty for none
+spec.menuTip = "Missions  (J)";    // what the button says when the cursor rests on it
 spec.anchor = Ui::Anchor::TopRight;
 spec.place = { 16, 360, 264, 264 };  // offset from the anchor, and size -- in units
 spec.persist = true;               // where it is and whether it is open are kept per account
@@ -67,10 +68,14 @@ void Game::DrawMissions(const Ui::Frame& f)
   say. `.ScrollY()` clips the children and scrolls them with the wheel.
 - **Text** is measured in our font, so a row knows how wide its words are. `.Wrap()` breaks
   at words to the width the text is given. Styles come from the theme: `Small`, `Label`,
-  `Body`, `Strong`, `Title`, `Heading`; `.Tint(colour)` changes one.
+  `Body`, `Strong`, `Title`, `Heading`, `Caption`; `.Tint(colour)` changes one.
 - **Widgets**: the simple ones are `Bar`, `Field` (label left, value right), `Divider`,
   `Button`, `Chip`; the ones a window lists, chooses and types with are below. A widget is
   a function on `Layout` built from boxes and text, never from coordinates.
+- **A form** is `FormRow` lines: `L.FormRow("Resolution", [&] { ...buttons... })` puts the
+  label in a column `metrics.formLabel` wide and the controls beside it, so every line of
+  the form lines up; an empty label puts a note under the controls (Settings). Full-width
+  buttons under a heading left most of a settings window empty.
 - **Adapting.** A layout follows the window, so a window can be any size. For a real change
   of arrangement, branch on the area: the status window puts its two halves side by side
   when it is wide enough (`f.Area().width >= Ui::Px(420)`); the missions window puts its
@@ -83,7 +88,7 @@ void Game::DrawMissions(const Ui::Frame& f)
 Rules:
 
 1. **No coordinates and no numbers.** A size or a colour that is not from the theme is a
-   reason to add a token to `ui_theme.json`, not to write a literal.
+   reason to add a token to the theme files, not to write a literal.
 2. **Everything is in units.** A unit is a pixel at scale 1; the layout scales it. Never
    multiply by `Ui::Scale()` inside a layout; outside one (a frame, a hand-placed overlay)
    use `Ui::Px(units)`.
@@ -204,6 +209,25 @@ popup, or the world (#297, slice 1). Inside a window's content:
   `Ui::Slider`/`Toggle`/`Button` read `Ui::MouseScope`, which the window sets.
 - Nothing reads `IsMouseButtonPressed` directly: that is how a click went through a window.
 
+## Where a window opens
+
+A spec's `place` is chosen for 1280 x 720 at a scale of 1, and at another size or scale two
+defaults can land on each other -- the settings window on the missions, the hangar on the
+missions. So a window that opens where its spec puts it is placed by a rule rather than
+trusted (`DeskLayout::Arrange`, once a frame): a resizable one is first shortened to end on
+the screen, as far as its minimum lets it; then, if it covers a window already shown on its
+layer, it moves to the nearest free place beside, above or below one of them, in line with
+an edge, `metrics.gap` away (`FreeSpot`) -- or, with no room anywhere, to where it hides
+least (`LeastCovering`). What opened first keeps its place, and where the moved one went is
+kept like a move. A window the player has moved or resized is never touched: the rule is for
+where the game puts things.
+
+The menu bar names each window in a word (`spec.menuLabel`), and says its key when the
+cursor rests on it (`spec.menuTip`); it is laid out like a window. Where the ship is -- the
+system, its security, who wants the pilot -- is a plate at the top of the screen drawn
+*under* the windows, so a window over it hides it instead of the two running into each
+other.
+
 ## Window behaviour
 
 A window placed on the desk (a spec with a `place`) gets all of this without asking: there is
@@ -295,11 +319,33 @@ more than the account holds, says so instead of offering a button the server wou
 
 ## Theme and scale
 
-`data/ui_theme.json` is read strictly: an unknown field or a missing one is a load error
-(and the built-in defaults, identical to the shipped file, are used instead). Colours are
-`"#RRGGBB"` or `"#RRGGBBAA"`. The `standing` colours are allegiance as the *instruments*
-say it -- radar, overview, sensor screen, target panel -- and never an object's colour in
-the world view (#117).
+A theme is one whole file in `data/ui_themes/`, named by its id: colours, metrics, font
+sizes, the four faces and how text is set. The player picks one in Settings (Interface,
+Theme), and the choice is kept in `ui_settings.json`. `fleet` ("Fleet console") is the
+default; `plain` is the earlier Inter look. A new theme is a new file and nothing else --
+Settings lists whatever is in the folder and loads.
+
+Switching is a reload with no restart (`Ui::UseTheme`): the file is read, the theme in use
+is replaced, and every font is rasterised again. It happens between frames (Settings asks
+for it while it is drawn, the game switches at the start of the next one), because a
+layout half declared in one theme must not finish in another. **Nothing keeps a theme value
+past a frame**: windows ask `Ui::CurrentTheme()` as they draw, the colour names in
+`UiTheme.h` are references into the theme in use, and the desk is told the title height,
+snap and gap every frame.
+
+A theme file is read strictly: an unknown field or a missing one is a load error (a theme
+that fails keeps the one in use; at start, the default, and failing that the built-in
+values in `Theme.h`, which are the same as `fleet.json`). Colours are `"#RRGGBB"` or
+`"#RRGGBBAA"`, and a window's `panel` is opaque in every shipped theme -- translucent, the
+text of the window behind ran into the one in front. The `standing` colours are allegiance
+as the *instruments* say it -- radar, overview, sensor screen, target panel -- and never an
+object's colour in the world view (#117).
+
+A theme can turn a few things in the frame on and off, by number rather than by code:
+`metrics.titleMark` (an accent stripe down a title bar), `metrics.tabMark` (tabs as a
+strip on a rule, the chosen one underlined, rather than filled boxes), `metrics.radius`.
+A look that needs more than a switch -- chamfered corners, a glow, blur behind a window --
+is a renderer change in `Window.cpp` and the widgets, read from a new token.
 
 `Ui::Scale()` is the player's setting (Settings, saved in `ui_settings.json` next to the
 executable) times the display's DPI. It sizes every window frame, every window's place
@@ -308,10 +354,48 @@ another), and everything inside a `Ui::Layout`. `--uiscale S` sets it for one ru
 
 ## Fonts
 
-Inter (SIL Open Font License, `data/fonts/OFL.txt`), regular and semibold. A face is
-rasterised at exactly each pixel size it is drawn at, the first time, so text is never a
-scaled bitmap. `Ui::Text(text, x, y, px, colour)` remains for the screens still placed by
-hand; new code uses `Layout::Text`. World glyphs that grow with the camera use
+A theme names four faces (`Ui::Face`), each a file in `data/fonts/` with two settings:
+
+| Face | For | Fleet console |
+|---|---|---|
+| `regular` | body text, labels | Barlow Semi Condensed |
+| `strong` | a value that matters | Barlow Semi Condensed SemiBold |
+| `heading` | window titles, tabs, buttons, column headings, a screen's heading | Barlow Condensed SemiBold, capitals, tracked 0.1 em |
+| `numbers` | figures in a column aligned to the end | Barlow Semi Condensed with tabular figures |
+
+`upper` sets a face in capitals whatever the text says, and `tracking` adds room between
+letters (in ems, between letters only -- never after the last, or a centred label sits off
+centre). Both belong to the face, so every heading follows without a widget knowing.
+`TextStyle::Caption()` is the heading face at the label size: what names a control rather
+than a value.
+
+**Sizes are ems, as CSS means them**, whatever the font: 13 px Barlow and 13 px Inter look
+the same size, where raylib's own size (ascender to descender) made a font with long
+descenders look smaller. A face is rasterised at exactly each size it is drawn at, the first
+time, so text is never a scaled bitmap; every glyph is rasterised three times a third of a
+pixel apart and each advances by its exact width plus the font's kerning, so the spacing is
+the designer's rather than the rounding's, with no filtering to blur it. There is no
+hinting; `text.gamma` thickens the edges, which pale text on a dark ground otherwise loses.
+
+**Text is centred on its capitals, from the font's own metrics** (`Ui::CentredTop`): the
+middle of the capital height -- read from the outline of an H, since the OS/2 table that
+also says it is optional -- sits on the middle of the box. Centring the text's box instead
+(ascender to descender) put labels low by however much more room a font keeps below the
+baseline than above its capitals; every widget, title bar and menu goes through this one
+rule. A line of text is `text.lineHeight` times its size tall.
+
+Barlow's own figures are proportional, and raylib applies no OpenType features, so the
+numbers face is a copy with its tabular figures made the default, once, with fontTools:
+
+```sh
+pip install opentype-feature-freezer
+pyftfeatfreeze -f tnum -S -U Tnum BarlowSemiCondensed-Regular.ttf BarlowSemiCondensedTnum-Regular.ttf
+```
+
+The fonts are under the SIL Open Font License: `data/fonts/OFL.txt` (Inter) and
+`data/fonts/OFL-Barlow.txt` (Barlow, which has no reserved font name, so the renamed copy
+may be shipped). `Ui::Text(text, x, y, px, colour)` remains for the editor's screens placed
+by hand; new code uses `Layout::Text`. World glyphs that grow with the camera use
 `Ui::GlyphFont()`, one large filtered atlas.
 
 ## Clay

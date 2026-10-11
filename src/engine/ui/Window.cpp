@@ -64,10 +64,13 @@ void Window::Draw(Rectangle bounds, const Chrome& chrome, Ui::Focus* focus,
     DrawRectangleRec(bounds, t.colors.panel);
     const Rectangle bar = TitleBar(bounds);
     DrawRectangleRec(bar, t.colors.title);
+    if (t.metrics.titleMark > 0.0f)  // the theme marks a title bar with a stripe down its left
+        DrawRectangleRec({ bar.x, bar.y, std::max(1.0f, Ui::Px(t.metrics.titleMark)), bar.height },
+                         t.colors.accent);
 
     const float px = Ui::Px(t.fontSize.title);
     const float pad = Ui::Px(t.metrics.padding);
-    auto width = [px](std::string_view s) { return Ui::MeasureString(Ui::Face::Strong, px, s).x; };
+    auto width = [px](std::string_view s) { return Ui::MeasureString(Ui::Face::Heading, px, s).x; };
     if (chrome.tabs.size() >= 2)
     {
         // A stack: one tab per window, the one in front joined to the body below it.
@@ -86,9 +89,9 @@ void Window::Draw(Rectangle bounds, const Chrome& chrome, Ui::Focus* focus,
                            t.colors.border);
             const float       inner = pad * 0.5f;
             const std::string label = Ui::Ellipsize(chrome.tabs[i], tr.width - 2.0f * inner, width);
-            Ui::DrawString(Ui::Face::Strong, label,
-                           { tr.x + inner, tr.y + (tr.height - px) * 0.5f }, px,
-                           front ? t.colors.text : t.colors.dim);
+            Ui::DrawString(Ui::Face::Heading, label,
+                           { tr.x + inner, Ui::CentredTop(Ui::Face::Heading, px, tr.y, tr.height) },
+                           px, front ? t.colors.titleText : t.colors.dim);
             if (front)
                 DrawLineEx({ tr.x, tr.y + 1.0f }, { tr.x + tr.width, tr.y + 1.0f }, 2.0f,
                            t.colors.accent);
@@ -97,8 +100,9 @@ void Window::Draw(Rectangle bounds, const Chrome& chrome, Ui::Focus* focus,
     else
     {
         const std::string& title = chrome.tabs.size() == 1 ? chrome.tabs[0] : title_;
-        Ui::DrawString(Ui::Face::Strong, title,
-                       { bounds.x + pad, bar.y + (bar.height - px) * 0.5f }, px, t.colors.text);
+        Ui::DrawString(Ui::Face::Heading, title,
+                       { bounds.x + pad, Ui::CentredTop(Ui::Face::Heading, px, bar.y, bar.height) },
+                       px, t.colors.titleText);
     }
     DrawRectangleLinesEx(bounds, 1.0f, t.colors.border);
     if (chrome.dropTarget)  // let go here and it becomes a tab of this

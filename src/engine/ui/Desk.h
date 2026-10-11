@@ -89,6 +89,7 @@ public:
     {
         std::string id;
         std::string label;
+        std::string tip;
         bool        open;
     };
     std::vector<MenuSlot> MenuSlots() const;

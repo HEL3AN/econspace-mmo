@@ -37,11 +37,12 @@
 #include <algorithm>
 #include <fstream>
 
-// Menu bar (Neocom): strip width and button geometry.
-static const float MENU_BAR_W = 46.0f;
-static const float MENU_BTN = 36.0f;
-static const float MENU_STEP = 46.0f;
-static const float MENU_TOP = 12.0f;
+// The menu bar (Neocom): a strip of window buttons down the left edge, as wide as the theme
+// says, at the interface's scale.
+static float MenuBarW()
+{
+    return Ui::Px(Ui::CurrentTheme().metrics.menuBar);
+}
 
 void Game::DrawStarfield()
 {
@@ -207,11 +208,13 @@ void Game::SetupWindows()
     using Ui::WindowSpec;
 
     // A window the player arranges: placed from a corner, kept per account.
-    auto panel = [](const char* id, const char* label, Anchor anchor, Rectangle place)
+    auto panel =
+        [](const char* id, const char* label, const char* tip, Anchor anchor, Rectangle place)
     {
         WindowSpec s;
         s.id = id;
         s.menuLabel = label;
+        s.menuTip = tip;
         s.layer = Layer::Panels;
         s.anchor = anchor;
         s.place = place;
@@ -236,15 +239,16 @@ void Game::SetupWindows()
     // had at 1280 x 720; anchored, they now keep to their side at any other size.
     // The status window is laid out by Ui::Layout (#297), so it can be any size: resizable,
     // and no smaller than two gauges and a field.
-    WindowSpec status = panel(WIN_STATUS, "STA", Anchor::TopLeft, { 56.0f, 16.0f, 264.0f, 312.0f });
+    WindowSpec status = panel(WIN_STATUS, "Status", "Status: the ship and its pilot",
+                              Anchor::TopLeft, { 72.0f, 8.0f, 264.0f, 312.0f });
     status.resizable = true;
     status.minSize = { 200.0f, 150.0f };
     desk_.AddWindow(status, "STATUS", true, [this](Ui::Frame& f) { DrawStatusContent(f); });
     // The selected item and the overview, one above the other on the right, as EVE has them:
     // pick from the list, act from the window above it (#297). Both are laid out by
     // Ui::Layout, so both can be any size.
-    WindowSpec target =
-        panel(WIN_TARGET, "TGT", Anchor::TopRight, { 16.0f, 16.0f, 300.0f, 300.0f });
+    WindowSpec target = panel(WIN_TARGET, "Selected", "Selected item  (T)", Anchor::TopRight,
+                              { 8.0f, 8.0f, 300.0f, 300.0f });
     target.resizable = true;
     target.minSize = { 240.0f, 160.0f };
     // The windows that look at space are space's: docked, they are put away and come back
@@ -253,15 +257,16 @@ void Game::SetupWindows()
     desk_.AddWindow(target, "SELECTED ITEM", false, [this](Ui::Frame& f) { DrawTargetContent(f); });
     // Open from the start: it is the instrument a player flies by (#157), and a player who
     // has to know a key exists before they can navigate has not been told how to play.
-    WindowSpec overview =
-        panel(WIN_OVERVIEW, "OVR", Anchor::TopRight, { 16.0f, 328.0f, 300.0f, 376.0f });
+    WindowSpec overview = panel(WIN_OVERVIEW, "Overview", "Overview: what is in the system  (O)",
+                                Anchor::TopRight, { 8.0f, 316.0f, 300.0f, 396.0f });
     overview.resizable = true;
     overview.minSize = { 260.0f, 160.0f };
     overview.context = CTX_SPACE;
     desk_.AddWindow(overview, "OVERVIEW", true, [this](Ui::Frame& f) { DrawOverviewContent(f); });
     // The radar is a picture drawn by hand inside a layout (#297): its toolbar is laid out,
     // the scope takes whatever room is left, so it can be any size.
-    WindowSpec radar = panel(WIN_RADAR, "RAD", Anchor::TopLeft, { 56.0f, 344.0f, 264.0f, 288.0f });
+    WindowSpec radar =
+        panel(WIN_RADAR, "Radar", "Radar  (R)", Anchor::TopLeft, { 72.0f, 328.0f, 264.0f, 288.0f });
     radar.resizable = true;
     radar.minSize = { 180.0f, 180.0f };
     radar.context = CTX_SPACE;
@@ -269,8 +274,8 @@ void Game::SetupWindows()
     // A list of missions and the chosen one in full: one above the other when narrow, side
     // by side when wide. Beside the selected item rather than on top of the overview, which
     // is open from the start.
-    WindowSpec missions =
-        panel(WIN_MISSIONS, "MIS", Anchor::TopRight, { 324.0f, 16.0f, 300.0f, 320.0f });
+    WindowSpec missions = panel(WIN_MISSIONS, "Missions", "Missions  (J)", Anchor::TopRight,
+                                { 316.0f, 40.0f, 300.0f, 320.0f });  // under the location plate
     missions.resizable = true;
     missions.minSize = { 240.0f, 220.0f };
     desk_.AddWindow(missions, "MISSIONS", false, [this](Ui::Frame& f) { DrawMissionsContent(f); });
@@ -278,25 +283,27 @@ void Game::SetupWindows()
     // The two screens cover the world view and the windows; whichever opened last is on top.
     // Covering means the windows are not drawn at all while one is open: the map is drawn
     // translucent over the world, and the panels used to show through it (#297).
-    auto screen = [&surface](const char* id, const char* label, Ui::EscRule esc)
+    auto screen = [&surface](const char* id, const char* label, const char* tip, Ui::EscRule esc)
     {
         WindowSpec s = surface(id, label, Layer::Screen, esc);
+        s.menuTip = tip;
         s.covers = true;
         return s;
     };
     Ui::Desk::Surface map;
     map.bounds = fullScreen;
     map.draw = [this]() { DrawGalaxyMap(); };
-    desk_.AddSurface(screen(WIN_MAP, "MAP", Ui::EscRule::Close), false, map);
+    desk_.AddSurface(screen(WIN_MAP, "Map", "Galaxy map  (G)", Ui::EscRule::Close), false, map);
     Ui::Desk::Surface sensor;
     sensor.bounds = [this]()
-    { return Rectangle{ MENU_BAR_W, 0.0f, screenWidth_ - MENU_BAR_W, (float)screenHeight_ }; };
+    { return Rectangle{ MenuBarW(), 0.0f, screenWidth_ - MenuBarW(), (float)screenHeight_ }; };
     sensor.draw = [this]() { DrawSensorScreen(); };
-    WindowSpec sensorSpec = screen(WIN_SENSOR, "SNS", Ui::EscRule::Close);
+    WindowSpec sensorSpec = screen(WIN_SENSOR, "Sensor", "Sensor screen  (V)", Ui::EscRule::Close);
     sensorSpec.context = CTX_SPACE;  // a readout of the space around the ship
     desk_.AddSurface(sensorSpec, false, sensor);
 
-    WindowSpec settings = panel(WIN_SETTINGS, "SET", Anchor::Top, { 0.0f, 100.0f, 340.0f, 400.0f });
+    WindowSpec settings = panel(WIN_SETTINGS, "Settings", "Settings: display, interface, keys",
+                                Anchor::Top, { 0.0f, 100.0f, 360.0f, 330.0f });
     settings.resizable = true;
     settings.minSize = { 260.0f, 240.0f };
     desk_.AddWindow(settings, "SETTINGS", false, [this](Ui::Frame& f) { DrawSettingsContent(f); });
@@ -307,19 +314,21 @@ void Game::SetupWindows()
     // and the missions window stands beside them. Where the target and overview windows
     // are in space, which are put away while docked.
     WindowSpec station =
-        panel(WIN_STATION, "STN", Anchor::TopLeft, { 56.0f, 344.0f, 264.0f, 300.0f });
+        panel(WIN_STATION, "Station", "The station: its owner, your standing, undocking",
+              Anchor::TopLeft, { 72.0f, 328.0f, 264.0f, 300.0f });
     station.resizable = true;
     station.minSize = { 220.0f, 200.0f };
     station.context = CTX_DOCKED;
     desk_.AddWindow(station, "STATION", true, [this](Ui::Frame& f) { DrawStationContent(f); });
-    WindowSpec market =
-        panel(WIN_MARKET, "MKT", Anchor::TopRight, { 16.0f, 16.0f, 300.0f, 320.0f });
+    WindowSpec market = panel(WIN_MARKET, "Market", "Market: sell what is in the hold",
+                              Anchor::TopRight, { 8.0f, 8.0f, 300.0f, 320.0f });
     market.resizable = true;
     market.minSize = { 240.0f, 220.0f };
     market.context = CTX_DOCKED;
     desk_.AddWindow(market, "MARKET", true, [this](Ui::Frame& f) { DrawMarketContent(f); });
     WindowSpec hangar =
-        panel(WIN_HANGAR, "HGR", Anchor::TopRight, { 16.0f, 344.0f, 608.0f, 300.0f });
+        panel(WIN_HANGAR, "Hangar", "Hangar: switch or buy a ship", Anchor::TopRight,
+              { 8.0f, 368.0f, 608.0f, 300.0f });  // under the missions, which open on docking
     hangar.resizable = true;
     hangar.minSize = { 240.0f, 220.0f };
     hangar.context = CTX_DOCKED;
@@ -328,7 +337,7 @@ void Game::SetupWindows()
     // Above the screens it opens; Esc passes over it. Docked too: it opens the station's
     // windows again once they have been closed.
     Ui::Desk::Surface bar;
-    bar.bounds = [this]() { return Rectangle{ 0.0f, 0.0f, MENU_BAR_W, (float)screenHeight_ }; };
+    bar.bounds = [this]() { return Rectangle{ 0.0f, 0.0f, MenuBarW(), (float)screenHeight_ }; };
     bar.isOpen = [this]() { return !hudHidden_; };
     bar.draw = [this]() { DrawMenuBar(); };
     // A window dragged to the left snaps against it rather than sliding under it.
@@ -347,7 +356,7 @@ void Game::SetupWindows()
     // reaches -- a settings window seen through the effect it is adjusting cannot be read
     // while adjusting it. It groups and stacks with nothing below it for the same reason.
     // No context: the look is tuned in space and docked alike.
-    WindowSpec look = panel(WIN_LOOK, "", Anchor::TopRight, { 332.0f, 16.0f, 320.0f, 520.0f });
+    WindowSpec look = panel(WIN_LOOK, "", "", Anchor::TopRight, { 316.0f, 8.0f, 320.0f, 520.0f });
     look.layer = Layer::Overlay;
     look.resizable = true;
     look.minSize = { 260.0f, 200.0f };
@@ -642,45 +651,72 @@ void Game::DrawTargetContent(const Ui::Frame& f)
 // are the desk's registry in order (#297), so a window registered with a label has one.
 void Game::HandleMenuBar()
 {
-    if (!desk_.Owns(WIN_MENUBAR) || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-        return;
-    const Vector2                         m = GetMousePosition();
-    const std::vector<Ui::Desk::MenuSlot> slots = desk_.MenuSlots();
-    for (size_t i = 0; i < slots.size(); i++)
+    // The bar is laid out while it is drawn, which is where a click on it is seen; the window
+    // it stands for is opened or closed here, before anything else is drawn.
+    if (!menuToggle_.empty())
+        desk_.Toggle(menuToggle_);
+    menuToggle_.clear();
+    // A theme picked in Settings, likewise switched to between frames: it rasterises every
+    // font again, which a layout half declared in the old one must not see.
+    if (!themeToUse_.empty() && Ui::UseTheme(themeToUse_))
     {
-        Rectangle b{ (MENU_BAR_W - MENU_BTN) / 2.0f, MENU_TOP + i * MENU_STEP, MENU_BTN, MENU_BTN };
-        if (CheckCollisionPointRec(m, b))
-        {
-            desk_.Toggle(slots[i].id);
-            break;
-        }
+        Ui::SetThemeSetting(themeToUse_);
+        if (uiSettingsWritable_ && !Ui::SaveUiSettings(uiSettingsPath_))
+            TraceLog(LOG_WARNING, "UI settings: cannot write %s", uiSettingsPath_.c_str());
     }
+    themeToUse_.clear();
 }
 
-// Vertical menu bar on the left: window-toggle buttons,
-// the active window is highlighted with the accent color.
+// The menu bar down the left edge, laid out like a window (#297): one button per window,
+// named in a word rather than a three-letter code, the open ones lit, and the key that opens
+// each one said when the cursor rests on it.
 void Game::DrawMenuBar()
 {
-    DrawRectangleRec(Rectangle{ 0.0f, 0.0f, MENU_BAR_W, (float)screenHeight_ }, Ui::TITLE_BG);
-    DrawLineEx(Vector2{ MENU_BAR_W, 0.0f }, Vector2{ MENU_BAR_W, (float)screenHeight_ }, 1.0f,
-               Ui::PANEL_BORDER);
+    using Ui::Box;
+    using Ui::Size;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    Ui::Layout&      L = menuLayout_;
+    const Rectangle  area{ 0.0f, 0.0f, MenuBarW(), (float)screenHeight_ };
 
     const std::vector<Ui::Desk::MenuSlot> slots = desk_.MenuSlots();
-    for (size_t i = 0; i < slots.size(); i++)
-    {
-        Rectangle b{ (MENU_BAR_W - MENU_BTN) / 2.0f, MENU_TOP + i * MENU_STEP, MENU_BTN, MENU_BTN };
-        const char* label = slots[i].label.c_str();
-        bool        open = slots[i].open;
-        bool        hover = Ui::MouseOver(b);
-        Color       accent = (open || hover) ? Ui::ACCENT : Ui::TEXT_DIM;
-
-        DrawRectangleRec(b, open ? Fade(Ui::ACCENT, 0.25f)
-                                 : (hover ? Fade(Ui::ACCENT, 0.12f) : Ui::PANEL_BG));
-        DrawRectangleLinesEx(b, 1.0f, (open || hover) ? Ui::ACCENT : Ui::PANEL_BORDER);
-
-        int tw = Ui::TextWidth(label, 14);
-        Ui::Text(label, (int)(b.x + (b.width - tw) / 2.0f), (int)b.y + 11, 14, accent);
-    }
+    L.Begin(desk_.SurfaceFrame(WIN_MENUBAR, area));
+    L.Column(Box()
+                 .Grow()
+                 .Pad(t.metrics.rowGap, t.metrics.gap)
+                 .Gap(t.metrics.rowGap)
+                 .Fill(t.colors.title),
+             [&]
+             {
+                 for (size_t i = 0; i < slots.size(); i++)
+                 {
+                     const bool open = slots[i].open;
+                     const bool hover = L.Hovered("menu", (uint32_t)i);
+                     if (L.Clicked("menu", (uint32_t)i))
+                         menuToggle_ = slots[i].id;
+                     L.Row(Box()
+                               .Id("menu", (uint32_t)i)
+                               .GrowX()
+                               .Height(Size::Fixed(t.metrics.buttonHeight + t.metrics.gap))
+                               .Align(Ui::Align::Center, Ui::Align::Center)
+                               .Fill(open    ? t.colors.selected
+                                     : hover ? t.colors.hover
+                                             : t.colors.panel)
+                               .Border(open || hover ? t.colors.accent : t.colors.border,
+                                       t.metrics.border)
+                               .Radius(t.metrics.radius),
+                           [&]
+                           {
+                               Ui::TextStyle st = Ui::TextStyle::Caption().Tint(
+                                   open || hover ? t.colors.accent : t.colors.text);
+                               st.size = t.fontSize.small;
+                               L.Text(slots[i].label, st);
+                           });
+                     L.Tooltip("menu", slots[i].tip, (uint32_t)i);
+                 }
+             });
+    L.End();
+    L.Draw();
+    DrawLineEx({ area.width, 0.0f }, { area.width, area.height }, 1.0f, t.colors.border);
 }
 
 // The status window, declared with Ui::Layout (#297) -- the first window that is, and the
@@ -800,6 +836,58 @@ void Game::DrawScaleBar()
         Ui::Text("camera free  ·  [C] back to ship", (int)x0 - 120, (int)y + 8, 11, Ui::ACCENT);
 }
 
+// Where the ship is, at the top of the screen: the system, how safe it is, and who wants the
+// pilot. A plate laid out like a window's content (#297) rather than coloured text loose on
+// the world, and drawn under the windows, so a window over it hides it instead of the two
+// running through each other.
+void Game::DrawLocation()
+{
+    using Ui::Box;
+    using Ui::TextStyle;
+    const WorldLoader::SystemInfo* si = CurrentSystemInfo();
+    if (si == nullptr)
+        return;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    const float      sec = si->security;
+    const char* tier = sec >= 0.7f ? "High" : sec >= 0.4f ? "Mid" : sec >= 0.2f ? "Low" : "Null";
+    const Color col = sec >= 0.7f   ? t.colors.good
+                      : sec >= 0.4f ? t.colors.accent
+                      : sec >= 0.2f ? t.colors.warn
+                                    : t.colors.bad;
+    std::string wanted;
+    for (int i = 0; i < Factions::Count(); i++)
+        if (player_.IsWanted((FactionId)i))
+            wanted += (wanted.empty() ? "" : ", ") + FactionName((FactionId)i);
+
+    Ui::Layout& L = locationLayout_;
+    L.Begin({ MenuBarW(), 0.0f, screenWidth_ - MenuBarW(), (float)screenHeight_ }, Ui::Scale());
+    L.Row(Box().GrowX().Pad(0.0f, t.metrics.gap).Align(Ui::Align::Center, Ui::Align::Start),
+          [&]
+          {
+              L.Column(Box()
+                           .Pad(t.metrics.padding, t.metrics.rowGap)
+                           .Align(Ui::Align::Center, Ui::Align::Start)
+                           .Fill(t.colors.panel)
+                           .Border(t.colors.border, t.metrics.border)
+                           .Radius(t.metrics.radius),
+                       [&]
+                       {
+                           L.Row(
+                               Box().Gap(t.metrics.gap).Align(Ui::Align::Start, Ui::Align::Center),
+                               [&]
+                               {
+                                   L.Text(si->name, TextStyle::Strong());
+                                   L.Text(TextFormat("%s security  %.1f", tier, sec),
+                                          TextStyle::Label().Tint(col));
+                               });
+                           if (!wanted.empty())
+                               L.Text("Wanted by " + wanted, TextStyle::Label().Tint(t.colors.bad));
+                       });
+          });
+    L.End();
+    L.Draw();
+}
+
 void Game::DrawHud()
 {
     if (hudHidden_)
@@ -808,6 +896,9 @@ void Game::DrawHud()
     const bool flying = mode_ == GameMode::Flying;
     if (flying && !desk_.IsOpen(WIN_SENSOR))
         DrawScaleBar();  // a scale for the world view; the sensor screen states its own
+    DrawLocation();      // under the windows: one dragged over it covers it, never mixes with it
+    Ui::Text("[debug] F1: +money   F11: fullscreen", (int)(MenuBarW() + Ui::Px(8.0f)),
+             screenHeight_ - (int)Ui::Px(24.0f), 12, Ui::TEXT_DIM);
     desk_.Draw(Ui::Layer::Panels);
 
     // Over the windows: the map, and the sensor screen -- a screen of its own with its own
@@ -850,28 +941,6 @@ void Game::DrawHud()
     desk_.Draw(Ui::Layer::Popup);  // the context menu, over the windows
     Ui::DrawTooltip();             // over everything the HUD draws
 
-    // Current system and its security level (top center).
-    if (const WorldLoader::SystemInfo* si = CurrentSystemInfo())
-    {
-        float       sec = si->security;
-        const char* tier =
-            sec >= 0.7f ? "High" : (sec >= 0.4f ? "Mid" : (sec >= 0.2f ? "Low" : "Null"));
-        Color col = sec >= 0.7f ? LIME : (sec >= 0.4f ? Ui::ACCENT : (sec >= 0.2f ? ORANGE : RED));
-        const char* line = TextFormat("%s   Security: %s (%.1f)", si->name.c_str(), tier, sec);
-        Ui::Text(line, (screenWidth_ - Ui::TextWidth(line, 16)) / 2, 14, 16, col);
-    }
-
-    // Wanted indicator: factions that have the player wanted.
-    std::string wanted;
-    for (int i = 0; i < Factions::Count(); i++)
-        if (player_.IsWanted((FactionId)i))
-            wanted += (wanted.empty() ? "" : ", ") + FactionName((FactionId)i);
-    if (!wanted.empty())
-    {
-        const char* w = TextFormat("WANTED: %s", wanted.c_str());
-        Ui::Text(w, (screenWidth_ - Ui::TextWidth(w, 16)) / 2, 36, 16, RED);
-    }
-
     // What the ship is holding station on, and how well (#157, #298). A standing behaviour
     // runs until something releases it, so it has to be visible the whole time it does.
     if (flying && playerShip_->GetHoldMode() != HoldMode::None)
@@ -892,8 +961,6 @@ void Game::DrawHud()
         Ui::Text(line.c_str(), (screenWidth_ - Ui::TextWidth(line.c_str(), 16)) / 2,
                  screenHeight_ - 98, 16, Ui::ACCENT);
     }
-
-    Ui::Text("[debug] F1: +money   F11: fullscreen", 56, screenHeight_ - 26, 14, Ui::TEXT_DIM);
 
     // Short notification (saved/loaded).
     if (flashTimer_ > 0.0f)
@@ -921,23 +988,23 @@ void Game::DrawGalaxyMap()
     const std::vector<std::string>& news = galaxyState_.events;
     Ui::Layout&                     L = mapLayout_;
     L.Begin(desk_.SurfaceFrame(
-        WIN_MAP, { MENU_BAR_W, 0.0f, screenWidth_ - MENU_BAR_W, (float)screenHeight_ }));
-    L.Column(Box().Grow().Pad(t.metrics.padding * 2.0f).Gap(t.metrics.gap),
-             [&]
-             {
-                 L.Row(Box().GrowX().Gap(t.metrics.padding).Align(Ui::Align::Start, Ui::Align::End),
-                       [&]
-                       {
-                           L.Text("GALAXY MAP", TextStyle::Heading().Tint(t.colors.accent));
-                           L.Text("drag to pan  ·  wheel to zoom  ·  [G] / [Esc] close",
-                                  TextStyle::Small().Tint(t.colors.dim));
-                       });
-                 L.Row(Box().Grow().Gap(t.metrics.padding * 2.0f),
-                       [&]
-                       {
-                           L.Row(Box().Id("graph").Grow(), [] {});
-                           L.Column(
-                               Box()
+        WIN_MAP, { MenuBarW(), 0.0f, screenWidth_ - MenuBarW(), (float)screenHeight_ }));
+    L.Column(
+        Box().Grow().Pad(t.metrics.padding * 2.0f).Gap(t.metrics.gap),
+        [&]
+        {
+            L.Row(Box().GrowX().Gap(t.metrics.padding).Align(Ui::Align::Start, Ui::Align::Center),
+                  [&]
+                  {
+                      L.Text("GALAXY MAP", TextStyle::Heading().Tint(t.colors.accent));
+                      L.Text("drag to pan  ·  wheel to zoom  ·  [G] / [Esc] close",
+                             TextStyle::Small().Tint(t.colors.dim));
+                  });
+            L.Row(Box().Grow().Gap(t.metrics.padding * 2.0f),
+                  [&]
+                  {
+                      L.Row(Box().Id("graph").Grow(), [] {});
+                      L.Column(Box()
                                    .Width(Size::Fixed(t.metrics.sidePanel))
                                    .Height(Size::Grow())
                                    .Pad(t.metrics.padding)
@@ -967,8 +1034,8 @@ void Game::DrawGalaxyMap()
                                                L.Text(news[i], TextStyle::Small().Wrap());
                                        });
                                });
-                       });
-             });
+                  });
+        });
     L.End();
     // The picture's room; the furniture around it is drawn over the shade.
     const Rectangle area = L.BoxOf("graph");
@@ -1289,7 +1356,7 @@ void Game::DrawSensorScreen()
     using Ui::Size;
     using Ui::TextStyle;
     const Ui::Theme& t = Ui::CurrentTheme();
-    const Rectangle  screen{ MENU_BAR_W, 0.0f, screenWidth_ - MENU_BAR_W, (float)screenHeight_ };
+    const Rectangle  screen{ MenuBarW(), 0.0f, screenWidth_ - MenuBarW(), (float)screenHeight_ };
     // Opaque: a readout over a picture of the same place would be two answers at once.
     DrawRectangleRec(screen, t.colors.sensor);
 
@@ -1347,7 +1414,7 @@ void Game::DrawSensorScreen()
         Box().Grow().Pad(t.metrics.padding * 2.0f).Gap(t.metrics.gap),
         [&]
         {
-            L.Row(Box().GrowX().Gap(t.metrics.padding).Align(Ui::Align::Start, Ui::Align::End),
+            L.Row(Box().GrowX().Gap(t.metrics.padding).Align(Ui::Align::Start, Ui::Align::Center),
                   [&]
                   {
                       L.Text("SENSORS", TextStyle::Heading().Tint(t.colors.accent));

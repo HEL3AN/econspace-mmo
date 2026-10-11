@@ -1,0 +1,66 @@
+{
+    "name": "Fleet console",
+    "colors": {
+        "panel": "#0D1117",
+        "border": "#2B3542",
+        "title": "#151C25",
+        "titleText": "#AEBDCC",
+        "accent": "#8DB2D8",
+        "text": "#C9D3DE",
+        "dim": "#7D8B9B",
+        "good": "#6FBF8A",
+        "warn": "#D9B45A",
+        "bad": "#D4614F",
+        "money": "#E3C26B",
+        "track": "#2A33405A",
+        "hover": "#8DB2D81A",
+        "selected": "#8DB2D82E",
+        "backdrop": "#06080C",
+        "shade": "#06080EEB",
+        "sensor": "#050A09"
+    },
+    "standing": {
+        "own": "#7FD68F",
+        "friendly": "#6FA8E8",
+        "neutral": "#C9CCC4",
+        "hostile": "#E0604F",
+        "unowned": "#76808F"
+    },
+    "metrics": {
+        "titleHeight": 22,
+        "padding": 8,
+        "gap": 7,
+        "rowGap": 3,
+        "radius": 0,
+        "border": 1,
+        "barHeight": 5,
+        "buttonHeight": 22,
+        "resizeGrip": 12,
+        "rowHeight": 19,
+        "scrollbar": 4,
+        "snap": 12,
+        "tabWidth": 120,
+        "sidePanel": 260,
+        "menuBar": 64,
+        "formLabel": 104,
+        "titleMark": 2,
+        "tabMark": 2
+    },
+    "fontSize": {
+        "small": 11,
+        "label": 12,
+        "body": 13,
+        "title": 13,
+        "heading": 21
+    },
+    "fonts": {
+        "regular": { "file": "fonts/BarlowSemiCondensed-Regular.ttf", "upper": false, "tracking": 0 },
+        "strong": { "file": "fonts/BarlowSemiCondensed-SemiBold.ttf", "upper": false, "tracking": 0 },
+        "heading": { "file": "fonts/BarlowCondensed-SemiBold.ttf", "upper": true, "tracking": 0.1 },
+        "numbers": { "file": "fonts/BarlowSemiCondensedTnum-Regular.ttf", "upper": false, "tracking": 0 }
+    },
+    "text": {
+        "lineHeight": 1.35,
+        "gamma": 1.2
+    }
+}

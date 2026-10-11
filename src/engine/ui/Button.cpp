@@ -17,8 +17,8 @@ void Button::Process()
     const int fontSize = 16;
     int       textW = Ui::TextWidth(label_.c_str(), fontSize);
     Ui::Text(label_.c_str(), (int)(bounds_.x + (bounds_.width - textW) / 2),
-             (int)(bounds_.y + (bounds_.height - fontSize) / 2), fontSize,
-             hovered ? Ui::ACCENT : Ui::TEXT);
+             (int)Ui::CentredTop(Ui::Face::Regular, (float)fontSize, bounds_.y, bounds_.height),
+             fontSize, hovered ? Ui::ACCENT : Ui::TEXT);
 
     if (hovered && Ui::MousePressed(MOUSE_BUTTON_LEFT))
         onClick_();

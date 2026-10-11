@@ -162,6 +162,9 @@ struct TextStyle
     static TextStyle Strong();   // the body size in the strong face
     static TextStyle Title();    // a block's heading
     static TextStyle Heading();  // a screen's heading
+    // The heading face at the label size: what names a control rather than a value -- a
+    // button, a tab, a column. Set as the theme sets headings (in capitals, if it says so).
+    static TextStyle Caption();
 
     TextStyle& Tint(Color c)
     {
@@ -343,6 +346,14 @@ public:
     bool Button(std::string_view id, std::string_view label, bool highlighted = false);
     // A small on/off indicator: filled when on.
     void Chip(std::string_view label, bool on, Color onColor);
+    // One line of a form: its label in a column of its own on the left (metrics.formLabel
+    // wide, so every line of the form lines up), its controls side by side in what is left.
+    template <typename F> void FormRow(std::string_view label, F&& controls)
+    {
+        FormRowBegin(label);
+        controls();
+        FormRowEnd();
+    }
 
     // --- Widgets for windows that list, choose and type -------------------------------
     // A column that scrolls with the wheel, with an indicator beside it that shows how much
@@ -405,6 +416,8 @@ public:
 private:
     std::string_view Keep(std::string_view s);  // alive until the next Begin
     void             Report(std::string_view message);
+    void             FormRowBegin(std::string_view label);
+    void             FormRowEnd();
     void             ScrollBegin(const Box& box);
     void             ScrollEnd(const Box& box);
     KeyInput         Keys();  // this frame's typing, for the field with the focus

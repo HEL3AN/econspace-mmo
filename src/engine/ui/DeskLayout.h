@@ -49,6 +49,7 @@ struct WindowSpec
 {
     std::string id;         // stable: the key for persistence and the menu bar
     std::string menuLabel;  // its button on the menu bar; empty for none
+    std::string menuTip;    // what the button says when the cursor rests on it: its key
     Layer       layer = Layer::Panels;
     Anchor      anchor = Anchor::TopLeft;
     // Distance from the anchor (x, y) and size (width, height), in layout units: pixels at
@@ -81,6 +82,18 @@ Vector2 SnapOffset(const std::vector<Rectangle>& moving, const std::vector<Recta
                    float screenW, float screenH, float reach);
 // Two windows share an edge: one ends where the other begins, and they overlap along it.
 bool Touching(Rectangle a, Rectangle b);
+// Two windows cover some of the same ground; sharing an edge is not overlapping.
+bool Overlapping(Rectangle a, Rectangle b);
+// Where a window of `want`'s size can stand on the screen without covering any of `others`:
+// `want` itself if it is free, otherwise the nearest of the places a player would choose --
+// `gap` beside, above or below one of the others, in line with one of its edges, or in a
+// corner. False, and `out` is `want`, if there is no such place.
+bool FreeSpot(Rectangle want, const std::vector<Rectangle>& others, float screenW, float screenH,
+              float gap, Rectangle& out);
+// FreeSpot's place if there is one; otherwise the place on the screen that covers the least
+// of `others`.
+Rectangle LeastCovering(Rectangle want, const std::vector<Rectangle>& others, float screenW,
+                        float screenH, float gap);
 
 class DeskLayout
 {
@@ -132,6 +145,18 @@ public:
     // stays in that corner from then on.
     void Settle(int h);
     void Reset();  // every placed window back where its spec puts it
+
+    // A window that opens where its spec puts it is first made to end on the screen if it
+    // can be resized, then, if it is over a window already shown on its layer, moves to the
+    // nearest free place (FreeSpot), `SetGap` units from its neighbour -- or, with no room
+    // anywhere, to where it hides least -- and stays there. The places in the specs are
+    // chosen for one screen at one scale; this is what keeps a settings window from opening
+    // on top of the missions at another, or a radar from running off the bottom of a larger
+    // interface. What opened first keeps its place. A window the player has placed is never
+    // moved: the rule is for where the game puts things, not where the player did. Once a
+    // frame, after the screen and the unit are known.
+    void SetGap(float units) { gapUnits_ = units; }
+    void Arrange();
 
     // The open window in front at a point, or NONE for the world.
     int HitTest(Vector2 p) const;
@@ -239,7 +264,9 @@ private:
         bool       pinned = false;
         bool       collapsed = false;
         bool       held = false;  // open, but out of its context: opens when it returns
+        bool       seek = false;  // has just opened: Arrange looks for room for it
     };
+    bool AtDefault(const Entry& e) const;  // where its spec puts it, alone
 
     bool      Placed(const Entry& e) const { return e.spec.place.width > 0.0f; }
     void      Place(Entry& e) const;    // rect from anchor, offset and size, kept reachable
@@ -267,6 +294,7 @@ private:
     bool                     changed_ = false;
     float                    titleUnits_ = 26.0f;
     float                    snapUnits_ = 12.0f;
+    float                    gapUnits_ = 8.0f;
     int                      nextStack_ = 0, nextTab_ = 0, nextGroup_ = 0;
     Move                     move_;
     std::vector<std::string> contexts_;  // the ones that are on

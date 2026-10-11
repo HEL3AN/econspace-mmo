@@ -460,7 +460,7 @@ void Game::DrawSettingsContent(const Ui::Frame& f)
     if (!scaleDragging_)
         scaleDraft_ = Ui::UserScale();
 
-    const bool wide = f.Area().width >= Ui::Px(380.0f);
+    const bool wide = f.Area().width >= Ui::Px(440.0f);
     L.Begin(f);
     L.Column(
         Box().Grow().Gap(t.metrics.gap),
@@ -486,88 +486,115 @@ void Game::DrawSettingsContent(const Ui::Frame& f)
                 Box().Grow().Id("page").Gap(t.metrics.gap),
                 [&]
                 {
+                    // A form: each setting's name on the left, its controls beside it, and
+                    // what needs saying about it under the controls.
+                    auto hint = [&](const std::string& text, Color c)
+                    { L.FormRow("", [&] { L.Text(text, TextStyle::Small().Tint(c).Wrap()); }); };
                     if (settingsTab_ == 0)
                     {
-                        L.Text("RESOLUTION", TextStyle::Label());
-                        // A row of three when there is room for them, a column otherwise.
-                        Box group = Box().GrowX().Gap(t.metrics.rowGap);
-                        if (!wide)
-                            group.Column();
-                        L.Open(group);
-                        for (int i = 0; i < 3; i++)
-                        {
-                            const Res& r = modes[i];
-                            const bool current = screenWidth_ == r.w && screenHeight_ == r.h;
-                            if (L.Button("res" + std::to_string(i), TextFormat("%d x %d", r.w, r.h),
-                                         current))
-                                ApplyResolution(r.w, r.h);
-                        }
-                        L.Close();
+                        L.FormRow("Resolution",
+                                  [&]
+                                  {
+                                      // Side by side when there is room for three, one above
+                                      // the other otherwise.
+                                      Box group = Box().GrowX().Gap(t.metrics.rowGap);
+                                      if (!wide)
+                                          group.Column();
+                                      L.Open(group);
+                                      for (int i = 0; i < 3; i++)
+                                      {
+                                          const Res& r = modes[i];
+                                          const bool current =
+                                              screenWidth_ == r.w && screenHeight_ == r.h;
+                                          if (L.Button("res" + std::to_string(i),
+                                                       TextFormat("%d x %d", r.w, r.h), current))
+                                              ApplyResolution(r.w, r.h);
+                                      }
+                                      L.Close();
+                                  });
 
-                        L.Text("DISPLAY", TextStyle::Label());
                         const bool fs = IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE);
-                        if (L.Button("fullscreen", fs ? "Fullscreen: on" : "Fullscreen: off", fs))
-                            ToggleBorderlessWindowed();
+                        L.FormRow("Fullscreen",
+                                  [&]
+                                  {
+                                      if (L.Button("fullscreen", fs ? "On" : "Off", fs))
+                                          ToggleBorderlessWindowed();
+                                  });
                         L.Tooltip("fullscreen", "Borderless, the size of the monitor (F11)");
 
-                        L.Text("SCREEN TREATMENT", TextStyle::Label());
                         const bool on = treatment_.Config().enabled;
-                        L.Row(Box().GrowX().Gap(t.metrics.rowGap),
-                              [&]
-                              {
-                                  if (L.Button("treat", on ? "On" : "Off", on))
+                        L.FormRow("Screen treatment",
+                                  [&]
                                   {
-                                      treatment_.Config().enabled = !on;
-                                      SaveTreatment();
-                                  }
-                                  if (L.Button("tune", "Tune...", desk_.IsOpen(WIN_LOOK)))
-                                      desk_.Toggle(WIN_LOOK);
-                              });
+                                      if (L.Button("treat", on ? "On" : "Off", on))
+                                      {
+                                          treatment_.Config().enabled = !on;
+                                          SaveTreatment();
+                                      }
+                                      if (L.Button("tune", "Tune...", desk_.IsOpen(WIN_LOOK)))
+                                          desk_.Toggle(WIN_LOOK);
+                                  });
                         L.Tooltip("tune", "Every pass of the treatment, one by one (F10)");
                         if (!treatment_.Available())
-                            L.Text("This machine compiled none of its shaders: the picture is "
-                                   "drawn without it.",
-                                   TextStyle::Small().Tint(t.colors.warn).Wrap());
+                            hint("This machine compiled none of its shaders: the picture is drawn "
+                                 "without it.",
+                                 t.colors.warn);
                     }
                     else
                     {
-                        L.Field("Interface scale", TextFormat("%.0f%%", scaleDraft_ * 100.0f),
-                                t.colors.text);
-                        if (L.Slider("scale", scaleDraft_, Ui::MIN_USER_SCALE, Ui::MAX_USER_SCALE))
-                            scaleDragging_ = true;
+                        // Every theme in data/ui_themes/; the one in use lit.
+                        L.FormRow("Theme",
+                                  [&]
+                                  {
+                                      for (size_t i = 0; i < themes_.size(); i++)
+                                          if (L.Button("theme" + std::to_string(i), themes_[i].name,
+                                                       themes_[i].id == t.id))
+                                              themeToUse_ = themes_[i].id;
+                                  });
+                        L.FormRow("Interface scale",
+                                  [&]
+                                  {
+                                      if (L.Slider("scale", scaleDraft_, Ui::MIN_USER_SCALE,
+                                                   Ui::MAX_USER_SCALE))
+                                          scaleDragging_ = true;
+                                      L.Text(TextFormat("%.0f%%", scaleDraft_ * 100.0f),
+                                             TextStyle::Body());
+                                  });
                         if (scaleDragging_ && !f.Down(MOUSE_BUTTON_LEFT))
                         {
                             scaleDragging_ = false;
                             ApplyUiScale(std::round(scaleDraft_ * 20.0f) / 20.0f);  // 5% steps
                         }
-                        L.Row(Box().GrowX().Gap(t.metrics.rowGap),
-                              [&]
-                              {
-                                  for (int i = 0; i < 4; i++)
+                        L.FormRow("",
+                                  [&]
                                   {
-                                      const float s = scales[i];
-                                      const bool  current =
-                                          !uiScaleLocked_ && fabsf(Ui::UserScale() - s) < 0.01f;
-                                      if (L.Button("scale" + std::to_string(i),
-                                                   TextFormat("%.0f%%", s * 100.0f), current))
-                                          ApplyUiScale(s);
-                                  }
-                              });
+                                      for (int i = 0; i < 4; i++)
+                                      {
+                                          const float s = scales[i];
+                                          const bool  current =
+                                              !uiScaleLocked_ && fabsf(Ui::UserScale() - s) < 0.01f;
+                                          if (L.Button("scale" + std::to_string(i),
+                                                       TextFormat("%.0f%%", s * 100.0f), current))
+                                              ApplyUiScale(s);
+                                      }
+                                  });
                         if (uiScaleLocked_)
-                            L.Text("Set for this run by --uiscale; choosing one here keeps it.",
-                                   TextStyle::Small().Tint(t.colors.dim).Wrap());
-                        L.Text("Times what the display asks for, which is " +
-                                   std::string(TextFormat("%.0f%%", Ui::DisplayScale() * 100.0f)) +
-                                   " here.",
-                               TextStyle::Small().Tint(t.colors.dim).Wrap());
+                            hint("Set for this run by --uiscale; choosing one here keeps it.",
+                                 t.colors.dim);
+                        hint("Times what the display asks for, which is " +
+                                 std::string(TextFormat("%.0f%%", Ui::DisplayScale() * 100.0f)) +
+                                 " here.",
+                             t.colors.dim);
 
-                        L.Divider();
-                        L.Text("WINDOWS", TextStyle::Label());
-                        if (L.Button("reset", "Reset window layout"))
-                            desk_.ResetLayout();
-                        L.Text("Every window back where it started: unpinned, ungrouped and "
-                               "out of its tabs.",
-                               TextStyle::Small().Tint(t.colors.dim).Wrap());
+                        L.FormRow("Windows",
+                                  [&]
+                                  {
+                                      if (L.Button("reset", "Reset layout"))
+                                          desk_.ResetLayout();
+                                  });
+                        hint("Every window back where it started: unpinned, ungrouped and out of "
+                             "its tabs.",
+                             t.colors.dim);
                     }
                 });
         });

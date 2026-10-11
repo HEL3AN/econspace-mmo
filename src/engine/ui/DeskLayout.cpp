@@ -100,6 +100,109 @@ bool Touching(Rectangle a, Rectangle b)
     return (besides && overlapY > TOUCH) || (above && overlapX > TOUCH);
 }
 
+bool Overlapping(Rectangle a, Rectangle b)
+{
+    const float overlapX = std::min(a.x + a.width, b.x + b.width) - std::max(a.x, b.x);
+    const float overlapY = std::min(a.y + a.height, b.y + b.height) - std::max(a.y, b.y);
+    return overlapX > TOUCH && overlapY > TOUCH;
+}
+
+bool FreeSpot(Rectangle want, const std::vector<Rectangle>& others, float screenW, float screenH,
+              float gap, Rectangle& out)
+{
+    auto fits = [&](Rectangle r)
+    {
+        if (r.x < -TOUCH || r.y < -TOUCH || r.x + r.width > screenW + TOUCH ||
+            r.y + r.height > screenH + TOUCH)
+            return false;
+        for (const Rectangle& o : others)
+            if (Overlapping(r, o))
+                return false;
+        return true;
+    };
+    out = want;
+    if (fits(want))
+        return true;
+    // Beside, above or below each window already there, lined up with one of its edges, and
+    // in the screen's corners: where a player would put it by hand.
+    std::vector<Vector2> spots = { { 0.0f, 0.0f },
+                                   { screenW - want.width, 0.0f },
+                                   { 0.0f, screenH - want.height },
+                                   { screenW - want.width, screenH - want.height } };
+    for (const Rectangle& o : others)
+    {
+        const float right = o.x + o.width + gap, left = o.x - gap - want.width;
+        const float below = o.y + o.height + gap, above = o.y - gap - want.height;
+        const float alignR = o.x + o.width - want.width, alignB = o.y + o.height - want.height;
+        for (float x : { right, left })
+            for (float y : { o.y, alignB, want.y })
+                spots.push_back({ x, y });
+        for (float y : { below, above })
+            for (float x : { o.x, alignR, want.x })
+                spots.push_back({ x, y });
+    }
+    bool  found = false;
+    float best = 0.0f;
+    for (const Vector2& s : spots)
+    {
+        const Rectangle r{ std::round(s.x), std::round(s.y), want.width, want.height };
+        if (!fits(r))
+            continue;
+        const float d = std::fabs(r.x - want.x) + std::fabs(r.y - want.y);
+        if (!found || d < best)
+        {
+            out = r;
+            best = d;
+            found = true;
+        }
+    }
+    return found;
+}
+
+Rectangle LeastCovering(Rectangle want, const std::vector<Rectangle>& others, float screenW,
+                        float screenH, float gap)
+{
+    Rectangle free;
+    if (FreeSpot(want, others, screenW, screenH, gap, free))
+        return free;
+    // No room anywhere: the place on the screen that hides the least of what is there, from
+    // the same candidates and the place asked for. Ties go to the nearer.
+    auto covered = [&](Rectangle r)
+    {
+        float area = 0.0f;
+        for (const Rectangle& o : others)
+        {
+            const float w = std::min(r.x + r.width, o.x + o.width) - std::max(r.x, o.x);
+            const float h = std::min(r.y + r.height, o.y + o.height) - std::max(r.y, o.y);
+            if (w > 0.0f && h > 0.0f)
+                area += w * h;
+        }
+        return area;
+    };
+    std::vector<Vector2> spots = { { want.x, want.y } };
+    for (const Rectangle& o : others)
+        for (float x : { o.x + o.width + gap, o.x - gap - want.width, o.x, want.x })
+            for (float y : { o.y, o.y + o.height + gap, want.y })
+                spots.push_back({ x, y });
+    Rectangle best = want;
+    float     bestArea = -1.0f, bestDist = 0.0f;
+    for (const Vector2& s : spots)
+    {
+        Rectangle r{ std::round(s.x), std::round(s.y), want.width, want.height };
+        r.x = std::clamp(r.x, 0.0f, std::max(0.0f, screenW - r.width));
+        r.y = std::clamp(r.y, 0.0f, std::max(0.0f, screenH - r.height));
+        const float a = covered(r), d = std::fabs(r.x - want.x) + std::fabs(r.y - want.y);
+        if (bestArea < 0.0f || a < bestArea - 1.0f ||
+            (std::fabs(a - bestArea) <= 1.0f && d < bestDist))
+        {
+            best = r;
+            bestArea = a;
+            bestDist = d;
+        }
+    }
+    return best;
+}
+
 const char* DeskLayout::AnchorName(Anchor a)
 {
     switch (a)
@@ -121,6 +224,7 @@ int DeskLayout::Add(const WindowSpec& spec, bool open)
     Entry e;
     e.spec = spec;
     e.open = open;
+    e.seek = open;
     e.z = ++nextZ_;
     e.anchor = spec.anchor;
     e.offset = { spec.place.x, spec.place.y };
@@ -166,6 +270,7 @@ void DeskLayout::SetOpen(int h, bool open)
     if (e.open == open)
         return;
     e.open = open;
+    e.seek = open;
     Touched(e);
 }
 
@@ -193,6 +298,7 @@ void DeskLayout::SetContext(const std::string& name, bool active)
         {
             e.open = true;
             e.held = false;
+            e.seek = true;
             Raise(h);
         }
     }
@@ -390,6 +496,64 @@ void DeskLayout::Reset()
         e.stack = e.group = 0;
         e.pinned = e.collapsed = false;
         Place(e);
+        Touched(e);
+    }
+}
+
+bool DeskLayout::AtDefault(const Entry& e) const
+{
+    constexpr float NEAR = 0.5f;  // units
+    return e.anchor == e.spec.anchor && std::fabs(e.offset.x - e.spec.place.x) < NEAR &&
+           std::fabs(e.offset.y - e.spec.place.y) < NEAR &&
+           std::fabs(e.size.x - e.spec.place.width) < NEAR &&
+           std::fabs(e.size.y - e.spec.place.height) < NEAR && e.stack == 0 && e.group == 0 &&
+           !e.pinned;
+}
+
+void DeskLayout::Arrange()
+{
+    // In the order they were raised: what opened first keeps its place, what opened onto it
+    // moves.
+    std::vector<int> order = Order();
+    std::stable_sort(order.begin(), order.end(),
+                     [this](int a, int b) { return entries_[a].z < entries_[b].z; });
+    for (int h : order)
+    {
+        Entry& e = entries_[h];
+        if (!e.seek || !e.open || !Shown(h))
+            continue;
+        e.seek = false;
+        if (!Placed(e) || e.collapsed || !AtDefault(e))
+            continue;
+        std::vector<Rectangle> others;
+        for (int o = 0; o < (int)entries_.size(); o++)
+        {
+            const Entry& x = entries_[o];
+            if (o == h || !x.open)
+                continue;
+            // The windows of its own layer that are shown, and an edge such as the menu bar.
+            if ((x.spec.layer == e.spec.layer && Placed(x) && Shown(o)) || x.spec.snapTarget)
+                others.push_back(x.rect);
+        }
+        // A place chosen for a smaller interface can run off the bottom or the side of a
+        // larger one: a window that can be resized is first made to end on the screen, as
+        // far as its minimum lets it.
+        Rectangle   want = e.rect;
+        const float gap = gapUnits_ * unit_;
+        if (e.spec.resizable)
+        {
+            want.height =
+                std::max(std::min(want.height, screenH_ - want.y - gap), e.spec.minSize.y * unit_);
+            if (want.x >= 0.0f)
+                want.width = std::max(std::min(want.width, screenW_ - want.x - gap),
+                                      e.spec.minSize.x * unit_);
+        }
+        const Rectangle spot = LeastCovering(want, others, screenW_, screenH_, gap);
+        if (spot.x == e.rect.x && spot.y == e.rect.y && spot.width == e.rect.width &&
+            spot.height == e.rect.height)
+            continue;
+        e.rect = spot;
+        Unplace(e);
         Touched(e);
     }
 }
