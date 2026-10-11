@@ -61,6 +61,52 @@ void Simulation::InitGalaxy()
         if (!st.agg.seeded)
             SeedAggregate(st, info);
     }
+    PriceMarkets();
+}
+
+void Simulation::PriceMarkets()
+{
+    // Out from every centre at once, a jump at a time: each system's count is its shortest
+    // supply route to the nearest one. In the order systems are listed, so the same world
+    // counts the same way.
+    remoteness_.clear();
+    std::vector<std::string> frontier;
+    for (const auto& info : universe_.systems)
+        if (InCentre(info.id))
+        {
+            remoteness_[info.id] = 0;
+            frontier.push_back(info.id);
+        }
+    for (size_t i = 0; i < frontier.size(); i++)
+    {
+        const int next = remoteness_[frontier[i]] + 1;
+        for (const std::string& n : Neighbors(frontier[i]))
+            if (remoteness_.emplace(n, next).second)
+                frontier.push_back(n);
+    }
+    for (auto& kv : systems_)
+    {
+        const int jumps = Remoteness(kv.first);
+        for (ResourceType t : AllResourceTypes())
+            kv.second.market.SetBasePrice(t, Market::DefaultBasePrice(t) *
+                                                 RemotenessFactor(SupplyOf(t), jumps));
+    }
+    marketsStale_ = false;
+}
+
+int Simulation::Remoteness(const std::string& systemId) const
+{
+    const auto it = remoteness_.find(systemId);
+    return it == remoteness_.end() ? -1 : it->second;
+}
+
+FactionId Simulation::NativesOf(int slot) const
+{
+    FactionId  f;
+    const auto it = natives_.find(slot);
+    if (it != natives_.end())
+        Factions::Find(nlohmann::json::parse(it->second).value("id", std::string()), f);
+    return f;
 }
 
 // Starting population of a system from its base security (heuristics close to the
@@ -99,6 +145,7 @@ void Simulation::IndexLinks()
     // In the order the links are listed, as the scan this replaces returned them: the
     // faction step breaks ties by whichever neighbour it met first.
     neighbors_.clear();
+    marketsStale_ = true;  // a route to a centre may be shorter or longer now
     for (const auto& l : universe_.links)
     {
         neighbors_[l.a].push_back(l.b);
@@ -384,6 +431,13 @@ bool Simulation::AttachRegion(uint64_t seed, int slot, const std::string& homeId
 
 void Simulation::AddRegion(const Gen::Region& region)
 {
+    // Its natives first (#342 S5): its stations fly their flag, and its index names them as
+    // the holders of their systems, so the registry must know them before either is read.
+    if (!region.natives.empty())
+    {
+        Gen::RegisterNatives(region.natives);
+        natives_[region.slot] = region.natives.dump();
+    }
     for (const auto& s : region.systems)
     {
         WorldLoader::SystemInfo info;

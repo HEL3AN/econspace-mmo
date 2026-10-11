@@ -90,7 +90,7 @@ TEST_CASE("the rules have not changed without saying so")
     //
     // Split by what they cover (#342): the skeleton, and a region per slot, so a change to
     // one breaks only its own hash and says which part of the galaxy moved.
-    CHECK(Gen::GENERATOR_VERSION == 7);
+    CHECK(Gen::GENERATOR_VERSION == 8);
     // The skeleton has a version of its own (#342 S3): regions are sealed when they open and a
     // change to their rules leaves a live world alone, but the skeleton is always remade, so a
     // change to it is a change to every world -- bump Gen::SKELETON_VERSION with this hash.
@@ -98,8 +98,8 @@ TEST_CASE("the rules have not changed without saying so")
     const uint64_t skeleton = Fnv1a(Gen::SkeletonJson(Gen::GenerateGalaxySkeleton(1, 100)).dump());
     MESSAGE("skeleton hash for seed 1, 100 slots: " << skeleton);
     CHECK(skeleton == 3947093538462403513ull);
-    const uint64_t GOLDEN[] = { 4509086354049687864ull, 1460290403585921612ull,
-                                15657950903510894036ull };
+    const uint64_t GOLDEN[] = { 841637185298009687ull, 3536181191166326267ull,
+                                3979183196878774665ull };
     for (int slot = 0; slot < 3; slot++)
     {
         CAPTURE(slot);

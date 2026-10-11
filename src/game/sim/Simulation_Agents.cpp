@@ -571,6 +571,8 @@ void Simulation::StepWorldMacro()
     // anybody should read about (#143).
     const bool settling = macroSteps_ < SETTLE_STEPS;
     macroSteps_++;
+    if (marketsStale_)
+        PriceMarkets();  // a mouth opened or collapsed: supply routes changed (#342 S5)
 
     // Security and economy drift from the real populations.
     for (auto& kv : systems_)

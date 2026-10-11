@@ -148,9 +148,10 @@ TEST_CASE("snapshot round-trips through JSON")
     CHECK(r.tradeAcks[0].gross == doctest::Approx(345.5));
     CHECK(r.tradeAcks[0].revenue == doctest::Approx(400.0));
     CHECK(r.player.money == doctest::Approx(12345.0));
-    REQUIRE(r.player.reputation.size() == 4);
+    // One per faction this process knows: a world made by an earlier test adds its natives.
+    REQUIRE(r.player.reputation.size() == (size_t)Factions::Count());
     CHECK(r.player.reputation[1] == doctest::Approx(-2.0f));
-    REQUIRE(r.player.bounty.size() == 4);
+    REQUIRE(r.player.bounty.size() == (size_t)Factions::Count());
     CHECK(r.player.bounty[1] == doctest::Approx(50.0));
     REQUIRE(r.player.skillXp.size() == 3);
     CHECK(r.player.skillXp[2] == doctest::Approx(30.0f));

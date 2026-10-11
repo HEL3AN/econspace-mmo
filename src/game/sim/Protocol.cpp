@@ -1469,6 +1469,99 @@ bool LayoutMirror::Apply(const LayoutDelta& d)
     return true;
 }
 
+FactionList RegistryMessage()
+{
+    FactionList out;
+    for (FactionId f : Factions::All())
+    {
+        FactionDef d = Factions::Def(f);
+        d.temperament = Temperament{};  // how it acts is the server's business
+        out.factions.push_back(std::move(d));
+    }
+    for (FactionId a : Factions::All())
+        for (FactionId b : Factions::All())
+            if (a < b && Factions::Relation(a, b) != Stance::Neutral)
+                out.relations.push_back(
+                    { Factions::Id(a), Factions::Id(b), Factions::Relation(a, b) });
+    return out;
+}
+
+void ApplyFactions(const FactionList& list)
+{
+    for (const FactionDef& d : list.factions)
+        Factions::Add(d);
+    for (const FactionRelation& r : list.relations)
+    {
+        FactionId a, b;
+        if (Factions::Find(r.a, a) && Factions::Find(r.b, b))
+            Factions::SetRelation(a, b, r.stance);
+    }
+}
+
+std::string EncodeFactions(const FactionList& f)
+{
+    json j;
+    Stamp(j, "factions");
+    json list = json::array();
+    for (const FactionDef& d : f.factions)
+        list.push_back({ { "id", d.id },
+                         { "name", d.name },
+                         { "color", json::array({ d.color.r, d.color.g, d.color.b }) },
+                         { "lawful", d.lawful },
+                         { "kind", d.kind } });
+    j["factions"] = std::move(list);
+    json rel = json::array();
+    for (const FactionRelation& r : f.relations)
+        rel.push_back(json::array({ r.a, r.b, Factions::StanceName(r.stance) }));
+    j["relations"] = std::move(rel);
+    return j.dump();
+}
+
+bool DecodeFactions(const std::string& s, FactionList& out)
+{
+    json j;
+    if (!OpenEnvelope(s, j) || TypeOf(j) != "factions")
+        return false;
+    out = FactionList{};
+    const auto list = j.find("factions");
+    if (list != j.end() && list->is_array())
+        for (const json& o : *list)
+        {
+            if (!o.is_object())
+                continue;
+            FactionDef d;
+            d.id = TextOf(o, "id");
+            if (d.id.empty())
+                continue;
+            d.name = TextOf(o, "name");
+            if (d.name.empty())
+                d.name = d.id;
+            d.kind = TextOf(o, "kind");
+            const auto lawful = o.find("lawful");
+            d.lawful = lawful == o.end() || !lawful->is_boolean() || lawful->get<bool>();
+            const auto c = o.find("color");
+            if (c != o.end() && c->is_array() && c->size() >= 3 && (*c)[0].is_number_integer() &&
+                (*c)[1].is_number_integer() && (*c)[2].is_number_integer())
+                d.color = Color{ (unsigned char)std::clamp((*c)[0].get<int>(), 0, 255),
+                                 (unsigned char)std::clamp((*c)[1].get<int>(), 0, 255),
+                                 (unsigned char)std::clamp((*c)[2].get<int>(), 0, 255), 255 };
+            out.factions.push_back(std::move(d));
+        }
+    const auto rel = j.find("relations");
+    if (rel != j.end() && rel->is_array())
+        for (const json& r : *rel)
+        {
+            FactionRelation e;
+            if (!r.is_array() || r.size() != 3 || !r[0].is_string() || !r[1].is_string() ||
+                !r[2].is_string() || !Factions::ParseStance(r[2].get<std::string>(), e.stance))
+                continue;
+            e.a = r[0].get<std::string>();
+            e.b = r[1].get<std::string>();
+            out.relations.push_back(std::move(e));
+        }
+    return true;
+}
+
 std::string EncodeGalaxy(const GalaxyState& s)
 {
     json j;

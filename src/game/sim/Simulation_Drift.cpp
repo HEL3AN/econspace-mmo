@@ -266,6 +266,10 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
         if (doc != regionDocs_.end())
             r.documents[id] = json::parse(doc->second);
     }
+    // Its natives go with it (#342 S5), to come back under the same id.
+    const auto natives = natives_.find(slot);
+    if (natives != natives_.end())
+        r.natives = json::parse(natives->second);
     const auto mouths = wormholes_.find(o->mouth);
     if (mouths != wormholes_.end())
         for (const std::string& text : mouths->second)
@@ -377,6 +381,7 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
     tides_.erase(slot);
     playersSeen_.erase(slot);
     openSlots_.erase(slot);
+    natives_.erase(slot);  // the registry keeps them: the archive may bring them back
     o = LiveOpening(slot);
     o->state = "archived";
     o->archive = id;
@@ -451,6 +456,10 @@ int Simulation::BringBack(int id, int slot, int fromSlot, const std::string& by,
     r.slot = slot;
     r.homeId = home;
     r.entryId = text(old.entryId);
+    // Its natives come back with it (#342 S5), under the id they always had: the registry and
+    // the saves know them by it. What they built went the way of every station.
+    r.natives = old.natives;
+    rename(r.natives);
     // Moved on the map by as much as its home moved: it drifted, and it comes back whole.
     const json  homeMap = doc.value("homeMap", json::array({ 0.0, 0.0 }));
     const float dx = homeInfo->mapPos.x - homeMap[0].get<float>();

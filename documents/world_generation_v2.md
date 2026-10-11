@@ -436,6 +436,26 @@ Each slice is its own PR with green CI, and the game works after every one.
    - A minor faction per frontier region, in the faction registry.
    - 1–3 generated stations with markets.
    - Frontier prices by remoteness.
+   - *As built:* the natives are part of the region's documents (`natives` in
+     `regions/<slot>.json`): an id `native-<hash>` from the region's key (seed, slot), a name,
+     a theme -- breakaway colonists, a pirate clan, a sect at the ruins, drone automata or
+     free traders, weighted by what the region holds (graveyards and ruins, belts and dead
+     rock, distance from a centre) -- a colour, a temperament, and a stance to the majors and
+     to the pirates. `Gen::RegisterNatives` puts them in the registry whenever a region is
+     hung in the galaxy (new, sealed, or back from the archive under the same id), before
+     any system of theirs is built. They have 1–3 stations, each in its own system, built
+     from the existing roles under names of their own (a Settlement and a Claim, a Den and a
+     Trading Post, a Sanctum by a ruin, a Node by a belt); the index names them the holders
+     of those systems, so the cold aggregate gives them a garrison and traffic from the first
+     minute, and a lawful people's systems are at least 0.35 secure. A market's base price
+     is the centre's times `RemotenessFactor`: jumps along the links to the nearest centre
+     system, counted again whenever the links change; what is local (every ore today) loses
+     3% a jump down to 0.55, what is carried there (no such good exists yet) gains 6% up to 2.
+     A region returning from the archive brings its natives back; their stations are hulks,
+     as every station is. The server sends its registry (`factions`) before the index at login
+     and whenever it has grown, and the client, the agent and the self-tests add what they
+     lack. The chronicle says who trades beyond a mouth the tide opened.
+     GENERATOR_VERSION 8, PROTO_VERSION 31.
 6. **S6 — expeditions and growing stations.**
    - Intel on a new region and a curiosity bonus.
    - The `outpost` → `outpost_market` → station chain by need.

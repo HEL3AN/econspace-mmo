@@ -122,6 +122,14 @@ FactionId Add(const FactionDef& def);
 
 int  Count();
 bool Find(const std::string& id, FactionId& out);  // by string id; false if there is none
+// Everything the registry holds about one faction.
+const FactionDef& Def(FactionId f);
+// Sets the stance between two factions, both ways: what a faction added at runtime (#342 S5)
+// thinks of the others, and what a client is told the server's registry says.
+void SetRelation(FactionId a, FactionId b, Stance stance);
+// A stance by the name factions.json writes it with ("War" .. "Ally"), and back.
+const char* StanceName(Stance s);
+bool        ParseStance(const std::string& s, Stance& out);
 
 // Every faction in registry order, for `for (FactionId f : Factions::All())`. The order is
 // the order of the file, then of what was added -- the same on every run, which is what a

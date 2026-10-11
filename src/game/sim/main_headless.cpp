@@ -480,7 +480,8 @@ struct HostClient
     // is what sends the new one: an agent that travelled by order used to keep the old
     // system's stations in its picture of the new one.
     std::string                         layoutSystem;
-    std::set<std::string>               sentDesigns;  // DesignDefs this client has (#279)
+    std::set<std::string>               sentDesigns;       // DesignDefs this client has (#279)
+    int                                 factionsSent = 0;  // registry size last sent (#342 S5)
     std::unique_ptr<Net::TcpConnection> conn;
     int                                 sessionId = 0;  // 0 until the hello arrives
     std::string                         account;
@@ -653,6 +654,16 @@ static std::string LayoutFor(const Simulation& sim, const std::string& systemId,
 // Counted with the galaxy statistics -- it is the same kind of message, only rarer.
 static void SendUniverse(HostClient& hc, const Simulation& sim, NetStats& net)
 {
+    // The faction registry before it, when it has grown since this client was last sent it
+    // (#342 S5): the index names a native faction as the owner of its systems. It only grows,
+    // so its size says whether it changed.
+    if (hc.factionsSent != Factions::Count())
+    {
+        const std::string f = Proto::EncodeFactions(Proto::RegistryMessage());
+        net.galaxies += (double)f.size();
+        hc.conn->Send(f);
+        hc.factionsSent = Factions::Count();
+    }
     const std::string u = Proto::EncodeUniverse(sim.KnownUniverse());  // what is charted (#144)
     net.galaxies += (double)u.size();
     hc.conn->Send(u);
@@ -1862,6 +1873,12 @@ static int HostNameSelftest()
             if (t == "snap" && Proto::DecodeSnapshot(msg, snap))
                 for (const Ev::Event& e : snap.events)
                     heard = e.text;
+            else if (t == "factions")
+            {
+                Proto::FactionList f;
+                if (Proto::DecodeFactions(msg, f))
+                    Proto::ApplyFactions(f);
+            }
             else if (t == "universe" && Proto::DecodeUniverse(msg, u))
                 for (const auto& si : u.systems)
                     if (si.id == entry)

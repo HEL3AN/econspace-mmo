@@ -210,6 +210,14 @@ public:
     // Whether a system belongs to a civilisation centre: charted from the start and named
     // long ago, so never a discovery.
     bool InCentre(const std::string& systemId) const;
+    // The natives of an open region (#342 S5): the minor faction its documents name, put in
+    // the registry when the region was hung in the galaxy. The unaffiliated faction for a
+    // region without any -- a centre, or one sealed before natives.
+    FactionId NativesOf(int slot) const;
+    // How far a system's market is from a civilisation centre (#342 S5): jumps along the
+    // galaxy's links to the nearest centre system, which its prices are made from
+    // (RemotenessFactor). -1 when no centre reaches it, and in a world without centres.
+    int Remoteness(const std::string& systemId) const;
 
     // Where a pilot may begin (#342 S2): the heart of each centre, with the station they
     // arrive at and whose space it is. A new account chooses one, and so does an account
@@ -1009,6 +1017,12 @@ private:
     void ReplayChanges(SystemState& st);
     // Rebuilds neighbors_ from universe_.links; called wherever the links change.
     void IndexLinks();
+    // Every market's base prices from its system's remoteness (#342 S5), counted afresh along
+    // the links as they are now. After the links change, before the next macro pass reads it.
+    void                       PriceMarkets();
+    std::map<std::string, int> remoteness_;           // by system id; absent: none reaches it
+    bool                       marketsStale_ = true;  // the links changed since PriceMarkets
+    std::map<int, std::string> natives_;              // an open slot's natives, as JSON
 
     WorldLoader::Universe              universe_;
     bool                               hasRegion_ = false;
@@ -1049,6 +1063,9 @@ private:
     // Systems a region opened while the world runs: their aggregates, their static layers,
     // and the gate in the parent's mouth system, told to whoever stands there.
     void MaterializeOpened(int slot);
+    // What the chronicle says of who lives beyond a mouth just opened (#342 S5): the region's
+    // natives and where they trade. Empty for a region without any.
+    std::string NativesLine(int slot) const;
     void MaterializeSystem(const WorldLoader::SystemInfo& info, const std::string& systemsDir);
     // The free slot a mouth from `fromSlot` opens into: its lowest-numbered free neighbour
     // that is not a centre; -1 for none.
