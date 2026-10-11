@@ -284,7 +284,8 @@ namespace
 float Standing(const View& view, FactionId f)
 {
     const Proto::PlayerView& p = view.snapshot->player;
-    return (size_t)f < p.reputation.size() ? p.reputation[(size_t)f] : 0.0f;
+    const size_t             i = (size_t)f.Index();
+    return i < p.reputation.size() ? p.reputation[i] : 0.0f;
 }
 
 // A module's ore at this system's prices, times the yard's markup: what one costs fitted.
