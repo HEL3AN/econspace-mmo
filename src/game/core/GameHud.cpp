@@ -569,6 +569,8 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                             L.Field("Hull", TextFormat("%.0f%%", h * 100.0f), t.colors.text);
                             L.Bar(h, h > 0.3f ? t.colors.good : t.colors.bad);
                         }
+                    if (mine && selected_ != nullptr && ActionTarget(*selected_).armed)
+                        DrawDefenceControls(L, el);
                 }
             }
             else if (e->kind == Proto::EntityKind::Field && e->ore >= 0)
@@ -645,6 +647,99 @@ void Game::DrawTargetContent(const Ui::Frame& f)
         });
     L.End();
     L.Draw();
+}
+
+// One's own armed structure's rules of engagement (#340): the four modes, the threshold or
+// the allow-list the chosen one reads, and what it costs in this system -- the law is the
+// system's holder's, as the server will judge it. A change is sent at once; the layout's
+// delta says when the server has taken it.
+void Game::DrawDefenceControls(Ui::Layout& L, const Proto::EntityLayout& el)
+{
+    using Ui::Box;
+    using Ui::TextStyle;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    const Defence&   now = el.defence;
+    if (defenceFor_ != el.id || defenceSeen_ != now)
+    {
+        defenceFor_ = el.id;
+        defenceSeen_ = now;
+        defenceThreshold_ = now.threshold;
+        defenceList_ = AllowListText(now);
+    }
+    Defence want = now;
+    bool    send = false;
+
+    L.Divider();
+    L.Text("RULES OF ENGAGEMENT", TextStyle::Label());
+    static const Engage modes[] = { Engage::Hold, Engage::Return, Engage::Enemies,
+                                    Engage::Strangers };
+    static const char*  tips[] = {
+        "Never fires, not even back",
+        "Fires back at whoever shot at it in the last minute",
+        ("Also fires first at factions you stand below the threshold with, and at players "
+         "wanted by a lawful faction"),
+        "Fires at everyone but you and the names on the allow-list",
+    };
+    for (int row = 0; row < 2; row++)
+        L.Row(Box().GrowX().Gap(t.metrics.rowGap),
+              [&]
+              {
+                  for (int k = row * 2; k < row * 2 + 2; k++)
+                  {
+                      const std::string id = std::string("roe_") + EngageName(modes[k]);
+                      if (L.Button(id, EngageLabel(modes[k]), now.engage == modes[k]) &&
+                          now.engage != modes[k])
+                      {
+                          want.engage = modes[k];
+                          send = true;
+                      }
+                      L.Tooltip(id, tips[k]);
+                  }
+              });
+    if (now.engage == Engage::Enemies)
+        L.FormRow("Below standing",
+                  [&]
+                  {
+                      if (L.NumberField("roe_threshold", defenceThreshold_, Defence::THRESHOLD_MIN,
+                                        Defence::THRESHOLD_MAX))
+                      {
+                          want.threshold = defenceThreshold_;
+                          send = true;
+                      }
+                  });
+    if (now.engage == Engage::Strangers)
+    {
+        L.Text("Holds fire for (players and factions, by commas):",
+               TextStyle::Body().Tint(t.colors.dim));
+        Ui::TextFieldOptions opt;
+        opt.placeholder = "nobody";
+        opt.maxLength = 512;
+        if (L.TextField("roe_list", defenceList_, opt).submitted)
+        {
+            ReadAllowList(defenceList_, want);
+            send = true;
+        }
+    }
+
+    // What the chosen mode costs here: the law the server will judge it by.
+    bool      lawful = false;
+    FactionId law = Factions::Unaffiliated();
+    for (const Proto::GalaxySystemStat& g : galaxyState_.systems)
+        if (g.id == layout_.systemId)
+        {
+            law = g.controller;
+            lawful = g.claimed && Factions::IsLawful(law);
+        }
+    const bool costly =
+        lawful && (now.engage == Engage::Enemies || now.engage == Engage::Strangers);
+    L.Text(DefenceCost(now.engage, lawful, law),
+           TextStyle::Body().Wrap().Tint(costly ? t.colors.warn : t.colors.dim));
+
+    if (send && want != now)
+    {
+        cmd_.defenceId = el.id;
+        cmd_.defence = want;
+    }
 }
 
 // Menu bar input: clicking a button toggles the window or screen it stands for. The buttons

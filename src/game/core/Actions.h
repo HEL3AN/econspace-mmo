@@ -44,6 +44,7 @@ enum class Verb
     HandIn,     // hand in an active mission, for its reward
     Dismantle,  // take one's own structure apart for a refund (#39)
     Refit,      // fit the ship being flown differently, at a shipyard (#279)
+    Defence,    // set one's own armed structure's rules of engagement (#340)
 };
 
 struct Action
@@ -71,6 +72,7 @@ struct Target
     // ("5 Iron, 1 Crystal"; empty when that is not known).
     bool        mine = false;
     std::string refund;
+    bool        armed = false;  // it has guns, or will once built: it has rules of engagement
 };
 
 // The distances a hold is offered at, as multiples of the target's own radius: the same

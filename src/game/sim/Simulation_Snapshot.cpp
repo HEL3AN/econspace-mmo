@@ -274,6 +274,7 @@ static bool DescribeStatic(const Entity& e, Proto::EntityLayout& el)
             el.expiresAt = t.GetExpiresAt();
             el.blueprint = t.GetBlueprintId();
             el.damage = t.GetDamage();
+            el.defence = t.GetDefence();  // (#340)
             break;
         }
         case EntityKind::Npc:         // dynamic: created by the client from the snapshot
@@ -354,6 +355,7 @@ Proto::GalaxyState Simulation::BuildGalaxyState() const
         g.pirates = IsHot(kv.second) ? LivePirates(kv.second) : (int)(a.pirates + 0.5f);
         g.prosperity = a.prosperity;
         g.controller = a.controller;
+        g.claimed = a.claimed;
         gs.systems.push_back(std::move(g));
     }
     gs.events = events_;

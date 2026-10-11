@@ -129,6 +129,16 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
                                 (int)((now - l.startedAt) / span * 100.0), l.completesAt - now);
                 if (!l.owner.empty())
                     extra += "  by " + l.owner;
+                // Whom it fires at, when that is not only back (#340).
+                if (!l.defence.IsDefault())
+                {
+                    extra += std::string("  fires: ") + EngageName(l.defence.engage);
+                    if (l.defence.engage == Engage::Enemies)
+                        extra += Fmt(" below %.0f", l.defence.threshold);
+                    else if (l.defence.engage == Engage::Strangers &&
+                             !AllowListText(l.defence).empty())
+                        extra += " but " + AllowListText(l.defence);
+                }
                 // Its hull once it has been hit, by the rule the server destroys it by.
                 if (l.damage > 0.0f)
                 {

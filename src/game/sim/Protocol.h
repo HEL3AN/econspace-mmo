@@ -5,6 +5,7 @@
 #include "core/ShipDesign.h"
 #include "core/WorldLoader.h"  // Universe, the galaxy index
 #include <map>
+#include "entities/Defence.h"
 #include "entities/EntityKind.h"
 #include "sim/Events.h"
 #include "sim/Orders.h"
@@ -29,7 +30,9 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    26;  // 26: a refit, the whole fit asked for in a command (#279 fitting); 25: a login may be
+    27;  // 27: a structure's rules of engagement, set by a command and carried in its layout;
+         // whether a system is claimed, in the galaxy stats (#340); 26: a refit, the whole fit
+         // asked for in a command (#279 fitting); 25: a login may be
          // answered with the starts to choose from, and a ship exists only once one is chosen
          // (#342 S2); 24: a ship flies a design of its own, filed by a hash of its content; a
          // DesignDef tells a client what one is before any snapshot names it (#279 fitting); 23: a
@@ -189,6 +192,10 @@ struct Command
     // Take one's own site or structure apart, by id (#39); 0 -- not this command. What comes
     // back goes into the hold; a refusal is a Notice saying why.
     int dismantleId = 0;
+    // Set the rules of engagement of one's own armed structure, by id (#340); 0 -- not this
+    // command. A refusal is a Notice saying why, and the change reaches everyone as a delta.
+    int     defenceId = 0;
+    Defence defence;
 };
 
 // Entity kind. The wire uses the engine's enum rather than a parallel copy, so there is
@@ -361,6 +368,9 @@ struct EntityLayout
     // from the server; a hit is a change and comes as a delta.
     std::string blueprint;
     float       damage = 0.0f;
+    // A player's armed structure's rules of engagement (#340): what it fires at, and so what
+    // it costs its owner. Default -- return fire.
+    Defence defence;
 };
 
 // Full static "layout" of a system — what the client builds the world proxy from.
@@ -421,6 +431,9 @@ struct GalaxySystemStat
     int         pirates = 0;
     float       prosperity = 0.5f;
     FactionId   controller = Factions::Unaffiliated();
+    // Whether the controller holds it, so its law applies (#340): what a structure firing
+    // first there costs its owner is read from this and the controller.
+    bool claimed = false;
 };
 
 // Galaxy snapshot: statistics for all systems + a news feed. Sent by the server

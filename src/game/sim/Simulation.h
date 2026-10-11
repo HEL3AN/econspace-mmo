@@ -331,6 +331,11 @@ public:
     // `players`, so is not shot at.
     void StepStationDefence(SystemState& st, const std::vector<PlayerPresence>& players,
                             std::vector<FireEvent>* fires, float dt);
+    // A player's structure fired first, as its rules of engagement told it to (#340): the
+    // crime that is, if any, is its owner's -- against a lawful faction's ship, or against
+    // a player the system's lawful holder protects. Per hit, and the kill on top.
+    void ChargeFirstStrike(SystemState& st, const Entity& structure, const ClientSession* player,
+                           const NpcShip* npc, bool killed);
 
     // One full step of a system: AI, movement, combat, cleanup of the fallen. `players`
     // is whoever happens to be standing in it. A cold system (#295) has no ships to step
@@ -517,6 +522,26 @@ public:
     // give (Blueprints::Refund) goes into the hold and the object leaves the world through
     // RemoveStatic. Answers in the journal either way; false when refused.
     bool Dismantle(ClientSession& s, int id);
+
+    // --- Rules of engagement (#340) ---
+    // Why this player may not set the rules of structure `id` to `d`, or empty when they may:
+    // it is theirs, in their system, armed (or will be once built), and the rules are sound
+    // (DefenceProblem). From anywhere in the system: a setting, not a thing done to it.
+    std::string DefenceSetProblem(const ClientSession& s, int id, const Defence& d) const;
+    // Sets them, tells everyone in the system by a delta, keeps them in the save, and says
+    // in the owner's journal what they now cost there. False, with a Notice, when refused.
+    bool SetDefence(ClientSession& s, int id, const Defence& d);
+    // The owner's standing with `f` as far as the world knows it: live while the owner is
+    // here, else as of when they last were (OwnerBook). False when it has never been seen.
+    bool OwnerStanding(const std::string& account, FactionId f, float& out) const;
+    // A crime an owner's structure committed (#41's table, ChargeAttack): charged at once
+    // while the owner is connected, and on their return otherwise.
+    void ChargeOwner(const std::string& account, FactionId victim, bool killed);
+    // Owed charges settled and standings noted, for every connected owner. Every tick.
+    void StepOwners();
+    // How much of a crime is waiting for its owner: what ChargeOwner put by, and not yet
+    // settled. Zero for an account that owes nothing.
+    float OwedStanding(const std::string& account, FactionId f) const;
     // The faction whose law makes attacking this structure a crime, if any (#41): a lawful
     // faction's own outpost is that faction's; anything else -- a player's, the world's --
     // is under the law of the system's holder when that is a lawful faction. Nobody's in a
@@ -987,6 +1012,21 @@ private:
     // and a session must not move under one while the world is being stepped.
     std::map<int, ClientSession> sessions_;
     int                          sessionIdCounter_ = 0;
+
+    // What the world remembers about a structure's owner while they are away (#340): their
+    // standings as of when they were last here -- an outpost firing on its owner's enemies
+    // needs to know who those are with nobody to ask -- and the crimes their structures
+    // committed since, charged when they are back. Saved with the world, by account name.
+    struct OwnerBook
+    {
+        bool               seen = false;  // standings noted at least once
+        PerFaction<float>  standing;
+        PerFaction<float>  owedStanding;
+        PerFaction<double> owedBounty;
+    };
+    std::map<std::string, OwnerBook> owners_;
+    nlohmann::json                   OwnersJson() const;
+    void                             OwnersFrom(const nlohmann::json& j);
 
     double time_ = 0.0;        // total simulation time (seconds)
     double maintAccum_ = 0.0;  // accumulator of coarse world maintenance (director)

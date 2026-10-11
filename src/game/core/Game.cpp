@@ -231,6 +231,7 @@ void Game::Run()
                 cmd_.jumpGateId = cmd_.lootId = 0;
                 cmd_.deploy.clear();
                 cmd_.dismantleId = 0;
+                cmd_.defenceId = 0;  // (#340): the rules are set once
                 cmd_.orderKind = 0;  // a build order (#39) is given once
                 cmd_.orderBlueprint.clear();
             }
@@ -900,6 +901,9 @@ Actions::Target Game::ActionTarget(const Entity& e) const
     {
         const Structure& s = static_cast<const Structure&>(e);
         t.mine = !pilotName_.empty() && s.GetOwner() == pilotName_;
+        const Archetype* built = Archetypes::Find(s.GetBuilds());
+        t.armed =
+            built != nullptr && built->Has(Component::Defensive) && built->weaponDamage > 0.0f;
         if (const Blueprint* bp = s.GetBlueprint())
         {
             const double now = snapshot_.time;  // the last word from the server is near enough
@@ -1011,6 +1015,10 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
             break;
         case Verb::Dismantle:
             cmd_.dismantleId = target->GetId();  // the server checks reach and ownership
+            break;
+        case Verb::Defence:  // the selected-item window holds the rules and their cost
+            selected_ = target;
+            desk_.SetOpen(WIN_TARGET, true);
             break;
         case Verb::Attack:
             selected_ = target;

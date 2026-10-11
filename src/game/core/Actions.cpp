@@ -54,6 +54,7 @@ const char* ToolFor(Verb verb)
         case Verb::HandIn: return "complete_mission";
         case Verb::Dismantle: return "dismantle";
         case Verb::Refit: return "refit";
+        case Verb::Defence: return "set_defence";
         case Verb::Attack: return "attack";
         case Verb::Investigate: return "salvage";
         // The interface's own: they change what a window shows, not the world. An agent
@@ -146,9 +147,15 @@ std::vector<Action> For(const Target& t, Vector2 from)
         // pretend to know.
         case EntityKind::Structure:
             if (t.mine)
+            {
+                // Whom it fires at is set in the selected-item window, where it shows what
+                // each choice costs (#340).
+                if (t.armed)
+                    out.push_back(Make(Verb::Defence, "Rules of engagement..."));
                 out.push_back(Make(Verb::Dismantle, t.refund.empty()
                                                         ? std::string("Dismantle")
                                                         : "Dismantle (back: " + t.refund + ")"));
+            }
             else
                 out.push_back(Make(Verb::Attack, "Attack"));
             break;

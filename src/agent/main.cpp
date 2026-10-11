@@ -22,6 +22,7 @@
 #include "core/Faction.h"
 #include "core/WorldLoader.h"
 #include "economy/Resource.h"
+#include "entities/Defence.h"
 #include "entities/ShipType.h"
 #include "missions/MissionSystem.h"
 #include "sim/Names.h"
@@ -1160,6 +1161,84 @@ std::vector<Tool> BuildTools()
           } });
 
     tools.push_back(
+        { "set_defence",
+          "Set the rules of engagement of an armed structure you built, from anywhere in its "
+          "system: 'hold' never fires; 'return' (the default) fires back at whoever shot at it "
+          "in the last minute; 'enemies' also fires first at ships of factions you stand below "
+          "`threshold` with (and pirates), and at players wanted by a lawful faction; "
+          "'strangers' fires at everyone but you and the allow-list. It only fires where "
+          "somebody is. Firing first is your crime, even while you are away: on a lawful "
+          "faction's ships wherever they are, and on an innocent player in a system a lawful "
+          "faction holds -- reputation and bounty with that faction per hit, more for a kill. "
+          "The answer says what the mode costs in that system.",
+          Obj({ { "structure_id", Num("structure id from observe") },
+                { "mode", Str("'hold', 'return', 'enemies' or 'strangers'") },
+                { "threshold", Num("enemies: fire on factions your standing with is below "
+                                   "this, -100 to 100 (default -10, where hostile begins)") },
+                { "allow_players",
+                  Rpc::Json{ { "type", "array" },
+                             { "items", { { "type", "string" } } },
+                             { "description", "strangers: account names it holds fire for" } } },
+                { "allow_factions",
+                  Rpc::Json{
+                      { "type", "array" },
+                      { "items", { { "type", "string" } } },
+                      { "description",
+                        "strangers: faction ids it holds fire for, e.g. 'Independent'" } } } },
+              { "structure_id", "mode" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              const int  id = (int)NumberOr(args, "structure_id", 0);
+              const auto it = g_session.Layout().find(id);
+              if (it == g_session.Layout().end() || it->second.kind != Proto::EntityKind::Structure)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "no structure #" + std::to_string(id) + " in this system" };
+              if (it->second.owner != g_session.Account())
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, it->second.name + " is not yours" };
+              Defence           d;
+              const std::string mode = args.contains("mode") && args["mode"].is_string()
+                                           ? args["mode"].get<std::string>()
+                                           : std::string();
+              if (!EngageFrom(mode, d.engage))
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "mode is 'hold', 'return', 'enemies' or 'strangers'" };
+              d.threshold = (float)NumberOr(args, "threshold", d.threshold);
+              for (const char* key : { "allow_players", "allow_factions" })
+              {
+                  if (!args.contains(key))
+                      continue;
+                  if (!args[key].is_array())
+                      throw Rpc::Error{ Rpc::INVALID_PARAMS, std::string(key) + " is a list" };
+                  for (const Rpc::Json& n : args[key])
+                  {
+                      if (!n.is_string())
+                          throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                            std::string(key) + " is a list of names" };
+                      (std::string(key) == "allow_players" ? d.players : d.factions)
+                          .push_back(n.get<std::string>());
+                  }
+              }
+              const std::string problem = DefenceProblem(d);
+              if (!problem.empty())
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, problem };
+
+              const int      seq = g_session.LastEventSeq();
+              Proto::Command c;
+              c.defenceId = id;
+              c.defence = d;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "set_defence: " + why;
+              // The server says what it now costs there, in the journal; the layout carries
+              // the rules themselves.
+              for (const Ev::Event& e : g_session.EventsSince(seq))
+                  if (e.kind == Ev::Kind::Notice && e.text.rfind("Rules of engagement", 0) == 0)
+                      return "set_defence: " + e.text;
+              return Refused("set_defence", seq, "the server did not change the rules");
+          } });
+
+    tools.push_back(
         { "attack",
           "Close to weapon range of a ship or a structure and fire until it is destroyed. "
           "Finishes when it is gone; aborts like any order if the hull gets critical. A "
@@ -1541,6 +1620,11 @@ int Selftest(const std::vector<Tool>& tools)
         (buildOrder.find(docked ? "undock first" : "build:") != std::string::npos) &&
         nothing.find("no structure") != std::string::npos;
     note("blueprints, deploy, build and dismantle", building);
+    // ...and no rules of engagement are set for a structure that is not there (#340).
+    const std::string noRules =
+        RunTool(tools, "set_defence", Rpc::Json{ { "structure_id", 999999 }, { "mode", "hold" } });
+    const bool rules = noRules.find("no structure") != std::string::npos;
+    note("set_defence", rules);
 
     // 7) Salvage (#297): a wreck that is not there is named as such, and one that is gets
     // searched or approached -- whichever its distance calls for. Which wrecks a system has
@@ -1561,7 +1645,7 @@ int Selftest(const std::vector<Tool>& tools)
     note("salvage", salvage);
 
     const bool ok = observed && stationId != 0 && ordered && arrived && refused && docked &&
-                    listed && accepted && unaffordable && noBounty && building && salvage;
+                    listed && accepted && unaffordable && noBounty && building && rules && salvage;
     // A failure that is really a lost connection should say so, rather than leave a list of
     // FAILs to be read as five separate bugs.
     if (!ok && !g_session.ByeReason().empty())
