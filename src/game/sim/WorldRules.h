@@ -41,8 +41,34 @@ struct Tide
     double surveyedWeight = 0.25;
     double perSurvey = 0.2;
     double minGapHours = 6.0;
-    double mouthHours = 24.0;  // a mouth counts as young this long (S4: its unstable life)
+    double mouthHours = 24.0;  // an unstable mouth's life before it collapses (S4)
     int    playersPerMouth = 20;
+};
+
+// What a mouth is until it is anchored, and what becomes of a region nobody comes to (#342
+// S4): the file's `mouths` and `archive` sections.
+//
+// A mouth the tide opens is unstable: it lets through only ships of at most `maxMass`, and it
+// collapses `mouthHours` after it opened unless an Anchor is finished at it. `warnHours`
+// before, the chronicle says it is failing. With `anchors` off every mouth is permanent at
+// once -- "the Rift", option A of the design.
+struct Mouths
+{
+    bool   anchors = true;
+    double maxMass =
+        45.0;  // the most a ship may weigh to pass an unstable mouth: a scout or a courier
+    double warnHours = 2.0;
+};
+
+// At the cap, a frontier region nobody has been in for `deadDays`, with no player structure
+// in it, drifts away: the chronicle warns `warnDays` before, then it is archived and its slot
+// is free. When a slot opens, an archived region comes back instead of a fresh one at
+// `returnChance`.
+struct Archive
+{
+    double deadDays = 7.0;
+    double warnDays = 2.0;
+    double returnChance = 0.35;
 };
 
 // Reads `path`. False, with Error() saying why, and the rules as they were, when it does
@@ -50,7 +76,11 @@ struct Tide
 bool               Load(const std::string& path);
 const std::string& Error();
 const Tide&        TideRules();
+const Mouths&      MouthRules();
+const Archive&     ArchiveRules();
 // For a test: rules of its own, without a file.
 void SetTideRules(const Tide& t);
+void SetMouthRules(const Mouths& m);
+void SetArchiveRules(const Archive& a);
 
 }  // namespace WorldRules

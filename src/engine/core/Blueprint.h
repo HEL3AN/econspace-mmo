@@ -42,6 +42,9 @@ struct Blueprint
     float bodyClearance = 0.0f;  // gap to a star's or planet's surface, and to the path one
                                  // that moves sweeps -- it would come round and through it
     int perSystem = 0;           // of this blueprint in one system, everyone's; 0 -- no cap
+    // Only within this of an unstable wormhole mouth's edge (#342 S4): what an Anchor is
+    // built at. 0 -- anywhere.
+    float mouth = 0.0f;
 
     // Who may lay one down (#295): "builders" in the file, ["player"] when it says nothing.
     // An outpost is a faction's claim on a system and is not offered to a player yet.

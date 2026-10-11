@@ -28,6 +28,7 @@ class NpcShip;
 class Combatant;
 class Ship;
 class Structure;
+class JumpGate;
 struct ShipStats;
 struct Blueprint;
 namespace Gen
@@ -92,11 +93,74 @@ public:
         double      openedAt = 0.0;  // world time
         int         parent = -1;     // the slot whose mouth leads in; -1 for a centre
         std::string mouth;           // the system of the parent the wormhole is in
-        std::string state = "open";  // S4: unstable, anchored, drifted
-        std::string by = "world";    // world (it opened with the world), tide, admin
-        std::string why;             // what the tide was made of, when it was the tide
+        // open (a centre, or a frontier the world began with: its gates stay), unstable (a
+        // mouth the tide opened, until it is anchored or collapses), anchored, drifted (its
+        // mouth collapsed: cut off, kept), archived (drifted away at the cap: not in the
+        // galaxy), returned (archived, and since brought back as another entry) -- S4.
+        std::string state = "open";
+        std::string by = "world";  // world (it opened with the world), tide, admin
+        std::string why;           // what the tide was made of, when it was the tide
+        // The mouth (#342 S4): when the present one opened -- openedAt, or a later reopening
+        // of a drifted region -- when it collapses while unstable, and whether the chronicle
+        // has said it is failing.
+        double mouthAt = 0.0;
+        double closesAt = 0.0;
+        bool   warned = false;
+        // Who anchored it, as its gates are named: a faction's name or a pilot's.
+        std::string anchoredBy;
+        double      anchoredAt = 0.0;
+        // When a player was last in it, and whether the chronicle has said it is drifting
+        // away (at the cap, S4).
+        double lastVisit = 0.0;
+        bool   fading = false;
+        // Archived: the archive it went to. Otherwise the archive it came back from; -1.
+        int archive = -1;
     };
     const std::vector<RegionOpening>& OpeningLog() const { return openings_; }
+    // The entry of the log that is slot `slot` now -- not one archived from it -- or null.
+    const RegionOpening* OpeningOf(int slot) const;
+    // The system a region's wormhole leads into: ring 1, the far side of the mouth.
+    static std::string EntryOf(int slot);
+
+    // --- Mouths and Anchors (#342 S4; Simulation_Tide.cpp) ---
+    // Why this player's ship may not go through gate `g`, or empty when it may: an unstable
+    // mouth lets through only ships of at most the mouth rules' mass.
+    std::string MouthProblem(const ClientSession& s, const Entity& g) const;
+    // The blueprint an Anchor is built from (data/blueprints.json), and what one costs a
+    // faction's stock, counted as one number; zero when there is none.
+    static constexpr const char* ANCHOR_BLUEPRINT = "anchor";
+    static float                 AnchorCost();
+    static bool                  IsAnchor(const std::string& archetype);
+    // The unstable mouth in `st` whose gate's edge is within `within` of `at`, nearest first,
+    // and its gate; null when there is none.
+    const RegionOpening* MouthNear(const SystemState& st, Vector2 at, float within,
+                                   const Entity** gate = nullptr) const;
+    // The galaxy's routes changed -- a mouth collapsed or reopened, a region drifted away or
+    // came back -- since the last call: the host sends everyone the index again.
+    bool TakeTopologyChanged()
+    {
+        const bool c = topologyChanged_;
+        topologyChanged_ = false;
+        return c;
+    }
+
+    // --- The archive (#342 S4; Simulation_Drift.cpp) ---
+    // A region that drifted away at the cap: its documents as they were sealed, and what had
+    // become of it -- what stood and lay in each system, the names players gave, its history.
+    struct ArchivedRegion
+    {
+        int         id = 0;
+        int         slot = 0;  // where it was
+        double      archivedAt = 0.0;
+        std::string text;  // the archive document, as JSON
+    };
+    const std::map<int, ArchivedRegion>& Archives() const { return archives_; }
+    // Where archive `id` is kept under `dir`.
+    static std::string ArchivePath(const std::string& dir, int id);
+    // Admin, and a test: region `slot` drifts away now, if it may -- a frontier with nothing
+    // opened from it and no player structure in it; whether anyone comes to it, and the cap,
+    // are not asked. The archive's id, or -1 with `why`.
+    int ArchiveRegionNow(int slot, std::string& why);
 
     // A world file's header, read before the galaxy is made from it: its seed, the rules'
     // versions, its centres, its log and its growth settings. False when the file is missing
@@ -1003,9 +1067,72 @@ private:
     // home is not a system of this galaxy. `homeDoc` must outlive the generation.
     bool ParamsFor(int slot, const std::string& homeId, const std::string& systemsDir,
                    Gen::RegionParams& params, nlohmann::json& homeDoc) const;
+    // Mouths and Anchors (#342 S4).
+    bool           topologyChanged_ = false;
+    RegionOpening* LiveOpening(int slot);
+    // Where a mouth from `fromSlot` leads: the region that drifted from it, if one did --
+    // the next mouth from a parent finds it again -- else its next free slot; -1 for none.
+    int MouthTargetFrom(int fromSlot) const;
+    // The opening whose wormhole joins systems `a` and `b`, either way round; null for none.
+    RegionOpening* CrossingOf(const std::string& a, const std::string& b) const;
+    // A mouth's two gates as its opening says they are: unstable, anchored and named, or the
+    // gates it was made with. In a system being built (no deltas), or live (deltas).
+    void DressCrossing(JumpGate& g, const RegionOpening& o) const;
+    void DressCrossings(SystemState& st);
+    void RedressMouth(const RegionOpening& o);
+    // The route between a region and its parent, cut and made again: the link in the index
+    // and the two gates, told to whoever stands there.
+    void CutMouth(const RegionOpening& o);
+    void RestoreMouth(const RegionOpening& o);
+    // Once a pass: mouths failing, collapsing; anchors finished at them.
+    void StepMouths();
+    // A drifted region found again by the next mouth from its parent.
+    int  ReopenRegion(int slot, const std::string& by, const std::string& why);
+    void CollapseMouth(RegionOpening& o);
+    // An Anchor of `owner` finished at the mouth of `o` (S4), or lost from it.
+    void AnchorMouth(RegionOpening& o, const std::string& owner);
+    void AnchorLost(SystemState& st, const std::string& owner, const std::string& name,
+                    const std::string& key, Vector2 at, bool wasSite, Loss cause,
+                    FactionId attacker);
+
+    // An Anchor standing at either end of `o`'s mouth -- finished, or (`built` false) going up
+    // as well -- whose owner; empty for none.
+    std::string AnchorAt(const RegionOpening& o, bool built = true) const;
+    // Where the gate in `systemId` to `dest` is, built or not -- a collapsed mouth's gates are
+    // where they will be when it reopens. False when the system has no such gate.
+    bool CrossingGateAt(const std::string& systemId, const std::string& dest, Vector2& at,
+                        float& size) const;
+    // A faction lays an Anchor's site at the mouth of `slot` and pays for it.
+    bool LayAnchor(FactionId f, const std::string& from, int slot);
+    void ResolveAnchor(const Plan& p);
+    // Who, by an owner string: a faction's name, or the pilot's.
+    std::string OwnerName(const std::string& owner) const;
+
+    // The archive (#342 S4; Simulation_Drift.cpp).
+    std::map<int, ArchivedRegion> archives_;
+    int                           nextArchive_ = 1;
+    // A region coming back: what AttachRegion makes in place of the slot's own (null: its own),
+    // and what is restored into its systems when they are built, by system id.
+    const Gen::Region*                 returning_ = nullptr;
+    std::map<std::string, std::string> returnState_;  // JSON, as text
+    // Once a period, at the cap: regions nobody comes to are warned, then drift away.
+    void StepDrift();
+    bool ArchiveRegion(int slot, std::string& why);
+    // Archive `id` brought back into `slot`, its wormhole from region `fromSlot`: decayed,
+    // renamed for its new place. The slot, or -1.
+    int BringBack(int id, int slot, int fromSlot, const std::string& by, const std::string& why);
+    // Whether a player's structure stands anywhere in a region.
+    int PlayerStructuresIn(int slot) const;
+    // What a save keeps of a system's static layer (#38): what was taken away, changed and
+    // added. Null when nothing was.
+    nlohmann::json ChangesOf(const SystemState& st) const;
+    void           SaveArchive(nlohmann::json& j) const;
+    void           LoadArchive(const nlohmann::json& j);
+
     bool materialized_ = false;  // MaterializeAllSystems has run
-    void SaveGrowth(nlohmann::json& j) const;
-    void LoadGrowth(const nlohmann::json& j);
+
+    void                               SaveGrowth(nlohmann::json& j) const;
+    void                               LoadGrowth(const nlohmann::json& j);
     std::map<std::string, SystemState> systems_;  // state by system id
     int                                agentIdCounter_ = 0;
     // The links, by system (#295): what Neighbors reads.

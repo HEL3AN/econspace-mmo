@@ -210,8 +210,16 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             return;
         }
 
-        // At the gate: jump, then let the next tick plan from where we land.
+        // At the gate: jump, then let the next tick plan from where we land -- unless it is an
+        // unstable mouth this ship is too heavy for (#342 S4), which no waiting will change.
         s.ship->DisengageAutopilot();
+        const std::string barred = MouthProblem(s, *gate);
+        if (!barred.empty())
+        {
+            finish(Orders::Status::Failed, barred);
+            return;
+        }
+
         std::string dest = JumpGateDestIfNear(s, st, gate->GetId());
         if (dest.empty())
         {

@@ -159,7 +159,7 @@ bool ParseBlueprint(const json& j, Blueprint& b, std::string& err)
         return false;
     }
     const json& p = j["placement"];
-    if (!OnlyKnownKeys(p, { "reach", "clearance", "bodyClearance", "perSystem" }, err))
+    if (!OnlyKnownKeys(p, { "reach", "clearance", "bodyClearance", "perSystem", "mouth" }, err))
     {
         err = "placement: " + err;
         return false;
@@ -167,7 +167,7 @@ bool ParseBlueprint(const json& j, Blueprint& b, std::string& err)
     float perSystem = 0.0f;
     if (!ReadNumber(p, "reach", b.reach, err) || !ReadNumber(p, "clearance", b.clearance, err) ||
         !ReadNumber(p, "bodyClearance", b.bodyClearance, err) ||
-        !ReadNumber(p, "perSystem", perSystem, err))
+        !ReadNumber(p, "perSystem", perSystem, err) || !ReadNumber(p, "mouth", b.mouth, err))
     {
         err = "placement: " + err;
         return false;

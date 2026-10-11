@@ -60,7 +60,10 @@ Structure* StructureWithId(SystemState& st, int id)
 // "watch post": what an outpost is, without the article, for "the Traders Guild watch post".
 std::string NounOf(const Structure& t)
 {
+    if (Simulation::IsAnchor(t.GetBuilds()))
+        return "Anchor";  // at a wormhole mouth (#342 S4)
     Outposts::Purpose purpose = Outposts::Purpose::Open;
+
     Outposts::PurposeOf(t.GetBuilds(), purpose);
     const std::string called = Outposts::Called(purpose);
     return called.substr(called.find(' ') + 1);

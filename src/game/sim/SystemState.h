@@ -110,6 +110,10 @@ struct SystemProfile
     std::vector<FactionId> outposts;
     std::vector<int>       outpostIds;           // ...and which entity each is, in the same order
     bool                   outpostSite = false;  // anyone's outpost stands or is going up
+    // The owner of each faction's Anchor at a wormhole mouth (#342 S4), built or going up --
+    // what a rival besieges to bring the race for the region back -- and which entity it is.
+    std::vector<FactionId> anchors;
+    std::vector<int>       anchorIds;
 };
 
 // State of a single star system inside the simulation. Level of detail (#295):

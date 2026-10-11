@@ -53,7 +53,8 @@ struct Plan
         Survey,
         Settle,  // an outpost is being built; finished, it claims the system
         Siege,   // strength sent to bring down another faction's outpost (slice 5)
-        Return   // what is left of a siege's contingent, on its way home to `target`
+        Return,  // what is left of a siege's contingent, on its way home to `target`
+        Anchor   // an Anchor going up at a wormhole mouth in `target` (#342 S4)
     };
     // One holding's share of a siege: where it came from, how much, and how many jumps away.
     struct Lent

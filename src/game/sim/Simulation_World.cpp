@@ -286,6 +286,15 @@ bool Simulation::ParamsFor(int slot, const std::string& homeId, const std::strin
     }
     params.seed = regionSeed_;
     params.slot = slot;
+    // A slot a region drifted away from (#342 S4) opens to another region: keyed by how many
+    // times the slot has opened before, which the log says, so a world remade from its log
+    // makes the same one. The first time, the slot's own.
+    int before = 0;
+    for (const RegionOpening& o : openings_)
+        if (o.slot == slot && (o.state == "archived" || o.state == "returned"))
+            before++;
+    if (before > 0)
+        params.seed = Gen::Key(regionSeed_, 0xD21F7u, (uint64_t)before);
     if (homeId.empty())
         return true;  // a centre opens from nowhere
     const WorldLoader::SystemInfo* home = nullptr;
@@ -364,8 +373,10 @@ bool Simulation::AttachRegion(uint64_t seed, int slot, const std::string& homeId
         params.systems = systems;
     // As it was made when it opened, if it is sealed (S3); made now, and sealed, if not.
     Gen::Region region = MakeSealed(slot, params);
-    // Then the hand-written exceptions, always after (#147).
-    ApplyPinsFile(region, PinsBeside(systemsDir), seed);
+    // Then the hand-written exceptions, always after (#147) -- to the slot's own region, not
+    // to one that drifted back into it (S4): the pins were written for what the slot makes.
+    if (returning_ == nullptr)
+        ApplyPinsFile(region, PinsBeside(systemsDir), seed);
     AddRegion(region);
     LogOpening(slot, homeId, "world", std::string());
     return true;
@@ -467,6 +478,13 @@ bool Simulation::OpenGalaxy(const Gen::WorldParams& params, const std::string& d
         }
     for (const RegionOpening& e : plan)
     {
+        // A region that drifted away is in the archive, not the galaxy (S4): only its entry
+        // stays, as history, and as the count of how often its slot has opened.
+        if (e.state == "archived" || e.state == "returned")
+        {
+            openings_.push_back(e);
+            continue;
+        }
         const bool centre = e.slot >= 0 && e.slot < (int)skeleton_.slots.size() &&
                             skeleton_.slots[(size_t)e.slot].kind == Gen::SlotKind::Centre;
         if (centre)
@@ -495,6 +513,10 @@ bool Simulation::OpenGalaxy(const Gen::WorldParams& params, const std::string& d
         now.mouth = mouth;
         now.parent = parent;
     }
+    // ...and one whose mouth collapsed is cut off from its parent (S4): no route, no gates.
+    for (const RegionOpening& o : openings_)
+        if (o.state == "drifted")
+            CutMouth(o);
     sealedIn_.clear();
     hasRegion_ = true;
     return !starts_.empty();
@@ -589,6 +611,9 @@ void Simulation::MaterializeSystem(const WorldLoader::SystemInfo& info,
             st.entities = WorldLoader::BuildSystem(sys);
         }
         WorldLoader::NamePlanets(st.entities, SystemName(info.id));  // (#259)
+        // A wormhole's gates as its opening says they are now: unstable, anchored, or gone
+        // with a mouth that collapsed (#342 S4). Before the ids, as if the data said so.
+        DressCrossings(st);
         // Ids here rather than in HydrateSystem, in the same order as ever, because what a
         // save changed is replayed by id-bearing objects before any NPC exists.
         for (auto& e : st.entities)
@@ -698,14 +723,15 @@ const char* PlanKindName(Plan::Kind k)
         case Plan::Kind::Settle: return "settle";
         case Plan::Kind::Siege: return "siege";
         case Plan::Kind::Return: return "return";
+        case Plan::Kind::Anchor: return "anchor";
         case Plan::Kind::Survey: break;
     }
     return "survey";
 }
 bool PlanKindFrom(const std::string& name, Plan::Kind& out)
 {
-    for (Plan::Kind k :
-         { Plan::Kind::Survey, Plan::Kind::Settle, Plan::Kind::Siege, Plan::Kind::Return })
+    for (Plan::Kind k : { Plan::Kind::Survey, Plan::Kind::Settle, Plan::Kind::Siege,
+                          Plan::Kind::Return, Plan::Kind::Anchor })
         if (name == PlanKindName(k))
         {
             out = k;
@@ -770,7 +796,46 @@ Intel IntelFrom(const nlohmann::json& j)
 }
 }  // namespace
 
+nlohmann::json Simulation::ChangesOf(const SystemState& st) const
+{
+    using nlohmann::json;
+    json added = json::array();
+    json state = json::object();
+    for (const auto& e : st.entities)
+    {
+        const auto key = st.keys.find(e->GetId());
+        if (key == st.keys.end())
+            continue;
+        json now = StateOf(*e);
+        if (key->second[0] == '+')
+        {
+            std::string array;
+            json        object = WorldLoader::DescribeObject(*e, array);
+            if (array.empty())
+                continue;
+            now["key"] = key->second;
+            now["array"] = array;
+            now["object"] = std::move(object);
+            added.push_back(std::move(now));
+        }
+        else if (!now.empty())
+            state[key->second] = std::move(now);
+    }
+    if (st.removedKeys.empty() && added.empty() && state.empty())
+        return json();
+    json c = json::object();
+    if (!st.removedKeys.empty())
+        c["removed"] = st.removedKeys;
+    if (!state.empty())
+        c["state"] = std::move(state);
+    if (!added.empty())
+        c["added"] = std::move(added);
+    c["nextAdded"] = st.nextAddedKey;
+    return c;
+}
+
 // Server world persistence: the galaxy (system aggregates) + time. The sup* "pressure"
+
 // field is transient — not written (on load the world has "rested").
 bool Simulation::SaveWorld(const std::string& path) const
 {
@@ -897,40 +962,9 @@ bool Simulation::SaveWorld(const std::string& path) const
     json changes = json::object();
     for (const auto& kv : systems_)
     {
-        const SystemState& st = kv.second;
-        json               added = json::array();
-        json               state = json::object();
-        for (const auto& e : st.entities)
-        {
-            const auto key = st.keys.find(e->GetId());
-            if (key == st.keys.end())
-                continue;
-            json now = StateOf(*e);
-            if (key->second[0] == '+')
-            {
-                std::string array;
-                json        object = WorldLoader::DescribeObject(*e, array);
-                if (array.empty())
-                    continue;
-                now["key"] = key->second;
-                now["array"] = array;
-                now["object"] = std::move(object);
-                added.push_back(std::move(now));
-            }
-            else if (!now.empty())
-                state[key->second] = std::move(now);
-        }
-        if (st.removedKeys.empty() && added.empty() && state.empty())
-            continue;
-        json c = json::object();
-        if (!st.removedKeys.empty())
-            c["removed"] = st.removedKeys;
-        if (!state.empty())
-            c["state"] = std::move(state);
-        if (!added.empty())
-            c["added"] = std::move(added);
-        c["nextAdded"] = st.nextAddedKey;
-        changes[kv.first] = std::move(c);
+        json c = ChangesOf(kv.second);
+        if (!c.is_null())
+            changes[kv.first] = std::move(c);
     }
     j["changes"] = std::move(changes);
     // What the world remembers of structures' owners while they are away (#340).
@@ -1048,7 +1082,8 @@ Save::Result Simulation::LoadWorld(const std::string& path)
                     l.hops = std::max(1, lj.value("hops", 1));
                     p.lent.push_back(l);
                 }
-            const bool sited = p.kind == Plan::Kind::Settle || p.kind == Plan::Kind::Siege;
+            const bool sited = p.kind == Plan::Kind::Settle || p.kind == Plan::Kind::Siege ||
+                               p.kind == Plan::Kind::Anchor;
             if (p.id <= 0 || plans_.count(p.id) != 0 || !HasSystem(p.target) ||
                 (sited && p.site.empty()))
                 continue;
@@ -1162,6 +1197,8 @@ void Simulation::Reset()
     surplusTide_ = 0.0;
     growthPaused_ = false;
     tidePasses_ = 0;
+    archives_.clear();  // the save's too (S4)
+    nextArchive_ = 1;
 }
 
 SystemState* Simulation::SystemById(const std::string& id)

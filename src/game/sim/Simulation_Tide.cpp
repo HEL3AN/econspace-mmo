@@ -8,13 +8,24 @@
 // how much of it has been explored and from the factions surveying it; when it crosses the
 // threshold, a wormhole opens from its deepest system into the next slot of the skeleton.
 //
+// A mouth the tide opens is unstable (#342 S4): only small ships pass, and a day after it
+// opened it collapses unless somebody has finished an Anchor at it, which makes it permanent
+// gates named after whoever built it. A mouth that collapses leaves its region drifting: in
+// the log, with everything built in it, cut off -- and the next mouth from the same parent
+// leads there again. Everything here is decided by the clock and the log, in the coarse
+// pass, whether anybody is there to see it or not.
+//
 // One translation unit of Simulation (#17).
 
 #include "sim/Simulation.h"
 #include "sim/SaveFile.h"
 #include "sim/WorldRules.h"
 
+#include "core/Archetype.h"
+#include "core/Blueprint.h"
+#include "core/ShipDesign.h"
 #include "core/WorldLoader.h"
+#include "entities/JumpGate.h"
 #include "entities/Structure.h"
 #include "gen/Galaxy.h"
 #include "gen/Region.h"
@@ -35,6 +46,19 @@ constexpr uint64_t STRAIN_KEY = 0x71DE5u;
 constexpr uint64_t START_KEY = 0x71DE6u;
 constexpr int      SEAL_SCHEMA = 1;
 constexpr double   HOUR = 3600.0;
+// What keys where a faction's Anchor goes up at a mouth, besides who, where and which.
+constexpr uint64_t ANCHOR_KEY = 0xA7C40u;
+// What keys whether a slot that opens takes an archived region back, and which.
+constexpr uint64_t RETURN_KEY = 0x7E7D27u;
+// An Anchor's spot is tried this many times before a faction gives the mouth up.
+constexpr int ANCHOR_TRIES = 24;
+
+std::string Hours(double seconds)
+{
+    const long long m = (long long)std::lround(std::max(0.0, seconds) / 60.0);
+    return std::to_string(m / 60) + " h " + (m % 60 < 10 ? "0" : "") + std::to_string(m % 60) +
+           " min";
+}
 
 std::string Percent(double part, double whole)
 {
@@ -110,7 +134,9 @@ Gen::Region Simulation::MakeSealed(int slot, const Gen::RegionParams& params)
         sealedIn_.erase(kept);
         return region;
     }
-    region = Gen::GenerateRegion(params);
+    // A region drifting back from the archive (S4) is sealed as it comes back: what it is
+    // now is what it will be read as.
+    region = returning_ != nullptr ? *returning_ : Gen::GenerateRegion(params);
     Seal(region);
     return region;
 }
@@ -125,7 +151,27 @@ void Simulation::LogOpening(int slot, const std::string& mouth, const std::strin
     o.mouth = mouth;
     o.by = by;
     o.why = why;
+    o.mouthAt = time_;
+    o.lastVisit = time_;  // nobody has been in it for no time yet
     openings_.push_back(o);
+}
+
+std::string Simulation::EntryOf(int slot)
+{
+    return Gen::SystemId(slot, 1, 1);
+}
+
+const Simulation::RegionOpening* Simulation::OpeningOf(int slot) const
+{
+    for (auto it = openings_.rbegin(); it != openings_.rend(); ++it)
+        if (it->slot == slot)
+            return it->state == "archived" || it->state == "returned" ? nullptr : &*it;
+    return nullptr;
+}
+
+Simulation::RegionOpening* Simulation::LiveOpening(int slot)
+{
+    return const_cast<RegionOpening*>(OpeningOf(slot));
 }
 
 bool Simulation::ReadWorldHeader(const std::string& path, WorldHeader& out)
@@ -163,6 +209,15 @@ bool Simulation::ReadWorldHeader(const std::string& path, WorldHeader& out)
             o.state = oj.value("state", std::string("open"));
             o.by = oj.value("by", std::string("world"));
             o.why = oj.value("why", std::string());
+            // S4: a world from before it has none, and every mouth in it stays.
+            o.mouthAt = oj.value("mouthAt", o.openedAt);
+            o.closesAt = oj.value("closesAt", 0.0);
+            o.warned = oj.value("warned", false);
+            o.anchoredBy = oj.value("anchoredBy", std::string());
+            o.anchoredAt = oj.value("anchoredAt", 0.0);
+            o.lastVisit = oj.value("lastVisit", o.openedAt);
+            o.fading = oj.value("fading", false);
+            o.archive = oj.value("archive", -1);
             h.log.push_back(o);
         }
     out = std::move(h);
@@ -179,6 +234,21 @@ void Simulation::SaveGrowth(nlohmann::json& j) const
                     { "mouth", o.mouth }, { "state", o.state },       { "by", o.by } };
         if (!o.why.empty())
             oj["why"] = o.why;
+        oj["mouthAt"] = o.mouthAt;
+        oj["lastVisit"] = o.lastVisit;
+        if (o.closesAt > 0.0)
+            oj["closesAt"] = o.closesAt;
+        if (o.warned)
+            oj["warned"] = true;
+        if (!o.anchoredBy.empty())
+        {
+            oj["anchoredBy"] = o.anchoredBy;
+            oj["anchoredAt"] = o.anchoredAt;
+        }
+        if (o.fading)
+            oj["fading"] = true;
+        if (o.archive >= 0)
+            oj["archive"] = o.archive;
         log.push_back(std::move(oj));
     }
     j["openings"] = std::move(log);
@@ -195,10 +265,12 @@ void Simulation::SaveGrowth(nlohmann::json& j) const
                     { "maxSystems", maxSystems_ }, { "surplus", surplusTide_ },
                     { "tide", std::move(tide) },   { "explored", explored_ },
                     { "surveyed", surveyed_ } };
+    SaveArchive(j);  // the regions that drifted away (S4)
 }
 
 void Simulation::LoadGrowth(const nlohmann::json& j)
 {
+    LoadArchive(j);
     // A world from before S3 has none: its tide starts now, as a new world's does.
     if (!j.contains("growth") || !j["growth"].is_object())
         return;
@@ -266,7 +338,22 @@ int Simulation::NextSlotFrom(int fromSlot) const
 
 bool Simulation::IsEdgeRegion(int slot) const
 {
-    return openSlots_.count(slot) != 0 && NextSlotFrom(slot) >= 0;
+    // Cut off, a region has no tide of its own: nothing passes through it to strain it (S4).
+    const RegionOpening* o = OpeningOf(slot);
+    return openSlots_.count(slot) != 0 && (o == nullptr || o->state != "drifted") &&
+           MouthTargetFrom(slot) >= 0;
+}
+
+int Simulation::MouthTargetFrom(int fromSlot) const
+{
+    // The region that drifted from here is where the next mouth leads (S4), until somebody
+    // anchors it; the lowest of them if more than one did.
+    int drifted = -1;
+    for (const RegionOpening& o : openings_)
+        if (o.parent == fromSlot && o.state == "drifted" && OpeningOf(o.slot) == &o &&
+            (drifted < 0 || o.slot < drifted))
+            drifted = o.slot;
+    return drifted >= 0 ? drifted : NextSlotFrom(fromSlot);
 }
 
 int Simulation::MouthsAllowed() const
@@ -276,10 +363,12 @@ int Simulation::MouthsAllowed() const
 
 int Simulation::YoungMouths() const
 {
+    // Unstable, or -- where mouths are permanent at once -- under a mouth's life old.
     const double life = WorldRules::TideRules().mouthHours * HOUR;
     int          n = 0;
     for (const RegionOpening& o : openings_)
-        if (o.by != "world" && time_ - o.openedAt < life)
+        if (o.by != "world" &&
+            (o.state == "unstable" || (o.state == "open" && time_ - o.mouthAt < life)))
             n++;
     return n;
 }
@@ -345,7 +434,21 @@ void Simulation::StepTide(double passSeconds)
             continue;
         playersSeen_[slot].insert(sv.first);
         explored_.insert(sv.second.systemId);
+        // ...and a region somebody comes to is not dead (S4).
+        if (RegionOpening* o = LiveOpening(slot))
+        {
+            o->lastVisit = time_;
+            if (o->fading)
+            {
+                o->fading = false;
+                Record("drift", std::nullopt, sv.second.systemId,
+                       "The region beyond " + SystemName(o->mouth) +
+                           " holds: a pilot came, and it no longer drifts away");
+            }
+        }
     }
+    // Mouths failing and collapsing, every pass: a collapse is on the clock, not the period.
+    StepMouths();
     for (int slot : openSlots_)  // every edge region has one from the first pass
         if (IsEdgeRegion(slot))
             TideOf(slot);
@@ -361,6 +464,9 @@ void Simulation::StepTide(double passSeconds)
             kv.second.surveys = 0;
         return;
     }
+    // At the cap, the regions nobody comes to drift away (S4) -- before the tide, so a slot
+    // one frees can be opened in the same period.
+    StepDrift();
 
     // The edge, and how its time is shared out: the world grows at the pace of time however
     // long its edge is, and the seed staggers it so its regions do not all break at once.
@@ -409,7 +515,10 @@ void Simulation::StepTide(double passSeconds)
         threshold = TideThreshold();
         if (t.tide < threshold)
             continue;
-        if (AtCap())
+        // Finding a drifted region again opens no slot, so the cap does not hold it back (S4).
+        const RegionOpening* target = OpeningOf(MouthTargetFrom(slot));
+        const bool           again = target != nullptr && target->state == "drifted";
+        if (!again && AtCap())
         {
             // Nowhere to go: kept for the roaming holes (S9), and the region waits at the
             // threshold rather than gathering for ever.
@@ -438,21 +547,61 @@ void Simulation::StepTide(double passSeconds)
 
 int Simulation::OpenNext(int fromSlot, const std::string& by, const std::string& why)
 {
-    const int slot = NextSlotFrom(fromSlot);
-    if (slot < 0 || AtCap() || dataDir_.empty() || !OpenSlotFrom(slot, fromSlot, dataDir_))
+    const int slot = MouthTargetFrom(fromSlot);
+    if (slot < 0 || dataDir_.empty())
         return -1;
-    RegionOpening& o = openings_.back();
-    o.by = by;
-    o.why = why;
-    const std::string mouth = o.mouth;
-    MaterializeOpened(slot);
+    const RegionOpening* drifted = OpeningOf(slot);
+    if (drifted != nullptr && drifted->state == "drifted")
+    {
+        // The next mouth from the parent finds the region that drifted from it (S4).
+        if (ReopenRegion(slot, by, why) < 0)
+            return -1;
+    }
+    else
+    {
+        if (AtCap())
+            return -1;
+        // A slot that opens may take back a region that drifted away at the cap instead of a
+        // fresh one (S4): drawn from where and how many openings in, never from when.
+        bool back = false;
+        if (!archives_.empty())
+        {
+            Gen::Rng rng(
+                Gen::Key(regionSeed_, RETURN_KEY, (uint64_t)slot, (uint64_t)openings_.size()));
+            if (rng.Unit() < WorldRules::ArchiveRules().returnChance)
+            {
+                auto pick = archives_.begin();
+                std::advance(pick, rng.Range(0, (int)archives_.size() - 1));
+                back = BringBack(pick->first, slot, fromSlot, by, why) >= 0;
+            }
+        }
+        if (!back)
+        {
+            if (!OpenSlotFrom(slot, fromSlot, dataDir_))
+                return -1;
+            RegionOpening& o = openings_.back();
+            o.by = by;
+            o.why = why;
+            // Unstable until anchored, unless mouths are permanent at once (S4).
+            if (WorldRules::MouthRules().anchors)
+            {
+                o.state = "unstable";
+                o.closesAt = time_ + WorldRules::TideRules().mouthHours * HOUR;
+            }
+            MaterializeOpened(slot);
+            const std::string mouth = o.mouth;
+            Announce("tide", std::nullopt, mouth,
+                     "A wormhole tore open in " + SystemName(mouth) +
+                         ": beyond it lies space nobody has charted" +
+                         (o.state == "unstable"
+                              ? ". Unanchored, it collapses in " + Hours(o.closesAt - time_)
+                              : std::string()));
+        }
+        openedNow_.push_back(slot);
+    }
     RegionTide& t = tides_[fromSlot];
     t = RegionTide{};
     t.lastMouthAt = time_;
-    Announce("tide", std::nullopt, mouth,
-             "A wormhole tore open in " + SystemName(mouth) +
-                 ": beyond it lies space nobody has charted");
-    openedNow_.push_back(slot);
     return slot;
 }
 
@@ -465,8 +614,28 @@ void Simulation::MaterializeOpened(int slot)
             SystemState& st = systems_[info.id];
             st.id = info.id;
             SeedAggregate(st, info);
+            // A region back from the archive (S4): the names players gave it, and what had
+            // become of what stood and lay in it, replayed as a save's changes are.
+            const auto back = returnState_.find(info.id);
+            if (back != returnState_.end())
+            {
+                const nlohmann::json r = nlohmann::json::parse(back->second);
+                st.agg.givenName = r.value("name", std::string());
+                st.agg.discoverer = r.value("discoverer", std::string());
+                st.agg.visited = r.value("visited", st.agg.visited);
+                const nlohmann::json& c = r.value("changes", nlohmann::json());
+                if (c.is_object())
+                {
+                    for (const nlohmann::json& k : c.value("removed", nlohmann::json::array()))
+                        if (k.is_string())
+                            st.removedKeys.insert(k.get<std::string>());
+                    st.nextAddedKey = std::max(1, c.value("nextAdded", 1));
+                    st.restore = c.dump();
+                }
+            }
             fresh.push_back(&info);
         }
+    returnState_.clear();
     if (!materialized_)
         return;  // MaterializeAllSystems will build them with everything else
     for (const WorldLoader::SystemInfo* info : fresh)
@@ -487,6 +656,7 @@ void Simulation::MaterializeOpened(int slot)
     {
         if (e->GetKind() != EntityKind::Gate)
             continue;
+        DressCrossing(static_cast<JumpGate&>(*e), o);  // unstable, until anchored (S4)
         const int id = NextAgentId();
         e->SetId(id);
         home->entities.push_back(std::move(e));
@@ -537,7 +707,8 @@ int Simulation::OpenMouthNow(int fromSlot, std::string& why)
         why = "region " + std::to_string(fromSlot) + " is not open";
         return -1;
     }
-    if (AtCap())
+    const RegionOpening* target = OpeningOf(MouthTargetFrom(fromSlot));
+    if (AtCap() && (target == nullptr || target->state != "drifted"))
     {
         why = "the world is at its cap (" + std::to_string(maxRegions_) + " regions, " +
               std::to_string(maxSystems_) + " systems)";
@@ -597,4 +768,528 @@ bool Simulation::RegenerateRegion(int slot, std::string& why)
         }
     Seal(region);
     return true;
+}
+
+// --- Mouths and Anchors (#342 S4) ----------------------------------------------------------
+
+float Simulation::AnchorCost()
+{
+    const Blueprint* bp = Blueprints::Find(ANCHOR_BLUEPRINT);
+    if (bp == nullptr || !bp->byFactions)
+        return 0.0f;
+    float cost = 0.0f;
+    for (const auto& c : bp->cost)
+        cost += (float)c.second;
+    return cost;
+}
+
+bool Simulation::IsAnchor(const std::string& archetype)
+{
+    const Blueprint* bp = Blueprints::Find(ANCHOR_BLUEPRINT);
+    return bp != nullptr && bp->archetype == archetype;
+}
+
+std::string Simulation::OwnerName(const std::string& owner) const
+{
+    FactionId f;
+    return Outposts::FactionOf(owner, f) ? FactionName(f) : owner;
+}
+
+std::string Simulation::MouthProblem(const ClientSession& s, const Entity& g) const
+{
+    if (g.GetKind() != EntityKind::Gate || !static_cast<const JumpGate&>(g).IsUnstable() || !s.ship)
+        return std::string();
+    // What the ship weighs is its design's: the parts it is built from.
+    const Ships::Design* d = designs_.Find(s.DesignOf(s.currentShip));
+    Ships::Stats         stats;
+    std::string          why;
+    if (d == nullptr || !Ships::Derive(Archetypes::ShipCatalogue(), *d, stats, why))
+        return std::string();
+    const double most = WorldRules::MouthRules().maxMass;
+    if (stats.mass <= most)
+        return std::string();
+    return "the mouth is unstable: until it is anchored only ships of up to " +
+           std::to_string((int)most) + " t pass, and yours is " +
+           std::to_string((int)std::lround(stats.mass)) + " t";
+}
+
+Simulation::RegionOpening* Simulation::CrossingOf(const std::string& a, const std::string& b) const
+{
+    for (const RegionOpening& o : openings_)
+    {
+        if (o.parent < 0 || o.state == "archived" || o.state == "returned")
+            continue;
+        const std::string entry = EntryOf(o.slot);
+        if ((o.mouth == a && entry == b) || (o.mouth == b && entry == a))
+            return const_cast<RegionOpening*>(&o);
+    }
+    return nullptr;
+}
+
+void Simulation::DressCrossing(JumpGate& g, const RegionOpening& o) const
+{
+    if (o.state == "unstable")
+    {
+        g.SetArchetype("gate.mouth");
+        g.SetName("Unstable Mouth");
+        g.SetClosesAt(o.closesAt);
+    }
+    else if (o.state == "anchored")
+    {
+        g.SetArchetype("gate.jump");
+        g.SetName(o.anchoredBy + " Gate");  // named for whoever anchored it
+        g.SetClosesAt(0.0);
+    }
+    else
+    {
+        g.SetArchetype("gate.jump");
+        g.SetName("Wormhole");
+        g.SetClosesAt(0.0);
+    }
+}
+
+void Simulation::DressCrossings(SystemState& st)
+{
+    auto cut = [&](const std::unique_ptr<Entity>& e)
+    {
+        if (e->GetKind() != EntityKind::Gate)
+            return false;
+        JumpGate&            g = static_cast<JumpGate&>(*e);
+        const RegionOpening* o = CrossingOf(st.id, g.GetDestination());
+        if (o == nullptr || o->state == "open")
+            return false;  // a gate as the data wrote it
+        if (o->state == "drifted")
+            return true;  // the mouth collapsed: there is nothing there now
+        DressCrossing(g, *o);
+        return false;
+    };
+    st.entities.erase(std::remove_if(st.entities.begin(), st.entities.end(), cut),
+                      st.entities.end());
+}
+
+bool Simulation::CrossingGateAt(const std::string& systemId, const std::string& dest, Vector2& at,
+                                float& size) const
+{
+    if (const SystemState* st = SystemById(systemId))
+        for (const auto& e : st->entities)
+            if (e->GetKind() == EntityKind::Gate &&
+                static_cast<const JumpGate&>(*e).GetDestination() == dest)
+            {
+                at = e->GetPosition();
+                size = e->GetSize();
+                return true;
+            }
+    // Not built, or cut: where the documents put it -- the mouth's beside home, the way back
+    // in the region's own.
+    auto from = [&](const nlohmann::json& g)
+    {
+        if (!g.is_object() || g.value("destination", std::string()) != dest || !g.contains("pos"))
+            return false;
+        at = { g["pos"][0].get<float>(), g["pos"][1].get<float>() };
+        size = g.value("size", 900.0f);
+        return true;
+    };
+    const auto mouths = wormholes_.find(systemId);
+    if (mouths != wormholes_.end())
+        for (const std::string& text : mouths->second)
+            if (from(nlohmann::json::parse(text, nullptr, false)))
+                return true;
+    const auto doc = regionDocs_.find(systemId);
+    if (doc == regionDocs_.end())
+        return false;
+    const nlohmann::json sys = nlohmann::json::parse(doc->second, nullptr, false);
+    if (sys.is_object() && sys.contains("gates") && sys["gates"].is_array())
+        for (const nlohmann::json& g : sys["gates"])
+            if (from(g))
+                return true;
+    return false;
+}
+
+void Simulation::RedressMouth(const RegionOpening& o)
+{
+    const std::string entry = EntryOf(o.slot);
+    for (const auto& [here, there] :
+         { std::make_pair(o.mouth, entry), std::make_pair(entry, o.mouth) })
+    {
+        SystemState* st = SystemById(here);
+        if (st == nullptr)
+            continue;
+        for (const auto& e : st->entities)
+            if (e->GetKind() == EntityKind::Gate &&
+                static_cast<const JumpGate&>(*e).GetDestination() == there)
+            {
+                DressCrossing(static_cast<JumpGate&>(*e), o);
+                MarkStaticChanged(*st, e->GetId());
+            }
+    }
+}
+
+void Simulation::CutMouth(const RegionOpening& o)
+{
+    const std::string entry = EntryOf(o.slot);
+    auto&             links = universe_.links;
+    links.erase(
+        std::remove_if(
+            links.begin(), links.end(), [&](const WorldLoader::SystemLink& l)
+            { return (l.a == o.mouth && l.b == entry) || (l.a == entry && l.b == o.mouth); }),
+
+        links.end());
+    IndexLinks();
+    // A gate is the route graph's, so it never goes through RemoveStatic -- but it is a change
+    // to the layer, and a delta says so before any snapshot shows it gone (#38).
+    for (const auto& [here, there] :
+         { std::make_pair(o.mouth, entry), std::make_pair(entry, o.mouth) })
+    {
+        SystemState* st = SystemById(here);
+        if (st == nullptr)
+            continue;
+        for (auto it = st->entities.begin(); it != st->entities.end();)
+        {
+            if ((*it)->GetKind() != EntityKind::Gate ||
+                static_cast<const JumpGate&>(**it).GetDestination() != there)
+            {
+                ++it;
+                continue;
+            }
+            const int id = (*it)->GetId();
+            it = st->entities.erase(it);
+            st->pendingAdded.erase(id);
+            st->pendingChanged.erase(id);
+            st->pendingRemoved.insert(id);
+            st->layoutRev++;
+        }
+        st->profile = ProfileOf(*st);
+    }
+}
+
+void Simulation::RestoreMouth(const RegionOpening& o)
+{
+    const std::string entry = EntryOf(o.slot);
+    universe_.links.push_back({ o.mouth, entry });
+    IndexLinks();
+    // The two gates as the documents have them -- the mouth's beside home, the way back in the
+    // region's own -- dressed for what the mouth is now.
+    auto gateJson = [&](const std::string& here, const std::string& there)
+    {
+        const auto mouths = wormholes_.find(here);
+        if (mouths != wormholes_.end())
+            for (const std::string& text : mouths->second)
+            {
+                const nlohmann::json g = nlohmann::json::parse(text, nullptr, false);
+                if (g.is_object() && g.value("destination", std::string()) == there)
+                    return g;
+            }
+        const auto doc = regionDocs_.find(here);
+        if (doc != regionDocs_.end())
+        {
+            const nlohmann::json sys = nlohmann::json::parse(doc->second, nullptr, false);
+            if (sys.is_object() && sys.contains("gates") && sys["gates"].is_array())
+                for (const nlohmann::json& g : sys["gates"])
+                    if (g.value("destination", std::string()) == there)
+                        return g;
+        }
+        return nlohmann::json();
+    };
+    for (const auto& [here, there] :
+         { std::make_pair(o.mouth, entry), std::make_pair(entry, o.mouth) })
+    {
+        SystemState*         st = SystemById(here);
+        const nlohmann::json g = gateJson(here, there);
+        if (st == nullptr || st->entities.empty() || g.is_null())
+            continue;  // not built yet: it is dressed when it is
+        nlohmann::json doc = { { "gates", nlohmann::json::array({ g }) } };
+        for (auto& e : WorldLoader::BuildSystem(doc))
+        {
+            if (e->GetKind() != EntityKind::Gate)
+                continue;
+            DressCrossing(static_cast<JumpGate&>(*e), o);
+            const int id = NextAgentId();
+            e->SetId(id);
+            st->entities.push_back(std::move(e));
+            st->pendingAdded.insert(id);
+            st->layoutRev++;
+        }
+        st->profile = ProfileOf(*st);
+    }
+}
+
+std::string Simulation::AnchorAt(const RegionOpening& o, bool built) const
+{
+    const Blueprint* bp = Blueprints::Find(ANCHOR_BLUEPRINT);
+    if (bp == nullptr || o.parent < 0)
+        return std::string();
+    const std::string entry = EntryOf(o.slot);
+    for (const auto& [here, there] :
+         { std::make_pair(o.mouth, entry), std::make_pair(entry, o.mouth) })
+    {
+        const SystemState* st = SystemById(here);
+        Vector2            at{ 0.0f, 0.0f };
+        float              size = 0.0f;
+        if (st == nullptr || !CrossingGateAt(here, there, at, size))
+            continue;
+        for (const auto& e : st->entities)
+        {
+            if (e->GetKind() != EntityKind::Structure)
+                continue;
+            const Structure& t = static_cast<const Structure&>(*e);
+            const float      d = std::hypot(t.GetPosition().x - at.x, t.GetPosition().y - at.y);
+            if (IsAnchor(t.GetBuilds()) && (!built || !t.IsBuilding()) && d - size <= bp->mouth)
+                return t.GetOwner();
+        }
+    }
+    return std::string();
+}
+
+const Simulation::RegionOpening* Simulation::MouthNear(const SystemState& st, Vector2 at,
+                                                       float within, const Entity** gate) const
+{
+    const RegionOpening* best = nullptr;
+    float                nearest = within;
+    for (const auto& e : st.entities)
+    {
+        if (e->GetKind() != EntityKind::Gate || !static_cast<const JumpGate&>(*e).IsUnstable())
+            continue;
+        const float d =
+            std::hypot(e->GetPosition().x - at.x, e->GetPosition().y - at.y) - e->GetSize();
+        if (d > nearest)
+            continue;
+        const RegionOpening* o =
+            CrossingOf(st.id, static_cast<const JumpGate&>(*e).GetDestination());
+
+        if (o == nullptr || o->state != "unstable")
+            continue;
+        best = o;
+        nearest = d;
+        if (gate != nullptr)
+            *gate = e.get();
+    }
+    return best;
+}
+
+void Simulation::StepMouths()
+{
+    const WorldRules::Mouths& m = WorldRules::MouthRules();
+    // By slot, not by reference: a collapse changes the galaxy, not the log's length.
+    for (size_t i = 0; i < openings_.size(); i++)
+    {
+        RegionOpening& o = openings_[i];
+        if (o.state != "unstable" || o.closesAt <= 0.0)
+            continue;
+        if (!o.warned && time_ >= o.closesAt - m.warnHours * HOUR && time_ < o.closesAt)
+        {
+            o.warned = true;
+            Announce("mouth", std::nullopt, o.mouth,
+                     "The mouth in " + SystemName(o.mouth) +
+                         " is failing: unless anchored it "
+                         "collapses in " +
+                         Hours(o.closesAt - time_));
+            for (auto& kv : sessions_)
+                if (Gen::SlotOf(kv.second.systemId) == o.slot || kv.second.systemId == o.mouth)
+                    kv.second.RecordEvent(Ev::Kind::Notice, "The mouth to " + SystemName(o.mouth) +
+                                                                " collapses in " +
+                                                                Hours(o.closesAt - time_) +
+                                                                "; beyond it you will be cut off");
+        }
+        if (time_ >= o.closesAt)
+            CollapseMouth(o);
+    }
+}
+
+void Simulation::CollapseMouth(RegionOpening& o)
+{
+    o.state = "drifted";
+    o.closesAt = 0.0;
+    o.warned = false;
+    CutMouth(o);
+    topologyChanged_ = true;
+    Announce("mouth", std::nullopt, o.mouth,
+             "The mouth in " + SystemName(o.mouth) + " collapsed unanchored: the region beyond " +
+                 "drifts, cut off, until the tide finds it again");
+    for (auto& kv : sessions_)
+        if (Gen::SlotOf(kv.second.systemId) == o.slot)
+            kv.second.RecordEvent(Ev::Kind::Notice,
+                                  "The mouth home has collapsed: this region drifts, cut off, "
+                                  "until the tide finds it again");
+}
+
+int Simulation::ReopenRegion(int slot, const std::string& by, const std::string& why)
+{
+    RegionOpening* o = LiveOpening(slot);
+    if (o == nullptr || o->state != "drifted")
+        return -1;
+    o->by = by;
+    o->why = why;
+    o->mouthAt = time_;
+    o->warned = false;
+    o->state = WorldRules::MouthRules().anchors ? "unstable" : "open";
+    o->closesAt = o->state == "unstable" ? time_ + WorldRules::TideRules().mouthHours * HOUR : 0.0;
+    RestoreMouth(*o);
+    topologyChanged_ = true;
+    Announce("tide", std::nullopt, o->mouth,
+             "The tide found the drifting region again: a mouth reopened in " +
+                 SystemName(o->mouth) +
+                 (o->state == "unstable"
+                      ? ", and collapses in " + Hours(o->closesAt - time_) + " unless anchored"
+                      : std::string()));
+    // An Anchor that was finished while it was cut off holds it at once.
+    const std::string anchorer = AnchorAt(*o);
+    if (o->state == "unstable" && !anchorer.empty())
+        AnchorMouth(*o, anchorer);
+    return slot;
+}
+
+void Simulation::AnchorMouth(RegionOpening& o, const std::string& owner)
+{
+    if (o.state != "unstable")
+        return;
+    o.state = "anchored";
+    o.anchoredBy = OwnerName(owner);
+    o.anchoredAt = time_;
+    o.closesAt = 0.0;
+    o.warned = false;
+    RedressMouth(o);
+    FactionId                f;
+    std::optional<FactionId> who;
+    if (Outposts::FactionOf(owner, f))
+        who = f;
+    Announce("anchor", who, o.mouth,
+             o.anchoredBy + " anchored the mouth in " + SystemName(o.mouth) +
+                 ": the way beyond holds, through the " + o.anchoredBy + " Gate");
+    for (auto& kv : sessions_)
+        if (!owner.empty() && kv.second.accountName == owner)
+            kv.second.RecordEvent(Ev::Kind::Notice, "Your Anchor holds the mouth in " +
+                                                        SystemName(o.mouth) + ": the " +
+                                                        o.anchoredBy + " Gate is permanent");
+}
+
+void Simulation::AnchorLost(SystemState& st, const std::string& owner, const std::string& name,
+                            const std::string& key, Vector2 at, bool wasSite, Loss cause,
+                            FactionId attacker)
+{
+    FactionId                f;
+    std::optional<FactionId> whose;
+    if (Outposts::FactionOf(owner, f))
+    {
+        whose = f;
+        minds_[f].lostAt[st.id] = time_;
+        for (auto p = plans_.begin(); p != plans_.end(); ++p)
+            if (p->second.kind == Plan::Kind::Anchor && p->second.target == st.id &&
+                p->second.site == key)
+            {
+                plans_.erase(p);  // said here; its due entry finds nothing
+                break;
+            }
+    }
+    const std::string where = SystemName(st.id);
+    const std::string how =
+        cause == Loss::Siege ? " to a " + FactionName(attacker) + " siege" : std::string();
+    if (wasSite)
+    {
+        Record("anchor", whose, st.id,
+               OwnerName(owner) + " lost the Anchor it was building in " + where + how);
+        return;
+    }
+    // The mouth it held, if no other Anchor holds it as well, is unstable again: a day to
+    // anchor it anew, or it collapses.
+    const Blueprint* bp = Blueprints::Find(ANCHOR_BLUEPRINT);
+    for (RegionOpening& o : openings_)
+    {
+        if (o.state != "anchored" || o.parent < 0)
+            continue;
+        const std::string entry = EntryOf(o.slot);
+        const std::string there = o.mouth == st.id ? entry : entry == st.id ? o.mouth : "";
+        Vector2           gate{ 0.0f, 0.0f };
+        float             size = 0.0f;
+        if (there.empty() || bp == nullptr || !CrossingGateAt(st.id, there, gate, size) ||
+            std::hypot(gate.x - at.x, gate.y - at.y) - size > bp->mouth || !AnchorAt(o).empty())
+            continue;
+        o.state = "unstable";
+        o.closesAt = time_ + WorldRules::TideRules().mouthHours * HOUR;
+        o.mouthAt = time_;
+        o.warned = false;
+        RedressMouth(o);
+        Announce("anchor", whose, st.id,
+                 "The " + name + " in " + where + " fell" + how + ": the mouth is unstable " +
+                     "again, and collapses in " + Hours(o.closesAt - time_) +
+                     " unless anchored anew");
+        return;
+    }
+    Announce("anchor", whose, st.id, "The " + name + " in " + where + " fell" + how);
+}
+
+bool Simulation::LayAnchor(FactionId f, const std::string& from, int slot)
+{
+    RegionOpening*   o = LiveOpening(slot);
+    const Blueprint* bp = Blueprints::Find(ANCHOR_BLUEPRINT);
+    const float      cost = AnchorCost();
+    FactionMind&     mind = minds_[f];
+    if (o == nullptr || o->state != "unstable" || bp == nullptr || cost <= 0.0f ||
+        mind.stock < cost || !AnchorAt(*o, false).empty())
+        return false;
+    SystemState* st = SystemById(o->mouth);
+    Vector2      gate{ 0.0f, 0.0f };
+    float        size = 0.0f;
+    if (st == nullptr || !CrossingGateAt(o->mouth, EntryOf(slot), gate, size))
+        return false;
+    // Beside the gate, clear of it, within the blueprint's reach of the mouth: drawn from who,
+    // where and which mouth, never from when.
+    const Archetype* arch = Archetypes::Find(bp->archetype);
+    const float      own = arch != nullptr ? arch->defaultSize : 0.0f;
+    const float      inner = size + own + bp->clearance + 200.0f;
+    const float      outer = std::max(inner, size + bp->mouth * 0.8f);
+    Gen::Rng         rng(
+        Gen::Key(ANCHOR_KEY, (uint64_t)f.Index(), Intelligence::KeyOf(o->mouth), (uint64_t)slot));
+    bool    found = false;
+    Vector2 at{ 0.0f, 0.0f };
+    for (int i = 0; i < ANCHOR_TRIES && !found; i++)
+    {
+        const double turn = rng.Unit() * 2.0 * PI;
+        const float  r = (float)rng.Between((double)inner, (double)outer);
+        at = { gate.x + r * (float)std::cos(turn), gate.y + r * (float)std::sin(turn) };
+        found = SpotProblem(*st, *bp, at).empty();
+    }
+    if (!found)
+        return false;
+    auto site = std::make_unique<Structure>(at, 0.0f, FactionName(f) + " Anchor", bp->archetype);
+    site->SetBlueprint(bp->id);
+    site->StartBuilding(time_, time_ + bp->buildSeconds);
+    const int id = AddStatic(o->mouth, std::move(site), Outposts::OwnerOf(f));
+    if (id == 0)
+        return false;
+    mind.stock -= cost;
+
+    Plan p;
+    p.id = nextPlanId_++;
+    p.kind = Plan::Kind::Anchor;
+    p.faction = f;
+    p.from = from;
+    p.target = o->mouth;
+    p.startedAt = time_;
+    p.dueAt = time_ + bp->buildSeconds;
+    p.site = StaticKey(o->mouth, id);
+    plans_[p.id] = p;
+    due_.insert({ p.dueAt, p.id });
+    Announce("anchor", f, o->mouth,
+             FactionName(f) + " began an Anchor at the mouth in " + SystemName(o->mouth) +
+                 ": done in " + Hours(bp->buildSeconds) + ", if the mouth lasts");
+    return true;
+}
+
+void Simulation::ResolveAnchor(const Plan& p)
+{
+    // It anchored the mouth the moment it was finished (StepStructures); this only notices a
+    // site that is not there any more, or not finished yet after all.
+    SystemState* st = SystemById(p.target);
+    if (st == nullptr)
+        return;
+    const Structure* site = StructureByKey(*st, p.site);
+    if (site == nullptr)
+        return;  // lost: AnchorLost said so when it went
+    if (site->IsBuilding())
+    {
+        Plan later = p;
+        later.dueAt = std::max(site->GetCompletesAt(), time_);
+        plans_[later.id] = later;
+        due_.insert({ later.dueAt, later.id });
+    }
 }

@@ -67,10 +67,12 @@ void RunMinutes(Simulation& sim, double minutes)
 }
 
 // Rules that open a region every few minutes rather than every few days, so a test sees a
-// dozen; the defaults are restored when it ends.
+// dozen; the defaults are restored when it ends. Mouths are permanent at once here (option
+// A): these are the tide's tests, and an unstable mouth's are in mouth_tests.cpp (S4).
 struct FastTide
 {
-    WorldRules::Tide saved = WorldRules::TideRules();
+    WorldRules::Tide   saved = WorldRules::TideRules();
+    WorldRules::Mouths savedMouths = WorldRules::MouthRules();
     explicit FastTide(bool surveys = true)
     {
         WorldRules::Tide t;
@@ -81,8 +83,15 @@ struct FastTide
         if (!surveys)
             t.perSurvey = t.surveyedWeight = 0.0;
         WorldRules::SetTideRules(t);
+        WorldRules::Mouths m;
+        m.anchors = false;
+        WorldRules::SetMouthRules(m);
     }
-    ~FastTide() { WorldRules::SetTideRules(saved); }
+    ~FastTide()
+    {
+        WorldRules::SetTideRules(saved);
+        WorldRules::SetMouthRules(savedMouths);
+    }
 };
 
 bool SameLog(const std::vector<Simulation::RegionOpening>& a,

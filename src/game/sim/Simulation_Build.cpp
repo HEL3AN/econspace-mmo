@@ -138,6 +138,19 @@ std::string Simulation::SpotProblem(const SystemState& st, const Blueprint& bp, 
         }
     }
 
+    // An Anchor stands at an unstable mouth, and one is all a mouth needs (#342 S4).
+    if (bp.mouth > 0.0f)
+    {
+        const Entity* gate = nullptr;
+        if (MouthNear(st, at, bp.mouth, &gate) == nullptr)
+            return "only at an unstable wormhole mouth (within " + Whole(bp.mouth) + " of it)";
+        for (const auto& e : st.entities)
+            if (e->GetKind() == EntityKind::Structure &&
+                static_cast<const Structure&>(*e).GetBuilds() == bp.archetype &&
+                Distance(e->GetPosition(), gate->GetPosition()) - gate->GetSize() <= bp.mouth)
+                return "this mouth has an Anchor already";
+    }
+
     if (bp.perSystem > 0)
     {
         int here = 0;
@@ -329,6 +342,7 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
         ChargeAttack(*by, law, true);
     if (!RemoveStatic(systemId, id))
         return false;
+    const bool anchor = IsAnchor(builds);
 
     // What is left: the wreck its blueprint names, holding the rules' share of what was
     // committed at the base price -- what the material was worth, not what one market
@@ -362,6 +376,12 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
             kv.second.RecordEvent(Ev::Kind::Notice, what + " was destroyed");
     if (by != nullptr)
         by->RecordEvent(Ev::Kind::Notice, "Destroyed " + name);
+    // An Anchor (#342 S4), anyone's: the mouth it held is unstable again.
+    if (anchor)
+    {
+        AnchorLost(*SystemById(systemId), owner, name, key, at, wasSite, cause, attacker);
+        return true;
+    }
     FactionId f;
     if (!Outposts::FactionOf(owner, f))
         return true;
@@ -469,6 +489,11 @@ void Simulation::StepStructures()
             st->profile = ProfileOf(*st);  // a finished outpost is a claim (#295)
             tell(t->GetOwner(), Ev::Kind::Built,
                  t->GetName() + " is built in " + SystemName(systemId));
+            // An Anchor finished at an unstable mouth makes it permanent gates (#342 S4).
+            const Blueprint* anchor = Blueprints::Find(ANCHOR_BLUEPRINT);
+            if (anchor != nullptr && IsAnchor(t->GetBuilds()))
+                if (const RegionOpening* o = MouthNear(*st, t->GetPosition(), anchor->mouth))
+                    AnchorMouth(*LiveOpening(o->slot), t->GetOwner());
         }
         if (t->GetExpiresAt() > 0.0 && time_ >= t->GetExpiresAt())
         {

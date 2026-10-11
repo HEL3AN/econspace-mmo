@@ -314,6 +314,15 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
             sim.ServerEnterSystem(s, dest, s.systemId);  // arrives at the gate back
             changed = true;
         }
+        else
+            // Too heavy for an unstable mouth (#342 S4): said, since nothing else would show it.
+            for (const auto& e : sim.SystemOf(s)->entities)
+                if (e->GetId() == c.jumpGateId)
+                {
+                    const std::string barred = sim.MouthProblem(s, *e);
+                    if (!barred.empty())
+                        s.RecordEvent(Ev::Kind::Notice, "Cannot jump: " + barred);
+                }
     }
     if (c.lootId != 0)
         sim.StepPlayerLoot(s, *sim.SystemOf(s), c.lootId);
@@ -863,17 +872,30 @@ static void PrintTide(const Simulation& sim, const char* indent)
             printf(" R%d %.0f", kv.first, kv.second.tide);
     if (sim.SurplusTide() > 0.0)
         printf("  surplus %.0f", sim.SurplusTide());
-    printf("\n");
+    // The mouths that are not simply open (#342 S4), and what the archive holds.
+    printf("  | mouths:");
+    for (const Simulation::RegionOpening& o : sim.OpeningLog())
+        if (o.parent >= 0 && o.state != "open" && o.state != "returned")
+        {
+            printf(" R%d %s", o.slot, o.state.c_str());
+            if (o.state == "unstable")
+                printf(" (%.1f h left)", (o.closesAt - sim.Time()) / 3600.0);
+            else if (o.state == "anchored")
+                printf(" (%s)", o.anchoredBy.c_str());
+        }
+    printf("  | archive: %d\n", (int)sim.Archives().size());
 }
 
 // What an opening is, in a line: where, from where, and why.
 static void PrintOpening(const Simulation& sim, int slot, const char* indent)
 {
-    for (const Simulation::RegionOpening& o : sim.OpeningLog())
-        if (o.slot == slot)
-            printf("%sregion %d opened from region %d (%s), by %s%s%s; %d systems in all\n", indent,
-                   o.slot, o.parent, o.mouth.c_str(), o.by.c_str(), o.why.empty() ? "" : ": ",
-                   o.why.c_str(), (int)sim.Universe().systems.size());
+    const Simulation::RegionOpening* o = sim.OpeningOf(slot);
+    if (o != nullptr)
+        printf("%sregion %d opened from region %d (%s), by %s%s%s; %s%s; %d systems in all\n",
+               indent, o->slot, o->parent, o->mouth.c_str(), o->by.c_str(),
+               o->why.empty() ? "" : ": ", o->why.c_str(), o->state.c_str(),
+               o->archive >= 0 ? (", back from archive " + std::to_string(o->archive)).c_str() : "",
+               (int)sim.Universe().systems.size());
 }
 
 // The admin's console (#342 S3): lines typed on the server's standard input, read on a thread
@@ -928,6 +950,14 @@ static void AdminCommand(Simulation& sim, const std::string& line)
         if (slot < 0)
             printf("No mouth opened: %s.\n", why.c_str());
     }
+    else if (verb == "drift")
+    {
+        int slot = -1;
+        in >> slot;
+        std::string why;
+        if (sim.ArchiveRegionNow(slot, why) < 0)
+            printf("Region %d did not drift away: %s.\n", slot, why.c_str());
+    }
     else if (verb == "pause" || verb == "resume")
     {
         sim.PauseGrowth(verb == "pause");
@@ -936,8 +966,8 @@ static void AdminCommand(Simulation& sim, const std::string& line)
     }
     else
         printf("Commands: tide | open [region] (a mouth now, from the region named or the one "
-               "nearest to breaking) | pause | resume (growth). With the server stopped: "
-               "econserver regenerate <region>.\n");
+               "nearest to breaking) | drift <region> (into the archive now) | pause | resume "
+               "(growth). With the server stopped: econserver regenerate <region>.\n");
 }
 
 static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool dev, int centres,
@@ -1341,9 +1371,13 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
         // A region opened (#342 S3): written down at once -- its log entry is what makes the
         // sealed file part of this world -- and everyone is sent the index that has it, and
         // the galaxy, before the delta that adds the wormhole names it and before any snapshot.
+        // ...and so is a mouth collapsing or reopening, a region drifting away or coming back
+        // (S4): the routes everyone plans by have changed.
         const std::vector<int> opened = sim.TakeOpenedRegions();
-        if (!opened.empty())
+        const bool             reshaped = sim.TakeTopologyChanged();
+        if (!opened.empty() || reshaped)
         {
+
             for (int slot : opened)
                 PrintOpening(sim, slot, "");
             sim.SaveWorld(worldPath);
@@ -2339,9 +2373,17 @@ int main(int argc, char** argv)
     uint64_t regionSeed = 1;
     bool     newsOnly = false, allHot = false;
     int      players = 0;
+    // --max-regions N: the cap, as the host takes it; --rules F: world rules of another file
+    // in place of data/world_rules.json -- a day's archive in minutes, say (#342 S4).
+    int         maxRegions = 0;
+    std::string rulesPath;
     for (int i = 2; i < argc; i++)
         if (std::string(argv[i]) == "--seed" && i + 1 < argc)
             regionSeed = std::strtoull(argv[++i], nullptr, 10);
+        else if (std::string(argv[i]) == "--max-regions" && i + 1 < argc)
+            maxRegions = std::max(1, atoi(argv[++i]));
+        else if (std::string(argv[i]) == "--rules" && i + 1 < argc)
+            rulesPath = argv[++i];
         else if (std::string(argv[i]) == "--news")
             newsOnly = true;
         else if (std::string(argv[i]) == "--hot")
@@ -2351,7 +2393,13 @@ int main(int argc, char** argv)
 
     Simulation sim;
     sim.SetAllHot(allHot);
-    SetupHostSim(sim, dataDir, std::string(), regionSeed);
+    SetupHostSim(sim, dataDir, std::string(), regionSeed, Gen::DEFAULT_CENTRES, maxRegions);
+    if (!rulesPath.empty() && !WorldRules::Load(rulesPath))
+    {
+        fprintf(stderr, "FATAL: %s\n", WorldRules::Error().c_str());
+        return 1;
+    }
+
     for (int p = 0; p < players; p++)
         SetupHostPlayer(sim, sim.Starts()[(size_t)p % sim.Starts().size()].systemId);
 

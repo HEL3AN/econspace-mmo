@@ -592,6 +592,22 @@ void Game::DrawTargetContent(const Ui::Frame& f)
             }
             else if (e->kind == Proto::EntityKind::Field && e->ore >= 0)
                 L.Field("Ore", ResourceName((ResourceType)e->ore), t.colors.text);
+            else if (e->kind == Proto::EntityKind::Gate)
+            {
+                // An unstable mouth (#342 S4): counted down by the clock, as a site is, and
+                // only for small ships until somebody anchors it.
+                const auto l = layout_.byId.find(e->id);
+                if (l != layout_.byId.end() && l->second.expiresAt > 0.0)
+                {
+                    const double left =
+                        std::max(0.0, l->second.expiresAt - worldClock_.Now(GetTime()));
+                    L.Field(
+                        "Collapses in",
+                        TextFormat("%d h %02d min", (int)(left / 3600.0), (int)(left / 60.0) % 60),
+                        t.colors.warn);
+                    L.Field("Passage", "small ships only", t.colors.dim);
+                }
+            }
 
             // --- Holding station at the player's own range ---------------------------
             if (e->id != 0)
