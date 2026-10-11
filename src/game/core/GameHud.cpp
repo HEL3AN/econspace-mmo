@@ -27,6 +27,7 @@
 #include "ui/UiTheme.h"
 #include "ui/Desk.h"
 #include "ui/Input.h"
+#include "ui/Paint.h"
 #include "ui/Units.h"
 #include "render/Textures.h"
 #include "raymath.h"
@@ -393,18 +394,22 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
     const int  heldId = holding ? playerShip_->GetHoldTargetId() : 0;
 
     // Whose each row is, as this pilot sees it: the chip before the name (#361), in the
-    // same standing colours as the radar and the brackets in the world view.
+    // same standing colours as the radar and the brackets in the world view, and in the
+    // radar's shapes so it never rests on colour alone (#362).
     const Sensor::Standing standing = ViewerStanding();
-    auto                   chipOf = [&](const Proto::EntitySnapshot& e) -> Color
+    auto                   chipOf = [&](const Proto::EntitySnapshot& e, Ui::Cell& cell)
     {
+        Sensor::Allegiance a = Sensor::Classify(e, standing);
         if (e.kind == Proto::EntityKind::Structure)
         {
             const auto l = layout_.byId.find(e.id);
             const bool mine = l != layout_.byId.end() && l->second.owner == pilotName_;
-            return mine ? t.standing.own : t.standing.neutral;
+            a = mine ? Sensor::Allegiance::Own : Sensor::Allegiance::Neutral;
         }
-        const Sensor::Allegiance a = Sensor::Classify(e, standing);
-        return a == Sensor::Allegiance::Unowned ? Color{ 0, 0, 0, 0 } : Sensor::ColorOf(a);
+        if (a == Sensor::Allegiance::Unowned)
+            return;
+        cell.chip = Sensor::ColorOf(a);
+        cell.chipMark = StandingMark(a);
     };
 
     Ui::TableSpec table;
@@ -431,7 +436,7 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
                 Ui::Cell cell{ row.name, row.hostile ? t.standing.hostile
                                          : held      ? t.colors.accent
                                                      : t.colors.text };
-                cell.chip = chipOf(*row.entity);
+                chipOf(*row.entity, cell);
                 return cell;
             }
             case 1: return Ui::Cell{ row.kind, t.colors.dim };
@@ -1068,6 +1073,9 @@ void Game::DrawSpaceBrackets()
             continue;
         CornerBracket(sp, r, Ui::Px(hostile ? 4.0f : 3.0f), hostile ? 2.0f * thin : thin,
                       Fade(Sensor::ColorOf(a), alpha));
+        // A hostile bracket is notched (#362): its colour is not the only thing that says so.
+        if (hostile)
+            Ui::DrawNotch(sp, r, Ui::Px(4.0f), Fade(Sensor::ColorOf(a), alpha));
     }
 
     // Your own ship, last, so it is on top: a bracket a little larger than the others, the
@@ -1233,7 +1241,9 @@ void Game::DrawGalaxyMap()
                                    L.Text("Filled: charted. A ring alone: uncharted -- a gate "
                                           "leads there, and nothing more is known.",
                                           note);
-                                   L.Text("The ring's colour is who holds the system.", note);
+                                   L.Text("The ring's colour is who holds the system; a "
+                                          "triangle over it, that they would shoot you.",
+                                          note);
                                    L.Text("sec, pir, econ: security, pirates, prosperity.", note);
                                    L.Divider();
                                    L.Text("GALACTIC NEWS", TextStyle::Label());
@@ -1480,6 +1490,12 @@ void Game::DrawGalaxyMap()
                 controller = g.controller;
                 break;
             }
+        // A system held by a faction that would shoot this pilot says so by shape as well as
+        // by the ring's colour (#362): the hostile triangle over the ring, as on the radar.
+        const bool hostileHeld = haveStats && HostileToPlayerFaction(controller);
+        if (hostileHeld)
+            Ui::DrawMark({ p.x, p.y - (cur ? 13.0f : 10.0f) - 6.0f }, 4.5f, Ui::Mark::Triangle,
+                         t.standing.hostile);
         if (haveStats && !detail)
             // Crowded: the controller only as the ring's colour.
             DrawCircleLines((int)p.x, (int)p.y, 10.0f, Fade(FactionColor(controller), 0.7f));

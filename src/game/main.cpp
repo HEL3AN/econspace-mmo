@@ -2,7 +2,7 @@
 //   econspace connect <host> <port> <name> <secret> [--zoom Z] [--warp X Y] [--map]
 //   [--select] [--menu] [--sensor [RANGE]]
 //   [--shot FILE [--frames N]] [--nohud] [--treated] [--perf] [--notreat] [--size W H]
-//   [--uiscale S] [--open IDS] [--theme ID] [--blur] [--click X Y FRAME]...
+//   [--uiscale S] [--open IDS] [--theme ID] [--blur] [--cblind] [--click X Y FRAME]...
 //   [--start ID|random] —
 //   connect to an econserver host
 //
@@ -49,6 +49,7 @@ static int Usage(const char* exe)
                  "      --open IDS start with these windows open, e.g. radar,missions,settings\n"
                  "      --theme ID the interface in data/ui_themes/ID.json for this run\n"
                  "      --blur     blur the world behind the windows, in a theme that offers it\n"
+                 "      --cblind   the colour-blind standing palette, orange and blue\n"
                  "      --start ID|random\n"
                  "                 a new pilot begins at this start (a system id) or any,\n"
                  "                 without being shown the choice\n"
@@ -90,6 +91,7 @@ int main(int argc, char** argv)
     int               width = 0, height = 0;
     std::string       theme;  // --theme: for this run only
     bool              blur = false;
+    bool              cblind = false;
     struct Click
     {
         float x, y;
@@ -148,6 +150,8 @@ int main(int argc, char** argv)
             theme = argv[++i];
         else if (std::strcmp(argv[i], "--blur") == 0)
             blur = true;
+        else if (std::strcmp(argv[i], "--cblind") == 0)
+            cblind = true;
         else if (std::strcmp(argv[i], "--start") == 0 && i + 1 < argc)
             startAt = argv[++i];
         else if (std::strcmp(argv[i], "--click") == 0 && i + 3 < argc)
@@ -220,6 +224,8 @@ int main(int argc, char** argv)
             game.SetThemeForRun(theme);
         if (blur)
             game.SetBlurForRun(true);
+        if (cblind)
+            game.SetColourBlindForRun(true);
         if (!startAt.empty())
             game.AnswerStartWith(startAt);
         for (const Click& c : clicks)

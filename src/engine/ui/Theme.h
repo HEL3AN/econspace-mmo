@@ -107,9 +107,13 @@ struct Theme
     // Allegiance, as the *instruments* say it (#117): the overview, the radar, the sensor
     // screen and the target panel. The world view never colours an object by who owns it,
     // because the same station is a friend to one player and a target to another.
+    //
+    // Never colour alone (#362): green "you" against red "hostile" was the pair deuteranopia
+    // cannot tell apart, so "own" is cyan in every theme, every instrument also says it by
+    // shape, and the player can swap these for an orange/blue palette (ColourBlindSetting).
     struct Standing
     {
-        Color own{ 127, 214, 143, 255 };
+        Color own{ 103, 212, 224, 255 };
         Color friendly{ 111, 168, 232, 255 };
         Color neutral{ 201, 204, 196, 255 };
         Color hostile{ 224, 96, 79, 255 };
@@ -219,6 +223,27 @@ constexpr const char*   DEFAULT_THEME = "fleet";
 // "#RRGGBB" or "#RRGGBBAA".
 bool ParseColor(const std::string& text, Color& out);
 
+// --- Legibility (#362) ---------------------------------------------------------------
+// WCAG 2's contrast ratio between two opaque colours, 1 to 21; alpha is ignored, so lay a
+// translucent colour over what it is drawn on first (Over).
+float Contrast(Color a, Color b);
+// `top` laid over `under` by its alpha; the result is opaque.
+Color Over(Color top, Color under);
+// What every shipped theme is held to (theme_tests.cpp): text a player reads -- dim labels
+// included -- against the panel it is drawn on, and the size of body text at a scale of 1.
+constexpr float MIN_TEXT_CONTRAST = 4.5f;
+constexpr float MIN_BODY_SIZE = 13.0f;
+
+// "Colour-blind palette": the standing colours replaced, in whichever theme is in use, by
+// one built on orange and blue rather than red and green -- the axis the common forms of
+// colour blindness keep. Off by default; kept in ui_settings.json.
+bool                   ColourBlindSetting();
+void                   SetColourBlindSetting(bool on);  // repaints the theme in use at once
+const Theme::Standing& ColourBlindStanding();
+// A theme has just become the one in use: its own standing colours are noted, and the
+// palette laid over them if the setting is on. UseTheme calls it.
+void AdoptStanding();
+
 // --- Scale -------------------------------------------------------------------------
 // The player's own factor, times the display's DPI. A layout unit is Scale() pixels.
 float Scale();
@@ -230,15 +255,30 @@ float DisplayScale();
 void  OverrideDisplayScale(float s);  // 0 clears the override
 float Px(float units);                // units to pixels at the current scale, rounded
 
+// The player's factor a machine starts from when ui_settings.json has none (#362). The
+// display's DPI is honoured by DisplayScale already, so a 1080p laptop at 125% gets 1.25
+// with a factor of 1; but a 1080p screen left at 100% asks for nothing, and an interface
+// laid out for 720 lines then reads at two thirds of the size it was drawn for. So the
+// interface is made at least as large as the monitor's height suggests (1080 lines 1.25,
+// 1440 1.5, 2160 2) -- the display's own scale counted first -- in the steps Settings
+// offers. Never below 1.
+float AutoUserScale(int monitorHeight, float displayScale);
+// Whether the factor in use is one the player chose (Settings, or a file that says so); a
+// choice is kept and saved, the automatic one is neither.
+bool UserScaleChosen();
+void ChooseUserScale(float s);   // SetUserScale, as the player's own choice
+void UseAutoUserScale(float s);  // SetUserScale, as the machine's default: not saved
+
 constexpr float MIN_USER_SCALE = 0.75f;
 constexpr float MAX_USER_SCALE = 2.5f;
 
-// This machine's interface settings: { "version": 1, "scale": 1.25, "theme": "fleet",
-// "blur": false }.
+// This machine's interface settings: { "version": 2, "scale": 1.25, "theme": "fleet",
+// "blur": false, "colourBlind": false }. "scale" is written only when the player chose one;
+// version 1 wrote it always, so a version-1 file's 1.0 is read as no choice at all.
 // Next to the executable like the window layout, because they belong to the display, not
 // the account. A missing file is not an error; a file from a newer build is read for
 // nothing and the caller should not write over it.
-constexpr int UI_SETTINGS_VERSION = 1;
+constexpr int UI_SETTINGS_VERSION = 2;
 bool          LoadUiSettings(const std::string& path, std::string& error);
 bool          SaveUiSettings(const std::string& path);
 // The theme the settings name: DEFAULT_THEME until a file or the player says otherwise.

@@ -13,11 +13,15 @@ namespace Ui
 
 namespace
 {
-float       g_userScale = 1.0f;
-float       g_displayOverride = 0.0f;
-std::string g_theme = DEFAULT_THEME;
-bool        g_blur = false;
-bool        g_brackets = true;
+float           g_userScale = 1.0f;
+bool            g_userScaleChosen = false;
+float           g_chosenScale = 1.0f;  // what is saved: not a --uiscale run's
+float           g_displayOverride = 0.0f;
+std::string     g_theme = DEFAULT_THEME;
+bool            g_blur = false;
+bool            g_brackets = true;
+bool            g_colourBlind = false;
+Theme::Standing g_themeStanding;  // the theme in use's own, under the palette
 
 int Hex(char c)
 {
@@ -432,6 +436,37 @@ void SetUserScale(float s)
     g_userScale = std::clamp(s, MIN_USER_SCALE, MAX_USER_SCALE);
 }
 
+float AutoUserScale(int monitorHeight, float displayScale)
+{
+    // The interface is laid out for 720 lines at a scale of 1; these are what a screen of
+    // each common height reads well at, measured on the owner's 1080p laptop (#362).
+    const float wanted = monitorHeight >= 2000   ? 2.0f
+                         : monitorHeight >= 1400 ? 1.5f
+                         : monitorHeight >= 1000 ? 1.25f
+                                                 : 1.0f;
+    const float display = displayScale > 0.0f ? displayScale : 1.0f;
+    const float factor = std::max(1.0f, wanted / display);
+    return std::clamp(std::round(factor * 20.0f) / 20.0f, 1.0f, MAX_USER_SCALE);  // 5% steps
+}
+
+bool UserScaleChosen()
+{
+    return g_userScaleChosen;
+}
+
+void ChooseUserScale(float s)
+{
+    SetUserScale(s);
+    g_userScaleChosen = true;
+    g_chosenScale = g_userScale;
+}
+
+void UseAutoUserScale(float s)
+{
+    SetUserScale(s);
+    g_userScaleChosen = false;
+}
+
 float Scale()
 {
     return g_userScale * DisplayScale();
@@ -458,15 +493,79 @@ bool LoadUiSettings(const std::string& path, std::string& error)
         error = path + ": written by a newer build";
         return false;
     }
-    if (j.contains("scale") && j["scale"].is_number())
-        SetUserScale(j["scale"].get<float>());
+    // Version 1 wrote the scale whether or not the player had chosen one, and 1 is what it
+    // wrote when they had not: read as a choice, it would keep a 1080p screen at 100% (#362).
+    const int version = j.value("version", 0);
+    if (j.contains("scale") && j["scale"].is_number() &&
+        (version >= 2 || std::fabs(j["scale"].get<float>() - 1.0f) > 0.001f))
+        ChooseUserScale(j["scale"].get<float>());
     if (j.contains("theme") && j["theme"].is_string() && !j["theme"].get<std::string>().empty())
         g_theme = j["theme"].get<std::string>();
     if (j.contains("blur") && j["blur"].is_boolean())
         g_blur = j["blur"].get<bool>();
     if (j.contains("brackets") && j["brackets"].is_boolean())
         g_brackets = j["brackets"].get<bool>();
+    if (j.contains("colourBlind") && j["colourBlind"].is_boolean())
+        SetColourBlindSetting(j["colourBlind"].get<bool>());
     return true;
+}
+
+float Contrast(Color a, Color b)
+{
+    // Relative luminance, from sRGB through the standard's linear segment.
+    auto lum = [](Color c)
+    {
+        auto lin = [](unsigned char v)
+        {
+            const double x = v / 255.0;
+            return x <= 0.04045 ? x / 12.92 : std::pow((x + 0.055) / 1.055, 2.4);
+        };
+        return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
+    };
+    const double la = lum(a), lb = lum(b);
+    return (float)((std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05));
+}
+
+Color Over(Color top, Color under)
+{
+    const float a = top.a / 255.0f;
+    auto        mix = [a](unsigned char t, unsigned char u)
+    { return (unsigned char)std::lround(t * a + u * (1.0f - a)); };
+    return { mix(top.r, under.r), mix(top.g, under.g), mix(top.b, under.b), 255 };
+}
+
+const Theme::Standing& ColourBlindStanding()
+{
+    // Orange against blue, light against dark: the pair deuteranopia, protanopia and
+    // tritanopia all keep apart. "Own" is white, the one standing nothing else is near;
+    // neutral and unowned are greys a step apart in lightness. Each is 4.5:1 or better on
+    // every shipped panel (theme_tests.cpp).
+    static const Theme::Standing palette{
+        { 244, 246, 248, 255 },  // own: white
+        { 86, 166, 245, 255 },   // friendly: blue
+        { 190, 190, 190, 255 },  // neutral: light grey
+        { 255, 158, 44, 255 },   // hostile: orange
+        { 134, 134, 134, 255 },  // unowned: grey
+    };
+    return palette;
+}
+
+bool ColourBlindSetting()
+{
+    return g_colourBlind;
+}
+
+void SetColourBlindSetting(bool on)
+{
+    g_colourBlind = on;
+    MutableTheme().standing = on ? ColourBlindStanding() : g_themeStanding;
+}
+
+void AdoptStanding()
+{
+    g_themeStanding = MutableTheme().standing;
+    if (g_colourBlind)
+        MutableTheme().standing = ColourBlindStanding();
 }
 
 bool BlurSetting()
@@ -503,10 +602,12 @@ bool SaveUiSettings(const std::string& path)
 {
     nlohmann::json j;
     j["version"] = UI_SETTINGS_VERSION;
-    j["scale"] = g_userScale;
+    if (g_userScaleChosen)
+        j["scale"] = g_chosenScale;
     j["theme"] = g_theme;
     j["blur"] = g_blur;
     j["brackets"] = g_brackets;
+    j["colourBlind"] = g_colourBlind;
     std::ofstream out(path);
     if (!out)
         return false;

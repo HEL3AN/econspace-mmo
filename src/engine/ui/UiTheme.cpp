@@ -12,7 +12,10 @@ bool Ui::UseTheme(const std::string& id)
     Theme       t;
     const bool  ok = LoadTheme(ThemeDir() + id + ".json", t, error);
     if (ok)
+    {
         MutableTheme() = t;
+        AdoptStanding();  // the colour-blind palette over its standing, if the player has it on
+    }
     else
         TraceLog(LOG_ERROR, "UI theme: %s -- keeping the one in use", error.c_str());
     // The fonts are rasterised again either way: on the first load the theme in use is the

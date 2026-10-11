@@ -8,7 +8,12 @@
 #include "core/Faction.h"
 #include "entities/Station.h"
 #include "sim/MissionList.h"
+#include "sim/Overview.h"
+#include "sim/Sensor.h"
+#include "ui/Fonts.h"
+#include "ui/Paint.h"
 #include "ui/Theme.h"
+#include "ui/Units.h"
 
 #include "raymath.h"
 #include <algorithm>
@@ -53,6 +58,20 @@ Color Game::StandingColor(FactionId f) const
         return s.hostile;
     const RepTier tier = Factions::TierOf(player_.GetReputation(f));
     return tier == RepTier::Liked || tier == RepTier::Allied ? s.friendly : s.neutral;
+}
+
+Ui::Mark Game::StandingMark(Sensor::Allegiance a)
+{
+    // The sharpest shape for the one that matters most, the softest for a friend.
+    switch (a)
+    {
+        case Sensor::Allegiance::Own: return Ui::Mark::Ring;
+        case Sensor::Allegiance::Friendly: return Ui::Mark::Circle;
+        case Sensor::Allegiance::Neutral: return Ui::Mark::Diamond;
+        case Sensor::Allegiance::Hostile: return Ui::Mark::Triangle;
+        case Sensor::Allegiance::Unowned: break;
+    }
+    return Ui::Mark::None;
 }
 
 // --- Missions ---------------------------------------------------------------------------
@@ -349,33 +368,44 @@ void Game::DrawRadarContent(const Ui::Frame& f)
     const Sensor::Standing standing = ViewerStanding();
     const float            u = Ui::Scale();  // the blips follow the interface's scale
     const int              selId = selected_ != nullptr ? selected_->GetId() : 0;
+    // What the cursor rests on, for its label (#362); not while the scope is being dragged.
+    const int hoverId = over && !(radarDragging_ && radarDragMoved_) ? hitAt(m) : 0;
     BeginScissorMode((int)r.x, (int)r.y, (int)r.width, (int)r.height);
     for (const auto& e : snapshot_.entities)
     {
         const Vector2 p = toRadar(e.pos);
         if (!CheckCollisionPointRec(p, r))
             continue;
-        Color col = Sensor::ColorOf(Sensor::Classify(e, standing));
+        const Sensor::Allegiance a = Sensor::Classify(e, standing);
+        Color                    col = Sensor::ColorOf(a);
         switch (e.kind)
         {
-            // Unowned: one colour, told apart by shape.
+            // Unowned: one colour, told apart by shape -- none of them a standing's shape.
             case Proto::EntityKind::Star: DrawCircleV(p, 4.5f * u, col); break;
             case Proto::EntityKind::Planet:
                 DrawCircleLinesV(p, 4.0f * u, col);
                 DrawCircleV(p, 1.5f * u, col);
                 break;
-            case Proto::EntityKind::Field: DrawPoly(p, 3, 3.5f * u, -90.0f, col); break;
+            case Proto::EntityKind::Field:  // a scatter of rocks, not a hostile's triangle
+                DrawCircleV({ p.x - 2.5f * u, p.y + 1.5f * u }, 1.3f * u, col);
+                DrawCircleV({ p.x + 2.5f * u, p.y + 1.5f * u }, 1.3f * u, col);
+                DrawCircleV({ p.x, p.y - 2.5f * u }, 1.3f * u, col);
+                break;
             case Proto::EntityKind::Nebula: DrawCircleLinesV(p, 6.0f * u, Fade(col, 0.5f)); break;
             case Proto::EntityKind::Derelict:
                 DrawLineEx({ p.x - 3 * u, p.y - 3 * u }, { p.x + 3 * u, p.y + 3 * u }, u, col);
                 DrawLineEx({ p.x - 3 * u, p.y + 3 * u }, { p.x + 3 * u, p.y - 3 * u }, u, col);
                 break;
             case Proto::EntityKind::Gate: DrawPolyLinesEx(p, 4, 4.5f * u, 0.0f, u, col); break;
-            // Someone's: the colour is their side, as this pilot sees it.
+            // Someone's: the colour is their side, as this pilot sees it, and a hostile one
+            // carries the hostile triangle above it, so the colour is never the only sign.
             case Proto::EntityKind::Station:
                 DrawRectangleV({ p.x - 3.0f * u, p.y - 3.0f * u }, { 6.0f * u, 6.0f * u }, col);
+                if (a == Sensor::Allegiance::Hostile)
+                    Ui::DrawMark({ p.x, p.y - 7.5f * u }, 2.6f * u, Ui::Mark::Triangle, col);
                 break;
-            // Yours or someone else's -- the one allegiance a structure has yet (#39).
+            // Yours or someone else's -- the one allegiance a structure has yet (#39). Yours
+            // has a dot in it.
             case Proto::EntityKind::Structure:
             {
                 const auto l = layout_.byId.find(e.id);
@@ -383,9 +413,12 @@ void Game::DrawRadarContent(const Ui::Frame& f)
                 col = mine ? t.standing.own : t.standing.neutral;
                 DrawRectangleLinesEx({ p.x - 3.0f * u, p.y - 3.0f * u, 6.0f * u, 6.0f * u }, u,
                                      col);
+                if (mine)
+                    DrawCircleV(p, 1.2f * u, col);
                 break;
             }
-            default: DrawCircleV(p, 3.0f * u, col); break;
+            // Ships: a shape per standing (#362), the same as the overview's chips.
+            default: Ui::DrawMark(p, 3.6f * u, StandingMark(a), col); break;
         }
         if (e.id != 0 && e.id == selId)
             DrawCircleLinesV(p, 7.0f * u, t.colors.text);
@@ -394,20 +427,54 @@ void Game::DrawRadarContent(const Ui::Frame& f)
     // The player's own ship.
     const Vector2 pp = toRadar(sp);
     if (CheckCollisionPointRec(pp, r))
-    {
-        DrawCircleV(pp, 3.5f * u, t.standing.own);
-        DrawCircleLinesV(pp, 6.0f * u, Fade(t.standing.own, 0.6f));
-    }
+        Ui::DrawMark(pp, 5.5f * u, StandingMark(Sensor::Allegiance::Own), t.standing.own);
+
+    // The blip under the cursor, by name, distance and standing (#362): a reading a pilot
+    // can get without selecting it, and the standing in words as well as colour and shape.
+    if (hoverId != 0)
+        for (const auto& e : snapshot_.entities)
+            if (e.id == hoverId)
+            {
+                const Sensor::Allegiance a = Sensor::Classify(e, standing);
+                std::string label = (e.name.empty() ? std::string(Overview::KindWord(e)) : e.name) +
+                                    "  " + Ui::Distance(Vector2Distance(e.pos, sp));
+                if (a != Sensor::Allegiance::Unowned)
+                    label += std::string("  ") + Sensor::Word(a);
+                const float   px = (float)Ui::FontPx(Ui::Px(t.fontSize.body));
+                const Vector2 ext = Ui::MeasureString(Ui::Face::Regular, px, label);
+                const Vector2 p = toRadar(e.pos);
+                const float   pad = Ui::Px(4.0f);
+                // Right of the blip, or left of it where the scope ends.
+                float x = p.x + Ui::Px(10.0f);
+                if (x + ext.x + 2.0f * pad > r.x + r.width)
+                    x = p.x - Ui::Px(10.0f) - ext.x - 2.0f * pad;
+                const float y =
+                    std::clamp(p.y - ext.y * 0.5f - pad, r.y, r.y + r.height - ext.y - 2.0f * pad);
+                const Rectangle plate{ x, y, ext.x + 2.0f * pad, ext.y + 2.0f * pad };
+                DrawRectangleRec(plate, Ui::Faded(t.colors.panel, 0.92f));
+                DrawRectangleLinesEx(plate, 1.0f, t.colors.border);
+                Ui::DrawString(Ui::Face::Regular, label, { x + pad, y + pad }, px, t.colors.text);
+                break;
+            }
     EndScissorMode();
 }
 
 // --- Settings ---------------------------------------------------------------------------
 
+float Game::AutoUiScale() const
+{
+    return Ui::AutoUserScale(GetMonitorHeight(GetCurrentMonitor()), Ui::DisplayScale());
+}
+
+// `s` <= 0: back to what this screen suggests, and nothing kept in the file.
 void Game::ApplyUiScale(float s)
 {
     Ui::OverrideDisplayScale(0.0f);  // a --uiscale run is over
     uiScaleLocked_ = false;
-    Ui::SetUserScale(s);
+    if (s > 0.0f)
+        Ui::ChooseUserScale(s);
+    else
+        Ui::UseAutoUserScale(AutoUiScale());
     if (uiSettingsWritable_ && !Ui::SaveUiSettings(uiSettingsPath_))
         TraceLog(LOG_WARNING, "UI settings: cannot write %s", uiSettingsPath_.c_str());
 }
@@ -595,6 +662,23 @@ void Game::DrawSettingsContent(const Ui::Frame& f)
                         hint("A mark on your ship, and on every ship in view one in the colour "
                              "of its standing toward you.",
                              t.colors.dim);
+                        // Orange and blue for the standings, over any theme (#362).
+                        const bool cbOn = Ui::ColourBlindSetting();
+                        L.FormRow("Colour-blind palette",
+                                  [&]
+                                  {
+                                      if (L.Button("cblind", cbOn ? "On" : "Off", cbOn))
+                                      {
+                                          Ui::SetColourBlindSetting(!cbOn);
+                                          if (uiSettingsWritable_ &&
+                                              !Ui::SaveUiSettings(uiSettingsPath_))
+                                              TraceLog(LOG_WARNING, "UI settings: cannot write %s",
+                                                       uiSettingsPath_.c_str());
+                                      }
+                                  });
+                        hint("Standings in orange and blue rather than red and green, on the "
+                             "radar, the overview and the brackets. Each is a shape as well.",
+                             t.colors.dim);
                         L.FormRow("Interface scale",
                                   [&]
                                   {
@@ -609,36 +693,36 @@ void Game::DrawSettingsContent(const Ui::Frame& f)
                             scaleDragging_ = false;
                             ApplyUiScale(std::round(scaleDraft_ * 20.0f) / 20.0f);  // 5% steps
                         }
-                        L.FormRow("",
-                                  [&]
-                                  {
-                                      // Four in a line when there is room, two by two
-                                      // otherwise: in a wider face four ran off the window.
-                                      Box group = Box().GrowX().Gap(t.metrics.rowGap);
-                                      if (!wide)
-                                          group.Column();
-                                      L.Open(group);
-                                      for (int row = 0; row < (wide ? 1 : 2); row++)
-                                          L.Row(
-                                              Box().GrowX().Gap(t.metrics.rowGap),
-                                              [&]
+                        L.FormRow(
+                            "",
+                            [&]
+                            {
+                                // Four in a line when there is room, two by two
+                                // otherwise: in a wider face four ran off the window.
+                                Box group = Box().GrowX().Gap(t.metrics.rowGap);
+                                if (!wide)
+                                    group.Column();
+                                L.Open(group);
+                                for (int row = 0; row < (wide ? 1 : 2); row++)
+                                    L.Row(Box().GrowX().Gap(t.metrics.rowGap),
+                                          [&]
+                                          {
+                                              const int n = wide ? 4 : 2;
+                                              for (int k = 0; k < n; k++)
                                               {
-                                                  const int n = wide ? 4 : 2;
-                                                  for (int k = 0; k < n; k++)
-                                                  {
-                                                      const int   i = row * n + k;
-                                                      const float s = scales[i];
-                                                      const bool  current =
-                                                          !uiScaleLocked_ &&
-                                                          fabsf(Ui::UserScale() - s) < 0.01f;
-                                                      if (L.Button("scale" + std::to_string(i),
-                                                                   TextFormat("%.0f%%", s * 100.0f),
-                                                                   current))
-                                                          ApplyUiScale(s);
-                                                  }
-                                              });
-                                      L.Close();
-                                  });
+                                                  const int   i = row * n + k;
+                                                  const float s = scales[i];
+                                                  const bool  current =
+                                                      !uiScaleLocked_ && Ui::UserScaleChosen() &&
+                                                      fabsf(Ui::UserScale() - s) < 0.01f;
+                                                  if (L.Button("scale" + std::to_string(i),
+                                                               TextFormat("%.0f%%", s * 100.0f),
+                                                               current))
+                                                      ApplyUiScale(s);
+                                              }
+                                          });
+                                L.Close();
+                            });
                         if (uiScaleLocked_)
                             hint("Set for this run by --uiscale; choosing one here keeps it.",
                                  t.colors.dim);
@@ -646,6 +730,19 @@ void Game::DrawSettingsContent(const Ui::Frame& f)
                                  std::string(TextFormat("%.0f%%", Ui::DisplayScale() * 100.0f)) +
                                  " here.",
                              t.colors.dim);
+                        // Until one is chosen, the scale is what this screen suggests (#362).
+                        const bool auto_ = !Ui::UserScaleChosen() && !uiScaleLocked_;
+                        L.FormRow("",
+                                  [&]
+                                  {
+                                      if (L.Button("scaleauto",
+                                                   TextFormat("Automatic  %.0f%%",
+                                                              AutoUiScale() * 100.0f),
+                                                   auto_))
+                                          ApplyUiScale(0.0f);
+                                  });
+                        L.Tooltip("scaleauto", "What this screen's size and DPI suggest; "
+                                               "choosing a scale above replaces it");
 
                         L.FormRow("Windows",
                                   [&]
