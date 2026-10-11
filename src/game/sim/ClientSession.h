@@ -63,6 +63,11 @@ struct ClientSession
     // different is only that the NPCs in it can see this ship.
     std::string systemId;
 
+    // Seconds the ship has left in space after the connection dropped (#341); negative while
+    // somebody is connected. See Simulation::BeginLinger.
+    float lingerLeft = -1.0f;
+    bool  Lingering() const { return lingerLeft >= 0.0f; }
+
     // Verb state the client is not allowed to own, because two copies drift apart on any
     // dropped or duplicated command: the client sends an intent and reads the truth back
     // from the snapshot.

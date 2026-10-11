@@ -222,6 +222,8 @@ public:
     // Recounts live NPCs by role into the system aggregate. A cold system has none to count:
     // its aggregate is the truth, and this leaves it alone.
     void RecountAgg(SystemState& st);
+    // The pirates a hot system has right now, counted without touching the aggregate.
+    static int LivePirates(const SystemState& st);
     // Spawn director for one system: tops the population up to targets by security/controller,
     // accounting for the "pressure" from losses. avoid — the player's position (active system) or
     // null.
@@ -372,8 +374,8 @@ public:
     };
 
     // M4e-3c: galaxy snapshot (statistics of all systems + news) for the networked
-    // client's galaxy map. Not const: refreshes the aggregates' population (RecountAgg).
-    Proto::GalaxyState BuildGalaxyState();
+    // client's galaxy map. Reads the world without changing it (#341).
+    Proto::GalaxyState BuildGalaxyState() const;
 
     // --- Players as server agents (M4d-2b, #3) ---
     // The simulation owns every connected player's ship and account, one ClientSession
@@ -386,6 +388,30 @@ public:
 
     std::map<int, ClientSession>&       Sessions() { return sessions_; }
     const std::map<int, ClientSession>& Sessions() const { return sessions_; }
+
+    // A ship whose player dropped the connection stays in space this long (#341). Leaving
+    // used to take the ship out of the fight at once, so pulling the cable was the best way
+    // out of a lost one. A docked ship goes at once: the station is a refuge either way.
+    static constexpr float LINGER_SECONDS = 30.0f;
+    // Starts the countdown for a session whose connection is gone. False if there is nothing
+    // to leave behind -- docked, or no ship -- and the caller ends the session now.
+    bool BeginLinger(ClientSession& s);
+    // Counts every lingering session down; returns those whose time is up, for the host to
+    // save and end. The session lives on until then: NPCs see it and shoot at it, and other
+    // players see it too.
+    std::vector<int> StepLinger(float dt);
+
+    // Whether this player is inside something that hides ships -- a nebula today; the test
+    // asks for the property rather than the class (#34), so a jammer a player builds would
+    // hide them too. Hidden from NPCs and, since #341, from other players' snapshots.
+    bool InCover(const ClientSession& s) const;
+
+    // Commands that exist only for development (F1's money). Off unless the server was started
+    // with --dev (#341): they used to be honoured for anyone who could open a socket.
+    void SetDevCommands(bool on) { devCommands_ = on; }
+    bool DevCommands() const { return devCommands_; }
+    // F1: credits to the account, if dev commands are on. False, and nothing given, if not.
+    bool GrantDebugMoney(ClientSession& s);
 
     // Server step of a player ship: applies the movement axes/toggles from the command,
     // the piloting bonus, and updates the physics. Combat/mining — via separate methods.
@@ -567,7 +593,12 @@ public:
     // What players changed in the static layer goes with it (#38): per system, the keys of
     // the world's own objects that were taken away, the state of those that changed, and
     // every object added since, whole, in the format of a system document.
-    void SaveWorld(const std::string& path) const;
+    //
+    // Written atomically (#341): beside the file, then renamed over it, so a crash leaves the
+    // old world or the new one and never half of one. The replaced file is kept as
+    // `.bak1`..`.bakN`. False if the write failed; the file is then as it was.
+    static constexpr int WORLD_BACKUPS = 3;
+    bool                 SaveWorld(const std::string& path) const;
     // Save::Result::TooNew means the file was written by a later build: it is left alone
     // and nothing is loaded, because reading it with this build's rules would turn an
     // unknown field into a default and then write that back (#20).
@@ -577,8 +608,10 @@ public:
     // Money, skills, reputation and wanted levels; where the player was and what they were
     // carrying (#49); which ships they own and which one they are flying (#5). Without it
     // a session would begin from nothing every time somebody connected.
-    void         SaveAccount(const ClientSession& s, const std::string& path) const;
-    Save::Result LoadAccount(ClientSession& s, const std::string& path);
+    // Atomic like the world, keeping one older copy.
+    static constexpr int ACCOUNT_BACKUPS = 1;
+    bool                 SaveAccount(const ClientSession& s, const std::string& path) const;
+    Save::Result         LoadAccount(ClientSession& s, const std::string& path);
 
     // Feed of galactic events (system seizures/reconquests) — for showing to the player.
     const std::vector<std::string>& Events() const { return events_; }
@@ -648,6 +681,7 @@ private:
     // aggregate and let go.
     void Cool(SystemState& st);
     bool allHot_ = false;
+    bool devCommands_ = false;  // --dev (#341)
 
     // A system's static layer was just built from its document: give the objects that may
     // change their keys, then replay what the save said had changed (#38).

@@ -3,7 +3,13 @@
 #include "doctest/doctest.h"
 
 #include "core/Faction.h"
+#include "core/World.h"
+#include "sim/HostRules.h"
+#include "sim/Orders.h"
 #include "sim/Protocol.h"
+
+#include <cmath>
+#include <string>
 
 TEST_CASE("command round-trips through JSON")
 {
@@ -486,11 +492,107 @@ TEST_CASE("the server can end a session and say why")
     REQUIRE(Proto::DecodeBye(wire, back));
     CHECK(back.reason == "Signed in from somewhere else");
 
-    // Not confused with anything else on the wire, and refused across a version gap for
-    // the same reason every other message is.
+    // Not confused with anything else on the wire.
     Proto::Command c;
     CHECK_FALSE(Proto::DecodeBye(Proto::EncodeCommand(c), back));
-    CHECK_FALSE(Proto::DecodeBye("{\"t\":\"bye\",\"v\":1,\"why\":\"x\"}", back));
+    // ...but read across a version gap, unlike every other message (#341): a Bye is how a
+    // server tells a client of another version that it is one, and the reason has to arrive.
+    REQUIRE(Proto::DecodeBye("{\"t\":\"bye\",\"v\":1,\"why\":\"x\"}", back));
+    CHECK(back.reason == "x");
+}
+
+TEST_CASE("a client of another version is told both versions (#341)")
+{
+    const std::string why = Host::VersionRefusal(Proto::PROTO_VERSION - 1);
+    CHECK(why.find("v" + std::to_string(Proto::PROTO_VERSION)) != std::string::npos);
+    CHECK(why.find("v" + std::to_string(Proto::PROTO_VERSION - 1)) != std::string::npos);
+}
+
+TEST_CASE("a command a client made up is clamped or refused, never trusted (#341)")
+{
+    auto decode = [](const std::string& fields, Proto::Command& out)
+    {
+        return Proto::DecodeCommand("{\"t\":\"cmd\",\"v\":" + std::to_string(Proto::PROTO_VERSION) +
+                                        (fields.empty() ? "" : ",") + fields + "}",
+                                    out);
+    };
+    Proto::Command c;
+
+    SUBCASE("a turn is an axis: fifty is a full turn, not fifty of them in one tick")
+    {
+        REQUIRE(decode("\"turn\":50", c));
+        CHECK(c.turn == 1.0f);
+        REQUIRE(decode("\"turn\":-50", c));
+        CHECK(c.turn == -1.0f);
+        REQUIRE(decode("\"turn\":0.25", c));
+        CHECK(c.turn == 0.25f);
+    }
+    SUBCASE("a number too large for a float is clamped, and one that is not finite refused")
+    {
+        // 1e39 is a finite double and an infinite float; the turn rate became NaN positions
+        // broadcast to everyone in the system.
+        REQUIRE(decode("\"turn\":1e39,\"nav\":[1e39,0],\"navRange\":-1e39", c));
+        CHECK(c.turn == 1.0f);
+        CHECK(std::isfinite(c.navTarget.x));
+        CHECK(c.navRange == 0.0f);
+        CHECK_FALSE(decode("\"ordStop\":1e400", c));
+        CHECK_FALSE(decode("\"turn\":-1e400", c));
+    }
+    SUBCASE("a point is held inside the reach of a system")
+    {
+        REQUIRE(decode("\"nav\":[1e30,-1e30],\"navMode\":1", c));
+        CHECK(std::isfinite(c.navTarget.x));
+        CHECK(c.navTarget.x <= 4.0f * World::SYSTEM_RADIUS);
+        CHECK(c.navTarget.y >= -4.0f * World::SYSTEM_RADIUS);
+        CHECK_FALSE(decode("\"nav\":[1,2,3]", c));
+    }
+    SUBCASE("an index past the end of a list is no index")
+    {
+        REQUIRE(decode("\"payB\":1000,\"sellType\":99,\"ordKind\":77,\"navMode\":9", c));
+        CHECK(c.payBountyFaction == -1);
+        CHECK(c.sellType == -1);
+        CHECK(c.orderKind == 0);
+        CHECK(c.navMode == 0);
+        REQUIRE(decode("\"payB\":-5,\"target\":-3,\"seq\":99999999999", c));
+        CHECK(c.payBountyFaction == -1);
+        CHECK(c.targetId == 0);
+        CHECK(c.seq == 0);
+    }
+    SUBCASE("a field of the wrong type refuses the command instead of throwing")
+    {
+        // nlohmann's value() throws on a type mismatch, and nothing caught it: one line of
+        // JSON ended the server for everyone.
+        CHECK_FALSE(decode("\"seq\":\"x\"", c));
+        CHECK_FALSE(decode("\"thrust\":1", c));
+        CHECK_FALSE(decode("\"nameSys\":[]", c));
+        CHECK_FALSE(decode("\"turn\":\"fast\"", c));
+        CHECK(Proto::MessageVersion("{\"v\":\"21\",\"t\":\"cmd\"}") == 0);
+        CHECK(Proto::MessageType("{\"v\":21,\"t\":7}").empty());
+        Proto::Hello h;
+        CHECK_FALSE(Proto::DecodeHello("{\"v\":[],\"t\":\"hello\",\"acct\":\"x\"}", h));
+        REQUIRE(Proto::DecodeHello(
+            "{\"v\":" + std::to_string(Proto::PROTO_VERSION) + ",\"t\":\"hello\",\"acct\":5}", h));
+        CHECK(h.account.empty());  // not a name, so not a login
+    }
+    SUBCASE("an honest command still reads exactly")
+    {
+        Proto::Command sent;
+        sent.seq = 41;
+        sent.turn = -0.5f;
+        sent.navMode = 2;
+        sent.navTarget = { 123456.0f, -98765.0f };
+        sent.payBountyFaction = 3;
+        sent.sellType = 2;
+        sent.orderKind = (int)Orders::Kind::Build;
+        REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(sent), c));
+        CHECK(c.seq == 41);
+        CHECK(c.turn == -0.5f);
+        CHECK(c.navMode == 2);
+        CHECK(c.navTarget.x == 123456.0f);
+        CHECK(c.payBountyFaction == 3);
+        CHECK(c.sellType == 2);
+        CHECK(c.orderKind == (int)Orders::Kind::Build);
+    }
 }
 
 TEST_CASE("the login exchange survives the wire")

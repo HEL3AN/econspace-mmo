@@ -62,6 +62,7 @@ cmake --build build-release
 
 ./build/bin/server/econserver.exe host 50800        # authoritative server, this machine only
 ./build/bin/server/econserver.exe host 50800 --public   # ...reachable from other machines (#187)
+./build/bin/server/econserver.exe host 50800 --dev      # ...and honour debug commands such as F1's money (#341)
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2   # account + secret
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --shot f.png --frames 120  # save frame 120, exit (--nohud: world only)
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --perf --frames 240  # CPU+GPU ms per phase to stderr (F9 in game; --notreat, --size W H; --treated puts a shot through the treatment)
@@ -162,7 +163,9 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   world file from the future stops the server; an account file from the future lets the
   player in with a fresh account and is never saved over. Bump `Save::WORLD_VERSION` /
   `Save::ACCOUNT_VERSION` when a field changes meaning — adding one an older reader can
-  ignore does not need a bump.
+  ignore does not need a bump. A save is written with `Save::WriteFileAtomic` (beside the
+  file, then renamed over it, older copies kept as `.bakN`), and a *damaged* file is not
+  "no file" (#341): a damaged world stops the server, a damaged account refuses its login.
 - **A login is a challenge and an answer, not a name** (#106). The server sends a nonce
   and the salt; the client replies with `H(nonce ‖ H(salt ‖ secret))`, so the secret itself
   never crosses the wire after the account is created. There is no transport encryption, so
