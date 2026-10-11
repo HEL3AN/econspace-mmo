@@ -38,13 +38,26 @@ These are decisions, not open questions. Plan on top of them.
   and not ten** because positions are `float`: at 1e6 the gap between representable values
   is 0.06 of a unit, at 1e7 it is a whole one and a ship at the edge would jitter.
 - **The world is generated, and hand-written content is the exception on top** (M7). The
-  server generates a region from a seed and sends each client the `SystemLayout` it already
-  sends, so nothing about the wire changes. `data/systems/*.json` becomes a set of pins
-  rather than the source of truth. The seed is part of the save, and changing the
+  server generates from a seed and sends each client the `SystemLayout` it already
+  sends, so nothing about the wire changes. The seed is part of the save, and changing the
   generator's rules is a migration.
+- **Each server generates a whole world that grows** (#342, chosen 2026-10-11; design in
+  `documents/world_generation_v2.md`).
+  - **Shape:** no base systems are required. A seed lays out a skeleton of region slots up
+    to the admin's cap. Generated civilisation centres are the starts.
+  - **Growth:** frontier regions open as the "tide" rises with time, players and
+    exploration. A mouth stays only if someone builds an **Anchor** on it.
+  - **New regions** are alive from the first minute, with native factions, stations and
+    markets.
+  - **Wormholes** play three roles: Anchor gates, roaming holes and admin links.
+  - **Admin content** comes as validated packs, which are woven in, and as pins.
+  - **Factions** become a data registry, not an enum (#355).
+  - **Until the slices land,** today's world is the old shape: three hand-written systems
+    plus one generated region. Do not build new work on that shape.
 - **The game begins when a wormhole opens into an unexplored region.** Nothing beyond it
   has a name until somebody goes there and names it. This is why the generation is honest
   rather than a compromise, and why exploration is an activity rather than map-filling.
+  In v2 that moment repeats on every server, each time the tide opens a mouth.
 - **The world becomes player-mutable** (#44), and player structures feed the existing
   macro simulation. Players design *types* in the same grammar the generator uses (M8), and
   a design's parts decide what it can do -- the rule that derives a shape from an object's
