@@ -244,6 +244,7 @@ add_executable(econspace
     src/game/core/Actions.cpp      # what can be done about a thing: one list for every window (#297)
     src/game/core/StationList.cpp  # what the market and hangar windows list (#297)
     src/game/core/Goal.cpp         # what to do next, in one line (#364)
+    src/game/core/Prediction.cpp   # the own ship predicted and reconciled, without a window (#358)
     src/game/sim/Overview.cpp      # what the overview lists and in what order (#157)
     src/game/sim/MissionList.cpp   # what the missions window lists (#297)
     src/game/sim/Observation.cpp   # what a mission still needs, in the agent's words (#297)
@@ -413,12 +414,14 @@ add_executable(tests
     tests/fitting_tests.cpp        # a ship flies a design of its own, filed by content (#279)
     tests/tide_tests.cpp           # the opening log, sealing, the tide and the cap (#342 S3)
     tests/mouth_tests.cpp          # unstable mouths, Anchors, drift and the archive (#342 S4)
+    tests/prediction_tests.cpp     # the client's prediction against the server, same commands (#358)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/MissionList.cpp   # the missions window's rows, tested without one (#297)
     src/game/core/Actions.cpp      # the actions every window offers, tested without one (#297)
     src/game/core/StationList.cpp  # the market's and the hangar's rows, tested without them (#297)
     src/game/core/Goal.cpp         # the goal prompt, tested without a window (#364)
+    src/game/core/Prediction.cpp   # the own ship's prediction, tested against the server (#358)
     src/game/sim/Sensor.cpp        # the sensor screen, tested without a window (#123)
     # The simulation itself is under test now, not only the wire (#10). That pulls in its
     # dependency tree -- ships, NPCs, the mission system -- which is the price of testing

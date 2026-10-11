@@ -295,45 +295,9 @@ void Game::BuildClientSnapshot()
 
     Proto::PlayerView& p = snapshot_.player;
     {
-        // RECONCILIATION (Gambetta). The server sent the authoritative state and the
-        // sequence number of the last processed input (lastInput). We drop the acked inputs,
-        // reset the ship to the server state, and REPLAY the remaining (unacked) inputs — the
-        // result matches the current prediction, without snapping back to a stale position.
-        // Hull/shields come from the server (combat is server-side).
-        pendingInputs_.erase(std::remove_if(pendingInputs_.begin(), pendingInputs_.end(),
-                                            [&](const Proto::Command& c)
-                                            { return c.seq <= p.lastInput; }),
-                             pendingInputs_.end());
-        // The hull being flown, before anything is replayed: prediction flies the ship by
-        // the same derived numbers the server does (#279 step 5), and it used to fly every
-        // hull as the starter -- a Courier predicted at a Scout's speed and was pulled back.
-        // A refit is a design of its own (#279 fitting), and the server sent what it is first.
-        {
-            std::string design;
-            for (size_t i = 0; i < p.ownedShips.size() && i < p.shipDesigns.size(); i++)
-                if (p.ownedShips[i] == p.shipIndex)
-                    design = p.shipDesigns[i];
-            const std::vector<ShipType>& catalog = GetShipCatalog();
-            if (design.empty() && p.shipIndex >= 0 && p.shipIndex < (int)catalog.size())
-                design = catalog[p.shipIndex].stats.design;
-            ShipStats stats;
-            if (playerShip_->GetStats().design != design && StatsOfDesign(design, stats))
-                playerShip_->Refit(stats);
-        }
-        playerShip_->ApplyView(p.pos, p.heading, p.vel, p.hull, p.shields);
-        // Warp/AP are server-authoritative: we mirror the server's warp scale and don't keep
-        // our own. Applied BEFORE replay so unacked orders (which the server hasn't seen yet)
-        // correctly "carry through" via prediction over the authoritative state.
-        playerShip_->ApplyNavView(p.warpPhase, p.warpAlign, p.warpTarget, p.warpDrop, p.warpViaSet,
-                                  p.warpVia, p.autopilot, p.apTarget, p.apStop, p.holdMode,
-                                  p.holdTargetId, p.holdRange);
-        // Toggles (stabilizer/mining) are server-authoritative: restore from the snapshot
-        // BEFORE replay, otherwise unacked toggle commands would flicker during replay
-        // (like warp). Unacked toggles "carry through" via prediction below.
-        playerShip_->SetStabilizerOn(p.stabilizer);
-        playerShip_->SetMiningOn(p.mining);
-        for (const Proto::Command& c : pendingInputs_)
-            Sim::StepPlayerShip(*playerShip_, c, 1.0f, SIM_DT, HoldTarget());
+        // RECONCILIATION (Gambetta), in core/Prediction.h: drop what the snapshot acks,
+        // reset the ship to the server's state and hull, replay the unacked inputs on top.
+        prediction_.Reconcile(*playerShip_, p, [this] { return HoldTarget(); });
         // Weapon state is server-owned; the local flag is only an optimistic echo of the
         // toggle we sent, corrected here the same way the ship's position is.
         weaponOn_ = p.weaponOn;

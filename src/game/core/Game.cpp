@@ -223,19 +223,17 @@ void Game::Run()
         {
             if (mode_ == GameMode::Flying && !choosingStart_)
             {
-                // CLIENT-SIDE PREDICTION of the own ship's movement. Number the input,
-                // push it into the unacked buffer, send it to the server, and immediately apply the
-                // same StepPlayerShip the server uses (pilotBonus=1 as on the server). The snapshot
-                // then replays the buffer over the authoritative state (BuildClientSnapshot). The
-                // world (NPCs) is not simulated — it arrives via snapshots.
-                cmd_.seq = (int)++inputSeq_;
-                pendingInputs_.push_back(cmd_);
-                if (pendingInputs_.size() > 256)  // guard against growth if the server stalls
-                    pendingInputs_.erase(pendingInputs_.begin());
-                clientLink_->Send(Proto::EncodeCommand(cmd_));
+                // CLIENT-SIDE PREDICTION of the own ship's movement (core/Prediction.h). The
+                // input is numbered, kept until the server acks it, and the ship stepped by
+                // the same StepPlayerShip the server uses; every snapshot then replays the
+                // unacked ones over the authoritative state. The world (NPCs) is not
+                // simulated — it arrives via snapshots.
                 shipPrevPos_ = playerShip_->GetPosition();
                 shipPrevHeading_ = playerShip_->GetHeading();
-                Sim::StepPlayerShip(*playerShip_, cmd_, 1.0f, SIM_DT, HoldTarget());
+                const Proto::Command& sent =
+                    prediction_.Predict(*playerShip_, cmd_, [this] { return HoldTarget(); });
+                cmd_.seq = sent.seq;
+                clientLink_->Send(Proto::EncodeCommand(sent));
                 // One-shot intents applied/sent this tick — clear them (axes are held).
                 cmd_.toggleStabilizer = cmd_.toggleMining = cmd_.toggleWeapon = false;
                 cmd_.dock = cmd_.undock = false;
