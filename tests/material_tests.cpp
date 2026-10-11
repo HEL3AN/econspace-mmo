@@ -30,7 +30,8 @@ TEST_CASE("every source is named the same way in data and in code")
     // binding into a load error rather than into anything visible.
     const char* names[] = { "item.color", "item.intensity", "item.heading",    "item.thrusting",
                             "item.size",  "item.screenPos", "item.screenSize", "light.dir",
-                            "light.tint", "light.strength", "light.ambient",   "clock.time" };
+                            "light.tint", "light.surface",  "light.strength",  "light.ambient",
+                            "clock.time" };
     for (const char* n : names)
     {
         Render::Source s;

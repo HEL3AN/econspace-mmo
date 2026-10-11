@@ -688,7 +688,8 @@ bool, or one to four numbers). The sources:
 | `item.screenSize` | float | its radius after the camera, in pixels |
 | `item.axis` | vec2 | which way an elongated part runs; zero means it is round |
 | `light.dir` | vec2 | unit vector toward the strongest light |
-| `light.tint` | vec4 | the colour of the light arriving |
+| `light.tint` | vec4 | the colour of the light arriving: for a rim or a glow |
+| `light.surface` | vec4 | what that light does to an albedo -- its hue capped (#361) |
 | `light.strength` | float | 0..1 |
 | `light.ambient` | float | the floor |
 | `clock.time` | float | seconds |

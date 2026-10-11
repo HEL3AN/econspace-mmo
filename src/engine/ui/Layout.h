@@ -221,6 +221,10 @@ struct TableColumn
     Size        width = Size::Grow();
     Align       align = Align::Start;
     bool        sortable = false;
+    // Every cell of this column starts with a small square in the cell's `chip` colour: the
+    // overview's standing (#361). The room is kept on every row, a cell with no chip (alpha
+    // 0) included, so the text of the column still lines up.
+    bool chips = false;
 };
 
 // What a cell says, and in what colour.
@@ -229,6 +233,7 @@ struct Cell
     std::string text;
     Color       color{ 255, 255, 255, 255 };
     Face        face = Face::Regular;
+    Color       chip{ 0, 0, 0, 0 };  // in a column with `chips`; alpha 0 for none
 };
 
 // Which column a table is sorted by. The table changes it when a heading is clicked; the

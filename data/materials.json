@@ -9,6 +9,7 @@
                 "axis": "item.axis",
                 "lightDir": "light.dir",
                 "lightTint": "light.tint",
+                "lightSurface": "light.surface",
                 "lightAmount": "light.strength",
                 "ambient": "light.ambient",
                 "damage": "item.intensity",

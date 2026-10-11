@@ -200,6 +200,10 @@ private:
     void HandleMenuBar();  // menu bar input: a button toggles its window
     void DrawMenuBar();    // vertical menu bar on the left
     void DrawLocation();   // the system and its security, top centre, under the windows
+    // The instruments laid over the world view (#361): a marker on the player's own ship
+    // and a standing bracket on every other ship in view. Drawn in screen space, under the
+    // windows -- an instrument, so its colour is standing and never the object's (#117).
+    void DrawSpaceBrackets();
     void ApplyResolution(int w, int h);          // changes the window size
     void DrawSettingsContent(const Ui::Frame&);  // display, interface and keys, as tabs
     void OpenContextMenu(Entity* target);  // right-click action menu on an object, at the cursor

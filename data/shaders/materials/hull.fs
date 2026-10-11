@@ -7,7 +7,7 @@
 // by hand (#122). Four things, all from the game rather than from constants here:
 //
 //   the star's direction   ->  a lit side and a terminator
-//   the star's colour      ->  what the light is made of
+//   the star's colour      ->  the rim, at full; the albedo, only warmed or cooled (#361)
 //   how damaged it is      ->  darker, and it flickers, with no health bar
 //   the clock              ->  the flicker, and nothing else
 //
@@ -26,7 +26,8 @@ uniform vec2  centre;       // item.screenPos -- pixels, origin at the bottom le
 uniform float radius;       // item.screenSize -- pixels
 uniform vec2  axis;         // item.axis -- which way an elongated part runs; zero if round
 uniform vec2  lightDir;     // light.dir -- unit vector toward the light, zero if none
-uniform vec4  lightTint;    // light.tint
+uniform vec4  lightTint;    // light.tint -- the light's own colour, for the rim
+uniform vec4  lightSurface; // light.surface -- the same with its hue capped, for the albedo
 uniform float lightAmount;  // light.strength, 0..1
 uniform float ambient;      // light.ambient -- the floor
 uniform float damage;       // item.intensity, 1 = whole
@@ -34,8 +35,10 @@ uniform float time;         // clock.time
 
 out vec4 finalColor;
 
-// How much of the light's own colour is mixed in. Multiplied rather than replaced, so a
-// red star reddens a blue hull instead of turning it red.
+// How much of the light's colour is mixed in. Multiplied rather than replaced, so a red
+// star reddens a blue hull instead of turning it red -- and the colour multiplied is
+// `lightSurface`, whose hue Render::Lighting has already capped, so the star warms a hull
+// without making it the star's colour (#361).
 const float TINT = 0.6;
 
 void main()
@@ -79,7 +82,7 @@ void main()
     float lit = ambient + (1.0 - ambient) * facing * lightAmount;
 
     vec3 col = texel.rgb * lit;
-    col = mix(col, col * lightTint.rgb, TINT * lightAmount);
+    col = mix(col, col * lightSurface.rgb, TINT * lightAmount);
 
     // The rim: where the surface turns away from the viewer but still catches the light.
     // It is the single cheapest thing that separates an object from the background, and

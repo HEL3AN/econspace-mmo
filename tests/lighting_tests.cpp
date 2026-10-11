@@ -23,6 +23,32 @@ Render::Light Source(Vector2 at, Color c = WHITE, float radius = 10000.0f, float
 }
 }  // namespace
 
+TEST_CASE("a star's colour reaches a surface only as a cast, never as paint (#361)")
+{
+    Render::Lighting lg;
+    lg.lights.push_back(Source({ 0.0f, 0.0f }, Color{ 255, 120, 40, 255 }));  // an orange star
+    const Render::Lighting::Sample s = lg.At({ 1000.0f, 0.0f });
+
+    // The rim and the halo are the light itself.
+    CHECK(s.tint.r == 255);
+    CHECK(s.tint.b == 40);
+    // The surface keeps the hue's direction -- still warmer than it is blue...
+    CHECK(s.surface.r > s.surface.g);
+    CHECK(s.surface.g > s.surface.b);
+    // ...but only a fraction of its spread, and none of its brightness is lost.
+    const int spread = s.surface.r - s.surface.b;
+    CHECK(spread <= (int)((255 - 40) * Render::Lighting::SURFACE_SATURATION) + 1);
+    CHECK(s.surface.r == 255);
+
+    // A white star casts white: nothing to cap.
+    Render::Lighting white;
+    white.lights.push_back(Source({ 0.0f, 0.0f }));
+    const Render::Lighting::Sample w = white.At({ 1000.0f, 0.0f });
+    CHECK(w.surface.r == 255);
+    CHECK(w.surface.g == 255);
+    CHECK(w.surface.b == 255);
+}
+
 TEST_CASE("light arrives from where the light is, and fades to nothing at its radius")
 {
     Render::Lighting lg;

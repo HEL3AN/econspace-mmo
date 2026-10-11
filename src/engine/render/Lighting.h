@@ -60,7 +60,18 @@ struct Lighting
         Vector2 dir = { 0.0f, 0.0f };  // unit vector toward the light; zero means "no direction"
         float   strength = 0.0f;       // 0..1 above the ambient floor
         Color   tint = { 255, 255, 255, 255 };  // the colour of the light arriving
+        // What that light does to a surface's own colour: `tint` with most of its hue taken
+        // out (SURFACE_SATURATION). The rim and the halo are the light itself and keep `tint`.
+        Color surface = { 255, 255, 255, 255 };
     };
+
+    // How much of a light's colour a surface takes on, as a fraction of its saturation
+    // (#361). A star is the key light and its colour belongs on the rim and in the halo; laid
+    // at full strength over every albedo it made a station, the ship beside it and the planet
+    // behind them one hue, and the ship could not be told from the station it was parked at.
+    // So a surface is warmed or cooled by its star, never painted by it: the light's colour
+    // is moved this far from a grey of the same brightness, and no further.
+    static constexpr float SURFACE_SATURATION = 0.3f;
 
     // Only the strongest few sources are combined. A system can hold many lights once
     // players build, and the fifth-brightest has never changed a picture.

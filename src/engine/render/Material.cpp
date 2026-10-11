@@ -28,6 +28,7 @@ const NamedSource SOURCES[] = {
     { Source::ItemAxis, "item.axis" },
     { Source::LightDir, "light.dir" },
     { Source::LightTint, "light.tint" },
+    { Source::LightSurface, "light.surface" },
     { Source::LightStrength, "light.strength" },
     { Source::LightAmbient, "light.ambient" },
     { Source::ClockTime, "clock.time" },
@@ -137,6 +138,7 @@ UniformValue Resolve(const Binding& b, const MaterialInputs& in)
 
         case Source::LightDir: return Two(in.light.dir.x, in.light.dir.y);
         case Source::LightTint: return Four(in.light.tint);
+        case Source::LightSurface: return Four(in.light.surface);
         case Source::LightStrength: return One(in.light.strength);
         case Source::LightAmbient: return One(in.ambient);
 

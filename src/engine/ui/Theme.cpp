@@ -17,6 +17,7 @@ float       g_userScale = 1.0f;
 float       g_displayOverride = 0.0f;
 std::string g_theme = DEFAULT_THEME;
 bool        g_blur = false;
+bool        g_brackets = true;
 
 int Hex(char c)
 {
@@ -463,6 +464,8 @@ bool LoadUiSettings(const std::string& path, std::string& error)
         g_theme = j["theme"].get<std::string>();
     if (j.contains("blur") && j["blur"].is_boolean())
         g_blur = j["blur"].get<bool>();
+    if (j.contains("brackets") && j["brackets"].is_boolean())
+        g_brackets = j["brackets"].get<bool>();
     return true;
 }
 
@@ -474,6 +477,16 @@ bool BlurSetting()
 void SetBlurSetting(bool on)
 {
     g_blur = on;
+}
+
+bool BracketSetting()
+{
+    return g_brackets;
+}
+
+void SetBracketSetting(bool on)
+{
+    g_brackets = on;
 }
 
 const std::string& ThemeSetting()
@@ -493,6 +506,7 @@ bool SaveUiSettings(const std::string& path)
     j["scale"] = g_userScale;
     j["theme"] = g_theme;
     j["blur"] = g_blur;
+    j["brackets"] = g_brackets;
     std::ofstream out(path);
     if (!out)
         return false;

@@ -38,9 +38,11 @@ Color Lit(Color base, const Lighting& lg, const Lighting::Sample& s)
     // The tint multiplies rather than replaces, so a red star reddens what it lights
     // without turning a blue hull red, and it fades out with the light itself.
     const float m = 0.6f * s.strength;
-    r = r * (1.0f - m) + r * (s.tint.r / 255.0f) * m;
-    g = g * (1.0f - m) + g * (s.tint.g / 255.0f) * m;
-    b = b * (1.0f - m) + b * (s.tint.b / 255.0f) * m;
+    // It is the surface's share of the light's colour, capped by Lighting (#361), so a
+    // star warms a hull and never makes it the star's colour.
+    r = r * (1.0f - m) + r * (s.surface.r / 255.0f) * m;
+    g = g * (1.0f - m) + g * (s.surface.g / 255.0f) * m;
+    b = b * (1.0f - m) + b * (s.surface.b / 255.0f) * m;
 
     return { (unsigned char)r, (unsigned char)g, (unsigned char)b, base.a };
 }

@@ -357,8 +357,10 @@ values in `Theme.h`, which are the same as `fleet.json`). Colours are `"#RRGGBB"
 `"#RRGGBBAA"`, and a window's `panel` is opaque in every shipped theme but glass, whose
 panel lets a few percent through -- translucent, the text of the window behind ran into the
 one in front. The `standing` colours are allegiance
-as the *instruments* say it -- radar, overview, sensor screen, target panel -- and never an
-object's colour in the world view (#117).
+as the *instruments* say it -- radar, overview (a chip before each name), sensor screen,
+target panel, and the brackets laid over the world view on your own ship and the ships
+around it (#361, "Brackets in space" in Settings) -- and never an object's colour in the
+world view (#117).
 
 A theme turns a few things in the frame on and off by number: `metrics.titleMark` (an
 accent stripe down a title bar), `metrics.tabMark` (how thick the chosen tab's underline
