@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <iterator>
 #include <set>
 
 namespace
@@ -271,17 +272,21 @@ void ApplyPinsFile(Gen::Region& region, const std::string& path, uint64_t seed)
 }
 }  // namespace
 
-bool Simulation::AttachRegion(uint64_t seed, int slot, const std::string& homeId,
-                              const std::string& systemsDir, int systems)
+bool Simulation::ParamsFor(int slot, const std::string& homeId, const std::string& systemsDir,
+                           Gen::RegionParams& params, nlohmann::json& homeDoc) const
 {
-    // One world, one seed: two seeds would be two galaxies sharing ids (#342).
-    if (slot < 0 || openSlots_.count(slot) != 0 || (hasRegion_ && seed != regionSeed_))
-        return false;
-    // A centre opens from nowhere (OpenGalaxy); everything else from a home.
     const bool laidOut = !skeleton_.slots.empty();
-    if (laidOut && (slot >= (int)skeleton_.slots.size() ||
-                    skeleton_.slots[(size_t)slot].kind == Gen::SlotKind::Centre))
-        return false;
+    // What the slot is -- its distance from a centre decides its law and its riches (S2).
+    params = laidOut ? Gen::SlotParams(skeleton_, slot) : Gen::RegionParams{};
+    if (!laidOut)
+    {
+        params.pirates = Factions::Id(Factions::Pirates());
+        params.unaffiliated = Factions::Id(Factions::Unaffiliated());
+    }
+    params.seed = regionSeed_;
+    params.slot = slot;
+    if (homeId.empty())
+        return true;  // a centre opens from nowhere
     const WorldLoader::SystemInfo* home = nullptr;
     for (const auto& info : universe_.systems)
         if (info.id == homeId)
@@ -291,8 +296,8 @@ bool Simulation::AttachRegion(uint64_t seed, int slot, const std::string& homeId
 
     // Home's own document, so the wormhole is not placed in a planet's path: its file, or
     // what the generator made of it.
-    const auto     generatedHome = regionDocs_.find(home->id);
-    nlohmann::json homeDoc;
+    const auto generatedHome = regionDocs_.find(home->id);
+    homeDoc = nlohmann::json();
     if (generatedHome != regionDocs_.end())
         homeDoc = nlohmann::json::parse(generatedHome->second, nullptr, false);
     else
@@ -301,15 +306,6 @@ bool Simulation::AttachRegion(uint64_t seed, int slot, const std::string& homeId
         if (in.is_open())
             homeDoc = nlohmann::json::parse(in, nullptr, false);
     }
-    // What the slot is -- its distance from a centre decides its law and its riches (S2).
-    Gen::RegionParams params = laidOut ? Gen::SlotParams(skeleton_, slot) : Gen::RegionParams{};
-    if (!laidOut)
-    {
-        params.pirates = Factions::Id(Factions::Pirates());
-        params.unaffiliated = Factions::Id(Factions::Unaffiliated());
-    }
-    params.seed = seed;
-    params.slot = slot;
     params.homeId = home->id;
     params.homeMap = home->mapPos;
     // Only what never moves counts as known -- the hand-written systems -- so where a region
@@ -321,25 +317,56 @@ bool Simulation::AttachRegion(uint64_t seed, int slot, const std::string& homeId
     if (generatedHome != regionDocs_.end() && Gen::SlotOf(home->id) >= 0)
     {
         double hx, hy, sx, sy;
-        Gen::SlotMapPoint(seed, Gen::SlotOf(home->id), hx, hy);
-        Gen::SlotMapPoint(seed, slot, sx, sy);
+        Gen::SlotMapPoint(regionSeed_, Gen::SlotOf(home->id), hx, hy);
+        Gen::SlotMapPoint(regionSeed_, slot, sx, sy);
         params.bearing = { (float)(sx - hx), (float)(sy - hy) };
     }
     params.homeSystem = homeDoc.is_object() ? &homeDoc : nullptr;
-    if (systems > 0)
-        params.systems = systems;
-    Gen::Region region = Gen::GenerateRegion(params);
-    // Then the hand-written exceptions, always after (#147): data/pins.json beside the
-    // systems directory -- found by name, since the directory itself need not exist.
+    return true;
+}
+
+namespace
+{
+// data/pins.json beside a systems directory -- found by name, since the directory itself
+// need not exist.
+std::string PinsBeside(const std::string& systemsDir)
+{
     std::string dir = systemsDir;
     while (!dir.empty() && (dir.back() == '/' || dir.back() == '\\'))
         dir.pop_back();
     const size_t cut = dir.find_last_of("/\\");
-    ApplyPinsFile(region,
-                  (cut == std::string::npos ? std::string() : dir.substr(0, cut + 1)) + "pins.json",
-                  seed);
+    return (cut == std::string::npos ? std::string() : dir.substr(0, cut + 1)) + "pins.json";
+}
+}  // namespace
+
+bool Simulation::AttachRegion(uint64_t seed, int slot, const std::string& homeId,
+                              const std::string& systemsDir, int systems)
+{
+    // One world, one seed: two seeds would be two galaxies sharing ids (#342).
+    if (slot < 0 || openSlots_.count(slot) != 0 || (hasRegion_ && seed != regionSeed_))
+        return false;
+    // A centre opens from nowhere (OpenGalaxy); everything else from a home.
+    const bool laidOut = !skeleton_.slots.empty();
+    if (laidOut && (slot >= (int)skeleton_.slots.size() ||
+                    skeleton_.slots[(size_t)slot].kind == Gen::SlotKind::Centre))
+        return false;
+    const uint64_t    keep = regionSeed_;
+    Gen::RegionParams params;
+    nlohmann::json    homeDoc;
     regionSeed_ = seed;
+    if (homeId.empty() || !ParamsFor(slot, homeId, systemsDir, params, homeDoc))
+    {
+        regionSeed_ = keep;
+        return false;
+    }
+    if (systems > 0)
+        params.systems = systems;
+    // As it was made when it opened, if it is sealed (S3); made now, and sealed, if not.
+    Gen::Region region = MakeSealed(slot, params);
+    // Then the hand-written exceptions, always after (#147).
+    ApplyPinsFile(region, PinsBeside(systemsDir), seed);
     AddRegion(region);
+    LogOpening(slot, homeId, "world", std::string());
     return true;
 }
 
@@ -373,36 +400,101 @@ void Simulation::AddRegion(const Gen::Region& region)
     openSlots_.insert(region.slot);
 }
 
-bool Simulation::OpenGalaxy(const Gen::WorldParams& params, const std::string& dataDir)
+void Simulation::OpenCentre(int slot)
+{
+    Gen::RegionParams params;
+    nlohmann::json    none;
+    ParamsFor(slot, std::string(), std::string(), params, none);
+    Gen::Region r = MakeSealed(slot, params);
+    ApplyPinsFile(r, dataDir_ + "pins.json", regionSeed_);
+    AddRegion(r);
+    LogOpening(slot, std::string(), "world", std::string());
+    if (r.heartId.empty())
+        return;
+    StartPoint sp;
+    sp.systemId = r.heartId;
+    for (const auto& s : r.systems)
+        if (s.value("id", std::string()) == r.heartId)
+        {
+            sp.systemName = s.value("name", r.heartId);
+            sp.owner = s.value("owner", std::string());
+        }
+    const auto doc = r.documents.find(r.heartId);
+    if (doc != r.documents.end() && doc->second.contains("stations"))
+        for (const auto& st : doc->second["stations"])
+            if (sp.station.empty() && st.value("role", std::string()) == "TradeHub")
+                sp.station = st.value("name", std::string());
+    starts_.push_back(sp);
+}
+
+bool Simulation::OpenGalaxy(const Gen::WorldParams& params, const std::string& dataDir,
+                            const std::vector<RegionOpening>& log)
 {
     if (hasRegion_)
         return false;
     skeleton_ = Gen::GenerateGalaxySkeleton(params);
     regionSeed_ = params.seed;
-    // The same regions in the same order as every other tool that makes this world -- the
-    // editor, galaxydump, the tests -- because it is one function (#140).
-    const std::vector<Gen::Region> regions = Gen::GenerateWorld(
-        skeleton_, [&](Gen::Region& r) { ApplyPinsFile(r, dataDir + "pins.json", params.seed); });
-    for (const Gen::Region& r : regions)
+    dataDir_ = dataDir;
+    if (maxRegions_ <= 0 || maxRegions_ > (int)skeleton_.slots.size())
+        maxRegions_ = (int)skeleton_.slots.size();
+    // A new world opens what Gen::GenerateWorld opens, in its order -- the editor, galaxydump
+    // and the tests make the same regions, because the rules are one (#140). A saved one
+    // opens what its log says, in the order it opened (S3), each as it was sealed.
+    std::vector<RegionOpening> plan = log;
+    if (plan.empty())
+        for (const Gen::Opening& o : Gen::InitialOpenings(skeleton_))
+        {
+            RegionOpening e;
+            e.slot = o.slot;
+            e.parent = o.from;
+            plan.push_back(e);
+        }
+    else if (!sealDir_.empty())
+        for (const RegionOpening& e : plan)
+        {
+            std::ifstream in(SealedPath(sealDir_, e.slot));
+            if (!in.is_open())
+                continue;
+            std::string text((std::istreambuf_iterator<char>(in)),
+                             std::istreambuf_iterator<char>());
+            Gen::Region check;
+            if (ReadSealedText(text, regionSeed_, check) && check.slot == e.slot)
+                sealedIn_[e.slot] = std::move(text);
+            else
+                TraceLog(LOG_WARNING, "World: %s is not this world's region %d -- made again",
+                         SealedPath(sealDir_, e.slot).c_str(), e.slot);
+        }
+    for (const RegionOpening& e : plan)
     {
-        AddRegion(r);
-        if (r.heartId.empty())
-            continue;
-        StartPoint sp;
-        sp.systemId = r.heartId;
-        for (const auto& s : r.systems)
-            if (s.value("id", std::string()) == r.heartId)
+        const bool centre = e.slot >= 0 && e.slot < (int)skeleton_.slots.size() &&
+                            skeleton_.slots[(size_t)e.slot].kind == Gen::SlotKind::Centre;
+        if (centre)
+            OpenCentre(e.slot);
+        else
+        {
+            std::string mouth = e.mouth;
+            if (mouth.empty())
             {
-                sp.systemName = s.value("name", r.heartId);
-                sp.owner = s.value("owner", std::string());
+                double tx, ty;
+                Gen::SlotMapPoint(regionSeed_, e.slot, tx, ty);
+                mouth = Gen::MouthSystem(RegionView(e.parent), tx, ty);
             }
-        const auto doc = r.documents.find(r.heartId);
-        if (doc != r.documents.end() && doc->second.contains("stations"))
-            for (const auto& st : doc->second["stations"])
-                if (sp.station.empty() && st.value("role", std::string()) == "TradeHub")
-                    sp.station = st.value("name", std::string());
-        starts_.push_back(sp);
+            if (!AttachRegion(regionSeed_, e.slot, mouth, dataDir + "systems/"))
+            {
+                TraceLog(LOG_WARNING, "World: region %d (from %s) could not be opened", e.slot,
+                         mouth.c_str());
+                continue;
+            }
+        }
+        // As the log says, when there is one: when it opened, from where, and why.
+        RegionOpening&    now = openings_.back();
+        const std::string mouth = now.mouth;
+        const int         parent = now.parent;
+        now = e;
+        now.mouth = mouth;
+        now.parent = parent;
     }
+    sealedIn_.clear();
     hasRegion_ = true;
     return !starts_.empty();
 }
@@ -411,18 +503,23 @@ bool Simulation::OpenSlotFrom(int slot, int from, const std::string& dataDir)
 {
     if (openSlots_.count(from) == 0)
         return false;
-    // The open region as far as MouthSystem asks: which systems, and where they lie.
-    Gen::Region parent;
-    parent.slot = from;
-    for (const auto& info : universe_.systems)
-        if (Gen::SlotOf(info.id) == from && regionDocs_.count(info.id) != 0)
-            parent.systems.push_back(
-                { { "id", info.id },
-                  { "map", nlohmann::json::array({ info.mapPos.x, info.mapPos.y }) } });
     double tx, ty;
     Gen::SlotMapPoint(regionSeed_, slot, tx, ty);
-    const std::string home = Gen::MouthSystem(parent, tx, ty);
+    const std::string home = Gen::MouthSystem(RegionView(from), tx, ty);
     return !home.empty() && AttachRegion(regionSeed_, slot, home, dataDir + "systems/");
+}
+
+Gen::Region Simulation::RegionView(int slot) const
+{
+    // An open region as far as MouthSystem asks: which systems, and where they lie.
+    Gen::Region view;
+    view.slot = slot;
+    for (const auto& info : universe_.systems)
+        if (Gen::SlotOf(info.id) == slot && regionDocs_.count(info.id) != 0)
+            view.systems.push_back(
+                { { "id", info.id },
+                  { "map", nlohmann::json::array({ info.mapPos.x, info.mapPos.y }) } });
+    return view;
 }
 
 bool Simulation::InCentre(const std::string& systemId) const
@@ -443,73 +540,70 @@ bool Simulation::IsStart(const std::string& systemId) const
 bool Simulation::ReadWorldSeed(const std::string& path, uint64_t& seed, int& generator,
                                int* centres)
 {
-    std::ifstream in(path);
-    if (!in.is_open())
+    WorldHeader h;
+    if (!ReadWorldHeader(path, h))
         return false;
-    const nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
-    if (j.is_discarded() || !j.is_object() || !j.contains("seed") ||
-        !j["seed"].is_number_unsigned())
-        return false;
-    seed = j["seed"].get<uint64_t>();
-    generator = j.contains("generator") && j["generator"].is_number_integer()
-                    ? j["generator"].get<int>()
-                    : 0;
+    seed = h.seed;
+    generator = h.generator;
     if (centres != nullptr)
-        *centres = j.contains("centres") && j["centres"].is_number_integer()
-                       ? j["centres"].get<int>()
-                       : -1;
+        *centres = h.centres;
     return true;
 }
 
 void Simulation::MaterializeAllSystems(const std::string& systemsDir)
 {
+    materialized_ = true;
     for (const auto& info : universe_.systems)
+        MaterializeSystem(info, systemsDir);
+}
+
+void Simulation::MaterializeSystem(const WorldLoader::SystemInfo& info,
+                                   const std::string&             systemsDir)
+{
+    SystemState& st = systems_[info.id];  // created by InitGalaxy (aggregate already exists)
+    st.id = info.id;
+    if (st.entities.empty())
     {
-        SystemState& st = systems_[info.id];  // created by InitGalaxy (aggregate already exists)
-        st.id = info.id;
-        if (st.entities.empty())
+        auto       doc = regionDocs_.find(info.id);
+        const auto mouths = wormholes_.find(info.id);
+        if (doc == regionDocs_.end() && mouths == wormholes_.end())
+            st.entities = WorldLoader::LoadSystem(systemsDir + info.file);
+        else
         {
-            auto       doc = regionDocs_.find(info.id);
-            const auto mouths = wormholes_.find(info.id);
-            if (doc == regionDocs_.end() && mouths == wormholes_.end())
-                st.entities = WorldLoader::LoadSystem(systemsDir + info.file);
+            // A generated system (#140) or a hand-written one as written, plus the mouths
+            // of the wormholes opened from it (#342).
+            nlohmann::json sys;
+            if (doc != regionDocs_.end())
+                sys = nlohmann::json::parse(doc->second);
             else
             {
-                // A generated system (#140) or a hand-written one as written, plus the mouths
-                // of the wormholes opened from it (#342).
-                nlohmann::json sys;
-                if (doc != regionDocs_.end())
-                    sys = nlohmann::json::parse(doc->second);
-                else
-                {
-                    std::ifstream in(systemsDir + info.file);
-                    sys = nlohmann::json::parse(in, nullptr, false);
-                }
-                if (!sys.is_object())
-                    sys = nlohmann::json::object();
-                if (mouths != wormholes_.end())
-                    for (const std::string& gate : mouths->second)
-                        sys["gates"].push_back(nlohmann::json::parse(gate));
-                st.entities = WorldLoader::BuildSystem(sys);
+                std::ifstream in(systemsDir + info.file);
+                sys = nlohmann::json::parse(in, nullptr, false);
             }
-            WorldLoader::NamePlanets(st.entities, SystemName(info.id));  // (#259)
-            // Ids here rather than in HydrateSystem, in the same order as ever, because what a
-            // save changed is replayed by id-bearing objects before any NPC exists.
-            for (auto& e : st.entities)
-                if (e->GetId() == 0)
-                    e->SetId(NextAgentId());
-            KeyWorldObjects(st);
-            ReplayChanges(st);
-            st.profile = ProfileOf(st);
-            // Whatever structures the data wrote or the save brought back, on the clock
-            // StepStructures reads (#295).
-            for (const auto& e : st.entities)
-                ScheduleStructure(info.id, *e);
+            if (!sys.is_object())
+                sys = nlohmann::json::object();
+            if (mouths != wormholes_.end())
+                for (const std::string& gate : mouths->second)
+                    sys["gates"].push_back(nlohmann::json::parse(gate));
+            st.entities = WorldLoader::BuildSystem(sys);
         }
-        // Ships only where somebody is (#295): a system warms when a player arrives.
-        if (allHot_)
-            Warm(st);
+        WorldLoader::NamePlanets(st.entities, SystemName(info.id));  // (#259)
+        // Ids here rather than in HydrateSystem, in the same order as ever, because what a
+        // save changed is replayed by id-bearing objects before any NPC exists.
+        for (auto& e : st.entities)
+            if (e->GetId() == 0)
+                e->SetId(NextAgentId());
+        KeyWorldObjects(st);
+        ReplayChanges(st);
+        st.profile = ProfileOf(st);
+        // Whatever structures the data wrote or the save brought back, on the clock
+        // StepStructures reads (#295).
+        for (const auto& e : st.entities)
+            ScheduleStructure(info.id, *e);
     }
+    // Ships only where somebody is (#295): a system warms when a player arrives.
+    if (allHot_)
+        Warm(st);
 }
 
 namespace
@@ -676,14 +770,20 @@ bool Simulation::SaveWorld(const std::string& path) const
     json j;
     j["version"] = Save::WORLD_VERSION;
     j["simTime"] = time_;
-    // The region is not saved: it is remade from these two (#140).
+    // The regions are not in it: each is sealed in its own file when it opens, or remade
+    // from these (#140, #342 S3).
     if (hasRegion_)
     {
         j["seed"] = regionSeed_;
         j["generator"] = Gen::GENERATOR_VERSION;
         if (!skeleton_.slots.empty())  // and how many civilisations it was made with (S2)
+        {
             j["centres"] = (int)skeleton_.centres.size();
+            j["skeleton"] = Gen::SKELETON_VERSION;
+        }
     }
+    // ...and which regions opened, when and from where, and how the tide stands (S3).
+    SaveGrowth(j);
     json galaxy = json::object();
     for (const auto& kv : systems_)
     {
@@ -990,6 +1090,7 @@ Save::Result Simulation::LoadWorld(const std::string& path)
     chronicleSeq_ = j.value("chronicleSeq", 0LL);
     for (const ChronicleEntry& e : chronicle_)
         chronicleSeq_ = std::max(chronicleSeq_, e.seq);
+    LoadGrowth(j);
 
     // Before version 3 nothing a player changed was kept, so an older save has nothing to
     // replay and its world is the generated or written one, as it always was.
@@ -1041,6 +1142,14 @@ void Simulation::Reset()
     nextPlanId_ = 1;
     chronicle_.clear();
     chronicleSeq_ = 0;
+    // The tide is the save's; the log and the sealed regions are the galaxy's (OpenGalaxy).
+    tides_.clear();
+    explored_.clear();
+    surveyed_.clear();
+    playersSeen_.clear();
+    surplusTide_ = 0.0;
+    growthPaused_ = false;
+    tidePasses_ = 0;
 }
 
 SystemState* Simulation::SystemById(const std::string& id)

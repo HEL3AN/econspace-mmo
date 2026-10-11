@@ -102,6 +102,9 @@ cmake --build build-release
 ./build/bin/server/econserver.exe accttest          # account persistence smoke test
 ./build/bin/server/econserver.exe worldtest         # galaxy persistence + clock
 ./build/bin/server/econserver.exe ordertest         # standing orders, routes, journal
+./build/bin/server/econserver.exe host 50800 --max-regions 60 --max-systems 1500   # the cap (#342 S3); stdin: tide | open [region] | pause | resume
+./build/bin/server/econserver.exe regenerate 14     # with the server stopped: reseal region 14 by today's rules, if no player built there
+./build/bin/server/econserver.exe 5184000 --news    # 24 h of an empty world: its news, each region as it opens and why, the tide hourly
 ./build/bin/server/econserver.exe galaxydump 8     # the galaxy seed 8 makes -- skeleton, starts, regions -- as JSON (never saved)
 ./build/bin/server/econserver.exe regiondump 8     # ...one region of it, the first centre unless a slot is named
 ./build/bin/server/econserver.exe galaxydump 8 0 4 --cap 100  # its skeleton of slots, and the regions of slots 0 and 4 (#342)
@@ -159,14 +162,21 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   a snapshot does not carry is a prediction that will be wrong at 250 000 units a second.
 - **The region is generated, and the generator must give the same answer everywhere**
   (#140). `src/engine/gen/` writes the same JSON the loaders read, from a seed saved in
-  `world.json`; the region itself is never saved, it is remade. So: randomness only from
+  `world.json`. So: randomness only from
   `Gen::Rng` keyed by *what* is generated (never by order), no `sin`/`cos`/`exp`, no
   `std::` distributions, no unordered containers. A region fills a slot of the galaxy's
   skeleton and every key starts from (seed, slot) (#342), so what is in it never depends on
   which other regions opened first. Golden hashes in `gen_tests.cpp` (the skeleton, and a
   region per slot) run on three compilers in CI; when a rule changes the output, bump
-  `Gen::GENERATOR_VERSION` -- a world saved under other rules is then refused rather than
-  silently remade differently.
+  `Gen::GENERATOR_VERSION` (regions) or `Gen::SKELETON_VERSION` (the skeleton).
+- **A region is sealed the moment it opens** (#342 S3). The world is its seed plus the
+  opening log in `world.json`; each region in the log is written as generated to
+  `regions/<slot>.json` beside it and read from there from then on, so new region rules
+  change only regions opened later and a world of older rules still loads. The skeleton is
+  never sealed: a world of other skeleton rules is refused. Regions open while the server
+  runs (the tide, `Simulation_Tide.cpp`, rules in `data/world_rules.json`): the host sends
+  the galaxy index before the delta that adds the wormhole. `econserver regenerate <slot>`
+  (server stopped) reseals one with no player structures.
 - **`econagent` owns stdout.** It is the JSON-RPC channel; one stray `printf` or raylib
   trace on it corrupts the stream and the client reports a parse error rather than the
   line that caused it. All diagnostics go to stderr, and raylib's logger is redirected

@@ -1,0 +1,18 @@
+{
+    "schema": 1,
+    "tide": {
+        "period": 60,
+        "threshold": 100,
+        "base": 0.0278,
+        "perPlayer": 0.15,
+        "playerCap": 10,
+        "perExplore": 0.93,
+        "exploreKnee": 0.6,
+        "exploreCurve": 3,
+        "surveyedWeight": 0.25,
+        "perSurvey": 0.2,
+        "minGapHours": 6,
+        "mouthHours": 24,
+        "playersPerMouth": 20
+    }
+}

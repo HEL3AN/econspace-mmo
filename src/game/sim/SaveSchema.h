@@ -51,7 +51,13 @@ namespace Save
 //    version 10 build would read the ids as nothing and hand every system to the
 //    unaffiliated faction. An older file's numbers are read in the order the factions were
 //    compiled in: Independent, TradersGuild, Syndicate, Pirates.
-inline constexpr int WORLD_VERSION = 11;
+// 12: the world carries its opening log, the tide of each edge region, the cap and whether
+//    growth is paused (#342 S3), and every region it lists is sealed in regions/<slot>.json
+//    beside it. A version 11 build would remake only the regions a new world opens with and
+//    write the world back without the rest -- every region the tide opened, and everything
+//    built in it, gone. An older file loads as the regions a new world opens with, sealed
+//    from then on, with a tide that starts now.
+inline constexpr int WORLD_VERSION = 12;
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.
 // 3: a mission names its stations by system and station rather than by entity id, which

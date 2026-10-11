@@ -885,6 +885,9 @@ void Simulation::MaintainWorld(float dt, MaintainCost* cost)
             TopUpSystem(kv.second, avoid);
         }
         Lap(cost ? &cost->topUp : nullptr, lap);
+        // Last, when no pass over the systems is under way: what it opens adds systems (S3).
+        StepTide(MAINT_STEP);
+        Lap(cost ? &cost->macro : nullptr, lap);
         maintAccum_ -= MAINT_STEP;
     }
 }
