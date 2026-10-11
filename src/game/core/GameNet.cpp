@@ -442,8 +442,12 @@ std::unique_ptr<Entity> Game::MakeProxyFromLayout(const Proto::EntityLayout& el)
                                                 1000);
             break;
         case Proto::EntityKind::Gate:
-            e = std::make_unique<JumpGate>(el.pos, el.size, el.name, el.dest);
+        {
+            auto g = std::make_unique<JumpGate>(el.pos, el.size, el.name, el.dest);
+            g->SetClosesAt(el.expiresAt);  // an unstable mouth's collapse (#342 S4)
+            e = std::move(g);
             break;
+        }
         case Proto::EntityKind::Nebula:
             e = std::make_unique<Nebula>(el.pos, el.size, el.name);
             break;

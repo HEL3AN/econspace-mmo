@@ -57,7 +57,13 @@ namespace Save
 //    write the world back without the rest -- every region the tide opened, and everything
 //    built in it, gone. An older file loads as the regions a new world opens with, sealed
 //    from then on, with a tide that starts now.
-inline constexpr int WORLD_VERSION = 12;
+// 13: a mouth is unstable until anchored, and collapses (#342 S4): the log says each region's
+//    state, when its mouth closes, who anchored it and when anyone was last in it; drifted
+//    regions are cut off, and regions that drifted away at the cap are in archive-<id>.json
+//    beside the sealed ones. A version 12 build would read an unstable mouth as a permanent
+//    one and a drifted or archived region as open. An older file's mouths all stay.
+inline constexpr int WORLD_VERSION = 13;
+
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.
 // 3: a mission names its stations by system and station rather than by entity id, which

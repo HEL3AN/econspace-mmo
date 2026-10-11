@@ -404,6 +404,9 @@ std::string Simulation::JumpGateDestIfNear(const ClientSession& s, SystemState& 
             float           dy = g->GetPosition().y - sp.y;
             if (std::sqrt(dx * dx + dy * dy) > g->GetSize() + e->GetArchetype()->jumpRange)
                 return std::string();
+            // An unstable mouth lets through only small ships (#342 S4).
+            if (!MouthProblem(s, *e).empty())
+                return std::string();
             return g->GetDestination();
         }
     return std::string();

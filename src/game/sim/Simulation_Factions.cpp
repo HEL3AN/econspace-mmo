@@ -18,6 +18,7 @@
 // see while it goes up. Finished, it is the claim. Strength alone takes a system only from
 // an enemy.
 #include "sim/Simulation.h"
+#include "sim/WorldRules.h"
 
 #include "core/Blueprint.h"
 #include "core/World.h"
@@ -121,6 +122,12 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
             case EntityKind::Structure:
             {
                 const Structure& t = static_cast<const Structure&>(*e);
+                FactionId        anchorer;
+                if (IsAnchor(t.GetBuilds()) && Outposts::FactionOf(t.GetOwner(), anchorer))
+                {
+                    p.anchors.push_back(anchorer);  // a site too: it is what a rival stops
+                    p.anchorIds.push_back(t.GetId());
+                }
                 if (!Outposts::IsOutpost(t.GetBuilds()))
                     break;
                 p.outpostSite = true;
@@ -295,6 +302,7 @@ void Simulation::ResolveDuePlans()
             case Plan::Kind::Settle: ResolveSettle(p); break;
             case Plan::Kind::Siege: ResolveSiege(p); break;
             case Plan::Kind::Return: ResolveReturn(p); break;
+            case Plan::Kind::Anchor: ResolveAnchor(p); break;
         }
     }
 }
@@ -532,7 +540,7 @@ void Simulation::Think(FactionId f)
     // What it already has under way: one survey of a system at a time, and no more at once
     // than its holdings can send.
     std::set<std::string> surveying;
-    bool                  settling = false, besieging = false;
+    bool                  settling = false, besieging = false, anchoring = false;
     for (const auto& kv : plans_)
         if (kv.second.faction == f && kv.second.kind == Plan::Kind::Survey)
             surveying.insert(kv.second.target);
@@ -540,6 +548,8 @@ void Simulation::Think(FactionId f)
             settling = true;
         else if (kv.second.faction == f && kv.second.kind == Plan::Kind::Siege)
             besieging = true;
+        else if (kv.second.faction == f && kv.second.kind == Plan::Kind::Anchor)
+            anchoring = true;
     const bool canSurvey = (int)surveying.size() < 1 + holdings / PLANS_PER_HOLDINGS;
     // One outpost at a time, and only with the stock to pay for it -- over and above what
     // keeping the ones it has will cost for a while (slice 5): a faction that spends its
@@ -555,6 +565,13 @@ void Simulation::Think(FactionId f)
     const Blueprint* plain = Blueprints::Find(Outposts::BLUEPRINT);
     const float      wall = plain != nullptr ? plain->hull : 0.0f;
     const float      mend = Blueprints::UpkeepRules().repair * wall / (FACTION_PERIOD * 2.0f);
+    // One Anchor at a time, paid for like an outpost (#342 S4) -- and an Anchor's hull, for a
+    // rival weighing whether it could bring one down.
+    const float anchorCost = AnchorCost();
+    const bool  canAnchor = WorldRules::MouthRules().anchors && !anchoring && anchorCost > 0.0f &&
+                            mind.stock >= anchorCost + reserve;
+    const Blueprint* anchorBp = Blueprints::Find(ANCHOR_BLUEPRINT);
+    const float      anchorWall = anchorBp != nullptr ? anchorBp->hull : 0.0f;
 
     enum class Act
     {
@@ -562,7 +579,8 @@ void Simulation::Think(FactionId f)
         Move,
         Survey,
         Settle,
-        Siege
+        Siege,
+        Anchor
     };
     Act         act = Act::None;
     float       bestScore = 0.0f;
@@ -572,6 +590,16 @@ void Simulation::Think(FactionId f)
     std::map<std::string, std::pair<std::vector<Plan::Lent>, std::string>> pools;
     std::vector<Plan::Lent>                                                lend;
     std::string                                                            via;
+    int  anchorSlot = -1;        // the mouth an Anchor would hold
+    bool againstAnchor = false;  // the siege is of an Anchor rather than an outpost
+    // What a region behind a mouth promises, from what was seen of its entry system (#342
+    // S4): what the place offers, and a whole region nobody holds.
+    auto promise = [&](const Intel& seen)
+    {
+        const SystemOffer o = OfferOf(seen);
+        return t.traffic * o.traffic + t.ore * o.ore + t.salvage * o.salvage + t.unclaimed +
+               0.5f * t.curiosity;
+    };
     for (auto& kv : systems_)
     {
         const SystemAggregate& home = kv.second.agg;
@@ -589,6 +617,7 @@ void Simulation::Think(FactionId f)
             // of it, a faction still has to go and look at.
             if (k != mind.intel.end())
                 k->second.outposts = systems_.at(nid).profile.outposts;
+
             bool rival = false;  // an enemy's outpost stands there
             if (seen != nullptr)
                 for (FactionId g : seen->outposts)
@@ -768,6 +797,154 @@ void Simulation::Think(FactionId f)
         }
     }
 
+    // Besieging a rival's Anchor at a wormhole mouth (#342 S4), built or going up: brought down,
+    // the mouth is open to anyone again. Wherever it stands within reach -- in a system it holds
+    // or next door to one, never a friend's or a neutral power's. Worth what the region behind
+    // the mouth promises; the risk is reckoned as for an outpost, against the Anchor's hull.
+    if (canSiege && anchorWall > 0.0f)
+        for (auto& kv : systems_)
+        {
+            const SystemProfile& here = kv.second.profile;
+            if (here.anchors.empty())
+                continue;
+            const std::string&     nid = kv.first;
+            const SystemAggregate& a = kv.second.agg;
+            if (a.claimed && a.controller != f && !Hostile(f, a.controller))
+                continue;
+            auto holds = [&](const std::string& id)
+            {
+                const auto it = systems_.find(id);
+                return it != systems_.end() && it->second.agg.claimed &&
+                       it->second.agg.controller == f;
+            };
+            bool near = holds(nid);
+            for (const std::string& n : Neighbors(nid))
+                near = near || holds(n);
+            const auto k = mind.intel.find(nid);
+            if (!near || k == mind.intel.end())
+                continue;
+            const Intel& seen = k->second;
+            for (FactionId g : here.anchors)
+            {
+                if (!Hostile(f, g))
+                    continue;
+                const RegionOpening* o = nullptr;
+                for (const RegionOpening& r : openings_)
+                    if (r.mouth == nid && (r.state == "unstable" || r.state == "anchored"))
+                        o = &r;
+                const auto entry =
+                    o != nullptr ? mind.intel.find(EntryOf(o->slot)) : mind.intel.end();
+                auto pool = pools.find(nid);
+                if (pool == pools.end())
+                {
+                    std::string in;
+                    auto        lent = PoolFor(f, nid, siege.pool * t.capacity, &in);
+                    pool = pools.emplace(nid, std::make_pair(std::move(lent), in)).first;
+                }
+                float sent = 0.0f;
+                int   hops = 0;
+                for (const Plan::Lent& l : pool->second.first)
+                {
+                    sent += l.force;
+                    hops = std::max(hops, l.hops);
+                }
+                const float garrison = seen.presence[g];
+                const float firing = sent - siege.defence * garrison;
+                const float rate = firing * siege.dps;
+                if (sent < 1.5f || firing <= 0.0f || anchorWall / rate > siege.seconds)
+                    break;
+                const float worth =
+                    entry != mind.intel.end() ? promise(entry->second) : t.unclaimed + t.curiosity;
+                const float risk =
+                    siege.defence * garrison / sent + anchorWall / rate / siege.seconds;
+                const float score =
+                    worth - Intelligence::BelievedRisk(
+                                risk, Intelligence::Staleness(seen, time_ + hops * siege.hop)) /
+                                t.appetite;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    act = Act::Siege;
+                    againstAnchor = true;
+                    from = pool->second.first.front().from;
+                    to = nid;
+                    enemy = g;
+                    lend = pool->second.first;
+                    via = pool->second.second;
+                }
+                break;  // one Anchor in a system is what it would besiege
+            }
+        }
+
+    // Anchoring (#342 S4): an unstable mouth in a system it holds, or has come to in strength,
+    // or next door to one it holds. Worth what the region behind it promises, judged on what
+    // its surveyors saw of the entry system -- it looks first, if it has not; the risk is who
+    // else is at the mouth, enemies the more, and the memory of losing something there.
+    for (const RegionOpening& o : openings_)
+    {
+        if (o.state != "unstable" || (!canAnchor && !canSurvey))
+            continue;
+        const auto mouth = systems_.find(o.mouth);
+        if (mouth == systems_.end() || !AnchorAt(o, false).empty())
+            continue;
+        auto holds = [&](const std::string& id)
+        {
+            const auto it = systems_.find(id);
+            return it != systems_.end() && it->second.agg.claimed && it->second.agg.controller == f;
+        };
+        std::string base;
+        if (holds(o.mouth) || mouth->second.agg.presence[f] >= t.capacity * SETTLE_PRESENCE)
+            base = o.mouth;
+        else
+            for (const std::string& n : Neighbors(o.mouth))
+                if (base.empty() && holds(n))
+                    base = n;
+        if (base.empty())
+            continue;
+        const std::string entry = EntryOf(o.slot);
+        const auto        seen = mind.intel.find(entry);
+        if (seen == mind.intel.end())
+        {
+            if (canSurvey && surveying.count(entry) == 0)
+            {
+                const float score =
+                    t.curiosity + t.unclaimed - Intelligence::UNSEEN_RISK / t.appetite;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    act = Act::Survey;
+                    from = base;
+                    to = entry;
+                }
+            }
+            continue;
+        }
+        if (!canAnchor)
+            continue;
+        float others = 0.0f;
+        for (FactionId g : Factions::All())
+            if (g != f)
+                others += mouth->second.agg.presence[g] * (Hostile(f, g) ? 2.0f : 0.5f);
+        const float risk =
+            others / t.capacity + Intelligence::LossRisk(mind.lostAt, o.mouth, time_);
+        const float score =
+            promise(seen->second) -
+            Intelligence::BelievedRisk(risk, Intelligence::Staleness(seen->second, time_)) /
+                t.appetite;
+        if (score > bestScore)
+        {
+            bestScore = score;
+            act = Act::Anchor;
+            from = base;
+            anchorSlot = o.slot;
+        }
+    }
+
+    if (act == Act::Anchor)
+    {
+        LayAnchor(f, from, anchorSlot);
+        return;
+    }
     if (act == Act::Survey)
     {
         // How long it takes is drawn from what it is -- this faction, that system, this
@@ -797,12 +974,19 @@ void Simulation::Think(FactionId f)
         // system be a friend's now. Then it does nothing this period.
         SystemState& dest = systems_[to];
         mind.intel[to] = Observe(dest);
-        if (dest.agg.claimed && (dest.agg.controller == f || !Hostile(f, dest.agg.controller)))
+        // An Anchor may be besieged in a system it holds itself; an outpost never is.
+        if (dest.agg.claimed && dest.agg.controller != f && !Hostile(f, dest.agg.controller))
             return;
-        for (size_t i = 0; i < dest.profile.outposts.size(); i++)
-            if (dest.profile.outposts[i] == enemy)
+        if (!againstAnchor && dest.agg.claimed && dest.agg.controller == f)
+            return;
+        const std::vector<FactionId>& whose =
+            againstAnchor ? dest.profile.anchors : dest.profile.outposts;
+        const std::vector<int>& ids =
+            againstAnchor ? dest.profile.anchorIds : dest.profile.outpostIds;
+        for (size_t i = 0; i < whose.size(); i++)
+            if (whose[i] == enemy)
             {
-                BeginSiege(f, lend, via, to, enemy, StaticKey(to, dest.profile.outpostIds[i]));
+                BeginSiege(f, lend, via, to, enemy, StaticKey(to, ids[i]));
                 return;
             }
         return;

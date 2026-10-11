@@ -192,8 +192,12 @@ std::string WorldRulesRefusal(const Simulation::WorldHeader& header, const std::
     int         count = 0;
     for (const Simulation::RegionOpening& o : header.log)
     {
+        // A region that drifted away is the archive's, not a sealed file's (#342 S4).
+        if (o.state == "archived" || o.state == "returned")
+            continue;
         Gen::Region r;
         if (Simulation::ReadSealed(Simulation::SealedPath(sealDir, o.slot), header.seed, r))
+
             continue;
         missing += (count++ == 0 ? "" : ", ") + std::to_string(o.slot);
     }

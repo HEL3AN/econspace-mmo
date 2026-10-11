@@ -102,9 +102,10 @@ cmake --build build-release
 ./build/bin/server/econserver.exe accttest          # account persistence smoke test
 ./build/bin/server/econserver.exe worldtest         # galaxy persistence + clock
 ./build/bin/server/econserver.exe ordertest         # standing orders, routes, journal
-./build/bin/server/econserver.exe host 50800 --max-regions 60 --max-systems 1500   # the cap (#342 S3); stdin: tide | open [region] | pause | resume
+./build/bin/server/econserver.exe host 50800 --max-regions 60 --max-systems 1500   # the cap (#342 S3); stdin: tide | open [region] | drift <region> | pause | resume
 ./build/bin/server/econserver.exe regenerate 14     # with the server stopped: reseal region 14 by today's rules, if no player built there
 ./build/bin/server/econserver.exe 5184000 --news    # 24 h of an empty world: its news, each region as it opens and why, the tide hourly
+./build/bin/server/econserver.exe 15552000 --news --players 12 --max-regions 9 --rules r.json   # 72 h with pilots, at a cap: mouths, Anchors, drift, the archive (#342 S4)
 ./build/bin/server/econserver.exe galaxydump 8     # the galaxy seed 8 makes -- skeleton, starts, regions -- as JSON (never saved)
 ./build/bin/server/econserver.exe regiondump 8     # ...one region of it, the first centre unless a slot is named
 ./build/bin/server/econserver.exe galaxydump 8 0 4 --cap 100  # its skeleton of slots, and the regions of slots 0 and 4 (#342)
@@ -177,6 +178,16 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   runs (the tide, `Simulation_Tide.cpp`, rules in `data/world_rules.json`): the host sends
   the galaxy index before the delta that adds the wormhole. `econserver regenerate <slot>`
   (server stopped) reseals one with no player structures.
+- **A mouth's state is the opening log's, and its gates are dressed from it** (#342 S4).
+  A tide-opened region is `unstable` until an Anchor (a structure, blueprint `anchor`) is
+  finished at it, then `anchored`; unanchored it collapses after `mouthHours` and is
+  `drifted` -- in the galaxy, cut off -- until the next mouth from its parent finds it.
+  The gates are never in `changes`: they come from the documents and are dressed (look,
+  name, `closesAt`) when a system is built and whenever the state changes, with a
+  LayoutDelta, and a collapse cuts the link and both gates. At the cap a region nobody
+  visits drifts away into the archive (`regions/archive-<id>.json`) and may come back,
+  decayed, into another slot (`Simulation_Drift.cpp`).
+
 - **`econagent` owns stdout.** It is the JSON-RPC channel; one stray `printf` or raylib
   trace on it corrupts the stream and the client reports a parse error rather than the
   line that caused it. All diagnostics go to stderr, and raylib's logger is redirected

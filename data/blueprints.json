@@ -97,6 +97,18 @@
             "hull": 5000,
             "wreck": "derelict.outpost_ruin",
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
+        },
+        {
+            "id": "anchor",
+            "name": "Anchor",
+            "archetype": "structure.anchor",
+            "builders": ["faction", "player"],
+            "cost": { "Iron": 60, "Crystal": 15 },
+            "buildSeconds": 3000,
+            "hull": 9000,
+            "wreck": "derelict.outpost_ruin",
+            "placement": { "reach": 800, "clearance": 1500, "bodyClearance": 20000, "perSystem": 0,
+                           "mouth": 15000 }
         }
     ],
     "limits": { "perAccount": 12 },

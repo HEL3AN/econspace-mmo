@@ -407,6 +407,31 @@ Each slice is its own PR with green CI, and the game works after every one.
    - Collapse and drift, archiving a drifted region with its state, and its decayed
      return.
    - Sieging an Anchor.
+   - *As built:* the mouth's state is the opening log's (`unstable`, `anchored`,
+     `drifted`, `archived`, `returned`, with `closesAt`, `anchoredBy`, `lastVisit`), and its
+     two gates are dressed from it -- the `gate.mouth` look and `expiresAt` while unstable,
+     "<builder> Gate" once anchored -- when a system is built and with a LayoutDelta whenever
+     it changes; they are never in `changes`. "Small ships" is a mass: `mouths.maxMass` 45 in
+     `data/world_rules.json` lets a scout or a courier through and not a hauler or a miner;
+     `mouths.anchors: false` is option A. The Anchor (blueprint `anchor`, 50 min, 75 units)
+     must stand within 15 000 of an unstable mouth, one to a mouth, on either side; finished
+     it anchors at once, destroyed it leaves the mouth unstable with a fresh day. A faction
+     anchors a mouth it holds, has come to in strength or holds next door to: it surveys the
+     entry system first, then weighs the region's promise (what the entry offers, plus
+     unclaimed space) against everyone else's strength at the mouth and the memory of a loss
+     there. A rival's Anchor or site is besieged by the slice-5 machinery, even in the
+     besieger's own system. A collapsed mouth cuts the link and both gates; a drifted region
+     gathers no tide, and the next mouth from its parent reopens it -- at the cap too, since
+     it opens no slot -- anchoring at once if an Anchor was finished there meanwhile. At the
+     cap, once a period, the frontier region idle longest (`archive.deadDays`, warned
+     `warnDays` before; none with a child region or a player structure) is written to
+     `regions/archive-<id>.json` and taken out of the galaxy, and its sealed file goes. A
+     slot that opens takes an archive back at `returnChance`, keyed by (seed, slot, log
+     length): ids and designations renamed for the slot, moved on the map with its home, its
+     mouth placed where the slot's own region would put one, faction structures as ruins,
+     stations as hulks, wrecks no longer rotting, given names kept; it is sealed as it comes
+     back. A slot that reopens fresh after an archive is keyed by how often it opened before.
+     WORLD_VERSION 13, PROTO_VERSION 29 (a gate's `expiresAt`).
 5. **S5 — native factions.**
    - A minor faction per frontier region, in the faction registry.
    - 1–3 generated stations with markets.

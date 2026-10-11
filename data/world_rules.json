@@ -14,5 +14,15 @@
         "minGapHours": 6,
         "mouthHours": 24,
         "playersPerMouth": 20
+    },
+    "mouths": {
+        "anchors": true,
+        "maxMass": 45,
+        "warnHours": 2
+    },
+    "archive": {
+        "deadDays": 7,
+        "warnDays": 2,
+        "returnChance": 0.35
     }
 }

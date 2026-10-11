@@ -30,12 +30,13 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    28;  // 28: a structure's allow-list is in its owner's layout only; anyone else's has its
-         // mode and threshold with the lists empty (#340); 27: a structure's rules of
-         // engagement, set by a command and carried in its layout;
-         // whether a system is claimed, in the galaxy stats (#340); 26: a refit, the whole fit
-         // asked for in a command (#279 fitting); 25: a login may be
-         // answered with the starts to choose from, and a ship exists only once one is chosen
+    29;  // 29: a gate's expiresAt is when an unstable wormhole mouth collapses (#342 S4); 28: a
+         // structure's allow-list is in its owner's layout only; anyone else's has its mode and
+         // threshold with the lists empty (#340); 27: a structure's rules of engagement, set by a
+         // command and carried in its layout; whether a system is claimed, in the galaxy stats
+         // (#340); 26: a refit, the whole fit asked for in a command (#279 fitting); 25: a login
+         // may be answered with the starts to choose from, and a ship exists only once one is
+         // chosen
          // (#342 S2); 24: a ship flies a design of its own, filed by a hash of its content; a
          // DesignDef tells a client what one is before any snapshot names it (#279 fitting); 23: a
          // faction is named by its string id, never by index (#355); 22: a snapshot without
@@ -361,7 +362,8 @@ struct EntityLayout
     // A structure's time line, in world seconds (#39). While `completesAt` is ahead of the
     // clock it is a site and `archetype` is what it will become; 0 -- built. `expiresAt` 0 --
     // it stays. Instants rather than a progress figure, so the site advances on every client
-    // without another word from the server.
+    // without another word from the server. For a gate, `expiresAt` is when an unstable
+    // wormhole mouth collapses unless it is anchored (#342 S4); 0 -- it stays.
     double startedAt = 0.0;
     double completesAt = 0.0;
     double expiresAt = 0.0;

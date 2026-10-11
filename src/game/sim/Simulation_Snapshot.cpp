@@ -251,7 +251,11 @@ static bool DescribeStatic(const Entity& e, Proto::EntityLayout& el)
         case EntityKind::Field:
             el.resource = (int)static_cast<const AsteroidField&>(e).GetResource();
             break;
-        case EntityKind::Gate: el.dest = static_cast<const JumpGate&>(e).GetDestination(); break;
+        case EntityKind::Gate:
+            el.dest = static_cast<const JumpGate&>(e).GetDestination();
+            // An unstable mouth's collapse (#342 S4): a time, so every client counts it down.
+            el.expiresAt = static_cast<const JumpGate&>(e).GetClosesAt();
+            break;
         case EntityKind::Nebula: break;
         case EntityKind::Derelict:
         {
