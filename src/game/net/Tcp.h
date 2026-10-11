@@ -50,6 +50,23 @@ public:
     static constexpr size_t MAX_FRAME_BYTES = 4u * 1024u * 1024u;
     static constexpr size_t MAX_SEND_BACKLOG = 8u * 1024u * 1024u;
 
+    // The server's side is held tighter (#341): everything a client sends is a command or a
+    // login, a few hundred bytes, so a frame of 64 KB is already not one of them; and a
+    // client that has let a megabyte of snapshots pile up is a minute behind and no longer
+    // playing. The client keeps the defaults above -- it is sent whole galaxies.
+    static constexpr size_t SERVER_MAX_FRAME_BYTES = 64u * 1024u;
+    static constexpr size_t SERVER_MAX_SEND_BACKLOG = 1024u * 1024u;
+    void                    SetLimits(size_t maxFrame, size_t maxSendBacklog)
+    {
+        maxFrame_ = maxFrame;
+        maxBacklog_ = maxSendBacklog;
+    }
+
+    // Who is on the other end, as an IPv4 literal ("127.0.0.1"); empty if unknown. The
+    // server's per-address limits are keyed by it.
+    const std::string& PeerAddress() const { return peer_; }
+    void               SetPeerAddress(const std::string& a) { peer_ = a; }
+
 private:
     void Pump();  // non-blocking send from outBuf_ and receive into inBuf_
     void Fail(const std::string& why);
@@ -59,6 +76,9 @@ private:
     std::string        outBuf_;  // bytes to send (if the socket is busy)
     bool               alive_ = true;
     std::string        closeReason_;
+    std::string        peer_;
+    size_t             maxFrame_ = MAX_FRAME_BYTES;
+    size_t             maxBacklog_ = MAX_SEND_BACKLOG;
 };
 
 // Listening socket: accepts incoming connections non-blockingly.

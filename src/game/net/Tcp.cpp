@@ -131,7 +131,7 @@ void TcpConnection::Send(const std::string& msg)
         return;
     // A peer that has stopped reading is a peer we cannot serve. Dropping it is kinder to
     // everyone else than growing a send buffer until the process dies (#14).
-    if (outBuf_.size() + msg.size() + 4 > MAX_SEND_BACKLOG)
+    if (outBuf_.size() + msg.size() + 4 > maxBacklog_)
     {
         Fail("send backlog over the cap: the peer stopped reading");
         outBuf_.clear();
@@ -182,7 +182,7 @@ void TcpConnection::Pump()
             inBuf_.append(buf, (size_t)n);
             // A frame that never completes is still a frame being buffered. Without this
             // a peer can stream bytes under one oversized header until memory runs out.
-            if (inBuf_.size() > MAX_FRAME_BYTES + 4)
+            if (inBuf_.size() > maxFrame_ + 4)
             {
                 Fail("incoming frame over the cap");
                 inBuf_.clear();
@@ -222,7 +222,7 @@ bool TcpConnection::Poll(std::string& out)
     len = ntohl(len);
     // The length is four bytes the peer chose. Refusing an absurd one is the difference
     // between a dropped connection and a dead server (#14).
-    if ((size_t)len > MAX_FRAME_BYTES)
+    if ((size_t)len > maxFrame_)
     {
         Fail("frame header over the cap (" + std::to_string(len) + " bytes)");
         inBuf_.clear();
@@ -237,6 +237,11 @@ bool TcpConnection::Poll(std::string& out)
 
 // --- TcpListener -----------------------------------------------------------
 
+// How many finished handshakes the system may hold before the server accepts them. Four
+// was a queue a handful of players reconnecting after a restart would overflow, and a
+// connection refused for that reads as a server that is down (#341).
+constexpr int LISTEN_BACKLOG = 64;
+
 TcpListener::~TcpListener()
 {
     if ((socket_t)sock_ != INVALID_SOCK)
@@ -250,7 +255,17 @@ bool TcpListener::Listen(unsigned short port, Exposure exposure)
         return false;
 
     int yes = 1;
+#ifdef _WIN32
+    // Not SO_REUSEADDR (#341): on Windows that lets a second socket bind a port somebody is
+    // already listening on, and connections then go to whichever accepts first. It
+    // happened: a test server landed on another server's port and never saw a client. The
+    // exclusive option is what POSIX's SO_REUSEADDR already guarantees.
+    setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char*)&yes, sizeof(yes));
+#else
+    // On POSIX this only lets a restarted server rebind past connections in TIME_WAIT; a
+    // port another socket is listening on stays refused.
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char*)&yes, sizeof(yes));
+#endif
 
     sockaddr_in addr;
     std::memset(&addr, 0, sizeof(addr));
@@ -258,7 +273,7 @@ bool TcpListener::Listen(unsigned short port, Exposure exposure)
     addr.sin_addr.s_addr = htonl(exposure == Exposure::Public ? INADDR_ANY : INADDR_LOOPBACK);
     addr.sin_port = htons(port);
 
-    if (bind(s, (sockaddr*)&addr, sizeof(addr)) != 0 || listen(s, 4) != 0)
+    if (bind(s, (sockaddr*)&addr, sizeof(addr)) != 0 || listen(s, LISTEN_BACKLOG) != 0)
     {
         CloseSocket(s);
         return false;
@@ -282,10 +297,17 @@ std::unique_ptr<TcpConnection> TcpListener::Accept()
 {
     if ((socket_t)sock_ == INVALID_SOCK)
         return nullptr;
-    socket_t c = accept((socket_t)sock_, nullptr, nullptr);
+    sockaddr_in from;
+    socklen_t   len = sizeof(from);
+    std::memset(&from, 0, sizeof(from));
+    socket_t c = accept((socket_t)sock_, (sockaddr*)&from, &len);
     if (c == INVALID_SOCK)
         return nullptr;
-    return std::make_unique<TcpConnection>((unsigned long long)c);
+    auto conn = std::make_unique<TcpConnection>((unsigned long long)c);
+    char ip[INET_ADDRSTRLEN] = {};
+    if (from.sin_family == AF_INET && inet_ntop(AF_INET, &from.sin_addr, ip, sizeof(ip)))
+        conn->SetPeerAddress(ip);
+    return conn;
 }
 
 // --- Dial ------------------------------------------------------------------

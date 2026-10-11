@@ -6,9 +6,11 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <system_error>
 #include <vector>
 
@@ -118,6 +120,80 @@ WorldStart OpenWorld(Simulation& sim, const std::string& path, std::string& why)
           " is the newest): copy one over it to go on with that "
           "world, or move it aside to start a new galaxy. It has NOT been modified.";
     return WorldStart::Refused;
+}
+
+namespace
+{
+constexpr double HOUR = 3600.0;
+
+std::string PairKey(const std::string& address, const std::string& account)
+{
+    return address + "|" + account;
+}
+}  // namespace
+
+std::string Gate::RefuseConnection(int total, int fromAddress) const
+{
+    if (total >= limits_.maxClients)
+        return "The server is full; try again later";
+    if (fromAddress >= limits_.maxPerAddress)
+        return "Too many connections from your address";
+    return std::string();
+}
+
+bool Gate::MayRegister(const std::string& address, double now)
+{
+    auto it = registrations_.find(address);
+    if (it == registrations_.end())
+        return true;
+    std::vector<double>& when = it->second;
+    when.erase(std::remove_if(when.begin(), when.end(), [&](double t) { return now - t >= HOUR; }),
+               when.end());
+    return (int)when.size() < limits_.registrationsPerHour;
+}
+
+void Gate::Registered(const std::string& address, double now)
+{
+    registrations_[address].push_back(now);
+}
+
+double Gate::LoginWait(const std::string& address, const std::string& account, double now) const
+{
+    auto it = failures_.find(PairKey(address, account));
+    if (it == failures_.end() || it->second.until <= now)
+        return 0.0;
+    return it->second.until - now;
+}
+
+void Gate::LoginFailed(const std::string& address, const std::string& account, double now)
+{
+    Failures& f = failures_[PairKey(address, account)];
+    f.count++;
+    double wait = 1.0;
+    for (int i = 1; i < f.count && wait < limits_.maxBackoff; i++)
+        wait *= 2.0;
+    f.until = now + std::min(wait, limits_.maxBackoff);
+    f.last = now;
+}
+
+void Gate::LoginSucceeded(const std::string& address, const std::string& account)
+{
+    failures_.erase(PairKey(address, account));
+}
+
+void Gate::Expire(double now)
+{
+    // A failure an hour old is forgotten; the doubling starts again from one second.
+    for (auto it = failures_.begin(); it != failures_.end();)
+        it = now - it->second.last >= HOUR ? failures_.erase(it) : std::next(it);
+    for (auto it = registrations_.begin(); it != registrations_.end();)
+    {
+        std::vector<double>& when = it->second;
+        when.erase(
+            std::remove_if(when.begin(), when.end(), [&](double t) { return now - t >= HOUR; }),
+            when.end());
+        it = when.empty() ? registrations_.erase(it) : std::next(it);
+    }
 }
 
 std::string VersionRefusal(int clientVersion)

@@ -89,6 +89,7 @@ void Session::Pump()
                 }
             if (journal_.size() > 512)
                 journal_.erase(journal_.begin(), journal_.begin() + (journal_.size() - 512));
+            Proto::CarryMissions(s, snapshot_);  // sent only when they change (#341)
             snapshot_ = std::move(s);
             haveSnapshot_ = true;
         }

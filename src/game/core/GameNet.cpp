@@ -243,6 +243,8 @@ void Game::BuildClientSnapshot()
             // network, and interpolating by them made everything nearby speed up and slow
             // down -- a smoothed hitch every couple of seconds.
             snapBuffer_.push_back({ s.time, s.entities });
+            // Missions come only when they change (#341): the last snapshot's stand.
+            Proto::CarryMissions(s, gotSnap ? incoming : snapshot_);
             incoming = std::move(s);
             gotSnap = true;
         }

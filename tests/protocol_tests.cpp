@@ -899,3 +899,72 @@ TEST_CASE("a client applies a delta once, to the system it is about")
         CHECK(sawWreck);
     }
 }
+
+TEST_CASE("a command that says nothing is a few bytes, and still says it (#341)")
+{
+    // Sixty a second from every client, and nearly every field at its default.
+    Proto::Command idle;
+    idle.seq = 1234;
+    const std::string wire = Proto::EncodeCommand(idle);
+    CHECK(wire.size() < 40);
+    Proto::Command back;
+    REQUIRE(Proto::DecodeCommand(wire, back));
+    CHECK(back.seq == 1234);
+    CHECK(back.sellType == -1);
+    CHECK(back.payBountyFaction == -1);
+    CHECK(back.orderStopDist == 120.0f);
+    CHECK(back.orderKind == 0);
+    CHECK_FALSE(back.thrust);
+
+    // And everything that is not a default comes through as it was.
+    Proto::Command busy;
+    busy.thrust = true;
+    busy.turn = 0.5f;
+    busy.orderKind = 1;
+    busy.orderStopDist = 0.0f;
+    busy.orderPoint = { 10.0f, 0.0f };
+    busy.sellType = 0;
+    busy.refitShip = 0;
+    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(busy), back));
+    CHECK(back.thrust);
+    CHECK(back.turn == 0.5f);
+    CHECK(back.orderKind == 1);
+    CHECK(back.orderStopDist == 0.0f);
+    CHECK(back.orderPoint.x == 10.0f);
+    CHECK(back.sellType == 0);
+    CHECK(back.refitShip == 0);
+}
+
+TEST_CASE("missions travel only when they change, and the client keeps the last ones (#341)")
+{
+    Proto::Snapshot    first;
+    Proto::MissionView m;
+    m.title = "Deliver ice";
+    first.missionActive.push_back(m);
+    const std::string key = Proto::MissionsKey(first);
+
+    Proto::Snapshot same = first;
+    CHECK(Proto::MissionsKey(same) == key);
+    same.missionsIncluded = false;
+    const std::string wire = Proto::EncodeSnapshot(same);
+    CHECK(wire.find("mActive") == std::string::npos);
+
+    Proto::Snapshot got;
+    REQUIRE(Proto::DecodeSnapshot(wire, got));
+    CHECK_FALSE(got.missionsIncluded);
+    CHECK(got.missionActive.empty());
+    Proto::CarryMissions(got, first);
+    REQUIRE(got.missionActive.size() == 1);
+    CHECK(got.missionActive[0].title == "Deliver ice");
+
+    // An offer taken is a change, even though the count of missions is the same.
+    Proto::Snapshot taken;
+    taken.missionOffers.push_back(m);
+    CHECK(Proto::MissionsKey(taken) != key);
+    // A list emptied is sent, empty, and read as empty -- not as "unchanged".
+    Proto::Snapshot emptied;
+    REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(emptied), got));
+    CHECK(got.missionsIncluded);
+    Proto::CarryMissions(got, first);
+    CHECK(got.missionActive.empty());
+}

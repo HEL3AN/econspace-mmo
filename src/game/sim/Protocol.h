@@ -28,10 +28,12 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    21;  // 21: the build order, with its blueprint and name (#39); 20: a ship flies a design of
-         // its own (#279, PR #334); 19: player hulls are designs -- a hull index means derived
-         // stats, and another player's ship carries its design (#279 step 5); 18: an NPC's ship
-         // design (#279); 17: dismantling, a structure's blueprint and damage, the attack order
+    22;  // 22: a snapshot without missions means they are unchanged, and a command leaves out
+         // every field at its default (#341); 21: the build order, with its blueprint and name
+         // (#39); 20: a ship flies a design of its own (#279, PR #334); 19: player hulls are
+         // designs -- a hull index means derived stats, and another player's ship carries its
+         // design (#279 step 5); 18: an NPC's ship design (#279); 17: dismantling, a structure's
+         // blueprint and damage, the attack order
          // (#39); 16: follow (nav 5, hold 3) and hold orders (#298); 15: structures and deploying
          // them (#39); 14: layout revisions and LayoutDelta (#38)
 
@@ -276,6 +278,10 @@ struct Snapshot
     std::vector<TradeAck>       tradeAcks;      // one-shot trade acknowledgments (M4e-3b)
     std::vector<MissionView>    missionOffers;  // docked station board (empty outside dock)
     std::vector<MissionView>    missionActive;  // player's active missions (M4f-2)
+    // Whether the two mission lists are in this snapshot at all (#341). The server sends them
+    // only when they change; a snapshot without them means "as before", and a client fills
+    // them in from the last one with CarryMissions.
+    bool missionsIncluded = true;
 };
 
 // Static description of a system entity, for building the client proxy WITHOUT
@@ -411,6 +417,10 @@ std::string EncodeCommand(const Command& c);
 bool        DecodeCommand(const std::string& s, Command& out);
 std::string EncodeSnapshot(const Snapshot& s);
 bool        DecodeSnapshot(const std::string& s, Snapshot& out);
+// The mission lists as one comparable string: the server sends them when this changes.
+std::string MissionsKey(const Snapshot& s);
+// A snapshot that did not carry the missions takes them from the one before it.
+void        CarryMissions(Snapshot& incoming, const Snapshot& previous);
 std::string EncodeLayout(const SystemLayout& s);
 bool        DecodeLayout(const std::string& s, SystemLayout& out);
 std::string EncodeLayoutDelta(const LayoutDelta& d);

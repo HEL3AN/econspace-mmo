@@ -105,8 +105,10 @@ TEST_CASE("Actions: each kind offers what it is for")
     wreck.looted = true;  // a wreck changes once (#38)
     CHECK_FALSE(Has(Actions::For(wreck, from), Verb::Investigate));
 
-    Target        gate = Thing(EntityKind::Gate);
-    const Action* jump = Find(Actions::For(gate, from), Verb::Jump);
+    Target gate = Thing(EntityKind::Gate);
+    // Kept, not a temporary: Find points into the list (the sanitizer job caught this, #341).
+    const std::vector<Action> plain = Actions::For(gate, from);
+    const Action*             jump = Find(plain, Verb::Jump);
     REQUIRE(jump != nullptr);
     CHECK(jump->label == "Jump");
     gate.destinationName = "Vela";
