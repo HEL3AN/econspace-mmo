@@ -33,7 +33,7 @@ const std::string DATA = TEST_DATA_DIR;
 std::unique_ptr<Simulation> Unopened(bool allHot = false)
 {
     SetRandomSeed(0xC0FFEEu);
-    Factions::Load(DATA + "factions.json");
+    REQUIRE(Factions::Load(DATA + "factions.json"));
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
     REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
     auto sim = std::make_unique<Simulation>();

@@ -63,7 +63,13 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
                          const std::string& worldPath = std::string(), uint64_t newSeed = 1)
 {
     SetRandomSeed(0xC0FFEEu);
-    Factions::Load(dataDir + "factions.json");
+    // Fatal like the archetypes below: a world whose factions did not read would be a world
+    // of four default factions that never reach out, served as if it were this one (#357).
+    if (!Factions::Load(dataDir + "factions.json"))
+    {
+        fprintf(stderr, "FATAL: %s\n", Factions::Error().c_str());
+        exit(1);
+    }
     // Must precede materialization: every entity constructor looks itself up here, and a
     // world whose objects have no components is a world where nothing can be docked with.
     //
@@ -172,8 +178,9 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
             sim.SwitchShip(s, c.refitShip);  // only to a ship this account owns (#5)
         if (c.buyShip >= 0)
             sim.BuyShip(s, c.buyShip);  // purchase (deducts money)
-        if (c.payBountyFaction >= 0)
-            sim.PayBounty(s, (FactionId)c.payBountyFaction);  // clear bounty
+        FactionId bountyTo;
+        if (!c.payBountyFaction.empty() && Factions::Find(c.payBountyFaction, bountyTo))
+            sim.PayBounty(s, bountyTo);  // clear bounty
         if (c.acceptOffer >= 0)
             sim.AcceptMission(s, c.acceptOffer);  // accept a mission from the board
         if (c.completeMission >= 0)
@@ -237,7 +244,7 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
         FireEvent fe;
         fe.from = ev.shotFrom;
         fe.to = ev.shotTo;
-        fe.shooterFaction = FactionId::Independent;
+        fe.shooterFaction = Factions::Unaffiliated();
         fe.shooterSessionId = s.id;  // "mine" for this player and nobody else
         fires[s.systemId].push_back(fe);
     }
@@ -304,7 +311,7 @@ static void HostStepWorld(Simulation& sim, float dt,
             FireEvent fe;
             fe.from = shot.from;
             fe.to = shot.to;
-            fe.shooterFaction = FactionId::Independent;
+            fe.shooterFaction = Factions::Unaffiliated();
             fe.shooterSessionId = s.id;
             fires[s.systemId].push_back(fe);
         }
@@ -1244,7 +1251,7 @@ static int HostSelftest()
             builtId = sim.AddStatic(
                 s.systemId,
                 std::make_unique<Station>(Vector2{ 900.0f, 900.0f }, 60.0f, "Selftest Depot",
-                                          FactionId::Independent, StationRole::TradeHub),
+                                          Factions::Unaffiliated(), StationRole::TradeHub),
                 "selftest");
         if (i == 80)
             sim.RemoveStatic(s.systemId, builtId);
@@ -1415,7 +1422,11 @@ static int AccountSelftest()
     // The registry before any ship: an entity built without it has no archetype, and says
     // so (#227).
     const std::string dataDir = SIM_DATA_DIR;
-    Factions::Load(dataDir + "factions.json");
+    if (!Factions::Load(dataDir + "factions.json"))
+    {
+        fprintf(stderr, "FATAL: %s\n", Factions::Error().c_str());
+        return 1;
+    }
     if (!Archetypes::Load(dataDir + "archetypes.json"))
     {
         fprintf(stderr, "FATAL: %s\n", Archetypes::Error().c_str());
@@ -1428,8 +1439,8 @@ static int AccountSelftest()
     ClientSession& as =
         a.CreateSession(std::string(), Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
     as.account.SetMoney(4242.0);
-    as.account.SetReputation(FactionId::Pirates, -7.5f);
-    as.account.SetBounty(FactionId::TradersGuild, 300.0);
+    as.account.SetReputation(Factions::Pirates(), -7.5f);
+    as.account.SetBounty(Factions::DefaultPolice(), 300.0);
     as.account.GetSkills().SetXp(SkillType::Mining, 555.0f);
     // What a returning player expects to find (#49): the hold as they left it, and the
     // ship where they left it rather than back at the start.
@@ -1442,8 +1453,8 @@ static int AccountSelftest()
         b.CreateSession(std::string(), Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
     bool loaded = b.LoadAccount(bs, path) == Save::Result::Ok;
     bool money = approx(bs.account.GetMoney(), 4242.0);
-    bool rep = approx(bs.account.GetReputation(FactionId::Pirates), -7.5);
-    bool bounty = approx(bs.account.GetBounty(FactionId::TradersGuild), 300.0);
+    bool rep = approx(bs.account.GetReputation(Factions::Pirates()), -7.5);
+    bool bounty = approx(bs.account.GetBounty(Factions::DefaultPolice()), 300.0);
     bool skill = approx(bs.account.GetSkills().GetXp(SkillType::Mining), 555.0);
     bool cargo = bs.ship->GetCargoAmount(AllResourceTypes()[0]) == 9;
     // No galaxy is loaded here, so the saved system id is not one this simulation has and
@@ -1492,7 +1503,7 @@ static int WorldSelftest()
     a.Systems()[sid].agg.security = 0.25f;
     a.Systems()[sid].agg.prosperity = 0.75f;
     a.Systems()[sid].agg.pirates = 7.0f;
-    a.Systems()[sid].agg.controller = FactionId::Pirates;
+    a.Systems()[sid].agg.controller = Factions::Pirates();
     a.SaveWorld(path);
 
     Simulation b;  // fresh galaxy: the load must overwrite the defaults
@@ -1503,7 +1514,7 @@ static int WorldSelftest()
     bool sec = haveSys && approx(b.Systems()[sid].agg.security, 0.25);
     bool prosp = haveSys && approx(b.Systems()[sid].agg.prosperity, 0.75);
     bool pir = haveSys && approx(b.Systems()[sid].agg.pirates, 7.0);
-    bool ctrl = haveSys && b.Systems()[sid].agg.controller == FactionId::Pirates;
+    bool ctrl = haveSys && b.Systems()[sid].agg.controller == Factions::Pirates();
     std::remove(path.c_str());
 
     // What players changed in the static layer (#38): a station of the world's own taken
@@ -1522,7 +1533,7 @@ static int WorldSelftest()
         const int         built = before.AddStatic(
             sid,
             std::make_unique<Station>(Vector2{ 4000.0f, 0.0f }, 60.0f, "Selftest Depot",
-                                      FactionId::TradersGuild, StationRole::TradeHub),
+                                      Factions::DefaultPolice(), StationRole::TradeHub),
             "selftest");
         builtKey = before.StaticKey(sid, built);
         before.SaveWorld(path);
@@ -1735,7 +1746,11 @@ int main(int argc, char** argv)
     // (NpcShip uses it for patrols/timers) — valid without a window.
     SetRandomSeed(0xC0FFEEu);
 
-    Factions::Load(dataDir + "factions.json");
+    if (!Factions::Load(dataDir + "factions.json"))
+    {
+        fprintf(stderr, "FATAL: %s\n", Factions::Error().c_str());
+        return 1;
+    }
     if (!Archetypes::Load(dataDir + "archetypes.json"))
     {
         fprintf(stderr, "FATAL: %s\n", Archetypes::Error().c_str());
@@ -1822,7 +1837,7 @@ int main(int argc, char** argv)
             const SystemAggregate& a = kv.second.agg;
             printf("  %-10s %-14s sec %.2f  presence", kv.first.c_str(),
                    FactionName(a.controller).c_str(), a.security);
-            for (int f = 0; f < FACTION_COUNT; f++)
+            for (FactionId f : Factions::All())
                 printf(" %.1f", a.presence[f]);
             printf("\n");
         }

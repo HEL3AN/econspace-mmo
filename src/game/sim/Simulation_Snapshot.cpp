@@ -144,10 +144,10 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
 
         // Player account (server-authoritative, M4f): the client shows it as a mirror.
         p.money = s.account.GetMoney();
-        for (int i = 0; i < 4; i++)
+        for (FactionId f : Factions::All())
         {
-            p.reputation.push_back(s.account.GetReputation((FactionId)i));
-            p.bounty.push_back(s.account.GetBounty((FactionId)i));
+            p.reputation.push_back(s.account.GetReputation(f));
+            p.bounty.push_back(s.account.GetBounty(f));
         }
         p.skillXp = { (float)s.account.GetSkills().GetXp(SkillType::Piloting),
                       (float)s.account.GetSkills().GetXp(SkillType::Mining),
@@ -160,7 +160,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
     {
         Proto::MissionView v;
         v.type = (int)m.type;
-        v.faction = (int)m.faction;
+        v.faction = m.faction;
         v.title = m.title;
         v.description = m.description;
         v.giverStationId = m.giverStationId;

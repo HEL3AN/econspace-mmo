@@ -217,7 +217,15 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
     {
         for (const json& s : data["stations"])
         {
-            FactionId faction = FactionFromString(s.value("faction", std::string("Independent")));
+            // A faction this registry does not have is said by name, like a role: the station
+            // is still built, as the unaffiliated one's (#357).
+            FactionId         faction = Factions::Unaffiliated();
+            const std::string factionId = s.value("faction", Factions::Id(faction));
+            if (!Factions::Find(factionId, faction))
+                TraceLog(LOG_WARNING,
+                         "WorldLoader: station '%s' has unknown faction '%s' -- built as %s",
+                         s.value("name", std::string("?")).c_str(), factionId.c_str(),
+                         Factions::Id(faction).c_str());
             const std::string roleName = s.value("role", std::string("TradeHub"));
             StationRole       role = StationRole::TradeHub;
             // Still built, so one typo does not empty a system -- but said by name, since

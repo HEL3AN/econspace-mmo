@@ -7,6 +7,7 @@
 #include "entities/ShipType.h"
 #include "render/Modules.h"
 #include "render/Silhouette.h"
+#include "factions_named.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cmath>
@@ -772,7 +773,7 @@ TEST_CASE("an NPC is drawn as the design it flies and is as fast, tough and arme
     // `ship.npc` is gone: there is no shape that stands for every role any more.
     CHECK(Archetypes::Find("ship.npc") == nullptr);
 
-    NpcShip      raider({ 0.0f, 0.0f }, FactionId::Pirates, NpcRole::Pirate, {}, "raider");
+    NpcShip      raider({ 0.0f, 0.0f }, Fac::Pirates(), NpcRole::Pirate, {}, "raider");
     Ships::Stats s;
     std::string  error;
     REQUIRE(Ships::Derive(c, *c.FindDesign("raider"), s, error));
@@ -786,9 +787,9 @@ TEST_CASE("an NPC is drawn as the design it flies and is as fast, tough and arme
 
     // No design, or one this build does not know, is the doctrine's own pick for the role --
     // never nothing, and never another role's ship.
-    NpcShip trader({ 0.0f, 0.0f }, FactionId::TradersGuild, NpcRole::Trader, {});
+    NpcShip trader({ 0.0f, 0.0f }, Fac::TradersGuild(), NpcRole::Trader, {});
     CHECK(trader.GetDesign() == c.Pick("TradersGuild", "trader", 0));
-    NpcShip stranger({ 0.0f, 0.0f }, FactionId::Syndicate, NpcRole::Police, {}, "dreadnought");
+    NpcShip stranger({ 0.0f, 0.0f }, Fac::Syndicate(), NpcRole::Police, {}, "dreadnought");
     CHECK(stranger.GetDesign() == c.Pick("Syndicate", "patrol", 0));
 
     // Every NpcRole has the name the doctrines use.

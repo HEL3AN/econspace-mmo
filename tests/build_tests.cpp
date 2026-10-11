@@ -16,6 +16,7 @@
 #include "temp_dir.h"
 
 #include "raymath.h"
+#include "factions_named.h"
 #include <nlohmann/json.hpp>
 
 #include <cmath>
@@ -41,7 +42,7 @@ std::string DataFile(const char* name)
 // into the registry it replaced.
 void LoadRegistries()
 {
-    Factions::Load(DataFile("factions.json"));
+    REQUIRE(Factions::Load(DataFile("factions.json")));
     REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
     REQUIRE(Blueprints::Load(DataFile("blueprints.json")));
 }
@@ -539,7 +540,7 @@ TEST_CASE("the owner takes a site or a structure apart, and nobody else can (#39
         const Blueprint& outpost = *Blueprints::Find("outpost");
         auto t = std::make_unique<Structure>(at, 0.0f, "Guild Outpost", outpost.archetype);
         t->SetBlueprint(outpost.id);
-        const int id = sim.AddStatic(sys, std::move(t), Outposts::OwnerOf(FactionId::TradersGuild));
+        const int id = sim.AddStatic(sys, std::move(t), Outposts::OwnerOf(Fac::TradersGuild()));
         REQUIRE(id != 0);
         CHECK(sim.DismantleProblem(s, id) == "Guild Outpost is not yours");
     }
@@ -581,14 +582,14 @@ TEST_CASE("a structure is shot down, leaves a wreck, and the law decides the pri
 
     SUBCASE("under a lawful holder's law, every hit and the kill are crimes")
     {
-        Law(sim, sys, true, FactionId::TradersGuild);
+        Law(sim, sys, true, Fac::TradersGuild());
         const size_t wrecksBefore = Wrecks(sim, sys).size();
         REQUIRE(Shoot(sim, ann, id));
         deliver();
         CHECK(mirror.byId.at(id).damage > 0.0f);  // everyone sees the hull go down
         CHECK(mirror.byId.at(id).blueprint == "beacon");
-        CHECK(ann.account.GetBounty(FactionId::TradersGuild) == doctest::Approx(5.0));
-        CHECK(ann.account.GetReputation(FactionId::TradersGuild) < 0.0f);
+        CHECK(ann.account.GetBounty(Fac::TradersGuild()) == doctest::Approx(5.0));
+        CHECK(ann.account.GetReputation(Fac::TradersGuild()) < 0.0f);
 
         int shots = 1;
         while (StructureById(sim, sys, id) != nullptr && shots < 100)
@@ -599,8 +600,7 @@ TEST_CASE("a structure is shot down, leaves a wreck, and the law decides the pri
         deliver();
         CHECK(StructureById(sim, sys, id) == nullptr);
         CHECK(mirror.byId.count(id) == 0);
-        CHECK(ann.account.GetBounty(FactionId::TradersGuild) ==
-              doctest::Approx(5.0 * shots + 50.0));
+        CHECK(ann.account.GetBounty(Fac::TradersGuild()) == doctest::Approx(5.0 * shots + 50.0));
         CHECK(sim.StructuresOwnedBy("hunter") == 0);
         CHECK(s.journal.back().text.find("The site of Lantern") == 0);
 
@@ -618,17 +618,17 @@ TEST_CASE("a structure is shot down, leaves a wreck, and the law decides the pri
     }
     SUBCASE("in a system nobody holds, and on your own, there is no price")
     {
-        Law(sim, sys, false, FactionId::Independent);
+        Law(sim, sys, false, Fac::Independent());
         Shoot(sim, ann, id);
-        CHECK(ann.account.GetBounty(FactionId::Independent) == 0.0);
-        Law(sim, sys, true, FactionId::Pirates);  // a pirate's system has no law to break
+        CHECK(ann.account.GetBounty(Fac::Independent()) == 0.0);
+        Law(sim, sys, true, Fac::Pirates());  // a pirate's system has no law to break
         Shoot(sim, ann, id);
-        for (int f = 0; f < FACTION_COUNT; f++)
-            CHECK(ann.account.GetBounty((FactionId)f) == 0.0);
-        Law(sim, sys, true, FactionId::TradersGuild);
+        for (FactionId f : Factions::All())
+            CHECK(ann.account.GetBounty(f) == 0.0);
+        Law(sim, sys, true, Fac::TradersGuild());
         s.ship->Teleport(ann.ship->GetPosition());
         Shoot(sim, s, id);
-        CHECK(s.account.GetBounty(FactionId::TradersGuild) == 0.0);
+        CHECK(s.account.GetBounty(Fac::TradersGuild()) == 0.0);
         CHECK(StructureById(sim, sys, id)->GetDamage() == doctest::Approx(48.0f));
     }
     SUBCASE("something too small for a wreck leaves none")
@@ -647,7 +647,7 @@ TEST_CASE("a structure is shot down, leaves a wreck, and the law decides the pri
     }
     SUBCASE("a lawful faction's outpost is that faction's, wherever it stands; a pirate's is not")
     {
-        Law(sim, sys, false, FactionId::Independent);
+        Law(sim, sys, false, Fac::Independent());
         const Blueprint& outpost = *Blueprints::Find("outpost");
         auto             put = [&](FactionId f, Vector2 p)
         {
@@ -655,12 +655,12 @@ TEST_CASE("a structure is shot down, leaves a wreck, and the law decides the pri
             o->SetBlueprint(outpost.id);
             return sim.AddStatic(sys, std::move(o), Outposts::OwnerOf(f));
         };
-        const int guild = put(FactionId::TradersGuild, { at.x, at.y + 300.0f });
-        const int gang = put(FactionId::Pirates, { at.x, at.y - 300.0f });
+        const int guild = put(Fac::TradersGuild(), { at.x, at.y + 300.0f });
+        const int gang = put(Fac::Pirates(), { at.x, at.y - 300.0f });
         Shoot(sim, ann, guild);
-        CHECK(ann.account.GetBounty(FactionId::TradersGuild) == doctest::Approx(5.0));
+        CHECK(ann.account.GetBounty(Fac::TradersGuild()) == doctest::Approx(5.0));
         Shoot(sim, ann, gang);
-        CHECK(ann.account.GetBounty(FactionId::Pirates) == 0.0);
+        CHECK(ann.account.GetBounty(Fac::Pirates()) == 0.0);
     }
 }
 
@@ -884,7 +884,7 @@ TEST_CASE("an armed structure fires back, and the police answer an attack on one
 
     SUBCASE("a player's armed structure answers only whoever shot at it, for a while")
     {
-        Law(sim, sys, false, FactionId::Independent);
+        Law(sim, sys, false, Fac::Independent());
         const int id = put("hunter", at, false);
         ann.ship->Teleport({ at.x + 400.0f, at.y });
         defend();
@@ -904,14 +904,14 @@ TEST_CASE("an armed structure fires back, and the police answer an attack on one
     }
     SUBCASE("a faction's fires on its enemies unprovoked; a site has no guns yet")
     {
-        put(Outposts::OwnerOf(FactionId::Pirates), at, true);
+        put(Outposts::OwnerOf(Fac::Pirates()), at, true);
         ann.ship->Teleport({ at.x + 400.0f, at.y });
         defend();
         CHECK(fires.empty());
-        put(Outposts::OwnerOf(FactionId::Pirates), { at.x, at.y + 600.0f }, false);
+        put(Outposts::OwnerOf(Fac::Pirates()), { at.x, at.y + 600.0f }, false);
         defend();
         REQUIRE_FALSE(fires.empty());
-        CHECK(fires[0].shooterFaction == FactionId::Pirates);
+        CHECK(fires[0].shooterFaction == Fac::Pirates());
     }
     SUBCASE("the police come by warp to a crime against a structure, where it is hot")
     {
@@ -919,7 +919,7 @@ TEST_CASE("an armed structure fires back, and the police answer an attack on one
         REQUIRE(id != 0);
         ann.ship->Teleport({ at.x + 100.0f, at.y });
         sim.Warm(*sim.SystemById(sys));
-        FactionId law = FactionId::Independent;
+        FactionId law = Fac::Independent();
         bool      patrols = false;
         for (const auto& e : sim.SystemById(sys)->entities)
             if (e->GetKind() == EntityKind::Npc &&
@@ -960,7 +960,7 @@ TEST_CASE("an armed structure fires back, and the police answer an attack on one
         REQUIRE(id != 0);
         ann.ship->Teleport({ at.x + 100.0f, at.y });
         sim.Warm(*sim.SystemById(sys));
-        Law(sim, sys, false, FactionId::Independent);
+        Law(sim, sys, false, Fac::Independent());
         const int seq = ann.LastEventSeq();
         REQUIRE(Shoot(sim, ann, id));
         for (const Ev::Event& e : ann.EventsSince(seq))

@@ -161,7 +161,11 @@ int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t see
 {
     SetTraceLogLevel(LOG_WARNING);
     const std::string dataDir = SIM_DATA_DIR;
-    Factions::Load(dataDir + "factions.json");
+    if (!Factions::Load(dataDir + "factions.json"))
+    {
+        fprintf(stderr, "FATAL: %s\n", Factions::Error().c_str());
+        return 1;
+    }
     if (!Archetypes::Load(dataDir + "archetypes.json"))
     {
         fprintf(stderr, "FATAL: %s\n", Archetypes::Error().c_str());

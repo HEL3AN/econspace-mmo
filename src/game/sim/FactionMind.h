@@ -4,9 +4,9 @@
 #include "core/Faction.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -23,16 +23,16 @@
 // profile at the moment of looking and never updated behind its back. Saved.
 struct Intel
 {
-    double                           seenAt = 0.0;    // world time
-    float                            traffic = 0.0f;  // prosperity, 0..1
-    float                            security = 0.5f;
-    int                              belts = 0, wrecks = 0, stations = 0;
-    int                              planets = 0, gates = 0;  // what an outpost is for (#318)
-    std::vector<FactionId>           defenders;               // owners of defensive stations
-    std::vector<FactionId>           outposts;  // owners of finished outposts: what a siege is for
-    std::array<float, FACTION_COUNT> presence{};  // each faction's ships there
-    FactionId                        controller = FactionId::Independent;
-    bool                             claimed = false;
+    double                 seenAt = 0.0;    // world time
+    float                  traffic = 0.0f;  // prosperity, 0..1
+    float                  security = 0.5f;
+    int                    belts = 0, wrecks = 0, stations = 0;
+    int                    planets = 0, gates = 0;  // what an outpost is for (#318)
+    std::vector<FactionId> defenders;               // owners of defensive stations
+    std::vector<FactionId> outposts;    // owners of finished outposts: what a siege is for
+    PerFaction<float>      presence{};  // each faction's ships there
+    FactionId              controller = Factions::Unaffiliated();
+    bool                   claimed = false;
 };
 
 // Something a faction has set in motion that ends at a time (#295). A survey exists only
@@ -64,7 +64,7 @@ struct Plan
     };
     int         id = 0;
     Kind        kind = Kind::Survey;
-    FactionId   faction = FactionId::Independent;
+    FactionId   faction = Factions::Unaffiliated();
     std::string from;                          // the holding it set out from
     std::string target;                        // the system it is about
     double      startedAt = 0.0, dueAt = 0.0;  // world time
@@ -75,7 +75,7 @@ struct Plan
     // The force is part of the faction's presence in the target -- the same ships, counted
     // once -- set apart from what the spawn director makes police or pirates of.
     // A Return's force is what is coming home.
-    FactionId against = FactionId::Independent;
+    FactionId against = Factions::Unaffiliated();
     float     force = 0.0f;
     // A siege's contingents, as they set out (their sum is the force it began with), the
     // neighbour of the target they come in from, and when the last of them gets there. Until
@@ -221,9 +221,7 @@ inline bool FactionOf(const std::string& owner, FactionId& f)
     const std::string prefix = OWNER_PREFIX;
     if (owner.compare(0, prefix.size(), prefix) != 0)
         return false;
-    const std::string id = owner.substr(prefix.size());
-    f = FactionFromString(id);
-    return Factions::Id(f) == id;
+    return Factions::Find(owner.substr(prefix.size()), f);
 }
 }  // namespace Outposts
 
@@ -231,12 +229,12 @@ inline bool FactionOf(const std::string& owner, FactionId& f)
 // sequence number and what it is about, so it can be read back and followed. Saved.
 struct ChronicleEntry
 {
-    long long   seq = 0;
-    double      time = 0.0;    // world time
-    std::string kind;          // "survey", "settle", "news"
-    int         faction = -1;  // FactionId, or -1 for nobody in particular
-    std::string system;        // id, or empty
-    std::string text;
+    long long                seq = 0;
+    double                   time = 0.0;  // world time
+    std::string              kind;        // "survey", "settle", "news"
+    std::optional<FactionId> faction;     // or nobody in particular
+    std::string              system;      // id, or empty
+    std::string              text;
 };
 
 namespace Intelligence

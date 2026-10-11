@@ -287,7 +287,7 @@ bool Simulation::LawOver(const SystemState& st, const Structure& t, const std::s
 
 bool Simulation::DamageStructure(SystemState& st, int id, float damage, ClientSession* by)
 {
-    return HitStructure(st, id, damage, by, Loss::Attack, FactionId::Independent);
+    return HitStructure(st, id, damage, by, Loss::Attack, Factions::Unaffiliated());
 }
 
 bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSession* by, Loss cause,
@@ -296,7 +296,7 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
     Structure* t = StructureIn(st, id);
     if (t == nullptr || damage <= 0.0f)
         return false;
-    FactionId  law = FactionId::Independent;
+    FactionId  law = Factions::Unaffiliated();
     const bool crime = by != nullptr && LawOver(st, *t, by->accountName, law);
     if (crime)
     {
@@ -368,10 +368,10 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
     // A faction's outpost (#295): the history says who lost what, and how. A site lost is a
     // settlement that will not happen; a finished one lost shakes the claim it anchored.
     const std::string where = SystemName(systemId);
-    minds_[(int)f].lostAt[systemId] = time_;  // remembered when it thinks of building here again
+    minds_[f].lostAt[systemId] = time_;  // remembered when it thinks of building here again
     if (wasSite)
     {
-        Record("lost", (int)f, systemId,
+        Record("lost", f, systemId,
                FactionName(f) + " lost the outpost it was building in " + where);
         for (auto p = plans_.begin(); p != plans_.end(); ++p)
             if (p->second.kind == Plan::Kind::Settle && p->second.target == systemId &&
@@ -389,21 +389,20 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
     switch (cause)
     {
         case Loss::Siege:
-            Announce("siege", (int)attacker, systemId,
+            Announce("siege", attacker, systemId,
                      FactionName(attacker) + " destroyed the " + FactionName(f) + " " + noun +
                          " in " + where);
             break;
         case Loss::Decay:
-            Announce("upkeep", (int)f, systemId,
+            Announce("upkeep", f, systemId,
                      FactionName(f) + " lost its " + noun + " in " + where +
                          ": unsupplied, it fell into ruin");
             break;
         case Loss::Attack:
-            Announce("lost", (int)f, systemId,
-                     FactionName(f) + " lost its " + noun + " in " + where);
+            Announce("lost", f, systemId, FactionName(f) + " lost its " + noun + " in " + where);
             break;
     }
-    minds_[(int)f].unsupplied.erase(systemId + "/" + key);
+    minds_[f].unsupplied.erase(systemId + "/" + key);
     ShakeClaim(*SystemById(systemId), f);
     return true;
 }

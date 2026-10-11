@@ -21,6 +21,7 @@
 #include "sim/FactionMind.h"
 #include "sim/Simulation.h"
 #include "temp_dir.h"
+#include "factions_named.h"
 
 // Outposts placed by purpose (#318): what a faction valued in a system decides what it
 // builds there, the purpose decides where, and each purpose looks like what it is for.
@@ -32,7 +33,7 @@ using Outposts::Purpose;
 
 void LoadRegistries()
 {
-    Factions::Load(DATA + "factions.json");
+    REQUIRE(Factions::Load(DATA + "factions.json"));
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
     REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
 }
@@ -121,7 +122,7 @@ TEST_CASE("a faction builds for what it values in the system (#318)")
     rich.gates = 3;
 
     // Whatever a lawless faction came for, it hides.
-    CHECK(Outposts::ChoosePurpose(Factions::TemperamentOf(FactionId::Pirates), false, rich) ==
+    CHECK(Outposts::ChoosePurpose(Factions::TemperamentOf(Fac::Pirates()), false, rich) ==
           Purpose::Hidden);
 
     Temperament t;  // values nothing
@@ -148,7 +149,7 @@ TEST_CASE("a faction builds for what it values in the system (#318)")
 
     // The strongest pull wins: the Syndicate digs where there is ore, and holds a planet
     // where there is none.
-    const Temperament& syndicate = Factions::TemperamentOf(FactionId::Syndicate);
+    const Temperament& syndicate = Factions::TemperamentOf(Fac::Syndicate());
     CHECK(Outposts::ChoosePurpose(syndicate, true, rich) == Purpose::Mining);
     CHECK(Outposts::ChoosePurpose(syndicate, true, barren) == Purpose::Orbital);
 }
@@ -172,8 +173,8 @@ TEST_CASE("each purpose leads to its place, every place is legal, and the same w
                 const Purpose    p = (Purpose)i;
                 const Blueprint* bp = Blueprints::Find(Outposts::BlueprintOf(p));
                 REQUIRE(bp != nullptr);
-                const auto spot = sim->FindOutpostSpot(FactionId::Syndicate, p, from, id);
-                const auto again = sim->FindOutpostSpot(FactionId::Syndicate, p, from, id);
+                const auto spot = sim->FindOutpostSpot(Fac::Syndicate(), p, from, id);
+                const auto again = sim->FindOutpostSpot(Fac::Syndicate(), p, from, id);
                 CHECK(spot.found == again.found);
                 CHECK(spot.at.x == again.at.x);
                 CHECK(spot.at.y == again.at.y);
@@ -285,7 +286,7 @@ TEST_CASE("an orbital outpost moves with its planet and is still its satellite a
     {
         if (kv.second.agg.claimed)
             continue;
-        spot = a->FindOutpostSpot(FactionId::Syndicate, Purpose::Orbital, "", kv.first);
+        spot = a->FindOutpostSpot(Fac::Syndicate(), Purpose::Orbital, "", kv.first);
         if (spot.found)
         {
             where = kv.first;
@@ -297,7 +298,7 @@ TEST_CASE("an orbital outpost moves with its planet and is still its satellite a
     const Blueprint* bp = Blueprints::Find(Outposts::BlueprintOf(Purpose::Orbital));
     auto t = std::make_unique<Structure>(spot.at, 0.0f, "Syndicate Orbital Outpost", bp->archetype);
     t->SetOrbit(*spot.orbit);
-    const int id = a->AddStatic(where, std::move(t), Outposts::OwnerOf(FactionId::Syndicate));
+    const int id = a->AddStatic(where, std::move(t), Outposts::OwnerOf(Fac::Syndicate()));
     REQUIRE(id != 0);
 
     auto planetAt = [&](const Simulation& sim, double time)
@@ -335,7 +336,7 @@ TEST_CASE("an orbital outpost moves with its planet and is still its satellite a
     CHECK(back->GetOrbit()->radius == doctest::Approx(spot.orbit->radius));
     CHECK(back->GetOrbit()->phase == doctest::Approx(spot.orbit->phase));
     CHECK(back->GetOrbit()->speed == doctest::Approx(spot.orbit->speed));
-    CHECK(back->GetOwner() == Outposts::OwnerOf(FactionId::Syndicate));
+    CHECK(back->GetOwner() == Outposts::OwnerOf(Fac::Syndicate()));
     CHECK(back->GetDamage() == doctest::Approx(100.0f));
 
     // Destroyed, it leaves its wreck on the same orbit (#39).
@@ -361,7 +362,7 @@ TEST_CASE("a settlement builds for what the faction saw there, and the same worl
         // The Guild's frontier, where it has come in strength with the stock to build.
         std::string frontier, home;
         for (const auto& kv : sim->Systems())
-            if (kv.second.agg.claimed && kv.second.agg.controller == FactionId::TradersGuild)
+            if (kv.second.agg.claimed && kv.second.agg.controller == Fac::TradersGuild())
                 for (const std::string& n : sim->Neighbors(kv.first))
                     if (frontier.empty() && !sim->SystemById(n)->agg.claimed)
                     {
@@ -369,11 +370,11 @@ TEST_CASE("a settlement builds for what the faction saw there, and the same worl
                         home = kv.first;
                     }
         REQUIRE_FALSE(frontier.empty());
-        const float cap = Factions::TemperamentOf(FactionId::TradersGuild).capacity;
+        const float cap = Factions::TemperamentOf(Fac::TradersGuild()).capacity;
         for (int pass = 0; pass < 30 && OutpostIn(*sim, frontier) == nullptr; pass++)
         {
-            sim->SystemById(frontier)->agg.presence[(int)FactionId::TradersGuild] = cap;
-            sim->MindOf(FactionId::TradersGuild).stock = Simulation::OutpostCost();
+            sim->SystemById(frontier)->agg.presence[Fac::TradersGuild()] = cap;
+            sim->MindOf(Fac::TradersGuild()).stock = Simulation::OutpostCost();
             sim->MaintainWorld(2.0f);
         }
         const Structure* site = OutpostIn(*sim, frontier);
@@ -381,8 +382,8 @@ TEST_CASE("a settlement builds for what the faction saw there, and the same worl
 
         // What it built is what it valued there -- or an open point, when that had no room.
         const Purpose wanted =
-            Outposts::ChoosePurpose(Factions::TemperamentOf(FactionId::TradersGuild), true,
-                                    sim->MindOf(FactionId::TradersGuild).intel.at(frontier));
+            Outposts::ChoosePurpose(Factions::TemperamentOf(Fac::TradersGuild()), true,
+                                    sim->MindOf(Fac::TradersGuild()).intel.at(frontier));
         Purpose built = Purpose::Open;
         REQUIRE(Outposts::PurposeOf(site->GetBuilds(), built));
         CHECK((built == wanted || built == Purpose::Open));

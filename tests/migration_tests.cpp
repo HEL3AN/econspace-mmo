@@ -15,6 +15,7 @@
 #include "entities/NpcShip.h"
 #include "sim/Simulation.h"
 #include "temp_dir.h"
+#include "factions_named.h"
 
 // Ships that leave (#295): a system holding more ships of a role than it keeps sends them,
 // one at a time, to a neighbour that lacks them -- a number where nobody is, a real ship
@@ -27,7 +28,7 @@ const std::string DATA = TEST_DATA_DIR;
 std::unique_ptr<Simulation> World(bool allHot = false)
 {
     SetRandomSeed(0xC0FFEEu);
-    Factions::Load(DATA + "factions.json");
+    REQUIRE(Factions::Load(DATA + "factions.json"));
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
     REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
     auto sim = std::make_unique<Simulation>();
@@ -86,7 +87,7 @@ Scene FindScene(Simulation& sim)
 void Calm(Simulation& sim, const std::string& id)
 {
     SystemState& st = *sim.SystemById(id);
-    st.agg.presence[(int)FactionId::Pirates] = 0.0f;
+    st.agg.presence[Fac::Pirates()] = 0.0f;
     st.agg.pirates = 0.0f;
     st.agg.supTraders = 0.0f;
     for (const auto& e : st.entities)
@@ -165,7 +166,7 @@ std::set<long long> Seen(const Simulation& sim, const std::string& from,
 
 TEST_CASE("how fast ships leave, and how long they take, are rules in the data (#295)")
 {
-    Factions::Load(DATA + "factions.json");
+    REQUIRE(Factions::Load(DATA + "factions.json"));
     const Migration& m = Factions::MigrationRules();
     CHECK(m.trader > 0.0f);
     CHECK(m.patrol > 0.0f);

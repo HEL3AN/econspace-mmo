@@ -28,8 +28,9 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    22;  // 22: a snapshot without missions means they are unchanged, and a command leaves out
-         // every field at its default (#341); 21: the build order, with its blueprint and name
+    23;  // 23: a faction is named by its string id, never by index (#355); 22: a snapshot
+         // without missions means they are unchanged, and a command leaves out every field at
+         // its default (#341); 21: the build order, with its blueprint and name
          // (#39); 20: a ship flies a design of its own (#279, PR #334); 19: player hulls are
          // designs -- a hull index means derived stats, and another player's ship carries its
          // design (#279 step 5); 18: an NPC's ship design (#279); 17: dismantling, a structure's
@@ -120,11 +121,11 @@ struct Command
     int sellAmount = 0;  // amount to sell (server clamps to cargo)
     int refitShip = -1;  // switch to an ALREADY bought ship (index; -1 none)
     // Account actions (server-authoritative, M4f): buy ship / pay bounty / cheat.
-    int  buyShip = -1;           // buy ship by catalog index (-1 none)
-    int  payBountyFaction = -1;  // pay off bounty with a faction (id; -1 none)
-    bool debugMoney = false;     // F1: grant debug money
-    int  acceptOffer = -1;       // accept mission offer by board index (-1 none)
-    int  completeMission = -1;   // hand in active mission by index (-1 none)
+    int         buyShip = -1;          // buy ship by catalog index (-1 none)
+    std::string payBountyFaction;      // pay off bounty with a faction (its id; empty none)
+    bool        debugMoney = false;    // F1: grant debug money
+    int         acceptOffer = -1;      // accept mission offer by board index (-1 none)
+    int         completeMission = -1;  // hand in active mission by index (-1 none)
     // Name the system the ship is in, as its discoverer (#145); empty -- not this command.
     std::string nameSystem;
 
@@ -171,7 +172,7 @@ struct EntitySnapshot
     Vector2     pos = { 0.0f, 0.0f };
     float       heading = 0.0f;
     float       size = 0.0f;
-    FactionId   faction = FactionId::Independent;
+    FactionId   faction = Factions::Unaffiliated();
     int         role = -1;        // NpcRole as int (-1 — not an NPC)
     float       hullFrac = 1.0f;  // hull fraction 0..1 (for combatants)
     int         ore = -1;         // ResourceType as int for fields (-1 — not a field)
@@ -227,10 +228,11 @@ struct PlayerView
     std::string      orderDetail;  // why it finished or failed
     std::vector<int> cargoByType;  // remaining cargo per resource (AllResourceTypes order)
     // Player account (server-authoritative, M4f): the client shows it as a mirror.
-    // reputation/bounty — per faction (index = FactionId), skillXp — Piloting/Mining/Trading.
+    // reputation/bounty — per faction (index = FactionId in this process's registry; on the
+    // wire, keyed by faction id), skillXp — Piloting/Mining/Trading.
     double              money = 0.0;
-    std::vector<float>  reputation;  // 4 factions
-    std::vector<double> bounty;      // 4 factions
+    std::vector<float>  reputation;  // one per faction
+    std::vector<double> bounty;      // one per faction
     std::vector<float>  skillXp;     // 3 skills (Piloting/Mining/Trading)
 };
 
@@ -248,8 +250,8 @@ struct TradeAck
 // of Mission: stations addressed by stable id, completable computed by the server.
 struct MissionView
 {
-    int         type = 0;     // MissionType as int
-    int         faction = 0;  // FactionId as int
+    int         type = 0;  // MissionType as int
+    FactionId   faction;   // the issuer
     std::string title;
     std::string description;
     int         giverStationId = 0;
@@ -296,7 +298,7 @@ struct EntityLayout
     float       size = 0.0f;
     Color       color = { 255, 255, 255, 255 };
     std::string name;
-    FactionId   faction = FactionId::Independent;
+    FactionId   faction = Factions::Unaffiliated();
     int         subType = 0;         // StarType/PlanetType/StationRole as int
     float       orbitRadius = 0.0f;  // planet: orbit radius (for the ring)
     int         resource = -1;       // ResourceType: planet deposit / field ore (-1 none)
@@ -382,7 +384,7 @@ struct GalaxySystemStat
     float       security = 0.5f;
     int         pirates = 0;
     float       prosperity = 0.5f;
-    FactionId   controller = FactionId::Independent;
+    FactionId   controller = Factions::Unaffiliated();
 };
 
 // Galaxy snapshot: statistics for all systems + a news feed. Sent by the server

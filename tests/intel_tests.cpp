@@ -14,6 +14,7 @@
 #include "sim/FactionMind.h"
 #include "sim/Simulation.h"
 #include "temp_dir.h"
+#include "factions_named.h"
 
 // What factions know, and surveying (#295, slice 2): a faction decides on what it saw,
 // which goes out of date, and looking is something it chooses to spend its turn on.
@@ -26,7 +27,7 @@ const std::string DATA = TEST_DATA_DIR;
 std::unique_ptr<Simulation> World(uint64_t seed = 7)
 {
     SetRandomSeed(0xC0FFEEu);
-    Factions::Load(DATA + "factions.json");
+    REQUIRE(Factions::Load(DATA + "factions.json"));
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
     REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
     auto sim = std::make_unique<Simulation>();
@@ -56,7 +57,7 @@ bool Holds(const Simulation& sim, FactionId f, const std::string& id)
 std::string GuildFrontier(const Simulation& sim)
 {
     for (const auto& kv : sim.Systems())
-        if (Holds(sim, FactionId::TradersGuild, kv.first))
+        if (Holds(sim, Fac::TradersGuild(), kv.first))
             for (const std::string& n : sim.Neighbors(kv.first))
                 if (!sim.SystemById(n)->agg.claimed)
                     return n;
@@ -98,9 +99,9 @@ TEST_CASE("a faction begins knowing what it holds and what is next door, and not
     Pass(*sim);  // the first pass seeds what everyone knows
 
     bool someUnknown = false;
-    for (int fi = 0; fi < FACTION_COUNT; fi++)
+    for (FactionId fi : Factions::All())
     {
-        const FactionId       f = (FactionId)fi;
+        const FactionId       f = fi;
         std::set<std::string> expected;
         for (const auto& kv : sim->Systems())
             if (Holds(*sim, f, kv.first))
@@ -128,19 +129,19 @@ TEST_CASE("what a faction saw does not change when the place does (#295)")
     const std::string frontier = GuildFrontier(*sim);
     REQUIRE_FALSE(frontier.empty());
     Pass(*sim);
-    const Intel before = sim->MindOf(FactionId::TradersGuild).intel.at(frontier);
+    const Intel before = sim->MindOf(Fac::TradersGuild()).intel.at(frontier);
 
     // The place fills with pirates; nobody of the Guild is there to see it.
     SystemState& st = *sim->SystemById(frontier);
-    st.agg.presence[(int)FactionId::Pirates] = 20.0f;
-    REQUIRE(st.agg.presence[(int)FactionId::TradersGuild] < 1.0f);
+    st.agg.presence[Fac::Pirates()] = 20.0f;
+    REQUIRE(st.agg.presence[Fac::TradersGuild()] < 1.0f);
     Pass(*sim, 20);
 
-    const Intel& now = sim->MindOf(FactionId::TradersGuild).intel.at(frontier);
+    const Intel& now = sim->MindOf(Fac::TradersGuild()).intel.at(frontier);
     CHECK(now.seenAt == doctest::Approx(before.seenAt));
-    CHECK(now.presence[(int)FactionId::Pirates] < 1.0f);
+    CHECK(now.presence[Fac::Pirates()] < 1.0f);
     // The truth is there to be seen, by whoever looks.
-    CHECK(sim->Observe(st).presence[(int)FactionId::Pirates] > 10.0f);
+    CHECK(sim->Observe(st).presence[Fac::Pirates()] > 10.0f);
 }
 
 TEST_CASE("a faction acts on what it believes, not on what is there (#295)")
@@ -156,15 +157,14 @@ TEST_CASE("a faction acts on what it believes, not on what is there (#295)")
         if (frightened)
         {
             Intel scare = sim->Observe(*sim->SystemById(frontier));
-            scare.presence[(int)FactionId::Pirates] = 50.0f;
-            sim->MindOf(FactionId::TradersGuild).intel[frontier] = scare;
+            scare.presence[Fac::Pirates()] = 50.0f;
+            sim->MindOf(Fac::TradersGuild()).intel[frontier] = scare;
         }
         float most = 0.0f;
         for (int pass = 0; pass < 30 * 14; pass++)  // fourteen minutes
         {
             Pass(*sim);
-            most = std::max(most,
-                            sim->SystemById(frontier)->agg.presence[(int)FactionId::TradersGuild]);
+            most = std::max(most, sim->SystemById(frontier)->agg.presence[Fac::TradersGuild()]);
         }
         return most;
     };
@@ -177,8 +177,8 @@ TEST_CASE("factions survey what they do not know, a few at a time, and it is his
     auto sim = World();
     Pass(*sim);
     std::map<FactionId, size_t> knownAtStart;
-    for (int fi = 0; fi < FACTION_COUNT; fi++)
-        knownAtStart[(FactionId)fi] = sim->MindOf((FactionId)fi).intel.size();
+    for (FactionId fi : Factions::All())
+        knownAtStart[fi] = sim->MindOf(fi).intel.size();
 
     for (int pass = 0; pass < 30 * 60; pass++)  // an hour
     {
@@ -203,8 +203,8 @@ TEST_CASE("factions survey what they do not know, a few at a time, and it is his
             continue;
         surveys++;
         CAPTURE(e.text);
-        REQUIRE(e.faction >= 0);
-        const FactionId f = (FactionId)e.faction;
+        REQUIRE(e.faction.has_value());
+        const FactionId f = *e.faction;
         // "Traders Guild surveyed W-2.1: 5 belts, held by nobody, pirates"
         CHECK(e.text.rfind(FactionName(f) + " surveyed ", 0) == 0);
         CHECK(e.text.find(": ") != std::string::npos);
@@ -219,8 +219,8 @@ TEST_CASE("factions survey what they do not know, a few at a time, and it is his
         CHECK(sim->Chronicle()[i].seq > sim->Chronicle()[i - 1].seq);
     // Somebody learned something beyond what they began with.
     bool learned = false;
-    for (int fi = 0; fi < FACTION_COUNT; fi++)
-        learned = learned || sim->MindOf((FactionId)fi).intel.size() > knownAtStart[(FactionId)fi];
+    for (FactionId fi : Factions::All())
+        learned = learned || sim->MindOf(fi).intel.size() > knownAtStart[fi];
     CHECK(learned);
 }
 
@@ -274,10 +274,10 @@ TEST_CASE("what factions know and what they have under way survive a restart (#2
     CHECK(back.startedAt == doctest::Approx(pending.startedAt));
     CHECK(back.dueAt == doctest::Approx(pending.dueAt));
     // What each faction knew, as of when it saw it.
-    for (int fi = 0; fi < FACTION_COUNT; fi++)
+    for (FactionId fi : Factions::All())
     {
-        const auto& was = a->MindOf((FactionId)fi).intel;
-        const auto& is = b.MindOf((FactionId)fi).intel;
+        const auto& was = a->MindOf(fi).intel;
+        const auto& is = b.MindOf(fi).intel;
         // All but what it sees for itself, which it looks at again before it decides.
         for (const auto& kv : is)
             CHECK(was.count(kv.first) == 1);
@@ -285,7 +285,7 @@ TEST_CASE("what factions know and what they have under way survive a restart (#2
         {
             CAPTURE(kv.first);
             const SystemAggregate& here = a->SystemById(kv.first)->agg;
-            if ((here.claimed && here.controller == (FactionId)fi) || here.presence[fi] >= 1.0f)
+            if ((here.claimed && here.controller == fi) || here.presence[fi] >= 1.0f)
                 continue;
             REQUIRE(is.count(kv.first) == 1);
             const Intel& i = is.at(kv.first);
@@ -294,8 +294,8 @@ TEST_CASE("what factions know and what they have under way survive a restart (#2
             CHECK(i.claimed == kv.second.claimed);
             CHECK(i.controller == kv.second.controller);
             CHECK(i.defenders == kv.second.defenders);
-            CHECK(i.presence[(int)FactionId::Pirates] ==
-                  doctest::Approx(kv.second.presence[(int)FactionId::Pirates]));
+            CHECK(i.presence[Fac::Pirates()] ==
+                  doctest::Approx(kv.second.presence[Fac::Pirates()]));
         }
     }
     // The history so far, and it goes on from where it was.
@@ -334,7 +334,7 @@ TEST_CASE("a world saved before factions knew anything loads, and they start fro
         std::ofstream out(path);
         out << R"({ "version": 4, "simTime": 600.0, "galaxy": {} })";
     }
-    Factions::Load(DATA + "factions.json");
+    REQUIRE(Factions::Load(DATA + "factions.json"));
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
     Simulation sim;
     sim.LoadUniverse(DATA + "universe.json");
@@ -346,12 +346,12 @@ TEST_CASE("a world saved before factions knew anything loads, and they start fro
     Pass(sim);
     bool knowsHome = false;
     for (const auto& kv : sim.Systems())
-        if (Holds(sim, FactionId::TradersGuild, kv.first))
+        if (Holds(sim, Fac::TradersGuild(), kv.first))
         {
             CAPTURE(kv.first);
-            CHECK(sim.MindOf(FactionId::TradersGuild).intel.count(kv.first) == 1);
+            CHECK(sim.MindOf(Fac::TradersGuild()).intel.count(kv.first) == 1);
             for (const std::string& n : sim.Neighbors(kv.first))
-                CHECK(sim.MindOf(FactionId::TradersGuild).intel.count(n) == 1);
+                CHECK(sim.MindOf(Fac::TradersGuild()).intel.count(n) == 1);
             knowsHome = true;
         }
     CHECK(knowsHome);

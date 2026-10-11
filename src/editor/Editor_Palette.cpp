@@ -198,7 +198,7 @@ std::unique_ptr<Entity> Editor::MakeEntity(const std::string& archetypeId, Vecto
                                             PlanetTypeColor(type), ResourceType::Iron, type);
         }
         case EntityKind::Station:
-            return std::make_unique<Station>(pos, size, "New " + a->name, FactionId::Independent,
+            return std::make_unique<Station>(pos, size, "New " + a->name, Factions::Unaffiliated(),
                                              StationRoleFromString(a->worldSubType));
         case EntityKind::Field:
             return std::make_unique<AsteroidField>(pos, size, "New Belt", ResourceType::Iron, 200);
@@ -248,7 +248,7 @@ void Editor::AddObject(const std::string& archetypeId, Vector2 pos)
         o = { { "name", "New " + a->name },
               { "pos", { px, py } },
               { "size", size },
-              { "faction", "Independent" },
+              { "faction", Factions::Id(Factions::Unaffiliated()) },
               { "role", a->worldSubType } };
     else if (category == "asteroidFields")
         o = { { "name", "New Belt" },

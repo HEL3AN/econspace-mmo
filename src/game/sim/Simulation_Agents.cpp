@@ -63,7 +63,7 @@ constexpr float COLD_POLICE_LOSS = 7e-6f;    // police lost, per pirate per poli
 // A system a gate into is an ambush spot: the pirates hold it, or its security is low.
 bool Dangerous(const SystemAggregate& a)
 {
-    return a.controller == FactionId::Pirates || a.security < DANGER_SEC;
+    return a.controller == Factions::Pirates() || a.security < DANGER_SEC;
 }
 
 float ClampF(float v, float lo, float hi)
@@ -280,7 +280,7 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
         // to take -- it only answers whoever has been shooting at it. A site has no guns yet.
         if (!e->Has(Component::Defensive))
             continue;
-        FactionId owner = FactionId::Independent;
+        FactionId owner = Factions::Unaffiliated();
         bool      sided = false;
         if (e->GetKind() == EntityKind::Station)
         {
@@ -641,28 +641,28 @@ Simulation::Population Simulation::PopulationOf(const SystemState& st, const Roo
     // Armed ships come from what each faction has committed here (#231), not from a formula
     // of security: the lawful as police under whichever of them is strongest here, the
     // pirates as pirates.
-    p.policeFaction = lawful ? ctrl : FactionId::TradersGuild;
+    p.policeFaction = lawful ? ctrl : Factions::DefaultPolice();
     // A faction's strength here that is besieging an outpost (#295, slice 5) is its siege's
     // warships, not police or pirates the director makes.
-    std::array<float, FACTION_COUNT> here = agg.presence;
-    for (int f = 0; f < FACTION_COUNT; f++)
-        here[f] = std::max(0.0f, here[f] - SiegeForceIn(st.id, (FactionId)f));
+    PerFaction<float> here = agg.presence;
+    for (FactionId f : Factions::All())
+        here[f] = std::max(0.0f, here[f] - SiegeForceIn(st.id, f));
     float lawPresence = 0.0f, strongestLaw = 0.0f;
-    for (int f = 0; f < FACTION_COUNT; f++)
-        if (Factions::IsLawful((FactionId)f))
+    for (FactionId f : Factions::All())
+        if (Factions::IsLawful(f))
         {
             lawPresence += here[f];
             if (here[f] > strongestLaw)
             {
                 strongestLaw = here[f];
-                p.policeFaction = (FactionId)f;
+                p.policeFaction = f;
             }
         }
-    p.tradeFaction = lawful ? ctrl : FactionId::Independent;
-    const int traders = (ctrl == FactionId::Pirates) ? 1 : (int)roundf(2.0f + sec * 4.0f);
+    p.tradeFaction = lawful ? ctrl : Factions::Unaffiliated();
+    const int traders = (ctrl == Factions::Pirates()) ? 1 : (int)roundf(2.0f + sec * 4.0f);
 
     // What it keeps once the losses are forgotten (#295): what it holds above this leaves.
-    p.keep = { traders, 2, (int)roundf(lawPresence), (int)roundf(here[(int)FactionId::Pirates]) };
+    p.keep = { traders, 2, (int)roundf(lawPresence), (int)roundf(here[Factions::Pirates()]) };
     // "Pressure": recent losses temporarily cut the target (recovers in MaintainWorld).
     p.traders = (int)roundf(p.keep[0] * (1.0f - agg.supTraders));
     p.miners = (int)roundf(p.keep[1] * (1.0f - agg.supMiners));
@@ -739,7 +739,7 @@ void Simulation::TopUpSystem(SystemState& st, const std::vector<Vector2>& avoid)
     {
         Vector2              spot = pick(nd.fields);
         std::vector<Vector2> near = { spot };
-        SpawnNpcInto(st, spot, FactionId::Independent, NpcRole::Miner, near);
+        SpawnNpcInto(st, spot, Factions::Unaffiliated(), NpcRole::Miner, near);
         mi++;
         budget--;
     }
@@ -753,7 +753,7 @@ void Simulation::TopUpSystem(SystemState& st, const std::vector<Vector2>& avoid)
     {
         Vector2              spot = PirateSpawnPos(hot, avoid);
         std::vector<Vector2> patrol = { spot };
-        SpawnNpcInto(st, spot, FactionId::Pirates, NpcRole::Pirate, patrol);
+        SpawnNpcInto(st, spot, Factions::Pirates(), NpcRole::Pirate, patrol);
         pi++;
         budget--;
     }

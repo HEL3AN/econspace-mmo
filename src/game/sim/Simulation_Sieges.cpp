@@ -135,7 +135,7 @@ void Simulation::ShakeClaim(SystemState& st, FactionId f)
     SystemAggregate& a = st.agg;
     if (!a.claimed || a.controller != f)
         return;  // not its claim: an outpost in somebody else's system anchored nothing
-    a.presence[(int)f] *= 1.0f - Blueprints::SiegeRules().shock;
+    a.presence[f] *= 1.0f - Blueprints::SiegeRules().shock;
     bool anchored = std::find(st.profile.outposts.begin(), st.profile.outposts.end(), f) !=
                     st.profile.outposts.end();
     for (const auto& e : st.entities)
@@ -144,13 +144,13 @@ void Simulation::ShakeClaim(SystemState& st, FactionId f)
     const std::string where = SystemName(st.id);
     if (anchored)
     {
-        Record("claim", (int)f, st.id, FactionName(f) + "'s hold on " + where + " is shaken");
+        Record("claim", f, st.id, FactionName(f) + "'s hold on " + where + " is shaken");
         return;
     }
     a.claimed = false;
-    a.controller = FactionId::Independent;
+    a.controller = Factions::Unaffiliated();
     a.contested = 0;
-    Announce("claim", (int)f, st.id, FactionName(f) + " no longer holds " + where);
+    Announce("claim", f, st.id, FactionName(f) + " no longer holds " + where);
 }
 
 void Simulation::StepUpkeep()
@@ -170,7 +170,7 @@ void Simulation::StepUpkeep()
             if (t == nullptr)
                 continue;
             const FactionId   f = owners[i];
-            FactionMind&      mind = minds_[(int)f];
+            FactionMind&      mind = minds_[f];
             const float       due = u.share * CostOf(t->GetBlueprint());
             const float       hull = t->MaxHull(time_);
             const std::string key = kv.first + "/" + StaticKey(kv.first, ids[i]);
@@ -182,7 +182,7 @@ void Simulation::StepUpkeep()
             {
                 mind.stock -= due;
                 if (mind.unsupplied.erase(key) > 0)
-                    Record("upkeep", (int)f, kv.first,
+                    Record("upkeep", f, kv.first,
                            FactionName(f) + " supplies its " + what + " again");
                 if (t->GetDamage() > 0.0f && u.repair > 0.0f)
                 {
@@ -192,7 +192,7 @@ void Simulation::StepUpkeep()
                 continue;
             }
             if (mind.unsupplied.insert(key).second)
-                Record("upkeep", (int)f, kv.first,
+                Record("upkeep", f, kv.first,
                        held ? FactionName(f) + " cannot pay for its " + what +
                                   "; unsupplied, it is falling apart"
                             : FactionName(f) + " has abandoned its " + what + ", held by " +
@@ -225,7 +225,7 @@ void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
         SystemState* home = SystemById(l.from);
         if (home == nullptr || l.force <= 0.0f)
             continue;
-        float&     there = home->agg.presence[(int)f];
+        float&     there = home->agg.presence[f];
         Plan::Lent took = l;
         took.force = std::min(l.force, there);
         if (took.force <= 0.0f)
@@ -238,13 +238,13 @@ void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
     }
     if (sent.empty())
         return;
-    minds_[(int)f].stock -= SiegeCost();
+    minds_[f].stock -= SiegeCost();
 
     // How long they will stay is drawn from what is decided -- this faction, that system, this
     // minute of the world's clock -- never from how many draws came before.
-    Gen::Rng rng(
-        Gen::Key(SIEGE_KEY, (uint64_t)f, Intelligence::KeyOf(to), (uint64_t)(time_ / 60.0)));
-    Plan p;
+    Gen::Rng rng(Gen::Key(SIEGE_KEY, (uint64_t)f.Index(), Intelligence::KeyOf(to),
+                          (uint64_t)(time_ / 60.0)));
+    Plan     p;
     p.id = nextPlanId_++;
     p.kind = Plan::Kind::Siege;
     p.faction = f;
@@ -262,7 +262,7 @@ void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
     due_.insert({ p.dueAt, p.id });
     char ships[32];
     std::snprintf(ships, sizeof ships, "%.0f", std::max(1.0, std::round((double)force)));
-    Record("siege", (int)f, to,
+    Record("siege", f, to,
            FactionName(f) + " sent " + ships + " ships from " + whence + " against the " +
                FactionName(against) + " " + NounOf(*t) + " in " + SystemName(to));
     if (p.arrivesAt <= time_ && !ArriveSiege(plans_[p.id]))
@@ -278,14 +278,14 @@ bool Simulation::ArriveSiege(Plan& p)
     const Structure* t = st != nullptr ? StructureByKey(*st, p.site) : nullptr;
     if (t == nullptr)
     {
-        Record("siege", (int)p.faction, p.target,
+        Record("siege", p.faction, p.target,
                FactionName(p.faction) + " turned back from " + SystemName(p.target) + ": the " +
                    FactionName(p.against) + " outpost is gone");
         return false;
     }
     p.arrived = true;
-    st->agg.presence[(int)p.faction] += p.force;
-    Announce("siege", (int)p.faction, p.target,
+    st->agg.presence[p.faction] += p.force;
+    Announce("siege", p.faction, p.target,
              FactionName(p.faction) + " laid siege to the " + FactionName(p.against) + " " +
                  NounOf(*t) + " in " + SystemName(p.target));
     FieldSiege(*st, p, true);
@@ -298,7 +298,7 @@ void Simulation::ResolveSiege(const Plan& p)
     SystemState*      st = SystemById(p.target);
     const Structure*  t = st != nullptr ? StructureByKey(*st, p.site) : nullptr;
     const std::string what = t != nullptr ? FactionName(p.against) + " " + NounOf(*t) : "outpost";
-    Record("siege", (int)p.faction, p.target,
+    Record("siege", p.faction, p.target,
            FactionName(p.faction) + " gave up the siege of the " + what + " in " +
                SystemName(p.target));
 }
@@ -311,7 +311,7 @@ void Simulation::RecallSiege(const Plan& p)
         // What is left of the force is no longer the besieger's strength here; the warships
         // that stood for it go. (A siege from an older save was lent by nobody, and what is
         // left of it stays, as presence that fades like any other.)
-        float& there = st->agg.presence[(int)p.faction];
+        float& there = st->agg.presence[p.faction];
         if (!p.lent.empty())
             there = std::max(0.0f, there - p.force);
         if (IsHot(*st))
@@ -348,7 +348,7 @@ void Simulation::ResolveReturn(const Plan& p)
 {
     // Home, whoever holds it now: strength a faction no longer keeps there fades like any other.
     if (SystemState* home = SystemById(p.target))
-        home->agg.presence[(int)p.faction] += p.force;
+        home->agg.presence[p.faction] += p.force;
 }
 
 void Simulation::FieldSieges(SystemState& st)
@@ -413,7 +413,7 @@ void Simulation::StepSieges()
             continue;
         }
         SystemAggregate& a = st->agg;
-        const int        fi = (int)p.faction, gi = (int)p.against;
+        const FactionId  fi = p.faction, gi = p.against;
 
         // Where it is real, a besieger a player shot down is one fewer: what the arithmetic
         // below does not know about, and the one way a player changes a siege's course.

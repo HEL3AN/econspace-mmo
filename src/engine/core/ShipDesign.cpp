@@ -867,7 +867,8 @@ bool ReadDoctrines(const json& j, Catalogue& c, std::string& error)
     for (auto f = j["doctrines"].begin(); f != j["doctrines"].end(); ++f)
     {
         const std::string where = "doctrine '" + f.key() + "': ";
-        if (f.key() != "default" && Factions::Id(FactionFromString(f.key())) != f.key())
+        FactionId         known;
+        if (f.key() != "default" && !Factions::Find(f.key(), known))
         {
             error = where + "no such faction";
             return false;

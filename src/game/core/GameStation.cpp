@@ -145,7 +145,7 @@ void Game::DrawStationContent(const Ui::Frame& f)
                         if (L.Button("bounty", TextFormat("Pay the bounty  %.0f cr", bounty)))
                         {
                             Proto::Command c;
-                            c.payBountyFaction = (int)sf;
+                            c.payBountyFaction = Factions::Id(sf);
                             clientLink_->Send(Proto::EncodeCommand(c));
                         }
                     }

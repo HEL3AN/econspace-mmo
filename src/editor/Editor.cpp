@@ -50,8 +50,9 @@ Editor::Editor()
     // that is only data can be looked at without building the editor again.
     if (const char* other = std::getenv("ECONSPACE_DATA"))
         dataDir_ = std::string(other) + "/";
-    Ui::LoadAssets(dataDir_);                    // the theme and the fonts it names (#297)
-    Factions::Load(dataDir_ + "factions.json");  // faction properties/relations
+    Ui::LoadAssets(dataDir_);                         // the theme and the fonts it names (#297)
+    if (!Factions::Load(dataDir_ + "factions.json"))  // faction properties/relations
+        TraceLog(LOG_ERROR, "Factions: %s", Factions::Error().c_str());
     if (!Archetypes::Load(dataDir_ + "archetypes.json"))
         TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());
     universe_ = WorldLoader::LoadUniverse(dataDir_ + "universe.json");

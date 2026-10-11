@@ -5,6 +5,7 @@
 #include "entities/Station.h"
 #include "render/Lighting.h"
 #include "render/Scene.h"
+#include "factions_named.h"
 #include <cmath>
 #include <string>
 
@@ -122,8 +123,7 @@ TEST_CASE("what lights a system comes from the archetypes in it")
     // An entity describes itself; what it emits rides on the item like everything else
     // about its look, so the thing that builds the light list needs no world.
     ::Star  sun({ 0.0f, 0.0f }, 600.0f, StarType::Yellow);
-    Station hubEntity({ 500.0f, 0.0f }, 90.0f, "Hub", FactionId::Independent,
-                      StationRole::TradeHub);
+    Station hubEntity({ 500.0f, 0.0f }, 90.0f, "Hub", Fac::Independent(), StationRole::TradeHub);
 
     std::vector<Render::Item> scene{ sun.Describe(), hubEntity.Describe() };
     const Render::Lighting    lg = Render::LightsFrom(scene);

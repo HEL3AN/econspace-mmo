@@ -61,7 +61,7 @@ std::vector<Row> Build(const Obs::View& view, Board board)
         r.title = m.title;
         r.description = m.description;
         r.kind = KindWord(m.type);
-        r.faction = (FactionId)m.faction;
+        r.faction = m.faction;
         r.reward = m.rewardMoney;
         r.rep = m.rewardRep;
         // A delivery ends at its destination; everything else goes back to the station that

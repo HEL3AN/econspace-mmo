@@ -74,7 +74,10 @@ void Simulation::SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& i
     a.miners = 2.0f;
     a.police = roundf(sec * 4.0f);
     a.pirates = std::max(0.0f, roundf((0.7f - sec) * 8.0f));
-    a.controller = info.owner.empty() ? FactionId::Independent : FactionFromString(info.owner);
+    a.controller = Factions::Unaffiliated();
+    if (!info.owner.empty() && !Factions::Find(info.owner, a.controller))
+        TraceLog(LOG_WARNING, "Universe: %s is owned by '%s', which is not a faction -- held by %s",
+                 info.id.c_str(), info.owner.c_str(), Factions::Id(a.controller).c_str());
     a.visited = regionDocs_.count(info.id) == 0;  // beyond the wormhole, nobody has been
     a.claimed = !info.owner.empty();
     SeedPresence(a);
@@ -147,8 +150,8 @@ void Simulation::HydrateSystem(SystemState& st)
     lanes.insert(lanes.end(), nd.gates.begin(), nd.gates.end());
     if (lanes.size() >= 2)
     {
-        FactionId tradeFactions[] = { pop.tradeFaction, FactionId::Independent,
-                                      FactionId::TradersGuild };
+        FactionId tradeFactions[] = { pop.tradeFaction, Factions::Unaffiliated(),
+                                      Factions::Traders() };
         const int traders = (int)roundf(agg.traders);
         for (int i = 0; i < traders; i++)
             SpawnNpcInto(st, around(pick(lanes), APPROACH), tradeFactions[i % 3], NpcRole::Trader,
@@ -165,7 +168,7 @@ void Simulation::HydrateSystem(SystemState& st)
             std::vector<Vector2> near = { spot };
             // Scattered over the belt, which is six thousand units across (#159), not on its
             // centre.
-            SpawnNpcInto(st, around(spot, 3000.0f), FactionId::Independent, NpcRole::Miner, near,
+            SpawnNpcInto(st, around(spot, 3000.0f), Factions::Unaffiliated(), NpcRole::Miner, near,
                          i);
         }
     }
@@ -198,7 +201,7 @@ void Simulation::HydrateSystem(SystemState& st)
             for (int attempt = 0; attempt < 4 && !Clear(spot, avoid); attempt++)
                 spot = around(base, 3000.0f);
             std::vector<Vector2> patrol = { spot };
-            SpawnNpcInto(st, spot, FactionId::Pirates, NpcRole::Pirate, patrol, i);
+            SpawnNpcInto(st, spot, Factions::Pirates(), NpcRole::Pirate, patrol, i);
         }
     }
 }
@@ -392,14 +395,52 @@ void ApplyState(Entity& e, const nlohmann::json& s)
 }
 
 // A faction by the id factions.json gives it, or false for one this build does not have:
-// the reader maps anything it does not know to the Independents, which for a save would
-// hand one faction's knowledge to another.
+// mapping anything it does not know to the unaffiliated faction would, for a save, hand one
+// faction's knowledge to another.
 bool FactionByName(const nlohmann::json& v, FactionId& f)
 {
-    if (!v.is_string())
+    return v.is_string() && Factions::Find(v.get<std::string>(), f);
+}
+
+// A faction by what a save wrote: its id, or -- in a world from before #355 -- its index in
+// the order the factions were compiled in.
+bool FactionInSave(const nlohmann::json& v, FactionId& f)
+{
+    if (v.is_number_integer())
+        return Factions::FromLegacyIndex(v.get<int>(), f);
+    return FactionByName(v, f);
+}
+
+// Each faction's presence, by id, and only where there is some: a region's natives (#342)
+// make a world of many factions, each present in a few systems.
+nlohmann::json PresenceJson(const PerFaction<float>& presence)
+{
+    nlohmann::json o = nlohmann::json::object();
+    for (FactionId f : Factions::All())
+        if (presence[f] != 0.0f)
+            o[Factions::Id(f)] = presence[f];
+    return o;
+}
+
+// False when the save has none. A version 10 world and older wrote a list of four, by the
+// compiled index.
+bool PresenceFrom(const nlohmann::json& j, PerFaction<float>& presence)
+{
+    presence.Clear();
+    FactionId f;
+    if (j.is_array() && j.size() == 4)
+    {
+        for (int i = 0; i < 4; i++)
+            if (j[(size_t)i].is_number() && Factions::FromLegacyIndex(i, f))
+                presence[f] = j[(size_t)i].get<float>();
+        return true;
+    }
+    if (!j.is_object())
         return false;
-    f = FactionFromString(v.get<std::string>());
-    return Factions::Id(f) == v.get<std::string>();
+    for (auto it = j.begin(); it != j.end(); ++it)
+        if (it->is_number() && Factions::Find(it.key(), f))
+            presence[f] = it->get<float>();
+    return true;
 }
 
 const char* PlanKindName(Plan::Kind k)
@@ -432,12 +473,18 @@ nlohmann::json IntelJson(const Intel& i)
         defenders.push_back(Factions::Id(d));
     for (FactionId o : i.outposts)
         outposts.push_back(Factions::Id(o));
-    return { { "seenAt", i.seenAt },     { "traffic", i.traffic },
-             { "security", i.security }, { "belts", i.belts },
-             { "wrecks", i.wrecks },     { "stations", i.stations },
-             { "planets", i.planets },   { "gates", i.gates },
-             { "defenders", defenders }, { "outposts", outposts },
-             { "presence", i.presence }, { "controller", Factions::Id(i.controller) },
+    return { { "seenAt", i.seenAt },
+             { "traffic", i.traffic },
+             { "security", i.security },
+             { "belts", i.belts },
+             { "wrecks", i.wrecks },
+             { "stations", i.stations },
+             { "planets", i.planets },
+             { "gates", i.gates },
+             { "defenders", defenders },
+             { "outposts", outposts },
+             { "presence", PresenceJson(i.presence) },
+             { "controller", Factions::Id(i.controller) },
              { "claimed", i.claimed } };
 }
 
@@ -466,9 +513,7 @@ Intel IntelFrom(const nlohmann::json& j)
             if (FactionByName(o, f))
                 i.outposts.push_back(f);
         }
-    if (j.contains("presence") && j["presence"].is_array() && j["presence"].size() == FACTION_COUNT)
-        for (int f = 0; f < FACTION_COUNT; f++)
-            i.presence[f] = j["presence"][f].get<float>();
+    PresenceFrom(j.value("presence", nlohmann::json()), i.presence);
     FactionId c;
     if (j.contains("controller") && FactionByName(j["controller"], c))
         i.controller = c;
@@ -495,13 +540,15 @@ bool Simulation::SaveWorld(const std::string& path) const
     for (const auto& kv : systems_)
     {
         const SystemAggregate& a = kv.second.agg;
-        galaxy[kv.first] = { { "traders", a.traders },       { "miners", a.miners },
-                             { "police", a.police },         { "pirates", a.pirates },
-                             { "security", a.security },     { "baseSecurity", a.baseSecurity },
-                             { "prosperity", a.prosperity }, { "controller", (int)a.controller },
-                             { "visited", a.visited },       { "presence", a.presence },
-                             { "claimed", a.claimed },       { "discoverer", a.discoverer },
-                             { "name", a.givenName } };
+        galaxy[kv.first] = {
+            { "traders", a.traders },       { "miners", a.miners },
+            { "police", a.police },         { "pirates", a.pirates },
+            { "security", a.security },     { "baseSecurity", a.baseSecurity },
+            { "prosperity", a.prosperity }, { "controller", Factions::Id(a.controller) },
+            { "visited", a.visited },       { "presence", PresenceJson(a.presence) },
+            { "claimed", a.claimed },       { "discoverer", a.discoverer },
+            { "name", a.givenName }
+        };
     }
     j["galaxy"] = galaxy;
 
@@ -511,7 +558,7 @@ bool Simulation::SaveWorld(const std::string& path) const
     if (mindsSeeded_)
     {
         json minds = json::object();
-        for (int f = 0; f < FACTION_COUNT; f++)
+        for (FactionId f : Factions::All())
         {
             json intel = json::object();
             // Not what it sees for itself -- its holdings and where its ships are: the
@@ -521,15 +568,15 @@ bool Simulation::SaveWorld(const std::string& path) const
             {
                 const auto st = systems_.find(kv.first);
                 if (st != systems_.end() &&
-                    ((st->second.agg.claimed && st->second.agg.controller == (FactionId)f) ||
+                    ((st->second.agg.claimed && st->second.agg.controller == f) ||
                      st->second.agg.presence[f] >= 1.0f))
                     continue;
                 intel[kv.first] = IntelJson(kv.second);
             }
-            minds[Factions::Id((FactionId)f)] = { { "intel", std::move(intel) },
-                                                  { "stock", minds_[f].stock },
-                                                  { "unsupplied", minds_[f].unsupplied },
-                                                  { "lostAt", minds_[f].lostAt } };
+            minds[Factions::Id(f)] = { { "intel", std::move(intel) },
+                                       { "stock", minds_[f].stock },
+                                       { "unsupplied", minds_[f].unsupplied },
+                                       { "lostAt", minds_[f].lostAt } };
         }
         j["factions"] = std::move(minds);
     }
@@ -579,13 +626,12 @@ bool Simulation::SaveWorld(const std::string& path) const
     j["migrants"] = std::move(migrants);
     json history = json::array();
     for (const ChronicleEntry& e : chronicle_)
-        history.push_back(
-            { { "seq", e.seq },
-              { "time", e.time },
-              { "kind", e.kind },
-              { "faction", e.faction < 0 ? std::string() : Factions::Id((FactionId)e.faction) },
-              { "system", e.system },
-              { "text", e.text } });
+        history.push_back({ { "seq", e.seq },
+                            { "time", e.time },
+                            { "kind", e.kind },
+                            { "faction", e.faction ? Factions::Id(*e.faction) : std::string() },
+                            { "system", e.system },
+                            { "text", e.text } });
     j["chronicle"] = std::move(history);
     j["chronicleSeq"] = chronicleSeq_;
 
@@ -669,17 +715,15 @@ Save::Result Simulation::LoadWorld(const std::string& path)
         a.security = gj.value("security", a.security);
         a.baseSecurity = gj.value("baseSecurity", a.baseSecurity);
         a.prosperity = gj.value("prosperity", a.prosperity);
-        a.controller = (FactionId)gj.value("controller", (int)a.controller);
+        FactionId controller;
+        if (gj.contains("controller") && FactionInSave(gj["controller"], controller))
+            a.controller = controller;
         a.visited = gj.value("visited", a.visited);
         a.claimed = gj.value("claimed", a.claimed);
         a.discoverer = gj.value("discoverer", a.discoverer);
         a.givenName = gj.value("name", a.givenName);
         // An older save has no presence: the seeded one stands, from what it did save.
-        if (gj.contains("presence") && gj["presence"].is_array() &&
-            gj["presence"].size() == FACTION_COUNT)
-            for (int f = 0; f < FACTION_COUNT; f++)
-                a.presence[f] = gj["presence"][f].get<float>();
-        else
+        if (!PresenceFrom(gj.value("presence", json()), a.presence))
             SeedPresence(a);
         a.seeded = true;
     }
@@ -697,18 +741,18 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             const json& intel = it.value().value("intel", json::object());
             for (auto k = intel.begin(); intel.is_object() && k != intel.end(); ++k)
                 if (HasSystem(k.key()) && k.value().is_object())
-                    minds_[(int)f].intel[k.key()] = IntelFrom(k.value());
+                    minds_[f].intel[k.key()] = IntelFrom(k.value());
             // A version 5 world has no stock: its factions begin saving from nothing.
             const json& stock = it.value().value("stock", json(0.0));
-            minds_[(int)f].stock = stock.is_number() ? std::max(0.0f, stock.get<float>()) : 0.0f;
+            minds_[f].stock = stock.is_number() ? std::max(0.0f, stock.get<float>()) : 0.0f;
             const json& cut = it.value().value("unsupplied", json::array());
             for (const json& k : cut)
                 if (k.is_string())
-                    minds_[(int)f].unsupplied.insert(k.get<std::string>());
+                    minds_[f].unsupplied.insert(k.get<std::string>());
             const json& lost = it.value().value("lostAt", json::object());
             for (auto l = lost.begin(); lost.is_object() && l != lost.end(); ++l)
                 if (HasSystem(l.key()) && l.value().is_number())
-                    minds_[(int)f].lostAt[l.key()] = l.value().get<double>();
+                    minds_[f].lostAt[l.key()] = l.value().get<double>();
         }
     }
     if (j.contains("plans") && j["plans"].is_array())
@@ -789,7 +833,8 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             e.time = ej.value("time", 0.0);
             e.kind = ej.value("kind", std::string());
             FactionId f;
-            e.faction = ej.contains("faction") && FactionByName(ej["faction"], f) ? (int)f : -1;
+            if (ej.contains("faction") && FactionByName(ej["faction"], f))
+                e.faction = f;
             e.system = ej.value("system", std::string());
             e.text = ej.value("text", std::string());
             chronicle_.push_back(std::move(e));
@@ -839,8 +884,7 @@ void Simulation::Reset()
     systems_.clear();
     structureDue_.clear();
     agentIdCounter_ = 0;
-    for (FactionMind& m : minds_)
-        m = FactionMind();
+    minds_.Clear();
     mindsSeeded_ = false;
     plans_.clear();
     migrants_.clear();

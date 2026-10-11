@@ -46,7 +46,7 @@ struct SystemAggregate
 
     // Macrodynamics (L3): who actually controls the system. Can change:
     // pirate seizure on security collapse, reconquest by a strong neighbor.
-    FactionId controller = FactionId::Independent;
+    FactionId controller = Factions::Unaffiliated();
 
     // Spawn "pressure" by role (0..1): recent losses temporarily lower the spawn
     // director's target, so player sweeps/battles really affect the population instead
@@ -70,7 +70,7 @@ struct SystemAggregate
     // Each faction's committed strength here, in ships (#231), by FactionId. The spawn
     // director makes real ships of it; battles take it away; the faction step grows it
     // where the faction holds and moves it where the faction reaches. Saved.
-    std::array<float, FACTION_COUNT> presence{};
+    PerFaction<float> presence{};
     // Whether anybody holds it at all. A system beyond the wormhole starts held by nobody:
     // its controller reads Independent, but no garrison grows there and any faction may
     // take it. Tau Verge is held -- by the Independents -- and only an enemy of theirs
@@ -85,7 +85,7 @@ struct SystemAggregate
     // Ships destroyed since the last faction step, by side -- transient.
     float     lostPirates = 0.0f;
     float     lostPolice = 0.0f;
-    FactionId policeFaction = FactionId::Independent;  // whose police the director sent
+    FactionId policeFaction = Factions::Unaffiliated();  // whose police the director sent
 
     bool seeded = false;  // aggregate initialized with starting values
 };
