@@ -53,6 +53,7 @@ const char* ToolFor(Verb verb)
         case Verb::Accept: return "accept_mission";
         case Verb::HandIn: return "complete_mission";
         case Verb::Dismantle: return "dismantle";
+        case Verb::Refit: return "refit";
         case Verb::Attack: return "attack";
         case Verb::Investigate: return "salvage";
         // The interface's own: they change what a window shows, not the world. An agent
@@ -61,6 +62,17 @@ const char* ToolFor(Verb verb)
         case Verb::SetRange: return "";
     }
     return "";
+}
+
+std::vector<Action> ForRefit(const std::vector<Ships::FitLine>& fit, bool atShipyard, bool changed)
+{
+    std::vector<Action> out;
+    if (!atShipyard || !changed)
+        return out;
+    Action a = Make(Verb::Refit, "Apply refit");
+    a.fit = fit;
+    out.push_back(std::move(a));
+    return out;
 }
 
 int HoldMode(Verb verb)

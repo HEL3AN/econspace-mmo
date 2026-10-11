@@ -23,6 +23,7 @@
 #include "entities/ShipType.h"
 #include "entities/Station.h"
 #include "entities/Structure.h"
+#include "core/Fitting.h"
 #include "raymath.h"
 
 #include <nlohmann/json.hpp>
@@ -657,6 +658,75 @@ bool Simulation::BuyShip(ClientSession& s, int catalogIndex)
     s.currentShip = catalogIndex;
     s.RecordEvent(Ev::Kind::Notice,
                   "Bought a " + t.name + " for " + Credits(price) + "; now flying it");
+    return true;
+}
+
+bool Simulation::RefitShip(ClientSession& s, const std::vector<Ships::FitLine>& fit)
+{
+    if (!s.ship)
+        return false;
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    const int                    hull = s.currentShip;
+    if (hull < 0 || hull >= (int)catalog.size())
+        return false;
+    const std::string name = catalog[hull].name;
+    auto              refuse = [&](const std::string& why)
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Refit refused: " + why);
+        return false;
+    };
+    SystemState* st = SystemOf(s);
+    if (!s.IsDocked() || st == nullptr)
+        return refuse("dock at a station with a shipyard first");
+    const Station* yard = nullptr;
+    for (const auto& e : st->entities)
+        if (e->GetId() == s.dockedStationId && e->GetKind() == EntityKind::Station)
+            yard = static_cast<const Station*>(e.get());
+    if (yard == nullptr || yard->GetArchetype() == nullptr ||
+        !yard->GetArchetype()->Has(Component::Shipyard))
+        return refuse("this station has no shipyard");
+
+    const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
+    const Ships::Design*    stock = ships.FindDesign(catalog[hull].stats.design);
+    const Ships::Design*    now = designs_.Find(s.DesignOf(hull));
+    if (stock == nullptr || now == nullptr)
+        return false;
+    Ships::Design want;
+    std::string   why;
+    if (!Ships::PlayerFit(ships, *stock, fit, want, why))
+        return refuse(why);
+    if (want.id == now->id)
+        return refuse("that is the fit the " + name + " has");
+    ShipStats stats;
+    if (!PlayerStats(want, stats, why))
+        return refuse(why);
+    if (!HoldFits(s, name, stats, "Refit of the " + name))
+        return false;
+
+    // At the system's ore prices, as the snapshot shows them, and by standing as a ship is.
+    std::vector<float> ore;
+    for (ResourceType rt : AllResourceTypes())
+        ore.push_back((float)st->market.GetPrice(rt));
+    double price = Ships::RefitPrice(ships, *now, want, ore, yard->GetArchetype()->refitMarkup);
+    if (price > 0.0)
+        price *= ShipPriceMultiplier(Factions::TierOf(s.account.GetReputation(yard->GetFaction())));
+    if (price > 0.0 && !s.account.CanAfford(price))
+        return refuse("it costs " + Credits(price) + " here and you have " +
+                      Credits(s.account.GetMoney()));
+
+    std::string id = want.id;
+    if (Ships::IsPlayerDesign(id))
+    {
+        id = designs_.File(want, why);
+        if (id.empty())
+            return refuse(why);
+        designsChanged_ = true;
+    }
+    s.account.AddMoney(-price);
+    FlyDesign(s, hull, id);
+    s.RecordEvent(Ev::Kind::Notice,
+                  "Refitted the " + name +
+                      (price >= 0.0 ? " for " + Credits(price) : ", refunded " + Credits(-price)));
     return true;
 }
 

@@ -77,6 +77,7 @@ int main(int argc, char** argv)
     bool              map = false;
     bool              select = false, menu = false;
     bool              dock = false;
+    bool              fit = false;  // --fit: the hangar open on its Fit tab (#279)
     bool              sensor = false;
     float             sensorRange = 0.0f;  // 0: the default
     Vector2           warpTo = { 0.0f, 0.0f };
@@ -113,6 +114,8 @@ int main(int argc, char** argv)
             select = menu = true;
         else if (std::strcmp(argv[i], "--dock") == 0)
             dock = true;
+        else if (std::strcmp(argv[i], "--fit") == 0)
+            fit = true;
         else if (std::strcmp(argv[i], "--sensor") == 0)
         {
             sensor = true;
@@ -221,6 +224,8 @@ int main(int argc, char** argv)
             game.AnswerStartWith(startAt);
         for (const Click& c : clicks)
             game.AddScriptedClick(c.x, c.y, c.frame);
+        if (fit)
+            game.StartOnFit();
         if (!shot.empty())
             game.TakeShot(shot, frames, treated);
         if (nohud)

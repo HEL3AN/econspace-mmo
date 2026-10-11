@@ -9,7 +9,11 @@
 // Part of the Game class; see Game.cpp.
 #include "core/Game.h"
 
+#include "core/Actions.h"
+#include "core/Archetype.h"
+#include "core/Fitting.h"
 #include "core/StationList.h"
+#include "sim/Observation.h"
 #include "entities/Station.h"
 #include "player/Skills.h"
 #include "ui/Theme.h"
@@ -386,6 +390,12 @@ void Game::DrawHangarContent(const Ui::Frame& f)
     L.Column(Box().Grow().Gap(t.metrics.gap),
              [&]
              {
+                 L.Tabs("tabs", { "Ships", "Fit" }, hangarTab_);
+                 if (hangarTab_ == 1)
+                 {
+                     DrawFitTab(L, wide);
+                     return;
+                 }
                  auto list = [&]
                  {
                      const Ui::TableEvents ev = L.Table(table);
@@ -411,4 +421,165 @@ void Game::DrawHangarContent(const Ui::Frame& f)
              });
     L.End();
     L.Draw();
+}
+
+// The Fit tab (#279): the ship being flown, socket by socket. A fit is drawn up here and
+// nothing is sent until Apply; the numbers beside it are Obs::QuoteFit's, the server's own
+// rules and price, so what the tab says is what the server does.
+void Game::DrawFitTab(Ui::Layout& L, bool wide)
+{
+    using Ui::Box;
+    using Ui::Size;
+    using Ui::TextStyle;
+    const Ui::Theme& t = Ui::CurrentTheme();
+
+    Obs::View view;
+    view.snapshot = &snapshot_;
+    view.layout = &layout_.byId;
+    const Ships::Design* hull = Obs::CurrentHull(view);
+    const Ships::Design* now = Obs::CurrentDesign(view);
+    if (hull == nullptr || now == nullptr)
+    {
+        L.Text("No ship yet.", TextStyle::Small().Tint(t.colors.dim));
+        return;
+    }
+    if (fitDraftFor_ != now->id)
+    {
+        fitDraft_ = Ships::Normalized(now->fit);
+        for (Ships::FitLine& l : fitDraft_)
+            l.scale = 0.0f;  // a player's fit sets none; the hull's own keep theirs
+        fitDraftFor_ = now->id;
+    }
+
+    const Ships::Catalogue&               ships = Archetypes::ShipCatalogue();
+    const std::vector<Ships::SocketGroup> groups = Ships::Sockets(ships, *hull, fitDraft_);
+    fitSel_ = groups.empty() ? 0 : std::clamp(fitSel_, 0, (int)groups.size() - 1);
+    const Obs::FitQuote q = Obs::QuoteFit(view, fitDraft_);
+
+    Ui::TableSpec table;
+    table.id = "sockets";
+    table.columns = { { "socket", Size::Grow(), Ui::Align::Start, false },
+                      { "used", Size::Fit(44.0f), Ui::Align::End, false } };
+    table.rows = (int)groups.size();
+    table.cell = [&](int r, int c)
+    {
+        const Ships::SocketGroup& g = groups[r];
+        if (c == 0)
+            return Ui::Cell{ g.in + " " + g.on, t.colors.text };
+        return Ui::Cell{ TextFormat("%d/%d", g.used, g.capacity), g.used > g.capacity ? t.colors.bad
+                                                                  : g.used == 0 ? t.colors.dim
+                                                                                : t.colors.text };
+    };
+    table.rowFill = [&](int r) { return r == fitSel_ ? t.colors.selected : Color{ 0, 0, 0, 0 }; };
+
+    // Changes how many of `module` the draft puts on the chosen socket.
+    auto change = [&](const Ships::SocketGroup& g, const std::string& module, int by)
+    {
+        for (size_t k = 0; k < fitDraft_.size(); k++)
+            if (fitDraft_[k].module == module && fitDraft_[k].in == g.in && fitDraft_[k].on == g.on)
+            {
+                fitDraft_[k].count += by;
+                if (fitDraft_[k].count <= 0)
+                    fitDraft_.erase(fitDraft_.begin() + (long)k);
+                return;
+            }
+        if (by > 0)
+        {
+            Ships::FitLine l;
+            l.module = module;
+            l.in = g.in;
+            l.on = g.on;
+            l.count = by;
+            fitDraft_ = Ships::Normalized(fitDraft_);
+            fitDraft_.push_back(l);
+            fitDraft_ = Ships::Normalized(fitDraft_);
+        }
+    };
+
+    auto details = [&]
+    {
+        L.Text(q.hull + (now->id == hull->id ? "" : "  (refitted)"), TextStyle::Title());
+        if (!groups.empty())
+        {
+            const Ships::SocketGroup& g = groups[fitSel_];
+            // What is mirrored comes in pairs (Ships::Validate), so it moves two at a time.
+            const int step = g.on == "side" || g.on == "edge" ? 2 : 1;
+            L.Text(TextFormat("%s %s: %d of %d", g.in.c_str(), g.on.c_str(), g.used, g.capacity),
+                   TextStyle::Small().Tint(t.colors.dim));
+            for (size_t k = 0; k < g.modules.size(); k++)
+            {
+                const std::string& m = g.modules[k];
+                int                n = 0;
+                for (const Ships::FitLine& l : fitDraft_)
+                    if (l.module == m && l.in == g.in && l.on == g.on)
+                        n = l.count;
+                L.Row(Box().GrowX().Gap(t.metrics.gap),
+                      [&]
+                      {
+                          // The name in a column of its own, so the buttons line up row to row.
+                          L.Row(Box().Width(Size::Percent(0.45f)),
+                                [&]
+                                {
+                                    L.Text(m, TextStyle::Body().Tint(n > 0 ? t.colors.text
+                                                                           : t.colors.dim));
+                                });
+                          if (L.Button("dec" + std::to_string(k), "-") && n > 0)
+                              change(g, m, -std::min(step, n));
+                          L.Text(std::to_string(n), TextStyle::Body().Tint(t.colors.text));
+                          if (L.Button("inc" + std::to_string(k), "+"))
+                              change(g, m, step);
+                      });
+            }
+        }
+        L.Divider();
+        // Before and after, as the server would fly it.
+        auto line = [&](const char* label, float a, float b, const char* fmt)
+        {
+            const std::string text = std::string(TextFormat(fmt, a)) + "  >  " + TextFormat(fmt, b);
+            L.Field(label, text, b > a ? t.colors.good : b < a ? t.colors.warn : t.colors.text);
+        };
+        line("Top speed", q.before.maxSpeed, q.after.maxSpeed, "%.0f");
+        line("Turn", q.before.turnSpeed, q.after.turnSpeed, "%.2f");
+        line("Hold", (float)q.before.cargoCapacity, (float)q.after.cargoCapacity, "%.0f");
+        line("Mining", q.before.miningRate, q.after.miningRate, "%.1f");
+        line("Hull", q.before.hull, q.after.hull, "%.0f");
+        line("Guns", q.before.damage, q.after.damage, "%.0f");
+        if (q.changed && !q.design.id.empty())
+            L.Field(q.price >= 0.0 ? "Price here" : "Refund", Credits(std::abs(q.price)) + " cr",
+                    t.colors.money);
+        // Why it would be refused, before the server says so -- but not the "nothing has
+        // changed" of a tab just opened.
+        if (!q.problem.empty() && (q.changed || q.design.id.empty()))
+            L.Text(q.problem, TextStyle::Small().Tint(t.colors.warn).Wrap());
+        L.Row(Box().GrowX().Gap(t.metrics.gap),
+              [&]
+              {
+                  for (const Actions::Action& a : Actions::ForRefit(fitDraft_, q.ok, q.changed))
+                      if (L.Button("apply", a.label, true))
+                          Perform(a, 0, { 0.0f, 0.0f });
+                  if (L.Button("reset", "Reset"))
+                      fitDraftFor_.clear();
+              });
+    };
+
+    auto list = [&]
+    {
+        const Ui::TableEvents ev = L.Table(table);
+        if (ev.clicked >= 0)
+            fitSel_ = ev.clicked;
+    };
+    auto pane = [&](Box box) { L.Scroll(box.Id("fit").Gap(t.metrics.rowGap), details); };
+    if (wide)
+        L.Row(Box().Grow().Gap(t.metrics.padding),
+              [&]
+              {
+                  L.Column(Box().Width(Size::Percent(0.4f)).Height(Size::Grow()), list);
+                  pane(Box().Grow());
+              });
+    else
+    {
+        L.Column(Box().GrowX().Height(Size::Percent(0.35f)), list);
+        L.Divider();
+        pane(Box().Grow());
+    }
 }

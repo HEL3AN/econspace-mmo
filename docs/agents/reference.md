@@ -148,6 +148,28 @@ Fly another ship you already own, at the station you are docked at. Free; hangar
 |---|---|---|---|
 | `ship` | string | yes | ship name as hangar lists it, e.g. 'Scout' |
 
+### `fitting`
+
+How the ship you fly is fitted: its sockets by position, what fills them, which modules go on each kind of socket and what one costs at this station. The fit is printed in the form preview_fit and refit take.
+
+No arguments.
+
+### `preview_fit`
+
+What a fit would make of the ship you fly, without paying: speed, turn, cargo, mining, hull and guns before and after, the price here, and whether the server would take it. Pass the whole fit, not a change to it.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `fit` | array | yes | the whole fit, every line, as fitting prints it |
+
+### `refit`
+
+Refit the ship you fly to a fit, docked at a station with a shipyard, paid in credits: modules added cost their ore here times the yard's markup, modules taken out refund half their ore. Only the fit changes, never the hull; side and edge sockets take pairs, drives go in the stern, and a ship keeps a drive. Pass the whole fit; preview_fit first says what it does and costs.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `fit` | array | yes | the whole fit, every line, as fitting prints it |
+
 ### `pay_bounty`
 
 Pay off the bounty a faction has on you, at a station, so its ships stop hunting you. Costs the whole bounty. observe with detail='full' lists who wants you.
