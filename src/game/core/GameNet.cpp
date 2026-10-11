@@ -231,9 +231,14 @@ void Game::BuildClientSnapshot()
             // it: from here on it is drawn and derived like a stock one.
             Proto::DesignDef def;
             std::string      why;
-            if (Proto::DecodeDesignDef(msg, def) && !Archetypes::AddDesign(def.design, why))
+            if (!Proto::DecodeDesignDef(msg, def))
+                TraceLog(LOG_WARNING, "A design definition from the server did not read");
+            else if (!Archetypes::AddDesign(def.design, why))
                 TraceLog(LOG_WARNING, "Design %s from the server: %s", def.design.id.c_str(),
                          why.c_str());
+            else
+                TraceLog(LOG_INFO, "Design %s (a refitted %s) is known now", def.design.id.c_str(),
+                         def.design.name.c_str());
         }
         else if (type == "bye")
         {

@@ -1,6 +1,7 @@
 #include "sim/Observation.h"
 
 #include "core/Archetype.h"
+#include "core/Fitting.h"
 #include "core/Faction.h"
 #include "economy/Resource.h"
 #include "entities/ShipType.h"
@@ -240,6 +241,179 @@ FactionId DockedFaction(const View& view)
     return it == view.layout->end() ? Factions::Unaffiliated() : it->second.faction;
 }
 
+const Ships::Design* CurrentHull(const View& view)
+{
+    if (view.snapshot == nullptr)
+        return nullptr;
+    const int                    i = view.snapshot->player.shipIndex;
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    if (i < 0 || i >= (int)catalog.size())
+        return nullptr;
+    return Archetypes::ShipCatalogue().FindDesign(catalog[i].stats.design);
+}
+
+const Ships::Design* CurrentDesign(const View& view)
+{
+    if (view.snapshot == nullptr)
+        return nullptr;
+    const Proto::PlayerView& p = view.snapshot->player;
+    for (size_t i = 0; i < p.ownedShips.size() && i < p.shipDesigns.size(); i++)
+        if (p.ownedShips[i] == p.shipIndex)
+            if (const Ships::Design* d = Archetypes::FindDesign(p.shipDesigns[i]))
+                return d;
+    return CurrentHull(view);
+}
+
+bool AtShipyard(const View& view, float* markup)
+{
+    if (view.snapshot == nullptr || view.layout == nullptr || !view.snapshot->player.docked)
+        return false;
+    auto it = view.layout->find(view.snapshot->player.dockedStationId);
+    if (it == view.layout->end())
+        return false;
+    const Archetype* a = Archetypes::Find(it->second.archetype);
+    if (a == nullptr || !a->Has(Component::Shipyard))
+        return false;
+    if (markup != nullptr)
+        *markup = a->refitMarkup;
+    return true;
+}
+
+namespace
+{
+float Standing(const View& view, FactionId f)
+{
+    const Proto::PlayerView& p = view.snapshot->player;
+    return (size_t)f < p.reputation.size() ? p.reputation[(size_t)f] : 0.0f;
+}
+
+// A module's ore at this system's prices, times the yard's markup: what one costs fitted.
+double ModulePrice(const View& view, const Ships::ModulePart& m, float markup)
+{
+    double v = 0.0;
+    for (const auto& [r, n] : m.cost)
+        if ((size_t)r < view.snapshot->marketPrices.size())
+            v += (double)n * view.snapshot->marketPrices[(size_t)r];
+    return v * markup * ShipPriceMultiplier(Factions::TierOf(Standing(view, DockedFaction(view))));
+}
+
+std::string Provides(const Ships::Provides& p)
+{
+    std::string out;
+    auto        add = [&](const char* what, float v)
+    {
+        if (v != 0.0f)
+            out += Fmt("%s%s %g", out.empty() ? "" : ", ", what, (double)v);
+    };
+    add("thrust", p.thrust);
+    add("rcs", p.rcs);
+    add("cargo", p.cargo);
+    add("mining", p.mining);
+    add("hull", p.hull);
+    add("damage", p.damage);
+    return out.empty() ? std::string("nothing") : out;
+}
+}  // namespace
+
+FitQuote QuoteFit(const View& view, const std::vector<Ships::FitLine>& fit)
+{
+    FitQuote             q;
+    const Ships::Design* hull = CurrentHull(view);
+    const Ships::Design* now = CurrentDesign(view);
+    if (hull == nullptr || now == nullptr)
+    {
+        q.problem = "no world state yet";
+        return q;
+    }
+    q.hull = hull->name;
+    std::string why;
+    PlayerStats(*now, q.before, why);
+    q.after = q.before;
+    const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
+    if (!Ships::PlayerFit(ships, *hull, fit, q.design, q.problem))
+        return q;
+    PlayerStats(q.design, q.after, why);
+    q.changed = q.design.id != now->id;
+    float      markup = 1.5f;
+    const bool yard = AtShipyard(view, &markup);
+    q.price = Ships::RefitPrice(ships, *now, q.design, view.snapshot->marketPrices, markup);
+    if (q.price > 0.0)
+        q.price *= ShipPriceMultiplier(Factions::TierOf(Standing(view, DockedFaction(view))));
+    const Proto::PlayerView& p = view.snapshot->player;
+    if (!q.changed)
+        q.problem = "that is the fit the " + q.hull + " has";
+    else if (!yard)
+        q.problem = "refits are done docked at a station with a shipyard";
+    else if (q.after.cargoCapacity < p.cargoUsed)
+        q.problem = Fmt("the hold would take %d and carries %d; sell some first",
+                        q.after.cargoCapacity, p.cargoUsed);
+    else if (q.price > 0.0 && q.price > p.money)
+        q.problem = Fmt("it costs %.0f cr and you have %.0f cr", q.price, p.money);
+    q.ok = q.problem.empty();
+    return q;
+}
+
+std::string DescribeQuote(const FitQuote& q)
+{
+    std::string out = q.hull.empty() ? std::string("REFIT\n") : "REFIT of the " + q.hull + "\n";
+    auto        row = [&](const char* what, float a, float b, const char* fmt)
+    {
+        out += Fmt("  %-8s ", what) + Fmt(fmt, (double)a) + " -> " + Fmt(fmt, (double)b) +
+               (a == b  ? ""
+                : b > a ? "  (+)"
+                        : "  (-)") +
+               "\n";
+    };
+    row("speed", q.before.maxSpeed, q.after.maxSpeed, "%.0f");
+    row("turn", q.before.turnSpeed, q.after.turnSpeed, "%.2f");
+    row("cargo", (float)q.before.cargoCapacity, (float)q.after.cargoCapacity, "%.0f");
+    row("mining", q.before.miningRate, q.after.miningRate, "%.1f");
+    row("hull", q.before.hull, q.after.hull, "%.0f");
+    row("guns", q.before.damage, q.after.damage, "%.0f");
+    if (!q.design.id.empty())
+        out += q.price >= 0.0 ? Fmt("  price %.0f cr\n", q.price)
+                              : Fmt("  refund %.0f cr\n", -q.price);
+    out += q.ok ? std::string("  the server would take it: call refit with this fit\n")
+                : "  refused: " + q.problem + "\n";
+    return out;
+}
+
+std::string DescribeFitting(const View& view)
+{
+    const Ships::Design* hull = CurrentHull(view);
+    const Ships::Design* now = CurrentDesign(view);
+    if (hull == nullptr || now == nullptr)
+        return "No world state yet.\n";
+    float       markup = 1.5f;
+    const bool  yard = AtShipyard(view, &markup);
+    std::string out =
+        Fmt("FITTING of your %s%s -- %s\n", hull->name.c_str(),
+            now->id == hull->id ? "" : " (refitted)",
+            yard ? Fmt("docked at a shipyard, modules at %.2fx their ore", (double)markup).c_str()
+                 : "refits are done docked at a station with a shipyard");
+    out += "Fit now (pass a whole fit like this to preview_fit and refit; a fit sets no scale):\n";
+    for (const Ships::FitLine& l : Ships::Normalized(now->fit))
+        out += Fmt("  {\"module\": \"%s\", \"in\": \"%s\", \"on\": \"%s\", \"count\": %d}\n",
+                   l.module.c_str(), l.in.c_str(), l.on.c_str(), l.count);
+    const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
+    out += "Sockets (in/on: used/capacity -- modules that go there):\n";
+    for (const Ships::SocketGroup& g : Ships::Sockets(ships, *hull, now->fit))
+    {
+        std::string mods;
+        for (const std::string& m : g.modules)
+            mods += (mods.empty() ? "" : ", ") + m;
+        out += Fmt("  %s/%s: %d/%d -- %s\n", g.in.c_str(), g.on.c_str(), g.used, g.capacity,
+                   mods.empty() ? "nothing" : mods.c_str());
+    }
+    out += "Modules (mass; what it adds; price fitted here, half its ore back when removed):\n";
+    for (const Ships::ModulePart& m : ships.modules)
+        out += Fmt("  %-16s mass %g; %s; %.0f cr\n", m.id.c_str(), (double)m.mass,
+                   Provides(m.provides).c_str(), ModulePrice(view, m, markup));
+    out += "Side and edge sockets take modules in pairs; drives go in the stern; a ship keeps a "
+           "drive.\n";
+    return out;
+}
+
 std::string MissionNeeds(const View& view, const Proto::MissionView& m)
 {
     if (m.completable)
@@ -344,12 +518,17 @@ std::string DescribeHangar(const View& view)
                          p.money >= t.price * mul ? "" : " (cannot afford)");
         else
             status = Fmt("list price %.0f cr", t.price);
-        // The hull's numbers are its design's (#279 step 5), the ones the server flies it by.
-        out +=
-            Fmt("  [%d] %-8s speed %.0f  turn %.1f  cargo %d  mining %.1f/s  hull %.0f  "
-                "guns %.0f/shot  %s\n",
-                (int)i, t.name.c_str(), t.stats.maxSpeed, t.stats.turnSpeed, t.stats.cargoCapacity,
-                t.stats.miningRate, t.stats.hull, t.stats.damage, status.c_str());
+        // The hull's numbers are its design's (#279 step 5), the ones the server flies it by
+        // -- and an owned one's are its own, refitted or not (#279 fitting).
+        ShipStats st = t.stats;
+        for (size_t k = 0; k < p.ownedShips.size() && k < p.shipDesigns.size(); k++)
+            if (p.ownedShips[k] == (int)i && p.shipDesigns[k] != t.stats.design &&
+                StatsOfDesign(p.shipDesigns[k], st))
+                status += ", refitted";
+        out += Fmt("  [%d] %-8s speed %.0f  turn %.1f  cargo %d  mining %.1f/s  hull %.0f  "
+                   "guns %.0f/shot  %s\n",
+                   (int)i, t.name.c_str(), st.maxSpeed, st.turnSpeed, st.cargoCapacity,
+                   st.miningRate, st.hull, st.damage, status.c_str());
     }
     return out;
 }

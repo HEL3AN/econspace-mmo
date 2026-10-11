@@ -29,12 +29,12 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    25;  // 25: a login may be answered with the starts to choose from, and a ship exists only
-         // once one is chosen (#342 S2); 24: a ship flies a design of its own, filed by a hash of
-         // its content; a DesignDef tells a client what one is before any snapshot names it (#279
-         // fitting); 23: a faction is named by its string id, never by index (#355); 22: a snapshot
-         // without missions means they are unchanged, and a command leaves out every field at its
-         // default
+    26;  // 26: a refit, the whole fit asked for in a command (#279 fitting); 25: a login may be
+         // answered with the starts to choose from, and a ship exists only once one is chosen
+         // (#342 S2); 24: a ship flies a design of its own, filed by a hash of its content; a
+         // DesignDef tells a client what one is before any snapshot names it (#279 fitting); 23: a
+         // faction is named by its string id, never by index (#355); 22: a snapshot without
+         // missions means they are unchanged, and a command leaves out every field at its default
          // (#341); 21: the build order, with its blueprint and name (#39); 20: reserved for
          // #279's design ids, which landed as 24; 19: player hulls are designs -- a hull index
          // means derived stats, and another player's ship carries its design (#279 step 5); 18:
@@ -147,6 +147,11 @@ struct Command
     int sellType = -1;   // ResourceType as int (-1 — no sale)
     int sellAmount = 0;  // amount to sell (server clamps to cargo)
     int refitShip = -1;  // switch to an ALREADY bought ship (index; -1 none)
+    // Refit the ship being flown to this fit, at the shipyard it is docked at (#279
+    // fitting). The fit is the whole fit, not a change to it; the hull stays the hull. The
+    // server checks it, prices it and charges for it; a refusal is a Notice saying why.
+    bool                        refit = false;
+    std::vector<Ships::FitLine> refitLines;
     // Account actions (server-authoritative, M4f): buy ship / pay bounty / cheat.
     int         buyShip = -1;          // buy ship by catalog index (-1 none)
     std::string payBountyFaction;      // pay off bounty with a faction (its id; empty none)

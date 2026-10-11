@@ -103,6 +103,12 @@ public:
     // Start with the galaxy map open (--map): for seeing the index the server sent without
     // a hand on the keyboard.
     void StartOnMap() { desk_.SetOpen(WIN_MAP, true); }
+    // Start with the hangar open on its Fit tab (--fit): a picture of the tab needs it.
+    void StartOnFit()
+    {
+        desk_.SetOpen(WIN_HANGAR, true);
+        hangarTab_ = 1;
+    }
     // The interface at exactly this scale, whatever the display asks for (--uiscale): for
     // pictures that look the same on every machine. Not saved.
     void SetUiScale(float s)
@@ -186,6 +192,7 @@ private:
     void    DrawStationContent(const Ui::Frame& f);  // who runs it, the account, undock
     void    DrawMarketContent(const Ui::Frame& f);   // what it pays for what is in the hold
     void    DrawHangarContent(const Ui::Frame& f);   // the hulls: fly, switch, buy
+    void    DrawFitTab(Ui::Layout& L, bool wide);    // ...and the Fit tab: refit (#279)
     void    SellCargo(ResourceType type, int amount);
     RepTier DockedTier() const;  // what the docked station's owner thinks of this pilot
 
@@ -454,6 +461,12 @@ private:
     float      sellAmount_ = 0.0f;   // how much of the chosen commodity to sell
     int        sellAmountFor_ = -1;  // ...chosen for this row; another row starts at its hold
     int        hangarSel_ = -1;      // -1: the hull being flown
+    // The hangar's Fit tab (#279): the fit being drawn up, the design it was drawn up from
+    // (another one -- a refit landed, another hull -- starts it again), and the chosen socket.
+    int                         hangarTab_ = 0;
+    std::vector<Ships::FitLine> fitDraft_;
+    std::string                 fitDraftFor_;
+    int                         fitSel_ = 0;
 
     // Missions, radar and settings (#297).
     Ui::Layout  missionsLayout_;

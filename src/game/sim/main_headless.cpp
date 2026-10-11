@@ -220,6 +220,11 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     if (!c.nameSystem.empty())
         sim.NameSystem(s, c.nameSystem);
 
+    // A refit (#279 fitting). Not under the docked verbs below: asked for in flight, it is
+    // refused with a reason rather than dropped without a word.
+    if (c.refit)
+        sim.RefitShip(s, c.refitLines);
+
     // Station trade/hangar: sell, refit, buy, pay off bounty. Account effects
     // (money/skill/reputation/bounty) are applied by the core in account_ (server-authoritative).
     if (s.IsDocked())
@@ -1259,6 +1264,10 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
             worldSaveAcc = 0.0;
             galaxyAcc = 1.0;  // and the statistics that now include it, straight away
         }
+        // A design filed by a refit is written at once (#279): the ship that flies it is
+        // paid for, and a crash before the checkpoint would leave it naming nothing.
+        if (sim.TakeDesignsChanged())
+            sim.SaveDesigns(DesignsPath(worldPath));
         if (galaxyAcc >= 1.0)
         {
             galaxyAcc = 0.0;

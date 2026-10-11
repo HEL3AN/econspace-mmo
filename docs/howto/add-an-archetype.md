@@ -132,6 +132,7 @@ What each one does **today**:
 | `defensive` | `range`, `damage` | loaded and listed, **not acted on yet** |
 | `storage` | `capacity` | loaded and listed, **not acted on yet** |
 | `buildable` | `cost`, `buildSeconds` | loaded and listed, **not acted on yet** — it is for the player-built world (#44) |
+| `shipyard` | `markup` (at least 1, default 1.5) | a docked ship can be refitted here; a module costs its ore at the system's prices times `markup` (#279) |
 
 The test suite insists that every `dockable`, `mineable`, `jumpLink` and `salvageable` archetype
 has a `range` above zero, and every `mineable` an `extractRate`: a capability with no reach is

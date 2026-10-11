@@ -1,6 +1,8 @@
 #pragma once
 
+#include "core/ShipDesign.h"
 #include "core/WorldLoader.h"
+#include "entities/ShipType.h"
 #include "sim/Protocol.h"
 
 #include <map>
@@ -54,6 +56,37 @@ std::string DescribeMissions(const View& view);
 // (#109) -- at the price this player would be charged, which depends on its standing with
 // the station's owner, rather than the catalog's.
 std::string DescribeHangar(const View& view);
+
+// --- Fitting (#279) ---------------------------------------------------------------------
+// The design the ship being flown has: its refit if it has one, else its hull's stock
+// design. Null before the first snapshot.
+const Ships::Design* CurrentDesign(const View& view);
+// The stock design of the hull being flown: what a refit may change the fit of.
+const Ships::Design* CurrentHull(const View& view);
+// Docked at a station whose archetype declares a shipyard, and its markup if so.
+bool AtShipyard(const View& view, float* markup = nullptr);
+
+// What a fit would make of the ship being flown, here, before anything is sent: the same
+// rules (Ships::PlayerFit), the same price (Ships::RefitPrice at this system's ore prices
+// and the station's markup, by standing) and the same hold and money checks the server
+// makes. The Fit tab draws it and preview_fit reads it out.
+struct FitQuote
+{
+    bool          ok = false;       // the server would take it
+    bool          changed = false;  // it is not the fit the ship has
+    std::string   problem;          // why not, in a pilot's words; empty when ok
+    std::string   hull;             // the hull's name
+    Ships::Design design;           // what it makes
+    ShipStats     before, after;
+    double        price = 0.0;  // credits; negative pays the pilot back
+};
+FitQuote QuoteFit(const View& view, const std::vector<Ships::FitLine>& fit);
+
+// What the agent's `fitting` tool says: the hull, its sockets and what fills them, the
+// modules that go on each and what one costs here.
+std::string DescribeFitting(const View& view);
+// What `preview_fit` says: a quote, before and after.
+std::string DescribeQuote(const FitQuote& q);
 
 // Who owns the station the player is docked at, from the layout. Independent when not
 // docked or the layout does not say -- which is also what the server assumes.

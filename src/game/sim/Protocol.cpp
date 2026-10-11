@@ -451,6 +451,14 @@ std::string EncodeCommand(const Command& c)
     number("sellType", c.sellType, -1);
     number("sellAmt", c.sellAmount, 0);
     number("refit", c.refitShip, -1);
+    if (c.refit)  // a refit's whole fit (#279), only on the command that asks for one
+    {
+        json fit = json::array();
+        for (const Ships::FitLine& l : c.refitLines)
+            fit.push_back(
+                { { "module", l.module }, { "in", l.in }, { "on", l.on }, { "count", l.count } });
+        j["fit"] = fit;
+    }
     number("buy", c.buyShip, -1);
     if (!c.payBountyFaction.empty())
         j["payB"] = c.payBountyFaction;
@@ -581,6 +589,32 @@ bool ReadText(const json& j, const char* key, std::string& out)
     return out.size() <= TEXT_LIMIT;
 }
 
+// A refit's fit (#279): a list of lines, each four typed fields and nothing else. Bounded,
+// because a hull has a few dozen sockets and anything longer is not a fit.
+bool ReadFit(const json& j, bool& present, std::vector<Ships::FitLine>& out)
+{
+    constexpr size_t FIT_LINES_MAX = 64;
+    present = false;
+    out.clear();
+    const auto it = j.find("fit");
+    if (it == j.end())
+        return true;
+    if (!it->is_array() || it->size() > FIT_LINES_MAX)
+        return false;
+    present = true;
+    for (const json& l : *it)
+    {
+        if (!l.is_object() || l.size() != 4)
+            return false;
+        Ships::FitLine line;
+        if (!ReadText(l, "module", line.module) || !ReadText(l, "in", line.in) ||
+            !ReadText(l, "on", line.on) || !ReadInt(l, "count", 0, 0, 64, line.count))
+            return false;
+        out.push_back(std::move(line));
+    }
+    return true;
+}
+
 bool ReadCommand(const json& j, Proto::Command& out)
 {
     const double far = POINT_LIMIT;
@@ -611,6 +645,7 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadInt(j, "sellType", -1, 0, resources - 1, out.sellType);
     ok = ok && ReadInt(j, "sellAmt", 0, 0, ID_MAX, out.sellAmount);
     ok = ok && ReadInt(j, "refit", -1, 0, ID_MAX, out.refitShip);
+    ok = ok && ReadFit(j, out.refit, out.refitLines);
     ok = ok && ReadInt(j, "buy", -1, 0, ID_MAX, out.buyShip);
     ok = ok && ReadText(j, "payB", out.payBountyFaction);
     ok = ok && ReadText(j, "nameSys", out.nameSystem);

@@ -561,6 +561,16 @@ bool Validate(const Catalogue& c, const Design& d, std::string& error)
             error = where + "'" + line.module + "' is a drive and drives sit in the stern";
             return false;
         }
+        // A module goes only where it has a look for: a socket it would be drawn on as
+        // nothing is a socket it does not fit (#279 fitting).
+        bool drawn = false;
+        for (const auto& [kind, look] : m->look)
+            drawn = drawn || kind == line.on;
+        if (!drawn)
+        {
+            error = where + "'" + line.module + "' does not go on a '" + line.on + "' socket";
+            return false;
+        }
         if (Paired(line.on) && line.count % 2 != 0)
         {
             error = where + "'" + line.module + "' on '" + line.on + "' is mirrored and comes " +

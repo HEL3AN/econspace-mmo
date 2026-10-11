@@ -281,6 +281,7 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
             case Component::Mineable: params = { "extractRate", "range" }; break;
             case Component::Defensive: params = { "range", "damage" }; break;
             case Component::Storage: params = { "capacity" }; break;
+            case Component::Shipyard: params = { "markup" }; break;
             case Component::Hazard: params = { "radius", "hidesShips" }; break;
             // What building one costs and takes is its blueprint's (data/blueprints.json),
             // not the archetype's: one kind of object may be made more than one way.
@@ -317,6 +318,19 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
                 break;
             // A marker: a blueprint may only name an archetype that says it can be built.
             case Component::Buildable: break;
+            // Where a refit is sold, and how dear (#279 fitting): a module costs its ore at
+            // the system's prices times this. A yard sells work, not ore.
+            case Component::Shipyard:
+                a.refitMarkup = p.value("markup", a.refitMarkup);
+                if (a.refitMarkup < 1.0f)
+                {
+                    err = "archetype '" + a.id + "': shipyard markup " +
+                          std::to_string(a.refitMarkup) +
+                          " is below 1, and a yard would buy modules back for more than it "
+                          "sold them";
+                    return false;
+                }
+                break;
             // No archetype-level parameters. What varies about a market is per system,
             // not per kind of station.
             case Component::Market: break;
@@ -339,17 +353,18 @@ const char* ComponentName(Component c)
         case Component::Hazard: return "hazard";
         case Component::Salvageable: return "salvageable";
         case Component::Buildable: return "buildable";
+        case Component::Shipyard: return "shipyard";
     }
     return "unknown";
 }
 
 const std::vector<Component>& AllComponents()
 {
-    static const std::vector<Component> all = { Component::Dockable, Component::Mineable,
-                                                Component::Market,   Component::Defensive,
-                                                Component::Storage,  Component::JumpLink,
-                                                Component::Hazard,   Component::Salvageable,
-                                                Component::Buildable };
+    static const std::vector<Component> all = { Component::Dockable,  Component::Mineable,
+                                                Component::Market,    Component::Defensive,
+                                                Component::Storage,   Component::JumpLink,
+                                                Component::Hazard,    Component::Salvageable,
+                                                Component::Buildable, Component::Shipyard };
     return all;
 }
 

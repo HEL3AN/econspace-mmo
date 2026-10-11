@@ -613,6 +613,20 @@ public:
     // if affordable — deducts and refits. Refuses a ship already owned: going back to one is
     // SwitchShip, and free. true — the purchase succeeded.
     bool BuyShip(ClientSession& s, int catalogIndex);
+    // Refit the ship being flown to `fit` (#279 fitting): only docked at a station with a
+    // shipyard, only the fit of the hull's own sections (Ships::PlayerFit), paid in credits
+    // at the yard's price (Ships::RefitPrice, by standing as a ship is), and refused if the
+    // hold would no longer take the cargo. The design is filed and the ship flies it from
+    // now on. true -- refitted.
+    bool RefitShip(ClientSession& s, const std::vector<Ships::FitLine>& fit);
+    // A design was filed since the last call: the host writes designs.json now rather than
+    // at the next checkpoint, so a crash cannot leave a paid-for ship naming nothing.
+    bool TakeDesignsChanged()
+    {
+        const bool c = designsChanged_;
+        designsChanged_ = false;
+        return c;
+    }
     // Whether a faction is hostile to this player by account (pirates; wanted;
     // Hostile/Hated reputation) — the server combat predicate.
     bool AccountHostileToFaction(const ClientSession& s, FactionId f) const;
@@ -744,6 +758,7 @@ public:
 
 private:
     DesignStore designs_;
+    bool        designsChanged_ = false;
 
     // What the spawn director keeps in a system (#295): how many ships of each role, after
     // the pressure of recent losses, and under whose flags. Zero for a role the system has

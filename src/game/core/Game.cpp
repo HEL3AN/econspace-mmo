@@ -961,6 +961,16 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
             clientLink_->Send(Proto::EncodeCommand(c));
             return;
         }
+        // The server checks the fit, prices it and charges; the snapshot brings the new
+        // design back, after its definition (#279).
+        case Verb::Refit:
+        {
+            Proto::Command c;
+            c.refit = true;
+            c.refitLines = a.fit;
+            clientLink_->Send(Proto::EncodeCommand(c));
+            return;
+        }
         default: break;
     }
     if (target == nullptr)
@@ -1026,7 +1036,8 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
         case Verb::WarpHere:
         case Verb::Build:
         case Verb::Accept:
-        case Verb::HandIn: break;  // handled above: they need no target
+        case Verb::HandIn:
+        case Verb::Refit: break;  // handled above: they need no target
     }
 }
 

@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <fstream>
 #include <set>
 #include <string>
@@ -10,9 +11,11 @@
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
+#include "core/Fitting.h"
 #include "core/ShipDesign.h"
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
+#include "entities/Station.h"
 #include "sim/ClientSession.h"
 #include "sim/DesignStore.h"
 #include "sim/Protocol.h"
@@ -307,5 +310,229 @@ TEST_CASE("an account's ships are designs, and older accounts load as stock ones
         for (const Ev::Event& e : back.EventsSince(0))
             told = told || e.text.find("stock fit") != std::string::npos;
         CHECK(told);
+    }
+}
+
+// --- Step 2: refit ----------------------------------------------------------------------
+
+namespace
+{
+// A station in the player's system, with or without a shipyard.
+const Station* StationThat(Fixture& f, bool shipyard)
+{
+    for (const auto& e : f.sim.SystemOf(f.s)->entities)
+        if (e->GetKind() == EntityKind::Station && e->GetArchetype() != nullptr &&
+            e->GetArchetype()->Has(Component::Shipyard) == shipyard)
+            return static_cast<const Station*>(e.get());
+    return nullptr;
+}
+
+std::vector<Ships::FitLine> Bare(const Ships::Design& d)
+{
+    std::vector<Ships::FitLine> fit = Ships::Normalized(d.fit);
+    for (Ships::FitLine& l : fit)
+        l.scale = 0.0f;
+    return fit;
+}
+
+Ships::FitLine Line(const char* module, const char* in, const char* on, int count)
+{
+    Ships::FitLine l;
+    l.module = module;
+    l.in = in;
+    l.on = on;
+    l.count = count;
+    return l;
+}
+}  // namespace
+
+TEST_CASE("a player's fit changes the fit and nothing else, within the rules")
+{
+    Fixture                 f;
+    const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+    const Ships::Design&    scout = *c.FindDesign("scout");
+    Ships::Design           out;
+    std::string             why;
+
+    SUBCASE("the hull's own fit is the hull's stock design, id and all")
+    {
+        REQUIRE(Ships::PlayerFit(c, scout, Bare(scout), out, why));
+        CHECK(out.id == "scout");
+    }
+    SUBCASE("a new fit is a design of its own, on the same sections, drawn as the hull draws")
+    {
+        REQUIRE_MESSAGE(Ships::PlayerFit(c, scout, Bare(ArmedScout()), out, why), why);
+        CHECK(Ships::IsPlayerDesign(out.id));
+        CHECK(out.frame == scout.frame);
+        CHECK(out.bow == scout.bow);
+        CHECK(out.stern == scout.stern);
+        for (const Ships::FitLine& l : out.fit)
+            if (l.module == "hull.engine")
+                CHECK(l.scale == doctest::Approx(0.17f));  // the hull's drawing of its drive
+        // The same fit in another order is the same design.
+        std::vector<Ships::FitLine> shuffled = Bare(ArmedScout());
+        std::reverse(shuffled.begin(), shuffled.end());
+        Ships::Design again;
+        REQUIRE(Ships::PlayerFit(c, scout, shuffled, again, why));
+        CHECK(again.id == out.id);
+    }
+    SUBCASE("a fit sets no scale")
+    {
+        std::vector<Ships::FitLine> fit = Bare(scout);
+        fit.front().scale = 0.5f;
+        CHECK_FALSE(Ships::PlayerFit(c, scout, fit, out, why));
+        CHECK(why.find("scale") != std::string::npos);
+    }
+    SUBCASE("a module goes only on a socket its look names")
+    {
+        std::vector<Ships::FitLine> fit = Bare(scout);
+        fit.push_back(Line("weapons.railgun", "mid", "spine", 1));
+        CHECK_FALSE(Ships::PlayerFit(c, scout, fit, out, why));
+        CHECK(why.find("does not go on") != std::string::npos);
+    }
+    SUBCASE("sockets run out, pairs stay pairs, and a ship keeps a drive")
+    {
+        std::vector<Ships::FitLine> fit = Bare(scout);
+        fit.push_back(Line("weapons.laser", "bow", "top", 3));
+        CHECK_FALSE(Ships::PlayerFit(c, scout, fit, out, why));
+
+        fit = Bare(scout);
+        fit.push_back(Line("hull.armour", "bow", "edge", 1));
+        CHECK_FALSE(Ships::PlayerFit(c, scout, fit, out, why));
+
+        fit.clear();
+        for (const Ships::FitLine& l : Bare(scout))
+            if (l.module != "hull.engine" && l.module != "hull.thruster")
+                fit.push_back(l);
+        CHECK_FALSE(Ships::PlayerFit(c, scout, fit, out, why));
+        CHECK(why.find("drive") != std::string::npos);
+    }
+    SUBCASE("the sockets list says what goes where")
+    {
+        const std::vector<Ships::SocketGroup> groups = Ships::Sockets(c, scout, scout.fit);
+        bool                                  sawBowTop = false;
+        for (const Ships::SocketGroup& g : groups)
+        {
+            if (g.in == "bow" && g.on == "top")
+            {
+                sawBowTop = true;
+                CHECK(g.capacity == 2);
+                CHECK(g.used == 2);
+                CHECK(std::find(g.modules.begin(), g.modules.end(), "weapons.laser") !=
+                      g.modules.end());
+                CHECK(std::find(g.modules.begin(), g.modules.end(), "hull.engine") ==
+                      g.modules.end());
+            }
+            for (const std::string& m : g.modules)
+                if (c.FindModule(m)->provides.thrust > 0.0f)
+                    CHECK(g.in == "stern");
+        }
+        CHECK(sawBowTop);
+    }
+}
+
+TEST_CASE("a refit is priced by the modules it adds and takes out")
+{
+    Fixture                  f;
+    const Ships::Catalogue&  c = Archetypes::ShipCatalogue();
+    const Ships::Design&     scout = *c.FindDesign("scout");
+    const std::vector<float> ore = { 10.0f, 20.0f, 30.0f };  // Iron, Ice, Crystal
+    Ships::Design            armed;
+    std::string              why;
+    REQUIRE(Ships::PlayerFit(c, scout, Bare(ArmedScout()), armed, why));
+    // A laser is 4 Iron + 3 Crystal, a tractor 4 Iron + 2 Crystal.
+    const double laser = 4 * 10.0 + 3 * 30.0, tractor = 4 * 10.0 + 2 * 30.0;
+    CHECK(Ships::RefitPrice(c, scout, armed, ore, 1.5f) ==
+          doctest::Approx(laser * 1.5 - tractor * Ships::REFIT_REFUND));
+    // And back: the laser comes out at half, the tractor goes in at the markup.
+    CHECK(Ships::RefitPrice(c, armed, scout, ore, 1.5f) ==
+          doctest::Approx(tractor * 1.5 - laser * Ships::REFIT_REFUND));
+    CHECK(Ships::RefitPrice(c, scout, scout, ore, 1.5f) == doctest::Approx(0.0));
+}
+
+TEST_CASE("the server refits only at a shipyard, charges for it, and the ship flies the fit")
+{
+    Fixture f;
+    f.sim.MaterializeAllSystems(std::string(TEST_DATA_DIR) + "systems/");
+    const Station* yard = StationThat(f, true);
+    REQUIRE_MESSAGE(yard != nullptr, "the start system has a shipyard");
+    const int seq = f.s.LastEventSeq();
+    f.s.account.SetMoney(5000.0);
+    const std::vector<Ships::FitLine> armed = Bare(ArmedScout());
+
+    SUBCASE("in flight it is refused, with a reason")
+    {
+        CHECK_FALSE(f.sim.RefitShip(f.s, armed));
+        const std::vector<Ev::Event> said = f.s.EventsSince(seq);
+        REQUIRE_FALSE(said.empty());
+        CHECK(said.back().text.find("shipyard") != std::string::npos);
+    }
+    SUBCASE("at a station without a yard it is refused")
+    {
+        const Station* plain = StationThat(f, false);
+        if (plain != nullptr)
+        {
+            f.s.dockedStationId = plain->GetId();
+            CHECK_FALSE(f.sim.RefitShip(f.s, armed));
+            CHECK(f.s.account.GetMoney() == doctest::Approx(5000.0));
+        }
+    }
+    SUBCASE("at a yard it is paid for, filed, flown, and predicted with the same numbers")
+    {
+        f.s.dockedStationId = yard->GetId();
+        const float speedBefore = f.s.ship->GetStats().maxSpeed;
+        REQUIRE(f.sim.RefitShip(f.s, armed));
+        CHECK(f.sim.TakeDesignsChanged());
+        const std::string id = f.s.DesignOf(0);
+        CHECK(Ships::IsPlayerDesign(id));
+        CHECK(f.sim.Designs().Holds(id));
+        CHECK(f.s.ship->GetStats().design == id);
+        CHECK(f.s.ship->GetStats().damage > GetShipCatalog()[0].stats.damage);
+        CHECK(f.s.ship->GetStats().miningRate < GetShipCatalog()[0].stats.miningRate);
+        CHECK(f.s.ship->GetStats().maxSpeed == doctest::Approx(speedBefore));  // same mass
+        const double paid = 5000.0 - f.s.account.GetMoney();
+        CHECK(paid > 0.0);
+
+        // The client predicts with what a DesignDef makes of it: the same numbers.
+        ShipStats predicted;
+        REQUIRE(StatsOfDesign(id, predicted));
+        CHECK(predicted.maxSpeed == doctest::Approx(f.s.ship->GetStats().maxSpeed));
+        CHECK(predicted.thrustPower == doctest::Approx(f.s.ship->GetStats().thrustPower));
+        CHECK(predicted.turnSpeed == doctest::Approx(f.s.ship->GetStats().turnSpeed));
+        CHECK(predicted.rcsAccel == doctest::Approx(f.s.ship->GetStats().rcsAccel));
+
+        // The same fit again is refused, not charged twice.
+        CHECK_FALSE(f.sim.RefitShip(f.s, armed));
+        CHECK(5000.0 - f.s.account.GetMoney() == doctest::Approx(paid));
+
+        // Back to stock: the stock design itself.
+        const double before = f.s.account.GetMoney();
+        REQUIRE(f.sim.RefitShip(f.s, Bare(*Archetypes::ShipCatalogue().FindDesign("scout"))));
+        CHECK(f.s.DesignOf(0) == "scout");
+        CHECK(f.s.ship->GetStats().design == "scout");
+        CHECK(f.s.account.GetMoney() < before);  // the tractor costs more than the laser returns
+    }
+    SUBCASE("a refit the money does not cover is refused and costs nothing")
+    {
+        f.s.dockedStationId = yard->GetId();
+        f.s.account.SetMoney(1.0);
+        CHECK_FALSE(f.sim.RefitShip(f.s, armed));
+        CHECK(f.s.account.GetMoney() == doctest::Approx(1.0));
+        CHECK(f.s.DesignOf(0) == "scout");
+    }
+    SUBCASE("a refit travels as a command")
+    {
+        Proto::Command c;
+        c.refit = true;
+        c.refitLines = armed;
+        Proto::Command back;
+        REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
+        CHECK(back.refit);
+        REQUIRE(back.refitLines.size() == c.refitLines.size());
+        CHECK(back.refitLines[0].module == c.refitLines[0].module);
+        CHECK(back.refitLines[0].count == c.refitLines[0].count);
+        Proto::Command none;
+        REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(Proto::Command{}), none));
+        CHECK_FALSE(none.refit);
     }
 }

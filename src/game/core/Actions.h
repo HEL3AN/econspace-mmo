@@ -2,6 +2,7 @@
 
 #include "raylib.h"  // Vector2: a plain struct, nothing here draws
 #include "core/Blueprint.h"
+#include "core/ShipDesign.h"
 #include "entities/EntityKind.h"
 
 #include <string>
@@ -42,16 +43,18 @@ enum class Verb
     Accept,     // take an offer from the board of the station the ship is docked at
     HandIn,     // hand in an active mission, for its reward
     Dismantle,  // take one's own structure apart for a refund (#39)
+    Refit,      // fit the ship being flown differently, at a shipyard (#279)
 };
 
 struct Action
 {
     Verb        verb = Verb::Select;
-    std::string label;            // what the menu says
-    float       distance = 0.0f;  // the hold's range, the approach's stop, the warp's drop
-    std::string blueprint;        // Build: which one
-    int         mission = -1;     // Accept, HandIn: the offer's or the mission's number
-    std::string tool;             // the econagent tool that does the same; empty if none yet
+    std::string label;                // what the menu says
+    float       distance = 0.0f;      // the hold's range, the approach's stop, the warp's drop
+    std::string blueprint;            // Build: which one
+    int         mission = -1;         // Accept, HandIn: the offer's or the mission's number
+    std::string tool;                 // the econagent tool that does the same; empty if none yet
+    std::vector<Ships::FitLine> fit;  // Refit: the whole fit asked for
 };
 
 // What the client knows about a thing it might act on.
@@ -100,6 +103,11 @@ struct MissionTarget
 // What can be done with a mission itself: take it, or hand it in. Where it is handed in is
 // a station, and what can be done about that is For(station).
 std::vector<Action> ForMission(const MissionTarget& mission);
+
+// What can be done with a fit drawn up in the hangar's Fit tab: apply it, docked at a
+// station with a shipyard, when it differs from the fit the ship has (#279). What it costs
+// and whether it is allowed are the server's to say, and the tab says them first.
+std::vector<Action> ForRefit(const std::vector<Ships::FitLine>& fit, bool atShipyard, bool changed);
 
 // The econagent tool that does what a verb does; empty for one no tool covers yet.
 const char* ToolFor(Verb verb);

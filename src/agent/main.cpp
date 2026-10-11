@@ -425,6 +425,52 @@ std::string Refused(const char* tool, int seq, const std::string& fallback)
     return std::string(tool) + ": " + (said.empty() ? fallback : "refused -- " + said);
 }
 
+// A fit, as fitting prints one: a list of {module, in, on, count}. Read strictly -- a
+// misspelled key would otherwise be a line with no module, which the server refuses with a
+// reason that does not mention the typo.
+std::vector<Ships::FitLine> FitArg(const Rpc::Json& args)
+{
+    if (!args.contains("fit") || !args["fit"].is_array())
+        throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                          "fit is a list of {module, in, on, count}, as fitting prints it" };
+    std::vector<Ships::FitLine> fit;
+    for (const Rpc::Json& l : args["fit"])
+    {
+        if (!l.is_object())
+            throw Rpc::Error{ Rpc::INVALID_PARAMS, "each fit line is an object" };
+        for (auto it = l.begin(); it != l.end(); ++it)
+            if (it.key() != "module" && it.key() != "in" && it.key() != "on" && it.key() != "count")
+                throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                  "a fit line has module, in, on and count, not '" + it.key() +
+                                      "' (a fit sets no scale)" };
+        Ships::FitLine line;
+        line.module = l.value("module", std::string());
+        line.in = l.value("in", std::string());
+        line.on = l.value("on", std::string());
+        line.count =
+            l.contains("count") && l["count"].is_number_integer() ? l["count"].get<int>() : -1;
+        if (line.module.empty() || line.in.empty() || line.on.empty() || line.count < 0)
+            throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                              "each fit line needs module, in, on and a whole count" };
+        fit.push_back(std::move(line));
+    }
+    return fit;
+}
+
+Rpc::Json FitSchema()
+{
+    Rpc::Json line{ { "type", "object" },
+                    { "properties",
+                      { { "module", Str("module id, e.g. 'weapons.laser'") },
+                        { "in", Str("'bow', 'mid' or 'stern'") },
+                        { "on", Str("socket kind, e.g. 'top', 'edge', 'side', 'stern'") },
+                        { "count", Num("how many, a whole number") } } },
+                    { "required", { "module", "in", "on", "count" } } };
+    return Rpc::Json{ { "type", "array" },
+                      { "description", "the whole fit, every line, as fitting prints it" },
+                      { "items", line } };
+}
+
 std::string Money(double cr)
 {
     char buf[48];
@@ -811,6 +857,66 @@ std::vector<Tool> BuildTools()
                                  "you own");
               return "switch_ship: now flying the " + t.name + " -- cargo capacity " +
                      std::to_string(t.stats.cargoCapacity);
+          } });
+
+    tools.push_back({ "fitting",
+                      "How the ship you fly is fitted: its sockets by position, what fills "
+                      "them, which modules go on each kind of socket and what one costs at "
+                      "this station. The fit is printed in the form preview_fit and refit "
+                      "take.",
+                      Obj({}), [](const Rpc::Json&)
+                      {
+                          RequireLive();
+                          return Obs::DescribeFitting(CurrentView());
+                      } });
+
+    tools.push_back(
+        { "preview_fit",
+          "What a fit would make of the ship you fly, without paying: speed, turn, cargo, "
+          "mining, hull and guns before and after, the price here, and whether the server "
+          "would take it. Pass the whole fit, not a change to it.",
+          Obj({ { "fit", FitSchema() } }, { "fit" }), [](const Rpc::Json& args)
+          {
+              RequireLive();
+              return Obs::DescribeQuote(Obs::QuoteFit(CurrentView(), FitArg(args)));
+          } });
+
+    tools.push_back(
+        { "refit",
+          "Refit the ship you fly to a fit, docked at a station with a shipyard, paid in "
+          "credits: modules added cost their ore here times the yard's markup, modules taken "
+          "out refund half their ore. Only the fit changes, never the hull; side and edge "
+          "sockets take pairs, drives go in the stern, and a ship keeps a drive. Pass the whole "
+          "fit; preview_fit first says what it does and costs.",
+          Obj({ { "fit", FitSchema() } }, { "fit" }), [](const Rpc::Json& args)
+          {
+              RequireLive();
+              RequireDocked("refitting");
+              const std::vector<Ships::FitLine> fit = FitArg(args);
+              const Obs::FitQuote               q = Obs::QuoteFit(CurrentView(), fit);
+              if (!q.ok)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, q.problem };
+              const double moneyBefore = g_session.Snapshot().player.money;
+
+              const int      seq = g_session.LastEventSeq();
+              Proto::Command c;
+              c.refit = true;
+              c.refitLines = fit;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "refit: " + why;
+              const Ships::Design* now = Obs::CurrentDesign(CurrentView());
+              if (now == nullptr || now->id != q.design.id)
+                  return Refused("refit", seq,
+                                 "the server did not refit; call fitting to see the ship as "
+                                 "it is now");
+              const double paid = moneyBefore - g_session.Snapshot().player.money;
+              return "refit: the " + q.hull + " is refitted" +
+                     (paid >= 0.0 ? " for " + Money(paid) : ", refunded " + Money(-paid)) +
+                     " -- speed " + std::to_string((int)std::lround(q.after.maxSpeed)) +
+                     ", cargo " + std::to_string(q.after.cargoCapacity) + ", guns " +
+                     std::to_string((int)std::lround(q.after.damage)) + "/shot, money now " +
+                     Money(g_session.Snapshot().player.money);
           } });
 
     tools.push_back(

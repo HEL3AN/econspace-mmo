@@ -134,6 +134,7 @@ add_library(engine STATIC
     src/engine/core/Blueprint.cpp    # how a player makes something: cost, time, placement (#39)
     src/engine/core/ShipDesign.cpp   # a ship as a design, its stats read off its parts (#279)
     src/engine/gen/Galaxy.cpp        # the skeleton of region slots, from a seed (#342)
+    src/engine/core/Fitting.cpp       # what a refit may change, and what it costs (#279)
     src/engine/gen/Region.cpp        # the region beyond the wormhole, from a seed (#140)
     src/engine/gen/Pins.cpp          # hand-written exceptions applied after generation (#147)
     src/engine/gen/Survey.cpp        # many generated systems judged at once (#141)

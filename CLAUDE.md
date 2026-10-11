@@ -84,6 +84,7 @@ cmake --build build-release
 ./build/bin/editor/worldeditor.exe gallery shapes perf frames 200   # the same for the editor (`time T` freezes the clock, `treated` shot)
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --sensor 2000000 --shot s.png  # the sensor screen (V), 2M across
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --theme glass --blur --open settings --click 565 141 60 --shot t.png --frames 90  # a UI theme for one run; a click played into raylib's input on frame 60
+./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --dock --fit --shot f.png --frames 900  # the hangar's Fit tab, docked
 ./build/bin/editor/worldeditor.exe
 ./build/bin/editor/worldeditor.exe gallery           # every archetype at once, for tuning a look (F3)
 ./build/bin/editor/worldeditor.exe gallery shapes    # ...on the shape backend (F2 switches; F10 = screen treatment)
@@ -293,6 +294,12 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   id (`Factions::Id`). The code names no faction -- who owns what nobody owns, who the
   pirates are, whose police patrol a lawless system are `roles` in the file. Store a value
   per faction in `PerFaction<T>` and iterate `Factions::All()`.
+- **A ship flies a design, and a player's design is named by its content** (#279). A refit
+  files `Ships::PlayerFit`'s design under `Ships::ContentId` and the ship flies that id; the
+  snapshot carries only the id, so the host sends a `DesignDef` before the first snapshot
+  that names one, the way a `LayoutDelta` goes first (#38). The fit rules and the price are
+  `core/Fitting`, read by the server, the Fit tab and `preview_fit` alike -- never a copy.
+  Refits happen only at a station whose archetype declares `shipyard`.
 - **Load `Archetypes` before building a world.** Entity constructors look themselves up
   in the registry, so an entity built before the load has no components and no glyph —
   it would silently be undockable and invisible rather than fail.
