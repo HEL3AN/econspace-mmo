@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <set>
 #include <utility>
@@ -36,6 +37,7 @@ enum Purpose : uint64_t
     REGION = 20,  // a slot's key, from the world's seed
     STATIONS = 21,
     NAMES = 22,
+    NATIVES = 23,
 };
 
 // How much richer a frontier is for being further from a centre (#342 S2): steps beyond the
@@ -1034,7 +1036,7 @@ std::vector<Disc> TakenOf(const json& sys)
         for (const json& s : sys["stars"])
             taken.push_back(
                 { s["pos"][0].get<double>(), s["pos"][1].get<double>(), s["size"].get<double>() });
-    for (const char* group : { "gates", "asteroidFields", "derelicts" })
+    for (const char* group : { "gates", "asteroidFields", "derelicts", "stations" })
         if (sys.contains(group))
             for (const json& o : sys[group])
                 if (o.contains("pos"))  // a satellite moves; its planet's path covers it
@@ -1227,6 +1229,304 @@ void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Regi
     }
 }
 
+// ---- Natives (#342 S5) -----------------------------------------------------------------
+//
+// Beyond the first wormhole is not dark and silent. Every frontier region has a minor
+// faction of its own that fits what the region is -- colonists who broke away, a pirate
+// clan, a sect keeping the ruins, drone automata left running, free traders -- with one to
+// three stations that dock and trade. It is in the region's documents like everything else,
+// so it is sealed with the region and comes back with it from the archive.
+
+enum class Theme
+{
+    Colonists,
+    Clan,
+    Sect,
+    Automata,
+    Traders,
+};
+constexpr int THEMES = 5;
+
+const char* ThemeName(Theme t)
+{
+    switch (t)
+    {
+        case Theme::Colonists: return "colonists";
+        case Theme::Clan: return "clan";
+        case Theme::Sect: return "sect";
+        case Theme::Automata: return "automata";
+        case Theme::Traders: return "traders";
+    }
+    return "colonists";
+}
+
+// A name nobody outside the region has heard: two syllables and an ending.
+std::string NativeRoot(Rng& rng)
+{
+    static const char* HEAD[] = { "Ab",  "Bra", "Cael", "Dov", "Esk", "Fal", "Gor", "Hav",
+                                  "Ith", "Jor", "Kes",  "Lor", "Mag", "Nor", "Ost", "Pel",
+                                  "Rav", "Sev", "Tor",  "Ush", "Var", "Wen", "Yev", "Zor" };
+    static const char* MID[] = { "a", "e", "i", "o", "u", "ai", "ar", "el", "in", "or" };
+    static const char* TAIL[] = { "n", "s", "k", "th", "ra", "ve", "rin", "dal", "mor", "ek" };
+    std::string        root = HEAD[rng.Range(0, 23)];
+    root += MID[rng.Range(0, 9)];
+    root += TAIL[rng.Range(0, 9)];
+    return root;
+}
+
+struct StationKind
+{
+    const char* role;
+    const char* suffix;
+    int         size;
+};
+
+// What each theme builds, in the order it builds it: the first is its home.
+const StationKind* KindsOf(Theme t)
+{
+    static const StationKind COLONISTS[3] = { { "TradeHub", " Settlement", 560 },
+                                              { "MiningOutpost", " Claim", 460 },
+                                              { "TradeHub", " Homestead", 480 } };
+    static const StationKind CLAN[3] = { { "Military", " Den", 520 },
+                                         { "TradeHub", " Trading Post", 460 },
+                                         { "Military", " Hold", 480 } };
+    static const StationKind SECT[3] = { { "TradeHub", " Sanctum", 540 },
+                                         { "Military", " Reliquary", 480 },
+                                         { "TradeHub", " Hermitage", 440 } };
+    static const StationKind AUTOMATA[3] = { { "MiningOutpost", " Node", 500 },
+                                             { "TradeHub", " Exchange Node", 520 },
+                                             { "MiningOutpost", " Relay", 440 } };
+    static const StationKind TRADERS[3] = { { "TradeHub", " Trading Post", 520 },
+                                            { "TradeHub", " Waystation", 460 },
+                                            { "MiningOutpost", " Claim", 440 } };
+    switch (t)
+    {
+        case Theme::Colonists: return COLONISTS;
+        case Theme::Clan: return CLAN;
+        case Theme::Sect: return SECT;
+        case Theme::Automata: return AUTOMATA;
+        case Theme::Traders: return TRADERS;
+    }
+    return COLONISTS;
+}
+
+std::string NativeName(Rng& rng, Theme t, const std::string& root)
+{
+    const int pick = rng.Range(0, 2);
+    switch (t)
+    {
+        case Theme::Colonists:
+            return pick == 0 ? "Free Colony of " + root
+                             : (pick == 1 ? root + " Breakaway" : "Settlers of " + root);
+        case Theme::Clan:
+            return pick == 0 ? root + " Clan" : (pick == 1 ? "Clan " + root : root + " Reavers");
+        case Theme::Sect:
+            return pick == 0 ? "Keepers of " + root
+                             : (pick == 1 ? "Order of " + root : root + " Remnant");
+        case Theme::Automata:
+            return pick == 0 ? root + " Automata"
+                             : (pick == 1 ? "The " + root + " Swarm" : root + " Collective");
+        case Theme::Traders:
+            return pick == 0 ? root + " Free Traders"
+                             : (pick == 1 ? root + " Compact" : root + " Exchange");
+    }
+    return root;
+}
+
+// How they act on the galaxy (#231): the same machinery as every faction's, with numbers that
+// keep a minor faction mostly at home.
+json NativeTemperament(Theme t)
+{
+    // appetite, capacity, growth, curiosity; traffic, ore, salvage, unclaimed
+    static const double T[THEMES][8] = {
+        { 0.15, 3.0, 0.08, 0.15, 0.3, 0.5, 0.1, 0.5 },  // colonists
+        { 0.40, 4.0, 0.10, 0.10, 0.8, 0.1, 0.3, 0.2 },  // clan
+        { 0.10, 3.0, 0.06, 0.30, 0.1, 0.1, 0.9, 0.3 },  // sect
+        { 0.25, 4.0, 0.12, 0.40, 0.1, 0.9, 0.2, 0.6 },  // automata
+        { 0.20, 3.0, 0.08, 0.20, 0.9, 0.2, 0.1, 0.2 },  // traders
+    };
+    const double* v = T[(int)t];
+    return {
+        { "appetite", v[0] },
+        { "capacity", v[1] },
+        { "growth", v[2] },
+        { "curiosity", v[3] },
+        { "values",
+          { { "traffic", v[4] }, { "ore", v[5] }, { "salvage", v[6] }, { "unclaimed", v[7] } } }
+    };
+}
+
+// A pick weighted by `weights`; -1 when every weight is zero.
+int PickWeighted(Rng& rng, const std::vector<int>& weights)
+{
+    int total = 0;
+    for (int w : weights)
+        total += std::max(0, w);
+    if (total == 0)
+        return -1;
+    int roll = rng.Range(0, total - 1);
+    for (size_t i = 0; i < weights.size(); i++)
+    {
+        if (roll < std::max(0, weights[i]))
+            return (int)i;
+        roll -= std::max(0, weights[i]);
+    }
+    return -1;
+}
+
+int CountOf(const json& sys, const char* group, const char* archetype = nullptr)
+{
+    int n = 0;
+    if (sys.contains(group) && sys[group].is_array())
+        for (const json& o : sys[group])
+            if (archetype == nullptr || o.value("archetype", std::string()) == archetype)
+                n++;
+    return n;
+}
+
+void PlaceNatives(const RegionParams& params, const std::vector<Node>& nodes, Region& region)
+{
+    if (nodes.empty())
+        return;
+    Rng rng(Key(params.seed, NATIVES));
+
+    // What the region is decides who lives in it: ruins and battlefields keep a sect, ore and
+    // dead rock keep machines busy, the far frontier keeps a clan.
+    int graveyards = 0, belts = 0, barren = 0, ruins = 0, lawless = 0;
+    for (const Node& n : nodes)
+    {
+        const json&       sys = region.documents.at(n.id);
+        const std::string c = sys.value("character", std::string());
+        graveyards += c == "graveyard" ? 1 : 0;
+        belts += c == "belt cluster" ? 1 : 0;
+        barren += c == "barren" || c == "frozen" ? 1 : 0;
+        ruins += CountOf(sys, "derelicts", "derelict.outpost_ruin") +
+                 CountOf(sys, "derelicts", "derelict.station_hulk");
+    }
+    for (const json& s : region.systems)
+        lawless += s.value("owner", std::string()) == params.pirates ? 1 : 0;
+    const int              rich = Richness(params);
+    const std::vector<int> themeWeights = {
+        30,                               // colonists
+        8 + 8 * rich + 4 * lawless,       // a clan
+        5 + 10 * graveyards + 5 * ruins,  // a sect at the ruins
+        8 + 6 * belts + 4 * barren,       // automata
+        20,                               // free traders
+    };
+    const Theme theme = (Theme)std::max(0, PickWeighted(rng, themeWeights));
+    const bool  lawful = theme != Theme::Clan;
+
+    // Their id is the region's key -- (seed, slot) -- and nothing else: what a save, the wire
+    // and every other document calls them.
+    char hex[17];
+    std::snprintf(hex, sizeof(hex), "%016llx", (unsigned long long)Key(params.seed, NATIVES, 1));
+    const std::string id = std::string("native-") + std::string(hex).substr(0, 12);
+    const std::string root = NativeRoot(rng);
+    const std::string name = NativeName(rng, theme, root);
+    // A colour of their own for the instruments to show them by (#117), from the theme's
+    // family so a player learns to read it.
+    static const int COLOURS[THEMES][3] = {
+        { 120, 200, 140 }, { 210, 90, 60 }, { 190, 150, 230 }, { 110, 190, 220 }, { 225, 200, 110 }
+    };
+    json colour = json::array();
+    for (int c = 0; c < 3; c++)
+        colour.push_back(std::max(0, std::min(255, COLOURS[(int)theme][c] + rng.Range(-20, 20))));
+
+    // Where they live: a home, then up to two more systems, a station in each, a little way
+    // in and with what the theme lives on. Never the entry: the first ship through the mouth
+    // finds open space, and somebody living further on.
+    int deepest = 1;
+    for (const Node& n : nodes)
+        deepest = std::max(deepest, n.depth);
+    const int                count = std::min((int)nodes.size(), rng.Range(1, 3));
+    std::vector<std::string> hosts;
+    for (int i = 0; i < count; i++)
+    {
+        std::vector<int> weights;
+        for (const Node& n : nodes)
+        {
+            const json& sys = region.documents.at(n.id);
+            int         w = n.depth == 1 ? (deepest == 1 ? 2 : 0) : (n.depth <= 3 ? 6 : 3);
+            if (theme == Theme::Colonists || theme == Theme::Automata)
+                w += 3 * CountOf(sys, "asteroidFields");
+            if (theme == Theme::Sect)
+                w += 4 * CountOf(sys, "derelicts");
+            if (theme == Theme::Clan)
+                w += n.depth;
+            if (std::find(hosts.begin(), hosts.end(), n.id) != hosts.end())
+                w = 0;
+            weights.push_back(w);
+        }
+        const int pick = PickWeighted(rng, weights);
+        if (pick < 0)
+            break;
+        hosts.push_back(nodes[(size_t)pick].id);
+    }
+
+    const StationKind* kinds = KindsOf(theme);
+    json               systems = json::array();
+    for (size_t i = 0; i < hosts.size(); i++)
+    {
+        json&                   sys = region.documents[hosts[i]];
+        const StationKind&      k = kinds[i];
+        const std::vector<Band> bands = BandsOf(sys);
+        std::vector<Disc>       taken = TakenOf(sys);
+        json                    pos;
+        bool                    placed = false;
+        // A claim by its ore; a sanctum by the ruin it keeps.
+        const char* by = std::string(k.role) == "MiningOutpost" ? "asteroidFields"
+                         : theme == Theme::Sect                 ? "derelicts"
+                                                                : nullptr;
+        if (by != nullptr && sys.contains(by))
+            for (const json& o : sys[by])
+                if (!placed && o.contains("pos") &&
+                    PlaceNear(rng, o["pos"][0], o["pos"][1], o.value("size", 100.0), k.size, bands,
+                              taken, pos))
+                    placed = true;
+        if (!placed && !Place(rng, 200000.0, 820000.0, k.size, bands, taken, pos) &&
+            !Place(rng, 120000.0, 960000.0, k.size, bands, taken, pos))
+        {
+            std::vector<Disc> none;
+            if (!Place(rng, 120000.0, 960000.0, k.size, bands, none, pos))
+                continue;
+        }
+        if (!sys.contains("stations") || !sys["stations"].is_array())
+            sys["stations"] = json::array();
+        sys["stations"].push_back({ { "name", root + k.suffix },
+                                    { "role", k.role },
+                                    { "size", k.size },
+                                    { "faction", id },
+                                    { "pos", pos } });
+        // Theirs: held, and as safe as they keep it.
+        for (json& e : region.systems)
+            if (e.value("id", std::string()) == hosts[i])
+            {
+                e["owner"] = id;
+                if (lawful)
+                    e["security"] = std::max(e.value("security", 0.0), 0.35);
+            }
+        systems.push_back(hosts[i]);
+    }
+    if (systems.empty())
+        return;
+
+    const char* majors =
+        theme == Theme::Clan ? "Hostile" : (theme == Theme::Traders ? "Friendly" : "Neutral");
+    region.natives = { { "id", id },
+                       { "name", name },
+                       { "theme", ThemeName(theme) },
+                       { "color", colour },
+                       { "lawful", lawful },
+                       { "temperament", NativeTemperament(theme) },
+                       // What they think of the registry's parts, by role: the majors of the
+                       // centres, and the pirates.
+                       { "relations",
+                         { { "majors", majors },
+                           { "pirates", theme == Theme::Clan ? "Neutral" : "Hostile" } } },
+                       { "home", systems.front() },
+                       { "systems", systems } };
+}
+
 }  // namespace
 
 std::string SystemId(int slot, int depth, int k)
@@ -1279,6 +1579,8 @@ nlohmann::json RegionToJson(const Region& region)
         out["home"] = region.homeId;
     if (!region.heartId.empty())
         out["heart"] = region.heartId;
+    if (!region.natives.empty())
+        out["natives"] = region.natives;
     return out;
 }
 
@@ -1303,6 +1605,9 @@ bool RegionFromJson(const nlohmann::json& doc, Region& out)
         r.homeId = doc["home"].get<std::string>();
     if (doc.contains("heart") && doc["heart"].is_string())
         r.heartId = doc["heart"].get<std::string>();
+    // Absent in a region sealed before natives (#342 S5): nobody lives there, and nobody will.
+    if (doc.contains("natives") && doc["natives"].is_object())
+        r.natives = doc["natives"];
     out = std::move(r);
     return true;
 }
@@ -1317,6 +1622,58 @@ int SlotOf(const std::string& id)
 {
     int slot, depth, k;
     return ParseId(id, slot, depth, k) ? slot : -1;
+}
+
+FactionId RegisterNatives(const nlohmann::json& natives)
+{
+    if (!natives.is_object() || !natives.contains("id") || !natives["id"].is_string() ||
+        natives["id"].get<std::string>().empty())
+        return Factions::Unaffiliated();
+    FactionDef d;
+    d.id = natives["id"].get<std::string>();
+    FactionId known;
+    if (Factions::Find(d.id, known))
+        return known;
+    d.name = natives.value("name", d.id);
+    d.kind = "Native";
+    d.lawful = natives.value("lawful", true);
+    const json c = natives.value("color", json());
+    if (c.is_array() && c.size() >= 3 && c[0].is_number() && c[1].is_number() && c[2].is_number())
+        d.color = Color{ (unsigned char)std::max(0, std::min(255, c[0].get<int>())),
+                         (unsigned char)std::max(0, std::min(255, c[1].get<int>())),
+                         (unsigned char)std::max(0, std::min(255, c[2].get<int>())), 255 };
+    const json t = natives.value("temperament", json::object());
+    if (t.is_object())
+    {
+        Temperament& m = d.temperament;
+        m.appetite = t.value("appetite", m.appetite);
+        m.capacity = t.value("capacity", m.capacity);
+        m.growth = t.value("growth", m.growth);
+        m.curiosity = t.value("curiosity", m.curiosity);
+        const json v = t.value("values", json::object());
+        if (v.is_object())
+        {
+            m.traffic = v.value("traffic", m.traffic);
+            m.ore = v.value("ore", m.ore);
+            m.salvage = v.value("salvage", m.salvage);
+            m.unclaimed = v.value("unclaimed", m.unclaimed);
+        }
+    }
+    const FactionId f = Factions::Add(d);
+    // What they think of the others, by the part each plays: every major, and the pirates.
+    const json rel = natives.value("relations", json::object());
+    Stance     majors = Stance::Neutral, pirates = Stance::Hostile;
+    if (rel.is_object())
+    {
+        Factions::ParseStance(rel.value("majors", std::string("Neutral")), majors);
+        Factions::ParseStance(rel.value("pirates", std::string("Hostile")), pirates);
+    }
+    for (FactionId other : Factions::All())
+        if (other == Factions::Pirates())
+            Factions::SetRelation(f, other, pirates);
+        else if (Factions::Kind(other) == "Major")
+            Factions::SetRelation(f, other, majors);
+    return f;
 }
 
 Region GenerateRegion(const RegionParams& worldParams)
@@ -1389,6 +1746,7 @@ Region GenerateRegion(const RegionParams& worldParams)
     if (centre)
         return region;  // settled long ago: whatever was rare here is in a museum
     PlaceFinds(params, nodes, region);
+    PlaceNatives(params, nodes, region);
 
     // The wormhole's mouth in the home system: at the edge, facing the region, out of the
     // path of the home system's own planets.

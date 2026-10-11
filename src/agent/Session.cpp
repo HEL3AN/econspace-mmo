@@ -135,6 +135,14 @@ void Session::Pump()
             if (Proto::DecodeDesignDef(msg, def) && !Archetypes::AddDesign(def.design, why))
                 Rpc::Log("econagent: design " + def.design.id + " from the server: " + why);
         }
+        else if (type == "factions")
+        {
+            // The server's faction registry (#342 S5): a native faction is reported by its
+            // name, not as unaffiliated.
+            Proto::FactionList f;
+            if (Proto::DecodeFactions(msg, f))
+                Proto::ApplyFactions(f);
+        }
         else if (type == "universe")
         {
             // Replaced whole: it is sent whole, at login and whenever it changes (#206).

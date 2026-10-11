@@ -32,9 +32,11 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    30;  // 30: a snapshot is numbered and may be a delta against one the client acknowledged
-         // with an Ack; entities are quantised integers, and beyond the area of interest they
-         // are coarse and refreshed once a second; missions are part of the delta (#349);
+    31;  // 31: the server's faction registry, sent before anything names one of its factions
+         // (#342 S5, #355); 30: a snapshot is numbered and may be a delta against one the client
+         // acknowledged with an Ack; entities are quantised integers, and beyond the area of
+         // interest they are coarse and refreshed once a second; missions are part of the delta
+         // (#349);
          // 29: a gate's expiresAt is when an unstable wormhole mouth collapses (#342 S4); 28: a
          // structure's allow-list is in its owner's layout only; anyone else's has its mode and
          // threshold with the lists empty (#340); 27: a structure's rules of engagement, set by a
@@ -470,6 +472,27 @@ struct DesignDef
     Ships::Design design;  // design.id is the id
 };
 
+// The server's faction registry (#355, #342 S5): every faction it has, and every pair whose
+// stance is not neutral. Sent at login before the index, and again whenever the registry
+// grows -- a region opening with natives of its own -- so a client and an agent know a
+// faction the server made by its name rather than reading it as unaffiliated. A client adds
+// what it lacks to its own registry (Factions::Add) and takes the server's stances.
+struct FactionRelation
+{
+    std::string a, b;  // faction ids
+    Stance      stance = Stance::Neutral;
+};
+struct FactionList
+{
+    std::vector<FactionDef>      factions;  // id, name, colour, lawful, kind; no temperament
+    std::vector<FactionRelation> relations;
+};
+// This process's registry as the message.
+FactionList RegistryMessage();
+// ...and a message into this process's registry: the factions it lacks added, every stance
+// the message names set.
+void ApplyFactions(const FactionList& list);
+
 // JSON serialization. Decode* return false on a broken/unsuitable message.
 // Fills in what the per-tick snapshot deliberately leaves out (#16, #97). A star does not
 // move, change name or change owner, so a snapshot carries neither those fields nor, for
@@ -510,6 +533,8 @@ std::string EncodeDesignDef(const DesignDef& d);
 bool        DecodeDesignDef(const std::string& s, DesignDef& out);
 std::string EncodeGalaxy(const GalaxyState& s);
 bool        DecodeGalaxy(const std::string& s, GalaxyState& out);
+std::string EncodeFactions(const FactionList& f);
+bool        DecodeFactions(const std::string& s, FactionList& out);
 
 // The galaxy index (#206): which systems exist, their names, map positions, security and
 // owners, the links between them and where a new player starts. The server sends it at
@@ -614,7 +639,7 @@ private:
 };
 
 // Message type from the "t" field ("cmd"/"snap"/"layout"/"ldelta"/"design"/"galaxy"/
-// "universe"); "" —
+// "universe"/"factions"); "" —
 // broken/unknown. For dispatching incoming transport messages on the client side. Reports the type
 // regardless of version, so a mismatch can be diagnosed rather than looking like garbage.
 std::string MessageType(const std::string& s);

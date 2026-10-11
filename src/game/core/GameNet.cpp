@@ -201,6 +201,14 @@ void Game::BuildClientSnapshot()
                     ChooseStart(autoStart_ == "random" ? std::string() : autoStart_);
             }
         }
+        else if (type == "factions")
+        {
+            // The server's faction registry (#342 S5): a region's natives are known by name
+            // from here on, before anything names them.
+            Proto::FactionList f;
+            if (Proto::DecodeFactions(msg, f))
+                Proto::ApplyFactions(f);
+        }
         else if (type == "universe")
         {
             // The galaxy index (#206): replaced whole, because it is sent whole -- at login

@@ -39,6 +39,7 @@ namespace
 {
 void AddRegion(const Region& region, uint64_t seed, bool centre, std::vector<SurveySystem>& out)
 {
+    RegisterNatives(region.natives);  // their stations fly their flag (#342 S5)
     for (const json& entry : region.systems)
     {
         SurveySystem s;

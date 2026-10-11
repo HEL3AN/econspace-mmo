@@ -3,6 +3,7 @@
 #include "raylib.h"
 #include <nlohmann/json.hpp>
 
+#include "core/Faction.h"
 #include "gen/Galaxy.h"
 
 #include <cstdint>
@@ -30,7 +31,8 @@ namespace Gen
 // galaxy, and a player's structure would be standing in space that is no longer there.
 // Bump it whenever the output for a given seed changes -- the golden test will say so.
 inline constexpr int GENERATOR_VERSION =
-    7;  // 7: civilisation centres, and a frontier as rich and lawless as it is far from one
+    8;  // 8: every frontier region has natives, with stations and markets (#342 S5);
+        // 7: civilisation centres, and a frontier as rich and lawless as it is far from one
         // (#342 S2); 6: keys and ids by skeleton slot (#342); 5: the leviathan dwarfs a station
 
 struct RegionParams
@@ -80,7 +82,18 @@ struct Region
     // A centre's heart: the capital, where its trade hub, shipyard and fleet are, and where
     // a player may start. Empty for a frontier region.
     std::string heartId;
+    // A frontier region's own minor faction (#342 S5): who lives there before anyone comes
+    // through the mouth. {id, name, theme, color, lawful, temperament, relations {majors,
+    // pirates}, home, systems}; empty for a centre, and for a region sealed before natives.
+    // Its id is a hash of the region's key (seed, slot): what saves and the wire call it.
+    nlohmann::json natives = nlohmann::json::object();
 };
+
+// Puts a region's natives into the faction registry (Factions::Add) with their stance to
+// the majors and the pirates, and returns them; one already there is returned unchanged. The
+// unaffiliated faction for a region without natives. Call before the region's systems are
+// built: their stations fly the natives' flag.
+FactionId RegisterNatives(const nlohmann::json& natives);
 
 Region GenerateRegion(const RegionParams& params);
 

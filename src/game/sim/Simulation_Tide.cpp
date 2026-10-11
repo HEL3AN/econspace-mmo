@@ -592,7 +592,7 @@ int Simulation::OpenNext(int fromSlot, const std::string& by, const std::string&
             const std::string mouth = o.mouth;
             Announce("tide", std::nullopt, mouth,
                      "A wormhole tore open in " + SystemName(mouth) +
-                         ": beyond it lies space nobody has charted" +
+                         ": beyond it lies space nobody has charted" + NativesLine(slot) +
                          (o.state == "unstable"
                               ? ". Unanchored, it collapses in " + Hours(o.closesAt - time_)
                               : std::string()));
@@ -644,6 +644,7 @@ void Simulation::MaterializeOpened(int slot)
     // The wormhole in the parent's system, for whoever is standing there: a gate is the
     // route graph's, so it never goes through AddStatic -- but it is a change to the layer,
     // and a delta says so before any snapshot shows it (#38).
+    PriceMarkets();  // the new systems' markets, and every route the mouth shortened
     const RegionOpening& o = openings_.back();
     SystemState*         home = SystemById(o.mouth);
     const auto           mouths = wormholes_.find(o.mouth);
@@ -664,6 +665,33 @@ void Simulation::MaterializeOpened(int slot)
         home->layoutRev++;
     }
     home->profile = ProfileOf(*home);
+}
+
+std::string Simulation::NativesLine(int slot) const
+{
+    const FactionId natives = NativesOf(slot);
+    if (natives == Factions::Unaffiliated())
+        return std::string();
+    // Where they trade: their stations, as the region's documents have them.
+    std::vector<std::string> where;
+    for (const std::string& id : RegionSystems(slot))
+    {
+        const auto doc = regionDocs_.find(id);
+        if (doc == regionDocs_.end())
+            continue;
+        const nlohmann::json sys = nlohmann::json::parse(doc->second, nullptr, false);
+        if (!sys.is_object() || !sys.contains("stations") || !sys["stations"].is_array())
+            continue;
+        for (const nlohmann::json& st : sys["stations"])
+            if (st.value("faction", std::string()) == Factions::Id(natives))
+                where.push_back(st.value("name", std::string()) + " in " + SystemName(id));
+    }
+    if (where.empty())
+        return std::string();
+    std::string list;
+    for (size_t i = 0; i < where.size(); i++)
+        list += (i == 0 ? "" : (i + 1 == where.size() ? " and " : ", ")) + where[i];
+    return " -- but not empty: the " + FactionName(natives) + " trade from " + list;
 }
 
 std::vector<int> Simulation::TakeOpenedRegions()

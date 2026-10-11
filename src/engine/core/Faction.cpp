@@ -85,14 +85,15 @@ const FactionDef& Def(FactionId f)
     return g_registry.factions[(size_t)f.Index()];
 }
 
+const std::pair<const char*, Stance> STANCE_NAMES[] = {
+    { "War", Stance::War },         { "Hostile", Stance::Hostile },
+    { "Neutral", Stance::Neutral }, { "Friendly", Stance::Friendly },
+    { "Ally", Stance::Ally },
+};
+
 bool StanceFromString(const std::string& s, Stance& out)
 {
-    static const std::pair<const char*, Stance> NAMES[] = {
-        { "War", Stance::War },         { "Hostile", Stance::Hostile },
-        { "Neutral", Stance::Neutral }, { "Friendly", Stance::Friendly },
-        { "Ally", Stance::Ally },
-    };
-    for (const auto& [name, stance] : NAMES)
+    for (const auto& [name, stance] : STANCE_NAMES)
         if (s == name)
         {
             out = stance;
@@ -410,6 +411,33 @@ FactionId Add(const FactionDef& def)
 int Count()
 {
     return (int)g_registry.factions.size();
+}
+
+const FactionDef& Def(FactionId f)
+{
+    return ::Def(f);
+}
+
+void SetRelation(FactionId a, FactionId b, Stance stance)
+{
+    const size_t n = g_registry.factions.size();
+    if ((size_t)a.Index() >= n || (size_t)b.Index() >= n || a == b)
+        return;
+    g_registry.relation[(size_t)a.Index()][(size_t)b.Index()] = stance;
+    g_registry.relation[(size_t)b.Index()][(size_t)a.Index()] = stance;
+}
+
+const char* StanceName(Stance s)
+{
+    for (const auto& [name, stance] : STANCE_NAMES)
+        if (s == stance)
+            return name;
+    return "Neutral";
+}
+
+bool ParseStance(const std::string& s, Stance& out)
+{
+    return StanceFromString(s, out);
 }
 
 bool Find(const std::string& id, FactionId& out)

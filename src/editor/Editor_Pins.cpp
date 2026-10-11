@@ -28,6 +28,10 @@ bool Editor::WorldRegion(uint64_t seed, std::string& systemId, Gen::Region& out,
     const std::vector<Gen::Region> world = Gen::GenerateWorld(g);
     if (world.empty())
         return false;
+    // Natives fly their own flag (#342 S5): the registry must know them before a system of
+    // theirs is built.
+    for (const Gen::Region& r : world)
+        Gen::RegisterNatives(r.natives);
     if (names != nullptr)
         for (const Gen::Region& r : world)
             for (const json& s : r.systems)
@@ -52,6 +56,7 @@ bool Editor::WorldRegion(uint64_t seed, std::string& systemId, Gen::Region& out,
         if (prm.kind == Gen::SlotKind::Frontier)
             prm.homeId = "home";
         out = Gen::GenerateRegion(prm);
+        Gen::RegisterNatives(out.natives);
     }
     if (homeName != nullptr)
         *homeName = out.homeId;

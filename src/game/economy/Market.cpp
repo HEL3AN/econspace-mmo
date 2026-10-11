@@ -1,5 +1,6 @@
 #include "economy/Market.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace
@@ -9,10 +10,48 @@ constexpr double RECOVERY = 0.1;  // share of the gap to the base price closed p
 
 Market::Market()
 {
-    basePrices_[ResourceType::Iron] = 10.0;
-    basePrices_[ResourceType::Ice] = 15.0;
-    basePrices_[ResourceType::Crystal] = 40.0;
+    for (ResourceType t : AllResourceTypes())
+        basePrices_[t] = DefaultBasePrice(t);
     prices_ = basePrices_;
+}
+
+double Market::DefaultBasePrice(ResourceType type)
+{
+    switch (type)
+    {
+        case ResourceType::Iron: return 10.0;
+        case ResourceType::Ice: return 15.0;
+        case ResourceType::Crystal: return 40.0;
+    }
+    return 0.0;
+}
+
+void Market::SetBasePrice(ResourceType type, double base)
+{
+    const double was = GetBasePrice(type);
+    const double price = GetPrice(type);
+    basePrices_[type] = base;
+    prices_[type] = was > 0.0 ? price * (base / was) : base;
+}
+
+Supply SupplyOf(ResourceType type)
+{
+    switch (type)
+    {
+        case ResourceType::Iron:
+        case ResourceType::Ice:
+        case ResourceType::Crystal: return Supply::Local;
+    }
+    return Supply::Local;
+}
+
+double RemotenessFactor(Supply supply, int jumps)
+{
+    if (jumps <= 0)
+        return 1.0;
+    if (supply == Supply::Local)
+        return std::max(0.55, 1.0 - 0.03 * jumps);
+    return std::min(2.0, 1.0 + 0.06 * jumps);
 }
 
 double Market::GetPrice(ResourceType type) const

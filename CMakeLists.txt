@@ -416,6 +416,7 @@ add_executable(tests
     tests/tide_tests.cpp           # the opening log, sealing, the tide and the cap (#342 S3)
     tests/mouth_tests.cpp          # unstable mouths, Anchors, drift and the archive (#342 S4)
     tests/prediction_tests.cpp     # the client's prediction against the server, same commands (#358)
+    tests/natives_tests.cpp        # natives, their stations and frontier prices (#342 S5)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/MissionList.cpp   # the missions window's rows, tested without one (#297)
