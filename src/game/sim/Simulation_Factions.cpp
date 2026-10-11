@@ -29,6 +29,7 @@
 #include "gen/Rng.h"
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -69,6 +70,11 @@ constexpr float SETTLE_PRESENCE = 0.5f;
 // A faction spends on something new only what it has beyond this many periods of keeping the
 // outposts it has (#295, slice 5).
 constexpr float UPKEEP_RESERVE = 10.0f;
+// A holding with less than this to spare lends a siege nothing: not worth the journey.
+constexpr float MIN_LEND = 0.5f;
+// What bringing down a lawless base is worth to a lawful faction, in a system with no
+// security at all (#295): the order it brings to its holdings next door.
+constexpr float ORDER_WORTH = 0.5f;
 
 bool Hostile(FactionId a, FactionId b)
 {
@@ -289,6 +295,7 @@ void Simulation::ResolveDuePlans()
             case Plan::Kind::Survey: ResolveSurvey(p); break;
             case Plan::Kind::Settle: ResolveSettle(p); break;
             case Plan::Kind::Siege: ResolveSiege(p); break;
+            case Plan::Kind::Return: ResolveReturn(p); break;
         }
     }
 }
@@ -449,8 +456,28 @@ void Simulation::StepFactions()
         stock = std::min(storable, stock + INCOME_BASE * (1.0f + a.prosperity + ore));
     }
 
-    // Once a period, holdings recover towards capacity; everything else fades towards what
-    // the place breeds by itself, unless its faction keeps sending more.
+    // Once a period, holdings recover towards capacity -- less what they have lent a siege and
+    // not had back (#295): a holding does not make good ships that are only away -- and
+    // everything else fades towards what the place breeds by itself, unless its faction keeps
+    // sending more.
+    // By system, what its holder has away: LentFrom for every holding at once.
+    std::map<std::string, float> lent;
+    auto                         owes = [&](const std::string& id, FactionId f, float force)
+    {
+        const auto home = systems_.find(id);
+        if (home != systems_.end() && home->second.agg.claimed && home->second.agg.controller == f)
+            lent[id] += force;
+    };
+    for (const auto& kv : plans_)
+    {
+        if (kv.second.kind == Plan::Kind::Siege)
+        {
+            for (const Plan::Lent& l : kv.second.lent)
+                owes(l.from, kv.second.faction, l.force);
+        }
+        else if (kv.second.kind == Plan::Kind::Return)
+            owes(kv.second.target, kv.second.faction, kv.second.force);
+    }
     for (auto& kv : systems_)
     {
         SystemAggregate& a = kv.second.agg;
@@ -459,7 +486,12 @@ void Simulation::StepFactions()
             const Temperament& t = Factions::TemperamentOf((FactionId)f);
             float&             p = a.presence[f];
             if ((FactionId)f == a.controller && a.claimed)
-                p += t.growth * (t.capacity - p);
+            {
+                const auto  away = lent.find(kv.first);
+                const float keep =
+                    std::max(0.0f, t.capacity - (away != lent.end() ? away->second : 0.0f));
+                p += t.growth * (keep - p);
+            }
             else
             {
                 const float floor = (FactionId)f == FactionId::Pirates ? Unrest(a) : 0.0f;
@@ -537,7 +569,10 @@ void Simulation::Think(FactionId f)
     float       bestScore = 0.0f;
     std::string from, to, why;
     FactionId   enemy = FactionId::Independent;
-    float       force = 0.0f;
+    // A siege's force, by the system it would be against: who would lend it, and the way in.
+    std::map<std::string, std::pair<std::vector<Plan::Lent>, std::string>> pools;
+    std::vector<Plan::Lent>                                                lend;
+    std::string                                                            via;
     for (auto& kv : systems_)
     {
         const SystemAggregate& home = kv.second.agg;
@@ -626,17 +661,33 @@ void Simulation::Think(FactionId f)
             }
 
             // Besieging (slice 5): an enemy's outpost next door, which it has seen, can reach
-            // with what its holding spares, and can bring down before its besiegers give up.
-            // Worth what the system is worth with nobody's claim on it and one more wreck in
-            // it -- which is what is left when the outpost falls; the risk is the garrison,
-            // the guns and the time it would take.
+            // with what its holdings within reach spare (#295: pooled), and can bring down
+            // before its besiegers give up. Worth what the system is worth with nobody's claim
+            // on it and one more wreck in it -- which is what is left when the outpost falls;
+            // the risk is the garrison against what it brings, the guns, and the time it would
+            // take to get there and bring it down.
             if (canSiege && wall > 0.0f)
                 for (FactionId g : seen->outposts)
                 {
                     if (!Hostile(f, g) || (seen->claimed && seen->controller != g))
                         continue;
-                    const float sent = std::min(surplus, t.capacity * siege.commit);
                     const float garrison = seen->presence[(int)g];
+                    // It asks its holdings within reach for all the rules let a siege have.
+                    auto pool = pools.find(nid);
+                    if (pool == pools.end())
+                    {
+                        std::string in;
+                        auto        lent = PoolFor(f, nid, siege.pool * t.capacity, &in);
+                        pool = pools.emplace(nid, std::make_pair(std::move(lent), in)).first;
+                    }
+                    float sent = 0.0f;
+                    int   hops = 0;
+                    for (const Plan::Lent& l : pool->second.first)
+                    {
+                        sent += l.force;
+                        hops = std::max(hops, l.hops);
+                    }
+                    const float travel = hops * siege.hop;
                     const float firing = sent - siege.defence * garrison;
                     const float rate = firing * siege.dps - (seen->claimed ? mend : 0.0f);
                     if (sent < 1.5f || firing <= 0.0f || rate <= 0.0f ||
@@ -646,14 +697,24 @@ void Simulation::Think(FactionId f)
                     for (FactionId d : o.defenders)
                         if (d != f)
                             guns++;
+                    // ...and to the law, a lawless base next door is what keeps its own systems
+                    // unsafe: bringing one down is worth the order it brings, as the lawless
+                    // fear the law in a system they would reach into.
+                    const float order = Factions::IsLawful(f) && !Factions::IsLawful(g)
+                                            ? ORDER_WORTH * (1.0f - seen->security)
+                                            : 0.0f;
                     const float worth = t.traffic * o.traffic + t.ore * o.ore +
-                                        t.salvage * std::min(1.0f, o.salvage + 0.25f) + t.unclaimed;
-                    // The garrison is the law there: the lawless fear it, and nothing more.
+                                        t.salvage * std::min(1.0f, o.salvage + 0.25f) +
+                                        t.unclaimed + order;
+                    // The share of its force the garrison would tie up, the guns, and how much
+                    // of its time there it would take to bring the outpost down -- all as it
+                    // saw them, and that sighting will be older by the time it has got there.
                     const float risk =
-                        garrison / t.capacity + 0.5f * guns + wall / rate / siege.seconds;
-                    const float score = worth - Intelligence::BelievedRisk(
-                                                    risk, Intelligence::Staleness(*seen, time_)) /
-                                                    t.appetite;
+                        siege.defence * garrison / sent + 0.5f * guns + wall / rate / siege.seconds;
+                    const float score =
+                        worth - Intelligence::BelievedRisk(
+                                    risk, Intelligence::Staleness(*seen, time_ + travel)) /
+                                    t.appetite;
                     if (score > bestScore)
                     {
                         bestScore = score;
@@ -661,7 +722,8 @@ void Simulation::Think(FactionId f)
                         from = kv.first;
                         to = nid;
                         enemy = g;
-                        force = sent;
+                        lend = pool->second.first;
+                        via = pool->second.second;
                     }
                     break;  // one outpost in a system is what it would besiege
                 }
@@ -742,7 +804,7 @@ void Simulation::Think(FactionId f)
         for (size_t i = 0; i < dest.profile.outposts.size(); i++)
             if (dest.profile.outposts[i] == enemy)
             {
-                BeginSiege(f, from, to, enemy, StaticKey(to, dest.profile.outpostIds[i]), force);
+                BeginSiege(f, lend, via, to, enemy, StaticKey(to, dest.profile.outpostIds[i]));
                 return;
             }
         return;
@@ -815,4 +877,68 @@ void Simulation::StepControl(bool settling)
                           ? "Pirates seized " + SystemName(kv.first)
                           : SystemName(kv.first) + " taken by " + FactionName(challenger));
     }
+}
+
+// Who would lend a siege (#295): the faction's holdings within reach of the target, by the
+// fewest jumps and then by id, each with what it has over and above its home guard -- at most
+// what one holding would send -- until the siege has what it asked for.
+std::vector<Plan::Lent> Simulation::PoolFor(FactionId f, const std::string& target, float want,
+                                            std::string* via) const
+{
+    const Blueprints::Siege& r = Blueprints::SiegeRules();
+    const Temperament&       t = Factions::TemperamentOf(f);
+    const int                reach = std::max(1, (int)r.reach);
+    // Out from the target a jump at a time, remembering which of its neighbours each system
+    // is reached through: that is the gate a force from there comes in by.
+    std::map<std::string, std::pair<int, std::string>> found;  // id -> (jumps, way in)
+    std::vector<std::string>                           ring{ target };
+    found[target] = { 0, std::string() };
+    for (int hops = 1; hops <= reach && !ring.empty(); hops++)
+    {
+        std::vector<std::string> next;
+        for (const std::string& id : ring)
+            for (const std::string& n : Neighbors(id))
+                if (systems_.count(n) != 0 && found.count(n) == 0)
+                {
+                    const std::string in = hops == 1 ? n : found[id].second;
+                    found[n] = { hops, in };
+                    next.push_back(n);
+                }
+        ring = std::move(next);
+    }
+    struct Offer
+    {
+        int         hops;
+        std::string id;
+        float       spare;
+    };
+    std::vector<Offer> offers;
+    for (const auto& kv : found)
+    {
+        const SystemAggregate& a = systems_.at(kv.first).agg;
+        if (kv.second.first == 0 || !a.claimed || a.controller != f)
+            continue;
+        const float spare =
+            std::min(a.presence[(int)f] - t.capacity * HOME_GUARD, t.capacity * r.commit);
+        if (spare >= MIN_LEND)
+            offers.push_back({ kv.second.first, kv.first, spare });
+    }
+    std::sort(offers.begin(), offers.end(), [](const Offer& a, const Offer& b)
+              { return a.hops != b.hops ? a.hops < b.hops : a.id < b.id; });
+    std::vector<Plan::Lent> lent;
+    float                   total = 0.0f;
+    for (const Offer& o : offers)
+    {
+        if (total >= want)
+            break;
+        Plan::Lent l;
+        l.from = o.id;
+        l.hops = o.hops;
+        l.force = std::min(o.spare, want - total);
+        total += l.force;
+        lent.push_back(l);
+    }
+    if (via != nullptr)
+        *via = lent.empty() ? std::string() : found[lent.front().from].second;
+    return lent;
 }

@@ -41,13 +41,26 @@ struct Intel
 // is to see it, the warships standing at the outpost it is against. Each has an origin and a due
 // time so that a real expedition (#295's variant B) can carry one later -- leave `from`, travel,
 // arrive by `dueAt` -- without the decision or the result changing. Saved.
+//
+// A siege is pooled (#295, the owner's decision of 2026-10-11): its force is lent by several
+// of the faction's holdings within reach of the target, each contingent a number of hops away.
+// They muster on the way and stand at the outpost together once the farthest has come, and
+// what is left of them goes home the same way when it is over -- a Return, one per holding.
 struct Plan
 {
     enum class Kind
     {
         Survey,
         Settle,  // an outpost is being built; finished, it claims the system
-        Siege    // strength sent to bring down another faction's outpost (slice 5)
+        Siege,   // strength sent to bring down another faction's outpost (slice 5)
+        Return   // what is left of a siege's contingent, on its way home to `target`
+    };
+    // One holding's share of a siege: where it came from, how much, and how many jumps away.
+    struct Lent
+    {
+        std::string from;
+        float       force = 0.0f;
+        int         hops = 1;
     };
     int         id = 0;
     Kind        kind = Kind::Survey;
@@ -61,8 +74,16 @@ struct Plan
     // A siege's: whose outpost it is, and the strength still standing before it, in ships.
     // The force is part of the faction's presence in the target -- the same ships, counted
     // once -- set apart from what the spawn director makes police or pirates of.
+    // A Return's force is what is coming home.
     FactionId against = FactionId::Independent;
     float     force = 0.0f;
+    // A siege's contingents, as they set out (their sum is the force it began with), the
+    // neighbour of the target they come in from, and when the last of them gets there. Until
+    // then the force is on the way: counted nowhere, firing at nothing, and missing from home.
+    std::vector<Lent> lent;
+    std::string       via;
+    double            arrivesAt = 0.0;
+    bool              arrived = false;
     // How many of its ships are real, while the target is hot: what a pass counts the
     // living against. Transient -- a cold system has none, and a restart begins cold.
     int fielded = 0;

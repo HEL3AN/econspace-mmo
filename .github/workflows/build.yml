@@ -212,7 +212,8 @@ jobs:
         run: cmake -S . -B build -DWARNINGS_AS_ERRORS=ON
 
       - name: Build
-        run: cmake --build build -j
+        # A bare -j starts every compile at once; bound it by the cores, or the runner swaps and hangs.
+        run: cmake --build build -j "$(nproc)"
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
@@ -346,7 +347,8 @@ jobs:
         run: cmake -S . -B build -DWARNINGS_AS_ERRORS=ON
 
       - name: Build
-        run: cmake --build build -j
+        # A bare -j starts every compile at once; on a 3-core, 7 GB macOS runner that swaps until the job times out.
+        run: cmake --build build -j "$(sysctl -n hw.ncpu)"
 
       - name: Test
         run: ctest --test-dir build --output-on-failure

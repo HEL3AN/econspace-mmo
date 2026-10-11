@@ -35,7 +35,12 @@ namespace Save
 //    slice 5). A version 6
 //    build would drop the sieges with their committed force still counted as presence, and
 //    write the world back so. An older file loads with no siege under way.
-inline constexpr int WORLD_VERSION = 7;
+// 8: a siege's force is lent by several holdings and travels (#295): it names who lent what
+//    and when it arrives, and a plan may be what is left of it going home. A version 7 build
+//    would drop the returns -- every ship coming home, lost -- and read a siege still on its
+//    way as standing at the outpost already. An older file's sieges are read as lent by the
+//    holding they set out from, a jump away, and already there.
+inline constexpr int WORLD_VERSION = 8;
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.
 // 3: a mission names its stations by system and station rather than by entity id, which
