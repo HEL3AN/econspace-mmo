@@ -753,6 +753,35 @@
             }
         },
         {
+            "id": "structure.battery",
+            "name": "Defence Battery",
+            "kind": "Structure",
+            "glyph": "T",
+            "color": [196, 198, 204, 255],
+            "layer": 4,
+            "size": 64,
+            "material": "hull",
+            "shape": {
+                "sections": [
+                    {"form": "polygon", "sides": 6, "radius": 0.46, "angle": 30, "role": "hull", "pitch": 0.16},
+                    {"form": "bar", "at": [0.74, 0.0], "repeat": 3, "length": 0.5, "width": 0.16, "role": "panel", "pitch": 0.12, "z": -1},
+                    {"form": "polygon", "sides": 4, "at": [1.08, 0.0], "repeat": 3, "radius": 0.27, "angle": 45, "role": "hull", "pitch": 0.12}
+                ],
+                "kit": { "symmetry": "radial", "plain": 0.5, "modules": [
+                    {"of": "turret", "in": 2, "on": "middle", "count": 1, "variants": ["light-twin", "heavy"], "turn": -45, "scale": 0.17, "when": "defensive"},
+                    {"of": "light.nav", "in": 1, "on": "edge", "count": 1, "scale": 0.05}
+                ] },
+                "parts": [
+                    {"module": "turret", "variant": "heavy", "angle": 60, "scale": 0.3},
+                    {"form": "ring", "radius": 0.36, "width": 0.03, "role": "trim", "alpha": 0.6, "minPixels": 40}
+                ]
+            },
+            "components": {
+                "buildable": {},
+                "defensive": { "range": 1200, "damage": 4 }
+            }
+        },
+        {
             "id": "structure.outpost",
             "name": "Outpost",
             "kind": "Structure",

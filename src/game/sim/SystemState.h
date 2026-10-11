@@ -144,6 +144,9 @@ struct SystemState
     // Who has shot at each structure lately, by structure id: session id -> the world time
     // until which an armed structure fires back at them (#39). Transient, like the cooldown.
     std::map<int, std::map<int, double>> provokedBy;
+    // ...and which NPCs, by structure id: NPC entity id -> until when (#340). An NPC never
+    // shoots a structure, so it is here for shooting the owner's ship in its reach.
+    std::map<int, std::map<int, double>> provokedByNpc;
     // Until when a structure's owner has been told that it is firing first where that is a
     // crime (#340): once a minute, not once a volley. Transient.
     std::map<int, double> crimeToldUntil;

@@ -431,3 +431,177 @@ TEST_CASE("rules of engagement on the wire and as a player types them (#340)")
     CHECK(DefenceCost(Engage::Enemies, false, Fac::Independent()).find("costs nothing") !=
           std::string::npos);
 }
+
+TEST_CASE("a defence battery: a player's to build, armed below an outpost, and set like one (#340)")
+{
+    LoadRegistries();
+    const Blueprint* bp = Blueprints::Find("battery");
+    REQUIRE(bp != nullptr);
+    CHECK(bp->byPlayers);
+    CHECK_FALSE(bp->byFactions);
+    CHECK(std::any_of(Blueprints::All().begin(), Blueprints::All().end(),
+                      [](const Blueprint& x) { return x.id == "battery"; }));  // offered
+    CHECK_FALSE(bp->wreck.empty());
+    CHECK(bp->lifetime == 0.0f);                      // it stands until taken down
+    CHECK_FALSE(Outposts::IsOutpost(bp->archetype));  // no faction claims a system with it
+
+    // Armed, and modestly: less reach, damage and hull than a faction's outpost.
+    const Blueprint& post = *Blueprints::Find("outpost");
+    const Archetype* gun = Archetypes::Find(bp->archetype);
+    const Archetype* outpost = Archetypes::Find(post.archetype);
+    REQUIRE(gun != nullptr);
+    CHECK(gun->Has(Component::Defensive));
+    CHECK(gun->Has(Component::Buildable));
+    CHECK(gun->weaponDamage > 0.0f);
+    CHECK(gun->weaponDamage < outpost->weaponDamage);
+    CHECK(gun->weaponRange < outpost->weaponRange);
+    CHECK(bp->hull < post.hull);
+
+    // Built like anything else, its rules set while it is a site, and taken apart again.
+    Simulation sim;
+    StartServer(sim, "");
+    ClientSession& owner = Builder(sim, "hunter");
+    owner.ship->ClearCargo();
+    for (const auto& c : bp->cost)
+        REQUIRE(owner.ship->AddCargo(c.first, c.second));
+    Vector2 spot{};
+    bool    found = false;
+    for (int i = 0; i < 60 && !found; i++)
+        for (int j = 0; j < 60 && !found; j++)
+        {
+            spot = { 120000.0f + 9100.0f * (float)i, -270000.0f + 9300.0f * (float)j };
+            owner.ship->Teleport(spot);
+            found = sim.PlacementProblem(owner, *bp, spot).empty();
+        }
+    REQUIRE(found);
+    const int id = sim.Deploy(owner, "battery", spot, "Picket");
+    REQUIRE(id != 0);
+    Defence d = Mode(Engage::Strangers);
+    d.players = { "ann" };
+    CHECK(sim.DefenceSetProblem(owner, id, d).empty());
+    REQUIRE(sim.SetDefence(owner, id, d));
+    CHECK(sim.DismantleProblem(owner, id).empty());
+    REQUIRE(sim.Dismantle(owner, id));
+    for (const auto& c : bp->cost)
+        CHECK(owner.ship->GetCargoAmount(c.first) ==
+              c.second);  // a site just laid comes back whole
+}
+
+TEST_CASE("return fire also answers whoever shoots the owner's ship in its reach (#340)")
+{
+    Battery        b("hunter");
+    ClientSession& owner = b.Pilot("hunter", 300.0f);
+    const float    reach = b.It().GetSize() + b.It().GetArchetype()->weaponRange;
+    SystemState&   st = *b.sim.SystemById(b.sys);
+
+    // A pirate beside the owner's ship: by default the battery does not fire first on it.
+    auto raider =
+        std::make_unique<NpcShip>(Vector2{ b.at.x + 300.0f, b.at.y + 120.0f }, Fac::Pirates(),
+                                  NpcRole::Pirate, std::vector<Vector2>{});
+    raider->SetId(990001);
+    NpcShip* pirate = raider.get();
+    st.entities.push_back(std::move(raider));
+    b.Defend();
+    REQUIRE(b.fires.empty());
+
+    SUBCASE("it shoots the owner, and the battery answers -- not a first strike, so no crime")
+    {
+        Law(b.sim, b.sys, true, Fac::Independent());
+        std::vector<FireEvent> npcFire;
+        b.sim.StepNpcCombat(st, b.players, &npcFire);
+        REQUIRE_FALSE(npcFire.empty());
+        REQUIRE(npcFire.back().targetSessionId == owner.id);
+        const float whole = pirate->GetHull();
+        b.Defend();
+        REQUIRE_FALSE(b.fires.empty());
+        CHECK(b.fires.back().targetSessionId == 0);
+        CHECK(pirate->GetHull() < whole);
+        CHECK(b.sim.OwedStanding("hunter", Fac::Independent()) == 0.0f);
+
+        // ...for a while, as for a shot at the battery itself.
+        b.fires.clear();
+        b.sim.SetTime(b.sim.Time() + Simulation::PROVOKED_SECONDS + 1.0);
+        b.Defend();
+        CHECK(b.fires.empty());
+    }
+    SUBCASE("hold fire is hold fire")
+    {
+        b.Rules(Mode(Engage::Hold));
+        std::vector<FireEvent> npcFire;
+        b.sim.StepNpcCombat(st, b.players, &npcFire);
+        REQUIRE_FALSE(npcFire.empty());
+        b.Defend();
+        CHECK(b.fires.empty());
+    }
+    SUBCASE("out of its reach, the owner's ship is on its own")
+    {
+        const Vector2 far = { b.at.x + reach + 500.0f, b.at.y };
+        owner.ship->Teleport(far);
+        pirate->SetPosition({ far.x, far.y + 120.0f });
+        std::vector<FireEvent> npcFire;
+        b.sim.StepNpcCombat(st, b.players, &npcFire);
+        REQUIRE_FALSE(npcFire.empty());
+        pirate->SetPosition({ b.at.x + 300.0f, b.at.y + 120.0f });  // back in the battery's range
+        b.Defend();
+        CHECK(b.fires.empty());
+    }
+    SUBCASE("another player's battery firing on the owner provokes it against that player")
+    {
+        st.entities.erase(std::remove_if(st.entities.begin(), st.entities.end(),
+                                         [](const std::unique_ptr<Entity>& e)
+                                         { return e->GetId() == 990001; }),
+                          st.entities.end());
+        ClientSession& rival = b.Pilot("rival", -400.0f);
+        auto o = std::make_unique<Structure>(Vector2{ b.at.x + 300.0f, b.at.y + 1000.0f }, 0.0f,
+                                             "Spite", Blueprints::Find("battery")->archetype);
+        o->SetBlueprint("battery");
+        o->SetDefence(Mode(Engage::Strangers));
+        REQUIRE(b.sim.AddStatic(b.sys, std::move(o), "rival") != 0);
+        b.Defend(70);
+        REQUIRE(b.FiredAt(owner.id));  // the rival's battery fired on the owner...
+        CHECK(b.FiredAt(rival.id));    // ...so the owner's answers the rival
+    }
+}
+
+TEST_CASE("an allow-list reaches its owner only (#340)")
+{
+    Proto::SystemLayout lay;
+    Proto::EntityLayout mine, theirs, plain;
+    mine.id = 1;
+    mine.owner = "hunter";
+    mine.defence = Mode(Engage::Strangers);
+    mine.defence.players = { "ann" };
+    mine.defence.factions = { "TradersGuild" };
+    theirs = mine;
+    theirs.id = 2;
+    theirs.owner = "ann";
+    plain.id = 3;
+    lay.entities = { mine, theirs, plain };
+
+    Proto::SystemLayout forHunter = lay;
+    CHECK(Proto::ForViewer(forHunter, "hunter"));
+    CHECK(forHunter.entities[0].defence == mine.defence);              // their own, whole
+    CHECK(forHunter.entities[1].defence.engage == Engage::Strangers);  // another's mode...
+    CHECK(forHunter.entities[1].defence.players.empty());              // ...not whom it trusts
+    CHECK(forHunter.entities[1].defence.factions.empty());
+
+    Proto::SystemLayout forNobody = lay;
+    CHECK(Proto::ForViewer(forNobody, ""));
+    CHECK(forNobody.entities[0].defence.players.empty());
+
+    // A delta is cut the same way, and says when the owner's differs from everyone's.
+    Proto::LayoutDelta d;
+    d.changed = { mine };
+    CHECK(Proto::OwnsPrivate(d, "hunter"));
+    CHECK_FALSE(Proto::OwnsPrivate(d, "ann"));
+    CHECK_FALSE(Proto::OwnsPrivate(d, ""));
+    Proto::LayoutDelta forAnn = d;
+    CHECK(Proto::ForViewer(forAnn, "ann"));
+    Proto::LayoutDelta back;
+    REQUIRE(Proto::DecodeLayoutDelta(Proto::EncodeLayoutDelta(forAnn), back));
+    REQUIRE(back.changed.size() == 1);
+    CHECK(back.changed[0].defence.engage == Engage::Strangers);
+    CHECK(back.changed[0].defence.players.empty());
+    Proto::LayoutDelta forHunterToo = d;
+    CHECK_FALSE(Proto::ForViewer(forHunterToo, "hunter"));  // nothing of anyone else's to cut
+}

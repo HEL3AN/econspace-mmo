@@ -327,8 +327,9 @@ public:
     // its range, once a second, for its archetype's damage per second. Hostile means what it
     // means to an NPC of the owning faction: a player by their own account, an NPC by the
     // relation matrix. A structure also fires back at any player who has shot at it lately,
-    // which is all a player's own has to go on. A hidden or docked player is not in
-    // `players`, so is not shot at.
+    // which is all a player's own has to go on -- and at anyone who has shot its owner's
+    // ship within its reach (ProvokeGuards). A hidden or docked player is not in `players`,
+    // so is not shot at.
     void StepStationDefence(SystemState& st, const std::vector<PlayerPresence>& players,
                             std::vector<FireEvent>* fires, float dt);
     // A player's structure fired first, as its rules of engagement told it to (#340): the
@@ -537,6 +538,11 @@ public:
     // A crime an owner's structure committed (#41's table, ChargeAttack): charged at once
     // while the owner is connected, and on their return otherwise.
     void ChargeOwner(const std::string& account, FactionId victim, bool killed);
+    // Someone shot `victim`'s ship at `at`: every armed structure of theirs in reach of that
+    // point counts it as a shot at itself, and fires back for as long (#340). The shooter is a
+    // player (`bySession`, for the structure they fired with) or an NPC (`byNpc`), 0 when not.
+    void ProvokeGuards(SystemState& st, const ClientSession& victim, Vector2 at, int bySession,
+                       int byNpc);
     // Owed charges settled and standings noted, for every connected owner. Every tick.
     void StepOwners();
     // How much of a crime is waiting for its owner: what ChargeOwner put by, and not yet

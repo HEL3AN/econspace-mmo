@@ -1040,6 +1040,45 @@ void LayoutMirror::Reset(const SystemLayout& lay)
         byId[el.id] = el;
 }
 
+bool ForViewer(std::vector<EntityLayout>& v, const std::string& viewer)
+{
+    bool cut = false;
+    for (EntityLayout& e : v)
+    {
+        if (!viewer.empty() && e.owner == viewer)
+            continue;
+        if (e.defence.players.empty() && e.defence.factions.empty())
+            continue;
+        e.defence.players.clear();
+        e.defence.factions.clear();
+        cut = true;
+    }
+    return cut;
+}
+
+bool ForViewer(SystemLayout& lay, const std::string& viewer)
+{
+    return ForViewer(lay.entities, viewer);
+}
+
+bool ForViewer(LayoutDelta& d, const std::string& viewer)
+{
+    const bool added = ForViewer(d.added, viewer);
+    const bool changed = ForViewer(d.changed, viewer);
+    return added || changed;
+}
+
+bool OwnsPrivate(const LayoutDelta& d, const std::string& account)
+{
+    if (account.empty())
+        return false;
+    for (const std::vector<EntityLayout>* list : { &d.added, &d.changed })
+        for (const EntityLayout& e : *list)
+            if (e.owner == account && (!e.defence.players.empty() || !e.defence.factions.empty()))
+                return true;
+    return false;
+}
+
 bool LayoutMirror::Apply(const LayoutDelta& d)
 {
     if (d.systemId != systemId || d.rev <= rev)
