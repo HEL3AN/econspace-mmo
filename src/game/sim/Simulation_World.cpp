@@ -401,13 +401,15 @@ const char* PlanKindName(Plan::Kind k)
     {
         case Plan::Kind::Settle: return "settle";
         case Plan::Kind::Siege: return "siege";
+        case Plan::Kind::Return: return "return";
         case Plan::Kind::Survey: break;
     }
     return "survey";
 }
 bool PlanKindFrom(const std::string& name, Plan::Kind& out)
 {
-    for (Plan::Kind k : { Plan::Kind::Survey, Plan::Kind::Settle, Plan::Kind::Siege })
+    for (Plan::Kind k :
+         { Plan::Kind::Survey, Plan::Kind::Settle, Plan::Kind::Siege, Plan::Kind::Return })
         if (name == PlanKindName(k))
         {
             out = k;
@@ -541,7 +543,16 @@ void Simulation::SaveWorld(const std::string& path) const
         {
             pj["against"] = Factions::Id(p.against);
             pj["force"] = p.force;
+            json lent = json::array();
+            for (const Plan::Lent& l : p.lent)
+                lent.push_back({ { "from", l.from }, { "force", l.force }, { "hops", l.hops } });
+            pj["lent"] = std::move(lent);
+            pj["via"] = p.via;
+            pj["arrivesAt"] = p.arrivesAt;
+            pj["arrived"] = p.arrived;
         }
+        if (p.kind == Plan::Kind::Return)
+            pj["force"] = p.force;
         plans.push_back(std::move(pj));
     }
     j["plans"] = std::move(plans);
@@ -698,8 +709,24 @@ Save::Result Simulation::LoadWorld(const std::string& path)
                 (!pj.contains("against") || !FactionByName(pj["against"], p.against)))
                 continue;
             p.force = std::max(0.0f, pj.value("force", 0.0f));
+            // A siege from before pooling (version 7) is already at its outpost, and lent by
+            // nobody: what is left of it stays where it is, as it did then.
+            p.arrived = pj.value("arrived", true);
+            p.arrivesAt = pj.value("arrivesAt", p.startedAt);
+            p.via = pj.value("via", p.from);
+            const json& lent = pj.value("lent", json::array());
+            for (const json& lj : lent)
+                if (lj.is_object() && HasSystem(lj.value("from", std::string())))
+                {
+                    Plan::Lent l;
+                    l.from = lj.value("from", std::string());
+                    l.force = std::max(0.0f, lj.value("force", 0.0f));
+                    l.hops = std::max(1, lj.value("hops", 1));
+                    p.lent.push_back(l);
+                }
+            const bool sited = p.kind == Plan::Kind::Settle || p.kind == Plan::Kind::Siege;
             if (p.id <= 0 || plans_.count(p.id) != 0 || !HasSystem(p.target) ||
-                (p.kind != Plan::Kind::Survey && p.site.empty()))
+                (sited && p.site.empty()))
                 continue;
             plans_[p.id] = p;
             due_.insert({ p.dueAt, p.id });

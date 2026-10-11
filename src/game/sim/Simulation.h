@@ -116,7 +116,16 @@ public:
     // The strength of `f` in a system that is besieging an outpost there rather than
     // patrolling it: warships where the system is hot, never the director's police or pirates.
     float SiegeForceIn(const std::string& systemId, FactionId f) const;
-    // Where `f` would build an outpost for `purpose` in `systemId`, arriving from `from`
+    // The strength `f` has lent a siege out of a holding and not yet had back (#295): what the
+    // holding is short of while it is away, and does not regrow in the meantime.
+    float LentFrom(const std::string& systemId, FactionId f) const;
+    // Who would lend `f` a siege of `target`, nearest first: its holdings within the siege
+    // rules' reach, each with what it can spare, until `want` is met. Ties go by system id.
+    // `via`, if given, is the target's neighbour the nearest of them comes in through.
+    std::vector<Plan::Lent> PoolFor(FactionId f, const std::string& target, float want,
+                                    std::string* via = nullptr) const;
+    // Where `f` would build an outpost for `purpose` in `systemId`, arriving from `from` build an
+    // outpost for `purpose` in `systemId`, arriving from `from`
     // (#318): by the richest belt, between the gates, round a planet, by the wrecks, out of
     // sight, or at an open point -- always somewhere SpotProblem allows, and for a satellite
     // in a free orbit of its planet. Drawn from who, where and what for, so the same world
@@ -709,13 +718,20 @@ private:
     // Once a pass: each siege wears its outpost down by the arithmetic both a cold and a hot
     // system read, counts the ships a player has shot down, and ends when it has won or lost.
     void StepSieges();
-    // `f` sends `force` from `from` against `against`'s outpost `site` in `to`, and pays.
-    void BeginSiege(FactionId f, const std::string& from, const std::string& to, FactionId against,
-                    const std::string& site, float force);
+    // `f` sends what `lent` lends against `against`'s outpost `site` in `to`, coming in from
+    // its neighbour `via`, and pays. The force sets out now and arrives when the farthest has.
+    void BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent, const std::string& via,
+                    const std::string& to, FactionId against, const std::string& site);
+    // The pooled force reaches the outpost: it is strength there from now on, and ships where
+    // somebody is to see them. False when the outpost has gone since: it turns back.
+    bool ArriveSiege(Plan& p);
     // A siege's time is up with the outpost still standing.
     void ResolveSiege(const Plan& p);
-    // What is left of a siege goes home: its ships, where they are real, leave the system.
+    // What is left of a siege goes home: its ships, where they are real, leave the system, and
+    // its strength sets out for the holdings that lent it, each its share of what survived.
     void RecallSiege(const Plan& p);
+    // A contingent is home: what it brought back is that holding's strength again.
+    void ResolveReturn(const Plan& p);
     // A hot system's siege made real: warships of the besieger at the outpost -- or, for one
     // that has just arrived, at the gate it came through.
     void FieldSiege(SystemState& st, Plan& p, bool arriving);
