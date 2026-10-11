@@ -1,6 +1,7 @@
 // `econserver macrobench`: what the galaxy costs to run, by its size (#295).
 //
-// Builds a world whose region beyond the wormhole has N systems, runs the host's world
+// Builds a world of one centre and its frontier, plus a region of N systems through a
+// wormhole from the centre, runs the host's world
 // step headless for a fixed stretch of simulated time, and says where the time went. Nothing
 // here changes a rule; it calls what the host calls, in the order the host calls it
 // (HostStepWorld), with a stopwatch around each part. Nobody is connected unless asked, and
@@ -65,10 +66,25 @@ BenchRow RunOne(int regionSystems, double seconds, uint64_t seed, bool allHot, i
 
     // As SetupHostSim does it, with the region's size the one thing chosen here.
     SetRandomSeed(0xC0FFEEu);
-    Simulation sim;
-    sim.LoadUniverse(dataDir + "universe.json");
+    Simulation        sim;
     Clock::time_point t = Clock::now();
-    sim.AttachRegion(seed, dataDir + "systems/", regionSystems);
+    // One civilisation centre and the frontier beside it (#342 S2), then a region of the size
+    // asked for, opened from the centre's heart into the next free slot beside it.
+    Gen::WorldParams world;
+    world.seed = seed;
+    world.centres = 1;
+    world.owners = Factions::MajorIds();
+    world.pirates = Factions::Id(Factions::Pirates());
+    world.unaffiliated = Factions::Id(Factions::Unaffiliated());
+    sim.OpenGalaxy(world, dataDir);
+    const int centre = sim.Skeleton().centres.front();
+    for (int n : sim.Skeleton().slots[(size_t)centre].neighbours)
+        if (sim.OpenSlots().count(n) == 0)
+        {
+            sim.AttachRegion(seed, n, sim.Starts().front().systemId, dataDir + "systems/",
+                             regionSystems);
+            break;
+        }
     row.generateMs = Since(t);
     sim.Seed(0xC0FFEEu);
     sim.SetAllHot(allHot);

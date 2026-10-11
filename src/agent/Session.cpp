@@ -73,6 +73,16 @@ void Session::Pump()
             }
             continue;
         }
+        if (type == "starts")
+        {
+            Proto::Starts s;
+            if (Proto::DecodeStarts(msg, s))
+            {
+                starts_ = std::move(s);
+                awaitingStart_ = true;
+            }
+            continue;
+        }
         if (type == "snap")
         {
             Proto::Snapshot s;
@@ -150,6 +160,16 @@ bool Session::WaitUntil(const std::function<bool()>& done, double timeoutSeconds
         // out a two-minute flight does not spin a core.
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
+}
+
+void Session::ChooseStart(const std::string& system)
+{
+    if (!conn_ || !awaitingStart_)
+        return;
+    Proto::ChooseStart c;
+    c.system = system;
+    conn_->Send(Proto::EncodeChooseStart(c));
+    awaitingStart_ = false;
 }
 
 int Session::Send(const Proto::Command& c)

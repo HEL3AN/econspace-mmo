@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/WorldLoader.h"
+#include "gen/Galaxy.h"
 #include "entities/NpcShip.h"
 #include "sim/SystemState.h"
 #include "sim/Protocol.h"
@@ -29,6 +30,10 @@ class Ship;
 class Structure;
 struct ShipStats;
 struct Blueprint;
+namespace Gen
+{
+struct Region;
+}
 enum class NpcRole;
 
 // Authoritative galaxy simulation. Owns the state of systems and the galaxy index;
@@ -77,6 +82,36 @@ public:
     // region of another seed is attached.
     bool AttachRegion(uint64_t seed, int slot, const std::string& homeId,
                       const std::string& systemsDir, int systems = 0);
+    // A world's galaxy (#342 S2): the skeleton of `params`, every civilisation centre in it
+    // and the frontier region opened beside each, with data/pins.json applied (`dataDir`).
+    // Nothing hand-written is needed. Call on an empty Simulation, before InitGalaxy or
+    // LoadWorld. False when the skeleton has no centre to start in.
+    bool OpenGalaxy(const Gen::WorldParams& params, const std::string& dataDir);
+    // Opens skeleton slot `slot` from the open slot `from`, its wormhole in the system of
+    // `from` that faces it (Gen::MouthSystem) -- how the tide will open one (S3). False when
+    // `from` is not open or `slot` cannot be.
+    bool OpenSlotFrom(int slot, int from, const std::string& dataDir);
+    // The skeleton OpenGalaxy laid out; an empty one before it (a test world of files).
+    const Gen::GalaxySkeleton& Skeleton() const { return skeleton_; }
+    int                        CentreCount() const { return (int)skeleton_.centres.size(); }
+    // Whether a system belongs to a civilisation centre: charted from the start and named
+    // long ago, so never a discovery.
+    bool InCentre(const std::string& systemId) const;
+
+    // Where a pilot may begin (#342 S2): the heart of each centre, with the station they
+    // arrive at and whose space it is. A new account chooses one, and so does an account
+    // whose system the galaxy no longer has.
+    struct StartPoint
+    {
+        std::string systemId;
+        std::string systemName;
+        std::string station;  // the heart's trade hub
+        std::string owner;    // the centre's faction id
+    };
+    const std::vector<StartPoint>& Starts() const { return starts_; }
+    // Whether `systemId` is one of them.
+    bool IsStart(const std::string& systemId) const;
+
     bool HasRegion() const { return hasRegion_; }
     // The slots whose regions are attached, ascending.
     const std::set<int>& OpenSlots() const { return openSlots_; }
@@ -85,8 +120,10 @@ public:
     uint64_t                                  RegionSeed() const { return regionSeed_; }
 
     // The seed and rules a saved world was generated with, read without loading it. False
-    // when the file is missing or has none (a save from before #140).
-    static bool ReadWorldSeed(const std::string& path, uint64_t& seed, int& generator);
+    // when the file is missing or has none (a save from before #140). `centres`, when
+    // given, is how many civilisation centres it was made with (#342 S2), -1 if it says not.
+    static bool ReadWorldSeed(const std::string& path, uint64_t& seed, int& generator,
+                              int* centres = nullptr);
 
     // Creates cold aggregates for ALL galaxy systems (call after LoadUniverse).
     // Systems start "living" right away, before the player even visits.
@@ -771,7 +808,12 @@ private:
     uint64_t                           regionSeed_ = 0;
     std::map<std::string, std::string> regionDocs_;  // generated system documents, as JSON (#140)
     std::set<int>                      openSlots_;   // skeleton slots attached (#342)
-    std::map<std::string, SystemState> systems_;     // state by system id
+    Gen::GalaxySkeleton                skeleton_;    // laid out by OpenGalaxy (#342 S2)
+    std::vector<StartPoint>            starts_;
+    // Hangs a generated region in the galaxy: its index entries, links and documents, and
+    // the mouth of its wormhole beside home.
+    void                               AddRegion(const Gen::Region& region);
+    std::map<std::string, SystemState> systems_;  // state by system id
     int                                agentIdCounter_ = 0;
     // The links, by system (#295): what Neighbors reads.
     std::map<std::string, std::vector<std::string>> neighbors_;

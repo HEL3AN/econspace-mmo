@@ -9,6 +9,7 @@
 
 #include "Editor.h"
 
+#include "core/Faction.h"
 #include "gen/Region.h"
 #include "ui/UiTheme.h"
 #include "raymath.h"
@@ -170,8 +171,7 @@ void Editor::OpenRegionMap(uint64_t seed, const std::string& focus)
 {
     if (mode_ != Mode::Region)
         regionMap_.back = mode_;
-    BuildRegionMap(seed > 0 ? seed : 1);
-    regionMap_.focus = focus;
+    BuildRegionMap(seed > 0 ? seed : 1, focus);
     mode_ = Mode::Region;
     activeField_.clear();
     openDropdown_.clear();
@@ -201,23 +201,21 @@ void Editor::ToggleRegionMap()
         OpenRegionMap(regionMap_.seed > 0 ? regionMap_.seed : 1);
 }
 
-void Editor::BuildRegionMap(uint64_t seed)
+void Editor::BuildRegionMap(uint64_t seed, std::string focus)
 {
-    RegionMap&        m = regionMap_;
-    json              homeDoc;
-    Gen::RegionParams params = RegionParamsFromData(homeDoc);
-    params.seed = seed;
+    RegionMap& m = regionMap_;
     m.seed = seed;
-    m.region = Gen::GenerateRegion(params);
+    m.region = Gen::Region();
+    m.homeMap = { 0.0f, 0.0f };
+    m.homeName.clear();
+    if (!WorldRegion(seed, focus, m.region, nullptr, &m.homeName, &m.homeMap))
+        TraceLog(LOG_WARNING, "Region map: seed %llu has no system %s", (unsigned long long)seed,
+                 focus.c_str());
+    m.focus = focus;
     m.pins.clear();
     m.everySeed.clear();
     m.notice.clear();
     m.problems = 0;
-    m.homeMap = params.homeMap;
-    m.homeName = params.homeId;
-    for (const WorldLoader::SystemInfo& info : universe_.systems)
-        if (info.id == params.homeId)
-            m.homeName = info.name;
 
     // The pins, as the server applies them; and which systems they touch, which is what the
     // map marks. A pin that cannot apply is counted and said in the log, as on opening.
@@ -246,7 +244,10 @@ void Editor::BuildRegionMap(uint64_t seed)
     }
 
     m.summaries.clear();
-    float x1 = m.homeMap.x, y1 = m.homeMap.y, x2 = x1, y2 = y1;
+    // A centre has no home (#342 S2): its bounds are its own systems'.
+    const Vector2 from =
+        !m.homeName.empty() || m.region.systems.empty() ? m.homeMap : MapPos(m.region.systems[0]);
+    float x1 = from.x, y1 = from.y, x2 = x1, y2 = y1;
     for (const json& s : m.region.systems)
     {
         const std::string id = s.value("id", std::string());
@@ -308,7 +309,8 @@ int Editor::RegionHit(Vector2 p) const
             best = i;
         }
     }
-    if (best < 0 && Vector2DistanceSqr(p, RegionToScreen(regionMap_.homeMap)) < reach * reach)
+    if (best < 0 && !regionMap_.homeName.empty() &&
+        Vector2DistanceSqr(p, RegionToScreen(regionMap_.homeMap)) < reach * reach)
         return -2;
     return best;
 }
@@ -326,6 +328,24 @@ void Editor::HandleRegionInput()
         OpenRegionMap(regionMap_.seed + 1);
     if (IsKeyPressed(KEY_PAGE_UP) && regionMap_.seed > 1)
         OpenRegionMap(regionMap_.seed - 1);
+    // Tab: the next region the world opens with (#342 S2) -- a centre, then its frontier.
+    if (IsKeyPressed(KEY_TAB))
+    {
+        Gen::WorldParams p;
+        p.seed = regionMap_.seed;
+        p.centres = Gen::DEFAULT_CENTRES;
+        p.owners = Factions::MajorIds();
+        p.pirates = Factions::Id(Factions::Pirates());
+        p.unaffiliated = Factions::Id(Factions::Unaffiliated());
+        const std::vector<Gen::Opening> open = Gen::InitialOpenings(Gen::GenerateGalaxySkeleton(p));
+        for (size_t i = 0; i < open.size(); i++)
+            if (open[i].slot == regionMap_.region.slot)
+            {
+                const int next = open[(i + 1) % open.size()].slot;
+                OpenRegionMap(regionMap_.seed, Gen::SystemId(next, 1, 1));
+                return;
+            }
+    }
 
     if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
         return;
@@ -398,11 +418,16 @@ void Editor::DrawRegionMap()
         DrawLineEx(pa, pb, 1.5f, Fade(Ui::ACCENT, 0.45f));
     }
 
-    // Home: a hollow ring, because it is not part of the region and not edited here.
-    DrawCircleLinesV(home, kNode + 2.0f, Ui::TEXT);
-    DrawCircleLinesV(home, kNode - 2.0f, Fade(Ui::TEXT, 0.6f));
-    Ui::Text(m.homeName.c_str(), (int)(home.x + kNode + 6.0f), (int)(home.y - 7.0f), 13, Ui::TEXT);
-    Ui::Text("home", (int)(home.x + kNode + 6.0f), (int)(home.y + 7.0f), 10, Ui::TEXT_DIM);
+    // Home: a hollow ring, because it is not part of the region and not edited here. A
+    // centre has none: nothing leads into it.
+    if (!homeId.empty())
+    {
+        DrawCircleLinesV(home, kNode + 2.0f, Ui::TEXT);
+        DrawCircleLinesV(home, kNode - 2.0f, Fade(Ui::TEXT, 0.6f));
+        Ui::Text(m.homeName.c_str(), (int)(home.x + kNode + 6.0f), (int)(home.y - 7.0f), 13,
+                 Ui::TEXT);
+        Ui::Text("home", (int)(home.x + kNode + 6.0f), (int)(home.y + 7.0f), 10, Ui::TEXT_DIM);
+    }
 
     const int hover = RegionHit(GetMousePosition());
     for (size_t i = 0; i < m.region.systems.size(); i++)
@@ -571,8 +596,19 @@ void Editor::DrawRegionPanel()
     for (const json& s : m.region.systems)
         if (s.value("id", std::string()) == m.region.entryId)
             entry = s.value("name", entry);
-    Ui::Text(TextFormat("wormhole: %s -> %s", m.homeName.c_str(), entry.c_str()), x, y, 13,
-             kWormhole);
+    if (!m.region.heartId.empty())
+    {
+        std::string owner;
+        for (const json& s : m.region.systems)
+            owner = s.value("owner", owner);
+        Ui::Text(TextFormat("civilisation centre: %s, %s's   Tab: next region", entry.c_str(),
+                            owner.c_str()),
+                 x, y, 13, Ui::ACCENT);
+    }
+    else
+        Ui::Text(
+            TextFormat("wormhole: %s -> %s   Tab: next region", m.homeName.c_str(), entry.c_str()),
+            x, y, 13, kWormhole);
     y += 18;
     if (m.problems > 0)
     {

@@ -97,6 +97,9 @@ public:
     // Fly to the nearest station and dock shortly after joining (--dock): for a picture of the
     // station's windows without a hand on the controls.
     void StartDocking() { startDockFrames_ = 90; }
+    // --start ID|random: if the server asks where to begin (#342 S2), answer this without
+    // showing the choice -- a script cannot click.
+    void AnswerStartWith(const std::string& id) { autoStart_ = id; }
     // Start with the galaxy map open (--map): for seeing the index the server sent without
     // a hand on the keyboard.
     void StartOnMap() { desk_.SetOpen(WIN_MAP, true); }
@@ -377,8 +380,15 @@ private:
     // Client↔server transport: netConn_ is the TCP link to the econserver host, and
     // clientLink_ is the end the client sends commands on and receives snapshots/layout from.
     std::unique_ptr<Net::TcpConnection> netConn_;
-    bool        protocolMismatchReported_ = false;  // say it once, not every frame
-    ITransport* clientLink_ = nullptr;
+    bool protocolMismatchReported_ = false;  // say it once, not every frame
+    // Where to begin (#342 S2): the server's offer to a pilot with no place in this galaxy.
+    // Until it is answered there is no ship, and the screen is the choice.
+    bool          choosingStart_ = false;
+    Proto::Starts starts_;
+    std::string   autoStart_;
+    void          ChooseStart(const std::string& system);  // empty: any
+    void          DrawStartChoice();
+    ITransport*   clientLink_ = nullptr;
     // Client prediction/reconciliation of the own ship (M4e, per Gambetta):
     // inputs are numbered and kept until the server acks them, so unacked ones can be
     // replayed over the authoritative state (without snapping backward).

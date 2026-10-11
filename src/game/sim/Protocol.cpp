@@ -343,6 +343,63 @@ bool DecodeBye(const std::string& s, Bye& out)
     return true;
 }
 
+std::string EncodeStarts(const Starts& s)
+{
+    json j;
+    Stamp(j, "starts");
+    json options = json::array();
+    for (const StartOption& o : s.options)
+        options.push_back({ { "sys", o.system },
+                            { "name", o.name },
+                            { "station", o.station },
+                            { "owner", o.owner } });
+    j["options"] = std::move(options);
+    j["random"] = s.randomOnly;
+    return j.dump();
+}
+
+bool DecodeStarts(const std::string& s, Starts& out)
+{
+    json j;
+    if (!OpenEnvelope(s, j) || TypeOf(j) != "starts")
+        return false;
+    out = Starts{};
+    const auto options = j.find("options");
+    if (options != j.end() && options->is_array())
+        for (const json& o : *options)
+        {
+            if (!o.is_object())
+                continue;
+            StartOption opt;
+            opt.system = TextOf(o, "sys");
+            opt.name = TextOf(o, "name");
+            opt.station = TextOf(o, "station");
+            opt.owner = TextOf(o, "owner");
+            if (!opt.system.empty())
+                out.options.push_back(opt);
+        }
+    const auto random = j.find("random");
+    out.randomOnly = random != j.end() && random->is_boolean() && random->get<bool>();
+    return true;
+}
+
+std::string EncodeChooseStart(const ChooseStart& c)
+{
+    json j;
+    Stamp(j, "start");
+    j["sys"] = c.system;
+    return j.dump();
+}
+
+bool DecodeChooseStart(const std::string& s, ChooseStart& out)
+{
+    json j;
+    if (!OpenEnvelope(s, j) || TypeOf(j) != "start")
+        return false;
+    out.system = TextOf(j, "sys");
+    return true;
+}
+
 std::string EncodeCommand(const Command& c)
 {
     // Only what differs from a command that says nothing (#341). A client sends sixty of

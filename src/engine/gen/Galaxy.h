@@ -1,8 +1,9 @@
 #pragma once
 
-#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -20,12 +21,24 @@
 namespace Gen
 {
 
-// What a slot is for. Only frontier regions exist so far; civilisation centres (S2) and
-// regions an admin wove in (S7) take slots of their own kinds.
+// What a slot is for. A centre is a civilisation's core region (S2): high security,
+// stations of every kind, an owner. Everything else is frontier until the tide opens it.
+// Regions an admin wove in (S7) will take slots of a kind of their own.
 enum class SlotKind
 {
     Frontier,
+    Centre,
 };
+
+// How many civilisation centres a world has (#342): an admin chooses 1 to 6, 3 unless told.
+inline constexpr int DEFAULT_CENTRES = 3;
+inline constexpr int MAX_CENTRES = 6;
+// Centres are this many slots apart on the lattice at least, so the frontiers grow toward
+// each other for a while before two civilisations meet.
+inline constexpr int CENTRE_SPACING = 4;
+// The skeleton a server lays out until the admin's cap exists (S3): enough for six centres
+// and the rings around them.
+inline constexpr int DEFAULT_REGION_CAP = 100;
 
 const char* SlotKindName(SlotKind kind);
 
@@ -38,18 +51,65 @@ struct Slot
     SlotKind         kind = SlotKind::Frontier;
     int              inward = -1;  // the neighbour one ring in that it always links to; -1 for 0
     std::vector<int> neighbours;   // linked slots, ascending
+    // Lattice steps to the nearest centre: 0 for a centre, 1 beside one. Security falls and
+    // richness grows with it. Counted on the lattice, not along links, so it depends on the
+    // slot alone and not on how big the cap made the skeleton. 1 in a world without centres.
+    int hops = 1;
+    // A centre's major faction (an id from factions.json); empty for anything else.
+    std::string owner;
+};
+
+// What a world's galaxy is made from. Everything in it is saved with the world, because
+// each of them changes what the seed makes.
+struct WorldParams
+{
+    uint64_t seed = 1;
+    int      cap = DEFAULT_REGION_CAP;  // slots in the skeleton
+    int      centres = 0;               // civilisation centres, 0 .. MAX_CENTRES
+    // The major factions, in the order the seed hands them out to centres; one may hold
+    // several centres when there are fewer of them. Pirates are never here: they have no
+    // centre and are born on the frontier.
+    std::vector<std::string> owners;
+    // Who the frontier's lawless are and who owns what nobody owns -- the registry's
+    // `pirates` and `unaffiliated` roles, as ids.
+    std::string pirates = "Pirates";
+    std::string unaffiliated = "Independent";
 };
 
 struct GalaxySkeleton
 {
     uint64_t                         seed = 1;
-    std::vector<Slot>                slots;  // by index, 0 .. cap-1
-    std::vector<std::pair<int, int>> links;  // (a, b) with a < b, sorted
+    std::vector<Slot>                slots;    // by index, 0 .. cap-1
+    std::vector<std::pair<int, int>> links;    // (a, b) with a < b, sorted
+    std::vector<int>                 centres;  // centre slots, in the order they were placed
+    std::string                      pirates = "Pirates";           // WorldParams'
+    std::string                      unaffiliated = "Independent";  // WorldParams'
 };
 
-// The skeleton of `cap` slots (at least one). Every slot is linked to slot 0 through its
-// `inward` neighbours, so whatever opens, the galaxy stays one piece.
+// The skeleton of `cap` slots (at least one), without centres. Every slot is linked to slot
+// 0 through its `inward` neighbours, so whatever opens, the galaxy stays one piece.
 GalaxySkeleton GenerateGalaxySkeleton(uint64_t seed, int cap);
+// ...with the world's centres placed and owned. A centre the cap has no room for is left
+// out rather than moved: where a centre is depends on the seed and the count, never the cap.
+GalaxySkeleton GenerateGalaxySkeleton(const WorldParams& params);
+
+// Where `count` centres go (#342 S2): on one ring of the lattice, evenly round it from a
+// corner the seed turns, on the smallest ring that keeps every two CENTRE_SPACING apart.
+// One centre is slot 0. In placement order.
+std::vector<int> CentreSlots(uint64_t seed, int count);
+
+// Steps between two slots' cells on the lattice.
+int LatticeDistance(int a, int b);
+
+// The regions a new world opens with: every centre, then one frontier slot beside each, so
+// a player who starts anywhere has somewhere to go. `from` is the centre a frontier opens
+// from (its mouth is in that centre's edge), -1 for a centre.
+struct Opening
+{
+    int slot = 0;
+    int from = -1;
+};
+std::vector<Opening> InitialOpenings(const GalaxySkeleton& skeleton);
 
 // The skeleton as JSON: what `econserver galaxydump` prints and the golden test hashes.
 nlohmann::json SkeletonJson(const GalaxySkeleton& skeleton);

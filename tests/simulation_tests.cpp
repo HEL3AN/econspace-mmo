@@ -64,7 +64,7 @@ struct Fixture
         // passes like docking ask for a component rather than for a class (#34).
         Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json");
         Blueprints::Load(std::string(TEST_DATA_DIR) + "blueprints.json");
-        sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+        sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
         sim.Seed(1234u);
         sim.InitGalaxy();
         return sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f },
@@ -1601,10 +1601,10 @@ TEST_CASE("the region hangs off the start system by a wormhole, and its seed is 
 {
     REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
-    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    const std::string systems = std::string(TEST_WORLD_DIR) + "systems/";
 
     Simulation sim;
-    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     const size_t handWritten = sim.Universe().systems.size();
     sim.AttachRegion(424242, systems);
     REQUIRE(sim.HasRegion());
@@ -1662,9 +1662,9 @@ TEST_CASE("any skeleton slot attaches, the same whatever opened first (#342)")
 {
     Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
-    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    const std::string systems = std::string(TEST_WORLD_DIR) + "systems/";
     auto              fresh = [&](Simulation& sim)
-    { sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json"); };
+    { sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json"); };
 
     // Slot 0 behind the start, slot 5 off the start too, in both orders.
     Simulation a, b;
@@ -1780,16 +1780,16 @@ TEST_CASE("a jump arrives beside the gate that leads back, in every kind of syst
     SUBCASE("the hand-written galaxy")
     {
         Fixture f;
-        f.sim.MaterializeAllSystems(std::string(TEST_DATA_DIR) + "systems/");
+        f.sim.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
         CheckEveryJumpArrivesAtTheGateBack(f.sim);
     }
     auto region = [](uint64_t seed)
     {
         REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
         REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
-        const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+        const std::string systems = std::string(TEST_WORLD_DIR) + "systems/";
         Simulation        sim;
-        sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+        sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
         sim.AttachRegion(seed, systems);
         REQUIRE(sim.HasRegion());
         sim.InitGalaxy();
@@ -1814,10 +1814,10 @@ TEST_CASE("the region is not decided in its first minutes, and a first ship is n
     REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
     REQUIRE(Blueprints::Load(std::string(TEST_DATA_DIR) + "blueprints.json"));  // outposts
-    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    const std::string systems = std::string(TEST_WORLD_DIR) + "systems/";
 
     Simulation sim;
-    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     const size_t handWritten = sim.Universe().systems.size();
     sim.AttachRegion(7, systems);  // the seed it was seen with
     sim.Seed(1234u);
@@ -1867,10 +1867,10 @@ TEST_CASE("players are told only what somebody has charted (#144)")
 {
     REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
-    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    const std::string systems = std::string(TEST_WORLD_DIR) + "systems/";
 
     Simulation sim;
-    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     const size_t handWritten = sim.Universe().systems.size();
     sim.AttachRegion(7, systems);
     sim.Seed(1234u);
@@ -2083,9 +2083,9 @@ TEST_CASE("a system changes hands only after the balance has held for a while (#
     REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
     REQUIRE(Blueprints::Load(std::string(TEST_DATA_DIR) + "blueprints.json"));  // outposts
-    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    const std::string systems = std::string(TEST_WORLD_DIR) + "systems/";
     Simulation        sim;
-    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     sim.Seed(1234u);
     sim.InitGalaxy();
     sim.MaterializeAllSystems(systems);
@@ -2110,9 +2110,9 @@ TEST_CASE("factions reach a step at a time, where the prize is worth the risk (#
     REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
     REQUIRE(Blueprints::Load(std::string(TEST_DATA_DIR) + "blueprints.json"));  // outposts
-    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    const std::string systems = std::string(TEST_WORLD_DIR) + "systems/";
     Simulation        sim;
-    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     sim.AttachRegion(7, systems);
     sim.Seed(1234u);
     sim.InitGalaxy();
@@ -2189,9 +2189,9 @@ TEST_CASE("whoever gets there first names it, once, for everyone (#145)")
 {
     REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
-    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    const std::string systems = std::string(TEST_WORLD_DIR) + "systems/";
     Simulation        sim;
-    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     sim.AttachRegion(7, systems);
     sim.Seed(1234u);
     sim.InitGalaxy();
@@ -2250,7 +2250,7 @@ TEST_CASE("whoever gets there first names it, once, for everyone (#145)")
     const std::string path = tmp.Path("names_world.json");
     sim.SaveWorld(path);
     Simulation again;
-    again.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    again.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     again.AttachRegion(7, systems);
     REQUIRE(again.LoadWorld(path) == Save::Result::Ok);
     bool kept = false;
@@ -2522,10 +2522,10 @@ TEST_CASE("a saved mission finds its stations again in a world numbered differen
     // A mission saved by id would then point at the wrong station, or at none.
     REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
-    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    const std::string systems = std::string(TEST_WORLD_DIR) + "systems/";
     auto              build = [&](Simulation& sim, int shift)
     {
-        sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+        sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
         sim.Seed(1234u);
         sim.InitGalaxy();
         for (int i = 0; i < shift; i++)  // what a different count of NPCs before it would do
@@ -2652,11 +2652,11 @@ void LoadRegistries()
 // every system built from data with the save's changes replayed on top.
 void StartServer(Simulation& sim, const std::string& worldPath)
 {
-    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     sim.Seed(1234u);
     if (worldPath.empty() || sim.LoadWorld(worldPath) != Save::Result::Ok)
         sim.InitGalaxy();
-    sim.MaterializeAllSystems(std::string(TEST_DATA_DIR) + "systems/");
+    sim.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
 }
 
 // A system's static layer as somebody standing in it would describe it, in its order: what
@@ -2786,7 +2786,7 @@ TEST_CASE("a world saved before changes were kept loads as the data describes it
         out << R"({ "version": )" << Save::WORLD_VERSION + 1 << R"(, "galaxy": {} })";
     }
     Simulation later;
-    later.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    later.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     CHECK(later.LoadWorld(path) == Save::Result::TooNew);
 }
 
@@ -2794,9 +2794,9 @@ TEST_CASE("the macro layer reads a system's profile and the link index, not the 
 {
     REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
-    const std::string systems = std::string(TEST_DATA_DIR) + "systems/";
+    const std::string systems = std::string(TEST_WORLD_DIR) + "systems/";
     Simulation        sim;
-    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     sim.AttachRegion(7, systems);
     sim.Seed(1234u);
     sim.InitGalaxy();
@@ -2853,9 +2853,9 @@ TEST_CASE("the macro layer reads a system's profile and the link index, not the 
 TEST_CASE("a region can be asked for at another size, for measuring (#295)")
 {
     Simulation sim;
-    sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     const size_t known = sim.Universe().systems.size();
-    sim.AttachRegion(7, std::string(TEST_DATA_DIR) + "systems/", 60);
+    sim.AttachRegion(7, std::string(TEST_WORLD_DIR) + "systems/", 60);
     CHECK(sim.RegionDocuments().size() == 60);
     CHECK(sim.Universe().systems.size() == known + 60);
 }

@@ -3,7 +3,10 @@
 #include "raylib.h"
 #include <nlohmann/json.hpp>
 
+#include "gen/Galaxy.h"
+
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -27,7 +30,8 @@ namespace Gen
 // galaxy, and a player's structure would be standing in space that is no longer there.
 // Bump it whenever the output for a given seed changes -- the golden test will say so.
 inline constexpr int GENERATOR_VERSION =
-    6;  // 6: keys and ids by skeleton slot (#342); 5: the leviathan dwarfs a station
+    7;  // 7: civilisation centres, and a frontier as rich and lawless as it is far from one
+        // (#342 S2); 6: keys and ids by skeleton slot (#342); 5: the leviathan dwarfs a station
 
 struct RegionParams
 {
@@ -35,9 +39,18 @@ struct RegionParams
     // The skeleton slot the region fills (#342, Galaxy.h). Every stream the region draws
     // from is keyed by (seed, slot, ...) and its ids carry the slot, so what is in a region
     // does not depend on which others are open or in what order they opened.
-    int         slot = 0;
-    int         systems = 18;  // how many systems the region has
-    std::string homeId;        // the system the wormhole opens from
+    int slot = 0;
+    // What the slot is (S2): a frontier region opened through a wormhole, or a civilisation
+    // centre -- named, policed, built up and owned, with no home and no wormhole of its own.
+    SlotKind    kind = SlotKind::Frontier;
+    int         hops = 1;  // lattice steps to the nearest centre: a frontier's law and riches
+    std::string owner;     // a centre's major faction
+    // The registry's roles, by id (#355): who holds a lawless frontier system, and who owns a
+    // shipyard that builds for anyone.
+    std::string pirates = "Pirates";
+    std::string unaffiliated = "Independent";
+    int         systems = 18;  // how many systems a frontier region has (a centre picks its own)
+    std::string homeId;        // the system the wormhole opens from; empty for a centre
     Vector2     homeMap = { 0.0f, 0.0f };
     // Which way the region grows from home on the galaxy map. Zero: the bearing furthest
     // from `knownMap`, among eight the seed orders -- how a region off a hand-written system
@@ -60,11 +73,36 @@ struct Region
     // id -> system document, in the shape of data/systems/*.json.
     std::map<std::string, nlohmann::json> documents;
     std::string                           entryId;  // the system on the far side
-    // The wormhole: a gate object to add to the home system's "gates".
-    nlohmann::json wormhole;
+    // The wormhole: a gate object to add to the home system's "gates". Empty, with an
+    // empty `homeId`, for a centre, which no wormhole leads into.
+    nlohmann::json wormhole = nlohmann::json::object();
+    std::string    homeId;
+    // A centre's heart: the capital, where its trade hub, shipyard and fleet are, and where
+    // a player may start. Empty for a frontier region.
+    std::string heartId;
 };
 
 Region GenerateRegion(const RegionParams& params);
+
+// What a slot of the skeleton is generated with: its kind, its distance from a centre and
+// its owner. The home the region opens from is the caller's (HomeFrom).
+RegionParams SlotParams(const GalaxySkeleton& skeleton, int slot);
+
+// The system of an open region a wormhole into `toward` (a point on the galaxy map) opens
+// from: one of its deepest, the nearest to where it leads. Empty for a region with none.
+std::string MouthSystem(const Region& from, double towardX, double towardY);
+
+// Points `params` at `homeId` of the open region `from` for its wormhole: home's place on
+// the map, its document (so the mouth misses its planets) and the bearing the skeleton
+// gives from home's slot to the new one. `homeDoc` must outlive the call to GenerateRegion.
+void HomeFrom(RegionParams& params, const GalaxySkeleton& skeleton, const Region& from,
+              const std::string& homeId, const nlohmann::json& homeDoc);
+
+// Every region a new world opens with (InitialOpenings), made in that order: centres, then
+// a frontier off each. `pin` (may be empty) is applied to each as it is made, before the
+// next opens from it -- the server's pins, so a mouth is placed in the system as pinned.
+std::vector<Region> GenerateWorld(const GalaxySkeleton&               skeleton,
+                                  const std::function<void(Region&)>& pin = nullptr);
 
 // A region as one self-contained document, and back (#342): its slot, index entries, links,
 // system documents and the wormhole's mouth -- everything the server builds it from, so an

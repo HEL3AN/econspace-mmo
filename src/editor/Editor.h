@@ -206,7 +206,14 @@ private:
 
     // The region a server would generate from a seed starts from this: the same home system,
     // the same map around it. `homeDoc` holds the home system's document the params point at.
-    Gen::RegionParams RegionParamsFromData(nlohmann::json& homeDoc) const;
+    // The region `systemId` is in, in the world a seed makes, unpinned -- made as the server
+    // makes it (#342 S2): every centre and a frontier beside each, or any other slot on its
+    // own. An empty id is the first centre, and becomes its heart. `names` gets every
+    // system's name in the world; `homeName`/`homeMap` say where a frontier's wormhole opens
+    // from (empty for a centre). False when the seed's world has no such system.
+    bool WorldRegion(uint64_t seed, std::string& systemId, Gen::Region& out,
+                     std::map<std::string, std::string>* names = nullptr,
+                     std::string* homeName = nullptr, Vector2* homeMap = nullptr) const;
 
     // The generated system being edited (#237). While `open`, systemJson_ is the edit and
     // `base` what it is measured against: the generator's system with every pin the editor
@@ -348,7 +355,7 @@ private:
         Rectangle                       bounds = { 0, 0, 1, 1 };  // every node, in map units
     };
     RegionMap regionMap_;
-    void      BuildRegionMap(uint64_t seed);
+    void      BuildRegionMap(uint64_t seed, std::string focus);
     void      HandleRegionInput();
     void      DrawRegionMap();
     void      DrawRegionPanel();

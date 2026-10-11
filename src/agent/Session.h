@@ -56,6 +56,12 @@ public:
     // until the login completes; the server sends it before the first layout.
     const WorldLoader::Universe& Universe() const { return universe_; }
     bool                         HasSnapshot() const { return haveSnapshot_; }
+    // Where this pilot may begin, when the server asked (#342 S2): a new account, or one
+    // whose system is gone. Until one is chosen there is no ship and no snapshot.
+    bool                 AwaitingStart() const { return awaitingStart_; }
+    const Proto::Starts& Starts() const { return starts_; }
+    // Answers the server's question: a system from Starts(), or empty for any of them.
+    void ChooseStart(const std::string& system);
     // The account this bridge logged in as: what it builds is owned by this name (#39).
     const std::string& Account() const { return account_; }
 
@@ -85,6 +91,8 @@ private:
     int                                 lastEventSeq_ = 0;
     int                                 commandSeq_ = 0;
     bool                                haveSnapshot_ = false;
+    bool                                awaitingStart_ = false;
+    Proto::Starts                       starts_;
     std::string                         protocolError_;
     std::string                         byeReason_;
     std::string                         account_;

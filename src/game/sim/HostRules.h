@@ -1,7 +1,9 @@
 #pragma once
 
+#include "sim/Protocol.h"
 #include "sim/SaveSchema.h"
 
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
@@ -35,6 +37,22 @@ std::string AccountFile(const std::string& dir, const std::string& canonical);
 // Corrupt is the answer that matters: a damaged file is an account that exists, and it must
 // not read as a free name -- the caller refuses the login and leaves the file for the owner.
 Save::Result ReadAccountAuth(const std::string& path, std::string& salt, std::string& stored);
+
+// Starts (#342 S2). The system an account file says its player was in, or empty: no file,
+// a damaged one, one from a newer build (which plays as a fresh account), or one that never
+// said.
+std::string AccountSystem(const std::string& path);
+// Whether the player of the account at `accountPath` has to be given a start: a new
+// account, or one whose system this galaxy does not have -- a world remade under new
+// rules keeps its accounts, and they choose again.
+bool NeedsStart(const Simulation& sim, const std::string& accountPath);
+// The start a player gets: `wanted` if it is one and the server lets players choose,
+// otherwise one of the starts by `roll` -- an asked-for system that is not a start is the
+// same as asking for any. Empty only in a galaxy with no starts.
+std::string PickStart(const Simulation& sim, const std::string& wanted, bool randomOnly,
+                      uint64_t roll);
+// What a player is offered.
+Proto::Starts StartsMessage(const Simulation& sim, bool randomOnly);
 
 // The world the server starts with. Restored -- read from `path`; Fresh -- there was none,
 // and a new galaxy has been made (InitGalaxy); Refused -- the file is there and cannot be

@@ -40,6 +40,10 @@ Two consequences worth knowing before you start:
 - **The server is the authority.** An order the server refuses — a station that will not dock
   you, an object that is not in this system — comes back as a refusal you can read, not as an
   exception.
+- **A new pilot chooses where to begin.** A fresh account (or one whose system the galaxy no
+  longer has) has no ship until it picks a start: `observe` then lists the capital of each
+  civilisation, and `choose_start` takes one by id, or `random`. `econagent connect ...
+  --start random` answers it for a bot that never calls a tool.
 
 ---
 
@@ -60,18 +64,18 @@ It mines a belt until the hold is full, docks, and sells the ore. What it prints
 ```text
 connected to econspace
 tools: observe, move_to, dock, undock, mine, travel_to_system, abort_order, wait_for_event, sell_cargo
-SYSTEM Helios Core (core)  security 1.00  controlled by Traders Guild
+SYSTEM Lysen (r22-1-1)  security 1.00  controlled by Traders Guild
 SHIP   hull 100/100  shields 60/60  cargo 0/50  money 500 cr
        flying  stabilizer on  weapons off  mining off
 NEARBY (31 shown, 6 further away not listed)
-  #8    station  Aurora Hub               3883u NE  dockable
+  #8    station  Lysen Exchange           3883u NE  dockable
   #13   field    Inner Iron Belt          7211u NE  Iron
   ...
 mining field #13 until the hold is full
   mine: accepted (order 1). It runs on the server; use wait_for_event to sleep until it finishes.
   events: [1] order_done: mine: hold full
 docking at station #8
-  events: [2] docked: Docked at Aurora Hub | [3] order_done: dock: docked
+  events: [2] docked: Docked at Lysen Exchange | [3] order_done: dock: docked
 selling resource Iron -> sell sent; call observe to see the result
 SHIP   hull 100/100  shields 60/60  cargo 0/50  money 1000 cr
 ```
@@ -124,14 +128,14 @@ object with an id an order will accept, and nothing repeated that costs tokens w
 the reader anything.
 
 ```text
-SYSTEM Helios Core (core)  security 1.00  controlled by Traders Guild
+SYSTEM Lysen (r22-1-1)  security 1.00  controlled by Traders Guild
 SHIP   hull 100/100  shields 60/60  cargo 50/50  money 500 cr
        flying  stabilizer on  weapons off  mining off
 CARGO  Iron 50
 HOSTILE
   #41   pirate   Syndicate raider          900u S   Pirates  hull 100%
 NEARBY (31 shown, 6 further away not listed)
-  #8    station  Aurora Hub               3883u NE  dockable
+  #8    station  Lysen Exchange           3883u NE  dockable
   #13   field    Inner Iron Belt          7211u NE  Iron
   #24   gate     Gate to Sigma Reach     23195u E   to reach
 MARKET Iron 3.3, Ice 15.0, Crystal 40.0

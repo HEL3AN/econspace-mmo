@@ -49,11 +49,11 @@ void LoadRegistries()
 
 void StartServer(Simulation& sim, const std::string& worldPath)
 {
-    sim.LoadUniverse(DataFile("universe.json"));
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     sim.Seed(1234u);
     if (worldPath.empty() || sim.LoadWorld(worldPath) != Save::Result::Ok)
         sim.InitGalaxy();
-    sim.MaterializeAllSystems(DataFile("systems/"));
+    sim.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
 }
 
 ClientSession& Builder(Simulation& sim, const std::string& account)

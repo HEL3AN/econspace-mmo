@@ -68,7 +68,7 @@ std::unique_ptr<Simulation> World()
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
     REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
     auto sim = std::make_unique<Simulation>();
-    sim->LoadUniverse(DATA + "universe.json");
+    sim->LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     return sim;
 }
 }  // namespace
@@ -305,7 +305,7 @@ TEST_CASE("a save from before #355 names factions by the compiled index, and sti
                             "dest": 6, "target": 1 } ] })");
         auto sim = World();
         sim->InitGalaxy();
-        sim->MaterializeAllSystems(DATA + "systems/");
+        sim->MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
         const std::string& start = sim->Universe().startId;
         ClientSession&     s =
             sim->CreateSession(start, sim->SafeArrival(start), GetShipCatalog()[0].stats);

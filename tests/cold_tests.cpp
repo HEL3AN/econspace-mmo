@@ -35,12 +35,12 @@ std::unique_ptr<Simulation> ColdWorld(uint64_t seed = 7, bool allHot = false)
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
     REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
     auto sim = std::make_unique<Simulation>();
-    sim->LoadUniverse(DATA + "universe.json");
-    sim->AttachRegion(seed, DATA + "systems/");
+    sim->LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+    sim->AttachRegion(seed, std::string(TEST_WORLD_DIR) + "systems/");
     sim->Seed(1234u);
     sim->SetAllHot(allHot);
     sim->InitGalaxy();
-    sim->MaterializeAllSystems(DATA + "systems/");
+    sim->MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
     return sim;
 }
 

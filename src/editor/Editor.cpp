@@ -85,8 +85,12 @@ Editor::Editor()
     camera_.rotation = 0.0f;
     camera_.zoom = 0.00035f;  // a whole million-unit system (#159)
 
+    // Nothing hand-written is needed any more (#342 S2): without a universe.json the editor
+    // opens the capital of the first civilisation a world of seed 1 makes.
     if (!universe_.systems.empty())
         LoadSystemAt(currentSystem_);
+    else
+        OpenGenerated(1, std::string());
 }
 
 Editor::~Editor()
