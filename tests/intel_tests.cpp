@@ -13,6 +13,7 @@
 #include "core/Faction.h"
 #include "sim/FactionMind.h"
 #include "sim/Simulation.h"
+#include "temp_dir.h"
 
 // What factions know, and surveying (#295, slice 2): a faction decides on what it saw,
 // which goes out of date, and looking is something it chooses to spend its turn on.
@@ -240,7 +241,8 @@ TEST_CASE("the same world tells the same story (#295)")
 
 TEST_CASE("what factions know and what they have under way survive a restart (#295)")
 {
-    const std::string path = "intel_world_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("intel_world.json");
     auto              a = World();
     Pass(*a);
     // Run until a survey is under way -- a survey, not a settlement (#295, slice 3).
@@ -262,7 +264,6 @@ TEST_CASE("what factions know and what they have under way survive a restart (#2
     b.AttachRegion(7, DATA + "systems/");
     REQUIRE(b.LoadWorld(path) == Save::Result::Ok);
     b.MaterializeAllSystems(DATA + "systems/");
-    std::remove(path.c_str());
 
     // The plan, as it was.
     REQUIRE(b.Plans().count(pending.id) == 1);
@@ -327,7 +328,8 @@ TEST_CASE("what factions know and what they have under way survive a restart (#2
 
 TEST_CASE("a world saved before factions knew anything loads, and they start from next door (#295)")
 {
-    const std::string path = "intel_old_world_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("intel_old_world.json");
     {
         std::ofstream out(path);
         out << R"({ "version": 4, "simTime": 600.0, "galaxy": {} })";
@@ -361,7 +363,6 @@ TEST_CASE("a world saved before factions knew anything loads, and they start fro
         std::ifstream in(path);
         text.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     }
-    std::remove(path.c_str());
     CHECK(text.find("\"version\": " + std::to_string(Save::WORLD_VERSION)) != std::string::npos);
     CHECK(text.find("\"factions\"") != std::string::npos);
     CHECK(Save::WORLD_VERSION >= 5);

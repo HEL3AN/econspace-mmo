@@ -34,6 +34,7 @@
 #include "net/Transport.h"
 #include "sim/Orders.h"
 #include "sim/Simulation.h"
+#include "temp_dir.h"
 
 // The authoritative rules, tested where they live rather than through a socket.
 //
@@ -458,13 +459,13 @@ TEST_CASE("an account remembers where the player was, not just what they own")
     REQUIRE_FALSE(nbrs.empty());
     f.s.systemId = nbrs[0];
 
-    const std::string path = "account_place_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("account_place.json");
     f.sim.SaveAccount(f.s, path);
 
     ClientSession& back = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
                                               GetShipCatalog()[0].stats);
     REQUIRE(f.sim.LoadAccount(back, path) == Save::Result::Ok);
-    std::remove(path.c_str());
 
     CHECK(back.systemId == nbrs[0]);
     CHECK(back.ship->GetPosition().x == doctest::Approx(1234.0f));
@@ -481,7 +482,7 @@ TEST_CASE("an account remembers where the player was, not just what they own")
     {
         // An edited universe or an older save. Trusting the name would put a player in a
         // system that does not exist, which is a crash rather than a lost position.
-        const std::string bad = "account_bad_tmp.json";
+        const std::string bad = tmp.Path("account_bad.json");
         {
             std::ofstream out(bad);
             out << R"({"money":100,"place":{"system":"nowhere","pos":[9.0,9.0]}})";
@@ -489,7 +490,6 @@ TEST_CASE("an account remembers where the player was, not just what they own")
         ClientSession& lost = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
                                                   GetShipCatalog()[0].stats);
         REQUIRE(f.sim.LoadAccount(lost, bad) == Save::Result::Ok);
-        std::remove(bad.c_str());
         CHECK(lost.systemId == f.sim.Universe().startId);
         CHECK(f.sim.SystemOf(lost) != nullptr);
         CHECK(lost.account.GetMoney() == doctest::Approx(100.0));  // the rest still loaded
@@ -562,7 +562,8 @@ TEST_CASE("a save from a newer build is refused, not read leniently")
     // differently would load "successfully" as a plausible wrong account, and the next
     // checkpoint would write that back over the real one.
     Fixture           f;
-    const std::string path = "account_version_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("account_version.json");
 
     f.s.account.SetMoney(9999.0);
     f.sim.SaveAccount(f.s, path);
@@ -652,8 +653,6 @@ TEST_CASE("a save from a newer build is refused, not read leniently")
         }
         CHECK(f.sim.LoadAccount(none, path) == Save::Result::Corrupt);
     }
-
-    std::remove(path.c_str());
 }
 
 TEST_CASE("a ship has to be bought before it can be flown")
@@ -708,13 +707,13 @@ TEST_CASE("a ship has to be bought before it can be flown")
         f.s.account.SetMoney(GetShipCatalog()[better].price * 2.0);
         REQUIRE(f.sim.BuyShip(f.s, better));
 
-        const std::string path = "account_ships_tmp.json";
+        const TempDir     tmp;
+        const std::string path = tmp.Path("account_ships.json");
         f.sim.SaveAccount(f.s, path);
 
         ClientSession& back = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
                                                   GetShipCatalog()[0].stats);
         REQUIRE(f.sim.LoadAccount(back, path) == Save::Result::Ok);
-        std::remove(path.c_str());
 
         CHECK(back.Owns(better));
         CHECK(back.currentShip == better);
@@ -725,7 +724,8 @@ TEST_CASE("a ship has to be bought before it can be flown")
 
     SUBCASE("an account from before this existed owns the starter, not nothing")
     {
-        const std::string path = "account_noships_tmp.json";
+        const TempDir     tmp;
+        const std::string path = tmp.Path("account_noships.json");
         {
             std::ofstream out(path);
             out << R"({"version":1,"money":700.0})";
@@ -733,7 +733,6 @@ TEST_CASE("a ship has to be bought before it can be flown")
         ClientSession& old = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
                                                  GetShipCatalog()[0].stats);
         REQUIRE(f.sim.LoadAccount(old, path) == Save::Result::Ok);
-        std::remove(path.c_str());
         CHECK(old.Owns(0));
         CHECK(old.currentShip == 0);
     }
@@ -1646,14 +1645,14 @@ TEST_CASE("the region hangs off the start system by a wormhole, and its seed is 
     }
 
     // The region is not saved, only what remakes it.
-    const std::string path = "world_seed_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("world_seed.json");
     sim.SaveWorld(path);
     uint64_t seed = 0;
     int      rules = 0;
     REQUIRE(Simulation::ReadWorldSeed(path, seed, rules));
     CHECK(seed == 424242u);
     CHECK(rules == Gen::GENERATOR_VERSION);
-    std::remove(path.c_str());
 }
 
 // Every link, both ways: jump through each gate the way the host does -- passing the
@@ -2177,7 +2176,8 @@ TEST_CASE("whoever gets there first names it, once, for everyone (#145)")
     CHECK(sim.Events().back().find("Haven, named by ann") != std::string::npos);
 
     // And it is kept: world state, in the world save.
-    const std::string path = "names_test_world.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("names_world.json");
     sim.SaveWorld(path);
     Simulation again;
     again.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
@@ -2187,7 +2187,6 @@ TEST_CASE("whoever gets there first names it, once, for everyone (#145)")
     for (const auto& si : again.KnownUniverse().systems)
         kept = kept || (si.id == entry && si.name == "Haven");
     CHECK(kept);
-    std::remove(path.c_str());
 }
 
 TEST_CASE("a ship left beside a moving body is found beside it again (#258)")
@@ -2202,7 +2201,8 @@ TEST_CASE("a ship left beside a moving body is found beside it again (#258)")
     const Vector2 was = station->GetPosition();
     f.s.ship->Teleport({ was.x + 1000.0f, was.y - 120.0f });
 
-    const std::string path = "account_near_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("account_near.json");
     f.sim.SaveAccount(f.s, path);
 
     // Meanwhile the station moves on, a long way.
@@ -2211,7 +2211,6 @@ TEST_CASE("a ship left beside a moving body is found beside it again (#258)")
     ClientSession& back = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
                                               GetShipCatalog()[0].stats);
     REQUIRE(f.sim.LoadAccount(back, path) == Save::Result::Ok);
-    std::remove(path.c_str());
 
     CHECK(back.ship->GetPosition().x == doctest::Approx(was.x + 16000.0f));
     CHECK(back.ship->GetPosition().y == doctest::Approx(was.y + 8880.0f));
@@ -2501,7 +2500,8 @@ TEST_CASE("a saved mission finds its stations again in a world numbered differen
     bounty.progress = 1;
     s.missions.SetMirror({}, { delivery, bounty });
 
-    const std::string path = "account_missions_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("account_missions.json");
     a.SaveAccount(s, path);
 
     Simulation b;
@@ -2634,7 +2634,8 @@ TEST_CASE("the world's own objects are called the same on every load (#38)")
 TEST_CASE("what players changed in the static layer survives a restart (#38)")
 {
     LoadRegistries();
-    const std::string path = "world_changes_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("world_changes.json");
     Simulation        a;
     StartServer(a, "");
     const std::string sys = a.Universe().startId;
@@ -2663,7 +2664,6 @@ TEST_CASE("what players changed in the static layer survives a restart (#38)")
 
     Simulation b;
     StartServer(b, path);
-    std::remove(path.c_str());
     CHECK(StaticLayer(b, sys) == before);  // the same objects, in the same order, the same state
 
     bool hubBack = false;
@@ -2683,7 +2683,6 @@ TEST_CASE("what players changed in the static layer survives a restart (#38)")
         b.SaveWorld(path);
         Simulation c;
         StartServer(c, path);
-        std::remove(path.c_str());
         CHECK(StaticLayer(c, sys) == StaticLayer(b, sys));
     }
 }
@@ -2698,7 +2697,8 @@ TEST_CASE("a world saved before changes were kept loads as the data describes it
     REQUIRE(hub != nullptr);
 
     // Version 2 knew nothing of changes; anything under that name is not this build's to read.
-    const std::string path = "world_v2_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("world_v2.json");
     {
         std::ofstream out(path);
         out << R"({ "version": 2, "simTime": 5.0, "galaxy": { ")" << sys
@@ -2707,7 +2707,6 @@ TEST_CASE("a world saved before changes were kept loads as the data describes it
     }
     Simulation old;
     StartServer(old, path);
-    std::remove(path.c_str());
     CHECK(old.Time() == doctest::Approx(5.0));
     CHECK(StaticLayer(old, sys) == StaticLayer(fresh, sys));
 
@@ -2719,7 +2718,6 @@ TEST_CASE("a world saved before changes were kept loads as the data describes it
     Simulation later;
     later.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
     CHECK(later.LoadWorld(path) == Save::Result::TooNew);
-    std::remove(path.c_str());
 }
 
 TEST_CASE("the macro layer reads a system's profile and the link index, not the world (#295)")

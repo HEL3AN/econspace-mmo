@@ -36,6 +36,7 @@
 #include <cstdio>
 #include <cctype>
 #include <cstdlib>
+#include <filesystem>
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -1034,6 +1035,29 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed)
     return 0;
 }
 
+// A save a smoke test writes and reads back. It goes under the system temp directory with a
+// name of its own, and is removed however the test ends, an early return included -- never
+// left beside the executable, where a real world.json and account files live.
+class ScratchFile
+{
+public:
+    explicit ScratchFile(const char* name)
+    {
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        path_ = (std::filesystem::temp_directory_path() /
+                 ("econserver_" + std::string(name) + "_" + std::to_string(stamp) + ".json"))
+                    .generic_string();
+    }
+    ~ScratchFile() { std::remove(path_.c_str()); }
+    ScratchFile(const ScratchFile&) = delete;
+    ScratchFile& operator=(const ScratchFile&) = delete;
+
+    const std::string& Path() const { return path_; }
+
+private:
+    std::string path_;
+};
+
 // Host smoke test (no sockets): runs a host tick through LocalTransport. The client
 // sends a thrust command, the server steps the world and sends layout+snapshot; we
 // check that the layout arrived and the player moved. Run: econserver hosttest.
@@ -1241,7 +1265,8 @@ static int HostNameSelftest()
     receive(seen);
     const bool named = indexSent && seen == "Selftest Haven";
 
-    const std::string path = std::string(GetApplicationDirectory()) + "nametest_tmp.json";
+    const ScratchFile scratch("nametest");
+    const std::string path = scratch.Path();
     sim.SaveWorld(path);
     Simulation again;
     SetupHostSim(again, dataDir, path);
@@ -1266,7 +1291,8 @@ static int AccountSelftest()
         double d = x - y;
         return (d < 0 ? -d : d) < 1e-3;
     };
-    std::string path = std::string(GetApplicationDirectory()) + "accttest_tmp.json";
+    const ScratchFile scratch("accttest");
+    const std::string path = scratch.Path();
 
     // The registry before any ship: an entity built without it has no archetype, and says
     // so (#227).
@@ -1329,8 +1355,9 @@ static int WorldSelftest()
         double d = x - y;
         return (d < 0 ? -d : d) < 1e-3;
     };
-    std::string dataDir = SIM_DATA_DIR;
-    std::string path = std::string(GetApplicationDirectory()) + "worldtest_tmp.json";
+    std::string       dataDir = SIM_DATA_DIR;
+    const ScratchFile scratch("worldtest");
+    const std::string path = scratch.Path();
 
     Simulation a;
     a.LoadUniverse(dataDir + "universe.json");

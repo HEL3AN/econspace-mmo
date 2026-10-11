@@ -3,6 +3,7 @@
 #include "core/Archetype.h"
 #include "render/Modules.h"
 #include "render/Silhouette.h"
+#include "temp_dir.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -928,38 +929,36 @@ TEST_CASE("a module with a latitude and a longitude is laid on the planet, not o
 
 TEST_CASE("more modules come in packs, one file each, and an id is still global (#240)")
 {
-    // Written to the working directory (the build tree under ctest), never into data/.
-    MakeDirectory("packs_test_tmp/modules");
-    auto write = [](const char* path, const char* body)
+    // Written to a temp folder of its own, never into data/.
+    const TempDir tmp;
+    tmp.MakeDir("modules");
+    auto write = [](const std::string& path, const char* body)
     {
         std::ofstream f(path);
         f << body;
     };
-    write("packs_test_tmp/modules.json",
+    write(tmp.Path("modules.json"),
           R"({ "modules": [ { "id": "core.thing", "variants": [ { "id": "a", "shape": [
               { "form": "disc", "radius": 1 } ] } ] } ] })");
-    write("packs_test_tmp/modules/weapons.json",
+    write(tmp.Path("modules/weapons.json"),
           R"({ "modules": [ { "id": "gun", "variants": [ { "id": "a", "shape": [
               { "form": "bar", "length": 2 } ] } ] } ] })");
 
     std::string error;
-    CHECK(Render::Modules::Load("packs_test_tmp/modules.json", error));
+    CHECK(Render::Modules::Load(tmp.Path("modules.json"), error));
     CHECK(error.empty());
     REQUIRE(Render::Modules::Find("gun") != nullptr);
     CHECK(Render::Modules::Find("gun")->pack == "weapons");
     CHECK(Render::Modules::Find("core.thing")->pack == "modules");
 
     // The same id in two files is an error that names both.
-    write("packs_test_tmp/modules/zz.json",
+    write(tmp.Path("modules/zz.json"),
           R"({ "modules": [ { "id": "gun", "variants": [ { "id": "b", "shape": [
               { "form": "bar", "length": 1 } ] } ] } ] })");
-    CHECK_FALSE(Render::Modules::Load("packs_test_tmp/modules.json", error));
+    CHECK_FALSE(Render::Modules::Load(tmp.Path("modules.json"), error));
     CHECK(error.find("weapons") != std::string::npos);
     CHECK(error.find("zz") != std::string::npos);
 
-    std::remove("packs_test_tmp/modules/zz.json");
-    std::remove("packs_test_tmp/modules/weapons.json");
-    std::remove("packs_test_tmp/modules.json");
     std::string reload;
     REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", reload));
 }
@@ -1040,9 +1039,9 @@ TEST_CASE("a centred row stays balanced on its place whatever count it rolls (#2
 
 TEST_CASE("a module's variables are rolled per placed copy, shared within it (#240)")
 {
-    MakeDirectory("vars_test_tmp");
+    const TempDir tmp;
     {
-        std::ofstream f("vars_test_tmp/modules.json");
+        std::ofstream f(tmp.Path("modules.json"));
         f << R"({ "modules": [ { "id": "pod", "variants": [ { "id": "a", "shape": {
             "vars": { "n": [2, 6] },
             "parts": [
@@ -1051,7 +1050,7 @@ TEST_CASE("a module's variables are rolled per placed copy, shared within it (#2
                   "row": { "count": "$n", "step": [0.2, 0] } } ] } } ] } ] })";
     }
     std::string error;
-    REQUIRE(Render::Modules::Load("vars_test_tmp/modules.json", error));
+    REQUIRE(Render::Modules::Load(tmp.Path("modules.json"), error));
     const Render::Shape s = Parse(R"([ { "module": "pod", "scale": 0.5, "at": [0, -0.5] },
                                        { "module": "pod", "scale": 0.5, "at": [0, 0.5] } ])");
     bool                differed = false;
@@ -1067,7 +1066,6 @@ TEST_CASE("a module's variables are rolled per placed copy, shared within it (#2
         differed = differed || tubes[0] != tubes[1];
     }
     CHECK(differed);
-    std::remove("vars_test_tmp/modules.json");
     REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
 }
 
@@ -1158,15 +1156,15 @@ TEST_CASE("a trapezoid, a jagged polygon and a soft glow are carried to the piec
 
 TEST_CASE("a soft part inside a module is still soft where the module is placed (#240)")
 {
-    MakeDirectory("soft_test_tmp");
+    const TempDir tmp;
     {
-        std::ofstream f("soft_test_tmp/modules.json");
+        std::ofstream f(tmp.Path("modules.json"));
         f << R"({ "modules": [ { "id": "glow", "variants": [ { "id": "a", "shape": [
             { "form": "disc", "radius": 0.6, "soft": true, "alpha": 0.2 },
             { "form": "disc", "radius": 0.2, "at": [0.5, 0] } ] } ] } ] })";
     }
     std::string error;
-    REQUIRE(Render::Modules::Load("soft_test_tmp/modules.json", error));
+    REQUIRE(Render::Modules::Load(tmp.Path("modules.json"), error));
     const Render::Shape s = Parse(R"([
         { "module": "glow", "at": [1.2, 0], "scale": 0.5, "repeat": 3 },
         { "module": "glow", "at": [0, 1], "scale": 0.5, "mirror": true } ])");
@@ -1185,7 +1183,6 @@ TEST_CASE("a soft part inside a module is still soft where the module is placed 
         for (const auto& p : Render::Compose(planet, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 10.0f)))
             softOnSphere = softOnSphere || (p.surface && p.soft);
     CHECK(softOnSphere);
-    std::remove("soft_test_tmp/modules.json");
     REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
 }
 
@@ -1275,24 +1272,23 @@ TEST_CASE("a variable's offset may be a range each part rolls on its own (#240)"
 
 TEST_CASE("a variant with a field nobody reads is refused (#240)")
 {
-    MakeDirectory("variant_test_tmp");
+    const TempDir tmp;
     {
-        std::ofstream f("variant_test_tmp/modules.json");
+        std::ofstream f(tmp.Path("modules.json"));
         f << R"({ "modules": [ { "id": "x", "variants": [ { "id": "a", "shpae": [],
               "shape": [ { "form": "disc" } ] } ] } ] })";
     }
     std::string error;
-    CHECK_FALSE(Render::Modules::Load("variant_test_tmp/modules.json", error));
+    CHECK_FALSE(Render::Modules::Load(tmp.Path("modules.json"), error));
     CHECK(error.find("shpae") != std::string::npos);
-    std::remove("variant_test_tmp/modules.json");
     REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
 }
 
 TEST_CASE("a variant is measured by what it draws, not by a circle round each part (#240)")
 {
-    MakeDirectory("bounds_test_tmp");
+    const TempDir tmp;
     {
-        std::ofstream f("bounds_test_tmp/modules.json");
+        std::ofstream f(tmp.Path("modules.json"));
         f << R"({ "modules": [
             { "id": "arc", "variants": [ { "id": "a", "shape": [
                 { "form": "arc", "radius": 1, "width": 0.2, "from": 0, "to": 90 } ] } ] },
@@ -1302,7 +1298,7 @@ TEST_CASE("a variant is measured by what it draws, not by a circle round each pa
                 { "form": "capsule", "length": 1, "width": 0.4, "at": [0.5, 0] } ] } ] } ] })";
     }
     std::string error;
-    REQUIRE(Render::Modules::Load("bounds_test_tmp/modules.json", error));
+    REQUIRE(Render::Modules::Load(tmp.Path("modules.json"), error));
     auto box = [](const char* id) { return Render::Modules::Find(id)->variants[0].bounds; };
 
     // A quarter arc covers one quarter of the plane, not its whole circle.
@@ -1321,7 +1317,6 @@ TEST_CASE("a variant is measured by what it draws, not by a circle round each pa
     CHECK(pill.width == doctest::Approx(1.4f).epsilon(0.01));
     CHECK(pill.height == doctest::Approx(0.4f).epsilon(0.01));
 
-    std::remove("bounds_test_tmp/modules.json");
     REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
 }
 

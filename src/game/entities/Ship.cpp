@@ -21,6 +21,11 @@ void Ship::Refit(const ShipStats& stats)
     maxHull_ = stats.hull;
     hull_ = share * maxHull_;
     look_ = Archetypes::ForDesign(stats.design);
+    // And as big as it: drawn, picked and approached at the size an NPC flying the same
+    // design is, so a Hauler is bigger than a Courier. Nothing the server decides about a
+    // player's ship reads its size -- shots and docking are measured to the other object.
+    if (look_ != nullptr && look_->defaultSize > 0.0f)
+        size_ = look_->defaultSize;
 }
 
 Render::Item Ship::Describe() const

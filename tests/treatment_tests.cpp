@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "render/TreatmentConfig.h"
+#include "temp_dir.h"
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -16,11 +17,6 @@
 
 namespace
 {
-std::string TempPath(const char* name)
-{
-    return std::string(TEST_DATA_DIR) + "../build/" + name;
-}
-
 void Write(const std::string& path, const std::string& text)
 {
     std::ofstream out(path);
@@ -81,7 +77,8 @@ TEST_CASE("the chain survives being written and read back")
     cfg.chain[1].enabled = false;
     cfg.MoveDown(0);  // a reordered chain is the case a naive writer loses
 
-    const std::string path = TempPath("treatment_roundtrip.json");
+    const TempDir     tmp;
+    const std::string path = tmp.Path("treatment_roundtrip.json");
     std::string       error;
     REQUIRE(Render::SaveTreatment(path, cfg, error));
     CHECK(error.empty());
@@ -98,7 +95,6 @@ TEST_CASE("the chain survives being written and read back")
         CHECK(back.chain[i].amount == doctest::Approx(cfg.chain[i].amount));
         CHECK(back.chain[i].scale == doctest::Approx(cfg.chain[i].scale));
     }
-    std::remove(path.c_str());
 }
 
 TEST_CASE("the file the game writes is one a person can read and diff")
@@ -109,7 +105,8 @@ TEST_CASE("the file the game writes is one a person can read and diff")
     cfg.chain[0].amount = 0.8521126508712769f;
     cfg.chain[0].scale = 5.966549396514893f;
 
-    const std::string path = TempPath("treatment_readable.json");
+    const TempDir     tmp;
+    const std::string path = tmp.Path("treatment_readable.json");
     std::string       error;
     REQUIRE(Render::SaveTreatment(path, cfg, error));
 
@@ -145,7 +142,7 @@ TEST_CASE("the file the game writes is one a person can read and diff")
         // property the archetype writer needed (#118).
         Render::TreatmentConfig back;
         REQUIRE(Render::LoadTreatment(path, back, error));
-        const std::string again = TempPath("treatment_readable2.json");
+        const std::string again = tmp.Path("treatment_readable2.json");
         REQUIRE(Render::SaveTreatment(again, back, error));
 
         std::ifstream      in2(again);
@@ -153,26 +150,24 @@ TEST_CASE("the file the game writes is one a person can read and diff")
         buf2 << in2.rdbuf();
         in2.close();
         CHECK(buf2.str() == text);
-        std::remove(again.c_str());
     }
-
-    std::remove(path.c_str());
 }
 
 TEST_CASE("a broken look file loses as little as it can")
 {
+    const TempDir           tmp;
     std::string             error;
     Render::TreatmentConfig cfg;
 
     SUBCASE("a missing file is not an error worth stopping for")
     {
-        CHECK_FALSE(Render::LoadTreatment(TempPath("no_such_look.json"), cfg, error));
+        CHECK_FALSE(Render::LoadTreatment(tmp.Path("no_such_look.json"), cfg, error));
         CHECK_FALSE(error.empty());
     }
 
     SUBCASE("one unknown pass costs that pass and nothing else")
     {
-        const std::string path = TempPath("treatment_unknown.json");
+        const std::string path = tmp.Path("treatment_unknown.json");
         Write(path, R"({
             "enabled": true,
             "chain": [
@@ -185,27 +180,24 @@ TEST_CASE("a broken look file loses as little as it can")
         REQUIRE(cfg.chain.size() == 2);
         CHECK(cfg.chain[0].kind == Render::PassKind::Bloom);
         CHECK(cfg.chain[1].kind == Render::PassKind::Vignette);
-        std::remove(path.c_str());
     }
 
     SUBCASE("a chain with nothing usable in it falls back rather than turning the look off")
     {
         // Silently drawing nothing is the failure mode this whole feature is written to
         // avoid, and an empty chain is the data-side version of it.
-        const std::string path = TempPath("treatment_empty.json");
+        const std::string path = tmp.Path("treatment_empty.json");
         Write(path, R"({ "enabled": true, "chain": [] })");
         REQUIRE(Render::LoadTreatment(path, cfg, error));
         CHECK(cfg.chain.size() == Render::TreatmentConfig::Default().chain.size());
-        std::remove(path.c_str());
     }
 
     SUBCASE("text that is not JSON is refused, not half-read")
     {
-        const std::string path = TempPath("treatment_broken.json");
+        const std::string path = tmp.Path("treatment_broken.json");
         Write(path, "{ this is not json");
         CHECK_FALSE(Render::LoadTreatment(path, cfg, error));
         CHECK_FALSE(error.empty());
-        std::remove(path.c_str());
     }
 }
 

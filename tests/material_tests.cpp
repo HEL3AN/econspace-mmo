@@ -3,6 +3,7 @@
 #include "core/Archetype.h"
 #include "render/Material.h"
 #include "render/Scene.h"
+#include "temp_dir.h"
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -127,7 +128,8 @@ TEST_CASE("a material naming a source that does not exist is refused, not quietl
     // Deliberately unlike the screen treatment, where an unknown pass is skipped. Losing a
     // pass makes the picture plainer; losing a uniform makes a material draw something
     // actively wrong, and it would do it in silence.
-    const std::string bad = std::string(TEST_DATA_DIR) + "../build/bad_material.json";
+    const TempDir     tmp;
+    const std::string bad = tmp.Path("bad_material.json");
     {
         std::ofstream out(bad);
         REQUIRE(out.is_open());
@@ -135,7 +137,6 @@ TEST_CASE("a material naming a source that does not exist is refused, not quietl
     }
     CHECK_FALSE(Render::Materials::Load(bad));
     CHECK(Render::Materials::Error().find("item.mood") != std::string::npos);
-    std::remove(bad.c_str());
 
     // And the previous contents survive a failed load, so a bad edit does not empty the
     // registry the running game is drawing from.
