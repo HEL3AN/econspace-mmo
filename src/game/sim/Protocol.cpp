@@ -18,26 +18,13 @@ json V2(Vector2 v)
     return json::array({ v.x, v.y });
 }
 
-// Positions and headings are sent to a precision a player could see, not to the last bit
-// of a float (#16). A hundredth of a world unit is far below one pixel at any zoom, and
-// the shorter number is the whole point: JSON pays for every digit.
-//
-// The rounding is done and kept in double. Rounding a float and letting JSON widen it
-// writes the float's exact value back out -- 2615.79 becomes "2615.7900390625", which is
-// longer than what it replaced. This was measured, not assumed.
+// A player-view distance is sent to a hundredth, not to the last bit of a float (#16).
+// The rounding is done and kept in double: rounding a float and letting JSON widen it writes
+// the float's exact value back out -- 2615.79 becomes "2615.7900390625", which is longer than
+// what it replaced. Entities are integers since #349 (WireOf, below).
 double Round2(float v)
 {
     return std::round((double)v * 100.0) / 100.0;
-}
-
-double Round3(float v)
-{
-    return std::round((double)v * 1000.0) / 1000.0;
-}
-
-json V2Rounded(Vector2 v)
-{
-    return json::array({ Round2(v.x), Round2(v.y) });
 }
 
 Vector2 ToV2(const json& j, Vector2 def = { 0.0f, 0.0f })
@@ -698,213 +685,430 @@ bool DecodeCommand(const std::string& s, Command& out)
     return true;
 }
 
-std::string EncodeSnapshot(const Snapshot& s)
+}  // namespace Proto
+
+// --- Snapshots on the wire (#349) ---------------------------------------------------------
+
+namespace Proto
+{
+// One entity as the wire holds it: its fields as integers and strings, without its id, and a
+// field at its default absent. Two of these are equal exactly when the client would rebuild
+// the same entity from them, which is what makes "unchanged" a comparison rather than a guess.
+struct EntityWire
 {
     json j;
-    Stamp(j, "snap");
-    j["sys"] = s.systemId;
-    j["time"] = s.time;
+};
 
-    const PlayerView& p = s.player;
-    j["player"] = { { "pos", V2(p.pos) },
-                    { "vel", V2(p.vel) },
-                    { "hdg", p.heading },
-                    { "hull", p.hull },
-                    { "maxHull", p.maxHull },
-                    { "sh", p.shields },
-                    { "maxSh", p.maxShields },
-                    { "cargo", p.cargoUsed },
-                    { "cargoCap", p.cargoCap },
-                    { "warp", p.warpPhase },
-                    { "warpAlign", p.warpAlign },
-                    { "warpTgt", V2(p.warpTarget) },
-                    { "warpDrop", p.warpDrop },
-                    { "ap", p.autopilot },
-                    { "apTgt", V2(p.apTarget) },
-                    { "apStop", p.apStop },
-                    { "hold", p.holdMode },
-                    { "holdId", p.holdTargetId },
-                    { "holdR", Round2(p.holdRange) },
-                    { "stab", p.stabilizer },
-                    { "mine", p.mining },
-                    { "weap", p.weaponOn },
-                    { "docked", p.docked },
-                    { "dockId", p.dockedStationId },
-                    { "nearStation", p.nearbyStationId },
-                    { "lastInput", p.lastInput },
-                    { "cargoT", p.cargoByType },
-                    { "money", p.money },
-                    { "rep", PerFactionJson(p.reputation) },
-                    { "bounty", PerFactionJson(p.bounty) },
-                    { "skillXp", p.skillXp },
-                    { "ordKind", p.orderKind },
-                    { "ordStatus", p.orderStatus },
-                    { "ordId", p.orderId },
-                    { "ordDetail", p.orderDetail },
-                    { "ships", p.ownedShips },
-                    { "shipDesigns", p.shipDesigns },
-                    { "ship", p.shipIndex } };
+// Everything in a snapshot that persists from one to the next: the player, the market, the
+// missions and the entities. Fires, journal entries and trade acknowledgements happen once
+// and are carried by the message they happen in, never by a state.
+struct SnapshotState
+{
+    std::string                                      sys;
+    json                                             player = json::object();
+    json                                             market = json::array();
+    json                                             offers = json::array();
+    json                                             active = json::array();
+    std::map<int, std::shared_ptr<const EntityWire>> ents;
+};
+}  // namespace Proto
+
+namespace
+{
+using Proto::EntityWire;
+using Proto::SnapshotState;
+
+// The wire's units. A hundredth of a world unit is far below a pixel at any zoom (#16); at a
+// million units out it is a nine-digit integer, comfortably inside an int.
+constexpr double POS_UNIT = 100.0;
+constexpr double ANGLE_UNIT = 1000.0;  // milliradians
+constexpr double HULL_UNIT = 1000.0;   // thousandths of the hull
+constexpr double SIZE_UNIT = 100.0;
+// A far entity's heading, in milliradians: about three degrees, which is what a dot on the
+// sensor screen can show.
+constexpr long long FAR_ANGLE_STEP = 50;
+
+long long Quantise(double v, double unit)
+{
+    if (!std::isfinite(v))
+        return 0;
+    return std::llround(v * unit);
+}
+
+// `grid` 0 is the near quality; otherwise the position is snapped to multiples of it.
+EntityWire WireOf(const Proto::EntitySnapshot& e, float grid)
+{
+    EntityWire w;
+    json&      j = w.j;
+    j = json::object();
+    j["k"] = (int)e.kind;
+    Vector2 p = e.pos;
+    if (grid > 0.0f)
+        p = { std::round(p.x / grid) * grid, std::round(p.y / grid) * grid };
+    j["p"] = json::array({ Quantise(p.x, POS_UNIT), Quantise(p.y, POS_UNIT) });
+    long long h = Quantise(e.heading, ANGLE_UNIT);
+    if (grid > 0.0f)
+        h = (h / FAR_ANGLE_STEP) * FAR_ANGLE_STEP;
+    if (h != 0)
+        j["h"] = h;
+    if (e.size != 0.0f)
+        j["s"] = Quantise(e.size, SIZE_UNIT);
+    if (e.faction != Factions::Unaffiliated())
+        j["f"] = FacJ(e.faction);
+    if (e.role != -1)
+        j["r"] = e.role;
+    const long long hp = Quantise(e.hullFrac, HULL_UNIT);
+    if (hp != (long long)HULL_UNIT)
+        j["hp"] = hp;
+    if (e.ore != -1)
+        j["o"] = e.ore;
+    if (!e.name.empty())
+        j["n"] = e.name;
+    if (!e.design.empty())
+        j["d"] = e.design;
+    return w;
+}
+
+// An integer field of a wire object, or `def` when it is absent or not an integer.
+long long IntOf(const json& j, const char* key, long long def)
+{
+    const auto it = j.find(key);
+    return it != j.end() && it->is_number_integer() ? it->get<long long>() : def;
+}
+
+Proto::EntitySnapshot EntityOf(int id, const json& j)
+{
+    Proto::EntitySnapshot e;
+    e.id = id;
+    e.kind = (EntityKind)IntOf(j, "k", 0);
+    const auto p = j.find("p");
+    if (p != j.end() && p->is_array() && p->size() == 2 && (*p)[0].is_number_integer() &&
+        (*p)[1].is_number_integer())
+        e.pos = { (float)((double)(*p)[0].get<long long>() / POS_UNIT),
+                  (float)((double)(*p)[1].get<long long>() / POS_UNIT) };
+    e.heading = (float)((double)IntOf(j, "h", 0) / ANGLE_UNIT);
+    e.size = (float)((double)IntOf(j, "s", 0) / SIZE_UNIT);
+    e.faction = ToFac(j.value("f", json()));
+    e.role = (int)IntOf(j, "r", -1);
+    e.hullFrac = (float)((double)IntOf(j, "hp", (long long)HULL_UNIT) / HULL_UNIT);
+    e.ore = (int)IntOf(j, "o", -1);
+    e.name = TextOf(j, "n");
+    e.design = TextOf(j, "d");
+    return e;
+}
+
+json PlayerJson(const Proto::PlayerView& p)
+{
+    json j = { { "pos", V2(p.pos) },
+               { "vel", V2(p.vel) },
+               { "hdg", p.heading },
+               { "hull", p.hull },
+               { "maxHull", p.maxHull },
+               { "sh", p.shields },
+               { "maxSh", p.maxShields },
+               { "cargo", p.cargoUsed },
+               { "cargoCap", p.cargoCap },
+               { "warp", p.warpPhase },
+               { "warpAlign", p.warpAlign },
+               { "warpTgt", V2(p.warpTarget) },
+               { "warpDrop", p.warpDrop },
+               { "ap", p.autopilot },
+               { "apTgt", V2(p.apTarget) },
+               { "apStop", p.apStop },
+               { "hold", p.holdMode },
+               { "holdId", p.holdTargetId },
+               { "holdR", Round2(p.holdRange) },
+               { "stab", p.stabilizer },
+               { "mine", p.mining },
+               { "weap", p.weaponOn },
+               { "docked", p.docked },
+               { "dockId", p.dockedStationId },
+               { "nearStation", p.nearbyStationId },
+               { "lastInput", p.lastInput },
+               { "cargoT", p.cargoByType },
+               { "money", p.money },
+               { "rep", PerFactionJson(p.reputation) },
+               { "bounty", PerFactionJson(p.bounty) },
+               { "skillXp", p.skillXp },
+               { "ordKind", p.orderKind },
+               { "ordStatus", p.orderStatus },
+               { "ordId", p.orderId },
+               { "ordDetail", p.orderDetail },
+               { "ships", p.ownedShips },
+               { "shipDesigns", p.shipDesigns },
+               { "ship", p.shipIndex } };
     if (p.warpViaSet)  // only during the first leg of a bent warp
-        j["player"]["warpVia"] = V2(p.warpVia);
+        j["warpVia"] = V2(p.warpVia);
+    return j;
+}
 
-    // Only what this entity actually carries. Every field left at its decoding default is
-    // a field the decoder will produce anyway, so writing it costs bytes and says nothing
-    // (#16). What a station is called or how big it is comes from the layout instead.
+void ReadPlayer(const json& pj, Proto::PlayerView& p)
+{
+    p.pos = ToV2(pj.value("pos", json::array()));
+    p.vel = ToV2(pj.value("vel", json::array()));
+    p.heading = pj.value("hdg", 0.0f);
+    p.hull = pj.value("hull", 0.0f);
+    p.maxHull = pj.value("maxHull", 0.0f);
+    p.shields = pj.value("sh", 0.0f);
+    p.maxShields = pj.value("maxSh", 0.0f);
+    p.cargoUsed = pj.value("cargo", 0);
+    p.cargoCap = pj.value("cargoCap", 0);
+    p.warpPhase = pj.value("warp", 0);
+    p.warpAlign = pj.value("warpAlign", 0.0f);
+    p.warpTarget = pj.contains("warpTgt") ? ToV2(pj["warpTgt"]) : Vector2{ 0.0f, 0.0f };
+    p.warpDrop = pj.value("warpDrop", 0.0f);
+    p.warpViaSet = pj.contains("warpVia");
+    p.warpVia = p.warpViaSet ? ToV2(pj["warpVia"]) : Vector2{ 0.0f, 0.0f };
+    p.autopilot = pj.value("ap", false);
+    p.apTarget = pj.contains("apTgt") ? ToV2(pj["apTgt"]) : Vector2{ 0.0f, 0.0f };
+    p.apStop = pj.value("apStop", 0.0f);
+    p.holdMode = pj.value("hold", 0);
+    p.holdTargetId = pj.value("holdId", 0);
+    p.holdRange = pj.value("holdR", 0.0f);
+    p.stabilizer = pj.value("stab", true);
+    p.mining = pj.value("mine", false);
+    p.weaponOn = pj.value("weap", false);
+    p.docked = pj.value("docked", false);
+    p.dockedStationId = pj.value("dockId", 0);
+    p.nearbyStationId = pj.value("nearStation", 0);
+    p.lastInput = pj.value("lastInput", 0);
+    p.cargoByType = pj.value("cargoT", std::vector<int>{});
+    p.money = pj.value("money", 0.0);
+    p.reputation = ToPerFaction<float>(pj.value("rep", json()));
+    p.bounty = ToPerFaction<double>(pj.value("bounty", json()));
+    p.skillXp = pj.value("skillXp", std::vector<float>{});
+    p.orderKind = pj.value("ordKind", 0);
+    p.orderStatus = pj.value("ordStatus", 0);
+    p.orderId = pj.value("ordId", 0);
+    p.orderDetail = pj.value("ordDetail", std::string());
+    p.ownedShips = pj.value("ships", std::vector<int>{});
+    p.shipDesigns = pj.value("shipDesigns", std::vector<std::string>{});
+    p.shipIndex = pj.value("ship", 0);
+}
+
+json MissionsJson(const std::vector<Proto::MissionView>& v)
+{
+    json a = json::array();
+    for (const Proto::MissionView& m : v)
+        a.push_back(MissionJson(m));
+    return a;
+}
+
+// The persistent half of `s`, every entity at the near quality: a whole snapshot's state.
+std::shared_ptr<SnapshotState> StateOf(const Proto::Snapshot& s)
+{
+    auto st = std::make_shared<SnapshotState>();
+    st->sys = s.systemId;
+    st->player = PlayerJson(s.player);
+    st->market = s.marketPrices;
+    st->offers = MissionsJson(s.missionOffers);
+    st->active = MissionsJson(s.missionActive);
+    for (const Proto::EntitySnapshot& e : s.entities)
+        st->ents[e.id] = std::make_shared<EntityWire>(WireOf(e, 0.0f));
+    return st;
+}
+
+// What `cur` says that `base` does not, written into the message `out`. No base: everything.
+// An object's fields are sent when they differ and as null when they went back to their
+// default; an entity's position, when it had one before, as the integer step from it.
+void WriteDelta(const SnapshotState* base, const SnapshotState& cur, json& out)
+{
+    static const SnapshotState none;
+    const SnapshotState&       b = base != nullptr ? *base : none;
+
+    json pl = json::object();
+    for (auto it = cur.player.begin(); it != cur.player.end(); ++it)
+    {
+        const auto was = b.player.find(it.key());
+        if (was == b.player.end() || *was != it.value())
+            pl[it.key()] = it.value();
+    }
+    for (auto it = b.player.begin(); it != b.player.end(); ++it)
+        if (!cur.player.contains(it.key()))
+            pl[it.key()] = nullptr;
+    if (!pl.empty())
+        out["pl"] = std::move(pl);
+    if (base == nullptr || cur.market != b.market)
+        out["mk"] = cur.market;
+    if (base == nullptr || cur.offers != b.offers)
+        out["mo"] = cur.offers;
+    if (base == nullptr || cur.active != b.active)
+        out["ma"] = cur.active;
+
     json ents = json::array();
-    for (const EntitySnapshot& e : s.entities)
+    for (const auto& kv : cur.ents)
     {
-        json ej = { { "id", e.id }, { "kind", (int)e.kind }, { "pos", V2Rounded(e.pos) } };
-        if (e.heading != 0.0f)
-            ej["hdg"] = Round3(e.heading);
-        if (e.size != 0.0f)
-            ej["size"] = Round2(e.size);
-        if (e.faction != Factions::Unaffiliated())
-            ej["fac"] = FacJ(e.faction);
-        if (e.role != -1)
-            ej["role"] = e.role;
-        if (e.hullFrac != 1.0f)
-            ej["hullFrac"] = Round3(e.hullFrac);
-        if (e.ore != -1)
-            ej["ore"] = e.ore;
-        if (!e.name.empty())
-            ej["name"] = e.name;
-        if (!e.design.empty())
-            ej["design"] = e.design;
-        ents.push_back(std::move(ej));
-    }
-    j["ents"] = ents;
-
-    json fires = json::array();
-    for (const FireEvent& f : s.fires)
-        fires.push_back({ { "from", V2(f.from) },
-                          { "to", V2(f.to) },
-                          { "fac", FacJ(f.shooterFaction) },
-                          { "pl", f.targetIsPlayer },
-                          { "mine", f.fromPlayer } });
-    j["fires"] = fires;
-
-    json evs = json::array();
-    for (const Ev::Event& e : s.events)
-        evs.push_back({ { "seq", e.seq }, { "kind", (int)e.kind }, { "text", e.text } });
-    j["events"] = evs;
-    j["market"] = s.marketPrices;
-
-    json acks = json::array();
-    for (const TradeAck& a : s.tradeAcks)
-        acks.push_back(
-            { { "type", a.type }, { "sold", a.sold }, { "gross", a.gross }, { "rev", a.revenue } });
-    j["trade"] = acks;
-
-    // Absent means unchanged since the last snapshot that had them (#341).
-    if (s.missionsIncluded)
-    {
-        json offers = json::array();
-        for (const MissionView& m : s.missionOffers)
-            offers.push_back(MissionJson(m));
-        j["mOffers"] = offers;
-        json activeM = json::array();
-        for (const MissionView& m : s.missionActive)
-            activeM.push_back(MissionJson(m));
-        j["mActive"] = activeM;
-    }
-    return j.dump();
-}
-
-std::string MissionsKey(const Snapshot& s)
-{
-    json k = json::array();
-    for (const MissionView& m : s.missionOffers)
-        k.push_back(MissionJson(m));
-    k.push_back(nullptr);  // the boundary: an offer taken moves from one list to the other
-    for (const MissionView& m : s.missionActive)
-        k.push_back(MissionJson(m));
-    return k.dump();
-}
-
-void CarryMissions(Snapshot& incoming, const Snapshot& previous)
-{
-    if (incoming.missionsIncluded)
-        return;
-    incoming.missionOffers = previous.missionOffers;
-    incoming.missionActive = previous.missionActive;
-    incoming.missionsIncluded = true;
-}
-
-bool DecodeSnapshot(const std::string& s, Snapshot& out)
-{
-    json j;
-    if (!OpenEnvelope(s, j))
-        return false;
-
-    out.systemId = j.value("sys", std::string());
-    out.time = j.value("time", 0.0);
-
-    if (j.contains("player") && j["player"].is_object())
-    {
-        const json& pj = j["player"];
-        PlayerView& p = out.player;
-        p.pos = ToV2(pj.value("pos", json::array()));
-        p.vel = ToV2(pj.value("vel", json::array()));
-        p.heading = pj.value("hdg", 0.0f);
-        p.hull = pj.value("hull", 0.0f);
-        p.maxHull = pj.value("maxHull", 0.0f);
-        p.shields = pj.value("sh", 0.0f);
-        p.maxShields = pj.value("maxSh", 0.0f);
-        p.cargoUsed = pj.value("cargo", 0);
-        p.cargoCap = pj.value("cargoCap", 0);
-        p.warpPhase = pj.value("warp", 0);
-        p.warpAlign = pj.value("warpAlign", 0.0f);
-        p.warpTarget = pj.contains("warpTgt") ? ToV2(pj["warpTgt"]) : Vector2{ 0.0f, 0.0f };
-        p.warpDrop = pj.value("warpDrop", 0.0f);
-        p.warpViaSet = pj.contains("warpVia");
-        p.warpVia = p.warpViaSet ? ToV2(pj["warpVia"]) : Vector2{ 0.0f, 0.0f };
-        p.autopilot = pj.value("ap", false);
-        p.apTarget = pj.contains("apTgt") ? ToV2(pj["apTgt"]) : Vector2{ 0.0f, 0.0f };
-        p.apStop = pj.value("apStop", 0.0f);
-        p.holdMode = pj.value("hold", 0);
-        p.holdTargetId = pj.value("holdId", 0);
-        p.holdRange = pj.value("holdR", 0.0f);
-        p.stabilizer = pj.value("stab", true);
-        p.mining = pj.value("mine", false);
-        p.weaponOn = pj.value("weap", false);
-        p.docked = pj.value("docked", false);
-        p.dockedStationId = pj.value("dockId", 0);
-        p.nearbyStationId = pj.value("nearStation", 0);
-        p.lastInput = pj.value("lastInput", 0);
-        p.cargoByType = pj.value("cargoT", std::vector<int>{});
-        p.money = pj.value("money", 0.0);
-        p.reputation = ToPerFaction<float>(pj.value("rep", json()));
-        p.bounty = ToPerFaction<double>(pj.value("bounty", json()));
-        p.skillXp = pj.value("skillXp", std::vector<float>{});
-        p.orderKind = pj.value("ordKind", 0);
-        p.orderStatus = pj.value("ordStatus", 0);
-        p.orderId = pj.value("ordId", 0);
-        p.orderDetail = pj.value("ordDetail", std::string());
-        p.ownedShips = pj.value("ships", std::vector<int>{});
-        p.shipDesigns = pj.value("shipDesigns", std::vector<std::string>{});
-        p.shipIndex = pj.value("ship", 0);
-    }
-
-    out.entities.clear();
-    if (j.contains("ents") && j["ents"].is_array())
-        for (const json& ej : j["ents"])
+        const auto was = b.ents.find(kv.first);
+        if (was == b.ents.end())
         {
-            EntitySnapshot e;
-            e.id = ej.value("id", 0);
-            e.kind = (EntityKind)ej.value("kind", 0);
-            e.pos = ToV2(ej.value("pos", json::array()));
-            e.heading = ej.value("hdg", 0.0f);
-            e.size = ej.value("size", 0.0f);
-            e.faction = ToFac(ej.value("fac", json()));
-            e.role = ej.value("role", -1);
-            e.hullFrac = ej.value("hullFrac", 1.0f);
-            e.ore = ej.value("ore", -1);
-            e.name = ej.value("name", std::string());
-            e.design = ej.value("design", std::string());
-            out.entities.push_back(e);
+            json e = kv.second->j;
+            e["i"] = kv.first;
+            ents.push_back(std::move(e));
+            continue;
         }
+        if (was->second == kv.second)
+            continue;  // the very state that was sent: a far entity between refreshes
+        const json& o = was->second->j;
+        const json& n = kv.second->j;
+        if (o == n)
+            continue;
+        json e = json::object();
+        e["i"] = kv.first;
+        for (auto it = n.begin(); it != n.end(); ++it)
+        {
+            const auto old = o.find(it.key());
+            if (old != o.end() && *old == it.value())
+                continue;
+            if (it.key() == "p" && old != o.end())
+                e["dp"] =
+                    json::array({ it.value()[0].get<long long>() - (*old)[0].get<long long>(),
+                                  it.value()[1].get<long long>() - (*old)[1].get<long long>() });
+            else
+                e[it.key()] = it.value();
+        }
+        for (auto it = o.begin(); it != o.end(); ++it)
+            if (!n.contains(it.key()))
+                e[it.key()] = nullptr;
+        ents.push_back(std::move(e));
+    }
+    if (!ents.empty())
+        out["ents"] = std::move(ents);
 
-    out.fires.clear();
+    json rm = json::array();
+    for (const auto& kv : b.ents)
+        if (cur.ents.count(kv.first) == 0)
+            rm.push_back(kv.first);
+    if (!rm.empty())
+        out["rm"] = std::move(rm);
+}
+
+// Merges `delta`'s fields into `obj`: a null removes one, anything else replaces it.
+void MergeFields(json& obj, const json& delta)
+{
+    for (auto it = delta.begin(); it != delta.end(); ++it)
+        if (it.value().is_null())
+            obj.erase(it.key());
+        else
+            obj[it.key()] = it.value();
+}
+
+bool IsIntPair(const json& j)
+{
+    return j.is_array() && j.size() == 2 && j[0].is_number_integer() && j[1].is_number_integer();
+}
+
+// `base` (none: an empty state) with message `m` applied, into `out`. False for a message
+// that does not fit its base -- a step for an entity that has no position to step from.
+bool ApplyDelta(const SnapshotState* base, const json& m, SnapshotState& out)
+{
+    if (base != nullptr)
+        out = *base;
+    out.sys = TextOf(m, "sys");
+    if (m.contains("pl"))
+    {
+        if (!m["pl"].is_object())
+            return false;
+        MergeFields(out.player, m["pl"]);
+    }
+    const std::pair<const char*, json*> lists[] = { { "mk", &out.market },
+                                                    { "mo", &out.offers },
+                                                    { "ma", &out.active } };
+    for (const auto& l : lists)
+        if (m.contains(l.first))
+        {
+            if (!m[l.first].is_array())
+                return false;
+            *l.second = m[l.first];
+        }
+    if (m.contains("rm"))
+    {
+        if (!m["rm"].is_array())
+            return false;
+        for (const json& id : m["rm"])
+            if (id.is_number_integer())
+                out.ents.erase(id.get<int>());
+    }
+    if (m.contains("ents"))
+    {
+        if (!m["ents"].is_array())
+            return false;
+        for (const json& e : m["ents"])
+        {
+            if (!e.is_object() || !e.contains("i") || !e["i"].is_number_integer())
+                return false;
+            const int  id = e["i"].get<int>();
+            auto       w = std::make_shared<EntityWire>();
+            const auto was = out.ents.find(id);
+            if (was != out.ents.end())
+                w->j = was->second->j;
+            else
+                w->j = json::object();
+            json fields = e;
+            fields.erase("i");
+            if (fields.contains("dp"))
+            {
+                const json dp = fields["dp"];
+                fields.erase("dp");
+                if (!IsIntPair(dp) || !w->j.contains("p") || !IsIntPair(w->j["p"]))
+                    return false;
+                w->j["p"] = json::array({ w->j["p"][0].get<long long>() + dp[0].get<long long>(),
+                                          w->j["p"][1].get<long long>() + dp[1].get<long long>() });
+            }
+            MergeFields(w->j, fields);
+            out.ents[id] = std::move(w);
+        }
+    }
+    return true;
+}
+
+// What happens once: the shots, the journal and the trade acknowledgements of this message.
+void WriteOnce(const Proto::Snapshot& s, json& j)
+{
+    if (!s.fires.empty())
+    {
+        json fires = json::array();
+        for (const FireEvent& f : s.fires)
+            fires.push_back({ { "from", V2(f.from) },
+                              { "to", V2(f.to) },
+                              { "fac", FacJ(f.shooterFaction) },
+                              { "pl", f.targetIsPlayer },
+                              { "mine", f.fromPlayer } });
+        j["fires"] = std::move(fires);
+    }
+    if (!s.events.empty())
+    {
+        json evs = json::array();
+        for (const Ev::Event& e : s.events)
+            evs.push_back({ { "seq", e.seq }, { "kind", (int)e.kind }, { "text", e.text } });
+        j["events"] = std::move(evs);
+    }
+    if (!s.tradeAcks.empty())
+    {
+        json acks = json::array();
+        for (const Proto::TradeAck& a : s.tradeAcks)
+            acks.push_back({ { "type", a.type },
+                             { "sold", a.sold },
+                             { "gross", a.gross },
+                             { "rev", a.revenue } });
+        j["trade"] = std::move(acks);
+    }
+}
+
+// The snapshot a state and its message describe.
+void ReadSnapshot(const SnapshotState& st, const json& j, Proto::Snapshot& out)
+{
+    out = Proto::Snapshot{};
+    out.systemId = st.sys;
+    out.time = j.value("time", 0.0);
+    ReadPlayer(st.player, out.player);
+    for (const auto& kv : st.ents)
+        out.entities.push_back(EntityOf(kv.first, kv.second->j));
+    out.marketPrices = st.market.get<std::vector<float>>();
+    for (const json& mj : st.offers)
+        out.missionOffers.push_back(ToMission(mj));
+    for (const json& mj : st.active)
+        out.missionActive.push_back(ToMission(mj));
+
     if (j.contains("fires") && j["fires"].is_array())
         for (const json& fj : j["fires"])
         {
@@ -916,8 +1120,6 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
             f.fromPlayer = fj.value("mine", false);
             out.fires.push_back(f);
         }
-
-    out.events.clear();
     if (j.contains("events") && j["events"].is_array())
         for (const json& ej : j["events"])
         {
@@ -927,32 +1129,204 @@ bool DecodeSnapshot(const std::string& s, Snapshot& out)
             e.text = ej.value("text", std::string());
             out.events.push_back(std::move(e));
         }
-
-    out.marketPrices = j.value("market", std::vector<float>{});
-
-    out.tradeAcks.clear();
     if (j.contains("trade") && j["trade"].is_array())
         for (const json& aj : j["trade"])
         {
-            TradeAck a;
+            Proto::TradeAck a;
             a.type = aj.value("type", 0);
             a.sold = aj.value("sold", 0);
             a.gross = aj.value("gross", 0.0);
             a.revenue = aj.value("rev", 0.0);
             out.tradeAcks.push_back(a);
         }
+}
 
-    out.missionsIncluded = j.contains("mOffers") || j.contains("mActive");
-    out.missionOffers.clear();
-    if (j.contains("mOffers") && j["mOffers"].is_array())
-        for (const json& mj : j["mOffers"])
-            out.missionOffers.push_back(ToMission(mj));
-    out.missionActive.clear();
-    if (j.contains("mActive") && j["mActive"].is_array())
-        for (const json& mj : j["mActive"])
-            out.missionActive.push_back(ToMission(mj));
+// Where a new far entity's refresh falls in the interval, so that a system's worth of them
+// arriving at once are not all refreshed in the same snapshot every second after.
+double Stagger(int id)
+{
+    const double golden = 0.6180339887498949;
+    const double x = (double)(unsigned)id * golden;
+    return x - std::floor(x);
+}
+}  // namespace
 
+namespace Proto
+{
+
+std::string EncodeSnapshot(const Snapshot& s)
+{
+    json j;
+    Stamp(j, "snap");
+    j["sys"] = s.systemId;
+    j["time"] = s.time;
+    WriteDelta(nullptr, *StateOf(s), j);
+    WriteOnce(s, j);
+    return j.dump();
+}
+
+bool DecodeSnapshot(const std::string& s, Snapshot& out)
+{
+    json j;
+    if (!OpenEnvelope(s, j) || j.contains("b"))
+        return false;
+    try
+    {
+        SnapshotState st;
+        if (!ApplyDelta(nullptr, j, st))
+            return false;
+        Snapshot snap;
+        ReadSnapshot(st, j, snap);
+        out = std::move(snap);
+        return true;
+    }
+    catch (const json::exception&)
+    {
+        return false;  // a field of the wrong type: the message is broken, not the client
+    }
+}
+
+std::string EncodeAck(const Ack& a)
+{
+    json j;
+    Stamp(j, "ack");
+    j["n"] = a.snapshot;
+    return j.dump();
+}
+
+bool DecodeAck(const std::string& s, Ack& out)
+{
+    json j;
+    if (!OpenEnvelope(s, j) || TypeOf(j) != "ack")
+        return false;
+    const long long n = IntOf(j, "n", -1);
+    if (n < 0 || n > 2147483647LL)
+        return false;
+    out.snapshot = (int)n;
     return true;
+}
+
+std::string SnapshotSender::Encode(const Snapshot& s, const std::set<int>& relevant)
+{
+    auto cur = std::make_shared<SnapshotState>();
+    cur->sys = s.systemId;
+    cur->player = PlayerJson(s.player);
+    cur->market = s.marketPrices;
+    cur->offers = MissionsJson(s.missionOffers);
+    cur->active = MissionsJson(s.missionActive);
+
+    // The area of interest: what is relevant, then the nearest within the radius, up to the
+    // cap. Everything else is on the far list.
+    const Vector2                      me = s.player.pos;
+    std::set<int>                      nearIds;
+    std::vector<std::pair<float, int>> inRange;
+    const float                        r2 = interest_.nearRadius * interest_.nearRadius;
+    for (const EntitySnapshot& e : s.entities)
+    {
+        const float dx = e.pos.x - me.x, dy = e.pos.y - me.y;
+        const float d2 = dx * dx + dy * dy;
+        if (relevant.count(e.id) != 0)
+            nearIds.insert(e.id);
+        else if (d2 <= r2)
+            inRange.push_back({ d2, e.id });
+    }
+    std::sort(inRange.begin(), inRange.end());
+    for (const auto& c : inRange)
+        if ((int)nearIds.size() < interest_.nearCap)
+            nearIds.insert(c.second);
+
+    std::map<int, Far> far;
+    for (const EntitySnapshot& e : s.entities)
+    {
+        if (nearIds.count(e.id) != 0)
+        {
+            cur->ents[e.id] = std::make_shared<EntityWire>(WireOf(e, 0.0f));
+            continue;
+        }
+        const auto held = far_.find(e.id);
+        if (held != far_.end() && s.time >= held->second.at &&
+            s.time - held->second.at < interest_.farRefresh)
+        {
+            cur->ents[e.id] = held->second.wire;
+            far[e.id] = held->second;
+            continue;
+        }
+        Far f;
+        f.wire = std::make_shared<EntityWire>(WireOf(e, interest_.farGrid));
+        f.at = s.time;
+        if (held == far_.end())
+            f.at -= Stagger(e.id) * interest_.farRefresh;
+        cur->ents[e.id] = f.wire;
+        far[e.id] = f;
+    }
+    far_ = std::move(far);
+
+    std::shared_ptr<const SnapshotState> base;
+    const auto                           b = sent_.find(acked_);
+    if (b != sent_.end() && b->second->sys == cur->sys)
+        base = b->second;  // a state from another system is no base: everything changed
+    lastBase_ = base ? acked_ : 0;
+
+    const int n = ++next_;
+    json      j;
+    Stamp(j, "snap");
+    j["n"] = n;
+    if (base)
+        j["b"] = acked_;
+    j["sys"] = s.systemId;
+    j["time"] = s.time;
+    WriteDelta(base.get(), *cur, j);
+    WriteOnce(s, j);
+
+    sent_[n] = std::move(cur);
+    while (sent_.size() > HELD)
+        sent_.erase(sent_.begin());
+    return j.dump();
+}
+
+void SnapshotSender::Acknowledge(int n)
+{
+    if (n > acked_ && n <= next_)
+        acked_ = n;
+}
+
+bool SnapshotReceiver::Decode(const std::string& msg, Snapshot& out)
+{
+    json j;
+    if (!OpenEnvelope(msg, j) || TypeOf(j) != "snap")
+        return false;
+    try
+    {
+        std::shared_ptr<const SnapshotState> base;
+        if (j.contains("b"))
+        {
+            const auto it = held_.find((int)IntOf(j, "b", 0));
+            if (it == held_.end())
+                return false;  // not held: wait for the whole one the server will send
+            base = it->second;
+        }
+        auto st = std::make_shared<SnapshotState>();
+        if (!ApplyDelta(base.get(), j, *st))
+            return false;
+        Snapshot snap;
+        ReadSnapshot(*st, j, snap);
+        const long long n = IntOf(j, "n", 0);
+        if (n > 0 && n <= 2147483647LL)
+        {
+            held_[(int)n] = std::move(st);
+            if ((int)n > latest_)
+                latest_ = (int)n;
+            // Twice what the server holds: it never names a base older than its own window.
+            while (held_.size() > 2 * SnapshotSender::HELD)
+                held_.erase(held_.begin());
+        }
+        out = std::move(snap);
+        return true;
+    }
+    catch (const json::exception&)
+    {
+        return false;
+    }
 }
 
 std::string EncodeLayout(const SystemLayout& s)

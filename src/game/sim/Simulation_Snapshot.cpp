@@ -212,6 +212,22 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
     return snap;
 }
 
+std::set<int> Simulation::InterestOf(const ClientSession& s) const
+{
+    std::set<int> ids;
+    if (s.selectedId != 0)
+        ids.insert(s.selectedId);
+    if (s.ship && s.ship->GetHoldTargetId() != 0)
+        ids.insert(s.ship->GetHoldTargetId());  // prediction aims at it (#157)
+    if (s.HasRunningOrder() && s.order.targetId != 0)
+        ids.insert(s.order.targetId);
+    if (s.dockedStationId != 0)
+        ids.insert(s.dockedStationId);
+    // Promoting an id only changes how well a thing the snapshot carries is described: a ship
+    // in cover is not in the snapshot at all, so selecting it does not bring it back (#341).
+    return ids;
+}
+
 // One object of the static layer as the wire describes it. False for anything that is not
 // in the layout at all -- an NPC, a player's ship. Shared by the whole layout and by a
 // delta, so an object a delta announces is described exactly as a later layout would.

@@ -339,6 +339,7 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     // Player fire: on a shot — a beam event into the snapshot (client draws it blue).
     // Account effects (mission credit/reputation) are not yet applied on the server (3c-ii).
     Simulation::PlayerCombatEvents ev;
+    s.selectedId = c.targetId;  // what it is told about in full, wherever it is (#349)
     if (sim.StepPlayerFire(s, *sim.SystemOf(s), c.targetId, dt, &ev))
     {
         FireEvent fe;
@@ -492,8 +493,9 @@ struct HostClient
     // (#341). The session is saved and ended when that runs out, or when its owner logs in
     // again -- which displaces it like any other earlier connection.
     bool lingering = false;
-    // The missions this client was last sent (#341), so they go out only when they change.
-    std::string lastMissions;
+    // The snapshots this client was sent and the newest it acknowledged (#349): what the next
+    // one is a delta against.
+    Proto::SnapshotSender snapOut;
 
     // The login in progress (#106). A name has been claimed and a challenge sent; none of
     // it means anything until the proof arrives.
@@ -1327,6 +1329,14 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                 // Anything else before the hello is from a client that has not said who it
                 // is; there is no player to apply it to.
                 ClientSession* s = sim.Session(hc.sessionId);
+                // An acknowledgement is not a tick of anything, so it is not on the budget.
+                if (type == "ack")
+                {
+                    Proto::Ack a;
+                    if (s != nullptr && Proto::DecodeAck(msg, a))
+                        hc.snapOut.Acknowledge(a.snapshot);
+                    continue;
+                }
                 if (type != "cmd" || s == nullptr)
                     continue;
                 if (hc.tickBudget < 1.0)
@@ -1431,11 +1441,6 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
             snap.events = s->EventsSince(hc.lastEventSeq);
             if (!snap.events.empty())
                 hc.lastEventSeq = snap.events.back().seq;
-            // The mission board and log change a few times a session; they were sent twenty
-            // times a second. Now only when they differ from what this client has (#341).
-            const std::string missions = Proto::MissionsKey(snap);
-            snap.missionsIncluded = missions != hc.lastMissions;
-            hc.lastMissions = missions;
             // What a design the snapshot names is, before the snapshot names it (#279).
             // Counted as layout: it is static description, sent once.
             for (const Proto::DesignDef& def : sim.DesignDefsFor(snap, hc.sentDesigns))
@@ -1444,7 +1449,10 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                 net.layouts += (double)d.size();
                 hc.conn->Send(d);
             }
-            const std::string enc = Proto::EncodeSnapshot(snap);
+            // Only what changed since the snapshot this client last acknowledged, and only the
+            // neighbourhood in full (#349). The mission board and log are part of it, so they
+            // go out when they change rather than twenty times a second (#341).
+            const std::string enc = hc.snapOut.Encode(snap, sim.InterestOf(*s));
             net.snapshots += (double)enc.size();
             net.snapCount++;
             hc.conn->Send(enc);

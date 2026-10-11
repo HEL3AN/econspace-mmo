@@ -5,6 +5,8 @@
 #include "core/ShipDesign.h"
 #include "core/WorldLoader.h"  // Universe, the galaxy index
 #include <map>
+#include <memory>
+#include <set>
 #include "entities/Defence.h"
 #include "entities/EntityKind.h"
 #include "sim/Events.h"
@@ -30,7 +32,10 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    29;  // 29: a gate's expiresAt is when an unstable wormhole mouth collapses (#342 S4); 28: a
+    30;  // 30: a snapshot is numbered and may be a delta against one the client acknowledged
+         // with an Ack; entities are quantised integers, and beyond the area of interest they
+         // are coarse and refreshed once a second; missions are part of the delta (#349);
+         // 29: a gate's expiresAt is when an unstable wormhole mouth collapses (#342 S4); 28: a
          // structure's allow-list is in its owner's layout only; anyone else's has its mode and
          // threshold with the lists empty (#340); 27: a structure's rules of engagement, set by a
          // command and carried in its layout; whether a system is claimed, in the galaxy stats
@@ -326,10 +331,6 @@ struct Snapshot
     std::vector<TradeAck>       tradeAcks;      // one-shot trade acknowledgments (M4e-3b)
     std::vector<MissionView>    missionOffers;  // docked station board (empty outside dock)
     std::vector<MissionView>    missionActive;  // player's active missions (M4f-2)
-    // Whether the two mission lists are in this snapshot at all (#341). The server sends them
-    // only when they change; a snapshot without them means "as before", and a client fills
-    // them in from the last one with CarryMissions.
-    bool missionsIncluded = true;
 };
 
 // Static description of a system entity, for building the client proxy WITHOUT
@@ -495,12 +496,12 @@ std::string EncodeAuth(const Auth& a);
 bool        DecodeAuth(const std::string& s, Auth& out);
 std::string EncodeCommand(const Command& c);
 bool        DecodeCommand(const std::string& s, Command& out);
+// A whole snapshot, every entity in full: what a SnapshotSender sends when it has no state
+// the client acknowledged, and what a test or a selftest sends when it wants no state at all.
+// DecodeSnapshot reads only a whole one; a delta needs the SnapshotReceiver that holds its
+// base, and is refused here rather than read as a world with most of it missing.
 std::string EncodeSnapshot(const Snapshot& s);
 bool        DecodeSnapshot(const std::string& s, Snapshot& out);
-// The mission lists as one comparable string: the server sends them when this changes.
-std::string MissionsKey(const Snapshot& s);
-// A snapshot that did not carry the missions takes them from the one before it.
-void        CarryMissions(Snapshot& incoming, const Snapshot& previous);
 std::string EncodeLayout(const SystemLayout& s);
 bool        DecodeLayout(const std::string& s, SystemLayout& out);
 std::string EncodeLayoutDelta(const LayoutDelta& d);
@@ -518,6 +519,99 @@ bool        DecodeGalaxy(const std::string& s, GalaxyState& out);
 // index has it empty.
 std::string EncodeUniverse(const WorldLoader::Universe& u);
 bool        DecodeUniverse(const std::string& s, WorldLoader::Universe& out);
+
+// --- Snapshot deltas and the area of interest (#349) ---
+//
+// A snapshot was the whole of what a player could see, twenty times a second, whether or not
+// any of it had changed: about 3 KB, 59 KB/s for one idle client. Now each one is numbered,
+// the client acknowledges what it has, and the server sends only what differs from the newest
+// state the client acknowledged -- per entity and per field, with what is gone named.
+// Quake III's scheme: the base is whatever was acknowledged, not the last snapshot sent, so
+// nothing is assumed to have arrived until the client says so. With no acknowledged state
+// held -- a new client, a new system, acks that stopped coming -- the snapshot is whole.
+//
+// Both ends hold the same state exactly, because what is held is what was on the wire:
+// entities as integers (a hundredth of a unit, a milliradian, a thousandth of the hull), so a
+// change is decided by comparing integers and nothing drifts between the two copies. The
+// player's own ship is not quantised: prediction replays inputs on top of it, and a ship
+// put back a few hundredths off every snapshot would be corrected every snapshot.
+
+// How much of a system a viewer is told about in full. Everything within `nearRadius` of the
+// ship -- or relevant to it: its target, what it holds station on, its order's object -- goes
+// at every snapshot to a hundredth of a unit, up to `nearCap` things, nearest first. The rest
+// of the system is still there, because the overview and the sensor screen list it, but as a
+// coarse far list: positions to `farGrid` units, each thing refreshed once in `farRefresh`
+// seconds. The radius is far beyond any weapon or aggression range in the game, so nothing
+// that can hurt a player is ever on the far list.
+struct Interest
+{
+    float  nearRadius = 30000.0f;
+    int    nearCap = 96;
+    double farRefresh = 1.0;
+    float  farGrid = 10.0f;
+};
+
+// What a client says it has: the number of the newest snapshot it rebuilt. Sent once a frame
+// in which one arrived; the server bases the next delta on it.
+struct Ack
+{
+    int snapshot = 0;
+};
+std::string EncodeAck(const Ack& a);
+bool        DecodeAck(const std::string& s, Ack& out);
+
+// What one snapshot left a client holding, and one entity of it; Protocol.cpp's business.
+struct SnapshotState;
+struct EntityWire;
+
+// The server's half, one per connection.
+class SnapshotSender
+{
+public:
+    explicit SnapshotSender(Interest interest = Interest{}) : interest_(interest) {}
+
+    // `s` encoded for this client: a delta against the newest state it acknowledged if that is
+    // still held, otherwise whole. `relevant` are ids sent in full wherever they are. Cover is
+    // not decided here: what `s` does not carry, the client is not told.
+    std::string Encode(const Snapshot& s, const std::set<int>& relevant);
+    // The client has rebuilt snapshot `n`. An older or unknown number is ignored.
+    void Acknowledge(int n);
+    // The base the last Encode used; 0 -- it was whole.
+    int LastBase() const { return lastBase_; }
+
+    // How many sent states are held for a late ack: a second and a half at 20 Hz. An ack
+    // older than that is answered with a whole snapshot.
+    static constexpr size_t HELD = 32;
+
+private:
+    struct Far
+    {
+        std::shared_ptr<const EntityWire> wire;  // the entity as last refreshed
+        double                            at = 0.0;
+    };
+    Interest                                            interest_;
+    int                                                 next_ = 0;
+    int                                                 acked_ = 0;
+    int                                                 lastBase_ = 0;
+    std::map<int, std::shared_ptr<const SnapshotState>> sent_;
+    std::map<int, Far>                                  far_;
+};
+
+// The client's half: rebuilds each snapshot onto the state it names.
+class SnapshotReceiver
+{
+public:
+    // A snapshot message, whole or a delta. False -- `out` untouched -- for a broken message
+    // or a delta against a state not held; the server sends a whole one once the
+    // acknowledgements stop moving, so a refusal heals itself.
+    bool Decode(const std::string& msg, Snapshot& out);
+    // The newest snapshot rebuilt: what to acknowledge. 0 -- none yet.
+    int Latest() const { return latest_; }
+
+private:
+    int                                                 latest_ = 0;
+    std::map<int, std::shared_ptr<const SnapshotState>> held_;
+};
 
 // Message type from the "t" field ("cmd"/"snap"/"layout"/"ldelta"/"design"/"galaxy"/
 // "universe"); "" —

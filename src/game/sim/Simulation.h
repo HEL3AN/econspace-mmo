@@ -514,6 +514,10 @@ public:
     // the client. Player state and fire events are added by the caller (the client owns the
     // player ship until M4f).
     Proto::Snapshot BuildSnapshot(const ClientSession& s, const std::string& systemId) const;
+    // The ids a player's snapshot carries in full wherever they are (#349): what is selected,
+    // what the ship holds station on, the object of its standing order and the station it is
+    // docked at. Everything else is in full only near the ship (Proto::Interest).
+    std::set<int> InterestOf(const ClientSession& s) const;
 
     // M4d-3c: builds the static layout of a system (only stationary objects —
     // star/planets/stations/fields/gates/nebulae/derelicts) for building the
