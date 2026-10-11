@@ -174,9 +174,10 @@ private:
     void    SellCargo(ResourceType type, int amount);
     RepTier DockedTier() const;  // what the docked station's owner thinks of this pilot
 
-    void SetupWindows();                         // puts every window, screen and popup on the desk
-    void HandleMenuBar();                        // menu bar input: a button toggles its window
-    void DrawMenuBar();                          // vertical menu bar on the left
+    void SetupWindows();   // puts every window, screen and popup on the desk
+    void HandleMenuBar();  // menu bar input: a button toggles its window
+    void DrawMenuBar();    // vertical menu bar on the left
+    void DrawLocation();   // the system and its security, top centre, under the windows
     void ApplyResolution(int w, int h);          // changes the window size
     void DrawSettingsContent(const Ui::Frame&);  // display, interface and keys, as tabs
     void OpenContextMenu(Entity* target);  // right-click action menu on an object, at the cursor
@@ -430,13 +431,18 @@ private:
     int        hangarSel_ = -1;      // -1: the hull being flown
 
     // Missions, radar and settings (#297).
-    Ui::Layout missionsLayout_;
-    Ui::Layout radarLayout_;
-    Ui::Layout settingsLayout_;
-    int        missionsTab_ = 0;            // 0 the missions taken, 1 the docked station's board
-    int        missionsSel_[2] = { 0, 0 };  // the mission chosen on each
-    Rectangle  radarScope_ = { 0.0f, 0.0f, 0.0f, 0.0f };  // where the radar's picture was drawn
-    int        settingsTab_ = 0;
+    Ui::Layout  missionsLayout_;
+    Ui::Layout  radarLayout_;
+    Ui::Layout  settingsLayout_;
+    Ui::Layout  menuLayout_;  // the menu bar down the left edge
+    Ui::Layout  locationLayout_;
+    std::string menuToggle_;  // a menu button clicked while the bar was drawn: toggled next frame
+    std::vector<Ui::ThemeEntry> themes_;  // the ones Settings offers, read once at start
+    std::string themeToUse_;       // chosen in Settings while it was drawn: switched to next frame
+    int         missionsTab_ = 0;  // 0 the missions taken, 1 the docked station's board
+    int         missionsSel_[2] = { 0, 0 };                // the mission chosen on each
+    Rectangle   radarScope_ = { 0.0f, 0.0f, 0.0f, 0.0f };  // where the radar's picture was drawn
+    int         settingsTab_ = 0;
     // The UI scale while its slider is held: applied on release, because a scale applied
     // while dragging moves the slider out from under the cursor.
     float scaleDraft_ = 1.0f;

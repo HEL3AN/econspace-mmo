@@ -3,11 +3,18 @@
 #include "raylib.h"  // Color: a plain struct, nothing here draws
 #include <nlohmann/json.hpp>
 #include <string>
+#include <vector>
 
-// What the interface looks like, as data (#297): colours, spacing, corner radii and font
-// sizes, read from data/ui_theme.json. A screen asks the theme for "the dim text colour" or
-// "the gap between rows" and never writes a number of its own, so the whole interface can
-// be retuned in one file and scaled by one factor.
+// What the interface looks like, as data (#297): colours, spacing, corner radii, font sizes
+// and typefaces, read from a theme file in data/ui_themes/. A screen asks the theme for "the
+// dim text colour" or "the gap between rows" and never writes a number of its own, so the
+// whole interface can be restyled in one file and scaled by one factor.
+//
+// A theme is a whole file, and the player picks one in Settings. Switching is a reload: the
+// theme in use is replaced and the fonts it names are rasterised again (Ui::UseTheme), with
+// no restart. Nothing may keep a theme value past a frame for that reason -- a window asks
+// CurrentTheme() as it draws, and the names in UiTheme.h refer to the theme in use, not to
+// a copy of it.
 //
 // Every value below is in *layout units*. A unit is a pixel at a scale of 1; Ui::Px turns
 // one into pixels at the current scale, which is the player's own setting times the
@@ -15,26 +22,40 @@
 namespace Ui
 {
 
+// One of the four faces (Ui::Face) a theme names: its file, relative to data/, and how text
+// in it is set. Capitals and tracking belong to the face rather than to each widget, so a
+// theme whose headings are spaced capitals says so once and every heading follows.
+struct FaceSpec
+{
+    std::string file;
+    bool        upper = false;    // set in capitals, whatever the text says
+    float       tracking = 0.0f;  // extra room between letters, in ems
+};
+
 struct Theme
 {
+    std::string id = "fleet";            // its file's name, without .json
+    std::string name = "Fleet console";  // what Settings calls it
+
     struct Colors
     {
-        Color panel{ 18, 20, 28, 235 };    // a window's body
-        Color border{ 70, 80, 100, 255 };  // its outline, and dividers
-        Color title{ 34, 38, 52, 255 };    // its title bar
-        Color accent{ 92, 170, 232, 255 };
-        Color text{ 222, 226, 234, 255 };
-        Color dim{ 132, 142, 158, 255 };     // labels, and whatever is off
-        Color good{ 120, 210, 130, 255 };    // healthy, complete
-        Color warn{ 232, 190, 90, 255 };     // attention
-        Color bad{ 230, 90, 80, 255 };       // damage, failure
-        Color money{ 255, 203, 0, 255 };     // credits, wherever they are shown
-        Color track{ 80, 86, 100, 110 };     // the empty part of a bar or slider
-        Color hover{ 92, 170, 232, 40 };     // under the cursor
-        Color selected{ 92, 170, 232, 56 };  // the chosen row of a table, the open tab
-        Color backdrop{ 8, 9, 14, 255 };     // behind the windows where there is no world: docked
-        Color shade{ 6, 8, 14, 235 };        // over the world, under a screen drawn on it: the map
-        Color sensor{ 5, 10, 9, 255 };       // the sensor screen's ground: opaque, a readout
+        Color panel{ 13, 17, 23, 255 };         // a window's body: opaque, nothing shows through
+        Color border{ 43, 53, 66, 255 };        // its outline, and dividers
+        Color title{ 21, 28, 37, 255 };         // its title bar
+        Color titleText{ 174, 189, 204, 255 };  // the title written on it
+        Color accent{ 141, 178, 216, 255 };
+        Color text{ 201, 211, 222, 255 };
+        Color dim{ 125, 139, 155, 255 };      // labels, and whatever is off
+        Color good{ 111, 191, 138, 255 };     // healthy, complete
+        Color warn{ 217, 180, 90, 255 };      // attention
+        Color bad{ 212, 97, 79, 255 };        // damage, failure
+        Color money{ 227, 194, 107, 255 };    // credits, wherever they are shown
+        Color track{ 42, 51, 64, 90 };        // the empty part of a bar or slider
+        Color hover{ 141, 178, 216, 26 };     // under the cursor
+        Color selected{ 141, 178, 216, 46 };  // the chosen row of a table, the open tab
+        Color backdrop{ 6, 8, 12, 255 };      // behind the windows where there is no world: docked
+        Color shade{ 6, 8, 14, 235 };         // over the world, under a screen drawn on it: the map
+        Color sensor{ 5, 10, 9, 255 };        // the sensor screen's ground: opaque, a readout
     } colors;
 
     // Allegiance, as the *instruments* say it (#117): the overview, the radar, the sensor
@@ -42,59 +63,87 @@ struct Theme
     // because the same station is a friend to one player and a target to another.
     struct Standing
     {
-        Color own{ 120, 235, 130, 255 };
-        Color friendly{ 90, 170, 255, 255 };
-        Color neutral{ 215, 215, 205, 255 };
-        Color hostile{ 230, 90, 80, 255 };
-        Color unowned{ 125, 135, 155, 255 };
+        Color own{ 127, 214, 143, 255 };
+        Color friendly{ 111, 168, 232, 255 };
+        Color neutral{ 201, 204, 196, 255 };
+        Color hostile{ 224, 96, 79, 255 };
+        Color unowned{ 118, 128, 143, 255 };
     } standing;
 
     struct Metrics
     {
-        float titleHeight = 26.0f;  // a window's title bar
-        float padding = 12.0f;      // inside a window, around its content
-        float gap = 8.0f;           // between the blocks of a window
-        float rowGap = 4.0f;        // between the rows of one block
-        float radius = 3.0f;        // corners of buttons, chips and bars
+        float titleHeight = 22.0f;  // a window's title bar
+        float padding = 8.0f;       // inside a window, around its content
+        float gap = 7.0f;           // between the blocks of a window
+        float rowGap = 3.0f;        // between the rows of one block
+        float radius = 0.0f;        // corners of buttons, chips and bars
         float border = 1.0f;        // outlines
-        float barHeight = 8.0f;     // a progress bar
-        float buttonHeight = 26.0f;
-        float resizeGrip = 14.0f;  // the corner a resizable window is dragged by
-        float rowHeight = 20.0f;   // a table's row
+        float barHeight = 5.0f;     // a progress bar
+        float buttonHeight = 22.0f;
+        float resizeGrip = 12.0f;  // the corner a resizable window is dragged by
+        float rowHeight = 19.0f;   // a table's row
         float scrollbar = 4.0f;    // the width of a scroll indicator
         float snap = 12.0f;        // how near an edge a dragged window jumps to it
-        float tabWidth = 112.0f;   // the widest a tab of a stacked window is
-        float sidePanel = 240.0f;  // a screen's column of legends and news beside its picture
+        float tabWidth = 120.0f;   // the widest a tab of a stacked window is
+        float sidePanel = 260.0f;  // a screen's column of legends and news beside its picture
+        float menuBar = 64.0f;     // the strip of window buttons down the left edge
+        float formLabel = 104.0f;  // the column of labels on the left of a form (FormRow)
+        float titleMark = 2.0f;    // an accent stripe down the left of a title bar; 0 for none
+        float tabMark = 2.0f;      // an accent line under the chosen tab; 0 for none
     } metrics;
 
+    // In pixels of em at a scale of 1, as CSS means a font size (Ui::Fonts).
     struct FontSizes
     {
         float small = 11.0f;
-        float label = 13.0f;  // what a value is
-        float body = 14.0f;   // the value itself, and running text
-        float title = 15.0f;  // a window's title
-        float heading = 22.0f;
+        float label = 12.0f;  // what a value is
+        float body = 13.0f;   // the value itself, and running text
+        float title = 13.0f;  // a window's title
+        float heading = 21.0f;
     } fontSize;
 
-    // Paths relative to data/. Two faces: one for reading, one for titles and emphasis.
+    // One per Ui::Face, so changing the interface's typeface is a change to the theme file
+    // and a font in data/fonts/, never to code; two faces may name one file. `numbers` is
+    // for figures in columns and wants a font whose digits are all one width.
     struct Fonts
     {
-        std::string regular = "fonts/Inter-Regular.ttf";
-        std::string strong = "fonts/Inter-SemiBold.ttf";
+        FaceSpec regular{ "fonts/BarlowSemiCondensed-Regular.ttf" };
+        FaceSpec strong{ "fonts/BarlowSemiCondensed-SemiBold.ttf" };
+        FaceSpec heading{ "fonts/BarlowCondensed-SemiBold.ttf", true, 0.1f };
+        FaceSpec numbers{ "fonts/BarlowSemiCondensedTnum-Regular.ttf" };
     } fonts;
+
+    // How text is set, whatever the font.
+    struct Text
+    {
+        // A line is this many times the text's size tall; the glyphs sit in its middle.
+        float lineHeight = 1.35f;
+        // Above 1 thickens each glyph's edge (Ui::FontFiles::gamma); 1 draws the coverage
+        // the rasteriser gave.
+        float gamma = 1.2f;
+    } text;
 };
 
 // Reads a theme. Strict both ways: an unknown field is an error, because read leniently a
 // misspelt "acent" is indistinguishable from an absent one (#191) and the colour would
 // silently stay what it was; a missing field is an error too, so the file is the whole
 // truth and the defaults above are only what a broken file falls back to. `into` is left
-// untouched on failure.
+// untouched on failure. The id is the file's name and is not in the file.
 bool ParseTheme(const nlohmann::json& j, Theme& into, std::string& error);
 bool LoadTheme(const std::string& path, Theme& into, std::string& error);
 // The theme in use. Until LoadTheme writes into it, it is the defaults above -- which is
 // what the server, the agent and the tests see, since none of them draws.
 Theme&       MutableTheme();
 const Theme& CurrentTheme();
+
+// The themes a player can pick: every file in `dir` (data/ui_themes/) that loads, in the
+// order of their ids. A file that does not load is left out, and said in `problems`.
+struct ThemeEntry
+{
+    std::string id, name;
+};
+std::vector<ThemeEntry> ListThemes(const std::string& dir, std::string* problems = nullptr);
+constexpr const char*   DEFAULT_THEME = "fleet";
 
 // "#RRGGBB" or "#RRGGBBAA".
 bool ParseColor(const std::string& text, Color& out);
@@ -113,12 +162,15 @@ float Px(float units);                // units to pixels at the current scale, r
 constexpr float MIN_USER_SCALE = 0.75f;
 constexpr float MAX_USER_SCALE = 2.5f;
 
-// This machine's interface settings: { "version": 1, "scale": 1.25 }. Next to the
-// executable like the window layout, because they belong to the display, not the account.
-// A missing file is not an error; a file from a newer build is read for nothing and the
-// caller should not write over it.
+// This machine's interface settings: { "version": 1, "scale": 1.25, "theme": "fleet" }.
+// Next to the executable like the window layout, because they belong to the display, not
+// the account. A missing file is not an error; a file from a newer build is read for
+// nothing and the caller should not write over it.
 constexpr int UI_SETTINGS_VERSION = 1;
 bool          LoadUiSettings(const std::string& path, std::string& error);
 bool          SaveUiSettings(const std::string& path);
+// The theme the settings name: DEFAULT_THEME until a file or the player says otherwise.
+const std::string& ThemeSetting();
+void               SetThemeSetting(const std::string& id);
 
 }  // namespace Ui

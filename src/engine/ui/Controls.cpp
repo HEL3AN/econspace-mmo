@@ -54,7 +54,8 @@ bool Toggle(Rectangle r, const char* label, bool& value)
     DrawRectangleRec(r, value ? Fade(ACCENT, 0.22f)
                               : (over ? Fade(ACCENT, 0.10f) : Fade(TITLE_BG, 0.8f)));
     DrawRectangleLinesEx(r, 1.0f, value ? ACCENT : PANEL_BORDER);
-    Text(label, (int)r.x + 8, (int)r.y + 5, 13, value ? ACCENT : TEXT);
+    Text(label, (int)r.x + 8, (int)CentredTop(Face::Regular, 13.0f, r.y, r.height), 13,
+         value ? ACCENT : TEXT);
     if (over && MousePressed(MOUSE_BUTTON_LEFT))
     {
         value = !value;
@@ -68,7 +69,8 @@ bool SmallButton(Rectangle r, const char* label, bool highlighted)
     const bool over = MouseOver(r);
     DrawRectangleRec(r, over ? Fade(ACCENT, 0.20f) : Fade(TITLE_BG, 0.8f));
     DrawRectangleLinesEx(r, 1.0f, highlighted ? ACCENT : PANEL_BORDER);
-    Text(label, (int)r.x + 6, (int)r.y + 4, 12, highlighted ? ACCENT : TEXT);
+    Text(label, (int)r.x + 6, (int)CentredTop(Face::Regular, 12.0f, r.y, r.height), 12,
+         highlighted ? ACCENT : TEXT);
     return over && MousePressed(MOUSE_BUTTON_LEFT);
 }
 

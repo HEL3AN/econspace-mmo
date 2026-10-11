@@ -32,7 +32,7 @@ Allegiance Classify(const Proto::EntitySnapshot& e, const Standing& viewer)
 
 Color ColorOf(Allegiance a)
 {
-    // The theme's standing colours (#297): one place for them, data/ui_theme.json.
+    // The theme's standing colours (#297): one place for them, the theme in use.
     const Ui::Theme::Standing& s = Ui::CurrentTheme().standing;
     switch (a)
     {

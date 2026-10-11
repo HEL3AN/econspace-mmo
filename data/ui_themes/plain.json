@@ -1,0 +1,66 @@
+{
+    "name": "Plain",
+    "colors": {
+        "panel": "#141720",
+        "border": "#3C4558",
+        "title": "#1F2330",
+        "titleText": "#E6EAF0",
+        "accent": "#5CAAE8",
+        "text": "#E6EAF0",
+        "dim": "#9AA3B2",
+        "good": "#78D282",
+        "warn": "#E8BE5A",
+        "bad": "#E65A50",
+        "money": "#FFCB00",
+        "track": "#5056646E",
+        "hover": "#5CAAE828",
+        "selected": "#5CAAE838",
+        "backdrop": "#08090E",
+        "shade": "#06080EEB",
+        "sensor": "#050A09"
+    },
+    "standing": {
+        "own": "#78EB82",
+        "friendly": "#5AAAFF",
+        "neutral": "#D7D7CD",
+        "hostile": "#E65A50",
+        "unowned": "#7D879B"
+    },
+    "metrics": {
+        "titleHeight": 30,
+        "padding": 12,
+        "gap": 8,
+        "rowGap": 4,
+        "radius": 3,
+        "border": 1,
+        "barHeight": 8,
+        "buttonHeight": 28,
+        "resizeGrip": 14,
+        "rowHeight": 22,
+        "scrollbar": 4,
+        "snap": 12,
+        "tabWidth": 120,
+        "sidePanel": 260,
+        "menuBar": 64,
+        "formLabel": 112,
+        "titleMark": 0,
+        "tabMark": 0
+    },
+    "fontSize": {
+        "small": 11,
+        "label": 12,
+        "body": 13,
+        "title": 13,
+        "heading": 20
+    },
+    "fonts": {
+        "regular": { "file": "fonts/Inter-Regular.ttf", "upper": false, "tracking": 0 },
+        "strong": { "file": "fonts/Inter-SemiBold.ttf", "upper": false, "tracking": 0 },
+        "heading": { "file": "fonts/Inter-SemiBold.ttf", "upper": false, "tracking": 0 },
+        "numbers": { "file": "fonts/Inter-Regular.ttf", "upper": false, "tracking": 0 }
+    },
+    "text": {
+        "lineHeight": 1.4,
+        "gamma": 1.25
+    }
+}

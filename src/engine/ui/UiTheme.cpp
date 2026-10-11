@@ -1,12 +1,42 @@
 #include "ui/UiTheme.h"
 
-void Ui::LoadAssets(const std::string& dataDir)
+namespace
+{
+std::string g_dataDir;
+}
+
+bool Ui::UseTheme(const std::string& id)
 {
     std::string error;
-    if (!LoadTheme(dataDir + "ui_theme.json", MutableTheme(), error))
-        TraceLog(LOG_ERROR, "UI theme: %s -- using the built-in one", error.c_str());
-    const Theme& t = CurrentTheme();
-    LoadFonts(dataDir + t.fonts.regular, dataDir + t.fonts.strong);
+    Theme       t;
+    const bool  ok = LoadTheme(ThemeDir() + id + ".json", t, error);
+    if (ok)
+        MutableTheme() = t;
+    else
+        TraceLog(LOG_ERROR, "UI theme: %s -- keeping the one in use", error.c_str());
+    // The fonts are rasterised again either way: on the first load the theme in use is the
+    // built-in one, whose fonts have not been loaded yet.
+    const Theme&    c = CurrentTheme();
+    FontFiles       files;
+    const FaceSpec* faces[FACE_COUNT] = { &c.fonts.regular, &c.fonts.strong, &c.fonts.heading,
+                                          &c.fonts.numbers };
+    for (int i = 0; i < FACE_COUNT; i++)
+        files.faces[i] = { g_dataDir + faces[i]->file, faces[i]->upper, faces[i]->tracking };
+    files.gamma = c.text.gamma;
+    LoadFonts(files);
+    return ok;
+}
+
+std::string Ui::ThemeDir()
+{
+    return g_dataDir + "ui_themes/";
+}
+
+void Ui::LoadAssets(const std::string& dataDir, const std::string& themeId)
+{
+    g_dataDir = dataDir;
+    if (!UseTheme(themeId.empty() ? DEFAULT_THEME : themeId) && themeId != DEFAULT_THEME)
+        UseTheme(DEFAULT_THEME);  // a theme named by an older build's settings, since removed
 }
 
 void Ui::UnloadAssets()

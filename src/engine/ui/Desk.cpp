@@ -58,6 +58,8 @@ void Desk::BeginFrame()
         if (layout_.IsOpen(h) && s.bounds)
             layout_.SetRect(h, s.bounds());
     }
+    layout_.SetGap(CurrentTheme().metrics.gap);
+    layout_.Arrange();  // what has just opened over another window finds room of its own
     const bool down = IsMouseButtonDown(MOUSE_BUTTON_LEFT) ||
                       IsMouseButtonDown(MOUSE_BUTTON_RIGHT) ||
                       IsMouseButtonDown(MOUSE_BUTTON_MIDDLE);
@@ -291,7 +293,8 @@ std::vector<Desk::MenuSlot> Desk::MenuSlots() const
     std::vector<MenuSlot> slots;
     for (int h = 0; h < layout_.Count(); h++)
         if (!layout_.Spec(h).menuLabel.empty() && layout_.Available(h))
-            slots.push_back({ layout_.Spec(h).id, layout_.Spec(h).menuLabel, layout_.IsOpen(h) });
+            slots.push_back({ layout_.Spec(h).id, layout_.Spec(h).menuLabel,
+                              layout_.Spec(h).menuTip, layout_.IsOpen(h) });
     return slots;
 }
 

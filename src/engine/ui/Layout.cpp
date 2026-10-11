@@ -10,13 +10,22 @@
 namespace Ui
 {
 
+namespace
+{
+// Clay carries a face as a number: its place in Ui::Face.
+Face FaceOf(uint16_t fontId)
+{
+    return fontId < FACE_COUNT ? (Face)fontId : Face::Regular;
+}
+}  // namespace
+
 struct LayoutCallbacks
 {
     static UiClaySize Measure(const char* text, int32_t length, uint16_t fontId, uint16_t fontSize,
                               void* user)
     {
         const Layout* l = static_cast<const Layout*>(user);
-        const Face    face = fontId == 1 ? Face::Strong : Face::Regular;
+        const Face    face = FaceOf(fontId);
         const Vector2 s =
             l->measure_(face, (float)fontSize, std::string_view(text, (size_t)length));
         return { s.x, s.y };
@@ -63,7 +72,7 @@ uint16_t U16(float v)
 
 float LineHeight(float px)
 {
-    return std::round(px * 1.3f);
+    return std::round(px * CurrentTheme().text.lineHeight);
 }
 }  // namespace
 
@@ -96,13 +105,19 @@ TextStyle TextStyle::Strong()
 TextStyle TextStyle::Title()
 {
     const Theme& t = CurrentTheme();
-    return { Face::Strong, t.fontSize.title, t.colors.text };
+    return { Face::Heading, t.fontSize.title, t.colors.text };
 }
 
 TextStyle TextStyle::Heading()
 {
     const Theme& t = CurrentTheme();
-    return { Face::Strong, t.fontSize.heading, t.colors.accent };
+    return { Face::Heading, t.fontSize.heading, t.colors.accent };
+}
+
+TextStyle TextStyle::Caption()
+{
+    const Theme& t = CurrentTheme();
+    return { Face::Heading, t.fontSize.label, t.colors.dim };
 }
 
 // --- Layout ---------------------------------------------------------------------------
@@ -227,7 +242,7 @@ const std::vector<DrawCommand>& Layout::End()
             case UICLAY_CMD_TEXT:
                 d.kind = DrawCommand::Kind::Text;
                 d.text = std::string_view(c.text, (size_t)c.textLength);
-                d.face = c.fontId == 1 ? Face::Strong : Face::Regular;
+                d.face = FaceOf(c.fontId);
                 d.px = c.fontSize;
                 break;
             case UICLAY_CMD_CLIP_BEGIN: d.kind = DrawCommand::Kind::ClipBegin; break;
@@ -295,7 +310,7 @@ void Layout::Text(std::string_view text, const TextStyle& s)
         return;
     const std::string_view kept = Keep(text);
     UiClayText             t{};
-    t.fontId = s.face == Face::Strong ? 1 : 0;
+    t.fontId = (uint16_t)s.face;
     t.fontSize = (uint16_t)FontPx(s.size * scale_);
     t.lineHeight = U16(LineHeight(t.fontSize));
     Rgba(s.color, t.color);
@@ -369,7 +384,7 @@ bool Layout::Button(std::string_view id, std::string_view label, bool highlighte
             .Fill(hover ? t.colors.hover : t.colors.title)
             .Border(highlighted || hover ? t.colors.accent : t.colors.border, t.metrics.border)
             .Radius(t.metrics.radius),
-        [&] { Text(label, TextStyle::Body().Tint(hover ? t.colors.accent : t.colors.text)); });
+        [&] { Text(label, TextStyle::Caption().Tint(hover ? t.colors.accent : t.colors.text)); });
     return hover && pointer_.pressed;
 }
 
@@ -383,7 +398,21 @@ void Layout::Chip(std::string_view label, bool on, Color onColor)
             .Fill(on ? Fade(onColor, 0.22f) : Color{ 0, 0, 0, 0 })
             .Border(on ? onColor : t.colors.track, t.metrics.border)
             .Radius(t.metrics.radius),
-        [&] { Text(label, TextStyle::Small().Tint(on ? onColor : t.colors.dim)); });
+        [&] { Text(label, TextStyle::Caption().Tint(on ? onColor : t.colors.dim)); });
+}
+
+void Layout::FormRowBegin(std::string_view label)
+{
+    const Theme& t = CurrentTheme();
+    Open(Box().GrowX().Gap(t.metrics.gap).Align(Align::Start, Align::Center));
+    Row(Box().Width(Size::Fixed(t.metrics.formLabel)), [&] { Text(label, TextStyle::Label()); });
+    Open(Box().GrowX().Gap(t.metrics.rowGap).Align(Align::Start, Align::Center));
+}
+
+void Layout::FormRowEnd()
+{
+    Close();  // the controls
+    Close();  // the line
 }
 
 bool Layout::Hovered(std::string_view id, uint32_t index) const
@@ -463,9 +492,9 @@ void Layout::Draw() const
                 break;
             case DrawCommand::Kind::Text:
             {
-                // The box is a line; the glyphs sit in its middle.
-                const float y = r.y + (r.height - c.px) * 0.5f;
-                DrawString(c.face, c.text, { r.x, y }, c.px, c.color);
+                // The box is a line; the capitals sit in its middle, by the font's own metrics.
+                DrawString(c.face, c.text, { r.x, CentredTop(c.face, c.px, r.y, r.height) }, c.px,
+                           c.color);
                 break;
             }
             case DrawCommand::Kind::ClipBegin:
@@ -527,6 +556,15 @@ std::string Format(const char* format, float value)
 }
 
 constexpr Color CLEAR{ 0, 0, 0, 0 };
+
+// How a table's cell is set: in the cell's own face, except that a column of figures --
+// one aligned to the end -- is in the numbers face, so its digits line up row under row.
+TextStyle CellStyle(const TableColumn& col, const Cell& cell)
+{
+    TextStyle st = TextStyle::Body().Tint(cell.color);
+    st.face = cell.face == Face::Regular && col.align == Align::End ? Face::Numbers : cell.face;
+    return st;
+}
 }  // namespace
 
 void PostTooltip(std::string_view text, Vector2 at)
@@ -563,7 +601,9 @@ void DrawTooltip()
     box.x = std::round(box.x), box.y = std::round(box.y);
     DrawRectangleRec(box, t.colors.title);
     DrawRectangleLinesEx(box, std::max(1.0f, Px(t.metrics.border)), t.colors.border);
-    DrawString(Face::Regular, g_tip, { box.x + pad, box.y + pad }, px, t.colors.text);
+    DrawString(Face::Regular, g_tip,
+               { box.x + pad, CentredTop(Face::Regular, px, box.y, box.height) }, px,
+               t.colors.text);
     g_tip.clear();
 }
 
@@ -741,15 +781,15 @@ TableEvents Layout::Table(const TableSpec& s)
             continue;
         }
         // The heading with room for the sort mark it may carry.
-        float widest = TextWidthPx(TextStyle::Small(), col.label + (col.sortable ? " v" : ""));
+        float widest = TextWidthPx(TextStyle::Caption(), col.label + (col.sortable ? " v" : ""));
         for (int r = 0; r < s.rows && s.cell; r++)
         {
             const Cell cell = s.cell(r, c);
-            TextStyle  st = TextStyle::Body();
-            st.face = cell.face;
-            widest = std::max(widest, TextWidthPx(st, cell.text));
+            widest = std::max(widest, TextWidthPx(CellStyle(col, cell), cell.text));
         }
-        float units = std::ceil(widest / std::max(scale_, 0.01f)) + 2.0f * pad;
+        // The padding as the layout will round it, and a pixel for rounding the width, so the
+        // text gets every pixel it measured.
+        float units = std::ceil((widest + 2.0f * U(pad) + 1.0f) / std::max(scale_, 0.01f));
         units = std::max(units, col.width.min);
         if (col.width.max > 0.0f)
             units = std::min(units, col.width.max);
@@ -770,17 +810,21 @@ TableEvents Layout::Table(const TableSpec& s)
                            std::string        label = col.label;
                            if (on)
                                label += s.sort->descending ? " ^" : " v";
+                           // A heading wider than its column is cut short like a cell, never
+                           // left to run under the next one.
+                           const TextStyle hs = TextStyle::Caption().Tint(
+                               on || hover ? t.colors.accent : t.colors.dim);
+                           const float room = BoxOf(head, (uint32_t)c).width - 2.0f * U(pad);
+                           if (BoxOf(head, (uint32_t)c).width > 0.0f)
+                               label = Ellipsize(label, room, [&](std::string_view x)
+                                                 { return TextWidthPx(hs, x); });
                            Row(Box()
                                    .Id(head, (uint32_t)c)
                                    .Width(widths[c])
                                    .Height(Size::Fixed(t.metrics.rowHeight))
                                    .Pad(pad, pad, 0.0f, 0.0f)
                                    .Align(col.align, Align::Center),
-                               [&]
-                               {
-                                   Text(label, TextStyle::Small().Tint(on || hover ? t.colors.accent
-                                                                                   : t.colors.dim));
-                               });
+                               [&] { Text(label, hs); });
                        }
                        // The indicator's room, so the headings stand over their columns.
                        Open(Box().Width(Size::Fixed(ScrollGutter())).Height(Size::Fixed(1.0f)));
@@ -824,8 +868,7 @@ TableEvents Layout::Table(const TableSpec& s)
                                       {
                                           const TableColumn& col = s.columns[c];
                                           const Cell         cell = s.cell ? s.cell(r, c) : Cell();
-                                          TextStyle st = TextStyle::Body().Tint(cell.color);
-                                          st.face = cell.face;
+                                          const TextStyle    st = CellStyle(col, cell);
                                           // As wide as its heading was laid out last frame.
                                           const float room =
                                               BoxOf(head, (uint32_t)c).width - 2.0f * U(pad);
@@ -852,7 +895,10 @@ bool Layout::Tabs(std::string_view id, const std::vector<std::string>& labels, i
 {
     const Theme& t = CurrentTheme();
     bool         changed = false;
-    Row(Box().GrowX().Gap(t.metrics.rowGap),
+    // A theme with a tab mark draws the strip as a line of tabs on a rule, the chosen one
+    // underlined; without one, each tab is a filled box of its own.
+    const float mark = t.metrics.tabMark;
+    Row(Box().GrowX().Gap(mark > 0.0f ? 0.0f : t.metrics.rowGap),
         [&]
         {
             for (int i = 0; i < (int)labels.size(); i++)
@@ -864,21 +910,54 @@ bool Layout::Tabs(std::string_view id, const std::vector<std::string>& labels, i
                     changed = true;
                 }
                 const bool on = i == selected;
-                Row(Box()
-                        .Id(id, (uint32_t)i)
-                        .Pad(t.metrics.gap * 0.75f, t.metrics.rowGap)
-                        .Align(Align::Center, Align::Center)
-                        .Fill(on      ? t.colors.selected
-                              : hover ? t.colors.hover
-                                      : t.colors.title)
-                        .Radius(t.metrics.radius),
-                    [&]
-                    {
-                        Text(labels[i], TextStyle::Label().Tint(on      ? t.colors.accent
-                                                                : hover ? t.colors.text
-                                                                        : t.colors.dim));
-                    });
+                Column(Box()
+                           .Id(id, (uint32_t)i)
+                           .Fill(on            ? t.colors.selected
+                                 : hover       ? t.colors.hover
+                                 : mark > 0.0f ? CLEAR
+                                               : t.colors.title)
+                           .Radius(t.metrics.radius),
+                       [&]
+                       {
+                           Row(Box()
+                                   .Pad(t.metrics.gap * 1.25f, t.metrics.rowGap)
+                                   .Align(Align::Center, Align::Center),
+                               [&]
+                               {
+                                   Text(labels[i],
+                                        TextStyle::Caption().Tint(on      ? t.colors.accent
+                                                                  : hover ? t.colors.text
+                                                                          : t.colors.dim));
+                               });
+                           // As tall on every tab, so their labels stay in one line.
+                           if (mark > 0.0f)
+                               Column(Box()
+                                          .GrowX()
+                                          .Height(Size::Fixed(mark))
+                                          .Align(Align::Start, Align::End)
+                                          .Fill(on ? t.colors.accent : CLEAR),
+                                      [&]
+                                      {
+                                          if (on)
+                                              return;
+                                          Open(Box()
+                                                   .GrowX()
+                                                   .Height(Size::Fixed(t.metrics.border))
+                                                   .Fill(t.colors.border));
+                                          Close();
+                                      });
+                       });
             }
+            if (mark > 0.0f)  // the rule runs on under the rest of the strip
+                Column(Box().GrowX().Height(Size::Grow()).Align(Align::Start, Align::End),
+                       [&]
+                       {
+                           Open(Box()
+                                    .GrowX()
+                                    .Height(Size::Fixed(t.metrics.border))
+                                    .Fill(t.colors.border));
+                           Close();
+                       });
         });
     return changed;
 }

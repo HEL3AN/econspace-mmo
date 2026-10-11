@@ -108,8 +108,9 @@ void ContextMenu::Draw() const
         const bool      hover = Ui::MouseOver(row);
         if (hover)
             DrawRectangleRec(row, t.colors.selected);
-        Ui::DrawString(Ui::Face::Regular, items_[i].label,
-                       { std::round(b.x + Pad()), std::round(row.y + (rowH - px) * 0.5f) }, px,
-                       hover ? t.colors.accent : t.colors.text);
+        Ui::DrawString(
+            Ui::Face::Regular, items_[i].label,
+            { std::round(b.x + Pad()), Ui::CentredTop(Ui::Face::Regular, px, row.y, rowH) }, px,
+            hover ? t.colors.accent : t.colors.text);
     }
 }

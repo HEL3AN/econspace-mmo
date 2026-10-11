@@ -676,3 +676,63 @@ TEST_CASE("Desk: a window in a context is there only while it is on, and opens a
     CHECK_FALSE(again.IsOpen(m2));
     CHECK_FALSE(again.IsOpen(o2));
 }
+
+TEST_CASE("Desk: a free place is the one asked for, or the nearest beside what is there")
+{
+    const std::vector<Rectangle> others = { { 0, 0, 400, 300 } };
+    Rectangle                    out{};
+    // Free already: kept.
+    REQUIRE(Ui::FreeSpot({ 500, 0, 200, 200 }, others, 1280, 720, 8, out));
+    CHECK(out.x == 500);
+    CHECK(out.y == 0);
+    // On top of the other: beside it, the gap away, rather than somewhere far.
+    REQUIRE(Ui::FreeSpot({ 100, 50, 200, 200 }, others, 1280, 720, 8, out));
+    CHECK_FALSE(Ui::Overlapping(out, others[0]));
+    CHECK(((out.x == 408 && out.y == 50) || (out.x == 100 && out.y == 308)));
+    // No room on the screen at all: false, and the place asked for.
+    CHECK_FALSE(Ui::FreeSpot({ 0, 0, 300, 300 }, { { 0, 0, 400, 400 } }, 400, 400, 8, out));
+    // ...where LeastCovering still finds the place that hides least.
+    const Rectangle least =
+        Ui::LeastCovering({ 100, 100, 300, 300 }, { { 0, 0, 300, 400 } }, 500, 400, 8);
+    CHECK(least.x == 200);
+}
+
+TEST_CASE("Desk: a window that opens over another finds room; one the player placed stays")
+{
+    DeskLayout d;
+    d.SetScreen(1280, 720);
+    const int a = d.Add(Panel("a", Anchor::TopLeft, { 100, 100, 300, 300 }), true);
+    const int b = d.Add(Panel("b", Anchor::TopLeft, { 200, 150, 300, 300 }), false);
+    d.Arrange();
+    CHECK(d.Rect(a).x == 100);  // first open: its own place
+
+    d.SetOpen(b, true);
+    d.Raise(b);
+    d.Arrange();
+    CHECK_FALSE(Ui::Overlapping(d.Rect(a), d.Rect(b)));
+    CHECK(d.TakeChanged());  // where it went is kept, like a move
+
+    // Closed and opened again where the player put it -- over a -- it stays there.
+    d.SetRect(b, { 150, 120, 300, 300 });
+    d.Settle(b);
+    d.SetOpen(b, false);
+    d.SetOpen(b, true);
+    d.Arrange();
+    CHECK(d.Rect(b).x == 150);
+    CHECK(d.Rect(b).y == 120);
+}
+
+TEST_CASE("Desk: a resizable window placed for a smaller interface is made to fit the screen")
+{
+    DeskLayout d;
+    d.SetScreen(1280, 720);
+    d.SetUnit(1.25f);
+    WindowSpec tall = Panel("tall", Anchor::TopLeft, { 72, 328, 264, 288 });
+    tall.resizable = true;
+    tall.minSize = { 180, 180 };
+    const int h = d.Add(tall, true);
+    d.Arrange();
+    const Rectangle r = d.Rect(h);
+    CHECK(r.y + r.height <= 720.0f);
+    CHECK(r.height >= 180.0f * 1.25f);
+}

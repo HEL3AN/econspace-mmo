@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <set>
 #include <utility>
@@ -12,8 +13,9 @@ namespace Ui
 
 namespace
 {
-float g_userScale = 1.0f;
-float g_displayOverride = 0.0f;
+float       g_userScale = 1.0f;
+float       g_displayOverride = 0.0f;
+std::string g_theme = DEFAULT_THEME;
 
 int Hex(char c)
 {
@@ -135,14 +137,23 @@ bool ParseColor(const std::string& s, Color& out)
 bool ParseTheme(const nlohmann::json& j, Theme& into, std::string& error)
 {
     Theme t;  // filled whole, then copied: a failure leaves `into` as it was
-    if (!CheckKeys(j, "theme", { "colors", "standing", "metrics", "fontSize", "fonts" }, error))
+    t.id = into.id;
+    if (!CheckKeys(j, "theme",
+                   { "name", "colors", "standing", "metrics", "fontSize", "fonts", "text" }, error))
         return false;
+    if (!j["name"].is_string() || j["name"].get<std::string>().empty())
+    {
+        error = "name: expected what Settings calls the theme";
+        return false;
+    }
+    t.name = j["name"].get<std::string>();
 
     Theme::Colors& c = t.colors;
     if (!ReadColors(j["colors"], "colors",
                     { { "panel", &c.panel },
                       { "border", &c.border },
                       { "title", &c.title },
+                      { "titleText", &c.titleText },
                       { "accent", &c.accent },
                       { "text", &c.text },
                       { "dim", &c.dim },
@@ -184,7 +195,11 @@ bool ParseTheme(const nlohmann::json& j, Theme& into, std::string& error)
                        { "scrollbar", &m.scrollbar },
                        { "snap", &m.snap },
                        { "tabWidth", &m.tabWidth },
-                       { "sidePanel", &m.sidePanel } },
+                       { "sidePanel", &m.sidePanel },
+                       { "menuBar", &m.menuBar },
+                       { "formLabel", &m.formLabel },
+                       { "titleMark", &m.titleMark },
+                       { "tabMark", &m.tabMark } },
                      error))
         return false;
 
@@ -204,9 +219,40 @@ bool ParseTheme(const nlohmann::json& j, Theme& into, std::string& error)
             return false;
         }
 
-    if (!ReadStrings(j["fonts"], "fonts",
-                     { { "regular", &t.fonts.regular }, { "strong", &t.fonts.strong } }, error))
+    const std::vector<std::pair<const char*, FaceSpec*>> faces = { { "regular", &t.fonts.regular },
+                                                                   { "strong", &t.fonts.strong },
+                                                                   { "heading", &t.fonts.heading },
+                                                                   { "numbers",
+                                                                     &t.fonts.numbers } };
+    if (!CheckKeys(j["fonts"], "fonts", Keys(faces), error))
         return false;
+    for (const auto& face : faces)
+    {
+        const std::string     section = std::string("fonts.") + face.first;
+        const nlohmann::json& fj = j["fonts"][face.first];
+        if (!CheckKeys(fj, section.c_str(), { "file", "upper", "tracking" }, error))
+            return false;
+        if (!ReadStrings({ { "file", fj["file"] } }, section.c_str(),
+                         { { "file", &face.second->file } }, error) ||
+            !ReadNumbers({ { "tracking", fj["tracking"] } }, section.c_str(),
+                         { { "tracking", &face.second->tracking } }, error))
+            return false;
+        if (!fj["upper"].is_boolean())
+        {
+            error = section + ".upper: expected true or false";
+            return false;
+        }
+        face.second->upper = fj["upper"].get<bool>();
+    }
+
+    if (!ReadNumbers(j["text"], "text",
+                     { { "lineHeight", &t.text.lineHeight }, { "gamma", &t.text.gamma } }, error))
+        return false;
+    if (t.text.lineHeight < 1.0f || t.text.gamma < 0.5f || t.text.gamma > 3.0f)
+    {
+        error = "text: lineHeight is at least 1, gamma between 0.5 and 3";
+        return false;
+    }
 
     into = t;
     return true;
@@ -226,12 +272,36 @@ bool LoadTheme(const std::string& path, Theme& into, std::string& error)
         error = path + ": not valid JSON";
         return false;
     }
-    if (!ParseTheme(j, into, error))
+    Theme t;
+    t.id = std::filesystem::path(path).stem().string();
+    if (!ParseTheme(j, t, error))
     {
         error = path + ": " + error;
         return false;
     }
+    into = t;
     return true;
+}
+
+std::vector<ThemeEntry> ListThemes(const std::string& dir, std::string* problems)
+{
+    std::vector<ThemeEntry>  themes;
+    std::error_code          ec;
+    std::vector<std::string> paths;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
+        if (entry.path().extension() == ".json")
+            paths.push_back(entry.path().string());
+    std::sort(paths.begin(), paths.end());
+    for (const std::string& p : paths)
+    {
+        Theme       t;
+        std::string error;
+        if (LoadTheme(p, t, error))
+            themes.push_back({ t.id, t.name });
+        else if (problems != nullptr)
+            *problems += error + "\n";
+    }
+    return themes;
 }
 
 Theme& MutableTheme()
@@ -306,7 +376,19 @@ bool LoadUiSettings(const std::string& path, std::string& error)
     }
     if (j.contains("scale") && j["scale"].is_number())
         SetUserScale(j["scale"].get<float>());
+    if (j.contains("theme") && j["theme"].is_string() && !j["theme"].get<std::string>().empty())
+        g_theme = j["theme"].get<std::string>();
     return true;
+}
+
+const std::string& ThemeSetting()
+{
+    return g_theme;
+}
+
+void SetThemeSetting(const std::string& id)
+{
+    g_theme = id.empty() ? std::string(DEFAULT_THEME) : id;
 }
 
 bool SaveUiSettings(const std::string& path)
@@ -314,6 +396,7 @@ bool SaveUiSettings(const std::string& path)
     nlohmann::json j;
     j["version"] = UI_SETTINGS_VERSION;
     j["scale"] = g_userScale;
+    j["theme"] = g_theme;
     std::ofstream out(path);
     if (!out)
         return false;

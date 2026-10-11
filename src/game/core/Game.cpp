@@ -75,8 +75,7 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
 #else
     dataDir_ = std::string(GetApplicationDirectory()) + "data/";
 #endif
-    // The interface: its theme, the fonts it names (#297), and this machine's UI scale.
-    Ui::LoadAssets(dataDir_);
+    // The interface: this machine's UI scale and theme, and the fonts the theme names (#297).
     {
         std::string error;
         uiSettingsPath_ = std::string(GetApplicationDirectory()) + "ui_settings.json";
@@ -84,6 +83,8 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
         if (!uiSettingsWritable_)
             TraceLog(LOG_WARNING, "UI settings: %s", error.c_str());
     }
+    Ui::LoadAssets(dataDir_, Ui::ThemeSetting());
+    themes_ = Ui::ListThemes(Ui::ThemeDir());
     Factions::Load(dataDir_ + "factions.json");  // faction properties/relations
     // Before any entity exists -- and the player's own ship is one. It used to be built
     // seventeen lines above this call, under this same comment, which made it the one
