@@ -1,9 +1,12 @@
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -166,6 +169,15 @@ const Plan* PiratesBesiege(Simulation& sim, const Scene& s)
     }
     const Plan* p = SiegeBy(sim, FactionId::Pirates);
     REQUIRE(p != nullptr);
+    // ...and a jump later they are at it.
+    CHECK_FALSE(p->arrived);
+    for (int pass = 0; pass < 2 * PERIOD && SiegeBy(sim, FactionId::Pirates) != nullptr &&
+                       !SiegeBy(sim, FactionId::Pirates)->arrived;
+         pass++)
+        Pass(sim);
+    p = SiegeBy(sim, FactionId::Pirates);
+    REQUIRE(p != nullptr);
+    REQUIRE(p->arrived);
     return p;
 }
 
@@ -509,4 +521,255 @@ TEST_CASE("a siege and what a faction cannot supply survive a restart (#295)")
     CHECK(back.dueAt == doctest::Approx(plan.dueAt));
     CHECK(b.MindOf(FactionId::Syndicate).unsupplied.count("W-1.1/+7") == 1);
     CHECK(b.MindOf(FactionId::Syndicate).lostAt.at(s.frontier) == doctest::Approx(123.0));
+    REQUIRE(back.lent.size() == plan.lent.size());
+    CHECK(back.lent[0].from == plan.lent[0].from);
+    CHECK(back.lent[0].force == doctest::Approx(plan.lent[0].force));
+    CHECK(back.lent[0].hops == plan.lent[0].hops);
+    CHECK(back.arrived);
+    CHECK(back.arrivesAt == doctest::Approx(plan.arrivesAt));
+    CHECK(back.via == plan.via);
+}
+
+// --- Pooled sieges (#295, the owner's decision of 2026-10-11) ---------------------------------
+
+namespace
+{
+// A pirate holding with a pirate base in it and a full garrison, ringed for two jumps by
+// holdings of the Traders Guild and, past them, by systems of the Guild's friends: a scene in
+// which besieging the base is the one thing the Guild could do.
+struct Ring
+{
+    std::string              den;
+    std::vector<std::string> holdings;  // the Guild's, within two jumps of the den
+};
+
+Ring PirateBaseRingedByTheGuild(Simulation& sim)
+{
+    Ring r;
+    for (const auto& kv : sim.Systems())
+        if (r.den.empty() && kv.second.agg.claimed &&
+            kv.second.agg.controller == FactionId::Pirates && sim.Neighbors(kv.first).size() >= 2)
+            r.den = kv.first;
+    REQUIRE_FALSE(r.den.empty());
+    std::set<std::string> near;
+    for (const std::string& n : sim.Neighbors(r.den))
+    {
+        near.insert(n);
+        for (const std::string& m : sim.Neighbors(n))
+            near.insert(m);
+    }
+    near.erase(r.den);
+    for (auto& kv : sim.Systems())
+    {
+        if (kv.first == r.den)
+            continue;
+        SystemAggregate& a = kv.second.agg;
+        a.claimed = true;
+        a.controller = near.count(kv.first) != 0 ? FactionId::TradersGuild : FactionId::Independent;
+        if (near.count(kv.first) != 0)
+            r.holdings.push_back(kv.first);
+    }
+    const Simulation::OutpostSpot spot = sim.FindOutpostSpot(
+        FactionId::Pirates, Outposts::Purpose::Hidden, sim.Neighbors(r.den)[0], r.den);
+    REQUIRE(spot.found);
+    const Blueprint* bp = Blueprints::Find("outpost_hidden");
+    REQUIRE(bp != nullptr);
+    auto t = std::make_unique<Structure>(spot.at, 0.0f, "Pirate Base", bp->archetype);
+    t->SetBlueprint(bp->id);
+    REQUIRE(sim.AddStatic(r.den, std::move(t), Outposts::OwnerOf(FactionId::Pirates)) != 0);
+    return r;
+}
+
+// Every Guild holding at full strength, the den's garrison full, and the Guild with the stock
+// for a siege but not for an outpost and fresh word of everything -- until it musters.
+const Plan* GuildMusters(Simulation& sim, const Ring& r)
+{
+    const float cap = Factions::TemperamentOf(FactionId::TradersGuild).capacity;
+    for (int pass = 0; pass < 3 * PERIOD && SiegeBy(sim, FactionId::TradersGuild) == nullptr;
+         pass++)
+    {
+        for (const std::string& h : r.holdings)
+            sim.SystemById(h)->agg.presence[(int)FactionId::TradersGuild] = cap;
+        sim.SystemById(r.den)->agg.presence[(int)FactionId::Pirates] =
+            Factions::TemperamentOf(FactionId::Pirates).capacity;
+        sim.MindOf(FactionId::TradersGuild).stock = Simulation::SiegeCost() * 1.2f;
+        for (const auto& kv : sim.Systems())
+            sim.MindOf(FactionId::TradersGuild).intel[kv.first] = sim.Observe(kv.second);
+        Pass(sim);
+    }
+    const Plan* p = SiegeBy(sim, FactionId::TradersGuild);
+    REQUIRE(p != nullptr);
+    return p;
+}
+
+std::vector<const Plan*> ReturnsOf(const Simulation& sim, FactionId f)
+{
+    std::vector<const Plan*> out;
+    for (const auto& kv : sim.Plans())
+        if (kv.second.faction == f && kv.second.kind == Plan::Kind::Return)
+            out.push_back(&kv.second);
+    return out;
+}
+}  // namespace
+
+TEST_CASE("a siege is lent by the holdings within reach, nearest first (#295)")
+{
+    auto                     sim = World();
+    const Ring               r = PirateBaseRingedByTheGuild(*sim);
+    const float              cap = Factions::TemperamentOf(FactionId::TradersGuild).capacity;
+    const Blueprints::Siege& rules = Blueprints::SiegeRules();
+    for (const std::string& h : r.holdings)
+        sim->SystemById(h)->agg.presence[(int)FactionId::TradersGuild] = cap;
+
+    std::string                   via;
+    const std::vector<Plan::Lent> lent =
+        sim->PoolFor(FactionId::TradersGuild, r.den, rules.pool * cap, &via);
+    REQUIRE(lent.size() >= 2);  // one holding's surplus is not what it asked for
+    float sum = 0.0f;
+    for (size_t i = 0; i < lent.size(); i++)
+    {
+        sum += lent[i].force;
+        CHECK(lent[i].force <= cap * rules.commit + 1e-4f);
+        CHECK(lent[i].hops >= 1);
+        CHECK(lent[i].hops <= (int)rules.reach);
+        CHECK(std::find(r.holdings.begin(), r.holdings.end(), lent[i].from) != r.holdings.end());
+        if (i > 0)
+            CHECK(lent[i - 1].hops <= lent[i].hops);
+    }
+    CHECK(sum <= rules.pool * cap + 1e-3f);
+    CHECK(lent[0].hops == 1);
+    CHECK(via == lent[0].from);  // the nearest is next door, and comes in by its own gate
+
+    // A holding with nothing over its home guard lends nothing; another faction's, nothing.
+    for (const std::string& h : r.holdings)
+        sim->SystemById(h)->agg.presence[(int)FactionId::TradersGuild] = cap * 0.6f;
+    CHECK(sim->PoolFor(FactionId::TradersGuild, r.den, rules.pool * cap).empty());
+    CHECK(sim->PoolFor(FactionId::Syndicate, r.den, rules.pool * cap).empty());
+}
+
+TEST_CASE("a lawful faction pools its holdings to bring down a pirate base, and the force comes "
+          "home (#295)")
+{
+    auto        sim = World();
+    const Ring  r = PirateBaseRingedByTheGuild(*sim);
+    const float cap = Factions::TemperamentOf(FactionId::TradersGuild).capacity;
+    const Plan  plan = *GuildMusters(*sim, r);
+
+    CHECK(plan.against == FactionId::Pirates);
+    CHECK(plan.target == r.den);
+    REQUIRE(plan.lent.size() >= 2);
+    CHECK_FALSE(plan.arrived);
+    int   hops = 0;
+    float lent = 0.0f;
+    for (const Plan::Lent& l : plan.lent)
+    {
+        hops = std::max(hops, l.hops);
+        lent += l.force;
+        // Each holding is short of what it lent, and stays so while it is away.
+        CHECK(sim->LentFrom(l.from, FactionId::TradersGuild) == doctest::Approx(l.force));
+    }
+    CHECK(plan.force == doctest::Approx(lent));
+    CHECK(plan.force > cap * Blueprints::SiegeRules().commit);  // more than one holding sends
+    CHECK(plan.arrivesAt ==
+          doctest::Approx(plan.startedAt + hops * Blueprints::SiegeRules().hop).epsilon(1e-6));
+    CHECK(Told(*sim, "siege", r.den, "Traders Guild sent"));
+    CHECK(sim->SiegeForceIn(r.den, FactionId::TradersGuild) == 0.0f);  // still on the way
+
+    // A period on, the lenders have not made good what they lent.
+    for (int pass = 0; pass < PERIOD; pass++)
+        Pass(*sim);
+    for (const Plan::Lent& l : plan.lent)
+        CHECK(sim->SystemById(l.from)->agg.presence[(int)FactionId::TradersGuild] <=
+              cap - l.force + 0.05f);
+
+    // It arrives when the farthest has, and the base falls -- where nobody is.
+    RunUntil(*sim, plan.dueAt - sim->Time() + 10.0,
+             [&]() { return OutpostIn(*sim, r.den) == nullptr; });
+    CHECK(OutpostIn(*sim, r.den) == nullptr);
+    CHECK(Told(*sim, "siege", r.den, "Traders Guild laid siege to the Pirates hidden base"));
+    CHECK(Told(*sim, "siege", r.den, "Traders Guild destroyed the Pirates"));
+    CHECK(SiegeBy(*sim, FactionId::TradersGuild) == nullptr);
+    const SystemAggregate& den = sim->SystemById(r.den)->agg;
+    const bool             pirates = den.claimed && den.controller == FactionId::Pirates;
+    CHECK_FALSE(pirates);
+
+    // ...and what is left of the force goes home, each holding its share, minus the losses.
+    const std::vector<const Plan*> returns = ReturnsOf(*sim, FactionId::TradersGuild);
+    REQUIRE_FALSE(returns.empty());
+    float                        back = 0.0f;
+    std::map<std::string, float> before, owed;
+    for (const Plan* p : returns)
+    {
+        back += p->force;
+        CHECK(p->from == r.den);
+        owed[p->target] += p->force;
+        before[p->target] = sim->SystemById(p->target)->agg.presence[(int)FactionId::TradersGuild];
+    }
+    CHECK(back <= lent + 1e-3f);
+    CHECK(back > 0.5f * lent);
+    RunUntil(*sim, hops * Blueprints::SiegeRules().hop + 10.0,
+             [&]() { return ReturnsOf(*sim, FactionId::TradersGuild).empty(); });
+    CHECK(ReturnsOf(*sim, FactionId::TradersGuild).empty());
+    for (const auto& kv : owed)
+    {
+        CHECK(sim->LentFrom(kv.first, FactionId::TradersGuild) == 0.0f);
+        CHECK(sim->SystemById(kv.first)->agg.presence[(int)FactionId::TradersGuild] >
+              before[kv.first] + 0.5f * kv.second);
+    }
+}
+
+TEST_CASE("a pooled siege falls the same whether anybody watches or not, and where somebody does "
+          "its ships come in through the gate (#295)")
+{
+    double fell[2] = { -1.0, -1.0 };
+    for (int hot = 0; hot < 2; hot++)
+    {
+        auto       sim = World(hot == 1);
+        const Ring r = PirateBaseRingedByTheGuild(*sim);
+        const Plan plan = *GuildMusters(*sim, r);
+        RunUntil(*sim, plan.arrivesAt - sim->Time() + 3.0,
+                 [&]()
+                 {
+                     const Plan* p = SiegeBy(*sim, FactionId::TradersGuild);
+                     return p == nullptr || p->arrived;
+                 });
+        REQUIRE(SiegeBy(*sim, FactionId::TradersGuild) != nullptr);
+        REQUIRE(SiegeBy(*sim, FactionId::TradersGuild)->arrived);
+        if (hot == 1)
+        {
+            int warships = 0;
+            for (const auto& e : sim->SystemById(r.den)->entities)
+                if (e->GetKind() == EntityKind::Npc &&
+                    static_cast<const NpcShip&>(*e).GetRole() == NpcRole::Warship &&
+                    static_cast<const NpcShip&>(*e).GetFaction() == FactionId::TradersGuild)
+                    warships++;
+            CHECK(warships == std::min(8, (int)std::lround(plan.force)));
+        }
+        RunUntil(*sim, plan.dueAt - sim->Time() + 10.0,
+                 [&]() { return OutpostIn(*sim, r.den) == nullptr; });
+        if (OutpostIn(*sim, r.den) == nullptr)
+            fell[hot] = sim->Time();
+    }
+    REQUIRE(fell[0] > 0.0);
+    REQUIRE(fell[1] > 0.0);
+    CHECK(std::fabs(fell[0] - fell[1]) <= 60.0);
+}
+
+TEST_CASE("a siege still on its way finds the outpost gone and turns back (#295)")
+{
+    auto       sim = World();
+    const Ring r = PirateBaseRingedByTheGuild(*sim);
+    const Plan plan = *GuildMusters(*sim, r);
+    REQUIRE_FALSE(plan.arrived);
+    Structure* base = OutpostIn(*sim, r.den);
+    REQUIRE(base != nullptr);
+    CHECK(sim->DamageStructure(*sim->SystemById(r.den), base->GetId(), 1.0e9f, nullptr));
+    RunUntil(*sim, plan.arrivesAt - sim->Time() + 3.0,
+             [&]() { return SiegeBy(*sim, FactionId::TradersGuild) == nullptr; });
+    CHECK(SiegeBy(*sim, FactionId::TradersGuild) == nullptr);
+    CHECK(Told(*sim, "siege", r.den, "turned back"));
+    float back = 0.0f;
+    for (const Plan* p : ReturnsOf(*sim, FactionId::TradersGuild))
+        back += p->force;
+    CHECK(back == doctest::Approx(plan.force));  // nobody fought: everybody goes home
 }

@@ -125,6 +125,12 @@ struct Siege
     // What losing an outpost costs the faction that held the system, as a share of its
     // strength there: a claim that rested on it is gone, and one that did not is weaker.
     float shock = 0.5f;
+    // Pooling (#295): the holdings that may lend a siege ships are those within `reach` jumps
+    // of its target, and each jump takes `hop` seconds, there and back again. All of them
+    // together send at most `pool` of the faction's capacity.
+    float reach = 3.0f;
+    float hop = 120.0f;
+    float pool = 1.5f;
 };
 const Siege& SiegeRules();
 

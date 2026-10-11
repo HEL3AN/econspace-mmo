@@ -13,6 +13,12 @@
 // for it, so a player can watch, help, or shoot the besiegers down. Both read the same numbers
 // in the same pass, which is what keeps a world where somebody looked the same as one where
 // nobody did. Its outpost destroyed, the claim it anchored goes with it.
+//
+// A siege is pooled (#295, the owner's decision of 2026-10-11): one holding's surplus is no
+// match for a full garrison, so a faction draws on every holding of its within reach. Each
+// lends what it can spare and is that much weaker while it is away; the force musters on the
+// way and comes in once its farthest contingent has, a jump at a time; and whatever is left of
+// it when the siege is over goes home the same way, each holding its share of the survivors.
 #include "sim/Simulation.h"
 
 #include "core/Blueprint.h"
@@ -23,6 +29,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -39,6 +46,8 @@ constexpr int MAX_FIELDED = 8;
 constexpr float MIN_FORCE = 1.0f;
 // How far from an outpost's edge its besiegers stand: inside a cruiser's reach of it.
 constexpr float STAND_OFF = 150.0f;
+// Less than this of a contingent coming home is not worth the journey: it was lost.
+constexpr float MIN_RETURN = 0.05f;
 
 Structure* StructureWithId(SystemState& st, int id)
 {
@@ -95,9 +104,27 @@ float Simulation::SiegeForceIn(const std::string& systemId, FactionId f) const
     float force = 0.0f;
     for (const auto& kv : plans_)
         if (kv.second.kind == Plan::Kind::Siege && kv.second.faction == f &&
-            kv.second.target == systemId)
+            kv.second.target == systemId && kv.second.arrived)
             force += kv.second.force;
     return force;
+}
+
+float Simulation::LentFrom(const std::string& systemId, FactionId f) const
+{
+    // Lent to a siege, the whole of it until the siege is over; on the way home, what is left.
+    float away = 0.0f;
+    for (const auto& kv : plans_)
+    {
+        const Plan& p = kv.second;
+        if (p.faction != f)
+            continue;
+        if (p.kind == Plan::Kind::Siege)
+            for (const Plan::Lent& l : p.lent)
+                away += l.from == systemId ? l.force : 0.0f;
+        else if (p.kind == Plan::Kind::Return && p.target == systemId)
+            away += p.force;
+    }
+    return away;
 }
 
 // A claim rests on what the faction has standing in the system: an outpost, or a station of
@@ -176,20 +203,42 @@ void Simulation::StepUpkeep()
     }
 }
 
-void Simulation::BeginSiege(FactionId f, const std::string& from, const std::string& to,
-                            FactionId against, const std::string& site, float force)
+void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
+                            const std::string& via, const std::string& to, FactionId against,
+                            const std::string& site)
 {
-    SystemState* home = SystemById(from);
     SystemState* st = SystemById(to);
-    if (home == nullptr || st == nullptr)
+    if (st == nullptr || lent.empty())
         return;
     Structure* t = StructureByKey(*st, site);
     if (t == nullptr)
         return;
     const Blueprints::Siege& r = Blueprints::SiegeRules();
+    // Each holding is short of what it lent from the moment it sets out; the force is counted
+    // nowhere until it stands at the outpost.
+    std::vector<Plan::Lent> sent;
+    float                   force = 0.0f;
+    int                     hops = 1;
+    std::string             whence;
+    for (const Plan::Lent& l : lent)
+    {
+        SystemState* home = SystemById(l.from);
+        if (home == nullptr || l.force <= 0.0f)
+            continue;
+        float&     there = home->agg.presence[(int)f];
+        Plan::Lent took = l;
+        took.force = std::min(l.force, there);
+        if (took.force <= 0.0f)
+            continue;
+        there -= took.force;
+        force += took.force;
+        hops = std::max(hops, took.hops);
+        whence += std::string(whence.empty() ? "" : ", ") + SystemName(took.from);
+        sent.push_back(took);
+    }
+    if (sent.empty())
+        return;
     minds_[(int)f].stock -= SiegeCost();
-    home->agg.presence[(int)f] -= force;
-    st->agg.presence[(int)f] += force;
 
     // How long they will stay is drawn from what is decided -- this faction, that system, this
     // minute of the world's clock -- never from how many draws came before.
@@ -199,19 +248,48 @@ void Simulation::BeginSiege(FactionId f, const std::string& from, const std::str
     p.id = nextPlanId_++;
     p.kind = Plan::Kind::Siege;
     p.faction = f;
-    p.from = from;
+    p.from = sent.front().from;  // the nearest
+    p.via = via.empty() ? p.from : via;
     p.target = to;
     p.startedAt = time_;
-    p.dueAt = time_ + r.seconds + rng.Range(0, std::max(0, (int)r.jitter));
+    p.arrivesAt = time_ + hops * (double)r.hop;
+    p.dueAt = p.arrivesAt + r.seconds + rng.Range(0, std::max(0, (int)r.jitter));
     p.site = site;
     p.against = against;
     p.force = force;
+    p.lent = sent;
     plans_[p.id] = p;
     due_.insert({ p.dueAt, p.id });
-    Announce("siege", (int)f, to,
-             FactionName(f) + " laid siege to the " + FactionName(against) + " " + NounOf(*t) +
-                 " in " + SystemName(to));
-    FieldSiege(*st, plans_[p.id], true);
+    char ships[32];
+    std::snprintf(ships, sizeof ships, "%.0f", std::max(1.0, std::round((double)force)));
+    Record("siege", (int)f, to,
+           FactionName(f) + " sent " + ships + " ships from " + whence + " against the " +
+               FactionName(against) + " " + NounOf(*t) + " in " + SystemName(to));
+    if (p.arrivesAt <= time_ && !ArriveSiege(plans_[p.id]))
+    {
+        RecallSiege(plans_[p.id]);
+        plans_.erase(p.id);
+    }
+}
+
+bool Simulation::ArriveSiege(Plan& p)
+{
+    SystemState*     st = SystemById(p.target);
+    const Structure* t = st != nullptr ? StructureByKey(*st, p.site) : nullptr;
+    if (t == nullptr)
+    {
+        Record("siege", (int)p.faction, p.target,
+               FactionName(p.faction) + " turned back from " + SystemName(p.target) + ": the " +
+                   FactionName(p.against) + " outpost is gone");
+        return false;
+    }
+    p.arrived = true;
+    st->agg.presence[(int)p.faction] += p.force;
+    Announce("siege", (int)p.faction, p.target,
+             FactionName(p.faction) + " laid siege to the " + FactionName(p.against) + " " +
+                 NounOf(*t) + " in " + SystemName(p.target));
+    FieldSiege(*st, p, true);
+    return true;
 }
 
 void Simulation::ResolveSiege(const Plan& p)
@@ -228,14 +306,49 @@ void Simulation::ResolveSiege(const Plan& p)
 void Simulation::RecallSiege(const Plan& p)
 {
     SystemState* st = SystemById(p.target);
-    if (st == nullptr || !IsHot(*st))
-        return;
-    // Whatever is left of the force stays counted where it was, as presence that fades like
-    // any other; the warships that stood for it go.
-    st->entities.erase(std::remove_if(st->entities.begin(), st->entities.end(),
-                                      [&](const std::unique_ptr<Entity>& e)
-                                      { return IsSiegeShip(*e, p.faction); }),
-                       st->entities.end());
+    if (st != nullptr && p.arrived)
+    {
+        // What is left of the force is no longer the besieger's strength here; the warships
+        // that stood for it go. (A siege from an older save was lent by nobody, and what is
+        // left of it stays, as presence that fades like any other.)
+        float& there = st->agg.presence[(int)p.faction];
+        if (!p.lent.empty())
+            there = std::max(0.0f, there - p.force);
+        if (IsHot(*st))
+            st->entities.erase(std::remove_if(st->entities.begin(), st->entities.end(),
+                                              [&](const std::unique_ptr<Entity>& e)
+                                              { return IsSiegeShip(*e, p.faction); }),
+                               st->entities.end());
+    }
+    // ...and goes home, each holding its share of what survived, as many jumps away as it came.
+    float lent = 0.0f;
+    for (const Plan::Lent& l : p.lent)
+        lent += l.force;
+    const double hop = Blueprints::SiegeRules().hop;
+    for (const Plan::Lent& l : p.lent)
+    {
+        const float back = lent > 0.0f ? p.force * l.force / lent : 0.0f;
+        if (back < MIN_RETURN || !HasSystem(l.from))
+            continue;
+        Plan r;
+        r.id = nextPlanId_++;
+        r.kind = Plan::Kind::Return;
+        r.faction = p.faction;
+        r.from = p.target;
+        r.target = l.from;
+        r.startedAt = time_;
+        r.dueAt = time_ + l.hops * hop;
+        r.force = back;
+        plans_[r.id] = r;
+        due_.insert({ r.dueAt, r.id });
+    }
+}
+
+void Simulation::ResolveReturn(const Plan& p)
+{
+    // Home, whoever holds it now: strength a faction no longer keeps there fades like any other.
+    if (SystemState* home = SystemById(p.target))
+        home->agg.presence[(int)p.faction] += p.force;
 }
 
 void Simulation::FieldSieges(SystemState& st)
@@ -247,7 +360,7 @@ void Simulation::FieldSieges(SystemState& st)
 
 void Simulation::FieldSiege(SystemState& st, Plan& p, bool arriving)
 {
-    if (!IsHot(st) || p.fielded > 0)
+    if (!IsHot(st) || p.fielded > 0 || !p.arrived)
         return;
     Structure* t = StructureByKey(st, p.site);
     if (t == nullptr)
@@ -270,7 +383,7 @@ void Simulation::FieldSiege(SystemState& st, Plan& p, bool arriving)
         beat.push_back(around(at, ring, ring + 100.0f));
     // Just arrived, they come in through the gate from where they set out, and fly to it;
     // found there by somebody arriving later, they are at it already.
-    const Vector2 gate = arriving ? ArrivalFrom(st.id, p.from) : at;
+    const Vector2 gate = arriving ? ArrivalFrom(st.id, p.via) : at;
     for (int i = 0; i < n; i++)
         SpawnNpcInto(st, arriving ? around(gate, 0.0f, 400.0f) : around(at, ring, ring + 400.0f),
                      p.faction, NpcRole::Warship, beat, i);
@@ -290,6 +403,13 @@ void Simulation::StepSieges()
         if (st == nullptr)
         {
             over.push_back(p.id);
+            continue;
+        }
+        // On the way: nothing to fight yet. Arriving to find the outpost gone, it turns back.
+        if (!p.arrived)
+        {
+            if (time_ >= p.arrivesAt && !ArriveSiege(p))
+                over.push_back(p.id);
             continue;
         }
         SystemAggregate& a = st->agg;

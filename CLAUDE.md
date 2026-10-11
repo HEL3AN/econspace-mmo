@@ -190,7 +190,10 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   `Warship` NPCs a hot system shows hold fire on other NPCs and are not shot by stations, and
   their beams at the outpost take nothing off. A player shooting one down (or the outpost) is
   the one thing that changes a siege's course. Let them fight NPCs and a watched siege goes
-  differently from an unwatched one.
+  differently from an unwatched one. A siege's force is *lent* by holdings within reach and
+  counted nowhere while it travels: `Plan::lent` is what each holding is short of (it does not
+  regrow it) until a `Return` plan brings the survivors home. Moving presence without a plan
+  that says where it is creates or destroys ships.
 - **Per-player state lives in `ClientSession`, not in `Simulation`** (#3). The ship, the
   account, the missions, the standing order and the event journal belong to a session, and
   every player verb takes the session it acts for. There is no "active system" either: a

@@ -2069,6 +2069,8 @@ TEST_CASE("factions reach a step at a time, where the prize is worth the risk (#
             changes++;
             if (pass <= 30 * 10)
                 early++;
+            if (!kv.second.agg.claimed)
+                continue;  // lost, not taken: its outpost was brought down (#295)
             // A step, never a leap: whoever took it held a system next door.
             bool adjacent = false;
             for (const std::string& n : sim.Neighbors(kv.first))
