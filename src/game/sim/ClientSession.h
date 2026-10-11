@@ -5,6 +5,7 @@
 #include "player/Player.h"
 #include "missions/MissionSystem.h"
 
+#include <map>
 #include <memory>
 #include <vector>
 #include <string>
@@ -48,6 +49,12 @@ struct ClientSession
                 return true;
         return false;
     }
+
+    // The design each owned hull flies (#279 fitting), by hull index: its stock design until
+    // it is refitted, then one the server filed (Simulation::Designs). A ship is its design,
+    // so this is the ship; a hull with no entry flies its stock design.
+    std::map<int, std::string> shipDesigns;
+    std::string                DesignOf(int catalogIndex) const;
 
     // How this account proves it is itself (#106). The salt is public; the stored value
     // is what a proof is checked against. Both are written to the account file, and the

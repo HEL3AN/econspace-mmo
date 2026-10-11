@@ -4,6 +4,8 @@
 
 #include "sim/Auth.h"
 
+#include "core/Archetype.h"
+
 #include <chrono>
 #include <thread>
 
@@ -112,6 +114,15 @@ void Session::Pump()
         else if (type == "galaxy")
         {
             Proto::DecodeGalaxy(msg, galaxy_);
+        }
+        else if (type == "design")
+        {
+            // A design a player made (#279 fitting): known from here on, so the hangar can
+            // say what a refitted ship does.
+            Proto::DesignDef def;
+            std::string      why;
+            if (Proto::DecodeDesignDef(msg, def) && !Archetypes::AddDesign(def.design, why))
+                Rpc::Log("econagent: design " + def.design.id + " from the server: " + why);
         }
         else if (type == "universe")
         {

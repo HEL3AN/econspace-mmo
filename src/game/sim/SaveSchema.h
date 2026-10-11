@@ -59,7 +59,14 @@ inline constexpr int WORLD_VERSION = 11;
 // 4: reputation and bounty are objects by faction id, and a mission names its faction by id
 //    (#355). An older file's lists and numbers are read in the order the factions were
 //    compiled in: Independent, TradersGuild, Syndicate, Pirates.
-inline constexpr int ACCOUNT_VERSION = 4;
+// 5: an account's ships each fly a design (#279 fitting), written as `ships: [{hull,
+//    design}]`. An older file's `ships` is a list of hull indices, and each is read as that
+//    hull's stock design -- which is what every ship was. A version 4 build reading a version
+//    5 file would find no hull it knows, hand the player the starter alone and save over
+//    every ship they had.
+inline constexpr int ACCOUNT_VERSION = 5;
+// designs.json, the designs players' ships fly (#279 fitting). 1: the first.
+inline constexpr int DESIGNS_VERSION = 1;
 
 // A file with no version at all: everything written before this existed. Those files are
 // a strict subset of version 1, so they are read as-is rather than migrated.

@@ -190,6 +190,18 @@ const Ships::Catalogue& ShipCatalogue();
 // design no Npc archetype names.
 const Archetype* ForDesign(const std::string& design);
 
+// A design a player made (#279 fitting), made known to this process: the server when it
+// files one, a client when it is told about one (Proto::DesignDef). It is validated against
+// the catalogue, and from then on FindDesign has it and ForDesign draws it -- as the stock
+// archetype of its frame, wearing this design's shape. Adding one that is already known is
+// nothing. False, with the reason, for a design that does not validate or cannot be drawn.
+// What is added stays until the next Load, and an added archetype never moves: a ship holds
+// it by pointer, as it holds a stock one.
+bool AddDesign(const Ships::Design& d, std::string& error);
+
+// A design by id: a stock one from ships.json, or one added above. Null for neither.
+const Ships::Design* FindDesign(const std::string& id);
+
 // Counts the loads, so something built from the registry -- the hangar catalog -- can tell
 // that what it was built from has been replaced.
 unsigned Generation();

@@ -1,6 +1,7 @@
 #include "sim/ClientSession.h"
 
 #include "entities/Ship.h"
+#include "entities/ShipType.h"
 
 // Out of line for the same reason Simulation's destructor is: the unique_ptr<Ship>
 // member needs Ship's full type where the destructor is generated.
@@ -32,4 +33,15 @@ std::vector<Ev::Event> ClientSession::EventsSince(int seq) const
         if (e.seq > seq)
             out.push_back(e);
     return out;
+}
+
+std::string ClientSession::DesignOf(int catalogIndex) const
+{
+    auto it = shipDesigns.find(catalogIndex);
+    if (it != shipDesigns.end())
+        return it->second;
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    return catalogIndex >= 0 && catalogIndex < (int)catalog.size()
+               ? catalog[catalogIndex].stats.design
+               : std::string();
 }

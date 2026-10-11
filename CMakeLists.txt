@@ -270,6 +270,7 @@ add_executable(econserver
     src/game/sim/ProcessMemory.cpp        # resident memory, for the benchmark (#295)
     src/game/sim/Simulation.cpp
     src/game/sim/ClientSession.cpp        # one connected player, extracted from Simulation (#3)
+    src/game/sim/DesignStore.cpp          # the designs players fly, filed by content (#279)
     src/game/sim/Simulation_World.cpp     # galaxy, hydration, routes, persistence (#17)
     src/game/sim/Simulation_Agents.cpp    # NPC AI, combat, spawn director, macro (#17)
     src/game/sim/Simulation_Factions.cpp  # factions reach where value outweighs risk (#231)
@@ -398,6 +399,7 @@ add_executable(tests
     tests/hardening_tests.cpp      # exploits and lost saves closed before a public playtest (#341)
     tests/migration_tests.cpp      # surplus ships leave for a neighbour that lacks them (#295)
     tests/faction_tests.cpp        # factions as data: the registry, strict loading, saves by id (#355)
+    tests/fitting_tests.cpp        # a ship flies a design of its own, filed by content (#279)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/MissionList.cpp   # the missions window's rows, tested without one (#297)
@@ -409,6 +411,7 @@ add_executable(tests
     # the rules where they actually live rather than through a socket.
     src/game/sim/Simulation.cpp
     src/game/sim/ClientSession.cpp        # one connected player, extracted from Simulation (#3)
+    src/game/sim/DesignStore.cpp          # the designs players fly, filed by content (#279)
     src/game/sim/Simulation_World.cpp     # galaxy, hydration, routes, persistence (#17)
     src/game/sim/Simulation_Agents.cpp    # NPC AI, combat, spawn director, macro (#17)
     src/game/sim/Simulation_Factions.cpp  # factions reach where value outweighs risk (#231)

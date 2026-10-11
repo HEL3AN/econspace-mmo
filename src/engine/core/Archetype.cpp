@@ -7,6 +7,8 @@
 #include "entities/Station.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include <map>
+#include <memory>
 
 using json = nlohmann::json;
 
@@ -16,6 +18,14 @@ std::vector<Archetype> g_archetypes;
 std::string            g_error;
 Ships::Catalogue       g_ships;
 unsigned               g_generation = 0;
+// Designs players made, and the archetype each is drawn as (#279 fitting). Held by pointer so
+// that adding one never moves another: a ship keeps its look by pointer.
+struct AddedDesign
+{
+    Ships::Design design;
+    Archetype     look;
+};
+std::map<std::string, std::unique_ptr<AddedDesign>> g_added;
 
 EntityKind KindFromString(const std::string& s)
 {
@@ -356,6 +366,7 @@ bool Load(const std::string& path)
     // Whatever happens below, what was read before may be gone: the ship catalogue is
     // replaced before the archetypes are read.
     ++g_generation;
+    g_added.clear();  // made from the catalogue being replaced
 
     // The module library first, from beside this file: archetypes name modules, and a
     // part naming one that is not loaded is a load error (#240).
@@ -499,7 +510,52 @@ const Archetype* ForDesign(const std::string& design)
     for (const Archetype& a : g_archetypes)
         if (a.design == design && a.kind == EntityKind::Npc)
             return &a;
-    return nullptr;
+    auto it = g_added.find(design);
+    return it == g_added.end() ? nullptr : &it->second->look;
+}
+
+bool AddDesign(const Ships::Design& d, std::string& error)
+{
+    if (g_added.count(d.id) != 0 || g_ships.FindDesign(d.id) != nullptr)
+        return true;
+    // The stock archetype of the same frame says what such a ship is -- its glyph, layer,
+    // material -- and this design says what it looks like and what it can do.
+    const Archetype* base = nullptr;
+    for (const Archetype& a : g_archetypes)
+        if (a.kind == EntityKind::Npc && !a.design.empty())
+            if (const Ships::Design* sd = g_ships.FindDesign(a.design))
+                if (sd->frame == d.frame && base == nullptr)
+                    base = &a;
+    if (base == nullptr)
+    {
+        error = "design '" + d.id + "': no ship of frame '" + d.frame + "' is drawn";
+        return false;
+    }
+    auto        added = std::make_unique<AddedDesign>();
+    std::string why;
+    json        shape;
+    added->design = d;
+    added->look = *base;
+    added->look.id = base->id + "@" + d.id;
+    added->look.design = d.id;
+    added->look.visual.shape = Render::Shape();
+    if (!Ships::Validate(g_ships, d, why) || !Ships::ShapeOf(g_ships, d, shape, why) ||
+        !Render::ParseShape(shape, added->look.visual.shape, why) ||
+        !Ships::Derive(g_ships, d, added->look.ship, why))
+    {
+        error = why;
+        return false;
+    }
+    g_added[d.id] = std::move(added);
+    return true;
+}
+
+const Ships::Design* FindDesign(const std::string& id)
+{
+    if (const Ships::Design* d = g_ships.FindDesign(id))
+        return d;
+    auto it = g_added.find(id);
+    return it == g_added.end() ? nullptr : &it->second->design;
 }
 
 unsigned Generation()

@@ -4,6 +4,7 @@
 #include "core/JsonKeys.h"
 #include "render/Modules.h"
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <fstream>
 
@@ -1068,6 +1069,58 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
 
     out = std::move(c);
     return true;
+}
+
+json ToJson(const Design& d)
+{
+    json j = { { "id", d.id },   { "name", d.name }, { "frame", d.frame },
+               { "bow", d.bow }, { "mid", d.mids },  { "stern", d.stern } };
+    json fit = json::array();
+    for (const FitLine& l : d.fit)
+    {
+        json line = {
+            { "module", l.module }, { "in", l.in }, { "on", l.on }, { "count", l.count }
+        };
+        if (l.scale > 0.0f)
+            line["scale"] = l.scale;
+        fit.push_back(std::move(line));
+    }
+    j["fit"] = std::move(fit);
+    return j;
+}
+
+bool FromJson(const json& j, Design& out, std::string& error)
+{
+    Design d;
+    if (!ParseDesign(j, d, error))
+        return false;
+    out = std::move(d);
+    return true;
+}
+
+std::string ContentId(const Design& d)
+{
+    // Everything that makes it the ship it is, and nothing that only names it. nlohmann's
+    // object keeps its keys sorted and writes numbers its own way, so the text is the same
+    // wherever it is made.
+    json j = ToJson(d);
+    j.erase("id");
+    j.erase("name");
+    const std::string text = j.dump();
+    uint32_t          h = 2166136261u;
+    for (unsigned char ch : text)
+    {
+        h ^= ch;
+        h *= 16777619u;
+    }
+    char buf[16];
+    std::snprintf(buf, sizeof buf, "u:%08x", (unsigned)h);
+    return buf;
+}
+
+bool IsPlayerDesign(const std::string& id)
+{
+    return id.size() == 10 && id[0] == 'u' && id[1] == ':';
 }
 
 bool Load(const std::string& path, Catalogue& out, std::string& error)
