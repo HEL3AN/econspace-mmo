@@ -972,7 +972,8 @@ TEST_CASE(
     "a structure's wreck decays on the clock, cold, and keeps its time across a restart (#41)")
 {
     LoadRegistries();
-    const std::string path = "world_wreck_decay_tmp.json";
+    const TempDir     tmp;
+    const std::string path = tmp.Path("world_wreck_decay.json");
     Simulation        a;
     StartServer(a, "");
     ClientSession&    s = Builder(a, "hunter");
@@ -1045,5 +1046,4 @@ TEST_CASE(
         REQUIRE(back != nullptr);
         CHECK(back->GetExpiresAt() == doctest::Approx(b.Time() + Blueprints::Rules().wreckSeconds));
     }
-    std::remove(path.c_str());
 }

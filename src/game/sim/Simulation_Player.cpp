@@ -8,7 +8,9 @@
 #include "sim/Simulation.h"
 #include "sim/ClientSession.h"
 #include "sim/PlayerStep.h"
+#include "sim/SaveFile.h"
 
+#include "core/Archetype.h"
 #include "core/Orbits.h"
 #include "core/World.h"
 #include "economy/Resource.h"
@@ -130,6 +132,61 @@ const ClientSession* Simulation::Session(int id) const
 {
     auto it = sessions_.find(id);
     return it == sessions_.end() ? nullptr : &it->second;
+}
+
+bool Simulation::BeginLinger(ClientSession& s)
+{
+    if (!s.ship || s.IsDocked())
+        return false;
+    s.lingerLeft = LINGER_SECONDS;
+    return true;
+}
+
+std::vector<int> Simulation::StepLinger(float dt)
+{
+    std::vector<int> over;
+    for (auto& kv : sessions_)
+    {
+        ClientSession& s = kv.second;
+        if (!s.Lingering())
+            continue;
+        s.lingerLeft -= dt;
+        if (s.lingerLeft <= 0.0f)
+        {
+            s.lingerLeft = 0.0f;  // still lingering until the host ends it
+            over.push_back(s.id);
+        }
+    }
+    return over;
+}
+
+bool Simulation::InCover(const ClientSession& s) const
+{
+    const SystemState* st = SystemOf(s);
+    if (st == nullptr || !s.ship)
+        return false;
+    const Vector2 pp = s.ship->GetPosition();
+    for (const auto& e : st->entities)
+    {
+        if (!e->Has(Component::Hazard) || !e->GetArchetype()->hazardHidesShips)
+            continue;
+        // radius 0 in the archetype means "as large as the object itself".
+        const float r =
+            e->GetArchetype()->hazardRadius > 0.0f ? e->GetArchetype()->hazardRadius : e->GetSize();
+        const float dx = pp.x - e->GetPosition().x;
+        const float dy = pp.y - e->GetPosition().y;
+        if (dx * dx + dy * dy <= r * r)
+            return true;
+    }
+    return false;
+}
+
+bool Simulation::GrantDebugMoney(ClientSession& s)
+{
+    if (!devCommands_)
+        return false;
+    s.account.AddMoney(1000.0);
+    return true;
 }
 
 void Simulation::StepPlayerShip(ClientSession& s, const Proto::Command& cmd, float pilotBonus,
@@ -889,7 +946,7 @@ Vector2 Simulation::SafeArrival(const std::string& systemId, const ClientSession
     return { 0.0f, clear };
 }
 
-void Simulation::SaveAccount(const ClientSession& s, const std::string& path) const
+bool Simulation::SaveAccount(const ClientSession& s, const std::string& path) const
 {
     using nlohmann::json;
     json j;
@@ -989,9 +1046,9 @@ void Simulation::SaveAccount(const ClientSession& s, const std::string& path) co
                              { "rewardRep", m.rewardRep } });
     j["missions"] = missions;
 
-    std::ofstream out(path);
-    if (out.is_open())
-        out << j.dump(2) << "\n";
+    // Atomically, with an older copy kept (#341): a truncated account file used to read as a
+    // name nobody had taken, and the first person to log in under it claimed it.
+    return Save::WriteFileAtomic(path, j.dump(2) + "\n", ACCOUNT_BACKUPS);
 }
 
 Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)

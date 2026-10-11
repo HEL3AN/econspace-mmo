@@ -5,6 +5,7 @@
 
 #include "sim/Simulation.h"
 #include "sim/Names.h"
+#include "sim/SaveFile.h"
 
 #include "core/Blueprint.h"
 #include "core/Orbits.h"
@@ -475,7 +476,7 @@ Intel IntelFrom(const nlohmann::json& j)
 
 // Server world persistence: the galaxy (system aggregates) + time. The sup* "pressure"
 // field is transient — not written (on load the world has "rested").
-void Simulation::SaveWorld(const std::string& path) const
+bool Simulation::SaveWorld(const std::string& path) const
 {
     using nlohmann::json;
     json j;
@@ -615,9 +616,9 @@ void Simulation::SaveWorld(const std::string& path) const
     }
     j["changes"] = std::move(changes);
 
-    std::ofstream out(path);
-    if (out.is_open())
-        out << j.dump(2) << "\n";
+    // Beside the real file, then renamed over it, with older copies kept (#341): a crash
+    // mid-write used to leave a truncated world that the next boot replaced with a new galaxy.
+    return Save::WriteFileAtomic(path, j.dump(2) + "\n", WORLD_BACKUPS);
 }
 
 Save::Result Simulation::LoadWorld(const std::string& path)

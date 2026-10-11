@@ -1,9 +1,12 @@
 #include "sim/Protocol.h"
 
+#include "core/World.h"
+#include "economy/Resource.h"
 #include "entities/Derelict.h"
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cmath>
 
 namespace
@@ -64,6 +67,8 @@ void Stamp(json& j, const char* type)
     j["t"] = type;
 }
 
+int VersionOf(const json& j);
+
 // Parses a message and checks the envelope. False means broken JSON, not an object, or
 // written by a different protocol version -- in all three cases the caller must not
 // trust the contents, because permissive per-field decoding would happily invent them.
@@ -72,7 +77,44 @@ bool OpenEnvelope(const std::string& s, json& j)
     j = json::parse(s, nullptr, false);
     if (j.is_discarded() || !j.is_object())
         return false;
-    return j.value("v", 0) == Proto::PROTO_VERSION;
+    return VersionOf(j) == Proto::PROTO_VERSION;
+}
+
+// The type and version of a parsed message, without trusting either field to be what it
+// should: `value()` throws on a field of the wrong type, and an exception out of a decoder is
+// a peer ending the server for everyone with one line of JSON (#341).
+int VersionOf(const json& j)
+{
+    const auto it = j.find("v");
+    if (it == j.end() || !it->is_number_integer())
+        return 0;
+    // A positive number parses as unsigned; read it as that, and anything absurd as no version.
+    if (it->is_number_unsigned())
+    {
+        const unsigned long long u = it->get<unsigned long long>();
+        return u < 1000000ULL ? (int)u : 0;
+    }
+    const long long v = it->get<long long>();
+    return v > 0 && v < 1000000 ? (int)v : 0;
+}
+
+std::string TypeOf(const json& j)
+{
+    const auto it = j.find("t");
+    return it != j.end() && it->is_string() ? it->get<std::string>() : std::string();
+}
+
+std::string TextOf(const json& j, const char* key)
+{
+    const auto it = j.find(key);
+    return it != j.end() && it->is_string() ? it->get<std::string>() : std::string();
+}
+
+// Parses a message of one type, whatever version it carries.
+bool OpenTyped(const std::string& s, const char* type, json& j)
+{
+    j = json::parse(s, nullptr, false);
+    return !j.is_discarded() && j.is_object() && TypeOf(j) == type;
 }
 
 // One object of a system's static layer. Shared by the whole layout and by a delta, which
@@ -193,11 +235,10 @@ std::string EncodeHello(const Hello& h)
 
 bool DecodeHello(const std::string& s, Hello& out)
 {
-    json j = json::parse(s, nullptr, false);
-    if (j.is_discarded() || !j.is_object() || j.value("t", std::string()) != "hello" ||
-        j.value("v", 0) != PROTO_VERSION)
+    json j;
+    if (!OpenTyped(s, "hello", j) || VersionOf(j) != PROTO_VERSION)
         return false;
-    out.account = j.value("acct", std::string());
+    out.account = TextOf(j, "acct");
     return true;
 }
 
@@ -213,13 +254,13 @@ std::string EncodeChallenge(const Challenge& c)
 
 bool DecodeChallenge(const std::string& s, Challenge& out)
 {
-    json j = json::parse(s, nullptr, false);
-    if (j.is_discarded() || !j.is_object() || j.value("t", std::string()) != "chal" ||
-        j.value("v", 0) != PROTO_VERSION)
+    json j;
+    if (!OpenTyped(s, "chal", j) || VersionOf(j) != PROTO_VERSION)
         return false;
-    out.nonce = j.value("nonce", std::string());
-    out.salt = j.value("salt", std::string());
-    out.isNew = j.value("new", false);
+    out.nonce = TextOf(j, "nonce");
+    out.salt = TextOf(j, "salt");
+    const auto isNew = j.find("new");
+    out.isNew = isNew != j.end() && isNew->is_boolean() && isNew->get<bool>();
     return true;
 }
 
@@ -234,12 +275,11 @@ std::string EncodeAuth(const Auth& a)
 
 bool DecodeAuth(const std::string& s, Auth& out)
 {
-    json j = json::parse(s, nullptr, false);
-    if (j.is_discarded() || !j.is_object() || j.value("t", std::string()) != "auth" ||
-        j.value("v", 0) != PROTO_VERSION)
+    json j;
+    if (!OpenTyped(s, "auth", j) || VersionOf(j) != PROTO_VERSION)
         return false;
-    out.proof = j.value("proof", std::string());
-    out.stored = j.value("stored", std::string());
+    out.proof = TextOf(j, "proof");
+    out.stored = TextOf(j, "stored");
     return true;
 }
 
@@ -251,13 +291,15 @@ std::string EncodeBye(const Bye& b)
     return j.dump();
 }
 
+// Any version (#341): a Bye is how a server tells a client of another version that it is one,
+// and a reason nobody can read is a silent disconnect again. The message has had one field
+// since it was introduced, so reading it across versions guesses at nothing.
 bool DecodeBye(const std::string& s, Bye& out)
 {
-    json j = json::parse(s, nullptr, false);
-    if (j.is_discarded() || !j.is_object() || j.value("t", std::string()) != "bye" ||
-        j.value("v", 0) != PROTO_VERSION)
+    json j;
+    if (!OpenTyped(s, "bye", j))
         return false;
-    out.reason = j.value("why", std::string());
+    out.reason = TextOf(j, "why");
     return true;
 }
 
@@ -327,54 +369,164 @@ std::string EncodeCommand(const Command& c)
     return j.dump();
 }
 
+}  // namespace Proto
+
+// A command is the one message every client sends sixty times a second, and every byte of
+// it is the peer's choice (#341). Nothing is taken on trust: a field of the wrong type makes
+// the whole command invalid, a float that is not finite does too (1e39 is a fine double and
+// an infinity as a float, and an infinite turn rate became NaN positions broadcast to every
+// player in the system), and everything else is clamped to what a client could mean.
+namespace
+{
+// Further than any order could sensibly name: a system is SYSTEM_RADIUS across each way.
+constexpr double POINT_LIMIT = 4.0 * (double)World::SYSTEM_RADIUS;
+// The longest text a command carries -- a name, a blueprint id. More is not a name.
+constexpr size_t TEXT_LIMIT = 256;
+// Ids and sequence numbers: any int that is not negative.
+constexpr long long ID_MAX = 2147483647LL;
+
+bool ReadFloat(const json& j, const char* key, float def, double lo, double hi, float& out)
+{
+    out = def;
+    const auto it = j.find(key);
+    if (it == j.end())
+        return true;
+    if (!it->is_number())
+        return false;
+    const double v = it->get<double>();
+    if (!std::isfinite(v))
+        return false;
+    out = (float)std::min(hi, std::max(lo, v));
+    return true;
+}
+
+bool ReadPoint(const json& j, const char* key, Vector2& out)
+{
+    out = { 0.0f, 0.0f };
+    const auto it = j.find(key);
+    if (it == j.end())
+        return true;
+    if (!it->is_array() || it->size() != 2)
+        return false;
+    const json xy = { { "x", (*it)[0] }, { "y", (*it)[1] } };
+    return ReadFloat(xy, "x", 0.0f, -POINT_LIMIT, POINT_LIMIT, out.x) &&
+           ReadFloat(xy, "y", 0.0f, -POINT_LIMIT, POINT_LIMIT, out.y);
+}
+
+// An integer, or false if the field is something else. Outside [lo, hi] it reads as `def`:
+// an index past the end of a list is no index, and an id cannot be negative.
+bool ReadInt(const json& j, const char* key, int def, long long lo, long long hi, int& out)
+{
+    out = def;
+    const auto it = j.find(key);
+    if (it == j.end())
+        return true;
+    if (!it->is_number_integer())
+        return false;
+    if (it->is_number_unsigned())
+    {
+        const unsigned long long u = it->get<unsigned long long>();
+        if (u <= (unsigned long long)hi && (long long)u >= lo)
+            out = (int)u;
+        return true;
+    }
+    const long long v = it->get<long long>();
+    if (v >= lo && v <= hi)
+        out = (int)v;
+    return true;
+}
+
+bool ReadBool(const json& j, const char* key, bool& out)
+{
+    out = false;
+    const auto it = j.find(key);
+    if (it == j.end())
+        return true;
+    if (!it->is_boolean())
+        return false;
+    out = it->get<bool>();
+    return true;
+}
+
+bool ReadText(const json& j, const char* key, std::string& out)
+{
+    out.clear();
+    const auto it = j.find(key);
+    if (it == j.end())
+        return true;
+    if (!it->is_string())
+        return false;
+    out = it->get<std::string>();
+    return out.size() <= TEXT_LIMIT;
+}
+
+bool ReadCommand(const json& j, Proto::Command& out)
+{
+    const double far = POINT_LIMIT;
+    const int    resources = (int)AllResourceTypes().size();
+    bool         ok = true;
+    ok = ok && ReadInt(j, "seq", 0, 0, ID_MAX, out.seq);
+    ok = ok && ReadBool(j, "thrust", out.thrust);
+    // A turn is an axis, -1 to 1. Fifty turned the ship round in one tick.
+    ok = ok && ReadFloat(j, "turn", 0.0f, -1.0, 1.0, out.turn);
+    ok = ok && ReadBool(j, "brake", out.brake);
+    ok = ok && ReadBool(j, "tStab", out.toggleStabilizer);
+    ok = ok && ReadBool(j, "tMine", out.toggleMining);
+    ok = ok && ReadBool(j, "tWeap", out.toggleWeapon);
+    ok = ok && ReadBool(j, "dock", out.dock);
+    ok = ok && ReadBool(j, "undock", out.undock);
+    ok = ok && ReadInt(j, "target", 0, 0, ID_MAX, out.targetId);
+    ok = ok && ReadInt(j, "navMode", 0, 0, 5, out.navMode);
+    ok = ok && ReadPoint(j, "nav", out.navTarget);
+    ok = ok && ReadFloat(j, "navStop", 0.0f, 0.0, far, out.navStopDist);
+    out.navViaSet = j.contains("navVia");
+    ok = ok && ReadPoint(j, "navVia", out.navVia);
+    ok = ok && ReadInt(j, "navHold", 0, 0, ID_MAX, out.navHoldId);
+    ok = ok && ReadFloat(j, "navRange", 0.0f, 0.0, far, out.navRange);
+    ok = ok && ReadInt(j, "gate", 0, 0, ID_MAX, out.jumpGateId);
+    ok = ok && ReadInt(j, "loot", 0, 0, ID_MAX, out.lootId);
+    // Indices into fixed lists: one past the end used to be read and written as if it were
+    // there -- a bounty paid to faction 1000 is memory that is not a bounty.
+    ok = ok && ReadInt(j, "sellType", -1, 0, resources - 1, out.sellType);
+    ok = ok && ReadInt(j, "sellAmt", 0, 0, ID_MAX, out.sellAmount);
+    ok = ok && ReadInt(j, "refit", -1, 0, ID_MAX, out.refitShip);
+    ok = ok && ReadInt(j, "buy", -1, 0, ID_MAX, out.buyShip);
+    ok = ok && ReadInt(j, "payB", -1, 0, FACTION_COUNT - 1, out.payBountyFaction);
+    ok = ok && ReadText(j, "nameSys", out.nameSystem);
+    ok = ok && ReadBool(j, "dbgMoney", out.debugMoney);
+    ok = ok && ReadInt(j, "acceptM", -1, 0, ID_MAX, out.acceptOffer);
+    ok = ok && ReadInt(j, "completeM", -1, 0, ID_MAX, out.completeMission);
+    ok = ok && ReadInt(j, "ordKind", 0, 0, (int)Orders::Kind::Build, out.orderKind);
+    ok = ok && ReadInt(j, "ordTarget", 0, 0, ID_MAX, out.orderTarget);
+    ok = ok && ReadPoint(j, "ordPoint", out.orderPoint);
+    ok = ok && ReadFloat(j, "ordStop", 120.0f, 0.0, far, out.orderStopDist);
+    ok = ok && ReadBool(j, "ordWarp", out.orderWarp);
+    ok = ok && ReadBool(j, "ordFull", out.orderUntilFull);
+    ok = ok && ReadText(j, "ordDest", out.orderDestSystem);
+    ok = ok && ReadBool(j, "ordSafe", out.orderAvoidDanger);
+    ok = ok && ReadText(j, "ordBp", out.orderBlueprint);
+    ok = ok && ReadText(j, "ordName", out.orderName);
+    ok = ok && ReadBool(j, "ordAbort", out.abortOrder);
+    ok = ok && ReadText(j, "deploy", out.deploy);
+    ok = ok && ReadPoint(j, "deployAt", out.deployPos);
+    ok = ok && ReadText(j, "deployName", out.deployName);
+    ok = ok && ReadInt(j, "dismantle", 0, 0, ID_MAX, out.dismantleId);
+    return ok;
+}
+}  // namespace
+
+namespace Proto
+{
+
 bool DecodeCommand(const std::string& s, Command& out)
 {
     json j;
     if (!OpenEnvelope(s, j))
         return false;
-    out.seq = j.value("seq", 0);
-    out.thrust = j.value("thrust", false);
-    out.turn = j.value("turn", 0.0f);
-    out.brake = j.value("brake", false);
-    out.toggleStabilizer = j.value("tStab", false);
-    out.toggleMining = j.value("tMine", false);
-    out.toggleWeapon = j.value("tWeap", false);
-    out.dock = j.value("dock", false);
-    out.undock = j.value("undock", false);
-    out.targetId = j.value("target", 0);
-    out.navMode = j.value("navMode", 0);
-    out.navTarget = j.contains("nav") ? ToV2(j["nav"]) : Vector2{ 0.0f, 0.0f };
-    out.navStopDist = j.value("navStop", 0.0f);
-    out.navViaSet = j.contains("navVia");
-    out.navVia = out.navViaSet ? ToV2(j["navVia"]) : Vector2{ 0.0f, 0.0f };
-    out.navHoldId = j.value("navHold", 0);
-    out.navRange = j.value("navRange", 0.0f);
-    out.jumpGateId = j.value("gate", 0);
-    out.lootId = j.value("loot", 0);
-    out.sellType = j.value("sellType", -1);
-    out.sellAmount = j.value("sellAmt", 0);
-    out.refitShip = j.value("refit", -1);
-    out.buyShip = j.value("buy", -1);
-    out.payBountyFaction = j.value("payB", -1);
-    out.nameSystem = j.value("nameSys", std::string());
-    out.debugMoney = j.value("dbgMoney", false);
-    out.acceptOffer = j.value("acceptM", -1);
-    out.completeMission = j.value("completeM", -1);
-    out.orderKind = j.value("ordKind", 0);
-    out.orderTarget = j.value("ordTarget", 0);
-    out.orderPoint = j.contains("ordPoint") ? ToV2(j["ordPoint"]) : Vector2{ 0.0f, 0.0f };
-    out.orderStopDist = j.value("ordStop", 120.0f);
-    out.orderWarp = j.value("ordWarp", false);
-    out.orderUntilFull = j.value("ordFull", false);
-    out.orderDestSystem = j.value("ordDest", std::string());
-    out.orderAvoidDanger = j.value("ordSafe", false);
-    out.orderBlueprint = j.value("ordBp", std::string());
-    out.orderName = j.value("ordName", std::string());
-    out.abortOrder = j.value("ordAbort", false);
-    out.deploy = j.value("deploy", std::string());
-    out.deployPos = j.contains("deployAt") ? ToV2(j["deployAt"]) : Vector2{ 0.0f, 0.0f };
-    out.deployName = j.value("deployName", std::string());
-    out.dismantleId = j.value("dismantle", 0);
+    Command c;
+    if (!ReadCommand(j, c))
+        return false;
+    out = std::move(c);
     return true;
 }
 
@@ -783,7 +935,7 @@ std::string MessageType(const std::string& s)
     json j = json::parse(s, nullptr, false);
     if (j.is_discarded() || !j.is_object())
         return std::string();
-    return j.value("t", std::string());
+    return TypeOf(j);
 }
 
 int MessageVersion(const std::string& s)
@@ -791,7 +943,7 @@ int MessageVersion(const std::string& s)
     json j = json::parse(s, nullptr, false);
     if (j.is_discarded() || !j.is_object())
         return 0;
-    return j.value("v", 0);
+    return VersionOf(j);
 }
 
 // The name an object goes by in the completed snapshot. The layout carries a wreck's name and

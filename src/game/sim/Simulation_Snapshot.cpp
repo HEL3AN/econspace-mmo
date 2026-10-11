@@ -188,6 +188,10 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         const ClientSession& other = kv.second;
         if (other.id == s.id || !other.ship || other.systemId != systemId || other.IsDocked())
             continue;  // docked is not "in space": a station is cover from being seen
+        // ...and so is a nebula (#341). It hid a ship from every NPC and from no player, so
+        // the cover worked against everyone except the people a player most wants to hide from.
+        if (InCover(other))
+            continue;
 
         Proto::EntitySnapshot es;
         es.id = other.ship->GetId();
@@ -330,19 +334,22 @@ std::vector<Proto::LayoutDelta> Simulation::TakeLayoutDeltas()
     return out;
 }
 
-Proto::GalaxyState Simulation::BuildGalaxyState()
+Proto::GalaxyState Simulation::BuildGalaxyState() const
 {
     Proto::GalaxyState gs;
-    for (auto& kv : systems_)
+    for (const auto& kv : systems_)
     {
-        RecountAgg(kv.second);  // refresh the population from live entities
         const SystemAggregate& a = kv.second.agg;
         if (!a.visited)
             continue;  // nobody knows how a system nobody has seen is doing (#144)
         Proto::GalaxySystemStat g;
         g.id = kv.first;
         g.security = a.security;
-        g.pirates = (int)(a.pirates + 0.5f);
+        // Counted, never recounted (#341): RecountAgg writes the aggregate, and the next
+        // maintenance pass reads a fall in it as ships lost. Recounting here once a second
+        // while anyone was connected ate those losses, so a galaxy behaved differently when
+        // somebody was watching it.
+        g.pirates = IsHot(kv.second) ? LivePirates(kv.second) : (int)(a.pirates + 0.5f);
         g.prosperity = a.prosperity;
         g.controller = a.controller;
         gs.systems.push_back(std::move(g));

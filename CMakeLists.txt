@@ -276,6 +276,8 @@ add_executable(econserver
     src/game/sim/Simulation_Sieges.cpp    # what keeping an outpost costs, and sieges (#295)
     src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
     src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
+    src/game/sim/SaveFile.cpp             # a save is renamed into place, never half-written (#341)
+    src/game/sim/HostRules.cpp            # who may log in and whether the world may start (#341)
     src/game/sim/PlayerStep.cpp
     src/game/sim/WarpPath.cpp
     src/game/sim/Orders.cpp
@@ -389,6 +391,7 @@ add_executable(tests
     tests/siege_tests.cpp          # upkeep, decay and sieges of outposts (#295)
     tests/outpost_tests.cpp        # outposts placed by purpose, and what each looks like (#318)
     tests/cold_tests.cpp           # ships only where a player is; the rest as numbers (#295)
+    tests/hardening_tests.cpp      # exploits and lost saves closed before a public playtest (#341)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/MissionList.cpp   # the missions window's rows, tested without one (#297)
@@ -409,6 +412,8 @@ add_executable(tests
     src/game/sim/Simulation_Sieges.cpp    # what keeping an outpost costs, and sieges (#295)
     src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
     src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
+    src/game/sim/SaveFile.cpp             # a save is renamed into place, never half-written (#341)
+    src/game/sim/HostRules.cpp            # who may log in and whether the world may start (#341)
     src/game/sim/PlayerStep.cpp
     src/game/sim/WarpPath.cpp
     src/game/sim/Orders.cpp

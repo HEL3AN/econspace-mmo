@@ -897,8 +897,12 @@ void Game::DrawHud()
     if (flying && !desk_.IsOpen(WIN_SENSOR))
         DrawScaleBar();  // a scale for the world view; the sensor screen states its own
     DrawLocation();      // under the windows: one dragged over it covers it, never mixes with it
+#ifndef NDEBUG
+    // A development build's hint only (#341): the money is honoured by a server started with
+    // --dev, and a player of a published build has no use for the line.
     Ui::Text("[debug] F1: +money   F11: fullscreen", (int)(MenuBarW() + Ui::Px(8.0f)),
              screenHeight_ - (int)Ui::Px(24.0f), 12, Ui::TEXT_DIM);
+#endif
     desk_.Draw(Ui::Layer::Panels);
 
     // Over the windows: the map, and the sensor screen -- a screen of its own with its own

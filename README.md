@@ -150,7 +150,7 @@ That process speaks MCP on stdio. To hand it to Claude Code: `claude mcp add eco
 | | | | `V` | sensor screen — the surroundings on a grid, coloured by how you stand with them; wheel steps the range |
 | | | | `Esc` | close what is on top — a menu, the map, the sensor screen, a window; it never quits |
 | | | | `F10` | screen treatment settings |
-| `F1` | debug: add money | | `F11` | fullscreen |
+| `F1` | debug: add money (a server started with `--dev` only) | | `F11` | fullscreen |
 
 The right-click menu works on a row of the overview too. That is the intended way to fly: choose a thing from the list and choose what to do about it, rather than hunting for it on screen.
 

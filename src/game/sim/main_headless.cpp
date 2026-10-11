@@ -8,8 +8,10 @@
 // Run: econserver [ticks]   (default 3600 ticks = 60 s at SIM_DT=1/60).
 
 #include "sim/Auth.h"
+#include "sim/HostRules.h"
 #include "sim/MacroBench.h"
 #include "sim/Protocol.h"
+#include "sim/SaveFile.h"
 #include "sim/SaveSchema.h"
 #include "gen/Region.h"
 #include "sim/Simulation.h"
@@ -102,21 +104,17 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
            (unsigned long long)seed, (int)sim.Universe().systems.size());
 
     sim.Seed(0xC0FFEEu);
-    const Save::Result world = worldPath.empty() ? Save::Result::Missing : sim.LoadWorld(worldPath);
-    if (world == Save::Result::TooNew)
+    // A world from a newer build, or a damaged one, stops the server rather than being
+    // replaced by a new galaxy at the first checkpoint (#20, #341).
+    std::string why;
+    switch (Host::OpenWorld(sim, worldPath, why))
     {
-        // Refusing to start beats starting a different galaxy: the checkpoint timer would
-        // write this build's idea of the world over the one that is there (#20).
-        fprintf(stderr,
-                "FATAL: %s was written by a newer build (this one speaks world schema v%d).\n"
-                "Move it aside or upgrade the server; it has NOT been modified.\n",
-                worldPath.c_str(), Save::WORLD_VERSION);
-        exit(1);
+        case Host::WorldStart::Restored:
+            printf("World restored from %s (t=%.0fs).\n", worldPath.c_str(), sim.Time());
+            break;
+        case Host::WorldStart::Fresh: break;
+        case Host::WorldStart::Refused: fprintf(stderr, "FATAL: %s\n", why.c_str()); exit(1);
     }
-    if (world == Save::Result::Ok)
-        printf("World restored from %s (t=%.0fs).\n", worldPath.c_str(), sim.Time());
-    else
-        sim.InitGalaxy();
     sim.MaterializeAllSystems(dataDir + "systems/");
 }
 
@@ -147,9 +145,10 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     if (c.undock)
         sim.StepPlayerUndock(s);
 
-    // Debug (F1): credit money to the server account.
-    if (c.debugMoney)
-        s.account.AddMoney(1000.0);
+    // Debug (F1): credit money to the server account -- only on a server started with --dev
+    // (#341). Anyone who could open a socket used to be able to print money.
+    if (c.debugMoney && !sim.GrantDebugMoney(s))
+        s.RecordEvent(Ev::Kind::Notice, "Debug money refused: this server is not in dev mode");
 
     // Naming the system the ship is in (#145), as its discoverer. Not a station verb: the
     // map offers it in flight, and filed under the docked ones it was dropped without a
@@ -247,30 +246,6 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     return changed;
 }
 
-// Is this player inside something that hides ships? The nebula is the only such thing
-// today, but the test asks for the property rather than for the class (#34), so a jammer
-// a player builds (#44) would hide them too.
-static bool HiddenInCover(Simulation& sim, const ClientSession& s)
-{
-    const SystemState* st = sim.SystemOf(s);
-    if (st == nullptr || !s.ship)
-        return false;
-    Vector2 pp = s.ship->GetPosition();
-    for (const auto& e : st->entities)
-    {
-        if (!e->Has(Component::Hazard) || !e->GetArchetype()->hazardHidesShips)
-            continue;
-        // radius 0 in the archetype means "as large as the object itself".
-        float r =
-            e->GetArchetype()->hazardRadius > 0.0f ? e->GetArchetype()->hazardRadius : e->GetSize();
-        float dx = pp.x - e->GetPosition().x;
-        float dy = pp.y - e->GetPosition().y;
-        if (dx * dx + dy * dy <= r * r)
-            return true;
-    }
-    return false;
-}
-
 // World step (every system + maintenance) — on the server timer, independent of inputs.
 //
 // Every system is stepped the same way; the only difference between them is who happens
@@ -292,7 +267,7 @@ static void HostStepWorld(Simulation& sim, float dt,
         Simulation::PlayerPresence p;
         p.session = &s;
         p.ship = (Combatant*)s.ship.get();
-        p.hidden = HiddenInCover(sim, s);
+        p.hidden = sim.InCover(s);  // a nebula, say: hidden from NPCs and players alike
         present[s.systemId].push_back(p);
     }
 
@@ -405,6 +380,10 @@ struct HostClient
     bool                                wasDocked = false;
     bool                                accountReadOnly = false;  // their file is newer (#20)
     bool                                evicted = false;  // displaced by a later login (#105)
+    // The connection is gone and the ship is still in space, for Simulation::LINGER_SECONDS
+    // (#341). The session is saved and ended when that runs out, or when its owner logs in
+    // again -- which displaces it like any other earlier connection.
+    bool lingering = false;
 
     // The login in progress (#106). A name has been claimed and a challenge sent; none of
     // it means anything until the proof arrives.
@@ -456,40 +435,12 @@ static double LoginLimit(const std::string& pendingAccount)
     return pendingAccount.empty() ? HELLO_TIMEOUT : LOGIN_TIMEOUT;
 }
 
-// A name that is safe both as an identity and as a file name. Rejecting is better than
-// mangling: two names differing only in punctuation would otherwise share one account
-// file, which is one player spending another's money.
-static bool ValidAccountName(const std::string& n)
-{
-    if (n.empty() || n.size() > 32)
-        return false;
-    for (char c : n)
-        if (!std::isalnum((unsigned char)c) && c != '_' && c != '-')
-            return false;
-    return true;
-}
-
-// What an account file says its secret is, if it says anything. False for a file that is
-// not there and for one written before secrets existed (#106) -- in both cases the next
-// login sets it, which is a migration hole that closes itself as accounts are used.
-static bool ReadStoredAuth(const std::string& path, std::string& salt, std::string& stored)
-{
-    std::ifstream in(path);
-    if (!in.is_open())
-        return false;
-    nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
-    if (j.is_discarded() || !j.is_object() || !j.contains("auth") || !j["auth"].is_object())
-        return false;
-    salt = j["auth"].value("salt", std::string());
-    stored = j["auth"].value("stored", std::string());
-    return !salt.empty() && !stored.empty();
-}
-
 // Progress is stored per account name (#3). There was one account.json when there could
-// only be one player; with two connected it would be one file two people write.
+// only be one player; with two connected it would be one file two people write. `account`
+// is canonical -- lower case (#341).
 static std::string AccountPath(const std::string& account)
 {
-    return std::string(GetApplicationDirectory()) + "account_" + account + ".json";
+    return Host::AccountFile(GetApplicationDirectory(), account);
 }
 
 // The same beams, told to one player. Whether a shot is "mine" or "at me" is a fact about
@@ -615,12 +566,15 @@ static int RegionDump(uint64_t seed)
     return 0;
 }
 
-static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed)
+static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool dev)
 {
     std::string dataDir = SIM_DATA_DIR;
     std::string worldPath = std::string(GetApplicationDirectory()) + "world.json";
     Simulation  sim;
     SetupHostSim(sim, dataDir, worldPath, newSeed);
+    sim.SetDevCommands(dev);
+    if (dev)
+        printf("Dev mode: debug commands (F1's money) are honoured for every client.\n");
 
     if (!Net::Startup())
     {
@@ -697,10 +651,26 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed)
                 if (type == "hello")
                 {
                     Proto::Hello h;
-                    if (hc.sessionId != 0 || !hc.pendingAccount.empty() ||
-                        !Proto::DecodeHello(msg, h) || !ValidAccountName(h.account))
+                    const int    version = Proto::MessageVersion(msg);
+                    if (hc.sessionId == 0 && hc.pendingAccount.empty() &&
+                        version != Proto::PROTO_VERSION)
                     {
-                        printf("Rejected a hello (bad name, wrong version, or a second one "
+                        // Told, with both numbers (#341): dropped in silence, a client one
+                        // version behind looked exactly like a server that was down.
+                        Proto::Bye bye;
+                        bye.reason = Host::VersionRefusal(version);
+                        hc.conn->Send(Proto::EncodeBye(bye));
+                        printf("Rejected a hello from a client speaking protocol v%d (this "
+                               "server: v%d).\n",
+                               version, Proto::PROTO_VERSION);
+                        hc.conn.reset();
+                        break;
+                    }
+                    if (hc.sessionId != 0 || !hc.pendingAccount.empty() ||
+                        !Proto::DecodeHello(msg, h) ||
+                        (h.account = Host::CanonicalAccount(h.account)).empty())
+                    {
+                        printf("Rejected a hello (not a name, or a second one "
                                "on the same connection).\n");
                         // Dropping the socket is the whole answer: a client that cannot
                         // say who it is has nothing to be told.
@@ -715,8 +685,11 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed)
 
                     Proto::Challenge chal;
                     chal.nonce = hc.nonce;
-                    const std::string path = AccountPath(h.account);
-                    hc.isNewAccount = !ReadStoredAuth(path, chal.salt, hc.fileStored);
+                    const std::string  path = AccountPath(h.account);
+                    const Save::Result file = Host::ReadAccountAuth(path, chal.salt, hc.fileStored);
+                    // No file, or one written before secrets existed (#106): the next login
+                    // sets it, a migration hole that closes itself as accounts are used.
+                    hc.isNewAccount = chal.salt.empty() || hc.fileStored.empty();
                     // A name that is playing is an account, file or not (#201). A new
                     // account has no file until its first save, and a second login in that
                     // window used to register a secret of its own and displace the owner.
@@ -737,6 +710,20 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed)
                                 break;
                             }
                         }
+                    if (hc.isNewAccount && file == Save::Result::Corrupt)
+                    {
+                        // A damaged file is an account that exists (#341). Read as a free
+                        // name, it went to whoever logged in under it first; the owner has
+                        // to have it restored from its backup instead.
+                        Proto::Bye bye;
+                        bye.reason = "That account's file is damaged; ask the server's "
+                                     "operator to restore it";
+                        hc.conn->Send(Proto::EncodeBye(bye));
+                        printf("%s: refused -- %s is damaged (the previous save is %s).\n",
+                               h.account.c_str(), path.c_str(), Save::BackupPath(path, 1).c_str());
+                        hc.conn.reset();
+                        break;
+                    }
                     if (hc.isNewAccount)
                         chal.salt = Auth::MakeSalt();  // this login will set the secret
                     chal.isNew = hc.isNewAccount;
@@ -804,8 +791,12 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed)
                             other.conn->Send(Proto::EncodeBye(bye));
                         other.sessionId = 0;
                         other.evicted = true;
-                        printf("%s signed in again; the earlier connection was displaced.\n",
-                               h.account.c_str());
+                        if (other.lingering)
+                            printf("%s is back; the ship left in space is flown again.\n",
+                                   h.account.c_str());
+                        else
+                            printf("%s signed in again; the earlier connection was displaced.\n",
+                                   h.account.c_str());
                     }
 
                     ClientSession& s = SetupHostPlayer(sim);
@@ -823,6 +814,15 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed)
                         hc.accountReadOnly = true;
                         printf("%s: account file is from a newer build; joining with a "
                                "fresh account and NOT saving over it.\n",
+                               h.account.c_str());
+                    }
+                    else if (acct == Save::Result::Corrupt)
+                    {
+                        // Damaged since the hello was answered: the same rule, never
+                        // written over (#341).
+                        hc.accountReadOnly = true;
+                        printf("%s: account file is damaged; joining with a fresh account "
+                               "and NOT saving over it.\n",
                                h.account.c_str());
                     }
                     else if (acct == Save::Result::Ok)
@@ -978,13 +978,35 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed)
             sim.SaveWorld(worldPath);
         }
 
-        // A disconnect ends one session, not the server and not anyone else's game.
+        // A disconnect ends one session, not the server and not anyone else's game -- after
+        // the ship has stayed in space a while (#341), so leaving is not a way out of a fight.
+        const std::vector<int> lingerOver = sim.StepLinger((float)frame);
         for (size_t i = 0; i < clients.size();)
         {
             HostClient& hc = clients[i];
-            if (hc.conn && hc.conn->Alive() && !hc.evicted &&
-                (hc.sessionId != 0 || hc.silentFor < LoginLimit(hc.pendingAccount)))
+            if (hc.lingering && !hc.evicted)
             {
+                if (std::find(lingerOver.begin(), lingerOver.end(), hc.sessionId) ==
+                    lingerOver.end())
+                {
+                    i++;
+                    continue;
+                }
+                printf("%s's ship has left space.\n", hc.account.c_str());
+            }
+            else if (hc.conn && hc.conn->Alive() && !hc.evicted &&
+                     (hc.sessionId != 0 || hc.silentFor < LoginLimit(hc.pendingAccount)))
+            {
+                i++;
+                continue;
+            }
+            else if (!hc.evicted && sim.Session(hc.sessionId) != nullptr &&
+                     sim.BeginLinger(*sim.Session(hc.sessionId)))
+            {
+                hc.lingering = true;
+                hc.conn.reset();
+                printf("%s's connection closed; the ship stays in space for %.0f s.\n",
+                       hc.account.c_str(), Simulation::LINGER_SECONDS);
                 i++;
                 continue;
             }
@@ -1050,7 +1072,14 @@ public:
                  ("econserver_" + std::string(name) + "_" + std::to_string(stamp) + ".json"))
                     .generic_string();
     }
-    ~ScratchFile() { std::remove(path_.c_str()); }
+    ~ScratchFile()
+    {
+        // ...with the copies a save keeps beside it (#341).
+        std::remove(path_.c_str());
+        std::remove((path_ + ".tmp").c_str());
+        for (int n = 1; n <= Simulation::WORLD_BACKUPS; n++)
+            std::remove(Save::BackupPath(path_, n).c_str());
+    }
     ScratchFile(const ScratchFile&) = delete;
     ScratchFile& operator=(const ScratchFile&) = delete;
 
@@ -1599,15 +1628,18 @@ int main(int argc, char** argv)
         unsigned short port = (argc > 2) ? (unsigned short)atoi(argv[2]) : 50800;
         // Loopback unless asked (#187): other machines can connect only with --public.
         bool isPublic = false;
+        bool dev = false;
         // The seed of a NEW galaxy (#140); a saved world keeps its own. Choosing it is the
         // one place a random device belongs -- generating from it is where it must not be.
         uint64_t seed = ((uint64_t)std::random_device{}() << 32) ^ std::random_device{}();
         for (int i = 3; i < argc; i++)
             if (std::string(argv[i]) == "--public")
                 isPublic = true;
+            else if (std::string(argv[i]) == "--dev")
+                dev = true;  // debug commands for everyone (#341); never on a public server
             else if (std::string(argv[i]) == "--seed" && i + 1 < argc)
                 seed = std::strtoull(argv[++i], nullptr, 10);
-        return RunHost(port, isPublic, seed);
+        return RunHost(port, isPublic, seed, dev);
     }
 
     std::string dataDir = SIM_DATA_DIR;

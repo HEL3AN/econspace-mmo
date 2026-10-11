@@ -505,6 +505,16 @@ void Simulation::RecountAgg(SystemState& st)
     st.agg.pirates = (float)pi;
 }
 
+int Simulation::LivePirates(const SystemState& st)
+{
+    int n = 0;
+    for (const auto& e : st.entities)
+        if (e->GetKind() == EntityKind::Npc &&
+            static_cast<const NpcShip*>(e.get())->GetRole() == NpcRole::Pirate)
+            n++;
+    return n;
+}
+
 // System nodes for spawning. Gates are marked "dangerous" if they lead into an unsafe/
 // pirate system — only there do pirate ambushes belong.
 Simulation::SpawnNodes Simulation::GatherNodes(const SystemState& st) const
