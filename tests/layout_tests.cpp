@@ -189,6 +189,70 @@ TEST_CASE("content taller than its scrolling box is clipped, not spilled")
     CHECK(l.BoxOf("list").height == doctest::Approx(100.0f));
 }
 
+TEST_CASE("what scrolls is laid out as wide as its view, and no wider")
+{
+    // A scrolling box clips sideways as well, and a clipped axis lets children be as wide as
+    // they like: the selected-item window's rows ran off its right edge once it had to
+    // scroll. Its children now go in a column the width of the view, so a row of them fits,
+    // and wrapped text wraps there. Both kinds: a bare ScrollY box, and Scroll with its
+    // indicator beside the view.
+    auto frame = [](Layout& l, bool indicator)
+    {
+        l.Begin({ 0.0f, 0.0f, 200.0f, 100.0f }, 1.0f);
+        auto rows = [&]
+        {
+            for (int i = 0; i < 12; i++)
+                l.Row(Box().Id("row", (uint32_t)i).GrowX(),
+                      [&]
+                      {
+                          l.Text("a line long enough to have to wrap inside the window",
+                                 TextStyle::Body().Wrap());
+                      });
+        };
+        if (indicator)
+            l.Scroll(Box().Id("view").Grow().Pad(6.0f, 0.0f), rows);
+        else
+            l.Column(Box().Id("view").Grow().ScrollY().Pad(6.0f, 0.0f), rows);
+        l.End();
+    };
+    for (bool indicator : { false, true })
+    {
+        CAPTURE(indicator);
+        Layout l;
+        Monospaced(l);
+        frame(l, indicator);  // the first frame has no view to measure
+        frame(l, indicator);
+        CHECK_MESSAGE(l.LastError().empty(), l.LastError());
+        const Rectangle view = l.BoxOf("view");
+        CHECK(view.width <= 200.0f + 0.5f);
+        if (indicator)
+            CHECK(view.width < 200.0f - 0.5f);  // the indicator's room is beside it
+        const Rectangle row = l.BoxOf("row", 0);
+        CHECK(row.width == doctest::Approx(view.width - 12.0f));
+        CHECK(row.x + row.width <= view.x + view.width + 0.5f);
+    }
+}
+
+TEST_CASE("a button whose label does not fit wraps it rather than run past its row")
+{
+    Layout l;
+    Monospaced(l);
+    for (int pass = 0; pass < 2; pass++)
+    {
+        l.Begin({ 0.0f, 0.0f, 160.0f, 200.0f }, 1.0f);
+        l.Row(Box().Id("buttons").GrowX(),
+              [&]
+              {
+                  l.Button("a", "Everyone not on the list");
+                  l.Button("b", "Hold");
+              });
+        l.End();
+    }
+    const Rectangle a = l.BoxOf("a"), b = l.BoxOf("b");
+    CHECK(b.x + b.width <= 160.0f + 0.5f);
+    CHECK(a.height > b.height - 0.5f);
+}
+
 TEST_CASE("two elements with one id are reported, not silently merged")
 {
     Layout l;

@@ -2,6 +2,7 @@
 
 #include "economy/Resource.h"
 #include "missions/MissionSystem.h"
+#include "ui/Units.h"
 
 #include <cmath>
 #include <cstdio>
@@ -24,16 +25,61 @@ float Distance(Vector2 a, Vector2 b)
     return std::sqrt(dx * dx + dy * dy);
 }
 
-Action Make(Verb verb, std::string label, float distance = 0.0f)
+// An action's label is its verb's one name, then what tells this one apart from the others
+// of the same verb: "Orbit at 200", "Jump to Vela" (#365).
+Action Make(Verb verb, const std::string& detail = std::string(), float distance = 0.0f)
 {
     Action a;
     a.verb = verb;
-    a.label = std::move(label);
+    a.label = Label(verb, detail);
     a.distance = distance;
     a.tool = ToolFor(verb);
     return a;
 }
 }  // namespace
+
+const char* Name(Verb verb)
+{
+    switch (verb)
+    {
+        case Verb::Select: return "Target";
+        case Verb::Approach: return "Approach";
+        case Verb::Orbit: return "Orbit";
+        // Said as what it does (#309): hold a distance from it, wherever it goes. The status
+        // line says "HOLDING 500 FROM" of the same order.
+        case Verb::Keep: return "Hold";
+        case Verb::Follow: return "Follow";
+        case Verb::SetRange: return "Set range...";
+        case Verb::Warp: return "Warp to";
+        case Verb::Dock: return "Dock";
+        case Verb::Mine: return "Mine";
+        case Verb::Attack: return "Attack";
+        case Verb::Investigate: return "Investigate";
+        case Verb::Jump: return "Jump";
+        case Verb::FlyHere: return "Fly here";
+        case Verb::WarpHere: return "Warp here";
+        case Verb::Build: return "Build";
+        case Verb::Accept: return "Accept";
+        case Verb::HandIn: return "Hand in";
+        case Verb::Dismantle: return "Dismantle";
+        case Verb::Refit: return "Refit";
+        case Verb::Defence: return "Rules of engagement...";
+    }
+    return "";
+}
+
+std::string Heading(const std::string& name, float distance)
+{
+    return name + "  " + Ui::Distance(distance);
+}
+
+std::string Label(Verb verb, const std::string& detail)
+{
+    std::string out = Name(verb);
+    if (!detail.empty())
+        out += " " + detail;
+    return out;
+}
 
 const char* ToolFor(Verb verb)
 {
@@ -70,7 +116,7 @@ std::vector<Action> ForRefit(const std::vector<Ships::FitLine>& fit, bool atShip
     std::vector<Action> out;
     if (!atShipyard || !changed)
         return out;
-    Action a = Make(Verb::Refit, "Apply refit");
+    Action a = Make(Verb::Refit);
     a.fit = fit;
     out.push_back(std::move(a));
     return out;
@@ -95,8 +141,8 @@ float DefaultRange(float size)
 std::vector<Action> For(const Target& t, Vector2 from)
 {
     std::vector<Action> out;
-    out.push_back(Make(Verb::Select, "Target"));
-    out.push_back(Make(Verb::Approach, "Approach", t.size + 70.0f));
+    out.push_back(Make(Verb::Select));
+    out.push_back(Make(Verb::Approach, "", t.size + 70.0f));
 
     // The two standing behaviours, and the one that matches velocity. Every fight is flown
     // as one of these. Only for a thing with an id: a hold follows its target by id.
@@ -104,16 +150,15 @@ std::vector<Action> For(const Target& t, Vector2 from)
     if (t.id != 0)
     {
         for (float mult : HOLD_RANGES)
-            out.push_back(Make(Verb::Orbit, Number("Orbit at %.0f", base * mult), base * mult));
+            out.push_back(Make(Verb::Orbit, Number("at %.0f", base * mult), base * mult));
         // Named for what it does (#309): hold this distance from it, wherever it goes.
-        out.push_back(
-            Make(Verb::Keep, Number("Hold %.0f from it", DefaultRange(base)), DefaultRange(base)));
+        out.push_back(Make(Verb::Keep, Number("at %.0f", DefaultRange(base)), DefaultRange(base)));
         // Matching its velocity as well as its distance: the one that stays with a station
         // going round a planet rather than arriving behind it (#298).
         out.push_back(
-            Make(Verb::Follow, Number("Follow at %.0f", DefaultRange(base)), DefaultRange(base)));
+            Make(Verb::Follow, Number("at %.0f", DefaultRange(base)), DefaultRange(base)));
         // Any distance, not just the presets: the selected-item window's range control.
-        out.push_back(Make(Verb::SetRange, "Hold at a range...", DefaultRange(base)));
+        out.push_back(Make(Verb::SetRange, "", DefaultRange(base)));
     }
 
     // A warp only when it is far enough to be worth one. The drop distance is offered rather
@@ -121,26 +166,25 @@ std::vector<Action> For(const Target& t, Vector2 from)
     // first are different intentions.
     if (Distance(t.pos, from) > WARP_MIN)
     {
-        out.push_back(Make(Verb::Warp, "Warp to", t.size + 70.0f));
-        out.push_back(Make(Verb::Warp, Number("Warp to, %.0f out", base * HOLD_RANGES[2]),
-                           base * HOLD_RANGES[2]));
+        out.push_back(Make(Verb::Warp, "", t.size + 70.0f));
+        out.push_back(
+            Make(Verb::Warp, Number("(%.0f out)", base * HOLD_RANGES[2]), base * HOLD_RANGES[2]));
     }
 
     // Listed exhaustively rather than with a `default:` so that a new kind of object -- the
     // point of #44 -- cannot quietly ship with an empty menu.
     switch (t.kind)
     {
-        case EntityKind::Station: out.push_back(Make(Verb::Dock, "Dock")); break;
-        case EntityKind::Field: out.push_back(Make(Verb::Mine, "Mine here")); break;
-        case EntityKind::Npc: out.push_back(Make(Verb::Attack, "Attack")); break;
+        case EntityKind::Station: out.push_back(Make(Verb::Dock)); break;
+        case EntityKind::Field: out.push_back(Make(Verb::Mine)); break;
+        case EntityKind::Npc: out.push_back(Make(Verb::Attack)); break;
         case EntityKind::Derelict:
             if (!t.looted)
-                out.push_back(Make(Verb::Investigate, "Investigate"));
+                out.push_back(Make(Verb::Investigate));
             break;
         case EntityKind::Gate:
-            out.push_back(Make(Verb::Jump, t.destinationName.empty()
-                                               ? std::string("Jump")
-                                               : "Jump to " + t.destinationName));
+            out.push_back(Make(Verb::Jump, t.destinationName.empty() ? std::string()
+                                                                     : "to " + t.destinationName));
             break;
         // Your own you take apart; anyone else's you can shoot down (#39). Whether that is a
         // crime is the server's to say, by whose law it stands under -- the menu does not
@@ -151,13 +195,12 @@ std::vector<Action> For(const Target& t, Vector2 from)
                 // Whom it fires at is set in the selected-item window, where it shows what
                 // each choice costs (#340).
                 if (t.armed)
-                    out.push_back(Make(Verb::Defence, "Rules of engagement..."));
-                out.push_back(Make(Verb::Dismantle, t.refund.empty()
-                                                        ? std::string("Dismantle")
-                                                        : "Dismantle (back: " + t.refund + ")"));
+                    out.push_back(Make(Verb::Defence));
+                out.push_back(Make(Verb::Dismantle,
+                                   t.refund.empty() ? std::string() : "(back: " + t.refund + ")"));
             }
             else
-                out.push_back(Make(Verb::Attack, "Attack"));
+                out.push_back(Make(Verb::Attack));
             break;
         // Scenery and the player's own ship: going there is all there is to do with them.
         case EntityKind::Star:
@@ -178,13 +221,13 @@ std::vector<Action> ForMission(const MissionTarget& m)
     // is not a refusal waiting to happen.
     if (m.offer && m.docked && m.active < MissionSystem::MAX_ACTIVE)
     {
-        Action a = Make(Verb::Accept, "Accept");
+        Action a = Make(Verb::Accept);
         a.mission = m.index;
         out.push_back(a);
     }
     if (!m.offer && m.ready)
     {
-        Action a = Make(Verb::HandIn, "Hand in");
+        Action a = Make(Verb::HandIn);
         a.mission = m.index;
         out.push_back(a);
     }
@@ -194,10 +237,10 @@ std::vector<Action> ForMission(const MissionTarget& m)
 std::vector<Action> ForPoint(Vector2 point, Vector2 from, const std::vector<Blueprint>& blueprints)
 {
     std::vector<Action> out;
-    out.push_back(Make(Verb::FlyHere, "Fly here", 18.0f));
+    out.push_back(Make(Verb::FlyHere, "", 18.0f));
     const float d = Distance(point, from);
     if (d > WARP_MIN)
-        out.push_back(Make(Verb::WarpHere, "Warp here", 60.0f));
+        out.push_back(Make(Verb::WarpHere, "", 60.0f));
 
     // Every blueprint, with what it costs: laid down at once within its reach, and beyond it
     // a build order that flies there first (#39). The rest -- the hold, the room, the caps --
@@ -208,8 +251,8 @@ std::vector<Action> ForPoint(Vector2 point, Vector2 from, const std::vector<Blue
         for (const auto& c : bp.cost)
             cost +=
                 (cost.empty() ? "" : ", ") + std::to_string(c.second) + " " + ResourceName(c.first);
-        Action a = Make(Verb::Build, (d > bp.reach ? "Fly there, build " : "Build ") + bp.name +
-                                         " (" + cost + ")");
+        Action a = Make(Verb::Build,
+                        bp.name + " (" + cost + ")" + (d > bp.reach ? ", flying there first" : ""));
         a.distance = d > bp.reach ? bp.reach : 0.0f;  // nonzero: it is an order, not a deploy
         a.blueprint = bp.id;
         out.push_back(a);

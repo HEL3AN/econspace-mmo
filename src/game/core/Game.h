@@ -26,6 +26,7 @@
 #include "ui/UiTheme.h"  // UseTheme, for --theme
 #include "core/Actions.h"
 #include "core/Faction.h"
+#include "core/Goal.h"
 #include "economy/Resource.h"
 #include <algorithm>
 #include <deque>
@@ -201,7 +202,13 @@ private:
     void SetupWindows();   // puts every window, screen and popup on the desk
     void HandleMenuBar();  // menu bar input: a button toggles its window
     void DrawMenuBar();    // vertical menu bar on the left
-    void DrawLocation();   // the system and its security, top centre, under the windows
+    // The system and its security, top centre, under the windows; the goal under it.
+    void DrawLocation(const Goal::Prompt& goal);
+    // What to do next (#364): one line under the location plate, from the player's state
+    // (Goal::Next), and a pointer at what it names -- the station in space, the missions
+    // window docked. Empty while it is turned off or the loop has been learned.
+    Goal::Prompt CurrentGoal() const;
+    void         DrawGoalPointer(const Goal::Prompt& goal);
     // The instruments laid over the world view (#361): a marker on the player's own ship
     // and a standing bracket on every other ship in view. Drawn in screen space, under the
     // windows -- an instrument, so its colour is standing and never the object's (#117).
@@ -498,7 +505,8 @@ private:
     void                       PlayScriptedClicks();
     std::string themeToUse_;       // chosen in Settings while it was drawn: switched to next frame
     int         missionsTab_ = 0;  // 0 the missions taken, 1 the docked station's board
-    int         missionsSel_[2] = { 0, 0 };                // the mission chosen on each
+    bool        missionsForward_ = false;    // opened on docking: to the front of its stack
+    int         missionsSel_[2] = { 0, 0 };  // the mission chosen on each
     Rectangle   radarScope_ = { 0.0f, 0.0f, 0.0f, 0.0f };  // where the radar's picture was drawn
     int         settingsTab_ = 0;
     // The UI scale while its slider is held: applied on release, because a scale applied

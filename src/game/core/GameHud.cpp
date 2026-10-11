@@ -217,7 +217,10 @@ void Game::SetupWindows()
         s.esc = esc;
         return s;
     };
-    auto fullScreen = [this]()
+    // Where the station's stack of tabs stands (#364): beside the station window, under the
+    // location plate and the goal line.
+    constexpr Rectangle DOCKED_STACK{ 344.0f, 96.0f, 520.0f, 500.0f };
+    auto                fullScreen = [this]()
     { return Rectangle{ 0.0f, 0.0f, (float)screenWidth_, (float)screenHeight_ }; };
 
     // Registered in the menu bar's order. The places are the ones the windows have always
@@ -232,8 +235,8 @@ void Game::SetupWindows()
     // The selected item and the overview, one above the other on the right, as EVE has them:
     // pick from the list, act from the window above it (#297). Both are laid out by
     // Ui::Layout, so both can be any size.
-    WindowSpec target = panel(WIN_TARGET, "Selected", "Selected item  (T)", Anchor::TopRight,
-                              { 8.0f, 8.0f, 300.0f, 300.0f });
+    WindowSpec target = panel(WIN_TARGET, "Selected", "Selected item: what to do about it  (T)",
+                              Anchor::TopRight, { 8.0f, 8.0f, 300.0f, 300.0f });
     target.resizable = true;
     target.minSize = { 240.0f, 160.0f };
     // The windows that look at space are space's: docked, they are put away and come back
@@ -250,19 +253,21 @@ void Game::SetupWindows()
     desk_.AddWindow(overview, "OVERVIEW", true, [this](Ui::Frame& f) { DrawOverviewContent(f); });
     // The radar is a picture drawn by hand inside a layout (#297): its toolbar is laid out,
     // the scope takes whatever room is left, so it can be any size.
-    WindowSpec radar =
-        panel(WIN_RADAR, "Radar", "Radar  (R)", Anchor::TopLeft, { 72.0f, 328.0f, 264.0f, 288.0f });
+    WindowSpec radar = panel(WIN_RADAR, "Radar", "Radar: the space around you  (R)",
+                             Anchor::TopLeft, { 72.0f, 328.0f, 264.0f, 288.0f });
     radar.resizable = true;
     radar.minSize = { 180.0f, 180.0f };
     radar.context = CTX_SPACE;
     desk_.AddWindow(radar, "RADAR", false, [this](Ui::Frame& f) { DrawRadarContent(f); });
     // A list of missions and the chosen one in full: one above the other when narrow, side
-    // by side when wide. Beside the selected item rather than on top of the overview, which
-    // is open from the start.
-    WindowSpec missions = panel(WIN_MISSIONS, "Missions", "Missions  (J)", Anchor::TopRight,
-                                { 316.0f, 40.0f, 300.0f, 320.0f });  // under the location plate
+    // by side when wide. A tab of the station's market (below), so docked it is beside the
+    // station rather than on top of it; in space the same place is left of the selected item
+    // and under the goal line, clear of the overview, which is open from the start.
+    WindowSpec missions = panel(WIN_MISSIONS, "Missions", "Missions: work taken and offered  (J)",
+                                Anchor::TopLeft, DOCKED_STACK);
     missions.resizable = true;
     missions.minSize = { 240.0f, 220.0f };
+    missions.tabOf = WIN_MARKET;
     desk_.AddWindow(missions, "MISSIONS", false, [this](Ui::Frame& f) { DrawMissionsContent(f); });
 
     // The two screens cover the world view and the windows; whichever opened last is on top.
@@ -291,6 +296,7 @@ void Game::SetupWindows()
                                 Anchor::Top, { 0.0f, 100.0f, 360.0f, 330.0f });
     settings.resizable = true;
     settings.minSize = { 260.0f, 240.0f };
+    settings.reopen = false;  // opened for a moment: never found open at the next login (#364)
     desk_.AddWindow(settings, "SETTINGS", false, [this](Ui::Frame& f) { DrawSettingsContent(f); });
 
     // Docked (#297): the station is windows like any other, in the "docked" context -- there
@@ -305,18 +311,21 @@ void Game::SetupWindows()
     station.minSize = { 220.0f, 200.0f };
     station.context = CTX_DOCKED;
     desk_.AddWindow(station, "STATION", true, [this](Ui::Frame& f) { DrawStationContent(f); });
+    // Docking used to put these on top of each other (#364): now they tile -- the station
+    // on the left under the status window, and beside it one stack, the market with the
+    // hangar and the missions as its tabs, wide enough for each to lay out side by side.
     WindowSpec market = panel(WIN_MARKET, "Market", "Market: sell what is in the hold",
-                              Anchor::TopRight, { 8.0f, 8.0f, 300.0f, 320.0f });
+                              Anchor::TopLeft, DOCKED_STACK);
     market.resizable = true;
     market.minSize = { 240.0f, 220.0f };
     market.context = CTX_DOCKED;
     desk_.AddWindow(market, "MARKET", true, [this](Ui::Frame& f) { DrawMarketContent(f); });
-    WindowSpec hangar =
-        panel(WIN_HANGAR, "Hangar", "Hangar: switch or buy a ship", Anchor::TopRight,
-              { 8.0f, 368.0f, 608.0f, 300.0f });  // under the missions, which open on docking
+    WindowSpec hangar = panel(WIN_HANGAR, "Hangar", "Hangar: switch, buy or refit a ship",
+                              Anchor::TopLeft, DOCKED_STACK);
     hangar.resizable = true;
     hangar.minSize = { 240.0f, 220.0f };
     hangar.context = CTX_DOCKED;
+    hangar.tabOf = WIN_MARKET;
     desk_.AddWindow(hangar, "HANGAR", true, [this](Ui::Frame& f) { DrawHangarContent(f); });
 
     // Above the screens it opens; Esc passes over it. Docked too: it opens the station's
@@ -604,15 +613,15 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                           struct Hold
                           {
                               const char*   id;
-                              const char*   label;
                               Actions::Verb verb;
                               const char*   tip;
                           };
+                          // Named as the menu names them (#365): the range is beside them.
                           static const Hold holds[] = {
-                              { "orbit", "Orbit", Actions::Verb::Orbit, "Circle it at this range" },
-                              { "keep", "Keep", Actions::Verb::Keep,
+                              { "orbit", Actions::Verb::Orbit, "Circle it at this range" },
+                              { "keep", Actions::Verb::Keep,
                                 "Hold this distance from it, moving only as much as that takes" },
-                              { "follow", "Follow", Actions::Verb::Follow,
+                              { "follow", Actions::Verb::Follow,
                                 "Hold this distance and match its velocity" },
                           };
                           for (const Hold& h : holds)
@@ -620,7 +629,7 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                               // Lit while it is the order the ship is flying.
                               const bool on = heldHere && Actions::HoldMode(h.verb) ==
                                                               (int)playerShip_->GetHoldMode() + 2;
-                              if (L.Button(h.id, h.label, on))
+                              if (L.Button(h.id, Actions::Name(h.verb), on))
                               {
                                   Actions::Action a;
                                   a.verb = h.verb;
@@ -943,52 +952,124 @@ void Game::DrawScaleBar()
 // pilot. A plate laid out like a window's content (#297) rather than coloured text loose on
 // the world, and drawn under the windows, so a window over it hides it instead of the two
 // running through each other.
-void Game::DrawLocation()
+void Game::DrawLocation(const Goal::Prompt& goal)
 {
     using Ui::Box;
     using Ui::TextStyle;
     const WorldLoader::SystemInfo* si = CurrentSystemInfo();
-    if (si == nullptr)
+    if (si == nullptr && goal.text.empty())
         return;
     const Ui::Theme& t = Ui::CurrentTheme();
-    const float      sec = si->security;
-    const char* tier = sec >= 0.7f ? "High" : sec >= 0.4f ? "Mid" : sec >= 0.2f ? "Low" : "Null";
-    const Color col = sec >= 0.7f   ? t.colors.good
-                      : sec >= 0.4f ? t.colors.accent
-                      : sec >= 0.2f ? t.colors.warn
-                                    : t.colors.bad;
-    std::string wanted;
+    std::string      wanted;
     for (FactionId f : Factions::All())
         if (player_.IsWanted(f))
             wanted += (wanted.empty() ? "" : ", ") + FactionName(f);
 
     Ui::Layout& L = locationLayout_;
     L.Begin({ MenuBarW(), 0.0f, screenWidth_ - MenuBarW(), (float)screenHeight_ }, Ui::Scale());
-    L.Row(Box().GrowX().Pad(0.0f, t.metrics.gap).Align(Ui::Align::Center, Ui::Align::Start),
-          [&]
-          {
-              L.Column(Box()
-                           .Pad(t.metrics.padding, t.metrics.rowGap)
-                           .Align(Ui::Align::Center, Ui::Align::Start)
-                           .Fill(t.colors.panel)
-                           .Border(t.colors.border, t.metrics.border)
-                           .ThemeCorners(),
-                       [&]
-                       {
-                           L.Row(
-                               Box().Gap(t.metrics.gap).Align(Ui::Align::Start, Ui::Align::Center),
-                               [&]
-                               {
-                                   L.Text(si->name, TextStyle::Strong());
-                                   L.Text(TextFormat("%s security  %.1f", tier, sec),
-                                          TextStyle::Label().Tint(col));
-                               });
-                           if (!wanted.empty())
-                               L.Text("Wanted by " + wanted, TextStyle::Label().Tint(t.colors.bad));
-                       });
-          });
+    L.Column(
+        Box()
+            .GrowX()
+            .Pad(0.0f, t.metrics.gap)
+            .Gap(t.metrics.rowGap)
+            .Align(Ui::Align::Center, Ui::Align::Start),
+        [&]
+        {
+            if (si != nullptr)
+            {
+                const float sec = si->security;
+                const char* tier = sec >= 0.7f   ? "High"
+                                   : sec >= 0.4f ? "Mid"
+                                   : sec >= 0.2f ? "Low"
+                                                 : "Null";
+                const Color col = sec >= 0.7f   ? t.colors.good
+                                  : sec >= 0.4f ? t.colors.accent
+                                  : sec >= 0.2f ? t.colors.warn
+                                                : t.colors.bad;
+                L.Column(
+                    Box()
+                        .Pad(t.metrics.padding, t.metrics.rowGap)
+                        .Align(Ui::Align::Center, Ui::Align::Start)
+                        .Fill(t.colors.panel)
+                        .Border(t.colors.border, t.metrics.border)
+                        .ThemeCorners(),
+                    [&]
+                    {
+                        L.Row(Box().Gap(t.metrics.gap).Align(Ui::Align::Start, Ui::Align::Center),
+                              [&]
+                              {
+                                  L.Text(si->name, TextStyle::Strong());
+                                  L.Text(TextFormat("%s security  %.1f", tier, sec),
+                                         TextStyle::Label().Tint(col));
+                              });
+                        if (!wanted.empty())
+                            L.Text("Wanted by " + wanted, TextStyle::Label().Tint(t.colors.bad));
+                    });
+            }
+            // What to do next (#364), under where the player is: a line, not a window, so
+            // it asks for nothing and is gone once the loop is learned.
+            if (!goal.text.empty())
+                L.Row(Box()
+                          .Pad(t.metrics.padding, t.metrics.rowGap)
+                          .Gap(t.metrics.gap)
+                          .Align(Ui::Align::Start, Ui::Align::Center)
+                          .Fill(t.colors.panel)
+                          .Border(t.colors.accent, t.metrics.border)
+                          .ThemeCorners(),
+                      [&]
+                      {
+                          L.Text("NEXT", TextStyle::Label().Tint(t.colors.accent));
+                          L.Text(goal.text, TextStyle::Body());
+                      });
+        });
     L.End();
     L.Draw();
+}
+
+// The goal's pointer (#364): docked, a frame round the missions window it sends the player
+// to; in space, a chevron beside the ship turned toward what it names, and a bracket on that
+// thing when it is on the screen. In the accent colour: it is the interface speaking, not a
+// standing (#117).
+void Game::DrawGoalPointer(const Goal::Prompt& goal)
+{
+    const Ui::Theme& t = Ui::CurrentTheme();
+    const float      thin = std::max(1.0f, Ui::Px(1.0f));
+    const float      pulse = 0.6f + 0.4f * std::sin((float)GetTime() * 4.0f);
+    const Color      col = Fade(t.colors.accent, pulse);
+    if (goal.missionsWindow)
+    {
+        const int h = desk_.Layout().Find(WIN_MISSIONS);
+        if (h != Ui::DeskLayout::NONE && desk_.Layout().Shown(h))
+        {
+            const Rectangle r = desk_.Layout().Rect(h);
+            const float     m = Ui::Px(3.0f);
+            DrawRectangleLinesEx({ r.x - m, r.y - m, r.width + 2.0f * m, r.height + 2.0f * m },
+                                 2.0f * thin, col);
+        }
+        return;
+    }
+    const Entity* target = goal.pointAt != 0 ? FindEntityById(goal.pointAt) : nullptr;
+    if (target == nullptr || mode_ != GameMode::Flying)
+        return;
+    const Vector2 ship = GetWorldToScreen2D(shipDrawPos_, camera_);
+    const Vector2 at = GetWorldToScreen2D(target->GetPosition(), camera_);
+    const Vector2 d{ at.x - ship.x, at.y - ship.y };
+    const float   len = Vector2Length(d);
+    const float   r = std::max(target->GetSize() * camera_.zoom + Ui::Px(8.0f), Ui::Px(14.0f));
+    const bool    onScreen =
+        at.x > -r && at.y > -r && at.x < screenWidth_ + r && at.y < screenHeight_ + r;
+    if (onScreen)
+        DrawCircleLinesV(at, r, col);
+    // Beside the ship unless the target is right there with it.
+    if (len < Ui::Px(60.0f))
+        return;
+    const Vector2 dir{ d.x / len, d.y / len };
+    const Vector2 side{ -dir.y, dir.x };
+    const float   at0 = Ui::Px(34.0f), size = Ui::Px(7.0f);
+    const Vector2 tip{ ship.x + dir.x * (at0 + size), ship.y + dir.y * (at0 + size) };
+    const Vector2 back{ ship.x + dir.x * at0, ship.y + dir.y * at0 };
+    DrawLineEx(tip, { back.x + side.x * size, back.y + side.y * size }, 2.0f * thin, col);
+    DrawLineEx(tip, { back.x - side.x * size, back.y - side.y * size }, 2.0f * thin, col);
 }
 
 namespace
@@ -1114,7 +1195,11 @@ void Game::DrawHud()
         DrawSpaceBrackets();
     if (flying && !desk_.IsOpen(WIN_SENSOR))
         DrawScaleBar();  // a scale for the world view; the sensor screen states its own
-    DrawLocation();      // under the windows: one dragged over it covers it, never mixes with it
+    // Under the windows: one dragged over it covers it, never mixes with it.
+    const Goal::Prompt goal = CurrentGoal();
+    DrawLocation(goal);
+    if (flying && !goal.missionsWindow && !desk_.IsOpen(WIN_SENSOR) && !desk_.IsOpen(WIN_MAP))
+        DrawGoalPointer(goal);
 #ifndef NDEBUG
     // A development build's hint only (#341): the money is honoured by a server started with
     // --dev, and a player of a published build has no use for the line.
@@ -1122,6 +1207,8 @@ void Game::DrawHud()
              screenHeight_ - (int)Ui::Px(24.0f), 12, Ui::TEXT_DIM);
 #endif
     desk_.Draw(Ui::Layer::Panels);
+    if (goal.missionsWindow)
+        DrawGoalPointer(goal);  // round a window, so after the windows
 
     // Over the windows: the map, and the sensor screen -- a screen of its own with its own
     // legend, which a window parked on top of it would hide. The flight keys still work

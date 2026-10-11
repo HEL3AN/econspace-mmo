@@ -231,6 +231,7 @@ void Layout::Begin(Rectangle area, float scale, const Pointer& pointer)
     commands_.clear();
     glows_.clear();
     depth_ = 0;
+    scrollContent_.clear();
     keysFed_ = false;
     if (!pointer.owned || !pointer.down)
         active_.clear();  // a drag ends with the button
@@ -366,14 +367,42 @@ void Layout::Open(const Box& b)
     }
     uiclay_open(&e);
     depth_++;
+    scrollContent_.push_back(false);
+
+    // A box that scrolls clips sideways too, and a clipped axis lets its children be as wide
+    // as they like: a field's value or a row of buttons ran on past the window's edge, and
+    // took every row with it. So its children go in a column exactly as wide as the view was
+    // last frame, less its padding -- what is left once a scroll indicator beside it (Scroll)
+    // has had its room -- and closing the box closes that column with it.
+    if (b.scrollY && !b.id.empty())
+    {
+        const Rectangle view = BoxOf(b.id, b.index);
+        Box             content;
+        content.column = b.column;
+        content.gap = b.gap;
+        content.alignX = b.alignX;
+        content.alignY = b.alignY;
+        content.width = Size::Grow();
+        if (view.width > 0.0f && scale_ > 0.0f)
+            content.width =
+                Size::Fixed(std::max(0.0f, view.width - U(b.padLeft) - U(b.padRight)) / scale_);
+        content.height = Size::Grow();
+        Open(content);
+        scrollContent_.back() = true;
+    }
 }
 
 void Layout::Close()
 {
     if (!open_ || depth_ == 0)
         return;
+    const bool content = !scrollContent_.empty() && scrollContent_.back();
+    if (!scrollContent_.empty())
+        scrollContent_.pop_back();
     uiclay_close();
     depth_--;
+    if (content)
+        Close();  // the scrolling box the column was in
 }
 
 void Layout::Text(std::string_view text, const TextStyle& s)
@@ -459,11 +488,13 @@ bool Layout::Button(std::string_view id, std::string_view label, bool highlighte
 {
     const Theme& t = CurrentTheme();
     const bool   hover = Hovered(id);
+    // A label too long for the room wraps and the button grows taller, rather than holding
+    // the row wider than its window and being cut off at the edge.
     Row(Box()
             .Id(id)
             .GrowX()
-            .Height(Size::Fixed(t.metrics.buttonHeight))
-            .Pad(t.metrics.padding, 0.0f)
+            .Height(Size::Fit(t.metrics.buttonHeight))
+            .Pad(t.metrics.padding, t.metrics.rowGap * 0.5f)
             .Align(Align::Center, Align::Center)
             .Fill(hover ? t.colors.hover : t.colors.title)
             .Border(highlighted || hover ? t.colors.accent : t.colors.border, t.metrics.border)
@@ -471,7 +502,10 @@ bool Layout::Button(std::string_view id, std::string_view label, bool highlighte
             // The lit one glows in a glowing theme: what is on stands out of the row.
             .Paint(highlighted && t.style.glow > 0.0f ? PAINT_GLOW : 0)
             .Glow(t.colors.accent),
-        [&] { Text(label, TextStyle::Caption().Tint(hover ? t.colors.accent : t.colors.text)); });
+        [&]
+        {
+            Text(label, TextStyle::Caption().Tint(hover ? t.colors.accent : t.colors.text).Wrap());
+        });
     return hover && pointer_.pressed;
 }
 
@@ -916,29 +950,15 @@ void Layout::ScrollBegin(const Box& box)
     inner.scrollY = true;
     inner.width = Size::Grow();
     inner.height = Size::Grow();
-    inner.gap = 0.0f;
+    inner.gap = box.gap;  // the children's column takes it (Open)
+    // The children go in a column exactly as wide as the view was last frame (Open), and
+    // the indicator stands beside the view rather than in it.
     Open(inner);
-    // The children in a column exactly as wide as the view was last frame. The view clips
-    // sideways, and a clipped axis lets its children be as wide as they like: a line of text
-    // meant to wrap ran on past the window's edge instead, and took every row with it.
-    const Rectangle view = BoxOf(box.id, box.index);
-    Box             content;
-    content.column = true;
-    content.gap = box.gap;
-    content.alignX = box.alignX;
-    content.alignY = box.alignY;
-    content.width = Size::Grow();
-    if (view.width > 0.0f && scale_ > 0.0f)
-        content.width =
-            Size::Fixed(std::max(0.0f, view.width - U(box.padLeft) - U(box.padRight)) / scale_);
-    content.height = Size::Grow();
-    Open(content);
 }
 
 void Layout::ScrollEnd(const Box& box)
 {
-    Close();  // the children's column
-    Close();  // the scrolling column
+    Close();  // the children's column, and the scrolling column with it
     const Theme&      t = CurrentTheme();
     const std::string bar = box.id + "~bar";
     float             sc[3] = { 0.0f, 0.0f, 0.0f };

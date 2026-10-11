@@ -736,3 +736,62 @@ TEST_CASE("Desk: a resizable window placed for a smaller interface is made to fi
     CHECK(r.y + r.height <= 720.0f);
     CHECK(r.height >= 180.0f * 1.25f);
 }
+
+TEST_CASE("Desk: a settings window keeps its place across sessions but is never found open")
+{
+    // #364: Settings came back open at every login, in front of the game.
+    WindowSpec settings = Panel("settings", Anchor::Top, { 0, 100, 360, 330 });
+    settings.reopen = false;
+    const WindowSpec radar = Panel("radar", Anchor::TopLeft, { 56, 344, 264, 288 });
+    DeskLayout       before;
+    const int        s = before.Add(settings, false);
+    const int        r = before.Add(radar, false);
+    before.SetOpen(s, true);
+    before.SetOpen(r, true);
+    before.SetRect(s, { 100, 200, 360, 330 });
+    before.Settle(s);
+
+    DeskLayout after;
+    const int  s2 = after.Add(settings, false);
+    const int  r2 = after.Add(radar, false);
+    after.Load(before.Save());
+    CHECK_FALSE(after.IsOpen(s2));
+    CHECK(after.IsOpen(r2));  // an ordinary window is found as it was left
+    CHECK(Equal(after.Rect(s2), before.Rect(s)));
+}
+
+TEST_CASE("Desk: windows named as tabs of another start in its stack, whichever came first")
+{
+    // #364: docking put the market, the hangar and the missions on top of each other; by
+    // default they are one stack at the market's place.
+    WindowSpec missions = Panel("missions", Anchor::TopRight, { 316, 40, 300, 320 });
+    missions.tabOf = "market";
+    WindowSpec hangar = Panel("hangar", Anchor::TopRight, { 8, 368, 608, 300 });
+    hangar.tabOf = "market";
+    const WindowSpec market = Panel("market", Anchor::TopLeft, { 344, 96, 520, 500 });
+
+    DeskLayout d;
+    const int  m = d.Add(missions, true);  // before the window it is a tab of
+    const int  k = d.Add(market, true);
+    const int  h = d.Add(hangar, true);  // after it
+    CHECK(d.FrameOf(k).size() == 3);
+    CHECK(d.FrameOf(m) == d.FrameOf(h));
+    CHECK(Equal(d.Rect(m), { 344, 96, 520, 500 }));
+    CHECK(Equal(d.Rect(h), { 344, 96, 520, 500 }));
+    CHECK_FALSE(d.TakeChanged());  // a default, not something the player arranged
+
+    // Pulled out, it stays out until the layout is reset.
+    d.Unstack(h);
+    CHECK(d.FrameOf(h) == std::vector<int>{ h });
+    d.Reset();
+    CHECK(d.FrameOf(k).size() == 3);
+
+    // A saved layout that names the windows is the truth about them.
+    d.Unstack(h);
+    DeskLayout after;
+    after.Add(missions, true);
+    after.Add(market, true);
+    const int h2 = after.Add(hangar, true);
+    after.Load(d.Save());
+    CHECK(after.FrameOf(h2) == std::vector<int>{ h2 });
+}

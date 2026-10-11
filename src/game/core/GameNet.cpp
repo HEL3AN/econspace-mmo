@@ -402,6 +402,7 @@ void Game::BuildClientSnapshot()
                 {
                     missionsTab_ = ready ? 0 : 1;
                     desk_.SetOpen(WIN_MISSIONS, true);
+                    missionsForward_ = true;  // in front of its stack, next frame (Run)
                 }
                 hangarSel_ = -1;  // the hull being flown, until another is chosen
             }

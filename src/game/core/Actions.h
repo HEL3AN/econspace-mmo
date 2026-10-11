@@ -47,10 +47,21 @@ enum class Verb
     Defence,    // set one's own armed structure's rules of engagement (#340)
 };
 
+// Each verb's one name (#365): what every place that offers it says -- the context menu, the
+// selected-item window's buttons, the overview's right click. A label is the name and, after
+// it, whatever tells two of the same verb apart ("Orbit at 200", "Jump to Vela"); a window
+// that shows the verb on a button of its own, with the range beside it, says just the name.
+const char* Name(Verb verb);
+std::string Label(Verb verb, const std::string& detail);
+
+// What a menu of actions is headed with (#365): what they are about and how far away it is,
+// "Aurora Hub  12.5k" -- the distance as the overview's column writes it.
+std::string Heading(const std::string& name, float distance);
+
 struct Action
 {
     Verb        verb = Verb::Select;
-    std::string label;                // what the menu says
+    std::string label;                // what the menu says: Label(verb, ...)
     float       distance = 0.0f;      // the hold's range, the approach's stop, the warp's drop
     std::string blueprint;            // Build: which one
     int         mission = -1;         // Accept, HandIn: the offer's or the mission's number

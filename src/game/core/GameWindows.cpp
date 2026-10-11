@@ -76,6 +76,46 @@ Ui::Mark Game::StandingMark(Sensor::Allegiance a)
 
 // --- Missions ---------------------------------------------------------------------------
 
+// The goal prompt's state (#364), read from what the missions window reads: the snapshot's
+// lists through MissionList, and the nearest station from the client's own proxies.
+Goal::Prompt Game::CurrentGoal() const
+{
+    if (!Goal::Shown(Ui::GoalSetting(), Ui::GoalLearned()) || choosingStart_ || !playerShip_)
+        return Goal::Prompt();
+    Goal::State s;
+    s.docked = mode_ == GameMode::Docked;
+    s.dockedStationId = snapshot_.player.dockedStationId;
+    s.offers = (int)snapshot_.missionOffers.size();
+    s.roomForMore = (int)snapshot_.missionActive.size() < MissionSystem::MAX_ACTIVE;
+    Obs::View view;
+    view.snapshot = &snapshot_;
+    view.layout = &layout_.byId;
+    for (const MissionList::Row& r : MissionList::Build(view, MissionList::Board::Active))
+    {
+        Goal::Mission m;
+        m.title = r.title;
+        m.ready = r.ready;
+        m.needs = r.needs;
+        m.handInId = r.handInId;
+        m.handInName = r.handInName;
+        s.active.push_back(std::move(m));
+    }
+    float best = 0.0f;
+    for (const auto& e : clientWorld_)
+    {
+        if (e->GetKind() != EntityKind::Station)
+            continue;
+        const float d = Vector2Distance(e->GetPosition(), playerShip_->GetPosition());
+        if (s.nearestStationId == 0 || d < best)
+        {
+            best = d;
+            s.nearestStationId = e->GetId();
+            s.nearestStationName = e->GetName();
+        }
+    }
+    return Goal::Next(s);
+}
+
 // The missions window: the missions taken, or the board of the station the ship is docked
 // at, as a table; and the chosen one in full, with what can be done about it. The rows are
 // MissionList::Build's and the buttons are Actions' -- the mission's own (take it, hand it
@@ -678,6 +718,27 @@ void Game::DrawSettingsContent(const Ui::Frame& f)
                                   });
                         hint("Standings in orange and blue rather than red and green, on the "
                              "radar, the overview and the brackets. Each is a shape as well.",
+                             t.colors.dim);
+                        // The goal prompt (#364). Turning it on again starts the count again:
+                        // a player who asks for it back wants to see it.
+                        const bool goalOn =
+                            Ui::GoalSetting() && Ui::GoalLearned() < Goal::LEARNED_AFTER;
+                        L.FormRow("What to do next",
+                                  [&]
+                                  {
+                                      if (L.Button("goal", goalOn ? "On" : "Off", goalOn))
+                                      {
+                                          Ui::SetGoalSetting(!goalOn);
+                                          if (!goalOn)
+                                              Ui::SetGoalLearned(0);
+                                          if (uiSettingsWritable_ &&
+                                              !Ui::SaveUiSettings(uiSettingsPath_))
+                                              TraceLog(LOG_WARNING, "UI settings: cannot write %s",
+                                                       uiSettingsPath_.c_str());
+                                      }
+                                  });
+                        hint("A line under the system's name with the next step, until you have "
+                             "handed in a few missions.",
                              t.colors.dim);
                         L.FormRow("Interface scale",
                                   [&]

@@ -19,7 +19,9 @@ public:
         std::function<void()> action;
     };
 
-    void Open(Vector2 pos, std::vector<Item> items);  // open at the cursor position
+    // Opens at the cursor position. A header, when given, is a line above the actions that
+    // names what they are about -- "Aurora Hub  12.5k" (#365) -- and is not itself one.
+    void Open(Vector2 pos, std::vector<Item> items, std::string header = std::string());
     void Close();
     bool IsOpen() const { return open_; }
 
@@ -36,4 +38,7 @@ private:
     Vector2           pos_ = { 0.0f, 0.0f };
     float             width_ = 0.0f;  // the longest label, set on Open
     std::vector<Item> items_;
+    std::string       header_;
+
+    float HeaderHeight() const;  // 0 without one
 };

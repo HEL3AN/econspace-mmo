@@ -243,6 +243,7 @@ add_executable(econspace
     src/game/core/GameStation.cpp  # docked: the station, market and hangar windows (#297)
     src/game/core/Actions.cpp      # what can be done about a thing: one list for every window (#297)
     src/game/core/StationList.cpp  # what the market and hangar windows list (#297)
+    src/game/core/Goal.cpp         # what to do next, in one line (#364)
     src/game/sim/Overview.cpp      # what the overview lists and in what order (#157)
     src/game/sim/MissionList.cpp   # what the missions window lists (#297)
     src/game/sim/Observation.cpp   # what a mission still needs, in the agent's words (#297)
@@ -398,6 +399,7 @@ add_executable(tests
     tests/intel_tests.cpp          # what factions know, and surveying (#295)
     tests/widget_tests.cpp         # tables, tabs, fields, sliders and the keyboard focus (#297)
     tests/actions_tests.cpp        # one list of actions, each matched by an agent's tool (#297)
+    tests/goal_tests.cpp           # what to do next, from the player's state (#364)
     tests/mission_list_tests.cpp   # what the missions window lists (#297)
     tests/station_list_tests.cpp   # what the market and hangar windows list (#297)
     tests/settle_tests.cpp         # stock, outposts, and claims that need one (#295)
@@ -414,6 +416,7 @@ add_executable(tests
     src/game/sim/MissionList.cpp   # the missions window's rows, tested without one (#297)
     src/game/core/Actions.cpp      # the actions every window offers, tested without one (#297)
     src/game/core/StationList.cpp  # the market's and the hangar's rows, tested without them (#297)
+    src/game/core/Goal.cpp         # the goal prompt, tested without a window (#364)
     src/game/sim/Sensor.cpp        # the sensor screen, tested without a window (#123)
     # The simulation itself is under test now, not only the wire (#10). That pulls in its
     # dependency tree -- ships, NPCs, the mission system -- which is the price of testing
