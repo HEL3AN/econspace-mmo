@@ -462,6 +462,15 @@ const std::string& Kind(FactionId f)
     return Def(f).kind;
 }
 
+std::vector<std::string> MajorIds()
+{
+    std::vector<std::string> out;
+    for (FactionId f : All())
+        if (Def(f).kind == "Major" && !(f == Pirates()))
+            out.push_back(Def(f).id);
+    return out;
+}
+
 const Temperament& TemperamentOf(FactionId f)
 {
     return Def(f).temperament;

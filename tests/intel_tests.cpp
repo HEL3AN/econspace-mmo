@@ -31,11 +31,11 @@ std::unique_ptr<Simulation> World(uint64_t seed = 7)
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
     REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
     auto sim = std::make_unique<Simulation>();
-    sim->LoadUniverse(DATA + "universe.json");
-    sim->AttachRegion(seed, DATA + "systems/");
+    sim->LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+    sim->AttachRegion(seed, std::string(TEST_WORLD_DIR) + "systems/");
     sim->Seed(1234u);
     sim->InitGalaxy();
-    sim->MaterializeAllSystems(DATA + "systems/");
+    sim->MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
     return sim;
 }
 
@@ -260,10 +260,10 @@ TEST_CASE("what factions know and what they have under way survive a restart (#2
     a->SaveWorld(path);
 
     Simulation b;
-    b.LoadUniverse(DATA + "universe.json");
-    b.AttachRegion(7, DATA + "systems/");
+    b.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+    b.AttachRegion(7, std::string(TEST_WORLD_DIR) + "systems/");
     REQUIRE(b.LoadWorld(path) == Save::Result::Ok);
-    b.MaterializeAllSystems(DATA + "systems/");
+    b.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
 
     // The plan, as it was.
     REQUIRE(b.Plans().count(pending.id) == 1);
@@ -337,9 +337,9 @@ TEST_CASE("a world saved before factions knew anything loads, and they start fro
     REQUIRE(Factions::Load(DATA + "factions.json"));
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
     Simulation sim;
-    sim.LoadUniverse(DATA + "universe.json");
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     REQUIRE(sim.LoadWorld(path) == Save::Result::Ok);
-    sim.MaterializeAllSystems(DATA + "systems/");
+    sim.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
     CHECK(sim.Plans().empty());
     CHECK(sim.Chronicle().empty());
 

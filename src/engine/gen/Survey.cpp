@@ -35,6 +35,46 @@ std::vector<SurveySystem> GenerateSurvey(const RegionParams& base, uint64_t firs
     return out;
 }
 
+namespace
+{
+void AddRegion(const Region& region, uint64_t seed, bool centre, std::vector<SurveySystem>& out)
+{
+    for (const json& entry : region.systems)
+    {
+        SurveySystem s;
+        s.seed = seed;
+        s.id = entry.value("id", std::string());
+        s.designation = entry.value("name", s.id);
+        s.depth = DepthOf(s.id);
+        s.centre = centre;
+        const auto doc = region.documents.find(s.id);
+        if (doc != region.documents.end())
+            s.doc = doc->second;
+        out.push_back(std::move(s));
+    }
+}
+}  // namespace
+
+std::vector<SurveySystem> GenerateWorldSurvey(const WorldParams& base, uint64_t firstSeed,
+                                              int count)
+{
+    std::vector<SurveySystem> out;
+    for (int i = 0; i < count; i++)
+    {
+        WorldParams p = base;
+        p.seed = firstSeed + (uint64_t)i;
+        const GalaxySkeleton      g = GenerateGalaxySkeleton(p);
+        const std::vector<Region> world = GenerateWorld(g);
+        if (world.empty() || g.centres.empty())
+            continue;
+        AddRegion(world.front(), p.seed, true, out);  // the first centre
+        for (const Region& r : world)
+            if (SlotOf(r.homeId) == world.front().slot)
+                AddRegion(r, p.seed, false, out);
+    }
+    return out;
+}
+
 int SystemSummary::Count(const std::string& kind) const
 {
     const auto it = things.find(kind);

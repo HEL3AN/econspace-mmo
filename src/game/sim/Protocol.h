@@ -29,10 +29,12 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    24;  // 24: a ship flies a design of its own, filed by a hash of its content; a DesignDef
-         // tells a client what one is before any snapshot names it (#279 fitting); 23: a faction
-         // is named by its string id, never by index (#355); 22: a snapshot without missions
-         // means they are unchanged, and a command leaves out every field at its default
+    25;  // 25: a login may be answered with the starts to choose from, and a ship exists only
+         // once one is chosen (#342 S2); 24: a ship flies a design of its own, filed by a hash of
+         // its content; a DesignDef tells a client what one is before any snapshot names it (#279
+         // fitting); 23: a faction is named by its string id, never by index (#355); 22: a snapshot
+         // without missions means they are unchanged, and a command leaves out every field at its
+         // default
          // (#341); 21: the build order, with its blueprint and name (#39); 20: reserved for
          // #279's design ids, which landed as 24; 19: player hulls are designs -- a hull index
          // means derived stats, and another player's ship carries its design (#279 step 5); 18:
@@ -83,6 +85,29 @@ struct Auth
 struct Bye
 {
     std::string reason;  // shown to the player as-is; short, and in plain words
+};
+
+// Where a pilot may begin (#342 S2). Sent after a login when the account has no place in
+// this galaxy -- a new account, or one whose system is gone -- and before anything else:
+// until the client answers with ChooseStart the player has no ship, and the server sends
+// no index, layout or snapshot.
+struct StartOption
+{
+    std::string system;   // the system id to answer with
+    std::string name;     // what it is called
+    std::string station;  // where you arrive: the heart's trade hub
+    std::string owner;    // whose space it is, a faction id
+};
+struct Starts
+{
+    std::vector<StartOption> options;
+    // The server deals starts itself: the client may only ask for one at random.
+    bool randomOnly = false;
+};
+// The answer: a system from the list, or empty for "any of them" -- the server's pick.
+struct ChooseStart
+{
+    std::string system;
 };
 
 struct Command
@@ -427,6 +452,10 @@ std::string EncodeHello(const Hello& h);
 bool        DecodeHello(const std::string& s, Hello& out);
 std::string EncodeBye(const Bye& b);
 bool        DecodeBye(const std::string& s, Bye& out);
+std::string EncodeStarts(const Starts& s);
+bool        DecodeStarts(const std::string& s, Starts& out);
+std::string EncodeChooseStart(const ChooseStart& c);
+bool        DecodeChooseStart(const std::string& s, ChooseStart& out);
 std::string EncodeChallenge(const Challenge& c);
 bool        DecodeChallenge(const std::string& s, Challenge& out);
 std::string EncodeAuth(const Auth& a);

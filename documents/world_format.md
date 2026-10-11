@@ -13,20 +13,24 @@ a screen pass — start with the worked how-tos in [docs/howto/](../docs/howto/R
 
 ```
 data/
-  universe.json        galaxy index: systems, links, starting system
   archetypes.json      what each kind of object is and can do
   blueprints.json      how a player builds something: cost, time, placement (#39)
   ships.json           ship designs and what their parts do (#279; see ship_design.md)
-  systems/
-    <id>.json          one star system (objects)
+  pins.json            hand-written exceptions to generated systems (#147)
   textures/            sprites (PNG), optional
 ```
 
+**Nothing hand-written is needed** (#342 S2). The server generates the whole galaxy from the
+world's seed: its civilisation centres and a frontier region beside each (see
+[systems](#systemsidjson--star-system) below). The hand-written format -- `universe.json`
+and `systems/<id>.json` -- is still read: it is what the editor's galaxy mode writes, what
+the tests use as a small fixture world (`tests/fixtures/world/`), and what admin packs
+(#342 S7) will be made of. The server does not read `data/universe.json` today.
+
 After a build, `data/` is copied next to `econspace.exe` by the `copy_data` target
-(on every build). The server loads `universe.json`, then the systems. Clients and
-`econagent` never read it: the server sends them the index at login as a `universe`
-message (#206), without the `file` names, so a system that exists only on the server is
-on their map too.
+(on every build). Clients and `econagent` read no galaxy at all: the server sends them the
+index at login as a `universe` message (#206), without the `file` names, so a system that
+exists only on the server is on their map too.
 
 ## Coordinate System and Scale
 
@@ -46,6 +50,8 @@ on their map too.
 ---
 
 ## universe.json — galaxy index
+
+Hand-written content only (see above): a generated galaxy has no such file.
 
 ```json
 {
@@ -805,7 +811,27 @@ A system beyond the wormhole is not a file: the server generates it from the wor
 (#140) in exactly this format, so everything below describes both. Each generated region
 fills one **slot** of the galaxy's skeleton and is made from (seed, slot) alone (#342); its
 systems' ids are `r<slot>-<depth>-<k>`. `econserver galaxydump <seed> [slot ...]` prints the
-skeleton and the regions named, and `econserver regiondump <seed> [slot]` one region.
+skeleton, the starts and the regions a new world opens with (plus any named), and
+`econserver regiondump <seed> [slot]` one region -- the first centre unless a slot is named.
+
+A slot is one of two kinds (#342 S2):
+
+- **A civilisation centre** -- 3 by default, 1 to 6 by `econserver host --centres N`, placed
+  on one ring of the skeleton so that each is four to six slots from its nearest neighbour.
+  A centre is 8 to 14 systems round a **heart** (`r<slot>-1-1`): every system is named at
+  generation and owned by the centre's major faction (`kind: "Major"` in factions.json;
+  pirates have none), security is 1.0 at the heart and falls to about 0.5 at the edge, and
+  every system has a station. The heart has one of each role -- `TradeHub`, `Shipyard`,
+  `Military`, `MiningOutpost` -- and is where a new pilot may start. Nothing leads into a
+  centre: it has no wormhole.
+- **A frontier region** -- what the generator made before, opened through a wormhole from
+  a neighbouring region's edge. Its law and its riches follow its lattice distance to the
+  nearest centre (`hops`): next to one it is as it always was, and each step further out
+  starts it with less security, more ore in its belts, likelier finds and more pirates.
+
+A new world opens every centre and one frontier slot beside each, so there is somewhere to
+go from every start. The world file records the seed, the rules and the number of centres;
+the regions themselves are remade.
 
 ```json
 {

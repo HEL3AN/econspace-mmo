@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <set>
 #include <utility>
 
 namespace Gen
@@ -33,7 +34,16 @@ enum Purpose : uint64_t
     FINDS = 18,
     RUINS = 19,
     REGION = 20,  // a slot's key, from the world's seed
+    STATIONS = 21,
+    NAMES = 22,
 };
+
+// How much richer a frontier is for being further from a centre (#342 S2): steps beyond the
+// first, to a limit. 0 next to a centre, where the frontier is what it always was.
+int Richness(const RegionParams& p)
+{
+    return p.kind == SlotKind::Centre ? 0 : std::max(0, std::min(p.hops - 1, 4));
+}
 
 struct Band  // the ring a planet sweeps
 {
@@ -53,7 +63,35 @@ struct Node
     int         depth = 1;
     int         index = 0;  // order of generation, for keys
     double      mapX = 0.0, mapY = 0.0;
+    int         dir = 0;  // a centre's: which of twelve bearings from the heart it lies on
 };
+
+// Twelve bearings a twelfth of a turn apart, written out rather than computed (no sin/cos).
+constexpr double C30 = 0.8660254037844386;
+constexpr double DIRS12[12][2] = { { 1, 0 },       { C30, 0.5 },  { 0.5, C30 },  { 0, 1 },
+                                   { -0.5, C30 },  { -C30, 0.5 }, { -1, 0 },     { -C30, -0.5 },
+                                   { -0.5, -C30 }, { 0, -1 },     { 0.5, -C30 }, { C30, -0.5 } };
+
+// A centre's systems were named long ago (#342 S2), unlike the frontier's designations:
+// two or three syllables the seed picks.
+std::string CentreName(Rng& rng)
+{
+    static const char* HEAD[] = { "Al",  "Bel", "Cor", "Dra", "El",  "Fen", "Gal", "Hel",
+                                  "Ior", "Kal", "Lun", "Mor", "Nev", "Or",  "Pra", "Quel",
+                                  "Rho", "Sol", "Tar", "Ul",  "Vey", "Xan", "Yr",  "Zen",
+                                  "Ash", "Cer", "Dun", "Eri", "Hal", "Ket", "Lys", "Sar" };
+    static const char* MID[] = {
+        "a", "e", "i", "o", "u", "ae", "ar", "en", "is", "on", "or", "ul"
+    };
+    static const char* TAIL[] = { "",    "n",  "s",   "th",  "x",   "ra",
+                                  "dor", "ia", "mir", "tis", "vel", "gard" };
+    std::string        name = HEAD[rng.Range(0, 31)];
+    name += MID[rng.Range(0, 11)];
+    name += TAIL[rng.Range(0, 11)];
+    if (rng.Chance(12))
+        name += rng.Chance(50) ? " Prime" : " Minor";
+    return name;
+}
 
 // What a player calls a system until somebody names it (#145). The first region keeps the
 // bare "W-2.3"; any other says which region it is in, since the ids are galaxy-wide.
@@ -285,6 +323,96 @@ std::vector<Node> Topology(const RegionParams& params, json& links)
     return nodes;
 }
 
+// A centre (#342 S2): a heart and rings round it rather than a line of rings away from a
+// wormhole. Every system of the ring inside it is a neighbour of the heart's, and links run
+// round each ring as often as not -- settled space is well connected, the frontier is not.
+std::vector<Node> CentreTopology(const RegionParams& params, json& links)
+{
+    Rng                   rng(Key(params.seed, TOPOLOGY));
+    Rng                   names(Key(params.seed, NAMES));
+    std::set<std::string> used;
+    auto                  name = [&]()
+    {
+        for (;;)
+        {
+            std::string n = CentreName(names);
+            if (used.insert(n).second)
+                return n;
+        }
+    };
+    std::vector<Node> nodes;
+    nodes.push_back({ SystemId(params.slot, 1, 1), name(), 1, 0 });  // the heart
+
+    const int        total = rng.Range(8, 14);
+    std::vector<int> widths;
+    int              left = total - 1;
+    widths.push_back(std::min(rng.Range(3, 5), left));
+    left -= widths.back();
+    while (left > 0)
+    {
+        widths.push_back(std::min(8, left));
+        left -= widths.back();
+    }
+
+    std::vector<size_t> prevRing = { 0 };
+    for (size_t r = 0; r < widths.size(); r++)
+    {
+        const int           depth = (int)r + 2, width = widths[r];
+        const int           turn = rng.Range(0, 11);
+        std::vector<size_t> ring;
+        for (int k = 1; k <= width; k++)
+        {
+            Node n{ SystemId(params.slot, depth, k), name(), depth, (int)nodes.size() };
+            n.dir = (turn + (k - 1) * 12 / width) % 12;
+            // Joined to the system of the ring inside that lies nearest its bearing.
+            size_t parent = prevRing.front();
+            int    best = 99;
+            for (size_t p : prevRing)
+            {
+                int d = std::abs(nodes[p].dir - n.dir) % 12;
+                d = depth == 2 ? 0 : std::min(d, 12 - d);
+                if (d < best)
+                {
+                    best = d;
+                    parent = p;
+                }
+            }
+            links.push_back(json::array({ nodes[parent].id, n.id }));
+            ring.push_back(nodes.size());
+            nodes.push_back(n);
+        }
+        // Round the ring, neighbour to neighbour by bearing, the last back to the first.
+        for (size_t i = 0; i < ring.size() && ring.size() >= 2; i++)
+        {
+            if (ring.size() == 2 && i == 1)
+                break;  // two systems are one pair, not two
+            if (rng.Chance(depth == 2 ? 60 : 40))
+                links.push_back(
+                    json::array({ nodes[ring[i]].id, nodes[ring[(i + 1) % ring.size()]].id }));
+        }
+        prevRing = ring;
+    }
+    return nodes;
+}
+
+// A centre on the galaxy map: the heart on its slot's point, each ring round it.
+void PlaceCentreOnMap(const RegionParams& params, double cx, double cy, std::vector<Node>& nodes)
+{
+    Rng rng(Key(params.seed, MAP));
+    for (Node& n : nodes)
+    {
+        if (n.depth == 1)
+        {
+            n.mapX = cx;
+            n.mapY = cy;
+            continue;
+        }
+        const double r = 250.0 * (n.depth - 1) + rng.Range(-20, 20);
+        n.mapX = Round(cx + DIRS12[n.dir][0] * r + rng.Range(-15, 15), 1.0);
+        n.mapY = Round(cy + DIRS12[n.dir][1] * r + rng.Range(-15, 15), 1.0);
+    }
+}
+
 // Where the region sits on the galaxy map: away from home, in rings.
 void PlaceOnMap(const RegionParams& params, std::vector<Node>& nodes)
 {
@@ -401,6 +529,24 @@ Character PickCharacter(Rng& rng, int depth)
     return Character::Ordinary;
 }
 
+// Settled space: nobody settles a graveyard, a shroud or a dead rock first. The heart is an
+// ordinary system, the kind a civilisation grows up in.
+Character PickCentreCharacter(Rng& rng, int depth)
+{
+    if (depth == 1)
+        return Character::Ordinary;
+    const int roll = rng.Range(0, 99);
+    if (roll < 52)
+        return Character::Ordinary;
+    if (roll < 64)
+        return Character::Binary;
+    if (roll < 78)
+        return Character::BeltCluster;
+    if (roll < 91)
+        return Character::Giants;
+    return Character::Frozen;
+}
+
 const char* PlanetTypeAt(Rng& rng, double fraction, Character c)
 {
     if (c == Character::Frozen)
@@ -445,12 +591,14 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
                     const json& links, const Node* homeAsNode)
 {
     const uint64_t key = (uint64_t)n.index + 1000;  // never collides with a purpose
+    const bool     centre = params.kind == SlotKind::Centre;
+    const int      rich = Richness(params);
     json           sys;
 
     Character character;
     {
         Rng rng(Key(params.seed, key, CHARACTER));
-        character = PickCharacter(rng, n.depth);
+        character = centre ? PickCentreCharacter(rng, n.depth) : PickCharacter(rng, n.depth);
     }
     sys["character"] = CharacterName(character);
 
@@ -591,6 +739,8 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
             count = rng.Range(3, 5);
         else if (character == Character::Barren)
             count = rng.Chance(50) ? 1 : 0;
+        if (centre && n.depth == 1)
+            count = std::max(count, 2);  // what the capital's mining posts are there for
 
         // A belt where a planet did not finish forming (#146): the widest gap between two
         // planets' paths, or past the last one, is where a world that never came together
@@ -632,10 +782,81 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
             else if (!PlaceOrOrbit(rng, 260000.0, 840000.0, size, bands, moons, taken, belt))
                 continue;
             belt["ore"] = rng.Range(200, 400) + 40 * n.depth +
-                          (character == Character::BeltCluster ? 100 : 0);
+                          (character == Character::BeltCluster ? 100 : 0) + 50 * rich;
             belts.push_back(belt);
         }
         sys["asteroidFields"] = belts;
+    }
+
+    // Stations (#342 S2). A centre is settled space: its heart has one of every kind -- the
+    // trade hub, a shipyard, the fleet's bastion and a mining post at its ore -- and every
+    // other system somewhere to dock: a mining post where there is ore, a market or a
+    // garrison otherwise. Nobody has built anything on the frontier yet.
+    sys["stations"] = json::array();
+    if (centre)
+    {
+        Rng                      rng(Key(params.seed, key, STATIONS));
+        std::vector<std::string> roles;
+        if (n.depth == 1)
+            roles = { "TradeHub", "Shipyard", "Military", "MiningOutpost" };
+        else
+        {
+            const int roll = rng.Range(0, 99);
+            if (!sys["asteroidFields"].empty() && roll < 55)
+                roles = { "MiningOutpost" };
+            else
+                roles = { roll < 85 ? "TradeHub" : "Military" };
+            if (rng.Chance(25))
+                roles.push_back(roles[0] == "TradeHub" ? "Military" : "TradeHub");
+            if (n.depth == 2 && rng.Chance(20))
+                roles.push_back("Shipyard");  // a second yard near the capital
+        }
+        for (const std::string& role : roles)
+        {
+            const int   size = role == "TradeHub" ? 700 : (role == "MiningOutpost" ? 500 : 600);
+            const char* suffix = role == "TradeHub"   ? " Exchange"
+                                 : role == "Shipyard" ? " Yards"
+                                 : role == "Military" ? " Bastion"
+                                                      : " Mining Post";
+            // A yard builds for anyone who pays; the rest fly the owner's flag.
+            const std::string faction =
+                role == "Shipyard" || params.owner.empty() ? params.unaffiliated : params.owner;
+            json station = { { "name", n.designation + suffix },
+                             { "role", role },
+                             { "size", size },
+                             { "faction", faction } };
+            bool placed = false;
+            if (role == "MiningOutpost")
+                for (const json& b : sys["asteroidFields"])
+                {
+                    json pos;
+                    if (!placed && b.contains("pos") &&
+                        PlaceNear(rng, b["pos"][0], b["pos"][1], b["size"], size, bands, taken,
+                                  pos))
+                    {
+                        station["pos"] = pos;
+                        placed = true;
+                    }
+                }
+            // Where it stays put, out of every planet's path. Not in orbit: a station riding a
+            // fast inner planet moved faster than a standing order could close on it, and the
+            // ship hung in warp beside it (seen on seed 7). Orbiting stations wait for orders
+            // that follow a moving target to the end.
+            if (!placed)
+            {
+                json pos;
+                if (!Place(rng, 200000.0, 820000.0, size, bands, taken, pos) &&
+                    !Place(rng, 120000.0, 960000.0, size, bands, taken, pos))
+                {
+                    // A crowded system: a gap between paths that only other objects fill.
+                    std::vector<Disc> none;
+                    if (!Place(rng, 120000.0, 960000.0, size, bands, none, pos))
+                        continue;
+                }
+                station["pos"] = pos;
+            }
+            sys["stations"].push_back(station);
+        }
     }
 
     // A cloud, sometimes -- and in a shrouded system one that covers half of it, where a
@@ -764,7 +985,8 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
         static const char* BY_BELT[] = { "Abandoned Claim", "Old Refinery" };
         static const char* IN_ORBIT[] = { "Dead Outpost", "Empty Dock" };
         Rng                rng(Key(params.seed, key, RUINS));
-        const int          chance = character == Character::Barren ? 20 : 4 + 4 * n.depth;
+        // Not in a centre: what was abandoned there was built over long ago.
+        const int chance = centre ? 0 : (character == Character::Barren ? 20 : 4 + 4 * n.depth);
         if (rng.Chance(chance))
         {
             const double size = 260.0;
@@ -793,7 +1015,6 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
         }
     }
 
-    sys["stations"] = json::array();  // nobody has built anything out here yet
     return sys;
 }
 
@@ -886,13 +1107,15 @@ void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Regi
         ANCIENT_GATE,
     };
     auto stream = [&](Find f) { return Rng(Key(params.seed, FINDS, (uint64_t)f)); };
+    // Further from a centre, likelier (#342 S2): fewer have been out there before you.
+    const int more = 8 * Richness(params);
 
     // Something to salvage, big.
     {
         static const char* NAMES[] = { "The Grey Leviathan", "The Sleeper", "Old Colossus",
                                        "The Drowned Giant" };
         Rng                rng = stream(LEVIATHAN);
-        if (rng.Chance(45))
+        if (rng.Chance(45 + more))
             if (const Node* n = PickHost(rng, nodes, region, 3))
             {
                 const char* name = NAMES[rng.Range(0, 3)];
@@ -909,7 +1132,7 @@ void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Regi
         static const char* NAMES[] = { "Saint Vey's Motherlode", "The Glass Vein",
                                        "Heartstone Field", "The Bright Seam" };
         Rng                rng = stream(MOTHERLODE);
-        if (rng.Chance(55))
+        if (rng.Chance(55 + more))
             if (const Node* n = PickHost(rng, nodes, region, 2))
             {
                 const char* name = NAMES[rng.Range(0, 3)];
@@ -927,7 +1150,7 @@ void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Regi
         static const char* NAMES[] = { "Last Light Station", "Station Absent", "The Quiet Hub",
                                        "Outpost Nine" };
         Rng                rng = stream(HULK);
-        if (rng.Chance(45))
+        if (rng.Chance(45 + more))
             if (const Node* n = PickHost(rng, nodes, region, 2))
             {
                 const char* name = NAMES[rng.Range(0, 3)];
@@ -943,7 +1166,7 @@ void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Regi
     {
         static const char* NAMES[] = { "Wanderer", "Nightfall", "The Orphan", "Coldheart" };
         Rng                rng = stream(ROGUE);
-        if (rng.Chance(55))
+        if (rng.Chance(55 + more))
             if (const Node* n = PickHost(rng, nodes, region, 2))
             {
                 json&  sys = region.documents[n->id];
@@ -976,7 +1199,7 @@ void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Regi
     // An old way through: from somewhere deep straight back to the first ring.
     {
         Rng         rng = stream(ANCIENT_GATE);
-        const Node* deep = rng.Chance(30) ? PickHost(rng, nodes, region, 4) : nullptr;
+        const Node* deep = rng.Chance(30 + more) ? PickHost(rng, nodes, region, 4) : nullptr;
         const Node* near = nodes.empty() ? nullptr : &nodes.front();  // ring 1
         if (deep != nullptr && near != nullptr && deep->id != near->id)
         {
@@ -1049,10 +1272,14 @@ nlohmann::json RegionToJson(const Region& region)
     json docs = json::object();
     for (const auto& kv : region.documents)
         docs[kv.first] = kv.second;
-    return {
-        { "slot", region.slot }, { "systems", region.systems }, { "links", region.links },
-        { "documents", docs },   { "entry", region.entryId },   { "wormhole", region.wormhole }
-    };
+    json out = { { "slot", region.slot },     { "systems", region.systems },
+                 { "links", region.links },   { "documents", docs },
+                 { "entry", region.entryId }, { "wormhole", region.wormhole } };
+    if (!region.homeId.empty())
+        out["home"] = region.homeId;
+    if (!region.heartId.empty())
+        out["heart"] = region.heartId;
+    return out;
 }
 
 bool RegionFromJson(const nlohmann::json& doc, Region& out)
@@ -1071,6 +1298,11 @@ bool RegionFromJson(const nlohmann::json& doc, Region& out)
         r.documents[it.key()] = it.value();
     r.entryId = doc["entry"].get<std::string>();
     r.wormhole = doc["wormhole"];
+    // Absent in a region kept before centres (#342 S2): one with a wormhole came from home.
+    if (doc.contains("home") && doc["home"].is_string())
+        r.homeId = doc["home"].get<std::string>();
+    if (doc.contains("heart") && doc["heart"].is_string())
+        r.heartId = doc["heart"].get<std::string>();
     out = std::move(r);
     return true;
 }
@@ -1093,29 +1325,69 @@ Region GenerateRegion(const RegionParams& worldParams)
     // unrelated as two worlds, and neither depends on whether the other has been made.
     RegionParams params = worldParams;
     params.seed = Key(worldParams.seed, (uint64_t)worldParams.slot, REGION);
+    const bool centre = params.kind == SlotKind::Centre;
 
     Region region;
     region.slot = params.slot;
-    std::vector<Node> nodes = Topology(params, region.links);
-    PlaceOnMap(params, nodes);
+    std::vector<Node> nodes;
+    if (centre)
+    {
+        // A centre opens from nowhere: its heart sits on its slot's point of the map.
+        nodes = CentreTopology(params, region.links);
+        double cx, cy;
+        SlotMapPoint(worldParams.seed, params.slot, cx, cy);
+        PlaceCentreOnMap(params, cx, cy, nodes);
+        region.heartId = nodes.front().id;
+        params.homeId.clear();
+    }
+    else
+    {
+        nodes = Topology(params, region.links);
+        PlaceOnMap(params, nodes);
+        region.homeId = params.homeId;
+    }
     region.entryId = nodes.front().id;
 
     const Node home{ params.homeId, params.homeId, 0, -1, params.homeMap.x, params.homeMap.y };
+    int        deepest = 1;
+    for (const Node& n : nodes)
+        deepest = std::max(deepest, n.depth);
 
     for (const Node& n : nodes)
     {
-        // Safer near home, lawless at the edge; the frontier is nobody's.
-        Rng          rng(Key(params.seed, (uint64_t)n.index + 1000, MAP));
-        const double security =
-            std::max(0.0, Round(0.45 - 0.1 * (n.depth - 1) + rng.Range(-5, 5) * 0.01, 0.01));
-        const bool pirates = n.depth >= 3 && rng.Chance(30);
-        region.systems.push_back({ { "id", n.id },
-                                   { "name", n.designation },
-                                   { "map", json::array({ (int64_t)n.mapX, (int64_t)n.mapY }) },
-                                   { "security", security },
-                                   { "owner", pirates ? "Pirates" : "" } });
-        region.documents[n.id] = GenerateSystem(params, n, nodes, region.links, &home);
+        Rng    rng(Key(params.seed, (uint64_t)n.index + 1000, MAP));
+        double security;
+        bool   pirates = false;
+        if (centre)
+        {
+            // Policed: 1.0 at the heart, about half that at the edge (#342 S2).
+            const double fall = deepest > 1 ? 0.5 * (n.depth - 1) / (deepest - 1) : 0.0;
+            security =
+                n.depth == 1
+                    ? 1.0
+                    : std::min(1.0,
+                               std::max(0.5, Round(1.0 - fall + rng.Range(-2, 2) * 0.01, 0.01)));
+        }
+        else
+        {
+            // Safer near home, lawless at the edge; the frontier is nobody's -- and the
+            // further it is from a centre, the less law it starts with (#342 S2).
+            const double base = 0.45 - 0.12 * (params.hops - 1);
+            security =
+                std::max(0.0, Round(base - 0.1 * (n.depth - 1) + rng.Range(-5, 5) * 0.01, 0.01));
+            pirates = n.depth >= 3 && rng.Chance(30 + 5 * Richness(params));
+        }
+        region.systems.push_back(
+            { { "id", n.id },
+              { "name", n.designation },
+              { "map", json::array({ (int64_t)n.mapX, (int64_t)n.mapY }) },
+              { "security", security },
+              { "owner", centre ? params.owner : (pirates ? params.pirates : std::string()) } });
+        region.documents[n.id] =
+            GenerateSystem(params, n, nodes, region.links, centre ? nullptr : &home);
     }
+    if (centre)
+        return region;  // settled long ago: whatever was rare here is in a museum
     PlaceFinds(params, nodes, region);
 
     // The wormhole's mouth in the home system: at the edge, facing the region, out of the
@@ -1139,6 +1411,94 @@ Region GenerateRegion(const RegionParams& worldParams)
                             { "destination", region.entryId } };
     }
     return region;
+}
+
+RegionParams SlotParams(const GalaxySkeleton& skeleton, int slot)
+{
+    RegionParams p;
+    p.seed = skeleton.seed;
+    p.slot = slot;
+    if (slot >= 0 && slot < (int)skeleton.slots.size())
+    {
+        const Slot& s = skeleton.slots[(size_t)slot];
+        p.kind = s.kind;
+        p.hops = s.hops;
+        p.owner = s.owner;
+    }
+    p.pirates = skeleton.pirates;
+    p.unaffiliated = skeleton.unaffiliated;
+    return p;
+}
+
+std::string MouthSystem(const Region& from, double towardX, double towardY)
+{
+    // The edge of the region that faces the new one. Among equals, the lower id: the index
+    // is in generation order, and so is this.
+    int depth = 0;
+    for (const json& s : from.systems)
+        depth = std::max(depth, DepthOf(s.value("id", std::string())));
+    std::string best;
+    double      bestD = 0.0;
+    for (const json& s : from.systems)
+    {
+        const std::string id = s.value("id", std::string());
+        if (DepthOf(id) != depth || !s.contains("map") || !s["map"].is_array())
+            continue;
+        const double dx = s["map"][0].get<double>() - towardX;
+        const double dy = s["map"][1].get<double>() - towardY;
+        const double d = dx * dx + dy * dy;
+        if (best.empty() || d < bestD)
+        {
+            best = id;
+            bestD = d;
+        }
+    }
+    return best;
+}
+
+void HomeFrom(RegionParams& params, const GalaxySkeleton& skeleton, const Region& from,
+              const std::string& homeId, const nlohmann::json& homeDoc)
+{
+    params.homeId = homeId;
+    for (const json& s : from.systems)
+        if (s.value("id", std::string()) == homeId && s.contains("map") && s["map"].is_array())
+            params.homeMap = { s["map"][0].get<float>(), s["map"][1].get<float>() };
+    double hx, hy, sx, sy;
+    SlotMapPoint(skeleton.seed, from.slot, hx, hy);
+    SlotMapPoint(skeleton.seed, params.slot, sx, sy);
+    params.bearing = { (float)(sx - hx), (float)(sy - hy) };
+    params.homeSystem = homeDoc.is_object() ? &homeDoc : nullptr;
+}
+
+std::vector<Region> GenerateWorld(const GalaxySkeleton&               skeleton,
+                                  const std::function<void(Region&)>& pin)
+{
+    std::vector<Region> out;
+    for (const Opening& o : InitialOpenings(skeleton))
+    {
+        RegionParams params = SlotParams(skeleton, o.slot);
+        json         homeDoc;
+        if (o.from >= 0)
+        {
+            const Region* from = nullptr;
+            for (const Region& r : out)
+                if (r.slot == o.from)
+                    from = &r;
+            if (from == nullptr)
+                continue;
+            double tx, ty;
+            SlotMapPoint(skeleton.seed, o.slot, tx, ty);
+            const std::string homeId = MouthSystem(*from, tx, ty);
+            const auto        doc = from->documents.find(homeId);
+            if (doc != from->documents.end())
+                homeDoc = doc->second;
+            HomeFrom(params, skeleton, *from, homeId, homeDoc);
+        }
+        out.push_back(GenerateRegion(params));
+        if (pin)
+            pin(out.back());
+    }
+    return out;
 }
 
 }  // namespace Gen

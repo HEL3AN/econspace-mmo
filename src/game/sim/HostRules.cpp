@@ -99,6 +99,51 @@ Save::Result ReadAccountAuth(const std::string& path, std::string& salt, std::st
     return Save::Result::Ok;
 }
 
+std::string AccountSystem(const std::string& path)
+{
+    std::ifstream in(path);
+    if (!in.is_open())
+        return std::string();
+    const nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
+    if (j.is_discarded() || !j.is_object())
+        return std::string();
+    const auto version = j.find("version");
+    if (version != j.end() &&
+        (!version->is_number_integer() || version->get<int>() > Save::ACCOUNT_VERSION))
+        return std::string();  // a fresh account plays it: one that has nowhere yet
+    const auto place = j.find("place");
+    if (place == j.end() || !place->is_object())
+        return std::string();
+    const auto sys = place->find("system");
+    return sys != place->end() && sys->is_string() ? sys->get<std::string>() : std::string();
+}
+
+bool NeedsStart(const Simulation& sim, const std::string& accountPath)
+{
+    const std::string sys = AccountSystem(accountPath);
+    return sys.empty() || !sim.HasSystem(sys);
+}
+
+std::string PickStart(const Simulation& sim, const std::string& wanted, bool randomOnly,
+                      uint64_t roll)
+{
+    const std::vector<Simulation::StartPoint>& starts = sim.Starts();
+    if (starts.empty())
+        return std::string();
+    if (!randomOnly && !wanted.empty() && sim.IsStart(wanted))
+        return wanted;
+    return starts[(size_t)(roll % starts.size())].systemId;
+}
+
+Proto::Starts StartsMessage(const Simulation& sim, bool randomOnly)
+{
+    Proto::Starts m;
+    m.randomOnly = randomOnly;
+    for (const Simulation::StartPoint& sp : sim.Starts())
+        m.options.push_back({ sp.systemId, sp.systemName, sp.station, sp.owner });
+    return m;
+}
+
 WorldStart OpenWorld(Simulation& sim, const std::string& path, std::string& why)
 {
     why.clear();

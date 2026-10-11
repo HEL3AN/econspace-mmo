@@ -92,7 +92,7 @@ def first_id(observation, kind_word):
     """The id of the first object of a kind in an observation.
 
     Objects appear as `#<id> <kind> <name> <distance>u <bearing> ...`, column-padded -- e.g.
-    `#12   station  Aurora Hub   2400u NE  dockable`. Ids from observe are the ids every
+    `#12   station  Lysen Exchange   2400u NE  dockable`. Ids from observe are the ids every
     order accepts.
     """
     m = re.search(r"#(\d+)\s+%s\b" % re.escape(kind_word), observation)
@@ -127,6 +127,12 @@ def main():
         print("tools:", ", ".join(tools))
 
         world = bot.call("observe", detail="full")
+        if "NO SHIP YET" in world:
+            # A new pilot begins at the capital of a civilisation of its choosing; this
+            # bot leaves it to chance.
+            print(world)
+            print(bot.call("choose_start", start="random"))
+            world = bot.call("observe", detail="full")
         print(world)
 
         field = first_id(world, "field")

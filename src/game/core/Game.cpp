@@ -25,6 +25,8 @@
 #include "entities/Structure.h"
 #include "economy/Resource.h"
 #include "ui/Button.h"
+#include "ui/Controls.h"
+#include "ui/Input.h"
 #include "ui/UiTheme.h"
 #include "render/Textures.h"
 #include "raymath.h"
@@ -187,7 +189,11 @@ void Game::Run()
 
         // Input (edge triggers, UI, clicks) — once per frame. Continuous ship
         // control is also set here and read on every simulation step.
-        if (mode_ == GameMode::Flying)
+        if (choosingStart_)
+        {
+            // nothing to fly yet: the start screen takes the clicks as it is drawn
+        }
+        else if (mode_ == GameMode::Flying)
             HandleInput(dt);
         else
             HandleDockedInput();
@@ -202,7 +208,7 @@ void Game::Run()
             simAccumulator_ = Sim::MAX_CATCHUP_SECONDS;
         while (simAccumulator_ >= SIM_DT)
         {
-            if (mode_ == GameMode::Flying)
+            if (mode_ == GameMode::Flying && !choosingStart_)
             {
                 // CLIENT-SIDE PREDICTION of the own ship's movement. Number the input,
                 // push it into the unacked buffer, send it to the server, and immediately apply the
@@ -310,21 +316,26 @@ void Game::Run()
         // a menu.
         const bool useChain = (flying || treatHud) && (!shooting || shotTreated_);
 
-        if (useChain)
-            treatment_.Begin(screenWidth_, screenHeight_, shooting ? &shotTarget_ : nullptr);
-        if (flying && blur)
-            backdrop_.Present();
-        else if (flying)
-            DrawWorld();
+        if (choosingStart_)
+            DrawStartChoice();
         else
-            DrawStationHall();
-        if (treatHud)
-            DrawHud();
-        if (useChain)
-            treatment_.End();
+        {
+            if (useChain)
+                treatment_.Begin(screenWidth_, screenHeight_, shooting ? &shotTarget_ : nullptr);
+            if (flying && blur)
+                backdrop_.Present();
+            else if (flying)
+                DrawWorld();
+            else
+                DrawStationHall();
+            if (treatHud)
+                DrawHud();
+            if (useChain)
+                treatment_.End();
+        }
         Render::Perf::Mark(Render::Perf::Phase::Treatment);
 
-        if (!treatHud)
+        if (!treatHud && !choosingStart_)
             DrawHud();
 
         // Above everything, and never treated: a settings screen seen through the effect
@@ -388,6 +399,59 @@ void Game::Run()
             }
         }
     }
+}
+
+void Game::ChooseStart(const std::string& system)
+{
+    Proto::ChooseStart c;
+    c.system = system;
+    clientLink_->Send(Proto::EncodeChooseStart(c));
+    choosingStart_ = false;  // the ship, its system and its first snapshot follow
+}
+
+// Where to begin (#342 S2): the capital of each civilisation, whose space it is and the
+// station you arrive at, and a way to leave it to chance. Drawn over the starfield, before
+// there is a ship to draw anything else round.
+void Game::DrawStartChoice()
+{
+    for (const BgStar& s : bgStars_)
+        DrawPixelV({ fmodf(s.base.x, (float)screenWidth_), fmodf(s.base.y, (float)screenHeight_) },
+                   Color{ s.shade, s.shade, s.shade, 255 });
+    const float w = fminf(640.0f, (float)screenWidth_ - 32.0f);
+    const int   rows = (int)starts_.options.size() + 1;
+    const float h = 120.0f + 64.0f * (float)rows;
+    const float x = ((float)screenWidth_ - w) / 2.0f,
+                y = fmaxf(16.0f, ((float)screenHeight_ - h) / 2.0f);
+    DrawRectangleRec({ x, y, w, h }, Ui::PANEL_BG);
+    DrawRectangleLinesEx({ x, y, w, h }, 1.0f, Ui::PANEL_BORDER);
+    Ui::Text("Where do you begin?", (int)x + 24, (int)y + 22, 26, Ui::TEXT);
+    Ui::Text(starts_.randomOnly ? "This server deals every new pilot a start."
+                                : "The capital of each civilisation. The frontier lies beyond.",
+             (int)x + 24, (int)y + 58, 15, Ui::TEXT_DIM);
+    float row = y + 96.0f;
+    if (!starts_.randomOnly)
+        for (const Proto::StartOption& o : starts_.options)
+        {
+            const Rectangle r = { x + 24.0f, row, w - 48.0f, 54.0f };
+            const bool      over = Ui::MouseOver(r);
+            DrawRectangleRec(r, Fade(over ? Ui::ACCENT : Ui::TITLE_BG, over ? 0.35f : 0.6f));
+            DrawRectangleLinesEx(r, 1.0f, Ui::PANEL_BORDER);
+            FactionId f = Factions::Unaffiliated();
+            Factions::Find(o.owner, f);
+            DrawRectangle((int)r.x, (int)r.y, 5, (int)r.height, FactionColor(f));
+            Ui::Text(o.name.c_str(), (int)r.x + 18, (int)r.y + 8, 20, Ui::TEXT);
+            const std::string line = "arrive at " + o.station + "  -  " + FactionName(f) + " space";
+            Ui::Text(line.c_str(), (int)r.x + 18, (int)r.y + 32, 14, Ui::TEXT_DIM);
+            if (over && Ui::MousePressed(MOUSE_BUTTON_LEFT))
+            {
+                ChooseStart(o.system);
+                return;
+            }
+            row += 64.0f;
+        }
+    if (Ui::SmallButton({ x + 24.0f, row, w - 48.0f, 40.0f },
+                        starts_.randomOnly ? "Begin" : "Any of them -- leave it to chance"))
+        ChooseStart(std::string());
 }
 
 void Game::PlayScriptedClicks()

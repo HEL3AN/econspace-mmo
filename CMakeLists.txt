@@ -378,6 +378,7 @@ add_executable(tests
     tests/overview_tests.cpp
     tests/sensor_tests.cpp
     tests/gen_tests.cpp
+    tests/centre_tests.cpp
     tests/survey_tests.cpp         # what the survey screen flags (#141)
     tests/warp_tests.cpp
     tests/warp_path_tests.cpp
@@ -435,7 +436,10 @@ add_executable(tests
     src/game/player/Player.cpp
     src/game/player/Skills.cpp
 )
-target_compile_definitions(tests PRIVATE TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/data/")
+target_compile_definitions(tests PRIVATE TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/data/"
+                                         # A small hand-written world in the format the loaders
+                                         # read, for tests of everything but generation (#342)
+                                         TEST_WORLD_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/world/")
 target_link_libraries(tests PRIVATE engine netproto doctest::doctest)
 set_target_properties(tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/tests)

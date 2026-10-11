@@ -166,9 +166,12 @@ bool FromLegacyIndex(int i, FactionId& out);
 const std::string& Id(FactionId f);  // string id (as used in station data and saves)
 bool               IsLawful(FactionId f);
 const std::string& Kind(FactionId f);
-Stance             Relation(FactionId a, FactionId b);
-const Temperament& TemperamentOf(FactionId f);
-const Migration&   MigrationRules();
+// The ids of the factions of kind "Major", in registry order: who owns a civilisation
+// centre (#342). Never the pirates, whatever their kind: they have no centre.
+std::vector<std::string> MajorIds();
+Stance                   Relation(FactionId a, FactionId b);
+const Temperament&       TemperamentOf(FactionId f);
+const Migration&         MigrationRules();
 
 // Player reputation tiers.
 RepTier     TierOf(float rep);

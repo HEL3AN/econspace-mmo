@@ -2,7 +2,8 @@
 //   econspace connect <host> <port> <name> <secret> [--zoom Z] [--warp X Y] [--map]
 //   [--select] [--menu] [--sensor [RANGE]]
 //   [--shot FILE [--frames N]] [--nohud] [--treated] [--perf] [--notreat] [--size W H]
-//   [--uiscale S] [--open IDS] [--theme ID] [--blur] [--click X Y FRAME]... —
+//   [--uiscale S] [--open IDS] [--theme ID] [--blur] [--click X Y FRAME]...
+//   [--start ID|random] —
 //   connect to an econserver host
 //
 // Connecting is mandatory: the world lives on an authoritative server and the
@@ -48,6 +49,9 @@ static int Usage(const char* exe)
                  "      --open IDS start with these windows open, e.g. radar,missions,settings\n"
                  "      --theme ID the interface in data/ui_themes/ID.json for this run\n"
                  "      --blur     blur the world behind the windows, in a theme that offers it\n"
+                 "      --start ID|random\n"
+                 "                 a new pilot begins at this start (a system id) or any,\n"
+                 "                 without being shown the choice\n"
                  "      --click X Y FRAME\n"
                  "                 a left click at (X, Y) on frame FRAME; repeatable\n"
                  "\n"
@@ -93,6 +97,7 @@ int main(int argc, char** argv)
     std::vector<Click> clicks;          // --click X Y FRAME, any number of them
     float              uiScale = 0.0f;  // 0: the player's setting times the display's
     std::string        openWindows;     // --open radar,missions,settings
+    std::string        startAt;         // --start ID|random (#342 S2)
     for (int i = 6; i < argc; i++)
         if (std::strcmp(argv[i], "--zoom") == 0 && i + 1 < argc)
             startZoom = (float)std::atof(argv[++i]);
@@ -140,6 +145,8 @@ int main(int argc, char** argv)
             theme = argv[++i];
         else if (std::strcmp(argv[i], "--blur") == 0)
             blur = true;
+        else if (std::strcmp(argv[i], "--start") == 0 && i + 1 < argc)
+            startAt = argv[++i];
         else if (std::strcmp(argv[i], "--click") == 0 && i + 3 < argc)
         {
             clicks.push_back({ (float)std::atof(argv[i + 1]), (float)std::atof(argv[i + 2]),
@@ -210,6 +217,8 @@ int main(int argc, char** argv)
             game.SetThemeForRun(theme);
         if (blur)
             game.SetBlurForRun(true);
+        if (!startAt.empty())
+            game.AnswerStartWith(startAt);
         for (const Click& c : clicks)
             game.AddScriptedClick(c.x, c.y, c.frame);
         if (!shot.empty())

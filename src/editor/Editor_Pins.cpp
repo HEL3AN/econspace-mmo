@@ -6,30 +6,65 @@
 
 #include "Editor.h"
 
+#include "core/Faction.h"
+#include "gen/Region.h"
+
 #include <fstream>
 #include <string>
 
 using nlohmann::json;
 
-Gen::RegionParams Editor::RegionParamsFromData(json& homeDoc) const
+bool Editor::WorldRegion(uint64_t seed, std::string& systemId, Gen::Region& out,
+                         std::map<std::string, std::string>* names, std::string* homeName,
+                         Vector2* homeMap) const
 {
-    Gen::RegionParams params;
-    for (const WorldLoader::SystemInfo& info : universe_.systems)
+    Gen::WorldParams p;
+    p.seed = seed;
+    p.centres = Gen::DEFAULT_CENTRES;
+    p.owners = Factions::MajorIds();
+    p.pirates = Factions::Id(Factions::Pirates());
+    p.unaffiliated = Factions::Id(Factions::Unaffiliated());
+    const Gen::GalaxySkeleton      g = Gen::GenerateGalaxySkeleton(p);
+    const std::vector<Gen::Region> world = Gen::GenerateWorld(g);
+    if (world.empty())
+        return false;
+    if (names != nullptr)
+        for (const Gen::Region& r : world)
+            for (const json& s : r.systems)
+                (*names)[s.value("id", std::string())] = s.value("name", std::string());
+    if (systemId.empty())
+        systemId = world.front().heartId;
+    const int slot = Gen::SlotOf(systemId);
+    if (slot < 0 || slot >= (int)g.slots.size())
+        return false;
+    bool found = false;
+    for (const Gen::Region& r : world)
+        if (r.slot == slot)
+        {
+            out = r;
+            found = true;
+        }
+    if (!found)
     {
-        params.knownMap.push_back(info.mapPos);
-        if (info.id != universe_.startId)
-            continue;
-        params.homeId = info.id;
-        params.homeMap = info.mapPos;
-        std::ifstream in(dataDir_ + "systems/" + info.file);
-        if (in.is_open())
-            homeDoc = json::parse(in, nullptr, false);
+        // A slot the world has not opened yet: its contents are its own whatever it opens
+        // from, so it is shown opened from nowhere in particular.
+        Gen::RegionParams prm = Gen::SlotParams(g, slot);
+        if (prm.kind == Gen::SlotKind::Frontier)
+            prm.homeId = "home";
+        out = Gen::GenerateRegion(prm);
     }
-    if (params.homeId.empty())
-        params.homeId = "home";
-    if (homeDoc.is_object())
-        params.homeSystem = &homeDoc;
-    return params;
+    if (homeName != nullptr)
+        *homeName = out.homeId;
+    for (const Gen::Region& r : world)
+        for (const json& s : r.systems)
+            if (!out.homeId.empty() && s.value("id", std::string()) == out.homeId)
+            {
+                if (homeName != nullptr)
+                    *homeName = s.value("name", out.homeId);
+                if (homeMap != nullptr)
+                    *homeMap = { s["map"][0].get<float>(), s["map"][1].get<float>() };
+            }
+    return out.documents.count(systemId) != 0;
 }
 
 json Editor::ReadPins(const std::string& path)
@@ -43,17 +78,15 @@ json Editor::ReadPins(const std::string& path)
 
 bool Editor::OpenGenerated(uint64_t seed, const std::string& systemId)
 {
-    json              homeDoc;
-    Gen::RegionParams params = RegionParamsFromData(homeDoc);
-    params.seed = seed;
-    const Gen::Region region = Gen::GenerateRegion(params);
-    const std::string id = systemId.empty() ? region.entryId : systemId;
-    if (!region.documents.count(id))
+    std::string                        id = systemId;
+    Gen::Region                        region;
+    std::map<std::string, std::string> names;
+    if (!WorldRegion(seed, id, region, &names))
     {
         std::string ids;
         for (const json& s : region.systems)
             ids += " " + s.value("id", std::string());
-        TraceLog(LOG_WARNING, "Editor: seed %llu makes no system \"%s\"; it has:%s",
+        TraceLog(LOG_WARNING, "Editor: seed %llu makes no system \"%s\"; its region has:%s",
                  (unsigned long long)seed, id.c_str(), ids.c_str());
         return false;
     }
@@ -83,8 +116,7 @@ bool Editor::OpenGenerated(uint64_t seed, const std::string& systemId)
     generated_.origins = es.origins;
     generated_.problems = (int)es.problems.size();
     generated_.systems = Gen::Destinations(region);
-    for (const WorldLoader::SystemInfo& info : universe_.systems)
-        generated_.names[info.id] = info.name;
+    generated_.names = names;
     for (const json& s : region.systems)
         generated_.names[s.value("id", std::string())] = s.value("name", std::string());
 

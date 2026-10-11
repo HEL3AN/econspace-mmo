@@ -39,11 +39,11 @@ std::unique_ptr<Simulation> World(uint64_t seed = 7)
     SetRandomSeed(0xC0FFEEu);
     LoadRegistries();
     auto sim = std::make_unique<Simulation>();
-    sim->LoadUniverse(DATA + "universe.json");
-    sim->AttachRegion(seed, DATA + "systems/");
+    sim->LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+    sim->AttachRegion(seed, std::string(TEST_WORLD_DIR) + "systems/");
     sim->Seed(1234u);
     sim->InitGalaxy();
-    sim->MaterializeAllSystems(DATA + "systems/");
+    sim->MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
     return sim;
 }
 
@@ -128,10 +128,10 @@ TEST_CASE("an outpost is built by factions; no player is offered one (#295)")
 
     // Asked anyway, the server says no, and why.
     Simulation sim;
-    sim.LoadUniverse(DATA + "universe.json");
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     sim.Seed(1234u);
     sim.InitGalaxy();
-    sim.MaterializeAllSystems(DATA + "systems/");
+    sim.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
     ClientSession& s = sim.CreateSession(sim.Universe().startId, Vector2{ 300000.0f, 300000.0f },
                                          GetShipCatalog()[0].stats);
     s.accountName = "hunter";
@@ -293,10 +293,10 @@ TEST_CASE("a settlement and the stock survive a restart, and the outpost finishe
     a->SaveWorld(path);
 
     Simulation b;
-    b.LoadUniverse(DATA + "universe.json");
-    b.AttachRegion(7, DATA + "systems/");
+    b.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+    b.AttachRegion(7, std::string(TEST_WORLD_DIR) + "systems/");
     REQUIRE(b.LoadWorld(path) == Save::Result::Ok);
-    b.MaterializeAllSystems(DATA + "systems/");
+    b.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
 
     REQUIRE(b.Plans().count(plan.id) == 1);
     const Plan back = b.Plans().at(plan.id);
@@ -328,7 +328,7 @@ TEST_CASE("a world saved before factions had a stock loads, and they start from 
     const std::string path = tmp.Path("settle_old_world.json");
     {
         Simulation probe;
-        probe.LoadUniverse(DATA + "universe.json");
+        probe.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
         const std::string start = probe.Universe().startId;
         std::ofstream     out(path);
         out << R"({ "version": 5, "simTime": 600.0, "galaxy": {},
@@ -340,9 +340,9 @@ TEST_CASE("a world saved before factions had a stock loads, and they start from 
                     "nextPlan": 4 })";
     }
     Simulation sim;
-    sim.LoadUniverse(DATA + "universe.json");
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     REQUIRE(sim.LoadWorld(path) == Save::Result::Ok);
-    sim.MaterializeAllSystems(DATA + "systems/");
+    sim.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
     for (FactionId fi : Factions::All())
         CHECK(sim.MindOf(fi).stock == 0.0f);
     REQUIRE(sim.Plans().count(3) == 1);

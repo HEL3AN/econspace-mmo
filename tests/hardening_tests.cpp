@@ -37,8 +37,8 @@ std::unique_ptr<Simulation> Unopened(bool allHot = false)
     REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
     REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
     auto sim = std::make_unique<Simulation>();
-    sim->LoadUniverse(DATA + "universe.json");
-    sim->AttachRegion(7, DATA + "systems/");
+    sim->LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+    sim->AttachRegion(7, std::string(TEST_WORLD_DIR) + "systems/");
     sim->Seed(1234u);
     sim->SetAllHot(allHot);
     return sim;
@@ -48,7 +48,7 @@ std::unique_ptr<Simulation> World(bool allHot = false)
 {
     auto sim = Unopened(allHot);
     sim->InitGalaxy();
-    sim->MaterializeAllSystems(DATA + "systems/");
+    sim->MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
     return sim;
 }
 

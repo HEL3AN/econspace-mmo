@@ -1068,10 +1068,20 @@ void Game::DrawGalaxyMap()
     float pad = 80.0f;
     float baseScale = fminf((area.width - 2 * pad) / spanX, (area.height - 2 * pad) / spanY);
 
-    if (!galaxyInit_)  // on first display — center on the centroid and scale 1
+    // On first display: where you are, close enough to read your own civilisation and the
+    // frontier beside it (#342 S2). The whole galaxy -- several centres thousands of map
+    // units apart -- is a wheel away.
+    constexpr float NEAR_SPAN = 1800.0f, MAX_ZOOM = 40.0f;
+    if (!galaxyInit_)
     {
         galaxyCenter_ = { (minX + maxX) / 2.0f, (minY + maxY) / 2.0f };
         galaxyZoom_ = 1.0f;
+        for (const auto& s : systems)
+            if (s.id == snapshot_.systemId)
+            {
+                galaxyCenter_ = s.mapPos;
+                galaxyZoom_ = Clamp(fmaxf(spanX, spanY) / NEAR_SPAN, 1.0f, MAX_ZOOM);
+            }
         galaxyInit_ = true;
     }
 
@@ -1083,7 +1093,7 @@ void Game::DrawGalaxyMap()
     {
         float wheel = Ui::MouseWheel();
         if (wheel != 0.0f)
-            galaxyZoom_ = Clamp(galaxyZoom_ * (1.0f + wheel * 0.12f), 0.3f, 8.0f);
+            galaxyZoom_ = Clamp(galaxyZoom_ * (1.0f + wheel * 0.12f), 0.3f, MAX_ZOOM);
     }
 
     float scale = baseScale * galaxyZoom_;

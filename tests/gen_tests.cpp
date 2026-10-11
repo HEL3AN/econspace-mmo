@@ -90,7 +90,7 @@ TEST_CASE("the rules have not changed without saying so")
     //
     // Split by what they cover (#342): the skeleton, and a region per slot, so a change to
     // one breaks only its own hash and says which part of the galaxy moved.
-    CHECK(Gen::GENERATOR_VERSION == 6);
+    CHECK(Gen::GENERATOR_VERSION == 7);
     const uint64_t skeleton = Fnv1a(Gen::SkeletonJson(Gen::GenerateGalaxySkeleton(1, 100)).dump());
     MESSAGE("skeleton hash for seed 1, 100 slots: " << skeleton);
     CHECK(skeleton == 3947093538462403513ull);
@@ -544,7 +544,7 @@ TEST_CASE("a satellite is a place the slowest ship can reach (#210)")
     for (const char* name : { "core", "reach", "verge" })
     {
         CAPTURE(name);
-        std::ifstream f(std::string(TEST_DATA_DIR) + "systems/" + name + ".json");
+        std::ifstream f(std::string(TEST_WORLD_DIR) + "systems/" + name + ".json");
         REQUIRE(f.good());
         check(nlohmann::json::parse(f));
     }

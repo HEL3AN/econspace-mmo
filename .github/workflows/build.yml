@@ -153,7 +153,7 @@ jobs:
           # the newcomer still plays normally afterwards. The second login waits until the
           # first has actually joined -- after a fixed three seconds it sometimes had not,
           # and then the "first" displaced the second and the check failed.
-          sleep 30 | agent connect 127.0.0.1 $port carol carol-secret >/dev/null 2>&1 &
+          sleep 30 | agent connect 127.0.0.1 $port carol carol-secret --start random >/dev/null 2>&1 &
           holder=$!
           wait_for "carol joined"
           agent selftest 127.0.0.1 $port carol carol-secret
@@ -169,7 +169,7 @@ jobs:
           # A brand-new account has no file until its first save. While its first session
           # is still playing, a login with another secret must be refused, not registered
           # over it (#201).
-          sleep 30 | agent connect 127.0.0.1 $port dave dave-secret >/dev/null 2>&1 &
+          sleep 30 | agent connect 127.0.0.1 $port dave dave-secret --start random >/dev/null 2>&1 &
           dave=$!
           wait_for "dave joined"
           if agent selftest 127.0.0.1 $port dave someone-elses-secret; then
@@ -282,7 +282,7 @@ jobs:
           # the newcomer still plays normally afterwards. The second login waits until the
           # first has actually joined -- after a fixed three seconds it sometimes had not,
           # and then the "first" displaced the second and the check failed.
-          sleep 30 | agent connect 127.0.0.1 $port carol carol-secret >/dev/null 2>&1 &
+          sleep 30 | agent connect 127.0.0.1 $port carol carol-secret --start random >/dev/null 2>&1 &
           holder=$!
           wait_for "carol joined"
           agent selftest 127.0.0.1 $port carol carol-secret
@@ -298,7 +298,7 @@ jobs:
           # A brand-new account has no file until its first save. While its first session
           # is still playing, a login with another secret must be refused, not registered
           # over it (#201).
-          sleep 30 | agent connect 127.0.0.1 $port dave dave-secret >/dev/null 2>&1 &
+          sleep 30 | agent connect 127.0.0.1 $port dave dave-secret --start random >/dev/null 2>&1 &
           dave=$!
           wait_for "dave joined"
           if agent selftest 127.0.0.1 $port dave someone-elses-secret; then

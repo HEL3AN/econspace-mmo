@@ -1,6 +1,8 @@
 #include "gen/Galaxy.h"
 #include "gen/Rng.h"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -12,6 +14,9 @@ namespace
 // Purposes, apart from every key a region uses (those start from a slot's own key).
 constexpr uint64_t SKELETON_PLACE = 0x5EE1E700ull;
 constexpr uint64_t SKELETON_LINK = 0x5EE1E701ull;
+constexpr uint64_t CENTRE_PLACE = 0x5EE1E702ull;
+constexpr uint64_t CENTRE_OWNER = 0x5EE1E703ull;
+constexpr uint64_t FIRST_FRONTIER = 0x5EE1E704ull;
 
 constexpr double SQRT3 = 1.7320508075688772;
 // Neighbouring slots are SPACING * sqrt(3) apart, about 2 400 map units: a region of twenty
@@ -101,8 +106,44 @@ const char* SlotKindName(SlotKind kind)
     switch (kind)
     {
         case SlotKind::Frontier: return "frontier";
+        case SlotKind::Centre: return "centre";
     }
     return "frontier";
+}
+
+int LatticeDistance(int a, int b)
+{
+    int aq, ar, bq, br, ring;
+    CellOf(a, aq, ar, ring);
+    CellOf(b, bq, br, ring);
+    return RingOf(aq - bq, ar - br);
+}
+
+std::vector<int> CentreSlots(uint64_t seed, int count)
+{
+    count = std::min(count, MAX_CENTRES);
+    if (count <= 0)
+        return {};
+    if (count == 1)
+        return { 0 };  // the middle: the frontier grows round it on every side
+    // The smallest ring with room, so the civilisations are as close as the spacing allows
+    // and the skeleton between them is not wasted. Each ring has its own turn, so the rule
+    // for one count does not depend on what another tried.
+    for (int k = 2;; k++)
+    {
+        const int        cells = 6 * k, first = 1 + 3 * k * (k - 1);
+        Rng              rng(Key(seed, CENTRE_PLACE, (uint64_t)k));
+        const int        turn = rng.Range(0, cells - 1);
+        std::vector<int> slots;
+        for (int i = 0; i < count; i++)
+            slots.push_back(first + (turn + i * cells / count) % cells);
+        int closest = 1 << 30;
+        for (size_t i = 0; i < slots.size(); i++)
+            for (size_t j = i + 1; j < slots.size(); j++)
+                closest = std::min(closest, LatticeDistance(slots[i], slots[j]));
+        if (closest >= CENTRE_SPACING)
+            return slots;
+    }
 }
 
 void SlotMapPoint(uint64_t seed, int slot, double& x, double& y)
@@ -147,6 +188,61 @@ GalaxySkeleton GenerateGalaxySkeleton(uint64_t seed, int cap)
     return g;
 }
 
+GalaxySkeleton GenerateGalaxySkeleton(const WorldParams& params)
+{
+    GalaxySkeleton   g = GenerateGalaxySkeleton(params.seed, params.cap);
+    const int        cap = (int)g.slots.size();
+    std::vector<int> placed;
+    for (int c : CentreSlots(params.seed, params.centres))
+        if (c < cap)
+            placed.push_back(c);
+    Rng       rng(Key(params.seed, CENTRE_OWNER));
+    const int turn = params.owners.empty() ? 0 : rng.Range(0, (int)params.owners.size() - 1);
+    for (size_t i = 0; i < placed.size(); i++)
+    {
+        Slot& s = g.slots[(size_t)placed[i]];
+        s.kind = SlotKind::Centre;
+        if (!params.owners.empty())
+            s.owner = params.owners[((size_t)turn + i) % params.owners.size()];
+    }
+    if (!placed.empty())  // without centres every slot is as near as the one region ever was
+        for (Slot& s : g.slots)
+        {
+            int nearest = 1 << 30;
+            for (int c : placed)
+                nearest = std::min(nearest, LatticeDistance(s.index, c));
+            s.hops = nearest;
+        }
+    g.centres = placed;
+    g.pirates = params.pirates;
+    g.unaffiliated = params.unaffiliated;
+    return g;
+}
+
+std::vector<Opening> InitialOpenings(const GalaxySkeleton& skeleton)
+{
+    std::vector<Opening> out;
+    for (int c : skeleton.centres)
+        out.push_back({ c, -1 });
+    std::vector<int> taken;
+    for (int c : skeleton.centres)
+    {
+        // A linked neighbour that is frontier and nobody else's first: the seed chooses.
+        std::vector<int> choice;
+        for (int n : skeleton.slots[(size_t)c].neighbours)
+            if (skeleton.slots[(size_t)n].kind == SlotKind::Frontier &&
+                std::find(taken.begin(), taken.end(), n) == taken.end())
+                choice.push_back(n);
+        if (choice.empty())
+            continue;
+        Rng       rng(Key(skeleton.seed, FIRST_FRONTIER, (uint64_t)c));
+        const int pick = choice[(size_t)rng.Range(0, (int)choice.size() - 1)];
+        taken.push_back(pick);
+        out.push_back({ pick, c });
+    }
+    return out;
+}
+
 nlohmann::json SkeletonJson(const GalaxySkeleton& skeleton)
 {
     nlohmann::json out;
@@ -161,6 +257,19 @@ nlohmann::json SkeletonJson(const GalaxySkeleton& skeleton)
               { "kind", SlotKindName(s.kind) },
               { "inward", s.inward },
               { "neighbours", s.neighbours } });
+    // Only a skeleton with centres says what they make of it, so one without hashes as it
+    // always has.
+    if (!skeleton.centres.empty())
+    {
+        for (const Slot& s : skeleton.slots)
+        {
+            nlohmann::json& j = out["slots"][(size_t)s.index];
+            j["hops"] = s.hops;
+            if (!s.owner.empty())
+                j["owner"] = s.owner;
+        }
+        out["centres"] = skeleton.centres;
+    }
     out["links"] = nlohmann::json::array();
     for (const auto& l : skeleton.links)
         out["links"].push_back(nlohmann::json::array({ l.first, l.second }));

@@ -23,6 +23,7 @@ namespace Gen
 {
 
 struct RegionParams;
+struct WorldParams;
 
 // One generated system, with where it came from.
 struct SurveySystem
@@ -31,7 +32,8 @@ struct SurveySystem
     std::string    id;           // "r0-3-2"
     std::string    designation;  // "W-3.2", from the galaxy index entry
     int            depth = 0;
-    nlohmann::json doc;  // the system document, in the shape of data/systems/*.json
+    nlohmann::json doc;             // the system document, in the shape of data/systems/*.json
+    bool           centre = false;  // in a civilisation centre (#342 S2), not the frontier
 };
 
 // The regions of `count` consecutive seeds starting at `firstSeed`, every system of each,
@@ -39,6 +41,12 @@ struct SurveySystem
 // for everything but the seed (home system, known map), so the survey sees the same
 // regions a server would generate from those seeds.
 std::vector<SurveySystem> GenerateSurvey(const RegionParams& base, uint64_t firstSeed, int count);
+
+// The same over whole worlds (#342 S2): for each seed, the world `base` describes with that
+// seed, and of it the first civilisation centre and the frontier opened beside it -- the two
+// kinds of region a player meets first, in the order the world opens them.
+std::vector<SurveySystem> GenerateWorldSurvey(const WorldParams& base, uint64_t firstSeed,
+                                              int count);
 
 // What a system has, counted.
 struct SystemSummary

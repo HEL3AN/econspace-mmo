@@ -79,7 +79,8 @@ void Simulation::SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& i
     if (!info.owner.empty() && !Factions::Find(info.owner, a.controller))
         TraceLog(LOG_WARNING, "Universe: %s is owned by '%s', which is not a faction -- held by %s",
                  info.id.c_str(), info.owner.c_str(), Factions::Id(a.controller).c_str());
-    a.visited = regionDocs_.count(info.id) == 0;  // beyond the wormhole, nobody has been
+    // Beyond a wormhole nobody has been; a civilisation's own space is charted (#342 S2).
+    a.visited = regionDocs_.count(info.id) == 0 || InCentre(info.id);
     a.claimed = !info.owner.empty();
     SeedPresence(a);
     a.seeded = true;
@@ -250,11 +251,36 @@ void Simulation::AttachRegion(uint64_t seed, const std::string& systemsDir, int 
     AttachRegion(seed, 0, universe_.startId, systemsDir, systems);
 }
 
+namespace
+{
+// data/pins.json applied to a region just made (#147), always after generation. Every pin
+// that cannot apply is said, by name.
+void ApplyPinsFile(Gen::Region& region, const std::string& path, uint64_t seed)
+{
+    std::ifstream pinsIn(path);
+    if (!pinsIn.is_open())
+        return;
+    const nlohmann::json     pins = nlohmann::json::parse(pinsIn, nullptr, false);
+    std::vector<std::string> problems;
+    if (pins.is_discarded())
+        problems.push_back("pins.json is not valid JSON");
+    else
+        Gen::ApplyPins(region, pins, seed, problems);
+    for (const std::string& p : problems)
+        TraceLog(LOG_WARNING, "Pins: %s -- not applied", p.c_str());
+}
+}  // namespace
+
 bool Simulation::AttachRegion(uint64_t seed, int slot, const std::string& homeId,
                               const std::string& systemsDir, int systems)
 {
     // One world, one seed: two seeds would be two galaxies sharing ids (#342).
     if (slot < 0 || openSlots_.count(slot) != 0 || (hasRegion_ && seed != regionSeed_))
+        return false;
+    // A centre opens from nowhere (OpenGalaxy); everything else from a home.
+    const bool laidOut = !skeleton_.slots.empty();
+    if (laidOut && (slot >= (int)skeleton_.slots.size() ||
+                    skeleton_.slots[(size_t)slot].kind == Gen::SlotKind::Centre))
         return false;
     const WorldLoader::SystemInfo* home = nullptr;
     for (const auto& info : universe_.systems)
@@ -275,7 +301,13 @@ bool Simulation::AttachRegion(uint64_t seed, int slot, const std::string& homeId
         if (in.is_open())
             homeDoc = nlohmann::json::parse(in, nullptr, false);
     }
-    Gen::RegionParams params;
+    // What the slot is -- its distance from a centre decides its law and its riches (S2).
+    Gen::RegionParams params = laidOut ? Gen::SlotParams(skeleton_, slot) : Gen::RegionParams{};
+    if (!laidOut)
+    {
+        params.pirates = Factions::Id(Factions::Pirates());
+        params.unaffiliated = Factions::Id(Factions::Unaffiliated());
+    }
     params.seed = seed;
     params.slot = slot;
     params.homeId = home->id;
@@ -297,27 +329,22 @@ bool Simulation::AttachRegion(uint64_t seed, int slot, const std::string& homeId
     if (systems > 0)
         params.systems = systems;
     Gen::Region region = Gen::GenerateRegion(params);
-    // `home` points into universe_.systems, which the region's entries are about to grow.
-    const std::string homeKey = home->id;
-    home = nullptr;
-
     // Then the hand-written exceptions, always after (#147): data/pins.json beside the
-    // systems directory. Every pin that cannot apply is said, by name.
-    {
-        std::ifstream pinsIn(systemsDir + "../pins.json");
-        if (pinsIn.is_open())
-        {
-            const nlohmann::json     pins = nlohmann::json::parse(pinsIn, nullptr, false);
-            std::vector<std::string> problems;
-            if (pins.is_discarded())
-                problems.push_back("pins.json is not valid JSON");
-            else
-                Gen::ApplyPins(region, pins, seed, problems);
-            for (const std::string& p : problems)
-                TraceLog(LOG_WARNING, "Pins: %s -- not applied", p.c_str());
-        }
-    }
+    // systems directory -- found by name, since the directory itself need not exist.
+    std::string dir = systemsDir;
+    while (!dir.empty() && (dir.back() == '/' || dir.back() == '\\'))
+        dir.pop_back();
+    const size_t cut = dir.find_last_of("/\\");
+    ApplyPinsFile(region,
+                  (cut == std::string::npos ? std::string() : dir.substr(0, cut + 1)) + "pins.json",
+                  seed);
+    regionSeed_ = seed;
+    AddRegion(region);
+    return true;
+}
 
+void Simulation::AddRegion(const Gen::Region& region)
+{
     for (const auto& s : region.systems)
     {
         WorldLoader::SystemInfo info;
@@ -338,24 +365,99 @@ bool Simulation::AttachRegion(uint64_t seed, int slot, const std::string& homeId
     for (const auto& kv : region.documents)
         regionDocs_[kv.first] = kv.second.dump();
     // The wormhole's mouth belongs to the opening, not to home's region: it is kept beside
-    // home -- a file or another region's document -- and added when home is built.
-    wormholes_[homeKey].push_back(region.wormhole.dump());
-    regionSeed_ = seed;
+    // home -- a file or another region's document -- and added when home is built. A centre
+    // has none: nothing leads into it.
+    if (!region.homeId.empty() && !region.wormhole.empty())
+        wormholes_[region.homeId].push_back(region.wormhole.dump());
     hasRegion_ = true;
-    openSlots_.insert(slot);
-    return true;
+    openSlots_.insert(region.slot);
 }
 
-bool Simulation::ReadWorldSeed(const std::string& path, uint64_t& seed, int& generator)
+bool Simulation::OpenGalaxy(const Gen::WorldParams& params, const std::string& dataDir)
+{
+    if (hasRegion_)
+        return false;
+    skeleton_ = Gen::GenerateGalaxySkeleton(params);
+    regionSeed_ = params.seed;
+    // The same regions in the same order as every other tool that makes this world -- the
+    // editor, galaxydump, the tests -- because it is one function (#140).
+    const std::vector<Gen::Region> regions = Gen::GenerateWorld(
+        skeleton_, [&](Gen::Region& r) { ApplyPinsFile(r, dataDir + "pins.json", params.seed); });
+    for (const Gen::Region& r : regions)
+    {
+        AddRegion(r);
+        if (r.heartId.empty())
+            continue;
+        StartPoint sp;
+        sp.systemId = r.heartId;
+        for (const auto& s : r.systems)
+            if (s.value("id", std::string()) == r.heartId)
+            {
+                sp.systemName = s.value("name", r.heartId);
+                sp.owner = s.value("owner", std::string());
+            }
+        const auto doc = r.documents.find(r.heartId);
+        if (doc != r.documents.end() && doc->second.contains("stations"))
+            for (const auto& st : doc->second["stations"])
+                if (sp.station.empty() && st.value("role", std::string()) == "TradeHub")
+                    sp.station = st.value("name", std::string());
+        starts_.push_back(sp);
+    }
+    hasRegion_ = true;
+    return !starts_.empty();
+}
+
+bool Simulation::OpenSlotFrom(int slot, int from, const std::string& dataDir)
+{
+    if (openSlots_.count(from) == 0)
+        return false;
+    // The open region as far as MouthSystem asks: which systems, and where they lie.
+    Gen::Region parent;
+    parent.slot = from;
+    for (const auto& info : universe_.systems)
+        if (Gen::SlotOf(info.id) == from && regionDocs_.count(info.id) != 0)
+            parent.systems.push_back(
+                { { "id", info.id },
+                  { "map", nlohmann::json::array({ info.mapPos.x, info.mapPos.y }) } });
+    double tx, ty;
+    Gen::SlotMapPoint(regionSeed_, slot, tx, ty);
+    const std::string home = Gen::MouthSystem(parent, tx, ty);
+    return !home.empty() && AttachRegion(regionSeed_, slot, home, dataDir + "systems/");
+}
+
+bool Simulation::InCentre(const std::string& systemId) const
+{
+    const int slot = Gen::SlotOf(systemId);
+    return slot >= 0 && slot < (int)skeleton_.slots.size() &&
+           skeleton_.slots[(size_t)slot].kind == Gen::SlotKind::Centre;
+}
+
+bool Simulation::IsStart(const std::string& systemId) const
+{
+    for (const StartPoint& s : starts_)
+        if (s.systemId == systemId)
+            return true;
+    return false;
+}
+
+bool Simulation::ReadWorldSeed(const std::string& path, uint64_t& seed, int& generator,
+                               int* centres)
 {
     std::ifstream in(path);
     if (!in.is_open())
         return false;
     const nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
-    if (j.is_discarded() || !j.contains("seed"))
+    if (j.is_discarded() || !j.is_object() || !j.contains("seed") ||
+        !j["seed"].is_number_unsigned())
         return false;
     seed = j["seed"].get<uint64_t>();
-    generator = j.value("generator", 0);
+    generator = j.contains("generator") && j["generator"].is_number_integer()
+                    ? j["generator"].get<int>()
+                    : 0;
+    if (centres != nullptr)
+        *centres = j.contains("centres") && j["centres"].is_number_integer()
+                       ? j["centres"].get<int>()
+                       : -1;
     return true;
 }
 
@@ -579,6 +681,8 @@ bool Simulation::SaveWorld(const std::string& path) const
     {
         j["seed"] = regionSeed_;
         j["generator"] = Gen::GENERATOR_VERSION;
+        if (!skeleton_.slots.empty())  // and how many civilisations it was made with (S2)
+            j["centres"] = (int)skeleton_.centres.size();
     }
     json galaxy = json::object();
     for (const auto& kv : systems_)
@@ -1103,6 +1207,8 @@ bool Simulation::NameSystem(ClientSession& s, const std::string& name)
     auto it = systems_.find(s.systemId);
     if (it == systems_.end() || regionDocs_.count(s.systemId) == 0)
         return refuse("only a system beyond the wormhole can be named");
+    if (InCentre(s.systemId))
+        return refuse(SystemName(s.systemId) + " was named long before you were born");
     SystemAggregate& a = it->second.agg;
     if (!a.givenName.empty())
         return refuse(SystemName(s.systemId) + " already has its name");

@@ -13,6 +13,7 @@
 
 #include "Editor.h"
 
+#include "core/Faction.h"
 #include "core/World.h"
 #include "entities/Planet.h"
 #include "gen/Region.h"
@@ -202,12 +203,15 @@ void Editor::RegenerateSurvey()
 {
     // The regions a server would generate from these seeds: the same home system, the
     // same map around it, so the survey is of the real thing and not of a lab copy.
-    nlohmann::json          homeDoc;
-    const Gen::RegionParams base = RegionParamsFromData(homeDoc);
+    Gen::WorldParams base;
+    base.centres = Gen::DEFAULT_CENTRES;
+    base.owners = Factions::MajorIds();
+    base.pirates = Factions::Id(Factions::Pirates());
+    base.unaffiliated = Factions::Id(Factions::Unaffiliated());
 
     surveyCards_.clear();
     std::vector<nlohmann::json> docs;
-    for (Gen::SurveySystem& s : Gen::GenerateSurvey(base, surveySeed_, surveyRegions_))
+    for (Gen::SurveySystem& s : Gen::GenerateWorldSurvey(base, surveySeed_, surveyRegions_))
     {
         SurveyCard card;
         // Built and described once: a scene of fifty systems is a few thousand items, and
@@ -469,8 +473,9 @@ void Editor::DrawSurvey(bool labels)
         const int                 twin = survey_.twinOf[(size_t)surveySelected_];
         float                     y = box.y + 10.0f;
         const int                 x = (int)box.x + 12;
-        Ui::Text(TextFormat("%s   seed %llu   %s   depth %d", c.system.designation.c_str(),
-                            (unsigned long long)c.system.seed, c.system.id.c_str(), c.system.depth),
+        Ui::Text(TextFormat("%s   seed %llu   %s   %s depth %d", c.system.designation.c_str(),
+                            (unsigned long long)c.system.seed, c.system.id.c_str(),
+                            c.system.centre ? "centre" : "frontier", c.system.depth),
                  x, (int)y, 18, Ui::ACCENT);
         y += 24.0f;
         std::string line = (s.star.empty() ? std::string("no") : s.star) + " star   " +
@@ -541,13 +546,19 @@ void Editor::DrawSurvey(bool labels)
         // Seed and designation on top, what it has at the bottom, the verdict at the right.
         DrawRectangleRec({ card.x + 1.0f, card.y + 1.0f, card.width - 2.0f, 30.0f },
                          Fade(Ui::PANEL_BG, 0.55f));
+        // A civilisation centre's systems (#342 S2) in the accent, with a bar down the side:
+        // the survey is of both kinds of region, and they are judged by different rules.
+        if (c.system.centre)
+            DrawRectangleRec({ card.x + 1.0f, card.y + 1.0f, 3.0f, card.height - 2.0f },
+                             Ui::ACCENT);
         Ui::Text(TextFormat("%s", c.system.designation.c_str()), (int)card.x + 6, (int)card.y + 3,
-                 13, Ui::TEXT);
+                 13, c.system.centre ? Ui::ACCENT : Ui::TEXT);
         Ui::Text(TextFormat("seed %llu", (unsigned long long)c.system.seed),
                  (int)(card.x + card.width) - 6 -
                      Ui::TextWidth(TextFormat("seed %llu", (unsigned long long)c.system.seed), 11),
                  (int)card.y + 5, 11, Ui::TEXT_DIM);
-        std::string sub = "d" + std::to_string(c.system.depth) + "  " + s.star;
+        std::string sub = std::string(c.system.centre ? "centre " : "") + "d" +
+                          std::to_string(c.system.depth) + "  " + s.star;
         if (!s.character.empty())
             sub += "  " + s.character;
         Ui::Text(sub.c_str(), (int)card.x + 6, (int)card.y + 18, 10, Ui::TEXT_DIM);

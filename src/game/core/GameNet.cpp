@@ -190,7 +190,18 @@ void Game::BuildClientSnapshot()
         }
 
         std::string type = Proto::MessageType(msg);
-        if (type == "universe")
+        if (type == "starts")
+        {
+            Proto::Starts st;
+            if (Proto::DecodeStarts(msg, st))
+            {
+                starts_ = std::move(st);
+                choosingStart_ = true;
+                if (!autoStart_.empty())
+                    ChooseStart(autoStart_ == "random" ? std::string() : autoStart_);
+            }
+        }
+        else if (type == "universe")
         {
             // The galaxy index (#206): replaced whole, because it is sent whole -- at login
             // and again whenever the server's index changes.

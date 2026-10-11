@@ -36,7 +36,7 @@ struct Fixture
         Factions::Load(std::string(TEST_DATA_DIR) + "factions.json");
         Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json");
         Blueprints::Load(std::string(TEST_DATA_DIR) + "blueprints.json");
-        sim.LoadUniverse(std::string(TEST_DATA_DIR) + "universe.json");
+        sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
         sim.Seed(1234u);
         sim.InitGalaxy();
         return sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f },

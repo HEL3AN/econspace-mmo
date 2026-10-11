@@ -66,6 +66,24 @@ Rpc::Json TextResult(const std::string& text)
                         Rpc::Json::array({ Rpc::Json{ { "type", "text" }, { "text", text } } }) } };
 }
 
+// What a pilot with no ship yet is offered (#342 S2): the starts, one a line.
+std::string DescribeStarts()
+{
+    const Proto::Starts& s = g_session.Starts();
+    std::string out = "NO SHIP YET: this pilot has not begun. Choose where with "
+                      "choose_start" +
+                      std::string(s.randomOnly ? " (this server deals starts at random: call "
+                                                 "it with no start)"
+                                               : "") +
+                      ".\nSTARTS (the capital of each civilisation):\n";
+    for (const Proto::StartOption& o : s.options)
+        out += "  " + o.system + "  " + o.name + " -- arrive at " + o.station + ", " + o.owner +
+               " space\n";
+    return out;
+}
+
+void RequireShip();
+
 void RequireLive()
 {
     g_session.Pump();
@@ -77,6 +95,14 @@ void RequireLive()
     if (!g_session.Alive())
         throw Rpc::Error{ Rpc::INTERNAL_ERROR,
                           "connection to the server is closed: " + g_session.CloseReason() };
+    RequireShip();
+}
+
+// Everything but observe and choose_start needs a ship, and a pilot choosing a start has none.
+void RequireShip()
+{
+    if (g_session.AwaitingStart())
+        throw Rpc::Error{ Rpc::INVALID_PARAMS, "no ship yet: call choose_start first" };
 }
 
 double NumberOr(const Rpc::Json& args, const char* key, double fallback)
@@ -417,10 +443,39 @@ std::vector<Tool> BuildTools()
           "changes. Use detail='full' only when deciding something.",
           Obj({ { "detail", Str("'brief' (default) or 'full'") } }), [](const Rpc::Json& args)
           {
+              g_session.Pump();
+              if (g_session.AwaitingStart())
+                  return DescribeStarts();
               RequireLive();
               const std::string d =
                   args.value("detail", std::string("brief")) == "full" ? "full" : "brief";
               return g_session.Describe(d == "full" ? Obs::Detail::Full : Obs::Detail::Brief);
+          } });
+
+    tools.push_back(
+        { "choose_start",
+          "Choose where a new pilot begins: the capital of one civilisation, from the list "
+          "observe shows when there is no ship yet. Asked once, for a new account or one whose "
+          "system is gone. Leave start out for a random one.",
+          Obj({ { "start", Str("a system id from the starts list, or 'random'") } }),
+          [](const Rpc::Json& args)
+          {
+              g_session.Pump();
+              if (!g_session.AwaitingStart())
+                  return std::string("This pilot has already begun; a start is chosen once.");
+              std::string want = args.value("start", std::string());
+              if (want == "random")
+                  want.clear();
+              bool known = want.empty();
+              for (const Proto::StartOption& o : g_session.Starts().options)
+                  known = known || o.system == want;
+              if (!known)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "not a start: " + want + "\n" + DescribeStarts() };
+              g_session.ChooseStart(want);
+              g_session.WaitUntil([] { return g_session.HasSnapshot(); }, 10.0);
+              RequireLive();
+              return "Begun.\n" + g_session.Describe(Obs::Detail::Brief);
           } });
 
     tools.push_back({ "move_to",
@@ -1249,6 +1304,20 @@ int Selftest(const std::vector<Tool>& tools)
     auto note = [](const char* what, bool ok)
     { std::fprintf(stderr, "  %-22s %s\n", what, ok ? "OK" : "FAIL"); };
 
+    // 0) A new pilot begins somewhere (#342 S2): offered the starts, takes the first.
+    if (g_session.AwaitingStart())
+    {
+        g_phase = "choosing a start";
+        const std::string offered = RunTool(tools, "observe", Rpc::Json::object());
+        const std::string first = g_session.Starts().options.empty()
+                                      ? std::string()
+                                      : g_session.Starts().options.front().system;
+        const std::string begun = RunTool(tools, "choose_start", Rpc::Json{ { "start", first } });
+        note("choose_start", offered.find("STARTS") != std::string::npos &&
+                                 begun.find("Begun") != std::string::npos &&
+                                 g_session.Snapshot().systemId == first);
+    }
+
     // 1) The world is visible at all.
     g_phase = "observing";
     std::string world = RunTool(tools, "observe", Rpc::Json::object());
@@ -1426,7 +1495,8 @@ int main(int argc, char** argv)
     {
         std::fprintf(stderr,
                      "econagent — EconSpace as an MCP server.\n"
-                     "  %s connect <host> <port> <name> <secret>   serve MCP on stdio\n"
+                     "  %s connect <host> <port> <name> <secret> [--start ID|random]\n"
+                     "                                             serve MCP on stdio\n"
                      "  %s selftest <host> <port> <name> <secret>  scripted run\n"
                      "  %s describe                                 the tools, resources and "
                      "prompts, as JSON\n"
@@ -1450,6 +1520,12 @@ int main(int argc, char** argv)
     }
     const std::string account = (argc >= 5) ? argv[4] : "agent";
     const std::string secret = (argc >= 6) ? argv[5] : "agent-local";
+    // --start ID|random: a new pilot begins there without a choose_start call (#342 S2) --
+    // for a script that holds a session open and says nothing.
+    std::string startAt;
+    for (int i = 6; i + 1 < argc; i++)
+        if (std::strcmp(argv[i], "--start") == 0)
+            startAt = argv[i + 1];
 
     std::string dataDir = AGENT_DATA_DIR;
     if (!Factions::Load(dataDir + "factions.json"))
@@ -1478,7 +1554,12 @@ int main(int argc, char** argv)
     // Give the server a moment to send the opening layout and snapshot, so the first
     // observe has a world in it rather than "no world state yet".
     g_phase = "waiting for the first snapshot";
-    g_session.WaitUntil([] { return g_session.HasSnapshot(); }, 5.0);
+    g_session.WaitUntil([] { return g_session.HasSnapshot() || g_session.AwaitingStart(); }, 5.0);
+    if (g_session.AwaitingStart() && !startAt.empty())
+    {
+        g_session.ChooseStart(startAt == "random" ? std::string() : startAt);
+        g_session.WaitUntil([] { return g_session.HasSnapshot(); }, 5.0);
+    }
 
     const std::vector<Tool> tools = BuildTools();
     if (selftest)

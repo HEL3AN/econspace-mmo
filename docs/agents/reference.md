@@ -19,6 +19,14 @@ Look at the world: the ship, the system, what is nearby, hostiles, and recent ev
 |---|---|---|---|
 | `detail` | string |  | 'brief' (default) or 'full' |
 
+### `choose_start`
+
+Choose where a new pilot begins: the capital of one civilisation, from the list observe shows when there is no ship yet. Asked once, for a new account or one whose system is gone. Leave start out for a random one.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `start` | string |  | a system id from the starts list, or 'random' |
+
 ### `move_to`
 
 Fly to an object by id, or to a point. Finishes when the ship arrives. Use warp for anything far away.

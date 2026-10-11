@@ -44,12 +44,12 @@ std::unique_ptr<Simulation> World(bool allHot = false)
     SetRandomSeed(0xC0FFEEu);
     LoadRegistries();
     auto sim = std::make_unique<Simulation>();
-    sim->LoadUniverse(DATA + "universe.json");
-    sim->AttachRegion(7, DATA + "systems/");
+    sim->LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+    sim->AttachRegion(7, std::string(TEST_WORLD_DIR) + "systems/");
     sim->Seed(1234u);
     sim->SetAllHot(allHot);
     sim->InitGalaxy();
-    sim->MaterializeAllSystems(DATA + "systems/");
+    sim->MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
     return sim;
 }
 
@@ -506,10 +506,10 @@ TEST_CASE("a siege and what a faction cannot supply survive a restart (#295)")
     a->SaveWorld(path);
 
     Simulation b;
-    b.LoadUniverse(DATA + "universe.json");
-    b.AttachRegion(7, DATA + "systems/");
+    b.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+    b.AttachRegion(7, std::string(TEST_WORLD_DIR) + "systems/");
     REQUIRE(b.LoadWorld(path) == Save::Result::Ok);
-    b.MaterializeAllSystems(DATA + "systems/");
+    b.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
 
     REQUIRE(b.Plans().count(plan.id) == 1);
     const Plan back = b.Plans().at(plan.id);

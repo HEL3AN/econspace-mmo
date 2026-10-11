@@ -75,8 +75,10 @@ cmake --build build-release
 
 ./build/bin/server/econserver.exe host 50800        # authoritative server, this machine only
 ./build/bin/server/econserver.exe host 50800 --public   # ...reachable from other machines (#187)
+./build/bin/server/econserver.exe host 50800 --centres 4 --random-starts  # a new world's civilisations (1-6, 3 by default); deal starts
 ./build/bin/server/econserver.exe host 50800 --dev      # ...and honour debug commands such as F1's money (#341)
-./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2   # account + secret
+./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2   # account + secret; a new pilot chooses a start
+./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --start random --dock --shot d.png --frames 900  # ...or is given one, then docks
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --shot f.png --frames 120  # save frame 120, exit (--nohud: world only)
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --perf --frames 240  # CPU+GPU ms per phase to stderr (F9 in game; --notreat, --size W H; --treated puts a shot through the treatment)
 ./build/bin/editor/worldeditor.exe gallery shapes perf frames 200   # the same for the editor (`time T` freezes the clock, `treated` shot)
@@ -86,11 +88,11 @@ cmake --build build-release
 ./build/bin/editor/worldeditor.exe gallery           # every archetype at once, for tuning a look (F3)
 ./build/bin/editor/worldeditor.exe gallery shapes    # ...on the shape backend (F2 switches; F10 = screen treatment)
 ./build/bin/editor/worldeditor.exe gallery shapes settings  # ...with F10's panel open: every shader that failed, by name
-./build/bin/editor/worldeditor.exe survey 1 shapes   # ~50 generated systems from seeds 1.., flagged empty/thin/twin (F4)
+./build/bin/editor/worldeditor.exe survey 1 shapes   # a centre and its frontier per seed from 1.., flagged empty/thin/twin (F4)
 ./build/bin/editor/worldeditor.exe gallery shapes card planet.rocky shot out.png  # save that view and exit; works with the screen off
 ./build/bin/editor/worldeditor.exe gallery shapes card station.trade_hub seed 3 sockets  # one object of a type, its kit sockets shown ([ ] seed, K sockets)
-./build/bin/editor/worldeditor.exe region 7 system r0-2-1   # edit a generated system; Ctrl+S saves the difference as a pin in data/pins.json
-./build/bin/editor/worldeditor.exe region 7 map shot r.png   # its whole region as a map, pinned systems ringed (F5; click a system to edit it)
+./build/bin/editor/worldeditor.exe region 7 system r22-2-1   # edit a generated system; Ctrl+S saves the difference as a pin in data/pins.json
+./build/bin/editor/worldeditor.exe region 7 map shot r.png   # the first centre as a map, pinned systems ringed (F5; Tab: next region; click a system to edit it)
 ./build/bin/editor/worldeditor.exe gallery shapes card ship.player thrusting shot s.png  # ...with its engines lit
 
 ./build/bin/agent/econagent.exe connect 127.0.0.1 50800 agent hunter2  # MCP for an agent
@@ -99,7 +101,8 @@ cmake --build build-release
 ./build/bin/server/econserver.exe accttest          # account persistence smoke test
 ./build/bin/server/econserver.exe worldtest         # galaxy persistence + clock
 ./build/bin/server/econserver.exe ordertest         # standing orders, routes, journal
-./build/bin/server/econserver.exe regiondump 8     # the region seed 8 makes, as JSON (it is never saved)
+./build/bin/server/econserver.exe galaxydump 8     # the galaxy seed 8 makes -- skeleton, starts, regions -- as JSON (never saved)
+./build/bin/server/econserver.exe regiondump 8     # ...one region of it, the first centre unless a slot is named
 ./build/bin/server/econserver.exe galaxydump 8 0 4 --cap 100  # its skeleton of slots, and the regions of slots 0 and 4 (#342)
 ./build/bin/server/econserver.exe macrobench 1000  # cost per tick/pass with a 1000-system region, nobody on (#295)
 ```
@@ -124,8 +127,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
 
 - Authority lives in `Simulation` (`src/game/sim/`), on a fixed `1/60` tick. The client
   never mutates authoritative state.
-- The world is data: `data/universe.json`, `data/systems/*.json`, `data/factions.json`.
-  The editor writes exactly the format the runtime reads — keep it that way.
+- The world is data, and generated: nothing hand-written is required (#342). `data/factions.json`,
+  `data/archetypes.json` and `data/pins.json` are read; the hand-written format
+  (`universe.json`, `systems/*.json`) is the editor's, the test fixture's
+  (`tests/fixtures/world/`) and the admin packs'. The editor writes exactly the format the
+  runtime reads — keep it that way.
 - Follow [CONVENTIONS.md](CONVENTIONS.md): types and methods `PascalCase`, class fields
   `camelCase_`, formatting per `.clang-format`.
 - Everything in the repository — code, comments, docs, commit messages — is in **English**.
