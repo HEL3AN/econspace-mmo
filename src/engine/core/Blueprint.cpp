@@ -288,17 +288,18 @@ bool Load(const std::string& path)
     {
         const json& s = j["siege"];
         if (!s.is_object() ||
-            !OnlyKnownKeys(
-                s,
-                { "cost", "seconds", "jitter", "commit", "dps", "defence", "attrition", "shock" },
-                err) ||
+            !OnlyKnownKeys(s,
+                           { "cost", "seconds", "jitter", "commit", "dps", "defence", "attrition",
+                             "shock", "reach", "hop", "pool" },
+                           err) ||
             !ReadNumber(s, "cost", siege.cost, err) ||
             !ReadNumber(s, "seconds", siege.seconds, err) ||
             !ReadNumber(s, "jitter", siege.jitter, err) ||
             !ReadShare(s, "commit", siege.commit, err) || !ReadNumber(s, "dps", siege.dps, err) ||
             !ReadNumber(s, "defence", siege.defence, err) ||
             !ReadShare(s, "attrition", siege.attrition, err) ||
-            !ReadShare(s, "shock", siege.shock, err))
+            !ReadShare(s, "shock", siege.shock, err) || !ReadNumber(s, "reach", siege.reach, err) ||
+            !ReadNumber(s, "hop", siege.hop, err) || !ReadNumber(s, "pool", siege.pool, err))
         {
             g_error = path + ": siege: " + (err.empty() ? "not an object" : err);
             return false;
