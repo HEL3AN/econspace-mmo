@@ -170,6 +170,46 @@ Refit the ship you fly to a fit, docked at a station with a shipyard, paid in cr
 |---|---|---|---|
 | `fit` | array | yes | the whole fit, every line, as fitting prints it |
 
+### `designs`
+
+The designs you saved under names of your own: the hull each is for, how it would fly, and, for the hull you fly, what applying it costs at this station. At most 24.
+
+No arguments.
+
+### `save_design`
+
+Save a fit of the hull you fly under a name of your own, anywhere and for nothing; a name you already have is saved over. Without a fit it saves the fit the ship has now. apply_design refits to it later, on this ship or another of the same hull.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `fit` | array |  | the whole fit, every line, as fitting prints it |
+| `name` | string | yes | your name for it, up to 32 characters |
+
+### `apply_design`
+
+Refit the ship you fly to a design you saved, docked at a station with a shipyard. The design must be for the hull you fly; it is priced as refit prices the same fit, and designs says the price first.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | string | yes | the design's name, as designs lists it |
+
+### `rename_design`
+
+Give a design you saved another name. The design itself does not change.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | string | yes | its name now |
+| `to` | string | yes | the new name, up to 32 characters |
+
+### `delete_design`
+
+Take a design out of your library. A ship that flies it keeps flying it.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | string | yes | the design's name, as designs lists it |
+
 ### `pay_bounty`
 
 Pay off the bounty a faction has on you, at a station, so its ships stop hunting you. Costs the whole bounty. observe with detail='full' lists who wants you.

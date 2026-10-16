@@ -488,6 +488,9 @@ private:
     std::vector<Ships::FitLine> fitDraft_;
     std::string                 fitDraftFor_;
     int                         fitSel_ = 0;
+    // ...and its design library (#279 step 3): the saved design chosen, and the name typed.
+    std::string designSel_;
+    std::string designName_;
 
     // Missions, radar and settings (#297).
     Ui::Layout  missionsLayout_;

@@ -32,7 +32,9 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    31;  // 31: the server's faction registry, sent before anything names one of its factions
+    32;  // 32: the named design library -- save, apply, rename and delete in a command, the
+         // library in the player's snapshot (#279 fitting, step 3); 31: the server's faction
+         // registry, sent before anything names one of its factions
          // (#342 S5, #355); 30: a snapshot is numbered and may be a delta against one the client
          // acknowledged with an Ack; entities are quantised integers, and beyond the area of
          // interest they are coarse and refreshed once a second; missions are part of the delta
@@ -165,6 +167,16 @@ struct Command
     // server checks it, prices it and charges for it; a refusal is a Notice saying why.
     bool                        refit = false;
     std::vector<Ships::FitLine> refitLines;
+    // The named design library (#279 fitting, step 3), each by the name the player gave it;
+    // empty -- not this command. Save files `saveLines` on the hull being flown under
+    // `saveDesign`; apply refits to a saved design as `refit` would; rename gives
+    // `renameDesign` the name `renameTo`. A refusal is a Notice saying why.
+    std::string                 saveDesign;
+    std::vector<Ships::FitLine> saveLines;
+    std::string                 applyDesign;
+    std::string                 renameDesign;
+    std::string                 renameTo;
+    std::string                 deleteDesign;
     // Account actions (server-authoritative, M4f): buy ship / pay bounty / cheat.
     int         buyShip = -1;          // buy ship by catalog index (-1 none)
     std::string payBountyFaction;      // pay off bounty with a faction (its id; empty none)
@@ -232,6 +244,13 @@ struct EntitySnapshot
     std::string design;
 };
 
+// One entry of a player's design library: their name for it, and the design's id.
+struct SavedDesign
+{
+    std::string name;
+    std::string design;
+};
+
 // Player ship state in the snapshot.
 struct PlayerView
 {
@@ -243,6 +262,9 @@ struct PlayerView
     // stock design until it is refitted, then one the server filed. Every id here that is
     // not a stock one has had its DesignDef sent first.
     std::vector<std::string> shipDesigns;
+    // The account's saved designs, by name (#279 fitting, step 3); each id that is not a
+    // stock one has had its DesignDef sent first, so the client can price and derive it.
+    std::vector<SavedDesign> library;
 
     Vector2 pos = { 0.0f, 0.0f };
     Vector2 vel = { 0.0f, 0.0f };

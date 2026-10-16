@@ -64,6 +64,10 @@ const char* Name(Verb verb)
         case Verb::Dismantle: return "Dismantle";
         case Verb::Refit: return "Refit";
         case Verb::Defence: return "Rules of engagement...";
+        case Verb::SaveDesign: return "Save as";
+        case Verb::ApplyDesign: return "Apply";
+        case Verb::RenameDesign: return "Rename";
+        case Verb::DeleteDesign: return "Delete";
     }
     return "";
 }
@@ -101,6 +105,10 @@ const char* ToolFor(Verb verb)
         case Verb::Dismantle: return "dismantle";
         case Verb::Refit: return "refit";
         case Verb::Defence: return "set_defence";
+        case Verb::SaveDesign: return "save_design";
+        case Verb::ApplyDesign: return "apply_design";
+        case Verb::RenameDesign: return "rename_design";
+        case Verb::DeleteDesign: return "delete_design";
         case Verb::Attack: return "attack";
         case Verb::Investigate: return "salvage";
         // The interface's own: they change what a window shows, not the world. An agent
@@ -119,6 +127,37 @@ std::vector<Action> ForRefit(const std::vector<Ships::FitLine>& fit, bool atShip
     Action a = Make(Verb::Refit);
     a.fit = fit;
     out.push_back(std::move(a));
+    return out;
+}
+
+std::vector<Action> ForLibrary(const LibraryTarget& lib)
+{
+    std::vector<Action> out;
+    if (lib.typedOk && (lib.room || lib.typedTaken))
+    {
+        Action a = Make(Verb::SaveDesign);
+        a.design = lib.typed;
+        a.fit = lib.fit;
+        out.push_back(std::move(a));
+    }
+    if (lib.selected.empty())
+        return out;
+    if (lib.canApply)
+    {
+        Action a = Make(Verb::ApplyDesign);
+        a.design = lib.selected;
+        out.push_back(std::move(a));
+    }
+    if (lib.typedOk && !lib.typedTaken)
+    {
+        Action a = Make(Verb::RenameDesign);
+        a.design = lib.selected;
+        a.renameTo = lib.typed;
+        out.push_back(std::move(a));
+    }
+    Action del = Make(Verb::DeleteDesign);
+    del.design = lib.selected;
+    out.push_back(std::move(del));
     return out;
 }
 

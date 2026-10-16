@@ -20,6 +20,7 @@
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
+#include "core/Fitting.h"
 #include "core/WorldLoader.h"
 #include "economy/Resource.h"
 #include "entities/Defence.h"
@@ -456,6 +457,18 @@ std::vector<Ships::FitLine> FitArg(const Rpc::Json& args)
         fit.push_back(std::move(line));
     }
     return fit;
+}
+
+// A design's name in the library (#279 step 3), checked by the rule the server keeps.
+std::string DesignNameArg(const Rpc::Json& args, const char* key)
+{
+    if (!args.contains(key) || !args[key].is_string())
+        throw Rpc::Error{ Rpc::INVALID_PARAMS, std::string(key) + " is a design's name" };
+    const std::string name = args[key].get<std::string>();
+    std::string       why;
+    if (!Ships::ValidDesignName(name, why))
+        throw Rpc::Error{ Rpc::INVALID_PARAMS, why };
+    return name;
 }
 
 Rpc::Json FitSchema()
@@ -918,6 +931,154 @@ std::vector<Tool> BuildTools()
                      ", cargo " + std::to_string(q.after.cargoCapacity) + ", guns " +
                      std::to_string((int)std::lround(q.after.damage)) + "/shot, money now " +
                      Money(g_session.Snapshot().player.money);
+          } });
+
+    // The named design library (#279 fitting, step 3).
+    tools.push_back({ "designs",
+                      "The designs you saved under names of your own: the hull each is for, how "
+                      "it would fly, and, for the hull you fly, what applying it costs at this "
+                      "station. At most 24.",
+                      Obj({}), [](const Rpc::Json&)
+                      {
+                          RequireLive();
+                          return Obs::DescribeDesigns(CurrentView());
+                      } });
+
+    tools.push_back(
+        { "save_design",
+          "Save a fit of the hull you fly under a name of your own, anywhere and for nothing; "
+          "a name you already have is saved over. Without a fit it saves the fit the ship has "
+          "now. apply_design refits to it later, on this ship or another of the same hull.",
+          Obj({ { "name", Str("your name for it, up to 32 characters") }, { "fit", FitSchema() } },
+              { "name" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              const std::string           name = DesignNameArg(args, "name");
+              std::vector<Ships::FitLine> fit;
+              if (args.contains("fit"))
+                  fit = FitArg(args);
+              else if (const Ships::Design* now = Obs::CurrentDesign(CurrentView()))
+                  fit = Ships::PlayerLines(*now);
+              const std::vector<Proto::SavedDesign>& lib = g_session.Snapshot().player.library;
+              bool                                   have = false;
+              for (const Proto::SavedDesign& d : lib)
+                  have = have || d.name == name;
+              if (!have && (int)lib.size() >= Ships::LIBRARY_MAX)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "the library is full; delete_design one first" };
+              // The server's rules, checked here first so a refusal names the line at fault.
+              const Obs::FitQuote q = Obs::QuoteFit(CurrentView(), fit);
+              if (q.design.id.empty())
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, q.problem };
+
+              const int      seq = g_session.LastEventSeq();
+              Proto::Command c;
+              c.saveDesign = name;
+              c.saveLines = fit;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "save_design: " + why;
+              for (const Proto::SavedDesign& d : g_session.Snapshot().player.library)
+                  if (d.name == name && d.design == q.design.id)
+                      return "save_design: saved '" + name + "' for the " + q.hull + " (" +
+                             d.design + ")";
+              return Refused("save_design", seq, "the server did not save it; call designs");
+          } });
+
+    tools.push_back(
+        { "apply_design",
+          "Refit the ship you fly to a design you saved, docked at a station with a shipyard. "
+          "The design must be for the hull you fly; it is priced as refit prices the same fit, "
+          "and designs says the price first.",
+          Obj({ { "name", Str("the design's name, as designs lists it") } }, { "name" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              RequireDocked("refitting");
+              const std::string                      name = DesignNameArg(args, "name");
+              const Obs::SavedDesignRow*             row = nullptr;
+              const std::vector<Obs::SavedDesignRow> rows = Obs::SavedDesigns(CurrentView());
+              for (const Obs::SavedDesignRow& r : rows)
+                  if (r.name == name)
+                      row = &r;
+              if (row == nullptr)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "no design called '" + name +
+                                                             "' in your library; call designs" };
+              if (!row->known)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "design '" + name + "' is not known here yet; try again" };
+              if (!row->thisHull)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "design '" + name + "' is for the " +
+                                                             row->hull + "; switch_ship first" };
+              if (!row->quote.ok)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, row->quote.problem };
+              const Obs::FitQuote q = row->quote;
+              const double        moneyBefore = g_session.Snapshot().player.money;
+
+              const int      seq = g_session.LastEventSeq();
+              Proto::Command c;
+              c.applyDesign = name;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "apply_design: " + why;
+              const Ships::Design* now = Obs::CurrentDesign(CurrentView());
+              if (now == nullptr || now->id != q.design.id)
+                  return Refused("apply_design", seq,
+                                 "the server did not refit; call fitting to see the ship as "
+                                 "it is now");
+              const double paid = moneyBefore - g_session.Snapshot().player.money;
+              return "apply_design: the " + q.hull + " flies '" + name + "' now" +
+                     (paid >= 0.0 ? ", for " + Money(paid) : ", refunded " + Money(-paid)) +
+                     " -- speed " + std::to_string((int)std::lround(q.after.maxSpeed)) +
+                     ", cargo " + std::to_string(q.after.cargoCapacity) + ", guns " +
+                     std::to_string((int)std::lround(q.after.damage)) + "/shot, money now " +
+                     Money(g_session.Snapshot().player.money);
+          } });
+
+    tools.push_back({ "rename_design",
+                      "Give a design you saved another name. The design itself does not change.",
+                      Obj({ { "name", Str("its name now") },
+                            { "to", Str("the new name, up to 32 characters") } },
+                          { "name", "to" }),
+                      [](const Rpc::Json& args)
+                      {
+                          RequireLive();
+                          const std::string from = DesignNameArg(args, "name");
+                          const std::string to = DesignNameArg(args, "to");
+                          const int         seq = g_session.LastEventSeq();
+                          Proto::Command    c;
+                          c.renameDesign = from;
+                          c.renameTo = to;
+                          std::string why;
+                          if (!Confirm(c, why))
+                              return "rename_design: " + why;
+                          for (const Proto::SavedDesign& d : g_session.Snapshot().player.library)
+                              if (d.name == to)
+                                  return "rename_design: '" + from + "' is '" + to + "' now";
+                          return Refused("rename_design", seq,
+                                         "the server did not rename it; call designs");
+                      } });
+
+    tools.push_back(
+        { "delete_design",
+          "Take a design out of your library. A ship that flies it keeps flying it.",
+          Obj({ { "name", Str("the design's name, as designs lists it") } }, { "name" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              const std::string name = DesignNameArg(args, "name");
+              const int         seq = g_session.LastEventSeq();
+              Proto::Command    c;
+              c.deleteDesign = name;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "delete_design: " + why;
+              for (const Proto::SavedDesign& d : g_session.Snapshot().player.library)
+                  if (d.name == name)
+                      return Refused("delete_design", seq,
+                                     "the server did not delete it; call designs");
+              return "delete_design: '" + name + "' is gone from your library";
           } });
 
     tools.push_back(

@@ -197,4 +197,38 @@ double RefitPrice(const Catalogue& c, const Design& from, const Design& to,
     }
     return price;
 }
+
+std::vector<FitLine> PlayerLines(const Design& d)
+{
+    std::vector<FitLine> fit = Normalized(d.fit);
+    for (FitLine& l : fit)
+        l.scale = 0.0f;  // PlayerFit gives the hull's own lines back the hull's drawing
+    return fit;
+}
+
+bool ValidDesignName(const std::string& name, std::string& error)
+{
+    if (name.empty())
+    {
+        error = "a design needs a name";
+        return false;
+    }
+    if (name.size() > DESIGN_NAME_MAX)
+    {
+        error = "a design's name is at most " + std::to_string(DESIGN_NAME_MAX) + " characters";
+        return false;
+    }
+    for (char ch : name)
+        if ((unsigned char)ch < 32 || (unsigned char)ch > 126)
+        {
+            error = "a design's name is letters, digits, spaces and punctuation";
+            return false;
+        }
+    if (name.front() == ' ' || name.back() == ' ')
+    {
+        error = "a design's name does not start or end with a space";
+        return false;
+    }
+    return true;
+}
 }  // namespace Ships

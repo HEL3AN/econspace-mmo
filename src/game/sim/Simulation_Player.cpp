@@ -557,8 +557,12 @@ void Simulation::SaveDesigns(const std::string& path)
 {
     std::set<std::string> live;
     for (const auto& [id, s] : sessions_)
+    {
         for (const auto& [hull, design] : s.shipDesigns)
             live.insert(design);
+        for (const auto& [name, design] : s.designLibrary)  // a saved design is kept (#279)
+            live.insert(design);
+    }
     designs_.Prune(live);
     designs_.Save(path);
 }
@@ -582,6 +586,8 @@ std::vector<Proto::DesignDef> Simulation::DesignDefsFor(const Proto::Snapshot& s
     };
     for (const std::string& id : snap.player.shipDesigns)
         need(id);
+    for (const Proto::SavedDesign& d : snap.player.library)  // what the Fit tab prices (#279)
+        need(d.design);
     for (const Proto::EntitySnapshot& e : snap.entities)
         need(e.design);
     return out;
@@ -730,6 +736,107 @@ bool Simulation::RefitShip(ClientSession& s, const std::vector<Ships::FitLine>& 
     s.RecordEvent(Ev::Kind::Notice,
                   "Refitted the " + name +
                       (price >= 0.0 ? " for " + Credits(price) : ", refunded " + Credits(-price)));
+    return true;
+}
+
+bool Simulation::SaveDesign(ClientSession& s, const std::string& name,
+                            const std::vector<Ships::FitLine>& fit)
+{
+    auto refuse = [&](const std::string& why)
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Design not saved: " + why);
+        return false;
+    };
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    const int                    hull = s.currentShip;
+    if (!s.ship || hull < 0 || hull >= (int)catalog.size())
+        return false;
+    std::string why;
+    if (!Ships::ValidDesignName(name, why))
+        return refuse(why);
+    const bool replaces = s.designLibrary.count(name) != 0;
+    if (!replaces && (int)s.designLibrary.size() >= Ships::LIBRARY_MAX)
+        return refuse("the library holds " + std::to_string(Ships::LIBRARY_MAX) +
+                      " designs; delete one first");
+    const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
+    const Ships::Design*    stock = ships.FindDesign(catalog[hull].stats.design);
+    if (stock == nullptr)
+        return false;
+    // The same rules as a refit: a design that could not be flown is not one to keep.
+    Ships::Design want;
+    if (!Ships::PlayerFit(ships, *stock, fit, want, why))
+        return refuse(why);
+    std::string id = want.id;
+    if (Ships::IsPlayerDesign(id))
+    {
+        id = designs_.File(want, why);
+        if (id.empty())
+            return refuse(why);
+        designsChanged_ = true;
+    }
+    s.designLibrary[name] = id;
+    s.RecordEvent(Ev::Kind::Notice, (replaces ? "Saved over design '" : "Saved design '") + name +
+                                        "' for the " + catalog[hull].name);
+    return true;
+}
+
+bool Simulation::ApplyDesign(ClientSession& s, const std::string& name)
+{
+    auto refuse = [&](const std::string& why)
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Refit refused: " + why);
+        return false;
+    };
+    const auto it = s.designLibrary.find(name);
+    if (it == s.designLibrary.end())
+        return refuse("there is no design called '" + name + "' in your library");
+    const Ships::Design* d = designs_.Find(it->second);
+    if (d == nullptr)
+        return refuse("design '" + name + "' is no longer on file");
+    const int                    hull = HullOf(it->second);
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    if (hull < 0 || hull >= (int)catalog.size())
+        return refuse("design '" + name + "' is for no hull in the hangar");
+    if (hull != s.currentShip)
+        return refuse("design '" + name + "' is for the " + catalog[hull].name +
+                      "; switch to one first");
+    // Its fit, as a player would send it: one price and one set of rules for both (#109).
+    return RefitShip(s, Ships::PlayerLines(*d));
+}
+
+bool Simulation::RenameDesign(ClientSession& s, const std::string& from, const std::string& to)
+{
+    auto refuse = [&](const std::string& why)
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Design not renamed: " + why);
+        return false;
+    };
+    const auto it = s.designLibrary.find(from);
+    if (it == s.designLibrary.end())
+        return refuse("there is no design called '" + from + "' in your library");
+    std::string why;
+    if (!Ships::ValidDesignName(to, why))
+        return refuse(why);
+    if (to == from)
+        return true;
+    if (s.designLibrary.count(to) != 0)
+        return refuse("you already have a design called '" + to + "'");
+    const std::string id = it->second;
+    s.designLibrary.erase(it);
+    s.designLibrary[to] = id;
+    s.RecordEvent(Ev::Kind::Notice, "Renamed design '" + from + "' to '" + to + "'");
+    return true;
+}
+
+bool Simulation::DeleteDesign(ClientSession& s, const std::string& name)
+{
+    if (s.designLibrary.erase(name) == 0)
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Design not deleted: there is no design called '" + name +
+                                            "' in your library");
+        return false;
+    }
+    s.RecordEvent(Ev::Kind::Notice, "Deleted design '" + name + "'");
     return true;
 }
 
@@ -1167,6 +1274,16 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
     }
     j["ships"] = ships;
     j["ship"] = s.currentShip;
+    // The library (#279 fitting, step 3): names of the account's, designs by id, kept in
+    // designs.json for as long as a save names them. A field an older build ignores, so no
+    // version bump (#20).
+    json library = json::array();
+    for (const auto& [name, design] : s.designLibrary)
+    {
+        library.push_back({ { "name", name }, { "design", design } });
+        named.insert(design);
+    }
+    j["designs"] = library;
     if (!s.accountName.empty())
         designs_.SetUsers(s.accountName, named);
 
@@ -1329,6 +1446,28 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
         if (s.ownedShips.empty())
             s.ownedShips.push_back(0);
     }
+    // The saved designs (#279 fitting, step 3). One the server no longer has, or that is for
+    // no hull any more, is dropped with a word, as a ship's is.
+    s.designLibrary.clear();
+    if (j.contains("designs") && j["designs"].is_array())
+        for (const auto& v : j["designs"])
+        {
+            if (!v.is_object() || (int)s.designLibrary.size() >= Ships::LIBRARY_MAX)
+                continue;
+            const std::string name = v.value("name", std::string());
+            const std::string design = v.value("design", std::string());
+            std::string       why;
+            if (!Ships::ValidDesignName(name, why) || s.designLibrary.count(name) != 0)
+                continue;
+            if (designs_.Find(design) == nullptr || HullOf(design) < 0)
+            {
+                s.RecordEvent(Ev::Kind::Notice,
+                              "Saved design '" + name + "' is no longer valid and was removed");
+                continue;
+            }
+            s.designLibrary[name] = design;
+        }
+
     const int wanted = j.value("ship", 0);
     s.currentShip = s.Owns(wanted) ? wanted : s.ownedShips.front();
     if (s.ship)

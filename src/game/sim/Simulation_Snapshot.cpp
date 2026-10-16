@@ -114,6 +114,8 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         p.shipIndex = s.currentShip;
         for (int hull : s.ownedShips)
             p.shipDesigns.push_back(s.DesignOf(hull));
+        for (const auto& [name, design] : s.designLibrary)
+            p.library.push_back({ name, design });
         p.cargoUsed = s.ship->GetCargoUsed();
         p.cargoCap = s.ship->GetCargoCapacity();
         p.warpPhase = (int)s.ship->GetWarpPhase();

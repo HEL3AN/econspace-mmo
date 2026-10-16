@@ -55,6 +55,10 @@ struct ClientSession
     // so this is the ship; a hull with no entry flies its stock design.
     std::map<int, std::string> shipDesigns;
     std::string                DesignOf(int catalogIndex) const;
+    // The designs this account saved under names of its own (#279 fitting, step 3): name ->
+    // design id, at most Ships::LIBRARY_MAX. The account's names for shared, immutable
+    // designs; every id here is kept in the server's store for as long as it is named.
+    std::map<std::string, std::string> designLibrary;
 
     // How this account proves it is itself (#106). The salt is public; the stored value
     // is what a proof is checked against. Both are written to the account file, and the
