@@ -1,0 +1,92 @@
+{
+    "asteroidFields": [
+        {
+            "name": "Reach Iron Belt",
+            "ore": 280,
+            "pos": [
+                -353500,
+                235700
+            ],
+            "resource": "Iron",
+            "size": 6000
+        },
+        {
+            "name": "Reach Crystal Belt",
+            "ore": 190,
+            "pos": [
+                -655600,
+                349600
+            ],
+            "resource": "Crystal",
+            "size": 7800
+        }
+    ],
+    "derelicts": [
+        {
+            "name": "Abandoned Refinery",
+            "pos": [
+                -740100,
+                -130600
+            ],
+            "reward": 1600,
+            "size": 45
+        }
+    ],
+    "gates": [
+        {
+            "destination": "core",
+            "name": "Gate to Helios Core",
+            "pos": [
+                574800,
+                -143700
+            ],
+            "size": 900
+        }
+    ],
+    "nebulae": [
+        {
+            "name": "Cobalt Drift",
+            "pos": [
+                442900,
+                -344500
+            ],
+            "radius": 33600
+        }
+    ],
+    "planets": [
+        {
+            "angle": 1.0,
+            "deposit": "Iron",
+            "orbitRadius": 320000,
+            "orbitSpeed": 32,
+            "size": 13500,
+            "type": "Rocky"
+        },
+        {
+            "angle": 3.4,
+            "deposit": "Ice",
+            "orbitRadius": 483000,
+            "orbitSpeed": 40,
+            "size": 24000,
+            "type": "Ice"
+        }
+    ],
+    "star": {
+        "size": 125000,
+        "type": "Blue"
+    },
+    "stations": [
+        {
+            "faction": "Syndicate",
+            "name": "Reach Depot",
+            "orbits": {
+                "phase": 0.38,
+                "planet": 0,
+                "radius": 18100,
+                "speed": 30
+            },
+            "role": "TradeHub",
+            "size": 600
+        }
+    ]
+}

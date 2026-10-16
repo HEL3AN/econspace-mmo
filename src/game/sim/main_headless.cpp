@@ -15,11 +15,14 @@
 #include "sim/SaveSchema.h"
 #include "sim/WorldRules.h"
 #include "gen/Galaxy.h"
+#include "gen/Pack.h"
+#include "gen/Pins.h"
 #include "gen/Region.h"
 #include "sim/Simulation.h"
 #include "sim/ClientSession.h"
 #include "net/Tcp.h"
 #include "net/Transport.h"
+#include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
 #include "entities/Combatant.h"
@@ -60,6 +63,19 @@ static std::string DesignsPath(const std::string& worldPath)
     const size_t slash = worldPath.find_last_of("/\\");
     return (slash == std::string::npos ? std::string() : worldPath.substr(0, slash + 1)) +
            "designs.json";
+}
+
+// Where admin packs are read from (#342 S7): data/packs/ unless `host --packs DIR` says.
+static std::string g_packsDir;
+
+// The packs in `dir`, as the simulation holds them; every problem a line in `problems`.
+static std::vector<std::shared_ptr<const Gen::Pack>> ReadPacks(const std::string&        dir,
+                                                               std::vector<std::string>& problems)
+{
+    std::vector<std::shared_ptr<const Gen::Pack>> out;
+    for (Gen::Pack& p : Gen::LoadPacks(dir, problems))
+        out.push_back(std::make_shared<const Gen::Pack>(std::move(p)));
+    return out;
 }
 
 // How often the galaxy is written to world.json while the server runs (seconds).
@@ -123,7 +139,25 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
     // read by other rules is another galaxy.
     uint64_t                seed = newSeed;
     Simulation::WorldHeader header;
-    const bool        saved = !worldPath.empty() && Simulation::ReadWorldHeader(worldPath, header);
+    const bool saved = !worldPath.empty() && Simulation::ReadWorldHeader(worldPath, header);
+
+    // Admin packs (#342 S7), read whole and every problem named. A new world is not made from
+    // a bad one -- it does not exist yet, so nothing is lost by stopping -- while a saved world
+    // has its packs sealed and is only told.
+    const std::string        packsDir = g_packsDir.empty() ? dataDir + "packs/" : g_packsDir;
+    std::vector<std::string> packProblems;
+    auto                     packs = ReadPacks(packsDir, packProblems);
+    if (!packProblems.empty() && !saved)
+    {
+        fprintf(stderr, "FATAL: the admin packs in %s have problems; no world is made:\n",
+                packsDir.c_str());
+        for (const std::string& p : packProblems)
+            fprintf(stderr, "  %s\n", p.c_str());
+        exit(1);
+    }
+    for (const std::string& p : packProblems)
+        fprintf(stderr, "Pack: %s -- not read\n", p.c_str());
+    sim.SetPacks(std::move(packs), saved ? header.packs : std::vector<Gen::Woven>{});
     const std::string sealDir = worldPath.empty() ? std::string() : Host::RegionsDir(worldPath);
     sim.SetSealDir(sealDir);
     if (saved)
@@ -165,6 +199,21 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
                 (unsigned long long)seed);
         exit(1);
     }
+    if (!saved && !sim.PackProblems().empty())
+    {
+        fprintf(stderr,
+                "FATAL: the admin packs could not be woven into a new world of seed "
+                "%llu; no world is made:\n",
+                (unsigned long long)seed);
+        for (const std::string& p : sim.PackProblems())
+            fprintf(stderr, "  %s\n", p.c_str());
+        exit(1);
+    }
+    for (const Gen::Woven& w : sim.WovenPacks())
+        printf("  pack: %s, %s %s%s\n", w.id.c_str(), w.kind == "region" ? "region" : "into region",
+               std::to_string(w.slot).c_str(), w.system.empty() ? "" : (" as " + w.system).c_str());
+    for (const std::string& change : sim.PackChanges())
+        fprintf(stderr, "Pack: %s\n", change.c_str());
     sim.SetGrowthCap(maxRegions, maxSystems);
     printf("Galaxy: seed %llu, %d civilisation centre(s), %d regions, %d systems (the cap: %d "
            "regions, %d systems).\n",
@@ -2236,6 +2285,104 @@ static int OrderSelftest()
 // and what was changed in them -- is dropped, so they begin again as the rules make them.
 // Refused while a player structure stands in it: that is somebody's, and it stands somewhere
 // the new rules may not have.
+// econserver validate [path] (#342 S7): the admin packs -- `path` is one pack or a directory
+// of them, data/packs/ by default -- and data/pins.json, checked without running a world. A
+// pack is read as the server reads it, then woven into a trial world of seed 1, as a new
+// world would weave it; each pin is applied to the regions such a world begins with. Every
+// problem is one line; the exit status says whether there were any.
+static int ValidateCommand(const std::string& path)
+{
+    namespace fs = std::filesystem;
+    const std::string dataDir = SIM_DATA_DIR;
+    SetTraceLogLevel(LOG_WARNING);
+    if (!Factions::Load(dataDir + "factions.json") ||
+        !Archetypes::Load(dataDir + "archetypes.json") ||
+        !Blueprints::Load(dataDir + "blueprints.json"))
+    {
+        fprintf(stderr, "validate: the registries in %s do not load: %s%s%s\n", dataDir.c_str(),
+                Factions::Error().c_str(), Archetypes::Error().c_str(),
+                Blueprints::Error().c_str());
+        return 2;
+    }
+    const std::string                             target = path.empty() ? dataDir + "packs" : path;
+    std::vector<std::string>                      problems;
+    std::vector<std::shared_ptr<const Gen::Pack>> packs;
+    std::error_code                               ec;
+    if (fs::exists(fs::path(target) / "pack.json", ec))
+    {
+        Gen::Pack p;
+        if (Gen::LoadPack(target, p, problems))
+            packs.push_back(std::make_shared<const Gen::Pack>(std::move(p)));
+    }
+    else if (fs::is_directory(target, ec))
+        packs = ReadPacks(target, problems);
+    else if (!path.empty())
+    {
+        fprintf(stderr, "validate: %s is neither a pack nor a directory of packs\n",
+                target.c_str());
+        return 2;
+    }
+    for (const auto& p : packs)
+        printf("pack %s: %s, %d system(s), hash %s\n", p->id.c_str(), p->kind.c_str(),
+               (int)p->systems.size(), Gen::PackHashText(p->hash).c_str());
+
+    Gen::WorldParams params;
+    params.seed = 1;
+    params.centres = Gen::DEFAULT_CENTRES;
+    params.owners = Factions::MajorIds();
+    params.pirates = Factions::Id(Factions::Pirates());
+    params.unaffiliated = Factions::Id(Factions::Unaffiliated());
+    // Woven as a new world would weave them -- only when each reads, since a trial of a broken
+    // pack says nothing new.
+    if (problems.empty() && !packs.empty())
+    {
+        Simulation trial;
+        trial.SetPacks(packs);
+        trial.OpenGalaxy(params, dataDir);
+        for (const std::string& p : trial.PackProblems())
+            problems.push_back("woven into a new world of seed 1: " + p);
+        for (const Gen::Woven& w : trial.WovenPacks())
+            printf("  woven into a new world of seed 1: %s -> region %d%s\n", w.id.c_str(), w.slot,
+                   w.system.empty() ? "" : (", " + w.system).c_str());
+    }
+
+    // The pins: each applied to the regions a new world of its seed begins with (seed 1 for
+    // one that names none). A pin for a slot that is not open then waits, as it would.
+    std::ifstream pinsIn(dataDir + "pins.json");
+    if (pinsIn.is_open())
+    {
+        const nlohmann::json pins = nlohmann::json::parse(pinsIn, nullptr, false);
+        if (pins.is_discarded())
+            problems.push_back("pins.json: not valid JSON");
+        else
+        {
+            std::set<uint64_t> seeds;
+            if (pins.contains("pins") && pins["pins"].is_array())
+                for (const nlohmann::json& pin : pins["pins"])
+                    seeds.insert(pin.is_object() && pin.contains("seed") &&
+                                         pin["seed"].is_number_unsigned()
+                                     ? pin["seed"].get<uint64_t>()
+                                     : 1u);
+            if (seeds.empty())
+                seeds.insert(1u);
+            for (uint64_t seed : seeds)
+            {
+                params.seed = seed;
+                std::vector<std::string> pinProblems;
+                Gen::GenerateWorld(Gen::GenerateGalaxySkeleton(params), [&](Gen::Region& r)
+                                   { Gen::ApplyPins(r, pins, seed, pinProblems); });
+                for (const std::string& p : pinProblems)
+                    problems.push_back("pins.json (seed " + std::to_string(seed) + "): " + p);
+            }
+        }
+    }
+
+    for (const std::string& p : problems)
+        printf("problem: %s\n", p.c_str());
+    printf("%d pack(s), %d problem(s).\n", (int)packs.size(), (int)problems.size());
+    return problems.empty() ? 0 : 1;
+}
+
 static int RegenerateCommand(int slot)
 {
     const std::string dataDir = SIM_DATA_DIR;
@@ -2363,6 +2510,8 @@ int main(int argc, char** argv)
             sizes = { 20, 100, 500, 1000 };
         return MacroBench(sizes, seconds, seed, allHot, players);
     }
+    if (argc > 1 && std::string(argv[1]) == "validate")
+        return ValidateCommand(argc > 2 ? argv[2] : std::string());
     if (argc > 1 && std::string(argv[1]) == "regenerate")
     {
         if (argc < 3)
@@ -2403,6 +2552,9 @@ int main(int argc, char** argv)
                 maxRegions = std::max(1, atoi(argv[++i]));
             else if (std::string(argv[i]) == "--max-systems" && i + 1 < argc)
                 maxSystems = std::max(1, atoi(argv[++i]));
+            // Admin packs from elsewhere than data/packs/ (#342 S7), woven into a new world.
+            else if (std::string(argv[i]) == "--packs" && i + 1 < argc)
+                g_packsDir = argv[++i];
         if (centres < 1 || centres > Gen::MAX_CENTRES)
         {
             fprintf(stderr, "--centres must be 1 to %d\n", Gen::MAX_CENTRES);

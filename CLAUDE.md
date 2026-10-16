@@ -104,6 +104,9 @@ cmake --build build-release
 ./build/bin/server/econserver.exe ordertest         # standing orders, routes, journal
 ./build/bin/server/econserver.exe host 50800 --max-regions 60 --max-systems 1500   # the cap (#342 S3); stdin: tide | open [region] | drift <region> | pause | resume
 ./build/bin/server/econserver.exe regenerate 14     # with the server stopped: reseal region 14 by today's rules, if no player built there
+./build/bin/server/econserver.exe validate          # admin packs in data/packs/ and data/pins.json, checked and trial-woven (#342 S7)
+./build/bin/server/econserver.exe validate tests/fixtures/packs/helios   # ...one pack, or a directory of them
+./build/bin/server/econserver.exe host 50800 --packs tests/fixtures/packs   # a NEW world weaves the packs there instead of data/packs/
 ./build/bin/server/econserver.exe 5184000 --news    # 24 h of an empty world: its news, each region as it opens and why, the tide hourly
 ./build/bin/server/econserver.exe 15552000 --news --players 12 --max-regions 9 --rules r.json   # 72 h with pilots, at a cap: mouths, Anchors, drift, the archive (#342 S4)
 ./build/bin/server/econserver.exe galaxydump 8     # the galaxy seed 8 makes -- skeleton, starts, regions -- as JSON (never saved)
@@ -187,6 +190,12 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   LayoutDelta, and a collapse cuts the link and both gates. At the cap a region nobody
   visits drifts away into the archive (`regions/archive-<id>.json`) and may come back,
   decayed, into another slot (`Simulation_Drift.cpp`).
+- **An admin pack is woven once, into a new world** (#342 S7, `gen/Pack.h`). A region pack
+  takes a free slot beside an open region, its systems renamed `r<slot>-<depth>-<k>`, and is
+  sealed like any region; a system pack is sealed inside the region it replaced a system of.
+  `world.json` records each pack's hash, so a pack edited later is named on startup and never
+  woven again -- player structures already stand on its gates. A bad pack stops a new world
+  with every problem listed; `econserver validate` says the same without running one.
 
 - **`econagent` owns stdout.** It is the JSON-RPC channel; one stray `printf` or raylib
   trace on it corrupts the stream and the client reports a parse error rather than the

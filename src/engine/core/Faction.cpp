@@ -392,6 +392,15 @@ const std::string& Error()
     return g_error;
 }
 
+bool ReadDef(const json& entry, FactionDef& out, std::string& error)
+{
+    FactionDef d;
+    if (!ReadFaction(entry, d, error))
+        return false;
+    out = d;
+    return true;
+}
+
 FactionId Add(const FactionDef& def)
 {
     FactionId existing;

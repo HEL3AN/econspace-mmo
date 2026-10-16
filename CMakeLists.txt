@@ -137,6 +137,7 @@ add_library(engine STATIC
     src/engine/core/Fitting.cpp       # what a refit may change, and what it costs (#279)
     src/engine/gen/Region.cpp        # the region beyond the wormhole, from a seed (#140)
     src/engine/gen/Pins.cpp          # hand-written exceptions applied after generation (#147)
+    src/engine/gen/Pack.cpp          # admin packs woven into a new world (#342 S7)
     src/engine/gen/Survey.cpp        # many generated systems judged at once (#141)
     src/engine/entities/Entity.cpp
     src/engine/entities/Star.cpp
@@ -289,6 +290,7 @@ add_executable(econserver
     src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/Simulation_Tide.cpp      # the opening log, sealing and the tide (#342 S3)
     src/game/sim/Simulation_Drift.cpp     # the archive of dead regions (#342 S4)
+    src/game/sim/Simulation_Packs.cpp     # admin packs woven into a new world (#342 S7)
     src/game/sim/Simulation_Growth.cpp    # expeditions, growing stations, convoys (#342 S6)
     src/game/sim/WorldRules.cpp           # data/world_rules.json: how the world grows (#342 S3)
     src/game/sim/SaveFile.cpp             # a save is renamed into place, never half-written (#341)
@@ -418,6 +420,7 @@ add_executable(tests
     tests/mouth_tests.cpp          # unstable mouths, Anchors, drift and the archive (#342 S4)
     tests/prediction_tests.cpp     # the client's prediction against the server, same commands (#358)
     tests/natives_tests.cpp        # natives, their stations and frontier prices (#342 S5)
+    tests/pack_tests.cpp           # admin packs: checked, woven, sealed (#342 S7)
     tests/growth_tests.cpp         # expeditions, stations grown by need, convoys (#342 S6)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
@@ -446,6 +449,7 @@ add_executable(tests
     src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/Simulation_Tide.cpp      # the opening log, sealing and the tide (#342 S3)
     src/game/sim/Simulation_Drift.cpp     # the archive of dead regions (#342 S4)
+    src/game/sim/Simulation_Packs.cpp     # admin packs woven into a new world (#342 S7)
     src/game/sim/Simulation_Growth.cpp    # expeditions, growing stations, convoys (#342 S6)
     src/game/sim/WorldRules.cpp           # data/world_rules.json: how the world grows (#342 S3)
     src/game/sim/SaveFile.cpp             # a save is renamed into place, never half-written (#341)
@@ -464,7 +468,9 @@ add_executable(tests
 target_compile_definitions(tests PRIVATE TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/data/"
                                          # A small hand-written world in the format the loaders
                                          # read, for tests of everything but generation (#342)
-                                         TEST_WORLD_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/world/")
+                                         TEST_WORLD_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/world/"
+                                         # Admin packs, one of each kind (#342 S7)
+                                         TEST_PACKS_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/packs/")
 target_link_libraries(tests PRIVATE engine netproto doctest::doctest)
 set_target_properties(tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/tests)
