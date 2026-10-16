@@ -1,0 +1,11 @@
+{
+    "schema": 1,
+    "id": "relay",
+    "name": "Kestrel Relay",
+    "kind": "system",
+    "systems": [
+        { "id": "relay", "file": "relay.json", "name": "Kestrel Relay", "security": 0.5, "owner": "Independent" }
+    ],
+    "start": ["relay"],
+    "weave": { "place": "near-centre" }
+}

@@ -35,6 +35,7 @@ namespace Gen
 {
 struct Region;
 struct RegionParams;
+struct Pack;
 }  // namespace Gen
 enum class NpcRole;
 
@@ -173,6 +174,7 @@ public:
         int                        centres = -1;   // -1 when it does not say
         std::vector<RegionOpening> log;            // empty before S3
         int                        maxRegions = 0, maxSystems = 0;  // 0: not set
+        std::vector<Gen::Woven>    packs;  // where admin packs were woven (S7)
     };
     static bool ReadWorldHeader(const std::string& path, WorldHeader& out);
 
@@ -232,6 +234,25 @@ public:
     const std::vector<StartPoint>& Starts() const { return starts_; }
     // Whether `systemId` is one of them.
     bool IsStart(const std::string& systemId) const;
+
+    // --- Admin packs (#342 S7; Simulation_Packs.cpp, the format in gen/Pack.h) ---
+    // The packs data/packs/ holds, and -- for a saved world -- where it wove them (its
+    // header's). Before OpenGalaxy: a new world weaves them in (region packs into free slots
+    // beside the regions it begins with, system packs into its frontier), and a saved one
+    // reads them only for a region that is not sealed.
+    void SetPacks(std::vector<std::shared_ptr<const Gen::Pack>> packs,
+                  std::vector<Gen::Woven>                       woven = {});
+    // Where this world's packs went, as world.json keeps them.
+    const std::vector<Gen::Woven>& WovenPacks() const { return woven_; }
+    // What weaving a new world could not do, one line each. A server does not make a world
+    // that has any: the world does not exist yet, so nothing is lost by stopping.
+    const std::vector<std::string>& PackProblems() const { return packProblems_; }
+    // How data/packs/ differs from what this world wove, one line per pack: changed since (by
+    // its hash), gone, or added after the world was made. What was woven is sealed, so none
+    // of it changes the world; the admin is told.
+    std::vector<std::string> PackChanges() const;
+    // Whether a pack has a part in region `slot`, or links to it: such a region never drifts.
+    bool IsPackSlot(int slot) const { return packSlots_.count(slot) != 0; }
 
     // --- The tide (#342 S3; Simulation_Tide.cpp, rules in WorldRules.h) ---
     // What one region's tide is, and what it was made of since its last mouth.
@@ -1080,6 +1101,22 @@ private:
     std::set<int>                      openSlots_;   // skeleton slots attached (#342)
     Gen::GalaxySkeleton                skeleton_;    // laid out by OpenGalaxy (#342 S2)
     std::vector<StartPoint>            starts_;
+    // Admin packs (S7; Simulation_Packs.cpp).
+    std::vector<std::shared_ptr<const Gen::Pack>> packs_;
+    std::vector<Gen::Woven>                       woven_;
+    std::vector<std::string>                      packProblems_;
+    std::set<int>                                 packSlots_;
+    const Gen::Pack*                              PackById(const std::string& id) const;
+    // A new world's region packs, each into a free slot beside what is open, logged.
+    void WeaveRegionPacks();
+    // A region pack's region from a saved world's log: sealed, or woven again.
+    bool OpenPackRegion(int slot, const std::string& id);
+    // The system packs that go into `region`, just generated.
+    void ApplySystemPacks(Gen::Region& region);
+    // The admin's starts in a region just hung in the galaxy.
+    void        AddStarts(const Gen::Region& region);
+    void        SavePacks(nlohmann::json& j) const;
+    static void ReadPacks(const nlohmann::json& j, std::vector<Gen::Woven>& out);
     // Hangs a generated region in the galaxy: its index entries, links and documents, and
     // the mouth of its wormhole beside home.
     void AddRegion(const Gen::Region& region);

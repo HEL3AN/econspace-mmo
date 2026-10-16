@@ -1,6 +1,7 @@
 #pragma once
 
 #include "raylib.h"
+#include <nlohmann/json_fwd.hpp>
 #include <algorithm>
 #include <cstdint>
 #include <string>
@@ -114,6 +115,10 @@ namespace Factions
 // has a world to work with.
 bool               Load(const std::string& path);
 const std::string& Error();  // why the last Load failed
+
+// Reads one entry of factions.json's `factions` as Load does, as strictly: an admin pack
+// (#342 S7) writes its factions in the same format. False with `error` saying why.
+bool ReadDef(const nlohmann::json& entry, FactionDef& out, std::string& error);
 
 // Adds a faction at runtime (#342: a generated region's natives, a pack's factions) and
 // returns its handle; an id already there returns that one, unchanged. A new faction is

@@ -66,7 +66,11 @@ namespace Save
 //    its convoy is on its way, what it builds and its escort; a faction remembers the mouths it
 //    has heard of; an outpost may be the site of the market or the station it grows into. A
 //    version 13 build would lay a convoy's Anchor at once and lose an upgrade with its site.
-inline constexpr int WORLD_VERSION = 14;
+// 15: admin packs (#342 S7): the log may hold a region a pack wove in (`by: "pack"`, no
+//    parent), and `packs` says where each pack went and what it hashed to. A version 14 build
+//    would try to open a pack's region as a frontier from nowhere, fail, and save the world
+//    without it. An older file has no packs.
+inline constexpr int WORLD_VERSION = 15;
 
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.

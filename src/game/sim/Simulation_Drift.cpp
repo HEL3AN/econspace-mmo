@@ -190,7 +190,8 @@ void Simulation::StepDrift()
         for (const RegionOpening& c : openings_)
             parent = parent || (c.parent == o.slot && OpeningOf(c.slot) == &c);
         const double idle = time_ - o.lastVisit;
-        if (parent || idle < dead - warn || PlayerStructuresIn(o.slot) > 0)
+        // Nor does what an admin wove in, or what it is linked to (S7): a pack is permanent.
+        if (parent || idle < dead - warn || PlayerStructuresIn(o.slot) > 0 || IsPackSlot(o.slot))
             continue;
         if (!o.fading)
         {
@@ -229,6 +230,11 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
             why = "region " + std::to_string(c.slot) + " opened from it";
             return false;
         }
+    if (IsPackSlot(slot))
+    {
+        why = "an admin pack has a part in it";
+        return false;
+    }
     if (PlayerStructuresIn(slot) > 0)
     {
         why = "a player's structure stands in it";

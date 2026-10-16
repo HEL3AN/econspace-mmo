@@ -19,6 +19,7 @@
 #include "entities/Station.h"
 
 #include "gen/Galaxy.h"
+#include "gen/Pack.h"
 #include "gen/Pins.h"
 #include "gen/Region.h"
 #include "gen/Rng.h"
@@ -449,6 +450,9 @@ void Simulation::AddRegion(const Gen::Region& region)
         Gen::RegisterNatives(region.natives);
         natives_[region.slot] = region.natives.dump();
     }
+    // ...and an admin pack's own factions (S7), for the same reason.
+    if (!region.factions.empty() || !region.relations.empty())
+        Gen::RegisterPackFactions(region.factions, region.relations);
     for (const auto& s : region.systems)
     {
         WorldLoader::SystemInfo info;
@@ -473,8 +477,19 @@ void Simulation::AddRegion(const Gen::Region& region)
     // has none: nothing leads into it.
     if (!region.homeId.empty() && !region.wormhole.empty())
         wormholes_[region.homeId].push_back(region.wormhole.dump());
+    // An admin link's gate on the far side is kept the same way (S7), and the region it
+    // stands in is as permanent as the pack: it never drifts away from under the link.
+    for (const nlohmann::json& c : region.crossings)
+        if (c.is_object() && c.contains("home") && c["home"].is_string() && c.contains("gate"))
+        {
+            wormholes_[c["home"].get<std::string>()].push_back(c["gate"].dump());
+            packSlots_.insert(Gen::SlotOf(c["home"].get<std::string>()));
+        }
+    if (!region.pack.empty() || !region.starts.empty())
+        packSlots_.insert(region.slot);
     hasRegion_ = true;
     openSlots_.insert(region.slot);
+    AddStarts(region);
 }
 
 void Simulation::OpenCentre(int slot)
@@ -519,13 +534,29 @@ bool Simulation::OpenGalaxy(const Gen::WorldParams& params, const std::string& d
     // opens what its log says, in the order it opened (S3), each as it was sealed.
     std::vector<RegionOpening> plan = log;
     if (plan.empty())
+    {
+        std::vector<int> frontier;
         for (const Gen::Opening& o : Gen::InitialOpenings(skeleton_))
         {
             RegionOpening e;
             e.slot = o.slot;
             e.parent = o.from;
             plan.push_back(e);
+            if (o.from >= 0)
+                frontier.push_back(o.slot);
         }
+        // Where a new world's system packs go (S7): decided before any region is made, so
+        // each is generated with its system already in it.
+        woven_.clear();
+        packProblems_.clear();
+        for (const auto& p : packs_)
+            if (p->kind == "system")
+            {
+                const int slot = Gen::PlaceSystemPack(*p, skeleton_, frontier, packProblems_);
+                if (slot >= 0)
+                    woven_.push_back({ p->id, p->kind, p->hash, slot, std::string() });
+            }
+    }
     else if (!sealDir_.empty())
         for (const RegionOpening& e : plan)
         {
@@ -554,6 +585,12 @@ bool Simulation::OpenGalaxy(const Gen::WorldParams& params, const std::string& d
                             skeleton_.slots[(size_t)e.slot].kind == Gen::SlotKind::Centre;
         if (centre)
             OpenCentre(e.slot);
+        else if (e.by == "pack")
+        {
+            // An admin's region (S7): as sealed, or woven again from its pack.
+            if (!OpenPackRegion(e.slot, e.why))
+                continue;
+        }
         else
         {
             std::string mouth = e.mouth;
@@ -578,6 +615,9 @@ bool Simulation::OpenGalaxy(const Gen::WorldParams& params, const std::string& d
         now.mouth = mouth;
         now.parent = parent;
     }
+    // A new world's region packs, beside what it begins with (S7).
+    if (log.empty())
+        WeaveRegionPacks();
     // ...and one whose mouth collapsed is cut off from its parent (S4): no route, no gates.
     for (const RegionOpening& o : openings_)
         if (o.state == "drifted")

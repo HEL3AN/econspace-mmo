@@ -49,6 +49,18 @@ inline constexpr int DEFAULT_REGION_CAP = 100;
 
 const char* SlotKindName(SlotKind kind);
 
+// Where an admin pack (#342 S7, Pack.h) was woven into a world, as world.json keeps it:
+// the pack, what its files hashed to then, and the slot -- and, for a system pack, the
+// system -- it took.
+struct Woven
+{
+    std::string id;
+    std::string kind;  // "region" or "system"
+    uint64_t    hash = 0;
+    int         slot = -1;
+    std::string system;  // a system pack's, once its region has been made
+};
+
 struct Slot
 {
     int              index = 0;

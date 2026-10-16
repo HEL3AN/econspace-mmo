@@ -1,0 +1,12 @@
+{
+    "star": { "type": "Red", "size": 120000 },
+    "planets": [
+        { "type": "Rocky", "orbitRadius": 300000, "orbitSpeed": 30, "angle": 1.2, "size": 14000, "deposit": "Iron" }
+    ],
+    "stations": [
+        { "name": "Kestrel Relay", "pos": [-420000, 160000], "size": 600, "faction": "Independent", "role": "TradeHub" }
+    ],
+    "asteroidFields": [
+        { "name": "Kestrel Drift", "pos": [520000, -310000], "size": 6000, "resource": "Iron", "ore": 240 }
+    ]
+}

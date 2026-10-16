@@ -496,6 +496,37 @@ Each slice is its own PR with green CI, and the game works after every one.
    - The `pack.json` format and `econserver validate`.
    - Weaving at world creation, admin links and admin starts.
    - Pack hashes in `world.json`.
+   - *As built:* `gen/Pack.h` reads a pack (`data/packs/<id>/pack.json`, its id the
+     directory's name, `schema` 1) strictly: every unknown field of the pack, of a system's
+     index entry or of any object in a system document is a problem, as are a missing required
+     field, a position outside `SYSTEM_RADIUS`, an orbit round a planet the system lacks, an
+     unknown faction, role, planet, star, ore or archetype, a link naming a system the pack
+     lacks, a link without a gate at each end or a gate without a link, a system not reached
+     from the first, a map point more than 900 from the pack's middle, more than 40 systems,
+     and a start with no dockable station. Every problem is one line naming the pack, the file
+     and the object. `factions` are factions.json's entries (an id already in the registry is
+     refused); `relations` are `[a, b, stance]` with one side the pack's. A region pack's
+     first system is its way in: its systems are renamed `r<slot>-<depth>-<k>`, depth counted
+     along its links from that system, and placed round the slot's map point. It takes a free
+     slot that is **linked to a region the world begins with** (or to a pack woven before it,
+     in id order) -- `random`, `near-centre` (the fewest lattice steps from a centre among
+     those), `{"depth": [a, b]}` (steps from a centre) or `{"slot": n}` -- picked by
+     `Key(seed, FNV(id))`; `count` admin links go to systems of the open regions linked to the
+     slot, spread over them, with a gate at each end placed clear of planets and gates
+     (`Gen::EdgeGatePos`). Its log entry is `by: "pack"`, `why: <id>`, no parent: like a
+     centre it never drifts and is never anchored, and a region an admin link reaches never
+     drifts either. A system pack takes the place of a system of a frontier the world begins
+     with (or of the slot or system it names, opening or not) through a pin's `replace`, keeping
+     the gates, never the way in or anyone's station; it is applied when its region is
+     generated and so is sealed inside it. Only `"static"` links are built: `"dynamic"` and
+     `"anchor-required"` are refused until S9. `world.json` gains `packs: [{id, kind, hash,
+     slot, system}]` (FNV-1a over pack.json and each document as parsed, so reformatting is no
+     change). A saved world reads its packs from their seals; on startup the server names a
+     pack changed since (by hash), gone, or added later -- none of them is woven again. A bad
+     pack, or one with no room, stops a new world with the list; `econserver validate [path]`
+     prints the same, then trial-weaves into a world of seed 1 and applies `pins.json` to the
+     regions a world of each pin's seed begins with. `host --packs DIR` reads packs from
+     elsewhere. WORLD_VERSION 15; no PROTO_VERSION or generator change.
 8. **S8 — the world in the editor.**
    - A galaxy map in the editor, with F5 levels.
    - Opening any region of the world.

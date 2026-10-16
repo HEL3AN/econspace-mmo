@@ -88,6 +88,17 @@ struct Region
     // pirates}, home, systems}; empty for a centre, and for a region sealed before natives.
     // Its id is a hash of the region's key (seed, slot): what saves and the wire call it.
     nlohmann::json natives = nlohmann::json::object();
+    // What an admin pack wove in (#342 S7, Pack.h); all empty for a generated region but
+    // `starts` and `pack`, which a system pack put into one also sets.
+    std::string              pack;    // the pack's id
+    std::vector<std::string> starts;  // systems a player may start in, beside a centre's heart
+    // The admin links' gates on the far side: [{ "home": a system of another region,
+    // "gate": a gate object }], added to that system when it is built, like a wormhole's mouth.
+    nlohmann::json crossings = nlohmann::json::array();
+    // The pack's own factions (entries of factions.json) and their stances
+    // ([[a, b, stance]]), registered whenever the region is hung in the galaxy.
+    nlohmann::json factions = nlohmann::json::array();
+    nlohmann::json relations = nlohmann::json::array();
 };
 
 // Puts a region's natives into the faction registry (Factions::Add) with their stance to
@@ -125,6 +136,11 @@ std::vector<Region> GenerateWorld(const GalaxySkeleton&               skeleton,
 // that is not one.
 nlohmann::json RegionToJson(const Region& region);
 bool           RegionFromJson(const nlohmann::json& doc, Region& out);
+
+// A gate's place at the edge of `system` (may be null), facing (dx, dy) -- the system it
+// leads to on the map -- and out of its planets' paths: where a wormhole's mouth goes, and
+// an admin link's gate (S7). Drawn from `key`. A position, [x, y].
+nlohmann::json EdgeGatePos(uint64_t key, const nlohmann::json* system, double dx, double dy);
 
 // A generated system's id: "r<slot>-<depth>-<k>" (#342), unique in the whole galaxy.
 std::string SystemId(int slot, int depth, int k);

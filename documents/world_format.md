@@ -25,7 +25,15 @@ world's seed: its civilisation centres and a frontier region beside each (see
 [systems](#systemsidjson--star-system) below). The hand-written format -- `universe.json`
 and `systems/<id>.json` -- is still read: it is what the editor's galaxy mode writes, what
 the tests use as a small fixture world (`tests/fixtures/world/`), and what admin packs
-(#342 S7) will be made of. The server does not read `data/universe.json` today.
+(#342 S7) are made of. The server does not read `data/universe.json` today.
+
+**Admin packs** (#342 S7) are directories under `data/packs/<id>/`: a `pack.json` with the
+index entries of `universe.json` (`id`, `file`, `map` relative to the pack's middle, `name`,
+`security`, `owner`), `links`, optional `factions` (factions.json's entries) and `relations`,
+`start`, and `weave` -- plus one system document per system, in exactly this file's format.
+Its gates name the pack's own system ids. A new world weaves them in; `econserver validate`
+checks them. The full format and its rules: `src/engine/gen/Pack.h` and
+`documents/world_generation_v2.md` (S7); a worked example: `tests/fixtures/packs/`.
 
 After a build, `data/` is copied next to `econspace.exe` by the `copy_data` target
 (on every build). Clients and `econagent` read no galaxy at all: the server sends them the

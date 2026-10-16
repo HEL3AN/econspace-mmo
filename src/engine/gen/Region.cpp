@@ -1580,6 +1580,17 @@ nlohmann::json RegionToJson(const Region& region)
         out["heart"] = region.heartId;
     if (!region.natives.empty())
         out["natives"] = region.natives;
+    // What a pack wove in (S7), only where there is some.
+    if (!region.pack.empty())
+        out["pack"] = region.pack;
+    if (!region.starts.empty())
+        out["starts"] = region.starts;
+    if (!region.crossings.empty())
+        out["crossings"] = region.crossings;
+    if (!region.factions.empty())
+        out["factions"] = region.factions;
+    if (!region.relations.empty())
+        out["relations"] = region.relations;
     return out;
 }
 
@@ -1607,8 +1618,40 @@ bool RegionFromJson(const nlohmann::json& doc, Region& out)
     // Absent in a region sealed before natives (#342 S5): nobody lives there, and nobody will.
     if (doc.contains("natives") && doc["natives"].is_object())
         r.natives = doc["natives"];
+    // Absent in a region no pack had a part in (S7).
+    if (doc.contains("pack") && doc["pack"].is_string())
+        r.pack = doc["pack"].get<std::string>();
+    if (doc.contains("starts") && doc["starts"].is_array())
+        for (const json& s : doc["starts"])
+            if (s.is_string())
+                r.starts.push_back(s.get<std::string>());
+    for (const char* key : { "crossings", "factions", "relations" })
+        if (doc.contains(key) && doc[key].is_array())
+            (key[0] == 'c' ? r.crossings : key[0] == 'f' ? r.factions : r.relations) = doc[key];
     out = std::move(r);
     return true;
+}
+
+nlohmann::json EdgeGatePos(uint64_t key, const nlohmann::json* system, double dx, double dy)
+{
+    Rng                     rng(key);
+    const std::vector<Band> bands = system != nullptr ? BandsOf(*system) : std::vector<Band>{};
+    std::vector<Disc>       taken;
+    // Clear of the gates it already has, as well as of its planets' paths.
+    if (system != nullptr && system->contains("gates") && (*system)["gates"].is_array())
+        for (const json& g : (*system)["gates"])
+            if (g.is_object() && g.contains("pos") && g["pos"].is_array() && g["pos"].size() == 2 &&
+                g["pos"][0].is_number() && g["pos"][1].is_number())
+                taken.push_back({ g["pos"][0].get<double>(), g["pos"][1].get<double>(),
+                                  g.value("size", 900.0) });
+    const double l = std::sqrt(dx * dx + dy * dy);
+    dx = l > 0.0 ? dx / l : 1.0;
+    dy = l > 0.0 ? dy / l : 0.0;
+    json pos;
+    if (!Place(rng, 880000.0, 940000.0, 900.0, bands, taken, pos, dx, dy))
+        Place(rng, 880000.0, 960000.0, 900.0, bands, taken, pos);
+    PlaceAnyway(pos, dx, dy, 950000.0);
+    return pos;
 }
 
 int DepthOf(const std::string& id)

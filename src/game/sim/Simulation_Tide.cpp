@@ -137,6 +137,9 @@ Gen::Region Simulation::MakeSealed(int slot, const Gen::RegionParams& params)
     // A region drifting back from the archive (S4) is sealed as it comes back: what it is
     // now is what it will be read as.
     region = returning_ != nullptr ? *returning_ : Gen::GenerateRegion(params);
+    // The admin's systems put into it (S7) are part of what it is made as.
+    if (returning_ == nullptr)
+        ApplySystemPacks(region);
     Seal(region);
     return region;
 }
@@ -220,6 +223,7 @@ bool Simulation::ReadWorldHeader(const std::string& path, WorldHeader& out)
             o.archive = oj.value("archive", -1);
             h.log.push_back(o);
         }
+    ReadPacks(j, h.packs);
     out = std::move(h);
     return true;
 }
@@ -266,11 +270,14 @@ void Simulation::SaveGrowth(nlohmann::json& j) const
                     { "tide", std::move(tide) },   { "explored", explored_ },
                     { "surveyed", surveyed_ } };
     SaveArchive(j);  // the regions that drifted away (S4)
+    SavePacks(j);    // where the admin's packs went (S7)
 }
 
 void Simulation::LoadGrowth(const nlohmann::json& j)
 {
     LoadArchive(j);
+    if (woven_.empty())  // a world opened without its header's packs (a test) keeps them
+        ReadPacks(j, woven_);
     // A world from before S3 has none: its tide starts now, as a new world's does.
     if (!j.contains("growth") || !j["growth"].is_object())
         return;
@@ -367,7 +374,7 @@ int Simulation::YoungMouths() const
     const double life = WorldRules::TideRules().mouthHours * HOUR;
     int          n = 0;
     for (const RegionOpening& o : openings_)
-        if (o.by != "world" &&
+        if (o.by != "world" && o.by != "pack" &&
             (o.state == "unstable" || (o.state == "open" && time_ - o.mouthAt < life)))
             n++;
     return n;

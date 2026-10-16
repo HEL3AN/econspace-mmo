@@ -1,0 +1,26 @@
+{
+    "star": {
+        "type": "Red",
+        "size": 137500
+    },
+    "planets": [
+        { "orbitRadius": 353000, "orbitSpeed": 34, "angle": 0.7, "size": 16500, "type": "Lava", "deposit": "Crystal" },
+        { "orbitRadius": 580000, "orbitSpeed": 46, "angle": 2.9, "size": 33000, "type": "Gas", "deposit": "Iron" }
+    ],
+    "stations": [
+        { "name": "Verge Outpost", "pos": [-256000, -170700], "size": 600, "faction": "Independent", "role": "Military" }
+    ],
+    "asteroidFields": [
+        { "name": "Verge Ice Belt", "pos": [249000, 311300], "size": 6240, "resource": "Ice", "ore": 260 },
+        { "name": "Verge Crystal Belt", "pos": [698400, -261900], "size": 8160, "resource": "Crystal", "ore": 200 }
+    ],
+    "nebulae": [
+        { "name": "Crimson Veil", "pos": [-434900, 386600], "radius": 38400 }
+    ],
+    "derelicts": [
+        { "name": "Hulk of the Tau", "pos": [615200, 395500], "size": 47, "reward": 2000 }
+    ],
+    "gates": [
+        { "name": "Gate to Helios Core", "pos": [-596900, 198900], "size": 900, "destination": "core" }
+    ]
+}

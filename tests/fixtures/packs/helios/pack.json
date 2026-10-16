@@ -1,0 +1,23 @@
+{
+    "schema": 1,
+    "id": "helios",
+    "name": "Helios",
+    "kind": "region",
+    "description": "The three systems the game began with, as an admin region (#342 S7).",
+    "systems": [
+        { "id": "core",  "file": "core.json",  "map": [0, 0],      "name": "Helios Core", "security": 1.0, "owner": "TradersGuild" },
+        { "id": "reach", "file": "reach.json", "map": [319, -60],  "name": "Sigma Reach", "security": 0.6, "owner": "helios-wardens" },
+        { "id": "verge", "file": "verge.json", "map": [-240, 180], "name": "Tau Verge",   "security": 0.3, "owner": "Independent" }
+    ],
+    "links": [ ["core", "verge"], ["core", "reach"] ],
+    "factions": [
+        { "id": "helios-wardens", "name": "Helios Wardens", "color": [120, 180, 255], "lawful": true, "kind": "Minor",
+          "temperament": { "appetite": 0.3, "capacity": 4, "growth": 0.1, "values": { "traffic": 0.6 } } }
+    ],
+    "relations": [ ["helios-wardens", "Pirates", "War"] ],
+    "start": ["core"],
+    "weave": {
+        "place": "random",
+        "links": { "count": [1, 2], "kind": "static" }
+    }
+}
