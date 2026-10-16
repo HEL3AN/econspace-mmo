@@ -110,7 +110,7 @@ Two halves, both required: a server, and a client connected to it.
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2
 ```
 
-Run more clients under other names and they share the galaxy. To play over a network, start the server with `--public` (`econserver host 50800 --public`) and connect to its address instead of `127.0.0.1`. Without it the server accepts only this machine. That keeps Windows from raising a firewall prompt for every build, and nothing travels encrypted except the login.
+Run more clients under other names and they share the galaxy. To play over a network, start the server with `--public` (`econserver host 50800 --public`) and connect to its address instead of `127.0.0.1`. A public server lets in only the account names listed in `allowlist.txt` beside its `world.json` (type `allow <name>` on its console; `ban <name> [reason]` and `bans.txt` keep someone out), unless it is started with `--open`. Without it the server accepts only this machine. That keeps Windows from raising a firewall prompt for every build, and nothing travels encrypted except the login.
 
 **An agent instead of a human:**
 

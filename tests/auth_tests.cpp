@@ -1,7 +1,9 @@
 #include <doctest/doctest.h>
 
+#include "net/OsRandom.h"
 #include "sim/Auth.h"
 
+#include <cstring>
 #include <set>
 #include <string>
 
@@ -78,4 +80,21 @@ TEST_CASE("a proof is good for one nonce and no other")
         const std::string wrong = Auth::Stored("0123456789abcdef0123456789abcdef", "hunter2");
         CHECK(Auth::Proof(nonce, wrong) != Auth::Proof(nonce, stored));
     }
+}
+
+TEST_CASE("random bytes come from the operating system, not a seeded generator (#351)")
+{
+    unsigned char a[64] = {}, b[64] = {};
+    REQUIRE(Net::OsRandom(a, sizeof a));
+    REQUIRE(Net::OsRandom(b, sizeof b));
+    CHECK(std::memcmp(a, b, sizeof a) != 0);
+    // 64 zero bytes by chance is 2^-512: a buffer left untouched is the failure this catches.
+    const unsigned char zero[64] = {};
+    CHECK(std::memcmp(a, zero, sizeof a) != 0);
+    CHECK(Net::OsRandom(nullptr, 0));
+    // More than one call's worth on Linux (getrandom returns at most 256 bytes at a time
+    // from older kernels), so the loop is exercised.
+    std::string big(4096, '\0');
+    REQUIRE(Net::OsRandom(&big[0], big.size()));
+    CHECK(big.find(std::string(64, '\0')) == std::string::npos);
 }

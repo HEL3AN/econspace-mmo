@@ -210,6 +210,7 @@ add_library(netproto STATIC
     src/game/sim/Events.cpp
     src/game/sim/Auth.cpp        # proving an account is itself (#106) -- both sides need it
     src/game/net/Tcp.cpp
+    src/game/net/OsRandom.cpp    # nonces and salts from the system's generator (#351)
 )
 # PUBLIC: consumers include "sim/Protocol.h" and "net/Tcp.h" relative to src/game.
 target_include_directories(netproto PUBLIC ${CMAKE_SOURCE_DIR}/src/game)
@@ -227,7 +228,7 @@ endif()
 target_link_libraries(netproto PUBLIC engine)
 # winsock, guarded here so the guard lives in one place when other platforms arrive (#12).
 if(WIN32)
-    target_link_libraries(netproto PUBLIC ws2_32)
+    target_link_libraries(netproto PUBLIC ws2_32 bcrypt)  # bcrypt: BCryptGenRandom (#351)
 endif()
 
 # --- Game ------------------------------------------------------------------
@@ -293,6 +294,8 @@ add_executable(econserver
     src/game/sim/WorldRules.cpp           # data/world_rules.json: how the world grows (#342 S3)
     src/game/sim/SaveFile.cpp             # a save is renamed into place, never half-written (#341)
     src/game/sim/HostRules.cpp            # who may log in and whether the world may start (#341)
+    src/game/sim/AccessList.cpp           # the allowlist and the bans (#400)
+    src/game/sim/ServerLog.cpp            # stamped log lines and the metrics line (#400)
     src/game/sim/PlayerStep.cpp
     src/game/sim/WarpPath.cpp
     src/game/sim/Orders.cpp
@@ -419,6 +422,7 @@ add_executable(tests
     tests/prediction_tests.cpp     # the client's prediction against the server, same commands (#358)
     tests/natives_tests.cpp        # natives, their stations and frontier prices (#342 S5)
     tests/growth_tests.cpp         # expeditions, stations grown by need, convoys (#342 S6)
+    tests/access_tests.cpp         # the allowlist, bans and the server's log (#400)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/MissionList.cpp   # the missions window's rows, tested without one (#297)
@@ -450,6 +454,8 @@ add_executable(tests
     src/game/sim/WorldRules.cpp           # data/world_rules.json: how the world grows (#342 S3)
     src/game/sim/SaveFile.cpp             # a save is renamed into place, never half-written (#341)
     src/game/sim/HostRules.cpp            # who may log in and whether the world may start (#341)
+    src/game/sim/AccessList.cpp           # the allowlist and the bans (#400)
+    src/game/sim/ServerLog.cpp            # stamped log lines and the metrics line (#400)
     src/game/sim/PlayerStep.cpp
     src/game/sim/WarpPath.cpp
     src/game/sim/Orders.cpp
