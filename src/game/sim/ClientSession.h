@@ -60,6 +60,33 @@ struct ClientSession
     // designs; every id here is kept in the server's store for as long as it is named.
     std::map<std::string, std::string> designLibrary;
 
+    // Insurance (#344): hull index -> the value its policy covers, fixed when it was bought.
+    // A hull with no entry is not insured. Spent when the ship is lost.
+    std::map<int, double> insurance;
+    double                CoverOf(int catalogIndex) const
+    {
+        const auto it = insurance.find(catalogIndex);
+        return it == insurance.end() ? 0.0 : it->second;
+    }
+    // Where this pilot wakes when their ship is lost (#344): the last station with a shipyard
+    // they docked at, or the trade hub of their start; 0 -- none chosen yet. An id is good for
+    // one server run; the save names the station (Simulation::SaveAccount).
+    int homeStationId = 0;
+    // The last ship this pilot lost in this session, for the notice the client shows and the
+    // agent reports (#344). `seq` counts losses, so a client can tell a new one from one it
+    // has already shown; 0 -- none.
+    struct ShipLoss
+    {
+        int         seq = 0;
+        std::string hull;    // the hull's name
+        std::string system;  // where it was lost, by name
+        double      value = 0.0;
+        double      paid = 0.0;  // what insurance paid; 0 -- not insured
+        int         cargo = 0;   // units of cargo lost with it
+        std::string wokeAt;      // "Station, System", or empty when nowhere would take them
+    };
+    ShipLoss lastLoss;
+
     // How this account proves it is itself (#106). The salt is public; the stored value
     // is what a proof is checked against. Both are written to the account file, and the
     // secret they came from is never here.

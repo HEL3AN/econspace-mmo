@@ -343,6 +343,8 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
             sim.SwitchShip(s, c.refitShip);  // only to a ship this account owns (#5)
         if (c.buyShip >= 0)
             sim.BuyShip(s, c.buyShip);  // purchase (deducts money)
+        if (c.insureShip >= 0)
+            sim.InsureShip(s, c.insureShip);  // a policy on an owned hull (#344)
         FactionId bountyTo;
         if (!c.payBountyFaction.empty() && Factions::Find(c.payBountyFaction, bountyTo))
             sim.PayBounty(s, bountyTo);  // clear bounty
@@ -1113,10 +1115,28 @@ static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::s
         Log::Printf("Growth %s.\n",
                     verb == "pause" ? "paused: no tide gathers and no mouth opens" : "resumed");
     }
+    else if (verb == "destroy")
+    {
+        // A pilot's ship lost as if shot down (#344): for moderation, and for seeing what a
+        // loss looks like without arranging a fight.
+        std::string name;
+        in >> name;
+        bool found = false;
+        for (auto& kv : sim.Sessions())
+            if (!name.empty() && kv.second.accountName == name && kv.second.ship)
+            {
+                found = true;
+                sim.ServerRespawnPlayer(kv.second);
+                Log::Printf("%s: ship destroyed.\n", name.c_str());
+            }
+        if (!found)
+            Log::Printf("Nobody called '%s' is flying.\n", name.c_str());
+    }
     else
         Log::Printf("Commands: tide | open [region] (a mouth now, from the region named or the one "
                     "nearest to breaking) | drift <region> (into the archive now) | pause | resume "
-                    "(growth) | allow <name> | deny <name> | ban <name> [reason] | unban <name> | "
+                    "(growth) | destroy <name> (their ship is lost) | allow <name> | deny <name> | "
+                    "ban <name> [reason] | unban <name> | "
                     "access (who may come in) | reload (allowlist.txt and bans.txt). With the "
                     "server stopped: econserver regenerate <region>.\n");
 }

@@ -11,6 +11,7 @@
 #include "sim/SaveFile.h"
 
 #include "core/Archetype.h"
+#include "core/Blueprint.h"
 #include "core/Orbits.h"
 #include "core/World.h"
 #include "economy/Resource.h"
@@ -88,15 +89,217 @@ int StationIdOf(const std::map<std::string, SystemState>& systems, const nlohman
 }
 }  // namespace
 
+// Credits as a pilot reads them.
+static std::string Credits(double cr)
+{
+    return std::to_string((long long)std::llround(cr)) + " cr";
+}
+
+namespace
+{
+// A station a pilot may wake at: one that would let them dock (StepPlayerDock's rule).
+bool TakesPilot(const ClientSession& s, const Entity& e)
+{
+    return e.GetKind() == EntityKind::Station && e.Has(Component::Dockable) &&
+           Factions::TierOf(s.account.GetReputation(static_cast<const Station&>(e).GetFaction())) !=
+               RepTier::Hated;
+}
+
+// How large the wreck of a player's ship is: about a generated battle's.
+constexpr float SHIP_WRECK_SIZE = 40.0f;
+}  // namespace
+
+int Simulation::HomeOf(const ClientSession& s, std::string& systemId) const
+{
+    if (s.homeStationId != 0)
+        for (const auto& kv : systems_)
+            for (const auto& e : kv.second.entities)
+                if (e->GetId() == s.homeStationId && TakesPilot(s, *e))
+                {
+                    systemId = kv.first;
+                    return e->GetId();
+                }
+    for (const StartPoint& sp : starts_)
+        if (const SystemState* st = SystemById(sp.systemId))
+            for (const auto& e : st->entities)
+                if (e->GetName() == sp.station && TakesPilot(s, *e))
+                {
+                    systemId = sp.systemId;
+                    return e->GetId();
+                }
+    return 0;
+}
+
+double Simulation::ValueOf(const ClientSession& s, int catalogIndex, const SystemState& st) const
+{
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    if (catalogIndex < 0 || catalogIndex >= (int)catalog.size())
+        return 0.0;
+    const ShipType&         t = catalog[catalogIndex];
+    const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
+    const Ships::Design*    stock = ships.FindDesign(t.stats.design);
+    const Ships::Design*    flown = designs_.Find(s.DesignOf(catalogIndex));
+    if (stock == nullptr)
+        return t.price;
+    std::vector<float> ore;
+    for (ResourceType rt : AllResourceTypes())
+        ore.push_back((float)st.market.GetPrice(rt));
+    return ShipValue(ships, t.price, *stock, flown != nullptr ? *flown : *stock, ore);
+}
+
 void Simulation::ServerRespawnPlayer(ClientSession& s)
 {
     if (!s.ship)
         return;
-    s.RecordEvent(Ev::Kind::ShipDestroyed, "Ship destroyed; respawned with cargo lost");
-    s.ship->Teleport(SafeArrival(s.systemId, &s));
-    s.ship->Repair();
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    const int                    hull = s.currentShip;
+    const bool                   known = hull >= 0 && hull < (int)catalog.size();
+    const std::string            hullName = known ? catalog[hull].name : std::string("ship");
+    const std::string            starter = catalog.empty() ? std::string("ship") : catalog[0].name;
+    SystemState*                 here = SystemOf(s);
+    const std::string            where = SystemName(s.systemId);
+
+    // What went with it: the ship as fitted, and the hold, at this system's prices.
+    const double value = here != nullptr ? ValueOf(s, hull, *here) : 0.0;
+    int          cargo = 0;
+    double       cargoWorth = 0.0;
+    for (ResourceType rt : AllResourceTypes())
+    {
+        const int n = s.ship->GetCargoAmount(rt);
+        cargo += n;
+        if (here != nullptr)
+            cargoWorth += n * here->market.GetPrice(rt);
+    }
+
+    // The policy pays and is spent.
+    const double cover = s.CoverOf(hull);
+    const double paid = cover > 0.0 ? std::floor(InsurancePayout(cover, value)) : 0.0;
+    s.insurance.erase(hull);
+    if (paid > 0.0)
+        s.account.AddMoney(paid);
+
+    // Whatever it was doing is over.
+    AbortOrder(s, "ship destroyed");
+
+    // A wreck where it fell, holding a share of what was lost: whoever gets there first
+    // searches it, as a structure's (Simulation_Build.cpp). For an hour, so a busy fight does
+    // not leave the system full of them.
+    if (here != nullptr)
+    {
+        const double worth = std::floor((value + cargoWorth) * Blueprints::Rules().wreckShare);
+        if (worth >= 1.0)
+        {
+            const std::string pilot = s.ship->GetPilotName();
+            auto              wreck = std::make_unique<Derelict>(
+                s.ship->GetPosition(), SHIP_WRECK_SIZE,
+                "Wreck of " + (pilot.empty() ? std::string("a ") : pilot + "'s ") + hullName,
+                worth);
+            wreck->SetExpiresAt(time_ + SHIP_WRECK_SECONDS);
+            AddStatic(s.systemId, std::move(wreck), std::string());
+        }
+    }
+
+    // The hull leaves the hangar; the starter never does, and is the stock one again.
+    if (known && hull != 0)
+        s.ownedShips.erase(std::remove(s.ownedShips.begin(), s.ownedShips.end(), hull),
+                           s.ownedShips.end());
+    s.shipDesigns.erase(hull);
+    if (!s.Owns(0))
+        s.ownedShips.insert(s.ownedShips.begin(), 0);
+    s.currentShip = 0;
+    if (!catalog.empty())
+    {
+        ShipStats stats = catalog[0].stats;
+        ShipStatsFor(s.DesignOf(0), stats);
+        s.ship->Refit(stats);
+    }
     s.ship->ClearCargo();
+    s.ship->Repair();
     s.ship->DisengageAutopilot();
+    s.ship->CancelWarp();
+    s.ship->ReleaseHold();
+    s.ship->SetMiningOn(false);
+    s.ship->Stop();
+    s.weaponOn = false;
+    s.missions.ClearOffers();
+
+    // Awake at home, docked, in whatever system that is.
+    std::string homeSystem;
+    const int   home = HomeOf(s, homeSystem);
+    std::string wokeAt;
+    if (home != 0)
+    {
+        SystemState& dest = systems_[homeSystem];
+        if (!IsHot(dest))
+            Orbits::Place(dest.entities, time_);  // where the clock has the station now
+        s.systemId = homeSystem;
+        Warm(dest);
+        for (const auto& e : dest.entities)
+            if (e->GetId() == home)
+            {
+                s.dockedStationId = home;
+                s.dockBearing = { 0.0f, 1.0f };
+                s.ship->Teleport(Sim::DockBerth(e->GetPosition(), e->GetSize(), s.dockBearing));
+                wokeAt = e->GetName() + ", " + SystemName(homeSystem);
+                break;
+            }
+        GenerateDockOffers(s);
+    }
+    else
+        // Nowhere would take them: beside a station here that would not shoot (#224).
+        s.ship->Teleport(SafeArrival(s.systemId, &s));
+
+    ClientSession::ShipLoss& loss = s.lastLoss;
+    loss.seq++;
+    loss.hull = hullName;
+    loss.system = where;
+    loss.value = value;
+    loss.paid = paid;
+    loss.cargo = cargo;
+    loss.wokeAt = wokeAt;
+
+    std::string text =
+        "Ship lost: your " + hullName + " was destroyed in " + where + ", worth " + Credits(value);
+    if (cargo > 0)
+        text += ", with " + std::to_string(cargo) + " units of cargo";
+    text += paid > 0.0 ? "; insurance paid " + Credits(paid) : std::string("; it was not insured");
+    text += wokeAt.empty() ? ". You are in your " + starter
+                           : ". You wake at " + wokeAt + " in your " + starter;
+    s.RecordEvent(Ev::Kind::ShipDestroyed, text);
+}
+
+bool Simulation::InsureShip(ClientSession& s, int catalogIndex)
+{
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    if (catalogIndex < 0 || catalogIndex >= (int)catalog.size())
+        return false;
+    const std::string name = catalog[catalogIndex].name;
+    auto              refuse = [&](const std::string& why)
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Insurance refused: " + why);
+        return false;
+    };
+    const SystemState* st = SystemOf(s);
+    if (!s.IsDocked() || st == nullptr)
+        return refuse("insurance is bought docked at a station");
+    if (!s.Owns(catalogIndex))
+        return refuse("you do not own a " + name);
+    const double value = ValueOf(s, catalogIndex, *st);
+    const double cover = s.CoverOf(catalogIndex);
+    if (value <= 0.0)
+        return refuse("a stock " + name + " is free and needs no insurance");
+    if (cover >= value)
+        return refuse("the " + name + " is covered for " + Credits(cover) + " already");
+    const double premium = std::ceil(InsurancePremium(value, cover));
+    if (!s.account.CanAfford(premium))
+        return refuse("it costs " + Credits(premium) + " and you have " +
+                      Credits(s.account.GetMoney()));
+    s.account.AddMoney(-premium);
+    s.insurance[catalogIndex] = value;
+    s.RecordEvent(Ev::Kind::Notice, "Insured the " + name + " for " + Credits(value) + " (pays " +
+                                        Credits(InsurancePayout(value, value)) + " if lost) for " +
+                                        Credits(premium));
+    return true;
 }
 
 // --- Player as a server agent (M4d-2b) ---
@@ -115,6 +318,16 @@ ClientSession& Simulation::CreateSession(const std::string& systemId, Vector2 po
     s.ownedShips = { 0 };  // everyone starts owning the starter (#5)
     s.currentShip = 0;
     s.shipDesigns.clear();  // flying its stock design (#279 fitting)
+    // Home, until they dock at a shipyard, is the trade hub of the start they began at (#344).
+    for (const StartPoint& sp : starts_)
+        if (sp.systemId == systemId)
+            if (const SystemState* st = SystemById(systemId))
+                for (const auto& e : st->entities)
+                    if (e->GetKind() == EntityKind::Station && e->GetName() == sp.station)
+                    {
+                        s.homeStationId = e->GetId();
+                        break;
+                    }
     if (SystemState* st = SystemById(systemId))
         Warm(*st);  // a player is here now (#295)
     return s;
@@ -556,11 +769,6 @@ static bool HoldFits(ClientSession& s, const std::string& name, const ShipStats&
                                         std::to_string(stats.cargoCapacity) +
                                         "; sell or hand in cargo first");
     return false;
-}
-
-static std::string Credits(double cr)
-{
-    return std::to_string((long long)std::llround(cr)) + " cr";
 }
 
 bool Simulation::SwitchShip(ClientSession& s, int catalogIndex)
@@ -1038,6 +1246,16 @@ int Simulation::StepPlayerDock(ClientSession& s, SystemState& st)
         s.dockBearing = Sim::DockBearing(e->GetPosition(), pp);
         s.ship->Teleport(Sim::DockBerth(e->GetPosition(), e->GetSize(), s.dockBearing));
         s.RecordEvent(Ev::Kind::Docked, "Docked at " + e->GetName());
+        // A shipyard is where a hull is issued, so it is where a pilot wakes when their ship
+        // is lost (#344): the last one they docked at.
+        if (e->GetArchetype() != nullptr && e->GetArchetype()->Has(Component::Shipyard) &&
+            s.homeStationId != e->GetId())
+        {
+            s.homeStationId = e->GetId();
+            s.RecordEvent(Ev::Kind::Notice, e->GetName() +
+                                                " is your home now: if your ship is lost, you "
+                                                "wake here");
+        }
         GenerateDockOffers(s);  // fresh station mission board (M4f-2)
         return s.dockedStationId;
     }
@@ -1341,6 +1559,13 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
     }
     j["ships"] = ships;
     j["ship"] = s.currentShip;
+    // Insurance and home (#344): fields an older build ignores, so no version bump (#20).
+    json insurance = json::array();
+    for (const auto& [hull, cover] : s.insurance)
+        if (s.Owns(hull))
+            insurance.push_back({ { "hull", hull }, { "cover", cover } });
+    j["insurance"] = insurance;
+    j["home"] = StationRefOf(systems_, s.homeStationId);
     // The library (#279 fitting, step 3): names of the account's, designs by id, kept in
     // designs.json for as long as a save names them. A field an older build ignores, so no
     // version bump (#20).
@@ -1557,6 +1782,23 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
             }
             s.designLibrary[name] = design;
         }
+
+    // Insurance and home (#344). A policy on a hull the account no longer has is dropped; a
+    // home the galaxy no longer has leaves the one the session began with (CreateSession).
+    s.insurance.clear();
+    if (j.contains("insurance") && j["insurance"].is_array())
+        for (const auto& v : j["insurance"])
+        {
+            if (!v.is_object())
+                continue;
+            const int    hull = v.value("hull", -1);
+            const double cover = v.value("cover", 0.0);
+            if (s.Owns(hull) && cover > 0.0)
+                s.insurance[hull] = cover;
+        }
+    if (!foreign)
+        if (const int home = StationIdOf(systems_, j.value("home", json())))
+            s.homeStationId = home;
 
     const int wanted = j.value("ship", 0);
     s.currentShip = s.Owns(wanted) ? wanted : s.ownedShips.front();

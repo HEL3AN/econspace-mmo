@@ -115,7 +115,7 @@ Buy goods from the market of the station you are docked at. Buys as many as the 
 
 ### `missions`
 
-The job board of the station you are docked at, and the missions you have taken: what each asks, what it pays, where it is handed in and what it still needs. The numbers are what accept_mission and complete_mission take. Besides the station's own work (bounty, mining, delivery) a board carries the jobs its faction's plans post: supply (carry goods to a site going up; it then goes up faster), escort (fly with a builder convoy to its site) and siege (shoot down the warships besieging the faction's outpost). A job names its system and has a deadline; it is handed in anywhere, and failing one you took costs standing.
+The job board of the station you are docked at, and the missions you have taken: what each asks, what it pays, where it is handed in and what it still needs. The numbers are what accept_mission and complete_mission take.
 
 No arguments.
 
@@ -129,7 +129,7 @@ Take a job from the board of the station you are docked at. It joins your active
 
 ### `complete_mission`
 
-Hand in an active mission for its reward. A bounty or mining job goes back to the station that gave it, a delivery to its destination, docked; mining hands over the ore from the hold. A faction plan's job (supply, escort, siege) is handed in anywhere once it is ready; a supply job is ready beside its site, undocked, with the goods in the hold, and hands them over.
+Hand in an active mission at the station you are docked at, for its reward. A bounty or mining job goes back to the station that gave it, a delivery to its destination; mining hands over the ore from the hold.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
@@ -156,6 +156,14 @@ Fly another ship you already own, at the station you are docked at. Free; hangar
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
 | `ship` | string | yes | ship name as hangar lists it, e.g. 'Scout' |
+
+### `insure_ship`
+
+Insure a ship you own, as it is fitted now, at the station you are docked at. A lost ship is gone with its fit and cargo -- you wake docked at your home station in the free starter -- and a policy pays 70% of the value it covers. The premium is 10% of what is not covered yet; hangar shows each ship's value, cover and premium here.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `ship` | string | yes | ship name as hangar lists it, e.g. 'Hauler' |
 
 ### `fitting`
 
@@ -332,7 +340,7 @@ Ready-made plans a client can offer its user. Each is sent to the model as writt
 
 *Take jobs from a station's board and earn from them*
 
-> Work the job boards. Dock at a station and call missions to read its board. Take work you can actually do with accept_mission: a mining job needs ore you can mine nearby, a delivery needs only the trip, a bounty means fighting pirates -- judge that from observe before taking one. Do the work, then dock where the job says and complete_mission. Jobs a faction's plans post -- supply, escort, siege -- move the world as well as paying: a delivery speeds the faction's building, an escort guards its convoy, breaking a siege saves its outpost; they are handed in anywhere, before their deadline. If a faction has a bounty on you, pay_bounty before its ships find you. When the hangar offers a ship that suits the work better and you can afford it, buy_ship.
+> Work the job boards. Dock at a station and call missions to read its board. Take work you can actually do with accept_mission: a mining job needs ore you can mine nearby, a delivery needs only the trip, a bounty means fighting pirates -- judge that from observe before taking one. Do the work, then dock where the job says and complete_mission. If a faction has a bounty on you, pay_bounty before its ships find you. When the hangar offers a ship that suits the work better and you can afford it, buy_ship -- and insure_ship it: a lost ship is gone, fit and all.
 
 ### `patrol`
 

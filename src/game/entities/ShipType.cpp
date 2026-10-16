@@ -1,7 +1,10 @@
 #include "entities/ShipType.h"
 
 #include "core/Archetype.h"
+#include "core/Fitting.h"
 #include "core/ShipDesign.h"
+
+#include <algorithm>
 
 // Player ships are designs (#279 step 5). They used to be six floats each, typed here; now a
 // hull is a design in data/ships.json and its numbers are what its parts add up to, the same
@@ -123,4 +126,21 @@ float MissionRewardMultiplier(RepTier standing)
         case RepTier::Allied: return 1.3f;
     }
     return 1.0f;
+}
+
+double ShipValue(const Ships::Catalogue& c, double hullPrice, const Ships::Design& stock,
+                 const Ships::Design& flown, const std::vector<float>& orePrices)
+{
+    const double fit = Ships::RefitPrice(c, stock, flown, orePrices, 1.0f);
+    return std::max(0.0, hullPrice + std::max(0.0, fit));
+}
+
+double InsurancePremium(double value, double cover)
+{
+    return value > cover ? (value - cover) * INSURANCE_PREMIUM : 0.0;
+}
+
+double InsurancePayout(double cover, double valueAtLoss)
+{
+    return std::max(0.0, std::min(cover, valueAtLoss)) * INSURANCE_PAYOUT;
 }

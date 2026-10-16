@@ -32,7 +32,9 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    34;  // 34: a mission may be a faction plan's job (#345), with its plan, system, deadline and
+    35;  // 35: a lost ship is lost -- insurance in a command, each hull's cover and the last loss
+         // in the player's snapshot, and death wakes the pilot docked at home (#344); 34: a
+         // mission may be a faction plan's job (#345), with its plan, system, deadline and
          // site; 33: goods from data/goods.json (#343) -- cargo and the market by its order, the
          // market a bid, an ask and a stock per good, a buy in a command and in its
          // acknowledgement; 32: the named design library -- save, apply, rename and delete in a
@@ -187,6 +189,7 @@ struct Command
     std::string                 deleteDesign;
     // Account actions (server-authoritative, M4f): buy ship / pay bounty / cheat.
     int         buyShip = -1;          // buy ship by catalog index (-1 none)
+    int         insureShip = -1;       // insure an owned hull by catalog index (-1 none, #344)
     std::string payBountyFaction;      // pay off bounty with a faction (its id; empty none)
     bool        debugMoney = false;    // F1: grant debug money
     int         acceptOffer = -1;      // accept mission offer by board index (-1 none)
@@ -259,6 +262,19 @@ struct SavedDesign
     std::string design;
 };
 
+// The last ship a player lost (#344), as the client's notice and an agent's observe tell
+// it. `seq` counts the losses of this session: a new one is one with a higher seq.
+struct LossView
+{
+    int         seq = 0;  // 0 -- none
+    std::string hull;     // the hull's name
+    std::string system;   // where, by name
+    double      value = 0.0;
+    double      paid = 0.0;  // what insurance paid
+    int         cargo = 0;   // units of cargo lost
+    std::string wokeAt;      // "Station, System"; empty -- nowhere took them
+};
+
 // Player ship state in the snapshot.
 struct PlayerView
 {
@@ -273,6 +289,9 @@ struct PlayerView
     // The account's saved designs, by name (#279 fitting, step 3); each id that is not a
     // stock one has had its DesignDef sent first, so the client can price and derive it.
     std::vector<SavedDesign> library;
+    // What each of those hulls is insured for, in the same order; 0 -- not insured (#344).
+    std::vector<double> insured;
+    LossView            loss;
 
     Vector2 pos = { 0.0f, 0.0f };
     Vector2 vel = { 0.0f, 0.0f };

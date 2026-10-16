@@ -304,6 +304,12 @@ void Game::BuildClientSnapshot()
     }
 
     Proto::PlayerView& p = snapshot_.player;
+    // A ship lost since the last one shown (#344): the notice says what went and what paid.
+    if (p.loss.seq > lossSeen_)
+    {
+        lossSeen_ = p.loss.seq;
+        desk_.SetOpen(WIN_LOSS, true);
+    }
     {
         // RECONCILIATION (Gambetta), in core/Prediction.h: drop what the snapshot acks,
         // reset the ship to the server's state and hull, replay the unacked inputs on top.

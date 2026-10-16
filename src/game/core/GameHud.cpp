@@ -328,6 +328,14 @@ void Game::SetupWindows()
     hangar.tabOf = WIN_MARKET;
     desk_.AddWindow(hangar, "HANGAR", true, [this](Ui::Frame& f) { DrawHangarContent(f); });
 
+    // A ship was lost (#344): what went, what insurance paid and where the pilot woke. Opened
+    // by the snapshot that first says so, in space or docked alike; never found open at login.
+    WindowSpec loss = panel(WIN_LOSS, "", "", Anchor::Top, { 0.0f, 120.0f, 380.0f, 300.0f });
+    loss.resizable = true;
+    loss.minSize = { 280.0f, 220.0f };
+    loss.reopen = false;
+    desk_.AddWindow(loss, "SHIP LOST", false, [this](Ui::Frame& f) { DrawLossContent(f); });
+
     // Above the screens it opens; Esc passes over it. Docked too: it opens the station's
     // windows again once they have been closed.
     Ui::Desk::Surface bar;
