@@ -27,7 +27,6 @@ using nlohmann::json;
 
 namespace
 {
-const float kTop = 104.0f;  // below the header
 const float kPanelW = 300.0f;
 
 // Instruments, as on the region map: what a slot is to the world, never a faction's paint.
