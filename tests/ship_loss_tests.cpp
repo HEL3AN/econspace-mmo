@@ -17,6 +17,7 @@
 #include "sim/SaveSchema.h"
 #include "sim/Simulation.h"
 #include "temp_dir.h"
+#include "goods_named.h"
 
 #include <cmath>
 #include <set>
@@ -123,8 +124,8 @@ TEST_CASE("a lost ship is gone with its fit and cargo; insurance pays; you wake 
     w.sim.Warm(*w.sim.SystemById(there));
     const Vector2 fell = { 123400.0f, -56700.0f };
     s.ship->Teleport(fell);
-    REQUIRE(s.ship->AddCargo(ResourceType::Iron, 20));
-    double       cargoWorth = 20.0 * w.sim.SystemById(there)->market.GetPrice(ResourceType::Iron);
+    REQUIRE(s.ship->AddCargo(Good::Iron(), 20));
+    double       cargoWorth = 20.0 * w.sim.SystemById(there)->market.GetPrice(Good::Iron());
     const double money = s.account.GetMoney();
 
     w.sim.ServerRespawnPlayer(s);
