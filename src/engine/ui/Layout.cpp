@@ -920,6 +920,22 @@ float Layout::ScrollGutter() const
     return t.metrics.scrollbar + t.metrics.rowGap;
 }
 
+bool Layout::ScrollAtEnd(std::string_view id, uint32_t index) const
+{
+    float sc[3] = { 0.0f, 0.0f, 0.0f };
+    if (!open_ || id.empty() || !uiclay_scroll(clay_, id.data(), (int32_t)id.size(), index, sc))
+        return true;
+    return sc[0] >= sc[2] - sc[1] - 1.0f;
+}
+
+void Layout::ScrollToEnd(std::string_view id, uint32_t index)
+{
+    float sc[3] = { 0.0f, 0.0f, 0.0f };
+    if (open_ && !id.empty() && uiclay_scroll(clay_, id.data(), (int32_t)id.size(), index, sc) &&
+        sc[2] > sc[1])
+        uiclay_set_scroll(clay_, id.data(), (int32_t)id.size(), index, sc[2] - sc[1]);
+}
+
 void Layout::ScrollBegin(const Box& box)
 {
     const Theme&      t = CurrentTheme();

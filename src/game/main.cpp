@@ -3,7 +3,7 @@
 //   [--select] [--menu] [--sensor [RANGE]]
 //   [--shot FILE [--frames N]] [--nohud] [--treated] [--perf] [--notreat] [--size W H]
 //   [--uiscale S] [--open IDS] [--theme ID] [--blur] [--cblind] [--click X Y FRAME]...
-//   [--start ID|random] —
+//   [--say TEXT FRAME]... [--start ID|random] —
 //   connect to an econserver host
 //
 // Connecting is mandatory: the world lives on an authoritative server and the
@@ -56,6 +56,9 @@ static int Usage(const char* exe)
                  "                 without being shown the choice\n"
                  "      --click X Y FRAME\n"
                  "                 a left click at (X, Y) on frame FRAME; repeatable\n"
+                 "      --say TEXT FRAME\n"
+                 "                 send TEXT to chat on frame FRAME, as typed (/w pilot ...\n"
+                 "                 whispers); repeatable\n"
                  "\n"
                  "Start a server first:\n"
                  "  econserver host 50800\n",
@@ -103,10 +106,16 @@ int main(int argc, char** argv)
         float x, y;
         int   frame;
     };
-    std::vector<Click> clicks;          // --click X Y FRAME, any number of them
-    float              uiScale = 0.0f;  // 0: the player's setting times the display's
-    std::string        openWindows;     // --open radar,missions,settings
-    std::string        startAt;         // --start ID|random (#342 S2)
+    std::vector<Click> clicks;  // --click X Y FRAME, any number of them
+    struct Say
+    {
+        std::string text;
+        int         frame;
+    };
+    std::vector<Say> says;            // --say TEXT FRAME (#347)
+    float            uiScale = 0.0f;  // 0: the player's setting times the display's
+    std::string      openWindows;     // --open radar,missions,settings
+    std::string      startAt;         // --start ID|random (#342 S2)
     for (int i = 6; i < argc; i++)
         if (std::strcmp(argv[i], "--zoom") == 0 && i + 1 < argc)
             startZoom = (float)std::atof(argv[++i]);
@@ -167,6 +176,11 @@ int main(int argc, char** argv)
             clicks.push_back({ (float)std::atof(argv[i + 1]), (float)std::atof(argv[i + 2]),
                                std::atoi(argv[i + 3]) });
             i += 3;
+        }
+        else if (std::strcmp(argv[i], "--say") == 0 && i + 2 < argc)
+        {
+            says.push_back({ argv[i + 1], std::atoi(argv[i + 2]) });
+            i += 2;
         }
         else if (std::strcmp(argv[i], "--warp") == 0 && i + 2 < argc)
         {
@@ -238,6 +252,8 @@ int main(int argc, char** argv)
             game.AnswerStartWith(startAt);
         for (const Click& c : clicks)
             game.AddScriptedClick(c.x, c.y, c.frame);
+        for (const Say& s : says)
+            game.AddScriptedSay(s.text, s.frame);
         if (fit)
             game.StartOnFit();
         if (!market.empty())

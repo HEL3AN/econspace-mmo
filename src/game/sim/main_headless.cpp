@@ -10,6 +10,7 @@
 
 #include "sim/AccessList.h"
 #include "sim/Auth.h"
+#include "sim/Chat.h"
 #include "sim/HostRules.h"
 #include "sim/MacroBench.h"
 #include "sim/Protocol.h"
@@ -667,16 +668,17 @@ struct NetStats
     double snapshots = 0.0;  // bytes
     double layouts = 0.0;
     double galaxies = 0.0;
+    double chat = 0.0;  // lines and members (#347)
     int    snapCount = 0;
     double window = 0.0;    // seconds since the last report
     double reported = 0.0;  // bytes in the reports so far, for the metrics line (#400)
 
     // Everything sent since the server started.
-    double Sent() const { return reported + snapshots + layouts + galaxies; }
+    double Sent() const { return reported + snapshots + layouts + galaxies + chat; }
 
     void Report(size_t clients)
     {
-        const double total = snapshots + layouts + galaxies;
+        const double total = snapshots + layouts + galaxies + chat;
         if (window <= 0.0 || total <= 0.0)
             return;
         reported += total;
@@ -686,7 +688,7 @@ struct NetStats
                     clients, perSec / 1024.0, clients ? perSec / 1024.0 / (double)clients : 0.0,
                     100.0 * snapshots / total, 100.0 * galaxies / total, 100.0 * layouts / total,
                     snapCount ? snapshots / snapCount : 0.0);
-        snapshots = layouts = galaxies = 0.0;
+        snapshots = layouts = galaxies = chat = 0.0;
         snapCount = 0;
         window = 0.0;
     }
@@ -695,6 +697,71 @@ struct NetStats
 static const double NET_REPORT_INTERVAL = 10.0;
 // How often the metrics line is written (#400).
 static const double METRICS_INTERVAL = 60.0;
+
+// --- Chat (#347) ---------------------------------------------------------------------------
+
+// The time a chat line is stamped with, and the clock its limits run on: Unix seconds.
+static double ChatClock()
+{
+    return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
+
+// Who can hear chat: connected, logged in, and in a system. A ship lingering after its
+// connection closed (#341) has nobody behind it to read anything.
+static std::vector<Chat::Pilot> ChatPilots(const std::vector<HostClient>& clients,
+                                           const Simulation&              sim)
+{
+    std::vector<Chat::Pilot> out;
+    for (const HostClient& hc : clients)
+        if (hc.conn && !hc.evicted)
+            if (const ClientSession* s = sim.Session(hc.sessionId))
+                out.push_back({ hc.sessionId, hc.account, s->systemId });
+    return out;
+}
+
+// Each recipient's lines in one message.
+static void SendChat(std::vector<HostClient>& clients, const std::vector<Chat::Delivery>& out,
+                     NetStats& net)
+{
+    if (out.empty())
+        return;
+    std::map<int, Proto::ChatLines> byRecipient;
+    for (const Chat::Delivery& d : out)
+        byRecipient[d.to].lines.push_back(d.line);
+    for (HostClient& hc : clients)
+    {
+        const auto it = byRecipient.find(hc.sessionId);
+        if (hc.sessionId == 0 || !hc.conn || it == byRecipient.end())
+            continue;
+        const std::string msg = Proto::EncodeChatLines(it->second);
+        net.chat += (double)msg.size();
+        hc.conn->Send(msg);
+    }
+}
+
+// Who is in each local channel, to whoever's picture of it changed, with the history for a
+// pilot who has just arrived (Chat::Hub::Track).
+static void SendPresence(std::vector<HostClient>& clients, const Simulation& sim, Chat::Hub& chat,
+                         NetStats& net)
+{
+    const std::vector<Chat::Presence> presence = chat.Track(ChatPilots(clients, sim), ChatClock());
+    for (const Chat::Presence& p : presence)
+        for (HostClient& hc : clients)
+        {
+            if (hc.sessionId != p.to || !hc.conn)
+                continue;
+            std::string msg = Proto::EncodeChatMembers(p.members);
+            net.chat += (double)msg.size();
+            hc.conn->Send(msg);
+            if (!p.history.empty())
+            {
+                msg = Proto::EncodeChatLines({ p.history });
+                net.chat += (double)msg.size();
+                hc.conn->Send(msg);
+            }
+        }
+}
 
 // What changed in the static layer since the last call, to everyone whose picture of that
 // system it changes (#38). Called once per loop, after every input and every world tick
@@ -1056,8 +1123,10 @@ static void PrintAccess(const Host::AccessList& access)
 }
 
 // One console line, applied: `tide`, `open [region]`, `drift`, `pause`, `resume`; `allow`,
-// `deny`, `ban`, `unban`, `access`, `reload` (#400); anything else is `help`.
-static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::string& line)
+// `deny`, `ban`, `unban`, `access`, `reload` (#400); `say`, `mute`, `unmute` (#347); anything
+// else is `help`.
+static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::string& line,
+                         std::vector<HostClient>& clients, Chat::Hub& chat, NetStats& net)
 {
     std::istringstream in(line);
     std::string        verb;
@@ -1132,12 +1201,52 @@ static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::s
         if (!found)
             Log::Printf("Nobody called '%s' is flying.\n", name.c_str());
     }
+    else if (verb == "say")
+    {
+        // The operator, to everyone online, as a line of its own in their chat (#347).
+        std::string text;
+        std::getline(in, text);
+        const std::vector<Chat::Delivery> out =
+            chat.Broadcast(text, ChatPilots(clients, sim), ChatClock());
+        if (out.empty() && Chat::Sanitize(text).empty())
+            Log::Printf("Usage: say <text>\n");
+        else
+        {
+            SendChat(clients, out, net);
+            Log::Printf("Said to %d pilot(s): %s\n", (int)out.size(), Chat::Sanitize(text).c_str());
+        }
+    }
+    else if (verb == "mute" || verb == "unmute")
+    {
+        // Chat only (#347): a muted pilot still plays, and nobody hears them. Kept until
+        // unmuted or the server restarts; a ban is the lasting answer.
+        std::string name;
+        double      minutes = 0.0;
+        in >> name >> minutes;
+        name = Host::CanonicalAccount(name);
+        const double now = ChatClock();
+        if (name.empty())
+            Log::Printf("Usage: %s <name>%s\n", verb.c_str(), verb == "mute" ? " [minutes]" : "");
+        else if (verb == "unmute")
+            Log::Printf(chat.Unmute(name) ? "%s may talk again.\n" : "%s was not muted.\n",
+                        name.c_str());
+        else
+        {
+            chat.Mute(name, minutes > 0.0 ? now + minutes * 60.0 : 0.0);
+            if (minutes > 0.0)
+                Log::Printf("%s is muted for %.0f min.\n", name.c_str(), minutes);
+            else
+                Log::Printf("%s is muted until unmuted (or the server restarts).\n", name.c_str());
+        }
+    }
     else
         Log::Printf("Commands: tide | open [region] (a mouth now, from the region named or the one "
                     "nearest to breaking) | drift <region> (into the archive now) | pause | resume "
                     "(growth) | destroy <name> (their ship is lost) | allow <name> | deny <name> | "
                     "ban <name> [reason] | unban <name> | "
-                    "access (who may come in) | reload (allowlist.txt and bans.txt). With the "
+                    "access (who may come in) | reload (allowlist.txt and bans.txt) | "
+                    "say <text> (to everyone online) | mute <name> [minutes] | unmute <name>. "
+                    "With the "
                     "server stopped: econserver regenerate <region>.\n");
 }
 
@@ -1252,6 +1361,7 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
     std::vector<HostClient> clients;
     // Connection, registration and login limits (#341). Its clock is the server's uptime.
     Host::Gate gate;
+    Chat::Hub  chat;  // local, private and the operator's lines (#347)
     const auto started = clock::now();
     double     gateExpireAcc = 0.0;
     int        refusedConnections = 0;  // since the last line about them
@@ -1322,6 +1432,7 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
         {
             gateExpireAcc = 0.0;
             gate.Expire(uptime);
+            chat.Expire(ChatClock());
         }
 
         // Inputs. Each received command is one player tick (1:1 with client prediction),
@@ -1592,6 +1703,27 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
                         hc.snapOut.Acknowledge(a.snapshot);
                     continue;
                 }
+                // Nor is a line of chat (#347): the hub has a limit of its own for talking.
+                if (type == "say")
+                {
+                    Proto::ChatSay say;
+                    if (s == nullptr || !Proto::DecodeChatSay(msg, say))
+                        continue;
+                    const std::vector<Chat::Pilot>    online = ChatPilots(clients, sim);
+                    const Chat::Pilot                 from{ hc.sessionId, hc.account, s->systemId };
+                    const std::vector<Chat::Delivery> out =
+                        chat.Say(from, say, online, ChatClock());
+                    // In the log for the operator to moderate by: what was said in a system,
+                    // and that a private line was sent -- not what it said.
+                    if (!out.empty() && out[0].line.channel == Chat::LOCAL)
+                        Log::Printf("chat [%s] %s: %s\n", s->systemId.c_str(), hc.account.c_str(),
+                                    out[0].line.text.c_str());
+                    else if (!out.empty() && out[0].line.channel == Chat::PRIVATE)
+                        Log::Printf("chat: %s -> %s (private)\n", hc.account.c_str(),
+                                    out[0].line.to.c_str());
+                    SendChat(clients, out, net);
+                    continue;
+                }
                 if (type != "cmd" || s == nullptr)
                     continue;
                 if (hc.tickBudget < 1.0)
@@ -1634,7 +1766,7 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
             acc -= dt;
         }
         for (std::string line; console.Take(line);)
-            AdminCommand(sim, access, line);
+            AdminCommand(sim, access, line, clients, chat, net);
 
         // The lists edited by hand are read again (#400); then whoever they, or the console,
         // now refuse is taken off the server -- in play, logging in or choosing a start.
@@ -1756,6 +1888,9 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
             net.snapCount++;
             hc.conn->Send(enc);
         }
+        // Who is in each local channel, after the layouts above: a pilot is told who is in a
+        // system once it has been told it is there (#347).
+        SendPresence(clients, sim, chat, net);
 
         // Galaxy snapshot -- rarely (once a second): the statistics change slowly and the
         // message is large (all systems). The client's galaxy map lives off it.

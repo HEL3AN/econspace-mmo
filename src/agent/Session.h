@@ -70,6 +70,18 @@ public:
     std::vector<Ev::Event> EventsSince(int seq) const;
     int                    LastEventSeq() const { return lastEventSeq_; }
 
+    // Chat (#347): every line heard, numbered in the order it arrived (the newest 256 kept),
+    // and who is in the local channel of the system the ship is in.
+    struct HeardLine
+    {
+        int             seq = 0;
+        Proto::ChatLine line;
+    };
+    const std::vector<HeardLine>& ChatHeard() const { return chat_; }
+    int                           LastChatSeq() const { return chatSeq_; }
+    const Proto::ChatMembers&     ChatMembers() const { return members_; }
+    void                          Say(const Proto::ChatSay& say);
+
     // A situation report from the current state; see sim/Observation.h.
     std::string Describe(Obs::Detail detail) const;
 
@@ -89,6 +101,9 @@ private:
     Proto::GalaxyState                  galaxy_;
     WorldLoader::Universe               universe_;
     std::vector<Ev::Event>              journal_;
+    std::vector<HeardLine>              chat_;
+    int                                 chatSeq_ = 0;
+    Proto::ChatMembers                  members_;
     int                                 lastEventSeq_ = 0;
     int                                 commandSeq_ = 0;
     bool                                haveSnapshot_ = false;
