@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "goods_named.h"
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
@@ -114,8 +115,8 @@ struct Battery
         ClientSession& probe = Builder(sim, "probe");
         sys = probe.systemId;
         probe.ship->ClearCargo();  // a spot is free for a hold that could pay for it
-        REQUIRE(probe.ship->AddCargo(ResourceType::Iron, 20));
-        REQUIRE(probe.ship->AddCargo(ResourceType::Crystal, 5));
+        REQUIRE(probe.ship->AddCargo(Good::Iron(), 20));
+        REQUIRE(probe.ship->AddCargo(Good::Crystal(), 5));
         at = FreeSpot(sim, probe);
         sim.DestroySession(probe.id);
         auto& ents = sim.SystemById(sys)->entities;
@@ -359,8 +360,8 @@ TEST_CASE("rules of engagement are the owner's to set, are checked, and are save
     bad.threshold = 500.0f;
     CHECK_FALSE(b.sim.DefenceSetProblem(owner, b.id, bad).empty());
     owner.ship->ClearCargo();
-    REQUIRE(owner.ship->AddCargo(ResourceType::Iron, 20));
-    REQUIRE(owner.ship->AddCargo(ResourceType::Crystal, 5));
+    REQUIRE(owner.ship->AddCargo(Good::Iron(), 20));
+    REQUIRE(owner.ship->AddCargo(Good::Crystal(), 5));
     const Vector2 spot = FreeSpot(b.sim, owner, 20000.0f);
     const int     beacon = b.sim.Deploy(owner, "beacon", spot, "Lamp");
     REQUIRE(beacon != 0);

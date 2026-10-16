@@ -14,6 +14,7 @@
 #include "core/Blueprint.h"
 #include "core/DataDir.h"
 #include "core/Faction.h"
+#include "economy/Resource.h"
 #include "entities/Combatant.h"
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
@@ -47,7 +48,6 @@ struct BenchRow
     double materializeMs = 0.0;    // InitGalaxy + MaterializeAllSystems
     int    ticks = 0, passes = 0;
     double agentsMs = 0.0;      // StepSystemAgents in every system, per tick
-    double marketMs = 0.0;      // market recovery in every system, per tick
     double structuresMs = 0.0;  // StepStructures, per tick
     double recountMs = 0.0;     // per coarse pass
     double macroMs = 0.0;       // StepWorldMacro, per coarse pass
@@ -108,10 +108,10 @@ BenchRow RunOne(int regionSystems, double seconds, uint64_t seed, bool allHot, i
         sim.CreateSession(at, sim.SafeArrival(at), GetShipCatalog()[0].stats);
     }
 
-    // HostStepWorld: the agents and the market of every hot system, then maintenance.
+    // HostStepWorld: the agents of every hot system, then maintenance (markets are in its pass).
     const float              dt = 1.0f / 60.0f;
     Simulation::MaintainCost cost;
-    double                   agents = 0.0, market = 0.0, total = 0.0;
+    double                   agents = 0.0, total = 0.0;
     row.ticks = (int)(seconds * 60.0 + 0.5);
     for (int i = 0; i < row.ticks; i++)
     {
@@ -125,11 +125,6 @@ BenchRow RunOne(int regionSystems, double seconds, uint64_t seed, bool allHot, i
             if (Simulation::IsHot(kv.second))
                 sim.StepSystemAgents(kv.second, present[kv.first], nullptr, dt);
         agents += Since(t);
-        t = Clock::now();
-        for (auto& kv : sim.Systems())
-            if (Simulation::IsHot(kv.second))
-                kv.second.market.Update(dt);
-        market += Since(t);
         sim.MaintainWorld(dt, &cost);
         sim.TakeLayoutDeltas();  // the host sends these every frame; nobody is here to read them
         const double ms = Since(tick);
@@ -138,7 +133,6 @@ BenchRow RunOne(int regionSystems, double seconds, uint64_t seed, bool allHot, i
     }
     row.passes = cost.passes;
     row.agentsMs = agents / row.ticks;
-    row.marketMs = market / row.ticks;
     row.structuresMs = cost.structures * 1000.0 / row.ticks;
     const int passes = std::max(1, cost.passes);
     row.recountMs = cost.recount * 1000.0 / passes;
@@ -183,6 +177,11 @@ int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t see
         fprintf(stderr, "FATAL: %s\n", Factions::Error().c_str());
         return 1;
     }
+    if (!Goods::Load(dataDir + "goods.json"))
+    {
+        fprintf(stderr, "FATAL: %s\n", Goods::Error().c_str());
+        return 1;
+    }
     if (!Archetypes::Load(dataDir + "archetypes.json"))
     {
         fprintf(stderr, "FATAL: %s\n", Archetypes::Error().c_str());
@@ -210,7 +209,7 @@ int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t see
     printf("\nPer tick (60 Hz, budget 16.7 ms) and per coarse pass (every 2 s):\n\n");
     printf("| region | systems | links | players | hot | static | NPCs | generate ms | "
            "materialise ms | "
-           "agents ms/tick | market ms/tick | structures ms/tick | recount ms/pass | "
+           "agents ms/tick | structures ms/tick | recount ms/pass | "
            "macro ms/pass | top-up ms/pass | tick ms (mean / worst) | save ms | save KB | "
            "memory MB |\n");
     printf("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
@@ -222,11 +221,11 @@ int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t see
             snprintf(mem, sizeof(mem), "%.0f", r.memoryMb);
         else
             snprintf(mem, sizeof(mem), "n/a");
-        printf("| %d | %d | %d | %d | %d | %ld | %ld | %.1f | %.1f | %.3f | %.3f | %.4f | %.3f | "
+        printf("| %d | %d | %d | %d | %d | %ld | %ld | %.1f | %.1f | %.3f | %.4f | %.3f | "
                "%.3f | %.3f | %.2f / %.1f | %.2f | %.0f | %s |\n",
                r.region, r.systems, r.links, r.players, r.hot, r.statics, r.npcs, r.generateMs,
-               r.materializeMs, r.agentsMs, r.marketMs, r.structuresMs, r.recountMs, r.macroMs,
-               r.topUpMs, r.tickMs, r.worstTickMs, r.saveMs, r.saveBytes / 1024.0, mem);
+               r.materializeMs, r.agentsMs, r.structuresMs, r.recountMs, r.macroMs, r.topUpMs,
+               r.tickMs, r.worstTickMs, r.saveMs, r.saveBytes / 1024.0, mem);
     }
     return 0;
 }

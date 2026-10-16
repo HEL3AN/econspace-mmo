@@ -57,10 +57,11 @@ void Game::ApplyTradeAcks(const Proto::Snapshot& s)
     // snapshot).
     for (const Proto::TradeAck& a : s.tradeAcks)
     {
-        if (a.sold <= 0)
-            continue;
-        FlashMessage(TextFormat("Sold %d %s  +%.0f cr", a.sold,
-                                ResourceName((ResourceType)a.type).c_str(), a.revenue));
+        const std::string good = ResourceName(ResourceType::FromIndex(a.type));
+        if (a.sold > 0)
+            FlashMessage(TextFormat("Sold %d %s  +%.0f cr", a.sold, good.c_str(), a.revenue));
+        if (a.bought > 0)
+            FlashMessage(TextFormat("Bought %d %s  -%.0f cr", a.bought, good.c_str(), a.cost));
     }
 }
 
@@ -339,7 +340,7 @@ void Game::BuildClientSnapshot()
             m.description = v.description;
             m.giverStationId = v.giverStationId;
             m.destStationId = v.destStationId;
-            m.resource = (ResourceType)v.resource;
+            m.resource = ResourceType::FromIndex(v.resource);
             m.targetCount = v.targetCount;
             m.progress = v.progress;
             m.rewardMoney = v.rewardMoney;
@@ -402,7 +403,8 @@ std::unique_ptr<Entity> Game::MakeProxyFromLayout(const Proto::EntityLayout& el)
         case Proto::EntityKind::Planet:
         {
             auto p = std::make_unique<Planet>(el.orbitRadius, 0.0f, 0.0f, el.size, el.color,
-                                              (ResourceType)el.resource, (PlanetType)el.subType);
+                                              ResourceType::FromIndex(el.resource),
+                                              (PlanetType)el.subType);
             p->SetName(el.name);  // the server's name for it (#259)
             e = std::move(p);
             break;
@@ -412,8 +414,8 @@ std::unique_ptr<Entity> Game::MakeProxyFromLayout(const Proto::EntityLayout& el)
                                           (StationRole)el.subType);
             break;
         case Proto::EntityKind::Field:
-            e = std::make_unique<AsteroidField>(el.pos, el.size, el.name, (ResourceType)el.resource,
-                                                1000);
+            e = std::make_unique<AsteroidField>(el.pos, el.size, el.name,
+                                                ResourceType::FromIndex(el.resource), 1000);
             break;
         case Proto::EntityKind::Gate:
         {

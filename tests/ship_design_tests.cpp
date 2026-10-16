@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "goods_named.h"
 #include "core/Archetype.h"
 #include "core/ShipDesign.h"
 #include "entities/NpcShip.h"
@@ -252,7 +253,7 @@ TEST_CASE("a design's stats are the sum of its parts, and its cost is every part
     auto iron = [](const Ships::Stats& s)
     {
         for (const auto& [r, n] : s.cost)
-            if (r == ResourceType::Iron)
+            if (r == Good::Iron())
                 return n;
         return 0;
     };

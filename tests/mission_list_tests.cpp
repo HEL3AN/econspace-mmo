@@ -38,11 +38,11 @@ TEST_CASE("MissionList: active missions say how far along they are and where the
 {
     Proto::Snapshot snap;
     snap.player.cargoByType.assign(8, 0);
-    snap.player.cargoByType[(int)ResourceType::Iron] = 7;
+    snap.player.cargoByType[0] = 7;
 
     Proto::MissionView bounty = Job(MissionType::Bounty, 10, 0, 5, 2);
     Proto::MissionView mining = Job(MissionType::Mining, 10, 0, 20);
-    mining.resource = (int)ResourceType::Iron;
+    mining.resource = 0;  // the first good
     Proto::MissionView delivery = Job(MissionType::Delivery, 10, 99);
     Proto::MissionView done = Job(MissionType::Bounty, 10, 0, 3, 3);
     done.completable = true;

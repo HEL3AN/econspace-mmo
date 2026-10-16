@@ -35,10 +35,9 @@ TEST_CASE("selling moves the price and the market recovers")
     {
         m.Sell(ore, 40);
         const double depressed = m.GetPrice(ore);
-        for (int i = 0; i < 600; i++)  // ten simulated seconds
-            m.Update(1.0f / 60.0f);
+        m.Step(MarketRates{}, 1.0, 1.0);  // an hour of the trade nobody flies
         CHECK(m.GetPrice(ore) > depressed);
-        CHECK(m.GetPrice(ore) <= base + 0.001);  // recovers toward base, never past it
+        CHECK(m.GetPrice(ore) <= Market().GetPrice(ore) + 0.001);  // toward base, never past it
     }
 
     SUBCASE("selling nothing changes nothing")

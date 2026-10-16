@@ -441,6 +441,8 @@ std::string EncodeCommand(const Command& c)
     number("loot", c.lootId, 0);
     number("sellType", c.sellType, -1);
     number("sellAmt", c.sellAmount, 0);
+    number("buyType", c.buyType, -1);
+    number("buyAmt", c.buyAmount, 0);
     number("refit", c.refitShip, -1);
     auto fitJson = [](const std::vector<Ships::FitLine>& lines)
     {
@@ -657,6 +659,8 @@ bool ReadCommand(const json& j, Proto::Command& out)
     // there -- a bounty paid to faction 1000 is memory that is not a bounty.
     ok = ok && ReadInt(j, "sellType", -1, 0, resources - 1, out.sellType);
     ok = ok && ReadInt(j, "sellAmt", 0, 0, ID_MAX, out.sellAmount);
+    ok = ok && ReadInt(j, "buyType", -1, 0, resources - 1, out.buyType);
+    ok = ok && ReadInt(j, "buyAmt", 0, 0, ID_MAX, out.buyAmount);
     ok = ok && ReadInt(j, "refit", -1, 0, ID_MAX, out.refitShip);
     ok = ok && ReadFit(j, "fit", out.refit, out.refitLines);
     bool saveFit = false;
@@ -932,13 +936,37 @@ json MissionsJson(const std::vector<Proto::MissionView>& v)
     return a;
 }
 
+// The market as one list of [bid, ask, stock] per good (#343): it changes as a whole when
+// anybody trades, so a delta sends it whole or not at all.
+json MarketJson(const Proto::Snapshot& s)
+{
+    json m = json::array();
+    for (size_t i = 0; i < s.marketPrices.size(); i++)
+        m.push_back({ s.marketPrices[i], i < s.marketAsk.size() ? s.marketAsk[i] : 0.0f,
+                      i < s.marketStock.size() ? s.marketStock[i] : 0 });
+    return m;
+}
+
+void ReadMarket(const json& m, Proto::Snapshot& out)
+{
+    for (const json& line : m)
+    {
+        if (!line.is_array() || line.size() != 3 || !line[0].is_number() || !line[1].is_number() ||
+            !line[2].is_number())
+            continue;
+        out.marketPrices.push_back(line[0].get<float>());
+        out.marketAsk.push_back(line[1].get<float>());
+        out.marketStock.push_back(line[2].get<int>());
+    }
+}
+
 // The persistent half of `s`, every entity at the near quality: a whole snapshot's state.
 std::shared_ptr<SnapshotState> StateOf(const Proto::Snapshot& s)
 {
     auto st = std::make_shared<SnapshotState>();
     st->sys = s.systemId;
     st->player = PlayerJson(s.player);
-    st->market = s.marketPrices;
+    st->market = MarketJson(s);
     st->offers = MissionsJson(s.missionOffers);
     st->active = MissionsJson(s.missionActive);
     for (const Proto::EntitySnapshot& e : s.entities)
@@ -1127,7 +1155,10 @@ void WriteOnce(const Proto::Snapshot& s, json& j)
             acks.push_back({ { "type", a.type },
                              { "sold", a.sold },
                              { "gross", a.gross },
-                             { "rev", a.revenue } });
+                             { "rev", a.revenue },
+                             { "bought", a.bought },
+                             { "cost", a.cost },
+                             { "fee", a.fee } });
         j["trade"] = std::move(acks);
     }
 }
@@ -1141,7 +1172,7 @@ void ReadSnapshot(const SnapshotState& st, const json& j, Proto::Snapshot& out)
     ReadPlayer(st.player, out.player);
     for (const auto& kv : st.ents)
         out.entities.push_back(EntityOf(kv.first, kv.second->j));
-    out.marketPrices = st.market.get<std::vector<float>>();
+    ReadMarket(st.market, out);
     for (const json& mj : st.offers)
         out.missionOffers.push_back(ToMission(mj));
     for (const json& mj : st.active)
@@ -1175,6 +1206,9 @@ void ReadSnapshot(const SnapshotState& st, const json& j, Proto::Snapshot& out)
             a.sold = aj.value("sold", 0);
             a.gross = aj.value("gross", 0.0);
             a.revenue = aj.value("rev", 0.0);
+            a.bought = aj.value("bought", 0);
+            a.cost = aj.value("cost", 0.0);
+            a.fee = aj.value("fee", 0.0);
             out.tradeAcks.push_back(a);
         }
 }
@@ -1249,7 +1283,7 @@ std::string SnapshotSender::Encode(const Snapshot& s, const std::set<int>& relev
     auto cur = std::make_shared<SnapshotState>();
     cur->sys = s.systemId;
     cur->player = PlayerJson(s.player);
-    cur->market = s.marketPrices;
+    cur->market = MarketJson(s);
     cur->offers = MissionsJson(s.missionOffers);
     cur->active = MissionsJson(s.missionActive);
 

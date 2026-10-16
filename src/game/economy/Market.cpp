@@ -5,44 +5,180 @@
 
 namespace
 {
-constexpr double RECOVERY = 0.1;  // share of the gap to the base price closed per second
-}
+// A market never holds more than this many times its target: a producer nobody buys from
+// stops, rather than filling a number without end.
+constexpr double STOCK_CAP = 10.0;
+}  // namespace
 
 Market::Market()
 {
-    for (ResourceType t : AllResourceTypes())
-        basePrices_[t] = DefaultBasePrice(t);
-    prices_ = basePrices_;
+    Fit();
+}
+
+void Market::Fit()
+{
+    const size_t n = (size_t)Goods::Count();
+    while (base_.size() < n)
+        base_.push_back(Goods::Def(ResourceType::FromIndex((int)base_.size())).price);
+    while (stock_.size() < n)
+        stock_.push_back(Goods::Def(ResourceType::FromIndex((int)stock_.size())).stock * markets_);
+    base_.resize(n);
+    stock_.resize(n);
 }
 
 double Market::DefaultBasePrice(ResourceType type)
 {
-    switch (type)
-    {
-        case ResourceType::Iron: return 10.0;
-        case ResourceType::Ice: return 15.0;
-        case ResourceType::Crystal: return 40.0;
-    }
-    return 0.0;
+    return Goods::Def(type).price;
+}
+
+double Market::Target(ResourceType type) const
+{
+    return Goods::Def(type).stock * markets_;
+}
+
+void Market::SetMarkets(int markets)
+{
+    Fit();
+    const int was = markets_;
+    markets_ = std::max(1, markets);
+    // A market new to the world is scaled to its targets, with whatever trade it has seen
+    // since it was made. One that has been stepped, or was read from a save, keeps its stock:
+    // a station added since raises the target, and the market is short until it catches up.
+    if (fresh_ && was != markets_)
+        for (double& s : stock_)
+            s = s * markets_ / was;
+    fresh_ = false;
+}
+
+double Market::PriceAt(ResourceType type, double stock) const
+{
+    const MarketRules& k = Goods::Rules();
+    const size_t       i = (size_t)type.Index();
+    if (i >= base_.size())
+        return 0.0;
+    // Server-side and never compared across machines (the snapshot carries the result), so
+    // pow is fine here.
+    const double short_ = Target(type) / std::max(stock, 0.5);
+    return base_[i] * std::clamp(std::pow(short_, k.elasticity), k.floor, k.ceiling);
+}
+
+double Market::Mid(ResourceType type) const
+{
+    return PriceAt(type, Stock(type));
+}
+
+double Market::Bid(ResourceType type) const
+{
+    return Mid(type) * (1.0 - Goods::Rules().spread * 0.5);
+}
+
+double Market::Ask(ResourceType type) const
+{
+    return Mid(type) * (1.0 + Goods::Rules().spread * 0.5);
+}
+
+double Market::GetBasePrice(ResourceType type) const
+{
+    const size_t i = (size_t)type.Index();
+    return i < base_.size() ? base_[i] : DefaultBasePrice(type);
 }
 
 void Market::SetBasePrice(ResourceType type, double base)
 {
-    const double was = GetBasePrice(type);
-    const double price = GetPrice(type);
-    basePrices_[type] = base;
-    prices_[type] = was > 0.0 ? price * (base / was) : base;
+    Fit();
+    if ((size_t)type.Index() < base_.size())
+        base_[(size_t)type.Index()] = base;
+}
+
+double Market::Stock(ResourceType type) const
+{
+    const size_t i = (size_t)type.Index();
+    return i < stock_.size() ? stock_[i] : Target(type);
+}
+
+void Market::SetStock(ResourceType type, double stock)
+{
+    Fit();
+    if ((size_t)type.Index() < stock_.size())
+        stock_[(size_t)type.Index()] = std::max(0.0, stock);
+    fresh_ = false;
+}
+
+double Market::QuoteSell(ResourceType type, int amount) const
+{
+    const double spread = 1.0 - Goods::Rules().spread * 0.5;
+    double       s = Stock(type), sum = 0.0;
+    for (int i = 0; i < amount; i++, s += 1.0)
+        sum += PriceAt(type, s) * spread;
+    return sum;
+}
+
+double Market::QuoteBuy(ResourceType type, int amount) const
+{
+    const double spread = 1.0 + Goods::Rules().spread * 0.5;
+    double       s = Stock(type), sum = 0.0;
+    for (int i = 0; i < amount && s >= 1.0; i++, s -= 1.0)
+        sum += PriceAt(type, s) * spread;
+    return sum;
+}
+
+double Market::Sell(ResourceType type, int amount)
+{
+    if (amount <= 0)
+        return 0.0;
+    Fit();
+    const double revenue = QuoteSell(type, amount);
+    stock_[(size_t)type.Index()] += amount;
+    return revenue;
+}
+
+double Market::Buy(ResourceType type, int amount, int& bought)
+{
+    Fit();
+    bought = std::clamp(amount, 0, (int)std::floor(Stock(type)));
+    if (bought <= 0)
+        return 0.0;
+    const double cost = QuoteBuy(type, bought);
+    stock_[(size_t)type.Index()] -= bought;
+    return cost;
+}
+
+void Market::Step(const MarketRates& rates, double hours, double traffic)
+{
+    Fit();
+    const size_t n = stock_.size();
+    for (size_t i = 0; i < n && i < rates.source.size(); i++)
+        stock_[i] += rates.source[i] * hours;
+    // Recipes in the order the system lists them: an input two of them share goes to the
+    // first while it lasts, the same way on every run.
+    for (const Recipe& r : rates.recipes)
+    {
+        double cycles = r.rate * hours;
+        for (const auto& in : r.in)
+            if ((size_t)in.first.Index() < n)
+                cycles = std::min(cycles, stock_[(size_t)in.first.Index()] / in.second);
+        if (cycles <= 0.0)
+            continue;
+        for (const auto& in : r.in)
+            if ((size_t)in.first.Index() < n)
+                stock_[(size_t)in.first.Index()] -= cycles * in.second;
+        for (const auto& out : r.out)
+            if ((size_t)out.first.Index() < n)
+                stock_[(size_t)out.first.Index()] += cycles * out.second;
+    }
+    for (size_t i = 0; i < n && i < rates.use.size(); i++)
+        stock_[i] -= std::min(stock_[i], rates.use[i] * hours);
+    const double pull = std::min(1.0, Goods::Rules().restock * traffic * hours);
+    for (size_t i = 0; i < n; i++)
+    {
+        const double target = Target(ResourceType::FromIndex((int)i));
+        stock_[i] = std::clamp(stock_[i] + (target - stock_[i]) * pull, 0.0, target * STOCK_CAP);
+    }
 }
 
 Supply SupplyOf(ResourceType type)
 {
-    switch (type)
-    {
-        case ResourceType::Iron:
-        case ResourceType::Ice:
-        case ResourceType::Crystal: return Supply::Local;
-    }
-    return Supply::Local;
+    return Goods::Def(type).supply;
 }
 
 double RemotenessFactor(Supply supply, int jumps)
@@ -52,49 +188,4 @@ double RemotenessFactor(Supply supply, int jumps)
     if (supply == Supply::Local)
         return std::max(0.55, 1.0 - 0.03 * jumps);
     return std::min(2.0, 1.0 + 0.06 * jumps);
-}
-
-double Market::GetPrice(ResourceType type) const
-{
-    auto it = prices_.find(type);
-    return (it != prices_.end()) ? it->second : 0.0;
-}
-
-double Market::GetBasePrice(ResourceType type) const
-{
-    auto it = basePrices_.find(type);
-    return (it != basePrices_.end()) ? it->second : 0.0;
-}
-
-double Market::Sell(ResourceType type, int amount)
-{
-    double price = GetPrice(type);
-    double revenue = price * amount;
-
-    // Selling knocks the price down: ~2% per unit, but no lower than 30% per trade.
-    double dropFactor = 1.0 - 0.02 * amount;
-    if (dropFactor < 0.3)
-        dropFactor = 0.3;
-    prices_[type] = price * dropFactor;
-
-    return revenue;
-}
-
-void Market::Update(float dt)
-{
-    // The recovery rate is proportional to the deviation from the base price.
-    for (auto& [type, price] : prices_)
-    {
-        double diff = basePrices_[type] - price;
-        price += RECOVERY * diff * dt;
-    }
-}
-
-void Market::Recover(float seconds)
-{
-    // Update's step taken continuously: the gap closes by e^(-rate*t). Server-side and
-    // never compared across machines, so exp is fine here.
-    const double closed = 1.0 - std::exp(-RECOVERY * (double)seconds);
-    for (auto& [type, price] : prices_)
-        price += (basePrices_[type] - price) * closed;
 }

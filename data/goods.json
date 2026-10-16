@@ -1,0 +1,59 @@
+{
+    "market": {
+        "fee": 0.02,
+        "spread": 0.1,
+        "elasticity": 0.7,
+        "floor": 0.35,
+        "ceiling": 3.0,
+        "restock": 0.5,
+        "beltYield": 30
+    },
+    "goods": [
+        { "id": "Iron",        "name": "Iron",         "tier": 0, "price": 10,  "stock": 400, "supply": "local", "mined": true },
+        { "id": "Ice",         "name": "Ice",          "tier": 0, "price": 15,  "stock": 300, "supply": "local", "mined": true },
+        { "id": "Crystal",     "name": "Crystal",      "tier": 0, "price": 40,  "stock": 120, "supply": "local", "mined": true },
+        { "id": "Food",        "name": "Food",         "tier": 0, "price": 22,  "stock": 250, "supply": "imported" },
+        { "id": "Steel",       "name": "Steel",        "tier": 1, "price": 38,  "stock": 160, "supply": "imported" },
+        { "id": "Fuel",        "name": "Fuel",         "tier": 1, "price": 34,  "stock": 160, "supply": "imported" },
+        { "id": "Circuits",    "name": "Circuits",     "tier": 2, "price": 130, "stock": 60,  "supply": "imported" },
+        { "id": "Ammunition",  "name": "Ammunition",   "tier": 2, "price": 80,  "stock": 90,  "supply": "imported" },
+        { "id": "RepairPaste", "name": "Repair Paste", "tier": 2, "price": 105, "stock": 60,  "supply": "imported" },
+        { "id": "Medicine",    "name": "Medicine",     "tier": 2, "price": 120, "stock": 50,  "supply": "imported" }
+    ],
+    "planets": {
+        "planet.oceanic": { "Food": 40 },
+        "planet.rocky":   { "Food": 8 },
+        "planet.gas":     { "Fuel": 6 }
+    },
+    "industries": {
+        "station.mining_outpost": {
+            "recipes": [
+                { "in": { "Iron": 3 }, "out": { "Steel": 1 }, "rate": 20 },
+                { "in": { "Ice": 2 },  "out": { "Fuel": 1 },  "rate": 15 }
+            ],
+            "uses": { "Food": 8, "RepairPaste": 1 }
+        },
+        "station.trade_hub": {
+            "recipes": [
+                { "in": { "Crystal": 2, "Steel": 1 }, "out": { "Circuits": 1 }, "rate": 6 },
+                { "in": { "Food": 2, "Ice": 1 },      "out": { "Medicine": 1 }, "rate": 5 }
+            ],
+            "uses": { "Food": 14, "Medicine": 2, "Fuel": 4 }
+        },
+        "station.shipyard": {
+            "recipes": [
+                { "in": { "Steel": 2, "Crystal": 1 }, "out": { "RepairPaste": 2 }, "rate": 6 }
+            ],
+            "uses": { "Steel": 10, "Circuits": 2, "Fuel": 4, "Food": 6 }
+        },
+        "station.military": {
+            "recipes": [
+                { "in": { "Steel": 1, "Fuel": 1 }, "out": { "Ammunition": 2 }, "rate": 8 }
+            ],
+            "uses": { "Ammunition": 10, "RepairPaste": 3, "Fuel": 6, "Food": 8, "Medicine": 2 }
+        },
+        "structure.outpost_market": {
+            "uses": { "Food": 5, "Fuel": 3, "Medicine": 1, "RepairPaste": 1 }
+        }
+    }
+}

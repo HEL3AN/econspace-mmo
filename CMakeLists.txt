@@ -427,6 +427,7 @@ add_executable(tests
     tests/raw_socket.cpp           # a peer that ignores the framing rules (#14)
     tests/observation_tests.cpp
     tests/economy_tests.cpp
+    tests/goods_tests.cpp          # goods as data, stock and prices, buying (#343)
     tests/simulation_tests.cpp
     tests/archetype_tests.cpp
     tests/archetype_edit_tests.cpp

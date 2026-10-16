@@ -90,6 +90,8 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     themes_ = Ui::ListThemes(Ui::ThemeDir());
     if (!Factions::Load(dataDir_ + "factions.json"))  // faction properties/relations
         TraceLog(LOG_ERROR, "Factions: %s", Factions::Error().c_str());
+    if (!Goods::Load(dataDir_ + "goods.json"))  // what the market lists, in the server's order
+        TraceLog(LOG_ERROR, "Goods: %s", Goods::Error().c_str());
     // Before any entity exists -- and the player's own ship is one. It used to be built
     // seventeen lines above this call, under this same comment, which made it the one
     // object in the client with no archetype: no glyph, no sprite, no components (#127).
@@ -182,6 +184,15 @@ void Game::Run()
                 desk_.SetOpen(WIN_HANGAR, true);
             else if (h != Ui::DeskLayout::NONE && !desk_.Layout().Shown(h))
                 desk_.Toggle(WIN_HANGAR);
+        }
+        if (marketForward_ && mode_ == GameMode::Docked)  // --market, the same way
+        {
+            marketForward_ = false;
+            const int h = desk_.Layout().Find(WIN_MARKET);
+            if (!desk_.IsOpen(WIN_MARKET))
+                desk_.SetOpen(WIN_MARKET, true);
+            else if (h != Ui::DeskLayout::NONE && !desk_.Layout().Shown(h))
+                desk_.Toggle(WIN_MARKET);
         }
         desk_.BeginFrame();
 

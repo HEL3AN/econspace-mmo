@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "goods_named.h"
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
@@ -254,15 +255,15 @@ TEST_CASE("a market's prices follow its distance from a centre (#342 S5)")
     CHECK(RemotenessFactor(Supply::Imported, 5) > 1.0);
     CHECK(RemotenessFactor(Supply::Local, 1000) >= 0.55);
     CHECK(RemotenessFactor(Supply::Imported, 1000) <= 2.0);
-    CHECK(SupplyOf(ResourceType::Iron) == Supply::Local);
+    CHECK(SupplyOf(Good::Iron()) == Supply::Local);
 
     // A market keeps how far a sale pushed it when its base moves.
     Market m;
-    m.Sell(ResourceType::Iron, 10);
-    const double sagged = m.GetPrice(ResourceType::Iron) / m.GetBasePrice(ResourceType::Iron);
-    m.SetBasePrice(ResourceType::Iron, 6.0);
-    CHECK(m.GetBasePrice(ResourceType::Iron) == 6.0);
-    CHECK(m.GetPrice(ResourceType::Iron) / 6.0 == doctest::Approx(sagged));
+    m.Sell(Good::Iron(), 10);
+    const double sagged = m.GetPrice(Good::Iron()) / m.GetBasePrice(Good::Iron());
+    m.SetBasePrice(Good::Iron(), 6.0);
+    CHECK(m.GetBasePrice(Good::Iron()) == 6.0);
+    CHECK(m.GetPrice(Good::Iron()) / 6.0 == doctest::Approx(sagged));
 
     // In a world: a centre pays the centre's price, the natives' frontier less for ore, and
     // the further along the route, the less.
@@ -271,8 +272,8 @@ TEST_CASE("a market's prices follow its distance from a centre (#342 S5)")
     Make(sim, 9);
     const std::string heart = sim.Starts().front().systemId;
     CHECK(sim.Remoteness(heart) == 0);
-    CHECK(sim.Systems().at(heart).market.GetBasePrice(ResourceType::Iron) ==
-          Market::DefaultBasePrice(ResourceType::Iron));
+    CHECK(sim.Systems().at(heart).market.GetBasePrice(Good::Iron()) ==
+          Market::DefaultBasePrice(Good::Iron()));
     const int frontier = FirstFrontier(sim);
     REQUIRE(frontier >= 0);
     std::string nearest, furthest;
@@ -281,8 +282,8 @@ TEST_CASE("a market's prices follow its distance from a centre (#342 S5)")
         const int j = sim.Remoteness(id);
         CAPTURE(id);
         CHECK(j > 0);
-        CHECK(sim.Systems().at(id).market.GetBasePrice(ResourceType::Iron) ==
-              doctest::Approx(Market::DefaultBasePrice(ResourceType::Iron) *
+        CHECK(sim.Systems().at(id).market.GetBasePrice(Good::Iron()) ==
+              doctest::Approx(Market::DefaultBasePrice(Good::Iron()) *
                               RemotenessFactor(Supply::Local, j)));
         if (nearest.empty() || j < sim.Remoteness(nearest))
             nearest = id;
@@ -290,10 +291,10 @@ TEST_CASE("a market's prices follow its distance from a centre (#342 S5)")
             furthest = id;
     }
     REQUIRE(sim.Remoteness(furthest) > sim.Remoteness(nearest));
-    CHECK(sim.Systems().at(furthest).market.GetPrice(ResourceType::Crystal) <
-          sim.Systems().at(nearest).market.GetPrice(ResourceType::Crystal));
-    CHECK(sim.Systems().at(nearest).market.GetPrice(ResourceType::Crystal) <
-          sim.Systems().at(heart).market.GetPrice(ResourceType::Crystal));
+    CHECK(sim.Systems().at(furthest).market.GetPrice(Good::Crystal()) <
+          sim.Systems().at(nearest).market.GetPrice(Good::Crystal()));
+    CHECK(sim.Systems().at(nearest).market.GetPrice(Good::Crystal()) <
+          sim.Systems().at(heart).market.GetPrice(Good::Crystal()));
 }
 
 TEST_CASE("the server's registry reaches a client, natives by name (#342 S5)")

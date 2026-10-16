@@ -84,7 +84,10 @@ inline constexpr int WORLD_VERSION = 15;
 //    hull's stock design -- which is what every ship was. A version 4 build reading a version
 //    5 file would find no hull it knows, hand the player the starter alone and save over
 //    every ship they had.
-inline constexpr int ACCOUNT_VERSION = 5;
+// 6: the hold may carry any good of data/goods.json (#343), by its id. A version 5 build reads
+//    every name it does not know as Iron, so a hold of Medicine would load as a hold of ore --
+//    and be saved so.
+inline constexpr int ACCOUNT_VERSION = 6;
 // designs.json, the designs players' ships fly (#279 fitting). 1: the first.
 inline constexpr int DESIGNS_VERSION = 1;
 

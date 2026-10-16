@@ -980,6 +980,15 @@ bool Simulation::SaveWorld(const std::string& path) const
             { "claimed", a.claimed },       { "discoverer", a.discoverer },
             { "name", a.givenName }
         };
+        // What its market holds, by good id (#343): only where there is one. A field an older
+        // build ignores, and an older file's markets start at their targets.
+        if (kv.second.profile.markets > 0)
+        {
+            json stock = json::object();
+            for (ResourceType g : AllResourceTypes())
+                stock[Goods::Id(g)] = std::round(kv.second.market.Stock(g) * 100.0) / 100.0;
+            galaxy[kv.first]["stock"] = std::move(stock);
+        }
     }
     j["galaxy"] = galaxy;
 
@@ -1161,6 +1170,13 @@ Save::Result Simulation::LoadWorld(const std::string& path)
         a.claimed = gj.value("claimed", a.claimed);
         a.discoverer = gj.value("discoverer", a.discoverer);
         a.givenName = gj.value("name", a.givenName);
+        if (gj.contains("stock") && gj["stock"].is_object())
+            for (auto g = gj["stock"].begin(); g != gj["stock"].end(); ++g)
+            {
+                ResourceType good;  // a good this build does not have is let go
+                if (g.value().is_number() && Goods::Find(g.key(), good))
+                    systems_[sid].market.SetStock(good, g.value().get<double>());
+            }
         // An older save has no presence: the seeded one stands, from what it did save.
         if (!PresenceFrom(gj.value("presence", json()), a.presence))
             SeedPresence(a);

@@ -84,6 +84,7 @@ int main(int argc, char** argv)
     bool              select = false, menu = false;
     bool              dock = false;
     bool              fit = false;  // --fit: the hangar open on its Fit tab (#279)
+    std::string       market;       // --market GOOD: the market in front, on that good (#343)
     bool              sensor = false;
     float             sensorRange = 0.0f;  // 0: the default
     Vector2           warpTo = { 0.0f, 0.0f };
@@ -123,6 +124,8 @@ int main(int argc, char** argv)
             dock = true;
         else if (std::strcmp(argv[i], "--fit") == 0)
             fit = true;
+        else if (std::strcmp(argv[i], "--market") == 0 && i + 1 < argc)
+            market = argv[++i];
         else if (std::strcmp(argv[i], "--sensor") == 0)
         {
             sensor = true;
@@ -237,6 +240,8 @@ int main(int argc, char** argv)
             game.AddScriptedClick(c.x, c.y, c.frame);
         if (fit)
             game.StartOnFit();
+        if (!market.empty())
+            game.StartOnMarket(market);
         if (!shot.empty())
             game.TakeShot(shot, frames, treated);
         if (nohud)

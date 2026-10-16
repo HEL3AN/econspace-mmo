@@ -54,8 +54,20 @@ void Game::SellCargo(ResourceType type, int amount)
     // An order to the server; ApplyTradeAcks credits the revenue on its acknowledgement, at
     // the server's price, and a refusal comes back in the journal (#219).
     Proto::Command c;
-    c.sellType = (int)type;
+    c.sellType = type.Index();
     c.sellAmount = amount;
+    clientLink_->Send(Proto::EncodeCommand(c));
+}
+
+void Game::BuyCargo(ResourceType type, int amount)
+{
+    if (amount <= 0)
+        return;
+    // The server counts what the stock, the hold and the money allow; ApplyTradeAcks says what
+    // it came to, and a refusal comes back in the journal.
+    Proto::Command c;
+    c.buyType = type.Index();
+    c.buyAmount = amount;
     clientLink_->Send(Proto::EncodeCommand(c));
 }
 
@@ -161,9 +173,9 @@ void Game::DrawStationContent(const Ui::Frame& f)
     L.Draw();
 }
 
-// The market: what the station pays for each commodity, and how much of it is in the hold;
-// the chosen one in full, with how much to sell. Side by side when wide, one above the other
-// when narrow, as the missions window is.
+// The market (#343): every good the system trades, what the market pays and asks for it, how
+// many it holds and how much is in the hold; the chosen one in full, with how much to sell and
+// to buy. Side by side when wide, one above the other when narrow, as the missions window is.
 void Game::DrawMarketContent(const Ui::Frame& f)
 {
     using Ui::Box;
@@ -172,23 +184,35 @@ void Game::DrawMarketContent(const Ui::Frame& f)
     const Ui::Theme& t = Ui::CurrentTheme();
     Ui::Layout&      L = marketLayout_;
 
-    const std::vector<StationList::MarketRow> rows =
-        StationList::Market(snapshot_.marketPrices, snapshot_.player.cargoByType,
-                            player_.GetSkills().GetBonus(SkillType::Trading), DockedTier());
+    StationList::MarketInput in;
+    in.prices = snapshot_.marketPrices;
+    in.asks = snapshot_.marketAsk;
+    in.stock = snapshot_.marketStock;
+    in.cargo = snapshot_.player.cargoByType;
+    in.tradeBonus = player_.GetSkills().GetBonus(SkillType::Trading);
+    in.standing = DockedTier();
+    in.money = player_.GetMoney();
+    in.holdFree = std::max(0, snapshot_.player.cargoCap - snapshot_.player.cargoUsed);
+    const std::vector<StationList::MarketRow> rows = StationList::Market(in);
     marketSel_ = rows.empty() ? -1 : std::clamp(marketSel_, 0, (int)rows.size() - 1);
     // A new row starts at all of it: the usual sale is the whole hold.
     if (marketSel_ >= 0 && sellAmountFor_ != marketSel_)
     {
         sellAmount_ = (float)rows[marketSel_].hold;
+        buyAmount_ = (float)std::min(10, std::max(1, rows[marketSel_].canBuy));
         sellAmountFor_ = marketSel_;
     }
+    // ...and a row bought into since it was chosen offers what is now in the hold.
+    if (marketSel_ >= 0 && sellAmount_ < 1.0f)
+        sellAmount_ = (float)rows[marketSel_].hold;
 
     Ui::TableSpec table;
     table.id = "market";
-    table.columns = { { "commodity", Size::Grow(), Ui::Align::Start, false },
-                      { "price", Size::Fit(48.0f), Ui::Align::End, false },
-                      { "hold", Size::Fit(40.0f), Ui::Align::End, false },
-                      { "worth", Size::Fit(56.0f), Ui::Align::End, false } };
+    table.columns = { { "good", Size::Grow(), Ui::Align::Start, false },
+                      { "bid", Size::Fit(44.0f), Ui::Align::End, false },
+                      { "ask", Size::Fit(44.0f), Ui::Align::End, false },
+                      { "stock", Size::Fit(40.0f), Ui::Align::End, false },
+                      { "hold", Size::Fit(32.0f), Ui::Align::End, false } };
     table.rows = (int)rows.size();
     table.cell = [&](int r, int c)
     {
@@ -196,47 +220,83 @@ void Game::DrawMarketContent(const Ui::Frame& f)
         const Color                   tone = row.hold > 0 ? t.colors.text : t.colors.dim;
         switch (c)
         {
-            case 0: return Ui::Cell{ row.name, tone };
+            case 0: return Ui::Cell{ row.name, row.hold > 0 ? t.colors.text : t.colors.dim };
             case 1: return Ui::Cell{ TextFormat("%.1f", row.price), tone };
-            case 2: return Ui::Cell{ std::to_string(row.hold), tone };
-            default: return Ui::Cell{ row.hold > 0 ? Credits(row.worth) : "-", t.colors.money };
+            case 2: return Ui::Cell{ TextFormat("%.1f", row.ask), t.colors.money };
+            case 3:
+                return Ui::Cell{ std::to_string(row.stock),
+                                 row.stock > 0 ? t.colors.text : t.colors.bad };
+            default: return Ui::Cell{ row.hold > 0 ? std::to_string(row.hold) : "-", tone };
         }
     };
     table.rowFill = [&](int r)
     { return r == marketSel_ ? t.colors.selected : Color{ 0, 0, 0, 0 }; };
 
-    auto details = [&]
+    static const char* const TIERS[] = { "raw", "refined", "component" };
+    auto                     details = [&]
     {
         if (marketSel_ < 0)
             return;
         const StationList::MarketRow& m = rows[marketSel_];
         L.Text(m.name, TextStyle::Title());
+        L.Text(TIERS[std::clamp(m.tier, 0, 2)], TextStyle::Label());
         L.Field("Pays you", TextFormat("%.1f cr a unit", m.perUnit), t.colors.money);
+        L.Field("Costs you", TextFormat("%.1f cr a unit", m.buyUnit), t.colors.money);
         L.Field("In the hold", std::to_string(m.hold), t.colors.text);
-        if (m.hold <= 0)
+        L.Field("The market holds", std::to_string(m.stock), t.colors.text);
+
+        if (m.hold > 0)
         {
-            L.Text("None in the hold. Fields of it are on the overview.",
-                   TextStyle::Small().Tint(t.colors.dim).Wrap());
-            return;
+            L.Divider();
+            L.Field("All of it", TextFormat("%.0f cr", m.worth), t.colors.money);
+            L.Row(Box().GrowX().Gap(t.metrics.rowGap).Align(Ui::Align::Start, Ui::Align::Center),
+                  [&]
+                  {
+                      L.Text("Sell", TextStyle::Label());
+                      L.NumberField("amount", sellAmount_, 1.0f, (float)m.hold);
+                  });
+            const int amount = std::clamp((int)sellAmount_, 1, m.hold);
+            L.Row(Box().GrowX().Gap(t.metrics.rowGap),
+                  [&]
+                  {
+                      if (L.Button("sell", TextFormat("Sell %d", amount)))
+                          SellCargo(m.type, amount);
+                      if (L.Button("sellall", "Sell all", true))
+                          SellCargo(m.type, m.hold);
+                  });
         }
-        L.Field("All of it", TextFormat("%.0f cr", m.worth), t.colors.money);
+
         L.Divider();
-        L.Row(Box().GrowX().Gap(t.metrics.rowGap).Align(Ui::Align::Start, Ui::Align::Center),
-              [&]
-              {
-                  L.Text("Sell", TextStyle::Label());
-                  L.NumberField("amount", sellAmount_, 1.0f, (float)m.hold);
-              });
-        const int amount = std::clamp((int)sellAmount_, 1, m.hold);
-        L.Row(Box().GrowX().Gap(t.metrics.rowGap),
-              [&]
-              {
-                  if (L.Button("sell", TextFormat("Sell %d", amount)))
-                      SellCargo(m.type, amount);
-                  if (L.Button("sellall", "Sell all", true))
-                      SellCargo(m.type, m.hold);
-              });
-        L.Text("A sale lowers the station's price for the next one.",
+        if (m.canBuy <= 0)
+        {
+            const char* why = m.stock <= 0 ? "The market has none."
+                              : snapshot_.player.cargoUsed >= snapshot_.player.cargoCap
+                                  ? "The hold is full."
+                                  : "Not enough money for one.";
+            L.Text(why, TextStyle::Small().Tint(t.colors.dim).Wrap());
+        }
+        else
+        {
+            L.Row(Box().GrowX().Gap(t.metrics.rowGap).Align(Ui::Align::Start, Ui::Align::Center),
+                  [&]
+                  {
+                      L.Text("Buy", TextStyle::Label());
+                      L.NumberField("buyamount", buyAmount_, 1.0f, (float)m.canBuy);
+                  });
+            const int amount = std::clamp((int)buyAmount_, 1, m.canBuy);
+            L.Row(
+                Box().GrowX().Gap(t.metrics.rowGap),
+                [&]
+                {
+                    if (L.Button("buy", TextFormat("Buy %d  ~%.0f cr", amount, m.buyUnit * amount)))
+                        BuyCargo(m.type, amount);
+                    if (L.Button("buymax", TextFormat("Buy %d", m.canBuy), true))
+                        BuyCargo(m.type, m.canBuy);
+                });
+        }
+        L.Text(TextFormat("Every unit traded moves the price of the next. A fee of %.0f%% is "
+                          "paid on every trade.",
+                          Goods::Rules().fee * 100.0),
                TextStyle::Small().Tint(t.colors.dim).Wrap());
     };
 
@@ -246,9 +306,15 @@ void Game::DrawMarketContent(const Ui::Frame& f)
         Box().Grow().Gap(t.metrics.gap),
         [&]
         {
-            L.Field("Hold",
-                    TextFormat("%d / %d", snapshot_.player.cargoUsed, snapshot_.player.cargoCap),
-                    t.colors.text);
+            L.Row(Box().GrowX().Gap(t.metrics.padding),
+                  [&]
+                  {
+                      L.Field("Hold",
+                              TextFormat("%d / %d", snapshot_.player.cargoUsed,
+                                         snapshot_.player.cargoCap),
+                              t.colors.text);
+                      L.Field("Money", TextFormat("%.0f cr", player_.GetMoney()), t.colors.money);
+                  });
             auto list = [&]
             {
                 const Ui::TableEvents ev = L.Table(table);
@@ -261,7 +327,7 @@ void Game::DrawMarketContent(const Ui::Frame& f)
                 L.Row(Box().Grow().Gap(t.metrics.padding),
                       [&]
                       {
-                          L.Column(Box().Width(Size::Percent(0.55f)).Height(Size::Grow()), list);
+                          L.Column(Box().Width(Size::Percent(0.58f)).Height(Size::Grow()), list);
                           pane(Box().Grow());
                       });
             else

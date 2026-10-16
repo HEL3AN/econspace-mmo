@@ -152,7 +152,7 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
         }
     }
     if (e.kind == Proto::EntityKind::Field && e.ore >= 0)
-        extra = "  " + ResourceName((ResourceType)e.ore);
+        extra = "  " + ResourceName(ResourceType::FromIndex(e.ore));
     // Dockable is a component, asked of the archetype the layout names (#195) -- the same
     // question the server's docking pass asks (#34), so a dock a player builds (#44) is one
     // here too. Without a layout to ask, a station is assumed to be one, as it always was.
@@ -303,8 +303,8 @@ double ModulePrice(const View& view, const Ships::ModulePart& m, float markup)
 {
     double v = 0.0;
     for (const auto& [r, n] : m.cost)
-        if ((size_t)r < view.snapshot->marketPrices.size())
-            v += (double)n * view.snapshot->marketPrices[(size_t)r];
+        if ((size_t)r.Index() < view.snapshot->marketPrices.size())
+            v += (double)n * view.snapshot->marketPrices[(size_t)r.Index()];
     return v * markup * ShipPriceMultiplier(Factions::TierOf(Standing(view, DockedFaction(view))));
 }
 
@@ -517,7 +517,7 @@ std::string MissionNeeds(const View& view, const Proto::MissionView& m)
                 held = p->cargoByType[m.resource];
             if (held < m.targetCount)
                 return Fmt("carry %d %s (the hold has %d)", m.targetCount,
-                           ResourceName((ResourceType)m.resource).c_str(), held);
+                           ResourceName(ResourceType::FromIndex(m.resource)).c_str(), held);
             break;
         }
         case MissionType::Delivery: break;
@@ -746,12 +746,17 @@ std::string Describe(const View& view, Detail detail)
     // --- Station business ---------------------------------------------------
     if (p.docked && !snap.marketPrices.empty())
     {
+        // What it pays / what it asks, and how many it holds (#343): what sell_cargo and buy
+        // trade at, before standing, skill and the fee.
         std::string prices;
         const auto& types = AllResourceTypes();
         for (size_t i = 0; i < types.size() && i < snap.marketPrices.size(); i++)
-            prices += Fmt("%s%s %.1f", prices.empty() ? "" : ", ", ResourceName(types[i]).c_str(),
-                          snap.marketPrices[i]);
-        out += "MARKET " + prices + "\n";
+            prices += Fmt("%s%s %.1f/%.1f x%d", prices.empty() ? "" : ", ",
+                          ResourceName(types[i]).c_str(), snap.marketPrices[i],
+                          i < snap.marketAsk.size() ? snap.marketAsk[i] : 0.0f,
+                          i < snap.marketStock.size() ? snap.marketStock[i] : 0);
+        out += Fmt("MARKET (bid/ask x stock; fee %.0f%% a trade) ", Goods::Rules().fee * 100.0) +
+               prices + "\n";
     }
     if (!snap.missionOffers.empty())
     {

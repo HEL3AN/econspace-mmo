@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "goods_named.h"
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
@@ -68,8 +69,8 @@ ClientSession& Builder(Simulation& sim, const std::string& account)
 void Stock(ClientSession& s)
 {
     s.ship->ClearCargo();
-    REQUIRE(s.ship->AddCargo(ResourceType::Iron, 20));
-    REQUIRE(s.ship->AddCargo(ResourceType::Crystal, 5));
+    REQUIRE(s.ship->AddCargo(Good::Iron(), 20));
+    REQUIRE(s.ship->AddCargo(Good::Crystal(), 5));
 }
 
 // Somewhere in open space the blueprint may go, with the ship moved there. Found by asking
@@ -203,12 +204,12 @@ TEST_CASE("a site is laid down only where, when and by whom the rules allow (#39
         CHECK(sim.Deploy(s, "beacon", free, "") == 0);
         CHECK(s.journal.back().text.find("Cannot build: the hold has") == 0);
         Stock(s);
-        const int ironBefore = s.ship->GetCargoAmount(ResourceType::Iron);
+        const int ironBefore = s.ship->GetCargoAmount(Good::Iron());
         const int id = sim.Deploy(s, "beacon", free, "Lantern");
         REQUIRE(id != 0);
         for (const auto& c : beacon.cost)
-            if (c.first == ResourceType::Iron)
-                CHECK(s.ship->GetCargoAmount(ResourceType::Iron) == ironBefore - c.second);
+            if (c.first == Good::Iron())
+                CHECK(s.ship->GetCargoAmount(Good::Iron()) == ironBefore - c.second);
         Structure* t = StructureById(sim, sys, id);
         REQUIRE(t != nullptr);
         CHECK(t->GetName() == "Lantern");
@@ -456,17 +457,17 @@ TEST_CASE("what dismantling returns is the rule in the data (#39)")
         return 0;
     };
     // A site cancelled the moment it went down: all of it, crated.
-    CHECK(amount(Blueprints::Refund(beacon, 0.0f, 1.0f), ResourceType::Iron) == 10);
-    CHECK(amount(Blueprints::Refund(beacon, 0.0f, 1.0f), ResourceType::Crystal) == 2);
+    CHECK(amount(Blueprints::Refund(beacon, 0.0f, 1.0f), Good::Iron()) == 10);
+    CHECK(amount(Blueprints::Refund(beacon, 0.0f, 1.0f), Good::Crystal()) == 2);
     // Finished: the rule's share, rounded down -- never more than went in.
-    CHECK(amount(Blueprints::Refund(beacon, 1.0f, 1.0f), ResourceType::Iron) ==
+    CHECK(amount(Blueprints::Refund(beacon, 1.0f, 1.0f), Good::Iron()) ==
           (int)(10 * refund + 1e-4));
     // Falling in between, and less again for what was shot off.
-    const int half = amount(Blueprints::Refund(beacon, 0.5f, 1.0f), ResourceType::Iron);
+    const int half = amount(Blueprints::Refund(beacon, 0.5f, 1.0f), Good::Iron());
     CHECK(half < 10);
-    CHECK(half >= amount(Blueprints::Refund(beacon, 1.0f, 1.0f), ResourceType::Iron));
-    CHECK(amount(Blueprints::Refund(beacon, 1.0f, 0.5f), ResourceType::Iron) <
-          amount(Blueprints::Refund(beacon, 1.0f, 1.0f), ResourceType::Iron));
+    CHECK(half >= amount(Blueprints::Refund(beacon, 1.0f, 1.0f), Good::Iron()));
+    CHECK(amount(Blueprints::Refund(beacon, 1.0f, 0.5f), Good::Iron()) <
+          amount(Blueprints::Refund(beacon, 1.0f, 1.0f), Good::Iron()));
     CHECK(Blueprints::Refund(beacon, 1.0f, 0.0f).empty());
     // And dismantling always beats being shot down: the wreck holds less.
     CHECK(Blueprints::Rules().wreckShare < refund);
@@ -491,10 +492,10 @@ TEST_CASE("the owner takes a site or a structure apart, and nobody else can (#39
     {
         const int id = sim.Deploy(s, "beacon", at, "");
         REQUIRE(id != 0);
-        CHECK(Held(s, ResourceType::Iron) == 10);
+        CHECK(Held(s, Good::Iron()) == 10);
         CHECK(sim.Dismantle(s, id));
-        CHECK(Held(s, ResourceType::Iron) == 20);
-        CHECK(Held(s, ResourceType::Crystal) == 5);
+        CHECK(Held(s, Good::Iron()) == 20);
+        CHECK(Held(s, Good::Crystal()) == 5);
         CHECK(StructureById(sim, sys, id) == nullptr);
         CHECK(sim.StructuresOwnedBy("hunter") == 0);
         CHECK(s.journal.back().text.find("Dismantled Beacon") == 0);
@@ -511,7 +512,7 @@ TEST_CASE("the owner takes a site or a structure apart, and nobody else can (#39
         REQUIRE_FALSE(StructureById(sim, sys, id)->IsBuilding());
         CHECK(sim.Dismantle(s, id));
         const int back = (int)(10 * Blueprints::Rules().refund + 1e-4);
-        CHECK(Held(s, ResourceType::Iron) == 10 + back);
+        CHECK(Held(s, Good::Iron()) == 10 + back);
     }
     SUBCASE("refused: someone else's, too far, docked, or no room for it")
     {
@@ -529,8 +530,7 @@ TEST_CASE("the owner takes a site or a structure apart, and nobody else can (#39
         CHECK(sim.DismantleProblem(s, id).find("undock") == 0);
         s.dockedStationId = 0;
 
-        CHECK(s.ship->AddCargo(ResourceType::Iron,
-                               s.ship->GetCargoCapacity() - s.ship->GetCargoUsed()));
+        CHECK(s.ship->AddCargo(Good::Iron(), s.ship->GetCargoCapacity() - s.ship->GetCargoUsed()));
         CHECK(sim.DismantleProblem(s, id).find("the hold has room for 0") == 0);
         CHECK(StructureById(sim, sys, id) != nullptr);  // nothing lost to a full hold
         CHECK(sim.DismantleProblem(s, 999999).find("there is no structure") == 0);
@@ -784,7 +784,7 @@ TEST_CASE("a build order flies to the spot and lays the site down there (#39)")
     s.ship->Teleport({ at.x + 20000.0f, at.y });
     REQUIRE_FALSE(sim.PlacementProblem(s, beacon, at).empty());   // out of reach from here
     REQUIRE(sim.PlacementProblem(s, beacon, at, false).empty());  // ...and nothing else
-    const int iron = Held(s, ResourceType::Iron);
+    const int iron = Held(s, Good::Iron());
 
     Orders::Order o;
     o.kind = Orders::Kind::Build;
@@ -812,7 +812,7 @@ TEST_CASE("a build order flies to the spot and lays the site down there (#39)")
         CHECK(site->IsBuilding());
         CHECK(site->GetPosition().x == doctest::Approx(at.x));
         CHECK(site->GetPosition().y == doctest::Approx(at.y));
-        CHECK(Held(s, ResourceType::Iron) == iron - 10);
+        CHECK(Held(s, Good::Iron()) == iron - 10);
     }
     SUBCASE("a hold that cannot pay is refused before it flies")
     {

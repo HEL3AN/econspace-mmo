@@ -195,13 +195,13 @@ std::unique_ptr<Entity> Editor::MakeEntity(const std::string& archetypeId, Vecto
             float      r = sqrtf(pos.x * pos.x + pos.y * pos.y);
             PlanetType type = PlanetTypeFromString(a->worldSubType);
             return std::make_unique<Planet>(r, 300.0f, atan2f(pos.y, pos.x), size,
-                                            PlanetTypeColor(type), ResourceType::Iron, type);
+                                            PlanetTypeColor(type), ResourceType(), type);
         }
         case EntityKind::Station:
             return std::make_unique<Station>(pos, size, "New " + a->name, Factions::Unaffiliated(),
                                              StationRoleFromString(a->worldSubType));
         case EntityKind::Field:
-            return std::make_unique<AsteroidField>(pos, size, "New Belt", ResourceType::Iron, 200);
+            return std::make_unique<AsteroidField>(pos, size, "New Belt", ResourceType(), 200);
         case EntityKind::Nebula: return std::make_unique<Nebula>(pos, size, "New Nebula");
         case EntityKind::Derelict:
             return std::make_unique<Derelict>(pos, size, "New Derelict", 500.0);

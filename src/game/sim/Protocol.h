@@ -32,7 +32,9 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    32;  // 32: the named design library -- save, apply, rename and delete in a command, the
+    33;  // 33: goods from data/goods.json (#343) -- cargo and the market by its order, the market a
+         // bid, an ask and a stock per good, a buy in a command and in its acknowledgement;
+         // 32: the named design library -- save, apply, rename and delete in a command, the
          // library in the player's snapshot (#279 fitting, step 3); 31: the server's faction
          // registry, sent before anything names one of its factions
          // (#342 S5, #355); 30: a snapshot is numbered and may be a delta against one the client
@@ -161,6 +163,10 @@ struct Command
     // Station trade (server-authoritative, M4e-3b): sell resource / refit.
     int sellType = -1;   // ResourceType as int (-1 — no sale)
     int sellAmount = 0;  // amount to sell (server clamps to cargo)
+    // A purchase (#343): as much of the good as the stock, the hold and the money allow, up
+    // to the amount.
+    int buyType = -1;  // ResourceType as int (-1 — no purchase)
+    int buyAmount = 0;
     int refitShip = -1;  // switch to an ALREADY bought ship (index; -1 none)
     // Refit the ship being flown to this fit, at the shipyard it is docked at (#279
     // fitting). The fit is the whole fit, not a change to it; the hull stays the hull. The
@@ -311,14 +317,17 @@ struct PlayerView
     std::vector<float>  skillXp;     // 3 skills (Piloting/Mining/Trading)
 };
 
-// Trade acknowledgment (server -> client): result of a sale. The client credits
-// money/xp/reputation (account until M4f); the server computes gross (price sag).
+// Trade acknowledgment (server -> client): what a sale or a purchase came to, for the client
+// to say. The account itself is the server's, mirrored in the snapshot.
 struct TradeAck
 {
     int    type = 0;       // ResourceType as int
     int    sold = 0;       // actually sold
     double gross = 0.0;    // gross revenue at the server price
     double revenue = 0.0;  // net revenue the server credited to the account (for display)
+    int    bought = 0;     // actually bought (#343)
+    double cost = 0.0;     // what the purchase took from the account, the fee included
+    double fee = 0.0;      // the fee in either (#348)
 };
 
 // Mission view in the snapshot (server-authoritative, M4f-2). Render-independent copy
@@ -350,11 +359,15 @@ struct Snapshot
     PlayerView                  player;
     std::vector<EntitySnapshot> entities;
     std::vector<FireEvent>      fires;
-    std::vector<Ev::Event>      events;         // journal entries the client has not seen (#29)
-    std::vector<float>          marketPrices;   // price per resource (AllResourceTypes order)
-    std::vector<TradeAck>       tradeAcks;      // one-shot trade acknowledgments (M4e-3b)
-    std::vector<MissionView>    missionOffers;  // docked station board (empty outside dock)
-    std::vector<MissionView>    missionActive;  // player's active missions (M4f-2)
+    std::vector<Ev::Event>      events;  // journal entries the client has not seen (#29)
+    // The system's market, per good in AllResourceTypes order (#343): what it pays for a unit
+    // now, what it asks for one, and how many it holds.
+    std::vector<float>       marketPrices;
+    std::vector<float>       marketAsk;
+    std::vector<int>         marketStock;
+    std::vector<TradeAck>    tradeAcks;      // one-shot trade acknowledgments (M4e-3b)
+    std::vector<MissionView> missionOffers;  // docked station board (empty outside dock)
+    std::vector<MissionView> missionActive;  // player's active missions (M4f-2)
 };
 
 // Static description of a system entity, for building the client proxy WITHOUT

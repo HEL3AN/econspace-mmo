@@ -13,6 +13,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "goods_named.h"
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Orbits.h"
@@ -220,7 +221,7 @@ TEST_CASE("selling moves ore out of the hold and money into the account")
     REQUIRE(f.sim.StepPlayerDock(f.s, f.World()) == 64);
 
     const double                 before = f.s.account.GetMoney();
-    Simulation::PlayerSellResult r = f.sim.StepPlayerSell(f.s, f.World(), (int)ore, 10);
+    Simulation::PlayerSellResult r = f.sim.StepPlayerSell(f.s, f.World(), ore.Index(), 10);
 
     CHECK(r.sold == 10);
     CHECK(r.gross > 0.0);
@@ -230,7 +231,7 @@ TEST_CASE("selling moves ore out of the hold and money into the account")
     SUBCASE("selling more than you carry sells what you have, not what you asked for")
     {
         f.s.ship->AddCargo(ore, 3);
-        Simulation::PlayerSellResult over = f.sim.StepPlayerSell(f.s, f.World(), (int)ore, 999);
+        Simulation::PlayerSellResult over = f.sim.StepPlayerSell(f.s, f.World(), ore.Index(), 999);
         CHECK(over.sold == 3);
         CHECK(f.s.ship->GetCargoAmount(ore) == 0);
     }
@@ -242,7 +243,7 @@ TEST_CASE("selling moves ore out of the hold and money into the account")
         // thing that decides.
         f.sim.StepPlayerUndock(f.s);
         f.s.ship->AddCargo(ore, 5);
-        Simulation::PlayerSellResult adrift = f.sim.StepPlayerSell(f.s, f.World(), (int)ore, 5);
+        Simulation::PlayerSellResult adrift = f.sim.StepPlayerSell(f.s, f.World(), ore.Index(), 5);
         CHECK(adrift.sold == 0);
         CHECK(f.s.ship->GetCargoAmount(ore) == 5);  // still aboard
     }
@@ -341,7 +342,7 @@ TEST_CASE("a dock order catches a station that orbits a planet (#210)")
     Fixture f;
     // As fast as the generator makes a planet, and far enough out that the trip is a warp.
     f.World().entities.push_back(std::make_unique<Planet>(300000.0f, 52.0f, 0.0f, 15000.0f, WHITE,
-                                                          ResourceType::Iron, PlanetType::Rocky));
+                                                          Good::Iron(), PlanetType::Rocky));
     auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 600.0f, "Moon Dock",
                                              Fac::TradersGuild(), StationRole::TradeHub);
     station->SetId(44);
@@ -395,7 +396,7 @@ TEST_CASE("an order told to warp closes on a fast moving station rather than han
         {
             Fixture f;
             f.World().entities.push_back(std::make_unique<Planet>(
-                120000.0f, 52.0f, 0.0f, 6000.0f, WHITE, ResourceType::Iron, PlanetType::Rocky));
+                120000.0f, 52.0f, 0.0f, 6000.0f, WHITE, Good::Iron(), PlanetType::Rocky));
             auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 700.0f, "Moon Dock",
                                                      Fac::TradersGuild(), StationRole::TradeHub);
             station->SetId(44);
@@ -1281,7 +1282,7 @@ namespace
 Entity* AddOrbitingStation(Fixture& f)
 {
     f.World().entities.push_back(std::make_unique<Planet>(300000.0f, 52.0f, 0.0f, 15000.0f, WHITE,
-                                                          ResourceType::Iron, PlanetType::Rocky));
+                                                          Good::Iron(), PlanetType::Rocky));
     auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 600.0f, "Moon Dock",
                                              Fac::TradersGuild(), StationRole::TradeHub);
     station->SetId(44);
@@ -2424,7 +2425,7 @@ TEST_CASE("what may not change is refused, not half-changed (#38)")
 
     // A planet: satellites find their planet by its place in the file (#210).
     auto planet = std::make_unique<Planet>(1500.0f, 0.0f, 0.0f, 40.0f, Color{ 70, 130, 200, 255 },
-                                           ResourceType::Iron, PlanetType::Rocky);
+                                           Good::Iron(), PlanetType::Rocky);
     CHECK(f.sim.AddStatic(sys, std::move(planet), "hunter") == 0);
     // A ship is not part of the static layer at all.
     CHECK(f.sim.AddStatic(sys,

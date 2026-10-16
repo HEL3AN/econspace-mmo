@@ -116,6 +116,8 @@ struct SystemProfile
     // what a rival besieges to bring the race for the region back -- and which entity it is.
     std::vector<FactionId> anchors;
     std::vector<int>       anchorIds;
+    // What its belts, planets and markets do to its market every hour (#343).
+    MarketRates rates;
 };
 
 // State of a single star system inside the simulation. Level of detail (#295):

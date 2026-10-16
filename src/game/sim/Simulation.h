@@ -815,9 +815,21 @@ public:
         int    sold = 0;
         double gross = 0.0;    // gross revenue at the market price (before multipliers)
         double revenue = 0.0;  // net revenue credited to account_ (skill+reputation)
+        double fee = 0.0;      // the trade's fee, taken from the revenue (#348)
     };
     PlayerSellResult StepPlayerSell(ClientSession& s, SystemState& st, int resourceType,
                                     int amount);
+    // Buy from the system market at the station docked at (#343): as much as the market has,
+    // the hold takes and the money pays for, up to `amount`, at the ask -- each unit dearer
+    // than the last -- with the fee on top. A purchase that comes to nothing says why in the
+    // journal.
+    struct PlayerBuyResult
+    {
+        int    bought = 0;
+        double cost = 0.0;  // what the account paid, the fee included
+        double fee = 0.0;
+    };
+    PlayerBuyResult StepPlayerBuy(ClientSession& s, SystemState& st, int resourceType, int amount);
 
     // Switch to another ship this account owns. Refuses one it does not: the stats are
     // looked up from the catalog here rather than taken from the caller, so "refit me to
@@ -1074,6 +1086,9 @@ private:
     void ColdLosses(SystemState& st);
     // `target` is what PopulationOf says for it this pass (StepMigration worked it out).
     void ColdTopUp(SystemState& st, const Population& target);
+    // `seconds` of what a system's belts, planets and stations do to its market, and of the
+    // trade nobody flies (#343): the same arithmetic hot or cold, in the coarse pass.
+    void StepMarket(SystemState& st, float seconds);
     // A hot system nobody has been in for COOL_AFTER: its ships are counted into the
     // aggregate and let go.
     void Cool(SystemState& st);

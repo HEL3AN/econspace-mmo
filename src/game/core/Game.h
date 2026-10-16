@@ -113,6 +113,15 @@ public:
         hangarTab_ = 1;
         fitForward_ = true;
     }
+    // Start with the market in front once docked, on the good named (--market GOOD, #343): a
+    // picture of buying needs it.
+    void StartOnMarket(const std::string& good)
+    {
+        ResourceType g;
+        if (Goods::Find(good, g))
+            marketSel_ = g.Index();
+        marketForward_ = true;
+    }
     // The interface at exactly this scale, whatever the display asks for (--uiscale): for
     // pictures that look the same on every machine. Not saved.
     void SetUiScale(float s)
@@ -200,6 +209,7 @@ private:
     void    DrawHangarContent(const Ui::Frame& f);   // the hulls: fly, switch, buy
     void    DrawFitTab(Ui::Layout& L, bool wide);    // ...and the Fit tab: refit (#279)
     void    SellCargo(ResourceType type, int amount);
+    void    BuyCargo(ResourceType type, int amount);  // an order to the server (#343)
     RepTier DockedTier() const;  // what the docked station's owner thinks of this pilot
 
     void SetupWindows();   // puts every window, screen and popup on the desk
@@ -483,6 +493,7 @@ private:
     int        marketSel_ = 0;
     float      sellAmount_ = 0.0f;   // how much of the chosen commodity to sell
     int        sellAmountFor_ = -1;  // ...chosen for this row; another row starts at its hold
+    float      buyAmount_ = 1.0f;    // how much of it to buy (#343)
     int        hangarSel_ = -1;      // -1: the hull being flown
     // The hangar's Fit tab (#279): the fit being drawn up, the design it was drawn up from
     // (another one -- a refit landed, another hull -- starts it again), and the chosen socket.
@@ -515,6 +526,7 @@ private:
     int         missionsTab_ = 0;  // 0 the missions taken, 1 the docked station's board
     bool        missionsForward_ = false;    // opened on docking: to the front of its stack
     bool        fitForward_ = false;         // --fit: the hangar to the front, once docked
+    bool        marketForward_ = false;      // --market: the market to the front, once docked
     int         missionsSel_[2] = { 0, 0 };  // the mission chosen on each
     Rectangle   radarScope_ = { 0.0f, 0.0f, 0.0f, 0.0f };  // where the radar's picture was drawn
     int         settingsTab_ = 0;
