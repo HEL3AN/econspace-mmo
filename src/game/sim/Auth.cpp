@@ -1,13 +1,16 @@
 #include "sim/Auth.h"
 
+#include "net/OsRandom.h"
 #include "sim/Protocol.h"
 
 #include <picosha2.h>
 
 #include <chrono>
 #include <cstdint>
-#include <random>
+#include <cstdio>
+#include <cstdlib>
 #include <thread>
+#include <vector>
 
 namespace Auth
 {
@@ -21,29 +24,24 @@ namespace
 // account, so it moves only with a migration.
 constexpr int STRETCH_ROUNDS = 100000;
 
-// Random bytes for a salt or a nonce.
-//
-// std::random_device is asked first and then mixed with the clock and with the address of
-// a stack object, because on MinGW it has historically been a fixed sequence -- the exact
-// kind of failure that leaves every nonce identical while everything still appears to
-// work.
+// Random bytes for a salt or a nonce, from the operating system (#351). There is no weaker
+// fallback: a server that cannot get randomness must not hand out nonces that only look
+// random -- which is exactly what the clock-and-mt19937 version did on a MinGW whose
+// random_device was a fixed sequence.
 std::string RandomHex(int bytes)
 {
-    std::random_device rd;
-    uint64_t           seed = ((uint64_t)rd() << 32) ^ (uint64_t)rd();
-    seed ^= (uint64_t)std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    int local = 0;
-    seed ^= (uint64_t)reinterpret_cast<uintptr_t>(&local);
-
-    std::mt19937_64                         gen(seed);
-    std::uniform_int_distribution<unsigned> byte(0, 255);
-    static const char*                      hex = "0123456789abcdef";
-
-    std::string out;
-    out.reserve((size_t)bytes * 2);
-    for (int i = 0; i < bytes; i++)
+    std::vector<unsigned char> raw((size_t)bytes);
+    if (!Net::OsRandom(raw.data(), raw.size()))
     {
-        const unsigned b = byte(gen);
+        std::fprintf(stderr, "FATAL: the operating system's random generator failed; no login "
+                             "can be made safe without it.\n");
+        std::abort();
+    }
+    static const char* hex = "0123456789abcdef";
+    std::string        out;
+    out.reserve(raw.size() * 2);
+    for (const unsigned char b : raw)
+    {
         out.push_back(hex[(b >> 4) & 0xF]);
         out.push_back(hex[b & 0xF]);
     }

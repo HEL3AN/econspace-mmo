@@ -74,7 +74,8 @@ cmake -S . -B build-release -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release   # 
 cmake --build build-release
 
 ./build/bin/server/econserver.exe host 50800        # authoritative server, this machine only
-./build/bin/server/econserver.exe host 50800 --public   # ...reachable from other machines (#187)
+./build/bin/server/econserver.exe host 50800 --public   # ...reachable from other machines (#187): only names in allowlist.txt beside world.json get in (#400)
+./build/bin/server/econserver.exe host 50800 --public --open   # ...and anyone may register (allowlist.txt alone turns the list on for a local server too)
 ./build/bin/server/econserver.exe host 50800 --centres 4 --random-starts  # a new world's civilisations (1-6, 3 by default); deal starts
 ./build/bin/server/econserver.exe host 50800 --dev      # ...and honour debug commands such as F1's money (#341)
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2   # account + secret; a new pilot chooses a start
@@ -102,7 +103,7 @@ cmake --build build-release
 ./build/bin/server/econserver.exe accttest          # account persistence smoke test
 ./build/bin/server/econserver.exe worldtest         # galaxy persistence + clock
 ./build/bin/server/econserver.exe ordertest         # standing orders, routes, journal
-./build/bin/server/econserver.exe host 50800 --max-regions 60 --max-systems 1500   # the cap (#342 S3); stdin: tide | open [region] | drift <region> | pause | resume
+./build/bin/server/econserver.exe host 50800 --max-regions 60 --max-systems 1500   # the cap (#342 S3); stdin: tide | open [region] | drift <region> | pause | resume | allow/deny/ban/unban <name> | access | reload
 ./build/bin/server/econserver.exe regenerate 14     # with the server stopped: reseal region 14 by today's rules, if no player built there
 ./build/bin/server/econserver.exe validate          # admin packs in data/packs/ and data/pins.json, checked and trial-woven (#342 S7)
 ./build/bin/server/econserver.exe validate tests/fixtures/packs/helios   # ...one pack, or a directory of them
@@ -238,6 +239,14 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   `Bye` and dropped. `Bye` is the only way the server can end something on purpose and say
   so — dropping the socket is indistinguishable from a crash — so a future refusal (#106)
   belongs on that message too.
+- **Who may come in is two text files beside `world.json`** (#400). `allowlist.txt` is checked
+  when the server is `--public` or the file exists, unless `--open`; `bans.txt` always. A
+  refused name gets a `Bye` before any challenge, so it cannot create its account either, and
+  a change (console or editor, re-read every two seconds) takes whoever it now refuses off the
+  server. Nonces and salts come from the OS generator (`net/OsRandom`), never a seeded PRNG.
+- **A hosting server logs through `Log::Printf`, not `printf`** (#400). It goes to stderr with
+  an ISO UTC time on every line, plus a `metrics:` line a minute; the same helpers print plain
+  to stdout in the batch run and the self-tests.
 - **The transport enforces its own limits** (#14). A frame length is four bytes the peer
   chose, so `TcpConnection` caps it and drops the connection rather than buffering; the
   send backlog is capped the same way. The host grants each client a budget of player

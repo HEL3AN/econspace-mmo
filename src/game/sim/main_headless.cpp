@@ -7,12 +7,14 @@
 //
 // Run: econserver [ticks]   (default 3600 ticks = 60 s at SIM_DT=1/60).
 
+#include "sim/AccessList.h"
 #include "sim/Auth.h"
 #include "sim/HostRules.h"
 #include "sim/MacroBench.h"
 #include "sim/Protocol.h"
 #include "sim/SaveFile.h"
 #include "sim/SaveSchema.h"
+#include "sim/ServerLog.h"
 #include "sim/WorldRules.h"
 #include "gen/Galaxy.h"
 #include "gen/Pack.h"
@@ -103,7 +105,7 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
     // of four default factions that never reach out, served as if it were this one (#357).
     if (!Factions::Load(dataDir + "factions.json"))
     {
-        fprintf(stderr, "FATAL: %s\n", Factions::Error().c_str());
+        Log::Errorf("FATAL: %s\n", Factions::Error().c_str());
         exit(1);
     }
     // Must precede materialization: every entity constructor looks itself up here, and a
@@ -113,14 +115,14 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
     // invisible world to everyone who connects (#191).
     if (!Archetypes::Load(dataDir + "archetypes.json"))
     {
-        fprintf(stderr, "FATAL: %s\n", Archetypes::Error().c_str());
+        Log::Errorf("FATAL: %s\n", Archetypes::Error().c_str());
         exit(1);
     }
     // After the archetypes, which every blueprint is checked against. Fatal for the same
     // reason: a blueprint that does not read is a structure that costs nothing (#39).
     if (!Blueprints::Load(dataDir + "blueprints.json"))
     {
-        fprintf(stderr, "FATAL: %s\n", Blueprints::Error().c_str());
+        Log::Errorf("FATAL: %s\n", Blueprints::Error().c_str());
         exit(1);
     }
 
@@ -128,7 +130,7 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
     // would grow by rules nobody chose.
     if (!WorldRules::Load(dataDir + "world_rules.json"))
     {
-        fprintf(stderr, "FATAL: %s\n", WorldRules::Error().c_str());
+        Log::Errorf("FATAL: %s\n", WorldRules::Error().c_str());
         exit(1);
     }
 
@@ -167,13 +169,13 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
         {
             // Accounts are kept: one whose system the new rules do not have chooses a start
             // again (#342), so moving the world aside costs the galaxy and nothing else.
-            fprintf(stderr, "FATAL: %s: %s\n", worldPath.c_str(), why.c_str());
+            Log::Errorf("FATAL: %s: %s\n", worldPath.c_str(), why.c_str());
             exit(1);
         }
         if (header.generator != Gen::GENERATOR_VERSION)
-            printf("World made under region rules v%d: its %d regions are sealed, and regions "
-                   "that open from now on follow v%d.\n",
-                   header.generator, (int)header.log.size(), Gen::GENERATOR_VERSION);
+            Log::Printf("World made under region rules v%d: its %d regions are sealed, and regions "
+                        "that open from now on follow v%d.\n",
+                        header.generator, (int)header.log.size(), Gen::GENERATOR_VERSION);
         seed = header.seed;
         if (header.centres >= 1)
             centres = header.centres;
@@ -195,8 +197,8 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
     if (!sim.OpenGalaxy(params, dataDir,
                         saved ? header.log : std::vector<Simulation::RegionOpening>{}))
     {
-        fprintf(stderr, "FATAL: seed %llu made a galaxy with nowhere to start.\n",
-                (unsigned long long)seed);
+        Log::Errorf("FATAL: seed %llu made a galaxy with nowhere to start.\n",
+                    (unsigned long long)seed);
         exit(1);
     }
     if (!saved && !sim.PackProblems().empty())
@@ -215,13 +217,13 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
     for (const std::string& change : sim.PackChanges())
         fprintf(stderr, "Pack: %s\n", change.c_str());
     sim.SetGrowthCap(maxRegions, maxSystems);
-    printf("Galaxy: seed %llu, %d civilisation centre(s), %d regions, %d systems (the cap: %d "
-           "regions, %d systems).\n",
-           (unsigned long long)seed, sim.CentreCount(), (int)sim.OpenSlots().size(),
-           (int)sim.Universe().systems.size(), sim.MaxRegions(), sim.MaxSystems());
+    Log::Printf("Galaxy: seed %llu, %d civilisation centre(s), %d regions, %d systems (the cap: %d "
+                "regions, %d systems).\n",
+                (unsigned long long)seed, sim.CentreCount(), (int)sim.OpenSlots().size(),
+                (int)sim.Universe().systems.size(), sim.MaxRegions(), sim.MaxSystems());
     for (const Simulation::StartPoint& sp : sim.Starts())
-        printf("  start: %s (%s), %s's\n", sp.systemName.c_str(), sp.station.c_str(),
-               sp.owner.c_str());
+        Log::Printf("  start: %s (%s), %s's\n", sp.systemName.c_str(), sp.station.c_str(),
+                    sp.owner.c_str());
 
     sim.Seed(0xC0FFEEu);
     // A world from a newer build, or a damaged one, stops the server rather than being
@@ -230,10 +232,10 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
     switch (Host::OpenWorld(sim, worldPath, why))
     {
         case Host::WorldStart::Restored:
-            printf("World restored from %s (t=%.0fs).\n", worldPath.c_str(), sim.Time());
+            Log::Printf("World restored from %s (t=%.0fs).\n", worldPath.c_str(), sim.Time());
             break;
         case Host::WorldStart::Fresh: break;
-        case Host::WorldStart::Refused: fprintf(stderr, "FATAL: %s\n", why.c_str()); exit(1);
+        case Host::WorldStart::Refused: Log::Errorf("FATAL: %s\n", why.c_str()); exit(1);
     }
     // Before any account loads: an account names its ships' designs and nothing more. A
     // file from a later build, or a damaged one, is refused like the world's, for the same
@@ -243,12 +245,11 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
         const Save::Result designs = sim.LoadDesigns(DesignsPath(worldPath));
         if (designs == Save::Result::TooNew || designs == Save::Result::Corrupt)
         {
-            fprintf(stderr,
-                    "FATAL: %s is %s (this build speaks designs schema v%d).\n"
-                    "Move it aside or upgrade the server; it has NOT been modified.\n",
-                    DesignsPath(worldPath).c_str(),
-                    designs == Save::Result::TooNew ? "from a newer build" : "damaged",
-                    Save::DESIGNS_VERSION);
+            Log::Errorf("FATAL: %s is %s (this build speaks designs schema v%d).\n"
+                        "Move it aside or upgrade the server; it has NOT been modified.\n",
+                        DesignsPath(worldPath).c_str(),
+                        designs == Save::Result::TooNew ? "from a newer build" : "damaged",
+                        Save::DESIGNS_VERSION);
             exit(1);
         }
     }
@@ -568,6 +569,9 @@ struct HostClient
     // Logged in, and choosing a start (#342 S2): no session until the answer comes.
     bool        awaitingStart = false;
     std::string authStored;  // a new account's secret, kept until there is a session for it
+    // Taken off the server by its operator -- a ban, or off the allowlist (#400) -- and told
+    // this; the connection is gone and the session saved and ended.
+    std::string removedFor;
 
     // How many player ticks this client may still be granted. One received command is one
     // tick of movement, so without a budget a client that sends faster than the simulation
@@ -646,19 +650,24 @@ struct NetStats
     double layouts = 0.0;
     double galaxies = 0.0;
     int    snapCount = 0;
-    double window = 0.0;  // seconds since the last report
+    double window = 0.0;    // seconds since the last report
+    double reported = 0.0;  // bytes in the reports so far, for the metrics line (#400)
+
+    // Everything sent since the server started.
+    double Sent() const { return reported + snapshots + layouts + galaxies; }
 
     void Report(size_t clients)
     {
         const double total = snapshots + layouts + galaxies;
         if (window <= 0.0 || total <= 0.0)
             return;
+        reported += total;
         const double perSec = total / window;
-        printf("net: %zu client(s), %.1f KB/s out (%.1f KB/s each) -- snapshots %.0f%%, "
-               "galaxy %.0f%%, layout %.0f%%; %.0f B per snapshot\n",
-               clients, perSec / 1024.0, clients ? perSec / 1024.0 / (double)clients : 0.0,
-               100.0 * snapshots / total, 100.0 * galaxies / total, 100.0 * layouts / total,
-               snapCount ? snapshots / snapCount : 0.0);
+        Log::Printf("net: %zu client(s), %.1f KB/s out (%.1f KB/s each) -- snapshots %.0f%%, "
+                    "galaxy %.0f%%, layout %.0f%%; %.0f B per snapshot\n",
+                    clients, perSec / 1024.0, clients ? perSec / 1024.0 / (double)clients : 0.0,
+                    100.0 * snapshots / total, 100.0 * galaxies / total, 100.0 * layouts / total,
+                    snapCount ? snapshots / snapCount : 0.0);
         snapshots = layouts = galaxies = 0.0;
         snapCount = 0;
         window = 0.0;
@@ -666,6 +675,8 @@ struct NetStats
 };
 
 static const double NET_REPORT_INTERVAL = 10.0;
+// How often the metrics line is written (#400).
+static const double METRICS_INTERVAL = 60.0;
 
 // What changed in the static layer since the last call, to everyone whose picture of that
 // system it changes (#38). Called once per loop, after every input and every world tick
@@ -756,23 +767,24 @@ static void JoinPlayer(Simulation& sim, HostClient& hc, const std::string& accou
         // a player a fresh account and then saving it over the real one is
         // the failure this whole check exists to prevent (#20).
         hc.accountReadOnly = true;
-        printf("%s: account file is from a newer build; joining with a "
-               "fresh account and NOT saving over it.\n",
-               hc.account.c_str());
+        Log::Printf("%s: account file is from a newer build; joining with a "
+                    "fresh account and NOT saving over it.\n",
+                    hc.account.c_str());
     }
     else if (acct == Save::Result::Corrupt)
     {
         // Damaged since the hello was answered: the same rule, never
         // written over (#341).
         hc.accountReadOnly = true;
-        printf("%s: account file is damaged; joining with a fresh account "
-               "and NOT saving over it.\n",
-               hc.account.c_str());
+        Log::Printf("%s: account file is damaged; joining with a fresh account "
+                    "and NOT saving over it.\n",
+                    hc.account.c_str());
     }
     else if (acct == Save::Result::Ok)
-        printf("%s joined (money %.0f).\n", hc.account.c_str(), s.account.GetMoney());
+        Log::Printf("%s joined (money %.0f).\n", hc.account.c_str(), s.account.GetMoney());
     else
-        printf("%s joined, new account (money %.0f).\n", hc.account.c_str(), s.account.GetMoney());
+        Log::Printf("%s joined, new account (money %.0f).\n", hc.account.c_str(),
+                    s.account.GetMoney());
 
     // Set after the load, not before: an account file with no secret in it
     // (one written before #106) would otherwise overwrite what was just
@@ -782,7 +794,7 @@ static void JoinPlayer(Simulation& sim, HostClient& hc, const std::string& accou
         s.authSalt = hc.challengeSalt;
         s.authStored = hc.authStored;
         if (acct == Save::Result::Ok)
-            printf("%s: an account that had no secret now has one.\n", hc.account.c_str());
+            Log::Printf("%s: an account that had no secret now has one.\n", hc.account.c_str());
     }
     hc.wasDocked = s.IsDocked();
     SendUniverse(hc, sim, net);  // the index first: the layout names a system
@@ -936,27 +948,27 @@ static int GalaxyDump(uint64_t seed, int cap, int centres, std::vector<int> slot
 // mode's hourly line print.
 static void PrintTide(const Simulation& sim, const char* indent)
 {
-    printf("%stide (threshold %.0f, %d of %d regions, %d young mouth(s) of %d%s%s):", indent,
-           sim.TideThreshold(), (int)sim.OpenSlots().size(), sim.MaxRegions(), sim.YoungMouths(),
-           sim.MouthsAllowed(), sim.GrowthPaused() ? ", PAUSED" : "",
-           sim.AtCap() ? ", AT CAP" : "");
+    Log::Printf("%stide (threshold %.0f, %d of %d regions, %d young mouth(s) of %d%s%s):", indent,
+                sim.TideThreshold(), (int)sim.OpenSlots().size(), sim.MaxRegions(),
+                sim.YoungMouths(), sim.MouthsAllowed(), sim.GrowthPaused() ? ", PAUSED" : "",
+                sim.AtCap() ? ", AT CAP" : "");
     for (const auto& kv : sim.Tides())
         if (sim.IsEdgeRegion(kv.first))
-            printf(" R%d %.0f", kv.first, kv.second.tide);
+            Log::Printf(" R%d %.0f", kv.first, kv.second.tide);
     if (sim.SurplusTide() > 0.0)
-        printf("  surplus %.0f", sim.SurplusTide());
+        Log::Printf("  surplus %.0f", sim.SurplusTide());
     // The mouths that are not simply open (#342 S4), and what the archive holds.
-    printf("  | mouths:");
+    Log::Printf("  | mouths:");
     for (const Simulation::RegionOpening& o : sim.OpeningLog())
         if (o.parent >= 0 && o.state != "open" && o.state != "returned")
         {
-            printf(" R%d %s", o.slot, o.state.c_str());
+            Log::Printf(" R%d %s", o.slot, o.state.c_str());
             if (o.state == "unstable")
-                printf(" (%.1f h left)", (o.closesAt - sim.Time()) / 3600.0);
+                Log::Printf(" (%.1f h left)", (o.closesAt - sim.Time()) / 3600.0);
             else if (o.state == "anchored")
-                printf(" (%s)", o.anchoredBy.c_str());
+                Log::Printf(" (%s)", o.anchoredBy.c_str());
         }
-    printf("  | archive: %d\n", (int)sim.Archives().size());
+    Log::Printf("  | archive: %d\n", (int)sim.Archives().size());
 }
 
 // What an opening is, in a line: where, from where, and why.
@@ -964,11 +976,12 @@ static void PrintOpening(const Simulation& sim, int slot, const char* indent)
 {
     const Simulation::RegionOpening* o = sim.OpeningOf(slot);
     if (o != nullptr)
-        printf("%sregion %d opened from region %d (%s), by %s%s%s; %s%s; %d systems in all\n",
-               indent, o->slot, o->parent, o->mouth.c_str(), o->by.c_str(),
-               o->why.empty() ? "" : ": ", o->why.c_str(), o->state.c_str(),
-               o->archive >= 0 ? (", back from archive " + std::to_string(o->archive)).c_str() : "",
-               (int)sim.Universe().systems.size());
+        Log::Printf("%sregion %d opened from region %d (%s), by %s%s%s; %s%s; %d systems in all\n",
+                    indent, o->slot, o->parent, o->mouth.c_str(), o->by.c_str(),
+                    o->why.empty() ? "" : ": ", o->why.c_str(), o->state.c_str(),
+                    o->archive >= 0 ? (", back from archive " + std::to_string(o->archive)).c_str()
+                                    : "",
+                    (int)sim.Universe().systems.size());
 }
 
 // The admin's console (#342 S3): lines typed on the server's standard input, read on a thread
@@ -1004,8 +1017,29 @@ struct AdminConsole
     }
 };
 
-// One console line, applied: `tide`, `open [region]`, `pause`, `resume`, `help`.
-static void AdminCommand(Simulation& sim, const std::string& line)
+// Who may come in (#400), as the console shows it: whether the list is checked, who is on it,
+// who is banned, and any line of the files that was not a name.
+static void PrintAccess(const Host::AccessList& access)
+{
+    Log::Printf("Access: %s; %d on %s, %d banned in %s.\n",
+                access.ListChecked() ? "by allowlist" : "registration open",
+                (int)access.Allowed().size(), access.AllowlistPath().c_str(),
+                (int)access.Bans().size(), access.BansPath().c_str());
+    std::string names;
+    for (const std::string& n : access.Allowed())
+        names += " " + n;
+    if (!names.empty())
+        Log::Printf("  allowed:%s\n", names.c_str());
+    for (const auto& kv : access.Bans())
+        Log::Printf("  banned: %s%s%s\n", kv.first.c_str(), kv.second.empty() ? "" : " -- ",
+                    kv.second.c_str());
+    for (const std::string& p : access.Problems())
+        Log::Printf("  ignored: %s\n", p.c_str());
+}
+
+// One console line, applied: `tide`, `open [region]`, `drift`, `pause`, `resume`; `allow`,
+// `deny`, `ban`, `unban`, `access`, `reload` (#400); anything else is `help`.
+static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::string& line)
 {
     std::istringstream in(line);
     std::string        verb;
@@ -1021,7 +1055,7 @@ static void AdminCommand(Simulation& sim, const std::string& line)
         std::string why;
         const int   slot = sim.OpenMouthNow(from, why);
         if (slot < 0)
-            printf("No mouth opened: %s.\n", why.c_str());
+            Log::Printf("No mouth opened: %s.\n", why.c_str());
     }
     else if (verb == "drift")
     {
@@ -1029,23 +1063,64 @@ static void AdminCommand(Simulation& sim, const std::string& line)
         in >> slot;
         std::string why;
         if (sim.ArchiveRegionNow(slot, why) < 0)
-            printf("Region %d did not drift away: %s.\n", slot, why.c_str());
+            Log::Printf("Region %d did not drift away: %s.\n", slot, why.c_str());
+    }
+    else if (verb == "allow" || verb == "deny" || verb == "ban" || verb == "unban")
+    {
+        // Whoever is now refused is taken off the server by the loop, which sees the list's
+        // generation change.
+        std::string name, reason;
+        in >> name;
+        std::getline(in, reason);
+        bool ok = false;
+        if (name.empty())
+            Log::Printf("Usage: %s <name>%s\n", verb.c_str(), verb == "ban" ? " [reason]" : "");
+        else if (verb == "allow")
+            Log::Printf("%s.\n", access.Allow(name, ok).c_str());
+        else if (verb == "deny")
+            Log::Printf("%s.\n", access.Deny(name, ok).c_str());
+        else if (verb == "ban")
+            Log::Printf("%s.\n", access.Ban(name, reason, ok).c_str());
+        else
+            Log::Printf("%s.\n", access.Unban(name, ok).c_str());
+    }
+    else if (verb == "access")
+        PrintAccess(access);
+    else if (verb == "reload")
+    {
+        access.Reload();
+        PrintAccess(access);
     }
     else if (verb == "pause" || verb == "resume")
     {
         sim.PauseGrowth(verb == "pause");
-        printf("Growth %s.\n",
-               verb == "pause" ? "paused: no tide gathers and no mouth opens" : "resumed");
+        Log::Printf("Growth %s.\n",
+                    verb == "pause" ? "paused: no tide gathers and no mouth opens" : "resumed");
     }
     else
-        printf("Commands: tide | open [region] (a mouth now, from the region named or the one "
-               "nearest to breaking) | drift <region> (into the archive now) | pause | resume "
-               "(growth). With the server stopped: econserver regenerate <region>.\n");
+        Log::Printf("Commands: tide | open [region] (a mouth now, from the region named or the one "
+                    "nearest to breaking) | drift <region> (into the archive now) | pause | resume "
+                    "(growth) | allow <name> | deny <name> | ban <name> [reason] | unban <name> | "
+                    "access (who may come in) | reload (allowlist.txt and bans.txt). With the "
+                    "server stopped: econserver regenerate <region>.\n");
 }
 
-static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool dev, int centres,
-                   bool randomStarts, int maxRegions, int maxSystems)
+// raylib's own warnings (a region that could not be sealed, a pin not applied) into the
+// server's log, stamped like everything else; below a warning it has nothing to say here.
+static void RaylibToLog(int level, const char* fmt, va_list args)
 {
+    if (level < LOG_WARNING)
+        return;
+    std::string line = std::string(level >= LOG_ERROR ? "ERROR: " : "WARNING: ") + fmt + "\n";
+    Log::VPrintf(true, line.c_str(), args);
+}
+
+static int RunHost(unsigned short port, bool isPublic, bool openRegistration, uint64_t newSeed,
+                   bool dev, int centres, bool randomStarts, int maxRegions, int maxSystems)
+{
+    // Everything said from here on goes to stderr with the time on it (#400).
+    Log::SetStamped(true);
+    SetTraceLogCallback(RaylibToLog);
     std::string dataDir = SIM_DATA_DIR;
     std::string worldPath = std::string(GetApplicationDirectory()) + "world.json";
     Simulation  sim;
@@ -1060,15 +1135,16 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
         const Host::AccountMove move = Host::MoveAccounts(GetApplicationDirectory(), accountsDir);
         if (!move.error.empty())
         {
-            fprintf(stderr, "FATAL: %s: no account could be saved.\n", move.error.c_str());
+            Log::Errorf("FATAL: %s: no account could be saved.\n", move.error.c_str());
             return 1;
         }
         if (move.moved > 0)
-            printf("Accounts: %d file(s) moved into %s.\n", move.moved, accountsDir.c_str());
+            Log::Printf("Accounts: %d file(s) moved into %s.\n", move.moved, accountsDir.c_str());
         for (const std::string& kept : move.kept)
-            printf("Accounts: %s was left where it is: %s already has one by that name, which is "
-                   "the one in use.\n",
-                   kept.c_str(), accountsDir.c_str());
+            Log::Printf(
+                "Accounts: %s was left where it is: %s already has one by that name, which is "
+                "the one in use.\n",
+                kept.c_str(), accountsDir.c_str());
     }
     // ...and an account knows which world it was saved in, so one from another world -- a
     // world.json moved aside, its accounts left -- is offered a start rather than a place
@@ -1080,31 +1156,49 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
         sim.SetWorldId(Host::NewWorldId());
         if (!sim.SaveWorld(worldPath))
         {
-            fprintf(stderr, "FATAL: %s could not be written.\n", worldPath.c_str());
+            Log::Errorf("FATAL: %s could not be written.\n", worldPath.c_str());
             return 1;
         }
     }
+    // Who may come in (#400): allowlist.txt and bans.txt beside world.json.
+    Host::AccessList access;
+    {
+        const size_t      slash = worldPath.find_last_of("/\\");
+        const std::string worldDir =
+            slash == std::string::npos ? std::string() : worldPath.substr(0, slash + 1);
+        std::error_code ec;
+        const bool      listExists = std::filesystem::exists(worldDir + "allowlist.txt", ec);
+        access.Open(worldDir,
+                    Host::AccessList::ListRequired(isPublic, openRegistration, listExists));
+        PrintAccess(access);
+        if (access.ListChecked() && access.Allowed().empty())
+            Log::Printf("Nobody can log in yet: add names with `allow <name>` here or to %s, or "
+                        "start with --open to let anyone register.\n",
+                        access.AllowlistPath().c_str());
+    }
+    int accessSeen = access.Generation();
+
     AdminConsole console;
     console.Start();
     if (randomStarts)
-        printf("Starts are dealt at random; players do not choose.\n");
+        Log::Printf("Starts are dealt at random; players do not choose.\n");
     // Which start a player is dealt: not the generator's, so not from its keys.
     std::mt19937_64 dealer(((uint64_t)std::random_device{}() << 32) ^ std::random_device{}());
     auto            roll = [&dealer]() { return (uint64_t)dealer(); };
     sim.SetDevCommands(dev);
     if (dev)
-        printf("Dev mode: debug commands (F1's money) are honoured for every client.\n");
+        Log::Printf("Dev mode: debug commands (F1's money) are honoured for every client.\n");
 
     if (!Net::Startup())
     {
-        printf("host: WSAStartup FAIL\n");
+        Log::Printf("host: WSAStartup FAIL\n");
         return 1;
     }
     Net::TcpListener listener;
     if (!listener.Listen(port, isPublic ? Net::TcpListener::Exposure::Public
                                         : Net::TcpListener::Exposure::Loopback))
     {
-        printf("host: listen on port %d FAIL\n", port);
+        Log::Printf("host: listen on port %d FAIL\n", port);
         Net::Shutdown();
         return 1;
     }
@@ -1112,11 +1206,11 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
     std::signal(SIGTERM, OnInterrupt);
     // The port actually listened on: `host 0` lets the system choose a free one, and this
     // line is where a script reads which (#306).
-    printf("EconSpace server on port %d, %s. The galaxy runs with or without players; "
-           "Ctrl+C to stop.\n",
-           listener.Port(),
-           isPublic ? "open to other machines"
-                    : "this machine only (add --public to let other machines connect)");
+    Log::Printf("EconSpace server on port %d, %s. The galaxy runs with or without players; "
+                "Ctrl+C to stop.\n",
+                listener.Port(),
+                isPublic ? "open to other machines"
+                         : "this machine only (add --public to let other machines connect)");
 
     using clock = std::chrono::steady_clock;
     std::vector<HostClient> clients;
@@ -1127,14 +1221,17 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
     int        refusedConnections = 0;  // since the last line about them
     double     refusalLogAcc = 0.0;
 
-    NetStats    net;
-    double      snapshotAcc = 0.0;   // time since the last round of snapshots
-    double      worldSaveAcc = 0.0;  // world checkpoint timer
-    const float dt = 1.0f / 60.0f;
-    auto        prev = clock::now();
-    double      acc = 0.0;
-    double      galaxyAcc = 0.0;  // galaxy-snapshot broadcast timer (map statistics)
-    std::string lastGalaxy;       // what the last broadcast said
+    NetStats     net;
+    double       snapshotAcc = 0.0;   // time since the last round of snapshots
+    double       worldSaveAcc = 0.0;  // world checkpoint timer
+    const float  dt = 1.0f / 60.0f;
+    auto         prev = clock::now();
+    double       acc = 0.0;
+    double       galaxyAcc = 0.0;  // galaxy-snapshot broadcast timer (map statistics)
+    std::string  lastGalaxy;       // what the last broadcast said
+    Log::Metrics metrics;          // the once-a-minute line (#400)
+    double       metricsAcc = 0.0;
+    double       accessCheckAcc = 0.0;  // allowlist.txt and bans.txt looked at (#400)
 
     while (g_stopRequested == 0)
     {
@@ -1172,14 +1269,15 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
             HostClient hc;
             hc.conn = std::move(c);
             clients.push_back(std::move(hc));
-            printf("Client connected; waiting for hello.\n");
+            Log::Printf("Client connected; waiting for hello.\n");
         }
         // One line now and then, not one per refusal: a flood would otherwise be a log flood.
         refusalLogAcc += frame;
         if (refusedConnections > 0 && refusalLogAcc >= 10.0)
         {
-            printf("Refused %d connection(s) over the limits (%d in all, %d per address).\n",
-                   refusedConnections, gate.GetLimits().maxClients, gate.GetLimits().maxPerAddress);
+            Log::Printf("Refused %d connection(s) over the limits (%d in all, %d per address).\n",
+                        refusedConnections, gate.GetLimits().maxClients,
+                        gate.GetLimits().maxPerAddress);
             refusedConnections = 0;
             refusalLogAcc = 0.0;
         }
@@ -1221,9 +1319,9 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                         Proto::Bye bye;
                         bye.reason = Host::VersionRefusal(version);
                         hc.conn->Send(Proto::EncodeBye(bye));
-                        printf("Rejected a hello from a client speaking protocol v%d (this "
-                               "server: v%d).\n",
-                               version, Proto::PROTO_VERSION);
+                        Log::Printf("Rejected a hello from a client speaking protocol v%d (this "
+                                    "server: v%d).\n",
+                                    version, Proto::PROTO_VERSION);
                         hc.conn.reset();
                         break;
                     }
@@ -1231,10 +1329,23 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                         !Proto::DecodeHello(msg, h) ||
                         (h.account = Host::CanonicalAccount(h.account)).empty())
                     {
-                        printf("Rejected a hello (not a name, or a second one "
-                               "on the same connection).\n");
+                        Log::Printf("Rejected a hello (not a name, or a second one "
+                                    "on the same connection).\n");
                         // Dropping the socket is the whole answer: a client that cannot
                         // say who it is has nothing to be told.
+                        hc.conn.reset();
+                        break;
+                    }
+                    // Not on the list, or banned (#400): told why, before a challenge -- so a
+                    // name that may not come in cannot create its account either.
+                    if (const std::string why = access.Refusal(h.account); !why.empty())
+                    {
+                        Proto::Bye bye;
+                        bye.reason = why;
+                        hc.conn->Send(Proto::EncodeBye(bye));
+                        Log::Printf("%s: refused from %s -- %s.\n", h.account.c_str(),
+                                    hc.conn->PeerAddress().c_str(), why.c_str());
+                        hc.pendingAccount = h.account;
                         hc.conn.reset();
                         break;
                     }
@@ -1247,8 +1358,8 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                         bye.reason = "Too many failed logins for that account; try again in " +
                                      std::to_string((int)std::ceil(wait)) + " s";
                         hc.conn->Send(Proto::EncodeBye(bye));
-                        printf("%s: refused -- %.0f s of backoff left for %s.\n", h.account.c_str(),
-                               wait, from.c_str());
+                        Log::Printf("%s: refused -- %.0f s of backoff left for %s.\n",
+                                    h.account.c_str(), wait, from.c_str());
                         hc.pendingAccount = h.account;
                         hc.conn.reset();
                         break;
@@ -1305,8 +1416,9 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                         bye.reason = "That account's file is damaged; ask the server's "
                                      "operator to restore it";
                         hc.conn->Send(Proto::EncodeBye(bye));
-                        printf("%s: refused -- %s is damaged (the previous save is %s).\n",
-                               h.account.c_str(), path.c_str(), Save::BackupPath(path, 1).c_str());
+                        Log::Printf("%s: refused -- %s is damaged (the previous save is %s).\n",
+                                    h.account.c_str(), path.c_str(),
+                                    Save::BackupPath(path, 1).c_str());
                         hc.conn.reset();
                         break;
                     }
@@ -1317,8 +1429,8 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                         Proto::Bye bye;
                         bye.reason = "Too many new accounts from your address; try again later";
                         hc.conn->Send(Proto::EncodeBye(bye));
-                        printf("%s: refused -- %s has made its new accounts for the hour.\n",
-                               h.account.c_str(), from.c_str());
+                        Log::Printf("%s: refused -- %s has made its new accounts for the hour.\n",
+                                    h.account.c_str(), from.c_str());
                         hc.conn.reset();
                         break;
                     }
@@ -1352,8 +1464,8 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                         bye.reason = hc.isNewAccount ? "Could not create that account"
                                                      : "Wrong secret for that account";
                         hc.conn->Send(Proto::EncodeBye(bye));
-                        printf("%s: refused (%s).\n", hc.pendingAccount.c_str(),
-                               hc.isNewAccount ? "bad registration" : "wrong secret");
+                        Log::Printf("%s: refused (%s).\n", hc.pendingAccount.c_str(),
+                                    hc.isNewAccount ? "bad registration" : "wrong secret");
                         gate.LoginFailed(hc.conn->PeerAddress(), hc.pendingAccount, uptime);
                         hc.conn.reset();
                         break;
@@ -1396,11 +1508,12 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                         other.sessionId = 0;
                         other.evicted = true;
                         if (other.lingering)
-                            printf("%s is back; the ship left in space is flown again.\n",
-                                   h.account.c_str());
+                            Log::Printf("%s is back; the ship left in space is flown again.\n",
+                                        h.account.c_str());
                         else
-                            printf("%s signed in again; the earlier connection was displaced.\n",
-                                   h.account.c_str());
+                            Log::Printf(
+                                "%s signed in again; the earlier connection was displaced.\n",
+                                h.account.c_str());
                     }
 
                     // Where they begin (#342 S2): where they left off, if this galaxy still
@@ -1417,7 +1530,7 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                         hc.conn->Send(Proto::EncodeStarts(Host::StartsMessage(sim, randomStarts)));
                         hc.awaitingStart = true;
                         hc.silentFor = 0.0;
-                        printf("%s: choosing where to start.\n", h.account.c_str());
+                        Log::Printf("%s: choosing where to start.\n", h.account.c_str());
                     }
                     continue;
                 }
@@ -1452,9 +1565,9 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                     if (!hc.throttleReported)
                     {
                         hc.throttleReported = true;
-                        printf("%s is sending commands faster than the simulation runs; "
-                               "the extra ones are ignored.\n",
-                               hc.account.c_str());
+                        Log::Printf("%s is sending commands faster than the simulation runs; "
+                                    "the extra ones are ignored.\n",
+                                    hc.account.c_str());
                     }
                     continue;
                 }
@@ -1478,11 +1591,55 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
         // is watching.
         while (acc >= dt)
         {
+            const auto tickStart = clock::now();
             HostStepWorld(sim, dt, fires);
+            metrics.Tick(
+                std::chrono::duration<double, std::milli>(clock::now() - tickStart).count());
             acc -= dt;
         }
         for (std::string line; console.Take(line);)
-            AdminCommand(sim, line);
+            AdminCommand(sim, access, line);
+
+        // The lists edited by hand are read again (#400); then whoever they, or the console,
+        // now refuse is taken off the server -- in play, logging in or choosing a start.
+        accessCheckAcc += frame;
+        if (accessCheckAcc >= 2.0)
+        {
+            accessCheckAcc = 0.0;
+            if (access.ReloadIfChanged())
+                Log::Printf("Access: %s or %s changed; read again (%d allowed, %d banned).\n",
+                            access.AllowlistPath().c_str(), access.BansPath().c_str(),
+                            (int)access.Allowed().size(), (int)access.Bans().size());
+        }
+        if (access.Generation() != accessSeen)
+        {
+            accessSeen = access.Generation();
+            for (HostClient& hc : clients)
+            {
+                const std::string& name = hc.account.empty() ? hc.pendingAccount : hc.account;
+                const std::string  why =
+                    name.empty() || !hc.removedFor.empty() ? std::string() : access.Refusal(name);
+                if (why.empty() || (!hc.conn && !hc.lingering))
+                    continue;
+                if (ClientSession* s = sim.Session(hc.sessionId))
+                {
+                    if (!hc.accountReadOnly)
+                        sim.SaveAccount(*s, AccountPath(accountsDir, hc.account));
+                    sim.DestroySession(hc.sessionId);
+                }
+                if (hc.conn)
+                {
+                    Proto::Bye bye;
+                    bye.reason = why;
+                    hc.conn->Send(Proto::EncodeBye(bye));
+                    hc.conn.reset();
+                }
+                hc.sessionId = 0;
+                hc.awaitingStart = false;
+                hc.lingering = false;
+                hc.removedFor = why;
+            }
+        }
 
         // A region opened (#342 S3): written down at once -- its log entry is what makes the
         // sealed file part of this world -- and everyone is sent the index that has it, and
@@ -1605,6 +1762,21 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
         if (net.window >= NET_REPORT_INTERVAL && !clients.empty())
             net.Report(clients.size());
 
+        // How the server is doing, once a minute whether or not anyone is on (#400).
+        metricsAcc += frame;
+        if (metricsAcc >= METRICS_INTERVAL)
+        {
+            int hot = 0;
+            for (const auto& kv : sim.Systems())
+                hot += Simulation::IsHot(kv.second) ? 1 : 0;
+            metrics.SetSent(net.Sent());
+            Log::Printf(
+                "%s\n",
+                metrics.Line((int)sim.Sessions().size(), (int)clients.size(), hot, metricsAcc)
+                    .c_str());
+            metricsAcc = 0.0;
+        }
+
         // World checkpoint. The galaxy drifts continuously (security, prosperity,
         // territory control), so unlike an account there is no natural commit point to
         // hang this on: a timer is what keeps a crash from costing more than a minute.
@@ -1622,6 +1794,14 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
         for (size_t i = 0; i < clients.size();)
         {
             HostClient& hc = clients[i];
+            if (!hc.removedFor.empty())
+            {
+                Log::Printf("%s was taken off the server: %s.\n",
+                            (hc.account.empty() ? hc.pendingAccount : hc.account).c_str(),
+                            hc.removedFor.c_str());
+                clients.erase(clients.begin() + (long)i);
+                continue;
+            }
             if (hc.lingering && !hc.evicted)
             {
                 if (std::find(lingerOver.begin(), lingerOver.end(), hc.sessionId) ==
@@ -1630,7 +1810,7 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                     i++;
                     continue;
                 }
-                printf("%s's ship has left space.\n", hc.account.c_str());
+                Log::Printf("%s's ship has left space.\n", hc.account.c_str());
             }
             else if (hc.conn && hc.conn->Alive() && !hc.evicted &&
                      (hc.sessionId != 0 || hc.silentFor < LoginLimit(hc)))
@@ -1643,46 +1823,47 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
             {
                 hc.lingering = true;
                 hc.conn.reset();
-                printf("%s's connection closed; the ship stays in space for %.0f s.\n",
-                       hc.account.c_str(), Simulation::LINGER_SECONDS);
+                Log::Printf("%s's connection closed; the ship stays in space for %.0f s.\n",
+                            hc.account.c_str(), Simulation::LINGER_SECONDS);
                 i++;
                 continue;
             }
             if (ClientSession* s = sim.Session(hc.sessionId))
             {
                 if (hc.accountReadOnly)
-                    printf("%s left. Account NOT saved: their file is from a newer build.\n",
-                           hc.account.c_str());
+                    Log::Printf("%s left. Account NOT saved: their file is from a newer build.\n",
+                                hc.account.c_str());
                 else
                 {
                     sim.SaveAccount(*s, AccountPath(accountsDir, hc.account));
-                    printf("%s left. Account saved (money %.0f); galaxy still running.\n",
-                           hc.account.c_str(), s->account.GetMoney());
+                    Log::Printf("%s left. Account saved (money %.0f); galaxy still running.\n",
+                                hc.account.c_str(), s->account.GetMoney());
                 }
                 sim.DestroySession(hc.sessionId);
             }
             else if (hc.evicted)
             {
-                printf("The displaced connection for %s closed.\n", hc.account.c_str());
+                Log::Printf("The displaced connection for %s closed.\n", hc.account.c_str());
             }
             else if (hc.conn && hc.conn->Alive())
             {
                 // Still connected, but not logged in within the limit. Which half it got
                 // through is what tells a client that never spoke from a lost answer.
                 if (hc.awaitingStart)
-                    printf("%s chose no start within %.0f s; dropped.\n", hc.account.c_str(),
-                           START_TIMEOUT);
+                    Log::Printf("%s chose no start within %.0f s; dropped.\n", hc.account.c_str(),
+                                START_TIMEOUT);
                 else if (hc.pendingAccount.empty())
-                    printf("A client said nothing for %.0f s and was dropped.\n", HELLO_TIMEOUT);
+                    Log::Printf("A client said nothing for %.0f s and was dropped.\n",
+                                HELLO_TIMEOUT);
                 else
-                    printf("%s: no answer to the login challenge within %.0f s; dropped.\n",
-                           hc.pendingAccount.c_str(), LOGIN_TIMEOUT);
+                    Log::Printf("%s: no answer to the login challenge within %.0f s; dropped.\n",
+                                hc.pendingAccount.c_str(), LOGIN_TIMEOUT);
             }
             else
             {
-                printf("A client left before logging in%s%s (%s).\n",
-                       hc.pendingAccount.empty() ? "" : " as ", hc.pendingAccount.c_str(),
-                       hc.conn ? hc.conn->CloseReason().c_str() : "refused");
+                Log::Printf("A client left before logging in%s%s (%s).\n",
+                            hc.pendingAccount.empty() ? "" : " as ", hc.pendingAccount.c_str(),
+                            hc.conn ? hc.conn->CloseReason().c_str() : "refused");
             }
             clients.erase(clients.begin() + (long)i);
         }
@@ -1696,7 +1877,7 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                 sim.SaveAccount(*s, AccountPath(accountsDir, hc.account));
     sim.SaveWorld(worldPath);
     sim.SaveDesigns(DesignsPath(worldPath));
-    printf("\nShutting down. World and accounts saved.\n");
+    Log::Printf("\nShutting down. World and accounts saved.\n");
     Net::Shutdown();
     return 0;
 }
@@ -2526,6 +2707,7 @@ int main(int argc, char** argv)
         unsigned short port = (argc > 2) ? (unsigned short)atoi(argv[2]) : 50800;
         // Loopback unless asked (#187): other machines can connect only with --public.
         bool isPublic = false;
+        bool openRegistration = false;
         bool dev = false;
         int  centres = Gen::DEFAULT_CENTRES;
         bool randomStarts = false;
@@ -2536,6 +2718,10 @@ int main(int argc, char** argv)
         for (int i = 3; i < argc; i++)
             if (std::string(argv[i]) == "--public")
                 isPublic = true;
+            // Anyone may register (#400). Without it a --public server lets in only the
+            // names in allowlist.txt beside its world.
+            else if (std::string(argv[i]) == "--open")
+                openRegistration = true;
             else if (std::string(argv[i]) == "--dev")
                 dev = true;  // debug commands for everyone (#341); never on a public server
             else if (std::string(argv[i]) == "--seed" && i + 1 < argc)
@@ -2560,7 +2746,8 @@ int main(int argc, char** argv)
             fprintf(stderr, "--centres must be 1 to %d\n", Gen::MAX_CENTRES);
             return 2;
         }
-        return RunHost(port, isPublic, seed, dev, centres, randomStarts, maxRegions, maxSystems);
+        return RunHost(port, isPublic, openRegistration, seed, dev, centres, randomStarts,
+                       maxRegions, maxSystems);
     }
 
     std::string dataDir = SIM_DATA_DIR;
