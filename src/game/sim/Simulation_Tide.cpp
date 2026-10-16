@@ -262,12 +262,14 @@ void Simulation::SaveGrowth(nlohmann::json& j) const
                     { "tide", std::move(tide) },   { "explored", explored_ },
                     { "surveyed", surveyed_ } };
     SaveArchive(j);  // the regions that drifted away (S4)
+    SaveHoles(j);    // the roaming holes the epochs decided (S9)
     SavePacks(j);    // where the admin's packs went (S7)
 }
 
 void Simulation::LoadGrowth(const nlohmann::json& j)
 {
     LoadArchive(j);
+    LoadHoles(j);
     if (woven_.empty())  // a world opened without its header's packs (a test) keeps them
         ReadPacks(j, woven_);
     // A world from before S3 has none: its tide starts now, as a new world's does.
@@ -448,6 +450,8 @@ void Simulation::StepTide(double passSeconds)
     }
     // Mouths failing and collapsing, every pass: a collapse is on the clock, not the period.
     StepMouths();
+    // ...and roaming holes opening and closing (S9), on the clock too.
+    StepHoles();
     for (int slot : openSlots_)  // every edge region has one from the first pass
         if (IsEdgeRegion(slot))
             TideOf(slot);
@@ -829,17 +833,21 @@ std::string Simulation::MouthProblem(const ClientSession& s, const Entity& g) co
     if (g.GetKind() != EntityKind::Gate || !static_cast<const JumpGate&>(g).IsUnstable() || !s.ship)
         return std::string();
     // What the ship weighs is its design's: the parts it is built from.
-    const Ships::Design* d = designs_.Find(s.DesignOf(s.currentShip));
-    Ships::Stats         stats;
-    std::string          why;
-    if (d == nullptr || !Ships::Derive(Archetypes::ShipCatalogue(), *d, stats, why))
+    const double mass = ShipMass(s);
+    if (mass <= 0.0)
         return std::string();
+    // A roaming hole has a class of its own (S9).
+    if (const RoamingHole* h = HoleOfGate(g.GetId()))
+        return mass <= h->maxMass ? std::string()
+                                  : "the wormhole lets through only ships of up to " +
+                                        std::to_string((int)h->maxMass) + " t, and yours is " +
+                                        std::to_string((int)std::lround(mass)) + " t";
     const double most = WorldRules::MouthRules().maxMass;
-    if (stats.mass <= most)
+    if (mass <= most)
         return std::string();
     return "the mouth is unstable: until it is anchored only ships of up to " +
            std::to_string((int)most) + " t pass, and yours is " +
-           std::to_string((int)std::lround(stats.mass)) + " t";
+           std::to_string((int)std::lround(mass)) + " t";
 }
 
 Simulation::RegionOpening* Simulation::CrossingOf(const std::string& a, const std::string& b) const

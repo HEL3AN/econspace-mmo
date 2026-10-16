@@ -145,6 +145,77 @@ public:
         return c;
     }
 
+    // --- Roaming holes (#342 S9; Simulation_Holes.cpp) ---
+    // EVE's wormholes: on a schedule of epochs (WorldRules::Holes), each live region's key
+    // says whether it gets one this epoch, between which two systems, when it opens, how long
+    // it lives, which ships it lets through and how much mass in all. Both ends are gates of
+    // `gate.roaming`, hidden until a pilot's scan finds them (#346). What an epoch decided is
+    // kept -- which systems were open then is not the seed's to say again.
+    struct RoamingHole
+    {
+        std::string id;  // "h<epoch>-<slot>": unique in the world, what a pilot knows it by
+        int         epoch = 0;
+        int         slot = 0;  // the region whose key made it
+        std::string a, b;      // the systems it joins
+        Vector2     atA{ 0.0f, 0.0f }, atB{ 0.0f, 0.0f };
+        double      opensAt = 0.0, closesAt = 0.0;
+        double      maxMass = 0.0;  // the heaviest ship it lets through
+        double      budget = 0.0;   // the mass it takes in all before it collapses
+        double      spent = 0.0;
+        bool        open = false;          // its gates stand
+        std::string foundBy;               // the first pilot to resolve it, for the chronicle
+        int         gateA = 0, gateB = 0;  // its gates' ids this run; 0 -- not built
+        std::string dressed;               // the name its gates wear now
+    };
+    const std::vector<RoamingHole>& RoamingHoles() const { return holes_; }
+    const RoamingHole*              HoleById(const std::string& id) const;
+    // The hole gate `gateId` is an end of, or null.
+    const RoamingHole* HoleOfGate(int gateId) const;
+    // Decides epoch `epoch`'s holes, if it has not been decided: once each, whenever asked.
+    void ScheduleHoles(int epoch);
+    // Admin and tests: a hole between two systems, open now, letting through ships of up to
+    // `maxMass`, for `hours`, `budget` in all. Its id, or empty when either system is not.
+    std::string OpenHoleNow(const std::string& a, const std::string& b, double maxMass,
+                            double hours, double budget);
+    // The links this pilot knows through roaming holes, each with its tail (kind "hole").
+    std::vector<WorldLoader::SystemLink> HoleLinksOf(const ClientSession& s) const;
+    // The galaxy index as this pilot knows it (#144): KnownUniverse, and the holes they found
+    // -- the system at the far end too, uncharted if nobody has been.
+    WorldLoader::Universe KnownUniverseFor(const ClientSession& s) const;
+    // Once a pass: holes of the epoch decided, opening, re-dressed, collapsing.
+    void StepHoles();
+    // Into `dest` by gate `gateId`, which JumpGateDestIfNear has allowed: through a roaming
+    // hole this spends its mass, arrives at its far end and tells the pilot it is known to
+    // them; otherwise it is ServerEnterSystem.
+    void EnterThrough(ClientSession& s, int gateId, const std::string& dest);
+
+    // --- Signatures and the scanner (#346; Simulation_Scan.cpp) ---
+    // How loud an object is to a scanner -- its archetype's `signature`, or what a site will
+    // become -- or 0 for one that is not hidden.
+    static float SignatureOf(const Entity& e);
+    // What a pilot knows a hidden object by across a restart: "hole:<id>" for a roaming hole's
+    // end, "<system>/<save key>" for anything else. Empty for one that is not hidden.
+    std::string SignatureKey(const SystemState& st, const Entity& e) const;
+    // A short name for a signature, the same for everyone: "KQX-417".
+    static std::string SignatureCode(const std::string& key);
+    // Whether `e` is hidden from this pilot: it has a signature, it is not theirs, and their
+    // scans have not resolved it.
+    bool HiddenFrom(const ClientSession& s, const SystemState& st, const Entity& e) const;
+    // The layout of a system as this pilot may see it -- BuildLayout without what is hidden
+    // from them -- and a delta cut the same way.
+    Proto::SystemLayout BuildLayoutFor(const ClientSession& s, const std::string& systemId) const;
+    void                ForSession(const ClientSession& s, Proto::LayoutDelta& d) const;
+    // Starts a pass of the ship's scanner. False, and why in the journal, when it cannot:
+    // docked, warping, or a pass already under way.
+    bool StartScan(ClientSession& s);
+    // Every tick: a pass interrupted, or finished -- what it resolved is the pilot's.
+    void StepPlayerScan(ClientSession& s);
+    // What the scanner shows this pilot in the system they are in, for the snapshot.
+    Proto::ScanView ScanViewOf(const ClientSession& s) const;
+    // What scans resolved since the last call, as a delta of the pilot's own: by session id.
+    // The system's revision moves, so a layout sent later is newer than it.
+    std::vector<std::pair<int, Proto::LayoutDelta>> TakeRevealDeltas();
+
     // --- The archive (#342 S4; Simulation_Drift.cpp) ---
     // A region that drifted away at the cap: its documents as they were sealed, and what had
     // become of it -- what stood and lay in each system, the names players gave, its history.
@@ -784,8 +855,11 @@ public:
     // avoidDanger weighs each hop by how dangerous the system is (low security, pirate
     // pressure, a hostile controller) instead of counting hops. "Fastest" and "arrives"
     // are different routes, and which one an agent wants depends on what it is carrying.
-    std::vector<std::string> PlanRoute(const std::string& from, const std::string& to,
-                                       bool avoidDanger) const;
+    // `extra` are links beyond the gates that this traveller may take: the roaming holes a
+    // pilot has found (#342 S9).
+    std::vector<std::string>
+    PlanRoute(const std::string& from, const std::string& to, bool avoidDanger,
+              const std::vector<WorldLoader::SystemLink>* extra = nullptr) const;
 
     // --- Standing orders (strategic layer, #26) ---
     // Give an order, replacing whatever was running; returns its id. The order executes
@@ -1355,6 +1429,26 @@ private:
     std::map<std::string, OwnerBook> owners_;
     nlohmann::json                   OwnersJson() const;
     void                             OwnersFrom(const nlohmann::json& j);
+
+    // Roaming holes (S9): what the epochs decided, the last epoch decided, and which
+    // signatures somebody has already been credited with finding (#346).
+    std::vector<RoamingHole> holes_;
+    int                      holeEpoch_ = -1;
+    std::set<std::string>    foundSignatures_;
+    void                     SaveHoles(nlohmann::json& j) const;
+    void                     LoadHoles(const nlohmann::json& j);
+    RoamingHole*             MutableHole(const std::string& id);
+    // What the ship this pilot flies weighs, by its design; 0 when it cannot be derived.
+    double ShipMass(const ClientSession& s) const;
+    void   OpenHole(RoamingHole& h);
+    void   CloseHole(RoamingHole& h, const std::string& why);
+    // Builds a hole's gates where a system has its static layer and they are not standing.
+    void BuildHoleGates(RoamingHole& h);
+    // The name a hole's gates wear: its class and how it is.
+    std::string HoleName(const RoamingHole& h) const;
+    // Someone resolved a signature; the first to do so is news.
+    void CreditFind(ClientSession& s, const std::string& key, const std::string& what,
+                    const std::string& systemId);
 
     double time_ = 0.0;        // total simulation time (seconds)
     double maintAccum_ = 0.0;  // accumulator of coarse world maintenance (director)

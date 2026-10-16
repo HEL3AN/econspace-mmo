@@ -125,6 +125,11 @@ struct InsuranceQuote
 InsuranceQuote QuoteInsurance(const View& view, int hull);
 // The last ship lost, in one line; empty when none has been.
 std::string DescribeLoss(const Proto::LossView& loss);
+// The scanner (#346): a pass under way, and the signatures of the system the scans have
+// touched -- unresolved by code and how much is resolved, resolved by what each is and its
+// id. Then the roaming holes this pilot knows, with where they lead, when they close and
+// which ships they let through (#342 S9). Empty when there is nothing to say.
+std::string DescribeScan(const View& view);
 
 // Who owns the station the player is docked at, from the layout. Independent when not
 // docked or the layout does not say -- which is also what the server assumes.

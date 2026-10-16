@@ -536,6 +536,7 @@ std::string EncodeCommand(const Command& c)
         j["defId"] = c.defenceId;
         j["def"] = DefenceJson(c.defence);
     }
+    flag("scan", c.scan);
     return j.dump();
 }
 
@@ -719,6 +720,7 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadText(j, "deployName", out.deployName);
     ok = ok && ReadInt(j, "dismantle", 0, 0, ID_MAX, out.dismantleId);
     ok = ok && ReadInt(j, "defId", 0, 0, ID_MAX, out.defenceId);
+    ok = ok && ReadBool(j, "scan", out.scan);
     if (ok && j.contains("def"))
         ok = DefenceFrom(j["def"], out.defence);
     return ok;
@@ -923,6 +925,23 @@ json PlayerJson(const Proto::PlayerView& p)
         j["loss"] = { { "seq", p.loss.seq },     { "hull", p.loss.hull }, { "sys", p.loss.system },
                       { "value", p.loss.value }, { "paid", p.loss.paid }, { "cargo", p.loss.cargo },
                       { "woke", p.loss.wokeAt } };
+    // Only where there is something to scan or a pass under way (#346).
+    if (p.scan.until > 0.0 || !p.scan.sigs.empty())
+    {
+        json sigs = json::array();
+        for (const Proto::SignatureView& g : p.scan.sigs)
+        {
+            json gj = { { "code", g.code }, { "p", Round2(g.progress) } };
+            if (!g.kind.empty())
+                gj["kind"] = g.kind;
+            if (g.id != 0)
+                gj["id"] = g.id;
+            if (!g.dest.empty())
+                gj["dest"] = g.dest;
+            sigs.push_back(std::move(gj));
+        }
+        j["scan"] = { { "until", p.scan.until }, { "secs", p.scan.seconds }, { "sigs", sigs } };
+    }
     return j;
 }
 
@@ -980,6 +999,27 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
         p.loss.paid = loss->value("paid", 0.0);
         p.loss.cargo = loss->value("cargo", 0);
         p.loss.wokeAt = loss->value("woke", std::string());
+    }
+    p.scan = Proto::ScanView{};
+    const auto scan = pj.find("scan");
+    if (scan != pj.end() && scan->is_object())
+    {
+        p.scan.until = scan->value("until", 0.0);
+        p.scan.seconds = scan->value("secs", 0.0);
+        const auto sigs = scan->find("sigs");
+        if (sigs != scan->end() && sigs->is_array())
+            for (const json& gj : *sigs)
+            {
+                if (!gj.is_object())
+                    continue;
+                Proto::SignatureView g;
+                g.code = gj.value("code", std::string());
+                g.progress = gj.value("p", 0.0f);
+                g.kind = gj.value("kind", std::string());
+                g.id = gj.value("id", 0);
+                g.dest = gj.value("dest", std::string());
+                p.scan.sigs.push_back(std::move(g));
+            }
     }
     p.library.clear();
     const auto lib = pj.find("lib");
@@ -1781,7 +1821,10 @@ std::string EncodeUniverse(const WorldLoader::Universe& u)
                         { "found", si.discoverer } });
     json links = json::array();
     for (const WorldLoader::SystemLink& l : u.links)
-        links.push_back(json::array({ l.a, l.b }));
+        if (l.kind.empty())
+            links.push_back(json::array({ l.a, l.b }));
+        else  // a roaming hole the pilot found (#342 S9): when it closes, and what it lets by
+            links.push_back(json::array({ l.a, l.b, l.kind, l.closesAt, l.maxMass }));
     j["sys"] = sys;
     j["links"] = links;
     j["start"] = u.startId;
@@ -1814,8 +1857,16 @@ bool DecodeUniverse(const std::string& s, WorldLoader::Universe& out)
     if (j.contains("links") && j["links"].is_array())
         for (const json& lj : j["links"])
             if (lj.is_array() && lj.size() >= 2 && lj[0].is_string() && lj[1].is_string())
-                out.links.push_back(
-                    WorldLoader::SystemLink{ lj[0].get<std::string>(), lj[1].get<std::string>() });
+            {
+                WorldLoader::SystemLink l{ lj[0].get<std::string>(), lj[1].get<std::string>() };
+                if (lj.size() >= 5 && lj[2].is_string() && lj[3].is_number() && lj[4].is_number())
+                {
+                    l.kind = lj[2].get<std::string>();
+                    l.closesAt = lj[3].get<double>();
+                    l.maxMass = lj[4].get<float>();
+                }
+                out.links.push_back(std::move(l));
+            }
     out.startId = j.value("start", std::string());
     return true;
 }

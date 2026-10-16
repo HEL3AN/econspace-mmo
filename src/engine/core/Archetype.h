@@ -37,7 +37,8 @@ enum class Component
     Hazard,       // changes the conditions of anything inside it
     Salvageable,  // pays out once to whoever reaches it first
     Buildable,    // a player can construct one; a blueprint says how (#39)
-    Shipyard      // a docked ship can be refitted here (#279 fitting)
+    Shipyard,     // a docked ship can be refitted here (#279 fitting)
+    Signature     // hidden from a pilot until their scan resolves it (#346)
 };
 
 // The JSON key this component is written under, and the name it is reported by.
@@ -156,6 +157,7 @@ struct Archetype
     float hazardRadius = 0.0f;       // Hazard: 0 means "the object's own radius"
     bool  hazardHidesShips = false;  // Hazard: ships inside are invisible to NPCs
     float refitMarkup = 1.5f;        // Shipyard: what a module costs over its ore here
+    float signatureStrength = 0.5f;  // Signature: what one scan pass resolves of it, 0..1
 
     bool Has(Component c) const { return components.Has(c); }
 };

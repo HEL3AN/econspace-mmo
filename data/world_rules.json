@@ -61,5 +61,26 @@
         "siegePerKill": 250,
         "rep": 3,
         "failRep": 1.5
+    },
+    "holes": {
+        "epochHours": 4,
+        "perRegion": 0.3,
+        "atCap": 0.6,
+        "drifted": 1.0,
+        "minHours": 4,
+        "maxHours": 24,
+        "smallMass": 45,
+        "mediumMass": 60,
+        "largeMass": 100,
+        "smallWeight": 0.4,
+        "mediumWeight": 0.35,
+        "budgetMin": 4,
+        "budgetMax": 10,
+        "endingHours": 4,
+        "lowMass": 0.5
+    },
+    "scan": {
+        "seconds": 10,
+        "power": 1.0
     }
 }

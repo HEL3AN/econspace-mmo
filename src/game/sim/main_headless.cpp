@@ -386,13 +386,15 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
         s.ToggleWeapon();
 
     sim.StepPlayerShip(s, c, 1.0f, dt);
+    if (c.scan)  // a pass of the scanner (#346); the answer is in the journal either way
+        sim.StartScan(s);
 
     if (c.jumpGateId != 0)
     {
         std::string dest = sim.JumpGateDestIfNear(s, *sim.SystemOf(s), c.jumpGateId);
         if (!dest.empty())
         {
-            sim.ServerEnterSystem(s, dest, s.systemId);  // arrives at the gate back
+            sim.EnterThrough(s, c.jumpGateId, dest);  // arrives at the gate back
             changed = true;
         }
         else
@@ -500,6 +502,8 @@ static void HostStepWorld(Simulation& sim, float dt,
 
         // Account passive: piloting xp (in flight) + bounty decay.
         sim.StepPlayerAccountTick(s, dt);
+        // A pass of the scanner ending, or broken off (#346).
+        sim.StepPlayerScan(s);
     }
 
     sim.MaintainWorld(dt);
@@ -786,6 +790,9 @@ static void SendPresence(std::vector<HostClient>& clients, const Simulation& sim
 //
 // What only an owner may read is cut for everyone else (#340): one message for the system,
 // and one of their own for a client whose structure's allow-list the delta carries.
+//
+// ...and what a pilot has not found is cut for them (#346): a hidden object's arrival or
+// change reaches only those whose scans resolved it.
 static void SendLayoutDeltas(std::vector<HostClient>& clients, Simulation& sim, NetStats& net)
 {
     for (const Proto::LayoutDelta& d : sim.TakeLayoutDeltas())
@@ -796,25 +803,40 @@ static void SendLayoutDeltas(std::vector<HostClient>& clients, Simulation& sim, 
         for (HostClient& hc : clients)
             if (hc.sessionId != 0 && hc.conn && hc.layoutSystem == d.systemId)
             {
-                std::string theirs = msg;
-                if (cut && Proto::OwnsPrivate(d, hc.account))
-                {
-                    Proto::LayoutDelta own = d;
+                std::string          theirs = msg;
+                const ClientSession* s = sim.Session(hc.sessionId);
+                const bool           owner = cut && Proto::OwnsPrivate(d, hc.account);
+                Proto::LayoutDelta   own = owner ? d : shared;
+                if (owner)
                     Proto::ForViewer(own, hc.account);
+                const size_t before = own.added.size() + own.changed.size();
+                if (s != nullptr)
+                    sim.ForSession(*s, own);
+                if (owner || own.added.size() + own.changed.size() != before)
                     theirs = Proto::EncodeLayoutDelta(own);
-                }
                 net.layouts += (double)theirs.size();
                 hc.conn->Send(theirs);
             }
     }
+    // What a scan resolved, to its pilot alone, after the deltas everyone gets (#346).
+    for (auto& [sessionId, d] : sim.TakeRevealDeltas())
+        for (HostClient& hc : clients)
+            if (hc.sessionId == sessionId && hc.conn && hc.layoutSystem == d.systemId)
+            {
+                Proto::ForViewer(d, hc.account);
+                const std::string msg = Proto::EncodeLayoutDelta(d);
+                net.layouts += (double)msg.size();
+                hc.conn->Send(msg);
+            }
 }
 
-// The whole layout of a system, as `account` may read it (#340).
+// The whole layout of a system, as `s` may read it: what only an owner may (#340), and what
+// they have found (#346).
 static std::string LayoutFor(const Simulation& sim, const std::string& systemId,
-                             const std::string& account)
+                             const ClientSession& s)
 {
-    Proto::SystemLayout lay = sim.BuildLayout(systemId);
-    Proto::ForViewer(lay, account);
+    Proto::SystemLayout lay = sim.BuildLayoutFor(s, systemId);
+    Proto::ForViewer(lay, s.accountName);
     return Proto::EncodeLayout(lay);
 }
 
@@ -833,7 +855,10 @@ static void SendUniverse(HostClient& hc, const Simulation& sim, NetStats& net)
         hc.conn->Send(f);
         hc.factionsSent = Factions::Count();
     }
-    const std::string u = Proto::EncodeUniverse(sim.KnownUniverse());  // what is charted (#144)
+    // What is charted (#144), and the holes this pilot found (#342 S9).
+    const ClientSession* s = sim.Session(hc.sessionId);
+    const std::string    u =
+        Proto::EncodeUniverse(s != nullptr ? sim.KnownUniverseFor(*s) : sim.KnownUniverse());
     net.galaxies += (double)u.size();
     hc.conn->Send(u);
 }
@@ -897,7 +922,7 @@ static void JoinPlayer(Simulation& sim, HostClient& hc, const std::string& accou
     }
     hc.wasDocked = s.IsDocked();
     SendUniverse(hc, sim, net);  // the index first: the layout names a system
-    const std::string lay = LayoutFor(sim, s.systemId, hc.account);
+    const std::string lay = LayoutFor(sim, s.systemId, s);
     const std::string gal = Proto::EncodeGalaxy(sim.BuildGalaxyState());
     net.layouts += (double)lay.size();
     net.galaxies += (double)gal.size();
@@ -1320,6 +1345,33 @@ static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::s
         if (slot < 0)
             Log::Printf("No mouth opened: %s.\n", why.c_str());
     }
+    else if (verb == "hole" || verb == "holes")
+    {
+        // A roaming hole now (#342 S9), from a system to another -- or to the first system of
+        // another region -- for events and tests; `holes` lists what is open and scheduled.
+        std::string a, b;
+        in >> a >> b;
+        if (verb == "hole")
+        {
+            for (const auto& kv : sim.Sessions())  // a pilot's name: where they are
+                if (!a.empty() && kv.second.accountName == a)
+                    a = kv.second.systemId;
+            if (b.empty())
+                for (const auto& si : sim.Universe().systems)
+                    if (Gen::SlotOf(si.id) != Gen::SlotOf(a) && (b.empty() || si.id < b))
+                        b = si.id;
+            const std::string id = sim.OpenHoleNow(a, b, 60.0, 12.0, 600.0);
+            if (id.empty())
+                Log::Printf("Usage: hole <system> [<to>] -- two systems the galaxy has.\n");
+            else
+                Log::Printf("Hole %s open: %s <-> %s, ships up to 60 t, for 12 h.\n", id.c_str(),
+                            a.c_str(), b.c_str());
+        }
+        for (const Simulation::RoamingHole& h : sim.RoamingHoles())
+            Log::Printf("  %s  %s <-> %s  %s  up to %.0f t, %.0f/%.0f t spent, closes in %.1f h\n",
+                        h.id.c_str(), h.a.c_str(), h.b.c_str(), h.open ? "open" : "scheduled",
+                        h.maxMass, h.spent, h.budget, (h.closesAt - sim.Time()) / 3600.0);
+    }
     else if (verb == "drift")
     {
         int slot = -1;
@@ -1417,7 +1469,8 @@ static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::s
     }
     else
         Log::Printf("Commands: tide | open [region] (a mouth now, from the region named or the one "
-                    "nearest to breaking) | drift <region> (into the archive now) | pause | resume "
+                    "nearest to breaking) | hole <system> [<to>] (a roaming hole now) | holes | "
+                    "drift <region> (into the archive now) | pause | resume "
                     "(growth) | destroy <name> (their ship is lost) | allow <name> | deny <name> | "
                     "ban <name> [reason] | unban <name> | "
                     "access (who may come in) | reload (allowlist.txt and bans.txt) | "
@@ -2030,11 +2083,18 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
             // still has its session until the cleanup below; it has no socket (#202).
             if (s == nullptr || !hc.conn)
                 continue;
+            // The roaming holes this pilot knows changed (#342 S9): their index, before a
+            // layout or a snapshot names where one leads.
+            if (s->routesChanged)
+            {
+                s->routesChanged = false;
+                SendUniverse(hc, sim, net);
+            }
             // A layout is not on the snapshot clock: it answers "you are somewhere else
             // now", and waiting 50 ms to say so would draw the old system for a moment.
             if (layoutDirty[hc.sessionId] || s->systemId != hc.layoutSystem)
             {
-                const std::string lay = LayoutFor(sim, s->systemId, hc.account);
+                const std::string lay = LayoutFor(sim, s->systemId, *s);
                 net.layouts += (double)lay.size();
                 hc.conn->Send(lay);
                 hc.layoutSystem = s->systemId;
@@ -2285,12 +2345,14 @@ static int HostSelftest()
 
     LocalTransport link;
     s.accountName = "selftest";
-    link.Server().Send(LayoutFor(sim, s.systemId, s.accountName));
+    link.Server().Send(LayoutFor(sim, s.systemId, s));
     // What anyone else in the system is sent, as RunHost cuts it (#340).
     Proto::LayoutMirror stranger;
     {
         Proto::SystemLayout lay;
-        if (Proto::DecodeLayout(LayoutFor(sim, s.systemId, "stranger"), lay))
+        ClientSession       other;
+        other.accountName = "stranger";
+        if (Proto::DecodeLayout(LayoutFor(sim, s.systemId, other), lay))
             stranger.Reset(lay);
     }
 

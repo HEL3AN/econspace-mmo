@@ -91,7 +91,7 @@ Approach an asteroid field and mine it. With until_full, keeps going until the h
 
 ### `travel_to_system`
 
-Travel to another star system, jumping gate by gate. One order for the whole journey however many hops it takes.
+Travel to another star system, jumping gate by gate -- and through any roaming wormhole you have found with scan, if it lets your ship by. One order for the whole journey however many hops it takes.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
@@ -259,6 +259,12 @@ Name the system you are in. Beyond the wormhole a system has only a designation 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
 | `name` | string | yes | the name, e.g. 'Haven' |
+
+### `scan`
+
+Run one pass of your ship's scanner over the whole system you are in (#346), and wait for it (about 10 s). Some things are hidden until scanned: roaming wormholes (shortcuts to another region that open and close on their own, with a ship-mass limit) and pirate hidden bases. Each pass resolves part of each signature; scan again until it is resolved. A resolved wormhole is then a gate in observe and a route travel_to_system can take; a resolved object has an id like any other. Undocked, not warping, and stay in the system while it runs.
+
+No arguments.
 
 ### `blueprints`
 

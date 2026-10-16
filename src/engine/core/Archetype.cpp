@@ -282,6 +282,7 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
             case Component::Defensive: params = { "range", "damage" }; break;
             case Component::Storage: params = { "capacity" }; break;
             case Component::Shipyard: params = { "markup" }; break;
+            case Component::Signature: params = { "strength" }; break;
             case Component::Hazard: params = { "radius", "hidesShips" }; break;
             // What building one costs and takes is its blueprint's (data/blueprints.json),
             // not the archetype's: one kind of object may be made more than one way.
@@ -331,6 +332,18 @@ bool ParseArchetype(const json& j, Archetype& a, std::string& err)
                     return false;
                 }
                 break;
+            // How loud it is to a scanner (#346): a pass resolves this much of it, so a
+            // strength of 0.35 takes three. Zero would be a thing nobody could ever find.
+            case Component::Signature:
+                a.signatureStrength = p.value("strength", a.signatureStrength);
+                if (a.signatureStrength <= 0.0f || a.signatureStrength > 1.0f)
+                {
+                    err = "archetype '" + a.id +
+                          "': signature strength must be above 0 and at "
+                          "most 1";
+                    return false;
+                }
+                break;
             // No archetype-level parameters. What varies about a market is per system,
             // not per kind of station.
             case Component::Market: break;
@@ -354,17 +367,18 @@ const char* ComponentName(Component c)
         case Component::Salvageable: return "salvageable";
         case Component::Buildable: return "buildable";
         case Component::Shipyard: return "shipyard";
+        case Component::Signature: return "signature";
     }
     return "unknown";
 }
 
 const std::vector<Component>& AllComponents()
 {
-    static const std::vector<Component> all = { Component::Dockable,  Component::Mineable,
-                                                Component::Market,    Component::Defensive,
-                                                Component::Storage,   Component::JumpLink,
-                                                Component::Hazard,    Component::Salvageable,
-                                                Component::Buildable, Component::Shipyard };
+    static const std::vector<Component> all = {
+        Component::Dockable,  Component::Mineable, Component::Market,   Component::Defensive,
+        Component::Storage,   Component::JumpLink, Component::Hazard,   Component::Salvageable,
+        Component::Buildable, Component::Shipyard, Component::Signature
+    };
     return all;
 }
 

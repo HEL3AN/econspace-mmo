@@ -163,8 +163,10 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             finish(Orders::Status::Done, "arrived in " + s.order.destSystem);
             return;
         }
-        std::vector<std::string> path =
-            PlanRoute(s.systemId, s.order.destSystem, s.order.avoidDanger);
+        // ...over the gates, and the roaming holes this pilot has found (#342 S9).
+        const std::vector<WorldLoader::SystemLink> holes = HoleLinksOf(s);
+        std::vector<std::string>                   path =
+            PlanRoute(s.systemId, s.order.destSystem, s.order.avoidDanger, &holes);
         if (path.size() < 2)
         {
             finish(Orders::Status::Failed, "no route to " + s.order.destSystem);
@@ -178,7 +180,7 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
         {
             JumpGate* g =
                 e->GetKind() == EntityKind::Gate ? static_cast<JumpGate*>(e.get()) : nullptr;
-            if (g != nullptr && g->GetDestination() == nextHop)
+            if (g != nullptr && g->GetDestination() == nextHop && !HiddenFrom(s, st, *g))
             {
                 gate = g;
                 break;
@@ -224,7 +226,7 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             Sim::StepPlayerShip(*s.ship, Proto::Command{}, 1.0f, dt);
             return;  // still closing the last few units
         }
-        ServerEnterSystem(s, dest, s.systemId);
+        EnterThrough(s, gate->GetId(), dest);
         s.RecordEvent(Ev::Kind::Jumped, "Jumped to " + dest);
         s.orderNavIssued = false;
         return;

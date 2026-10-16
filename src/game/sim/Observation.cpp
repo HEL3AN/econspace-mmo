@@ -745,6 +745,47 @@ InsuranceQuote QuoteInsurance(const View& view, int hull)
     return q;
 }
 
+std::string DescribeScan(const View& view)
+{
+    if (view.snapshot == nullptr)
+        return std::string();
+    const Proto::ScanView& scan = view.snapshot->player.scan;
+    const double           now = view.snapshot->time;
+    auto                   name = [&](const std::string& id)
+    {
+        if (view.universe != nullptr)
+            for (const WorldLoader::SystemInfo& si : view.universe->systems)
+                if (si.id == id)
+                    return si.name + " (" + id + ")";
+        return id;
+    };
+    std::string out;
+    if (scan.until > now)
+        out += Fmt("SCAN   a pass is under way, %.0fs left\n", scan.until - now);
+    if (!scan.sigs.empty())
+    {
+        out += "SIGNATURES\n";
+        for (const Proto::SignatureView& g : scan.sigs)
+            if (g.progress < 1.0f)
+                out += Fmt("  %s  unresolved, %d%% -- scan again\n", g.code.c_str(),
+                           (int)(g.progress * 100.0f));
+            else
+            {
+                const std::string to = g.dest.empty() ? std::string() : " to " + name(g.dest);
+                out +=
+                    Fmt("  %s  %s%s  [id %d]\n", g.code.c_str(), g.kind.c_str(), to.c_str(), g.id);
+            }
+    }
+    // The roaming holes this pilot knows, anywhere: routes of theirs.
+    if (view.universe != nullptr)
+        for (const WorldLoader::SystemLink& l : view.universe->links)
+            if (l.kind == "hole")
+                out += Fmt("HOLE   %s <-> %s  ships up to %.0f t, closes in %.1f h\n",
+                           name(l.a).c_str(), name(l.b).c_str(), l.maxMass,
+                           std::max(0.0, l.closesAt - now) / 3600.0);
+    return out;
+}
+
 std::string DescribeLoss(const Proto::LossView& loss)
 {
     if (loss.seq <= 0)
@@ -847,6 +888,7 @@ std::string Describe(const View& view, Detail detail)
     // The last ship lost (#344): an agent that wakes somewhere else in a smaller ship is told
     // why on every look, not only in the event that said it once.
     out += DescribeLoss(p.loss);
+    out += DescribeScan(view);
 
     // --- What is around us --------------------------------------------------
     std::vector<Seen> seen;

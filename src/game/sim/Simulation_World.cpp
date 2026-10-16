@@ -1464,8 +1464,9 @@ const WorldLoader::SystemInfo* Simulation::SystemInfoById(const std::string& id)
 // close enough. "Fly to Verge" therefore meant planning the hops by hand, and for an
 // agent every extra hop is another round trip to a language model. This turns the whole
 // journey into one order.
-std::vector<std::string> Simulation::PlanRoute(const std::string& from, const std::string& to,
-                                               bool avoidDanger) const
+std::vector<std::string>
+Simulation::PlanRoute(const std::string& from, const std::string& to, bool avoidDanger,
+                      const std::vector<WorldLoader::SystemLink>* extra) const
 {
     if (from.empty() || to.empty() || !HasSystem(from) || !HasSystem(to))
         return {};
@@ -1514,7 +1515,12 @@ std::vector<std::string> Simulation::PlanRoute(const std::string& from, const st
             break;
         settled[cur] = true;
 
-        for (const std::string& n : Neighbors(cur))
+        std::vector<std::string> next = Neighbors(cur);
+        if (extra != nullptr)  // a pilot's own way through a roaming hole (#342 S9)
+            for (const WorldLoader::SystemLink& l : *extra)
+                if (l.a == cur || l.b == cur)
+                    next.push_back(l.a == cur ? l.b : l.a);
+        for (const std::string& n : next)
         {
             if (settled[n])
                 continue;

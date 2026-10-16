@@ -32,10 +32,13 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    38;  // 38: NPC haulers (#343) -- a ship's cargo in the snapshot, a wreck's in its layout; what
-         // is left of each belt (#348) in the snapshot; 37: chat -- a ChatSay from a client,
-         // ChatLines and ChatMembers from the server (#347); 36: reserved for the haulers and
-         // never shipped; 35: a lost ship is lost -- insurance in a command, each hull's cover
+    39;  // 39: roaming holes and the scanner (#342 S9, #346) -- a scan in a command, the scanner
+         // and the system's signatures in the player's snapshot, a hidden object in a pilot's
+         // layout only once their scan resolved it, and a link of the index may be a hole
+         // with its tail; 38: NPC haulers (#343) -- a ship's cargo in the snapshot, a wreck's in
+         // its layout; what is left of each belt (#348) in the snapshot; 37: chat -- a ChatSay from
+         // a client, ChatLines and ChatMembers from the server (#347); 36: reserved for the haulers
+         // and never shipped; 35: a lost ship is lost -- insurance in a command, each hull's cover
          // and the last loss in the player's snapshot, and death wakes the pilot docked at
          // home (#344); 34: a
          // mission may be a faction plan's job (#345), with its plan, system, deadline and
@@ -233,6 +236,8 @@ struct Command
     // command. A refusal is a Notice saying why, and the change reaches everyone as a delta.
     int     defenceId = 0;
     Defence defence;
+    // Start a pass of the ship's scanner (#346); the signatures it resolves are this pilot's.
+    bool scan = false;
 };
 
 // Entity kind. The wire uses the engine's enum rather than a parallel copy, so there is
@@ -286,6 +291,26 @@ struct LossView
     std::string wokeAt;      // "Station, System"; empty -- nowhere took them
 };
 
+// One signature in the system, as this pilot's scanner shows it (#346). Until it is resolved
+// only its code and how much of it is resolved are known; then what it is, and the object,
+// which the pilot's layout now has.
+struct SignatureView
+{
+    std::string code;             // "KQX-417": the same for everyone
+    float       progress = 0.0f;  // 0..1; 1 -- resolved
+    std::string kind;             // resolved: "wormhole", "hidden base"; empty until then
+    int         id = 0;           // resolved: the object's id in the layout
+    std::string dest;             // a wormhole: the system it leads to
+};
+// The ship's scanner (#346): a pass under way until `until` (world time; 0 -- none), and the
+// signatures of the system the ship is in, by code.
+struct ScanView
+{
+    double                     until = 0.0;
+    double                     seconds = 0.0;  // what a pass takes
+    std::vector<SignatureView> sigs;
+};
+
 // Player ship state in the snapshot.
 struct PlayerView
 {
@@ -303,6 +328,7 @@ struct PlayerView
     // What each of those hulls is insured for, in the same order; 0 -- not insured (#344).
     std::vector<double> insured;
     LossView            loss;
+    ScanView            scan;  // (#346)
 
     Vector2 pos = { 0.0f, 0.0f };
     Vector2 vel = { 0.0f, 0.0f };

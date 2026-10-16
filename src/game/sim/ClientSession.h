@@ -6,6 +6,7 @@
 #include "missions/MissionSystem.h"
 
 #include <map>
+#include <set>
 #include <memory>
 #include <vector>
 #include <string>
@@ -146,6 +147,20 @@ struct ClientSession
         Vector2 to{ 0.0f, 0.0f };
     };
     std::vector<Shot> orderShots;
+
+    // The ship's scanner (#346). What this pilot's scans have resolved, by signature key --
+    // saved with the account, so a hidden base found stays found -- and how far each one not
+    // yet resolved has got, which is this session's. A pass under way ends at `scanUntil`
+    // (world time; 0 -- none) in `scanSystem`.
+    std::set<std::string>        scanned;
+    std::map<std::string, float> scanProgress;
+    double                       scanUntil = 0.0;
+    std::string                  scanSystem;
+    // Resolved objects of the system the ship is in that the pilot's layout lacks: the host
+    // sends them as a delta of the pilot's own (Simulation::TakeRevealDeltas).
+    std::vector<int> revealPending;
+    // The holes this pilot knows changed (#342 S9): the host sends them the index again.
+    bool routesChanged = false;
 
     // What happened to this player, in order. Per session rather than per world: one
     // player docking is not news to another, and a shared journal would leak both ways.
