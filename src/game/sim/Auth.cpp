@@ -1,6 +1,9 @@
 #include "sim/Auth.h"
 
+#include "core/DataDir.h"
+#include "core/Version.h"
 #include "net/OsRandom.h"
+#include "sim/Compat.h"
 #include "sim/Protocol.h"
 
 #include <picosha2.h>
@@ -85,6 +88,10 @@ bool ClientHandshake(ITransport& conn, const std::string& account, const std::st
 {
     Proto::Hello hello;
     hello.account = account;
+    // What the server checks before it challenges (#400): a client of another build, or one
+    // reading other data, is told so instead of playing a game the server is not running.
+    hello.build = Version::NUMBER;
+    hello.data = Compat::DataHashes(DataDir::Path());
     conn.Send(Proto::EncodeHello(hello));
 
     const auto       deadline = std::chrono::steady_clock::now() +

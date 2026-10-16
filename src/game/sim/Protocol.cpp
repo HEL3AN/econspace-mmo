@@ -290,6 +290,8 @@ std::string EncodeHello(const Hello& h)
     json j;
     Stamp(j, "hello");
     j["acct"] = h.account;
+    j["build"] = h.build;
+    j["data"] = h.data;
     return j.dump();
 }
 
@@ -299,6 +301,12 @@ bool DecodeHello(const std::string& s, Hello& out)
     if (!OpenTyped(s, "hello", j) || VersionOf(j) != PROTO_VERSION)
         return false;
     out.account = TextOf(j, "acct");
+    out.build = TextOf(j, "build");
+    out.data.clear();
+    // Strings only: anything else in a file's place reads as missing, and so as a mismatch.
+    if (const auto d = j.find("data"); d != j.end() && d->is_object())
+        for (auto it = d->begin(); it != d->end(); ++it)
+            out.data[it.key()] = it->is_string() ? it->get<std::string>() : std::string();
     return true;
 }
 
