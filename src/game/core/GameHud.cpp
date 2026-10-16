@@ -275,6 +275,13 @@ void Game::SetupWindows()
     // free in both: in space it is bottom left, under the status window; docked, that is the
     // station's and the stack beside it fills the rest, so there it waits for Enter or the
     // menu bar, and opens on the right, where the overview was.
+    // The ship's scanner (#346): a pass, and what it found. Space's: docked, nothing scans.
+    WindowSpec scanner = panel(WIN_SCANNER, "Scanner", "Scanner: find what is hidden  (P)",
+                               Anchor::TopRight, { 316.0f, 316.0f, 300.0f, 300.0f });
+    scanner.resizable = true;
+    scanner.minSize = { 240.0f, 180.0f };
+    scanner.context = CTX_SPACE;
+    desk_.AddWindow(scanner, "SCANNER", false, [this](Ui::Frame& f) { DrawScannerContent(f); });
     WindowSpec chat = panel(WIN_CHAT, "Chat", "Chat: local and private  (Enter)",
                             Anchor::BottomLeft, { 72.0f, 8.0f, 440.0f, 210.0f });
     chat.resizable = true;
@@ -1397,6 +1404,9 @@ void Game::DrawGalaxyMap()
                                           "triangle over it, that they would shoot you.",
                                           note);
                                    L.Text("sec, pir, econ: security, pirates, prosperity.", note);
+                                   L.Text("A dashed line: a wormhole your scans found. Only "
+                                          "you see it, and it closes.",
+                                          note);
                                    L.Divider();
                                    L.Text("GALACTIC NEWS", TextStyle::Label());
                                    L.Scroll(
@@ -1554,8 +1564,24 @@ void Game::DrawGalaxyMap()
     for (const auto& l : universe_.links)
     {
         Vector2 a, b;
-        if (posById(l.a, a) && posById(l.b, b))
+        if (!posById(l.a, a) || !posById(l.b, b))
+            continue;
+        if (l.kind != "hole")
+        {
             DrawLineEx(a, b, 1.5f, Fade(Ui::PANEL_BORDER, 0.9f));
+            continue;
+        }
+        // A roaming hole this pilot found (#342 S9): dashed, in the hole's own colour, and
+        // only theirs -- nobody else's map has it.
+        const float dx = b.x - a.x, dy = b.y - a.y;
+        const float len = sqrtf(dx * dx + dy * dy);
+        const int   dashes = std::max(1, (int)(len / u(10.0f)));
+        for (int k = 0; k < dashes; k += 2)
+        {
+            const float t0 = (float)k / dashes, t1 = (float)(k + 1) / dashes;
+            DrawLineEx({ a.x + dx * t0, a.y + dy * t0 }, { a.x + dx * t1, a.y + dy * t1 }, 2.0f,
+                       Color{ 120, 220, 190, 230 });
+        }
     }
 
     // Which system the player is in, according to the server. The client has no

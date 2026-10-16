@@ -635,8 +635,10 @@ std::string Simulation::JumpGateDestIfNear(const ClientSession& s, SystemState& 
             float           dy = g->GetPosition().y - sp.y;
             if (std::sqrt(dx * dx + dy * dy) > g->GetSize() + e->GetArchetype()->jumpRange)
                 return std::string();
-            // An unstable mouth lets through only small ships (#342 S4).
-            if (!MouthProblem(s, *e).empty())
+            // An unstable mouth lets through only small ships (#342 S4), and so does a roaming
+            // hole of its class (S9) -- which a pilot who has not found it cannot use at all,
+            // whatever id their client names (#346).
+            if (!MouthProblem(s, *e).empty() || HiddenFrom(s, st, *e))
                 return std::string();
             return g->GetDestination();
         }
@@ -1637,6 +1639,9 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
         named.insert(design);
     }
     j["designs"] = library;
+    // What this pilot's scans have found (#346), by signature key. A field an older build
+    // ignores, so no version bump (#20).
+    j["scanned"] = json(s.scanned);
     if (!s.accountName.empty())
         designs_.SetUsers(s.accountName, named);
 
@@ -1727,6 +1732,21 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
     if (foreign)
         s.RecordEvent(Ev::Kind::Notice,
                       "You were last in another world; your place and missions there are gone");
+    // What they found (#346): this world's, and only what is still there -- a hole that has
+    // closed since is no longer a way anywhere.
+    s.scanned.clear();
+    if (!foreign && j.contains("scanned") && j["scanned"].is_array())
+        for (const json& k : j["scanned"])
+        {
+            if (!k.is_string())
+                continue;
+            const std::string  key = k.get<std::string>();
+            const bool         hole = key.rfind("hole:", 0) == 0;
+            const RoamingHole* h = hole ? HoleById(key.substr(5)) : nullptr;
+            if (hole ? (h != nullptr && h->closesAt > time_)
+                     : HasSystem(key.substr(0, key.find('/'))))
+                s.scanned.insert(key);
+        }
 
     // Where they were (#49). A saved system that the galaxy no longer has -- an edited
     // universe, an older save -- leaves the player wherever the session was created

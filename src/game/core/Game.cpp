@@ -273,6 +273,7 @@ void Game::Run()
                 cmd_.defenceId = 0;  // (#340): the rules are set once
                 cmd_.orderKind = 0;  // a build order (#39) is given once
                 cmd_.orderBlueprint.clear();
+                cmd_.scan = false;  // a pass is asked for once (#346)
             }
             simAccumulator_ -= SIM_DT;
         }
@@ -526,6 +527,9 @@ void Game::PlayScriptedClicks()
     for (const ScriptedSay& s : says_)  // --say (#347)
         if (frameIndex_ == s.frame)
             SendChat(s.text);
+    for (int f : scans_)  // --scan (#346)
+        if (frameIndex_ == f)
+            cmd_.scan = true;
     frameIndex_++;
 }
 
@@ -641,6 +645,9 @@ void Game::HandleInput(float dt)
 
     if (key(KEY_J))
         desk_.Toggle(WIN_MISSIONS);
+
+    if (key(KEY_P))  // the scanner (#346)
+        desk_.Toggle(WIN_SCANNER);
 
     if (key(KEY_G))
         desk_.Toggle(WIN_MAP);

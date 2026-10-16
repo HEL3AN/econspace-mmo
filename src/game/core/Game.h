@@ -190,6 +190,8 @@ public:
     // A chat line sent on frame `frame` (--say TEXT FRAME), as if typed into the chat window:
     // two clients and a server show what local chat does without a hand on either (#347).
     void AddScriptedSay(const std::string& text, int frame) { says_.push_back({ text, frame }); }
+    // --scan FRAME: a pass of the scanner asked for on that frame (#346).
+    void AddScriptedScan(int frame) { scans_.push_back(frame); }
     // Who this client is logged in as: a discoverer may name what they found (#145), and
     // the window layout is kept per account (#297).
     void SetPilotName(const std::string& n);
@@ -252,6 +254,8 @@ private:
     void DrawMissionsContent(const Ui::Frame& f);  // missions taken and offered, and one in full
     // Chat (#347), in GameChat.cpp: the log, the line being typed and who is in local.
     void DrawChatContent(const Ui::Frame& f);
+    // The scanner (#346), in GameScan.cpp: a pass, and the signatures it has found.
+    void DrawScannerContent(const Ui::Frame& f);
     void SendChat(const std::string& typed);  // a line as typed: local, or /w <pilot> ...
     void AddChatLine(const Proto::ChatLine& line);
     void ChatNotice(const std::string& text);  // a line from this client, to this pilot
@@ -482,6 +486,7 @@ private:
     static constexpr const char* WIN_CONTEXT = "context";          // the right-click menu
     static constexpr const char* WIN_LOOK = "look";                // F10's treatment panel (#120)
     static constexpr const char* WIN_LOSS = "loss";                // a ship was lost (#344)
+    static constexpr const char* WIN_SCANNER = "scanner";          // the ship's scanner (#346)
     static constexpr const char* WIN_CHAT = "chat";                // local and private chat (#347)
     static constexpr const char* WIN_CHAT_DOCKED = "chat_docked";  // ...where it is docked
     const char*                  ChatWindow() const
@@ -506,7 +511,8 @@ private:
     Ui::Layout marketLayout_;
     Ui::Layout hangarLayout_;
     Ui::Layout lossLayout_;
-    int        lossSeen_ = 0;  // the last loss (Proto::LossView::seq) already shown (#344)
+    Ui::Layout scannerLayout_;  // (#346)
+    int        lossSeen_ = 0;   // the last loss (Proto::LossView::seq) already shown (#344)
     Ui::Layout hallLayout_;
     int        marketSel_ = 0;
     float      sellAmount_ = 0.0f;   // how much of the chosen commodity to sell
@@ -545,6 +551,7 @@ private:
         int         frame;
     };
     std::vector<ScriptedSay> says_;
+    std::vector<int>         scans_;  // --scan FRAME (#346)
     int                      frameIndex_ = 0;
     // Chat (#347): the lines heard, newest last; who is in the local channel; what is being
     // typed; whether the log follows its newest line (it stops when scrolled back); Enter

@@ -56,6 +56,8 @@ static int Usage(const char* exe)
                  "                 without being shown the choice\n"
                  "      --click X Y FRAME\n"
                  "                 a left click at (X, Y) on frame FRAME; repeatable\n"
+                 "      --scan FRAME\n"
+                 "                 a pass of the ship's scanner on frame FRAME; repeatable\n"
                  "      --say TEXT FRAME\n"
                  "                 send TEXT to chat on frame FRAME, as typed (/w pilot ...\n"
                  "                 whispers); repeatable\n"
@@ -113,6 +115,7 @@ int main(int argc, char** argv)
         int         frame;
     };
     std::vector<Say> says;            // --say TEXT FRAME (#347)
+    std::vector<int> scans;           // --scan FRAME (#346)
     float            uiScale = 0.0f;  // 0: the player's setting times the display's
     std::string      openWindows;     // --open radar,missions,settings
     std::string      startAt;         // --start ID|random (#342 S2)
@@ -177,6 +180,8 @@ int main(int argc, char** argv)
                                std::atoi(argv[i + 3]) });
             i += 3;
         }
+        else if (std::strcmp(argv[i], "--scan") == 0 && i + 1 < argc)
+            scans.push_back(std::atoi(argv[++i]));
         else if (std::strcmp(argv[i], "--say") == 0 && i + 2 < argc)
         {
             says.push_back({ argv[i + 1], std::atoi(argv[i + 2]) });
@@ -254,6 +259,8 @@ int main(int argc, char** argv)
             game.AddScriptedClick(c.x, c.y, c.frame);
         for (const Say& s : says)
             game.AddScriptedSay(s.text, s.frame);
+        for (int f : scans)
+            game.AddScriptedScan(f);
         if (fit)
             game.StartOnFit();
         if (!market.empty())

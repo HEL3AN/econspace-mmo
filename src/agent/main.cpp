@@ -753,8 +753,9 @@ std::vector<Tool> BuildTools()
                       } });
 
     tools.push_back({ "travel_to_system",
-                      "Travel to another star system, jumping gate by gate. One order for "
-                      "the whole journey however many hops it takes.",
+                      "Travel to another star system, jumping gate by gate -- and through any "
+                      "roaming wormhole you have found with scan, if it lets your ship by. "
+                      "One order for the whole journey however many hops it takes.",
                       Obj({ { "system", Str("system id, e.g. 'reach'") },
                             { "avoid_danger", Bool("prefer safer systems over the short way") } },
                           { "system" }),
@@ -1379,6 +1380,40 @@ std::vector<Tool> BuildTools()
           } });
 
     tools.push_back(
+        { "scan",
+          "Run one pass of your ship's scanner over the whole system you are in (#346), and "
+          "wait for it (about 10 s). Some things are hidden until scanned: roaming wormholes "
+          "(shortcuts to another region that open and close on their own, with a ship-mass "
+          "limit) and pirate hidden bases. Each pass resolves part of each signature; scan "
+          "again until it is resolved. A resolved wormhole is then a gate in observe and a "
+          "route travel_to_system can take; a resolved object has an id like any other. "
+          "Undocked, not warping, and stay in the system while it runs.",
+          Obj({}), [](const Rpc::Json&)
+          {
+              RequireLive();
+              const int      seq = g_session.LastEventSeq();
+              Proto::Command c;
+              c.scan = true;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "scan: " + why;
+              auto said = [&]
+              {
+                  for (const Ev::Event& e : g_session.EventsSince(seq))
+                      if (e.kind == Ev::Kind::Scanned ||
+                          (e.kind == Ev::Kind::Notice && e.text.rfind("Cannot scan", 0) == 0))
+                          return e.text;
+                  return std::string();
+              };
+              const double seconds = g_session.Snapshot().player.scan.seconds;
+              g_session.WaitUntil([&] { return !said().empty(); }, std::max(seconds, 20.0) + 10.0);
+              const std::string result = said();
+              if (result.empty())
+                  return std::string("scan: the pass did not finish in time; call observe");
+              return "scan: " + result + "\n" + Obs::DescribeScan(CurrentView());
+          } });
+
+    tools.push_back(
         { "blueprints",
           "What you can build in space (#39): each blueprint's id, what it costs from the "
           "hold, how long the site takes, how long the result stands, and how close to your "
@@ -1929,6 +1964,12 @@ int Selftest(const std::vector<Tool>& tools)
             note("order completed", arrived);
         }
     }
+
+    // 3b) A pass of the scanner runs and says what it found, if anything (#346). After the
+    // order, so wait_for_event above is not handed the scan's event instead of its own.
+    g_phase = "scanning";
+    const std::string scanned = RunTool(tools, "scan", Rpc::Json::object());
+    note("scan", scanned.find("Scan of") != std::string::npos);
 
     // 4) An order naming something absent must be refused, not silently swallowed.
     g_phase = "waiting for a bad order to be refused";

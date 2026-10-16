@@ -564,6 +564,25 @@ Each slice is its own PR with green CI, and the game works after every one.
    - Probes and signature scanning, with agent tools.
    - Route updates on the wire.
    - Pockets later.
+   - *As built (slice 1, with #346):* `holes` in `data/world_rules.json`. An epoch is 4 h; at
+     its first pass every live region, in slot order, throws `Key(seed, epoch, slot)`: a hole
+     at `perRegion` 0.3 (`atCap` 0.6 at the cap, `drifted` 1.0 for a region cut off, so the
+     stranded always have a way out), from one of its systems to a system of another region
+     that is not cut off, opening part way into the epoch and living 4-24 h. Its class is the
+     heaviest ship it lets by -- 45 t (scout, courier), 60 t (and cutter, raider) or 100 t
+     (anything) -- and it takes 4-10 times that in all before it collapses. What an epoch
+     decided is kept in `world.json` (`holes`: the list, the last epoch, the finds), because
+     the systems open then are not the seed's to say again; after a stop the epochs whose holes
+     may still be open are decided, once each. Each end is a gate of `gate.roaming` at the
+     system's edge facing the other (`Gen::EdgeGatePos`), named for its class and state
+     ("Wormhole (small ships, fresh)", then "ending", "mass low") and re-dressed by a delta.
+     Both ends carry a `signature` (#346): a pilot sees them only once a scan resolved them,
+     and then the hole is in their index -- a link with a tail `[a, b, "hole", closesAt,
+     maxMass]`, sent again whenever the holes they know change -- and in the routes their
+     orders plan. Going through spends the ship's mass, arrives at the far end and makes the
+     hole known to the pilot. NPCs, migrants and factions never use one. Admin: `hole
+     <system|pilot> [<to>]` and `holes` on the console. PROTO_VERSION 39; no WORLD_VERSION or
+     generator change (the new fields are ones an older reader ignores).
 10. **S10 — scale to 10,000.**
     - Drop the static layer of cold systems.
     - Two-level `PlanRoute`.

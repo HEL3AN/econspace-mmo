@@ -27,7 +27,8 @@ enum class Kind
     CargoFull,      // the hold filled up
     UnderAttack,    // something is shooting at us
     ShipDestroyed,  // we died
-    Built           // a structure of ours was finished (#39)
+    Built,          // a structure of ours was finished (#39)
+    Scanned         // a pass of the scanner finished (#346); text says what it found
 };
 
 struct Event

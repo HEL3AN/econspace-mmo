@@ -145,6 +145,42 @@ struct Jobs
     double failRep = 1.5;
 };
 
+// Roaming holes (#342 S9): EVE's wormholes, on a schedule of epochs of `epochHours`. At the
+// start of each, every live region -- centres, frontiers, pack regions; not one archived --
+// throws its own key: with `perRegion` (`atCap` once the galaxy is at its cap, where the tide
+// can open nothing new; `drifted` for a region cut off by a collapsed mouth, so the stranded
+// always have a way out) it gets a hole from one of its systems to a system of another live
+// region. A hole opens somewhere in the epoch, lives `minHours` to `maxHours`, and lets
+// through ships of at most its class's mass -- small, medium or large, drawn by the weights
+// -- with a budget of `budgetMin` to `budgetMax` times that mass before it collapses. It is
+// called ending in its last `endingHours`, and its mass low below `lowMass` of the budget.
+struct Holes
+{
+    double epochHours = 4.0;
+    double perRegion = 0.3;
+    double atCap = 0.6;
+    double drifted = 1.0;
+    double minHours = 4.0;
+    double maxHours = 24.0;
+    double smallMass = 45.0;   // a scout or a courier
+    double mediumMass = 60.0;  // ...and a cutter or a raider
+    double largeMass = 100.0;  // anything the hangar sells
+    double smallWeight = 0.4;
+    double mediumWeight = 0.35;  // large is the rest
+    double budgetMin = 4.0;
+    double budgetMax = 10.0;
+    double endingHours = 4.0;
+    double lowMass = 0.5;
+};
+
+// The ship's scanner (#346): a pass takes `seconds` and adds `power` times a signature's
+// strength to what the pilot has resolved of it; at 1 it is found.
+struct Scan
+{
+    double seconds = 10.0;
+    double power = 1.0;
+};
+
 // Reads `path`. False, with Error() saying why, and the rules as they were, when it does
 // not read.
 bool               Load(const std::string& path);
@@ -156,6 +192,8 @@ const Expeditions& ExpeditionRules();
 const Growth&      GrowthRules();
 const Convoys&     ConvoyRules();
 const Jobs&        JobRules();
+const Holes&       HoleRules();
+const Scan&        ScanRules();
 // For a test: rules of its own, without a file.
 void SetTideRules(const Tide& t);
 void SetMouthRules(const Mouths& m);
@@ -164,5 +202,7 @@ void SetExpeditionRules(const Expeditions& e);
 void SetGrowthRules(const Growth& g);
 void SetConvoyRules(const Convoys& c);
 void SetJobRules(const Jobs& j);
+void SetHoleRules(const Holes& h);
+void SetScanRules(const Scan& s);
 
 }  // namespace WorldRules

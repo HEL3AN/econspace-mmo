@@ -658,8 +658,9 @@ Simulation::SpawnNodes Simulation::GatherNodes(const SystemState& st) const
     {
         if (e->GetKind() == EntityKind::Station)
             nd.stations.push_back(e->GetPosition());
-        else if (JumpGate* g =
-                     e->GetKind() == EntityKind::Gate ? static_cast<JumpGate*>(e.get()) : nullptr)
+        else if (JumpGate* g = e->GetKind() == EntityKind::Gate && SignatureOf(*e) <= 0.0f
+                                   ? static_cast<JumpGate*>(e.get())
+                                   : nullptr)  // NPCs do not wait at a hole nobody sees (S9)
         {
             Vector2 p = g->GetPosition();
             nd.gates.push_back(p);

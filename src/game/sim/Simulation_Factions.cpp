@@ -139,7 +139,10 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
                 p.planets++;
                 AddToMarket(p.rates, *e);
                 break;
-            case EntityKind::Gate: p.gates++; break;
+            case EntityKind::Gate:
+                if (SignatureOf(*e) <= 0.0f)  // a roaming hole is nobody's way (#342 S9)
+                    p.gates++;
+                break;
             case EntityKind::Station:
                 p.stations++;
                 p.markets += e->Has(Component::Market) ? 1 : 0;

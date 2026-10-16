@@ -14,6 +14,8 @@ WorldRules::Expeditions g_expeditions;
 WorldRules::Growth      g_growth;
 WorldRules::Convoys     g_convoys;
 WorldRules::Jobs        g_jobs;
+WorldRules::Holes       g_holes;
+WorldRules::Scan        g_scan;
 std::string             g_error;
 
 // Reads one section's values into their places: every field known, every number zero or
@@ -75,7 +77,8 @@ bool Load(const std::string& path)
     for (auto it = j.begin(); it != j.end(); ++it)
         if (it.key() != "schema" && it.key() != "tide" && it.key() != "mouths" &&
             it.key() != "archive" && it.key() != "expeditions" && it.key() != "growth" &&
-            it.key() != "convoys" && it.key() != "jobs")
+            it.key() != "convoys" && it.key() != "jobs" && it.key() != "holes" &&
+            it.key() != "scan")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -186,6 +189,46 @@ bool Load(const std::string& path)
                          "jobs.creditsPerStock more than zero";
         return false;
     }
+    // S9's and #346's: roaming holes and the scanner.
+    Holes h;
+    if (j.contains("holes") && !ReadSection(j["holes"], path + ": holes",
+                                            { { "epochHours", &h.epochHours },
+                                              { "perRegion", &h.perRegion },
+                                              { "atCap", &h.atCap },
+                                              { "drifted", &h.drifted },
+                                              { "minHours", &h.minHours },
+                                              { "maxHours", &h.maxHours },
+                                              { "smallMass", &h.smallMass },
+                                              { "mediumMass", &h.mediumMass },
+                                              { "largeMass", &h.largeMass },
+                                              { "smallWeight", &h.smallWeight },
+                                              { "mediumWeight", &h.mediumWeight },
+                                              { "budgetMin", &h.budgetMin },
+                                              { "budgetMax", &h.budgetMax },
+                                              { "endingHours", &h.endingHours },
+                                              { "lowMass", &h.lowMass } },
+                                            {}, {}, g_error))
+        return false;
+    // An epoch of no time would schedule forever; chances and weights are shares.
+    if (h.epochHours <= 0.0 || h.minHours <= 0.0 || h.maxHours < h.minHours || h.budgetMin <= 0.0 ||
+        h.budgetMax < h.budgetMin || h.perRegion > 1.0 || h.atCap > 1.0 || h.drifted > 1.0 ||
+        h.smallWeight + h.mediumWeight > 1.0 || h.lowMass > 1.0)
+    {
+        g_error = path + ": holes: epochHours, minHours and budgetMin must be more than zero, "
+                         "the maxima at least the minima, and chances, weights and lowMass "
+                         "at most 1";
+        return false;
+    }
+    Scan sc;
+    if (j.contains("scan") &&
+        !ReadSection(j["scan"], path + ": scan",
+                     { { "seconds", &sc.seconds }, { "power", &sc.power } }, {}, {}, g_error))
+        return false;
+    if (sc.seconds <= 0.0 || sc.power <= 0.0)
+    {
+        g_error = path + ": scan: seconds and power must be more than zero";
+        return false;
+    }
     g_tide = t;
     g_mouths = m;
     g_archive = a;
@@ -193,6 +236,8 @@ bool Load(const std::string& path)
     g_growth = g;
     g_convoys = c;
     g_jobs = jb;
+    g_holes = h;
+    g_scan = sc;
     return true;
 }
 
@@ -269,6 +314,26 @@ const Jobs& JobRules()
 void SetJobRules(const Jobs& j)
 {
     g_jobs = j;
+}
+
+const Holes& HoleRules()
+{
+    return g_holes;
+}
+
+const Scan& ScanRules()
+{
+    return g_scan;
+}
+
+void SetHoleRules(const Holes& h)
+{
+    g_holes = h;
+}
+
+void SetScanRules(const Scan& s)
+{
+    g_scan = s;
 }
 
 }  // namespace WorldRules

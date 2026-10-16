@@ -6,6 +6,7 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <utility>
 
 // Loading the game world from JSON files.
 namespace WorldLoader
@@ -32,8 +33,16 @@ struct SystemInfo
 // A link between two systems (for drawing on the star map).
 struct SystemLink
 {
+    SystemLink() = default;
+    SystemLink(std::string from, std::string to) : a(std::move(from)), b(std::move(to)) {}
+
     std::string a;
     std::string b;
+    // Empty for a gate. "hole" for a roaming wormhole a pilot has found (#342 S9): it closes
+    // at `closesAt` (world time) and lets through ships of at most `maxMass`.
+    std::string kind;
+    double      closesAt = 0.0;
+    float       maxMass = 0.0f;
 };
 
 // Galaxy index: the list of systems, their links, and the starting system.

@@ -19,7 +19,9 @@
 #include "entities/Station.h"
 #include "entities/Structure.h"
 
+#include <algorithm>
 #include <cmath>
+#include <set>
 
 // World snapshot of a system for the client: each entity -> id/kind/position/size and
 // (for NPCs) faction/role/heading/hull fraction. The player and shots are added by the client.
@@ -143,6 +145,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         p.loss.paid = s.lastLoss.paid;
         p.loss.cargo = s.lastLoss.cargo;
         p.loss.wokeAt = s.lastLoss.wokeAt;
+        p.scan = ScanViewOf(s);  // (#346)
         p.cargoUsed = s.ship->GetCargoUsed();
         p.cargoCap = s.ship->GetCargoCapacity();
         p.warpPhase = (int)s.ship->GetWarpPhase();
@@ -359,6 +362,73 @@ Proto::SystemLayout Simulation::BuildLayout(const std::string& systemId) const
             lay.entities.push_back(std::move(el));
     }
     return lay;
+}
+
+Proto::SystemLayout Simulation::BuildLayoutFor(const ClientSession& s,
+                                               const std::string&   systemId) const
+{
+    Proto::SystemLayout lay = BuildLayout(systemId);
+    Proto::LayoutDelta  cut;
+    cut.systemId = systemId;
+    cut.added = std::move(lay.entities);
+    ForSession(s, cut);
+    lay.entities = std::move(cut.added);
+    return lay;
+}
+
+void Simulation::ForSession(const ClientSession& s, Proto::LayoutDelta& d) const
+{
+    // What a pilot has not found is not theirs to be told about (#346): its arrival or a
+    // change to it is left out. A removal of something they never had is nothing to them.
+    const SystemState* st = SystemById(d.systemId);
+    if (st == nullptr)
+        return;
+    std::set<int> hidden;
+    for (const auto& e : st->entities)
+        if (HiddenFrom(s, *st, *e))
+            hidden.insert(e->GetId());
+    if (hidden.empty())
+        return;
+    auto cut = [&](std::vector<Proto::EntityLayout>& v)
+    {
+        v.erase(std::remove_if(v.begin(), v.end(), [&](const Proto::EntityLayout& el)
+                               { return hidden.count(el.id) != 0; }),
+                v.end());
+    };
+    cut(d.added);
+    cut(d.changed);
+}
+
+std::vector<std::pair<int, Proto::LayoutDelta>> Simulation::TakeRevealDeltas()
+{
+    std::vector<std::pair<int, Proto::LayoutDelta>> out;
+    for (auto& kv : sessions_)
+    {
+        ClientSession& s = kv.second;
+        if (s.revealPending.empty())
+            continue;
+        std::vector<int> ids;
+        ids.swap(s.revealPending);
+        SystemState* st = SystemOf(s);
+        if (st == nullptr)
+            continue;
+        Proto::LayoutDelta d;
+        d.systemId = st->id;
+        for (const auto& e : st->entities)
+            if (std::find(ids.begin(), ids.end(), e->GetId()) != ids.end())
+            {
+                Proto::EntityLayout el;
+                if (DescribeStatic(*e, el))
+                    d.added.push_back(std::move(el));
+            }
+        if (d.added.empty())
+            continue;  // gone, or another system's: a layout sent since has it right
+        // A revision of its own, so the pilot's mirror takes it; whatever changes next is
+        // newer still, for everyone.
+        d.rev = ++st->layoutRev;
+        out.emplace_back(s.id, std::move(d));
+    }
+    return out;
 }
 
 std::vector<Proto::LayoutDelta> Simulation::TakeLayoutDeltas()

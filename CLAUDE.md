@@ -86,6 +86,7 @@ cmake --build build-release
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --sensor 2000000 --shot s.png  # the sensor screen (V), 2M across
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --theme glass --blur --open settings --click 565 141 60 --shot t.png --frames 90  # a UI theme for one run; a click played into raylib's input on frame 60
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --dock --fit --shot f.png --frames 900  # the hangar's Fit tab, docked
+./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --open scanner --scan 600 --scan 2600 --shot s.png --frames 4200  # two passes of the scanner (P), #346
 ./build/bin/editor/worldeditor.exe
 ./build/bin/editor/worldeditor.exe gallery           # every archetype at once, for tuning a look (F3)
 ./build/bin/editor/worldeditor.exe gallery shapes    # ...on the shape backend (F2 switches; F10 = screen treatment)
@@ -107,7 +108,7 @@ cmake --build build-release
 ./build/bin/server/econserver.exe accttest          # account persistence smoke test
 ./build/bin/server/econserver.exe worldtest         # galaxy persistence + clock
 ./build/bin/server/econserver.exe ordertest         # standing orders, routes, journal
-./build/bin/server/econserver.exe host 50800 --max-regions 60 --max-systems 1500   # the cap (#342 S3); stdin: tide | open [region] | drift <region> | destroy <name> | pause | resume | allow/deny/ban/unban <name> | access | reload | say <text> | mute <name> [min] | unmute <name>
+./build/bin/server/econserver.exe host 50800 --max-regions 60 --max-systems 1500   # the cap (#342 S3); stdin: tide | open [region] | hole <system|pilot> [to] | holes | drift <region> | destroy <name> | pause | resume | allow/deny/ban/unban <name> | access | reload | say <text> | mute <name> [min] | unmute <name>
 ./build/bin/server/econserver.exe regenerate 14     # with the server stopped: reseal region 14 by today's rules, if no player built there
 ./build/bin/server/econserver.exe validate          # admin packs in data/packs/ and data/pins.json, checked and trial-woven (#342 S7)
 ./build/bin/server/econserver.exe validate tests/fixtures/packs/helios   # ...one pack, or a directory of them
@@ -215,6 +216,13 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   woven again -- player structures already stand on its gates. A bad pack stops a new world
   with every problem listed; `econserver validate` says the same without running one.
 
+- **What has a `signature` is hidden per pilot** (#346, #342 S9). A roaming hole's ends and a
+  hidden base are left out of a pilot's layout and deltas (`Simulation::BuildLayoutFor`,
+  `ForSession`) until their scan resolves them; the find is the account's (`scanned`). A
+  reveal is a delta of that pilot's own with the system's revision bumped -- so take it
+  (`TakeRevealDeltas`) right after the shared deltas, never between a change and its delta.
+  Anything that lists a system's objects for a player goes through that filter; a roaming
+  hole is never in `universe_.links`, only in a pilot's own index and routes.
 - **`econagent` owns stdout.** It is the JSON-RPC channel; one stray `printf` or raylib
   trace on it corrupts the stream and the client reports a parse error rather than the
   line that caused it. All diagnostics go to stderr, and raylib's logger is redirected
