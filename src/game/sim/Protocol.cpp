@@ -486,6 +486,7 @@ std::string EncodeCommand(const Command& c)
     if (!c.deleteDesign.empty())
         j["deleteD"] = c.deleteDesign;
     number("buy", c.buyShip, -1);
+    number("insure", c.insureShip, -1);
     if (!c.payBountyFaction.empty())
         j["payB"] = c.payBountyFaction;
     if (!c.nameSystem.empty())
@@ -687,6 +688,7 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadText(j, "renameTo", out.renameTo);
     ok = ok && ReadText(j, "deleteD", out.deleteDesign);
     ok = ok && ReadInt(j, "buy", -1, 0, ID_MAX, out.buyShip);
+    ok = ok && ReadInt(j, "insure", -1, 0, ID_MAX, out.insureShip);
     ok = ok && ReadText(j, "payB", out.payBountyFaction);
     ok = ok && ReadText(j, "nameSys", out.nameSystem);
     ok = ok && ReadBool(j, "dbgMoney", out.debugMoney);
@@ -891,6 +893,17 @@ json PlayerJson(const Proto::PlayerView& p)
             lib.push_back(json::array({ d.name, d.design }));
         j["lib"] = lib;
     }
+    // Only once a ship has been insured or lost (#344); then only when it changes.
+    for (double cover : p.insured)
+        if (cover > 0.0)
+        {
+            j["insured"] = p.insured;
+            break;
+        }
+    if (p.loss.seq > 0)
+        j["loss"] = { { "seq", p.loss.seq },     { "hull", p.loss.hull }, { "sys", p.loss.system },
+                      { "value", p.loss.value }, { "paid", p.loss.paid }, { "cargo", p.loss.cargo },
+                      { "woke", p.loss.wokeAt } };
     return j;
 }
 
@@ -936,6 +949,19 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
     p.ownedShips = pj.value("ships", std::vector<int>{});
     p.shipDesigns = pj.value("shipDesigns", std::vector<std::string>{});
     p.shipIndex = pj.value("ship", 0);
+    p.insured = pj.value("insured", std::vector<double>{});
+    p.loss = Proto::LossView{};
+    const auto loss = pj.find("loss");
+    if (loss != pj.end() && loss->is_object())
+    {
+        p.loss.seq = loss->value("seq", 0);
+        p.loss.hull = loss->value("hull", std::string());
+        p.loss.system = loss->value("sys", std::string());
+        p.loss.value = loss->value("value", 0.0);
+        p.loss.paid = loss->value("paid", 0.0);
+        p.loss.cargo = loss->value("cargo", 0);
+        p.loss.wokeAt = loss->value("woke", std::string());
+    }
     p.library.clear();
     const auto lib = pj.find("lib");
     if (lib != pj.end() && lib->is_array())

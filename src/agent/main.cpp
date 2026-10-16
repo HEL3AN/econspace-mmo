@@ -222,7 +222,7 @@ const std::vector<Prompt>& Prompts()
           "its convoy, breaking a siege saves its outpost; they are handed in anywhere, before "
           "their deadline. If a faction has a bounty on you, pay_bounty before its ships "
           "find you. When the hangar offers a ship that suits the work better and you can "
-          "afford it, buy_ship." },
+          "afford it, buy_ship -- and insure_ship it: a lost ship is gone, fit and all." },
         { "patrol", "Hold a system and deal with hostiles you can handle",
           "Patrol the system you are in. Observe regularly. If hostiles appear, judge "
           "whether you can take them from their hull and numbers, and disengage if not — "
@@ -932,6 +932,39 @@ std::vector<Tool> BuildTools()
                                  "you own");
               return "switch_ship: now flying the " + t.name + " -- cargo capacity " +
                      std::to_string(t.stats.cargoCapacity);
+          } });
+
+    tools.push_back(
+        { "insure_ship",
+          "Insure a ship you own, as it is fitted now, at the station you are docked at. A lost "
+          "ship is gone with its fit and cargo -- you wake docked at your home station in the "
+          "free starter -- and a policy pays 70% of the value it covers. The premium is 10% of "
+          "what is not covered yet; hangar shows each ship's value, cover and premium here.",
+          Obj({ { "ship", Str("ship name as hangar lists it, e.g. 'Hauler'") } }, { "ship" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              RequireDocked("buying insurance");
+              const int                 i = ShipArg(args);
+              const Obs::InsuranceQuote q = Obs::QuoteInsurance(CurrentView(), i);
+              if (!q.problem.empty())
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, q.problem };
+              const double moneyBefore = g_session.Snapshot().player.money;
+
+              const int      seq = g_session.LastEventSeq();
+              Proto::Command c;
+              c.insureShip = i;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "insure_ship: " + why;
+              const Obs::InsuranceQuote after = Obs::QuoteInsurance(CurrentView(), i);
+              if (after.cover <= q.cover)
+                  return Refused("insure_ship", seq,
+                                 "the server did not insure it; call hangar to see the value "
+                                 "and your money as they are now");
+              return "insure_ship: the " + q.hull + " is insured for " + Money(after.cover) +
+                     " (pays " + Money(InsurancePayout(after.cover, after.cover)) +
+                     " if lost) for " + Money(moneyBefore - g_session.Snapshot().player.money);
           } });
 
     tools.push_back({ "fitting",

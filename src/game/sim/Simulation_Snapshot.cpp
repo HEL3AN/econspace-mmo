@@ -122,6 +122,15 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
             p.shipDesigns.push_back(s.DesignOf(hull));
         for (const auto& [name, design] : s.designLibrary)
             p.library.push_back({ name, design });
+        for (int hull : s.ownedShips)
+            p.insured.push_back(s.CoverOf(hull));
+        p.loss.seq = s.lastLoss.seq;
+        p.loss.hull = s.lastLoss.hull;
+        p.loss.system = s.lastLoss.system;
+        p.loss.value = s.lastLoss.value;
+        p.loss.paid = s.lastLoss.paid;
+        p.loss.cargo = s.lastLoss.cargo;
+        p.loss.wokeAt = s.lastLoss.wokeAt;
         p.cargoUsed = s.ship->GetCargoUsed();
         p.cargoCap = s.ship->GetCargoCapacity();
         p.warpPhase = (int)s.ship->GetWarpPhase();

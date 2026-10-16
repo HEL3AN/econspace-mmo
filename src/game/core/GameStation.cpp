@@ -341,6 +341,49 @@ void Game::DrawMarketContent(const Ui::Frame& f)
     L.Draw();
 }
 
+// A ship was lost (#344): what went with it, what insurance paid and where the pilot woke --
+// the snapshot's last loss, in full, until it is put away.
+void Game::DrawLossContent(const Ui::Frame& f)
+{
+    using Ui::Box;
+    using Ui::TextStyle;
+    const Ui::Theme&       t = Ui::CurrentTheme();
+    Ui::Layout&            L = lossLayout_;
+    const Proto::LossView& loss = snapshot_.player.loss;
+    const std::string starter = GetShipCatalog().empty() ? "starter" : GetShipCatalog()[0].name;
+    L.Begin(f);
+    L.Column(Box().Grow().Gap(t.metrics.rowGap),
+             [&]
+             {
+                 L.Text(TextFormat("Your %s was destroyed", loss.hull.c_str()),
+                        TextStyle::Title().Tint(t.colors.warn));
+                 L.Field("Where", loss.system, t.colors.text);
+                 if (loss.value > 0.0)
+                     L.Field("Lost", TextFormat("the hull and its fit, %.0f cr", loss.value),
+                             t.colors.text);
+                 else
+                     L.Field("Lost", "nothing of value: the starter is free", t.colors.dim);
+                 if (loss.cargo > 0)
+                     L.Field("Cargo lost", TextFormat("%d units", loss.cargo), t.colors.text);
+                 if (loss.paid > 0.0)
+                     L.Field("Insurance paid", TextFormat("%.0f cr", loss.paid), t.colors.good);
+                 else if (loss.value > 0.0)
+                     L.Field("Insurance", "none: nothing paid", t.colors.warn);
+                 L.Field("You woke", loss.wokeAt.empty() ? std::string("in space") : loss.wokeAt,
+                         t.colors.text);
+                 L.Divider();
+                 L.Text(TextFormat("You fly the %s now: it is free, and always in the hangar. "
+                                   "A wreck where you fell holds a share of what was lost. "
+                                   "Insure a ship in the hangar before you take it out.",
+                                   starter.c_str()),
+                        TextStyle::Small().Tint(t.colors.dim).Wrap());
+                 if (L.Button("ok", "Understood", true))
+                     desk_.SetOpen(WIN_LOSS, false);
+             });
+    L.End();
+    L.Draw();
+}
+
 // The hangar: every hull, which one is flown, which are owned (switching is free), and what
 // the rest cost here; the chosen one in full, with the one thing that can be done about it
 // -- or why it cannot be, before the server says so.
@@ -359,12 +402,26 @@ void Game::DrawHangarContent(const Ui::Frame& f)
         hangarSel_ = CurrentShipIndex();
     hangarSel_ = rows.empty() ? -1 : std::clamp(hangarSel_, 0, (int)rows.size() - 1);
 
+    Obs::View view;
+    view.snapshot = &snapshot_;
+    view.layout = &layout_.byId;
+    // Whether a hull of this account is insured (#344): the snapshot's word, per owned hull.
+    auto insured = [&](int index)
+    {
+        const Proto::PlayerView& p = snapshot_.player;
+        for (size_t k = 0; k < p.ownedShips.size() && k < p.insured.size(); k++)
+            if (p.ownedShips[k] == index)
+                return p.insured[k] > 0.0;
+        return false;
+    };
     auto state = [&](const StationList::HangarRow& r)
     {
         switch (r.berth)
         {
-            case StationList::Berth::Current: return std::string("flying");
-            case StationList::Berth::Owned: return std::string("owned");
+            case StationList::Berth::Current:
+                return std::string(insured(r.index) ? "flying, ins." : "flying");
+            case StationList::Berth::Owned:
+                return std::string(insured(r.index) ? "owned, ins." : "owned");
             case StationList::Berth::ForSale: break;
         }
         return Credits(r.price);
@@ -375,7 +432,7 @@ void Game::DrawHangarContent(const Ui::Frame& f)
     table.columns = { { "hull", Size::Grow(), Ui::Align::Start, false },
                       { "speed", Size::Fit(40.0f), Ui::Align::End, false },
                       { "hold", Size::Fit(36.0f), Ui::Align::End, false },
-                      { "", Size::Fit(56.0f), Ui::Align::End, false } };
+                      { "", Size::Fit(76.0f), Ui::Align::End, false } };
     table.rows = (int)rows.size();
     table.cell = [&](int r, int c)
     {
@@ -413,6 +470,35 @@ void Game::DrawHangarContent(const Ui::Frame& f)
         if (h.berth == StationList::Berth::ForSale)
             L.Field("Price here", TextFormat("%.0f cr", h.price), t.colors.money);
         L.Divider();
+        // What losing it would cost, and the policy against it (#344): the server's sums
+        // (Obs::QuoteInsurance), refused here for the reasons the server would give.
+        if (h.berth != StationList::Berth::ForSale)
+        {
+            const Obs::InsuranceQuote q = Obs::QuoteInsurance(view, h.index);
+            L.Field("Worth here", TextFormat("%.0f cr", q.value), t.colors.text);
+            if (q.cover > 0.0)
+                L.Field("Insured",
+                        TextFormat("%.0f cr, pays %.0f if lost", q.cover,
+                                   InsurancePayout(q.cover, q.value)),
+                        t.colors.good);
+            else
+                L.Field("Insured", q.value > 0.0 ? "no" : "free to replace",
+                        q.value > 0.0 ? t.colors.warn : t.colors.dim);
+            if (q.problem.empty())
+            {
+                if (L.Button("insure", TextFormat("Insure  %.0f cr", q.premium), true))
+                {
+                    Proto::Command ic;
+                    ic.insureShip = h.index;
+                    clientLink_->Send(Proto::EncodeCommand(ic));
+                }
+                L.Text(TextFormat("Pays %.0f cr if it is lost. A lost ship is gone with its fit "
+                                  "and cargo.",
+                                  q.payout),
+                       TextStyle::Small().Tint(t.colors.dim).Wrap());
+            }
+            L.Divider();
+        }
         if (h.berth == StationList::Berth::Current)
         {
             L.Text("The ship you are flying.", TextStyle::Small().Tint(t.colors.dim).Wrap());

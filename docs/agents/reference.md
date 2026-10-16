@@ -157,6 +157,14 @@ Fly another ship you already own, at the station you are docked at. Free; hangar
 |---|---|---|---|
 | `ship` | string | yes | ship name as hangar lists it, e.g. 'Scout' |
 
+### `insure_ship`
+
+Insure a ship you own, as it is fitted now, at the station you are docked at. A lost ship is gone with its fit and cargo -- you wake docked at your home station in the free starter -- and a policy pays 70% of the value it covers. The premium is 10% of what is not covered yet; hangar shows each ship's value, cover and premium here.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `ship` | string | yes | ship name as hangar lists it, e.g. 'Hauler' |
+
 ### `fitting`
 
 How the ship you fly is fitted: its sockets by position, what fills them, which modules go on each kind of socket and what one costs at this station. The fit is printed in the form preview_fit and refit take.
@@ -332,7 +340,7 @@ Ready-made plans a client can offer its user. Each is sent to the model as writt
 
 *Take jobs from a station's board and earn from them*
 
-> Work the job boards. Dock at a station and call missions to read its board. Take work you can actually do with accept_mission: a mining job needs ore you can mine nearby, a delivery needs only the trip, a bounty means fighting pirates -- judge that from observe before taking one. Do the work, then dock where the job says and complete_mission. Jobs a faction's plans post -- supply, escort, siege -- move the world as well as paying: a delivery speeds the faction's building, an escort guards its convoy, breaking a siege saves its outpost; they are handed in anywhere, before their deadline. If a faction has a bounty on you, pay_bounty before its ships find you. When the hangar offers a ship that suits the work better and you can afford it, buy_ship.
+> Work the job boards. Dock at a station and call missions to read its board. Take work you can actually do with accept_mission: a mining job needs ore you can mine nearby, a delivery needs only the trip, a bounty means fighting pirates -- judge that from observe before taking one. Do the work, then dock where the job says and complete_mission. Jobs a faction's plans post -- supply, escort, siege -- move the world as well as paying: a delivery speeds the faction's building, an escort guards its convoy, breaking a siege saves its outpost; they are handed in anywhere, before their deadline. If a faction has a bounty on you, pay_bounty before its ships find you. When the hangar offers a ship that suits the work better and you can afford it, buy_ship -- and insure_ship it: a lost ship is gone, fit and all.
 
 ### `patrol`
 

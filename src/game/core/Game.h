@@ -207,6 +207,7 @@ private:
     void    DrawStationContent(const Ui::Frame& f);  // who runs it, the account, undock
     void    DrawMarketContent(const Ui::Frame& f);   // what it pays for what is in the hold
     void    DrawHangarContent(const Ui::Frame& f);   // the hulls: fly, switch, buy
+    void    DrawLossContent(const Ui::Frame& f);     // a ship was lost: what, and what paid (#344)
     void    DrawFitTab(Ui::Layout& L, bool wide);    // ...and the Fit tab: refit (#279)
     void    SellCargo(ResourceType type, int amount);
     void    BuyCargo(ResourceType type, int amount);  // an order to the server (#343)
@@ -472,6 +473,7 @@ private:
     static constexpr const char* WIN_MENUBAR = "menubar";
     static constexpr const char* WIN_CONTEXT = "context";  // the right-click menu
     static constexpr const char* WIN_LOOK = "look";        // F10's treatment panel (#120)
+    static constexpr const char* WIN_LOSS = "loss";        // a ship was lost (#344)
     Ui::Desk                     desk_;
     // Where the player is, for the windows that belong somewhere: the station's while docked,
     // the ones that look at space while flying (WindowSpec::context).
@@ -489,6 +491,8 @@ private:
     Ui::Layout stationLayout_;
     Ui::Layout marketLayout_;
     Ui::Layout hangarLayout_;
+    Ui::Layout lossLayout_;
+    int        lossSeen_ = 0;  // the last loss (Proto::LossView::seq) already shown (#344)
     Ui::Layout hallLayout_;
     int        marketSel_ = 0;
     float      sellAmount_ = 0.0f;   // how much of the chosen commodity to sell

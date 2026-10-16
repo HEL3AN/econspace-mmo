@@ -665,8 +665,91 @@ std::string DescribeHangar(const View& view)
                    "guns %.0f/shot  %s\n",
                    (int)i, t.name.c_str(), st.maxSpeed, st.turnSpeed, st.cargoCapacity,
                    st.miningRate, st.hull, st.damage, status.c_str());
+        // What losing it would cost, and what insurance would do about it (#344).
+        if (owns((int)i))
+        {
+            const InsuranceQuote q = QuoteInsurance(view, (int)i);
+            std::string          line = Fmt("       worth %.0f cr here; ", q.value);
+            if (q.cover > 0.0)
+                line += Fmt("insured for %.0f cr (pays %.0f if lost)", q.cover,
+                            InsurancePayout(q.cover, q.value));
+            else if (q.value > 0.0)
+                line += "NOT insured";
+            else
+                line += "free to replace";
+            if (q.problem.empty())
+                line += Fmt("; insure_ship covers %.0f for %.0f cr", q.value, q.premium);
+            out += line + "\n";
+        }
     }
+    out += "  Losing a ship loses its hull, its fit and its cargo; the starter is free and "
+           "always yours.\n";
     return out;
+}
+
+InsuranceQuote QuoteInsurance(const View& view, int hull)
+{
+    InsuranceQuote               q;
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    if (view.snapshot == nullptr || hull < 0 || hull >= (int)catalog.size())
+    {
+        q.problem = "no such hull";
+        return q;
+    }
+    const Proto::PlayerView& p = view.snapshot->player;
+    const ShipType&          t = catalog[(size_t)hull];
+    q.hull = t.name;
+    std::string design = t.stats.design;
+    for (size_t k = 0; k < p.ownedShips.size(); k++)
+        if (p.ownedShips[k] == hull)
+        {
+            q.owned = true;
+            if (k < p.shipDesigns.size())
+                design = p.shipDesigns[k];
+            if (k < p.insured.size())
+                q.cover = p.insured[k];
+        }
+    // The server's sum (ShipValue), at the prices the snapshot shows.
+    const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
+    const Ships::Design*    stock = ships.FindDesign(t.stats.design);
+    const Ships::Design*    flown = Archetypes::FindDesign(design);
+    q.value = stock != nullptr
+                  ? ShipValue(ships, t.price, *stock, flown != nullptr ? *flown : *stock,
+                              view.snapshot->marketPrices)
+                  : t.price;
+    q.premium = std::ceil(InsurancePremium(q.value, q.cover));
+    q.payout = InsurancePayout(q.value, q.value);
+    // In the server's order (Simulation::InsureShip).
+    if (!p.docked)
+        q.problem = "insurance is bought docked at a station";
+    else if (!q.owned)
+        q.problem = "you do not own a " + t.name;
+    else if (q.value <= 0.0)
+        q.problem = "a stock " + t.name + " is free and needs no insurance";
+    else if (q.cover >= q.value)
+        q.problem = Fmt("the %s is covered for %.0f cr already", t.name.c_str(), q.cover);
+    else if (p.money < q.premium)
+        q.problem = Fmt("it costs %.0f cr and you have %.0f cr", q.premium, p.money);
+    return q;
+}
+
+std::string DescribeLoss(const Proto::LossView& loss)
+{
+    if (loss.seq <= 0)
+        return std::string();
+    std::string out =
+        Fmt("LAST LOSS  your %s, destroyed in %s", loss.hull.c_str(), loss.system.c_str());
+    if (loss.value > 0.0)
+        out += Fmt(", worth %.0f cr", loss.value);
+    if (loss.cargo > 0)
+        out += Fmt(", with %d cargo", loss.cargo);
+    if (loss.paid > 0.0)
+        out += Fmt("; insurance paid %.0f cr", loss.paid);
+    else if (loss.value > 0.0)
+        out += "; not insured";
+    out += loss.wokeAt.empty() ? std::string("; you fly the starter now")
+                               : "; you woke docked at " + loss.wokeAt + " in the starter";
+    return out + "\n";
 }
 
 std::string Compass(float dx, float dy)
@@ -749,6 +832,9 @@ std::string Describe(const View& view, Detail detail)
         if (!cargo.empty())
             out += "CARGO  " + cargo + "\n";
     }
+    // The last ship lost (#344): an agent that wakes somewhere else in a smaller ship is told
+    // why on every look, not only in the event that said it once.
+    out += DescribeLoss(p.loss);
 
     // --- What is around us --------------------------------------------------
     std::vector<Seen> seen;

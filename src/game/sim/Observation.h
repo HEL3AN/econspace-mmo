@@ -107,6 +107,25 @@ std::vector<SavedDesignRow> SavedDesigns(const View& view);
 // What `designs` says.
 std::string DescribeDesigns(const View& view);
 
+// --- Ship loss and insurance (#344) ------------------------------------------------------
+// What insuring an owned hull would come to here, before anything is sent: its value as it is
+// fitted (ShipValue at this system's ore prices), its cover now, the premium and what a policy
+// pays -- and why the server would refuse, by the server's own checks. The hangar draws it and
+// the agent's hangar and insure_ship read it out.
+struct InsuranceQuote
+{
+    bool        owned = false;
+    std::string hull;           // the hull's name
+    double      value = 0.0;    // what it is worth as fitted, here
+    double      cover = 0.0;    // what its policy covers now; 0 -- not insured
+    double      premium = 0.0;  // what insuring it for `value` costs
+    double      payout = 0.0;   // what a policy for `value` pays if it is lost
+    std::string problem;        // why the server would refuse; empty -- it would take it
+};
+InsuranceQuote QuoteInsurance(const View& view, int hull);
+// The last ship lost, in one line; empty when none has been.
+std::string DescribeLoss(const Proto::LossView& loss);
+
 // Who owns the station the player is docked at, from the layout. Independent when not
 // docked or the layout does not say -- which is also what the server assumes.
 FactionId DockedFaction(const View& view);

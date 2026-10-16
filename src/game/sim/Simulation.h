@@ -456,9 +456,23 @@ public:
     void StepSystemAgents(SystemState& st, const std::vector<PlayerPresence>& players,
                           std::vector<FireEvent>* fires, float dt);
 
-    // Server-side player respawn: teleport to the first station of the active system,
-    // repair, cargo loss (like the client RespawnPlayer). No undock needed.
+    // A player's ship was destroyed (#344). The ship being flown is lost -- its hull leaves
+    // the hangar and its fit goes with it; the starter is free and unlimited, so losing it
+    // loses only the fit -- and so is the cargo. A wreck holding a share of what was lost lies
+    // where it died. Insurance on the hull pays (InsurancePayout) and is spent. The pilot
+    // wakes docked at their home (HomeOf) in the starter; with nowhere that takes them, beside
+    // a station of the system they died in that would not shoot them (#224), undocked. Says
+    // all of it in the journal and in ClientSession::lastLoss.
     void ServerRespawnPlayer(ClientSession& s);
+    // Where a pilot wakes (#344): their home station if it is still there and its owner
+    // would let them dock, else the trade hub of the first start that would; 0 -- nowhere.
+    // `systemId` is set to the station's system.
+    int HomeOf(const ClientSession& s, std::string& systemId) const;
+    // What hull `catalogIndex` of this account is worth as it is fitted (ShipValue), at the
+    // ore prices of `st`'s market.
+    double ValueOf(const ClientSession& s, int catalogIndex, const SystemState& st) const;
+    // How long the wreck of a player's ship lies where it fell, in world seconds (#344).
+    static constexpr float SHIP_WRECK_SECONDS = 3600.0f;
 
     // --- Spawn director and coarse world maintenance (server core, M3) ---
     // System nodes for spawning by category. dangerGates — gates into dangerous
@@ -865,6 +879,10 @@ public:
     // if affordable — deducts and refits. Refuses a ship already owned: going back to one is
     // SwitchShip, and free. true — the purchase succeeded.
     bool BuyShip(ClientSession& s, int catalogIndex);
+    // Insure an owned hull, as it is fitted now, docked at any station (#344): its value at
+    // this station's ore prices is covered, for InsurancePremium. Refused for a hull already
+    // covered for what it is worth, or with too little money. true -- insured.
+    bool InsureShip(ClientSession& s, int catalogIndex);
     // Refit the ship being flown to `fit` (#279 fitting): only docked at a station with a
     // shipyard, only the fit of the hull's own sections (Ships::PlayerFit), paid in credits
     // at the yard's price (Ships::RefitPrice, by standing as a ship is), and refused if the

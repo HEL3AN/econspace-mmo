@@ -467,6 +467,7 @@ add_executable(tests
     tests/migration_tests.cpp      # surplus ships leave for a neighbour that lacks them (#295)
     tests/faction_tests.cpp        # factions as data: the registry, strict loading, saves by id (#355)
     tests/fitting_tests.cpp        # a ship flies a design of its own, filed by content (#279)
+    tests/ship_loss_tests.cpp      # a lost ship is lost; insurance; waking at home (#344)
     tests/tide_tests.cpp           # the opening log, sealing, the tide and the cap (#342 S3)
     tests/mouth_tests.cpp          # unstable mouths, Anchors, drift and the archive (#342 S4)
     tests/prediction_tests.cpp     # the client's prediction against the server, same commands (#358)

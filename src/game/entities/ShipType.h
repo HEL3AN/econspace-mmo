@@ -72,3 +72,21 @@ float MissionRewardMultiplier(RepTier standing);
 // The three tables move together and are monotonic in standing (#219): a worse tier is never
 // a better deal. Hated once fell through to list price -- cheaper than Hostile -- and only
 // the dock refusing Hated players hid it.
+
+// --- Ship loss and insurance (#344) ---
+// What a ship is worth: its hull's list price, plus its fit beyond the hull's stock fit at
+// what a refit would charge for it with no yard markup -- modules at `orePrices` (in
+// ResourceType order). Never below nothing. One function, because the server pays insurance
+// by it, the hangar window quotes it and an agent reads it (#109).
+double ShipValue(const Ships::Catalogue& c, double hullPrice, const Ships::Design& stock,
+                 const Ships::Design& flown, const std::vector<float>& orePrices);
+
+// A policy covers a hull for a value fixed when it is bought. Its premium is a share of the
+// value covered, and only of what is not covered already: insuring again after a refit pays
+// for the difference.
+inline constexpr double INSURANCE_PREMIUM = 0.10;
+// What a lost ship's policy pays: a share of its cover, and never of more than the ship was
+// worth when it was lost -- a policy bought on a big fit does not pay for one taken off since.
+inline constexpr double INSURANCE_PAYOUT = 0.70;
+double                  InsurancePremium(double value, double cover);
+double                  InsurancePayout(double cover, double valueAtLoss);
