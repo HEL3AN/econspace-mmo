@@ -358,14 +358,17 @@ void Game::DrawLossContent(const Ui::Frame& f)
                  L.Text(TextFormat("Your %s was destroyed", loss.hull.c_str()),
                         TextStyle::Title().Tint(t.colors.warn));
                  L.Field("Where", loss.system, t.colors.text);
-                 L.Field("Lost", TextFormat("the hull and its fit, %.0f cr", loss.value),
-                         t.colors.text);
+                 if (loss.value > 0.0)
+                     L.Field("Lost", TextFormat("the hull and its fit, %.0f cr", loss.value),
+                             t.colors.text);
+                 else
+                     L.Field("Lost", "nothing of value: the starter is free", t.colors.dim);
                  if (loss.cargo > 0)
                      L.Field("Cargo lost", TextFormat("%d units", loss.cargo), t.colors.text);
                  if (loss.paid > 0.0)
                      L.Field("Insurance paid", TextFormat("%.0f cr", loss.paid), t.colors.good);
-                 else
-                     L.Field("Insurance", "none: nothing paid", t.colors.dim);
+                 else if (loss.value > 0.0)
+                     L.Field("Insurance", "none: nothing paid", t.colors.warn);
                  L.Field("You woke", loss.wokeAt.empty() ? std::string("in space") : loss.wokeAt,
                          t.colors.text);
                  L.Divider();

@@ -258,11 +258,15 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
     loss.cargo = cargo;
     loss.wokeAt = wokeAt;
 
-    std::string text =
-        "Ship lost: your " + hullName + " was destroyed in " + where + ", worth " + Credits(value);
+    std::string text = "Ship lost: your " + hullName + " was destroyed in " + where;
+    if (value > 0.0)
+        text += ", worth " + Credits(value);
     if (cargo > 0)
         text += ", with " + std::to_string(cargo) + " units of cargo";
-    text += paid > 0.0 ? "; insurance paid " + Credits(paid) : std::string("; it was not insured");
+    if (paid > 0.0)
+        text += "; insurance paid " + Credits(paid);
+    else if (value > 0.0)
+        text += "; it was not insured";
     text += wokeAt.empty() ? ". You are in your " + starter
                            : ". You wake at " + wokeAt + " in your " + starter;
     s.RecordEvent(Ev::Kind::ShipDestroyed, text);

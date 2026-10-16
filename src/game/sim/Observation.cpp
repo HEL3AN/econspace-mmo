@@ -737,12 +737,16 @@ std::string DescribeLoss(const Proto::LossView& loss)
 {
     if (loss.seq <= 0)
         return std::string();
-    std::string out = Fmt("LAST LOSS  your %s, destroyed in %s, worth %.0f cr", loss.hull.c_str(),
-                          loss.system.c_str(), loss.value);
+    std::string out =
+        Fmt("LAST LOSS  your %s, destroyed in %s", loss.hull.c_str(), loss.system.c_str());
+    if (loss.value > 0.0)
+        out += Fmt(", worth %.0f cr", loss.value);
     if (loss.cargo > 0)
         out += Fmt(", with %d cargo", loss.cargo);
-    out +=
-        loss.paid > 0.0 ? Fmt("; insurance paid %.0f cr", loss.paid) : std::string("; not insured");
+    if (loss.paid > 0.0)
+        out += Fmt("; insurance paid %.0f cr", loss.paid);
+    else if (loss.value > 0.0)
+        out += "; not insured";
     out += loss.wokeAt.empty() ? std::string("; you fly the starter now")
                                : "; you woke docked at " + loss.wokeAt + " in the starter";
     return out + "\n";

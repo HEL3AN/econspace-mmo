@@ -334,6 +334,8 @@ void Game::SetupWindows()
     loss.resizable = true;
     loss.minSize = { 280.0f, 220.0f };
     loss.reopen = false;
+    // Above the station's windows, which come forward on the dock that comes with it.
+    loss.layer = Layer::Overlay;
     desk_.AddWindow(loss, "SHIP LOST", false, [this](Ui::Frame& f) { DrawLossContent(f); });
 
     // Above the screens it opens; Esc passes over it. Docked too: it opens the station's
