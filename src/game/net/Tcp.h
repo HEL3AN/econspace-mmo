@@ -39,6 +39,10 @@ public:
     // (10054)", "send backlog over the cap". Empty while alive. A dropped connection that
     // says nothing is exactly what made a hung CI run impossible to diagnose.
     const std::string& CloseReason() const { return closeReason_; }
+    // Bytes framed and not yet taken by the socket: what the peer has not read, past what
+    // the kernel buffers hold. The server stops adding snapshots above a share of the cap
+    // rather than reaching it (#411).
+    size_t Queued() const { return outBuf_.size(); }
 
     // Limits, enforced here rather than left to the peer's good manners (#14). A frame
     // header is four bytes the sender chose; believing it is how a single packet turns

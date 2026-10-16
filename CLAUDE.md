@@ -271,6 +271,9 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   the simulation runs would simply move faster than everyone else. The server's side is
   tighter (64 KB frames, 1 MB backlog), and `Host::Gate` limits connections in all and per
   address, new accounts per address per hour, and retries after a wrong secret (#341).
+  A client that stops acknowledging snapshots is sent one a second, and none while a
+  quarter of the backlog is unsent, so a stalled reader is slowed rather than dropped
+  (#411); econagent pumps its connection from a thread between tool calls for the same reason.
 - **A system nobody is in has no NPC ships** (#295). A system is hot while a player is in it
   and for `Simulation::COOL_AFTER` after the last one leaves; every other system is cold and
   keeps its ships as numbers, advanced by the coarse pass. Entering warms it from those

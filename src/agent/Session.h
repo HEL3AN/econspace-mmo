@@ -4,10 +4,13 @@
 #include "sim/Observation.h"
 #include "sim/Protocol.h"
 
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 // The game half of econagent: an ordinary TCP client to econserver.
@@ -21,6 +24,11 @@ namespace Agent
 class Session
 {
 public:
+    Session() = default;
+    ~Session() { StopKeepalive(); }
+    Session(const Session&) = delete;
+    Session& operator=(const Session&) = delete;
+
     // Dials the host. False means no connection; the caller reports it and exits, because
     // there is no offline mode to fall back to.
     bool Connect(const std::string& host, unsigned short port, const std::string& account,
@@ -29,6 +37,16 @@ public:
 
     // Drains whatever has arrived. Cheap; call it often.
     void Pump();
+
+    // Pumps from a thread of its own while nobody else is (#411). A model thinking for a
+    // minute between tool calls is normal, and a connection nobody reads is one the server
+    // stops sending to and eventually drops; pumped, it stays drained and acknowledged, and
+    // the journal and chat keep accumulating. Everything else that touches the session holds
+    // Lock() -- the stdio loop takes it for the whole of each request, so a tool sees one
+    // consistent state and its own WaitUntil pumps as before.
+    void        StartKeepalive();
+    void        StopKeepalive();
+    std::mutex& Lock() { return lock_; }
 
     // Pumps until `done` is true or the deadline passes. Returns what `done` last said.
     //
@@ -112,6 +130,9 @@ private:
     std::string                         protocolError_;
     std::string                         byeReason_;
     std::string                         account_;
+    std::mutex                          lock_;
+    std::thread                         keepalive_;
+    std::atomic<bool>                   stopKeepalive_{ false };
 };
 
 }  // namespace Agent

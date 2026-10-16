@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <map>
+#include <mutex>
 #include <string>
 
 // JSON-RPC 2.0 over stdio — the transport MCP speaks for a local server.
@@ -51,9 +52,14 @@ public:
     // Reads stdin to end of stream, answering each line. Returns when the client closes
     // the pipe, which is how an MCP client says goodbye.
     void Run();
+    // Held while each line is handled (#411): what the handlers read is shared with a thread
+    // that keeps the game connection pumped between requests. Not held while waiting for
+    // the next line, which is the whole point.
+    void SetLock(std::mutex* m) { lock_ = m; }
 
 private:
     std::map<std::string, Handler> handlers_;
+    std::mutex*                    lock_ = nullptr;
 };
 
 // Writes a diagnostic to stderr. Never use printf here: see the note above.
