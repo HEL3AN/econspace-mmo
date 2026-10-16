@@ -599,26 +599,30 @@ void Simulation::Think(FactionId f)
 
     // What it already has under way: one survey of a system at a time, and no more at once
     // than its holdings can send.
-    std::set<std::string> surveying;
-    bool                  settling = false, besieging = false, anchoring = false, upgrading = false;
+    std::set<std::string> surveying, settling, upgrading;
+    bool                  besieging = false, anchoring = false;
     for (const auto& kv : plans_)
         if (kv.second.faction == f && kv.second.kind == Plan::Kind::Survey)
             surveying.insert(kv.second.target);
         else if (kv.second.faction == f && kv.second.kind == Plan::Kind::Settle)
-            settling = true;
+            settling.insert(kv.second.target);
         else if (kv.second.faction == f && kv.second.kind == Plan::Kind::Siege)
             besieging = true;
         else if (kv.second.faction == f && kv.second.kind == Plan::Kind::Anchor)
             anchoring = true;
         else if (kv.second.faction == f && kv.second.kind == Plan::Kind::Upgrade)
-            upgrading = true;
-    const bool canSurvey = (int)surveying.size() < 1 + holdings / PLANS_PER_HOLDINGS;
-    // One outpost at a time, and only with the stock to pay for it -- over and above what
-    // keeping the ones it has will cost for a while (slice 5): a faction that spends its
-    // upkeep on a new outpost loses an old one.
+            upgrading.insert(kv.second.target);
+    // A small faction does one thing of a kind at a time; a civilisation of many holdings
+    // builds in more than one place at once (#407) -- one more outpost going up, and one more
+    // growing, for every so many holdings, as it sends surveyors.
+    const int  works = 1 + holdings / PLANS_PER_HOLDINGS;
+    const bool canSurvey = (int)surveying.size() < works;
+    // Only with the stock to pay for it -- over and above what keeping the outposts it has will
+    // cost for a while (slice 5): a faction that spends its upkeep on a new one loses an old one.
     const float cost = OutpostCost();
     const float reserve = UPKEEP_RESERVE * Blueprints::UpkeepRules().share * cost * (float)outposts;
-    const bool  canSettle = !settling && cost > 0.0f && mind.stock >= cost + reserve;
+    const bool  canSettle =
+        (int)settling.size() < works && cost > 0.0f && mind.stock >= cost + reserve;
     // One siege at a time, paid for like a settlement (slice 5).
     const Blueprints::Siege& siege = Blueprints::SiegeRules();
     const bool canSiege = !besieging && cost > 0.0f && mind.stock >= SiegeCost() + reserve;
@@ -693,13 +697,22 @@ void Simulation::Think(FactionId f)
             // whatever hostile it saw there.
             const bool closed = seen != nullptr && seen->claimed &&
                                 (seen->controller == f || !Hostile(f, seen->controller));
+            // To the law, a lawless system next door -- nobody's, or the lawless' own -- is
+            // what keeps its holdings unsafe (#407): bringing order to it is worth what bringing
+            // down a lawless base is (ORDER_WORTH), to look at, to reach into and to settle.
+            // It is what keeps a civilisation pressing on the frontier at its door once the
+            // easy systems there are taken, rather than sitting on a full purse.
+            const float order = Factions::IsLawful(f) && seen != nullptr && !closed &&
+                                        (!seen->claimed || !Factions::IsLawful(seen->controller))
+                                    ? ORDER_WORTH * (1.0f - std::clamp(seen->security, 0.0f, 1.0f))
+                                    : 0.0f;
             if (canSurvey && !closed && surveying.count(nid) == 0)
             {
                 // An enemy's outpost next door is worth watching: what it would take to
                 // bring down is what its garrison is now, not what it was (slice 5).
                 const float value =
                     Intelligence::SurveyValue(t.curiosity + DrawOf(drawn, kv.first, nid) +
-                                                  (rival && canSiege ? t.unclaimed : 0.0f),
+                                                  (rival && canSiege ? t.unclaimed : 0.0f) + order,
                                               seen, time_);
                 float hostile = 0.0f;
                 if (seen != nullptr)
@@ -723,13 +736,14 @@ void Simulation::Think(FactionId f)
             const float       unclaimed = seen->claimed ? 0.0f : 1.0f;
             // ...and the way to a mouth it has heard of, and the space beyond (#342 S6).
             const float value = t.traffic * o.traffic + t.ore * o.ore + t.salvage * o.salvage +
-                                t.unclaimed * unclaimed + DrawOf(drawn, kv.first, nid);
+                                t.unclaimed * unclaimed + DrawOf(drawn, kv.first, nid) + order;
 
             // Settling (#295): building an outpost in a system nobody holds, where it has
             // already come in strength -- it sees the place for itself, so what it knows is
             // fresh. Worth what the place is worth; the risk is what is there against it,
             // net of its own ships, which is why settling beats sending more of them.
-            if (canSettle && !seen->claimed && seen->presence[f] >= t.capacity * SETTLE_PRESENCE)
+            if (canSettle && settling.count(nid) == 0 && !seen->claimed &&
+                seen->presence[f] >= t.capacity * SETTLE_PRESENCE)
             {
                 float hostile = 0.0f;
                 for (FactionId g : Factions::All())
@@ -1010,11 +1024,11 @@ void Simulation::Think(FactionId f)
     // Growing an outpost (#342 S6): a market where none is near, a station where a market
     // stands and enough passes through or is mined -- by what it needs, against what is there
     // against it. The lawful build markets; a hidden base is not one to trade at.
-    if (!upgrading && Factions::IsLawful(f))
+    if ((int)upgrading.size() < works && Factions::IsLawful(f))
         for (auto& kv : systems_)
         {
             const SystemState& st = kv.second;
-            if (!st.agg.claimed || st.agg.controller != f)
+            if (!st.agg.claimed || st.agg.controller != f || upgrading.count(kv.first) != 0)
                 continue;
             for (size_t i = 0; i < st.profile.outpostIds.size(); i++)
             {

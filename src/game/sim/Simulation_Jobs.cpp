@@ -149,7 +149,16 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
     {
         const Plan& p = kv.second;
         const auto  at = near.find(p.target);
-        if (at == near.end())
+        int         jumps = at != near.end() ? at->second : -1;
+        // A convoy's escort is wanted where the convoy is as well as where it is bound (#407):
+        // that is where a pilot meets it -- and it sets out from the faction's stations.
+        if (p.OnTheWay() && p.leg >= 0 && (size_t)p.leg < p.route.size())
+        {
+            const auto there = near.find(p.route[(size_t)p.leg]);
+            if (there != near.end() && (jumps < 0 || there->second < jumps))
+                jumps = there->second;
+        }
+        if (jumps < 0)
             continue;
         Mission m;
         m.faction = f;
@@ -208,7 +217,7 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
             continue;  // one of each a plan's, a pilot
         m.rewardMoney *= repMul;
         m.rewardRep *= repMul;
-        found.push_back({ at->second, std::move(m) });
+        found.push_back({ jumps, std::move(m) });
     }
     std::stable_sort(found.begin(), found.end(),
                      [](const auto& a, const auto& b) { return a.first < b.first; });

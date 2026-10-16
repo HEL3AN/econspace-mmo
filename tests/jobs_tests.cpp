@@ -291,6 +291,47 @@ TEST_CASE("a convoy on its way posts an escort job; a pilot with it is paid when
           doctest::Approx(std::max(0.0, stock - reward / WorldRules::JobRules().creditsPerStock)));
 }
 
+TEST_CASE("an escort is wanted where the convoy is, not only where it is bound (#407)")
+{
+    LoadRegistries();
+    Rules      r;
+    Simulation sim;
+    Make(sim, 7);
+    // The faction whose centre the frontier opened from: its convoys set out from that centre.
+    const Simulation::RegionOpening* o = sim.OpeningOf(FirstFrontier(sim));
+    REQUIRE(o != nullptr);
+    const FactionId f = sim.SystemById(o->mouth)->agg.controller;
+    const Upgrade   u = MarketGoingUp(sim, f);
+    const Plan*     p = PlanOf(sim, u.plan);
+    REQUIRE(p != nullptr);
+    REQUIRE(p->leg == 0);
+    REQUIRE(p->route.size() >= 2);
+    const std::string from = p->route.front();
+    REQUIRE(from != u.h.system);
+
+    // Only a board in the system itself counts: where the convoy sets out, a long way from its
+    // site, the faction's station still has the job.
+    WorldRules::Jobs here = WorldRules::JobRules();
+    here.reach = 0;
+    WorldRules::SetJobRules(here);
+    int station = 0;
+    for (const auto& e : sim.SystemById(from)->entities)
+        if (station == 0 && e->GetKind() == EntityKind::Station &&
+            static_cast<const Station&>(*e).GetFaction() == f)
+            station = e->GetId();
+    REQUIRE(station != 0);
+    const Vector2  at = PosOf(sim, from, station);
+    ClientSession& s = sim.CreateSession(from, { at.x + 350.0f, at.y }, GetShipCatalog()[0].stats);
+    REQUIRE(sim.StepPlayerDock(s, *sim.SystemById(from)) == station);
+    const int offer = OfferOf(s, MissionType::Escort, u.plan);
+    REQUIRE(offer >= 0);
+    CHECK(s.missions.Offers()[(size_t)offer].systemId == u.h.system);  // bound for the site
+
+    // A pilot docked at the site's system sees it too, as before.
+    ClientSession& t = DockedAt(sim, u.h);
+    CHECK(OfferOf(t, MissionType::Escort, u.plan) >= 0);
+}
+
 TEST_CASE("an escort the convoy never saw fails when it arrives, and costs standing (#345)")
 {
     LoadRegistries();
