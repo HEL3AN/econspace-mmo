@@ -553,7 +553,14 @@ void Simulation::StepSystemAgents(SystemState& st, const std::vector<PlayerPrese
     StepNpcCombat(st, players, fires);
     StepStationDefence(st, players, fires, dt);
 
-    // Cleanup of the fallen.
+    // Cleanup of the fallen. A hauler leaves what it carried in its wreck (#343).
+    std::vector<const NpcShip*> wrecked;
+    for (const auto& e : st.entities)
+        if (e->GetKind() == EntityKind::Npc && !static_cast<const NpcShip&>(*e).IsAlive() &&
+            static_cast<const NpcShip&>(*e).GetCargoAmount() > 0)
+            wrecked.push_back(static_cast<const NpcShip*>(e.get()));
+    for (const NpcShip* n : wrecked)
+        LeaveCargoWreck(st, *n);
     st.entities.erase(std::remove_if(st.entities.begin(), st.entities.end(),
                                      [](const std::unique_ptr<Entity>& e)
                                      {
@@ -941,14 +948,34 @@ void Simulation::ColdTopUp(SystemState& st, const Population& target)
 
 void Simulation::StepMarket(SystemState& st, float seconds)
 {
+    const double       hours = seconds / 3600.0;
+    const MarketRules& k = Goods::Rules();
+    // The belts (#348): the system's miners take a share of what is in each -- less where
+    // pirates have thinned them out; two is a full crew -- and every belt grows back, whether
+    // or not there is a market to sell to. A belt players work as well holds less, and gives
+    // the miners less: the ore is shared, and ore gets dearer.
+    const double crew = std::clamp((double)st.agg.miners / 2.0, 0.0, 1.0);
+    const bool   trades = st.profile.markets > 0;
+    if (trades)
+        st.market.SetMarkets(st.profile.markets);
+    if (st.profile.belts > 0)
+        for (auto& e : st.entities)
+        {
+            if (e->GetKind() != EntityKind::Field)
+                continue;
+            AsteroidField& belt = static_cast<AsteroidField&>(*e);
+            if (trades)
+            {
+                const double mined =
+                    belt.Take(belt.GetOre() * std::min(1.0, k.beltMined * crew * hours));
+                st.market.SetStock(belt.GetResource(), st.market.Stock(belt.GetResource()) + mined);
+            }
+            belt.Regrow(k.beltRegrow, hours);
+        }
     // Nowhere to trade: nothing is kept. A system that gains a market starts at its targets.
-    if (st.profile.markets <= 0)
+    if (!trades)
         return;
-    // The trade nobody flies goes where traders go: a system the pirates have thinned out
-    // restocks slowly, and runs short (#343). Four traders is an ordinary lane.
-    const double traffic = std::clamp((double)st.agg.traders / 4.0, 0.2, 1.5);
-    st.market.SetMarkets(st.profile.markets);
-    st.market.Step(st.profile.rates, seconds / 3600.0, traffic);
+    st.market.Step(st.profile.rates, hours);
 }
 
 void Simulation::MaintainWorld(float dt, MaintainCost* cost)
@@ -1007,6 +1034,7 @@ void Simulation::MaintainWorld(float dt, MaintainCost* cost)
             a.supMiners *= SUPPRESS_DECAY;
             a.supPolice *= SUPPRESS_DECAY;
             a.supPirates *= SUPPRESS_DECAY;
+            DeliverCargo(kv.second, false);  // haulers that have reached a market (#343)
             StepMarket(kv.second, MAINT_STEP);
             // Nobody here for long enough: the ships are counted and let go.
             if (IsHot(kv.second) && !allHot_ && time_ >= kv.second.warmUntil)

@@ -287,6 +287,7 @@ add_executable(econserver
     src/game/sim/Simulation_Outposts.cpp  # where a faction's outpost stands, by purpose (#318)
     src/game/sim/Simulation_Sieges.cpp    # what keeping an outpost costs, and sieges (#295)
     src/game/sim/Simulation_Migration.cpp # ships a system has too many of leave (#295)
+    src/game/sim/Simulation_Haulers.cpp   # NPC haulers carry goods between markets (#343)
     src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
     src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/Simulation_Tide.cpp      # the opening log, sealing and the tide (#342 S3)
@@ -431,6 +432,7 @@ add_executable(tests
     tests/observation_tests.cpp
     tests/economy_tests.cpp
     tests/goods_tests.cpp          # goods as data, stock and prices, buying (#343)
+    tests/haulers_tests.cpp        # haulers, belts that run out, the fee to the owner (#343)
     tests/simulation_tests.cpp
     tests/archetype_tests.cpp
     tests/archetype_edit_tests.cpp
@@ -502,6 +504,7 @@ add_executable(tests
     src/game/sim/Simulation_Outposts.cpp  # where a faction's outpost stands, by purpose (#318)
     src/game/sim/Simulation_Sieges.cpp    # what keeping an outpost costs, and sieges (#295)
     src/game/sim/Simulation_Migration.cpp # ships a system has too many of leave (#295)
+    src/game/sim/Simulation_Haulers.cpp   # NPC haulers carry goods between markets (#343)
     src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
     src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
     src/game/sim/Simulation_Tide.cpp      # the opening log, sealing and the tide (#342 S3)

@@ -82,6 +82,11 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
                 es.design = n->GetDesign();
                 es.heading = n->GetHeading();
                 es.hullFrac = n->GetMaxHull() > 0.0f ? n->GetHull() / n->GetMaxHull() : 0.0f;
+                if (n->GetCargoAmount() > 0)  // a hauler's hold (#343)
+                {
+                    es.cargo = n->GetCargo().Index();
+                    es.cargoAmount = n->GetCargoAmount();
+                }
                 break;
             }
             // Station faction and field ore are in the layout too, and neither changes
@@ -103,6 +108,13 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         snap.marketAsk.push_back((float)(std::round(market.Ask(rt) * 100.0) / 100.0));
         snap.marketStock.push_back((int)market.Stock(rt));
     }
+    // What is left of each belt (#348), in whole units.
+    for (const auto& e : it->second.entities)
+        if (e->GetKind() == EntityKind::Field)
+        {
+            const AsteroidField& f = static_cast<const AsteroidField&>(*e);
+            snap.belts.push_back({ f.GetId(), (int)f.GetOre(), f.GetOreMax() });
+        }
 
     // Physical view of the player's ship. Everything here is authoritative: the client
     // predicts its own movement between snapshots and is corrected by this.
@@ -303,6 +315,11 @@ static bool DescribeStatic(const Entity& e, Proto::EntityLayout& el)
             el.name = d.GetBaseName();
             el.reward = d.GetReward();
             el.looted = d.IsLooted();
+            if (d.GetCargoAmount() > 0)
+            {
+                el.cargo = d.GetCargo().Index();
+                el.cargoAmount = d.GetCargoAmount();
+            }
             break;
         }
         case EntityKind::Structure:

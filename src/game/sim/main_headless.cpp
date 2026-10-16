@@ -31,6 +31,7 @@
 #include "core/DataDir.h"
 #include "core/Faction.h"
 #include "economy/Resource.h"
+#include "entities/AsteroidField.h"
 #include "entities/Combatant.h"
 #include "entities/Nebula.h"
 #include "entities/NpcShip.h"
@@ -1027,6 +1028,47 @@ static int GalaxyDump(uint64_t seed, int cap, int centres, std::vector<int> slot
     }
     printf("%s\n", out.dump(2).c_str());
     return 0;
+}
+
+// How prices differ across the world's markets (#343): for each good, the mid price at the
+// tenth, the middle and the ninetieth of the markets, and how far apart the two ends are;
+// what haulers carry, how full the belts are (#348) and what the fees have brought the
+// factions. What `--prices` prints at the start and every hour.
+static void PrintPrices(const Simulation& sim)
+{
+    printf("  %-12s %8s %8s %8s %6s %8s\n", "good", "p10", "median", "p90", "p90/10", "transit");
+    const std::vector<double> transit = sim.GoodsInTransit();
+    for (ResourceType g : AllResourceTypes())
+    {
+        std::vector<double> mids;
+        for (const auto& kv : sim.Systems())
+            if (kv.second.profile.markets > 0)
+                mids.push_back(kv.second.market.Mid(g));
+        if (mids.empty())
+            continue;
+        std::sort(mids.begin(), mids.end());
+        const double lo = mids[mids.size() / 10], mid = mids[mids.size() / 2],
+                     hi = mids[mids.size() * 9 / 10];
+        printf("  %-12s %8.1f %8.1f %8.1f %6.2f %8.0f\n", ResourceName(g).c_str(), lo, mid, hi,
+               lo > 0.0 ? hi / lo : 0.0, transit[(size_t)g.Index()]);
+    }
+    double ore = 0.0, full = 0.0, treasury = 0.0;
+    int    belts = 0, markets = 0;
+    for (const auto& kv : sim.Systems())
+    {
+        markets += kv.second.profile.markets > 0 ? 1 : 0;
+        for (const auto& e : kv.second.entities)
+            if (e->GetKind() == EntityKind::Field)
+            {
+                ore += static_cast<const AsteroidField&>(*e).GetOre();
+                full += static_cast<const AsteroidField&>(*e).GetOreMax();
+                belts++;
+            }
+    }
+    for (FactionId f : Factions::All())
+        treasury += sim.MindOf(f).treasury;
+    printf("  %d markets, %d belts %.0f%% full, %zu ships on their way, treasuries %.0f cr\n",
+           markets, belts, full > 0.0 ? ore / full * 100.0 : 0.0, sim.Migrants().size(), treasury);
 }
 
 // How the tide stands, region by region (#342 S3): what the console's `tide` and the batch
@@ -3081,15 +3123,17 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    // econserver <ticks> [--seed N] [--news] [--hot]: the galaxy of seed N (1 unless given);
+    // econserver <ticks> [--seed N] [--news] [--hot] [--prices]: the galaxy of seed N (1 unless
+    // given);
     // with --news, the galactic news as it happens, stamped, instead of the
     // periodic tables -- how a living world is watched over hours (#231). Nobody is
     // connected, so every system is cold (#295); --hot keeps them all hot as they were
     // before, to compare the two. --players K parks K pilots at the starts, in turn: how the
-    // tide answers people (#342 S3).
+    // tide answers people (#342 S3). --prices: how prices differ across the markets, at the
+    // start and every hour (#343).
     int      ticks = (argc > 1) ? atoi(argv[1]) : 3600;
     uint64_t regionSeed = 1;
-    bool     newsOnly = false, allHot = false;
+    bool     newsOnly = false, allHot = false, prices = false;
     int      players = 0;
     // --max-regions N: the cap, as the host takes it; --rules F: world rules of another file
     // in place of data/world_rules.json -- a day's archive in minutes, say (#342 S4).
@@ -3106,6 +3150,8 @@ int main(int argc, char** argv)
             newsOnly = true;
         else if (std::string(argv[i]) == "--hot")
             allHot = true;
+        else if (std::string(argv[i]) == "--prices")
+            prices = true;
         else if (std::string(argv[i]) == "--players" && i + 1 < argc)
             players = std::max(0, atoi(argv[++i]));
 
@@ -3141,6 +3187,11 @@ int main(int argc, char** argv)
             sim.StepSystemAgents(kv.second, {}, nullptr, dt);
         sim.MaintainWorld(dt);
 
+        if (prices && (i == 0 || (i + 1) % (int)(3600.0f / dt) == 0))
+        {
+            printf("\nPrices at %.0f min:\n", sim.Time() / 60.0);
+            PrintPrices(sim);
+        }
         if (newsOnly)
         {
             // The history is numbered (#295): what is new is what follows the last entry

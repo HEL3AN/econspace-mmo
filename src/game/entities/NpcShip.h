@@ -3,6 +3,7 @@
 #include "entities/Entity.h"
 #include "entities/Combatant.h"
 #include "core/Faction.h"
+#include "economy/Resource.h"
 #include <string>
 #include <vector>
 
@@ -113,6 +114,27 @@ public:
     void SetTask(int plan) { task_ = plan; }
     int  GetTask() const { return task_; }
 
+    // What a hauler carries (#343): goods bought in one system for another's market. Shot down,
+    // it leaves them in its wreck. A hauler on its way out carries what its trip took from this
+    // market; one that came in carries it to a market station here, and has delivered it by
+    // `due` (world seconds) wherever it is. Transient, like every ship: where nobody is, the
+    // cargo is a number on the trip (Simulation::Migrant).
+    void SetCargo(ResourceType good, int amount, double due = 0.0)
+    {
+        cargo_ = good;
+        cargoAmount_ = amount > 0 ? amount : 0;
+        cargoDue_ = due;
+    }
+    ResourceType GetCargo() const { return cargo_; }
+    int          GetCargoAmount() const { return cargoAmount_; }
+    double       GetCargoDue() const { return cargoDue_; }
+    // Where it flies from now on, picking among them as it always does.
+    void SetRoute(std::vector<Vector2> waypoints)
+    {
+        waypoints_ = std::move(waypoints);
+        PickNewTarget();
+    }
+
     bool ReadyToFire() const { return fireTimer_ <= 0.0f; }
     void ResetFireTimer() { fireTimer_ = 0.9f; }
 
@@ -131,11 +153,14 @@ private:
     AiState state_ = AiState::Patrol;
     Vector2 aiPoint_ = { 0.0f, 0.0f };  // pursuit target or threat point
 
-    std::string design_;
-    float       damage_ = 6.0f;  // the design's; these defaults are only for no catalogue
-    float       maxHull_ = 60.0f;
-    float       hull_ = 60.0f;
-    float       fireTimer_ = 0.0f;
-    bool        leaving_ = false;
-    int         task_ = 0;
+    std::string  design_;
+    float        damage_ = 6.0f;  // the design's; these defaults are only for no catalogue
+    float        maxHull_ = 60.0f;
+    float        hull_ = 60.0f;
+    float        fireTimer_ = 0.0f;
+    bool         leaving_ = false;
+    int          task_ = 0;
+    ResourceType cargo_;
+    int          cargoAmount_ = 0;
+    double       cargoDue_ = 0.0;
 };

@@ -280,7 +280,9 @@ void Simulation::Warm(SystemState& st)
 void Simulation::Cool(SystemState& st)
 {
     // What is here is what the aggregate says from now on. The ships themselves go: nobody
-    // is left to see them, and a system that warms again makes them afresh.
+    // is left to see them, and a system that warms again makes them afresh -- once the
+    // haulers among them have unloaded, as they would have where nobody is (#343).
+    DeliverCargo(st, true);
     RecountAgg(st);
     st.entities.erase(std::remove_if(st.entities.begin(), st.entities.end(),
                                      [](const std::unique_ptr<Entity>& e)
@@ -749,6 +751,19 @@ nlohmann::json StateOf(const Entity& e)
         s["owner"] = e.GetOwner();
     if (e.GetKind() == EntityKind::Derelict && static_cast<const Derelict&>(e).IsLooted())
         s["looted"] = true;
+    // What a hauler's wreck still holds (#343), by good id.
+    if (e.GetKind() == EntityKind::Derelict && static_cast<const Derelict&>(e).GetCargoAmount() > 0)
+    {
+        const Derelict& d = static_cast<const Derelict&>(e);
+        s["cargo"] = { { Goods::Id(d.GetCargo()), d.GetCargoAmount() } };
+    }
+    // A belt mined below full (#348): what is left. An older build reads it full.
+    if (e.GetKind() == EntityKind::Field)
+    {
+        const AsteroidField& f = static_cast<const AsteroidField&>(e);
+        if (f.GetOre() < f.GetOreMax() - 0.005)
+            s["ore"] = std::round(f.GetOre() * 100.0) / 100.0;
+    }
     if (e.GetKind() == EntityKind::Structure && static_cast<const Structure&>(e).GetDamage() > 0.0f)
         s["damage"] = static_cast<const Structure&>(e).GetDamage();
     if (e.GetKind() == EntityKind::Structure &&
@@ -764,6 +779,15 @@ void ApplyState(Entity& e, const nlohmann::json& s)
     e.SetOwner(s.value("owner", std::string()));
     if (e.GetKind() == EntityKind::Derelict && s.value("looted", false))
         static_cast<Derelict&>(e).SetLooted();
+    if (e.GetKind() == EntityKind::Derelict && s.contains("cargo") && s["cargo"].is_object())
+        for (auto c = s["cargo"].begin(); c != s["cargo"].end(); ++c)
+        {
+            ResourceType good;  // a good this build does not have is let go
+            if (c.value().is_number_integer() && Goods::Find(c.key(), good))
+                static_cast<Derelict&>(e).SetCargo(good, c.value().get<int>());
+        }
+    if (e.GetKind() == EntityKind::Field && s.contains("ore") && s["ore"].is_number())
+        static_cast<AsteroidField&>(e).SetOre(s["ore"].get<double>());
     if (e.GetKind() == EntityKind::Structure)
         static_cast<Structure&>(e).SetDamage(s.value("damage", 0.0f));
     Defence d;  // rules it cannot read are the default: it fires back, as before #340
@@ -1096,8 +1120,19 @@ bool Simulation::SaveWorld(const std::string& path) const
                              { "faction", Factions::Id(m.faction) },
                              { "leftAt", m.leftAt },
                              { "arrivesAt", m.arrivesAt } });
+        // What a hauler carries (#343): on the trip and in no market, so lost if not here.
+        if (m.cargo > 0)
+            migrants.back()["cargo"] = { { Goods::Id(m.good), m.cargo } };
     }
     j["migrants"] = std::move(migrants);
+    // What each faction's markets have taken in fees (#343), by faction id: only what is not
+    // nothing. An older file has none, and its factions start with empty treasuries.
+    json treasuries = json::object();
+    for (FactionId f : Factions::All())
+        if (minds_[f].treasury > 0.0)
+            treasuries[Factions::Id(f)] = std::round(minds_[f].treasury * 100.0) / 100.0;
+    if (!treasuries.empty())
+        j["treasuries"] = std::move(treasuries);
     json history = json::array();
     for (const ChronicleEntry& e : chronicle_)
         history.push_back({ { "seq", e.seq },
@@ -1282,6 +1317,13 @@ Save::Result Simulation::LoadWorld(const std::string& path)
                 due_.insert({ p.dueAt, p.id });
         }
     nextPlanId_ = std::max(1, j.value("nextPlan", 1));
+    if (j.contains("treasuries") && j["treasuries"].is_object())
+        for (auto it = j["treasuries"].begin(); it != j["treasuries"].end(); ++it)
+        {
+            FactionId f;
+            if (FactionByName(json(it.key()), f) && it.value().is_number())
+                minds_[f].treasury = std::max(0.0, it.value().get<double>());
+        }
     if (j.contains("migrants") && j["migrants"].is_array())
         for (const json& mj : j["migrants"])
         {
@@ -1303,6 +1345,10 @@ Save::Result Simulation::LoadWorld(const std::string& path)
                 continue;
             m.leftAt = mj.value("leftAt", 0.0);
             m.arrivesAt = mj.value("arrivesAt", 0.0);
+            if (mj.contains("cargo") && mj["cargo"].is_object())
+                for (auto c = mj["cargo"].begin(); c != mj["cargo"].end(); ++c)
+                    if (c.value().is_number_integer() && Goods::Find(c.key(), m.good))
+                        m.cargo = std::max(0, c.value().get<int>());
             m.id = nextMigrant_++;
             migrants_[m.id] = m;
             arrivals_.insert({ m.arrivesAt, m.id });

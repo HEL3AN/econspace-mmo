@@ -1734,7 +1734,11 @@ std::vector<Tool> BuildTools()
                   return head + GiveOrder(c, "move_to") + " Then call salvage again.";
               }
 
-              const std::string name = wreck.name;  // the layout may change under a pump
+              const std::string name = wreck.name;         // the layout may change under a pump
+              const int         held = wreck.cargoAmount;  // ...and so may what it holds
+              const std::string good = wreck.cargo >= 0 && wreck.cargo < Goods::Count()
+                                           ? ResourceName(ResourceType::FromIndex(wreck.cargo))
+                                           : std::string();
               const double      before = p.money;
               Proto::Command    c;
               c.lootId = id;
@@ -1745,8 +1749,15 @@ std::vector<Tool> BuildTools()
               // acknowledged the command: the server applies it before it builds the next.
               const double paid = g_session.Snapshot().player.money - before;
               const auto   now = g_session.Layout().find(id);
+              // A hauler's wreck holds its cargo (#343): the hold takes what it has room for.
+              const int left = now != g_session.Layout().end() ? now->second.cargoAmount : 0;
               if (now != g_session.Layout().end() && now->second.looted)
-                  return "salvage: searched " + name + ", +" + Money(paid);
+                  return "salvage: searched " + name + ", +" + Money(paid) +
+                         (held > 0 ? ", took " + std::to_string(held) + " " + good : "");
+              if (held > 0 && left < held)
+                  return "salvage: took " + std::to_string(held - left) + " " + good + " from " +
+                         name + "; " + std::to_string(left) +
+                         " more is left and the hold is full -- sell, then come back";
               return "salvage: the server did not let you search " + name +
                      " -- someone may have got there first, or the ship drifted out of reach; "
                      "call observe";

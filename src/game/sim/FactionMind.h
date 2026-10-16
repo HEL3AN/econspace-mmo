@@ -121,6 +121,10 @@ struct FactionMind
     // Materials and credits as one number (#295): what its holdings yield, and what an
     // outpost costs. It is what bounds expansion -- a timer does not.
     float stock = 0.0f;
+    // Credits (#343): the fee every trade at its markets pays. Nothing spends it yet -- it is
+    // what a faction will pay its hires from -- but the money is the faction's, not gone.
+    // Saved.
+    double treasury = 0.0;
     // Its outposts it can no longer supply, by system and key ("W-1.1/+3") (slice 5): the
     // history says so once when one is cut off, not every period it stays so. Saved.
     std::set<std::string> unsupplied;

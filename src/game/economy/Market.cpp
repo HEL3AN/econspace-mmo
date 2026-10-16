@@ -143,7 +143,7 @@ double Market::Buy(ResourceType type, int amount, int& bought)
     return cost;
 }
 
-void Market::Step(const MarketRates& rates, double hours, double traffic)
+void Market::Step(const MarketRates& rates, double hours)
 {
     Fit();
     const size_t n = stock_.size();
@@ -168,12 +168,36 @@ void Market::Step(const MarketRates& rates, double hours, double traffic)
     }
     for (size_t i = 0; i < n && i < rates.use.size(); i++)
         stock_[i] -= std::min(stock_[i], rates.use[i] * hours);
-    const double pull = std::min(1.0, Goods::Rules().restock * traffic * hours);
     for (size_t i = 0; i < n; i++)
+        stock_[i] = std::clamp(stock_[i], 0.0, Target(ResourceType::FromIndex((int)i)) * STOCK_CAP);
+}
+
+int HaulAmount(const Market& from, const Market& to, ResourceType type, int cap)
+{
+    const MarketRules& k = Goods::Rules();
+    const double       buyMul = (1.0 + k.spread * 0.5) * (1.0 + k.fee) * (1.0 + k.haulMargin);
+    const double       sellMul = (1.0 - k.spread * 0.5) * (1.0 - k.fee);
+    const double       here = from.Stock(type), there = to.Stock(type);
+    // Whether the n-th unit still pays: it is bought at n - 1 below the stock here and sold at
+    // n - 1 above the stock there. Paying less with every unit, so the answer is a search.
+    auto pays = [&](int n)
     {
-        const double target = Target(ResourceType::FromIndex((int)i));
-        stock_[i] = std::clamp(stock_[i] + (target - stock_[i]) * pull, 0.0, target * STOCK_CAP);
+        return to.MidAt(type, there + (n - 1)) * sellMul >=
+               from.MidAt(type, here - (n - 1)) * buyMul;
+    };
+    int lo = 0, hi = std::min(cap, (int)std::floor(here));
+    if (hi <= 0 || !pays(1))
+        return 0;
+    lo = 1;
+    while (lo < hi)
+    {
+        const int mid = (lo + hi + 1) / 2;
+        if (pays(mid))
+            lo = mid;
+        else
+            hi = mid - 1;
     }
+    return lo;
 }
 
 Supply SupplyOf(ResourceType type)
