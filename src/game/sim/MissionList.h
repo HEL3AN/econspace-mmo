@@ -27,7 +27,8 @@ struct Row
     int         index = 0;
     std::string title;
     std::string description;
-    std::string kind;    // "bounty", "mining", "delivery", "supply", "escort", "siege", "contract"
+    std::string kind;    // "bounty", "mining", "delivery", "supply", "escort", "siege",
+                         // "besiege", "contract"
     std::string status;  // how far along: "2 / 5", "ready", "deliver"
     FactionId   faction = Factions::Unaffiliated();  // who gave it
     double      reward = 0.0;
@@ -49,12 +50,16 @@ struct Row
     std::string where;       // the system's name (a market's contract has one too)
     std::string due;         // "due in 12 min"; empty for no time
     int         siteId = 0;  // a supply job's site, when it is in this system
+    // A siege's job (#407): which side it is for -- the issuer's, besieged or besieging -- and
+    // the faction it is against.
+    bool      siege = false;
+    FactionId against = Factions::Unaffiliated();
 };
 
 std::vector<Row> Build(const Obs::View& view, Board board);
 
-// "bounty", "mining", "delivery", a plan's "supply", "escort", "siege", and a market's
-// "contract".
+// "bounty", "mining", "delivery", a plan's "supply", "escort", "siege", "besiege", and a
+// market's "contract".
 const char* KindWord(int missionType);
 
 }  // namespace MissionList

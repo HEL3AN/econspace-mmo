@@ -147,18 +147,37 @@ bool Load(const std::string& path)
                                              {}, g_error))
         return false;
     Convoys c;
-    if (j.contains("convoys") && !ReadSection(j["convoys"], path + ": convoys",
-                                              { { "hop", &c.hop },
-                                                { "escort", &c.escort },
-                                                { "ambush", &c.ambush },
-                                                { "retryMinutes", &c.retryMinutes } },
-                                              { { "reach", &c.reach } }, {}, g_error))
+    if (j.contains("convoys") &&
+        !ReadSection(j["convoys"], path + ": convoys",
+                     { { "hop", &c.hop },
+                       { "escort", &c.escort },
+                       { "escortMax", &c.escortMax },
+                       { "escortPerDanger", &c.escortPerDanger },
+                       { "hauler", &c.hauler },
+                       { "calm", &c.calm },
+                       { "policed", &c.policed },
+                       { "harm", &c.harm },
+                       { "bite", &c.bite },
+                       { "turnBack", &c.turnBack },
+                       { "balk", &c.balk },
+                       { "avoid", &c.avoid },
+                       { "wait", &c.wait },
+                       { "retryMinutes", &c.retryMinutes } },
+                     { { "reach", &c.reach }, { "maxWaits", &c.maxWaits } }, {}, g_error))
         return false;
-    // A convoy that takes no time anywhere, or reaches nowhere, would build at once.
-    if (g.marketReach <= 0 || c.hop <= 0.0 || c.reach <= 0)
+    // A convoy that takes no time anywhere, or reaches nowhere, would build at once; one with
+    // no strength of its own, or danger that is never calm, divides by nothing.
+    if (g.marketReach <= 0 || c.hop <= 0.0 || c.reach <= 0 || c.hauler <= 0.0 || c.calm <= 0.0)
     {
-        g_error =
-            path + ": growth.marketReach, convoys.hop and convoys.reach must be more than zero";
+        g_error = path + ": growth.marketReach, convoys.hop, convoys.reach, convoys.hauler and "
+                         "convoys.calm must be more than zero";
+        return false;
+    }
+    // Shares are at most the whole, and the least escort is not more than the most.
+    if (c.policed > 1.0 || c.turnBack > 1.0 || c.escort > c.escortMax)
+    {
+        g_error = path + ": convoys.policed and convoys.turnBack must be at most 1, and "
+                         "convoys.escort at most convoys.escortMax";
         return false;
     }
     // #345's: the jobs plans post.

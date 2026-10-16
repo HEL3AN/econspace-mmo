@@ -503,7 +503,11 @@ TEST_CASE("a lost convoy delays the plan and does not cancel it (#342 S6)")
             REQUIRE(p != nullptr);  // delayed, not cancelled
             CHECK(p->leg == -1);
             CHECK_FALSE(p->arrived);
-            CHECK(Said(sim, "convoy", shoot ? "shot down" : "lost its convoy"));
+            // Shot down, it is lost; facing forty pirates it turns back before them or is
+            // destroyed among them (#407).
+            CHECK((shoot ? Said(sim, "convoy", "shot down")
+                         : Said(sim, "convoy", "turned back") ||
+                               Said(sim, "convoy", "lost its convoy")));
             st->agg.presence[Factions::Pirates()] = 0.0f;  // the way is clear again
         }
         double done = -1.0;
@@ -527,6 +531,224 @@ TEST_CASE("a lost convoy delays the plan and does not cancel it (#342 S6)")
     REQUIRE(shot.second > 0.0);
     CHECK(ambushed.second > clear.second);
     CHECK(shot.second > clear.second);
+}
+
+namespace
+{
+// The faction whose centre the first frontier of seed 7 opened from: its convoys to that
+// frontier set out from its heart, a long way off.
+FactionId HeartOfSeven()
+{
+    Simulation sim;
+    Make(sim, 7);
+    const Simulation::RegionOpening* o = sim.OpeningOf(FirstFrontier(sim));
+    REQUIRE(o != nullptr);
+    return sim.SystemById(o->mouth)->agg.controller;
+}
+}  // namespace
+
+TEST_CASE("a faction fears for its convoy what it saw on the way, and sends more escort for it "
+          "(#407)")
+{
+    LoadRegistries();
+    Rules           r;
+    const FactionId f = HeartOfSeven();
+    Simulation      sim;
+    Make(sim, 7);
+    const Holding                 h = PlantOutpost(sim, f);
+    const Simulation::ConvoyChart calm = sim.ChartConvoy(f, h.system);
+    REQUIRE(calm.route.size() >= 3);
+    CHECK(calm.route.back() == h.system);
+    // Its holding has all its strength at home: the escort is what the rules ask of it.
+    const float cap = Factions::TemperamentOf(f).capacity;
+    sim.SystemById(calm.route.front())->agg.presence[f] = cap;
+
+    // Word of a pirate pack on the way: it fears for its convoy, and goes round if it can.
+    const std::string on = calm.route[1];
+    Intel&            seen = sim.MindOf(f).intel[on];
+    seen.seenAt = sim.Time();
+    seen.presence[Factions::Pirates()] = 6.0f;
+    // (What it holds, or has ships in, it sees for itself: there the pack is simply there.)
+    sim.SystemById(on)->agg.presence[Factions::Pirates()] = 6.0f;
+    const Simulation::ConvoyChart feared = sim.ChartConvoy(f, h.system);
+    REQUIRE(feared.route.size() >= 2);
+    CHECK(feared.route.front() == calm.route.front());
+    CHECK(feared.route.back() == h.system);
+    const bool round =
+        std::find(feared.route.begin(), feared.route.end(), on) == feared.route.end();
+    if (!round)
+    {
+        // No other way: it expects to lose more, and asks for more escort against it.
+        CHECK(feared.worst >= 6.0f);
+        CHECK(feared.loss > calm.loss);
+        CHECK(feared.escort >= calm.escort);
+    }
+    // ...and every time one was held back or turned back, it asks for more.
+    seen.presence[Factions::Pirates()] = 2.0f * cap;
+    sim.SystemById(on)->agg.presence[Factions::Pirates()] = 2.0f * cap;
+    const float first = sim.ChartConvoy(f, h.system, 0.0f, 0).escort;
+    const float later = sim.ChartConvoy(f, h.system, 0.0f, 2).escort;
+    CHECK(later >= first);
+    CHECK(later <= (float)WorldRules::ConvoyRules().escortMax * cap + 1.0e-4f);
+    // A pilot waiting where it sets out makes the way less to fear.
+    CHECK(sim.ChartConvoy(f, h.system, 4.0f).loss <= sim.ChartConvoy(f, h.system).loss);
+}
+
+TEST_CASE("a convoy is held back from a way too dangerous, then sent anyway; ahead of a pack it "
+          "turns back with its freight (#407)")
+{
+    LoadRegistries();
+    Rules           r;
+    const FactionId f = HeartOfSeven();
+    const float     price = Simulation::BlueprintCost(Outposts::MARKET_BLUEPRINT);
+
+    // What it believes waits at the site, it cannot go round: it holds the convoy back.
+    {
+        Simulation sim;
+        Make(sim, 7);
+        const Holding h = PlantOutpost(sim, f);
+        sim.MindOf(f).stock = 4.0f * Simulation::OutpostCost();
+        Intel& seen = sim.MindOf(f).intel[h.system];
+        seen.seenAt = sim.Time();
+        seen.presence[Factions::Pirates()] = 30.0f;
+        sim.SystemById(h.system)->agg.presence[Factions::Pirates()] = 30.0f;  // it holds it
+        const int id = sim.BeginUpgrade(f, h.system, Outposts::MARKET_BLUEPRINT);
+        REQUIRE(id != 0);
+        const Plan* p = PlanOf(sim, id);
+        REQUIRE(p != nullptr);
+        CHECK(p->leg == -1);
+        CHECK(p->waits == 1);
+        CHECK_FALSE(p->route.empty());  // the way it is waiting to take
+        CHECK(Said(sim, "convoy", "held back its convoy"));
+        CHECK(sim.Convoys().held == 1);
+        CHECK(sim.Convoys().sent == 0);
+        // Held back as often as the rules let it, it goes: never doomed to wait for ever.
+        sim.SystemById(h.system)->agg.presence[Factions::Pirates()] = 0.0f;
+        REQUIRE(RunUntil(sim, 60, [&] { return sim.Convoys().sent > 0; }));
+        CHECK(sim.Convoys().held <= WorldRules::ConvoyRules().maxWaits);
+    }
+
+    // Sent along a quiet way, it finds a pack waiting at the next system: it turns back before
+    // it, with what it carries, and its escort goes home.
+    {
+        Simulation sim;
+        Make(sim, 7);
+        const Holding h = PlantOutpost(sim, f);
+        sim.MindOf(f).stock = 4.0f * Simulation::OutpostCost();
+        const int id = sim.BeginUpgrade(f, h.system, Outposts::MARKET_BLUEPRINT);
+        REQUIRE(id != 0);
+        const Plan* p = PlanOf(sim, id);
+        REQUIRE(p != nullptr);
+        REQUIRE(p->leg == 0);
+        REQUIRE(p->route.size() >= 2);
+        const std::string ahead = p->route[1];
+        const std::string home = p->route[0];
+        const float       lent = p->force;
+        REQUIRE(RunUntil(sim, 10,
+                         [&]
+                         {
+                             sim.SystemById(ahead)->agg.presence[Factions::Pirates()] = 40.0f;
+                             return PlanOf(sim, id)->setbacks > 0 || PlanOf(sim, id)->leg > 0;
+                         }));
+        p = PlanOf(sim, id);
+        CHECK(p->setbacks == 1);
+        CHECK(p->leg == -1);
+        CHECK(p->freight > 0.5f);  // what it carries goes home with it
+        CHECK(Said(sim, "convoy", "turned back"));
+        CHECK(sim.Convoys().turnedBack == 1);
+        CHECK(sim.Convoys().destroyed == 0);
+        CHECK(sim.MindOf(f).lostAt.count(ahead) == 1);  // it remembers where
+        if (lent > 0.0f)
+        {
+            bool going = false;
+            for (const auto& kv : sim.Plans())
+                going = going || (kv.second.kind == Plan::Kind::Return && kv.second.target == home);
+            CHECK(going);
+        }
+        // What came back is not paid for again; only what was lost on the way would be.
+        CHECK((1.0f - p->freight) * price < 0.5f * price);
+    }
+}
+
+TEST_CASE("a convoy that loses freight on the way arrives damaged, and one destroyed is paid for "
+          "again (#407)")
+{
+    LoadRegistries();
+    Rules           r;
+    const FactionId f = HeartOfSeven();
+    // Attacked wherever anyone hostile is, and a little hostile everywhere on the way.
+    WorldRules::Convoys sure = WorldRules::ConvoyRules();
+    sure.calm = 1.0e-4;
+    sure.policed = 0.0;
+    WorldRules::SetConvoyRules(sure);
+
+    Simulation sim;
+    Make(sim, 7);
+    const Holding h = PlantOutpost(sim, f);
+    sim.MindOf(f).stock = 4.0f * Simulation::OutpostCost();
+    const int id = sim.BeginUpgrade(f, h.system, Outposts::MARKET_BLUEPRINT);
+    REQUIRE(id != 0);
+    const std::vector<std::string> route = PlanOf(sim, id)->route;
+    REQUIRE(PlanOf(sim, id)->leg == 0);
+    REQUIRE(RunUntil(sim, 40,
+                     [&]
+                     {
+                         for (const std::string& s : route)
+                             for (FactionId g : Factions::All())
+                                 if (g != f)
+                                     sim.SystemById(s)->agg.presence[g] =
+                                         g == Factions::Pirates() ? 0.2f : 0.0f;
+                         const Plan* p = PlanOf(sim, id);
+                         return p == nullptr || p->arrived || p->setbacks > 0;
+                     }));
+    const Plan* p = PlanOf(sim, id);
+    REQUIRE(p != nullptr);
+    REQUIRE(p->arrived);
+    CHECK(sim.Convoys().damaged == 1);
+    CHECK(sim.Convoys().intact == 0);
+    CHECK(Said(sim, "convoy", "fought off the pirates"));
+    CHECK(sim.ConvoysByRegion().at(Gen::SlotOf(h.system)).damaged == 1);
+
+    // Destroyed -- its hauler shot down where somebody is -- nothing of it comes back, and the
+    // next one is paid for in full before it sets out.
+    WorldRules::SetConvoyRules(WorldRules::Convoys{});
+    Simulation hot;
+    hot.SetAllHot(true);
+    Make(hot, 7);
+    const Holding g = PlantOutpost(hot, f);
+    hot.MindOf(f).stock = 4.0f * Simulation::OutpostCost();
+    const int next = hot.BeginUpgrade(f, g.system, Outposts::MARKET_BLUEPRINT);
+    REQUIRE(next != 0);
+    const Plan* q = PlanOf(hot, next);
+    REQUIRE(q->leg == 0);
+    bool shot = false;
+    for (auto& e : hot.SystemById(q->route[0])->entities)
+        if (e->GetKind() == EntityKind::Npc && static_cast<NpcShip&>(*e).GetTask() == next &&
+            static_cast<NpcShip&>(*e).GetRole() == NpcRole::Trader)
+        {
+            static_cast<NpcShip&>(*e).TakeDamage(1.0e9f);
+            shot = true;
+        }
+    REQUIRE(shot);
+    hot.MaintainWorld(2.0f);
+    q = PlanOf(hot, next);
+    REQUIRE(q != nullptr);
+    CHECK(q->setbacks == 1);
+    CHECK(q->freight == 0.0f);
+    CHECK(hot.Convoys().destroyed == 1);
+    const float price = Simulation::BlueprintCost(Outposts::MARKET_BLUEPRINT);
+    float       paid = -1.0f;
+    for (int pass = 0; pass < 30 * 30 && hot.Convoys().sent < 2; pass++)
+    {
+        hot.MindOf(f).stock = std::max(hot.MindOf(f).stock, 2.0f * price);
+        const float before = hot.MindOf(f).stock;
+        hot.MaintainWorld(2.0f);
+        if (hot.Convoys().sent == 2)
+            paid = before - hot.MindOf(f).stock;
+    }
+    REQUIRE(hot.Convoys().sent == 2);
+    CHECK(paid >= 0.9f * price);
+    CHECK(PlanOf(hot, next)->freight == 1.0f);
 }
 
 TEST_CASE("a convoy sets out from where its faction makes things: the heart behind the frontier "

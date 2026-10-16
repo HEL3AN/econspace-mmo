@@ -1217,7 +1217,8 @@ bool Simulation::MissionCompletableNow(const ClientSession& s, const Mission& m)
         case MissionType::Contract: return ContractReadyNow(s, m);
         case MissionType::Supply:
         case MissionType::Escort:
-        case MissionType::Siege: break;  // a plan's, above
+        case MissionType::Siege:
+        case MissionType::Besiege: break;  // a plan's, above
     }
     return false;
 }
@@ -1681,6 +1682,8 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
             mj["deadline"] = m.deadline;
             mj["stage"] = m.stage;
             mj["rode"] = m.rode;
+            if (IsSiegeJob(m.type))
+                mj["against"] = Factions::Id(m.against);  // the other side (#407)
         }
         // A market's contract (#343): which -- the world keeps it -- where, and by when.
         if (m.type == MissionType::Contract)
@@ -1958,6 +1961,8 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
                 m.deadline = mj.value("deadline", 0.0);
                 m.stage = mj.value("stage", 0);
                 m.rode = mj.value("rode", false);
+                if (mj.contains("against") && mj["against"].is_string())
+                    Factions::Find(mj["against"].get<std::string>(), m.against);
                 m.giverStationId = StationIdOf(systems_, giver);
                 if (plans_.count(m.planId) == 0 && m.progress < m.targetCount)
                 {

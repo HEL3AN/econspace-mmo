@@ -39,6 +39,7 @@
 #include "entities/ShipType.h"
 #include "entities/Station.h"
 #include "entities/Structure.h"
+#include "missions/Mission.h"
 #include "raylib.h"
 
 #include <nlohmann/json.hpp>
@@ -1363,6 +1364,103 @@ struct NearStarts
         }
     }
 };
+
+// Pilots who fly escort (#407), for the batch mode's --escorts: each takes the escort job of a
+// convoy no other has and keeps to the system the convoy is in, a minute at a time, as a player
+// on that job would -- what the convoys' fates are with players helping, against without.
+struct EscortPilots
+{
+    std::vector<int> sessions;
+
+    void Minute(Simulation& sim)
+    {
+        std::set<int> taken;
+        for (int id : sessions)
+            if (const ClientSession* s = sim.Session(id))
+                for (const Mission& m : s->missions.Active())
+                    if (m.type == MissionType::Escort)
+                        taken.insert(m.planId);
+        for (int id : sessions)
+        {
+            ClientSession* s = sim.Session(id);
+            if (s == nullptr)
+                continue;
+            std::vector<Mission>& active = s->missions.Active();
+            // Paid for the last one, or with none: the first convoy nobody flies with.
+            for (int i = (int)active.size() - 1; i >= 0; i--)
+                if (sim.MissionCompletableNow(*s, active[(size_t)i]))
+                    sim.CompleteMission(*s, i);
+            const Mission* job = nullptr;
+            for (const Mission& m : active)
+                if (m.type == MissionType::Escort)
+                    job = &m;
+            if (job == nullptr)
+                for (const auto& kv : sim.Plans())
+                {
+                    const Plan& p = kv.second;
+                    if (!p.OnTheWay() || p.ConvoyAt().empty() || taken.count(p.id) != 0)
+                        continue;
+                    Mission m;
+                    m.type = MissionType::Escort;
+                    m.faction = p.faction;
+                    m.planId = p.id;
+                    m.systemId = p.target;
+                    m.systemName = p.target;
+                    m.stage = p.setbacks;
+                    m.targetCount = 1;
+                    m.deadline = p.dueAt + WorldRules::JobRules().escortSlack;
+                    m.title = "Escort: convoy to " + m.systemName;
+                    active.push_back(m);
+                    taken.insert(p.id);
+                    job = &active.back();
+                    break;
+                }
+            if (job == nullptr)
+                continue;
+            const auto it = sim.Plans().find(job->planId);
+            if (it == sim.Plans().end())
+                continue;
+            const std::string at = it->second.ConvoyAt();
+            if (s->IsDocked())
+                sim.StepPlayerUndock(*s);
+            if (!at.empty() && at != s->systemId && sim.HasSystem(at))
+                sim.ServerEnterSystem(*s, at, s->systemId);
+            if (s->ship)
+                s->ship->Repair();  // flying with it, not fighting what else is there
+        }
+    }
+};
+
+// How the builder convoys fared (#407), printed at the end of a --news run: overall and by the
+// region of the site, with the stations each region has now.
+static void PrintConvoys(const Simulation& sim)
+{
+    const Simulation::ConvoyTally& t = sim.Convoys();
+    const long long                ended = t.intact + t.damaged + t.turnedBack + t.destroyed;
+    const double                   n = (double)std::max<long long>(1, ended);
+    Log::Printf("\nConvoys: %lld sent, %lld held back; of %lld that ended their way: %lld intact "
+                "(%.0f%%), %lld damaged (%.0f%%), %lld turned back (%.0f%%), %lld destroyed "
+                "(%.0f%%); %lld arrived with a pilot\n",
+                t.sent, t.held, ended, t.intact, 100.0 * t.intact / n, t.damaged,
+                100.0 * t.damaged / n, t.turnedBack, 100.0 * t.turnedBack / n, t.destroyed,
+                100.0 * t.destroyed / n, t.escorted);
+    std::map<int, int> stations;
+    for (const auto& kv : sim.Systems())
+        stations[Gen::SlotOf(kv.first)] += kv.second.profile.stations;
+    for (const auto& kv : sim.ConvoysByRegion())
+    {
+        const Simulation::ConvoyTally& r = kv.second;
+        Log::Printf("  region %3d  %3d stations  sent %3lld held %3lld  intact %3lld damaged %3lld "
+                    "turned back %3lld destroyed %3lld\n",
+                    kv.first, stations[kv.first], r.sent, r.held, r.intact, r.damaged, r.turnedBack,
+                    r.destroyed);
+    }
+    // Plans whose convoy has not got through yet, and how many times it has failed.
+    for (const auto& kv : sim.Plans())
+        if (kv.second.OnTheWay() && kv.second.setbacks >= 3)
+            Log::Printf("  still trying: plan %d to %s, %d setbacks, %d waits\n", kv.first,
+                        kv.second.target.c_str(), kv.second.setbacks, kv.second.waits);
+}
 
 // The admin's console (#342 S3): lines typed on the server's standard input, read on a thread
 // of their own so the loop never waits for one, and handed over under a lock. With no console
@@ -3387,10 +3485,11 @@ int main(int argc, char** argv)
     // connected, so every system is cold (#295); --hot keeps them all hot as they were
     // before, to compare the two. --players K parks K pilots at the starts, in turn: how the
     // tide answers people (#342 S3). --prices: how prices differ across the markets, at the
-    // start and every hour (#343).
+    // start and every hour (#343). --escorts: the --players pilots fly escort for the faction
+    // convoys instead of sitting at the starts (#407).
     int      ticks = (argc > 1) ? atoi(argv[1]) : 3600;
     uint64_t regionSeed = 1;
-    bool     newsOnly = false, allHot = false, prices = false;
+    bool     newsOnly = false, allHot = false, prices = false, escorts = false;
     int      players = 0;
     // --max-regions N: the cap, as the host takes it; --rules F: world rules of another file
     // in place of data/world_rules.json -- a day's archive in minutes, say (#342 S4).
@@ -3409,6 +3508,8 @@ int main(int argc, char** argv)
             allHot = true;
         else if (std::string(argv[i]) == "--prices")
             prices = true;
+        else if (std::string(argv[i]) == "--escorts")
+            escorts = true;
         else if (std::string(argv[i]) == "--players" && i + 1 < argc)
             players = std::max(0, atoi(argv[++i]));
 
@@ -3421,8 +3522,14 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    EscortPilots escortPilots;
     for (int p = 0; p < players; p++)
-        SetupHostPlayer(sim, sim.Starts()[(size_t)p % sim.Starts().size()].systemId);
+    {
+        ClientSession& s =
+            SetupHostPlayer(sim, sim.Starts()[(size_t)p % sim.Starts().size()].systemId);
+        if (escorts)
+            escortPilots.sessions.push_back(s.id);
+    }
 
     const float dt = 1.0f / 60.0f;  // = SIM_DT: server tick as in the game
     long long   seen = 0;           // the history already printed, by seq
@@ -3443,6 +3550,8 @@ int main(int argc, char** argv)
         for (auto& kv : sim.Systems())
             sim.StepSystemAgents(kv.second, {}, nullptr, dt);
         sim.MaintainWorld(dt);
+        if (i % (int)(60.0f / dt) == 0)
+            escortPilots.Minute(sim);
 
         if (prices && (i == 0 || (i + 1) % (int)(3600.0f / dt) == 0))
         {
@@ -3535,6 +3644,7 @@ int main(int argc, char** argv)
                                      : "");
             }
         nearStarts.PrintSummary(sim);
+        PrintConvoys(sim);
         return 0;
     }
     printf("\nGalactic news:\n");

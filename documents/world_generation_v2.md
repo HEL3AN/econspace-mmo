@@ -482,11 +482,15 @@ Each slice is its own PR with green CI, and the game works after every one.
      faction makes things -- of its holdings within `reach` 6 jumps, the one with the most
      stations of its own, so a frontier at a centre's door is built from its heart (#407);
      with none, the nearest holding -- `hop` 120 s in every system of the way, with
-     `escort` 0.25 of its capacity lent by that holding when it can spare it. In each system it
-     passes, anyone hostile wears it down at `ambush` a second per ship, the escort first, then
-     the hauler, and the escort hits back; the hauler gone, the convoy is lost, the escort left
-     goes home, and another sets out `retryMinutes` 10 later -- the plan waits, it is never
-     cancelled. A hot system shows the hauler (a trader-role ship) and up to four escorts on
+     an escort lent by that holding when it can spare it -- `escort` 0.25 of its capacity, more
+     for a way it fears (#407). Its fate follows from its own strength against the danger of
+     its way, never from whether a player helps: crossing each system it is attacked or not by
+     the hostile ships there and the security, and a fight takes freight and escort by how far
+     the danger outweighs it, so it arrives whole or damaged (the shortfall paid from stock),
+     turns back with what it carries (also before a system held against it), or is destroyed
+     -- and the next sets out `retryMinutes` 10 later, what was lost paid for again. The
+     faction picks the way it fears least and holds a convoy back while the odds are poor, at
+     most `maxWaits` times; the plan waits, it is never cancelled. A hot system shows the hauler (a trader-role ship) and up to four escorts on
      their leg, placed by the clock, tasked to the plan: no NPC or station fights them and no
      recount, top-up or migration counts them, so a watched convoy goes as an unwatched one
      does, except that a player who shoots the hauler loses it its convoy. An Anchor convoy

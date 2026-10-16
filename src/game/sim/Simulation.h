@@ -455,6 +455,32 @@ public:
     int BeginUpgrade(FactionId f, const std::string& systemId, const std::string& blueprint);
     // ...and an Anchor at the unstable mouth into `slot`, the same way. 0 when it may not.
     int BeginAnchor(FactionId f, int slot);
+    // How a convoy of `f` bound for `target` would go (#407): the way it fears least from its
+    // holding with the most stations within the convoy rules' reach -- or from its nearest
+    // holding, or the site itself -- the escort it would ask for and could have, the worst
+    // danger on the way in ships, and how much of its freight it expects to lose, all from
+    // what `f` believes. `pilots` is escort strength pilots already lend it where it sets out;
+    // for each time it held one back or one turned back (`waits`) it asks for more escort.
+    struct ConvoyChart
+    {
+        std::vector<std::string> route;
+        float                    escort = 0.0f;  // what its holding can lend, of what it wants
+        float                    worst = 0.0f;
+        float                    loss = 0.0f;  // expected share of the freight, may pass 1
+    };
+    ConvoyChart ChartConvoy(FactionId f, const std::string& target, float pilots = 0.0f,
+                            int waits = 0) const;
+    // What happened to convoys since the world began (#407): set out, held back, and how each
+    // that ended its way did. Transient: counted for a long run's report.
+    struct ConvoyTally
+    {
+        long long sent = 0, held = 0;
+        long long intact = 0, damaged = 0, turnedBack = 0, destroyed = 0;
+        long long escorted = 0;  // of those that arrived, with a pilot with it at some point
+    };
+    const ConvoyTally& Convoys() const { return convoyTally_; }
+    // ...and the same by the region of the site, by slot.
+    const std::map<int, ConvoyTally>& ConvoysByRegion() const { return convoyRegions_; }
     // How many stations region `slot` has, and has going up.
     int StationsIn(int slot) const;
     // How many jumps from `systemId` the nearest market is -- a station's, or an outpost
@@ -1050,8 +1076,12 @@ public:
     // Once a pass: escorts that are with their convoy, convoys arrived or lost, sites that no
     // longer need anything, and jobs out of time.
     void StepJobs();
-    // The session shot `killed` down: a besieger counts towards its break-the-siege jobs.
+    // The session shot `killed` down: a besieger counts towards its break-the-siege jobs, and a
+    // defender of a besieged outpost towards its join-the-siege jobs (#407).
     void CreditJobKill(ClientSession& s, const NpcShip& killed);
+    // The besieged side's strength at a siege that a pilot can find there as ships -- its
+    // pirates, or the police flying its flag -- in ships; 0 when it is numbers only (#407).
+    float DefendersShown(const Plan& p) const;
     // A plan's site still going up, that a delivery helps: a settlement's, or an Anchor's or
     // an upgrade's come to its site. Null for anything else.
     const Structure* JobSite(const Plan& p) const;
@@ -1651,16 +1681,33 @@ private:
                           float& worth);
     std::map<std::string, int> marketJumps_;  // MarketJumps, as of `marketPeriod_`
     int                        marketPeriod_ = -1;
-    // A plan's convoy sets out from where the faction makes things (ConvoyRoute): its way
-    // there and its escort. False when it has no way to get there.
+    // A plan's convoy sets out from where the faction makes things (ChartConvoy): its way
+    // there and its escort -- or it is held back, for the stock to pay for what an earlier
+    // one lost, or for better odds. False when it has no way to get there.
     bool DispatchConvoy(Plan& p);
-    // The way to `target`, both ends included, from `f`'s holding within the convoy rules'
-    // reach with the most stations of its own (#407) -- the nearest of those, then the lowest
-    // id -- or with none, from its nearest holding; just `target` when it holds nothing within
-    // reach.
-    std::vector<std::string> ConvoyRoute(FactionId f, const std::string& target) const;
-    // Once a pass: every convoy fights what it meets, moves on, arrives or is lost.
+    // What `f` believes is waiting for its convoy in `systemId`, in ships: everyone hostile it
+    // saw there, a ship more where it has never looked, and the memory of a loss there. With
+    // `truth`, what is there now -- what a convoy crossing it meets. Its security, as seen, in
+    // `security` when asked.
+    float ConvoyDanger(FactionId f, const std::string& systemId, bool truth,
+                       float* security = nullptr) const;
+    // A convoy of strength `strength` crossing a system of `danger` ships at `security`: the
+    // chance it is attacked, and the share of its freight an attack takes on the average.
+    static float AmbushChance(float danger, float security);
+    static float AmbushHarm(float strength, float danger);
+    // Once a pass: every convoy moves on, fights what it meets, arrives, turns back or is lost.
     void StepConvoys();
+    // The convoy has crossed the system it is in: whatever is hostile there falls on it, or not.
+    // False when that was the end of it.
+    bool CrossSystem(Plan& p, SystemState& st);
+    // What the convoy carries is worth this much of the faction's stock: the plan's price.
+    static float FreightPrice(const Plan& p);
+    // Turned back with what is left: the escort and the freight go home, another sets out later.
+    void TurnBackConvoy(Plan& p, const std::string& where, const std::string& why);
+    // A convoy's end, counted for the report.
+    void                       TallyConvoy(const Plan& p, long long ConvoyTally::* what);
+    ConvoyTally                convoyTally_;
+    std::map<int, ConvoyTally> convoyRegions_;
     // Its ships, where the system it is in is hot: the hauler and the escort, on their way
     // between where they came in and where they go out -- or, just come in, at the gate.
     void FieldConvoy(SystemState& st, Plan& p, bool arriving);

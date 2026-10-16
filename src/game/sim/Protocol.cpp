@@ -250,6 +250,8 @@ json MissionJson(const Proto::MissionView& m)
         j["where"] = m.systemName;
         j["dl"] = m.deadline;
         j["site"] = m.siteId;
+        if (m.against != Factions::Unaffiliated())
+            j["vs"] = FacJ(m.against);  // the other side of a siege (#407)
     }
     return j;
 }
@@ -274,6 +276,8 @@ Proto::MissionView ToMission(const json& mj)
     m.systemName = mj.value("where", std::string());
     m.deadline = mj.value("dl", 0.0);
     m.siteId = mj.value("site", 0);
+    if (mj.contains("vs"))
+        m.against = ToFac(mj["vs"]);
     return m;
 }
 }  // namespace

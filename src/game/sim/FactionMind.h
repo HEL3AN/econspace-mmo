@@ -96,22 +96,38 @@ struct Plan
     int         slot = -1;
     // The way from the holding it set out from to `target`, inclusive, and where along it the
     // convoy is: `route[leg]` since `legAt`, moving on `hop` seconds later. A leg of -1 is a
-    // convoy yet to set out -- the first, or the next after one was lost -- at `legAt`. Its
-    // escort is `force` (lent by `lent`, one holding), and `freight` is the hauler, 1 whole and
-    // 0 lost. `setbacks` counts the convoys lost on the way.
+    // convoy yet to set out -- the first, or the next after one did not get through -- at
+    // `legAt`; a route with it is the way it is waiting to take (#407). Its escort is `force`
+    // (lent by `lent`, one holding), and `freight` is what it carries, 1 whole and 0 lost --
+    // waiting to set out, what is left of the last one, the rest to be paid for again.
+    // `setbacks` counts the convoys that did not get through, and `waits` the times the faction
+    // held one back or one turned back: past the rules' most, it goes whatever the odds.
     std::vector<std::string> route;
     int                      leg = -1;
     double                   legAt = 0.0;
     float                    freight = 1.0f;
     int                      setbacks = 0;
+    int                      waits = 0;
     // Where its ships are real, and which is the hauler. Transient, like `fielded`.
     std::string fieldedIn;
     int         hauler = 0;
+    // The most escort strength pilots have lent it in the system it is crossing, and whether
+    // any pilot has been with it at all (#407). Transient: a restart begins cold, and alone.
+    float guard = 0.0f;
+    bool  escorted = false;
     // How many pilots' deliveries its site has had (#345): each one took a share off the time it
     // has left to build, up to the jobs rules' most. Saved.
     int supplied = 0;
     // Whether it is a convoy still on its way: an Anchor or an Upgrade before it has arrived.
     bool OnTheWay() const { return (kind == Kind::Anchor || kind == Kind::Upgrade) && !arrived; }
+    // Where its convoy is (#407): the system it is crossing, or the one it waits to set out
+    // from; empty while it has no way yet.
+    std::string ConvoyAt() const
+    {
+        if (leg >= 0 && (size_t)leg < route.size())
+            return route[(size_t)leg];
+        return route.empty() ? std::string() : route.front();
+    }
 };
 
 // One faction's knowledge, by system id, and what it has to spend. Saved.

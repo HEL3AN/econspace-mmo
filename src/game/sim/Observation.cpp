@@ -233,6 +233,7 @@ const char* MissionKind(int type)
         case MissionType::Escort: return "escort";
         case MissionType::Siege: return "siege";
         case MissionType::Contract: return "contract";
+        case MissionType::Besiege: return "besiege";
     }
     return "job";
 }
@@ -261,6 +262,11 @@ std::string MissionLine(const Obs::View& view, size_t index, const Proto::Missio
                    "anywhere\n",
                    m.rewardMoney, FactionName(m.faction).c_str(), m.rewardRep, m.systemName.c_str(),
                    m.systemId.c_str(), due.empty() ? "" : ", ", due.c_str());
+        // A siege has two sides, and a job is for one of them (#407).
+        if (IsSiegeJob((MissionType)m.type))
+            out += Fmt("       for %s (%s), against %s\n", FactionName(m.faction).c_str(),
+                       (MissionType)m.type == MissionType::Siege ? "besieged" : "besieging",
+                       FactionName(m.against).c_str());
         return out;
     }
     if ((MissionType)m.type == MissionType::Contract)
@@ -597,6 +603,10 @@ std::string MissionNeeds(const View& view, const Proto::MissionView& m)
             return Fmt("shoot down %d more besieger%s in %s (system %s)",
                        m.targetCount - m.progress, m.targetCount - m.progress == 1 ? "" : "s",
                        m.systemName.c_str(), m.systemId.c_str());
+        case MissionType::Besiege:
+            return Fmt("shoot down %d more of the %s defenders in %s (system %s)",
+                       m.targetCount - m.progress, FactionName(m.against).c_str(),
+                       m.systemName.c_str(), m.systemId.c_str());
     }
     return "dock at " + StationName(view, HandInStation(m));
 }
@@ -642,7 +652,7 @@ std::string DescribeMissions(const View& view)
     {
         const Proto::MissionView& m = snap.missionActive[i];
         out += MissionLine(view, i, m);
-        if ((MissionType)m.type == MissionType::Bounty || (MissionType)m.type == MissionType::Siege)
+        if ((MissionType)m.type == MissionType::Bounty || IsSiegeJob((MissionType)m.type))
             out += Fmt("       progress %d/%d\n", m.progress, m.targetCount);
         if (m.completable)
             out += IsPlanJob((MissionType)m.type) ? "       READY TO HAND IN, anywhere\n"
