@@ -1,5 +1,6 @@
 // EconSpace world editor — entry point.
 #include "Editor.h"
+#include "core/DataDir.h"
 
 #include <cstdlib>
 #include <string>
@@ -9,6 +10,9 @@
 
 int main(int argc, char** argv)
 {
+    // The source data/ from the build tree, else data/ beside the exe, or --data <dir> (#399).
+    if (DataDir::Resolve(argc, argv, "worldeditor").empty())
+        return 1;
     // A shot is taken from a render texture, so it needs no window anyone can see -- and a
     // visible one, opened and closed over and over by a script, steals focus from whoever is
     // using the machine (#293). Decided before the window exists: the constructor opens it.

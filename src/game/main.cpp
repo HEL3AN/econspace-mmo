@@ -9,6 +9,7 @@
 // Connecting is mandatory: the world lives on an authoritative server and the
 // client is a renderer plus an input source. The connection is established here,
 // before the window opens, so Game cannot be constructed without one.
+#include "core/DataDir.h"
 #include "core/Game.h"
 #include "net/Tcp.h"
 #include "sim/Auth.h"
@@ -64,6 +65,10 @@ static int Usage(const char* exe)
 
 int main(int argc, char** argv)
 {
+    // data/ is found at runtime -- beside the exe in a copied build (#399). Before the
+    // arguments are read: --data is taken out of them.
+    if (DataDir::Resolve(argc, argv, "econspace").empty())
+        return 1;
     if (argc < 6 || std::strcmp(argv[1], "connect") != 0)
         return Usage(argv[0]);
 

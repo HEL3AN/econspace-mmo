@@ -8,6 +8,7 @@
 
 #include <cstdlib>
 
+#include "core/DataDir.h"
 #include "core/World.h"
 #include "render/Perf.h"
 #include "render/Textures.h"
@@ -41,15 +42,10 @@ Editor::Editor()
     // never "quit": the window's own close button does that.
     SetExitKey(KEY_NULL);
 
-#ifdef EDITOR_DATA_DIR
-    dataDir_ = EDITOR_DATA_DIR;  // the repository's source data/ folder
-#else
-    dataDir_ = std::string(GetApplicationDirectory()) + "data/";
-#endif
-    // Another checkout's data/ -- a worktree's, say -- seen through this build, so a change
-    // that is only data can be looked at without building the editor again.
-    if (const char* other = std::getenv("ECONSPACE_DATA"))
-        dataDir_ = std::string(other) + "/";
+    // The repository's source data/ when run from the build tree, so edits land in the source;
+    // ECONSPACE_DATA or --data for another checkout's -- a worktree's, say -- seen through
+    // this build. Found by main() (DataDir.h).
+    dataDir_ = DataDir::Path();
     Ui::LoadAssets(dataDir_);                         // the theme and the fonts it names (#297)
     if (!Factions::Load(dataDir_ + "factions.json"))  // faction properties/relations
         TraceLog(LOG_ERROR, "Factions: %s", Factions::Error().c_str());
