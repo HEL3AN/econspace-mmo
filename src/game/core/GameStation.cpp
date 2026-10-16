@@ -554,19 +554,34 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
         if (q.changed && !q.design.id.empty())
             L.Field(q.price >= 0.0 ? "Price here" : "Refund", Credits(std::abs(q.price)) + " cr",
                     t.colors.money);
-        // Why it would be refused, before the server says so -- but not the "nothing has
-        // changed" of a tab just opened.
-        if (!q.problem.empty() && (q.changed || q.design.id.empty()))
-            L.Text(q.problem, TextStyle::Small().Tint(t.colors.warn).Wrap());
+        // The verdict as the fit is edited, the server's own (Obs::QuoteFit): whether the fit
+        // is one a ship may fly, and whether this yard would take it now -- but not the
+        // "nothing has changed" of a tab just opened.
+        const bool drafted = q.changed || q.design.id.empty();
+        if (drafted && q.ok)
+            L.Text("The yard would take this fit.", TextStyle::Small().Tint(t.colors.good).Wrap());
+        else if (drafted)
+            L.Text(
+                q.problem,
+                TextStyle::Small().Tint(q.design.id.empty() ? t.colors.bad : t.colors.warn).Wrap());
         // A saved design drawn up here is applied as that design; any other fit as a refit.
+        // Apply is there once something has changed, and lit only when the server would take
+        // it: a fit that would be refused says why above instead of being sent.
         const bool draftIsChosen = chosen != nullptr && q.design.id == chosen->id;
         L.Row(Box().GrowX().Gap(t.metrics.gap),
               [&]
               {
-                  if (!draftIsChosen)
-                      for (const Actions::Action& a : Actions::ForRefit(fitDraft_, q.ok, q.changed))
-                          if (L.Button("apply", a.label, true))
-                              Perform(a, 0, { 0.0f, 0.0f });
+                  if (!draftIsChosen && drafted)
+                  {
+                      std::string label = "Apply";
+                      if (!q.design.id.empty())
+                          label += q.price >= 0.0 ? "  " + Credits(q.price) + " cr"
+                                                  : "  refund " + Credits(-q.price) + " cr";
+                      const std::vector<Actions::Action> apply =
+                          Actions::ForRefit(fitDraft_, q.ok, q.changed);
+                      if (L.Button("apply", label, !apply.empty(), !apply.empty()))
+                          Perform(apply.front(), 0, { 0.0f, 0.0f });
+                  }
                   if (L.Button("reset", "Reset"))
                       fitDraftFor_.clear();
               });

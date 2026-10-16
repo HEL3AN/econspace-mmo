@@ -105,11 +105,13 @@ public:
     // Start with the galaxy map open (--map): for seeing the index the server sent without
     // a hand on the keyboard.
     void StartOnMap() { desk_.SetOpen(WIN_MAP, true); }
-    // Start with the hangar open on its Fit tab (--fit): a picture of the tab needs it.
+    // Start with the hangar open on its Fit tab (--fit): a picture of the tab needs it. The
+    // hangar is a tab of the docked stack, so it is brought to the front once docked (Run).
     void StartOnFit()
     {
         desk_.SetOpen(WIN_HANGAR, true);
         hangarTab_ = 1;
+        fitForward_ = true;
     }
     // The interface at exactly this scale, whatever the display asks for (--uiscale): for
     // pictures that look the same on every machine. Not saved.
@@ -512,6 +514,7 @@ private:
     std::string themeToUse_;       // chosen in Settings while it was drawn: switched to next frame
     int         missionsTab_ = 0;  // 0 the missions taken, 1 the docked station's board
     bool        missionsForward_ = false;    // opened on docking: to the front of its stack
+    bool        fitForward_ = false;         // --fit: the hangar to the front, once docked
     int         missionsSel_[2] = { 0, 0 };  // the mission chosen on each
     Rectangle   radarScope_ = { 0.0f, 0.0f, 0.0f, 0.0f };  // where the radar's picture was drawn
     int         settingsTab_ = 0;

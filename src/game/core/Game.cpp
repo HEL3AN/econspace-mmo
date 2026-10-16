@@ -175,6 +175,17 @@ void Game::Run()
             if (h != Ui::DeskLayout::NONE && desk_.IsOpen(WIN_MISSIONS) && !desk_.Layout().Shown(h))
                 desk_.Toggle(WIN_MISSIONS);  // a hidden tab is brought to the front
         }
+        // --fit: after the missions, so the hangar is the tab in front of the docked stack.
+        if (fitForward_ && mode_ == GameMode::Docked)
+        {
+            fitForward_ = false;
+            hangarTab_ = 1;
+            const int h = desk_.Layout().Find(WIN_HANGAR);
+            if (!desk_.IsOpen(WIN_HANGAR))
+                desk_.SetOpen(WIN_HANGAR, true);
+            else if (h != Ui::DeskLayout::NONE && !desk_.Layout().Shown(h))
+                desk_.Toggle(WIN_HANGAR);
+        }
         desk_.BeginFrame();
 
         // Debug commands (work in any mode).

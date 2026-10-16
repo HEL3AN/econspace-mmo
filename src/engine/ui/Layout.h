@@ -394,8 +394,10 @@ public:
     // A label on the left and its value on the right, on one line.
     void Field(std::string_view label, std::string_view value, Color valueColor);
     void Divider();
-    // Returns true on the frame it was clicked.
-    bool Button(std::string_view id, std::string_view label, bool highlighted = false);
+    // Returns true on the frame it was clicked. One that is not `enabled` is drawn dimmed, does
+    // not light up under the cursor and is never clicked: there, saying what cannot be done.
+    bool Button(std::string_view id, std::string_view label, bool highlighted = false,
+                bool enabled = true);
     // A small on/off indicator: filled when on.
     void Chip(std::string_view label, bool on, Color onColor);
     // One line of a form: its label in a column of its own on the left (metrics.formLabel
