@@ -599,6 +599,8 @@ int Simulation::OpenNext(int fromSlot, const std::string& by, const std::string&
         }
         openedNow_.push_back(slot);
     }
+    // Word of it reaches the factions nearby, and the expeditions begin (S6).
+    SendWordOfMouth(slot);
     RegionTide& t = tides_[fromSlot];
     t = RegionTide{};
     t.lastMouthAt = time_;
@@ -1245,20 +1247,31 @@ void Simulation::AnchorLost(SystemState& st, const std::string& owner, const std
     Announce("anchor", whose, st.id, "The " + name + " in " + where + " fell" + how);
 }
 
-bool Simulation::LayAnchor(FactionId f, const std::string& from, int slot)
+// The convoy is at the mouth (S6): what it brought goes down beside the gate. Checked against
+// what is there now, as a settlement is on arrival -- a mouth anchored or collapsed meanwhile,
+// or another's Anchor going up at it, is no mouth to anchor, and what was paid goes back.
+bool Simulation::LayAnchorSite(Plan& p)
 {
-    RegionOpening*   o = LiveOpening(slot);
-    const Blueprint* bp = Blueprints::Find(ANCHOR_BLUEPRINT);
-    const float      cost = AnchorCost();
-    FactionMind&     mind = minds_[f];
-    if (o == nullptr || o->state != "unstable" || bp == nullptr || cost <= 0.0f ||
-        mind.stock < cost || !AnchorAt(*o, false).empty())
+    RegionOpening*    o = LiveOpening(p.slot);
+    const Blueprint*  bp = Blueprints::Find(ANCHOR_BLUEPRINT);
+    const FactionId   f = p.faction;
+    const std::string where = SystemName(p.target);
+    auto              back = [&](const std::string& why)
+    {
+        minds_[f].stock += AnchorCost();
+        Record("anchor", f, p.target,
+               FactionName(f) + "'s Anchor convoy turned back from " + where + ": " + why);
         return false;
+    };
+    if (o == nullptr || o->mouth != p.target || o->state != "unstable" || bp == nullptr)
+        return back("the mouth is not there to anchor");
+    if (!AnchorAt(*o, false).empty())
+        return back("an Anchor stands there already");
     SystemState* st = SystemById(o->mouth);
     Vector2      gate{ 0.0f, 0.0f };
     float        size = 0.0f;
-    if (st == nullptr || !CrossingGateAt(o->mouth, EntryOf(slot), gate, size))
-        return false;
+    if (st == nullptr || !CrossingGateAt(o->mouth, EntryOf(p.slot), gate, size))
+        return back("the mouth is not there to anchor");
     // Beside the gate, clear of it, within the blueprint's reach of the mouth: drawn from who,
     // where and which mouth, never from when.
     const Archetype* arch = Archetypes::Find(bp->archetype);
@@ -1266,7 +1279,7 @@ bool Simulation::LayAnchor(FactionId f, const std::string& from, int slot)
     const float      inner = size + own + bp->clearance + 200.0f;
     const float      outer = std::max(inner, size + bp->mouth * 0.8f);
     Gen::Rng         rng(
-        Gen::Key(ANCHOR_KEY, (uint64_t)f.Index(), Intelligence::KeyOf(o->mouth), (uint64_t)slot));
+        Gen::Key(ANCHOR_KEY, (uint64_t)f.Index(), Intelligence::KeyOf(o->mouth), (uint64_t)p.slot));
     bool    found = false;
     Vector2 at{ 0.0f, 0.0f };
     for (int i = 0; i < ANCHOR_TRIES && !found; i++)
@@ -1277,25 +1290,15 @@ bool Simulation::LayAnchor(FactionId f, const std::string& from, int slot)
         found = SpotProblem(*st, *bp, at).empty();
     }
     if (!found)
-        return false;
+        return back("no room beside the gate");
     auto site = std::make_unique<Structure>(at, 0.0f, FactionName(f) + " Anchor", bp->archetype);
     site->SetBlueprint(bp->id);
     site->StartBuilding(time_, time_ + bp->buildSeconds);
     const int id = AddStatic(o->mouth, std::move(site), Outposts::OwnerOf(f));
     if (id == 0)
-        return false;
-    mind.stock -= cost;
-
-    Plan p;
-    p.id = nextPlanId_++;
-    p.kind = Plan::Kind::Anchor;
-    p.faction = f;
-    p.from = from;
-    p.target = o->mouth;
-    p.startedAt = time_;
-    p.dueAt = time_ + bp->buildSeconds;
+        return back("no room beside the gate");
     p.site = StaticKey(o->mouth, id);
-    plans_[p.id] = p;
+    p.dueAt = time_ + bp->buildSeconds;
     due_.insert({ p.dueAt, p.id });
     Announce("anchor", f, o->mouth,
              FactionName(f) + " began an Anchor at the mouth in " + SystemName(o->mouth) +

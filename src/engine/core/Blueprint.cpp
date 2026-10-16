@@ -61,7 +61,7 @@ bool ParseBlueprint(const json& j, Blueprint& b, std::string& err)
     }
     if (!OnlyKnownKeys(j,
                        { "id", "name", "archetype", "cost", "buildSeconds", "lifetime", "hull",
-                         "wreck", "placement", "builders" },
+                         "wreck", "placement", "builders", "onto" },
                        err))
         return false;
     if (j.contains("builders"))
@@ -90,6 +90,24 @@ bool ParseBlueprint(const json& j, Blueprint& b, std::string& err)
     }
     b.name = j.value("name", b.id);
     b.archetype = j.value("archetype", std::string());
+    if (j.contains("onto"))
+    {
+        const json& onto = j["onto"];
+        if (!onto.is_array() || onto.empty())
+        {
+            err = "'onto' is a list of the blueprints an upgrade is built onto";
+            return false;
+        }
+        for (const json& o : onto)
+        {
+            if (!o.is_string() || o.get<std::string>().empty())
+            {
+                err = "onto: '" + o.dump() + "' is not a blueprint id";
+                return false;
+            }
+            b.onto.push_back(o.get<std::string>());
+        }
+    }
 
     // Built from an archetype that exists, is a structure and says it can be built. Each
     // of the three is a different mistake, so each says which.
@@ -99,9 +117,11 @@ bool ParseBlueprint(const json& j, Blueprint& b, std::string& err)
         err = "archetype '" + b.archetype + "' does not exist";
         return false;
     }
-    if (a->kind != EntityKind::Structure)
+    if (a->kind != EntityKind::Structure && (a->kind != EntityKind::Station || b.onto.empty()))
     {
-        err = "archetype '" + b.archetype + "' is not a Structure";
+        err = "archetype '" + b.archetype + "' is not a Structure" +
+              (a->kind == EntityKind::Station ? " (a station is built only as an upgrade, 'onto')"
+                                              : "");
         return false;
     }
     if (!a->Has(Component::Buildable))
@@ -225,6 +245,21 @@ bool Load(const std::string& path)
             }
         loaded.push_back(std::move(b));
     }
+
+    // What an upgrade is built onto has to be a blueprint of the file, and not itself.
+    for (const Blueprint& b : loaded)
+        for (const std::string& o : b.onto)
+        {
+            bool found = false;
+            for (const Blueprint& other : loaded)
+                found = found || (other.id == o && other.id != b.id);
+            if (!found)
+            {
+                g_error = path + ": blueprint '" + b.id + "': onto: '" + o +
+                          "' is not another blueprint of the file";
+                return false;
+            }
+        }
 
     int perAccount = 0;
     if (j.contains("limits"))

@@ -7,10 +7,13 @@
 
 namespace
 {
-WorldRules::Tide    g_tide;
-WorldRules::Mouths  g_mouths;
-WorldRules::Archive g_archive;
-std::string         g_error;
+WorldRules::Tide        g_tide;
+WorldRules::Mouths      g_mouths;
+WorldRules::Archive     g_archive;
+WorldRules::Expeditions g_expeditions;
+WorldRules::Growth      g_growth;
+WorldRules::Convoys     g_convoys;
+std::string             g_error;
 
 // Reads one section's values into their places: every field known, every number zero or
 // more. False with `error` saying which field, and what is wrong with it.
@@ -70,7 +73,8 @@ bool Load(const std::string& path)
     }
     for (auto it = j.begin(); it != j.end(); ++it)
         if (it.key() != "schema" && it.key() != "tide" && it.key() != "mouths" &&
-            it.key() != "archive")
+            it.key() != "archive" && it.key() != "expeditions" && it.key() != "growth" &&
+            it.key() != "convoys")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -121,9 +125,43 @@ bool Load(const std::string& path)
         g_error = path + ": archive: deadDays must be more than zero, and returnChance at most 1";
         return false;
     }
+    // S6's: expeditions, growing stations and convoys.
+    Expeditions e;
+    if (j.contains("expeditions") &&
+        !ReadSection(j["expeditions"], path + ": expeditions",
+                     { { "curiosity", &e.curiosity }, { "hours", &e.hours } },
+                     { { "reach", &e.reach } }, {}, g_error))
+        return false;
+    Growth g;
+    if (j.contains("growth") && !ReadSection(j["growth"], path + ": growth",
+                                             { { "marketWorth", &g.marketWorth },
+                                               { "stationWorth", &g.stationWorth },
+                                               { "stationNeed", &g.stationNeed } },
+                                             { { "stationsPerRegion", &g.stationsPerRegion },
+                                               { "marketReach", &g.marketReach } },
+                                             {}, g_error))
+        return false;
+    Convoys c;
+    if (j.contains("convoys") && !ReadSection(j["convoys"], path + ": convoys",
+                                              { { "hop", &c.hop },
+                                                { "escort", &c.escort },
+                                                { "ambush", &c.ambush },
+                                                { "retryMinutes", &c.retryMinutes } },
+                                              { { "reach", &c.reach } }, {}, g_error))
+        return false;
+    // A convoy that takes no time anywhere, or reaches nowhere, would build at once.
+    if (g.marketReach <= 0 || c.hop <= 0.0 || c.reach <= 0)
+    {
+        g_error =
+            path + ": growth.marketReach, convoys.hop and convoys.reach must be more than zero";
+        return false;
+    }
     g_tide = t;
     g_mouths = m;
     g_archive = a;
+    g_expeditions = e;
+    g_growth = g;
+    g_convoys = c;
     return true;
 }
 
@@ -160,6 +198,36 @@ void SetMouthRules(const Mouths& m)
 void SetArchiveRules(const Archive& a)
 {
     g_archive = a;
+}
+
+const Expeditions& ExpeditionRules()
+{
+    return g_expeditions;
+}
+
+const Growth& GrowthRules()
+{
+    return g_growth;
+}
+
+const Convoys& ConvoyRules()
+{
+    return g_convoys;
+}
+
+void SetExpeditionRules(const Expeditions& e)
+{
+    g_expeditions = e;
+}
+
+void SetGrowthRules(const Growth& g)
+{
+    g_growth = g;
+}
+
+void SetConvoyRules(const Convoys& c)
+{
+    g_convoys = c;
 }
 
 }  // namespace WorldRules

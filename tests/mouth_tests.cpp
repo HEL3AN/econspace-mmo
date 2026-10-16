@@ -207,7 +207,12 @@ TEST_CASE("a new mouth is unstable: a day to live, small ships only, and told so
             CHECK(e.expiresAt == doctest::Approx(o->closesAt));
         }
     CHECK(back);
-    CHECK(sim.Chronicle().back().text.find("collapses in 24 h") != std::string::npos);
+    // The mouth's line -- word of it reaching the factions nearby may follow (S6).
+    std::string opened;
+    for (const ChronicleEntry& e : sim.Chronicle())
+        if (e.kind == "tide")
+            opened = e.text;
+    CHECK(opened.find("collapses in 24 h") != std::string::npos);
 
     // Through it, only what is light enough.
     int light = 0, heavy = 0;

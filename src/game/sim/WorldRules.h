@@ -71,6 +71,48 @@ struct Archive
     double returnChance = 0.35;
 };
 
+// A mouth opening is news (#342 S6): every faction holding a system within `reach` jumps of
+// it learns what is on the far side -- intel on the entry system -- and for `hours` it values
+// going that way `curiosity` more than it would: the systems between it and the mouth, the
+// mouth, and the whole region beyond.
+struct Expeditions
+{
+    int    reach = 3;
+    double curiosity = 0.8;
+    double hours = 8.0;
+};
+
+// Stations grown by need, as in X4 (#342 S6): an outpost becomes an outpost market (a market
+// and a dock) where the nearest market is far -- `marketReach` jumps or more is as far as it
+// matters -- and an outpost market becomes a station where enough passes through or is mined:
+// a trade station or a mining station, whichever is the more, once it is at least
+// `stationNeed`. What each is worth to a faction is `marketWorth` and `stationWorth` times
+// the need, weighed against the risk like everything else it does. No region has more than
+// `stationsPerRegion` stations, whoever built them.
+struct Growth
+{
+    int    stationsPerRegion = 4;
+    int    marketReach = 3;
+    double marketWorth = 1.2;
+    double stationWorth = 1.2;
+    double stationNeed = 0.45;
+};
+
+// The builder convoy (#342 S6): an Anchor or an upgrade is built from what a convoy brings,
+// from the faction's nearest holding along the gates, `hop` seconds in each system it passes
+// -- `reach` jumps at most. It takes `escort` of the faction's capacity as escort, if the
+// holding can spare it. In a system where anyone hostile to it is, both sides lose ships at
+// `ambush` a second for every ship of the other, the escort first and then the hauler; the
+// hauler gone, the convoy is lost, and the plan sends another `retryMinutes` later.
+struct Convoys
+{
+    double hop = 120.0;
+    double escort = 0.25;
+    double ambush = 0.01;
+    double retryMinutes = 10.0;
+    int    reach = 6;
+};
+
 // Reads `path`. False, with Error() saying why, and the rules as they were, when it does
 // not read.
 bool               Load(const std::string& path);
@@ -78,9 +120,15 @@ const std::string& Error();
 const Tide&        TideRules();
 const Mouths&      MouthRules();
 const Archive&     ArchiveRules();
+const Expeditions& ExpeditionRules();
+const Growth&      GrowthRules();
+const Convoys&     ConvoyRules();
 // For a test: rules of its own, without a file.
 void SetTideRules(const Tide& t);
 void SetMouthRules(const Mouths& m);
 void SetArchiveRules(const Archive& a);
+void SetExpeditionRules(const Expeditions& e);
+void SetGrowthRules(const Growth& g);
+void SetConvoyRules(const Convoys& c);
 
 }  // namespace WorldRules

@@ -39,8 +39,6 @@ namespace
 {
 // How many macro passes make one faction period: a minute at the 2 s pass.
 constexpr int FACTION_PERIOD = 30;
-// A holding keeps this share of its capacity at home; only what is above it can reach out.
-constexpr float HOME_GUARD = 0.6f;
 // The most one move takes out of a holding, as a share of the faction's capacity.
 constexpr float MOVE_SHARE = 0.25f;
 // Presence a faction has not kept up with fades by this share per period.
@@ -116,6 +114,7 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
             case EntityKind::Gate: p.gates++; break;
             case EntityKind::Station:
                 p.stations++;
+                p.markets += e->Has(Component::Market) ? 1 : 0;
                 if (e->Has(Component::Defensive))
                     p.defenders.push_back(static_cast<const Station*>(e.get())->GetFaction());
                 break;
@@ -128,11 +127,16 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
                     p.anchors.push_back(anchorer);  // a site too: it is what a rival stops
                     p.anchorIds.push_back(t.GetId());
                 }
-                if (!Outposts::IsOutpost(t.GetBuilds()))
+                p.markets += !t.IsBuilding() && e->Has(Component::Market) ? 1 : 0;
+                // An outpost being upgraded (#342 S6) -- into a market, or into a station -- is
+                // still the outpost it was until it is finished: the claim, the upkeep, a siege.
+                const Blueprint* bp = t.GetBlueprint();
+                const bool       upgrading = t.IsBuilding() && bp != nullptr && !bp->onto.empty();
+                if (!Outposts::IsOutpost(t.GetBuilds()) && !upgrading)
                     break;
                 p.outpostSite = true;
                 FactionId owner;
-                if (!t.IsBuilding() && Outposts::FactionOf(t.GetOwner(), owner))
+                if ((!t.IsBuilding() || upgrading) && Outposts::FactionOf(t.GetOwner(), owner))
                 {
                     p.outposts.push_back(owner);
                     p.outpostIds.push_back(t.GetId());
@@ -303,6 +307,7 @@ void Simulation::ResolveDuePlans()
             case Plan::Kind::Siege: ResolveSiege(p); break;
             case Plan::Kind::Return: ResolveReturn(p); break;
             case Plan::Kind::Anchor: ResolveAnchor(p); break;
+            case Plan::Kind::Upgrade: ResolveUpgrade(p); break;
         }
     }
 }
@@ -435,6 +440,7 @@ void Simulation::StepFactions()
         SeedMinds();
     ResolveDuePlans();
     StepSieges();
+    StepConvoys();  // the builder convoys on their way (#342 S6)
 
     // Each faction thinks once a period, on a pass of its own (#295): spread across the
     // period rather than all on one pass, so no pass carries more than one of them -- while
@@ -452,15 +458,24 @@ void Simulation::StepFactions()
     StepUpkeep();
 
     // Once a period, holdings yield (#295): something for being held, more for trade and
-    // for ore. What a faction cannot store is not income.
-    const float storable = STOCK_OUTPOSTS * OutpostCost();
+    // for ore. What a faction cannot store is not income -- and it stores, besides, what it
+    // sets by to keep the outposts it has (#342 S6): a faction with many is not kept from ever
+    // affording anything new by the reserve that keeping them asks of it.
+    std::map<FactionId, int> kept;
+    for (const auto& kv : systems_)
+        for (FactionId o : kv.second.profile.outposts)
+            kept[o]++;
+    const float reserve = UPKEEP_RESERVE * Blueprints::UpkeepRules().share * OutpostCost();
     for (const auto& kv : systems_)
     {
         const SystemAggregate& a = kv.second.agg;
         if (!a.claimed)
             continue;
         const float ore = std::min(1.0f, kv.second.profile.belts / 3.0f);
-        float&      stock = minds_[a.controller].stock;
+        const auto  n = kept.find(a.controller);
+        const float storable =
+            STOCK_OUTPOSTS * OutpostCost() + reserve * (n == kept.end() ? 0.0f : (float)n->second);
+        float& stock = minds_[a.controller].stock;
         stock = std::min(storable, stock + INCOME_BASE * (1.0f + a.prosperity + ore));
     }
 
@@ -478,8 +493,9 @@ void Simulation::StepFactions()
     };
     for (const auto& kv : plans_)
     {
-        if (kv.second.kind == Plan::Kind::Siege)
+        if (kv.second.kind == Plan::Kind::Siege || kv.second.OnTheWay())
         {
+            // A siege's contingents, and a convoy's escort (#342 S6).
             for (const Plan::Lent& l : kv.second.lent)
                 owes(l.from, kv.second.faction, l.force);
         }
@@ -536,11 +552,13 @@ void Simulation::Think(FactionId f)
     }
     if (t.appetite <= 0.0f)
         return;  // holds what it has and reaches for nothing
+    // Word of a mouth near its space draws it that way for a while (#342 S6).
+    const Drawn drawn = DrawnBy(f);
 
     // What it already has under way: one survey of a system at a time, and no more at once
     // than its holdings can send.
     std::set<std::string> surveying;
-    bool                  settling = false, besieging = false, anchoring = false;
+    bool                  settling = false, besieging = false, anchoring = false, upgrading = false;
     for (const auto& kv : plans_)
         if (kv.second.faction == f && kv.second.kind == Plan::Kind::Survey)
             surveying.insert(kv.second.target);
@@ -550,6 +568,8 @@ void Simulation::Think(FactionId f)
             besieging = true;
         else if (kv.second.faction == f && kv.second.kind == Plan::Kind::Anchor)
             anchoring = true;
+        else if (kv.second.faction == f && kv.second.kind == Plan::Kind::Upgrade)
+            upgrading = true;
     const bool canSurvey = (int)surveying.size() < 1 + holdings / PLANS_PER_HOLDINGS;
     // One outpost at a time, and only with the stock to pay for it -- over and above what
     // keeping the ones it has will cost for a while (slice 5): a faction that spends its
@@ -580,7 +600,8 @@ void Simulation::Think(FactionId f)
         Survey,
         Settle,
         Siege,
-        Anchor
+        Anchor,
+        Upgrade
     };
     Act         act = Act::None;
     float       bestScore = 0.0f;
@@ -590,8 +611,9 @@ void Simulation::Think(FactionId f)
     std::map<std::string, std::pair<std::vector<Plan::Lent>, std::string>> pools;
     std::vector<Plan::Lent>                                                lend;
     std::string                                                            via;
-    int  anchorSlot = -1;        // the mouth an Anchor would hold
-    bool againstAnchor = false;  // the siege is of an Anchor rather than an outpost
+    int         anchorSlot = -1;        // the mouth an Anchor would hold
+    std::string grow;                   // what an upgrade would make its outpost (#342 S6)
+    bool        againstAnchor = false;  // the siege is of an Anchor rather than an outpost
     // What a region behind a mouth promises, from what was seen of its entry system (#342
     // S4): what the place offers, and a whole region nobody holds.
     auto promise = [&](const Intel& seen)
@@ -633,8 +655,10 @@ void Simulation::Think(FactionId f)
             {
                 // An enemy's outpost next door is worth watching: what it would take to
                 // bring down is what its garrison is now, not what it was (slice 5).
-                const float value = Intelligence::SurveyValue(
-                    t.curiosity + (rival && canSiege ? t.unclaimed : 0.0f), seen, time_);
+                const float value =
+                    Intelligence::SurveyValue(t.curiosity + DrawOf(drawn, kv.first, nid) +
+                                                  (rival && canSiege ? t.unclaimed : 0.0f),
+                                              seen, time_);
                 float hostile = 0.0f;
                 if (seen != nullptr)
                     for (FactionId g : Factions::All())
@@ -655,8 +679,9 @@ void Simulation::Think(FactionId f)
                 continue;
             const SystemOffer o = OfferOf(*seen);
             const float       unclaimed = seen->claimed ? 0.0f : 1.0f;
+            // ...and the way to a mouth it has heard of, and the space beyond (#342 S6).
             const float value = t.traffic * o.traffic + t.ore * o.ore + t.salvage * o.salvage +
-                                t.unclaimed * unclaimed;
+                                t.unclaimed * unclaimed + DrawOf(drawn, kv.first, nid);
 
             // Settling (#295): building an outpost in a system nobody holds, where it has
             // already come in strength -- it sees the place for itself, so what it knows is
@@ -940,9 +965,56 @@ void Simulation::Think(FactionId f)
         }
     }
 
+    // Growing an outpost (#342 S6): a market where none is near, a station where a market
+    // stands and enough passes through or is mined -- by what it needs, against what is there
+    // against it. The lawful build markets; a hidden base is not one to trade at.
+    if (!upgrading && Factions::IsLawful(f))
+        for (auto& kv : systems_)
+        {
+            const SystemState& st = kv.second;
+            if (!st.agg.claimed || st.agg.controller != f)
+                continue;
+            for (size_t i = 0; i < st.profile.outpostIds.size(); i++)
+            {
+                if (st.profile.outposts[i] != f)
+                    continue;
+                const Structure* outpost = nullptr;
+                for (const auto& e : st.entities)
+                    if (e->GetId() == st.profile.outpostIds[i] &&
+                        e->GetKind() == EntityKind::Structure)
+                        outpost = static_cast<const Structure*>(e.get());
+                if (outpost == nullptr || outpost->IsBuilding())
+                    continue;
+                float             worth = 0.0f;
+                const std::string bp = GrowthFor(f, st, *outpost, worth);
+                const float       price = BlueprintCost(bp);
+                if (bp.empty() || price <= 0.0f || mind.stock < price + reserve)
+                    continue;
+                float hostile = 0.0f;
+                for (FactionId g : Factions::All())
+                    if (Hostile(f, g))
+                        hostile += st.agg.presence[g];
+                const float risk =
+                    hostile / t.capacity + Intelligence::LossRisk(mind.lostAt, kv.first, time_);
+                const float score = worth - risk / t.appetite;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    act = Act::Upgrade;
+                    from = kv.first;
+                    grow = bp;
+                }
+            }
+        }
+
+    if (act == Act::Upgrade)
+    {
+        BeginUpgrade(f, from, grow);
+        return;
+    }
     if (act == Act::Anchor)
     {
-        LayAnchor(f, from, anchorSlot);
+        BeginAnchor(f, anchorSlot);
         return;
     }
     if (act == Act::Survey)

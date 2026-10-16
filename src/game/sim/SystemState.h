@@ -101,12 +101,14 @@ struct SystemProfile
     int belts = 0;     // asteroid fields
     int wrecks = 0;    // derelicts, searched or not
     int stations = 0;  // stations of any role
+    int markets = 0;   // what a ship can trade at: a station's market, a finished outpost market
     int planets = 0;
     int gates = 0;
     // The owner of each station that defends itself, one entry per station.
     std::vector<FactionId> defenders;
     // The owner of each finished faction outpost (#295), one entry per outpost: what a
-    // claim on a system nobody held needs. A site still being built is not one yet.
+    // claim on a system nobody held needs. A site still being built is not one yet -- unless
+    // it is an outpost being upgraded (#342 S6), which holds the claim it held while it grows.
     std::vector<FactionId> outposts;
     std::vector<int>       outpostIds;           // ...and which entity each is, in the same order
     bool                   outpostSite = false;  // anyone's outpost stands or is going up

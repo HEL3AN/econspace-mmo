@@ -32,6 +32,9 @@ public:
 
     // Makes it a site until `completesAt`. Wears the site's look meanwhile.
     void StartBuilding(double startedAt, double completesAt);
+    // An upgrade (#342 S6): from now on it is building `builds`, from blueprint `blueprint`, and
+    // is called `name`. The caller starts the building; the damage it has taken stays.
+    void Retask(std::string builds, std::string blueprint, std::string name);
     // The site is finished: from now on it is what it was built to be.
     void Complete();
     bool IsBuilding() const { return completesAt_ > 0.0; }

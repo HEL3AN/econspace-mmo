@@ -387,8 +387,12 @@ TEST_CASE("a region opened while the world runs is told before anything shows it
     for (const auto& s : sim.KnownUniverse().systems)
         onMap = onMap || Gen::SlotOf(s.id) == slot;
     CHECK(onMap);
+    // Its line in the history, perhaps followed by word of it reaching the factions (#342 S6).
     REQUIRE_FALSE(sim.Chronicle().empty());
-    CHECK(sim.Chronicle().back().kind == "tide");
+    const ChronicleEntry& last = sim.Chronicle().back();
+    CHECK((last.kind == "tide" || last.kind == "expedition"));
+    if (last.kind == "expedition")
+        CHECK(sim.Chronicle()[sim.Chronicle().size() - 2].kind == "tide");
     CHECK(sim.PlanRoute(o.mouth, systems.front(), false).size() == 2);
 }
 

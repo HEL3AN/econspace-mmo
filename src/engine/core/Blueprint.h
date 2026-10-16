@@ -19,7 +19,8 @@ struct Blueprint
 {
     std::string id;         // "beacon" -- what a command names
     std::string name;       // "Beacon" -- what a player is shown, and a new one is called
-    std::string archetype;  // what it becomes once built: a Structure archetype
+    std::string archetype;  // what it becomes once built: a Structure archetype -- or, for an
+                            // upgrade, a Station's
 
     // Taken from the hold when the site is laid down, all of it at once: what is committed
     // is committed, which is what makes a site worth defending.
@@ -50,6 +51,13 @@ struct Blueprint
     // An outpost is a faction's claim on a system and is not offered to a player yet.
     bool byPlayers = true;
     bool byFactions = false;
+
+    // An upgrade (#342 S6): built onto a finished structure of one of these blueprints, which
+    // becomes its site rather than a new one standing beside it -- an outpost growing into a
+    // market, a market into a station. Empty for anything laid down on its own. Only an upgrade
+    // may build a Station archetype: its site is a structure, and once finished it is a station
+    // of its builder's faction.
+    std::vector<std::string> onto;
 };
 
 namespace Blueprints

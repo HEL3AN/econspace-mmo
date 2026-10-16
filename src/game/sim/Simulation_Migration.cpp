@@ -217,7 +217,7 @@ void Simulation::StepMigration()
                     if (e->GetKind() != EntityKind::Npc)
                         continue;
                     NpcShip& n = static_cast<NpcShip&>(*e);
-                    if (n.GetRole() != m.role || n.IsLeaving() || !n.IsAlive())
+                    if (n.GetRole() != m.role || n.IsLeaving() || !n.IsAlive() || n.GetTask() != 0)
                         continue;
                     const float dx = n.GetPosition().x - gate.x, dy = n.GetPosition().y - gate.y;
                     const float d = dx * dx + dy * dy;

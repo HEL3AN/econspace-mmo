@@ -105,6 +105,14 @@ public:
         return leaving_ && dx * dx + dy * dy < 1.0f;
     }
 
+    // The faction plan this ship is the face of (#342 S6): a builder convoy's hauler or escort,
+    // shown where somebody is to see it. 0 for the system's own ships. A tasked ship is the
+    // plan's to count and to take away, never the system's: no recount, top-up or migration
+    // touches it, and it neither fights other NPCs nor draws a station's fire -- the plan's
+    // arithmetic does that, the same where nobody is. Transient, like every ship.
+    void SetTask(int plan) { task_ = plan; }
+    int  GetTask() const { return task_; }
+
     bool ReadyToFire() const { return fireTimer_ <= 0.0f; }
     void ResetFireTimer() { fireTimer_ = 0.9f; }
 
@@ -129,4 +137,5 @@ private:
     float       hull_ = 60.0f;
     float       fireTimer_ = 0.0f;
     bool        leaving_ = false;
+    int         task_ = 0;
 };

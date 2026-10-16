@@ -10,6 +10,7 @@
 #include "sim/ClientSession.h"
 #include "sim/Names.h"
 
+#include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
 #include "core/World.h"
@@ -63,6 +64,9 @@ std::string Simulation::PlacementProblem(const ClientSession& s, const Blueprint
     const float fromShip = Distance(at, s.ship->GetPosition());
     if (fromHere && fromShip > bp.reach)
         return "too far from the ship (" + Whole(fromShip) + " of at most " + Whole(bp.reach) + ")";
+    // An upgrade (#342 S6) is built onto an outpost, and only a faction has those yet.
+    if (!bp.onto.empty())
+        return "a " + bp.name + " is built onto an outpost, and only factions have those yet";
     const std::string where = SpotProblem(*st, bp, at);
     if (!where.empty())
         return where;
@@ -328,13 +332,15 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
     }
 
     // Destroyed. Everything about it is read before it is gone.
-    const std::string          owner = t->GetOwner();
-    const std::string          name = t->GetName();
-    const std::string          systemId = st.id;
-    const Vector2              at = t->GetPosition();
-    const float                size = t->GetSize();
-    const Blueprint*           bp = t->GetBlueprint();
-    const bool                 wasSite = t->IsBuilding();
+    const std::string owner = t->GetOwner();
+    const std::string name = t->GetName();
+    const std::string systemId = st.id;
+    const Vector2     at = t->GetPosition();
+    const float       size = t->GetSize();
+    const Blueprint*  bp = t->GetBlueprint();
+    // An outpost being upgraded (#342 S6) is a site, but what is lost is the outpost it was.
+    const bool                 upgrading = t->IsBuilding() && bp != nullptr && !bp->onto.empty();
+    const bool                 wasSite = t->IsBuilding() && !upgrading;
     const std::optional<Orbit> orbit = t->GetOrbit();  // an orbital outpost's (#318)
     const std::string          builds = t->GetBuilds();
     const std::string          key = StaticKey(st.id, id);
@@ -402,10 +408,15 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
             }
         return true;
     }
-    Outposts::Purpose purpose = Outposts::Purpose::Open;
-    Outposts::PurposeOf(builds, purpose);
-    std::string noun = Outposts::Called(purpose);  // "a watch post" -> "watch post"
-    noun = noun.substr(noun.find(' ') + 1);
+    // An upgrade under way is over with it; nothing is left to grow.
+    for (auto p = plans_.begin(); upgrading && p != plans_.end(); ++p)
+        if (p->second.kind == Plan::Kind::Upgrade && p->second.target == systemId &&
+            p->second.site == key)
+        {
+            plans_.erase(p);  // its due entry finds nothing
+            break;
+        }
+    const std::string noun = upgrading ? std::string("outpost") : Outposts::Noun(builds);
     switch (cause)
     {
         case Loss::Siege:
@@ -489,6 +500,13 @@ void Simulation::StepStructures()
             st->profile = ProfileOf(*st);  // a finished outpost is a claim (#295)
             tell(t->GetOwner(), Ev::Kind::Built,
                  t->GetName() + " is built in " + SystemName(systemId));
+            // An outpost grown into a station is one from now on (#342 S6).
+            const Archetype* became = Archetypes::Find(t->GetBuilds());
+            if (became != nullptr && became->kind == EntityKind::Station)
+            {
+                FinishStation(*st, id);
+                continue;
+            }
             // An Anchor finished at an unstable mouth makes it permanent gates (#342 S4).
             const Blueprint* anchor = Blueprints::Find(ANCHOR_BLUEPRINT);
             if (anchor != nullptr && IsAnchor(t->GetBuilds()))

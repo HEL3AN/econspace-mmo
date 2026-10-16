@@ -62,11 +62,7 @@ std::string NounOf(const Structure& t)
 {
     if (Simulation::IsAnchor(t.GetBuilds()))
         return "Anchor";  // at a wormhole mouth (#342 S4)
-    Outposts::Purpose purpose = Outposts::Purpose::Open;
-
-    Outposts::PurposeOf(t.GetBuilds(), purpose);
-    const std::string called = Outposts::Called(purpose);
-    return called.substr(called.find(' ') + 1);
+    return Outposts::Noun(t.GetBuilds());
 }
 
 float CostOf(const Blueprint* bp)
@@ -83,7 +79,7 @@ bool IsSiegeShip(const Entity& e, FactionId f)
     if (e.GetKind() != EntityKind::Npc)
         return false;
     const NpcShip& n = static_cast<const NpcShip&>(e);
-    return n.GetRole() == NpcRole::Warship && n.GetFaction() == f;
+    return n.GetRole() == NpcRole::Warship && n.GetFaction() == f && n.GetTask() == 0;
 }
 }  // namespace
 
@@ -121,7 +117,7 @@ float Simulation::LentFrom(const std::string& systemId, FactionId f) const
         const Plan& p = kv.second;
         if (p.faction != f)
             continue;
-        if (p.kind == Plan::Kind::Siege)
+        if (p.kind == Plan::Kind::Siege || p.OnTheWay())  // a convoy's escort too (#342 S6)
             for (const Plan::Lent& l : p.lent)
                 away += l.from == systemId ? l.force : 0.0f;
         else if (p.kind == Plan::Kind::Return && p.target == systemId)

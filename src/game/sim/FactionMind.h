@@ -54,7 +54,8 @@ struct Plan
         Settle,  // an outpost is being built; finished, it claims the system
         Siege,   // strength sent to bring down another faction's outpost (slice 5)
         Return,  // what is left of a siege's contingent, on its way home to `target`
-        Anchor   // an Anchor going up at a wormhole mouth in `target` (#342 S4)
+        Anchor,  // an Anchor going up at a wormhole mouth in `target` (#342 S4)
+        Upgrade  // an outpost growing into a market, or a market into a station (#342 S6)
     };
     // One holding's share of a siege: where it came from, how much, and how many jumps away.
     struct Lent
@@ -88,6 +89,26 @@ struct Plan
     // How many of its ships are real, while the target is hot: what a pass counts the
     // living against. Transient -- a cold system has none, and a restart begins cold.
     int fielded = 0;
+
+    // --- The builder convoy (#342 S6): an Anchor's and an Upgrade's, until it has arrived ---
+    // What an Upgrade builds (a blueprint id), and the region whose mouth an Anchor holds.
+    std::string blueprint;
+    int         slot = -1;
+    // The way from the holding it set out from to `target`, inclusive, and where along it the
+    // convoy is: `route[leg]` since `legAt`, moving on `hop` seconds later. A leg of -1 is a
+    // convoy yet to set out -- the first, or the next after one was lost -- at `legAt`. Its
+    // escort is `force` (lent by `lent`, one holding), and `freight` is the hauler, 1 whole and
+    // 0 lost. `setbacks` counts the convoys lost on the way.
+    std::vector<std::string> route;
+    int                      leg = -1;
+    double                   legAt = 0.0;
+    float                    freight = 1.0f;
+    int                      setbacks = 0;
+    // Where its ships are real, and which is the hauler. Transient, like `fielded`.
+    std::string fieldedIn;
+    int         hauler = 0;
+    // Whether it is a convoy still on its way: an Anchor or an Upgrade before it has arrived.
+    bool OnTheWay() const { return (kind == Kind::Anchor || kind == Kind::Upgrade) && !arrived; }
 };
 
 // One faction's knowledge, by system id, and what it has to spend. Saved.
@@ -103,6 +124,9 @@ struct FactionMind
     // When it last lost an outpost, or a site, in each system (slice 5): a faction remembers
     // where it was beaten, and thinks twice before building there again. Saved.
     std::map<std::string, double> lostAt;
+    // Word of a mouth (#342 S6): the regions beyond mouths that opened near its space, by slot,
+    // and until when going that way is worth its expedition curiosity. Saved.
+    std::map<int, double> expeditions;
 };
 
 // Outposts (#295, slice 3): a faction's claim on a system nobody held is a structure (#39)
@@ -158,6 +182,11 @@ inline const char* Called(Purpose p)  // "a mining outpost"
     return "an outpost";
 }
 
+// What an outpost grows into (#342 S6), in data/blueprints.json: a market, then a station.
+inline constexpr const char* MARKET_BLUEPRINT = "outpost_market";
+inline constexpr const char* TRADE_STATION_BLUEPRINT = "trade_station";
+inline constexpr const char* MINING_STATION_BLUEPRINT = "mining_station";
+
 // Which outpost an archetype is; false for anything that is not one.
 inline bool PurposeOf(const std::string& archetype, Purpose& out)
 {
@@ -172,10 +201,29 @@ inline bool PurposeOf(const std::string& archetype, Purpose& out)
     }
     return false;
 }
+// An outpost market (#342 S6): an outpost that has grown a market and a dock. Still an
+// outpost in every other way -- the claim, its upkeep, a siege's target.
+inline bool IsMarket(const std::string& archetype)
+{
+    const Blueprint* bp = Blueprints::Find(MARKET_BLUEPRINT);
+    return bp != nullptr && bp->archetype == archetype;
+}
 inline bool IsOutpost(const std::string& archetype)
 {
     Purpose p;
-    return PurposeOf(archetype, p);
+    return PurposeOf(archetype, p) || IsMarket(archetype);
+}
+
+// What an outpost is called without the article, for "the Traders Guild watch post": its
+// purpose's word, or "outpost market" for one that has grown a market (#342 S6).
+inline std::string Noun(const std::string& archetype)
+{
+    if (IsMarket(archetype))
+        return "outpost market";
+    Purpose p = Purpose::Open;
+    PurposeOf(archetype, p);
+    const std::string called = Called(p);
+    return called.substr(called.find(' ') + 1);
 }
 
 // Below this, nothing the faction values in a system is worth building for: an open point.

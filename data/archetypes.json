@@ -248,6 +248,7 @@
                 ]
             },
             "components": {
+                "buildable": {},
                 "dockable": { "range": 250 },
                 "market": {},
                 "storage": { "capacity": 5000 }
@@ -284,6 +285,7 @@
                 ]
             },
             "components": {
+                "buildable": {},
                 "dockable": { "range": 250 },
                 "market": {},
                 "storage": { "capacity": 3000 }
@@ -711,6 +713,42 @@
             },
             "components": {
                 "jumpLink": { "range": 200 }
+            }
+        },
+
+        {
+            "id": "structure.outpost_market",
+            "name": "Outpost Market",
+            "kind": "Structure",
+            "glyph": "%",
+            "color": [205, 200, 190, 255],
+            "layer": 4,
+            "size": 240,
+            "material": "hull",
+            "shape": {
+                "sections": [
+                    {"form": "polygon", "sides": 6, "radius": 0.48, "role": "hull", "pitch": 0.18},
+                    {"form": "capsule", "at": [0.86, 0.0], "repeat": 3, "length": 0.7, "width": 0.16, "role": "panel", "pitch": 0.14},
+                    {"form": "polygon", "sides": 4, "at": [1.3, 0.0], "repeat": 3, "radius": 0.26, "angle": 45, "role": "hull", "pitch": 0.14},
+                    {"form": "bar", "at": [0.62, 0.0], "angle": 60, "repeat": 3, "length": 0.42, "width": 0.12, "role": "panel", "pitch": 0.12, "z": -1}
+                ],
+                "kit": { "symmetry": "radial", "plain": 0.5, "modules": [
+                    {"of": "station.comms", "in": 0, "on": "top", "count": 1, "scale": 0.2},
+                    {"of": "station.storage", "in": 2, "on": "top", "count": 1, "scale": 0.2},
+                    {"of": "station.dock", "in": 2, "on": "edge", "count": 1, "scale": 0.15, "mount": "out"},
+                    {"of": "windows", "in": 1, "on": "edge", "count": [0, 1], "turn": 90, "scale": 0.09},
+                    {"of": "light.nav", "in": 2, "on": "edge", "count": 1, "scale": 0.06, "mount": "out"}
+                ] },
+                "parts": [
+                    {"form": "ring", "radius": 0.34, "width": 0.03, "role": "trim", "alpha": 0.6, "minPixels": 40},
+                    {"form": "disc", "at": [1.62, 0.0], "repeat": 3, "radius": 0.045, "role": "light", "minPixels": 60, "blink": 2.0}
+                ]
+            },
+            "components": {
+                "buildable": {},
+                "dockable": { "range": 200 },
+                "market": {},
+                "defensive": { "range": 2000, "damage": 8 }
             }
         },
 

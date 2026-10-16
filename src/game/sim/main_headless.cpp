@@ -2507,9 +2507,8 @@ int main(int argc, char** argv)
         for (const auto& kv : sim.Systems())
             for (const auto& e : kv.second.entities)
             {
-                Outposts::Purpose purpose;
                 if (e->GetKind() != EntityKind::Structure ||
-                    !Outposts::PurposeOf(static_cast<const Structure&>(*e).GetBuilds(), purpose))
+                    !Outposts::IsOutpost(static_cast<const Structure&>(*e).GetBuilds()))
                     continue;
                 const Vector2 at = e->GetPosition();
                 auto          nearest = [&](EntityKind kind)
@@ -2530,10 +2529,10 @@ int main(int argc, char** argv)
                 const Structure& t = static_cast<const Structure&>(*e);
                 printf("  %-10s %-24s %-20s hull %3.0f%%  r %7.0f  gate %7.0f  belt %7.0f  wreck "
                        "%7.0f%s\n",
-                       kv.first.c_str(), e->GetName().c_str(), Outposts::Called(purpose),
-                       t.HullFraction(sim.Time()) * 100.0f, std::hypot(at.x, at.y),
-                       nearest(EntityKind::Gate), nearest(EntityKind::Field),
-                       nearest(EntityKind::Derelict),
+                       kv.first.c_str(), e->GetName().c_str(),
+                       Outposts::Noun(t.GetBuilds()).c_str(), t.HullFraction(sim.Time()) * 100.0f,
+                       std::hypot(at.x, at.y), nearest(EntityKind::Gate),
+                       nearest(EntityKind::Field), nearest(EntityKind::Derelict),
                        e->GetOrbit() ? ("  orbits planet " + std::to_string(e->GetOrbit()->planet) +
                                         " at " + std::to_string((int)e->GetOrbit()->radius))
                                            .c_str()

@@ -20,6 +20,14 @@ void Structure::StartBuilding(double startedAt, double completesAt)
         SetArchetype(SITE_ARCHETYPE);
 }
 
+void Structure::Retask(std::string builds, std::string blueprint, std::string name)
+{
+    builds_ = std::move(builds);
+    blueprint_ = std::move(blueprint);
+    name_ = std::move(name);
+    SetArchetype(builds_);
+}
+
 void Structure::Complete()
 {
     startedAt_ = 0.0;
