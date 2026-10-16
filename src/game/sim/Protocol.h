@@ -32,22 +32,22 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    39;  // 39: roaming holes and the scanner (#342 S9, #346) -- a scan in a command, the scanner
-         // and the system's signatures in the player's snapshot, a hidden object in a pilot's
-         // layout only once their scan resolved it, and a link of the index may be a hole
-         // with its tail; 38: NPC haulers (#343) -- a ship's cargo in the snapshot, a wreck's in
-         // its layout; what is left of each belt (#348) in the snapshot; 37: chat -- a ChatSay from
-         // a client, ChatLines and ChatMembers from the server (#347); 36: reserved for the haulers
-         // and never shipped; 35: a lost ship is lost -- insurance in a command, each hull's cover
-         // and the last loss in the player's snapshot, and death wakes the pilot docked at
-         // home (#344); 34: a
-         // mission may be a faction plan's job (#345), with its plan, system, deadline and
-         // site; 33: goods from data/goods.json (#343) -- cargo and the market by its order, the
-         // market a bid, an ask and a stock per good, a buy in a command and in its
-         // acknowledgement; 32: the named design library -- save, apply, rename and delete in a
-         // command, the
-         // library in the player's snapshot (#279 fitting, step 3); 31: the server's faction
-         // registry, sent before anything names one of its factions
+    42;  // 42: a mission may be a short market's contract (#343, #407), with its system and
+         // deadline; 40 and 41 are taken by corporations and siege jobs; 39: roaming holes and the
+         // scanner (#342 S9, #346) -- a scan in a command, the scanner and the system's signatures
+         // in the player's snapshot, a hidden object in a pilot's layout only once their scan
+         // resolved it, and a link of the index may be a hole with its tail; 38: NPC haulers (#343)
+         // -- a ship's cargo in the snapshot, a wreck's in its layout; what is left of each belt
+         // (#348) in the snapshot; 37: chat -- a ChatSay from a client, ChatLines and ChatMembers
+         // from the server (#347); 36: reserved for the haulers and never shipped; 35: a lost ship
+         // is lost -- insurance in a command, each hull's cover and the last loss in the player's
+         // snapshot, and death wakes the pilot docked at home (#344); 34: a mission may be a
+         // faction plan's job (#345), with its plan, system, deadline and site; 33: goods from
+         // data/goods.json (#343) -- cargo and the market by its order, the market a bid, an ask
+         // and a stock per good, a buy in a command and in its acknowledgement; 32: the named
+         // design library -- save, apply, rename and delete in a command, the library in the
+         // player's snapshot (#279 fitting, step 3); 31: the server's faction registry, sent before
+         // anything names one of its factions
          // (#342 S5, #355); 30: a snapshot is numbered and may be a delta against one the client
          // acknowledged with an Ack; entities are quantised integers, and beyond the area of
          // interest they are coarse and refreshed once a second; missions are part of the delta

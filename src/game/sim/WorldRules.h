@@ -181,6 +181,37 @@ struct Scan
     double power = 1.0;
 };
 
+// Delivery contracts a market posts when it is short of a good (#343, #407). Once every `every`
+// seconds each system's market looks at its stock: a good below `shortAt` of its target is
+// short, and its owning faction posts a contract at its station for the units that bring it
+// back to `fillTo` -- `minAmount` to `maxAmount` of them -- due `hours` later, at most
+// `perMarket` open at a market. The price lies between what selling those units here would
+// fetch and what buying them here would cost, both at the first unit's price and the fee: at
+// `premium` of the way across when the stock is just short, and `premiumShort` more as it
+// empties. So a contract always pays better than selling at the market, and buying the units
+// at the market itself to hand them back always loses. It is posted only if a market within
+// `sourceReach` jumps sells the units for `sourceMargin` less than it pays -- otherwise the
+// shortage is the whole neighbourhood's, and the contract would be money for nothing -- and
+// only if the owner's treasury holds the price, which is set aside until it is paid out or
+// the contract ends. A station of the poster within the jobs' reach shows its contracts,
+// `perBoard` at most, nearest first. Done, one is worth `rep` standing.
+struct Contracts
+{
+    double every = 600.0;
+    double shortAt = 0.5;
+    double fillTo = 0.8;
+    int    minAmount = 10;
+    int    maxAmount = 40;
+    double premium = 0.5;
+    double premiumShort = 0.4;
+    int    sourceReach = 3;
+    double sourceMargin = 0.1;
+    double hours = 2.0;
+    int    perMarket = 1;
+    int    perBoard = 2;
+    double rep = 2.0;
+};
+
 // Reads `path`. False, with Error() saying why, and the rules as they were, when it does
 // not read.
 bool               Load(const std::string& path);
@@ -192,6 +223,7 @@ const Expeditions& ExpeditionRules();
 const Growth&      GrowthRules();
 const Convoys&     ConvoyRules();
 const Jobs&        JobRules();
+const Contracts&   ContractRules();
 const Holes&       HoleRules();
 const Scan&        ScanRules();
 // For a test: rules of its own, without a file.
@@ -202,6 +234,7 @@ void SetExpeditionRules(const Expeditions& e);
 void SetGrowthRules(const Growth& g);
 void SetConvoyRules(const Convoys& c);
 void SetJobRules(const Jobs& j);
+void SetContractRules(const Contracts& c);
 void SetHoleRules(const Holes& h);
 void SetScanRules(const Scan& s);
 

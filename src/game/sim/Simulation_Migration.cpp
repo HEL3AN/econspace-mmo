@@ -279,7 +279,7 @@ bool Simulation::SetOut(SystemState& st, const std::string& to, NpcRole role, Fa
     if (haul.amount > 0)
     {
         int bought = 0;
-        st.market.Buy(haul.good, haul.amount, bought);
+        PayFee(st, st.market.Buy(haul.good, haul.amount, bought) * Goods::Rules().fee);
         m.good = haul.good;
         m.cargo = bought;
         if (ship != nullptr)

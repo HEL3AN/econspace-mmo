@@ -230,6 +230,8 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
         purse -= kv.second.rewardMoney;
         out.push_back(std::move(kv.second));
     }
+    // And the contracts its markets near have posted (#343, #407): paid out of the treasury.
+    ContractsPostedAt(s, *giver, near, out);
     return out;
 }
 

@@ -1133,6 +1133,9 @@ bool Simulation::SaveWorld(const std::string& path) const
             treasuries[Factions::Id(f)] = std::round(minds_[f].treasury * 100.0) / 100.0;
     if (!treasuries.empty())
         j["treasuries"] = std::move(treasuries);
+    // The markets' open contracts (#343): what each owner set aside is in them, not in its
+    // treasury, so it would be lost if they were not here.
+    SaveContracts(j);
     json history = json::array();
     for (const ChronicleEntry& e : chronicle_)
         history.push_back({ { "seq", e.seq },
@@ -1324,6 +1327,7 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             if (FactionByName(json(it.key()), f) && it.value().is_number())
                 minds_[f].treasury = std::max(0.0, it.value().get<double>());
         }
+    ReadContracts(j);
     if (j.contains("migrants") && j["migrants"].is_array())
         for (const json& mj : j["migrants"])
         {

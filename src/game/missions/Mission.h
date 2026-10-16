@@ -16,6 +16,8 @@ enum class MissionType
     Supply,  // deliver N of a good to a site going up, which then goes up faster
     Escort,  // fly with a builder convoy to its site
     Siege,   // break a siege: shoot down N of the besiegers' warships
+    // A short market's contract (#343, #407): bring N of a good to its station by a deadline.
+    Contract,
 };
 
 // Whether a mission is a plan's job (#345): handed in anywhere -- the faction pays by wire --
@@ -58,6 +60,9 @@ struct Mission
     // next is another job), and whether the pilot has been with it yet.
     int  stage = 0;
     bool rode = false;
+    // A market's contract (#343, #407), by its id (the world's, saved with it). Its station is
+    // `destStationId`, its system and deadline the fields above.
+    int contractId = 0;
 
     // Transient (not saved): whether it can be turned in right now. Over the
     // network the server computes it and puts it in the snapshot (the client field

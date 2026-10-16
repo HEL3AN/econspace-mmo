@@ -1169,6 +1169,7 @@ struct NearStarts
         FactionId                  owner = Factions::Unaffiliated();
         long long                  plans = 0, theirs = 0;  // all, and the hub's faction's
         long long                  jobs = 0, samples = 0, empty = 0;
+        long long                  contracts = 0;  // of the jobs, short markets' (#343)
         long long                  hourPlans = 0, hourJobs = 0, hourSamples = 0;
     };
     std::vector<Start> starts;
@@ -1238,7 +1239,10 @@ struct NearStarts
             // A pilot new to the place: no reputation, nothing taken.
             ClientSession pilot;
             pilot.systemId = sim.Starts()[i].systemId;
-            const size_t n = sim.JobsPostedAt(pilot, s.hub).size();
+            const std::vector<Mission> board = sim.JobsPostedAt(pilot, s.hub);
+            const size_t               n = board.size();
+            for (const Mission& m : board)
+                s.contracts += m.type == MissionType::Contract ? 1 : 0;
             s.jobs += (long long)n;
             s.samples++;
             s.empty += n == 0 ? 1 : 0;
@@ -1271,9 +1275,9 @@ struct NearStarts
             const Start& s = starts[i];
             const double n = (double)std::max<long long>(1, s.samples);
             Log::Printf("  %-10s %3d systems  %5.2f plans/h (%5.2f its owner's)  %4.2f jobs on the "
-                        "hub's board, empty %3.0f%% of the time\n",
+                        "hub's board (%4.2f contracts), empty %3.0f%% of the time\n",
                         sim.Starts()[i].systemId.c_str(), (int)s.near.size(), s.plans / hours,
-                        s.theirs / hours, s.jobs / n, 100.0 * s.empty / n);
+                        s.theirs / hours, s.jobs / n, s.contracts / n, 100.0 * s.empty / n);
         }
     }
 };

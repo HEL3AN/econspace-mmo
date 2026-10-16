@@ -243,7 +243,7 @@ json MissionJson(const Proto::MissionView& m)
         { "res", m.resource },     { "tc", m.targetCount },       { "prog", m.progress },
         { "rm", m.rewardMoney },   { "rr", m.rewardRep },         { "done", m.completable }
     };
-    if (m.planId != 0)  // a plan's job (#345)
+    if (m.planId != 0 || !m.systemId.empty())  // a plan's job (#345), a contract (#343)
     {
         j["plan"] = m.planId;
         j["sys"] = m.systemId;

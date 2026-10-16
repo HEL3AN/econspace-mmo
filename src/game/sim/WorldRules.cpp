@@ -14,6 +14,7 @@ WorldRules::Expeditions g_expeditions;
 WorldRules::Growth      g_growth;
 WorldRules::Convoys     g_convoys;
 WorldRules::Jobs        g_jobs;
+WorldRules::Contracts   g_contracts;
 WorldRules::Holes       g_holes;
 WorldRules::Scan        g_scan;
 std::string             g_error;
@@ -78,7 +79,7 @@ bool Load(const std::string& path)
         if (it.key() != "schema" && it.key() != "tide" && it.key() != "mouths" &&
             it.key() != "archive" && it.key() != "expeditions" && it.key() != "growth" &&
             it.key() != "convoys" && it.key() != "jobs" && it.key() != "holes" &&
-            it.key() != "scan")
+            it.key() != "scan" && it.key() != "contracts")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -189,6 +190,36 @@ bool Load(const std::string& path)
                          "jobs.creditsPerStock more than zero";
         return false;
     }
+    // #343's and #407's: the contracts a short market posts.
+    Contracts ct;
+    if (j.contains("contracts") && !ReadSection(j["contracts"], path + ": contracts",
+                                                { { "every", &ct.every },
+                                                  { "shortAt", &ct.shortAt },
+                                                  { "fillTo", &ct.fillTo },
+                                                  { "premium", &ct.premium },
+                                                  { "premiumShort", &ct.premiumShort },
+                                                  { "sourceMargin", &ct.sourceMargin },
+                                                  { "hours", &ct.hours },
+                                                  { "rep", &ct.rep } },
+                                                { { "minAmount", &ct.minAmount },
+                                                  { "maxAmount", &ct.maxAmount },
+                                                  { "sourceReach", &ct.sourceReach },
+                                                  { "perMarket", &ct.perMarket },
+                                                  { "perBoard", &ct.perBoard } },
+                                                {}, g_error))
+        return false;
+    // A premium of the whole window or more would pay what buying here costs -- a contract
+    // filled from the market it is for would make money; and a contract must ask for
+    // something, by some time, of a market short of less than it is filled to.
+    if (ct.every <= 0.0 || ct.hours <= 0.0 || ct.premium + ct.premiumShort >= 1.0 ||
+        ct.shortAt > ct.fillTo || ct.fillTo > 1.0 || ct.minAmount <= 0 ||
+        ct.maxAmount < ct.minAmount)
+    {
+        g_error = path + ": contracts: every, hours and minAmount must be more than zero, "
+                         "maxAmount at least minAmount, shortAt at most fillTo at most 1, and "
+                         "premium and premiumShort together less than 1";
+        return false;
+    }
     // S9's and #346's: roaming holes and the scanner.
     Holes h;
     if (j.contains("holes") && !ReadSection(j["holes"], path + ": holes",
@@ -236,6 +267,7 @@ bool Load(const std::string& path)
     g_growth = g;
     g_convoys = c;
     g_jobs = jb;
+    g_contracts = ct;
     g_holes = h;
     g_scan = sc;
     return true;
@@ -314,6 +346,16 @@ const Jobs& JobRules()
 void SetJobRules(const Jobs& j)
 {
     g_jobs = j;
+}
+
+const Contracts& ContractRules()
+{
+    return g_contracts;
+}
+
+void SetContractRules(const Contracts& c)
+{
+    g_contracts = c;
 }
 
 const Holes& HoleRules()

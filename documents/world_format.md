@@ -1066,7 +1066,11 @@ it, and are counted nowhere on the way (`world.json` keeps them on the trip, und
 `migrants[].cargo`). Where somebody is, the hauler is a real ship: shot down, it leaves its
 cargo in a wreck. The stock is saved in `world.json` per system (`galaxy.<id>.stock`, by good
 id); a belt mined below full keeps what is left as `ore` in its system's changes, and the fees
-a faction's markets have taken are `treasuries`, by faction id.
+a faction's markets have taken -- from pilots and from NPC haulers alike -- are `treasuries`, by
+faction id. A market short of a good posts a delivery contract (#407, rules in the `contracts`
+section of `world_rules.json`); the open ones are `contracts` (`id`, `faction`, `system`, the
+`station` by its key, `good`, `amount`, `reward`, `postedAt`, `deadline`, `taken`) with
+`nextContract`, and what a contract pays was taken out of its owner's treasury when it was posted.
 
 ---
 

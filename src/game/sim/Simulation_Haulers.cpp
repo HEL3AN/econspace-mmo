@@ -130,8 +130,11 @@ std::vector<double> Simulation::GoodsInTransit() const
 
 void Simulation::Unload(SystemState& st, ResourceType good, int amount)
 {
-    if (amount > 0)
-        st.market.SetStock(good, st.market.Stock(good) + amount);
+    if (amount <= 0)
+        return;
+    // Sold, and the fee is the market's owner's, as a pilot's is (#348).
+    PayFee(st, st.market.QuoteSell(good, amount) * Goods::Rules().fee);
+    st.market.SetStock(good, st.market.Stock(good) + amount);
 }
 
 void Simulation::LoadArrival(SystemState& st, NpcShip& ship, ResourceType good, int amount)
