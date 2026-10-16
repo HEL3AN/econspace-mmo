@@ -137,6 +137,13 @@ std::vector<Region> GenerateWorld(const GalaxySkeleton&               skeleton,
 nlohmann::json RegionToJson(const Region& region);
 bool           RegionFromJson(const nlohmann::json& doc, Region& out);
 
+// A sealed region's file (regions/<slot>.json, S3): { schema, seed, generator, region }. Read
+// by the server and by the editor opening a saved world (S8).
+inline constexpr int SEAL_SCHEMA = 1;
+// The region a sealed file's text holds: false for one that is not, or is another world's --
+// a world.json moved aside and its regions left behind is not this seed's, whatever its slot.
+bool ReadSealedRegion(const std::string& text, uint64_t seed, Region& out);
+
 // A gate's place at the edge of `system` (may be null), facing (dx, dy) -- the system it
 // leads to on the map -- and out of its planets' paths: where a wormhole's mouth goes, and
 // an admin link's gate (S7). Drawn from `key`. A position, [x, y].
@@ -144,6 +151,10 @@ nlohmann::json EdgeGatePos(uint64_t key, const nlohmann::json* system, double dx
 
 // A generated system's id: "r<slot>-<depth>-<k>" (#342), unique in the whole galaxy.
 std::string SystemId(int slot, int depth, int k);
+
+// What a player calls that system until somebody names it (#145): "W-2.3" in slot 0,
+// "R14 W-2.3" anywhere else. A pack's system without a name is designated so (S8).
+std::string SystemDesignation(int slot, int depth, int k);
 
 // The ring a system is in: 1 is through the wormhole, and everything gets worse with it
 // (#143). Read back from an id; 0 for a system that was not generated.

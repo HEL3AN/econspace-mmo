@@ -387,6 +387,30 @@ too, says how many went, and re-points the satellites of the planets after it; t
 pin then only says which planet and which objects were removed. A save that would still
 break a rule is refused with the reason, rather than written for the server to refuse.
 
+### The world and packs in the editor (#342 S8)
+
+**F5 goes up a level**: system -> region -> galaxy, and back down from the galaxy.
+`worldeditor galaxy 7` opens the galaxy of the world seed 7 makes: every slot of its
+skeleton, which are open and how, the mouths they opened through, and the slots a pin
+waits on (a pin for a slot that is not open is kept and applies when the tide opens it).
+A click opens any slot's region on the region map, opened or not. `worldeditor world
+build/bin/server/world.json` does the same for a **saved world**: its seed, centres, cap
+and opening log, each region read from its seal in `regions/` beside it, so what is shown
+is what the server has, not what today's rules would make. With either, `slot 14` opens a
+region straight away and `system r14-2-3` a system. A pin saved there has the system's
+`slot` and the world's `seed`, as everywhere.
+
+**E on the region map writes that region as a pack** (`export ID` on the command line;
+`region-<slot>` without one) into `data/packs/<id>/` -- or `packs DIR` -- and opens it:
+its systems under ids of the pack's own (`r14-2-3` -> `s2-3`, the way in first), the map
+moved round its middle, its links and gates among its own systems and nothing that leads
+out, its natives as a faction of the pack's (`<id>-natives`) with their stances, a centre's
+capital as its start. `newpack ID` begins one from a single system with a station, and
+`editpack ID` opens one. A pack is edited on the index map (systems, links, owner, start)
+and in the system view; **every save reads it back as the server does** and says the first
+problem on screen and every one in the log. `econserver validate data/packs/<id>` is the
+full check, woven into a trial world.
+
 ## factions.json — who is in the galaxy, and how they act
 
 ```json

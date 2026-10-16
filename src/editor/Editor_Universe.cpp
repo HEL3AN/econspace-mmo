@@ -90,13 +90,15 @@ void Editor::AddSystem()
     universeJson_["systems"].push_back(s);
 
     // Create a minimal system file if it doesn't exist yet.
-    std::string path = dataDir_ + "systems/" + id + ".json";
+    std::string path = systemsDir_ + id + ".json";
     if (!FileExists(path.c_str()))
     {
         std::ofstream o(path);
         if (o.is_open())
         {
-            json def = { { "star", { { "type", "Yellow" }, { "size", 500 } } } };
+            // A pack's star is the size a generated one is in a system a million across.
+            json def = { { "star",
+                           { { "type", "Yellow" }, { "size", packId_.empty() ? 500 : 150000 } } } };
             o << def.dump(4) << "\n";
         }
     }
@@ -147,7 +149,11 @@ void Editor::RefreshUniverseStruct()
 {
     universe_.systems.clear();
     universe_.links.clear();
-    universe_.startId = universeJson_.value("start", std::string());
+    // universe.json names one start; a pack lists its starts (#342 S8).
+    const json start = universeJson_.value("start", json());
+    universe_.startId = start.is_string() ? start.get<std::string>() : std::string();
+    if (start.is_array() && !start.empty() && start[0].is_string())
+        universe_.startId = start[0].get<std::string>();
 
     if (universeJson_.contains("systems"))
         for (const auto& s : universeJson_["systems"])
@@ -170,16 +176,18 @@ void Editor::RefreshUniverseStruct()
 
 void Editor::SaveUniverse()
 {
-    std::ofstream out(dataDir_ + "universe.json");
+    std::ofstream out(indexPath_);
     if (!out.is_open())
     {
-        TraceLog(LOG_WARNING, "Editor: failed to write universe.json");
+        TraceLog(LOG_WARNING, "Editor: failed to write %s", indexPath_.c_str());
         return;
     }
     out << universeJson_.dump(4) << "\n";
+    out.close();
     universeDirty_ = false;
     RefreshUniverseStruct();
-    TraceLog(LOG_INFO, "Editor: saved universe.json");
+    TraceLog(LOG_INFO, "Editor: saved %s", indexPath_.c_str());
+    CheckPack();  // a pack is read back as the server reads it, and what is wrong is said (S8)
 }
 
 // Switch from galaxy mode into the selected system (by index in universeJson_).
@@ -211,7 +219,7 @@ void Editor::SyncGate(const std::string& sysId, const std::string& destId, bool 
         return;
 
     std::string file = sysEntry->value("file", sysId + ".json");
-    std::string path = dataDir_ + "systems/" + file;
+    std::string path = systemsDir_ + file;
 
     json data = json::object();
     {

@@ -139,6 +139,7 @@ add_library(engine STATIC
     src/engine/gen/Region.cpp        # the region beyond the wormhole, from a seed (#140)
     src/engine/gen/Pins.cpp          # hand-written exceptions applied after generation (#147)
     src/engine/gen/Pack.cpp          # admin packs woven into a new world (#342 S7)
+    src/engine/gen/PackExport.cpp    # a region written as a pack, or one begun from nothing (#342 S8)
     src/engine/gen/Survey.cpp        # many generated systems judged at once (#141)
     src/engine/entities/Entity.cpp
     src/engine/entities/Star.cpp
@@ -341,6 +342,7 @@ add_executable(worldeditor
     src/editor/Editor_Survey.cpp    # many generated systems at once, for judging rules (#141)
     src/editor/Editor_Pins.cpp      # a generated system edited, saved as a pin (#237)
     src/editor/Editor_Region.cpp    # the whole region a seed makes, as a map (#237)
+    src/editor/Editor_World.cpp     # the world's galaxy of slots, a saved world, packs (#342 S8)
 )
 target_include_directories(worldeditor PRIVATE ${CMAKE_SOURCE_DIR}/src/editor)
 target_link_libraries(worldeditor PRIVATE engine)

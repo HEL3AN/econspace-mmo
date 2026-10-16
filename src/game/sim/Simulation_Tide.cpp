@@ -44,7 +44,6 @@ namespace
 // tide a region begins.
 constexpr uint64_t STRAIN_KEY = 0x71DE5u;
 constexpr uint64_t START_KEY = 0x71DE6u;
-constexpr int      SEAL_SCHEMA = 1;
 constexpr double   HOUR = 3600.0;
 // What keys where a faction's Anchor goes up at a mouth, besides who, where and which.
 constexpr uint64_t ANCHOR_KEY = 0xA7C40u;
@@ -78,14 +77,7 @@ std::string Simulation::SealedPath(const std::string& dir, int slot)
 
 bool Simulation::ReadSealedText(const std::string& text, uint64_t seed, Gen::Region& out)
 {
-    const nlohmann::json j = nlohmann::json::parse(text, nullptr, false);
-    // Another world's region -- a world.json moved aside and its regions left behind -- is
-    // not this one's, whatever its slot.
-    if (j.is_discarded() || !j.is_object() || j.value("schema", 0) != SEAL_SCHEMA ||
-        !j.contains("seed") || !j["seed"].is_number_unsigned() ||
-        j["seed"].get<uint64_t>() != seed || !j.contains("region"))
-        return false;
-    return Gen::RegionFromJson(j["region"], out);
+    return Gen::ReadSealedRegion(text, seed, out);
 }
 
 bool Simulation::ReadSealed(const std::string& path, uint64_t seed, Gen::Region& out)
@@ -113,7 +105,7 @@ void Simulation::Seal(const Gen::Region& region)
     // back: a world without a file is remade from its seed anyway.
     if (sealDir_.empty())
         return;
-    const nlohmann::json doc = { { "schema", SEAL_SCHEMA },
+    const nlohmann::json doc = { { "schema", Gen::SEAL_SCHEMA },
                                  { "seed", regionSeed_ },
                                  { "generator", Gen::GENERATOR_VERSION },
                                  { "region", Gen::RegionToJson(region) } };

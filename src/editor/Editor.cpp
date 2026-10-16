@@ -46,6 +46,11 @@ Editor::Editor()
     // ECONSPACE_DATA or --data for another checkout's -- a worktree's, say -- seen through
     // this build. Found by main() (DataDir.h).
     dataDir_ = DataDir::Path();
+    // The hand-written index and its systems until a pack is opened (#342 S8); packs where a
+    // server looks for them.
+    indexPath_ = dataDir_ + "universe.json";
+    systemsDir_ = dataDir_ + "systems/";
+    packsDir_ = dataDir_ + "packs/";
     Ui::LoadAssets(dataDir_);                         // the theme and the fonts it names (#297)
     if (!Factions::Load(dataDir_ + "factions.json"))  // faction properties/relations
         TraceLog(LOG_ERROR, "Factions: %s", Factions::Error().c_str());
@@ -107,7 +112,7 @@ void Editor::LoadSystemAt(int index)
     activeField_.clear();
     openDropdown_.clear();
 
-    std::string   path = dataDir_ + "systems/" + universe_.systems[index].file;
+    std::string   path = systemsDir_ + universe_.systems[index].file;
     std::ifstream file(path);
     if (file.is_open())
     {
@@ -267,8 +272,8 @@ void Editor::Run()
             EnterGalleryMode(mode_ != Mode::Gallery);
         if (IsKeyPressed(KEY_F4))  // the survey of generated systems (#141)
             EnterSurveyMode(mode_ != Mode::Survey);
-        if (IsKeyPressed(KEY_F5))  // the region map of what is in front of you (#237)
-            ToggleRegionMap();
+        if (IsKeyPressed(KEY_F5))  // up a level: system -> region (#237) -> galaxy (#342 S8)
+            LevelUp();
         if (IsKeyPressed(KEY_F10))  // the treatment's settings, the same key as in the game
         {
             treatmentPanelOpen_ = !treatmentPanelOpen_;
@@ -321,6 +326,12 @@ void Editor::Run()
                 treatment_.End();
             Render::Perf::Mark(Render::Perf::Phase::Treatment);
             DrawModules(true);
+        }
+        else if (mode_ == Mode::World)
+        {
+            DrawWorldMap();  // a map, as the region's: nothing on it goes through the treatment
+            DrawHud();
+            DrawWorldPanel();
         }
         else if (mode_ == Mode::Region)
         {
@@ -434,6 +445,11 @@ void Editor::HandleInput()
     if (mode_ == Mode::Region)
     {
         HandleRegionInput();
+        return;
+    }
+    if (mode_ == Mode::World)
+    {
+        HandleWorldInput();
         return;
     }
 
@@ -606,7 +622,7 @@ void Editor::SaveCurrentSystem()
     }
     if (universe_.systems.empty())
         return;
-    std::string   path = dataDir_ + "systems/" + universe_.systems[currentSystem_].file;
+    std::string   path = systemsDir_ + universe_.systems[currentSystem_].file;
     std::ofstream out(path);
     if (!out.is_open())
     {
@@ -614,8 +630,10 @@ void Editor::SaveCurrentSystem()
         return;
     }
     out << systemJson_.dump(4) << "\n";
+    out.close();
     dirty_ = false;
     TraceLog(LOG_INFO, "Editor: saved %s", path.c_str());
+    CheckPack();  // a pack's system is read back with the rest of it (#342 S8)
 }
 
 // ===== Galaxy mode =========================================================

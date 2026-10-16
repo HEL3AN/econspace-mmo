@@ -6,11 +6,14 @@
 
 #include "Editor.h"
 
+#include "core/Faction.h"
 #include "ui/UiTheme.h"
 #include "ui/Button.h"
 #include "raymath.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -186,8 +189,8 @@ void Editor::DrawGalaxy()
     for (const auto& s : sys)
     {
         Vector2 sp = GetWorldToScreen2D(MapPos(s), camera_);
-        Ui::Text(s.value("name", std::string("?")).c_str(), (int)sp.x + 12, (int)sp.y - 8, 14,
-                 Ui::TEXT);
+        Ui::Text(s.value("name", s.value("id", std::string("?"))).c_str(), (int)sp.x + 12,
+                 (int)sp.y - 8, 14, Ui::TEXT);
     }
 }
 
@@ -203,7 +206,8 @@ void Editor::DrawGalaxyPanel()
     int   x = (int)panel.x + 14;
     float w = panel.width - 28.0f;
     int   y = 16;
-    Ui::Text("GALAXY", x, y, 18, Ui::ACCENT);
+    Ui::Text(packId_.empty() ? "GALAXY" : TextFormat("PACK  %s", packId_.c_str()), x, y, 18,
+             Ui::ACCENT);
     y += 30;
 
     Button add(Rectangle{ panel.x + 14, (float)y, w, 28 }, "+ Add system",
@@ -262,8 +266,8 @@ void Editor::DrawGalaxyPanel()
         // Rename the system's file on disk (no orphaned copies).
         if (newFile != gOldFile_ && !gOldFile_.empty())
         {
-            std::string op = dataDir_ + "systems/" + gOldFile_;
-            std::string np = dataDir_ + "systems/" + newFile;
+            std::string op = systemsDir_ + gOldFile_;
+            std::string np = systemsDir_ + newFile;
             if (FileExists(op.c_str()) && !FileExists(np.c_str()))
                 std::rename(op.c_str(), np.c_str());
         }
@@ -275,8 +279,40 @@ void Editor::DrawGalaxyPanel()
                     for (auto& e : l)
                         if (e == gOldId_)
                             e = newId;
-            if (universeJson_.value("start", std::string()) == gOldId_)
-                universeJson_["start"] = newId;
+            if (universeJson_.contains("start"))
+            {
+                json& start = universeJson_["start"];
+                if (start.is_string() && start == gOldId_)
+                    start = newId;
+                else if (start.is_array())  // a pack's list of starts (#342 S8)
+                {
+                    for (json& st : start)
+                        if (st == gOldId_)
+                            st = newId;
+                }
+            }
+            // ...and the gates that lead to it, or the index and the files disagree.
+            for (const json& s : universeJson_["systems"])
+            {
+                const std::string path = systemsDir_ + s.value("file", std::string());
+                std::ifstream     in(path);
+                json              doc = in.is_open() ? json::parse(in, nullptr, false) : json();
+                in.close();
+                if (!doc.is_object() || !doc.contains("gates") || !doc["gates"].is_array())
+                    continue;
+                bool touched = false;
+                for (json& g : doc["gates"])
+                    if (g.is_object() && g.value("destination", std::string()) == gOldId_)
+                    {
+                        g["destination"] = newId;
+                        touched = true;
+                    }
+                if (touched)
+                {
+                    std::ofstream out(path);
+                    out << doc.dump(4) << "\n";
+                }
+            }
             gLinksOwner_.clear();
         }
     }
@@ -292,6 +328,60 @@ void Editor::DrawGalaxyPanel()
     Vector2 mp = MapPos(obj);
     Ui::Text(TextFormat("map: %d, %d", (int)mp.x, (int)mp.y), x, y, 13, Ui::TEXT_DIM);
     y += 26;
+
+    // A pack's system (#342 S8): who holds it -- a faction of the registry or of the pack --
+    // and whether a new pilot may start there.
+    if (!packId_.empty())
+    {
+        std::vector<std::string> owners = { "" }, ownerNames = { "nobody" };
+        // A region's natives are in the registry too, once one has been opened; they are that
+        // world's, never a pack's to name.
+        for (FactionId f : Factions::All())
+            if (Factions::Kind(f) != "Native")
+            {
+                owners.push_back(Factions::Id(f));
+                ownerNames.push_back(Factions::Def(f).name);
+            }
+        for (const json& f : universeJson_.value("factions", json::array()))
+            if (f.is_object() && f.contains("id") && f["id"].is_string())
+            {
+                owners.push_back(f["id"].get<std::string>());
+                ownerNames.push_back(f.value("name", owners.back()) + " (the pack's)");
+            }
+        DropdownRow(row(24), "owner", obj, "owner", owners, ownerNames);  // a pick: dirty below
+        if (obj.contains("owner") && obj["owner"] == "")
+            obj.erase("owner");  // nobody: the field is absent, as the loader reads it
+
+        if (!universeJson_.contains("start") || !universeJson_["start"].is_array())
+            universeJson_["start"] = json::array();
+        json&      starts = universeJson_["start"];
+        const auto it =
+            std::find(starts.begin(), starts.end(), json(obj.value("id", std::string())));
+        const bool isStart = it != starts.end();
+        if (!anyDropdownOpen_)
+        {
+            const std::string sid = obj.value("id", std::string());
+            Button            st(Rectangle{ (float)x, (float)y, w, 24.0f },
+                                 isStart ? "a start: yes (click: no)" : "a start: no (click: yes)",
+                                 [this, sid, isStart]()
+                                 {
+                          json& list = universeJson_["start"];
+                          if (isStart)
+                          {
+                              json kept = json::array();
+                              for (const json& s : list)
+                                  if (s != sid)
+                                      kept.push_back(s);
+                              list = kept;
+                          }
+                          else
+                              list.push_back(sid);
+                          universeDirty_ = true;
+                                 });
+            st.Process();
+        }
+        y += 32;
+    }
 
     Ui::Text("LINKS", x, y, 14, Ui::TEXT_DIM);
     y += 22;
@@ -403,7 +493,10 @@ void Editor::DrawGalaxyPanel()
             {
                 (*dropObj_)[dropKey_] = dropOpts_[i];
                 openDropdown_.clear();
-                linksChanged = true;
+                if (dropKey_ == "owner")  // a pack system's holder (#342 S8)
+                    universeDirty_ = true;
+                else
+                    linksChanged = true;
             }
         }
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !CheckCollisionPointRec(mm, list) &&

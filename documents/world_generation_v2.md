@@ -532,6 +532,31 @@ Each slice is its own PR with green CI, and the game works after every one.
    - Opening any region of the world.
    - Pins with `slot`, including pins for unopened slots.
    - Creating a region from scratch and exporting it as a pack.
+   - *As built:* F5 goes up a level -- system -> region -> galaxy -- and Esc back. The galaxy
+     map (`worldeditor galaxy SEED`) draws every slot of the skeleton on its lattice: centres,
+     open frontiers, unstable and anchored mouths, drifted regions, pack regions, the mouth
+     each opened through, and an amber ring on any slot a pin is for, open or not; a click
+     opens that slot's region on the region map. `worldeditor world PATH` (world.json or its
+     folder) reads a saved world instead: its seed, centres and cap from world.json, its
+     opening log (archived regions left out), and every region from its seal in `regions/`
+     (the seal format moved to the engine as `Gen::ReadSealedRegion`), so what is shown is
+     what the server has, whatever rules made it. Without a world file the editor shows the
+     regions a new world of that seed opens with, unwoven -- only a server weaves packs. A slot
+     nobody has opened is shown as it would open from its lowest-numbered open neighbour (the
+     region's contents do not depend on that; its mouth does). A system of any slot is edited
+     and saved as a pin with its `slot` and the world's `seed`, as before; one for an unopened
+     slot waits for it. E on the region map (`export ID`) writes the region as a pack into
+     `data/packs/<id>/` (or `packs DIR`) with `Gen::RegionAsPack`: ids `s<depth>-<k>` with
+     the way in first, the map round its middle (drawn in to the pack's reach if it is wider),
+     only its own links and gates, its natives as a pack faction `<id>-natives` with their
+     stances, a centre's capital as its start, and no `name` where a system had only its
+     designation -- a pack system without a name is now designated as a generated one of the
+     slot it is woven into (`Gen::SystemDesignation`), where before it took its pack id.
+     `newpack ID` begins a pack from one system with a docking station (`Gen::NewRegionPack`),
+     `editpack ID` opens one; the index map edits its systems, links, owners and starts, and
+     every save reads it back with `LoadPack` and puts the first problem on screen. A test
+     exports a centre and a frontier, reads them back and weaves one into another seed's world.
+     No save, wire or generator change.
 9. **S9 — roaming holes.**
    - An epoch schedule, mass and ship class.
    - Probes and signature scanning, with agent tools.

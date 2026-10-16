@@ -14,64 +14,6 @@
 
 using nlohmann::json;
 
-bool Editor::WorldRegion(uint64_t seed, std::string& systemId, Gen::Region& out,
-                         std::map<std::string, std::string>* names, std::string* homeName,
-                         Vector2* homeMap) const
-{
-    Gen::WorldParams p;
-    p.seed = seed;
-    p.centres = Gen::DEFAULT_CENTRES;
-    p.owners = Factions::MajorIds();
-    p.pirates = Factions::Id(Factions::Pirates());
-    p.unaffiliated = Factions::Id(Factions::Unaffiliated());
-    const Gen::GalaxySkeleton      g = Gen::GenerateGalaxySkeleton(p);
-    const std::vector<Gen::Region> world = Gen::GenerateWorld(g);
-    if (world.empty())
-        return false;
-    // Natives fly their own flag (#342 S5): the registry must know them before a system of
-    // theirs is built.
-    for (const Gen::Region& r : world)
-        Gen::RegisterNatives(r.natives);
-    if (names != nullptr)
-        for (const Gen::Region& r : world)
-            for (const json& s : r.systems)
-                (*names)[s.value("id", std::string())] = s.value("name", std::string());
-    if (systemId.empty())
-        systemId = world.front().heartId;
-    const int slot = Gen::SlotOf(systemId);
-    if (slot < 0 || slot >= (int)g.slots.size())
-        return false;
-    bool found = false;
-    for (const Gen::Region& r : world)
-        if (r.slot == slot)
-        {
-            out = r;
-            found = true;
-        }
-    if (!found)
-    {
-        // A slot the world has not opened yet: its contents are its own whatever it opens
-        // from, so it is shown opened from nowhere in particular.
-        Gen::RegionParams prm = Gen::SlotParams(g, slot);
-        if (prm.kind == Gen::SlotKind::Frontier)
-            prm.homeId = "home";
-        out = Gen::GenerateRegion(prm);
-        Gen::RegisterNatives(out.natives);
-    }
-    if (homeName != nullptr)
-        *homeName = out.homeId;
-    for (const Gen::Region& r : world)
-        for (const json& s : r.systems)
-            if (!out.homeId.empty() && s.value("id", std::string()) == out.homeId)
-            {
-                if (homeName != nullptr)
-                    *homeName = s.value("name", out.homeId);
-                if (homeMap != nullptr)
-                    *homeMap = { s["map"][0].get<float>(), s["map"][1].get<float>() };
-            }
-    return out.documents.count(systemId) != 0;
-}
-
 json Editor::ReadPins(const std::string& path)
 {
     std::ifstream in(path);

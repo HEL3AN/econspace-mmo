@@ -409,6 +409,11 @@ std::string PackHashText(uint64_t hash)
     return text;
 }
 
+bool PackIdValid(const std::string& id)
+{
+    return PackIdOk(id);
+}
+
 std::string DockingStation(const nlohmann::json& document)
 {
     for (const auto& e : WorldLoader::BuildSystem(document))
@@ -550,8 +555,10 @@ bool LoadPack(const std::string& dirIn, Pack& out, std::vector<std::string>& pro
             for (const PackSystem& other : pack.systems)
                 if (other.id == ps.id)
                     problems.push_back(at + " twice");
-            ps.name =
-                s.contains("name") && s["name"].is_string() ? s["name"].get<std::string>() : ps.id;
+            if (s.contains("name") && !s["name"].is_string())
+                problems.push_back(at + ": \"name\" is a string");
+            ps.name = s.contains("name") && s["name"].is_string() ? s["name"].get<std::string>()
+                                                                  : std::string();
             if (!s.contains("file") || !s["file"].is_string())
                 problems.push_back(at + ": \"file\" is missing");
             else
@@ -870,12 +877,15 @@ Region WeaveRegionPack(const Pack& pack, const GalaxySkeleton& skeleton, int slo
                 }
             }
     }
-    std::map<std::string, std::string> idOf;
+    std::map<std::string, std::string> idOf, nameOf;
     std::map<int, int>                 inRing;
     for (const PackSystem& s : pack.systems)
     {
         const int d = depth.count(s.id) != 0 ? depth[s.id] : 1;
-        idOf[s.id] = SystemId(slot, d, ++inRing[d]);
+        const int k = ++inRing[d];
+        idOf[s.id] = SystemId(slot, d, k);
+        // Nameless, it is designated as a generated system of the slot is, until named (S8).
+        nameOf[s.id] = s.name.empty() ? SystemDesignation(slot, d, k) : s.name;
     }
     region.entryId = idOf[pack.systems.front().id];
 
@@ -886,7 +896,7 @@ Region WeaveRegionPack(const Pack& pack, const GalaxySkeleton& skeleton, int slo
         const double      mx = std::floor(cx + s.mapX + 0.5), my = std::floor(cy + s.mapY + 0.5);
         mapOf[id] = { mx, my };
         region.systems.push_back({ { "id", id },
-                                   { "name", s.name },
+                                   { "name", nameOf[s.id] },
                                    { "map", json::array({ mx, my }) },
                                    { "security", s.security },
                                    { "owner", s.owner } });
@@ -1030,7 +1040,8 @@ bool ApplySystemPack(const Pack& pack, Region& region, const std::string& system
     for (json& e : region.systems)
         if (e.value("id", std::string()) == system)
         {
-            e["name"] = s.name;
+            if (!s.name.empty())  // nameless, it keeps the designation of the one it replaces
+                e["name"] = s.name;
             e["security"] = s.security;
             e["owner"] = s.owner;
         }
