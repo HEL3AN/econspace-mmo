@@ -14,9 +14,10 @@
 // site of what it is growing into, holding the claim while it does, and anyone there can see
 // it -- and shoot it.
 //
-// What an upgrade or an Anchor is built from comes by convoy, from the faction's nearest
-// holding, a system at a time. Where nobody is it is arithmetic: in each system on the way it
-// fights whatever is hostile there, escort first and then the hauler. Where somebody is, the
+// What an upgrade or an Anchor is built from comes by convoy, from where the faction makes
+// things -- its holding within reach with the most stations of its own (#407) -- a system at
+// a time. Where nobody is it is arithmetic: in each system on the way it fights whatever is
+// hostile there, escort first and then the hauler. Where somebody is, the
 // same arithmetic has a hauler and its escort to show for it, which a player can meet, escort
 // or shoot down -- the hauler shot down, or worn down by the arithmetic, the convoy is lost
 // and the plan waits for the next. Losing one delays a plan; it never cancels it.
@@ -96,6 +97,17 @@ Structure* StructureNumbered(SystemState& st, int id)
         if (e->GetId() == id && e->GetKind() == EntityKind::Structure)
             return static_cast<Structure*>(e.get());
     return nullptr;
+}
+
+// How many stations of its own `f` has in a system (#407): where what it builds is made.
+int StationsOf(const SystemState& st, FactionId f)
+{
+    int n = 0;
+    for (const auto& e : st.entities)
+        if (e->GetKind() == EntityKind::Station &&
+            static_cast<const Station&>(*e).GetFaction() == f)
+            n++;
+    return n;
 }
 
 bool IsStationBlueprint(const Blueprint* bp)
@@ -441,13 +453,21 @@ void Simulation::FinishStation(SystemState& st, int id)
 
 std::vector<std::string> Simulation::ConvoyRoute(FactionId f, const std::string& target) const
 {
-    // Out from the site a jump at a time, remembering the way back to it; the nearest of its
-    // holdings, the lowest id among the nearest, is where the convoy sets out from.
+    // Out from the site a jump at a time, remembering the way back to it. What a site is built
+    // from is made where the faction has stations of its own (#407) -- hubs, mining posts,
+    // stations grown from outpost markets -- not at an outpost, which holds a claim and makes
+    // nothing; and most is made where most of them are. Of its holdings within the convoy
+    // rules' reach, the one with the most stations of its own -- the nearest of those, the
+    // lowest id among the nearest -- is where the convoy sets out from: a civilisation's
+    // heart, for the frontier at its door, so that frontier is built from the space behind it
+    // and its convoys come out through it. With no station within reach, the nearest holding
+    // of any kind, as before.
     std::map<std::string, std::string> toward;  // id -> the next system on the way to target
     std::vector<std::string>           ring{ target };
     toward[target] = std::string();
-    std::string home;
-    for (int d = 1; d <= WorldRules::ConvoyRules().reach && !ring.empty() && home.empty(); d++)
+    std::string home, held;  // where most is made; the nearest holding of any kind
+    int         homeAt = 0, heldAt = 0, most = 0;
+    for (int d = 1; d <= WorldRules::ConvoyRules().reach && !ring.empty(); d++)
     {
         std::vector<std::string> next;
         for (const std::string& id : ring)
@@ -457,12 +477,25 @@ std::vector<std::string> Simulation::ConvoyRoute(FactionId f, const std::string&
                 if (it == systems_.end() || !toward.emplace(n, id).second)
                     continue;
                 next.push_back(n);
-                if (it->second.agg.claimed && it->second.agg.controller == f &&
-                    (home.empty() || n < home))
+                if (!it->second.agg.claimed || it->second.agg.controller != f)
+                    continue;
+                if (held.empty() || (d == heldAt && n < held))
+                {
+                    held = n;
+                    heldAt = d;
+                }
+                const int k = StationsOf(it->second, f);
+                if (k > most || (k > 0 && k == most && d == homeAt && n < home))
+                {
+                    most = k;
                     home = n;
+                    homeAt = d;
+                }
             }
         ring = std::move(next);
     }
+    if (home.empty())
+        home = held;
     if (home.empty())
         return { target };  // nothing of its own nearer: from the site itself
     std::vector<std::string> route{ home };

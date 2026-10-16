@@ -15,7 +15,9 @@
 #include "factions_named.h"
 #include "temp_dir.h"
 
+#include <algorithm>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -525,6 +527,142 @@ TEST_CASE("a lost convoy delays the plan and does not cancel it (#342 S6)")
     REQUIRE(shot.second > 0.0);
     CHECK(ambushed.second > clear.second);
     CHECK(shot.second > clear.second);
+}
+
+TEST_CASE("a convoy sets out from where its faction makes things: the heart behind the frontier "
+          "(#407)")
+{
+    LoadRegistries();
+    Rules      r;
+    Simulation sim;
+    Make(sim, 7);
+    // Whose centre the first frontier opened from.
+    const Simulation::RegionOpening* o = sim.OpeningOf(FirstFrontier(sim));
+    REQUIRE(o != nullptr);
+    const SystemState* mouth = sim.SystemById(o->mouth);
+    REQUIRE(mouth != nullptr);
+    REQUIRE(mouth->agg.claimed);
+    const FactionId f = mouth->agg.controller;
+
+    const Holding h = PlantOutpost(sim, f);
+    sim.MindOf(f).stock = 4.0f * Simulation::OutpostCost();
+    const int id = sim.BeginUpgrade(f, h.system, Outposts::MARKET_BLUEPRINT);
+    REQUIRE(id != 0);
+    const Plan* p = PlanOf(sim, id);
+    REQUIRE(p != nullptr);
+    REQUIRE(p->route.size() >= 2);
+    CHECK(p->route.back() == h.system);
+    for (size_t i = 0; i + 1 < p->route.size(); i++)
+    {
+        const std::vector<std::string>& links = sim.Neighbors(p->route[i]);
+        CHECK(std::find(links.begin(), links.end(), p->route[i + 1]) != links.end());
+    }
+
+    // Of the faction's holdings within the convoy's reach of the site, it set out from one with
+    // the most stations of its own -- in the centre, not the outpost's frontier.
+    auto stations = [&](const std::string& id)
+    {
+        int n = 0;
+        for (const auto& e : sim.SystemById(id)->entities)
+            n += e->GetKind() == EntityKind::Station &&
+                         static_cast<const Station&>(*e).GetFaction() == f
+                     ? 1
+                     : 0;
+        return n;
+    };
+    std::map<std::string, int> near{ { h.system, 0 } };
+    std::vector<std::string>   ring{ h.system };
+    for (int d = 1; d <= WorldRules::ConvoyRules().reach; d++)
+    {
+        std::vector<std::string> next;
+        for (const std::string& id : ring)
+            for (const std::string& n : sim.Neighbors(id))
+                if (sim.HasSystem(n) && near.emplace(n, d).second)
+                    next.push_back(n);
+        ring = next;
+    }
+    int most = 0;
+    for (const auto& kv : near)
+    {
+        const SystemState* st = sim.SystemById(kv.first);
+        if (kv.second > 0 && st->agg.claimed && st->agg.controller == f)
+            most = std::max(most, stations(kv.first));
+    }
+    const std::string& home = p->route.front();
+    CHECK(most > 0);
+    CHECK(stations(home) == most);
+    CHECK(sim.SystemById(home)->agg.controller == f);
+    CHECK(Gen::SlotOf(home) == o->parent);
+}
+
+TEST_CASE("a civilisation builds in more than one place at once (#407)")
+{
+    LoadRegistries();
+    Rules      r;
+    Simulation sim;
+    Make(sim, 7);
+    const Simulation::RegionOpening* o = sim.OpeningOf(FirstFrontier(sim));
+    REQUIRE(o != nullptr);
+    const FactionId f = sim.SystemById(o->mouth)->agg.controller;
+    int             holdings = 0;
+    for (const auto& kv : sim.Systems())
+        holdings += kv.second.agg.claimed && kv.second.agg.controller == f ? 1 : 0;
+    REQUIRE(holdings >= 8);  // a centre's worth
+
+    // Two outposts in the frontier, and markets worth more than anything else it could do.
+    WorldRules::Growth worth;
+    worth.marketWorth = 50.0;
+    WorldRules::SetGrowthRules(worth);
+    PlantOutpost(sim, f, 0);
+    PlantOutpost(sim, f, 1);
+    int most = 0;
+    for (int minute = 0; minute < 20 && most < 2; minute++)
+    {
+        sim.MindOf(f).stock = std::max(sim.MindOf(f).stock, 4.0f * Simulation::OutpostCost());
+        RunMinutes(sim, 1);
+        int growing = 0;
+        for (const auto& kv : sim.Plans())
+            growing += kv.second.faction == f && kv.second.kind == Plan::Kind::Upgrade ? 1 : 0;
+        most = std::max(most, growing);
+    }
+    CHECK(most >= 2);
+}
+
+TEST_CASE("the law presses on the lawless system at its door rather than sit on its stock (#407)")
+{
+    LoadRegistries();
+    Rules      r;
+    Simulation sim;
+    Make(sim, 7);
+    // The system beyond a centre's mouth, made a lawless one: nobody's, no law, pirates about
+    // -- and what the centre's faction saw of it, long ago. For what the place itself is worth
+    // to it, that was not worth a second look, let alone its ships.
+    const Simulation::RegionOpening* o = sim.OpeningOf(FirstFrontier(sim));
+    REQUIRE(o != nullptr);
+    const FactionId f = sim.SystemById(o->mouth)->agg.controller;
+    REQUIRE(Factions::IsLawful(f));
+    const std::string door = sim.EntryOf(o->slot);
+    SystemState*      st = sim.SystemById(door);
+    REQUIRE(st != nullptr);
+    REQUIRE_FALSE(st->agg.claimed);
+    st->agg.security = st->agg.baseSecurity = 0.0f;
+    st->agg.presence[Factions::Pirates()] = 4.0f;
+    Intel old = sim.Observe(*st);
+    old.seenAt = -4.0 * 3600.0;
+    sim.MindOf(f).intel[door] = old;
+
+    // Worth looking at again, and then worth reaching into.
+    bool looked = false, reached = false;
+    for (int minute = 0; minute < 45 && !reached; minute++)
+    {
+        RunMinutes(sim, 1);
+        for (const auto& kv : sim.Plans())
+            looked = looked || (kv.second.faction == f && kv.second.target == door);
+        looked = looked || sim.MindOf(f).intel[door].seenAt > 0.0;
+        reached = st->agg.presence[f] >= 1.0f || (st->agg.claimed && st->agg.controller == f);
+    }
+    CHECK(looked);
+    CHECK(reached);
 }
 
 TEST_CASE("convoys, upgrades and word of a mouth round-trip through the save (#342 S6)")

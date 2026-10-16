@@ -478,8 +478,10 @@ Each slice is its own PR with green CI, and the game works after every one.
      mining if the faction values the ore more, trade otherwise; at most `stationsPerRegion` 4
      stations a region, natives' included. The risk is hostile presence there and the memory
      of a loss. Player use stays gated: an upgrade is built onto an outpost, and only factions
-     have those. Anchors and upgrades are built from a convoy (`convoys`): from the faction's
-     nearest holding within `reach` 6 jumps, `hop` 120 s in every system of the way, with
+     have those. Anchors and upgrades are built from a convoy (`convoys`): from where the
+     faction makes things -- of its holdings within `reach` 6 jumps, the one with the most
+     stations of its own, so a frontier at a centre's door is built from its heart (#407);
+     with none, the nearest holding -- `hop` 120 s in every system of the way, with
      `escort` 0.25 of its capacity lent by that holding when it can spare it. In each system it
      passes, anyone hostile wears it down at `ambush` a second per ship, the escort first, then
      the hauler, and the escort hits back; the hauler gone, the convoy is lost, the escort left

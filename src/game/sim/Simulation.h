@@ -1437,11 +1437,13 @@ private:
                           float& worth);
     std::map<std::string, int> marketJumps_;  // MarketJumps, as of `marketPeriod_`
     int                        marketPeriod_ = -1;
-    // A plan's convoy sets out from the faction's nearest holding: its way there and its
-    // escort. False when it has no way to get there.
+    // A plan's convoy sets out from where the faction makes things (ConvoyRoute): its way
+    // there and its escort. False when it has no way to get there.
     bool DispatchConvoy(Plan& p);
-    // The way from `f`'s nearest holding to `target`, both ends included; just `target` when
-    // it holds nothing nearer than the convoy rules' reach.
+    // The way to `target`, both ends included, from `f`'s holding within the convoy rules'
+    // reach with the most stations of its own (#407) -- the nearest of those, then the lowest
+    // id -- or with none, from its nearest holding; just `target` when it holds nothing within
+    // reach.
     std::vector<std::string> ConvoyRoute(FactionId f, const std::string& target) const;
     // Once a pass: every convoy fights what it meets, moves on, arrives or is lost.
     void StepConvoys();

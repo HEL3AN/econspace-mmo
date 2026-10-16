@@ -99,11 +99,12 @@ struct Growth
 };
 
 // The builder convoy (#342 S6): an Anchor or an upgrade is built from what a convoy brings,
-// from the faction's nearest holding along the gates, `hop` seconds in each system it passes
-// -- `reach` jumps at most. It takes `escort` of the faction's capacity as escort, if the
-// holding can spare it. In a system where anyone hostile to it is, both sides lose ships at
-// `ambush` a second for every ship of the other, the escort first and then the hauler; the
-// hauler gone, the convoy is lost, and the plan sends another `retryMinutes` later.
+// along the gates from where the faction makes things -- of its holdings within `reach` jumps,
+// the one with the most stations of its own (#407), or the nearest holding when none has one
+// -- `hop` seconds in each system it passes. It takes `escort` of the faction's capacity as
+// escort, if the holding can spare it. In a system where anyone hostile to it is, both sides
+// lose ships at `ambush` a second for every ship of the other, the escort first and then the
+// hauler; the hauler gone, the convoy is lost, and the plan sends another `retryMinutes` later.
 struct Convoys
 {
     double hop = 120.0;
@@ -121,6 +122,7 @@ struct Convoys
 //   `supplyCut` off the time the site has left, `supplyMax` deliveries a site at most.
 // - Escort: `escortBase` and `escortPerJump` of the convoy's way; a pilot with the convoy counts
 //   as `escortForce` ships of its escort. Due `escortSlack` seconds after it would arrive.
+//   Posted within `reach` of where the convoy is, too: that is where a pilot meets it (#407).
 // - Siege: shoot down `siegeKills` of the besiegers, `siegePerKill` each.
 // Done, a job is worth `rep` standing with the poster; failed by the pilot, `failRep` less.
 struct Jobs

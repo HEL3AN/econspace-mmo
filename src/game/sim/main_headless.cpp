@@ -1069,6 +1069,127 @@ static void PrintOpening(const Simulation& sim, int slot, const char* indent)
                     (int)sim.Universe().systems.size());
 }
 
+// What a new pilot finds near each start (#407), watched by the batch mode's --news: the plans
+// begun within the jobs' reach of it -- settlements, upgrades, Anchors and sieges, the kinds
+// that post jobs (#345) -- and how many jobs its hub's board shows, sampled once a minute.
+struct NearStarts
+{
+    struct Start
+    {
+        std::map<std::string, int> near;  // systems within the jobs' reach, by jumps (Near)
+        int                        hub = 0;
+        FactionId                  owner = Factions::Unaffiliated();
+        long long                  plans = 0, theirs = 0;  // all, and the hub's faction's
+        long long                  jobs = 0, samples = 0, empty = 0;
+        long long                  hourPlans = 0, hourJobs = 0, hourSamples = 0;
+    };
+    std::vector<Start> starts;
+    std::set<int>      seenPlans;
+
+    // Every system within the jobs' reach of `from`, by jumps -- counted afresh, since a mouth
+    // opening near a start brings new space within it.
+    static std::map<std::string, int> Near(const Simulation& sim, const std::string& from)
+    {
+        std::map<std::string, int> near{ { from, 0 } };
+        std::vector<std::string>   ring{ from };
+        for (int d = 1; d <= WorldRules::JobRules().reach && !ring.empty(); d++)
+        {
+            std::vector<std::string> next;
+            for (const std::string& id : ring)
+                for (const std::string& n : sim.Neighbors(id))
+                    if (sim.HasSystem(n) && near.emplace(n, d).second)
+                        next.push_back(n);
+            ring = std::move(next);
+        }
+        return near;
+    }
+
+    explicit NearStarts(const Simulation& sim)
+    {
+        for (const Simulation::StartPoint& sp : sim.Starts())
+        {
+            Start s;
+            s.near = Near(sim, sp.systemId);
+            if (const SystemState* st = sim.SystemById(sp.systemId))
+                for (const auto& e : st->entities)
+                    if (e->GetKind() == EntityKind::Station && e->GetName() == sp.station)
+                    {
+                        s.hub = e->GetId();
+                        s.owner = static_cast<const Station&>(*e).GetFaction();
+                    }
+            starts.push_back(std::move(s));
+        }
+    }
+
+    // Once a minute of world time.
+    void Sample(const Simulation& sim)
+    {
+        for (size_t i = 0; i < starts.size(); i++)
+            starts[i].near = Near(sim, sim.Starts()[i].systemId);
+        for (const auto& kv : sim.Plans())
+        {
+            const Plan& p = kv.second;
+            if (p.kind == Plan::Kind::Survey || p.kind == Plan::Kind::Return ||
+                !seenPlans.insert(kv.first).second)
+                continue;
+            // About a system within reach, or a convoy setting out from one.
+            for (Start& s : starts)
+                if (s.near.count(p.target) != 0 ||
+                    (p.OnTheWay() && !p.route.empty() && s.near.count(p.route.front()) != 0))
+                {
+                    s.plans++;
+                    s.hourPlans++;
+                    s.theirs += p.faction == s.owner ? 1 : 0;
+                }
+        }
+        for (size_t i = 0; i < starts.size(); i++)
+        {
+            Start& s = starts[i];
+            if (s.hub == 0)
+                continue;
+            // A pilot new to the place: no reputation, nothing taken.
+            ClientSession pilot;
+            pilot.systemId = sim.Starts()[i].systemId;
+            const size_t n = sim.JobsPostedAt(pilot, s.hub).size();
+            s.jobs += (long long)n;
+            s.samples++;
+            s.empty += n == 0 ? 1 : 0;
+            s.hourJobs += (long long)n;
+            s.hourSamples++;
+        }
+    }
+
+    void PrintHour(const Simulation& sim)
+    {
+        Log::Printf("  %6.0f min  near the starts: plans begun this hour", sim.Time() / 60.0);
+        for (const Start& s : starts)
+            Log::Printf(" %lld", s.hourPlans);
+        Log::Printf(", jobs on a board");
+        for (Start& s : starts)
+        {
+            Log::Printf(" %.1f",
+                        (double)s.hourJobs / (double)std::max<long long>(1, s.hourSamples));
+            s.hourPlans = s.hourJobs = s.hourSamples = 0;
+        }
+        Log::Printf("\n");
+    }
+
+    void PrintSummary(const Simulation& sim)
+    {
+        const double hours = std::max(1e-9, sim.Time() / 3600.0);
+        Log::Printf("\nNear the starts (within %d jumps):\n", WorldRules::JobRules().reach);
+        for (size_t i = 0; i < starts.size(); i++)
+        {
+            const Start& s = starts[i];
+            const double n = (double)std::max<long long>(1, s.samples);
+            Log::Printf("  %-10s %3d systems  %5.2f plans/h (%5.2f its owner's)  %4.2f jobs on the "
+                        "hub's board, empty %3.0f%% of the time\n",
+                        sim.Starts()[i].systemId.c_str(), (int)s.near.size(), s.plans / hours,
+                        s.theirs / hours, s.jobs / n, 100.0 * s.empty / n);
+        }
+    }
+};
+
 // The admin's console (#342 S3): lines typed on the server's standard input, read on a thread
 // of their own so the loop never waits for one, and handed over under a lock. With no console
 // -- input from /dev/null -- the thread finds the end at once and is gone.
@@ -3007,6 +3128,8 @@ int main(int argc, char** argv)
            (int)sim.Universe().systems.size(), ticks,
            allHot ? "every system hot" : "nobody here: every system cold");
 
+    NearStarts nearStarts(sim);  // what a new pilot would find (#407)
+
     int printEvery = ticks / 20;
     if (printEvery < 1)
         printEvery = 1;
@@ -3032,10 +3155,13 @@ int main(int argc, char** argv)
             // every hour.
             for (int slot : sim.TakeOpenedRegions())
                 PrintOpening(sim, slot, "             >> ");
+            if (i > 0 && i % (int)(60.0f / dt) == 0)
+                nearStarts.Sample(sim);
             if (i > 0 && i % (int)(3600.0f / dt) == 0)
             {
                 printf("  %6.0f min  ", sim.Time() / 60.0);
                 PrintTide(sim, "");
+                nearStarts.PrintHour(sim);
             }
         }
         if (!newsOnly && (i % printEvery == 0 || i == ticks - 1))
@@ -3100,6 +3226,7 @@ int main(int argc, char** argv)
                                            .c_str()
                                      : "");
             }
+        nearStarts.PrintSummary(sim);
         return 0;
     }
     printf("\nGalactic news:\n");
