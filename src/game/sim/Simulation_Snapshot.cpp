@@ -181,6 +181,11 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         v.rewardMoney = m.rewardMoney;
         v.rewardRep = m.rewardRep;
         v.completable = MissionCompletableNow(s, m);
+        v.planId = m.planId;
+        v.systemId = m.systemId;
+        v.systemName = m.systemName;
+        v.deadline = m.deadline;
+        v.siteId = JobSiteId(s, m);
         return v;
     };
     if (s.IsDocked())

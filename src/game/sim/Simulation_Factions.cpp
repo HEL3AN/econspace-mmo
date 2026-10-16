@@ -482,6 +482,7 @@ void Simulation::StepFactions()
     ResolveDuePlans();
     StepSieges();
     StepConvoys();  // the builder convoys on their way (#342 S6)
+    StepJobs();     // and the jobs those plans posted (#345)
 
     // Each faction thinks once a period, on a pass of its own (#295): spread across the
     // period rather than all on one pass, so no pass carries more than one of them -- while

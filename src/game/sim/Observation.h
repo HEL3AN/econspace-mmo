@@ -116,6 +116,10 @@ FactionId DockedFaction(const View& view);
 // mission list so an agent refused a hand-in is told the same thing the list says.
 std::string MissionNeeds(const View& view, const Proto::MissionView& m);
 
+// How long a plan's job has left (#345), by the snapshot's clock: "due in 12 min", "due in
+// 40 s", "overdue". Empty for a mission with no time on it.
+std::string JobDue(const View& view, const Proto::MissionView& m);
+
 // Compass point for a world-space offset ("N", "NE", ...). Exposed because the tests pin
 // the convention: +y is down in world coordinates, so north is -y, matching what the
 // player sees on screen rather than what the raw numbers suggest.

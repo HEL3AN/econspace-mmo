@@ -27,8 +27,8 @@ struct Row
     int         index = 0;
     std::string title;
     std::string description;
-    std::string kind;                                // "bounty", "mining", "delivery"
-    std::string status;                              // how far along: "2 / 5", "ready", "deliver"
+    std::string kind;    // "bounty", "mining", "delivery", "supply", "escort", "siege"
+    std::string status;  // how far along: "2 / 5", "ready", "deliver"
     FactionId   faction = Factions::Unaffiliated();  // who gave it
     double      reward = 0.0;
     float       rep = 0.0f;
@@ -42,11 +42,18 @@ struct Row
     // Empty and false when it is in another one: the client sees only its own system.
     std::string handInName;
     bool        handInHere = false;
+
+    // A faction plan's job (#345): handed in anywhere, about a system that may well be
+    // another one, and on the clock.
+    bool        job = false;
+    std::string where;       // the system's name
+    std::string due;         // "due in 12 min"; empty for no time
+    int         siteId = 0;  // a supply job's site, when it is in this system
 };
 
 std::vector<Row> Build(const Obs::View& view, Board board);
 
-// "bounty", "mining", "delivery".
+// "bounty", "mining", "delivery", and a plan's "supply", "escort", "siege".
 const char* KindWord(int missionType);
 
 }  // namespace MissionList

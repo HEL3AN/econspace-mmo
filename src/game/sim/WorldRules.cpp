@@ -13,6 +13,7 @@ WorldRules::Archive     g_archive;
 WorldRules::Expeditions g_expeditions;
 WorldRules::Growth      g_growth;
 WorldRules::Convoys     g_convoys;
+WorldRules::Jobs        g_jobs;
 std::string             g_error;
 
 // Reads one section's values into their places: every field known, every number zero or
@@ -74,7 +75,7 @@ bool Load(const std::string& path)
     for (auto it = j.begin(); it != j.end(); ++it)
         if (it.key() != "schema" && it.key() != "tide" && it.key() != "mouths" &&
             it.key() != "archive" && it.key() != "expeditions" && it.key() != "growth" &&
-            it.key() != "convoys")
+            it.key() != "convoys" && it.key() != "jobs")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -156,12 +157,42 @@ bool Load(const std::string& path)
             path + ": growth.marketReach, convoys.hop and convoys.reach must be more than zero";
         return false;
     }
+    // #345's: the jobs plans post.
+    Jobs jb;
+    if (j.contains("jobs") && !ReadSection(j["jobs"], path + ": jobs",
+                                           { { "creditsPerStock", &jb.creditsPerStock },
+                                             { "supplyShare", &jb.supplyShare },
+                                             { "supplyMarkup", &jb.supplyMarkup },
+                                             { "supplyRange", &jb.supplyRange },
+                                             { "supplyCut", &jb.supplyCut },
+                                             { "escortBase", &jb.escortBase },
+                                             { "escortPerJump", &jb.escortPerJump },
+                                             { "escortForce", &jb.escortForce },
+                                             { "escortSlack", &jb.escortSlack },
+                                             { "siegePerKill", &jb.siegePerKill },
+                                             { "rep", &jb.rep },
+                                             { "failRep", &jb.failRep } },
+                                           { { "reach", &jb.reach },
+                                             { "perBoard", &jb.perBoard },
+                                             { "supplyMax", &jb.supplyMax },
+                                             { "siegeKills", &jb.siegeKills } },
+                                           {}, g_error))
+        return false;
+    // A share of a cost or of a time line is at most the whole; a unit of stock worth nothing
+    // would make every job free to post.
+    if (jb.supplyShare > 1.0 || jb.supplyCut > 1.0 || jb.creditsPerStock <= 0.0)
+    {
+        g_error = path + ": jobs.supplyShare and jobs.supplyCut must be at most 1, and "
+                         "jobs.creditsPerStock more than zero";
+        return false;
+    }
     g_tide = t;
     g_mouths = m;
     g_archive = a;
     g_expeditions = e;
     g_growth = g;
     g_convoys = c;
+    g_jobs = jb;
     return true;
 }
 
@@ -228,6 +259,16 @@ void SetGrowthRules(const Growth& g)
 void SetConvoyRules(const Convoys& c)
 {
     g_convoys = c;
+}
+
+const Jobs& JobRules()
+{
+    return g_jobs;
+}
+
+void SetJobRules(const Jobs& j)
+{
+    g_jobs = j;
 }
 
 }  // namespace WorldRules

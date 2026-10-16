@@ -44,6 +44,11 @@ Prompt Next(const State& s)
     for (const Mission& m : s.active)
         if (m.ready && ready == nullptr)
             ready = &m;
+    // ...and a plan's job is paid by wire (#345): handed in from wherever the ship is.
+    for (const Mission& m : s.active)
+        if (m.ready && m.anywhere)
+            return Make(Step::HandIn, "Hand in " + Quoted(m.title) + " in the Missions window (J)",
+                        0, true);
 
     if (s.docked)
     {

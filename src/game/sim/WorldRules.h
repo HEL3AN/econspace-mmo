@@ -113,6 +113,36 @@ struct Convoys
     int    reach = 6;
 };
 
+// Jobs a faction's plans post (#345). A station of the poster within `reach` jumps of what a
+// plan is about shows its jobs, `perBoard` at most, nearest first. The faction pays out of its
+// stock, `creditsPerStock` credits a unit, and posts nothing it cannot pay for.
+// - Supply: `supplyShare` of the largest line of the site's cost, paid at `supplyMarkup` times
+//   the good's price, handed in within `supplyRange` of the site's edge; each takes
+//   `supplyCut` off the time the site has left, `supplyMax` deliveries a site at most.
+// - Escort: `escortBase` and `escortPerJump` of the convoy's way; a pilot with the convoy counts
+//   as `escortForce` ships of its escort. Due `escortSlack` seconds after it would arrive.
+// - Siege: shoot down `siegeKills` of the besiegers, `siegePerKill` each.
+// Done, a job is worth `rep` standing with the poster; failed by the pilot, `failRep` less.
+struct Jobs
+{
+    int    reach = 4;
+    int    perBoard = 3;
+    double creditsPerStock = 50.0;
+    double supplyShare = 0.5;
+    double supplyMarkup = 1.6;
+    double supplyRange = 1500.0;
+    double supplyCut = 0.35;
+    int    supplyMax = 2;
+    double escortBase = 400.0;
+    double escortPerJump = 150.0;
+    double escortForce = 2.0;
+    double escortSlack = 600.0;
+    int    siegeKills = 3;
+    double siegePerKill = 250.0;
+    double rep = 3.0;
+    double failRep = 1.5;
+};
+
 // Reads `path`. False, with Error() saying why, and the rules as they were, when it does
 // not read.
 bool               Load(const std::string& path);
@@ -123,6 +153,7 @@ const Archive&     ArchiveRules();
 const Expeditions& ExpeditionRules();
 const Growth&      GrowthRules();
 const Convoys&     ConvoyRules();
+const Jobs&        JobRules();
 // For a test: rules of its own, without a file.
 void SetTideRules(const Tide& t);
 void SetMouthRules(const Mouths& m);
@@ -130,5 +161,6 @@ void SetArchiveRules(const Archive& a);
 void SetExpeditionRules(const Expeditions& e);
 void SetGrowthRules(const Growth& g);
 void SetConvoyRules(const Convoys& c);
+void SetJobRules(const Jobs& j);
 
 }  // namespace WorldRules

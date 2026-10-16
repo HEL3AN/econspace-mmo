@@ -228,10 +228,21 @@ std::vector<Proto::EntityLayout> ToEntityLayouts(const json& j, const char* key)
 
 json MissionJson(const Proto::MissionView& m)
 {
-    return { { "type", m.type },        { "fac", FacJ(m.faction) },    { "title", m.title },
-             { "desc", m.description }, { "giver", m.giverStationId }, { "dest", m.destStationId },
-             { "res", m.resource },     { "tc", m.targetCount },       { "prog", m.progress },
-             { "rm", m.rewardMoney },   { "rr", m.rewardRep },         { "done", m.completable } };
+    json j = {
+        { "type", m.type },        { "fac", FacJ(m.faction) },    { "title", m.title },
+        { "desc", m.description }, { "giver", m.giverStationId }, { "dest", m.destStationId },
+        { "res", m.resource },     { "tc", m.targetCount },       { "prog", m.progress },
+        { "rm", m.rewardMoney },   { "rr", m.rewardRep },         { "done", m.completable }
+    };
+    if (m.planId != 0)  // a plan's job (#345)
+    {
+        j["plan"] = m.planId;
+        j["sys"] = m.systemId;
+        j["where"] = m.systemName;
+        j["dl"] = m.deadline;
+        j["site"] = m.siteId;
+    }
+    return j;
 }
 
 Proto::MissionView ToMission(const json& mj)
@@ -249,6 +260,11 @@ Proto::MissionView ToMission(const json& mj)
     m.rewardMoney = mj.value("rm", 0.0);
     m.rewardRep = mj.value("rr", 0.0f);
     m.completable = mj.value("done", false);
+    m.planId = mj.value("plan", 0);
+    m.systemId = mj.value("sys", std::string());
+    m.systemName = mj.value("where", std::string());
+    m.deadline = mj.value("dl", 0.0);
+    m.siteId = mj.value("site", 0);
     return m;
 }
 }  // namespace

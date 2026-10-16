@@ -304,6 +304,7 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
     }
     if (!target->IsAlive())
     {
+        CreditJobKill(s, *target);  // a besieger, for a break-the-siege job (#345)
         if (target->IsPirate())
         {
             if (ev != nullptr)
@@ -918,10 +919,18 @@ void Simulation::GenerateDockOffers(ClientSession& s)
     const float repMul =
         MissionRewardMultiplier(Factions::TierOf(s.account.GetReputation(giver->GetFaction())));
     s.missions.GenerateOffers(giver, all, repMul);
+    // The work the faction's plans want done goes first (#345): it is what the world around
+    // the station is actually doing.
+    std::vector<Mission> board = JobsPostedAt(s, giver->GetId());
+    for (const Mission& m : s.missions.Offers())
+        board.push_back(m);
+    s.missions.SetOffers(std::move(board));
 }
 
 bool Simulation::MissionCompletableNow(const ClientSession& s, const Mission& m) const
 {
+    if (IsPlanJob(m.type))
+        return PlanJobReadyNow(s, m);  // anywhere: the faction pays by wire (#345)
     if (s.dockedStationId == 0 || !s.ship)
         return false;
     switch (m.type)
@@ -932,6 +941,9 @@ bool Simulation::MissionCompletableNow(const ClientSession& s, const Mission& m)
             return m.giverStationId == s.dockedStationId &&
                    s.ship->GetCargoAmount(m.resource) >= m.targetCount;
         case MissionType::Delivery: return m.destStationId == s.dockedStationId;
+        case MissionType::Supply:
+        case MissionType::Escort:
+        case MissionType::Siege: break;  // a plan's, above
     }
     return false;
 }
@@ -966,6 +978,8 @@ bool Simulation::CompleteMission(ClientSession& s, int activeIndex)
         s.RecordEvent(Ev::Kind::Notice, "Hand-in refused: no such active mission");
         return false;
     }
+    if (IsPlanJob(active[activeIndex].type))
+        return CompleteJob(s, activeIndex);
     const Mission&    m = active[activeIndex];
     const std::string what = m.title + ": " + m.description;
     if (!MissionCompletableNow(s, m))
@@ -1345,6 +1359,7 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
     // the way the data does, by system and station, and the load looks the ids up again.
     json missions = json::array();
     for (const Mission& m : s.missions.Active())
+    {
         missions.push_back({ { "type", (int)m.type },
                              { "faction", Factions::Id(m.faction) },
                              { "title", m.title },
@@ -1356,6 +1371,19 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
                              { "progress", m.progress },
                              { "rewardMoney", m.rewardMoney },
                              { "rewardRep", m.rewardRep } });
+        // A plan's job (#345): which plan -- its id is the world's and saved with it -- where,
+        // and by when; an escort's convoy and whether the pilot has been with it.
+        if (IsPlanJob(m.type))
+        {
+            json& mj = missions.back();
+            mj["plan"] = m.planId;
+            mj["system"] = m.systemId;
+            mj["where"] = m.systemName;
+            mj["deadline"] = m.deadline;
+            mj["stage"] = m.stage;
+            mj["rode"] = m.rode;
+        }
+    }
     j["missions"] = missions;
 
     // Atomically, with an older copy kept (#341): a truncated account file used to read as a
@@ -1581,7 +1609,24 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
             m.rewardRep = mj.value("rewardRep", 0.0f);
             const json giver = mj.value("giver", json());
             const json dest = mj.value("dest", json());
-            if (version >= 3)
+            if (IsPlanJob(m.type))
+            {
+                // A plan's job is handed in anywhere: what it needs is its plan, not a station.
+                m.planId = mj.value("plan", 0);
+                m.systemId = mj.value("system", std::string());
+                m.systemName = mj.value("where", m.systemId);
+                m.deadline = mj.value("deadline", 0.0);
+                m.stage = mj.value("stage", 0);
+                m.rode = mj.value("rode", false);
+                m.giverStationId = StationIdOf(systems_, giver);
+                if (plans_.count(m.planId) == 0 && m.progress < m.targetCount)
+                {
+                    s.RecordEvent(Ev::Kind::Notice,
+                                  "Job dropped -- " + m.title + ": what it was for is over");
+                    continue;
+                }
+            }
+            else if (version >= 3)
             {
                 m.giverStationId = StationIdOf(systems_, giver);
                 m.destStationId = StationIdOf(systems_, dest);

@@ -107,6 +107,9 @@ struct Plan
     // Where its ships are real, and which is the hauler. Transient, like `fielded`.
     std::string fieldedIn;
     int         hauler = 0;
+    // How many pilots' deliveries its site has had (#345): each one took a share off the time it
+    // has left to build, up to the jobs rules' most. Saved.
+    int supplied = 0;
     // Whether it is a convoy still on its way: an Anchor or an Upgrade before it has arrived.
     bool OnTheWay() const { return (kind == Kind::Anchor || kind == Kind::Upgrade) && !arrived; }
 };

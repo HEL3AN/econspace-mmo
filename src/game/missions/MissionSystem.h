@@ -32,6 +32,9 @@ public:
     // Network (M4f-2): replace the contents with a mirror from the snapshot (the
     // client doesn't mutate missions directly — the server owns them; the client
     // only reflects the state it receives).
+    // The board as the server made it: the station's own work, after its faction's jobs (#345).
+    void SetOffers(std::vector<Mission> offers) { offers_ = std::move(offers); }
+
     void SetMirror(std::vector<Mission> offers, std::vector<Mission> active)
     {
         offers_ = std::move(offers);

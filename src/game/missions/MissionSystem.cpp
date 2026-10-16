@@ -107,6 +107,9 @@ Mission MissionSystem::Generate(MissionType type, Station* giver,
             m.description = TextFormat("Deliver cargo to %s", dest->GetName().c_str());
             break;
         }
+        case MissionType::Supply:
+        case MissionType::Escort:
+        case MissionType::Siege: break;  // a plan's job (#345), never a station's template
     }
     return m;
 }
