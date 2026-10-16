@@ -211,7 +211,8 @@ endif()
 add_library(netproto STATIC
     src/game/sim/Protocol.cpp
     src/game/sim/Events.cpp
-    src/game/sim/Auth.cpp        # proving an account is itself (#106) -- both sides need it
+    src/game/sim/Chat.cpp        # what a chat line may be and who hears it (#347)
+    src/game/sim/Auth.cpp       # proving an account is itself (#106) -- both sides need it
     src/game/net/Tcp.cpp
     src/game/net/OsRandom.cpp    # nonces and salts from the system's generator (#351)
 )
@@ -245,6 +246,7 @@ add_executable(econspace
     src/game/core/GameHud.cpp
     src/game/core/GameWindows.cpp  # missions, radar and settings, on Ui::Layout (#297)
     src/game/core/GameStation.cpp  # docked: the station, market and hangar windows (#297)
+    src/game/core/GameChat.cpp     # the chat window: local, private, the operator (#347)
     src/game/core/Actions.cpp      # what can be done about a thing: one list for every window (#297)
     src/game/core/StationList.cpp  # what the market and hangar windows list (#297)
     src/game/core/Goal.cpp         # what to do next, in one line (#364)
@@ -476,6 +478,7 @@ add_executable(tests
     tests/growth_tests.cpp         # expeditions, stations grown by need, convoys (#342 S6)
     tests/jobs_tests.cpp           # jobs posted by faction plans (#345)
     tests/access_tests.cpp         # the allowlist, bans and the server's log (#400)
+    tests/chat_tests.cpp           # local chat, private lines, limits and cleaning (#347)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/MissionList.cpp   # the missions window's rows, tested without one (#297)

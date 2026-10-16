@@ -1771,6 +1771,105 @@ bool DecodeUniverse(const std::string& s, WorldLoader::Universe& out)
     return true;
 }
 
+// --- Chat (#347) ---------------------------------------------------------------------------
+// A say is read by the server from anyone, so every field is read as what it must be or
+// not at all -- a number where the text should be is an empty line, not an exception.
+
+std::string EncodeChatSay(const ChatSay& c)
+{
+    json j;
+    Stamp(j, "say");
+    if (!c.to.empty())
+        j["to"] = c.to;
+    j["text"] = c.text;
+    return j.dump();
+}
+
+bool DecodeChatSay(const std::string& s, ChatSay& out)
+{
+    json j;
+    if (!OpenEnvelope(s, j) || TypeOf(j) != "say")
+        return false;
+    out.to = TextOf(j, "to");
+    out.text = TextOf(j, "text");
+    return true;
+}
+
+std::string EncodeChatLines(const ChatLines& c)
+{
+    json j;
+    Stamp(j, "chat");
+    json lines = json::array();
+    for (const ChatLine& l : c.lines)
+    {
+        json lj = { { "ch", l.channel }, { "text", l.text }, { "at", l.at } };
+        if (!l.from.empty())
+            lj["from"] = l.from;
+        if (!l.to.empty())
+            lj["to"] = l.to;
+        if (!l.system.empty())
+            lj["sys"] = l.system;
+        if (l.history)
+            lj["old"] = true;
+        lines.push_back(std::move(lj));
+    }
+    j["lines"] = std::move(lines);
+    return j.dump();
+}
+
+bool DecodeChatLines(const std::string& s, ChatLines& out)
+{
+    json j;
+    if (!OpenEnvelope(s, j) || TypeOf(j) != "chat")
+        return false;
+    out = ChatLines{};
+    const auto lines = j.find("lines");
+    if (lines == j.end() || !lines->is_array())
+        return true;
+    for (const json& lj : *lines)
+    {
+        if (!lj.is_object())
+            continue;
+        ChatLine l;
+        l.channel = TextOf(lj, "ch");
+        l.from = TextOf(lj, "from");
+        l.to = TextOf(lj, "to");
+        l.system = TextOf(lj, "sys");
+        l.text = TextOf(lj, "text");
+        const auto at = lj.find("at");
+        l.at = at != lj.end() && at->is_number_integer() ? at->get<long long>() : 0;
+        const auto old = lj.find("old");
+        l.history = old != lj.end() && old->is_boolean() && old->get<bool>();
+        if (!l.channel.empty())
+            out.lines.push_back(std::move(l));
+    }
+    return true;
+}
+
+std::string EncodeChatMembers(const ChatMembers& m)
+{
+    json j;
+    Stamp(j, "members");
+    j["sys"] = m.system;
+    j["pilots"] = m.pilots;
+    return j.dump();
+}
+
+bool DecodeChatMembers(const std::string& s, ChatMembers& out)
+{
+    json j;
+    if (!OpenEnvelope(s, j) || TypeOf(j) != "members")
+        return false;
+    out = ChatMembers{};
+    out.system = TextOf(j, "sys");
+    const auto pilots = j.find("pilots");
+    if (pilots != j.end() && pilots->is_array())
+        for (const json& p : *pilots)
+            if (p.is_string())
+                out.pilots.push_back(p.get<std::string>());
+    return true;
+}
+
 std::string MessageType(const std::string& s)
 {
     json j = json::parse(s, nullptr, false);

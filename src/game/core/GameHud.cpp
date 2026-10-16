@@ -269,6 +269,24 @@ void Game::SetupWindows()
     missions.minSize = { 240.0f, 220.0f };
     missions.tabOf = WIN_MARKET;
     desk_.AddWindow(missions, "MISSIONS", false, [this](Ui::Frame& f) { DrawMissionsContent(f); });
+    // Chat (#347): the local channel and private lines. Open from the start in space: other
+    // people are what makes this an MMO, and a channel nobody knows is there is a channel
+    // nobody talks in. Two windows showing the one log, one per context, because no place is
+    // free in both: in space it is bottom left, under the status window; docked, that is the
+    // station's and the stack beside it fills the rest, so there it waits for Enter or the
+    // menu bar, and opens on the right, where the overview was.
+    WindowSpec chat = panel(WIN_CHAT, "Chat", "Chat: local and private  (Enter)",
+                            Anchor::BottomLeft, { 72.0f, 8.0f, 440.0f, 210.0f });
+    chat.resizable = true;
+    chat.minSize = { 280.0f, 130.0f };
+    chat.context = CTX_SPACE;
+    desk_.AddWindow(chat, "CHAT", true, [this](Ui::Frame& f) { DrawChatContent(f); });
+    WindowSpec chatDocked = chat;
+    chatDocked.id = WIN_CHAT_DOCKED;
+    chatDocked.anchor = Anchor::TopRight;
+    chatDocked.place = { 8.0f, 96.0f, 400.0f, 320.0f };
+    chatDocked.context = CTX_DOCKED;
+    desk_.AddWindow(chatDocked, "CHAT", false, [this](Ui::Frame& f) { DrawChatContent(f); });
 
     // The two screens cover the world view and the windows; whichever opened last is on top.
     // Covering means the windows are not drawn at all while one is open: the map is drawn

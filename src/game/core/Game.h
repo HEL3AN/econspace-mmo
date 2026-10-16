@@ -187,6 +187,9 @@ public:
     // mouse, which a click sent to the window from outside never reaches (a hidden window
     // has no focus to give it). For checking, in a real client, what a click does.
     void AddScriptedClick(float x, float y, int frame) { clicks_.push_back({ x, y, frame }); }
+    // A chat line sent on frame `frame` (--say TEXT FRAME), as if typed into the chat window:
+    // two clients and a server show what local chat does without a hand on either (#347).
+    void AddScriptedSay(const std::string& text, int frame) { says_.push_back({ text, frame }); }
     // Who this client is logged in as: a discoverer may name what they found (#145), and
     // the window layout is kept per account (#297).
     void SetPilotName(const std::string& n);
@@ -247,8 +250,13 @@ private:
     void DrawOverviewContent(const Ui::Frame& f);  // list of objects in the system
     void DrawRadarContent(const Ui::Frame& f);     // system radar minimap
     void DrawMissionsContent(const Ui::Frame& f);  // missions taken and offered, and one in full
-    void DrawGalaxyMap();                          // full-screen star map
-    void DrawSensorScreen();                       // the sensor grid (#123)
+    // Chat (#347), in GameChat.cpp: the log, the line being typed and who is in local.
+    void DrawChatContent(const Ui::Frame& f);
+    void SendChat(const std::string& typed);  // a line as typed: local, or /w <pilot> ...
+    void AddChatLine(const Proto::ChatLine& line);
+    void ChatNotice(const std::string& text);  // a line from this client, to this pilot
+    void DrawGalaxyMap();                      // full-screen star map
+    void DrawSensorScreen();                   // the sensor grid (#123)
     // The sensor cell under a screen point, from the last picture drawn: the id of what is
     // in it (0 if nothing) and the world point at its centre. False off the grid.
     bool             SensorPick(Vector2 screen, int& id, Vector2& world) const;
@@ -471,10 +479,16 @@ private:
     static constexpr const char* WIN_MARKET = "market";
     static constexpr const char* WIN_HANGAR = "hangar";
     static constexpr const char* WIN_MENUBAR = "menubar";
-    static constexpr const char* WIN_CONTEXT = "context";  // the right-click menu
-    static constexpr const char* WIN_LOOK = "look";        // F10's treatment panel (#120)
-    static constexpr const char* WIN_LOSS = "loss";        // a ship was lost (#344)
-    Ui::Desk                     desk_;
+    static constexpr const char* WIN_CONTEXT = "context";          // the right-click menu
+    static constexpr const char* WIN_LOOK = "look";                // F10's treatment panel (#120)
+    static constexpr const char* WIN_LOSS = "loss";                // a ship was lost (#344)
+    static constexpr const char* WIN_CHAT = "chat";                // local and private chat (#347)
+    static constexpr const char* WIN_CHAT_DOCKED = "chat_docked";  // ...where it is docked
+    const char*                  ChatWindow() const
+    {
+        return mode_ == GameMode::Docked ? WIN_CHAT_DOCKED : WIN_CHAT;
+    }
+    Ui::Desk desk_;
     // Where the player is, for the windows that belong somewhere: the station's while docked,
     // the ones that look at space while flying (WindowSpec::context).
     static constexpr const char* CTX_DOCKED = "docked";
@@ -524,8 +538,26 @@ private:
         int   frame;
     };
     std::vector<ScriptedClick> clicks_;
-    int                        frameIndex_ = 0;
-    void                       PlayScriptedClicks();
+    // --say TEXT FRAME: a chat line typed and sent on that frame (#347).
+    struct ScriptedSay
+    {
+        std::string text;
+        int         frame;
+    };
+    std::vector<ScriptedSay> says_;
+    int                      frameIndex_ = 0;
+    // Chat (#347): the lines heard, newest last; who is in the local channel; what is being
+    // typed; whether the log follows its newest line (it stops when scrolled back); Enter
+    // asking for the field, granted the next frame so the same Enter does not send it; and
+    // whom /r answers.
+    std::deque<Proto::ChatLine> chatLines_;
+    Proto::ChatMembers          chatMembers_;
+    std::string                 chatInput_;
+    bool                        chatFollow_ = true;
+    bool                        chatFocusPending_ = false;
+    std::string                 chatReplyTo_;
+    Ui::Layout                  chatLayout_{ 4096 };
+    void                        PlayScriptedClicks();
     std::string themeToUse_;       // chosen in Settings while it was drawn: switched to next frame
     int         missionsTab_ = 0;  // 0 the missions taken, 1 the docked station's board
     bool        missionsForward_ = false;    // opened on docking: to the front of its stack

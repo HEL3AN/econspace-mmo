@@ -19,6 +19,23 @@ Look at the world: the ship, the system, what is nearby, hostiles, and recent ev
 |---|---|---|---|
 | `detail` | string |  | 'brief' (default) or 'full' |
 
+### `chat_send`
+
+Say something in chat. Without 'to' it is said in local: everyone in the system you are in hears it. With 'to' it goes to that pilot alone, wherever they are. The server limits how fast you may talk; a refusal says why.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `text` | string | yes | what to say, up to 200 characters |
+| `to` | string |  | a pilot's name, for a private line (optional) |
+
+### `chat`
+
+Read chat: the latest lines -- local, private and the server's -- and who is in local with you. observe shows new lines too; this shows more of them.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `count` | number |  | how many of the latest lines (default 20, at most 100) |
+
 ### `choose_start`
 
 Choose where a new pilot begins: the capital of one civilisation, from the list observe shows when there is no ship yet. Asked once, for a new account or one whose system is gone. Leave start out for a random one.

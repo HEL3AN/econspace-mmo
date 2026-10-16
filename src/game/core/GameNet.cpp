@@ -249,6 +249,32 @@ void Game::BuildClientSnapshot()
                 TraceLog(LOG_INFO, "Design %s (a refitted %s) is known now", def.design.id.c_str(),
                          def.design.name.c_str());
         }
+        else if (type == "chat")
+        {
+            // Lines heard (#347): local, private, the operator's, or why one was not sent.
+            Proto::ChatLines c;
+            if (Proto::DecodeChatLines(msg, c))
+                for (const Proto::ChatLine& l : c.lines)
+                    AddChatLine(l);
+        }
+        else if (type == "members")
+        {
+            // Who is in the local channel. Another system is another channel: the log says
+            // where it now is, and what follows is what was said there (#347).
+            Proto::ChatMembers m;
+            if (Proto::DecodeChatMembers(msg, m))
+            {
+                if (m.system != chatMembers_.system)
+                {
+                    std::string name = m.system;
+                    for (const WorldLoader::SystemInfo& si : universe_.systems)
+                        if (si.id == m.system)
+                            name = si.name;
+                    ChatNotice("Local: " + name);
+                }
+                chatMembers_ = std::move(m);
+            }
+        }
         else if (type == "bye")
         {
             // Said out loud rather than left as a silent disconnect: being displaced from

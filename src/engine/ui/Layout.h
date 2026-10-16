@@ -421,6 +421,11 @@ public:
         ScrollEnd(box);
     }
     float ScrollGutter() const;  // units: the room the indicator takes beside the content
+    // A list that follows what is added to its end, as a chat log does (#347): whether the
+    // scrolling box `id` was at its end as last laid out, and putting it there. Both between
+    // Begin and End, before the box is declared; with no such box yet, at the end and nothing.
+    bool ScrollAtEnd(std::string_view id, uint32_t index = 0) const;
+    void ScrollToEnd(std::string_view id, uint32_t index = 0);
 
     // Headings (clickable to sort), a divider, and rows that scroll. Each cell's text is
     // cut short with ".." to its column. Returns what the mouse did to it.

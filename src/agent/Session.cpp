@@ -143,6 +143,23 @@ void Session::Pump()
             if (Proto::DecodeFactions(msg, f))
                 Proto::ApplyFactions(f);
         }
+        else if (type == "chat")
+        {
+            // Kept between tool calls like the journal: a line said while the agent was
+            // flying is still there when it next looks (#347).
+            Proto::ChatLines c;
+            if (Proto::DecodeChatLines(msg, c))
+                for (const Proto::ChatLine& l : c.lines)
+                    chat_.push_back({ ++chatSeq_, l });
+            if (chat_.size() > 256)
+                chat_.erase(chat_.begin(), chat_.begin() + (long)(chat_.size() - 256));
+        }
+        else if (type == "members")
+        {
+            Proto::ChatMembers m;
+            if (Proto::DecodeChatMembers(msg, m))
+                members_ = std::move(m);
+        }
         else if (type == "universe")
         {
             // Replaced whole: it is sent whole, at login and whenever it changes (#206).
@@ -183,6 +200,12 @@ void Session::ChooseStart(const std::string& system)
     c.system = system;
     conn_->Send(Proto::EncodeChooseStart(c));
     awaitingStart_ = false;
+}
+
+void Session::Say(const Proto::ChatSay& say)
+{
+    if (conn_)
+        conn_->Send(Proto::EncodeChatSay(say));
 }
 
 int Session::Send(const Proto::Command& c)

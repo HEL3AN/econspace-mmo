@@ -32,7 +32,8 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    35;  // 35: a lost ship is lost -- insurance in a command, each hull's cover and the last loss
+    36;  // 36: chat -- a ChatSay from a client, ChatLines and ChatMembers from the server (#347);
+         // 35: a lost ship is lost -- insurance in a command, each hull's cover and the last loss
          // in the player's snapshot, and death wakes the pilot docked at home (#344); 34: a
          // mission may be a faction plan's job (#345), with its plan, system, deadline and
          // site; 33: goods from data/goods.json (#343) -- cargo and the market by its order, the
@@ -557,6 +558,48 @@ FactionList RegistryMessage();
 // the message names set.
 void ApplyFactions(const FactionList& list);
 
+// --- Chat (#347) ---------------------------------------------------------------------------
+// Pilots talk: to the system they are in, to one pilot by name, and the server's operator to
+// everyone. Talking is not a tick of anything, so it is not a Command -- one would carry the
+// text sixty times a second, or spend a tick budget a sentence has no business spending.
+
+// What a pilot says (client -> server). `to` empty: the local channel, everyone in the
+// system; otherwise the pilot it is for, by account name. The server cleans the text up
+// (Chat::Sanitize) and decides who hears it.
+struct ChatSay
+{
+    std::string to;
+    std::string text;
+};
+
+// One line as a client shows it (server -> client).
+struct ChatLine
+{
+    // "local" -- said in a system to everyone there; "private" -- from one pilot to another,
+    // sent to both; "server" -- the operator, to everyone; "notice" -- the server, to this
+    // pilot alone: why a line was not sent.
+    std::string channel;
+    std::string from;    // who said it; empty for the server
+    std::string to;      // a private line's recipient
+    std::string system;  // where a local line was said
+    std::string text;
+    long long   at = 0;  // when, in Unix seconds
+    // Said before this pilot arrived: the short history a system gives whoever comes in.
+    bool history = false;
+};
+struct ChatLines
+{
+    std::vector<ChatLine> lines;
+};
+
+// Who is in the local channel (server -> client): sent on entering a system and whenever
+// someone comes or goes. Account names, sorted.
+struct ChatMembers
+{
+    std::string              system;
+    std::vector<std::string> pilots;
+};
+
 // JSON serialization. Decode* return false on a broken/unsuitable message.
 // Fills in what the per-tick snapshot deliberately leaves out (#16, #97). A star does not
 // move, change name or change owner, so a snapshot carries neither those fields nor, for
@@ -599,6 +642,12 @@ std::string EncodeGalaxy(const GalaxyState& s);
 bool        DecodeGalaxy(const std::string& s, GalaxyState& out);
 std::string EncodeFactions(const FactionList& f);
 bool        DecodeFactions(const std::string& s, FactionList& out);
+std::string EncodeChatSay(const ChatSay& c);
+bool        DecodeChatSay(const std::string& s, ChatSay& out);
+std::string EncodeChatLines(const ChatLines& c);
+bool        DecodeChatLines(const std::string& s, ChatLines& out);
+std::string EncodeChatMembers(const ChatMembers& m);
+bool        DecodeChatMembers(const std::string& s, ChatMembers& out);
 
 // The galaxy index (#206): which systems exist, their names, map positions, security and
 // owners, the links between them and where a new player starts. The server sends it at
@@ -703,7 +752,7 @@ private:
 };
 
 // Message type from the "t" field ("cmd"/"snap"/"layout"/"ldelta"/"design"/"galaxy"/
-// "universe"/"factions"); "" —
+// "universe"/"factions"/"say"/"chat"/"members"); "" —
 // broken/unknown. For dispatching incoming transport messages on the client side. Reports the type
 // regardless of version, so a mismatch can be diagnosed rather than looking like garbage.
 std::string MessageType(const std::string& s);

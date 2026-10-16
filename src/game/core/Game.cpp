@@ -209,7 +209,16 @@ void Game::Run()
         if (IsKeyPressed(KEY_F10))  // the screen treatment's settings (#120)
             desk_.Toggle(WIN_LOOK);
         HandleEscape();
-        desk_.HandleMouse();       // raising, dragging and closing windows
+        desk_.HandleMouse();  // raising, dragging and closing windows
+        // Enter is "talk" (#347): it opens the chat and gives its field the keyboard -- on
+        // the next frame, or this Enter would also send the empty line. A field already
+        // holding the keyboard has this Enter for itself.
+        if (!choosingStart_ && !desk_.KeyboardTaken() &&
+            (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)))
+        {
+            desk_.SetOpen(ChatWindow(), true);
+            chatFocusPending_ = true;
+        }
         if (IsKeyPressed(KEY_F1))  // account is on the server — credit via command
         {
             Proto::Command dc;
@@ -514,6 +523,9 @@ void Game::PlayScriptedClicks()
             PlayAutomationEvent(e);
         }
     }
+    for (const ScriptedSay& s : says_)  // --say (#347)
+        if (frameIndex_ == s.frame)
+            SendChat(s.text);
     frameIndex_++;
 }
 
