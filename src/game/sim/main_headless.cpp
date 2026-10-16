@@ -2498,12 +2498,12 @@ static int ValidateCommand(const std::string& path)
     namespace fs = std::filesystem;
     const std::string dataDir = DataDir::Path();
     SetTraceLogLevel(LOG_WARNING);
-    if (!Factions::Load(dataDir + "factions.json") ||
+    if (!Factions::Load(dataDir + "factions.json") || !Goods::Load(dataDir + "goods.json") ||
         !Archetypes::Load(dataDir + "archetypes.json") ||
         !Blueprints::Load(dataDir + "blueprints.json"))
     {
-        fprintf(stderr, "validate: the registries in %s do not load: %s%s%s\n", dataDir.c_str(),
-                Factions::Error().c_str(), Archetypes::Error().c_str(),
+        fprintf(stderr, "validate: the registries in %s do not load: %s%s%s%s\n", dataDir.c_str(),
+                Factions::Error().c_str(), Goods::Error().c_str(), Archetypes::Error().c_str(),
                 Blueprints::Error().c_str());
         return 2;
     }
