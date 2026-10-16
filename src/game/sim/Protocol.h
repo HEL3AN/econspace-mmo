@@ -32,7 +32,8 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    36;  // 36: chat -- a ChatSay from a client, ChatLines and ChatMembers from the server (#347);
+    37;  // 37: chat -- a ChatSay from a client, ChatLines and ChatMembers from the server (#347);
+         // 36: taken by the haulers (#343, PR #409);
          // 35: a lost ship is lost -- insurance in a command, each hull's cover and the last loss
          // in the player's snapshot, and death wakes the pilot docked at home (#344); 34: a
          // mission may be a faction plan's job (#345), with its plan, system, deadline and
