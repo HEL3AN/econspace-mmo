@@ -24,8 +24,9 @@ bool IsDataDir(const std::string& dir)
     return !dir.empty() && FileExists((dir + "factions.json").c_str());
 }
 
-// For comparing paths: one kind of slash, and on Windows one case.
-std::string Normal(std::string p)
+// For comparing paths: one kind of slash, and on Windows one case. Unused in a Release build,
+// which has no build tree to compare with -- and -Werror would refuse it as dead code.
+[[maybe_unused]] std::string Normal(std::string p)
 {
     for (char& c : p)
     {
