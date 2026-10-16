@@ -194,6 +194,9 @@ void Game::DrawMissionsContent(const Ui::Frame& f)
             // A faction plan's job (#345): where the work is, how long it has, and no station
             // to go back to -- the faction pays by wire.
             L.Field("Where", m.where, t.colors.text);
+            // A siege's job: the side it is for is the issuer's; this is the other (#407).
+            if (m.siege)
+                L.Field("Against", FactionName(m.against), StandingColor(m.against));
             if (!m.due.empty())
                 L.Field("Time", m.due, m.due == "overdue" ? t.colors.warn : t.colors.text);
             L.Field("Hand in", "anywhere", t.colors.text);

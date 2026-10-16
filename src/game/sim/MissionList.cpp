@@ -44,6 +44,7 @@ const char* KindWord(int type)
         case MissionType::Escort: return "escort";
         case MissionType::Siege: return "siege";
         case MissionType::Contract: return "contract";
+        case MissionType::Besiege: return "besiege";
     }
     return "job";
 }
@@ -86,6 +87,8 @@ std::vector<Row> Build(const Obs::View& view, Board board)
             r.handInId = m.siteId;
             r.handInName = m.siteId != 0 ? NameHere(view, m.siteId) : std::string();
             r.handInHere = m.siteId != 0 && !r.handInName.empty();
+            r.siege = IsSiegeJob((MissionType)m.type);
+            r.against = m.against;
         }
         if (contract)
         {
@@ -121,7 +124,8 @@ std::vector<Row> Build(const Obs::View& view, Board board)
                     done = snap.player.cargoByType[m.resource];
                 break;
             case MissionType::Escort: done = m.progress; break;
-            case MissionType::Siege: done = m.progress; break;
+            case MissionType::Siege:
+            case MissionType::Besiege: done = m.progress; break;
         }
         if ((MissionType)m.type == MissionType::Escort)
             r.status = "escort";

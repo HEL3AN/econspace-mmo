@@ -357,8 +357,15 @@ TEST_CASE("pilots with a convoy stand between it and an ambush (#345)")
     LoadRegistries();
     Rules           r;
     const FactionId f = Fac::TradersGuild();
+    // Attacked for certain wherever anyone hostile is, whatever the security: the fight, not
+    // the chance of one, is what this is about.
+    WorldRules::Convoys sure = WorldRules::ConvoyRules();
+    sure.calm = 1.0e-4;
+    sure.policed = 0.0;
+    WorldRules::SetConvoyRules(sure);
     // The same convoy, ambushed where it is, with a pilot on its escort job and with a pilot on
-    // none.
+    // none. The fight goes the same way in both -- its draws are the convoy's and the place's
+    // -- so whatever differs is the pilot's doing.
     auto freight = [&](bool escorted)
     {
         Simulation sim;
@@ -366,8 +373,8 @@ TEST_CASE("pilots with a convoy stand between it and an ambush (#345)")
         const Upgrade u = MarketGoingUp(sim, f);
         const Plan*   p = PlanOf(sim, u.plan);
         REQUIRE(p != nullptr);
-        REQUIRE(p->leg >= 0);
-        const std::string where = p->route[(size_t)p->leg];
+        REQUIRE(p->leg == 0);
+        const std::string where = p->route[0];
         ClientSession&    s = DockedAt(sim, u.h);
         if (escorted)
         {
@@ -378,17 +385,25 @@ TEST_CASE("pilots with a convoy stand between it and an ambush (#345)")
         sim.StepPlayerUndock(s);
         if (s.systemId != where)
             sim.ServerEnterSystem(s, where, s.systemId);
-        sim.SystemById(where)->agg.presence[Factions::Pirates()] = 60.0f;
-        for (int pass = 0; pass < 10; pass++)
+        // Until it has crossed the system it set out from.
+        for (int pass = 0;
+             pass < 120 && PlanOf(sim, u.plan)->leg == 0 && PlanOf(sim, u.plan)->setbacks == 0;
+             pass++)
         {
-            sim.SystemById(where)->agg.presence[Factions::Pirates()] = 60.0f;
+            sim.SystemById(where)->agg.presence[Factions::Pirates()] = 3.0f;
+            s.ship->Repair();  // the pilot is there to be counted, not to be shot down
             sim.MaintainWorld(2.0f);
         }
         const Plan* after = PlanOf(sim, u.plan);
         REQUIRE(after != nullptr);
-        return after->setbacks > 0 ? 0.0f : after->freight + after->force;
+        CHECK(after->escorted == escorted);
+        REQUIRE(after->leg != 0);  // across, arrived, or turned back
+        return after->setbacks > 0 ? 0.0f : after->freight;
     };
-    CHECK(freight(true) > freight(false));
+    const float alone = freight(false);
+    const float guarded = freight(true);
+    CHECK(alone < 1.0f);  // it was hit
+    CHECK(guarded > alone);
 }
 
 TEST_CASE("a site going up posts a supply job, and a delivery brings it closer to done (#345)")
@@ -507,12 +522,23 @@ TEST_CASE("a plan's job crosses the wire, and an agent reads where, when and wha
     m.systemName = "Vela";
     m.deadline = 1600.0;
     m.siteId = 0;
+    m.against = Fac::Pirates();
     snap.missionActive.push_back(m);
+    // ...and the other side's job of the same siege (#407).
+    Proto::MissionView join = m;
+    join.type = (int)MissionType::Besiege;
+    join.faction = Fac::Pirates();
+    join.against = Fac::TradersGuild();
+    join.title = "Join the siege of Vela";
+    snap.missionActive.push_back(join);
 
     Proto::Snapshot back;
     REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(snap), back));
-    REQUIRE(back.missionActive.size() == 1);
+    REQUIRE(back.missionActive.size() == 2);
     const Proto::MissionView& got = back.missionActive[0];
+    CHECK(got.against == Fac::Pirates());
+    CHECK(back.missionActive[1].type == (int)MissionType::Besiege);
+    CHECK(back.missionActive[1].against == Fac::TradersGuild());
     CHECK(got.planId == 42);
     CHECK(got.systemId == "r1-2-3");
     CHECK(got.systemName == "Vela");
@@ -526,6 +552,15 @@ TEST_CASE("a plan's job crosses the wire, and an agent reads where, when and wha
     CHECK(text.find("siege: Break the siege of Vela") != std::string::npos);
     CHECK(text.find("hand in anywhere") != std::string::npos);
     CHECK(text.find("progress 1/3") != std::string::npos);
+    // Which side each is for, and whom against.
+    CHECK(text.find("for " + FactionName(Fac::TradersGuild()) + " (besieged), against " +
+                    FactionName(Fac::Pirates())) != std::string::npos);
+    CHECK(text.find("besiege: Join the siege of Vela") != std::string::npos);
+    CHECK(text.find("for " + FactionName(Fac::Pirates()) + " (besieging), against " +
+                    FactionName(Fac::TradersGuild())) != std::string::npos);
+    CHECK(Obs::MissionNeeds(view, back.missionActive[1]) ==
+          "shoot down 2 more of the " + FactionName(Fac::TradersGuild()) +
+              " defenders in Vela (system r1-2-3)");
 }
 
 namespace

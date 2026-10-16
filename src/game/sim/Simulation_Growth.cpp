@@ -16,11 +16,14 @@
 //
 // What an upgrade or an Anchor is built from comes by convoy, from where the faction makes
 // things -- its holding within reach with the most stations of its own (#407) -- a system at
-// a time. Where nobody is it is arithmetic: in each system on the way it fights whatever is
-// hostile there, escort first and then the hauler. Where somebody is, the
-// same arithmetic has a hauler and its escort to show for it, which a player can meet, escort
-// or shoot down -- the hauler shot down, or worn down by the arithmetic, the convoy is lost
-// and the plan waits for the next. Losing one delays a plan; it never cancels it.
+// a time, by the way the faction fears least, with as much escort as it can lend for what it
+// expects to meet. Where nobody is it is arithmetic: crossing each system it is attacked or
+// not, by the danger there and the security, and a fight takes freight and escort by how far
+// the danger outweighs its strength (#407, the owner's decision of 2026-10-16) -- so it
+// arrives whole or damaged, turns back, or is destroyed, and a convoy no player helps still
+// gets through where its faction judged the way well. Where somebody is, the same arithmetic
+// has a hauler and its escort to show for it, which a player can meet, escort or shoot down.
+// Losing one delays a plan and costs the faction what was lost; it never cancels it.
 #include "sim/Simulation.h"
 #include "sim/WorldRules.h"
 
@@ -37,13 +40,14 @@
 #include <cmath>
 #include <cstdio>
 #include <deque>
+#include <map>
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
 {
-// The coarse pass a convoy is stepped by: MaintainWorld's two seconds.
-constexpr float PASS_SECONDS = 2.0f;
 // What keys where a convoy's ships are, besides which plan, which leg and the second.
 constexpr uint64_t CONVOY_KEY = 0xC0470Bu;
 // The most escorts a convoy shows: a picture of the escort, not every ship of it.
@@ -51,7 +55,11 @@ constexpr int MAX_ESCORTS = 4;
 // A holding with less than this to spare sends no escort: the convoy goes alone.
 constexpr float MIN_ESCORT = 0.25f;
 // Less than this of an escort coming home is not worth the journey: it was lost.
-constexpr float  MIN_RETURN = 0.05f;
+constexpr float MIN_RETURN = 0.05f;
+// What keys whether a convoy is attacked crossing a system, and how hard (#407).
+constexpr uint64_t FIGHT_KEY = 0xF16E7u;
+// What a faction fears in a system it has never looked at, in ships, on a convoy's way.
+constexpr float  UNSEEN_DANGER = 1.0f;
 constexpr double HOUR = 3600.0;
 
 bool Against(FactionId a, FactionId b)
@@ -451,30 +459,96 @@ void Simulation::FinishStation(SystemState& st, int id)
 
 // --- The builder convoy -------------------------------------------------------------------
 
-std::vector<std::string> Simulation::ConvoyRoute(FactionId f, const std::string& target) const
+float Simulation::FreightPrice(const Plan& p)
 {
-    // Out from the site a jump at a time, remembering the way back to it. What a site is built
-    // from is made where the faction has stations of its own (#407) -- hubs, mining posts,
-    // stations grown from outpost markets -- not at an outpost, which holds a claim and makes
-    // nothing; and most is made where most of them are. Of its holdings within the convoy
-    // rules' reach, the one with the most stations of its own -- the nearest of those, the
-    // lowest id among the nearest -- is where the convoy sets out from: a civilisation's
-    // heart, for the frontier at its door, so that frontier is built from the space behind it
-    // and its convoys come out through it. With no station within reach, the nearest holding
-    // of any kind, as before.
-    std::map<std::string, std::string> toward;  // id -> the next system on the way to target
-    std::vector<std::string>           ring{ target };
-    toward[target] = std::string();
-    std::string home, held;  // where most is made; the nearest holding of any kind
-    int         homeAt = 0, heldAt = 0, most = 0;
-    for (int d = 1; d <= WorldRules::ConvoyRules().reach && !ring.empty(); d++)
+    return p.kind == Plan::Kind::Anchor ? AnchorCost() : BlueprintCost(p.blueprint);
+}
+
+float Simulation::AmbushChance(float danger, float security)
+{
+    if (danger <= 0.0f)
+        return 0.0f;
+    const WorldRules::Convoys& r = WorldRules::ConvoyRules();
+    return danger / (danger + (float)r.calm) *
+           (1.0f - (float)r.policed * std::clamp(security, 0.0f, 1.0f));
+}
+
+float Simulation::AmbushHarm(float strength, float danger)
+{
+    if (danger <= 0.0f)
+        return 0.0f;
+    // The share of the fight that is the attackers': all of it against nothing, half against
+    // as many -- and what that takes off the freight grows as its square, so an escort that
+    // matches the danger saves most of what it carries.
+    const float weak = danger / (danger + std::max(0.0f, strength));
+    return (float)WorldRules::ConvoyRules().harm * weak * weak;
+}
+
+float Simulation::ConvoyDanger(FactionId f, const std::string& systemId, bool truth,
+                               float* security) const
+{
+    const SystemState* st = SystemById(systemId);
+    if (st == nullptr)
+        return 0.0f;
+    float danger = 0.0f;
+    // What it holds, or has ships in, it sees for itself: never out of date (Think).
+    const bool sees = (st->agg.claimed && st->agg.controller == f) || st->agg.presence[f] >= 1.0f;
+    if (truth || sees)
+    {
+        for (FactionId g : Factions::All())
+            if (Against(f, g))
+                danger += st->agg.presence[g];
+        if (security != nullptr)
+            *security = st->agg.security;
+        if (truth)
+            return danger;
+    }
+    // What it believes: what it saw there, or -- where it has never looked -- a ship's worth of
+    // whatever might be there, at middling security; and where it lost something, the memory
+    // of that.
+    const FactionMind& mind = minds_[f];
+    if (!sees)
+    {
+        const auto seen = mind.intel.find(systemId);
+        if (seen == mind.intel.end())
+            danger = UNSEEN_DANGER;
+        else
+            for (FactionId g : Factions::All())
+                if (Against(f, g))
+                    danger += seen->second.presence[g];
+        if (security != nullptr)
+            *security = seen == mind.intel.end() ? 0.5f : seen->second.security;
+    }
+    return danger + Intelligence::LossRisk(mind.lostAt, systemId, time_);
+}
+
+Simulation::ConvoyChart Simulation::ChartConvoy(FactionId f, const std::string& target,
+                                                float pilots, int waits) const
+{
+    ConvoyChart                c;
+    const WorldRules::Convoys& r = WorldRules::ConvoyRules();
+    if (!HasSystem(target))
+        return c;
+    // Out from the site a jump at a time. What a site is built from is made where the faction
+    // has stations of its own (#407) -- hubs, mining posts, stations grown from outpost
+    // markets -- not at an outpost, which holds a claim and makes nothing; and most is made
+    // where most of them are. Of its holdings within the convoy rules' reach, the one with the
+    // most stations of its own -- the nearest of those, the lowest id among the nearest -- is
+    // where the convoy sets out from: a civilisation's heart, for the frontier at its door, so
+    // that frontier is built from the space behind it and its convoys come out through it.
+    // With no station within reach, the nearest holding of any kind.
+    std::set<std::string>    within{ target };
+    std::vector<std::string> ring{ target };
+    std::string              home, held;  // where most is made; the nearest holding of any kind
+    int                      homeAt = 0, heldAt = 0, most = 0;
+    for (int d = 1; d <= r.reach && !ring.empty(); d++)
     {
         std::vector<std::string> next;
         for (const std::string& id : ring)
             for (const std::string& n : Neighbors(id))
             {
                 const auto it = systems_.find(n);
-                if (it == systems_.end() || !toward.emplace(n, id).second)
+                if (it == systems_.end() || !within.insert(n).second)
                     continue;
                 next.push_back(n);
                 if (!it->second.agg.claimed || it->second.agg.controller != f)
@@ -497,11 +571,66 @@ std::vector<std::string> Simulation::ConvoyRoute(FactionId f, const std::string&
     if (home.empty())
         home = held;
     if (home.empty())
-        return { target };  // nothing of its own nearer: from the site itself
-    std::vector<std::string> route{ home };
-    while (route.back() != target)
-        route.push_back(toward[route.back()]);
-    return route;
+        c.route = { target };  // nothing of its own nearer: from the site itself
+    else
+    {
+        // The way it fears least, among the systems within reach of the site: a jump for every
+        // system entered, and `avoid` more for every ship it believes waits there (#407). Ties
+        // go to the lower id, so the same galaxy is crossed the same way.
+        std::map<std::string, float>            cost{ { home, 0.0f } };
+        std::map<std::string, std::string>      back;
+        std::set<std::pair<float, std::string>> open{ { 0.0f, home } };
+        while (!open.empty())
+        {
+            const std::pair<float, std::string> at = *open.begin();
+            open.erase(open.begin());
+            if (at.second == target)
+                break;
+            for (const std::string& n : Neighbors(at.second))
+            {
+                if (within.count(n) == 0)
+                    continue;
+                const float step = 1.0f + (float)r.avoid * ConvoyDanger(f, n, false);
+                const auto  had = cost.find(n);
+                if (had != cost.end() && had->second <= at.first + step)
+                    continue;
+                if (had != cost.end())
+                    open.erase({ had->second, n });
+                cost[n] = at.first + step;
+                back[n] = at.second;
+                open.insert({ at.first + step, n });
+            }
+        }
+        std::vector<std::string> way{ target };
+        while (way.back() != home && back.count(way.back()) != 0)
+            way.push_back(back[way.back()]);
+        if (way.back() != home)
+            way = { target };  // within reach of the site, so never: from the site, then
+        c.route.assign(way.rbegin(), way.rend());
+    }
+
+    // The escort it asks for: enough for the worst it believes it will meet, more for every
+    // time one was held back or turned back -- and what it gets is what its holding can spare.
+    for (const std::string& id : c.route)
+        c.worst = std::max(c.worst, ConvoyDanger(f, id, false));
+    const Temperament& t = Factions::TemperamentOf(f);
+    const float want = std::clamp((float)r.escortPerDanger * c.worst * (1.0f + 0.5f * (float)waits),
+                                  (float)r.escort * t.capacity, (float)r.escortMax * t.capacity);
+    const SystemState* from = SystemById(c.route.front());
+    if (from != nullptr && from->agg.claimed && from->agg.controller == f)
+    {
+        const float spare = std::min(from->agg.presence[f] - t.capacity * HOME_GUARD, want);
+        c.escort = spare >= MIN_ESCORT ? spare : 0.0f;
+    }
+    // What it expects to lose on the way, system by system, as it believes them to be.
+    for (size_t i = 0; i < c.route.size(); i++)
+    {
+        float       security = 0.0f;
+        const float danger = ConvoyDanger(f, c.route[i], false, &security);
+        const float strength = (float)r.hauler + c.escort + (i == 0 ? pilots : 0.0f);
+        c.loss += AmbushChance(danger, security) * AmbushHarm(strength, danger);
+    }
+    return c;
 }
 
 bool Simulation::DispatchConvoy(Plan& p)
@@ -509,28 +638,52 @@ bool Simulation::DispatchConvoy(Plan& p)
     if (!HasSystem(p.target))
         return false;
     const WorldRules::Convoys& r = WorldRules::ConvoyRules();
-    const Temperament&         t = Factions::TemperamentOf(p.faction);
-    p.route = ConvoyRoute(p.faction, p.target);
+    FactionMind&               mind = minds_[p.faction];
+    const double               retry = r.retryMinutes * 60.0;
+    // Pilots already waiting with it where it would set out stand in for escort it lacks.
+    ConvoyChart c = ChartConvoy(p.faction, p.target, 0.0f, p.waits);
+    if (const float pilots = EscortsWith(p, c.route.front()); pilots > 0.0f)
+        c = ChartConvoy(p.faction, p.target, pilots, p.waits);
+    p.route = c.route;
     p.from = p.route.front();
-    p.leg = 0;
-    p.legAt = time_;
-    p.freight = 1.0f;
+    p.leg = -1;
     p.force = 0.0f;
     p.lent.clear();
+    p.guard = 0.0f;
+    const auto hold = [&](const std::string& why)
+    {
+        p.legAt = time_ + retry;
+        p.dueAt = p.legAt + r.hop * (double)p.route.size();
+        TallyConvoy(p, &ConvoyTally::held);
+        Record("convoy", p.faction, p.from,
+               FactionName(p.faction) + " held back its convoy for " + SystemName(p.target) +
+                   " in " + SystemName(p.from) + ": " + why);
+        return true;
+    };
+    // What the last one lost has to be made again before another can carry it.
+    const float refill = std::max(0.0f, 1.0f - p.freight) * FreightPrice(p);
+    if (mind.stock < refill)
+        return hold("it cannot yet make good what the last one lost");
+    // Value against risk (#407): while it expects to lose too much of what it sends, it waits
+    // for a stronger escort, pilots to fly with it, or the way to clear -- but not for ever.
+    if (p.waits < r.maxWaits && c.loss > (float)r.wait)
+    {
+        p.waits++;
+        return hold("the way is too dangerous for the escort it can send");
+    }
+    mind.stock -= refill;
+    p.freight = 1.0f;
+    p.leg = 0;
+    p.legAt = time_;
+    p.escorted = false;
     p.dueAt = time_ + r.hop * (double)p.route.size();  // when it would arrive, if nothing stops it
     // Its escort is lent by the holding it sets out from, as a siege's is: that much short
     // until it is home again.
-    SystemAggregate& home = systems_.at(p.from).agg;
-    if (home.claimed && home.controller == p.faction)
+    if (c.escort > 0.0f)
     {
-        const float spare = std::min(home.presence[p.faction] - t.capacity * HOME_GUARD,
-                                     t.capacity * (float)r.escort);
-        if (spare >= MIN_ESCORT)
-        {
-            home.presence[p.faction] -= spare;
-            p.force = spare;
-            p.lent.push_back({ p.from, spare, std::max(1, (int)p.route.size() - 1) });
-        }
+        systems_.at(p.from).agg.presence[p.faction] -= c.escort;
+        p.force = c.escort;
+        p.lent.push_back({ p.from, c.escort, std::max(1, (int)p.route.size() - 1) });
     }
     char escort[48];
     std::snprintf(escort, sizeof escort, "%.0f ships of escort",
@@ -538,6 +691,7 @@ bool Simulation::DispatchConvoy(Plan& p)
     Record("convoy", p.faction, p.target,
            FactionName(p.faction) + " sent a convoy from " + SystemName(p.from) + " to " +
                SystemName(p.target) + ", " + (p.force > 0.0f ? escort : "unescorted"));
+    TallyConvoy(p, &ConvoyTally::sent);
     if (IsHot(systems_.at(p.from)))
         FieldConvoy(systems_.at(p.from), p, false);
     return true;
@@ -560,6 +714,12 @@ void Simulation::SendHome(const Plan& p, int hops)
     due_.insert({ r.dueAt, r.id });
 }
 
+void Simulation::TallyConvoy(const Plan& p, long long ConvoyTally::* what)
+{
+    convoyTally_.*what += 1;
+    convoyRegions_[Gen::SlotOf(p.target)].*what += 1;
+}
+
 void Simulation::LoseConvoy(Plan& p, const std::string& how)
 {
     const std::string where = p.route.empty() || p.leg < 0 ? p.target : p.route[(size_t)p.leg];
@@ -571,25 +731,119 @@ void Simulation::LoseConvoy(Plan& p, const std::string& how)
              FactionName(p.faction) + " lost its convoy bound for " + SystemName(p.target) +
                  " in " + SystemName(where) + ": " + how + "; another sets out in " +
                  std::to_string((long long)std::lround(retry / 60.0)) + " min");
+    TallyConvoy(p, &ConvoyTally::destroyed);
     p.leg = -1;
     p.legAt = time_ + retry;
     p.route.clear();
     p.force = 0.0f;
     p.lent.clear();
-    p.freight = 1.0f;
+    p.freight = 0.0f;  // all of it, to be made again
+    p.guard = 0.0f;
     p.setbacks++;
+    p.waits++;
+}
+
+void Simulation::TurnBackConvoy(Plan& p, const std::string& where, const std::string& why)
+{
+    const std::string at = p.ConvoyAt();
+    UnfieldConvoy(p);
+    SendHome(p, std::max(1, p.leg));
+    minds_[p.faction].lostAt[where] = time_;
+    const double retry = WorldRules::ConvoyRules().retryMinutes * 60.0;
+    char         left[96];
+    std::snprintf(left, sizeof left,
+                  "; %.0f%% of its freight goes home, another sets out in %lld min",
+                  100.0 * std::max(0.0f, p.freight), (long long)std::lround(retry / 60.0));
+    Record("convoy", p.faction, at,
+           FactionName(p.faction) + "'s convoy bound for " + SystemName(p.target) +
+               " turned back in " + SystemName(at) + ": " + why + left);
+    TallyConvoy(p, &ConvoyTally::turnedBack);
+    p.leg = -1;
+    p.legAt = time_ + retry;
+    p.route.clear();
+    p.force = 0.0f;
+    p.lent.clear();
+    p.guard = 0.0f;
+    p.setbacks++;
+    p.waits++;
 }
 
 bool Simulation::ArriveConvoy(Plan& p)
 {
     UnfieldConvoy(p);
     SendHome(p, std::max(1, (int)p.route.size() - 1));
+    TallyConvoy(p, p.freight >= 0.999f ? &ConvoyTally::intact : &ConvoyTally::damaged);
+    if (p.escorted)
+        TallyConvoy(p, &ConvoyTally::escorted);
     p.arrived = true;
     p.force = 0.0f;
     p.lent.clear();
     p.route.clear();
     p.leg = -1;
-    return p.kind == Plan::Kind::Anchor ? LayAnchorSite(p) : StartUpgrade(p);
+    const bool begun = p.kind == Plan::Kind::Anchor ? LayAnchorSite(p) : StartUpgrade(p);
+    // What it lost on the way is made up from the faction's stock, as far as that goes.
+    if (begun && p.freight < 1.0f)
+    {
+        float& stock = minds_[p.faction].stock;
+        stock = std::max(0.0f, stock - (1.0f - p.freight) * FreightPrice(p));
+    }
+    return begun;  // `freight` stays what it came with: the record of how it went
+}
+
+bool Simulation::CrossSystem(Plan& p, SystemState& st)
+{
+    const WorldRules::Convoys& r = WorldRules::ConvoyRules();
+    float                      security = 0.0f;
+    const float                danger = ConvoyDanger(p.faction, st.id, true, &security);
+    if (danger <= 0.0f)
+        return true;
+    // Whether it is attacked, and how hard the fight goes, are drawn from which convoy and
+    // where on its way -- never from how many draws came before -- and from the numbers alone,
+    // the same where somebody is to see it as where nobody is (#295). Pilots with it are
+    // escort strength the sums do not wear down: what hits them is real.
+    Gen::Rng    rng(Gen::Key(FIGHT_KEY, (uint64_t)p.id, (uint64_t)p.setbacks, (uint64_t)p.leg));
+    const float strength = (float)r.hauler + p.force + p.guard;
+    if ((float)rng.Unit() >= AmbushChance(danger, security))
+        return true;  // it slipped through
+    const float weak = danger / (danger + strength);
+    const float hard = 0.5f + (float)rng.Unit();
+    const float taken = AmbushHarm(strength, danger) * hard;
+    const float escortLost = std::min(p.force, (float)r.bite * danger * weak * hard);
+    const float dealt = std::min(danger, (float)r.bite * strength * (1.0f - weak) * hard);
+    FactionId   worst = Factions::Pirates();
+    float       most = -1.0f;
+    for (FactionId g : Factions::All())
+        if (Against(p.faction, g) && st.agg.presence[g] > 0.0f)
+        {
+            float& there = st.agg.presence[g];
+            if (there > most)
+            {
+                most = there;
+                worst = g;
+            }
+            there = std::max(0.0f, there - dealt * there / danger);
+        }
+    p.force -= escortLost;
+    p.freight -= taken;
+    const std::string who =
+        worst == Factions::Pirates() ? std::string("the pirates") : FactionName(worst) + " ships";
+    if (p.freight <= 0.0f)
+    {
+        LoseConvoy(p, who + " took it");
+        return false;
+    }
+    const bool last = (size_t)p.leg + 1 >= p.route.size();
+    if (!last && p.freight < (float)r.turnBack)
+    {
+        TurnBackConvoy(p, st.id, "mauled by " + who);
+        return false;
+    }
+    char lost[48];
+    std::snprintf(lost, sizeof lost, "%.0f%% of its freight", 100.0 * std::min(1.0f, taken));
+    Record("convoy", p.faction, st.id,
+           FactionName(p.faction) + "'s convoy bound for " + SystemName(p.target) + " fought off " +
+               who + " in " + SystemName(st.id) + ", losing " + lost);
+    return true;
 }
 
 void Simulation::StepConvoys()
@@ -603,7 +857,7 @@ void Simulation::StepConvoys()
             continue;
         if (p.leg < 0)
         {
-            // Waiting to set out: the first, or the next after one was lost.
+            // Waiting to set out: the first, or the next after one did not get through.
             if (time_ >= p.legAt && !DispatchConvoy(p))
                 over.push_back(p.id);
             continue;
@@ -643,50 +897,16 @@ void Simulation::StepConvoys()
                 continue;
             }
         }
-
-        // Whatever is hostile here falls on it: the escort first, then the hauler -- and the
-        // escort takes its toll of them as it goes.
-        // Pilots flying with it on its escort jobs (#345) are escort strength too: they fire
-        // back with the rest and stand between it and the first of the blows, each as many
-        // ships as the jobs rules say, and are not worn down by the sums -- where they are, the
-        // system is hot, and what hits them, or the hauler, is real.
-        float hostile = 0.0f;
-        for (FactionId g : Factions::All())
-            if (Against(p.faction, g))
-                hostile += st->agg.presence[g];
-        if (hostile > 0.0f)
-        {
-            const float pilots = EscortsWith(p, st->id);
-            float       blow = (float)r.ambush * hostile * PASS_SECONDS;
-            const float back = (float)r.ambush * (p.force + pilots) * PASS_SECONDS;
-            blow -= std::min(blow, pilots);
-            for (FactionId g : Factions::All())
-                if (Against(p.faction, g) && st->agg.presence[g] > 0.0f)
-                {
-                    float& there = st->agg.presence[g];
-                    there = std::max(0.0f, there - back * there / hostile);
-                }
-            const float taken = std::min(p.force, blow);
-            p.force -= taken;
-            blow -= taken;
-            p.freight -= blow;
-            if (p.freight <= 0.0f)
-            {
-                FactionId worst = Factions::Pirates();
-                float     most = -1.0f;
-                for (FactionId g : Factions::All())
-                    if (Against(p.faction, g) && st->agg.presence[g] > most)
-                    {
-                        most = st->agg.presence[g];
-                        worst = g;
-                    }
-                LoseConvoy(p, worst == Factions::Pirates() ? "the pirates took it"
-                                                           : FactionName(worst) + " ships took it");
-                continue;
-            }
-        }
+        // Pilots flying with it on its escort jobs (#345) are escort strength wherever they were
+        // with it while it crossed the system.
+        const float pilots = EscortsWith(p, st->id);
+        p.guard = std::max(p.guard, pilots);
+        p.escorted = p.escorted || pilots > 0.0f;
 
         if (time_ < p.legAt + r.hop)
+            continue;
+        // Across: whatever is hostile here falls on it, or does not.
+        if (!CrossSystem(p, *st))
             continue;
         if ((size_t)p.leg + 1 >= p.route.size())
         {
@@ -694,17 +914,25 @@ void Simulation::StepConvoys()
                 over.push_back(p.id);
             continue;
         }
-        // On to the next system, if the way is still there.
-        const std::string& next = p.route[(size_t)p.leg + 1];
-        const auto&        links = Neighbors(p.route[(size_t)p.leg]);
+        // On to the next system, if the way is still there -- and if what waits there is not
+        // more than it could hope to get through, unless it has waited long enough.
+        const std::string next = p.route[(size_t)p.leg + 1];
+        const auto&       links = Neighbors(p.route[(size_t)p.leg]);
         if (!HasSystem(next) || std::find(links.begin(), links.end(), next) == links.end())
         {
-            LoseConvoy(p, "its way was cut");
+            TurnBackConvoy(p, st->id, "its way was cut");
+            continue;
+        }
+        const float ahead = ConvoyDanger(p.faction, next, true);
+        if (p.waits < r.maxWaits && ahead > (float)r.balk * ((float)r.hauler + p.force + pilots))
+        {
+            TurnBackConvoy(p, next, SystemName(next) + " ahead is held against it");
             continue;
         }
         UnfieldConvoy(p);
         p.leg++;
         p.legAt = time_;
+        p.guard = 0.0f;
         SystemState* there = SystemById(next);
         if (IsHot(*there))
             FieldConvoy(*there, p, true);

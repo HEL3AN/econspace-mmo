@@ -17,7 +17,9 @@
 #include "entities/NpcShip.h"
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
+#include "entities/Station.h"
 #include "entities/Structure.h"
+#include "missions/Mission.h"
 #include "sim/ClientSession.h"
 #include "sim/FactionMind.h"
 #include "sim/Simulation.h"
@@ -770,4 +772,78 @@ TEST_CASE("a siege still on its way finds the outpost gone and turns back (#295)
     for (const Plan* p : ReturnsOf(*sim, Fac::TradersGuild()))
         back += p->force;
     CHECK(back == doctest::Approx(plan.force));  // nobody fought: everybody goes home
+}
+
+TEST_CASE("the besieging side posts join-the-siege jobs: defenders shot down pay, and are gone "
+          "from the garrison the siege wears against (#407)")
+{
+    auto       sim = World();
+    const Ring r = PirateBaseRingedByTheGuild(*sim);
+    const int  plan = GuildMusters(*sim, r)->id;
+
+    // A Guild depot next door to the den posts the job.
+    const std::string next = sim->Neighbors(r.den)[0];
+    REQUIRE(sim->SystemById(next)->agg.controller == Fac::TradersGuild());
+    const Vector2 depot = sim->SafeArrival(next);
+    const int     station = sim->AddStatic(
+        next,
+        std::make_unique<Station>(Vector2{ depot.x + 9000.0f, depot.y + 9000.0f }, 300.0f,
+                                  "Guild Depot", Fac::TradersGuild(), StationRole::TradeHub),
+        std::string());
+    REQUIRE(station != 0);
+    sim->MindOf(Fac::TradersGuild()).stock = 4.0f * Simulation::OutpostCost();
+    ClientSession& s = sim->CreateSession(next, { depot.x + 9350.0f, depot.y + 9000.0f },
+                                          GetShipCatalog()[0].stats);
+    REQUIRE(sim->StepPlayerDock(s, *sim->SystemById(next)) == station);
+    int offer = -1;
+    for (size_t i = 0; i < s.missions.Offers().size(); i++)
+        if (s.missions.Offers()[i].type == MissionType::Besiege &&
+            s.missions.Offers()[i].planId == plan)
+            offer = (int)i;
+    REQUIRE(offer >= 0);
+    const Mission job = s.missions.Offers()[(size_t)offer];
+    // It says which side it is for -- the issuer's, the besieger -- and whom it is against.
+    CHECK(job.faction == Fac::TradersGuild());
+    CHECK(job.against == Fac::Pirates());
+    CHECK(job.systemId == r.den);
+    CHECK(job.targetCount >= 1);
+    CHECK(job.title.find("Join the siege") != std::string::npos);
+    // ...and the besieged's board, had it one, would carry the other side's: never this one.
+    for (const Mission& m : s.missions.Offers())
+        CHECK(m.type != MissionType::Siege);
+    REQUIRE(sim->AcceptMission(s, offer));
+
+    // Into the den: its pirates are ships there now.
+    sim->StepPlayerUndock(s);
+    sim->ServerEnterSystem(s, r.den, next);
+    Pass(*sim);
+    const float before = sim->SystemById(r.den)->agg.presence[Fac::Pirates()];
+    // A ship of the besieger's own counts for nothing; each defender shot down counts one.
+    NpcShip own({ 0.0f, 0.0f }, Fac::TradersGuild(), NpcRole::Warship, {});
+    sim->CreditJobKill(s, own);
+    CHECK(s.missions.Active()[0].progress == 0);
+    const int need = s.missions.Active()[0].targetCount;
+    int       shot = 0;
+    for (const auto& e : sim->SystemById(r.den)->entities)
+    {
+        if (shot >= need || e->GetKind() != EntityKind::Npc)
+            continue;
+        NpcShip& n = static_cast<NpcShip&>(*e);
+        if (n.GetFaction() != Fac::Pirates() || n.GetRole() != NpcRole::Pirate || n.GetTask() != 0)
+            continue;
+        n.TakeDamage(1.0e9f);
+        sim->CreditJobKill(s, n);
+        shot++;
+    }
+    REQUIRE(shot == need);
+    CHECK(s.missions.Active()[0].progress == need);
+    // What the recount finds gone is gone from the pirates' strength there.
+    Pass(*sim);
+    CHECK(sim->SystemById(r.den)->agg.presence[Fac::Pirates()] < before - 0.5f * (float)need);
+
+    REQUIRE(sim->MissionCompletableNow(s, s.missions.Active()[0]));
+    const double money = s.account.GetMoney();
+    const double reward = s.missions.Active()[0].rewardMoney;
+    REQUIRE(sim->CompleteMission(s, 0));
+    CHECK(s.account.GetMoney() == doctest::Approx(money + reward));
 }

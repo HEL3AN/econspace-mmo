@@ -1103,6 +1103,8 @@ bool Simulation::SaveWorld(const std::string& path) const
                 pj["legAt"] = p.legAt;
                 pj["freight"] = p.freight;
                 pj["setbacks"] = p.setbacks;
+                if (p.waits > 0)
+                    pj["waits"] = p.waits;  // held back or turned back (#407)
             }
         }
         plans.push_back(std::move(pj));
@@ -1295,6 +1297,7 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             p.legAt = pj.value("legAt", p.startedAt);
             p.freight = pj.value("freight", 1.0f);
             p.setbacks = pj.value("setbacks", 0);
+            p.waits = std::max(0, pj.value("waits", 0));
             const json& route = pj.value("route", json::array());
             for (const json& r : route)
                 if (r.is_string())

@@ -210,6 +210,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         v.systemName = m.systemName;
         v.deadline = m.deadline;
         v.siteId = JobSiteId(s, m);
+        v.against = m.against;
         return v;
     };
     if (s.IsDocked())

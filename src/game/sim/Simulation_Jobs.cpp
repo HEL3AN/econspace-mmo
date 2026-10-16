@@ -4,14 +4,16 @@
 // Factions settle, grow and besiege whether or not anybody is there (#295, #342 S6). Each of
 // those plans has work in it a pilot could do, and now it says so: a site going up wants
 // goods, a builder convoy wants an escort, an outpost under siege wants the besiegers shot
-// down. The job is posted on the boards of the poster's stations near what the plan is about,
-// paid out of the same stock the plan was paid from, and over when the plan is -- it is never
-// a template with nothing behind it.
+// down, and the besiegers want its defenders shot down (#407). The job is posted on the
+// boards of the poster's stations near what the plan is about, paid out of the same stock the
+// plan was paid from, and over when the plan is -- it is never a template with nothing behind
+// it.
 //
 // What a pilot does feeds the plan through the arithmetic the plan already runs on, the same
 // hot or cold: a delivery takes a share off the time the site has left, a pilot with a convoy
-// is escort strength in its ambush sums, and a besieger shot down is one fewer in the siege's
-// force (#295) -- the job only pays for it and points pilots at it.
+// is escort strength in the sums that decide its fate, a besieger shot down is one fewer in
+// the siege's force (#295), and a defender shot down one fewer in the garrison it wears
+// against -- the job only pays for it and points pilots at it.
 #include "sim/Simulation.h"
 #include "sim/ClientSession.h"
 #include "sim/WorldRules.h"
@@ -152,9 +154,10 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
         int         jumps = at != near.end() ? at->second : -1;
         // A convoy's escort is wanted where the convoy is as well as where it is bound (#407):
         // that is where a pilot meets it -- and it sets out from the faction's stations.
-        if (p.OnTheWay() && p.leg >= 0 && (size_t)p.leg < p.route.size())
+        const std::string convoyAt = p.OnTheWay() ? p.ConvoyAt() : std::string();
+        if (!convoyAt.empty())
         {
-            const auto there = near.find(p.route[(size_t)p.leg]);
+            const auto there = near.find(convoyAt);
             if (there != near.end() && (jumps < 0 || there->second < jumps))
                 jumps = there->second;
         }
@@ -183,8 +186,10 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
                             " to the " + site->GetName() + " going up in " + m.systemName +
                             ". Every delivery brings it closer to done.";
         }
-        else if (p.OnTheWay() && p.faction == f && p.leg >= 0 && !p.route.empty())
+        else if (!convoyAt.empty() && p.faction == f)
         {
+            // ...on its way, or held back waiting for better odds -- which a pilot with it
+            // gives it (#407).
             m.type = MissionType::Escort;
             m.targetCount = 1;
             m.stage = p.setbacks;
@@ -193,14 +198,16 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
             m.rewardMoney = r.escortBase + r.escortPerJump * jumps;
             m.rewardRep = (float)(r.rep * 1.5);
             m.title = "Escort: convoy to " + m.systemName;
-            m.description = "Fly with the " + FactionName(f) + " builder convoy bound for " +
-                            m.systemName + ", now in " + SystemName(p.route[(size_t)p.leg]) +
-                            ". Meet it there; while you are with it you are part of its escort. "
-                            "Paid when it arrives.";
+            m.description =
+                "Fly with the " + FactionName(f) + " builder convoy bound for " + m.systemName +
+                (p.leg >= 0 ? ", now in " : ", waiting to set out from ") + SystemName(convoyAt) +
+                ". Meet it there; while you are with it you are part of its escort. "
+                "Paid when it arrives.";
         }
         else if (p.kind == Plan::Kind::Siege && p.against == f)
         {
             m.type = MissionType::Siege;
+            m.against = p.faction;
             m.targetCount = std::clamp((int)std::lround(p.force), 1, std::max(1, r.siegeKills));
             m.deadline = p.dueAt;
             m.rewardMoney = r.siegePerKill * m.targetCount;
@@ -210,6 +217,24 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
                             FactionName(p.faction) + " warships " +
                             (p.arrived ? "besieging" : "on their way to besiege") + " the " +
                             FactionName(f) + " outpost in " + m.systemName + ".";
+        }
+        else if (p.kind == Plan::Kind::Siege && p.faction == f && DefendersShown(p) >= 1.0f)
+        {
+            // The besieger's side of it (#407): its stations pay for the defenders shot down,
+            // each one fewer in the garrison the siege's sums wear against.
+            m.type = MissionType::Besiege;
+            m.against = p.against;
+            m.targetCount =
+                std::clamp((int)std::lround(DefendersShown(p)), 1, std::max(1, r.siegeKills));
+            m.deadline = p.dueAt;
+            m.rewardMoney = r.siegePerKill * m.targetCount;
+            m.rewardRep = (float)(r.rep * 1.5);
+            m.title = "Join the siege of " + m.systemName;
+            m.description = "Shoot down " + std::to_string(m.targetCount) + " of the " +
+                            FactionName(p.against) + " ships defending its outpost in " +
+                            m.systemName + ", which " + FactionName(f) +
+                            (p.arrived ? " is besieging" : " is on its way to besiege") + ". " +
+                            FactionName(p.against) + " will hold it against you.";
         }
         else
             continue;
@@ -344,19 +369,39 @@ float Simulation::EscortsWith(const Plan& p, const std::string& systemId) const
     return (float)n * (float)WorldRules::JobRules().escortForce;
 }
 
+float Simulation::DefendersShown(const Plan& p) const
+{
+    // Those a pilot can find there: the pirates as pirates, a lawful garrison as the police the
+    // director flies under its flag. Anyone else's strength there is numbers, not ships.
+    const SystemState* st = SystemById(p.target);
+    if (st == nullptr || p.kind != Plan::Kind::Siege)
+        return 0.0f;
+    const bool shown = p.against == Factions::Pirates() ||
+                       (Factions::IsLawful(p.against) && st->agg.policeFaction == p.against);
+    return shown ? st->agg.presence[p.against] : 0.0f;
+}
+
 void Simulation::CreditJobKill(ClientSession& s, const NpcShip& killed)
 {
-    // A besieger: a warship of the besieging faction on no errand of its own, in the system
-    // under siege -- what Simulation_Sieges counts as the siege's.
-    if (killed.GetRole() != NpcRole::Warship || killed.GetTask() != 0)
-        return;
+    if (killed.GetTask() != 0)
+        return;  // on an errand of its own: a convoy's, say
     for (Mission& m : s.missions.Active())
     {
-        if (m.type != MissionType::Siege || m.progress >= m.targetCount)
+        if (!IsSiegeJob(m.type) || m.progress >= m.targetCount)
             continue;
         const auto it = plans_.find(m.planId);
-        if (it == plans_.end() || it->second.faction != killed.GetFaction() ||
-            it->second.target != s.systemId)
+        if (it == plans_.end() || it->second.target != s.systemId)
+            continue;
+        // A besieger: a warship of the besieging faction -- what Simulation_Sieges counts as
+        // the siege's. A defender (#407): a ship of the besieged faction's garrison, its police
+        // or its pirates, which the recount takes off its strength there, and so off what
+        // holds the besiegers back.
+        const bool counts =
+            m.type == MissionType::Siege
+                ? killed.GetRole() == NpcRole::Warship && killed.GetFaction() == it->second.faction
+                : (killed.GetRole() == NpcRole::Police || killed.GetRole() == NpcRole::Pirate) &&
+                      killed.GetFaction() == it->second.against;
+        if (!counts)
             continue;
         m.progress++;
         if (m.progress >= m.targetCount)
@@ -376,8 +421,25 @@ void Simulation::SiegeOver(const Plan& p)
         for (int i = (int)active.size() - 1; i >= 0; i--)
         {
             Mission& m = active[(size_t)i];
-            if (m.type != MissionType::Siege || m.planId != p.id || m.progress >= m.targetCount)
+            if (!IsSiegeJob(m.type) || m.planId != p.id || m.progress >= m.targetCount)
                 continue;
+            if (m.type == MissionType::Besiege)
+            {
+                // The besieger's side: done when the outpost fell and this pilot had a hand in
+                // it (#407).
+                if (!stands && m.progress > 0)
+                {
+                    m.progress = m.targetCount;
+                    s.RecordEvent(Ev::Kind::Notice,
+                                  "Job ready -- " + m.title +
+                                      ": the outpost has fallen; hand it in to be paid");
+                }
+                else
+                    FailJob(s, i,
+                            stands ? "the siege was given up" : "the outpost fell without you",
+                            false);
+                continue;
+            }
             if (stands && m.progress > 0)
             {
                 // Lifted with the outpost standing, and this pilot had a hand in it.
@@ -411,7 +473,7 @@ void Simulation::StepJobs()
             {
                 if (p == nullptr || p->setbacks != m.stage)
                 {
-                    FailJob(s, i, "the convoy was lost", false);
+                    FailJob(s, i, "the convoy did not get through", false);
                     continue;
                 }
                 if (p->arrived)

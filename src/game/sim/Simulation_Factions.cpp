@@ -73,6 +73,9 @@ constexpr float MIN_LEND = 0.5f;
 // What bringing down a lawless base is worth to a lawful faction, in a system with no
 // security at all (#295): the order it brings to its holdings next door.
 constexpr float ORDER_WORTH = 0.5f;
+// The most a convoy's expected losses add to the risk of what it is for (#407): past this, a
+// way is simply bad, and a worse one is no worse a reason to wait.
+constexpr float CONVOY_RISK_CAP = 2.0f;
 
 bool Hostile(FactionId a, FactionId b)
 {
@@ -595,6 +598,10 @@ void Simulation::Think(FactionId f)
     // than its holdings can send.
     std::set<std::string> surveying, settling, upgrading;
     bool                  besieging = false, anchoring = false;
+    float                 owed = 0.0f;  // what convoys waiting to set out have yet to make good
+    for (const auto& kv : plans_)
+        if (kv.second.faction == f && kv.second.OnTheWay() && kv.second.leg < 0)
+            owed += std::max(0.0f, 1.0f - kv.second.freight) * FreightPrice(kv.second);
     for (const auto& kv : plans_)
         if (kv.second.faction == f && kv.second.kind == Plan::Kind::Survey)
             surveying.insert(kv.second.target);
@@ -614,8 +621,10 @@ void Simulation::Think(FactionId f)
     // Only with the stock to pay for it -- over and above what keeping the outposts it has will
     // cost for a while (slice 5): a faction that spends its upkeep on a new one loses an old one.
     const float cost = OutpostCost();
-    const float reserve = UPKEEP_RESERVE * Blueprints::UpkeepRules().share * cost * (float)outposts;
-    const bool  canSettle =
+    // ...and over what a convoy that did not get through must be paid again (#407).
+    const float reserve =
+        UPKEEP_RESERVE * Blueprints::UpkeepRules().share * cost * (float)outposts + owed;
+    const bool canSettle =
         (int)settling.size() < works && cost > 0.0f && mind.stock >= cost + reserve;
     // One siege at a time, paid for like a settlement (slice 5).
     const Blueprints::Siege& siege = Blueprints::SiegeRules();
@@ -1000,8 +1009,10 @@ void Simulation::Think(FactionId f)
         for (FactionId g : Factions::All())
             if (g != f)
                 others += mouth->second.agg.presence[g] * (Hostile(f, g) ? 2.0f : 0.5f);
-        const float risk =
-            others / t.capacity + Intelligence::LossRisk(mind.lostAt, o.mouth, time_);
+        // ...and what it expects its convoy to lose on the way there (#407).
+        const float risk = others / t.capacity +
+                           Intelligence::LossRisk(mind.lostAt, o.mouth, time_) +
+                           std::min(CONVOY_RISK_CAP, ChartConvoy(f, o.mouth).loss);
         const float score =
             promise(seen->second) -
             Intelligence::BelievedRisk(risk, Intelligence::Staleness(seen->second, time_)) /
@@ -1044,8 +1055,11 @@ void Simulation::Think(FactionId f)
                 for (FactionId g : Factions::All())
                     if (Hostile(f, g))
                         hostile += st.agg.presence[g];
-                const float risk =
-                    hostile / t.capacity + Intelligence::LossRisk(mind.lostAt, kv.first, time_);
+                // ...and what its convoy would expect to lose bringing what it is built from
+                // (#407): a way it fears makes it weigh the upgrade against everything else.
+                const float risk = hostile / t.capacity +
+                                   Intelligence::LossRisk(mind.lostAt, kv.first, time_) +
+                                   std::min(CONVOY_RISK_CAP, ChartConvoy(f, kv.first).loss);
                 const float score = worth - risk / t.appetite;
                 if (score > bestScore)
                 {

@@ -92,7 +92,10 @@ inline constexpr int WORLD_VERSION = 15;
 //    hand in, holding a slot for good, and save it so.
 // 8: a mission may be a short market's contract (#343, #407), with the world's contract it is.
 //    A version 7 build knows no such mission and would keep one it could never hand in.
-inline constexpr int ACCOUNT_VERSION = 8;
+// 9: a plan's job may be for the besieging side of a siege (#407) -- join it, shooting down
+//    the defenders -- and a siege's job names the side it is against. A version 8 build knows
+//    no such mission, and would keep one it could never hand in, as above.
+inline constexpr int ACCOUNT_VERSION = 9;
 // designs.json, the designs players' ships fly (#279 fitting). 1: the first.
 inline constexpr int DESIGNS_VERSION = 1;
 // corps.json, the players' corporations (#347). 1: the first.

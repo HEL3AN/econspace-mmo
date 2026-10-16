@@ -33,14 +33,16 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    43;  // 43: corporations (#347) -- a CorpAct from a client, a CorpView to each member and
-         // invitee, a corp channel in ChatSay and ChatLine, each local pilot's ticker in
-         // ChatMembers, and a director reads a member's allow-list; 42: a mission may be a short
-         // market's contract (#343, #407), with its system and deadline; 40 and 41 are taken by
-         // corporations (which landed as 43) and siege jobs; 39: roaming holes and the
-         // scanner (#342 S9, #346) -- a scan in a command, the scanner and the system's signatures
-         // in the player's snapshot, a hidden object in a pilot's layout only once their scan
-         // resolved it, and a link of the index may be a hole with its tail; 38: NPC haulers (#343)
+    44;  // 44: a siege's job for the besieging side (#407) -- a mission of a new type, and
+         // a siege's job of either side names the faction it is against; 43: corporations (#347) --
+         // a CorpAct from a client, a CorpView to each member and invitee, a corp channel in
+         // ChatSay and ChatLine, each local pilot's ticker in ChatMembers, and a director reads a
+         // member's allow-list; 42: a mission may be a short market's contract (#343, #407), with
+         // its system and deadline; 40 and 41 were reserved for corporations and siege jobs, which
+         // landed as 43 and 44, and never shipped; 39: roaming holes and the scanner (#342 S9,
+         // #346) -- a scan in a command, the scanner and the system's signatures in the player's
+         // snapshot, a hidden object in a pilot's layout only once their scan resolved it, and a
+         // link of the index may be a hole with its tail; 38: NPC haulers (#343)
          // -- a ship's cargo in the snapshot, a wreck's in its layout; what is left of each belt
          // (#348) in the snapshot; 37: chat -- a ChatSay from a client, ChatLines and ChatMembers
          // from the server (#347); 36: reserved for the haulers and never shipped; 35: a lost ship
@@ -416,6 +418,9 @@ struct MissionView
     std::string systemName;
     double      deadline = 0.0;
     int         siteId = 0;
+    // A siege's job, either side's (#407): the faction it is against. The issuer is the side
+    // it is for.
+    FactionId against = Factions::Unaffiliated();
 };
 
 // Snapshot of the player's system — what the client draws.

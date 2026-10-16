@@ -101,15 +101,41 @@ struct Growth
 // The builder convoy (#342 S6): an Anchor or an upgrade is built from what a convoy brings,
 // along the gates from where the faction makes things -- of its holdings within `reach` jumps,
 // the one with the most stations of its own (#407), or the nearest holding when none has one
-// -- `hop` seconds in each system it passes. It takes `escort` of the faction's capacity as
-// escort, if the holding can spare it. In a system where anyone hostile to it is, both sides
-// lose ships at `ambush` a second for every ship of the other, the escort first and then the
-// hauler; the hauler gone, the convoy is lost, and the plan sends another `retryMinutes` later.
+// -- `hop` seconds in each system it passes.
+//
+// Its fate follows from its own strength against the dangers of its way (#407, the owner's
+// decision of 2026-10-16): no convoy is doomed for want of a player.
+// - Strength: the hauler's own `hauler` ships' worth, the escort its holding lends -- `escort`
+//   of the faction's capacity, more for a dangerous way, `escortPerDanger` ships for every
+//   ship of the worst danger on it, up to `escortMax` of its capacity -- and any pilots with it.
+// - Danger: in each system it crosses, the ships of everyone hostile to it there. Before it
+//   moves on it is attacked or not -- as likely as not where the danger is `calm` ships, the
+//   less so the higher the security (`policed` less at security 1) -- and if it is, it loses
+//   freight by how far the danger outweighs it (`harm`), escort by `bite` of the danger, and
+//   takes `bite` of its strength off the attackers.
+// - Fate: it arrives intact, or damaged (the shortfall made up from the faction's stock); with
+//   less than `turnBack` of its freight left it turns back, as it does before a system whose
+//   danger is `balk` times its strength; with none left, it is destroyed. The next sets out
+//   `retryMinutes` later, and what was lost must be paid for again.
+// - The faction chooses the way it fears least, a ship of danger counting as `avoid` jumps,
+//   and holds a convoy back while it expects to lose more than `wait` of its freight -- at
+//   most `maxWaits` times, after which it sends it anyway and it no longer balks.
 struct Convoys
 {
     double hop = 120.0;
     double escort = 0.25;
-    double ambush = 0.01;
+    double escortMax = 0.6;
+    double escortPerDanger = 1.0;
+    double hauler = 1.0;
+    double calm = 3.0;
+    double policed = 0.6;
+    double harm = 1.5;
+    double bite = 0.5;
+    double turnBack = 0.5;
+    double balk = 4.0;
+    double avoid = 0.5;
+    double wait = 0.35;
+    int    maxWaits = 3;
     double retryMinutes = 10.0;
     int    reach = 6;
 };
