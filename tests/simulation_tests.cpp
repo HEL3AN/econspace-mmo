@@ -381,6 +381,66 @@ TEST_CASE("a dock order catches a station that orbits a planet (#210)")
     CHECK(f.s.IsDocked());
 }
 
+TEST_CASE("an order told to warp closes on a fast moving station rather than hanging (#377)")
+{
+    // What the econagent selftest asks of the first station it sees: move_to with warp and a
+    // 400-unit stop. Round a fast inner planet, a station goes at up to a hundred units a
+    // second, and every re-aim used to be another warp -- 1.8 s of spin-up during which the
+    // station moved on, a hop to where it had been, and the gap the same as before. The ship
+    // hung in warp beside its target for ever (seed 7, #376).
+    const Orders::Kind kinds[] = { Orders::Kind::MoveTo, Orders::Kind::Dock };
+    const float        radii[] = { 9000.0f, 30000.0f };
+    for (const Orders::Kind kind : kinds)
+        for (const float radius : radii)
+        {
+            Fixture f;
+            f.World().entities.push_back(std::make_unique<Planet>(
+                120000.0f, 52.0f, 0.0f, 6000.0f, WHITE, ResourceType::Iron, PlanetType::Rocky));
+            auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 700.0f, "Moon Dock",
+                                                     Fac::TradersGuild(), StationRole::TradeHub);
+            station->SetId(44);
+            Orbit o;
+            o.planet = 0;
+            o.radius = radius;
+            o.speed = 50.0f;
+            station->SetOrbit(o);
+            Entity* const target = station.get();
+            f.World().entities.push_back(std::move(station));
+
+            double      t = 0.0;
+            const float dt = Sim::SIM_DT;
+            Orbits::Place(f.World().entities, t);
+
+            Orders::Order order;
+            order.kind = kind;
+            order.targetId = 44;
+            order.useWarp = true;
+            order.stopDist = 400.0f;
+            REQUIRE(f.sim.GiveOrder(f.s, order) > 0);
+
+            const Vector2 start = target->GetPosition();
+            int           ticks = 0;
+            for (; ticks < 60 * 120 && f.s.HasRunningOrder(); ticks++)  // two simulated minutes
+            {
+                t += dt;
+                Orbits::Place(f.World().entities, t);
+                f.sim.StepPlayerAttachment(f.s, dt);
+                f.sim.StepPlayerOrder(f.s, f.World(), dt);
+            }
+            INFO("kind ", std::string(Orders::KindName(kind)), ", orbit radius ", radius, ", ",
+                 ticks, " ticks, ", Vector2Distance(f.s.ship->GetPosition(), target->GetPosition()),
+                 " units off, warping ", f.s.ship->IsWarping());
+            CHECK(Vector2Distance(start, target->GetPosition()) > 500.0f);  // it really moved
+            CHECK(f.s.orderStatus == Orders::Status::Done);
+            CHECK_FALSE(f.s.ship->IsWarping());
+            CHECK(f.s.ship->GetHoldMode() == HoldMode::None);  // nothing left standing
+            if (kind == Orders::Kind::Dock)
+                CHECK(f.s.IsDocked());
+            else
+                CHECK(Vector2Distance(f.s.ship->GetPosition(), target->GetPosition()) <= 400.0f);
+        }
+}
+
 TEST_CASE("two players in one galaxy are two players")
 {
     // The whole point of #3. Before sessions existed this test could not be written: a

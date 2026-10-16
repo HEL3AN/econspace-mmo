@@ -90,7 +90,7 @@ TEST_CASE("the rules have not changed without saying so")
     //
     // Split by what they cover (#342): the skeleton, and a region per slot, so a change to
     // one breaks only its own hash and says which part of the galaxy moved.
-    CHECK(Gen::GENERATOR_VERSION == 8);
+    CHECK(Gen::GENERATOR_VERSION == 9);
     // The skeleton has a version of its own (#342 S3): regions are sealed when they open and a
     // change to their rules leaves a live world alone, but the skeleton is always remade, so a
     // change to it is a change to every world -- bump Gen::SKELETON_VERSION with this hash.

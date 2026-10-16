@@ -271,7 +271,7 @@ TEST_CASE("a new world opens every centre and one frontier beside each (#342)")
     MESSAGE("skeleton with 3 centres, seed 1: " << skeleton);
     MESSAGE("first centre's region, seed 1: " << centre);
     CHECK(skeleton == 5604254571228940977ull);
-    CHECK(centre == 5038813507080152432ull);
+    CHECK(centre == 8774360415817725141ull);
 }
 
 TEST_CASE("a server's world: centres to start in, charted, and nothing hand-written (#342)")
