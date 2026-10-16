@@ -8,3 +8,4 @@ is [ARCHITECTURE.md](../ARCHITECTURE.md).
 |---|---|
 | [agents/](agents/README.md) | build a bot that plays the game through its MCP server |
 | [howto/](howto/README.md) | add a new kind of object — an archetype, its shape, a material, a screen pass — by example |
+| [hosting.md](hosting.md) | run a server for friends on a headless Linux box (or Windows), and connect to one |

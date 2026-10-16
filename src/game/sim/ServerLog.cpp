@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
 #include <mutex>
 #include <vector>
 
@@ -14,6 +15,13 @@ namespace
 std::mutex g_lock;
 bool       g_stamped = false;
 bool       g_atLineStart = true;  // of the stamped stream: one, since it is all stderr
+// The day's file (#400): its folder, the name it was opened under, and where it is in a line.
+std::string g_fileDir;
+std::string g_fileName;
+FILE*       g_file = nullptr;
+bool        g_fileAtLineStart = true;
+bool        g_capturing = false;
+std::string g_captured;
 
 // Days since 1970-01-01 to a civil date (Howard Hinnant's algorithm): exact for any day, and
 // free of gmtime, which is not thread-safe on one platform and named differently on the other.
@@ -44,12 +52,44 @@ std::string Format(const char* fmt, va_list args)
     return std::string(buf.data(), (size_t)n);
 }
 
+int64_t NowMillis()
+{
+    const auto now = std::chrono::system_clock::now().time_since_epoch();
+    return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+}
+
+// Under the lock. A new day is a new file, opened when its first line is written.
+void WriteFile(const std::string& text, int64_t at, const std::string& stamp)
+{
+    if (g_fileDir.empty())
+        return;
+    const std::string name = FileName(at);
+    if (g_file == nullptr || name != g_fileName)
+    {
+        if (g_file != nullptr)
+            std::fclose(g_file);
+        g_fileName = name;
+        g_file = std::fopen((g_fileDir + name).c_str(), "ab");
+        g_fileAtLineStart = true;
+    }
+    if (g_file == nullptr)
+        return;
+    const std::string out = StampLines(text, stamp, g_fileAtLineStart);
+    std::fwrite(out.data(), 1, out.size(), g_file);
+    std::fflush(g_file);
+}
+
 void Write(bool error, const std::string& text)
 {
     std::lock_guard<std::mutex> g(g_lock);
+    if (g_capturing)
+        g_captured += text;
+    const int64_t     at = NowMillis();
+    const std::string stamp = IsoTime(at);
+    WriteFile(text, at, stamp);
     if (g_stamped)
     {
-        const std::string out = StampLines(text, Now(), g_atLineStart);
+        const std::string out = StampLines(text, stamp, g_atLineStart);
         std::fwrite(out.data(), 1, out.size(), stderr);
         std::fflush(stderr);
         return;
@@ -88,8 +128,48 @@ std::string IsoTime(int64_t unixMillis)
 
 std::string Now()
 {
-    const auto now = std::chrono::system_clock::now().time_since_epoch();
-    return IsoTime((int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
+    return IsoTime(NowMillis());
+}
+
+std::string FileName(int64_t unixMillis)
+{
+    return "server-" + IsoTime(unixMillis).substr(0, 10) + ".log";
+}
+
+bool SetFileDir(const std::string& dir)
+{
+    std::lock_guard<std::mutex> g(g_lock);
+    if (g_file != nullptr)
+        std::fclose(g_file);
+    g_file = nullptr;
+    g_fileName.clear();
+    g_fileDir.clear();
+    if (dir.empty())
+        return true;
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec)
+        return false;
+    g_fileDir = dir;
+    if (g_fileDir.back() != '/' && g_fileDir.back() != '\\')
+        g_fileDir += '/';
+    return true;
+}
+
+void BeginCapture()
+{
+    std::lock_guard<std::mutex> g(g_lock);
+    g_capturing = true;
+    g_captured.clear();
+}
+
+std::string EndCapture()
+{
+    std::lock_guard<std::mutex> g(g_lock);
+    g_capturing = false;
+    std::string out;
+    out.swap(g_captured);
+    return out;
 }
 
 std::string StampLines(const std::string& text, const std::string& stamp, bool& atLineStart)

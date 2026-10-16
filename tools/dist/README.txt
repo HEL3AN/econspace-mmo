@@ -10,12 +10,22 @@ This folder runs from anywhere: the programs read the game data from data/ besid
 
 Host a server
 -------------
+HOSTING.md is the whole guide: a headless Linux box with systemd, the router, backups,
+updates, and what your friends do. In short:
+
+  econserver init world                 a world folder with server.json and allowlist.txt
+  econserver host --world world         run it (open TCP 50800 on the router)
+  econserver admin world status         console commands for a server running elsewhere
+
+Without --world the world is kept in this folder, as before:
+
   econserver host 50800             this machine only
   econserver host 50800 --public    reachable from other machines (open TCP 50800)
 
-The server keeps the world (world.json, regions/), its accounts (accounts/) and who may
-come in (allowlist.txt, bans.txt) in this folder. Copy them somewhere safe before
-replacing the folder with a newer build.
+Either way the world (world.json, regions/), its accounts (accounts/) and who may come in
+(allowlist.txt, bans.txt) are in the world folder. Keep it out of the program's folder, or
+copy it somewhere safe before replacing the folder with a newer build. The console's
+`backup` command copies it to backups/ while the server runs.
 
 Connect
 -------

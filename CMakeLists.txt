@@ -306,6 +306,8 @@ add_executable(econserver
     src/game/sim/HostRules.cpp            # who may log in and whether the world may start (#341)
     src/game/sim/AccessList.cpp           # the allowlist and the bans (#400)
     src/game/sim/ServerLog.cpp            # stamped log lines and the metrics line (#400)
+    src/game/sim/ServerConfig.cpp         # server.json, init and the host's flags (#400)
+    src/game/sim/ServerOps.cpp            # backups, the admin channel, a clean stop (#400)
     src/game/sim/PlayerStep.cpp
     src/game/sim/WarpPath.cpp
     src/game/sim/Orders.cpp
@@ -400,6 +402,10 @@ add_dependencies(copy_data econspace econserver econagent worldeditor)
 install(TARGETS econspace econserver econagent RUNTIME DESTINATION . COMPONENT dist)
 install(DIRECTORY data/ DESTINATION data COMPONENT dist)
 install(FILES tools/dist/README.txt DESTINATION . COMPONENT dist)
+install(FILES docs/hosting.md DESTINATION . RENAME HOSTING.md COMPONENT dist)
+if(NOT WIN32)
+    install(FILES tools/dist/econserver.service DESTINATION . COMPONENT dist)  # docs/hosting.md
+endif()
 if(WIN32)
     install(FILES tools/dist/start-server.bat tools/dist/connect-example.bat
             DESTINATION . COMPONENT dist)
@@ -488,6 +494,7 @@ add_executable(tests
     tests/jobs_tests.cpp           # jobs posted by faction plans (#345)
     tests/contracts_tests.cpp      # contracts short markets post (#343, #407)
     tests/access_tests.cpp         # the allowlist, bans and the server's log (#400)
+    tests/server_ops_tests.cpp     # server.json, backups, the admin channel, log files (#400)
     tests/chat_tests.cpp           # local chat, private lines, limits and cleaning (#347)
     tests/corp_tests.cpp           # corporations: roles, the corp channel, trusted structures (#347)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
@@ -530,6 +537,8 @@ add_executable(tests
     src/game/sim/HostRules.cpp            # who may log in and whether the world may start (#341)
     src/game/sim/AccessList.cpp           # the allowlist and the bans (#400)
     src/game/sim/ServerLog.cpp            # stamped log lines and the metrics line (#400)
+    src/game/sim/ServerConfig.cpp         # server.json, init and the host's flags (#400)
+    src/game/sim/ServerOps.cpp            # backups, the admin channel, a clean stop (#400)
     src/game/sim/PlayerStep.cpp
     src/game/sim/WarpPath.cpp
     src/game/sim/Orders.cpp
