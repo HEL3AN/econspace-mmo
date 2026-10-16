@@ -88,6 +88,25 @@ std::string DescribeFitting(const View& view);
 // What `preview_fit` says: a quote, before and after.
 std::string DescribeQuote(const FitQuote& q);
 
+// The design library (#279 fitting, step 3): each saved design as the Fit tab lists it and
+// the agent's `designs` reads it out -- the hull it is for, its numbers, and, for the hull
+// being flown, the quote for applying it (QuoteFit of its fit: the server's price and rules).
+struct SavedDesignRow
+{
+    std::string name;  // the player's name for it
+    std::string id;    // the design's
+    std::string hull;  // the hull's name; empty for a design this client cannot read
+    int         hullIndex = -1;
+    ShipStats   stats;          // as it would fly
+    bool        known = false;  // its definition is here, so the numbers mean something
+    bool        flown = false;  // the ship being flown is this design now
+    bool        thisHull = false;
+    FitQuote    quote;  // applying it now; meaningful only for thisHull
+};
+std::vector<SavedDesignRow> SavedDesigns(const View& view);
+// What `designs` says.
+std::string DescribeDesigns(const View& view);
+
 // Who owns the station the player is docked at, from the layout. Independent when not
 // docked or the layout does not say -- which is also what the server assumes.
 FactionId DockedFaction(const View& view);

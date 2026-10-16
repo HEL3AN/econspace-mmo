@@ -536,3 +536,232 @@ TEST_CASE("the server refits only at a shipyard, charges for it, and the ship fl
         CHECK_FALSE(none.refit);
     }
 }
+
+// --- Step 3: the named design library ---------------------------------------------------
+
+namespace
+{
+bool Said(const ClientSession& s, int since, const std::string& words)
+{
+    for (const Ev::Event& e : s.EventsSince(since))
+        if (e.text.find(words) != std::string::npos)
+            return true;
+    return false;
+}
+
+const Ships::Design& StockOf(int hull)
+{
+    const Ships::Design* d =
+        Archetypes::ShipCatalogue().FindDesign(GetShipCatalog()[(size_t)hull].stats.design);
+    REQUIRE(d != nullptr);
+    return *d;
+}
+}  // namespace
+
+TEST_CASE("a design is saved under a name of the player's, and the account keeps the library")
+{
+    Fixture f;
+    f.s.accountName = "librarian";
+    const std::vector<Ships::FitLine> armed = Bare(ArmedScout());
+
+    // Saving costs nothing and needs no shipyard: it changes no ship.
+    f.s.account.SetMoney(100.0);
+    REQUIRE(f.sim.SaveDesign(f.s, "Laser scout", armed));
+    REQUIRE(f.sim.SaveDesign(f.s, "Stock", Bare(StockOf(0))));
+    CHECK(f.s.account.GetMoney() == doctest::Approx(100.0));
+    CHECK(f.s.DesignOf(0) == "scout");
+    const std::string id = f.s.designLibrary.at("Laser scout");
+    CHECK(Ships::IsPlayerDesign(id));
+    CHECK(f.sim.Designs().Holds(id));
+    CHECK(f.s.designLibrary.at("Stock") == "scout");  // a stock fit is its stock design
+    CHECK(f.sim.TakeDesignsChanged());
+
+    SUBCASE("the account file keeps it, and loads it back")
+    {
+        const TempDir     tmp;
+        const std::string path = tmp.Path("account_library.json");
+        REQUIRE(f.sim.SaveAccount(f.s, path));
+        ClientSession& back = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                                  GetShipCatalog()[0].stats);
+        REQUIRE(f.sim.LoadAccount(back, path) == Save::Result::Ok);
+        CHECK(back.designLibrary == f.s.designLibrary);
+
+        // A saved design the server no longer has is dropped, with a word.
+        {
+            std::ofstream out(path);
+            out << R"({"version":5,"ships":[{"hull":0,"design":"scout"}],"ship":0,)"
+                   R"("designs":[{"name":"Gone","design":"u:00000000"},)"
+                   R"({"name":"Stock","design":"scout"}]})";
+        }
+        ClientSession& old = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                                 GetShipCatalog()[0].stats);
+        const int      seq = old.LastEventSeq();
+        REQUIRE(f.sim.LoadAccount(old, path) == Save::Result::Ok);
+        CHECK(old.designLibrary.size() == 1);
+        CHECK(old.designLibrary.count("Stock") == 1);
+        CHECK(Said(old, seq, "Gone"));
+    }
+    SUBCASE("it reaches the client in the snapshot, after the definitions it names")
+    {
+        const Proto::Snapshot snap = f.sim.BuildSnapshot(f.s, f.s.systemId);
+        REQUIRE(snap.player.library.size() == 2);
+        std::set<std::string>               sent;
+        const std::vector<Proto::DesignDef> defs = f.sim.DesignDefsFor(snap, sent);
+        bool                                defined = false;
+        for (const Proto::DesignDef& d : defs)
+            defined = defined || d.design.id == id;
+        CHECK(defined);
+
+        Proto::Snapshot back;
+        REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(snap), back));
+        REQUIRE(back.player.library.size() == 2);
+        CHECK(back.player.library[0].name == snap.player.library[0].name);
+        CHECK(back.player.library[0].design == snap.player.library[0].design);
+        CHECK(back.player.library[1].design == snap.player.library[1].design);
+    }
+    SUBCASE("the library's commands travel")
+    {
+        Proto::Command c;
+        c.saveDesign = "Laser scout";
+        c.saveLines = armed;
+        c.applyDesign = "Stock";
+        c.renameDesign = "a";
+        c.renameTo = "b";
+        c.deleteDesign = "c";
+        Proto::Command back;
+        REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
+        CHECK(back.saveDesign == c.saveDesign);
+        CHECK(back.saveLines.size() == armed.size());
+        CHECK(back.applyDesign == "Stock");
+        CHECK(back.renameDesign == "a");
+        CHECK(back.renameTo == "b");
+        CHECK(back.deleteDesign == "c");
+        CHECK_FALSE(back.refit);  // saving a fit is not refitting to it
+    }
+    SUBCASE("a fit the rules refuse is not saved")
+    {
+        std::vector<Ships::FitLine> bad = armed;
+        bad.push_back(Line("weapons.railgun", "mid", "spine", 1));
+        const int seq = f.s.LastEventSeq();
+        CHECK_FALSE(f.sim.SaveDesign(f.s, "Bad", bad));
+        CHECK(f.s.designLibrary.count("Bad") == 0);
+        CHECK(Said(f.s, seq, "not saved"));
+    }
+}
+
+TEST_CASE("a saved design is applied at a shipyard for what the same refit costs")
+{
+    Fixture f;
+    f.sim.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
+    const Station* yard = StationThat(f, true);
+    REQUIRE(yard != nullptr);
+    const std::vector<Ships::FitLine> armed = Bare(ArmedScout());
+    REQUIRE(f.sim.SaveDesign(f.s, "Laser scout", armed));
+    f.s.account.SetMoney(5000.0);
+
+    SUBCASE("in flight it is refused, with the refit's reason")
+    {
+        const int seq = f.s.LastEventSeq();
+        CHECK_FALSE(f.sim.ApplyDesign(f.s, "Laser scout"));
+        CHECK(Said(f.s, seq, "shipyard"));
+        CHECK(f.s.DesignOf(0) == "scout");
+    }
+    SUBCASE("at a yard it costs exactly what refitting to the same fit costs")
+    {
+        // Another pilot, the same hull and standing, refits by hand.
+        ClientSession& other =
+            f.sim.CreateSession(f.s.systemId, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+        other.account.SetMoney(5000.0);
+        other.dockedStationId = yard->GetId();
+        REQUIRE(f.sim.RefitShip(other, armed));
+        const double byHand = 5000.0 - other.account.GetMoney();
+        CHECK(byHand > 0.0);
+
+        f.s.dockedStationId = yard->GetId();
+        REQUIRE(f.sim.ApplyDesign(f.s, "Laser scout"));
+        CHECK(5000.0 - f.s.account.GetMoney() == doctest::Approx(byHand));
+        CHECK(f.s.DesignOf(0) == f.s.designLibrary.at("Laser scout"));
+        CHECK(f.s.DesignOf(0) == other.DesignOf(0));  // one design, filed once
+        CHECK(f.s.ship->GetStats().design == f.s.DesignOf(0));
+
+        // Applied again, it is the fit the ship has, and costs nothing.
+        CHECK_FALSE(f.sim.ApplyDesign(f.s, "Laser scout"));
+        CHECK(5000.0 - f.s.account.GetMoney() == doctest::Approx(byHand));
+    }
+    SUBCASE("a design for another hull, or none at all, is refused")
+    {
+        f.s.dockedStationId = yard->GetId();
+        // A design for the second hull, saved while flying it.
+        f.s.ownedShips.push_back(1);
+        REQUIRE(f.sim.SwitchShip(f.s, 1));
+        REQUIRE(f.sim.SaveDesign(f.s, "Other hull", Bare(StockOf(1))));
+        REQUIRE(f.sim.SwitchShip(f.s, 0));
+        int seq = f.s.LastEventSeq();
+        CHECK_FALSE(f.sim.ApplyDesign(f.s, "Other hull"));
+        CHECK(Said(f.s, seq, GetShipCatalog()[1].name));
+        seq = f.s.LastEventSeq();
+        CHECK_FALSE(f.sim.ApplyDesign(f.s, "Nothing"));
+        CHECK(Said(f.s, seq, "no design"));
+        CHECK(f.s.account.GetMoney() == doctest::Approx(5000.0));
+    }
+}
+
+TEST_CASE("the library is bounded, and renames and deletes keep it consistent")
+{
+    Fixture                           f;
+    const std::vector<Ships::FitLine> armed = Bare(ArmedScout());
+    std::string                       why;
+    CHECK_FALSE(Ships::ValidDesignName("", why));
+    CHECK_FALSE(Ships::ValidDesignName(" padded", why));
+    CHECK_FALSE(Ships::ValidDesignName(std::string(Ships::DESIGN_NAME_MAX + 1, 'x'), why));
+    CHECK_FALSE(Ships::ValidDesignName("tab\there", why));
+    CHECK(Ships::ValidDesignName("Miner Mk.2 (twin lasers)", why));
+    CHECK_FALSE(f.sim.SaveDesign(f.s, " padded", armed));
+
+    for (int i = 0; i < Ships::LIBRARY_MAX; i++)
+        REQUIRE(f.sim.SaveDesign(f.s, "Design " + std::to_string(i), armed));
+    const int seq = f.s.LastEventSeq();
+    CHECK_FALSE(f.sim.SaveDesign(f.s, "One too many", armed));
+    CHECK(Said(f.s, seq, "delete one first"));
+    CHECK((int)f.s.designLibrary.size() == Ships::LIBRARY_MAX);
+    // Saving over a name it has is not a new entry.
+    CHECK(f.sim.SaveDesign(f.s, "Design 0", Bare(StockOf(0))));
+    CHECK(f.s.designLibrary.at("Design 0") == "scout");
+
+    CHECK_FALSE(f.sim.RenameDesign(f.s, "Design 1", "Design 2"));  // taken
+    CHECK_FALSE(f.sim.RenameDesign(f.s, "Nothing", "Something"));
+    REQUIRE(f.sim.RenameDesign(f.s, "Design 1", "Renamed"));
+    CHECK(f.s.designLibrary.count("Design 1") == 0);
+    CHECK(Ships::IsPlayerDesign(f.s.designLibrary.at("Renamed")));
+
+    REQUIRE(f.sim.DeleteDesign(f.s, "Renamed"));
+    CHECK_FALSE(f.sim.DeleteDesign(f.s, "Renamed"));
+    CHECK(f.sim.SaveDesign(f.s, "One too many", armed));  // there is room again
+}
+
+TEST_CASE("a design a library names outlives every ship that flew it")
+{
+    Fixture f;
+    f.s.accountName = "keeper";
+    const TempDir     tmp;
+    const std::string account = tmp.Path("account_keeper.json");
+    const std::string designs = tmp.Path("designs.json");
+    REQUIRE(f.sim.SaveDesign(f.s, "Keep", Bare(ArmedScout())));
+    const std::string id = f.s.designLibrary.at("Keep");
+    CHECK(f.s.DesignOf(0) == "scout");  // no ship flies it
+
+    // Online: the session's library keeps it through a checkpoint's pruning.
+    f.sim.SaveDesigns(designs);
+    CHECK(f.sim.Designs().Holds(id));
+
+    // Offline: the account's save names it.
+    REQUIRE(f.sim.SaveAccount(f.s, account));
+    CHECK(f.sim.Designs().Prune({}) == 0);
+    CHECK(f.sim.Designs().Holds(id));
+
+    // Deleted and saved again, nothing names it, and it goes.
+    REQUIRE(f.sim.DeleteDesign(f.s, "Keep"));
+    REQUIRE(f.sim.SaveAccount(f.s, account));
+    CHECK(f.sim.Designs().Prune({}) == 1);
+    CHECK_FALSE(f.sim.Designs().Holds(id));
+}

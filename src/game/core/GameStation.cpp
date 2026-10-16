@@ -445,11 +445,18 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
     }
     if (fitDraftFor_ != now->id)
     {
-        fitDraft_ = Ships::Normalized(now->fit);
-        for (Ships::FitLine& l : fitDraft_)
-            l.scale = 0.0f;  // a player's fit sets none; the hull's own keep theirs
+        fitDraft_ = Ships::PlayerLines(*now);  // a player's fit sets no scale
         fitDraftFor_ = now->id;
     }
+
+    // The design library (#279 step 3): the saved designs, the one chosen, and what it is.
+    const std::vector<Obs::SavedDesignRow> saved = Obs::SavedDesigns(view);
+    const Obs::SavedDesignRow*             chosen = nullptr;
+    for (const Obs::SavedDesignRow& r : saved)
+        if (r.name == designSel_)
+            chosen = &r;
+    if (chosen == nullptr)
+        designSel_.clear();
 
     const Ships::Catalogue&               ships = Archetypes::ShipCatalogue();
     const std::vector<Ships::SocketGroup> groups = Ships::Sockets(ships, *hull, fitDraft_);
@@ -551,16 +558,108 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
         // changed" of a tab just opened.
         if (!q.problem.empty() && (q.changed || q.design.id.empty()))
             L.Text(q.problem, TextStyle::Small().Tint(t.colors.warn).Wrap());
+        // A saved design drawn up here is applied as that design; any other fit as a refit.
+        const bool draftIsChosen = chosen != nullptr && q.design.id == chosen->id;
         L.Row(Box().GrowX().Gap(t.metrics.gap),
               [&]
               {
-                  for (const Actions::Action& a : Actions::ForRefit(fitDraft_, q.ok, q.changed))
-                      if (L.Button("apply", a.label, true))
-                          Perform(a, 0, { 0.0f, 0.0f });
+                  if (!draftIsChosen)
+                      for (const Actions::Action& a : Actions::ForRefit(fitDraft_, q.ok, q.changed))
+                          if (L.Button("apply", a.label, true))
+                              Perform(a, 0, { 0.0f, 0.0f });
                   if (L.Button("reset", "Reset"))
                       fitDraftFor_.clear();
               });
+
+        // The library: a name, and what can be done with it and with the design chosen.
+        L.Divider();
+        L.Text(TextFormat("Saved designs  %d of %d", (int)saved.size(), Ships::LIBRARY_MAX),
+               TextStyle::Small().Tint(t.colors.dim));
+        if (chosen != nullptr)
+        {
+            std::string about;
+            if (!chosen->known)
+                about = "Not known here yet.";
+            else if (chosen->flown)
+                about = "The ship you fly is this design.";
+            else if (!chosen->thisHull)
+                about = "For the " + chosen->hull + ": switch to one to apply it.";
+            else if (!chosen->quote.ok)
+                about = chosen->quote.problem;
+            if (!about.empty())
+                L.Text(about,
+                       TextStyle::Small()
+                           .Tint(chosen->thisHull && !chosen->flown ? t.colors.warn : t.colors.dim)
+                           .Wrap());
+        }
+        Ui::TextFieldOptions opt;
+        opt.placeholder = "a name for this fit";
+        opt.maxLength = Ships::DESIGN_NAME_MAX;
+        L.TextField("design_name", designName_, opt);
+        Actions::LibraryTarget lib;
+        std::string            why;
+        lib.typed = designName_;
+        lib.typedOk = Ships::ValidDesignName(designName_, why);
+        lib.fit = fitDraft_;
+        lib.room = (int)saved.size() < Ships::LIBRARY_MAX;
+        for (const Obs::SavedDesignRow& r : saved)
+            lib.typedTaken = lib.typedTaken || r.name == designName_;
+        if (chosen != nullptr)
+        {
+            lib.selected = chosen->name;
+            lib.canApply = chosen->thisHull && chosen->quote.ok;
+        }
+        L.Row(Box().GrowX().Gap(t.metrics.gap),
+              [&]
+              {
+                  for (const Actions::Action& a : Actions::ForLibrary(lib))
+                  {
+                      std::string label = a.label;
+                      if (a.verb == Actions::Verb::ApplyDesign)  // the price, before the click
+                          label += chosen->quote.price >= 0.0
+                                       ? "  " + Credits(chosen->quote.price) + " cr"
+                                       : "  refund " + Credits(-chosen->quote.price) + " cr";
+                      if (a.verb == Actions::Verb::SaveDesign && lib.typedTaken)
+                          label = "Save over";
+                      if (L.Button("lib" + std::to_string((int)a.verb), label,
+                                   a.verb == Actions::Verb::ApplyDesign))
+                      {
+                          Perform(a, 0, { 0.0f, 0.0f });
+                          if (a.verb == Actions::Verb::DeleteDesign)
+                              designSel_.clear();
+                          if (a.verb == Actions::Verb::RenameDesign)
+                              designSel_ = a.renameTo;
+                      }
+                  }
+              });
+        if (!designName_.empty() && !lib.typedOk)
+            L.Text(why, TextStyle::Small().Tint(t.colors.warn).Wrap());
+        else if (lib.typedOk && !lib.room && !lib.typedTaken)
+            L.Text("The library is full: delete a design to save another.",
+                   TextStyle::Small().Tint(t.colors.warn).Wrap());
     };
+
+    // The saved designs, each with the hull it is for and how fast it would fly.
+    Ui::TableSpec library;
+    library.id = "designs";
+    library.columns = { { "design", Size::Grow(), Ui::Align::Start, false },
+                        { "hull", Size::Fit(48.0f), Ui::Align::Start, false },
+                        { "speed", Size::Fit(36.0f), Ui::Align::End, false } };
+    library.rows = (int)saved.size();
+    library.cell = [&](int r, int c)
+    {
+        const Obs::SavedDesignRow& row = saved[r];
+        const Color ink = row.flown ? t.colors.good : row.thisHull ? t.colors.text : t.colors.dim;
+        switch (c)
+        {
+            case 0: return Ui::Cell{ row.name, ink };
+            case 1: return Ui::Cell{ row.known ? row.hull : std::string("?"), ink };
+            default:
+                return Ui::Cell{ row.known ? TextFormat("%.0f", row.stats.maxSpeed) : "", ink };
+        }
+    };
+    library.rowFill = [&](int r)
+    { return saved[r].name == designSel_ ? t.colors.selected : Color{ 0, 0, 0, 0 }; };
 
     auto list = [&]
     {
@@ -568,17 +667,41 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
         if (ev.clicked >= 0)
             fitSel_ = ev.clicked;
     };
+    auto designs = [&]
+    {
+        const Ui::TableEvents ev = L.Table(library);
+        if (ev.clicked < 0)
+            return;
+        // Chosen: its name is in the field to rename from, and a design of this hull is drawn
+        // up in the tab, so its price and numbers are the ones beside it.
+        const Obs::SavedDesignRow& r = saved[ev.clicked];
+        designSel_ = r.name;
+        designName_ = r.name;
+        if (r.thisHull)
+            if (const Ships::Design* d = Archetypes::FindDesign(r.id))
+                fitDraft_ = Ships::PlayerLines(*d);
+    };
     auto pane = [&](Box box) { L.Scroll(box.Id("fit").Gap(t.metrics.rowGap), details); };
     if (wide)
         L.Row(Box().Grow().Gap(t.metrics.padding),
               [&]
               {
-                  L.Column(Box().Width(Size::Percent(0.4f)).Height(Size::Grow()), list);
+                  L.Column(Box().Width(Size::Percent(0.4f)).Height(Size::Grow()).Gap(t.metrics.gap),
+                           [&]
+                           {
+                               L.Column(Box().GrowX().Height(Size::Percent(0.55f)), list);
+                               L.Column(Box().Grow(), designs);
+                           });
                   pane(Box().Grow());
               });
     else
     {
-        L.Column(Box().GrowX().Height(Size::Percent(0.35f)), list);
+        L.Row(Box().GrowX().Height(Size::Percent(0.35f)).Gap(t.metrics.padding),
+              [&]
+              {
+                  L.Column(Box().Width(Size::Percent(0.5f)).Height(Size::Grow()), list);
+                  L.Column(Box().Grow(), designs);
+              });
         L.Divider();
         pane(Box().Grow());
     }

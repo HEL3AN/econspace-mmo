@@ -320,7 +320,10 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   snapshot carries only the id, so the host sends a `DesignDef` before the first snapshot
   that names one, the way a `LayoutDelta` goes first (#38). The fit rules and the price are
   `core/Fitting`, read by the server, the Fit tab and `preview_fit` alike -- never a copy.
-  Refits happen only at a station whose archetype declares `shipyard`.
+  Refits happen only at a station whose archetype declares `shipyard`. A player's named
+  library (`ClientSession::designLibrary`, name -> id) is a reference like a ship's: it is
+  in the account save and the snapshot, gets its `DesignDef` first, and keeps the design in
+  `designs.json` through pruning. Applying a saved design *is* `RefitShip` with its fit.
 - **Load `Archetypes` before building a world.** Entity constructors look themselves up
   in the registry, so an entity built before the load has no components and no glyph —
   it would silently be undockable and invisible rather than fail.

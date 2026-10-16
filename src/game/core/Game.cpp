@@ -994,6 +994,30 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
             clientLink_->Send(Proto::EncodeCommand(c));
             return;
         }
+        // The library is the account's: the snapshot brings it back changed (#279 step 3).
+        case Verb::SaveDesign:
+        case Verb::ApplyDesign:
+        case Verb::RenameDesign:
+        case Verb::DeleteDesign:
+        {
+            Proto::Command c;
+            if (a.verb == Verb::SaveDesign)
+            {
+                c.saveDesign = a.design;
+                c.saveLines = a.fit;
+            }
+            else if (a.verb == Verb::ApplyDesign)
+                c.applyDesign = a.design;
+            else if (a.verb == Verb::RenameDesign)
+            {
+                c.renameDesign = a.design;
+                c.renameTo = a.renameTo;
+            }
+            else
+                c.deleteDesign = a.design;
+            clientLink_->Send(Proto::EncodeCommand(c));
+            return;
+        }
         default: break;
     }
     if (target == nullptr)
@@ -1064,7 +1088,11 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
         case Verb::Build:
         case Verb::Accept:
         case Verb::HandIn:
-        case Verb::Refit: break;  // handled above: they need no target
+        case Verb::Refit:
+        case Verb::SaveDesign:
+        case Verb::ApplyDesign:
+        case Verb::RenameDesign:
+        case Verb::DeleteDesign: break;  // handled above: they need no target
     }
 }
 

@@ -46,4 +46,18 @@ bool PlayerFit(const Catalogue& c, const Design& hull, const std::vector<FitLine
 double                 RefitPrice(const Catalogue& c, const Design& from, const Design& to,
                                   const std::vector<float>& orePrices, float markup);
 inline constexpr float REFIT_REFUND = 0.5f;
+
+// A design's fit as a player writes it: in one order and with no scale. What applying a
+// saved design sends, and what the Fit tab draws up from the design a ship flies.
+std::vector<FitLine> PlayerLines(const Design& d);
+
+// The named design library (#279 fitting, step 3). A player keeps designs under names of
+// their own; the name is the account's and the design is filed by its content, so two
+// pilots' "Miner" are two names for whatever each of them saved. Bounded, because every
+// entry keeps a design alive in the server's store (#41).
+inline constexpr int    LIBRARY_MAX = 24;
+inline constexpr size_t DESIGN_NAME_MAX = 32;
+// A name a design may be saved under: 1 to DESIGN_NAME_MAX printable characters, with no
+// space at either end. False, with the reason in a pilot's words, for one that is not.
+bool ValidDesignName(const std::string& name, std::string& error);
 }  // namespace Ships

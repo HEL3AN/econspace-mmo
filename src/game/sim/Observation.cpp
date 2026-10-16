@@ -425,6 +425,73 @@ std::string DescribeFitting(const View& view)
     return out;
 }
 
+std::vector<SavedDesignRow> SavedDesigns(const View& view)
+{
+    std::vector<SavedDesignRow> out;
+    if (view.snapshot == nullptr)
+        return out;
+    const Ships::Design*         now = CurrentDesign(view);
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    for (const Proto::SavedDesign& e : view.snapshot->player.library)
+    {
+        SavedDesignRow r;
+        r.name = e.name;
+        r.id = e.design;
+        r.hullIndex = HullOf(e.design);
+        const Ships::Design* d = Archetypes::FindDesign(e.design);
+        std::string          why;
+        r.known = d != nullptr && r.hullIndex >= 0 && r.hullIndex < (int)catalog.size() &&
+                  PlayerStats(*d, r.stats, why);
+        if (r.known)
+        {
+            r.hull = catalog[(size_t)r.hullIndex].name;
+            r.thisHull = r.hullIndex == view.snapshot->player.shipIndex;
+            r.flown = r.thisHull && now != nullptr && now->id == e.design;
+            if (r.thisHull)
+                r.quote = QuoteFit(view, Ships::PlayerLines(*d));
+        }
+        out.push_back(std::move(r));
+    }
+    return out;
+}
+
+std::string DescribeDesigns(const View& view)
+{
+    if (view.snapshot == nullptr)
+        return "No world state yet.\n";
+    const std::vector<SavedDesignRow> rows = SavedDesigns(view);
+    std::string out = Fmt("DESIGNS saved: %d of %d (save_design adds one; apply_design refits "
+                          "the ship you fly to one of its own hull, at a shipyard)\n",
+                          (int)rows.size(), Ships::LIBRARY_MAX);
+    if (rows.empty())
+        out += "  none yet\n";
+    for (const SavedDesignRow& r : rows)
+    {
+        if (!r.known)
+        {
+            out += Fmt("  \"%s\" -- %s, not known here yet\n", r.name.c_str(), r.id.c_str());
+            continue;
+        }
+        std::string apply;
+        if (r.flown)
+            apply = "the ship you fly is this design";
+        else if (!r.thisHull)
+            apply = "for the " + r.hull + "; fly one to apply it";
+        else if (r.quote.ok)
+            apply = r.quote.price >= 0.0
+                        ? Fmt("apply here for %.0f cr", r.quote.price)
+                        : Fmt("apply here for a refund of %.0f cr", -r.quote.price);
+        else
+            apply = "cannot apply: " + r.quote.problem;
+        out += Fmt("  \"%s\" -- %s (%s): speed %.0f  turn %.2f  cargo %d  mining %.1f/s  hull %.0f"
+                   "  guns %.0f/shot -- %s\n",
+                   r.name.c_str(), r.hull.c_str(), r.id.c_str(), r.stats.maxSpeed,
+                   r.stats.turnSpeed, r.stats.cargoCapacity, r.stats.miningRate, r.stats.hull,
+                   r.stats.damage, apply.c_str());
+    }
+    return out;
+}
+
 std::string MissionNeeds(const View& view, const Proto::MissionView& m)
 {
     if (m.completable)

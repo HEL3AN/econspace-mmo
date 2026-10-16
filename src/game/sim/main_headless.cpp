@@ -250,6 +250,16 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     // refused with a reason rather than dropped without a word.
     if (c.refit)
         sim.RefitShip(s, c.refitLines);
+    // The design library (#279 step 3): saved, renamed and deleted anywhere; applied as a
+    // refit is, which says why when it is not at a shipyard.
+    if (!c.saveDesign.empty())
+        sim.SaveDesign(s, c.saveDesign, c.saveLines);
+    if (!c.renameDesign.empty())
+        sim.RenameDesign(s, c.renameDesign, c.renameTo);
+    if (!c.deleteDesign.empty())
+        sim.DeleteDesign(s, c.deleteDesign);
+    if (!c.applyDesign.empty())
+        sim.ApplyDesign(s, c.applyDesign);
 
     // Station trade/hangar: sell, refit, buy, pay off bounty. Account effects
     // (money/skill/reputation/bounty) are applied by the core in account_ (server-authoritative).

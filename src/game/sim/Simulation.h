@@ -819,6 +819,20 @@ public:
     // hold would no longer take the cargo. The design is filed and the ship flies it from
     // now on. true -- refitted.
     bool RefitShip(ClientSession& s, const std::vector<Ships::FitLine>& fit);
+    // The named design library (#279 fitting, step 3). Each answers in the journal, on
+    // success and on refusal, and returns whether it did anything.
+    // - SaveDesign files `fit` on the hull being flown under `name`, anywhere: saving costs
+    //   nothing and changes no ship. A name already in the library is saved over; a new one
+    //   is refused once the library holds Ships::LIBRARY_MAX.
+    // - ApplyDesign refits the ship being flown to a saved design of its own hull: exactly
+    //   RefitShip with that design's fit, so it is priced and refused by the same rules.
+    // - RenameDesign and DeleteDesign change the library and nothing else; a design a ship
+    //   still flies stays filed for that ship.
+    bool SaveDesign(ClientSession& s, const std::string& name,
+                    const std::vector<Ships::FitLine>& fit);
+    bool ApplyDesign(ClientSession& s, const std::string& name);
+    bool RenameDesign(ClientSession& s, const std::string& from, const std::string& to);
+    bool DeleteDesign(ClientSession& s, const std::string& name);
     // A design was filed since the last call: the host writes designs.json now rather than
     // at the next checkpoint, so a crash cannot leave a paid-for ship naming nothing.
     bool TakeDesignsChanged()

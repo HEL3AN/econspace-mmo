@@ -210,6 +210,11 @@ std::vector<Action> EveryAction()
     m.ready = true;
     add(Actions::ForMission(m));
     add(Actions::ForRefit({ Ships::FitLine{} }, true, true));
+    Actions::LibraryTarget lib;
+    lib.typed = "Miner";
+    lib.typedOk = lib.room = lib.canApply = true;
+    lib.selected = "Hauler";
+    add(Actions::ForLibrary(lib));
     return all;
 }
 }  // namespace
@@ -230,7 +235,7 @@ TEST_CASE("Actions: one name per action, whichever list offers it (#365)")
         CHECK((a.label.size() == name.size() || a.label[name.size()] == ' '));
         seen.insert(a.verb);
     }
-    CHECK(seen.size() == 20);  // every verb was offered somewhere above
+    CHECK(seen.size() == 24);  // every verb was offered somewhere above
 
     // And no two verbs share a name: the name is what the player tells them apart by.
     std::set<std::string> names;
@@ -259,11 +264,12 @@ TEST_CASE("Actions: every button an agent could want is an econagent tool, and t
     const std::set<Verb> interfaceOnly{ Verb::Select, Verb::SetRange };
     const std::set<Verb> owed{};
 
-    for (Verb v :
-         { Verb::Select,      Verb::Approach, Verb::Orbit,     Verb::Keep,     Verb::Follow,
-           Verb::SetRange,    Verb::Warp,     Verb::Dock,      Verb::Mine,     Verb::Attack,
-           Verb::Investigate, Verb::Jump,     Verb::FlyHere,   Verb::WarpHere, Verb::Build,
-           Verb::Accept,      Verb::HandIn,   Verb::Dismantle, Verb::Refit,    Verb::Defence })
+    for (Verb v : { Verb::Select,     Verb::Approach,    Verb::Orbit,        Verb::Keep,
+                    Verb::Follow,     Verb::SetRange,    Verb::Warp,         Verb::Dock,
+                    Verb::Mine,       Verb::Attack,      Verb::Investigate,  Verb::Jump,
+                    Verb::FlyHere,    Verb::WarpHere,    Verb::Build,        Verb::Accept,
+                    Verb::HandIn,     Verb::Dismantle,   Verb::Refit,        Verb::Defence,
+                    Verb::SaveDesign, Verb::ApplyDesign, Verb::RenameDesign, Verb::DeleteDesign })
     {
         const std::string tool = Actions::ToolFor(v);
         INFO("verb " << (int)v << " tool '" << tool << "'");
@@ -298,4 +304,32 @@ TEST_CASE("Actions: a mission is taken at a station with room for it, and handed
     REQUIRE(handIn != nullptr);
     CHECK(handIn->mission == 0);
     CHECK_FALSE(Has(give, Verb::Accept));
+}
+
+TEST_CASE("Actions: the design library offers what the names typed and chosen allow (#279)")
+{
+    Actions::LibraryTarget lib;
+    CHECK(Actions::ForLibrary(lib).empty());  // nothing typed, nothing chosen
+    lib.typed = "Miner";
+    lib.typedOk = true;
+    CHECK_FALSE(Has(Actions::ForLibrary(lib), Verb::SaveDesign));  // the library is full
+    lib.typedTaken = true;
+    const std::vector<Action> over = Actions::ForLibrary(lib);
+    REQUIRE(Has(over, Verb::SaveDesign));  // ...but a name it has is saved over
+    CHECK(Find(over, Verb::SaveDesign)->design == "Miner");
+    CHECK(Find(over, Verb::SaveDesign)->tool == "save_design");
+
+    lib.selected = "Hauler";
+    std::vector<Action> chosen = Actions::ForLibrary(lib);
+    CHECK_FALSE(Has(chosen, Verb::ApplyDesign));   // not here, or not this hull
+    CHECK_FALSE(Has(chosen, Verb::RenameDesign));  // to a name it already has
+    CHECK(Has(chosen, Verb::DeleteDesign));
+    lib.typedTaken = false;
+    lib.canApply = true;
+    chosen = Actions::ForLibrary(lib);
+    REQUIRE(Has(chosen, Verb::RenameDesign));
+    CHECK(Find(chosen, Verb::RenameDesign)->design == "Hauler");
+    CHECK(Find(chosen, Verb::RenameDesign)->renameTo == "Miner");
+    REQUIRE(Has(chosen, Verb::ApplyDesign));
+    CHECK(Find(chosen, Verb::ApplyDesign)->design == "Hauler");
 }

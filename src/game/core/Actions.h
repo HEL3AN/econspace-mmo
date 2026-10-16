@@ -45,6 +45,11 @@ enum class Verb
     Dismantle,  // take one's own structure apart for a refund (#39)
     Refit,      // fit the ship being flown differently, at a shipyard (#279)
     Defence,    // set one's own armed structure's rules of engagement (#340)
+    // The named design library (#279 fitting, step 3).
+    SaveDesign,    // keep the fit drawn up under a name
+    ApplyDesign,   // refit the ship being flown to a saved design, at a shipyard
+    RenameDesign,  // give a saved design another name
+    DeleteDesign,  // take a design out of the library
 };
 
 // Each verb's one name (#365): what every place that offers it says -- the context menu, the
@@ -61,12 +66,14 @@ std::string Heading(const std::string& name, float distance);
 struct Action
 {
     Verb        verb = Verb::Select;
-    std::string label;                // what the menu says: Label(verb, ...)
-    float       distance = 0.0f;      // the hold's range, the approach's stop, the warp's drop
-    std::string blueprint;            // Build: which one
-    int         mission = -1;         // Accept, HandIn: the offer's or the mission's number
-    std::string tool;                 // the econagent tool that does the same; empty if none yet
-    std::vector<Ships::FitLine> fit;  // Refit: the whole fit asked for
+    std::string label;                   // what the menu says: Label(verb, ...)
+    float       distance = 0.0f;         // the hold's range, the approach's stop, the warp's drop
+    std::string blueprint;               // Build: which one
+    int         mission = -1;            // Accept, HandIn: the offer's or the mission's number
+    std::string tool;                    // the econagent tool that does the same; empty if none yet
+    std::vector<Ships::FitLine> fit;     // Refit, SaveDesign: the whole fit asked for
+    std::string                 design;  // the library verbs: the saved design's name
+    std::string                 renameTo;  // RenameDesign: its new name
 };
 
 // What the client knows about a thing it might act on.
@@ -121,6 +128,21 @@ std::vector<Action> ForMission(const MissionTarget& mission);
 // station with a shipyard, when it differs from the fit the ship has (#279). What it costs
 // and whether it is allowed are the server's to say, and the tab says them first.
 std::vector<Action> ForRefit(const std::vector<Ships::FitLine>& fit, bool atShipyard, bool changed);
+
+// What the client knows about the design library and a name typed beside it (#279 step 3).
+struct LibraryTarget
+{
+    std::string                 typed;               // the name in the field; empty: none
+    bool                        typedOk = false;     // ...and it is a name a design may have
+    std::vector<Ships::FitLine> fit;                 // the fit drawn up in the Fit tab
+    bool                        room = false;        // the library has room for a new name
+    bool                        typedTaken = false;  // the typed name is already saved
+    std::string                 selected;  // the saved design chosen in the list; empty: none
+    bool                        canApply = false;  // its quote says the server would take it
+};
+// What can be done with it: save the fit under the typed name (over a design of that name
+// too), and for the chosen design apply, rename to the typed name, and delete.
+std::vector<Action> ForLibrary(const LibraryTarget& library);
 
 // The econagent tool that does what a verb does; empty for one no tool covers yet.
 const char* ToolFor(Verb verb);
