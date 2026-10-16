@@ -65,6 +65,7 @@ jobs:
           ./build-release/bin/server/econserver.exe accttest
           ./build-release/bin/server/econserver.exe worldtest
           ./build-release/bin/server/econserver.exe ordertest
+          ./build-release/bin/server/econserver.exe opstest
 
       # Every binary says the same version, and on a tag it is the tag's.
       - name: Version
@@ -85,8 +86,13 @@ jobs:
 
       - name: Pack
         run: |
+          set -e
           cmake --build build-release --target dist
           ls -l build-release/econspace-*.zip
+          # What the package must carry besides the binaries and data/.
+          # (the folder the zip was packed from)
+          dir=$(ls -d build-release/dist/econspace-*-windows)
+          ls "$dir/README.txt" "$dir/HOSTING.md" "$dir/start-server.bat" "$dir/econserver.exe" "$dir/data/goods.json"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -128,6 +134,7 @@ jobs:
           ./build-release/bin/server/econserver accttest
           ./build-release/bin/server/econserver worldtest
           ./build-release/bin/server/econserver ordertest
+          ./build-release/bin/server/econserver opstest
 
       - name: Version
         id: version
@@ -155,6 +162,7 @@ jobs:
           dir=$(ls -d "$RUNNER_TEMP"/pkg/econspace-*-linux)
           ldd "$dir/econserver"
           "$dir/econserver" --version
+          ls "$dir/README.txt" "$dir/HOSTING.md" "$dir/econserver.service" "$dir/data/goods.json"
           (cd "$dir" && ./econserver host 0 > "$RUNNER_TEMP/server.log" 2>&1) &
           trap 'pkill -f "$dir/econserver" || true; kill %1 2>/dev/null || true; cat "$RUNNER_TEMP/server.log"' EXIT
           for _ in $(seq 1 150); do grep -q "EconSpace server on port" "$RUNNER_TEMP/server.log" && break; sleep 0.2; done
