@@ -40,6 +40,9 @@ jobs:
     defaults:
       run:
         shell: msys2 {0}
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
     steps:
       - uses: actions/checkout@v7
 
@@ -67,11 +70,14 @@ jobs:
           key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
       # ccache covers our own sources. CMakeLists picks it up automatically when it is
-      # on PATH, so nothing else needs configuring.
+      # on PATH. Its directory is named explicitly: actions/cache runs outside MSYS2, so
+      # its `~` is not MSYS2's home, and ccache on Windows does not use `~/.ccache`
+      # anyway -- with the default the cache saved and restored an empty directory and
+      # every run compiled everything.
       - name: Cache compiled objects
         uses: actions/cache@v6
         with:
-          path: ~/.ccache
+          path: ${{ github.workspace }}/.ccache
           key: ccache-${{ runner.os }}-${{ github.sha }}
           restore-keys: ccache-${{ runner.os }}-
 
@@ -83,7 +89,11 @@ jobs:
         run: cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Debug -DWARNINGS_AS_ERRORS=ON
 
       - name: Build
-        run: cmake --build build
+        # Bounded by the cores, like the other jobs: without -j, MinGW Makefiles compiles one
+        # file at a time.
+        run: |
+          cmake --build build -j "$(nproc)"
+          ccache --show-stats
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
