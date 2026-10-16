@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include <cstdint>
+#include <map>
 #include <set>
 #include <string>
 #include <utility>
@@ -45,7 +46,7 @@ struct PackSystem
 {
     std::string    id;    // the pack's own name for it; renamed when woven
     std::string    file;  // beside pack.json
-    std::string    name;  // what a player reads; the id when absent
+    std::string    name;  // what a player reads; empty: designated when woven (S8)
     double         mapX = 0.0, mapY = 0.0;
     double         security = 0.5;
     std::string    owner;  // a faction id, or empty
@@ -127,5 +128,40 @@ bool ApplySystemPack(const Pack& pack, Region& region, const std::string& system
 // Puts a region's pack factions into the registry, with their relations. Call, like
 // RegisterNatives, before its systems are built.
 void RegisterPackFactions(const nlohmann::json& factions, const nlohmann::json& relations);
+
+// ---- Writing a pack (#342 S8): the editor's side ----------------------------------------
+//
+// What a pack directory holds, before it is written: pack.json and each system document by
+// its file name. Written as LoadPack reads it -- the editor writes exactly the format the
+// runtime reads.
+struct PackFiles
+{
+    nlohmann::json                        pack = nlohmann::json::object();
+    std::map<std::string, nlohmann::json> documents;  // file name beside pack.json -> document
+};
+
+// True when `id` may name a pack (and so its directory): lower-case letters, digits, '-'
+// and '_', at most 40 of them.
+bool PackIdValid(const std::string& id);
+
+// A region as a pack of id `id`: its systems under ids of the pack's own (the slot taken off,
+// "r14-2-3" -> "s2-3"), the way in first, the map moved round the pack's middle and drawn in
+// to PACK_MAP_REACH if it reaches further; its links and gates among its own systems, and
+// nothing that leads out of it -- the wormhole home and any admin link are the weaving's to
+// make. Its natives become a faction of the pack's own ("<id>-natives"), with their stance
+// to the majors and the pirates; a centre's heart and any start it had become its starts.
+// `notes` (may be null) gets a line for each thing left behind.
+PackFiles RegionAsPack(const Region& region, const std::string& id, const std::string& name,
+                       std::vector<std::string>* notes = nullptr);
+
+// A region pack begun from nothing: one system, "core", with a star, two planets and a
+// station a new pilot can dock at, so it reads and weaves as it is -- the start of
+// something, to be grown in the editor.
+PackFiles NewRegionPack(const std::string& id, const std::string& name);
+
+// Writes `files` into `dir` (made if missing): pack.json and every document. A directory
+// that already holds a pack.json is refused unless `overwrite`. False, with `error`, when it
+// cannot.
+bool WritePack(const std::string& dir, const PackFiles& files, bool overwrite, std::string& error);
 
 }  // namespace Gen

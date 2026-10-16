@@ -1533,6 +1533,11 @@ std::string SystemId(int slot, int depth, int k)
     return "r" + std::to_string(slot) + "-" + std::to_string(depth) + "-" + std::to_string(k);
 }
 
+std::string SystemDesignation(int slot, int depth, int k)
+{
+    return Designation(slot, depth, k);
+}
+
 namespace
 {
 // "r<slot>-<depth>-<k>" taken apart; false for anything else.
@@ -1630,6 +1635,16 @@ bool RegionFromJson(const nlohmann::json& doc, Region& out)
             (key[0] == 'c' ? r.crossings : key[0] == 'f' ? r.factions : r.relations) = doc[key];
     out = std::move(r);
     return true;
+}
+
+bool ReadSealedRegion(const std::string& text, uint64_t seed, Region& out)
+{
+    const json j = json::parse(text, nullptr, false);
+    if (j.is_discarded() || !j.is_object() || j.value("schema", 0) != SEAL_SCHEMA ||
+        !j.contains("seed") || !j["seed"].is_number_unsigned() ||
+        j["seed"].get<uint64_t>() != seed || !j.contains("region"))
+        return false;
+    return RegionFromJson(j["region"], out);
 }
 
 nlohmann::json EdgeGatePos(uint64_t key, const nlohmann::json* system, double dx, double dy)

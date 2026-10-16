@@ -49,12 +49,24 @@ void Editor::DrawHud()
                  "hover: what is there",
                  16, 74, 13, Ui::TEXT_DIM);
     }
+    else if (mode_ == Mode::World)
+    {
+        Ui::Text(TextFormat("GALAXY   seed %llu   %d slots%s", (unsigned long long)worldMap_.seed,
+                            (int)worldMap_.slots.size(),
+                            Saved(worldMap_.seed) ? "   a saved world" : ""),
+                 16, 50, 16, Ui::TEXT);
+        Ui::Text("the skeleton of regions, what is open and what a pin waits on  ·  click: a "
+                 "slot's region",
+                 16, 74, 13, Ui::TEXT_DIM);
+    }
     else if (mode_ == Mode::Galaxy)
     {
-        Ui::Text(TextFormat("GALAXY   systems: %d", (int)(universeJson_.contains("systems")
-                                                              ? universeJson_["systems"].size()
-                                                              : 0)),
-                 16, 50, 16, Ui::TEXT);
+        const int n =
+            (int)(universeJson_.contains("systems") ? universeJson_["systems"].size() : 0);
+        if (packId_.empty())
+            Ui::Text(TextFormat("GALAXY   systems: %d", n), 16, 50, 16, Ui::TEXT);
+        else
+            Ui::Text(TextFormat("PACK %s   systems: %d", packId_.c_str(), n), 16, 50, 16, Ui::TEXT);
         Ui::Text("drag: move  ·  click: select  ·  double-click: open system", 16, 74, 13,
                  Ui::TEXT_DIM);
     }
@@ -103,19 +115,35 @@ void Editor::DrawHud()
     }
     if (mode_ == Mode::System && !notice_.empty() && GetTime() < noticeUntil_)
         Ui::Text(notice_.c_str(), 16, 136, 14, PIN_CHANGED);
+    // On a map, between the hints and the map: a pack's check, an export (#342 S8).
+    if ((mode_ == Mode::Galaxy || mode_ == Mode::World || mode_ == Mode::Region) &&
+        !notice_.empty() && GetTime() < noticeUntil_)
+        Ui::Text(notice_.c_str(), 16, 89, 13, PIN_CHANGED);
 
     // Mode toggle button (System / Galaxy). The gallery is not a place in the world, so
     // it does not sit on this toggle; it has its own button beside it.
-    if (mode_ != Mode::Gallery && mode_ != Mode::Survey && mode_ != Mode::Region)
+    // With an index to edit -- a pack's, or a universe.json -- it is that map; without one,
+    // the world's galaxy (#342 S8).
+    if (mode_ != Mode::Gallery && mode_ != Mode::Survey && mode_ != Mode::Region &&
+        mode_ != Mode::World)
     {
-        Rectangle mb = ModeButtonRect();
-        bool      overMb = CheckCollisionPointRec(GetMousePosition(), mb);
+        const bool index = !packId_.empty() || !universe_.systems.empty();
+        Rectangle  mb = ModeButtonRect();
+        bool       overMb = CheckCollisionPointRec(GetMousePosition(), mb);
         DrawRectangleRec(mb, overMb ? Fade(Ui::ACCENT, 0.2f) : Ui::TITLE_BG);
         DrawRectangleLinesEx(mb, 1.0f, Ui::PANEL_BORDER);
-        Ui::Text((mode_ == Mode::Galaxy) ? "System view >" : "Galaxy map >", (int)mb.x + 10,
-                 (int)mb.y + 8, 14, Ui::TEXT);
+        Ui::Text((mode_ == Mode::Galaxy) ? "System view >"
+                 : !index                ? "Galaxy  [F5]"
+                 : packId_.empty()       ? "Galaxy map >"
+                                         : "Pack map >",
+                 (int)mb.x + 10, (int)mb.y + 8, 14, Ui::TEXT);
         if (overMb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-            EnterGalaxyMode(mode_ != Mode::Galaxy);
+        {
+            if (index)
+                EnterGalaxyMode(mode_ != Mode::Galaxy);
+            else
+                LevelUp();
+        }
     }
 
     Rectangle gb = GalleryButtonRect();
@@ -139,6 +167,17 @@ void Editor::DrawHud()
 
     // The region map (#237), from a generated system or the survey -- the two places a
     // seed is in front of you -- and back.
+    if (mode_ == Mode::World)
+    {
+        // The galaxy (#342 S8): back to where it was opened from.
+        const Rectangle rb = RegionButtonRect();
+        const bool      overRb = CheckCollisionPointRec(GetMousePosition(), rb);
+        DrawRectangleRec(rb, overRb ? Fade(Ui::ACCENT, 0.2f) : Ui::TITLE_BG);
+        DrawRectangleLinesEx(rb, 1.0f, Ui::ACCENT);
+        Ui::Text("Back  [F5]", (int)rb.x + 12, (int)rb.y + 8, 13, Ui::ACCENT);
+        if (overRb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+            LevelUp();
+    }
     if (mode_ == Mode::Region || mode_ == Mode::Survey ||
         (mode_ == Mode::System && generated_.open))
     {
@@ -147,13 +186,13 @@ void Editor::DrawHud()
         const bool      on = mode_ == Mode::Region;
         DrawRectangleRec(rb, overRb ? Fade(Ui::ACCENT, 0.2f) : Ui::TITLE_BG);
         DrawRectangleLinesEx(rb, 1.0f, on ? Ui::ACCENT : Ui::PANEL_BORDER);
-        Ui::Text(on ? "Back  [F5]" : "Region  [F5]", (int)rb.x + 12, (int)rb.y + 8, 13,
+        Ui::Text(on ? "Galaxy  [F5]" : "Region  [F5]", (int)rb.x + 12, (int)rb.y + 8, 13,
                  on ? Ui::ACCENT : Ui::TEXT);
         if (overRb && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-            ToggleRegionMap();
+            LevelUp();  // up a level, as F5: Esc is back
     }
 
-    if (mode_ == Mode::Survey || mode_ == Mode::Region)
+    if (mode_ == Mode::Survey || mode_ == Mode::Region || mode_ == Mode::World)
         return;  // nothing to save: a generated system has no file
 
     // Save button (top center) with an indicator of unsaved edits.

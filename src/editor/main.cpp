@@ -31,6 +31,17 @@ int main(int argc, char** argv)
     // `region SEED [system ID]` opens a generated system for editing (#237) -- the one
     // through the wormhole unless named -- and Ctrl+S saves the difference as a pin.
     // `region SEED map` opens the whole region as a map instead, `system ID` ringed on it.
+    // `galaxy SEED` opens the world's galaxy, every slot of its skeleton (#342 S8), and
+    // `world PATH` does the same for a saved world (world.json or its folder), its regions
+    // read from their seals; with either, `slot N` opens that slot's region, `system ID` that
+    // system, and `export ID` writes the region open on the map as a pack and opens it.
+    // `newpack ID` begins a region pack, `editpack ID` opens one; `packs DIR` puts them
+    // somewhere other than data/packs/, which a server weaves into a new world.
+    bool        galaxy = false;  // `galaxy SEED` or `world PATH`
+    std::string worldPath;
+    int         slot = -1;
+    std::string exportId, newPack, editPack;
+    bool        exporting = false;
     bool        survey = false;
     bool        modules = false;
     bool        gallery = false;
@@ -75,6 +86,32 @@ int main(int argc, char** argv)
         }
         else if (arg == "map")
             regionMap = true;
+        else if (arg == "galaxy")
+        {
+            galaxy = true;
+            if (i + 1 < argc && argv[i + 1][0] >= '0' && argv[i + 1][0] <= '9')
+                seed = std::strtoull(argv[++i], nullptr, 10);
+        }
+        else if (arg == "world" && i + 1 < argc)
+        {
+            galaxy = true;
+            worldPath = argv[++i];
+        }
+        else if (arg == "slot" && i + 1 < argc)
+            slot = std::atoi(argv[++i]);
+        else if (arg == "export")
+        {
+            exporting = true;  // the id is optional: region-<slot> without one
+            if (i + 1 < argc && std::string(argv[i + 1]) != "shot" &&
+                std::string(argv[i + 1]) != "frames")
+                exportId = argv[++i];
+        }
+        else if (arg == "newpack" && i + 1 < argc)
+            newPack = argv[++i];
+        else if (arg == "editpack" && i + 1 < argc)
+            editPack = argv[++i];
+        else if (arg == "packs" && i + 1 < argc)
+            editor.SetPacksDir(argv[++i]);
         else if (arg == "system" && i + 1 < argc)
             systemId = argv[++i];
         else if (arg == "card" && i + 1 < argc)
@@ -104,7 +141,19 @@ int main(int argc, char** argv)
         else if (arg == "notreat")
             notreat = true;
     }
-    if (region && regionMap)
+    if (!worldPath.empty() && editor.OpenWorldFile(worldPath))
+        seed = editor.WorldSeed();
+    if (!newPack.empty())
+        editor.OpenPack(newPack, true);
+    else if (!editPack.empty())
+        editor.OpenPack(editPack, false);
+    else if ((galaxy || region) && slot >= 0)
+        editor.OpenRegionSlot(seed, slot);
+    else if (galaxy && !systemId.empty())
+        editor.OpenGenerated(seed, systemId);
+    else if (galaxy && !exporting)
+        editor.OpenWorldMap(seed);
+    else if ((region && regionMap) || exporting)
         editor.OpenRegionMap(seed, systemId);
     else if (region)
         editor.OpenGenerated(seed, systemId);
@@ -114,6 +163,8 @@ int main(int argc, char** argv)
         editor.OpenSurvey(seed, card.empty() ? -1 : std::atoi(card.c_str()));
     else if (gallery && !card.empty())
         editor.FocusGallery(card, zoom > 0.0f ? zoom : 1.0f);
+    if (exporting && newPack.empty() && editPack.empty())
+        editor.ExportRegion(exportId);
     if (!shot.empty())
         editor.TakeShot(shot, frames, treated);
     if (perf)

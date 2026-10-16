@@ -201,14 +201,32 @@ void Editor::ToggleRegionMap()
         OpenRegionMap(regionMap_.seed > 0 ? regionMap_.seed : 1);
 }
 
-void Editor::BuildRegionMap(uint64_t seed, std::string focus)
+void Editor::OpenRegionSlot(uint64_t seed, int slot)
+{
+    if (mode_ != Mode::Region)
+        regionMap_.back = mode_;
+    BuildRegionMap(seed > 0 ? seed : 1, std::string(), slot);
+    mode_ = Mode::Region;
+    activeField_.clear();
+    openDropdown_.clear();
+    placeArchetype_.clear();
+}
+
+void Editor::BuildRegionMap(uint64_t seed, std::string focus, int slot)
 {
     RegionMap& m = regionMap_;
     m.seed = seed;
     m.region = Gen::Region();
     m.homeMap = { 0.0f, 0.0f };
     m.homeName.clear();
-    if (!WorldRegion(seed, focus, m.region, nullptr, &m.homeName, &m.homeMap))
+    if (slot >= 0)
+    {
+        // A slot from the galaxy map (#342 S8): any of them, opened or not.
+        if (!WorldRegionAt(seed, slot, m.region, nullptr, &m.homeName, &m.homeMap))
+            TraceLog(LOG_WARNING, "Region map: seed %llu has no slot %d", (unsigned long long)seed,
+                     slot);
+    }
+    else if (!WorldRegion(seed, focus, m.region, nullptr, &m.homeName, &m.homeMap))
         TraceLog(LOG_WARNING, "Region map: seed %llu has no system %s", (unsigned long long)seed,
                  focus.c_str());
     m.focus = focus;
@@ -328,23 +346,22 @@ void Editor::HandleRegionInput()
         OpenRegionMap(regionMap_.seed + 1);
     if (IsKeyPressed(KEY_PAGE_UP) && regionMap_.seed > 1)
         OpenRegionMap(regionMap_.seed - 1);
-    // Tab: the next region the world opens with (#342 S2) -- a centre, then its frontier.
+    // Tab: the next region the world has open (#342 S2, S8) -- a new world's centres and their
+    // frontiers, or a saved world's in the order they opened.
     if (IsKeyPressed(KEY_TAB))
     {
-        Gen::WorldParams p;
-        p.seed = regionMap_.seed;
-        p.centres = Gen::DEFAULT_CENTRES;
-        p.owners = Factions::MajorIds();
-        p.pirates = Factions::Id(Factions::Pirates());
-        p.unaffiliated = Factions::Id(Factions::Unaffiliated());
-        const std::vector<Gen::Opening> open = Gen::InitialOpenings(Gen::GenerateGalaxySkeleton(p));
-        for (size_t i = 0; i < open.size(); i++)
-            if (open[i].slot == regionMap_.region.slot)
-            {
-                const int next = open[(i + 1) % open.size()].slot;
-                OpenRegionMap(regionMap_.seed, Gen::SystemId(next, 1, 1));
-                return;
-            }
+        const int next = NextOpenSlot(regionMap_.seed, regionMap_.region.slot);
+        if (next >= 0)
+        {
+            OpenRegionSlot(regionMap_.seed, next);
+            return;
+        }
+    }
+    // E: the region as an admin pack (#342 S8), written beside the others and opened.
+    if (IsKeyPressed(KEY_E))
+    {
+        ExportRegion(std::string());
+        return;
     }
 
     if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
@@ -592,6 +609,25 @@ void Editor::DrawRegionPanel()
                         empty),
              x, y, 13, Ui::TEXT);
     y += 18;
+    // Where it is in the world (#342 S8): its slot, whether the world has opened it -- a pin
+    // saved for one it has not waits for it -- and whose world this is.
+    {
+        std::string state;
+        for (const Gen::Region& r : OpenRegions(m.seed))
+            if (r.slot == m.region.slot)
+                state = "open";
+        if (Saved(m.seed))
+            for (const WorldSource::Entry& e : world_.log)
+                if (e.slot == m.region.slot)
+                    state = e.state;
+        std::string line = "slot " + std::to_string(m.region.slot) + "   " +
+                           (state.empty() ? std::string("not open yet") : state);
+        if (!m.region.pack.empty())
+            line += "   pack " + m.region.pack;
+        line += Saved(m.seed) ? "   saved world" : "   new world";
+        Ui::Text(line.c_str(), x, y, 13, state.empty() ? PIN_CHANGED : Ui::TEXT_DIM);
+        y += 18;
+    }
     std::string entry = m.region.entryId;
     for (const json& s : m.region.systems)
         if (s.value("id", std::string()) == m.region.entryId)
@@ -601,14 +637,12 @@ void Editor::DrawRegionPanel()
         std::string owner;
         for (const json& s : m.region.systems)
             owner = s.value("owner", owner);
-        Ui::Text(TextFormat("civilisation centre: %s, %s's   Tab: next region", entry.c_str(),
-                            owner.c_str()),
-                 x, y, 13, Ui::ACCENT);
+        Ui::Text(TextFormat("civilisation centre: %s, %s's", entry.c_str(), owner.c_str()), x, y,
+                 13, Ui::ACCENT);
     }
     else
-        Ui::Text(
-            TextFormat("wormhole: %s -> %s   Tab: next region", m.homeName.c_str(), entry.c_str()),
-            x, y, 13, kWormhole);
+        Ui::Text(TextFormat("wormhole: %s -> %s", m.homeName.c_str(), entry.c_str()), x, y, 13,
+                 kWormhole);
     y += 18;
     if (m.problems > 0)
     {
@@ -682,10 +716,11 @@ void Editor::DrawRegionPanel()
                Fade(Ui::ACCENT, 0.45f));
     Ui::Text("a gate link", x + 20, y, 12, Ui::TEXT);
 
-    const int ky = screenHeight_ - 74;
+    const int ky = screenHeight_ - 89;
     DrawLine(x, ky - 6, x + (int)kPanelW - 28, ky - 6, Ui::PANEL_BORDER);
     Ui::Text("click  open the system for editing", x, ky, 11, Ui::TEXT_DIM);
-    Ui::Text("hover  what is there", x, ky + 15, 11, Ui::TEXT_DIM);
+    Ui::Text("hover  what is there    E  export as a pack", x, ky + 15, 11, Ui::TEXT_DIM);
     Ui::Text("PgDn / PgUp  next / previous seed", x, ky + 30, 11, Ui::TEXT_DIM);
-    Ui::Text("Esc / F5  back", x, ky + 45, 11, Ui::TEXT_DIM);
+    Ui::Text("Tab  next open region    F5  the galaxy", x, ky + 45, 11, Ui::TEXT_DIM);
+    Ui::Text("Esc  back", x, ky + 60, 11, Ui::TEXT_DIM);
 }

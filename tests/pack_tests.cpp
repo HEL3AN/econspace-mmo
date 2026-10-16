@@ -15,6 +15,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -463,4 +464,119 @@ TEST_CASE("the region an admin link reaches does not drift away from under it")
         CHECK(sim.ArchiveRegionNow(far, why) < 0);
         CHECK(why.find("pack") != std::string::npos);
     }
+}
+
+// The editor's side (#342 S8): a region of a world written as a pack, and one begun from
+// nothing, read back as the server reads them and woven into a new world.
+TEST_CASE("a region exported as a pack reads as the server reads it, and weaves in")
+{
+    LoadRegistries();
+    const Gen::GalaxySkeleton      g = Gen::GenerateGalaxySkeleton(Params(5));
+    const std::vector<Gen::Region> world = Gen::GenerateWorld(g);
+    for (const Gen::Region& r : world)
+        Gen::RegisterNatives(r.natives);
+    const Gen::Region* centre = nullptr;
+    const Gen::Region* frontier = nullptr;
+    for (const Gen::Region& r : world)
+    {
+        if (centre == nullptr && !r.heartId.empty())
+            centre = &r;
+        if (frontier == nullptr && r.heartId.empty() && !r.natives.empty())
+            frontier = &r;
+    }
+    REQUIRE(centre != nullptr);
+    REQUIRE(frontier != nullptr);
+
+    TempDir                          dir;
+    std::shared_ptr<const Gen::Pack> woven;
+    for (const Gen::Region* r : { centre, frontier })
+    {
+        const std::string        id = "export-" + std::to_string(r->slot);
+        std::vector<std::string> notes;
+        const Gen::PackFiles     files = Gen::RegionAsPack(*r, id, "", &notes);
+        std::string              error;
+        REQUIRE(Gen::WritePack(dir.Path("packs/" + id), files, false, error));
+        // Written once: a second export over it is refused rather than mixed with the first.
+        CHECK_FALSE(Gen::WritePack(dir.Path("packs/" + id), files, false, error));
+
+        Gen::Pack                p;
+        std::vector<std::string> problems;
+        const bool               ok = Gen::LoadPack(dir.Path("packs/" + id), p, problems);
+        for (const std::string& why : problems)
+            MESSAGE(why);
+        REQUIRE(ok);
+        CHECK(p.systems.size() == r->systems.size());
+        // The way in first, under the pack's own id, the slot taken off.
+        CHECK(p.systems.front().id == "s" + r->entryId.substr(r->entryId.find('-') + 1));
+        for (const Gen::PackSystem& s : p.systems)
+        {
+            CHECK(std::fabs(s.mapX) <= Gen::PACK_MAP_REACH);
+            CHECK(std::fabs(s.mapY) <= Gen::PACK_MAP_REACH);
+        }
+        if (r == centre)
+        {
+            // Its capital is where a pilot may start.
+            REQUIRE(p.starts.size() == 1);
+            CHECK(p.starts.front() == "s" + r->heartId.substr(r->heartId.find('-') + 1));
+        }
+        else
+        {
+            // Its natives are the pack's own faction now, and still hold their stations.
+            REQUIRE(p.factions.size() == 1);
+            CHECK(p.factions[0]["id"] == id + "-natives");
+            CHECK(p.factions[0]["name"] == r->natives["name"]);
+            bool flown = false;
+            for (const Gen::PackSystem& s : p.systems)
+                for (const json& st : s.document.value("stations", json::array()))
+                    flown = flown || st.value("faction", std::string()) == id + "-natives";
+            CHECK(flown);
+            // The wormhole home leads out of it, and is left to the weaving.
+            CHECK_FALSE(notes.empty());
+            woven = std::make_shared<const Gen::Pack>(std::move(p));
+        }
+    }
+
+    // Woven into a world of another seed, as a server would weave it.
+    Simulation sim;
+    Make(sim, 9, { woven });
+    for (const std::string& why : sim.PackProblems())
+        MESSAGE(why);
+    CHECK(sim.PackProblems().empty());
+    REQUIRE(sim.WovenPacks().size() == 1);
+    const int slot = sim.WovenPacks().front().slot;
+    CHECK(sim.OpenSlots().count(slot) == 1);
+    // Its designations were the old slot's, so they were left out: it is designated afresh.
+    REQUIRE(Info(sim, Gen::SystemId(slot, 1, 1)) != nullptr);
+    CHECK(Info(sim, Gen::SystemId(slot, 1, 1))->name == Gen::SystemDesignation(slot, 1, 1));
+}
+
+TEST_CASE("a pack begun from nothing reads, has a start, and weaves in")
+{
+    LoadRegistries();
+    TempDir     dir;
+    std::string error;
+    const auto  files = Gen::NewRegionPack("outpost", "Far Outpost");
+    REQUIRE(Gen::WritePack(dir.Path("outpost"), files, false, error));
+    CHECK_FALSE(Gen::PackIdValid("Not A Pack"));
+    CHECK(Gen::PackIdValid("outpost"));
+
+    Gen::Pack                p;
+    std::vector<std::string> problems;
+    const bool               ok = Gen::LoadPack(dir.Path("outpost"), p, problems);
+    for (const std::string& why : problems)
+        MESSAGE(why);
+    REQUIRE(ok);
+    CHECK(p.systems.size() == 1);
+    CHECK(p.starts == std::vector<std::string>{ "core" });
+
+    Simulation sim;
+    Make(sim, 2, { std::make_shared<const Gen::Pack>(std::move(p)) });
+    for (const std::string& why : sim.PackProblems())
+        MESSAGE(why);
+    CHECK(sim.PackProblems().empty());
+    REQUIRE(sim.WovenPacks().size() == 1);
+    bool start = false;
+    for (const Simulation::StartPoint& sp : sim.Starts())
+        start = start || sp.systemName == "Far Outpost Core";
+    CHECK(start);
 }

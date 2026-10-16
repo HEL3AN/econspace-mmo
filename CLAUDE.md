@@ -94,7 +94,11 @@ cmake --build build-release
 ./build/bin/editor/worldeditor.exe gallery shapes card planet.rocky shot out.png  # save that view and exit; works with the screen off
 ./build/bin/editor/worldeditor.exe gallery shapes card station.trade_hub seed 3 sockets  # one object of a type, its kit sockets shown ([ ] seed, K sockets)
 ./build/bin/editor/worldeditor.exe region 7 system r22-2-1   # edit a generated system; Ctrl+S saves the difference as a pin in data/pins.json
-./build/bin/editor/worldeditor.exe region 7 map shot r.png   # the first centre as a map, pinned systems ringed (F5; Tab: next region; click a system to edit it)
+./build/bin/editor/worldeditor.exe region 7 map shot r.png   # the first centre as a map, pinned systems ringed (Tab: next region; click a system to edit it)
+./build/bin/editor/worldeditor.exe galaxy 7 shot g.png       # every slot of seed 7's skeleton, open or not, pins waiting on unopened ones (F5: system -> region -> galaxy)
+./build/bin/editor/worldeditor.exe world build/bin/server slot 14   # a saved world: its log, its regions from their seals; slot N / system ID open one
+./build/bin/editor/worldeditor.exe galaxy 7 slot 6 export ithath packs /tmp/packs   # that region as a pack (E on the region map), then opened; validate it with econserver validate
+./build/bin/editor/worldeditor.exe newpack outpost           # a region pack begun from one system (editpack ID opens one); each save is read back as the server reads it
 ./build/bin/editor/worldeditor.exe gallery shapes card ship.player thrusting shot s.png  # ...with its engines lit
 
 ./build/bin/agent/econagent.exe connect 127.0.0.1 50800 agent hunter2  # MCP for an agent

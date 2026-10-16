@@ -95,6 +95,28 @@ public:
     // put them, the gates between them, which ones a pin touches. A click opens a system for
     // editing; `focus` (a system id) is ringed, which is where the map was opened from.
     void OpenRegionMap(uint64_t seed, const std::string& focus = "");
+    // ...the region of skeleton slot `slot` instead, opened or not (#342 S8).
+    void OpenRegionSlot(uint64_t seed, int slot);
+
+    // The world's galaxy (#342 S8): every slot of the skeleton the seed lays out, which are
+    // open and how, which a pin waits on. A click opens the region of a slot -- the first of
+    // the F5 levels, galaxy -> region -> system.
+    void OpenWorldMap(uint64_t seed);
+    // Makes the editor open regions from a saved world -- world.json, or the folder it is in --
+    // instead of the world a new server would make: its seed, its centres and its cap, its
+    // opening log, and each region it opened read from its seal in regions/ beside it. False,
+    // said in the log, when the file is not a world.
+    bool     OpenWorldFile(const std::string& path);
+    uint64_t WorldSeed() const { return world_.seed; }
+
+    // Packs (#342 S8). `packs DIR` writes and opens them somewhere other than data/packs/,
+    // which is what a server weaves into a new world.
+    void SetPacksDir(const std::string& dir);
+    // Opens the pack `id` for editing on the map of its systems, or begins one (`create`) from
+    // a single system with a station. False, said in the log, when it cannot.
+    bool OpenPack(const std::string& id, bool create);
+    // Writes the region on the region map as the pack `id` (Gen::RegionAsPack) and opens it.
+    bool ExportRegion(const std::string& id);
 
     // Opens the gallery on one archetype drawn large (#194), by registry index or by id,
     // at `zoom` times the fitted size. `worldeditor gallery card trade_hub zoom 3` is how a
@@ -214,6 +236,41 @@ private:
     bool WorldRegion(uint64_t seed, std::string& systemId, Gen::Region& out,
                      std::map<std::string, std::string>* names = nullptr,
                      std::string* homeName = nullptr, Vector2* homeMap = nullptr) const;
+    // ...the region of skeleton slot `slot` (-1: the first centre's). A slot the world has not
+    // opened is made as it would open from its lowest-numbered open neighbour (#342 S8).
+    bool WorldRegionAt(uint64_t seed, int slot, Gen::Region& out,
+                       std::map<std::string, std::string>* names = nullptr,
+                       std::string* homeName = nullptr, Vector2* homeMap = nullptr) const;
+
+    // The world regions are opened from (#342 S8): the one a new server makes from a seed
+    // (without admin packs, which only a server weaves), or a saved one. A saved world applies
+    // only to its own seed: PgDn on the region map leaves it for the seeds around it.
+    struct WorldSource
+    {
+        uint64_t    seed = 1;
+        std::string path;     // world.json; empty: a new world of the seed
+        std::string sealDir;  // regions/ beside it
+        int         centres = Gen::DEFAULT_CENTRES;
+        int         cap = Gen::DEFAULT_REGION_CAP;
+        // The opening log in the order it opened; archived regions left out.
+        struct Entry
+        {
+            int         slot = 0;
+            int         parent = -1;
+            std::string state = "open", by = "world", why;
+        };
+        std::vector<Entry>         log;
+        std::map<int, std::string> packs;  // slot -> the pack woven into it
+    };
+    WorldSource world_;
+    bool        Saved(uint64_t seed) const { return !world_.path.empty() && world_.seed == seed; }
+    Gen::WorldParams WorldParamsFor(uint64_t seed) const;
+    // Every region open in the world of `seed`, in the order it opened: a saved world's from
+    // their seals, a new world's generated. Kept for the last seed asked about.
+    const std::vector<Gen::Region>&  OpenRegions(uint64_t seed) const;
+    mutable uint64_t                 openSeed_ = 0;
+    mutable bool                     openSaved_ = false;
+    mutable std::vector<Gen::Region> openRegions_;
 
     // The generated system being edited (#237). While `open`, systemJson_ is the edit and
     // `base` what it is measured against: the generator's system with every pin the editor
@@ -329,11 +386,12 @@ private:
     enum class Mode
     {
         System,   // one star system, the objects in it
-        Galaxy,   // universe.json: the nodes and the links between them
+        Galaxy,   // an index -- a pack's pack.json, or universe.json: nodes and links
         Gallery,  // every archetype at once, for judging a look (#118)
         Survey,   // many generated systems at once, for judging the rules (#141)
         Modules,  // the module library, every variant side by side (#240)
-        Region    // the whole region of one seed, as a map (#237)
+        Region,   // the whole region of one seed, as a map (#237)
+        World     // the world's galaxy: every slot of the skeleton (#342 S8)
     };
     Mode mode_ = Mode::System;
 
@@ -355,7 +413,7 @@ private:
         Rectangle                       bounds = { 0, 0, 1, 1 };  // every node, in map units
     };
     RegionMap regionMap_;
-    void      BuildRegionMap(uint64_t seed, std::string focus);
+    void      BuildRegionMap(uint64_t seed, std::string focus, int slot = -1);
     void      HandleRegionInput();
     void      DrawRegionMap();
     void      DrawRegionPanel();
@@ -363,7 +421,47 @@ private:
     Rectangle RegionButtonRect() const;
     Vector2   RegionToScreen(Vector2 map) const;
     int       RegionHit(Vector2 p) const;  // index in region.systems, -1 none, -2 home
-    void      ToggleRegionMap();           // F5 and the button: from where you are
+    void      ToggleRegionMap();           // the button: from where you are, and back
+    void      LevelUp();                   // F5: system -> region -> galaxy -> back
+    // Tab: the next region the world has open after `slot`; -1 when it has none.
+    int NextOpenSlot(uint64_t seed, int slot) const;
+
+    // The world's galaxy (#342 S8): the skeleton of slots and what the world made of each.
+    struct SlotView
+    {
+        std::string state;  // empty: not open; else the log's (open, unstable, anchored...)
+        int         parent = -1;
+        std::string by, why;
+        std::string title;  // a centre's owner, a frontier's natives, a pack's id
+        std::string pack;
+        int         systems = 0;
+        int         pins = 0;       // pins for exactly this seed, applied or waiting
+        int         everySeed = 0;  // pins for every seed
+    };
+    struct WorldMap
+    {
+        uint64_t              seed = 0;
+        Gen::GalaxySkeleton   skeleton;
+        std::vector<SlotView> slots;  // parallel to skeleton.slots
+        Mode                  back = Mode::System;
+        Rectangle             bounds = { 0, 0, 1, 1 };
+        std::string           notice;
+    };
+    WorldMap worldMap_;
+    void     BuildWorldMap(uint64_t seed);
+    void     HandleWorldInput();
+    void     DrawWorldMap();
+    void     DrawWorldPanel();
+    Vector2  WorldToScreen(double x, double y) const;
+    int      WorldHit(Vector2 p) const;  // the slot under a point, or -1
+
+    // A pack being edited (#342 S8): its pack.json on the index map (Mode::Galaxy), its
+    // system files in the system view.
+    std::string packsDir_;    // data/packs/ unless `packs DIR`
+    std::string packId_;      // empty: the index is universe.json
+    std::string indexPath_;   // the index file Mode::Galaxy edits
+    std::string systemsDir_;  // where the index's system files are
+    void        CheckPack();  // LoadPack on it: every problem to the log, the first on screen
     // data/pins.json, an empty object if there is none, null if it is not valid JSON.
     static nlohmann::json ReadPins(const std::string& path);
 
