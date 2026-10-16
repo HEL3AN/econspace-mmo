@@ -43,5 +43,23 @@
         "ambush": 0.01,
         "retryMinutes": 10,
         "reach": 6
+    },
+    "jobs": {
+        "reach": 4,
+        "perBoard": 3,
+        "creditsPerStock": 50,
+        "supplyShare": 0.5,
+        "supplyMarkup": 1.6,
+        "supplyRange": 1500,
+        "supplyCut": 0.35,
+        "supplyMax": 2,
+        "escortBase": 400,
+        "escortPerJump": 150,
+        "escortForce": 2,
+        "escortSlack": 600,
+        "siegeKills": 3,
+        "siegePerKill": 250,
+        "rep": 3,
+        "failRep": 1.5
     }
 }

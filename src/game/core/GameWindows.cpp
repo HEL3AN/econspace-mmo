@@ -98,6 +98,7 @@ Goal::Prompt Game::CurrentGoal() const
         m.needs = r.needs;
         m.handInId = r.handInId;
         m.handInName = r.handInName;
+        m.anywhere = r.job;
         s.active.push_back(std::move(m));
     }
     float best = 0.0f;
@@ -188,8 +189,18 @@ void Game::DrawMissionsContent(const Ui::Frame& f)
             if (m.progress >= 0.0f)
                 L.Bar(m.progress, m.ready ? t.colors.good : t.colors.accent);
         }
-        L.Field("Hand in at", m.handInHere ? m.handInName : "another system",
-                m.handInHere ? t.colors.text : t.colors.dim);
+        if (m.job)
+        {
+            // A faction plan's job (#345): where the work is, how long it has, and no station
+            // to go back to -- the faction pays by wire.
+            L.Field("Where", m.where, t.colors.text);
+            if (!m.due.empty())
+                L.Field("Time", m.due, m.due == "overdue" ? t.colors.warn : t.colors.text);
+            L.Field("Hand in", "anywhere", t.colors.text);
+        }
+        else
+            L.Field("Hand in at", m.handInHere ? m.handInName : "another system",
+                    m.handInHere ? t.colors.text : t.colors.dim);
         if (!m.needs.empty())
             L.Text("Needs: " + m.needs, TextStyle::Small().Tint(t.colors.dim).Wrap());
 
@@ -204,12 +215,25 @@ void Game::DrawMissionsContent(const Ui::Frame& f)
         target.active = taken;
         std::vector<Actions::Action> acts = Actions::ForMission(target);
         int                          stationId = 0;
-        if (Station* st =
-                m.handInHere && !snapshot_.player.docked ? StationById(m.handInId) : nullptr)
+        // Where it ends, when that is here: the station it is handed in at, or a supply job's
+        // site -- flown to the same way, and docked at only if it is a station.
+        Entity* there = nullptr;
+        if (m.handInHere && !snapshot_.player.docked)
         {
-            stationId = st->GetId();
+            if (m.job)
+            {
+                for (const auto& e : clientWorld_)
+                    if (e->GetId() == m.handInId)
+                        there = e.get();
+            }
+            else
+                there = StationById(m.handInId);
+        }
+        if (there != nullptr)
+        {
+            stationId = there->GetId();
             for (const Actions::Action& a :
-                 Actions::For(ActionTarget(*st), playerShip_->GetPosition()))
+                 Actions::For(ActionTarget(*there), playerShip_->GetPosition()))
                 if (a.verb == Actions::Verb::Select || a.verb == Actions::Verb::Approach ||
                     a.verb == Actions::Verb::Warp || a.verb == Actions::Verb::Dock)
                     acts.push_back(a);

@@ -909,6 +909,26 @@ public:
     // Hand-in condition at the station this player is docked at.
     bool MissionCompletableNow(const ClientSession& s, const Mission& m) const;
 
+    // --- Jobs a faction's plans post (#345; Simulation_Jobs.cpp) ---
+    // The jobs on the board of station `stationId` in the session's system: what the plans of
+    // its faction within the jobs rules' reach need done, nearest first, at most a board's
+    // worth, priced by the session's standing -- and only what the faction can pay for and the
+    // session does not hold already. GenerateDockOffers puts them before the station's own work.
+    std::vector<Mission> JobsPostedAt(const ClientSession& s, int stationId) const;
+    // Whether a plan's job can be handed in now: anywhere for one that is done, and for a
+    // supply job beside its site, in flight, with the goods aboard.
+    bool PlanJobReadyNow(const ClientSession& s, const Mission& m) const;
+    // A supply job's site, if it is in the session's system: its entity id, else 0.
+    int JobSiteId(const ClientSession& s, const Mission& m) const;
+    // Once a pass: escorts that are with their convoy, convoys arrived or lost, sites that no
+    // longer need anything, and jobs out of time.
+    void StepJobs();
+    // The session shot `killed` down: a besieger counts towards its break-the-siege jobs.
+    void CreditJobKill(ClientSession& s, const NpcShip& killed);
+    // A plan's site still going up, that a delivery helps: a settlement's, or an Anchor's or
+    // an upgrade's come to its site. Null for anything else.
+    const Structure* JobSite(const Plan& p) const;
+
     // Server-side active-system change (for the headless host on a jump): makes destId
     // active and teleports the player to the gate leading back to fromId (as the arrival
     // point). A cold destination warms (#295): its ships are made before the player sees it.
@@ -1368,6 +1388,17 @@ private:
     // nearest few dropping out beside the shooter. Only in a hot system, once a while per
     // system, and not when a patrol is already in sight. True when anyone answered.
     bool CallPolice(SystemState& st, ClientSession& by, FactionId law);
+    // --- Jobs (#345; Simulation_Jobs.cpp) ---
+    // A plan's job handed in: paid out of the poster's stock, and a delivery fed to its site.
+    bool CompleteJob(ClientSession& s, int index);
+    // A job ended undone, with why; `penalty` when it was the pilot's to do.
+    void FailJob(ClientSession& s, int index, const std::string& why, bool penalty);
+    // A delivery takes the jobs rules' share off the time the plan's site has left.
+    void SpeedSite(Plan& p);
+    // The escort strength pilots with a convoy's escort jobs lend it in `systemId`.
+    float EscortsWith(const Plan& p, const std::string& systemId) const;
+    // A siege is over: break-the-siege jobs that helped lift it are done, the rest are not.
+    void SiegeOver(const Plan& p);
     // --- Expeditions, growing stations and the builder convoy (#342 S6; Simulation_Growth.cpp) ---
     // A mouth into `slot` opened: the factions within the expedition rules' reach of it hear
     // what is beyond -- intel on the entry system -- and are drawn that way for a while.

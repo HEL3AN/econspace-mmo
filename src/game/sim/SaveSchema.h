@@ -87,7 +87,10 @@ inline constexpr int WORLD_VERSION = 15;
 // 6: the hold may carry any good of data/goods.json (#343), by its id. A version 5 build reads
 //    every name it does not know as Iron, so a hold of Medicine would load as a hold of ore --
 //    and be saved so.
-inline constexpr int ACCOUNT_VERSION = 6;
+// 7: a mission may be a faction plan's job (#345) -- supply, escort, break a siege -- with the
+//    plan it is for. A version 6 build knows no such mission: it would keep one it could never
+//    hand in, holding a slot for good, and save it so.
+inline constexpr int ACCOUNT_VERSION = 7;
 // designs.json, the designs players' ships fly (#279 fitting). 1: the first.
 inline constexpr int DESIGNS_VERSION = 1;
 

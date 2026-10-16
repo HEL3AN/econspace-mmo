@@ -217,14 +217,20 @@ const char* MissionKind(int type)
         case MissionType::Bounty: return "bounty";
         case MissionType::Mining: return "mining";
         case MissionType::Delivery: return "delivery";
+        case MissionType::Supply: return "supply";
+        case MissionType::Escort: return "escort";
+        case MissionType::Siege: return "siege";
     }
     return "job";
 }
 
-// Where a mission is handed in. A delivery ends at its destination; everything else goes
-// back to the station that gave it -- the same rule as Simulation::MissionCompletableNow.
+// Where a mission is handed in. A delivery ends at its destination; a plan's job anywhere
+// (#345), so at no station; everything else goes back to the station that gave it -- the same
+// rule as Simulation::MissionCompletableNow.
 int HandInStation(const Proto::MissionView& m)
 {
+    if (IsPlanJob((MissionType)m.type))
+        return 0;
     return (MissionType)m.type == MissionType::Delivery ? m.destStationId : m.giverStationId;
 }
 
@@ -232,6 +238,16 @@ std::string MissionLine(const Obs::View& view, size_t index, const Proto::Missio
 {
     std::string out = Fmt("  [%d] %s: %s -- %s\n", (int)index, MissionKind(m.type), m.title.c_str(),
                           m.description.c_str());
+    if (IsPlanJob((MissionType)m.type))
+    {
+        // A plan's job: where it is, how long it has, and that the faction pays by wire.
+        const std::string due = Obs::JobDue(view, m);
+        out += Fmt("       reward %.0f cr, %s standing %+.1f; in %s (system %s)%s%s; hand in "
+                   "anywhere\n",
+                   m.rewardMoney, FactionName(m.faction).c_str(), m.rewardRep, m.systemName.c_str(),
+                   m.systemId.c_str(), due.empty() ? "" : ", ", due.c_str());
+        return out;
+    }
     out += Fmt("       reward %.0f cr, %s standing %+.1f; hand in at %s\n", m.rewardMoney,
                FactionName(m.faction).c_str(), m.rewardRep,
                StationName(view, HandInStation(m)).c_str());
@@ -521,8 +537,41 @@ std::string MissionNeeds(const View& view, const Proto::MissionView& m)
             break;
         }
         case MissionType::Delivery: break;
+        case MissionType::Supply:
+        {
+            int held = 0;
+            if (p != nullptr && m.resource >= 0 && m.resource < (int)p->cargoByType.size())
+                held = p->cargoByType[m.resource];
+            const std::string what = ResourceName(ResourceType::FromIndex(m.resource));
+            if (held < m.targetCount)
+                return Fmt("carry %d %s (the hold has %d) to the site in %s", m.targetCount,
+                           what.c_str(), held, m.systemName.c_str());
+            if (m.siteId != 0)
+                return Fmt("fly beside the site (#%d), undocked, and hand it in", m.siteId);
+            return Fmt("take the %s to the site in %s (system %s)", what.c_str(),
+                       m.systemName.c_str(), m.systemId.c_str());
+        }
+        case MissionType::Escort:
+            return Fmt("fly with the convoy until it reaches %s (system %s)", m.systemName.c_str(),
+                       m.systemId.c_str());
+        case MissionType::Siege:
+            return Fmt("shoot down %d more besieger%s in %s (system %s)",
+                       m.targetCount - m.progress, m.targetCount - m.progress == 1 ? "" : "s",
+                       m.systemName.c_str(), m.systemId.c_str());
     }
     return "dock at " + StationName(view, HandInStation(m));
+}
+
+std::string JobDue(const View& view, const Proto::MissionView& m)
+{
+    if (m.deadline <= 0.0 || view.snapshot == nullptr)
+        return std::string();
+    const double left = m.deadline - view.snapshot->time;
+    if (left <= 0.0)
+        return "overdue";
+    if (left < 120.0)
+        return Fmt("due in %.0f s", left);
+    return Fmt("due in %.0f min", left / 60.0);
 }
 
 std::string DescribeMissions(const View& view)
@@ -554,10 +603,13 @@ std::string DescribeMissions(const View& view)
     {
         const Proto::MissionView& m = snap.missionActive[i];
         out += MissionLine(view, i, m);
-        if ((MissionType)m.type == MissionType::Bounty)
+        if ((MissionType)m.type == MissionType::Bounty || (MissionType)m.type == MissionType::Siege)
             out += Fmt("       progress %d/%d\n", m.progress, m.targetCount);
-        out += m.completable ? "       READY TO HAND IN here\n"
-                             : "       needs: " + MissionNeeds(view, m) + "\n";
+        if (m.completable)
+            out += IsPlanJob((MissionType)m.type) ? "       READY TO HAND IN, anywhere\n"
+                                                  : "       READY TO HAND IN here\n";
+        else
+            out += "       needs: " + MissionNeeds(view, m) + "\n";
     }
     return out;
 }

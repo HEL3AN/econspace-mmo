@@ -293,6 +293,7 @@ bool Simulation::ArriveSiege(Plan& p)
 
 void Simulation::ResolveSiege(const Plan& p)
 {
+    SiegeOver(p);  // its jobs (#345)
     RecallSiege(p);
     SystemState*      st = SystemById(p.target);
     const Structure*  t = st != nullptr ? StructureByKey(*st, p.site) : nullptr;
@@ -471,6 +472,7 @@ void Simulation::StepSieges()
         const auto it = plans_.find(id);
         if (it == plans_.end())
             continue;
+        SiegeOver(it->second);  // its jobs (#345)
         RecallSiege(it->second);
         plans_.erase(it);  // its due entry finds nothing
     }

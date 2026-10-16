@@ -32,9 +32,11 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    33;  // 33: goods from data/goods.json (#343) -- cargo and the market by its order, the market a
-         // bid, an ask and a stock per good, a buy in a command and in its acknowledgement;
-         // 32: the named design library -- save, apply, rename and delete in a command, the
+    34;  // 34: a mission may be a faction plan's job (#345), with its plan, system, deadline and
+         // site; 33: goods from data/goods.json (#343) -- cargo and the market by its order, the
+         // market a bid, an ask and a stock per good, a buy in a command and in its
+         // acknowledgement; 32: the named design library -- save, apply, rename and delete in a
+         // command, the
          // library in the player's snapshot (#279 fitting, step 3); 31: the server's faction
          // registry, sent before anything names one of its factions
          // (#342 S5, #355); 30: a snapshot is numbered and may be a delta against one the client
@@ -346,6 +348,14 @@ struct MissionView
     double      rewardMoney = 0.0;
     float       rewardRep = 0.0f;
     bool        completable = false;
+    // A plan's job (#345): the plan, the system it is about -- by id and by name, since the
+    // client sees only its own -- by when it must be done (world time; 0 for no time), and a
+    // supply job's site when it is in the recipient's system (0 otherwise).
+    int         planId = 0;
+    std::string systemId;
+    std::string systemName;
+    double      deadline = 0.0;
+    int         siteId = 0;
 };
 
 // Snapshot of the player's system — what the client draws.

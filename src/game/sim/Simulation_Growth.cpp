@@ -613,14 +613,20 @@ void Simulation::StepConvoys()
 
         // Whatever is hostile here falls on it: the escort first, then the hauler -- and the
         // escort takes its toll of them as it goes.
+        // Pilots flying with it on its escort jobs (#345) are escort strength too: they fire
+        // back with the rest and stand between it and the first of the blows, each as many
+        // ships as the jobs rules say, and are not worn down by the sums -- where they are, the
+        // system is hot, and what hits them, or the hauler, is real.
         float hostile = 0.0f;
         for (FactionId g : Factions::All())
             if (Against(p.faction, g))
                 hostile += st->agg.presence[g];
         if (hostile > 0.0f)
         {
+            const float pilots = EscortsWith(p, st->id);
             float       blow = (float)r.ambush * hostile * PASS_SECONDS;
-            const float back = (float)r.ambush * p.force * PASS_SECONDS;
+            const float back = (float)r.ambush * (p.force + pilots) * PASS_SECONDS;
+            blow -= std::min(blow, pilots);
             for (FactionId g : Factions::All())
                 if (Against(p.faction, g) && st->agg.presence[g] > 0.0f)
                 {

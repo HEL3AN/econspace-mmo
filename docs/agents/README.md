@@ -193,7 +193,9 @@ A few that are worth knowing before reading the reference:
   a human's or a bot's -- pays the market's fee (#348), so a small price difference loses money.
 - `missions` numbers the station's board and your active jobs; `accept_mission` and
   `complete_mission` take those numbers. Each job says what it still needs and where it is
-  handed in.
+  handed in. Jobs posted by a faction's plans (`supply`, `escort`, `siege`) name the system
+  they are about and a deadline. They are handed in anywhere, and they move the world: a
+  delivery speeds a build, an escort guards a convoy, a besieger shot down weakens a siege.
 - `hangar` quotes ships at the price *you* would pay here, which depends on your standing
   with the station's owner. `buy_ship` and `switch_ship` take a ship by name.
 - `pay_bounty` pays the station owner's bounty unless you name another faction.

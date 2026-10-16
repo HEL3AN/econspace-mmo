@@ -1041,6 +1041,8 @@ bool Simulation::SaveWorld(const std::string& path) const
                            { "dueAt", p.dueAt } };
         if (!p.site.empty())
             pj["site"] = p.site;
+        if (p.supplied > 0)
+            pj["supplied"] = p.supplied;  // pilots' deliveries to its site (#345)
         if (p.kind == Plan::Kind::Siege)
         {
             pj["against"] = Factions::Id(p.against);
@@ -1228,6 +1230,7 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             p.startedAt = pj.value("startedAt", 0.0);
             p.dueAt = pj.value("dueAt", 0.0);
             p.site = pj.value("site", std::string());
+            p.supplied = std::max(0, pj.value("supplied", 0));
             if (p.kind == Plan::Kind::Siege &&
                 (!pj.contains("against") || !FactionByName(pj["against"], p.against)))
                 continue;

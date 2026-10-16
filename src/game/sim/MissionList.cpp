@@ -40,6 +40,9 @@ const char* KindWord(int type)
         case MissionType::Bounty: return "bounty";
         case MissionType::Mining: return "mining";
         case MissionType::Delivery: return "delivery";
+        case MissionType::Supply: return "supply";
+        case MissionType::Escort: return "escort";
+        case MissionType::Siege: return "siege";
     }
     return "job";
 }
@@ -70,6 +73,18 @@ std::vector<Row> Build(const Obs::View& view, Board board)
             (MissionType)m.type == MissionType::Delivery ? m.destStationId : m.giverStationId;
         r.handInName = NameHere(view, r.handInId);
         r.handInHere = !r.handInName.empty();
+        if (IsPlanJob((MissionType)m.type))
+        {
+            // The faction pays by wire: no station to fly back to. What there is to fly to is a
+            // supply job's site, when it is here.
+            r.job = true;
+            r.where = m.systemName;
+            r.due = Obs::JobDue(view, m);
+            r.siteId = m.siteId;
+            r.handInId = m.siteId;
+            r.handInName = m.siteId != 0 ? NameHere(view, m.siteId) : std::string();
+            r.handInHere = m.siteId != 0 && !r.handInName.empty();
+        }
 
         if (board == Board::Offers)
         {
@@ -90,14 +105,23 @@ std::vector<Row> Build(const Obs::View& view, Board board)
                     done = snap.player.cargoByType[m.resource];
                 break;
             case MissionType::Delivery: break;
+            case MissionType::Supply:
+                // What the hold carries towards the delivery, as for mining.
+                if (m.resource >= 0 && m.resource < (int)snap.player.cargoByType.size())
+                    done = snap.player.cargoByType[m.resource];
+                break;
+            case MissionType::Escort: done = m.progress; break;
+            case MissionType::Siege: done = m.progress; break;
         }
-        if ((MissionType)m.type != MissionType::Delivery && m.targetCount > 0)
+        if ((MissionType)m.type == MissionType::Escort)
+            r.status = "escort";
+        else if ((MissionType)m.type != MissionType::Delivery && m.targetCount > 0)
         {
             done = std::min(done, m.targetCount);
             r.progress = (float)done / (float)m.targetCount;
             r.status = Count(done, m.targetCount);
         }
-        else
+        else if ((MissionType)m.type == MissionType::Delivery)
             r.status = "deliver";
         if (r.ready)
             r.status = "ready";

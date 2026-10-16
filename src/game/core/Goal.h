@@ -17,10 +17,11 @@ namespace Goal
 struct Mission
 {
     std::string title;
-    bool        ready = false;  // can be handed in now: the server says so
-    std::string needs;          // what it still needs, in the agent's words; empty when ready
-    int         handInId = 0;   // the station it is handed in at
-    std::string handInName;     // ...its name, when it is in this system; empty otherwise
+    bool        ready = false;     // can be handed in now: the server says so
+    std::string needs;             // what it still needs, in the agent's words; empty when ready
+    int         handInId = 0;      // the station it is handed in at
+    std::string handInName;        // ...its name, when it is in this system; empty otherwise
+    bool        anywhere = false;  // a faction plan's job (#345): handed in wherever the ship is
 };
 
 struct State
