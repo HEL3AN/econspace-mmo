@@ -370,6 +370,12 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   id (`Factions::Id`). The code names no faction -- who owns what nobody owns, who the
   pirates are, whose police patrol a lawless system are `roles` in the file. Store a value
   per faction in `PerFaction<T>` and iterate `Factions::All()`.
+- **A player corporation is not a faction** (#347). It has its own registry
+  (`sim/Corporation.h`, saved as `corps.json` beside the world), is named by a string id and
+  shown by its ticker. Standings stay each pilot's own. What a corporation shares is trust:
+  a member's armed structures never fire first on a member and guard members' ships, and
+  the CEO and directors set members' rules of engagement. Its verbs are a `CorpAct`, not a
+  `Command`, and they are answered with a chat notice.
 - **A ship flies a design, and a player's design is named by its content** (#279). A refit
   files `Ships::PlayerFit`'s design under `Ships::ContentId` and the ship flies that id; the
   snapshot carries only the id, so the host sends a `DesignDef` before the first snapshot

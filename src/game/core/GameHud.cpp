@@ -294,6 +294,12 @@ void Game::SetupWindows()
     chatDocked.place = { 8.0f, 96.0f, 400.0f, 320.0f };
     chatDocked.context = CTX_DOCKED;
     desk_.AddWindow(chatDocked, "CHAT", false, [this](Ui::Frame& f) { DrawChatContent(f); });
+    // The corporation (#347): in space and docked alike, where the station's stack stands.
+    WindowSpec corp = panel(WIN_CORP, "Corp", "Corporation: its members, invites, founding one",
+                            Anchor::TopLeft, { 344.0f, 96.0f, 380.0f, 396.0f });
+    corp.resizable = true;
+    corp.minSize = { 280.0f, 220.0f };
+    desk_.AddWindow(corp, "CORPORATION", false, [this](Ui::Frame& f) { DrawCorpContent(f); });
 
     // The two screens cover the world view and the windows; whichever opened last is on top.
     // Covering means the windows are not drawn at all while one is open: the map is drawn
@@ -449,7 +455,12 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
             const auto l = layout_.byId.find(e.id);
             const bool mine = l != layout_.byId.end() && l->second.owner == pilotName_;
             a = mine ? Sensor::Allegiance::Own : Sensor::Allegiance::Neutral;
+            // A corp mate's is a friend's (#347): their batteries hold fire for this pilot.
+            if (!mine && l != layout_.byId.end() && InMyCorp(l->second.owner))
+                a = Sensor::Allegiance::Friendly;
         }
+        else if (e.kind == Proto::EntityKind::PlayerShip && InMyCorp(e.name))
+            a = Sensor::Allegiance::Friendly;
         if (a == Sensor::Allegiance::Unowned)
             return;
         cell.chip = Sensor::ColorOf(a);
@@ -477,9 +488,12 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
             // is an order a player cannot trust.
             case 0:
             {
-                Ui::Cell cell{ row.name, row.hostile ? t.standing.hostile
-                                         : held      ? t.colors.accent
-                                                     : t.colors.text };
+                // Another pilot under their corporation's ticker (#347).
+                const std::string name =
+                    row.entity->kind == Proto::EntityKind::PlayerShip ? Tagged(row.name) : row.name;
+                Ui::Cell cell{ name, row.hostile ? t.standing.hostile
+                                     : held      ? t.colors.accent
+                                                 : t.colors.text };
                 chipOf(*row.entity, cell);
                 return cell;
             }
@@ -584,6 +598,17 @@ void Game::DrawTargetContent(const Ui::Frame& f)
             if (e->kind == Proto::EntityKind::Npc || e->kind == Proto::EntityKind::Station)
                 // Allegiance, in the instruments' colours (#117).
                 L.Field("Faction", FactionName(e->faction), Sensor::ColorOf(allegiance));
+            // Another pilot's corporation (#347), a corp mate's in the friendly colour.
+            if (e->kind == Proto::EntityKind::PlayerShip)
+            {
+                const std::string tick = TickerOf(e->name);
+                const bool        mate = InMyCorp(e->name);
+                L.Field("Corporation",
+                        tick.empty() ? std::string("none")
+                        : mate       ? corpView_.name + " [" + tick + "]"
+                                     : "[" + tick + "]",
+                        mate ? t.standing.friendly : t.colors.text);
+            }
             if (e->kind == Proto::EntityKind::Npc)
             {
                 L.Field("Hull", TextFormat("%.0f%%", e->hullFrac * 100.0f), t.colors.text);
@@ -603,8 +628,10 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                 {
                     const Proto::EntityLayout& el = l->second;
                     const bool                 mine = el.owner == pilotName_;
-                    L.Field("Built by", mine ? "you" : el.owner,
-                            mine ? t.standing.own : t.colors.text);
+                    L.Field("Built by", mine ? "you" : Tagged(el.owner),
+                            mine                 ? t.standing.own
+                            : InMyCorp(el.owner) ? t.standing.friendly
+                                                 : t.colors.text);
                     const double now = worldClock_.Now(GetTime());
                     if (el.completesAt > now)
                     {
@@ -628,7 +655,10 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                             L.Field("Hull", TextFormat("%.0f%%", h * 100.0f), t.colors.text);
                             L.Bar(h, h > 0.3f ? t.colors.good : t.colors.bad);
                         }
-                    if (mine && selected_ != nullptr && ActionTarget(*selected_).armed)
+                    // Its owner sets its rules, and so does their corporation's CEO or a
+                    // director (#347).
+                    if (ManagesFor(el.owner) && selected_ != nullptr &&
+                        ActionTarget(*selected_).armed)
                         DrawDefenceControls(L, el);
                 }
             }

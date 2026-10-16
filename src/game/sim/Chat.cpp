@@ -205,8 +205,14 @@ std::vector<Delivery> Hub::Say(const Pilot& from, const Proto::ChatSay& say,
     line.from = from.name;
     line.text = text;
     line.at = (long long)now;
-    const std::string to = Lower(say.to);
+    const bool        corp = say.channel == CORP;
+    const std::string to = corp ? std::string() : Lower(say.to);
     const Pilot*      recipient = nullptr;
+    if (corp && from.corp.empty())
+    {
+        out.push_back(Notice(from, "You are in no corporation to talk to", now));
+        return out;
+    }
     if (!to.empty())
     {
         for (const Pilot& p : online)
@@ -238,6 +244,15 @@ std::vector<Delivery> Hub::Say(const Pilot& from, const Proto::ChatSay& say,
             out.push_back({ from.id, line });
         return out;
     }
+    if (corp)
+    {
+        line.channel = CORP;
+        line.corp = from.ticker;
+        for (const Pilot& p : online)
+            if (p.corp == from.corp)
+                out.push_back({ p.id, line });
+        return out;
+    }
     line.channel = LOCAL;
     line.system = from.system;
     for (const Pilot& p : online)
@@ -265,6 +280,24 @@ std::vector<Delivery> Hub::Broadcast(std::string_view text, const std::vector<Pi
     return out;
 }
 
+std::vector<Delivery> Hub::ToCorp(const std::string& corp, const std::string& ticker,
+                                  std::string_view text, const std::vector<Pilot>& online,
+                                  double now)
+{
+    std::vector<Delivery> out;
+    Proto::ChatLine       line;
+    line.channel = CORP;
+    line.corp = ticker;
+    line.text = Sanitize(text);
+    line.at = (long long)now;
+    if (corp.empty() || line.text.empty())
+        return out;
+    for (const Pilot& p : online)
+        if (p.corp == corp)
+            out.push_back({ p.id, line });
+    return out;
+}
+
 std::vector<Proto::ChatLine> Hub::History(const std::string& system, double now) const
 {
     std::vector<Proto::ChatLine> out;
@@ -282,11 +315,13 @@ std::vector<Proto::ChatLine> Hub::History(const std::string& system, double now)
 
 std::vector<Presence> Hub::Track(const std::vector<Pilot>& online, double now)
 {
+    // Each pilot with its ticker (#347): joining a corporation changes how a pilot is listed
+    // as much as coming in does. A name has no spaces, so "name ticker" sorts by name.
     std::map<std::string, std::vector<std::string>> members;
     std::map<int, std::string>                      where;
     for (const Pilot& p : online)
     {
-        members[p.system].push_back(p.name);
+        members[p.system].push_back(p.name + " " + p.ticker);
         where[p.id] = p.system;
     }
     for (auto& kv : members)
@@ -310,7 +345,12 @@ std::vector<Presence> Hub::Track(const std::vector<Pilot>& online, double now)
         Presence pr;
         pr.to = p.id;
         pr.members.system = p.system;
-        pr.members.pilots = members[p.system];
+        for (const std::string& entry : members[p.system])
+        {
+            const size_t gap = entry.find(' ');
+            pr.members.pilots.push_back(entry.substr(0, gap));
+            pr.members.corps.push_back(entry.substr(gap + 1));
+        }
         if (arrived)
             pr.history = History(p.system, now);
         out.push_back(std::move(pr));

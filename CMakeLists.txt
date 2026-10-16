@@ -248,6 +248,7 @@ add_executable(econspace
     src/game/core/GameStation.cpp  # docked: the station, market and hangar windows (#297)
     src/game/core/GameChat.cpp     # the chat window: local, private, the operator (#347)
     src/game/core/GameScan.cpp     # the scanner window: a pass, and the signatures (#346)
+    src/game/core/GameCorp.cpp     # the corporation window, tickers and corp mates (#347)
     src/game/core/Actions.cpp      # what can be done about a thing: one list for every window (#297)
     src/game/core/StationList.cpp  # what the market and hangar windows list (#297)
     src/game/core/Goal.cpp         # what to do next, in one line (#364)
@@ -279,6 +280,7 @@ add_executable(econserver
     src/game/sim/Simulation.cpp
     src/game/sim/ClientSession.cpp        # one connected player, extracted from Simulation (#3)
     src/game/sim/DesignStore.cpp          # the designs players fly, filed by content (#279)
+    src/game/sim/Corporation.cpp          # players' corporations: members, roles, invites (#347)
     src/game/sim/Simulation_World.cpp     # galaxy, hydration, routes, persistence (#17)
     src/game/sim/Simulation_Agents.cpp    # NPC AI, combat, spawn director, macro (#17)
     src/game/sim/Simulation_Factions.cpp  # factions reach where value outweighs risk (#231)
@@ -487,6 +489,7 @@ add_executable(tests
     tests/contracts_tests.cpp      # contracts short markets post (#343, #407)
     tests/access_tests.cpp         # the allowlist, bans and the server's log (#400)
     tests/chat_tests.cpp           # local chat, private lines, limits and cleaning (#347)
+    tests/corp_tests.cpp           # corporations: roles, the corp channel, trusted structures (#347)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/MissionList.cpp   # the missions window's rows, tested without one (#297)
@@ -501,6 +504,7 @@ add_executable(tests
     src/game/sim/Simulation.cpp
     src/game/sim/ClientSession.cpp        # one connected player, extracted from Simulation (#3)
     src/game/sim/DesignStore.cpp          # the designs players fly, filed by content (#279)
+    src/game/sim/Corporation.cpp          # players' corporations: members, roles, invites (#347)
     src/game/sim/Simulation_World.cpp     # galaxy, hydration, routes, persistence (#17)
     src/game/sim/Simulation_Agents.cpp    # NPC AI, combat, spawn director, macro (#17)
     src/game/sim/Simulation_Factions.cpp  # factions reach where value outweighs risk (#231)

@@ -21,10 +21,11 @@ Look at the world: the ship, the system, what is nearby, hostiles, and recent ev
 
 ### `chat_send`
 
-Say something in chat. Without 'to' it is said in local: everyone in the system you are in hears it. With 'to' it goes to that pilot alone, wherever they are. The server limits how fast you may talk; a refusal says why.
+Say something in chat. Without 'to' it is said in local: everyone in the system you are in hears it. With 'to' it goes to that pilot alone, wherever they are. With corp it goes to every member of your corporation who is online. The server limits how fast you may talk; a refusal says why.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
+| `corp` | boolean |  | to your corporation's channel instead (optional) |
 | `text` | string | yes | what to say, up to 200 characters |
 | `to` | string |  | a pilot's name, for a private line (optional) |
 
@@ -35,6 +36,24 @@ Read chat: the latest lines -- local, private and the server's -- and who is in 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
 | `count` | number |  | how many of the latest lines (default 20, at most 100) |
+
+### `corp`
+
+Your corporation (#347): its name and ticker, its members with their roles and who is online, and the invites waiting for your answer. Members' armed structures never fire first on each other and guard each other's ships; standings stay your own.
+
+No arguments.
+
+### `corp_act`
+
+Do something about corporations. action: 'create' (name, ticker -- you become its CEO), 'invite' (pilot, online; CEO or director), 'join' or 'decline' (ticker of a corporation that invited you), 'leave' (the last member out disbands it; a CEO hands over first), 'kick' (pilot; the CEO removes anyone, a director only members), 'role' (pilot, role: ceo, director or member; CEO only -- making another CEO makes you a director). The answer is the server's.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `action` | string | yes | create, invite, join, decline, leave, kick or role |
+| `name` | string |  | create: the corporation's name, 3 to 24 characters |
+| `pilot` | string |  | invite, kick, role: the pilot's name |
+| `role` | string |  | role: ceo, director or member |
+| `ticker` | string |  | create: 2 to 5 letters or digits; join/decline: whose invite |
 
 ### `choose_start`
 

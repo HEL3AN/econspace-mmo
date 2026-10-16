@@ -95,6 +95,8 @@ inline constexpr int WORLD_VERSION = 15;
 inline constexpr int ACCOUNT_VERSION = 8;
 // designs.json, the designs players' ships fly (#279 fitting). 1: the first.
 inline constexpr int DESIGNS_VERSION = 1;
+// corps.json, the players' corporations (#347). 1: the first.
+inline constexpr int CORPS_VERSION = 1;
 
 // A file with no version at all: everything written before this existed. Those files are
 // a strict subset of version 1, so they are read as-is rather than migrated.
