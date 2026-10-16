@@ -216,6 +216,12 @@ TEST_CASE("a system cools a minute after the last player leaves, and keeps its n
 
 TEST_CASE("cold systems still progress: stock, presence, prices and outposts (#295)")
 {
+    // The goods with their industries and haulers (#343), for this case only.
+    struct GoodsFile
+    {
+        GoodsFile() { REQUIRE(Goods::Load(DATA + "goods.json")); }
+        ~GoodsFile() { Goods::ResetToBuiltin(); }
+    } goods;
     auto sim = ColdWorld();
     REQUIRE(HotCount(*sim) == 0);
 
@@ -231,9 +237,8 @@ TEST_CASE("cold systems still progress: stock, presence, prices and outposts (#2
         sim->MaintainWorld(2.0f);
     CHECK(HotCount(*sim) == 0);
 
-    // Prices are coming back: the trade nobody flies restocks a market over hours (#343).
+    // Prices are coming back: what was sold is used up, or carried off by haulers (#343).
     CHECK(home.market.GetPrice(Good::Iron()) > sold + (base - sold) * 0.05);
-    CHECK(home.market.GetPrice(Good::Iron()) <= base * 1.01);
     // Holdings yielded, and somebody spent it on an outpost that now stands -- the claim.
     bool founded = false, surveyed = false;
     for (const ChronicleEntry& e : sim->Chronicle())

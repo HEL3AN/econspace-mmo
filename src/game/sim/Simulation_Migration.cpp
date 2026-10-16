@@ -75,8 +75,6 @@ int Simulation::KeepOf(const std::string& systemId, NpcRole role) const
 
 void Simulation::StepMigration()
 {
-    const Migration& rules = Factions::MigrationRules();
-
     // What each system has to spare and lacks, by role, as of this pass.
     passTargets_.clear();
     passTargets_.reserve(systems_.size());
@@ -133,6 +131,9 @@ void Simulation::StepMigration()
             ++it;
             continue;
         }
+        // Shot down on its way out: what it carried is in its wreck (#343).
+        if (n != nullptr && !alive)
+            LeaveCargoWreck(*st, *n);
         if (n != nullptr)
         {
             const int id = m.shipId;
@@ -190,58 +191,20 @@ void Simulation::StepMigration()
             if (to.empty())
                 continue;
 
-            Migrant m;
-            m.id = nextMigrant_++;
-            m.from = kv.first;
-            m.to = to;
-            m.role = (NpcRole)r;
-            // Under the flag the director would have sent it under.
-            m.faction = m.role == NpcRole::Pirate   ? Factions::Pirates()
-                        : m.role == NpcRole::Miner  ? Factions::Unaffiliated()
-                        : m.role == NpcRole::Police ? flags.policeFaction
-                                                    : flags.tradeFaction;
-            m.leftAt = time_;
-            m.arrivesAt = time_ + rules.travel;
-            if (IsHot(st))
-            {
-                // A real one turns for the gate: the one of its role nearest to it.
-                Vector2 gate{ 0.0f, 0.0f };
-                for (const auto& e : st.entities)
-                    if (e->GetKind() == EntityKind::Gate &&
-                        static_cast<const JumpGate&>(*e).GetDestination() == to)
-                        gate = e->GetPosition();
-                NpcShip* ship = nullptr;
-                float    nearest = 0.0f;
-                for (const auto& e : st.entities)
-                {
-                    if (e->GetKind() != EntityKind::Npc)
-                        continue;
-                    NpcShip& n = static_cast<NpcShip&>(*e);
-                    if (n.GetRole() != m.role || n.IsLeaving() || !n.IsAlive() || n.GetTask() != 0)
-                        continue;
-                    const float dx = n.GetPosition().x - gate.x, dy = n.GetPosition().y - gate.y;
-                    const float d = dx * dx + dy * dy;
-                    if (ship == nullptr || d < nearest)
-                    {
-                        ship = &n;
-                        nearest = d;
-                    }
-                }
-                if (ship == nullptr)
-                    continue;
-                ship->Leave(gate);
-                m.faction = ship->GetFaction();
-                m.shipId = ship->GetId();
-                m.jumpAt = time_ + rules.align;
-            }
-            float& count = CountOf(st.agg, r);
-            count = std::max(0.0f, count - 1.0f);
-            spare[r] -= 1.0f;
-            SystemById(to)->lack[r] -= 1.0f;
-            migrants_[m.id] = m;
-            arrivals_.insert({ m.arrivesAt, m.id });
+            // A trader carries what pays on the way (#343): it is going anyway.
+            Haul haul;
+            if ((NpcRole)r == NpcRole::Trader)
+                haul = BestHaul(st, to);
+            const FactionId under = (NpcRole)r == NpcRole::Pirate   ? Factions::Pirates()
+                                    : (NpcRole)r == NpcRole::Miner  ? Factions::Unaffiliated()
+                                    : (NpcRole)r == NpcRole::Police ? flags.policeFaction
+                                                                    : flags.tradeFaction;
+            SetOut(st, to, (NpcRole)r, under, haul);
         }
     }
+
+    // Haulers (#343): a trader sets out with goods for next door where the price there pays.
+    StepHauls();
 
     // Who has arrived.
     while (!arrivals_.empty() && arrivals_.begin()->first <= time_)
@@ -266,6 +229,73 @@ void Simulation::StepMigration()
     }
 }
 
+bool Simulation::SetOut(SystemState& st, const std::string& to, NpcRole role, FactionId faction,
+                        const Haul& haul)
+{
+    const Migration& rules = Factions::MigrationRules();
+    Migrant          m;
+    m.from = st.id;
+    m.to = to;
+    m.role = role;
+    m.faction = faction;  // under the flag the director would have sent it under
+    m.leftAt = time_;
+    m.arrivesAt = time_ + rules.travel;
+    NpcShip* ship = nullptr;
+    if (IsHot(st))
+    {
+        // A real one turns for the gate: the one of its role nearest to it -- not a hauler that
+        // has yet to unload here.
+        Vector2 gate{ 0.0f, 0.0f };
+        for (const auto& e : st.entities)
+            if (e->GetKind() == EntityKind::Gate &&
+                static_cast<const JumpGate&>(*e).GetDestination() == to)
+                gate = e->GetPosition();
+        float nearest = 0.0f;
+        for (const auto& e : st.entities)
+        {
+            if (e->GetKind() != EntityKind::Npc)
+                continue;
+            NpcShip& n = static_cast<NpcShip&>(*e);
+            if (n.GetRole() != role || n.IsLeaving() || !n.IsAlive() || n.GetTask() != 0 ||
+                n.GetCargoAmount() > 0)
+                continue;
+            const float dx = n.GetPosition().x - gate.x, dy = n.GetPosition().y - gate.y;
+            const float d = dx * dx + dy * dy;
+            if (ship == nullptr || d < nearest)
+            {
+                ship = &n;
+                nearest = d;
+            }
+        }
+        if (ship == nullptr)
+            return false;
+        ship->Leave(gate);
+        m.faction = ship->GetFaction();
+        m.shipId = ship->GetId();
+        m.jumpAt = time_ + rules.align;
+    }
+    // What it carries leaves the market now and is counted nowhere until it arrives, as the
+    // ship is not (#295).
+    if (haul.amount > 0)
+    {
+        int bought = 0;
+        st.market.Buy(haul.good, haul.amount, bought);
+        m.good = haul.good;
+        m.cargo = bought;
+        if (ship != nullptr)
+            ship->SetCargo(haul.good, bought);  // shot down on the way out, it leaves it there
+    }
+    m.id = nextMigrant_++;
+    float& count = CountOf(st.agg, (int)role);
+    count = std::max(0.0f, count - 1.0f);
+    st.spare[(int)role] -= 1.0f;
+    if (SystemState* dest = SystemById(to))
+        dest->lack[(int)role] -= 1.0f;
+    migrants_[m.id] = m;
+    arrivals_.insert({ m.arrivesAt, m.id });
+    return true;
+}
+
 void Simulation::ArriveMigrant(const Migrant& m)
 {
     SystemState* st = SystemById(m.to);
@@ -274,10 +304,16 @@ void Simulation::ArriveMigrant(const Migrant& m)
     if (!IsHot(*st))
     {
         CountOf(st->agg, (int)m.role) += 1.0f;
+        // Nobody to see it fly to a station: it has sold what it carried.
+        if (m.cargo > 0)
+            Unload(*st, m.good, m.cargo);
         return;
     }
-    // Somebody is there: it comes in through the gate from where it set out.
+    // Somebody is there: it comes in through the gate from where it set out -- with its hold
+    // full, if it is a hauler, flying to a market here to unload.
     SpawnRoleAt(*st, m.role, m.faction, ArrivalFrom(st->id, m.from));
+    if (m.cargo > 0 && !st->entities.empty() && st->entities.back()->GetKind() == EntityKind::Npc)
+        LoadArrival(*st, static_cast<NpcShip&>(*st->entities.back()), m.good, m.cargo);
 }
 
 void Simulation::SpawnRoleAt(SystemState& st, NpcRole role, FactionId faction, Vector2 at)

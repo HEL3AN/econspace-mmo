@@ -171,6 +171,8 @@ json EntityLayoutsJson(const std::vector<Proto::EntityLayout>& v)
             ej["own"] = e.owner;
         if (e.looted)
             ej["looted"] = true;
+        if (e.cargo >= 0 && e.cargoAmount > 0)
+            ej["cargo"] = json::array({ e.cargo, e.cargoAmount });
         if (e.completesAt > 0.0)
         {
             ej["start"] = e.startedAt;
@@ -214,6 +216,13 @@ std::vector<Proto::EntityLayout> ToEntityLayouts(const json& j, const char* key)
         e.archetype = ej.value("arch", std::string());
         e.owner = ej.value("own", std::string());
         e.looted = ej.value("looted", false);
+        const auto cargo = ej.find("cargo");
+        if (cargo != ej.end() && cargo->is_array() && cargo->size() == 2 &&
+            (*cargo)[0].is_number_integer() && (*cargo)[1].is_number_integer())
+        {
+            e.cargo = (*cargo)[0].get<int>();
+            e.cargoAmount = (*cargo)[1].get<int>();
+        }
         e.startedAt = ej.value("start", 0.0);
         e.completesAt = ej.value("done", 0.0);
         e.expiresAt = ej.value("exp", 0.0);
@@ -753,6 +762,7 @@ struct SnapshotState
     std::string                                      sys;
     json                                             player = json::object();
     json                                             market = json::array();
+    json                                             belts = json::array();
     json                                             offers = json::array();
     json                                             active = json::array();
     std::map<int, std::shared_ptr<const EntityWire>> ents;
@@ -808,6 +818,8 @@ EntityWire WireOf(const Proto::EntitySnapshot& e, float grid)
         j["hp"] = hp;
     if (e.ore != -1)
         j["o"] = e.ore;
+    if (e.cargo >= 0 && e.cargoAmount > 0)
+        j["cg"] = json::array({ e.cargo, e.cargoAmount });
     if (!e.name.empty())
         j["n"] = e.name;
     if (!e.design.empty())
@@ -838,6 +850,13 @@ Proto::EntitySnapshot EntityOf(int id, const json& j)
     e.role = (int)IntOf(j, "r", -1);
     e.hullFrac = (float)((double)IntOf(j, "hp", (long long)HULL_UNIT) / HULL_UNIT);
     e.ore = (int)IntOf(j, "o", -1);
+    const auto cg = j.find("cg");
+    if (cg != j.end() && cg->is_array() && cg->size() == 2 && (*cg)[0].is_number_integer() &&
+        (*cg)[1].is_number_integer())
+    {
+        e.cargo = (*cg)[0].get<int>();
+        e.cargoAmount = (*cg)[1].get<int>();
+    }
     e.name = TextOf(j, "n");
     e.design = TextOf(j, "d");
     return e;
@@ -989,6 +1008,23 @@ json MarketJson(const Proto::Snapshot& s)
     return m;
 }
 
+// What is left of the belts (#348), as [id, ore, full] each: sent whole when any of it moves.
+json BeltsJson(const Proto::Snapshot& s)
+{
+    json b = json::array();
+    for (const Proto::Snapshot::BeltOre& o : s.belts)
+        b.push_back({ o.id, o.ore, o.max });
+    return b;
+}
+
+void ReadBelts(const json& b, Proto::Snapshot& out)
+{
+    for (const json& line : b)
+        if (line.is_array() && line.size() == 3 && line[0].is_number_integer() &&
+            line[1].is_number_integer() && line[2].is_number_integer())
+            out.belts.push_back({ line[0].get<int>(), line[1].get<int>(), line[2].get<int>() });
+}
+
 void ReadMarket(const json& m, Proto::Snapshot& out)
 {
     for (const json& line : m)
@@ -1009,6 +1045,7 @@ std::shared_ptr<SnapshotState> StateOf(const Proto::Snapshot& s)
     st->sys = s.systemId;
     st->player = PlayerJson(s.player);
     st->market = MarketJson(s);
+    st->belts = BeltsJson(s);
     st->offers = MissionsJson(s.missionOffers);
     st->active = MissionsJson(s.missionActive);
     for (const Proto::EntitySnapshot& e : s.entities)
@@ -1038,6 +1075,8 @@ void WriteDelta(const SnapshotState* base, const SnapshotState& cur, json& out)
         out["pl"] = std::move(pl);
     if (base == nullptr || cur.market != b.market)
         out["mk"] = cur.market;
+    if (base == nullptr || cur.belts != b.belts)
+        out["bt"] = cur.belts;
     if (base == nullptr || cur.offers != b.offers)
         out["mo"] = cur.offers;
     if (base == nullptr || cur.active != b.active)
@@ -1118,9 +1157,9 @@ bool ApplyDelta(const SnapshotState* base, const json& m, SnapshotState& out)
             return false;
         MergeFields(out.player, m["pl"]);
     }
-    const std::pair<const char*, json*> lists[] = { { "mk", &out.market },
-                                                    { "mo", &out.offers },
-                                                    { "ma", &out.active } };
+    const std::pair<const char*, json*> lists[] = {
+        { "mk", &out.market }, { "bt", &out.belts }, { "mo", &out.offers }, { "ma", &out.active }
+    };
     for (const auto& l : lists)
         if (m.contains(l.first))
         {
@@ -1215,6 +1254,7 @@ void ReadSnapshot(const SnapshotState& st, const json& j, Proto::Snapshot& out)
     for (const auto& kv : st.ents)
         out.entities.push_back(EntityOf(kv.first, kv.second->j));
     ReadMarket(st.market, out);
+    ReadBelts(st.belts, out);
     for (const json& mj : st.offers)
         out.missionOffers.push_back(ToMission(mj));
     for (const json& mj : st.active)
@@ -1326,6 +1366,7 @@ std::string SnapshotSender::Encode(const Snapshot& s, const std::set<int>& relev
     cur->sys = s.systemId;
     cur->player = PlayerJson(s.player);
     cur->market = MarketJson(s);
+    cur->belts = BeltsJson(s);
     cur->offers = MissionsJson(s.missionOffers);
     cur->active = MissionsJson(s.missionActive);
 
@@ -1902,6 +1943,24 @@ static std::string ShownName(const EntityLayout& l)
     return l.kind == EntityKind::Derelict ? Derelict::DisplayName(l.name, l.looted) : l.name;
 }
 
+// What a wreck holds and what is left of a belt: the layout's and the snapshot's word on
+// things the entity list does not carry.
+static void CompleteHolds(EntitySnapshot& e, const EntityLayout& l, const Snapshot& s)
+{
+    if (l.kind == EntityKind::Derelict && e.cargo < 0 && l.cargo >= 0)
+    {
+        e.cargo = l.cargo;
+        e.cargoAmount = l.cargoAmount;
+    }
+    if (l.kind == EntityKind::Field)
+        for (const Snapshot::BeltOre& b : s.belts)
+            if (b.id == l.id)
+            {
+                e.oreLeft = b.ore;
+                e.oreMax = b.max;
+            }
+}
+
 void CompleteFromLayout(Snapshot& s, const std::map<int, EntityLayout>& layout)
 {
     std::map<int, bool> present;
@@ -1920,6 +1979,7 @@ void CompleteFromLayout(Snapshot& s, const std::map<int, EntityLayout>& layout)
             e.faction = l.faction;
         if (e.ore == -1)
             e.ore = l.resource;
+        CompleteHolds(e, l, s);
     }
 
     // Anything in the layout that the snapshot did not mention is standing exactly where
@@ -1939,6 +1999,7 @@ void CompleteFromLayout(Snapshot& s, const std::map<int, EntityLayout>& layout)
         e.name = ShownName(l);
         e.faction = l.faction;
         e.ore = l.resource;
+        CompleteHolds(e, l, s);
         s.entities.push_back(std::move(e));
     }
 }

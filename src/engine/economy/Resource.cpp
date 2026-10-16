@@ -193,13 +193,17 @@ bool Parse(const json& data, Registry& r, std::string& why)
         const json&  m = data["market"];
         MarketRules& k = r.rules;
         if (!m.is_object() ||
-            !OnlyKnownKeys(
-                m, { "fee", "spread", "elasticity", "floor", "ceiling", "restock", "beltYield" },
-                why) ||
+            !OnlyKnownKeys(m,
+                           { "fee", "spread", "elasticity", "floor", "ceiling", "beltMined",
+                             "beltRegrow", "haulEvery", "haulCargo", "haulMargin" },
+                           why) ||
             !Number(m, "fee", k.fee, why) || !Number(m, "spread", k.spread, why) ||
             !Number(m, "elasticity", k.elasticity, why) || !Number(m, "floor", k.floor, why) ||
-            !Number(m, "ceiling", k.ceiling, why) || !Number(m, "restock", k.restock, why) ||
-            !Number(m, "beltYield", k.beltYield, why))
+            !Number(m, "ceiling", k.ceiling, why) || !Number(m, "beltMined", k.beltMined, why) ||
+            !Number(m, "beltRegrow", k.beltRegrow, why) ||
+            !Number(m, "haulEvery", k.haulEvery, why) ||
+            !Number(m, "haulCargo", k.haulCargo, why) ||
+            !Number(m, "haulMargin", k.haulMargin, why))
         {
             why = "market: " + (why.empty() ? std::string("not an object") : why);
             return false;

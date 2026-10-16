@@ -116,9 +116,9 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
                 name = it->second.name;
             if (e.kind == Proto::EntityKind::Gate && !it->second.dest.empty())
                 extra = "  to " + it->second.dest;
-            else if (e.kind == Proto::EntityKind::Derelict && it->second.reward > 0.0 &&
-                     !it->second.looted)  // a searched wreck says so once it is (#38)
-                extra = "  lootable";
+            else if (e.kind == Proto::EntityKind::Derelict && !it->second.looted &&
+                     (it->second.reward > 0.0 || e.cargoAmount > 0))
+                extra = "  lootable";  // a searched wreck says so once it is (#38)
             else if (e.kind == Proto::EntityKind::Structure)
             {
                 // Whose, and how far along -- from the clock, as the client draws it (#39).
@@ -152,7 +152,15 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
         }
     }
     if (e.kind == Proto::EntityKind::Field && e.ore >= 0)
+    {
         extra = "  " + ResourceName(ResourceType::FromIndex(e.ore));
+        if (e.oreMax > 0)  // what is left of it (#348)
+            extra += Fmt(" %d/%d left", e.oreLeft, e.oreMax);
+    }
+    // What a wreck holds (#343).
+    if (e.kind == Proto::EntityKind::Derelict && e.cargo >= 0 && e.cargo < Goods::Count() &&
+        e.cargoAmount > 0)
+        extra += Fmt("  holds %d ", e.cargoAmount) + ResourceName(ResourceType::FromIndex(e.cargo));
     // Dockable is a component, asked of the archetype the layout names (#195) -- the same
     // question the server's docking pass asks (#34), so a dock a player builds (#44) is one
     // here too. Without a layout to ask, a station is assumed to be one, as it always was.
@@ -173,6 +181,10 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
         // No "HOSTILE" suffix: the section heading above already says it, and every
         // repeated word is a token an agent pays for.
         extra = Fmt("  %s  hull %d%%", FactionName(e.faction).c_str(), (int)(e.hullFrac * 100.0f));
+        // A hauler's hold (#343): what a wreck of it would hold.
+        if (e.cargo >= 0 && e.cargo < Goods::Count() && e.cargoAmount > 0)
+            extra += Fmt("  carrying %d ", e.cargoAmount) +
+                     ResourceName(ResourceType::FromIndex(e.cargo));
     }
     if (e.kind == Proto::EntityKind::PlayerShip)
     {

@@ -3,10 +3,11 @@
 #include "economy/Resource.h"
 #include <vector>
 
-// What a system does to its market every hour (#343): what its belts and planets give, the
-// recipes its stations run (each already times how many stations run it) and what they use
-// up. Counted from the static layer with the rest of SystemProfile, so a cold system and a
-// hot one keep the same books.
+// What a system does to its market every hour (#343): what its planets give, the recipes its
+// stations run (each already times how many stations run it) and what they use up. Counted
+// from the static layer with the rest of SystemProfile, so a cold system and a hot one keep
+// the same books. What its belts give is not here: a belt runs out (#348), so the coarse pass
+// asks each one.
 struct MarketRates
 {
     std::vector<double> source;  // by good index, units an hour
@@ -29,6 +30,8 @@ public:
     double Bid(ResourceType type) const;
     double Ask(ResourceType type) const;
     double Mid(ResourceType type) const;
+    // The mid price were the stock `stock`: what the next unit goes for after a trade.
+    double MidAt(ResourceType type, double stock) const { return PriceAt(type, stock); }
     // The price at the target stock: what prices return to.
     double GetBasePrice(ResourceType type) const;
     // Moves the base -- a market whose place in the galaxy changed (#342 S5). How far trade
@@ -54,9 +57,9 @@ public:
     double QuoteBuy(ResourceType type, int amount) const;
 
     // `hours` of what the system does: sources add, recipes turn inputs into outputs as far
-    // as the inputs are in stock, uses take away, and the trade nobody flies pulls every
-    // stock toward its target at the registry's restock rate times `traffic`.
-    void Step(const MarketRates& rates, double hours, double traffic);
+    // as the inputs are in stock, and uses take away. Nothing else moves a stock: what
+    // arrives from other systems comes in a hauler's hold (#343).
+    void Step(const MarketRates& rates, double hours);
 
 private:
     void   Fit();  // sized to the registry
@@ -67,6 +70,12 @@ private:
     int                 markets_ = 1;
     bool                fresh_ = true;  // never stepped or loaded
 };
+
+// NPC haulers (#343): how many units of `type` are worth carrying from `from` to `to`, at most
+// `cap` -- the most for which the last unit, bought here at the ask with the fee, still sells
+// there at the bid with the fee for the registry's haul margin more. Every unit moves both
+// prices, so a hauler never carries a gap away entirely. 0 -- nothing worth the trip.
+int HaulAmount(const Market& from, const Market& to, ResourceType type, int cap);
 
 // What a good's base price follows (#342 S5): mined where it is sold, or carried there.
 Supply SupplyOf(ResourceType type);

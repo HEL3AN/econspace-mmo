@@ -70,8 +70,19 @@ struct MarketRules
     double elasticity = 0.7;  // price = base * (target / stock) ^ elasticity...
     double floor = 0.35;      // ...no lower than this times the base
     double ceiling = 3.0;     // ...and no higher than this
-    double restock = 0.5;     // per hour: the share of the gap to the target unseen trade closes
-    double beltYield = 0.0;   // what a belt gives its system's market of its ore, per hour
+    // Belts (#348): the share of what is in a belt a system's miners take an hour, and the
+    // share of a full belt that grows back an hour. A belt nobody else mines settles at
+    // beltRegrow / beltMined of full, giving beltRegrow of full an hour for ever; a belt
+    // players work too gives the miners less.
+    double beltMined = 0.0;
+    double beltRegrow = 0.0;
+    // NPC haulers (#343): a system's traders carry goods to a neighbour that pays more, one
+    // hauler every `haulEvery` seconds at most, `haulCargo` units at a time, and only while
+    // the neighbour's bid beats the ask here, the fee both ways included, by `haulMargin`.
+    // 0 seconds -- nobody hauls.
+    double haulEvery = 0.0;
+    double haulCargo = 0.0;
+    double haulMargin = 0.1;
 };
 
 std::string  ResourceName(ResourceType type);            // what a player reads

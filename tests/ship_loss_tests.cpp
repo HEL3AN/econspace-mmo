@@ -125,7 +125,7 @@ TEST_CASE("a lost ship is gone with its fit and cargo; insurance pays; you wake 
     const Vector2 fell = { 123400.0f, -56700.0f };
     s.ship->Teleport(fell);
     REQUIRE(s.ship->AddCargo(Good::Iron(), 20));
-    double       cargoWorth = 20.0 * w.sim.SystemById(there)->market.GetPrice(Good::Iron());
+    REQUIRE(s.ship->AddCargo(Good::Ice(), 8));
     const double money = s.account.GetMoney();
 
     w.sim.ServerRespawnPlayer(s);
@@ -143,11 +143,20 @@ TEST_CASE("a lost ship is gone with its fit and cargo; insurance pays; you wake 
     // Awake at home: docked, in the home system.
     CHECK(s.systemId == start.systemId);
     CHECK(s.dockedStationId == hub->GetId());
-    // A wreck where it fell, holding a share of the ship and the hold, for a while.
+    // A wreck where it fell, holding a share of the ship as credits and of the hold as the
+    // goods themselves (#343), for a while: the largest stack in the wreck, the rest beside it.
+    const double    share = Blueprints::Rules().wreckShare;
     const Derelict* wreck = WreckAt(w.sim, there, fell);
     REQUIRE(wreck != nullptr);
-    CHECK(wreck->GetReward() ==
-          doctest::Approx(std::floor((value + cargoWorth) * Blueprints::Rules().wreckShare)));
+    CHECK(wreck->GetReward() == doctest::Approx(std::floor(value * share)));
+    CHECK(wreck->GetCargo() == Good::Iron());
+    CHECK(wreck->GetCargoAmount() == (int)std::floor(20 * share));
+    int ice = 0;
+    for (const auto& e : w.sim.SystemById(there)->entities)
+        if (e->GetKind() == EntityKind::Derelict &&
+            static_cast<const Derelict&>(*e).GetCargo() == Good::Ice())
+            ice += static_cast<const Derelict&>(*e).GetCargoAmount();
+    CHECK(ice == (int)std::floor(8 * share));
     CHECK(wreck->GetExpiresAt() > 0.0);
     CHECK(wreck->GetBaseName() == "Wreck of pilot's Hauler");
     // And it is said: the journal, and the loss the snapshot carries.
@@ -156,7 +165,7 @@ TEST_CASE("a lost ship is gone with its fit and cargo; insurance pays; you wake 
     CHECK(s.journal.back().text.find("insurance paid") != std::string::npos);
     CHECK(s.lastLoss.seq == 1);
     CHECK(s.lastLoss.hull == "Hauler");
-    CHECK(s.lastLoss.cargo == 20);
+    CHECK(s.lastLoss.cargo == 28);
     CHECK(s.lastLoss.paid == doctest::Approx(std::floor(value * INSURANCE_PAYOUT)));
     CHECK(s.lastLoss.wokeAt.find(hub->GetName()) == 0);
     const Proto::Snapshot snap = w.sim.BuildSnapshot(s, s.systemId);

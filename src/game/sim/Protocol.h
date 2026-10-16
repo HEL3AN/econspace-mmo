@@ -32,10 +32,12 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    37;  // 37: chat -- a ChatSay from a client, ChatLines and ChatMembers from the server (#347);
-         // 36: taken by the haulers (#343, PR #409);
-         // 35: a lost ship is lost -- insurance in a command, each hull's cover and the last loss
-         // in the player's snapshot, and death wakes the pilot docked at home (#344); 34: a
+    38;  // 38: NPC haulers (#343) -- a ship's cargo in the snapshot, a wreck's in its layout; what
+         // is left of each belt (#348) in the snapshot; 37: chat -- a ChatSay from a client,
+         // ChatLines and ChatMembers from the server (#347); 36: reserved for the haulers and
+         // never shipped; 35: a lost ship is lost -- insurance in a command, each hull's cover
+         // and the last loss in the player's snapshot, and death wakes the pilot docked at
+         // home (#344); 34: a
          // mission may be a faction plan's job (#345), with its plan, system, deadline and
          // site; 33: goods from data/goods.json (#343) -- cargo and the market by its order, the
          // market a bid, an ask and a stock per good, a buy in a command and in its
@@ -255,6 +257,13 @@ struct EntitySnapshot
     // for anything else. It is what the client draws, so it is the server's word, not a guess
     // from the role.
     std::string design;
+    // What it carries (#343): an NPC hauler's cargo, a wreck's (filled in from the layout by
+    // CompleteFromLayout); -1 -- nothing.
+    int cargo = -1;  // ResourceType as int
+    int cargoAmount = 0;
+    // A belt's ore (#348): what is left and what it holds full, filled in from the
+    // snapshot's `belts` by CompleteFromLayout; -1 -- not a belt, or not told.
+    int oreLeft = -1, oreMax = -1;
 };
 
 // One entry of a player's design library: their name for it, and the design's id.
@@ -393,9 +402,16 @@ struct Snapshot
     std::vector<Ev::Event>      events;  // journal entries the client has not seen (#29)
     // The system's market, per good in AllResourceTypes order (#343): what it pays for a unit
     // now, what it asks for one, and how many it holds.
-    std::vector<float>       marketPrices;
-    std::vector<float>       marketAsk;
-    std::vector<int>         marketStock;
+    std::vector<float> marketPrices;
+    std::vector<float> marketAsk;
+    std::vector<int>   marketStock;
+    // What is left of each belt in the system (#348), by entity id: the ore now and full. It
+    // changes as the belts are mined and grow back, which the layout does not follow.
+    struct BeltOre
+    {
+        int id = 0, ore = 0, max = 0;
+    };
+    std::vector<BeltOre>     belts;
     std::vector<TradeAck>    tradeAcks;      // one-shot trade acknowledgments (M4e-3b)
     std::vector<MissionView> missionOffers;  // docked station board (empty outside dock)
     std::vector<MissionView> missionActive;  // player's active missions (M4f-2)
@@ -428,6 +444,10 @@ struct EntityLayout
     // from the world's without asking; what an owner may do with it is the server's call.
     std::string owner;
     bool        looted = false;  // derelict: already searched -- a wreck changes once (#38)
+    // derelict: what a hauler's wreck holds (#343), ResourceType as int (-1 nothing), and how
+    // many; a search that takes part of it is a change, and comes as a delta.
+    int cargo = -1;
+    int cargoAmount = 0;
     // A structure's time line, in world seconds (#39). While `completesAt` is ahead of the
     // clock it is a site and `archetype` is what it will become; 0 -- built. `expiresAt` 0 --
     // it stays. Instants rather than a progress figure, so the site advances on every client

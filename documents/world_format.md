@@ -1023,7 +1023,8 @@ field, a good named twice or an amount naming a good that is not there is a load
 ```json
 {
     "market": { "fee": 0.02, "spread": 0.1, "elasticity": 0.7, "floor": 0.35, "ceiling": 3.0,
-                "restock": 0.5, "beltYield": 30 },
+                "beltMined": 0.15, "beltRegrow": 0.1,
+                "haulEvery": 120, "haulCargo": 30, "haulMargin": 0.1 },
     "goods": [
         { "id": "Iron", "name": "Iron", "tier": 0, "price": 10, "stock": 400,
           "supply": "local", "mined": true }
@@ -1048,14 +1049,24 @@ field, a good named twice or an amount naming a good that is not there is a load
 | `market.fee` | share of every trade's value, paid by whoever trades, human or agent (#348) |
 | `market.spread` | between what a market asks and what it bids |
 | `market.elasticity`, `floor`, `ceiling` | price = base x clamp((target / stock)^elasticity, floor, ceiling) |
-| `market.restock` | per hour: the share of the gap to the target the trade nobody flies closes, times the system's traffic |
-| `market.beltYield` | what each belt gives its system's market of its ore, per hour |
+| `market.beltMined` | per hour: the share of what is in each belt the system's miners take for its market (two miners is a full crew) (#348) |
+| `market.beltRegrow` | per hour: the share of a full belt that grows back; a belt only the miners work settles at `beltRegrow / beltMined` of full |
+| `market.haulEvery` | seconds: how often at most a system with a market sends a trader next door with goods (0: nobody hauls) |
+| `market.haulCargo` | units a hauler carries at most |
+| `market.haulMargin` | how much more than the ask here, fees both ways included, the bid next door must pay for a unit to be carried |
 | `planets` | what a planet of that archetype grows for a market in its system, per hour |
 | `industries` | per archetype with a market: `recipes` (cycles an hour, each taking `in` and giving `out`, as far as the inputs are in stock) and `uses` (per hour) |
 
 A system has one market, kept by the coarse pass in every system, hot or cold: belts and
-planets add, recipes convert, uses take away, and unseen trade pulls each stock toward its
-target. The stock is saved in `world.json` per system (`galaxy.<id>.stock`, by good id).
+planets add, recipes convert and uses take away. Nothing pulls a stock toward its target:
+what one system has and another lacks is carried by NPC haulers (#343) -- the system's own
+traders, setting out with the good whose bid next door beats the ask here by the margin, as
+much of it as still pays. The goods leave the market when the hauler sets out and arrive with
+it, and are counted nowhere on the way (`world.json` keeps them on the trip, under
+`migrants[].cargo`). Where somebody is, the hauler is a real ship: shot down, it leaves its
+cargo in a wreck. The stock is saved in `world.json` per system (`galaxy.<id>.stock`, by good
+id); a belt mined below full keeps what is left as `ore` in its system's changes, and the fees
+a faction's markets have taken are `treasuries`, by faction id.
 
 ---
 

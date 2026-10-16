@@ -177,18 +177,32 @@ TEST_CASE("a market's price follows its stock, and its recipes run on what is in
     works.SetStock(iron, 30.0);
     const double steelBefore = works.Stock(steel);
     const double foodBefore = works.Stock(food);
-    works.Step(rates, 1.0, 0.0);  // an hour, and no trade at all to restock it
+    works.Step(rates, 1.0);  // an hour
     CHECK(works.Stock(iron) == doctest::Approx(0.0));
     CHECK(works.Stock(steel) == doctest::Approx(steelBefore + 10.0));  // 30 ore, 3 a bar
     CHECK(works.Stock(food) == doctest::Approx(foodBefore - 8.0));
-    // With no ore, nothing more is made.
-    works.Step(rates, 1.0, 0.0);
+    // With no ore, nothing more is made -- and nothing brings ore but a hauler (#343).
+    works.Step(rates, 1.0);
     CHECK(works.Stock(steel) == doctest::Approx(steelBefore + 10.0));
-    // Trade brings the ore back toward its target, and the price down with it.
-    const double short_ = works.Ask(iron);
-    works.Step(MarketRates{}, 1.0, 1.0);
-    CHECK(works.Stock(iron) > 0.0);
-    CHECK(works.Ask(iron) < short_);
+    CHECK(works.Stock(iron) == doctest::Approx(0.0));
+
+    // A hauler carries ore from a market that has plenty to this one, which has none: as much
+    // as still pays, and never so much that the gap closes.
+    Market plenty;
+    plenty.SetStock(iron, plenty.Target(iron) * 4.0);
+    const int cap = (int)Goods::Rules().haulCargo;
+    REQUIRE(cap > 0);
+    const int n = HaulAmount(plenty, works, iron, cap);
+    CHECK(n > 0);
+    CHECK(n <= cap);
+    bought = 0;
+    plenty.Buy(iron, n, bought);
+    works.Sell(iron, n);
+    CHECK(works.Bid(iron) * (1.0 - Goods::Rules().fee) >
+          plenty.Ask(iron) * (1.0 + Goods::Rules().fee));
+    // Nothing is carried the wrong way, nor between two markets alike.
+    CHECK(HaulAmount(works, plenty, iron, cap) == 0);
+    CHECK(HaulAmount(Market(), Market(), iron, cap) == 0);
 }
 
 TEST_CASE("buying at a station: the stock, the hold and the money decide, and the fee is paid "
@@ -269,7 +283,7 @@ TEST_CASE("stations make and use goods in the coarse pass, and the stock outlive
         refinery = RefiningSystem(sim);
         REQUIRE_FALSE(refinery.empty());
         const SystemState& st = *sim.SystemById(refinery);
-        CHECK(st.profile.rates.source[(size_t)Good::Iron().Index()] > 0.0);  // its belts
+        CHECK(st.profile.belts > 0);  // its belts, which the coarse pass asks itself (#348)
         // Half an hour of the world with nobody in it: the refineries run on the belts' ore,
         // and the steel piles up past what the market keeps, cheaper for it.
         for (int i = 0; i < 900; i++)

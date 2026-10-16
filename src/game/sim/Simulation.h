@@ -566,8 +566,14 @@ public:
         // goes. Transient -- a restart begins cold, and every migrant has gone by then.
         int    shipId = 0;
         double jumpAt = 0.0;
+        // What a hauler carries (#343): bought from the market it left, sold to the one it
+        // arrives at, and in neither while it is on its way. Saved.
+        ResourceType good;
+        int          cargo = 0;
     };
     const std::map<long long, Migrant>& Migrants() const { return migrants_; }
+    // Goods on their way between systems, by good: what haulers carry and no market holds.
+    std::vector<double> GoodsInTransit() const;
     // How many ships of `role` the director keeps in a system, before the pressure of recent
     // losses: what it holds above this is surplus, and leaves.
     int KeepOf(const std::string& systemId, NpcRole role) const;
@@ -1116,6 +1122,34 @@ private:
     void StepMigration();
     // A migrant has come: a number in a cold system, a ship at the gate in a hot one.
     void ArriveMigrant(const Migrant& m);
+    // --- Haulers (#343; Simulation_Haulers.cpp) ---
+    // What a trader setting out from `from` to `to` should carry: the good whose bid there
+    // beats the ask here by the most, as much of it as still pays. Nothing, where nothing does
+    // or either end has no market.
+    struct Haul
+    {
+        ResourceType good;
+        int          amount = 0;
+        double       gain = 0.0;  // what the trip makes, fees included
+    };
+    Haul BestHaul(const SystemState& from, const std::string& to) const;
+    // A ship of `role` sets out from `st` for its neighbour `to`, carrying `haul`: off the
+    // count here, on its way for `travel` seconds, then counted there. In a hot system a real
+    // ship turns for the gate; false, and nothing changed, when there is none to send.
+    bool SetOut(SystemState& st, const std::string& to, NpcRole role, FactionId faction,
+                const Haul& haul);
+    // Once a pass, after migration: in each system with a market and a trader, one moment in
+    // every `haulEvery` seconds, a trader sets out with the haul that pays best.
+    void StepHauls();
+    // Goods a hauler has brought, into the system's market.
+    void Unload(SystemState& st, ResourceType good, int amount);
+    // A hauler that came into a hot system: it carries its cargo to a market station.
+    void LoadArrival(SystemState& st, NpcShip& ship, ResourceType good, int amount);
+    // Haulers in a hot system that have reached a market, or whose time is up, unload; with
+    // `all`, every one (the system is cooling, and its ships are counted out).
+    void DeliverCargo(SystemState& st, bool all);
+    // A hauler destroyed with goods aboard leaves them in a wreck where it was.
+    void LeaveCargoWreck(SystemState& st, const NpcShip& ship);
     // A ship of `role` made in a hot system at `at`, given the work its role does there.
     void SpawnRoleAt(SystemState& st, NpcRole role, FactionId faction, Vector2 at);
     // A cold system's coarse pass (#295): what its ships would have done to each other in

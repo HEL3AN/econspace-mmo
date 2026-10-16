@@ -5,8 +5,11 @@
         "elasticity": 0.7,
         "floor": 0.35,
         "ceiling": 3.0,
-        "restock": 0.5,
-        "beltYield": 30
+        "beltMined": 0.15,
+        "beltRegrow": 0.1,
+        "haulEvery": 120,
+        "haulCargo": 30,
+        "haulMargin": 0.1
     },
     "goods": [
         { "id": "Iron",        "name": "Iron",         "tier": 0, "price": 10,  "stock": 400, "supply": "local", "mined": true },

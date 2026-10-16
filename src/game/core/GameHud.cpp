@@ -582,6 +582,13 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                 L.Field("Hull", TextFormat("%.0f%%", e->hullFrac * 100.0f), t.colors.text);
                 L.Bar(e->hullFrac, e->hullFrac > 0.3f ? t.colors.good : t.colors.bad);
             }
+            // A hauler's hold, or what its wreck still holds (#343).
+            if ((e->kind == Proto::EntityKind::Npc || e->kind == Proto::EntityKind::Derelict) &&
+                e->cargo >= 0 && e->cargo < Goods::Count() && e->cargoAmount > 0)
+                L.Field(e->kind == Proto::EntityKind::Npc ? "Cargo" : "Holds",
+                        TextFormat("%d %s", e->cargoAmount,
+                                   ResourceName(ResourceType::FromIndex(e->cargo)).c_str()),
+                        t.colors.text);
             else if (e->kind == Proto::EntityKind::Structure)
             {
                 const auto l = layout_.byId.find(e->id);
@@ -619,7 +626,17 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                 }
             }
             else if (e->kind == Proto::EntityKind::Field && e->ore >= 0)
+            {
                 L.Field("Ore", ResourceName(ResourceType::FromIndex(e->ore)), t.colors.text);
+                // What is left (#348): mined by everyone, growing back slowly.
+                if (e->oreMax > 0)
+                {
+                    const float left = (float)e->oreLeft / (float)e->oreMax;
+                    L.Field("Left", TextFormat("%d of %d", e->oreLeft, e->oreMax),
+                            left > 0.3f ? t.colors.text : t.colors.warn);
+                    L.Bar(Clamp(left, 0.0f, 1.0f), left > 0.3f ? t.colors.good : t.colors.warn);
+                }
+            }
             else if (e->kind == Proto::EntityKind::Gate)
             {
                 // An unstable mouth (#342 S4): counted down by the clock, as a site is, and

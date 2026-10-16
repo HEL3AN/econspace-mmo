@@ -22,7 +22,6 @@
 
 #include "core/Blueprint.h"
 #include "core/World.h"
-#include "entities/AsteroidField.h"
 #include "entities/Derelict.h"
 #include "entities/JumpGate.h"
 #include "entities/Station.h"
@@ -102,8 +101,9 @@ void Simulation::SeedPresence(SystemAggregate& a)
         a.presence[Factions::Pirates()] = Unrest(a);
 }
 
-// What an object does to its system's market (#343): a belt gives its ore, a planet what
-// goods.json says it grows, a market its kind's industry.
+// What an object does to its system's market (#343): a planet gives what goods.json says it
+// grows, a market its kind's industry. A belt gives its ore too, but it can run out (#348), so
+// that is the coarse pass's to ask of the belt itself (StepMarket).
 static void AddToMarket(MarketRates& r, const Entity& e)
 {
     r.source.resize((size_t)Goods::Count(), 0.0);
@@ -115,13 +115,7 @@ static void AddToMarket(MarketRates& r, const Entity& e)
             if ((size_t)a.first.Index() < to.size())
                 to[(size_t)a.first.Index()] += a.second;
     };
-    if (e.GetKind() == EntityKind::Field)
-    {
-        const ResourceType ore = static_cast<const AsteroidField&>(e).GetResource();
-        if ((size_t)ore.Index() < r.source.size())
-            r.source[(size_t)ore.Index()] += Goods::Rules().beltYield;
-    }
-    else if (e.GetKind() == EntityKind::Planet)
+    if (e.GetKind() == EntityKind::Planet)
     {
         if (const auto* grows = Goods::PlanetYield(kind))
             add(r.source, *grows);
@@ -139,10 +133,7 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
     for (const auto& e : st.entities)
         switch (e->GetKind())
         {
-            case EntityKind::Field:
-                p.belts++;
-                AddToMarket(p.rates, *e);
-                break;
+            case EntityKind::Field: p.belts++; break;
             case EntityKind::Derelict: p.wrecks++; break;
             case EntityKind::Planet:
                 p.planets++;

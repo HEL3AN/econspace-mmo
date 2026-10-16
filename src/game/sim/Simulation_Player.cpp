@@ -159,17 +159,11 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
     SystemState*                 here = SystemOf(s);
     const std::string            where = SystemName(s.systemId);
 
-    // What went with it: the ship as fitted, and the hold, at this system's prices.
+    // What went with it: the ship as fitted, at this system's prices, and the hold.
     const double value = here != nullptr ? ValueOf(s, hull, *here) : 0.0;
     int          cargo = 0;
-    double       cargoWorth = 0.0;
     for (ResourceType rt : AllResourceTypes())
-    {
-        const int n = s.ship->GetCargoAmount(rt);
-        cargo += n;
-        if (here != nullptr)
-            cargoWorth += n * here->market.GetPrice(rt);
-    }
+        cargo += s.ship->GetCargoAmount(rt);
 
     // The policy pays and is spent.
     const double cover = s.CoverOf(hull);
@@ -183,19 +177,38 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
 
     // A wreck where it fell, holding a share of what was lost: whoever gets there first
     // searches it, as a structure's (Simulation_Build.cpp). For an hour, so a busy fight does
-    // not leave the system full of them.
+    // not leave the system full of them. The ship's share is credits; the hold's is the goods
+    // themselves (#343) -- the same share of each, as a hauler's wreck holds its cargo. A wreck
+    // holds one good: the largest stack stays in it, and every other is a pod beside it.
     if (here != nullptr)
     {
-        const double worth = std::floor((value + cargoWorth) * Blueprints::Rules().wreckShare);
-        if (worth >= 1.0)
+        const double                              share = Blueprints::Rules().wreckShare;
+        const double                              worth = std::floor(value * share);
+        std::vector<std::pair<int, ResourceType>> kept;  // what survives, largest first
+        for (ResourceType rt : AllResourceTypes())
+        {
+            const int n = (int)std::floor(s.ship->GetCargoAmount(rt) * share);
+            if (n > 0)
+                kept.push_back({ n, rt });
+        }
+        std::stable_sort(kept.begin(), kept.end(),
+                         [](const auto& a, const auto& b) { return a.first > b.first; });
+        if (worth >= 1.0 || !kept.empty())
         {
             const std::string pilot = s.ship->GetPilotName();
-            auto              wreck = std::make_unique<Derelict>(
-                s.ship->GetPosition(), SHIP_WRECK_SIZE,
-                "Wreck of " + (pilot.empty() ? std::string("a ") : pilot + "'s ") + hullName,
-                worth);
-            wreck->SetExpiresAt(time_ + SHIP_WRECK_SECONDS);
-            AddStatic(s.systemId, std::move(wreck), std::string());
+            const std::string name =
+                "Wreck of " + (pilot.empty() ? std::string("a ") : pilot + "'s ") + hullName;
+            const Vector2 at = s.ship->GetPosition();
+            for (size_t i = 0; i < std::max<size_t>(1, kept.size()); i++)
+            {
+                auto wreck = std::make_unique<Derelict>(
+                    Vector2{ at.x + 2.0f * SHIP_WRECK_SIZE * (float)i, at.y }, SHIP_WRECK_SIZE,
+                    i == 0 ? name : "Cargo of " + name.substr(9), i == 0 ? worth : 0.0);
+                if (i < kept.size())
+                    wreck->SetCargo(kept[i].second, kept[i].first);
+                wreck->SetExpiresAt(time_ + SHIP_WRECK_SECONDS);
+                AddStatic(s.systemId, std::move(wreck), std::string());
+            }
         }
     }
 
@@ -650,6 +663,30 @@ double Simulation::StepPlayerLoot(ClientSession& s, SystemState& st, int derelic
             float   dy = dr->GetPosition().y - sp.y;
             if (std::sqrt(dx * dx + dy * dy) > dr->GetSize() + e->GetArchetype()->salvageRange)
                 return 0.0;
+            // What a hauler carried (#343): as much as the hold has room for. What does not fit
+            // stays for the next search, and the wreck is searched once it is empty.
+            if (dr->GetCargoAmount() > 0)
+            {
+                const int room = s.ship->GetCargoCapacity() - s.ship->GetCargoUsed();
+                const int took = std::min(room, dr->GetCargoAmount());
+                if (took <= 0)
+                {
+                    s.RecordEvent(Ev::Kind::Notice, "The hold is full: the wreck's " +
+                                                        ResourceName(dr->GetCargo()) +
+                                                        " stays where it is");
+                    return 0.0;
+                }
+                s.ship->AddCargo(dr->GetCargo(), took);
+                dr->SetCargo(dr->GetCargo(), dr->GetCargoAmount() - took);
+                s.RecordEvent(Ev::Kind::Notice, "Took " + std::to_string(took) + " " +
+                                                    ResourceName(dr->GetCargo()) +
+                                                    " from the wreck");
+                if (dr->GetCargoAmount() > 0)
+                {
+                    MarkStaticChanged(st, derelictId);
+                    return 0.0;
+                }
+            }
             dr->SetLooted();
             // Everyone else in the system sees it searched now, not on their next visit
             // -- and nobody is offered a wreck the server will refuse (#38).
@@ -664,15 +701,28 @@ double Simulation::StepPlayerLoot(ClientSession& s, SystemState& st, int derelic
 // Whether the session is docked somewhere that trades, and whose it is. Every station has a
 // market today, so this refuses nothing yet -- it starts refusing the moment a player builds
 // a dock that is not also a market (#44), which is the point of the component being real
-// (#34).
-static bool DockedMarket(const ClientSession& s, const SystemState& st, FactionId& owner)
+// (#34). `feeTo` is the faction a trade's fee goes to (#343): the station's, or the faction
+// that built the structure; false for a market a player built, whose fee leaves the economy
+// until owners are paid (#44).
+static bool DockedMarket(const ClientSession& s, const SystemState& st, FactionId& owner,
+                         bool* feeTo = nullptr)
 {
     owner = Factions::Unaffiliated();
+    if (feeTo != nullptr)
+        *feeTo = false;
     for (const auto& e : st.entities)
         if (e->GetId() == s.dockedStationId)
         {
+            bool faction = false;
             if (e->GetKind() == EntityKind::Station)
+            {
                 owner = static_cast<const Station&>(*e).GetFaction();
+                faction = true;
+            }
+            else if (!(faction = Outposts::FactionOf(e->GetOwner(), owner)))
+                owner = Factions::Unaffiliated();
+            if (feeTo != nullptr)
+                *feeTo = faction;
             return e->Has(Component::Market);
         }
     return false;
@@ -683,7 +733,9 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, System
 {
     PlayerSellResult r;
     FactionId        sf;
-    if (!s.ship || resourceType < 0 || resourceType >= Goods::Count() || !DockedMarket(s, st, sf))
+    bool             feeTo = false;
+    if (!s.ship || resourceType < 0 || resourceType >= Goods::Count() ||
+        !DockedMarket(s, st, sf, &feeTo))
         return r;
 
     const ResourceType type = ResourceType::FromIndex(resourceType);
@@ -703,8 +755,10 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, System
     const float  sellMul = SellPriceMultiplier(Factions::TierOf(s.account.GetReputation(sf)));
     const double paid = std::min(
         r.gross * s.account.GetSkills().GetBonus(SkillType::Trading) * sellMul, ask * sold);
-    // Everybody pays the fee, human or agent (#348).
+    // Everybody pays the fee, human or agent (#348), and it is the market's owner's (#343).
     r.fee = paid * Goods::Rules().fee;
+    if (feeTo)
+        minds_[sf].treasury += r.fee;
     const double revenue = paid - r.fee;
     s.account.AddMoney(revenue);
     s.account.GetSkills().AddXp(SkillType::Trading, (float)(revenue * 0.05));
@@ -718,11 +772,12 @@ Simulation::PlayerBuyResult Simulation::StepPlayerBuy(ClientSession& s, SystemSt
 {
     PlayerBuyResult r;
     FactionId       sf;
+    bool            feeTo = false;
     if (!s.ship || amount <= 0 || resourceType < 0 || resourceType >= Goods::Count())
         return r;
     const ResourceType type = ResourceType::FromIndex(resourceType);
     const std::string  name = ResourceName(type);
-    if (!DockedMarket(s, st, sf))
+    if (!DockedMarket(s, st, sf, &feeTo))
     {
         s.RecordEvent(Ev::Kind::Notice, "Buying " + name + " refused: no market here");
         return r;
@@ -751,6 +806,8 @@ Simulation::PlayerBuyResult Simulation::StepPlayerBuy(ClientSession& s, SystemSt
     const double price = st.market.Buy(type, n, bought) * markup;
     r.fee = price * fee;
     r.cost = price + r.fee;
+    if (feeTo)
+        minds_[sf].treasury += r.fee;
     r.bought = bought;
     s.account.AddMoney(-r.cost);
     s.ship->AddCargo(type, bought);

@@ -600,6 +600,12 @@ void Game::ReconcileClientWorld()
                 sh->Refit(stats);
             sh->SetHull(es.hullFrac * sh->GetMaxHull());
         }
+        // ...and a belt pales as it is worked out (#348), by what the server says is left.
+        else if (proxy->GetKind() == EntityKind::Field && es.oreMax > 0)
+        {
+            AsteroidField* f = static_cast<AsteroidField*>(proxy);
+            f->SetOre((double)es.oreLeft / es.oreMax * f->GetOreMax());
+        }
     }
 
     // 2) Positions of non-own entities are taken "from the past", interpolating between two

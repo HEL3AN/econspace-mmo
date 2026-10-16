@@ -31,13 +31,12 @@ TEST_CASE("selling moves the price and the market recovers")
         CHECK(secondBatch < firstBatch);
     }
 
-    SUBCASE("prices drift back toward base")
+    SUBCASE("a price stays where trade left it until something moves the stock (#343)")
     {
         m.Sell(ore, 40);
         const double depressed = m.GetPrice(ore);
-        m.Step(MarketRates{}, 1.0, 1.0);  // an hour of the trade nobody flies
-        CHECK(m.GetPrice(ore) > depressed);
-        CHECK(m.GetPrice(ore) <= Market().GetPrice(ore) + 0.001);  // toward base, never past it
+        m.Step(MarketRates{}, 1.0);  // an hour of a system that makes and uses nothing
+        CHECK(m.GetPrice(ore) == doctest::Approx(depressed));  // no trade nobody flies
     }
 
     SUBCASE("selling nothing changes nothing")
