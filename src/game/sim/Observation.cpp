@@ -343,7 +343,13 @@ FitQuote QuoteFit(const View& view, const std::vector<Ships::FitLine>& fit)
     const Ships::Catalogue& ships = Archetypes::ShipCatalogue();
     if (!Ships::PlayerFit(ships, *hull, fit, q.design, q.problem))
         return q;
-    PlayerStats(q.design, q.after, why);
+    // The server refuses a design it cannot derive numbers for, as a fit it cannot make.
+    if (!PlayerStats(q.design, q.after, q.problem))
+    {
+        q.design = Ships::Design();
+        q.after = q.before;
+        return q;
+    }
     q.changed = q.design.id != now->id;
     float      markup = 1.5f;
     const bool yard = AtShipyard(view, &markup);

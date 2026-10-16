@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -18,6 +19,7 @@
 #include "entities/Station.h"
 #include "sim/ClientSession.h"
 #include "sim/DesignStore.h"
+#include "sim/Observation.h"
 #include "sim/Protocol.h"
 #include "sim/SaveSchema.h"
 #include "sim/Simulation.h"
@@ -534,6 +536,72 @@ TEST_CASE("the server refits only at a shipyard, charges for it, and the ship fl
         Proto::Command none;
         REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(Proto::Command{}), none));
         CHECK_FALSE(none.refit);
+    }
+}
+
+// The Fit tab lights Apply on Obs::QuoteFit and prints its price: what it says before the
+// click has to be what the server then does, or a button says one price and the account is
+// charged another.
+TEST_CASE("the Fit tab's quote is the server's verdict, price and all")
+{
+    Fixture f;
+    f.sim.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
+    const Station* yard = StationThat(f, true);
+    REQUIRE(yard != nullptr);
+    f.s.dockedStationId = yard->GetId();
+    f.s.account.SetMoney(5000.0);
+    const std::vector<Ships::FitLine> armed = Bare(ArmedScout());
+
+    // What the client has: the snapshot and the statics by id.
+    Proto::Snapshot                    snap;
+    std::map<int, Proto::EntityLayout> layout;
+    Obs::View                          view;
+    auto                               look = [&]
+    {
+        snap = f.sim.BuildSnapshot(f.s, f.s.systemId);
+        layout.clear();
+        for (const Proto::EntityLayout& e : f.sim.BuildLayout(f.s.systemId).entities)
+            layout[e.id] = e;
+        view.snapshot = &snap;
+        view.layout = &layout;
+    };
+
+    SUBCASE("a legal fit: lit, and charged what it says")
+    {
+        look();
+        const Obs::FitQuote q = Obs::QuoteFit(view, armed);
+        REQUIRE_MESSAGE(q.ok, q.problem);
+        REQUIRE(f.sim.RefitShip(f.s, armed));
+        CHECK(5000.0 - f.s.account.GetMoney() == doctest::Approx(q.price));
+    }
+    SUBCASE("short of money: refused by both")
+    {
+        f.s.account.SetMoney(1.0);
+        look();
+        const Obs::FitQuote q = Obs::QuoteFit(view, armed);
+        CHECK_FALSE(q.ok);
+        CHECK(q.changed);
+        CHECK(q.price > 1.0);
+        CHECK_FALSE(f.sim.RefitShip(f.s, armed));
+    }
+    SUBCASE("a fit no ship may fly: refused by both, and priced at nothing")
+    {
+        std::vector<Ships::FitLine> bad = armed;
+        bad[0].count += 50;  // far over what its socket takes
+        look();
+        const Obs::FitQuote q = Obs::QuoteFit(view, bad);
+        CHECK_FALSE(q.ok);
+        CHECK(q.design.id.empty());
+        CHECK_FALSE(q.problem.empty());
+        CHECK_FALSE(f.sim.RefitShip(f.s, bad));
+        CHECK(f.s.account.GetMoney() == doctest::Approx(5000.0));
+    }
+    SUBCASE("in flight: refused by both")
+    {
+        f.s.dockedStationId = 0;
+        look();
+        CHECK_FALSE(Obs::QuoteFit(view, armed).ok);
+        CHECK_FALSE(f.sim.RefitShip(f.s, armed));
     }
 }
 

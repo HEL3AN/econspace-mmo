@@ -484,10 +484,11 @@ void Layout::Divider()
     Close();
 }
 
-bool Layout::Button(std::string_view id, std::string_view label, bool highlighted)
+bool Layout::Button(std::string_view id, std::string_view label, bool highlighted, bool enabled)
 {
     const Theme& t = CurrentTheme();
-    const bool   hover = Hovered(id);
+    const bool   hover = enabled && Hovered(id);
+    highlighted = highlighted && enabled;
     // A label too long for the room wraps and the button grows taller, rather than holding
     // the row wider than its window and being cut off at the edge.
     Row(Box()
@@ -504,7 +505,11 @@ bool Layout::Button(std::string_view id, std::string_view label, bool highlighte
             .Glow(t.colors.accent),
         [&]
         {
-            Text(label, TextStyle::Caption().Tint(hover ? t.colors.accent : t.colors.text).Wrap());
+            Text(label, TextStyle::Caption()
+                            .Tint(!enabled ? t.colors.dim
+                                  : hover  ? t.colors.accent
+                                           : t.colors.text)
+                            .Wrap());
         });
     return hover && pointer_.pressed;
 }
