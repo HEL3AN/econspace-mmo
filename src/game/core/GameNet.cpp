@@ -257,6 +257,17 @@ void Game::BuildClientSnapshot()
                 for (const Proto::ChatLine& l : c.lines)
                     AddChatLine(l);
         }
+        else if (type == "corpview")
+        {
+            // This pilot's corporation and the invites waiting for them (#347).
+            Proto::CorpView v;
+            if (Proto::DecodeCorpView(msg, v))
+            {
+                if (v.id != corpView_.id && !v.id.empty())
+                    ChatNotice("Corporation: " + v.name + " [" + v.ticker + "]  (/c to talk)");
+                corpView_ = std::move(v);
+            }
+        }
         else if (type == "members")
         {
             // Who is in the local channel. Another system is another channel: the log says
@@ -322,7 +333,9 @@ void Game::BuildClientSnapshot()
         // simply out of order and is dropped by the sort below.
         std::stable_sort(snapBuffer_.begin(), snapBuffer_.end(),
                          [](const InterpSnap& x, const InterpSnap& y) { return x.t < y.t; });
-        double cutoff = snapBuffer_.back().t - 0.5;  // keep ~0.5 s of history
+        // A layout after the snapshot in the same frame empties the buffer, and the next
+        // snapshot starts it again: a back() on nothing used to end the client there.
+        const double cutoff = snapBuffer_.empty() ? 0.0 : snapBuffer_.back().t - 0.5;
         while (snapBuffer_.size() > 2 && snapBuffer_.front().t < cutoff)
             snapBuffer_.pop_front();
         if (snapBuffer_.size() > 120)

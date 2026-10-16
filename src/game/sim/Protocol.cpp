@@ -1617,12 +1617,12 @@ void LayoutMirror::Reset(const SystemLayout& lay)
         byId[el.id] = el;
 }
 
-bool ForViewer(std::vector<EntityLayout>& v, const std::string& viewer)
+bool ForViewer(std::vector<EntityLayout>& v, const ReadsOwner& reads)
 {
     bool cut = false;
     for (EntityLayout& e : v)
     {
-        if (!viewer.empty() && e.owner == viewer)
+        if (!e.owner.empty() && reads && reads(e.owner))
             continue;
         if (e.defence.players.empty() && e.defence.factions.empty())
             continue;
@@ -1633,27 +1633,56 @@ bool ForViewer(std::vector<EntityLayout>& v, const std::string& viewer)
     return cut;
 }
 
+bool ForViewer(SystemLayout& lay, const ReadsOwner& reads)
+{
+    return ForViewer(lay.entities, reads);
+}
+
+bool ForViewer(LayoutDelta& d, const ReadsOwner& reads)
+{
+    const bool added = ForViewer(d.added, reads);
+    const bool changed = ForViewer(d.changed, reads);
+    return added || changed;
+}
+
+namespace
+{
+ReadsOwner Only(const std::string& viewer)
+{
+    return [viewer](const std::string& owner) { return !viewer.empty() && owner == viewer; };
+}
+}  // namespace
+
+bool ForViewer(std::vector<EntityLayout>& v, const std::string& viewer)
+{
+    return ForViewer(v, Only(viewer));
+}
+
 bool ForViewer(SystemLayout& lay, const std::string& viewer)
 {
-    return ForViewer(lay.entities, viewer);
+    return ForViewer(lay.entities, Only(viewer));
 }
 
 bool ForViewer(LayoutDelta& d, const std::string& viewer)
 {
-    const bool added = ForViewer(d.added, viewer);
-    const bool changed = ForViewer(d.changed, viewer);
-    return added || changed;
+    return ForViewer(d, Only(viewer));
+}
+
+bool OwnsPrivate(const LayoutDelta& d, const ReadsOwner& reads)
+{
+    if (!reads)
+        return false;
+    for (const std::vector<EntityLayout>* list : { &d.added, &d.changed })
+        for (const EntityLayout& e : *list)
+            if (!e.owner.empty() && (!e.defence.players.empty() || !e.defence.factions.empty()) &&
+                reads(e.owner))
+                return true;
+    return false;
 }
 
 bool OwnsPrivate(const LayoutDelta& d, const std::string& account)
 {
-    if (account.empty())
-        return false;
-    for (const std::vector<EntityLayout>* list : { &d.added, &d.changed })
-        for (const EntityLayout& e : *list)
-            if (e.owner == account && (!e.defence.players.empty() || !e.defence.factions.empty()))
-                return true;
-    return false;
+    return OwnsPrivate(d, Only(account));
 }
 
 bool LayoutMirror::Apply(const LayoutDelta& d)
@@ -1881,6 +1910,8 @@ std::string EncodeChatSay(const ChatSay& c)
     Stamp(j, "say");
     if (!c.to.empty())
         j["to"] = c.to;
+    if (!c.channel.empty())
+        j["ch"] = c.channel;
     j["text"] = c.text;
     return j.dump();
 }
@@ -1892,6 +1923,7 @@ bool DecodeChatSay(const std::string& s, ChatSay& out)
         return false;
     out.to = TextOf(j, "to");
     out.text = TextOf(j, "text");
+    out.channel = TextOf(j, "ch");
     return true;
 }
 
@@ -1909,6 +1941,8 @@ std::string EncodeChatLines(const ChatLines& c)
             lj["to"] = l.to;
         if (!l.system.empty())
             lj["sys"] = l.system;
+        if (!l.corp.empty())
+            lj["corp"] = l.corp;
         if (l.history)
             lj["old"] = true;
         lines.push_back(std::move(lj));
@@ -1935,6 +1969,7 @@ bool DecodeChatLines(const std::string& s, ChatLines& out)
         l.from = TextOf(lj, "from");
         l.to = TextOf(lj, "to");
         l.system = TextOf(lj, "sys");
+        l.corp = TextOf(lj, "corp");
         l.text = TextOf(lj, "text");
         const auto at = lj.find("at");
         l.at = at != lj.end() && at->is_number_integer() ? at->get<long long>() : 0;
@@ -1952,6 +1987,13 @@ std::string EncodeChatMembers(const ChatMembers& m)
     Stamp(j, "members");
     j["sys"] = m.system;
     j["pilots"] = m.pilots;
+    // Only when anyone in local is in a corporation, and then one per pilot.
+    for (const std::string& c : m.corps)
+        if (!c.empty())
+        {
+            j["corps"] = m.corps;
+            break;
+        }
     return j.dump();
 }
 
@@ -1967,6 +2009,121 @@ bool DecodeChatMembers(const std::string& s, ChatMembers& out)
         for (const json& p : *pilots)
             if (p.is_string())
                 out.pilots.push_back(p.get<std::string>());
+    const auto corps = j.find("corps");
+    if (corps != j.end() && corps->is_array())
+        for (const json& c : *corps)
+            out.corps.push_back(c.is_string() ? c.get<std::string>() : std::string());
+    out.corps.resize(out.pilots.size());  // one per pilot, whatever was sent
+    return true;
+}
+
+// --- Corporations (#347) -------------------------------------------------------------------
+
+std::string CorpView::RoleOf(const std::string& pilot) const
+{
+    for (const CorpMember& m : members)
+        if (m.pilot == pilot)
+            return m.role;
+    return std::string();
+}
+
+std::string EncodeCorpAct(const CorpAct& a)
+{
+    json j;
+    Stamp(j, "corp");
+    j["verb"] = a.verb;
+    if (!a.name.empty())
+        j["name"] = a.name;
+    if (!a.ticker.empty())
+        j["ticker"] = a.ticker;
+    if (!a.pilot.empty())
+        j["pilot"] = a.pilot;
+    if (!a.role.empty())
+        j["role"] = a.role;
+    return j.dump();
+}
+
+bool DecodeCorpAct(const std::string& s, CorpAct& out)
+{
+    json j;
+    if (!OpenEnvelope(s, j) || TypeOf(j) != "corp")
+        return false;
+    out = CorpAct{};
+    out.verb = TextOf(j, "verb");
+    out.name = TextOf(j, "name");
+    out.ticker = TextOf(j, "ticker");
+    out.pilot = TextOf(j, "pilot");
+    out.role = TextOf(j, "role");
+    return !out.verb.empty();
+}
+
+std::string EncodeCorpView(const CorpView& v)
+{
+    json j;
+    Stamp(j, "corpview");
+    if (!v.id.empty())
+    {
+        j["id"] = v.id;
+        j["name"] = v.name;
+        j["ticker"] = v.ticker;
+        j["founded"] = v.founded;
+        json members = json::array();
+        for (const CorpMember& m : v.members)
+            members.push_back({ { "pilot", m.pilot }, { "role", m.role }, { "on", m.online } });
+        j["members"] = std::move(members);
+    }
+    if (!v.invites.empty())
+    {
+        json invites = json::array();
+        for (const CorpInvite& i : v.invites)
+            invites.push_back(
+                { { "name", i.name }, { "ticker", i.ticker }, { "by", i.by }, { "at", i.at } });
+        j["invites"] = std::move(invites);
+    }
+    return j.dump();
+}
+
+bool DecodeCorpView(const std::string& s, CorpView& out)
+{
+    json j;
+    if (!OpenEnvelope(s, j) || TypeOf(j) != "corpview")
+        return false;
+    out = CorpView{};
+    out.id = TextOf(j, "id");
+    out.name = TextOf(j, "name");
+    out.ticker = TextOf(j, "ticker");
+    const auto founded = j.find("founded");
+    out.founded =
+        founded != j.end() && founded->is_number_integer() ? founded->get<long long>() : 0;
+    const auto members = j.find("members");
+    if (members != j.end() && members->is_array())
+        for (const json& mj : *members)
+        {
+            if (!mj.is_object())
+                continue;
+            CorpMember m;
+            m.pilot = TextOf(mj, "pilot");
+            m.role = TextOf(mj, "role");
+            const auto on = mj.find("on");
+            m.online = on != mj.end() && on->is_boolean() && on->get<bool>();
+            if (!m.pilot.empty())
+                out.members.push_back(std::move(m));
+        }
+    const auto invites = j.find("invites");
+    if (invites != j.end() && invites->is_array())
+        for (const json& ij : *invites)
+        {
+            if (!ij.is_object())
+                continue;
+            CorpInvite i;
+            i.name = TextOf(ij, "name");
+            i.ticker = TextOf(ij, "ticker");
+            i.by = TextOf(ij, "by");
+            const auto at = ij.find("at");
+            i.at = at != ij.end() && at->is_number_integer() ? at->get<long long>() : 0;
+            if (!i.ticker.empty())
+                out.invites.push_back(std::move(i));
+        }
     return true;
 }
 

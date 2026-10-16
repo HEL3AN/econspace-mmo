@@ -9,6 +9,7 @@
 #include "sim/FactionMind.h"
 #include "sim/Orders.h"
 #include "sim/ClientSession.h"
+#include "sim/Corporation.h"
 #include "sim/DesignStore.h"
 #include "sim/SaveSchema.h"
 #include "sim/PlayerStep.h"
@@ -759,7 +760,8 @@ public:
 
     // --- Rules of engagement (#340) ---
     // Why this player may not set the rules of structure `id` to `d`, or empty when they may:
-    // it is theirs, in their system, armed (or will be once built), and the rules are sound
+    // it is theirs -- or a member's of the corporation they are CEO or a director of (#347) --
+    // in their system, armed (or will be once built), and the rules are sound
     // (DefenceProblem). From anywhere in the system: a setting, not a thing done to it.
     std::string DefenceSetProblem(const ClientSession& s, int id, const Defence& d) const;
     // Sets them, tells everyone in the system by a delta, keeps them in the save, and says
@@ -771,8 +773,9 @@ public:
     // A crime an owner's structure committed (#41's table, ChargeAttack): charged at once
     // while the owner is connected, and on their return otherwise.
     void ChargeOwner(const std::string& account, FactionId victim, bool killed);
-    // Someone shot `victim`'s ship at `at`: every armed structure of theirs in reach of that
-    // point counts it as a shot at itself, and fires back for as long (#340). The shooter is a
+    // Someone shot `victim`'s ship at `at`: every armed structure of theirs -- or of anyone in
+    // their corporation (#347) -- in reach of that point counts it as a shot at itself, and
+    // fires back for as long (#340). The shooter is a
     // player (`bySession`, for the structure they fired with) or an NPC (`byNpc`), 0 when not.
     void ProvokeGuards(SystemState& st, const ClientSession& victim, Vector2 at, int bySession,
                        int byNpc);
@@ -1149,6 +1152,16 @@ public:
         return !worldId_.empty() && !accountWorld.empty() && accountWorld != worldId_;
     }
 
+    // The players' corporations (#347), kept beside the world in corps.json. The host applies
+    // the verbs and writes the file when Rev() moves; the simulation reads membership, for
+    // whom a structure counts as its owner's friend and who may manage it.
+    Corps::Registry&       Corporations() { return corps_; }
+    const Corps::Registry& Corporations() const { return corps_; }
+    // Who may read whose allow-lists follows the corporations (Proto::ForViewer), so when they
+    // change, every structure that has one is described again as a change: each viewer's
+    // delta is cut afresh, and a new director sees the lists a member keeps.
+    void RetellAllowLists();
+
     // The designs players' ships fly (#279 fitting), kept beside the world in designs.json.
     // SaveDesigns drops first what no save names and no live ship flies, so a design lives
     // exactly as long as a ship that might fly it. Load it before any account.
@@ -1206,8 +1219,9 @@ public:
     }
 
 private:
-    DesignStore designs_;
-    bool        designsChanged_ = false;
+    Corps::Registry corps_;
+    DesignStore     designs_;
+    bool            designsChanged_ = false;
 
     // What the spawn director keeps in a system (#295): how many ships of each role, after
     // the pressure of recent losses, and under whose flags. Zero for a role the system has

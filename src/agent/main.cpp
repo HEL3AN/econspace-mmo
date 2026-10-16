@@ -86,6 +86,8 @@ std::string ChatLineText(const Proto::ChatLine& l)
                             : "[private] " + l.from + " to you: " + l.text;
     if (l.channel == Chat::SERVER)
         return "[server] " + l.text;
+    if (l.channel == Chat::CORP)
+        return "[corp " + l.corp + "] " + (l.from.empty() ? l.text : l.from + ": " + l.text);
     return "[notice] " + l.text;
 }
 
@@ -111,6 +113,29 @@ std::string UnseenChat(size_t max)
     }
     for (const std::string& s : lines)
         out += "  " + s + "\n";
+    return out;
+}
+
+// A corporation as a model reads it (#347).
+std::string CorpText(const Proto::CorpView& v)
+{
+    std::string out;
+    if (v.id.empty())
+        out = "You are in no corporation.\n";
+    else
+    {
+        int online = 0;
+        for (const Proto::CorpMember& m : v.members)
+            online += m.online ? 1 : 0;
+        out = "Corporation: " + v.name + " [" + v.ticker + "], " +
+              std::to_string(v.members.size()) + " members, " + std::to_string(online) +
+              " online. Your role: " + v.RoleOf(ChatMe()) + ".\n";
+        for (const Proto::CorpMember& m : v.members)
+            out += "  " + m.pilot + " -- " + m.role + (m.online ? ", online" : "") + "\n";
+    }
+    for (const Proto::CorpInvite& i : v.invites)
+        out += "Invite: " + i.name + " [" + i.ticker + "] from " + i.by +
+               " -- corp_act join or decline with ticker " + i.ticker + "\n";
     return out;
 }
 
@@ -578,9 +603,11 @@ std::vector<Tool> BuildTools()
         { "chat_send",
           "Say something in chat. Without 'to' it is said in local: everyone in the system "
           "you are in hears it. With 'to' it goes to that pilot alone, wherever they are. "
+          "With corp it goes to every member of your corporation who is online. "
           "The server limits how fast you may talk; a refusal says why.",
           Obj({ { "text", Str("what to say, up to 200 characters") },
-                { "to", Str("a pilot's name, for a private line (optional)") } },
+                { "to", Str("a pilot's name, for a private line (optional)") },
+                { "corp", Bool("to your corporation's channel instead (optional)") } },
               { "text" }),
           [](const Rpc::Json& args)
           {
@@ -588,6 +615,8 @@ std::vector<Tool> BuildTools()
               Proto::ChatSay say;
               say.text = args.value("text", std::string());
               say.to = args.value("to", std::string());
+              if (args.value("corp", false))
+                  say.channel = Chat::CORP;
               if (Chat::Sanitize(say.text).empty())
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "text has nothing to say in it" };
               const int         before = g_session.LastChatSeq();
@@ -612,6 +641,8 @@ std::vector<Tool> BuildTools()
                   return std::string("Sent; the server has not echoed it yet.");
               if (answer->channel == Chat::NOTICE)
                   return "Not sent: " + answer->text + ".";
+              if (answer->channel == Chat::CORP)
+                  return "Said to the corporation [" + answer->corp + "].";
               return answer->channel == Chat::PRIVATE ? "Said to " + answer->to + "."
                                                       : std::string("Said in local.");
           } });
@@ -636,9 +667,72 @@ std::vector<Tool> BuildTools()
               g_chatShown = g_session.LastChatSeq();
               const Proto::ChatMembers& m = g_session.ChatMembers();
               out += "In local (" + std::to_string(m.pilots.size()) + "):";
-              for (const std::string& p : m.pilots)
-                  out += " " + p;
+              for (size_t i = 0; i < m.pilots.size(); i++)
+                  out += " " + (i < m.corps.size() && !m.corps[i].empty()
+                                    ? "[" + m.corps[i] + "] " + m.pilots[i]
+                                    : m.pilots[i]);
               return out + "\n";
+          } });
+
+    tools.push_back(
+        { "corp",
+          "Your corporation (#347): its name and ticker, its members with their roles and who "
+          "is online, and the invites waiting for your answer. Members' armed structures never "
+          "fire first on each other and guard each other's ships; standings stay your own.",
+          Obj({}), [](const Rpc::Json&)
+          {
+              g_session.Pump();
+              RequireLive();
+              return CorpText(g_session.Corp());
+          } });
+
+    tools.push_back(
+        { "corp_act",
+          "Do something about corporations. action: 'create' (name, ticker -- you become its "
+          "CEO), 'invite' (pilot, online; CEO or director), 'join' or 'decline' (ticker of a "
+          "corporation that invited you), 'leave' (the last member out disbands it; a CEO "
+          "hands over first), 'kick' (pilot; the CEO removes anyone, a director only members), "
+          "'role' (pilot, role: ceo, director or member; CEO only -- making another CEO makes "
+          "you a director). The answer is the server's.",
+          Obj({ { "action", Str("create, invite, join, decline, leave, kick or role") },
+                { "name", Str("create: the corporation's name, 3 to 24 characters") },
+                { "ticker", Str("create: 2 to 5 letters or digits; join/decline: whose invite") },
+                { "pilot", Str("invite, kick, role: the pilot's name") },
+                { "role", Str("role: ceo, director or member") } },
+              { "action" }),
+          [](const Rpc::Json& args)
+          {
+              g_session.Pump();
+              RequireLive();
+              Proto::CorpAct act;
+              act.verb = args.value("action", std::string());
+              act.name = args.value("name", std::string());
+              act.ticker = args.value("ticker", std::string());
+              act.pilot = args.value("pilot", std::string());
+              act.role = args.value("role", std::string());
+              if (act.verb.empty())
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "action is required" };
+              const int before = g_session.LastChatSeq();
+              g_session.SendCorp(act);
+              // The server answers every verb with a notice: done, or why not.
+              const Proto::ChatLine* answer = nullptr;
+              g_session.WaitUntil(
+                  [&]
+                  {
+                      for (const Agent::Session::HeardLine& h : g_session.ChatHeard())
+                          if (h.seq > before && h.line.channel == Chat::NOTICE)
+                          {
+                              answer = &h.line;
+                              return true;
+                          }
+                      return false;
+                  },
+                  3.0);
+              if (answer == nullptr)
+                  return std::string("Sent; the server has not answered yet. Call corp to see.");
+              // The view that goes with it follows the notice on the same connection.
+              g_session.Pump();
+              return "corp_act " + act.verb + ": " + answer->text + ".";
           } });
 
     tools.push_back(
@@ -2059,6 +2153,12 @@ int Selftest(const std::vector<Tool>& tools)
         RunTool(tools, "set_defence", Rpc::Json{ { "structure_id", 999999 }, { "mode", "hold" } });
     const bool rules = noRules.find("no structure") != std::string::npos;
     note("set_defence", rules);
+    // ...and a pilot in no corporation is told so, and cannot leave one (#347).
+    const bool corp =
+        RunTool(tools, "corp", Rpc::Json::object()).find("no corporation") != std::string::npos &&
+        RunTool(tools, "corp_act", Rpc::Json{ { "action", "leave" } }).find("no corporation") !=
+            std::string::npos;
+    note("corp and corp_act", corp);
 
     // 7) Salvage (#297): a wreck that is not there is named as such, and one that is gets
     // searched or approached -- whichever its distance calls for. Which wrecks a system has
@@ -2079,7 +2179,8 @@ int Selftest(const std::vector<Tool>& tools)
     note("salvage", salvage);
 
     const bool ok = observed && stationId != 0 && ordered && arrived && refused && docked &&
-                    listed && accepted && unaffordable && noBounty && building && rules && salvage;
+                    listed && accepted && unaffordable && noBounty && building && rules && corp &&
+                    salvage;
     // A failure that is really a lost connection should say so, rather than leave a list of
     // FAILs to be read as five separate bugs.
     if (!ok && !g_session.ByeReason().empty())

@@ -154,6 +154,15 @@ void Session::Pump()
             if (chat_.size() > 256)
                 chat_.erase(chat_.begin(), chat_.begin() + (long)(chat_.size() - 256));
         }
+        else if (type == "corpview")
+        {
+            Proto::CorpView v;
+            if (Proto::DecodeCorpView(msg, v))
+            {
+                corp_ = std::move(v);
+                corpSeq_++;
+            }
+        }
         else if (type == "members")
         {
             Proto::ChatMembers m;
@@ -236,6 +245,12 @@ void Session::Say(const Proto::ChatSay& say)
 {
     if (conn_)
         conn_->Send(Proto::EncodeChatSay(say));
+}
+
+void Session::SendCorp(const Proto::CorpAct& act)
+{
+    if (conn_)
+        conn_->Send(Proto::EncodeCorpAct(act));
 }
 
 int Session::Send(const Proto::Command& c)

@@ -88,6 +88,22 @@ void Game::SendChat(const std::string& typed)
             say.to = rest.substr(0, gap);
             text = Trim(rest.substr(gap));
         }
+        else if (verb == "/c" || verb == "/corp")
+        {
+            // The corporation (#347): /c talks to it, /corp runs it.
+            if (verb == "/corp")
+            {
+                CorpCommand(rest);
+                return;
+            }
+            if (corpView_.id.empty())
+            {
+                ChatNotice("You are in no corporation to talk to");
+                return;
+            }
+            say.channel = Chat::CORP;
+            text = rest;
+        }
         else if (verb == "/r")
         {
             if (chatReplyTo_.empty())
@@ -101,7 +117,8 @@ void Game::SendChat(const std::string& typed)
         else
         {
             ChatNotice("/w <pilot> <text> talks to one pilot; /r <text> answers the last who "
-                       "did. Anything else is said in local.");
+                       "did; /c <text> talks to your corporation, /corp runs it. Anything else "
+                       "is said in local.");
             return;
         }
     }
@@ -161,7 +178,7 @@ void Game::DrawChatContent(const Ui::Frame& f)
                                      Color c = t.colors.text;
                                      if (l.channel == Chat::LOCAL)
                                      {
-                                         s += l.from + ": " + l.text;
+                                         s += Tagged(l.from) + ": " + l.text;
                                          if (l.history)
                                              c = t.colors.dim;
                                          else if (Lower(l.from) == me)
@@ -173,6 +190,14 @@ void Game::DrawChatContent(const Ui::Frame& f)
                                                   ? "to " + l.to + ": " + l.text
                                                   : l.from + " (private): " + l.text;
                                          c = t.colors.accent;
+                                     }
+                                     else if (l.channel == Chat::CORP)
+                                     {
+                                         // The corporation's channel (#347); the server's
+                                         // word on it -- who joined, who left -- has no name.
+                                         s += "[" + l.corp + "] " +
+                                              (l.from.empty() ? l.text : l.from + ": " + l.text);
+                                         c = l.from.empty() ? t.colors.dim : t.standing.friendly;
                                      }
                                      else if (l.channel == Chat::SERVER)
                                      {
@@ -222,9 +247,11 @@ void Game::DrawChatContent(const Ui::Frame& f)
                                                                          : Color{ 0, 0, 0, 0 }),
                                                 [&]
                                                 {
-                                                    L.Text(p, TextStyle::Small().Tint(
-                                                                  self ? t.colors.titleText
-                                                                       : t.colors.text));
+                                                    L.Text(Tagged(p),
+                                                           TextStyle::Small().Tint(
+                                                               self          ? t.colors.titleText
+                                                               : InMyCorp(p) ? t.standing.friendly
+                                                                             : t.colors.text));
                                                 });
                                           if (!self && L.Clicked("member", (uint32_t)i))
                                               memberClicked = (int)i;

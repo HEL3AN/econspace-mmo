@@ -72,6 +72,14 @@ static std::string DesignsPath(const std::string& worldPath)
            "designs.json";
 }
 
+// ...and so do the players' corporations (#347).
+static std::string CorpsPath(const std::string& worldPath)
+{
+    const size_t slash = worldPath.find_last_of("/\\");
+    return (slash == std::string::npos ? std::string() : worldPath.substr(0, slash + 1)) +
+           "corps.json";
+}
+
 // Where admin packs are read from (#342 S7): data/packs/ unless `host --packs DIR` says.
 static std::string g_packsDir;
 
@@ -263,6 +271,20 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
                         Save::DESIGNS_VERSION);
             exit(1);
         }
+        // The corporations likewise (#347): read with this build's rules and written back at
+        // the next change, one from a later build would lose what this build does not know.
+        const Save::Result corps = sim.Corporations().Load(CorpsPath(worldPath));
+        if (corps == Save::Result::TooNew || corps == Save::Result::Corrupt)
+        {
+            Log::Errorf("FATAL: %s is %s (this build speaks corps schema v%d).\n"
+                        "Move it aside or upgrade the server; it has NOT been modified.\n",
+                        CorpsPath(worldPath).c_str(),
+                        corps == Save::Result::TooNew ? "from a newer build" : "damaged",
+                        Save::CORPS_VERSION);
+            exit(1);
+        }
+        if (corps == Save::Result::Ok)
+            Log::Printf("Corporations: %d.\n", (int)sim.Corporations().All().size());
     }
     sim.MaterializeAllSystems(dataDir + "systems/");
 }
@@ -568,6 +590,7 @@ struct HostClient
     std::string                         layoutSystem;
     std::set<std::string>               sentDesigns;       // DesignDefs this client has (#279)
     int                                 factionsSent = 0;  // registry size last sent (#342 S5)
+    std::string                         corpSent;          // the CorpView last sent, encoded (#347)
     std::unique_ptr<Net::TcpConnection> conn;
     int                                 sessionId = 0;  // 0 until the hello arrives
     std::string                         account;
@@ -742,8 +765,66 @@ static std::vector<Chat::Pilot> ChatPilots(const std::vector<HostClient>& client
     for (const HostClient& hc : clients)
         if (hc.conn && !hc.evicted)
             if (const ClientSession* s = sim.Session(hc.sessionId))
-                out.push_back({ hc.sessionId, hc.account, s->systemId });
+            {
+                const Corps::Corp* c = sim.Corporations().Of(hc.account);
+                out.push_back({ hc.sessionId, hc.account, s->systemId,
+                                c != nullptr ? c->id : std::string(),
+                                c != nullptr ? c->ticker : std::string() });
+            }
     return out;
+}
+
+// --- Corporations (#347) -------------------------------------------------------------------
+
+// What `account` may read of other owners' structures: their own, and as a corporation's CEO
+// or director, its members' allow-lists.
+static Proto::ReadsOwner ReadsFor(const Simulation& sim, const std::string& account)
+{
+    return [&sim, account](const std::string& owner)
+    { return sim.Corporations().Manages(account, owner); };
+}
+
+// One pilot's corporation, and the invites waiting for them, as they are sent it.
+static Proto::CorpView CorpViewFor(const Simulation& sim, const std::string& account,
+                                   const std::set<std::string>& online, double now)
+{
+    Proto::CorpView v;
+    if (const Corps::Corp* c = sim.Corporations().Of(account))
+    {
+        v.id = c->id;
+        v.name = c->name;
+        v.ticker = c->ticker;
+        v.founded = c->founded;
+        for (const Corps::Member& m : c->members)
+            v.members.push_back(
+                { m.account, Corps::RoleName(m.role), online.count(m.account) > 0 });
+    }
+    for (const Corps::Corp* c : sim.Corporations().InvitesFor(account, now))
+        for (const Corps::Invite& i : c->invites)
+            if (i.account == account)
+                v.invites.push_back({ c->name, c->ticker, i.by, i.at });
+    return v;
+}
+
+// Each logged-in client's view of its corporation, when it is not what it was last sent:
+// at login, and whenever a verb or someone coming or going changed it.
+static void SendCorpViews(std::vector<HostClient>& clients, const Simulation& sim, NetStats& net)
+{
+    std::set<std::string> online;
+    for (const Chat::Pilot& p : ChatPilots(clients, sim))
+        online.insert(p.name);
+    const double now = ChatClock();
+    for (HostClient& hc : clients)
+    {
+        if (hc.sessionId == 0 || !hc.conn || hc.evicted)
+            continue;
+        const std::string msg = Proto::EncodeCorpView(CorpViewFor(sim, hc.account, online, now));
+        if (msg == hc.corpSent)
+            continue;
+        hc.corpSent = msg;
+        net.chat += (double)msg.size();
+        hc.conn->Send(msg);
+    }
 }
 
 // Each recipient's lines in one message.
@@ -811,12 +892,13 @@ static void SendLayoutDeltas(std::vector<HostClient>& clients, Simulation& sim, 
         for (HostClient& hc : clients)
             if (hc.sessionId != 0 && hc.conn && hc.layoutSystem == d.systemId)
             {
-                std::string          theirs = msg;
-                const ClientSession* s = sim.Session(hc.sessionId);
-                const bool           owner = cut && Proto::OwnsPrivate(d, hc.account);
-                Proto::LayoutDelta   own = owner ? d : shared;
+                std::string             theirs = msg;
+                const ClientSession*    s = sim.Session(hc.sessionId);
+                const Proto::ReadsOwner reads = ReadsFor(sim, hc.account);
+                const bool              owner = cut && Proto::OwnsPrivate(d, reads);
+                Proto::LayoutDelta      own = owner ? d : shared;
                 if (owner)
-                    Proto::ForViewer(own, hc.account);
+                    Proto::ForViewer(own, reads);
                 const size_t before = own.added.size() + own.changed.size();
                 if (s != nullptr)
                     sim.ForSession(*s, own);
@@ -831,7 +913,7 @@ static void SendLayoutDeltas(std::vector<HostClient>& clients, Simulation& sim, 
         for (HostClient& hc : clients)
             if (hc.sessionId == sessionId && hc.conn && hc.layoutSystem == d.systemId)
             {
-                Proto::ForViewer(d, hc.account);
+                Proto::ForViewer(d, ReadsFor(sim, hc.account));
                 const std::string msg = Proto::EncodeLayoutDelta(d);
                 net.layouts += (double)msg.size();
                 hc.conn->Send(msg);
@@ -844,7 +926,7 @@ static std::string LayoutFor(const Simulation& sim, const std::string& systemId,
                              const ClientSession& s)
 {
     Proto::SystemLayout lay = sim.BuildLayoutFor(s, systemId);
-    Proto::ForViewer(lay, s.accountName);
+    Proto::ForViewer(lay, ReadsFor(sim, s.accountName));
     return Proto::EncodeLayout(lay);
 }
 
@@ -1618,7 +1700,9 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
     std::string  lastGalaxy;       // what the last broadcast said
     Log::Metrics metrics;          // the once-a-minute line (#400)
     double       metricsAcc = 0.0;
-    double       accessCheckAcc = 0.0;  // allowlist.txt and bans.txt looked at (#400)
+    double       accessCheckAcc = 0.0;                // allowlist.txt and bans.txt looked at (#400)
+    int          corpRev = sim.Corporations().Rev();  // what corps.json holds (#347)
+    std::string  corpOnline;                          // who was online when views were sent
 
     while (g_stopRequested == 0)
     {
@@ -1674,6 +1758,7 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
             gateExpireAcc = 0.0;
             gate.Expire(uptime);
             chat.Expire(ChatClock());
+            sim.Corporations().Expire(ChatClock());  // an invite lasts a week (#347)
         }
 
         // Inputs. Each received command is one player tick (1:1 with client prediction),
@@ -1950,8 +2035,11 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
                     Proto::ChatSay say;
                     if (s == nullptr || !Proto::DecodeChatSay(msg, say))
                         continue;
-                    const std::vector<Chat::Pilot>    online = ChatPilots(clients, sim);
-                    const Chat::Pilot                 from{ hc.sessionId, hc.account, s->systemId };
+                    const std::vector<Chat::Pilot> online = ChatPilots(clients, sim);
+                    Chat::Pilot                    from(hc.sessionId, hc.account, s->systemId);
+                    for (const Chat::Pilot& p : online)
+                        if (p.id == hc.sessionId)
+                            from = p;  // with their corporation, for the corp channel (#347)
                     const std::vector<Chat::Delivery> out =
                         chat.Say(from, say, online, ChatClock());
                     // In the log for the operator to moderate by: what was said in a system,
@@ -1962,6 +2050,52 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
                     else if (!out.empty() && out[0].line.channel == Chat::PRIVATE)
                         Log::Printf("chat: %s -> %s (private)\n", hc.account.c_str(),
                                     out[0].line.to.c_str());
+                    SendChat(clients, out, net);
+                    continue;
+                }
+                // Nor is a corporation's verb (#347). Answered with a notice in chat; the views
+                // it changed go out below, and the file is written at once.
+                if (type == "corp")
+                {
+                    Proto::CorpAct act;
+                    if (s == nullptr || !Proto::DecodeCorpAct(msg, act))
+                        continue;
+                    const std::vector<Chat::Pilot> online = ChatPilots(clients, sim);
+                    std::set<std::string>          names;
+                    for (const Chat::Pilot& p : online)
+                        names.insert(p.name);
+                    const double         now = ChatClock();
+                    const Corps::Outcome o = sim.Corporations().Apply(
+                        hc.account, { act.verb, act.name, act.ticker, act.pilot, act.role }, names,
+                        now);
+                    std::vector<Chat::Delivery> out;
+                    Chat::Delivery              told;
+                    told.to = hc.sessionId;
+                    told.line.channel = Chat::NOTICE;
+                    told.line.text = o.Ok() ? o.told : "Corporation: " + o.told;
+                    told.line.at = (long long)now;
+                    out.push_back(told);
+                    if (o.Ok())
+                    {
+                        Log::Printf("corp: %s %s -> %s\n", hc.account.c_str(), act.verb.c_str(),
+                                    o.told.c_str());
+                        const Corps::Corp* c = sim.Corporations().Find(o.corp);
+                        if (c != nullptr && !o.announce.empty())
+                            for (Chat::Delivery& d :
+                                 chat.ToCorp(c->id, c->ticker, o.announce, online, now))
+                                if (d.to != hc.sessionId)
+                                    out.push_back(std::move(d));
+                        for (const Chat::Pilot& p : online)
+                            if (!o.subject.empty() && p.name == o.subject)
+                            {
+                                Chat::Delivery inv;
+                                inv.to = p.id;
+                                inv.line.channel = Chat::NOTICE;
+                                inv.line.text = o.subjectText;
+                                inv.line.at = (long long)now;
+                                out.push_back(inv);
+                            }
+                    }
                     SendChat(clients, out, net);
                     continue;
                 }
@@ -2148,6 +2282,28 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
         // Who is in each local channel, after the layouts above: a pilot is told who is in a
         // system once it has been told it is there (#347).
         SendPresence(clients, sim, chat, net);
+        // Corporations (#347): a change is written at once -- it is a few pilots' word, and
+        // rare -- and the allow-lists are told again, cut for each viewer as the corporations
+        // now say, with the next deltas. Each pilot's view goes out when the corporations or
+        // who is online changed, and then only if theirs is not what they were last sent.
+        {
+            std::string online;
+            for (const HostClient& hc : clients)
+                if (hc.sessionId != 0 && hc.conn && !hc.evicted)
+                    online += hc.account + " ";
+            const int  rev = sim.Corporations().Rev();
+            const bool changed = rev != corpRev;
+            if (changed)
+            {
+                corpRev = rev;
+                if (!worldPath.empty() && !sim.Corporations().Save(CorpsPath(worldPath)))
+                    Log::Errorf("Could not write %s.\n", CorpsPath(worldPath).c_str());
+                sim.RetellAllowLists();
+            }
+            if (changed || online != corpOnline)
+                SendCorpViews(clients, sim, net);
+            corpOnline = online;
+        }
 
         // Galaxy snapshot -- rarely (once a second): the statistics change slowly and the
         // message is large (all systems). The client's galaxy map lives off it.

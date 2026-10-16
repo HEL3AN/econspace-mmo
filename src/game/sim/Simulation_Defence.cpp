@@ -40,7 +40,8 @@ std::string Simulation::DefenceSetProblem(const ClientSession& s, int id, const 
     const Structure* t = OwnedStructure(*st, id);
     if (t == nullptr)
         return "there is no structure #" + std::to_string(id) + " in this system";
-    if (s.accountName.empty() || t->GetOwner() != s.accountName)
+    // Its owner's, or their corporation's leadership's (#347).
+    if (s.accountName.empty() || !corps_.Manages(s.accountName, t->GetOwner()))
         return t->GetName() + " is not yours";
     if (!Armed(*t))
         return t->GetName() + " has no guns";
@@ -62,7 +63,7 @@ bool Simulation::SetDefence(ClientSession& s, int id, const Defence& d)
             t = static_cast<Structure*>(e.get());
     t->SetDefence(d);
     MarkStaticChanged(st, id);  // everyone in the system sees it, and the save keeps it
-    owners_[s.accountName];     // its owner's standings are noted from now on (StepOwners)
+    owners_[t->GetOwner()];     // its owner's standings are noted from now on (StepOwners)
     StepOwners();
 
     // What the mode will cost here, said once, where the owner reads it.
@@ -70,7 +71,32 @@ bool Simulation::SetDefence(ClientSession& s, int id, const Defence& d)
     s.RecordEvent(Ev::Kind::Notice, "Rules of engagement for " + t->GetName() + ": " +
                                         EngageLabel(d.engage) + ". " +
                                         DefenceCost(d.engage, lawful, st.agg.controller));
+    // Set by a director of the owner's corporation: the owner hears of it, since what the
+    // battery does is still on their account.
+    if (t->GetOwner() != s.accountName)
+        for (auto& kv : sessions_)
+            if (kv.second.accountName == t->GetOwner())
+                kv.second.RecordEvent(Ev::Kind::Notice,
+                                      s.accountName + " set the rules of engagement for " +
+                                          t->GetName() + ": " + EngageLabel(d.engage));
     return true;
+}
+
+void Simulation::RetellAllowLists()
+{
+    for (auto& kv : systems_)
+    {
+        std::vector<int> ids;
+        for (const auto& e : kv.second.entities)
+            if (e->GetKind() == EntityKind::Structure && !e->GetOwner().empty())
+            {
+                const Defence& d = static_cast<const Structure&>(*e).GetDefence();
+                if (!d.players.empty() || !d.factions.empty())
+                    ids.push_back(e->GetId());
+            }
+        for (int id : ids)
+            MarkStaticChanged(kv.second, id);
+    }
 }
 
 void Simulation::ProvokeGuards(SystemState& st, const ClientSession& victim, Vector2 at,
@@ -80,7 +106,11 @@ void Simulation::ProvokeGuards(SystemState& st, const ClientSession& victim, Vec
         return;
     for (const auto& e : st.entities)
     {
-        if (e->GetKind() != EntityKind::Structure || e->GetOwner() != victim.accountName ||
+        // The victim's own, and their corporation's (#347): a member's battery guards every
+        // member's ship.
+        if (e->GetKind() != EntityKind::Structure ||
+            (e->GetOwner() != victim.accountName &&
+             !corps_.SameCorp(e->GetOwner(), victim.accountName)) ||
             static_cast<const Structure&>(*e).IsBuilding())
             continue;
         const Archetype* a = e->GetArchetype();

@@ -1,0 +1,309 @@
+// Game -- the corporation (#347): the window where a pilot founds one, answers an invite,
+// sees who is in theirs and, as its CEO or a director, runs it; and what the rest of the
+// client knows of who is in which -- a ticker before a name, a corp mate's ship counted a
+// friend's. Presentation only: who may do what is the server's (sim/Corporation.h), and the
+// answer to every verb is a notice in chat. Part of the Game class; see Game.cpp.
+#include "core/Game.h"
+
+#include "ui/Theme.h"
+
+#include <cctype>
+#include <ctime>
+#include <string>
+
+namespace
+{
+std::string Lower(std::string s)
+{
+    for (char& c : s)
+        c = (char)std::tolower((unsigned char)c);
+    return s;
+}
+
+std::string Trim(const std::string& s)
+{
+    const size_t a = s.find_first_not_of(' ');
+    if (a == std::string::npos)
+        return std::string();
+    return s.substr(a, s.find_last_not_of(' ') - a + 1);
+}
+
+// The first word of `s`, and what follows it.
+std::string Word(const std::string& s, std::string* rest = nullptr)
+{
+    const std::string t = Trim(s);
+    const size_t      gap = t.find(' ');
+    if (rest != nullptr)
+        *rest = gap == std::string::npos ? std::string() : Trim(t.substr(gap));
+    return t.substr(0, gap);
+}
+
+std::string Date(long long at)
+{
+    if (at <= 0)
+        return std::string();
+    const std::time_t t = (std::time_t)at;
+    const std::tm*    tm = std::localtime(&t);
+    if (tm == nullptr)
+        return std::string();
+    char buf[16];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d", tm);
+    return buf;
+}
+
+const char* RoleWord(const std::string& role)
+{
+    if (role == "ceo")
+        return "CEO";
+    if (role == "director")
+        return "Director";
+    return "Member";
+}
+
+bool TickerChar(char c)
+{
+    return std::isalnum((unsigned char)c) != 0;
+}
+}  // namespace
+
+std::string Game::TickerOf(const std::string& pilot) const
+{
+    const std::string p = Lower(pilot);
+    if (corpView_.Has(p))
+        return corpView_.ticker;
+    for (size_t i = 0; i < chatMembers_.pilots.size() && i < chatMembers_.corps.size(); i++)
+        if (chatMembers_.pilots[i] == p)
+            return chatMembers_.corps[i];
+    return std::string();
+}
+
+std::string Game::Tagged(const std::string& pilot) const
+{
+    const std::string t = TickerOf(pilot);
+    return t.empty() ? pilot : "[" + t + "] " + pilot;
+}
+
+bool Game::InMyCorp(const std::string& pilot) const
+{
+    const std::string p = Lower(pilot);
+    return !corpView_.id.empty() && p != Lower(pilotName_) && corpView_.Has(p);
+}
+
+bool Game::ManagesFor(const std::string& owner) const
+{
+    const std::string me = Lower(pilotName_);
+    if (owner.empty() || me.empty())
+        return false;
+    if (Lower(owner) == me)
+        return true;
+    const std::string role = corpView_.RoleOf(me);
+    return (role == "ceo" || role == "director") && corpView_.Has(Lower(owner));
+}
+
+void Game::SendCorpAct(const Proto::CorpAct& act)
+{
+    if (clientLink_)
+        clientLink_->Send(Proto::EncodeCorpAct(act));
+}
+
+bool Game::CorpCommand(const std::string& text)
+{
+    std::string       rest;
+    const std::string verb = Lower(Word(text, &rest));
+    Proto::CorpAct    act;
+    act.verb = verb;
+    if (verb == "create" || verb == "found")
+    {
+        // The ticker first: a name may have spaces in it.
+        act.verb = "create";
+        act.ticker = Word(rest, &act.name);
+        if (act.ticker.empty() || act.name.empty())
+        {
+            ChatNotice("To found a corporation: /corp create <ticker> <name>");
+            return true;
+        }
+    }
+    else if (verb == "invite" || verb == "kick")
+        act.pilot = Word(rest);
+    else if (verb == "join" || verb == "decline")
+        act.ticker = Word(rest);
+    else if (verb == "role")
+        act.pilot = Word(rest, &act.role);
+    else if (verb != "leave")
+    {
+        ChatNotice("/corp create <ticker> <name> | invite <pilot> | join <ticker> | decline "
+                   "<ticker> | leave | kick <pilot> | role <pilot> ceo|director|member; "
+                   "/c <text> talks to the corporation");
+        return true;
+    }
+    SendCorpAct(act);
+    return true;
+}
+
+// In a corporation: who it is, its members with their roles and who is online, and what this
+// pilot's role lets them do -- invite, remove, give roles, leave. In none: the invites
+// waiting for an answer, and founding one.
+void Game::DrawCorpContent(const Ui::Frame& f)
+{
+    using Ui::Box;
+    using Ui::Size;
+    using Ui::TextStyle;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    Ui::Layout&      L = corpLayout_;
+
+    const std::string           me = Lower(pilotName_);
+    const std::string           myRole = corpView_.RoleOf(me);
+    const bool                  leads = myRole == "ceo" || myRole == "director";
+    const bool                  ceo = myRole == "ceo";
+    std::vector<Proto::CorpAct> acts;  // what was clicked, sent after the frame is laid out
+
+    L.Begin(f);
+    L.Column(
+        Box().Grow().ScrollY().Id("corp").Gap(t.metrics.gap),
+        [&]
+        {
+            if (!corpView_.id.empty())
+            {
+                L.Text(corpView_.name + "  [" + corpView_.ticker + "]", TextStyle::Title());
+                L.Field("Your role", RoleWord(myRole), t.colors.titleText);
+                L.Field("Founded", Date(corpView_.founded), t.colors.dim);
+                int online = 0;
+                for (const Proto::CorpMember& m : corpView_.members)
+                    online += m.online ? 1 : 0;
+                L.Text(TextFormat("MEMBERS  %d, %d online", (int)corpView_.members.size(), online),
+                       TextStyle::Label());
+
+                Ui::TableSpec table;
+                table.id = "members";
+                table.columns = { { "pilot", Size::Grow(), Ui::Align::Start, false, true },
+                                  { "role", Size::Fit(0.0f, 96.0f), Ui::Align::Start } };
+                table.rows = (int)corpView_.members.size();
+                table.cell = [&](int r, int c)
+                {
+                    const Proto::CorpMember& m = corpView_.members[(size_t)r];
+                    if (c == 1)
+                        return Ui::Cell{ RoleWord(m.role), t.colors.dim };
+                    Ui::Cell cell{ m.pilot, m.pilot == me ? t.colors.titleText
+                                            : m.online    ? t.colors.text
+                                                          : t.colors.dim };
+                    // Online, in the instruments' friendly colour, and a ring for whoever is not.
+                    cell.chip = m.online ? t.standing.friendly : t.colors.dim;
+                    cell.chipMark = m.online ? Ui::Mark::Circle : Ui::Mark::Ring;
+                    return cell;
+                };
+                table.rowFill = [&](int r)
+                {
+                    return corpView_.members[(size_t)r].pilot == corpChosen_ ? t.colors.selected
+                                                                             : Color{ 0, 0, 0, 0 };
+                };
+                table.tooltip = [&](int r)
+                {
+                    const Proto::CorpMember& m = corpView_.members[(size_t)r];
+                    return m.pilot + (m.online ? " -- online" : " -- offline");
+                };
+                const Ui::TableEvents ev = L.Table(table);
+                if (ev.clicked >= 0)
+                    corpChosen_ = corpView_.members[(size_t)ev.clicked].pilot;
+
+                // What this pilot's role lets them do to the member chosen.
+                const std::string theirRole = corpView_.RoleOf(corpChosen_);
+                if (!corpChosen_.empty() && corpChosen_ != me && !theirRole.empty() && leads)
+                {
+                    L.Text(corpChosen_, TextStyle::Strong());
+                    L.Row(
+                        Box().GrowX().Gap(t.metrics.rowGap),
+                        [&]
+                        {
+                            if (ceo &&
+                                L.Button("director",
+                                         theirRole == "director" ? "Make member" : "Make director"))
+                                acts.push_back({ "role", "", "", corpChosen_,
+                                                 theirRole == "director" ? "member" : "director" });
+                            if (ceo && L.Button("ceo", "Make CEO"))
+                                acts.push_back({ "role", "", "", corpChosen_, "ceo" });
+                            const bool mayRemove = ceo || theirRole == "member";
+                            if (L.Button("kick", "Remove", false, mayRemove))
+                                acts.push_back({ "kick", "", "", corpChosen_, "" });
+                        });
+                    if (ceo)
+                        L.Tooltip("ceo", "Hand the corporation over: you become a director");
+                }
+
+                if (leads)
+                    L.Row(
+                        Box().GrowX().Gap(t.metrics.gap).Align(Ui::Align::Start, Ui::Align::Center),
+                        [&]
+                        {
+                            Ui::TextFieldOptions opt;
+                            opt.placeholder = "pilot to invite (online)";
+                            opt.maxLength = 32;
+                            const Ui::EditResult r = L.TextField("invitee", corpInvitee_, opt);
+                            if ((L.Button("invite", "Invite", false, !Trim(corpInvitee_).empty()) ||
+                                 r.submitted) &&
+                                !Trim(corpInvitee_).empty())
+                            {
+                                acts.push_back({ "invite", "", "", Trim(corpInvitee_), "" });
+                                corpInvitee_.clear();
+                            }
+                        });
+                L.Divider();
+                L.Text("/c <text> in chat talks to the corporation. Its members' batteries hold "
+                       "fire for you and guard your ship.",
+                       TextStyle::Small().Tint(t.colors.dim).Wrap());
+                const bool alone = corpView_.members.size() == 1;
+                if (L.Button("leave", alone ? "Disband" : "Leave", false, alone || !ceo))
+                    acts.push_back({ "leave", "", "", "", "" });
+                if (ceo && !alone)
+                    L.Tooltip("leave", "Make another member CEO before leaving");
+            }
+            else
+            {
+                L.Text("You are in no corporation.", TextStyle::Body().Tint(t.colors.dim));
+                for (size_t i = 0; i < corpView_.invites.size(); i++)
+                {
+                    const Proto::CorpInvite& inv = corpView_.invites[i];
+                    L.Text(inv.name + "  [" + inv.ticker + "] invites you (" + inv.by + ")",
+                           TextStyle::Body().Wrap());
+                    L.Row(Box().GrowX().Gap(t.metrics.rowGap),
+                          [&]
+                          {
+                              if (L.Button(TextFormat("join%d", (int)i), "Join", true))
+                                  acts.push_back({ "join", "", inv.ticker, "", "" });
+                              if (L.Button(TextFormat("decline%d", (int)i), "Decline"))
+                                  acts.push_back({ "decline", "", inv.ticker, "", "" });
+                          });
+                }
+                L.Divider();
+                L.Text("Found a corporation", TextStyle::Title());
+                L.FormRow("Name",
+                          [&]
+                          {
+                              Ui::TextFieldOptions opt;
+                              opt.placeholder = "3 to 24 letters";
+                              opt.maxLength = 24;
+                              L.TextField("name", corpName_, opt);
+                          });
+                L.FormRow("Ticker",
+                          [&]
+                          {
+                              Ui::TextFieldOptions opt;
+                              opt.placeholder = "2 to 5";
+                              opt.maxLength = 5;
+                              opt.accept = TickerChar;
+                              L.TextField("ticker", corpTicker_, opt);
+                          });
+                const bool ready = !Trim(corpName_).empty() && corpTicker_.size() >= 2;
+                if (L.Button("found", "Found", true, ready))
+                    acts.push_back({ "create", Trim(corpName_), corpTicker_, "", "" });
+            }
+        });
+    L.End();
+    L.Draw();
+
+    for (const Proto::CorpAct& a : acts)
+        SendCorpAct(a);
+    if (!acts.empty() && acts.back().verb == "create")
+        corpName_.clear(), corpTicker_.clear();
+    if (!acts.empty() && acts.back().verb == "kick")
+        corpChosen_.clear();
+}

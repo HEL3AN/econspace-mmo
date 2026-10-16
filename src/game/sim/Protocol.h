@@ -4,6 +4,7 @@
 #include "core/Faction.h"
 #include "core/ShipDesign.h"
 #include "core/WorldLoader.h"  // Universe, the galaxy index
+#include <functional>
 #include <map>
 #include <memory>
 #include <set>
@@ -32,8 +33,11 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    42;  // 42: a mission may be a short market's contract (#343, #407), with its system and
-         // deadline; 40 and 41 are taken by corporations and siege jobs; 39: roaming holes and the
+    43;  // 43: corporations (#347) -- a CorpAct from a client, a CorpView to each member and
+         // invitee, a corp channel in ChatSay and ChatLine, each local pilot's ticker in
+         // ChatMembers, and a director reads a member's allow-list; 42: a mission may be a short
+         // market's contract (#343, #407), with its system and deadline; 40 and 41 are taken by
+         // corporations (which landed as 43) and siege jobs; 39: roaming holes and the
          // scanner (#342 S9, #346) -- a scan in a command, the scanner and the system's signatures
          // in the player's snapshot, a hidden object in a pilot's layout only once their scan
          // resolved it, and a link of the index may be a hole with its tail; 38: NPC haulers (#343)
@@ -531,8 +535,16 @@ struct LayoutDelta
 bool ForViewer(std::vector<EntityLayout>& v, const std::string& viewer);
 bool ForViewer(SystemLayout& lay, const std::string& viewer);
 bool ForViewer(LayoutDelta& d, const std::string& viewer);
+// ...and the same for a viewer who may read more than their own (#347): `reads(owner)` says
+// whether they may read what `owner` keeps private -- their own, and as the CEO or a director
+// of a corporation, its members'.
+using ReadsOwner = std::function<bool(const std::string& owner)>;
+bool ForViewer(std::vector<EntityLayout>& v, const ReadsOwner& reads);
+bool ForViewer(SystemLayout& lay, const ReadsOwner& reads);
+bool ForViewer(LayoutDelta& d, const ReadsOwner& reads);
 // Whether the delta carries anything only `account` may read, so theirs is not everyone's.
 bool OwnsPrivate(const LayoutDelta& d, const std::string& account);
+bool OwnsPrivate(const LayoutDelta& d, const ReadsOwner& reads);
 
 // A client's copy of the static layer of the system it is in, kept current by layouts and
 // deltas. Both clients -- the game and econagent -- keep one, so the rule for applying a
@@ -617,6 +629,9 @@ struct ChatSay
 {
     std::string to;
     std::string text;
+    // "corp": to every online member of the sender's corporation (#347), `to` ignored;
+    // empty: as `to` says.
+    std::string channel;
 };
 
 // One line as a client shows it (server -> client).
@@ -629,6 +644,7 @@ struct ChatLine
     std::string from;    // who said it; empty for the server
     std::string to;      // a private line's recipient
     std::string system;  // where a local line was said
+    std::string corp;    // a corp line's corporation, by ticker (#347)
     std::string text;
     long long   at = 0;  // when, in Unix seconds
     // Said before this pilot arrived: the short history a system gives whoever comes in.
@@ -645,6 +661,55 @@ struct ChatMembers
 {
     std::string              system;
     std::vector<std::string> pilots;
+    // Each pilot's corporation ticker, in the same order; empty for one in none (#347).
+    std::vector<std::string> corps;
+};
+
+// --- Corporations (#347) -------------------------------------------------------------------
+// A corporation is its own registry on the server (Corps::Registry), not a faction: it is
+// named by a string id, and by its ticker where a player reads it.
+
+// A verb (client -> server): "create" (name, ticker), "invite" (pilot), "join" and "decline"
+// (ticker), "leave", "kick" (pilot), "role" (pilot, role: "ceo", "director", "member"). Not a
+// tick of anything, like a chat line. The answer is a chat notice to the sender, and a
+// CorpView to everyone whose picture of it changed.
+struct CorpAct
+{
+    std::string verb;
+    std::string name;
+    std::string ticker;
+    std::string pilot;
+    std::string role;
+};
+
+struct CorpMember
+{
+    std::string pilot;
+    std::string role;  // "ceo", "director", "member"
+    bool        online = false;
+};
+struct CorpInvite
+{
+    std::string name;
+    std::string ticker;
+    std::string by;
+    long long   at = 0;  // Unix seconds
+};
+// One pilot's corporation as they see it (server -> client): sent at login and whenever it
+// changes -- someone joins, leaves, comes online, is given a role -- and the invites waiting
+// for them. `id` empty: in none.
+struct CorpView
+{
+    std::string             id;
+    std::string             name;
+    std::string             ticker;
+    long long               founded = 0;
+    std::vector<CorpMember> members;
+    std::vector<CorpInvite> invites;  // waiting for this pilot's answer
+
+    // This pilot's role in it; empty when in none.
+    std::string RoleOf(const std::string& pilot) const;
+    bool        Has(const std::string& pilot) const { return !RoleOf(pilot).empty(); }
 };
 
 // JSON serialization. Decode* return false on a broken/unsuitable message.
@@ -695,6 +760,10 @@ std::string EncodeChatLines(const ChatLines& c);
 bool        DecodeChatLines(const std::string& s, ChatLines& out);
 std::string EncodeChatMembers(const ChatMembers& m);
 bool        DecodeChatMembers(const std::string& s, ChatMembers& out);
+std::string EncodeCorpAct(const CorpAct& a);
+bool        DecodeCorpAct(const std::string& s, CorpAct& out);
+std::string EncodeCorpView(const CorpView& v);
+bool        DecodeCorpView(const std::string& s, CorpView& out);
 
 // The galaxy index (#206): which systems exist, their names, map positions, security and
 // owners, the links between them and where a new player starts. The server sends it at

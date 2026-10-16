@@ -391,9 +391,13 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
             }
             else if (account.empty() || p.session->accountName != account)
             {
+                // A member of the owner's corporation is a friend in every mode (#347): never
+                // fired on first, and on no list it has to be named on. A shot from one is
+                // still answered -- the corporation is trust, not immunity.
+                const bool friendOf = corps_.SameCorp(p.session->accountName, account);
                 if (shotAtUs(p.session->id))
                     consider(p.ship, p.session, nullptr, false);
-                else if (rules != nullptr && strikesFirst(*p.session))
+                else if (rules != nullptr && !friendOf && strikesFirst(*p.session))
                     consider(p.ship, p.session, nullptr, true);
             }
         }

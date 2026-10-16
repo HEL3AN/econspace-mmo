@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <map>
 #include <string>
+#include <utility>
 #include <string_view>
 #include <vector>
 
@@ -26,6 +27,7 @@ inline constexpr const char* LOCAL = "local";
 inline constexpr const char* PRIVATE = "private";
 inline constexpr const char* SERVER = "server";
 inline constexpr const char* NOTICE = "notice";
+inline constexpr const char* CORP = "corp";  // a corporation's members (#347)
 
 // A line as anyone else may see it: valid UTF-8 (a broken sequence is dropped, not guessed
 // at), no control characters (tabs and line breaks become spaces; the C1 set, the
@@ -46,13 +48,22 @@ struct Limits
     double historyAge = 1800;  // ...said no longer ago than this, seconds
 };
 
-// A pilot who can hear: a connected session, its account name (canonical, lower case) and
-// the system it is in.
+// A pilot who can hear: a connected session, its account name (canonical, lower case), the
+// system it is in, and its corporation (#347) by id and ticker -- empty for none.
 struct Pilot
 {
     int         id = 0;
     std::string name;
     std::string system;
+    std::string corp;
+    std::string ticker;
+
+    Pilot() = default;
+    Pilot(int i, std::string n, std::string s, std::string c = std::string(),
+          std::string t = std::string())
+        : id(i), name(std::move(n)), system(std::move(s)), corp(std::move(c)), ticker(std::move(t))
+    {
+    }
 };
 
 // One line for one session.
@@ -81,7 +92,8 @@ public:
     // `from` says `say` at `now` (seconds; a line is stamped with it as Unix time): the
     // lines that go out and to whom. A local line goes to everyone in `online` in the
     // sender's system, the sender included, and is kept for the system's history; a private
-    // one to the pilot named and back to the sender. Refused -- muted, too fast, nobody of
+    // one to the pilot named and back to the sender; a corp line to every member of the
+    // sender's corporation online, the sender included. Refused -- muted, too fast, nobody of
     // that name online -- it is a notice to the sender alone. A line with nothing left in it
     // after cleaning is no line at all, and costs nothing.
     std::vector<Delivery> Say(const Pilot& from, const Proto::ChatSay& say,
@@ -89,6 +101,11 @@ public:
     // The operator's line, to everyone online. Not limited, not kept.
     std::vector<Delivery> Broadcast(std::string_view text, const std::vector<Pilot>& online,
                                     double now);
+    // The server's line on a corporation's channel (#347) -- who joined, who left -- to its
+    // members online. `corp` by id; the line names it by `ticker`.
+    std::vector<Delivery> ToCorp(const std::string& corp, const std::string& ticker,
+                                 std::string_view text, const std::vector<Pilot>& online,
+                                 double now);
 
     // Who is where now. Each pilot that is new or in another system than last time is sent
     // the members of its system and its history; everyone else in a system whose members
@@ -126,7 +143,7 @@ private:
     std::map<std::string, double>                       muted_;    // until; 0 for ever
     std::map<std::string, std::vector<Proto::ChatLine>> history_;  // by system
     std::map<int, std::string>                          where_;    // session -> system
-    std::map<std::string, std::vector<std::string>>     members_;  // system -> pilots
+    std::map<std::string, std::vector<std::string>>     members_;  // system -> "pilot ticker"
 };
 
 }  // namespace Chat

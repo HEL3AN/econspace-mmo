@@ -99,6 +99,11 @@ public:
     int                           LastChatSeq() const { return chatSeq_; }
     const Proto::ChatMembers&     ChatMembers() const { return members_; }
     void                          Say(const Proto::ChatSay& say);
+    // The corporation (#347): this pilot's as the server last said, how many times it has said
+    // so, and a verb sent.
+    const Proto::CorpView& Corp() const { return corp_; }
+    int                    CorpSeq() const { return corpSeq_; }
+    void                   SendCorp(const Proto::CorpAct& act);
 
     // A situation report from the current state; see sim/Observation.h.
     std::string Describe(Obs::Detail detail) const;
@@ -122,6 +127,8 @@ private:
     std::vector<HeardLine>              chat_;
     int                                 chatSeq_ = 0;
     Proto::ChatMembers                  members_;
+    Proto::CorpView                     corp_;
+    int                                 corpSeq_ = 0;
     int                                 lastEventSeq_ = 0;
     int                                 commandSeq_ = 0;
     bool                                haveSnapshot_ = false;

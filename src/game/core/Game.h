@@ -256,6 +256,20 @@ private:
     void DrawChatContent(const Ui::Frame& f);
     // The scanner (#346), in GameScan.cpp: a pass, and the signatures it has found.
     void DrawScannerContent(const Ui::Frame& f);
+    // Corporations (#347), in GameCorp.cpp: the window, a verb sent, and what the client knows
+    // of who is in which.
+    void DrawCorpContent(const Ui::Frame& f);
+    void SendCorpAct(const Proto::CorpAct& act);
+    bool CorpCommand(const std::string& rest);  // "/corp <verb> ...", as typed in chat
+    // A pilot's ticker, as far as this client knows: its own corporation's members, and the
+    // pilots in local. Empty for none, or not known.
+    std::string TickerOf(const std::string& pilot) const;
+    // "[TICK] pilot", or the name alone for a pilot in no corporation.
+    std::string Tagged(const std::string& pilot) const;
+    bool        InMyCorp(const std::string& pilot) const;  // never this pilot
+    // Whether this pilot manages `owner`'s structures: theirs, or a member's when this pilot
+    // is the CEO or a director -- the server's rule (Corps::Registry::Manages), as a mirror.
+    bool ManagesFor(const std::string& owner) const;
     void SendChat(const std::string& typed);  // a line as typed: local, or /w <pilot> ...
     void AddChatLine(const Proto::ChatLine& line);
     void ChatNotice(const std::string& text);  // a line from this client, to this pilot
@@ -489,6 +503,7 @@ private:
     static constexpr const char* WIN_SCANNER = "scanner";          // the ship's scanner (#346)
     static constexpr const char* WIN_CHAT = "chat";                // local and private chat (#347)
     static constexpr const char* WIN_CHAT_DOCKED = "chat_docked";  // ...where it is docked
+    static constexpr const char* WIN_CORP = "corp";                // the corporation (#347)
     const char*                  ChatWindow() const
     {
         return mode_ == GameMode::Docked ? WIN_CHAT_DOCKED : WIN_CHAT;
@@ -564,15 +579,20 @@ private:
     bool                        chatFocusPending_ = false;
     std::string                 chatReplyTo_;
     Ui::Layout                  chatLayout_{ 4096 };
-    void                        PlayScriptedClicks();
-    std::string themeToUse_;       // chosen in Settings while it was drawn: switched to next frame
-    int         missionsTab_ = 0;  // 0 the missions taken, 1 the docked station's board
-    bool        missionsForward_ = false;    // opened on docking: to the front of its stack
-    bool        fitForward_ = false;         // --fit: the hangar to the front, once docked
-    bool        marketForward_ = false;      // --market: the market to the front, once docked
-    int         missionsSel_[2] = { 0, 0 };  // the mission chosen on each
-    Rectangle   radarScope_ = { 0.0f, 0.0f, 0.0f, 0.0f };  // where the radar's picture was drawn
-    int         settingsTab_ = 0;
+    // The corporation (#347): this pilot's, as the server last said; the window's fields; the
+    // member chosen in its list.
+    Proto::CorpView corpView_;
+    std::string     corpName_, corpTicker_, corpInvitee_, corpChosen_;
+    Ui::Layout      corpLayout_{ 4096 };
+    void            PlayScriptedClicks();
+    std::string     themeToUse_;  // chosen in Settings while it was drawn: switched to next frame
+    int             missionsTab_ = 0;          // 0 the missions taken, 1 the docked station's board
+    bool            missionsForward_ = false;  // opened on docking: to the front of its stack
+    bool            fitForward_ = false;       // --fit: the hangar to the front, once docked
+    bool            marketForward_ = false;    // --market: the market to the front, once docked
+    int             missionsSel_[2] = { 0, 0 };          // the mission chosen on each
+    Rectangle radarScope_ = { 0.0f, 0.0f, 0.0f, 0.0f };  // where the radar's picture was drawn
+    int       settingsTab_ = 0;
     // The UI scale while its slider is held: applied on release, because a scale applied
     // while dragging moves the slider out from under the cursor.
     float scaleDraft_ = 1.0f;
