@@ -29,6 +29,7 @@
 #include "core/Blueprint.h"
 #include "core/DataDir.h"
 #include "core/Faction.h"
+#include "economy/Resource.h"
 #include "entities/Combatant.h"
 #include "entities/Nebula.h"
 #include "entities/NpcShip.h"
@@ -108,6 +109,12 @@ static void SetupHostSim(Simulation& sim, const std::string& dataDir,
     if (!Factions::Load(dataDir + "factions.json"))
     {
         Log::Errorf("FATAL: %s\n", Factions::Error().c_str());
+        exit(1);
+    }
+    // What markets trade (#343), before anything is priced or carried.
+    if (!Goods::Load(dataDir + "goods.json"))
+    {
+        fprintf(stderr, "FATAL: %s\n", Goods::Error().c_str());
         exit(1);
     }
     // Must precede materialization: every entity constructor looks itself up here, and a
@@ -322,7 +329,15 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
             Simulation::PlayerSellResult r =
                 sim.StepPlayerSell(s, *sim.SystemOf(s), c.sellType, c.sellAmount);
             if (r.sold > 0)
-                acks.push_back(Proto::TradeAck{ c.sellType, r.sold, r.gross, r.revenue });
+                acks.push_back(
+                    Proto::TradeAck{ c.sellType, r.sold, r.gross, r.revenue, 0, 0.0, r.fee });
+        }
+        if (c.buyType >= 0 && c.buyAmount > 0)  // a refusal says why, in the journal (#343)
+        {
+            const Simulation::PlayerBuyResult r =
+                sim.StepPlayerBuy(s, *sim.SystemOf(s), c.buyType, c.buyAmount);
+            if (r.bought > 0)
+                acks.push_back(Proto::TradeAck{ c.buyType, 0, 0.0, 0.0, r.bought, r.cost, r.fee });
         }
         if (c.refitShip >= 0)
             sim.SwitchShip(s, c.refitShip);  // only to a ship this account owns (#5)
@@ -451,7 +466,6 @@ static void HostStepWorld(Simulation& sim, float dt,
         const std::vector<Simulation::PlayerPresence>& players =
             (it == present.end()) ? kEmpty : it->second;
         sim.StepSystemAgents(kv.second, players, players.empty() ? nullptr : &fires[kv.first], dt);
-        kv.second.market.Update(dt);  // market price recovery
     }
 
     for (auto& kv : sim.Sessions())
@@ -1948,7 +1962,7 @@ static int HostSelftest()
     std::vector<bool> serverHad;
     // And a player lays one down through the wire (#39): a command, the server's rules, a
     // delta back. The hold is stocked and the name set as a login would set it.
-    s.ship->AddCargo(ResourceType::Iron, 10);
+    s.ship->AddCargo(ResourceType(), 10);
     bool tryDeploy = Blueprints::Find("buoy") != nullptr;
     // ...and an armed one, whose rules of engagement are set through the wire too (#340): the
     // owner is sent its allow-list and nobody else is.
@@ -2210,6 +2224,12 @@ static int AccountSelftest()
     if (!Factions::Load(dataDir + "factions.json"))
     {
         fprintf(stderr, "FATAL: %s\n", Factions::Error().c_str());
+        return 1;
+    }
+    // What markets trade (#343), before anything is priced or carried.
+    if (!Goods::Load(dataDir + "goods.json"))
+    {
+        fprintf(stderr, "FATAL: %s\n", Goods::Error().c_str());
         return 1;
     }
     if (!Archetypes::Load(dataDir + "archetypes.json"))
@@ -2765,6 +2785,12 @@ int main(int argc, char** argv)
     if (!Factions::Load(dataDir + "factions.json"))
     {
         fprintf(stderr, "FATAL: %s\n", Factions::Error().c_str());
+        return 1;
+    }
+    // What markets trade (#343), before anything is priced or carried.
+    if (!Goods::Load(dataDir + "goods.json"))
+    {
+        fprintf(stderr, "FATAL: %s\n", Goods::Error().c_str());
         return 1;
     }
     if (!Archetypes::Load(dataDir + "archetypes.json"))

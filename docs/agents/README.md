@@ -138,7 +138,7 @@ NEARBY (31 shown, 6 further away not listed)
   #8    station  Lysen Exchange           3883u NE  dockable
   #13   field    Inner Iron Belt          7211u NE  Iron
   #24   gate     Gate to Sigma Reach     23195u E   to reach
-MARKET Iron 3.3, Ice 15.0, Crystal 40.0
+MARKET (bid/ask x stock; fee 2% a trade) Iron 9.5/10.5 x400, Ice 14.3/15.8 x300, ...
 OFFERS (4 at this station)
   [0] Delivery  471 cr
 EVENTS
@@ -152,7 +152,7 @@ EVENTS
 | `CARGO` | what is in the hold, **by name** — the names `sell_cargo` takes |
 | `HOSTILE` | anything that would shoot you, listed first and in full, because it is the reason to change plan |
 | `NEARBY` | everything else, nearest first. Stations and gates are always listed; other objects are capped (`detail: "full"` raises the cap) |
-| `MARKET` | prices, when docked |
+| `MARKET` | when docked: per good, what the market pays / what it asks, and how many it holds -- the names `buy` takes |
 | `OFFERS`, `MISSIONS` | mission work at this station, and what you have taken |
 | `EVENTS` | what happened recently |
 | `STANDING` | reputation with each faction |
@@ -174,8 +174,8 @@ who decides things for themselves, not scenery), and NPCs by role — `trader`, 
 
 ## What a bot can do
 
-`observe`, `move_to`, `dock`, `undock`, `mine`, `travel_to_system`, `hold_station`, `sell_cargo`, `abort_order`
-and `wait_for_event` to fly and earn; `missions`, `accept_mission`, `complete_mission`, `hangar`,
+`observe`, `move_to`, `dock`, `undock`, `mine`, `travel_to_system`, `hold_station`, `sell_cargo`, `buy`,
+`abort_order` and `wait_for_event` to fly, trade and earn; `missions`, `accept_mission`, `complete_mission`, `hangar`,
 `buy_ship`, `switch_ship` and `pay_bounty` to spend it and to take work (#109). **Their exact
 arguments are in [reference.md](reference.md)**, which is
 generated from the server itself and checked by CI, so it cannot disagree with what the server
@@ -188,6 +188,9 @@ A few that are worth knowing before reading the reference:
 - `travel_to_system` is one order for a whole journey, gate by gate; `avoid_danger` prefers
   safer systems over the short way.
 - `sell_cargo` takes a resource by the **name** `CARGO` shows — `"Iron"`, not an index.
+- `buy` takes a good by the name `MARKET` shows and buys as many as the stock, the hold and
+  the money allow, up to `amount`. Every unit moves the price of the next, and every trade --
+  a human's or a bot's -- pays the market's fee (#348), so a small price difference loses money.
 - `missions` numbers the station's board and your active jobs; `accept_mission` and
   `complete_mission` take those numbers. Each job says what it still needs and where it is
   handed in.
@@ -265,7 +268,6 @@ bots:
 
 - **orbit** and **keep at range** a chosen object ([#157](https://github.com/HEL3AN/econspace-mmo/issues/157)), the two standing behaviours a fight
   is flown with;
-- buying at a market;
 - combat orders — engaging and disengaging. Deliberately separate: an agent that can shoot
   needs to be told what shooting costs, and between players that is not settled yet
   ([#94](https://github.com/HEL3AN/econspace-mmo/issues/94)).

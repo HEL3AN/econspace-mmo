@@ -15,6 +15,7 @@ a screen pass — start with the worked how-tos in [docs/howto/](../docs/howto/R
 data/
   archetypes.json      what each kind of object is and can do
   blueprints.json      how a player builds something: cost, time, placement (#39)
+  goods.json           what markets trade, and what stations make and use (#343)
   ships.json           ship designs and what their parts do (#279; see ship_design.md)
   pins.json            hand-written exceptions to generated systems (#147)
   textures/            sprites (PNG), optional
@@ -1009,6 +1010,52 @@ there is no ordinary structure to fall back on -- and one that names anything bu
 The time line is instants of the world clock, not a progress figure (#136): nothing
 accumulates, so a site is as far along on every client as on the server, and a server that
 was down when a site was due finishes it on its first tick back.
+
+---
+
+## goods.json — what markets trade (#343)
+
+The goods are a registry, as the factions are: `ResourceType` is a handle into this file, a
+save names a good by its `id`, and the wire sends goods in the file's order -- the server,
+the client and `econagent` all read it. Strict like the other content files: an unknown
+field, a good named twice or an amount naming a good that is not there is a load error.
+
+```json
+{
+    "market": { "fee": 0.02, "spread": 0.1, "elasticity": 0.7, "floor": 0.35, "ceiling": 3.0,
+                "restock": 0.5, "beltYield": 30 },
+    "goods": [
+        { "id": "Iron", "name": "Iron", "tier": 0, "price": 10, "stock": 400,
+          "supply": "local", "mined": true }
+    ],
+    "planets": { "planet.oceanic": { "Food": 40 } },
+    "industries": {
+        "station.mining_outpost": {
+            "recipes": [ { "in": { "Iron": 3 }, "out": { "Steel": 1 }, "rate": 20 } ],
+            "uses": { "Food": 8 }
+        }
+    }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `goods[].tier` | 0 raw, 1 refined, 2 components and consumables |
+| `goods[].price` | a civilisation centre's price at the target stock |
+| `goods[].stock` | what one market keeps: the target its price is set by; a system with two markets keeps twice |
+| `goods[].supply` | `local` (cheaper further from a centre) or `imported` (dearer), #342 S5 |
+| `goods[].mined` | an asteroid belt can hold it |
+| `market.fee` | share of every trade's value, paid by whoever trades, human or agent (#348) |
+| `market.spread` | between what a market asks and what it bids |
+| `market.elasticity`, `floor`, `ceiling` | price = base x clamp((target / stock)^elasticity, floor, ceiling) |
+| `market.restock` | per hour: the share of the gap to the target the trade nobody flies closes, times the system's traffic |
+| `market.beltYield` | what each belt gives its system's market of its ore, per hour |
+| `planets` | what a planet of that archetype grows for a market in its system, per hour |
+| `industries` | per archetype with a market: `recipes` (cycles an hour, each taking `in` and giving `out`, as far as the inputs are in stock) and `uses` (per hour) |
+
+A system has one market, kept by the coarse pass in every system, hot or cold: belts and
+planets add, recipes convert, uses take away, and unseen trade pulls each stock toward its
+target. The stock is saved in `world.json` per system (`galaxy.<id>.stock`, by good id).
 
 ---
 

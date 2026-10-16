@@ -94,9 +94,15 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         snap.entities.push_back(es);
     }
 
-    // System market prices (for the client's station screen) — AllResourceTypes order.
+    // The system's market (#343), in AllResourceTypes order: to the hundredth of a credit and
+    // the whole unit, so the coarse pass's slow drift does not resend it twenty times a second.
+    const Market& market = it->second.market;
     for (ResourceType rt : AllResourceTypes())
-        snap.marketPrices.push_back((float)it->second.market.GetPrice(rt));
+    {
+        snap.marketPrices.push_back((float)(std::round(market.Bid(rt) * 100.0) / 100.0));
+        snap.marketAsk.push_back((float)(std::round(market.Ask(rt) * 100.0) / 100.0));
+        snap.marketStock.push_back((int)market.Stock(rt));
+    }
 
     // Physical view of the player's ship. Everything here is authoritative: the client
     // predicts its own movement between snapshots and is corrected by this.
@@ -169,7 +175,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         v.description = m.description;
         v.giverStationId = m.giverStationId;
         v.destStationId = m.destStationId;
-        v.resource = (int)m.resource;
+        v.resource = m.resource.Index();
         v.targetCount = m.targetCount;
         v.progress = m.progress;
         v.rewardMoney = m.rewardMoney;
@@ -256,7 +262,7 @@ static bool DescribeStatic(const Entity& e, Proto::EntityLayout& el)
             const Planet& p = static_cast<const Planet&>(e);
             el.subType = (int)p.GetPlanetType();
             el.orbitRadius = p.GetOrbitRadius();
-            el.resource = (int)p.GetDeposit();
+            el.resource = p.GetDeposit().Index();
             break;
         }
         case EntityKind::Station:
@@ -267,7 +273,7 @@ static bool DescribeStatic(const Entity& e, Proto::EntityLayout& el)
             break;
         }
         case EntityKind::Field:
-            el.resource = (int)static_cast<const AsteroidField&>(e).GetResource();
+            el.resource = static_cast<const AsteroidField&>(e).GetResource().Index();
             break;
         case EntityKind::Gate:
             el.dest = static_cast<const JumpGate&>(e).GetDestination();

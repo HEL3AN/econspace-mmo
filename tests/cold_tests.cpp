@@ -6,6 +6,7 @@
 #include <tuple>
 #include <vector>
 
+#include "goods_named.h"
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
@@ -220,9 +221,9 @@ TEST_CASE("cold systems still progress: stock, presence, prices and outposts (#2
 
     // A market somebody sold into, left to recover in a system nobody is in.
     SystemState& home = *sim->SystemById(sim->Universe().startId);
-    const double base = home.market.GetPrice(ResourceType::Iron);
-    home.market.Sell(ResourceType::Iron, 200);
-    const double sold = home.market.GetPrice(ResourceType::Iron);
+    const double base = home.market.GetPrice(Good::Iron());
+    home.market.Sell(Good::Iron(), 200);
+    const double sold = home.market.GetPrice(Good::Iron());
     REQUIRE(sold < base * 0.9);
 
     // An hour of world time in coarse passes, every system cold throughout.
@@ -230,8 +231,9 @@ TEST_CASE("cold systems still progress: stock, presence, prices and outposts (#2
         sim->MaintainWorld(2.0f);
     CHECK(HotCount(*sim) == 0);
 
-    // Prices came back.
-    CHECK(home.market.GetPrice(ResourceType::Iron) > base * 0.99);
+    // Prices are coming back: the trade nobody flies restocks a market over hours (#343).
+    CHECK(home.market.GetPrice(Good::Iron()) > sold + (base - sold) * 0.05);
+    CHECK(home.market.GetPrice(Good::Iron()) <= base * 1.01);
     // Holdings yielded, and somebody spent it on an outpost that now stands -- the claim.
     bool founded = false, surveyed = false;
     for (const ChronicleEntry& e : sim->Chronicle())

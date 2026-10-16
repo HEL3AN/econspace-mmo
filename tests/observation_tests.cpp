@@ -281,7 +281,7 @@ TEST_CASE("the mission list numbers what accept and complete take, and says what
     CHECK(Has(out, "station #44, not in this system"));
     CHECK(Has(out, "progress 1/3"));
     CHECK(Has(out, "destroy 2 more pirates"));
-    CHECK(Has(out, "carry 20 " + ResourceName((ResourceType)0) + " (the hold has 5)"));
+    CHECK(Has(out, "carry 20 " + ResourceName(ResourceType()) + " (the hold has 5)"));
     CHECK(Has(out, "READY TO HAND IN"));
 
     CHECK(Obs::MissionNeeds(d.v, ready).empty());

@@ -113,8 +113,8 @@ bool ReadCost(const json& j, Ships::Cost& cost, std::string& err)
     }
     for (auto it = j["cost"].begin(); it != j["cost"].end(); ++it)
     {
-        const ResourceType r = ResourceFromName(it.key());
-        if (ResourceName(r) != it.key())
+        ResourceType r;
+        if (!Goods::Find(it.key(), r))
         {
             err = "cost: '" + it.key() + "' is not a resource";
             return false;
@@ -419,10 +419,11 @@ void Add(Ships::Provides& sum, const Ships::Provides& p, float times = 1.0f)
     sum.damage += p.damage * times;
 }
 
-void Add(int (&sum)[3], const Ships::Cost& c, int times = 1)
+void Add(std::vector<int>& sum, const Ships::Cost& c, int times = 1)
 {
     for (const auto& [r, n] : c)
-        sum[(int)r] += n * times;
+        if ((size_t)r.Index() < sum.size())
+            sum[(size_t)r.Index()] += n * times;
 }
 
 template <class T> const T* FindIn(const std::vector<T>& v, const std::string& id)
@@ -812,10 +813,10 @@ bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error)
     if (!Validate(c, d, error))
         return false;
 
-    float    mass = 0.0f;
-    Provides sum;
-    int      cost[3] = { 0, 0, 0 };
-    int      parts = 0;
+    float            mass = 0.0f;
+    Provides         sum;
+    std::vector<int> cost((size_t)Goods::Count(), 0);
+    int              parts = 0;
 
     const Frame* frame = c.FindFrame(d.frame);
     mass += frame->mass;
@@ -858,8 +859,8 @@ bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error)
     out.playerHull = out.hull + r.playerHull;
     out.playerDamage = out.damage + r.playerGun;
     for (ResourceType t : AllResourceTypes())
-        if (cost[(int)t] > 0)
-            out.cost.emplace_back(t, cost[(int)t]);
+        if (cost[(size_t)t.Index()] > 0)
+            out.cost.emplace_back(t, cost[(size_t)t.Index()]);
     out.parts = parts;
     out.buildSeconds = r.buildSecondsPerMass * mass + r.buildSecondsPerPart * (float)parts;
     return true;

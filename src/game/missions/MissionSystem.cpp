@@ -82,7 +82,7 @@ Mission MissionSystem::Generate(MissionType type, Station* giver,
         }
         case MissionType::Mining:
         {
-            std::vector<ResourceType> kinds = AllResourceTypes();
+            std::vector<ResourceType> kinds = Goods::Mined();  // what a belt can hold
             m.resource = kinds[GetRandomValue(0, (int)kinds.size() - 1)];
             m.targetCount = GetRandomValue(20, 50);
             m.rewardMoney = m.targetCount * 16.0;

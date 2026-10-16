@@ -591,7 +591,7 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                 }
             }
             else if (e->kind == Proto::EntityKind::Field && e->ore >= 0)
-                L.Field("Ore", ResourceName((ResourceType)e->ore), t.colors.text);
+                L.Field("Ore", ResourceName(ResourceType::FromIndex(e->ore)), t.colors.text);
             else if (e->kind == Proto::EntityKind::Gate)
             {
                 // An unstable mouth (#342 S4): counted down by the clock, as a site is, and

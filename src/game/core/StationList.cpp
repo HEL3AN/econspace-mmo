@@ -5,23 +5,32 @@
 namespace StationList
 {
 
-std::vector<MarketRow> Market(const std::vector<float>& prices, const std::vector<int>& cargo,
-                              float tradeBonus, RepTier standing)
+std::vector<MarketRow> Market(const MarketInput& in)
 {
-    const double           mul = (double)tradeBonus * SellPriceMultiplier(standing);
+    const double           mul = (double)in.tradeBonus * SellPriceMultiplier(in.standing);
+    const double           markup = 1.0 / std::min(1.0f, SellPriceMultiplier(in.standing));
+    const double           fee = Goods::Rules().fee;
     std::vector<MarketRow> rows;
-    int                    i = 0;
+    auto                   at = [](const auto& v, size_t i) { return i < v.size() ? v[i] : 0; };
     for (ResourceType type : AllResourceTypes())
     {
-        MarketRow r;
+        const size_t i = (size_t)type.Index();
+        MarketRow    r;
         r.type = type;
         r.name = ResourceName(type);
-        r.price = i < (int)prices.size() ? prices[i] : 0.0f;
-        r.hold = i < (int)cargo.size() ? std::max(0, cargo[i]) : 0;
-        r.perUnit = r.price * mul;
+        r.tier = Goods::Def(type).tier;
+        r.price = at(in.prices, i);
+        r.ask = at(in.asks, i);
+        r.stock = std::max(0, at(in.stock, i));
+        r.hold = std::max(0, at(in.cargo, i));
+        const double paid = r.ask > 0.0f ? std::min(r.price * mul, (double)r.ask) : r.price * mul;
+        r.perUnit = paid * (1.0 - fee);
         r.worth = r.perUnit * r.hold;
+        r.buyUnit = r.ask * markup * (1.0 + fee);
+        r.canBuy = std::min(r.stock, std::max(0, in.holdFree));
+        if (r.buyUnit > 0.0)
+            r.canBuy = std::min(r.canBuy, (int)(in.money / r.buyUnit));
         rows.push_back(r);
-        i++;
     }
     return rows;
 }

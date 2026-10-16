@@ -14,24 +14,42 @@
 namespace StationList
 {
 
-// One commodity at the station the ship is docked at.
+// One good at the station the ship is docked at (#343).
 struct MarketRow
 {
-    ResourceType type = ResourceType::Iron;
+    ResourceType type;
     std::string  name;
-    float        price = 0.0f;  // the station's price per unit, before standing and skill
+    int          tier = 0;
+    float        price = 0.0f;  // what the market pays for a unit, before standing, skill and fee
+    float        ask = 0.0f;    // what it asks for one, before standing and fee
+    int          stock = 0;     // how many it holds
     int          hold = 0;      // how much of it the ship carries
-    // What one unit pays this pilot now: the price times the trading skill's bonus times
-    // what the station's owner thinks of them -- the server's sum for a sale. A sale lowers
-    // the price for the next one, so this is the next unit, not every unit after it.
+    // What one unit pays this pilot now: the price times the trading skill's bonus times what
+    // the station's owner thinks of them, never above the ask, less the fee -- the server's
+    // sum for a sale. A sale lowers the price for the next one, so this is the next unit, not
+    // every unit after it.
     double perUnit = 0.0;
-    double worth = 0.0;  // the whole hold of it at perUnit: what "Sell all" pays
+    double worth = 0.0;  // the whole hold of it at perUnit: about what "Sell all" pays
+    // What the next unit costs this pilot, the fee included, and about how many the stock,
+    // the hold and the money allow -- each unit bought raises the price of the next, so the
+    // server may sell a few fewer.
+    double buyUnit = 0.0;
+    int    canBuy = 0;
 };
 
-// Every commodity, in AllResourceTypes order; `prices` and `cargo` are the snapshot's lists
-// in that order, and a missing entry is 0.
-std::vector<MarketRow> Market(const std::vector<float>& prices, const std::vector<int>& cargo,
-                              float tradeBonus, RepTier standing);
+// The snapshot's market and what the pilot brings to it.
+struct MarketInput
+{
+    std::vector<float> prices, asks;  // per good, AllResourceTypes order; missing reads 0
+    std::vector<int>   stock, cargo;
+    float              tradeBonus = 1.0f;
+    RepTier            standing = RepTier::Neutral;
+    double             money = 0.0;
+    int                holdFree = 0;
+};
+
+// Every good, in AllResourceTypes order.
+std::vector<MarketRow> Market(const MarketInput& in);
 
 // Whose a hull in the catalog is.
 enum class Berth

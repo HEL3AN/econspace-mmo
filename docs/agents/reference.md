@@ -97,12 +97,21 @@ Sleep until something happens, then return what happened. This is how to wait ou
 
 ### `sell_cargo`
 
-Sell cargo at the station you are docked at. Sells everything of that resource unless an amount is given.
+Sell cargo at the station you are docked at. Sells everything of that good unless an amount is given; every unit lowers the price of the next, and every trade pays the market's fee.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
 | `amount` | number |  | how much (default: all of it) |
 | `resource` | string | yes | resource name as observe lists it under CARGO, e.g. 'Iron' |
+
+### `buy`
+
+Buy goods from the market of the station you are docked at. Buys as many as the market holds, your hold takes and your money pays for, up to the amount; every unit raises the price of the next, and every trade pays the market's fee. observe lists the MARKET with what it pays / asks and how many it holds.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `amount` | number |  | how many (default: as many as you can) |
+| `resource` | string | yes | good name as observe lists it under MARKET, e.g. 'Food' |
 
 ### `missions`
 
@@ -311,7 +320,7 @@ Ready-made plans a client can offer its user. Each is sent to the model as writt
 
 *Find a price difference between two systems and work it*
 
-> Look for a profitable trade. Read the galaxy resource to see which systems exist and how dangerous they are. Dock somewhere, note the market prices, then travel_to_system to a neighbour and compare. There is no buy tool yet, so the cargo to trade is cargo you mine: mine where a resource is plentiful and sell it where it is dear. Prefer avoid_danger on the route when the hold is full — cargo lost is worse than time lost.
+> Look for a profitable trade. Read the galaxy resource to see which systems exist and how dangerous they are. Dock somewhere, note the market prices, then travel_to_system to a neighbour and compare. A market that makes a good holds a lot of it and asks little; one that uses it up is short and pays well. buy where it is cheap, carry it, and sell_cargo where it is dear -- the spread and the fee mean a small difference loses money, and your own trades move the price. Prefer avoid_danger on the route when the hold is full — cargo lost is worse than time lost.
 
 ### `scout`
 

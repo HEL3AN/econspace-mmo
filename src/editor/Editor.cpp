@@ -9,6 +9,7 @@
 #include <cstdlib>
 
 #include "core/DataDir.h"
+#include "economy/Resource.h"
 #include "core/World.h"
 #include "render/Perf.h"
 #include "render/Textures.h"
@@ -54,6 +55,8 @@ Editor::Editor()
     Ui::LoadAssets(dataDir_);                         // the theme and the fonts it names (#297)
     if (!Factions::Load(dataDir_ + "factions.json"))  // faction properties/relations
         TraceLog(LOG_ERROR, "Factions: %s", Factions::Error().c_str());
+    if (!Goods::Load(dataDir_ + "goods.json"))  // what a belt or a planet can hold
+        TraceLog(LOG_ERROR, "Goods: %s", Goods::Error().c_str());
     if (!Archetypes::Load(dataDir_ + "archetypes.json"))
         TraceLog(LOG_ERROR, "Archetypes: %s", Archetypes::Error().c_str());
     universe_ = WorldLoader::LoadUniverse(dataDir_ + "universe.json");

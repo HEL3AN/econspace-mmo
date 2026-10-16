@@ -137,10 +137,10 @@ bool ParseBlueprint(const json& j, Blueprint& b, std::string& err)
     }
     for (auto it = j["cost"].begin(); it != j["cost"].end(); ++it)
     {
-        // ResourceFromName reads anything it does not know as Iron; here that would be a
-        // misspelt Crystal quietly charged in iron.
-        const ResourceType r = ResourceFromName(it.key());
-        if (ResourceName(r) != it.key())
+        // ResourceFromName reads anything it does not know as the first good; here that would
+        // be a misspelt Crystal quietly charged in iron.
+        ResourceType r;
+        if (!Goods::Find(it.key(), r))
         {
             err = "cost: '" + it.key() + "' is not a resource";
             return false;

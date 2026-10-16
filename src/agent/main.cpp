@@ -201,10 +201,12 @@ const std::vector<Prompt>& Prompts()
         { "trade_run", "Find a price difference between two systems and work it",
           "Look for a profitable trade. Read the galaxy resource to see which systems "
           "exist and how dangerous they are. Dock somewhere, note the market prices, then "
-          "travel_to_system to a neighbour and compare. There is no buy tool yet, so the "
-          "cargo to trade is cargo you mine: mine where a resource is plentiful and sell "
-          "it where it is dear. Prefer avoid_danger on the route when the hold is full — "
-          "cargo lost is worse than time lost." },
+          "travel_to_system to a neighbour and compare. A market that makes a good holds a "
+          "lot of it and asks little; one that uses it up is short and pays well. buy where "
+          "it is cheap, carry it, and sell_cargo where it is dear -- the spread and the fee "
+          "mean a small difference loses money, and your own trades move the price. Prefer "
+          "avoid_danger on the route when the hold is full — cargo lost is worse than time "
+          "lost." },
         { "scout", "Visit each system and report what is there",
           "Scout the galaxy. For every system in the galaxy resource, travel_to_system to "
           "it, observe, and note the stations, asteroid fields and how much traffic and "
@@ -294,7 +296,7 @@ int ResourceArg(const Rpc::Json& args)
     std::string       known;
     for (size_t i = 0; i < types.size(); i++)
     {
-        if (lower(ResourceName(types[i])) == want)
+        if (lower(ResourceName(types[i])) == want || lower(Goods::Id(types[i])) == want)
             return (int)i;
         known += (known.empty() ? "" : ", ") + ResourceName(types[i]);
     }
@@ -687,7 +689,8 @@ std::vector<Tool> BuildTools()
 
     tools.push_back({ "sell_cargo",
                       "Sell cargo at the station you are docked at. Sells everything of "
-                      "that resource unless an amount is given.",
+                      "that good unless an amount is given; every unit lowers the price of "
+                      "the next, and every trade pays the market's fee.",
                       Obj({ { "resource", Str("resource name as observe lists it under "
                                               "CARGO, e.g. 'Iron'") },
                             { "amount", Num("how much (default: all of it)") } },
@@ -705,6 +708,52 @@ std::vector<Tool> BuildTools()
                           g_session.WaitUntil([] { return false; }, 0.5);  // let the ack land
                           return std::string("sell sent; call observe to see the result");
                       } });
+
+    tools.push_back(
+        { "buy",
+          "Buy goods from the market of the station you are docked at. Buys as many as the "
+          "market holds, your hold takes and your money pays for, up to the amount; every "
+          "unit raises the price of the next, and every trade pays the market's fee. observe "
+          "lists the MARKET with what it pays / asks and how many it holds.",
+          Obj({ { "resource", Str("good name as observe lists it under MARKET, e.g. 'Food'") },
+                { "amount", Num("how many (default: as many as you can)") } },
+              { "resource" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              RequireDocked("buying");
+              const int                type = ResourceArg(args);
+              const std::string        name = ResourceName(ResourceType::FromIndex(type));
+              const Proto::Snapshot&   snap = g_session.Snapshot();
+              const Proto::PlayerView& p = snap.player;
+              const int stock = (size_t)type < snap.marketStock.size() ? snap.marketStock[type] : 0;
+              if (stock <= 0)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "this market has no " + name };
+              if (p.cargoUsed >= p.cargoCap)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "the hold is full (" + std::to_string(p.cargoUsed) + " / " +
+                                        std::to_string(p.cargoCap) + "); sell something first" };
+              const int    have = (size_t)type < p.cargoByType.size() ? p.cargoByType[type] : 0;
+              const double moneyBefore = p.money;
+
+              const int      seq = g_session.LastEventSeq();
+              Proto::Command c;
+              c.buyType = type;
+              c.buyAmount = (int)NumberOr(args, "amount", 100000.0);
+              std::string why;
+              if (!Confirm(c, why))
+                  return "buy: " + why;
+              const Proto::PlayerView& after = g_session.Snapshot().player;
+              const int now = (size_t)type < after.cargoByType.size() ? after.cargoByType[type] : 0;
+              if (now <= have)
+                  return Refused("buy", seq,
+                                 "the server sold nothing; call observe to see the market and "
+                                 "your money as they are now");
+              return "buy: bought " + std::to_string(now - have) + " " + name + " for " +
+                     Money(moneyBefore - after.money) + " with the fee -- the hold now " +
+                     std::to_string(after.cargoUsed) + " / " + std::to_string(after.cargoCap) +
+                     ", money " + Money(after.money);
+          } });
 
     tools.push_back(
         { "missions",
@@ -1886,6 +1935,9 @@ int main(int argc, char** argv)
     const std::string dataDir = DataDir::Path();
     if (!Factions::Load(dataDir + "factions.json"))
         Rpc::Log("econagent: " + Factions::Error());
+    // The goods the market lists, in the order the server sends them (#343).
+    if (!Goods::Load(dataDir + "goods.json"))
+        Rpc::Log("econagent: " + Goods::Error());
     // Read locally too: describing an object to a model means saying what it can do, and
     // that lives in the archetype rather than in the snapshot.
     if (!Archetypes::Load(dataDir + "archetypes.json"))

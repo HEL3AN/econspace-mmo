@@ -443,51 +443,100 @@ double Simulation::StepPlayerLoot(ClientSession& s, SystemState& st, int derelic
     return 0.0;
 }
 
+// Whether the session is docked somewhere that trades, and whose it is. Every station has a
+// market today, so this refuses nothing yet -- it starts refusing the moment a player builds
+// a dock that is not also a market (#44), which is the point of the component being real
+// (#34).
+static bool DockedMarket(const ClientSession& s, const SystemState& st, FactionId& owner)
+{
+    owner = Factions::Unaffiliated();
+    for (const auto& e : st.entities)
+        if (e->GetId() == s.dockedStationId)
+        {
+            if (e->GetKind() == EntityKind::Station)
+                owner = static_cast<const Station&>(*e).GetFaction();
+            return e->Has(Component::Market);
+        }
+    return false;
+}
+
 Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, SystemState& st,
                                                         int resourceType, int amount)
 {
     PlayerSellResult r;
-    if (!s.ship)
-        return r;
-    // Selling needs somewhere that trades. Every station has a market today, so this
-    // refuses nothing yet -- it starts refusing the moment a player builds a dock that is
-    // not also a market (#44), which is the point of the component being real (#34).
-    bool trades = false;
-    for (const auto& e : st.entities)
-        if (e->GetId() == s.dockedStationId && e->Has(Component::Market))
-        {
-            trades = true;
-            break;
-        }
-    if (!trades)
+    FactionId        sf;
+    if (!s.ship || resourceType < 0 || resourceType >= Goods::Count() || !DockedMarket(s, st, sf))
         return r;
 
-    ResourceType type = (ResourceType)resourceType;
-    int          have = s.ship->GetCargoAmount(type);
-    int          sold = amount < have ? amount : have;
+    const ResourceType type = ResourceType::FromIndex(resourceType);
+    const int          have = s.ship->GetCargoAmount(type);
+    const int          sold = amount < have ? amount : have;
     if (sold <= 0)
         return r;
-    r.gross = st.market.Sell(type, sold);  // revenue at the current price + price sag
+    // What the units fetch at the bid, each lowering the price of the next (#343) -- the ask
+    // read before the sale moves the stock, for the cap below.
+    const double ask = st.market.Ask(type);
+    r.gross = st.market.Sell(type, sold);
     s.ship->RemoveCargo(type, sold);
     r.sold = sold;
 
-    // Net revenue into this session's account: trading-skill multiplier and the
-    // reputation of the station's faction, found by the id docking recorded.
-    FactionId sf = Factions::Unaffiliated();
-    for (auto& e : st.entities)
-        if (e->GetId() == s.dockedStationId)
-        {
-            if (Station* station =
-                    e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
-                sf = station->GetFaction();
-            break;
-        }
-    const float sellMul = SellPriceMultiplier(Factions::TierOf(s.account.GetReputation(sf)));
-    double      revenue = r.gross * s.account.GetSkills().GetBonus(SkillType::Trading) * sellMul;
+    // The trading skill and the station's owner's opinion raise what it pays -- never above
+    // what it asked a moment ago, so a round trip at one market always loses (#343).
+    const float  sellMul = SellPriceMultiplier(Factions::TierOf(s.account.GetReputation(sf)));
+    const double paid = std::min(
+        r.gross * s.account.GetSkills().GetBonus(SkillType::Trading) * sellMul, ask * sold);
+    // Everybody pays the fee, human or agent (#348).
+    r.fee = paid * Goods::Rules().fee;
+    const double revenue = paid - r.fee;
     s.account.AddMoney(revenue);
     s.account.GetSkills().AddXp(SkillType::Trading, (float)(revenue * 0.05));
     s.account.AddReputation(sf, (float)(revenue * 0.002));
     r.revenue = revenue;
+    return r;
+}
+
+Simulation::PlayerBuyResult Simulation::StepPlayerBuy(ClientSession& s, SystemState& st,
+                                                      int resourceType, int amount)
+{
+    PlayerBuyResult r;
+    FactionId       sf;
+    if (!s.ship || amount <= 0 || resourceType < 0 || resourceType >= Goods::Count())
+        return r;
+    const ResourceType type = ResourceType::FromIndex(resourceType);
+    const std::string  name = ResourceName(type);
+    if (!DockedMarket(s, st, sf))
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Buying " + name + " refused: no market here");
+        return r;
+    }
+    // A station that thinks badly of a pilot charges more; one that likes them does not
+    // charge less -- the spread is the market's living (#343).
+    const double markup =
+        1.0 / std::min(1.0f, SellPriceMultiplier(Factions::TierOf(s.account.GetReputation(sf))));
+    const double fee = Goods::Rules().fee;
+    // As many as the stock, the hold and the money allow: counted down one at a time, since
+    // every unit bought raises the price of the next.
+    const int room = s.ship->GetCargoCapacity() - s.ship->GetCargoUsed();
+    const int stock = (int)st.market.Stock(type);
+    int       n = std::min({ amount, room, stock });
+    while (n > 0 && st.market.QuoteBuy(type, n) * markup * (1.0 + fee) > s.account.GetMoney())
+        n--;
+    if (n <= 0)
+    {
+        const char* why = room <= 0    ? "the hold is full"
+                          : stock <= 0 ? "the market has none"
+                                       : "not enough money for one";
+        s.RecordEvent(Ev::Kind::Notice, "Buying " + name + " refused: " + why);
+        return r;
+    }
+    int          bought = 0;
+    const double price = st.market.Buy(type, n, bought) * markup;
+    r.fee = price * fee;
+    r.cost = price + r.fee;
+    r.bought = bought;
+    s.account.AddMoney(-r.cost);
+    s.ship->AddCargo(type, bought);
+    s.account.GetSkills().AddXp(SkillType::Trading, (float)(price * 0.01));
     return r;
 }
 
@@ -1259,7 +1308,7 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
         json cargo = json::array();
         for (ResourceType r : AllResourceTypes())
             if (int n = s.ship->GetCargoAmount(r))
-                cargo.push_back({ { "resource", ResourceName(r) }, { "amount", n } });
+                cargo.push_back({ { "resource", Goods::Id(r) }, { "amount", n } });
         j["cargo"] = cargo;
     }
 
@@ -1302,7 +1351,7 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
                              { "description", m.description },
                              { "giver", StationRefOf(systems_, m.giverStationId) },
                              { "dest", StationRefOf(systems_, m.destStationId) },
-                             { "resource", ResourceName(m.resource) },
+                             { "resource", Goods::Id(m.resource) },
                              { "target", m.targetCount },
                              { "progress", m.progress },
                              { "rewardMoney", m.rewardMoney },
@@ -1500,9 +1549,12 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
         {
             if (!c.is_object())
                 continue;
-            const int amount = c.value("amount", 0);
-            if (amount > 0)
-                s.ship->AddCargo(ResourceFromName(c.value("resource", std::string())), amount);
+            // A good this server's registry does not have is left behind rather than read as
+            // another one (#343).
+            const int    amount = c.value("amount", 0);
+            ResourceType good;
+            if (amount > 0 && Goods::Find(c.value("resource", std::string()), good))
+                s.ship->AddCargo(good, amount);
         }
     }
 

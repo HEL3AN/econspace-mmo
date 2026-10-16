@@ -34,8 +34,8 @@ double OreValue(const Cost& cost, const std::vector<float>& orePrices)
 {
     double v = 0.0;
     for (const auto& [r, n] : cost)
-        if ((size_t)r < orePrices.size())
-            v += (double)n * (double)orePrices[(size_t)r];
+        if ((size_t)r.Index() < orePrices.size())
+            v += (double)n * (double)orePrices[(size_t)r.Index()];
     return v;
 }
 }  // namespace

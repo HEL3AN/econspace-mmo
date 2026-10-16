@@ -28,9 +28,9 @@ struct Mission
     int giverStationId = 0;  // issuing station (turn in Bounty/Mining here)
     int destStationId = 0;   // destination station (for Delivery)
 
-    ResourceType resource = ResourceType::Iron;  // what to mine (for Mining)
-    int          targetCount = 0;                // how much to mine / kill
-    int          progress = 0;                   // current progress (pirate kill counter)
+    ResourceType resource;         // what to mine (for Mining)
+    int          targetCount = 0;  // how much to mine / kill
+    int          progress = 0;     // current progress (pirate kill counter)
 
     double rewardMoney = 0.0;
     float  rewardRep = 0.0f;

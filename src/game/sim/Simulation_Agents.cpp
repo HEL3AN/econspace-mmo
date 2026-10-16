@@ -934,9 +934,21 @@ void Simulation::ColdTopUp(SystemState& st, const Population& target)
     topUp(a.police, target.police, NpcRole::Police);
     topUp(a.pirates, target.pirates, NpcRole::Pirate);
 
-    // What every tick would have done to the rest of it: prices recover, bodies move on.
-    st.market.Recover(MAINT_STEP);
+    // What every tick would have done to the rest of it: bodies move on. (The market is the
+    // coarse pass's in every system, hot or cold: StepMarket.)
     Orbits::Place(st.entities, time_);
+}
+
+void Simulation::StepMarket(SystemState& st, float seconds)
+{
+    // Nowhere to trade: nothing is kept. A system that gains a market starts at its targets.
+    if (st.profile.markets <= 0)
+        return;
+    // The trade nobody flies goes where traders go: a system the pirates have thinned out
+    // restocks slowly, and runs short (#343). Four traders is an ordinary lane.
+    const double traffic = std::clamp((double)st.agg.traders / 4.0, 0.2, 1.5);
+    st.market.SetMarkets(st.profile.markets);
+    st.market.Step(st.profile.rates, seconds / 3600.0, traffic);
 }
 
 void Simulation::MaintainWorld(float dt, MaintainCost* cost)
@@ -995,6 +1007,7 @@ void Simulation::MaintainWorld(float dt, MaintainCost* cost)
             a.supMiners *= SUPPRESS_DECAY;
             a.supPolice *= SUPPRESS_DECAY;
             a.supPirates *= SUPPRESS_DECAY;
+            StepMarket(kv.second, MAINT_STEP);
             // Nobody here for long enough: the ships are counted and let go.
             if (IsHot(kv.second) && !allHot_ && time_ >= kv.second.warmUntil)
                 Cool(kv.second);

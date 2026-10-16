@@ -31,13 +31,11 @@ static StarType StarTypeFromString(const std::string& s)
     return StarType::Yellow;
 }
 
+// A belt's or a planet's good, by id (#343); anything the registry does not know reads as
+// its first good, as an unknown name always read as Iron.
 static ResourceType ResourceFromString(const std::string& s)
 {
-    if (s == "Ice")
-        return ResourceType::Ice;
-    if (s == "Crystal")
-        return ResourceType::Crystal;
-    return ResourceType::Iron;
+    return ResourceFromName(s);
 }
 
 static Vector2 Vec2FromJson(const json& arr)

@@ -102,19 +102,58 @@ void Simulation::SeedPresence(SystemAggregate& a)
         a.presence[Factions::Pirates()] = Unrest(a);
 }
 
+// What an object does to its system's market (#343): a belt gives its ore, a planet what
+// goods.json says it grows, a market its kind's industry.
+static void AddToMarket(MarketRates& r, const Entity& e)
+{
+    r.source.resize((size_t)Goods::Count(), 0.0);
+    r.use.resize((size_t)Goods::Count(), 0.0);
+    const std::string kind = e.GetArchetype() != nullptr ? e.GetArchetype()->id : std::string();
+    auto add = [](std::vector<double>& to, const std::vector<std::pair<ResourceType, double>>& v)
+    {
+        for (const auto& a : v)
+            if ((size_t)a.first.Index() < to.size())
+                to[(size_t)a.first.Index()] += a.second;
+    };
+    if (e.GetKind() == EntityKind::Field)
+    {
+        const ResourceType ore = static_cast<const AsteroidField&>(e).GetResource();
+        if ((size_t)ore.Index() < r.source.size())
+            r.source[(size_t)ore.Index()] += Goods::Rules().beltYield;
+    }
+    else if (e.GetKind() == EntityKind::Planet)
+    {
+        if (const auto* grows = Goods::PlanetYield(kind))
+            add(r.source, *grows);
+    }
+    else if (const Industry* ind = Goods::IndustryOf(kind))
+    {
+        add(r.use, ind->uses);
+        r.recipes.insert(r.recipes.end(), ind->recipes.begin(), ind->recipes.end());
+    }
+}
+
 SystemProfile Simulation::ProfileOf(const SystemState& st)
 {
     SystemProfile p;
     for (const auto& e : st.entities)
         switch (e->GetKind())
         {
-            case EntityKind::Field: p.belts++; break;
+            case EntityKind::Field:
+                p.belts++;
+                AddToMarket(p.rates, *e);
+                break;
             case EntityKind::Derelict: p.wrecks++; break;
-            case EntityKind::Planet: p.planets++; break;
+            case EntityKind::Planet:
+                p.planets++;
+                AddToMarket(p.rates, *e);
+                break;
             case EntityKind::Gate: p.gates++; break;
             case EntityKind::Station:
                 p.stations++;
                 p.markets += e->Has(Component::Market) ? 1 : 0;
+                if (e->Has(Component::Market))
+                    AddToMarket(p.rates, *e);
                 if (e->Has(Component::Defensive))
                     p.defenders.push_back(static_cast<const Station*>(e.get())->GetFaction());
                 break;
@@ -128,6 +167,8 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
                     p.anchorIds.push_back(t.GetId());
                 }
                 p.markets += !t.IsBuilding() && e->Has(Component::Market) ? 1 : 0;
+                if (!t.IsBuilding() && e->Has(Component::Market))
+                    AddToMarket(p.rates, *e);
                 // An outpost being upgraded (#342 S6) -- into a market, or into a station -- is
                 // still the outpost it was until it is finished: the claim, the upkeep, a siege.
                 const Blueprint* bp = t.GetBlueprint();

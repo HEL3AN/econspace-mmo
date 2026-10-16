@@ -1,50 +1,74 @@
 #pragma once
 
 #include "economy/Resource.h"
-#include <map>
+#include <vector>
 
-// Market: the price of each resource. prices_ fluctuate, basePrices_ is what
-// prices drift toward over time.
+// What a system does to its market every hour (#343): what its belts and planets give, the
+// recipes its stations run (each already times how many stations run it) and what they use
+// up. Counted from the static layer with the rest of SystemProfile, so a cold system and a
+// hot one keep the same books.
+struct MarketRates
+{
+    std::vector<double> source;  // by good index, units an hour
+    std::vector<double> use;     // by good index, units an hour
+    std::vector<Recipe> recipes;
+    int markets = 0;  // what trades here: the target stock is this many times a good's
+};
+
+// A system's market (#343): a stock of every good, and prices that follow it. The price of a
+// good is its base -- the centre's, times how far this market is from one (#342 S5) -- times
+// how short of its target stock the market is, so every unit bought or sold moves it. The
+// stock moves by the coarse pass's arithmetic (`Step`) and by trade, never per frame.
 class Market
 {
 public:
-    Market();
+    Market();  // every good at its target stock and its centre's price
 
-    double GetPrice(ResourceType type) const;
+    // What the market pays a seller for one unit now, and what it asks a buyer.
+    double GetPrice(ResourceType type) const { return Bid(type); }
+    double Bid(ResourceType type) const;
+    double Ask(ResourceType type) const;
+    double Mid(ResourceType type) const;
+    // The price at the target stock: what prices return to.
     double GetBasePrice(ResourceType type) const;
-
-    // Sells amount units, returns the revenue. Side effect: the price drops.
-    double Sell(ResourceType type, int amount);
-
-    void SetPrice(ResourceType type, double price) { prices_[type] = price; }
-    // Moves what the price drifts toward, and the price with it in proportion: a market whose
-    // place in the galaxy changed (#342 S5) keeps how far a sale has pushed it off its base.
+    // Moves the base -- a market whose place in the galaxy changed (#342 S5). How far trade
+    // has pushed the price off it stays, since that is the stock's.
     void SetBasePrice(ResourceType type, double base);
-    // What a market at the heart of a civilisation pays (the base everywhere before #342 S5).
+    // The centre's price, from the goods registry.
     static double DefaultBasePrice(ResourceType type);
 
-    // Prices gradually return to their base values.
-    void Update(float dt);
-    // The same recovery over `seconds` at once, as the ticks of a cold system would have
-    // made it (#295): one call where there would have been sixty a second.
-    void Recover(float seconds);
+    double Stock(ResourceType type) const;
+    double Target(ResourceType type) const;
+    void   SetStock(ResourceType type, double stock);
+    // How many markets this one stands for: its target stock is that many times a good's. A
+    // market nothing has happened to yet starts at the new targets.
+    void SetMarkets(int markets);
+
+    // Sells `amount` units into the market and returns what they fetch at the bid, unit by
+    // unit, each lowering the price of the next. Buy takes them out at the ask, as many as
+    // are in stock, and returns what they cost; `bought` says how many that was.
+    double Sell(ResourceType type, int amount);
+    double Buy(ResourceType type, int amount, int& bought);
+    // The same sums without trading.
+    double QuoteSell(ResourceType type, int amount) const;
+    double QuoteBuy(ResourceType type, int amount) const;
+
+    // `hours` of what the system does: sources add, recipes turn inputs into outputs as far
+    // as the inputs are in stock, uses take away, and the trade nobody flies pulls every
+    // stock toward its target at the registry's restock rate times `traffic`.
+    void Step(const MarketRates& rates, double hours, double traffic);
 
 private:
-    std::map<ResourceType, double> prices_;
-    std::map<ResourceType, double> basePrices_;
+    void   Fit();  // sized to the registry
+    double PriceAt(ResourceType type, double stock) const;
+
+    std::vector<double> stock_;
+    std::vector<double> base_;
+    int                 markets_ = 1;
+    bool                fresh_ = true;  // never stepped or loaded
 };
 
-// Frontier prices (#342 S5). A station's base price is the centre's times a factor that grows
-// with how far it is, in jumps, along its supply route to the nearest civilisation centre.
-// What is dug up where it is sold -- ore, finds -- is cheaper the further out it is, since
-// there it is common and the buyers few; what has to be carried there from a centre -- food,
-// medicine -- is dearer. Every resource the game has today is ore; the other side of the rule
-// is here for the goods that are carried, so a delivery has a reason without a script.
-enum class Supply
-{
-    Local,     // mined or found where it is sold
-    Imported,  // carried out from a centre
-};
+// What a good's base price follows (#342 S5): mined where it is sold, or carried there.
 Supply SupplyOf(ResourceType type);
 // The factor at `jumps` from the nearest centre: 1 at a centre (and for a negative count -- a
 // system no centre reaches, or a world without centres), falling to 0.55 for what is local
