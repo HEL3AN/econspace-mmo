@@ -12,6 +12,7 @@
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/DataDir.h"
+#include "core/Version.h"
 #include "core/World.h"
 #include "core/WorldLoader.h"
 #include "core/Actions.h"
@@ -63,8 +64,8 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     // always live here — there is no offline mode to degrade into.
     clientLink_ = netConn_.get();
 
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);  // window can be resized by its edge
-    InitWindow(screenWidth_, screenHeight_, "EconSpace");
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);                   // window can be resized by its edge
+    InitWindow(screenWidth_, screenHeight_, Version::NAME);  // "EconSpace 0.1 Anchor" (#400)
     SetWindowMinSize(960, 600);
     SetTargetFPS(60);
     // raylib quits on Esc unless told otherwise. Here Esc closes what is on top

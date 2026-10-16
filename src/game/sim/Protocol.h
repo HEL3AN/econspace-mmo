@@ -33,7 +33,9 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    44;  // 44: a siege's job for the besieging side (#407) -- a mission of a new type, and
+    45;  // 45: a hello carries the client's build and a hash of each shared data file, and the
+         // server refuses a mismatch (#400);
+         // 44: a siege's job for the besieging side (#407) -- a mission of a new type, and
          // a siege's job of either side names the faction it is against; 43: corporations (#347) --
          // a CorpAct from a client, a CorpView to each member and invitee, a corp channel in
          // ChatSay and ChatLine, each local pilot's ticker in ChatMembers, and a director reads a
@@ -86,6 +88,10 @@ inline constexpr int PROTO_VERSION =
 struct Hello
 {
     std::string account;  // [A-Za-z0-9_-], 1..32 characters; the server rejects the rest
+    // Which build this is and what it read (#400): Version::NUMBER, and Compat::DataHashes of
+    // the client's data/. The server lets in only its own build reading the same data.
+    std::string                        build;
+    std::map<std::string, std::string> data;
 };
 
 // The server ending a session on purpose, and saying why (#105).

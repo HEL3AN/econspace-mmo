@@ -31,6 +31,10 @@ Connect
 -------
   econspace connect <server address> 50800 <name> <secret>
 
+A client plays only on a server of the same release with the same data/: anything else is
+refused with a message that says which release to get. `econspace --version` (and
+`econserver --version`) say which one this is.
+
 The first login with a name creates that account and sets its secret. There is no
 encryption on the connection: use a secret you use nowhere else.
 

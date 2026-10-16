@@ -122,7 +122,8 @@ cmake --build build-release
 ```
 
 ```sh
-cmake --build build-release --target dist   # build-release/econspace-windows.zip (econspace-linux.tar.gz): client, server, agent, data/ in one folder
+cmake --build build-release --target dist   # build-release/econspace-0.1.0-anchor-windows.zip (...-linux.tar.gz): client, server, agent, data/ in one folder
+./econserver.exe --version                   # "EconSpace 0.1 Anchor (0.1.0)": project(VERSION) + ECON_CODENAMES in CMakeLists.txt (#400)
 ./econserver.exe host 50800 --data D:/econ/data   # any binary: data/ from elsewhere (else beside the exe, or one level up)
 ```
 
@@ -227,6 +228,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   trace on it corrupts the stream and the client reports a parse error rather than the
   line that caused it. All diagnostics go to stderr, and raylib's logger is redirected
   there explicitly — this bit on the first end-to-end run.
+- **A release is a tag, and the version lives in `CMakeLists.txt`** (#400). `project(EconSpace
+  VERSION x.y.z)` plus the `ECON_CODENAMES` table make `core/Version.h`; tag `v<that number>`
+  and `release.yml` builds, tests and opens a *draft* release (a tag that disagrees stops it).
+  A client is let in only by a server of the same number reading the same shared data files
+  (`Compat::SharedFiles`); adding a file both sides must agree on means adding it there.
 - **Bump `PROTO_VERSION` when a message changes meaning.** Decoding is deliberately
   permissive per field, so without a version bump an older peer silently reads defaults
   instead of failing.

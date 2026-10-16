@@ -8,7 +8,33 @@ cmake_minimum_required(VERSION 3.16)
 
 # Project name and language. After this line CMake knows we write in C++.
 # C as well as C++: Clay, the layout engine inside windows, is C99 and is compiled as C (#297).
-project(EconSpace LANGUAGES C CXX)
+project(EconSpace VERSION 0.1.0 LANGUAGES C CXX)
+
+# --- The version: one source of truth (#400) ---------------------------------------------
+# The number above is the release's semver: tags are v<it>, and a client and a server refuse
+# each other unless it matches. The name players see adds a codename, one per minor release
+# from an alphabetical list of nautical words tied to the world (#186): 0.1 is Anchor, 0.2
+# Beacon, and so on; a patch release keeps its minor's name. Everything else -- the binaries,
+# the title bar, --version, the package names -- reads these, through core/Version.h.
+set(ECON_CODENAMES Anchor Beacon Current Drift Ebb Fathom Gale Harbor)
+list(LENGTH ECON_CODENAMES _econ_names)
+if(NOT PROJECT_VERSION_MAJOR EQUAL 0 OR PROJECT_VERSION_MINOR LESS 1
+   OR PROJECT_VERSION_MINOR GREATER _econ_names)
+    message(FATAL_ERROR "No codename for ${PROJECT_VERSION}: extend ECON_CODENAMES")
+endif()
+math(EXPR _econ_name_index "${PROJECT_VERSION_MINOR} - 1")
+list(GET ECON_CODENAMES ${_econ_name_index} ECON_CODENAME)
+string(TOLOWER "${ECON_CODENAME}" ECON_CODENAME_LOWER)
+# "0.1" for a minor release, "0.1.2" for a patch: the release is called EconSpace 0.1 Anchor.
+if(PROJECT_VERSION_PATCH EQUAL 0)
+    set(ECON_VERSION_SHORT "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
+else()
+    set(ECON_VERSION_SHORT "${PROJECT_VERSION}")
+endif()
+# Where a player is sent for the build a server runs.
+set(ECON_RELEASES_URL "https://github.com/HEL3AN/econspace-mmo/releases" CACHE STRING
+    "Where releases are downloaded, named in a version refusal")
+configure_file(src/engine/core/Version.h.in ${CMAKE_BINARY_DIR}/generated/core/Version.h @ONLY)
 
 # Use the C++17 standard and require exactly it (no silent fallback).
 set(CMAKE_CXX_STANDARD 17)
@@ -188,6 +214,8 @@ add_library(engine STATIC
 # PUBLIC: the src/engine root is visible to everyone who links engine. That's why
 # includes like "entities/Entity.h" from game and editor resolve automatically.
 target_include_directories(engine PUBLIC ${CMAKE_SOURCE_DIR}/src/engine)
+# core/Version.h, written by configure_file above from the project's version.
+target_include_directories(engine PUBLIC ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(engine PUBLIC raylib nlohmann_json::nlohmann_json)
 # SYSTEM: Clay's warnings are not ours. PRIVATE: only ClayBridge.c includes it.
 target_include_directories(engine SYSTEM PRIVATE ${clay_SOURCE_DIR})
@@ -213,6 +241,7 @@ add_library(netproto STATIC
     src/game/sim/Events.cpp
     src/game/sim/Chat.cpp        # what a chat line may be and who hears it (#347)
     src/game/sim/Auth.cpp       # proving an account is itself (#106) -- both sides need it
+    src/game/sim/Compat.cpp     # whether a client's build and data match the server's (#400)
     src/game/net/Tcp.cpp
     src/game/net/OsRandom.cpp    # nonces and salts from the system's generator (#351)
 )
@@ -398,7 +427,7 @@ add_dependencies(copy_data econspace econserver econagent worldeditor)
 # is the same folder on a headless machine). Only the `dist` component is installed, so the
 # fetched libraries' own install rules stay out of it:
 #   cmake --install build-release --component dist --prefix <dir>
-#   cmake --build build-release --target dist   -> build-release/econspace-<os>.zip|.tar.gz
+#   cmake --build build-release --target dist   -> build-release/econspace-<version>-<codename>-<os>.zip|.tar.gz
 install(TARGETS econspace econserver econagent RUNTIME DESTINATION . COMPONENT dist)
 install(DIRECTORY data/ DESTINATION data COMPONENT dist)
 install(FILES tools/dist/README.txt DESTINATION . COMPONENT dist)
@@ -417,8 +446,10 @@ else()
     set(ECON_DIST_TAR czf)
     set(ECON_DIST_FORMAT)
 endif()
-set(ECON_DIST_NAME "econspace-${CMAKE_SYSTEM_NAME}" CACHE STRING "Name of the portable package")
-string(TOLOWER "${ECON_DIST_NAME}" ECON_DIST_NAME)
+# econspace-0.1.0-anchor-windows: the version and its codename in the name, so two releases
+# downloaded into one folder are told apart (#400). Not a cache variable: a cached name would
+# keep the version of the first configure after the project's had moved on.
+string(TOLOWER "econspace-${PROJECT_VERSION}-${ECON_CODENAME}-${CMAKE_SYSTEM_NAME}" ECON_DIST_NAME)
 set(ECON_DIST_FILE ${ECON_DIST_NAME}.${ECON_DIST_ARCHIVE})
 add_custom_target(dist
     COMMAND ${CMAKE_COMMAND} -E rm -rf dist/${ECON_DIST_NAME} ${ECON_DIST_FILE}
@@ -439,6 +470,7 @@ add_executable(tests
     tests/protocol_tests.cpp
     tests/snapshot_delta_tests.cpp  # deltas against an acknowledged state, the area of interest (#349)
     tests/auth_tests.cpp
+    tests/compat_tests.cpp         # the same build and the same data, or a Bye that says what differs (#400)
     tests/net_tests.cpp
     tests/raw_socket.cpp           # a peer that ignores the framing rules (#14)
     tests/observation_tests.cpp

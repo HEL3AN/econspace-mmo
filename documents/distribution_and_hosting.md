@@ -228,16 +228,16 @@ that gets backed up with the world.
 
 **Version matching.**
 - `PROTO_VERSION` stays the wire check.
-- **New in P0:** `Hello` also carries the **build version** (`git describe`) and a **content hash of `data/`**, computed the same way on both sides (sorted paths, FNV-1a or SHA-256 over bytes).
-- A mismatch is refused with a `Bye` that names both versions and, once releases exist, where to download the matching build. Factorio does exactly this with mod checksums.
+- **Built (#400):** `Hello` also carries the **build version** (`Version::NUMBER`) and a **SHA-256 of each shared data file** (`Compat::SharedFiles`: archetypes, blueprints, factions, goods, ships; line endings ignored). Art only the client reads (materials, modules, look, shaders, themes) and files only the server reads (world_rules, pins) are left out: a difference there decides nothing on the client.
+- A mismatch is refused with a `Bye` that names the server's build and the client's, or exactly which files differ, and where to download the matching build. Factorio does exactly this with mod checksums.
 - Without this, a friend with last week's `ships.json` connects, predicts with the wrong stats and sees rubber-banding instead of an error.
 
 ### Releases
 
-- A **tag** `v0.x.y` makes CI build Release (`-O3`) on Windows, Linux and macOS.
-- CI runs the tests and smoke tests, then attaches the client and server archives to a **GitHub Release** with SHA-256 sums.
-- The version comes from the tag and is compiled into every binary (`--version`).
-- `ccache` and the existing jobs are reused. The release job only adds packaging.
+- **Naming (#186):** a semver for compatibility and tags (`v0.1.0`) and a codename per minor release from an alphabetical list (Anchor, Beacon, Current, Drift, Ebb, Fathom, Gale, Harbor...). The first release is **EconSpace 0.1 Anchor**; patch releases keep the codename.
+- **One source of truth:** `project(EconSpace VERSION ...)` and `ECON_CODENAMES` in `CMakeLists.txt`, generated into `core/Version.h`. Every binary answers `--version`; the client shows it in its title bar and settings window, the server in its first log line.
+- **Built (#400):** a tag `v*` runs `.github/workflows/release.yml`: Release builds on `windows-latest` (MSYS2) and `ubuntu-22.04` (the oldest glibc we support), the tests and smoke tests, a check that the tag matches the build's version, the `dist` packages `econspace-<version>-<codename>-windows.zip` / `-linux.tar.gz`, and a **draft** GitHub Release with generated notes. Publishing stays a person's decision. Run by hand, it builds and keeps the packages as artifacts.
+- Later: macOS, SHA-256 sums beside the archives, itch.io with `butler`.
 
 ## 4. Client distribution: recommendation
 

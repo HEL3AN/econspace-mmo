@@ -11,6 +11,7 @@
 #include "sim/AccessList.h"
 #include "sim/Auth.h"
 #include "sim/Chat.h"
+#include "sim/Compat.h"
 #include "sim/HostRules.h"
 #include "sim/MacroBench.h"
 #include "sim/Protocol.h"
@@ -31,6 +32,7 @@
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/DataDir.h"
+#include "core/Version.h"
 #include "core/Faction.h"
 #include "economy/Resource.h"
 #include "entities/AsteroidField.h"
@@ -1914,6 +1916,7 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
         Log::Errorf("WARNING: %slogs/ could not be made; the log goes to stderr only.\n",
                     worldDir.c_str());
     SetTraceLogCallback(RaylibToLog);
+    Log::Printf("%s (%s)\n", Version::NAME, Version::NUMBER);
     HostRun run;
     run.cfg = cfg;
     run.worldDir = worldDir;
@@ -1932,7 +1935,10 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                         beside.c_str(), worldDir.c_str());
     }
     std::string dataDir = DataDir::Path();
-    Simulation  sim;
+    // What a client's hello is held against (#400), read once: the data cannot change under
+    // a running server.
+    const std::map<std::string, std::string> sharedData = Compat::DataHashes(dataDir);
+    Simulation                               sim;
     // The seed of a NEW galaxy (#140); a saved world keeps its own. Choosing it is the one
     // place a random device belongs -- generating from it is where it must not be.
     const uint64_t newSeed =
@@ -2172,6 +2178,18 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                         hc.conn.reset();
                         break;
                     }
+                    // Another build, or other data (#400): told which, and which build to get.
+                    if (const std::string why =
+                            Compat::Refusal(Version::NUMBER, sharedData, h.build, h.data);
+                        !why.empty())
+                    {
+                        Proto::Bye bye;
+                        bye.reason = why;
+                        hc.conn->Send(Proto::EncodeBye(bye));
+                        Log::Printf("%s: refused -- %s.\n", h.account.c_str(), why.c_str());
+                        hc.conn.reset();
+                        break;
+                    }
                     // Not on the list, or banned (#400): told why, before a challenge -- so a
                     // name that may not come in cannot create its account either.
                     if (const std::string why = access.Refusal(h.account); !why.empty())
@@ -2306,7 +2324,8 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                         hc.conn.reset();
                         break;
                     }
-                    const Proto::Hello h{ hc.pendingAccount };
+                    Proto::Hello h;
+                    h.account = hc.pendingAccount;
                     gate.LoginSucceeded(hc.conn->PeerAddress(), h.account);
                     if (hc.isNewAccount)
                         gate.Registered(hc.conn->PeerAddress(), uptime);
@@ -3704,6 +3723,12 @@ int main(int argc, char** argv)
     // buffer entirely costs nothing.
     setvbuf(stdout, nullptr, _IONBF, 0);
 
+    // Before data/ is looked for: a version is asked of a binary that may be anywhere.
+    if (argc > 1 && (std::string(argv[1]) == "--version" || std::string(argv[1]) == "version"))
+    {
+        printf("%s (%s)\n", Version::NAME, Version::NUMBER);
+        return 0;
+    }
     // Every mode reads data/: found once, before any of them, so a copied build runs (#399).
     if (DataDir::Resolve(argc, argv, "econserver").empty())
         return 1;

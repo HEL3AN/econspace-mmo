@@ -10,6 +10,7 @@
 // client is a renderer plus an input source. The connection is established here,
 // before the window opens, so Game cannot be constructed without one.
 #include "core/DataDir.h"
+#include "core/Version.h"
 #include "core/Game.h"
 #include "net/Tcp.h"
 #include "sim/Auth.h"
@@ -70,6 +71,12 @@ static int Usage(const char* exe)
 
 int main(int argc, char** argv)
 {
+    // Before data/ is looked for: a version is asked of a binary that may be anywhere (#400).
+    if (argc >= 2 && std::strcmp(argv[1], "--version") == 0)
+    {
+        std::printf("%s (%s)\n", Version::NAME, Version::NUMBER);
+        return 0;
+    }
     // data/ is found at runtime -- beside the exe in a copied build (#399). Before the
     // arguments are read: --data is taken out of them.
     if (DataDir::Resolve(argc, argv, "econspace").empty())

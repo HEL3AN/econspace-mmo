@@ -20,6 +20,7 @@
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/DataDir.h"
+#include "core/Version.h"
 #include "core/Faction.h"
 #include "core/Fitting.h"
 #include "core/WorldLoader.h"
@@ -2214,6 +2215,13 @@ int main(int argc, char** argv)
                                      { "prompts", PromptsList(true) } };
         std::fputs(all.dump(2).c_str(), stdout);
         std::fputs("\n", stdout);
+        return 0;
+    }
+
+    // Not MCP mode, so stdout is free (#400).
+    if (argc >= 2 && std::strcmp(argv[1], "--version") == 0)
+    {
+        std::printf("%s (%s)\n", Version::NAME, Version::NUMBER);
         return 0;
     }
 

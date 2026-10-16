@@ -1,0 +1,205 @@
+name: release
+
+# A release is a tag (#400): pushing v0.1.0 builds Release on Windows and on Linux, runs the
+# tests against exactly those binaries, packs the portable folders and opens a DRAFT GitHub
+# Release with them and generated notes. Nothing is published until a person reads the draft
+# and presses Publish.
+#
+# The version is not written here. It is CMakeLists.txt's project(VERSION) and its codename
+# table; the tag must name the same number, or the run stops before anything is packed.
+#
+# Run by hand (workflow_dispatch) it builds and tests the packages and keeps them as the
+# run's artifacts. It opens a draft only when asked, and never pushes a tag: a draft names a
+# tag that exists only when somebody publishes it.
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: 'Also open a draft release (never published by this workflow)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows package (MinGW / MSYS2)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    outputs:
+      name: ${{ steps.version.outputs.name }}
+      number: ${{ steps.version.outputs.number }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up MSYS2 / MinGW-w64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: >-
+            git
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-make
+
+      # No cache on purpose: a published build is compiled from nothing but the tagged tree.
+      - name: Configure
+        run: cmake -S . -B build-release -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DWARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build-release -j "$(nproc)"
+
+      - name: Test
+        run: ctest --test-dir build-release --output-on-failure
+
+      - name: Server smoke tests
+        timeout-minutes: 10
+        run: |
+          ./build-release/bin/server/econserver.exe hosttest
+          ./build-release/bin/server/econserver.exe accttest
+          ./build-release/bin/server/econserver.exe worldtest
+          ./build-release/bin/server/econserver.exe ordertest
+
+      # Every binary says the same version, and on a tag it is the tag's.
+      - name: Version
+        id: version
+        run: |
+          set -e
+          line=$(./build-release/bin/server/econserver.exe --version)
+          echo "$line"
+          number=$(echo "$line" | sed -n 's/.*(\(.*\))$/\1/p')
+          ./build-release/bin/game/econspace.exe --version | grep -qF "($number)"
+          ./build-release/bin/agent/econagent.exe --version | grep -qF "($number)"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$number" ]; then
+            echo "The tag $GITHUB_REF_NAME does not match the build's version $number (CMakeLists.txt project VERSION)."
+            exit 1
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+          echo "name=${line% (*}" >> "$GITHUB_OUTPUT"
+
+      - name: Pack
+        run: |
+          cmake --build build-release --target dist
+          ls -l build-release/econspace-*.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-windows
+          path: build-release/econspace-*-windows.zip
+          if-no-files-found: error
+
+  linux:
+    name: Linux package (GCC, Ubuntu 22.04)
+    # The oldest supported base, not the newest: glibc runs forward and not backward, so a
+    # server built here runs on 22.04 and later, and one built on 24.04 would not run on 22.04.
+    runs-on: ubuntu-22.04
+    outputs:
+      number: ${{ steps.version.outputs.number }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install raylib's build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev libgl1-mesa-dev libglu1-mesa-dev libwayland-dev \
+            libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxkbcommon-dev \
+            libxrandr-dev
+
+      - name: Configure
+        run: cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DWARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build-release -j "$(nproc)"
+
+      - name: Test
+        run: ctest --test-dir build-release --output-on-failure
+
+      - name: Server smoke tests
+        timeout-minutes: 10
+        run: |
+          ./build-release/bin/server/econserver hosttest
+          ./build-release/bin/server/econserver accttest
+          ./build-release/bin/server/econserver worldtest
+          ./build-release/bin/server/econserver ordertest
+
+      - name: Version
+        id: version
+        run: |
+          set -e
+          line=$(./build-release/bin/server/econserver --version)
+          echo "$line"
+          number=$(echo "$line" | sed -n 's/.*(\(.*\))$/\1/p')
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$number" ]; then
+            echo "The tag $GITHUB_REF_NAME does not match the build's version $number."
+            exit 1
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      # Packed, unpacked away from the source tree, and asked to run: the package finds its
+      # own data/ and a client of it is let in by a server of it.
+      - name: Pack and run from elsewhere
+        timeout-minutes: 10
+        run: |
+          set -e
+          cmake --build build-release --target dist
+          pkg=$(ls build-release/econspace-*-linux.tar.gz)
+          mkdir -p "$RUNNER_TEMP/pkg"
+          tar xzf "$pkg" -C "$RUNNER_TEMP/pkg"
+          dir=$(ls -d "$RUNNER_TEMP"/pkg/econspace-*-linux)
+          ldd "$dir/econserver"
+          "$dir/econserver" --version
+          (cd "$dir" && ./econserver host 0 > "$RUNNER_TEMP/server.log" 2>&1) &
+          trap 'pkill -f "$dir/econserver" || true; kill %1 2>/dev/null || true; cat "$RUNNER_TEMP/server.log"' EXIT
+          for _ in $(seq 1 150); do grep -q "EconSpace server on port" "$RUNNER_TEMP/server.log" && break; sleep 0.2; done
+          port=$(sed -n 's/.*EconSpace server on port \([0-9]*\).*/\1/p' "$RUNNER_TEMP/server.log")
+          timeout -k 10 300 "$dir/econagent" selftest 127.0.0.1 "$port" packaged packaged-secret
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-linux
+          path: build-release/econspace-*-linux.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Draft release
+    needs: [ windows, linux ]
+    if: github.ref_type == 'tag' || inputs.draft
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+
+      - name: Open a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ needs.windows.outputs.name }}
+          NUMBER: ${{ needs.windows.outputs.number }}
+          LINUX_NUMBER: ${{ needs.linux.outputs.number }}
+        run: |
+          set -e
+          if [ "$NUMBER" != "$LINUX_NUMBER" ]; then
+            echo "Windows built $NUMBER and Linux $LINUX_NUMBER"; exit 1
+          fi
+          ls -l packages
+          # Always --draft: publishing is a person's decision. A run by hand names the tag the
+          # version would have; a draft does not create it.
+          tag="v$NUMBER"
+          [ "$GITHUB_REF_TYPE" = "tag" ] && tag="$GITHUB_REF_NAME"
+          gh release create "$tag" packages/* \
+            --draft \
+            --target "$GITHUB_SHA" \
+            --title "$NAME" \
+            --generate-notes

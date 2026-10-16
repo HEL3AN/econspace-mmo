@@ -6,6 +6,7 @@
 #include "core/Game.h"
 
 #include "core/Faction.h"
+#include "core/Version.h"
 #include "entities/Station.h"
 #include "sim/MissionList.h"
 #include "sim/Overview.h"
@@ -608,6 +609,9 @@ void Game::DrawSettingsContent(const Ui::Frame& f)
         [&]
         {
             L.Tabs("tabs", { "Display", "Interface", "Keys" }, settingsTab_);
+            // Which build this is, on every tab: the first thing to ask about a bug report (#400).
+            L.Text(std::string(Version::NAME) + "  (" + Version::NUMBER + ")",
+                   TextStyle::Small().Tint(t.colors.dim));
             if (settingsTab_ == 2)
             {
                 Ui::TableSpec table;

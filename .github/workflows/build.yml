@@ -248,9 +248,11 @@ jobs:
           set -e
           cmake --build build --target dist
           mkdir -p "$RUNNER_TEMP/pkg"
-          tar xzf build/econspace-linux.tar.gz -C "$RUNNER_TEMP/pkg"
-          ldd "$RUNNER_TEMP/pkg/econspace-linux/econserver"
-          "$RUNNER_TEMP/pkg/econspace-linux/econserver" regiondump 8 2> dist.log > /dev/null
+          tar xzf build/econspace-*-linux.tar.gz -C "$RUNNER_TEMP/pkg"
+          dir=$(ls -d "$RUNNER_TEMP"/pkg/econspace-*-linux)
+          ldd "$dir/econserver"
+          "$dir/econserver" --version
+          "$dir/econserver" regiondump 8 2> dist.log > /dev/null
           cat dist.log
           grep -q "beside the executable" dist.log
 
@@ -332,6 +334,16 @@ jobs:
             exit 1
           fi
           kill $dave 2>/dev/null || true
+
+          # Other data is refused with a Bye that names the file (#400): a client whose
+          # goods.json is not the server's would price and list a market that is not there.
+          cp -r data "$RUNNER_TEMP/otherdata"
+          echo " " >> "$RUNNER_TEMP/otherdata/goods.json"
+          if agent selftest 127.0.0.1 $port erin erin-secret --data "$RUNNER_TEMP/otherdata"; then
+            echo "a client with other data was let in"
+            exit 1
+          fi
+          grep -q "erin: refused -- Your game data differs from this server's in goods.json" mc.log
 
       # The example in examples/agents is documentation that executes. It runs against a
       # real server here so that it cannot rot: if a tool changes and the example stops
