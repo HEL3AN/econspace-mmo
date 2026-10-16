@@ -1214,6 +1214,7 @@ bool Simulation::MissionCompletableNow(const ClientSession& s, const Mission& m)
             return m.giverStationId == s.dockedStationId &&
                    s.ship->GetCargoAmount(m.resource) >= m.targetCount;
         case MissionType::Delivery: return m.destStationId == s.dockedStationId;
+        case MissionType::Contract: return ContractReadyNow(s, m);
         case MissionType::Supply:
         case MissionType::Escort:
         case MissionType::Siege: break;  // a plan's, above
@@ -1237,6 +1238,9 @@ bool Simulation::AcceptMission(ClientSession& s, int offerIndex)
                                             " missions, the most one pilot may; hand one in first");
         return false;
     }
+    // A market's contract is one pilot's (#343): off every board once taken.
+    if (offers[offerIndex].type == MissionType::Contract && !TakeContract(s, offers[offerIndex]))
+        return false;
     if (!s.missions.Accept(offerIndex))
         return false;
     s.RecordEvent(Ev::Kind::Notice, "Mission taken -- " + what);
@@ -1253,6 +1257,8 @@ bool Simulation::CompleteMission(ClientSession& s, int activeIndex)
     }
     if (IsPlanJob(active[activeIndex].type))
         return CompleteJob(s, activeIndex);
+    if (active[activeIndex].type == MissionType::Contract)
+        return CompleteContract(s, activeIndex);
     const Mission&    m = active[activeIndex];
     const std::string what = m.title + ": " + m.description;
     if (!MissionCompletableNow(s, m))
@@ -1676,6 +1682,15 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
             mj["stage"] = m.stage;
             mj["rode"] = m.rode;
         }
+        // A market's contract (#343): which -- the world keeps it -- where, and by when.
+        if (m.type == MissionType::Contract)
+        {
+            json& mj = missions.back();
+            mj["contract"] = m.contractId;
+            mj["system"] = m.systemId;
+            mj["where"] = m.systemName;
+            mj["deadline"] = m.deadline;
+        }
     }
     j["missions"] = missions;
 
@@ -1948,6 +1963,24 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
                 {
                     s.RecordEvent(Ev::Kind::Notice,
                                   "Job dropped -- " + m.title + ": what it was for is over");
+                    continue;
+                }
+            }
+            else if (m.type == MissionType::Contract)
+            {
+                // Its station and what is owed are the world's contract's; one the world no
+                // longer has -- over while the pilot was away -- is gone.
+                m.contractId = mj.value("contract", 0);
+                m.systemId = mj.value("system", std::string());
+                m.systemName = mj.value("where", m.systemId);
+                m.deadline = mj.value("deadline", 0.0);
+                m.giverStationId = StationIdOf(systems_, giver);
+                m.destStationId = StationIdOf(systems_, dest);
+                const auto c = contracts_.find(m.contractId);
+                if (c == contracts_.end() || !c->second.taken || m.destStationId == 0)
+                {
+                    s.RecordEvent(Ev::Kind::Notice,
+                                  "Contract dropped -- " + m.title + ": it is over");
                     continue;
                 }
             }

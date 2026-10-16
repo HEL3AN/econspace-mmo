@@ -232,6 +232,7 @@ const char* MissionKind(int type)
         case MissionType::Supply: return "supply";
         case MissionType::Escort: return "escort";
         case MissionType::Siege: return "siege";
+        case MissionType::Contract: return "contract";
     }
     return "job";
 }
@@ -243,7 +244,9 @@ int HandInStation(const Proto::MissionView& m)
 {
     if (IsPlanJob((MissionType)m.type))
         return 0;
-    return (MissionType)m.type == MissionType::Delivery ? m.destStationId : m.giverStationId;
+    const MissionType t = (MissionType)m.type;
+    return t == MissionType::Delivery || t == MissionType::Contract ? m.destStationId
+                                                                    : m.giverStationId;
 }
 
 std::string MissionLine(const Obs::View& view, size_t index, const Proto::MissionView& m)
@@ -258,6 +261,17 @@ std::string MissionLine(const Obs::View& view, size_t index, const Proto::Missio
                    "anywhere\n",
                    m.rewardMoney, FactionName(m.faction).c_str(), m.rewardRep, m.systemName.c_str(),
                    m.systemId.c_str(), due.empty() ? "" : ", ", due.c_str());
+        return out;
+    }
+    if ((MissionType)m.type == MissionType::Contract)
+    {
+        // A market's contract (#343): where, by when, and the station it is handed in at.
+        const std::string due = Obs::JobDue(view, m);
+        out += Fmt("       reward %.0f cr, %s standing %+.1f; in %s (system %s)%s%s; hand in "
+                   "docked at %s\n",
+                   m.rewardMoney, FactionName(m.faction).c_str(), m.rewardRep, m.systemName.c_str(),
+                   m.systemId.c_str(), due.empty() ? "" : ", ", due.c_str(),
+                   StationName(view, m.destStationId).c_str());
         return out;
     }
     out += Fmt("       reward %.0f cr, %s standing %+.1f; hand in at %s\n", m.rewardMoney,
@@ -566,6 +580,19 @@ std::string MissionNeeds(const View& view, const Proto::MissionView& m)
         case MissionType::Escort:
             return Fmt("fly with the convoy until it reaches %s (system %s)", m.systemName.c_str(),
                        m.systemId.c_str());
+        case MissionType::Contract:
+        {
+            int held = 0;
+            if (p != nullptr && m.resource >= 0 && m.resource < (int)p->cargoByType.size())
+                held = p->cargoByType[m.resource];
+            const std::string what = ResourceName(ResourceType::FromIndex(m.resource));
+            if (held < m.targetCount)
+                return Fmt("carry %d %s (the hold has %d) to %s in %s (system %s)", m.targetCount,
+                           what.c_str(), held, StationName(view, m.destStationId).c_str(),
+                           m.systemName.c_str(), m.systemId.c_str());
+            return Fmt("dock at %s in %s (system %s)", StationName(view, m.destStationId).c_str(),
+                       m.systemName.c_str(), m.systemId.c_str());
+        }
         case MissionType::Siege:
             return Fmt("shoot down %d more besieger%s in %s (system %s)",
                        m.targetCount - m.progress, m.targetCount - m.progress == 1 ? "" : "s",

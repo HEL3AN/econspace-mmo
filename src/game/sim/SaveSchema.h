@@ -90,7 +90,9 @@ inline constexpr int WORLD_VERSION = 15;
 // 7: a mission may be a faction plan's job (#345) -- supply, escort, break a siege -- with the
 //    plan it is for. A version 6 build knows no such mission: it would keep one it could never
 //    hand in, holding a slot for good, and save it so.
-inline constexpr int ACCOUNT_VERSION = 7;
+// 8: a mission may be a short market's contract (#343, #407), with the world's contract it is.
+//    A version 7 build knows no such mission and would keep one it could never hand in.
+inline constexpr int ACCOUNT_VERSION = 8;
 // designs.json, the designs players' ships fly (#279 fitting). 1: the first.
 inline constexpr int DESIGNS_VERSION = 1;
 

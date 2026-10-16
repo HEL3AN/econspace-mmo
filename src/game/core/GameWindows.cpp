@@ -199,8 +199,15 @@ void Game::DrawMissionsContent(const Ui::Frame& f)
             L.Field("Hand in", "anywhere", t.colors.text);
         }
         else
+        {
+            // A market's contract (#343) is on the clock too, and may be for another system.
+            if (!m.where.empty())
+                L.Field("Where", m.where, t.colors.text);
+            if (!m.due.empty())
+                L.Field("Time", m.due, m.due == "overdue" ? t.colors.warn : t.colors.text);
             L.Field("Hand in at", m.handInHere ? m.handInName : "another system",
                     m.handInHere ? t.colors.text : t.colors.dim);
+        }
         if (!m.needs.empty())
             L.Text("Needs: " + m.needs, TextStyle::Small().Tint(t.colors.dim).Wrap());
 

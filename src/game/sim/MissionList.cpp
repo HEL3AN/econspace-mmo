@@ -43,6 +43,7 @@ const char* KindWord(int type)
         case MissionType::Supply: return "supply";
         case MissionType::Escort: return "escort";
         case MissionType::Siege: return "siege";
+        case MissionType::Contract: return "contract";
     }
     return "job";
 }
@@ -69,8 +70,9 @@ std::vector<Row> Build(const Obs::View& view, Board board)
         r.rep = m.rewardRep;
         // A delivery ends at its destination; everything else goes back to the station that
         // gave it -- the rule Simulation::MissionCompletableNow and Obs::MissionNeeds use.
-        r.handInId =
-            (MissionType)m.type == MissionType::Delivery ? m.destStationId : m.giverStationId;
+        const bool contract = (MissionType)m.type == MissionType::Contract;
+        r.handInId = (MissionType)m.type == MissionType::Delivery || contract ? m.destStationId
+                                                                              : m.giverStationId;
         r.handInName = NameHere(view, r.handInId);
         r.handInHere = !r.handInName.empty();
         if (IsPlanJob((MissionType)m.type))
@@ -84,6 +86,13 @@ std::vector<Row> Build(const Obs::View& view, Board board)
             r.handInId = m.siteId;
             r.handInName = m.siteId != 0 ? NameHere(view, m.siteId) : std::string();
             r.handInHere = m.siteId != 0 && !r.handInName.empty();
+        }
+        if (contract)
+        {
+            // A market's contract (#343): handed in at its station, but on the clock and about
+            // a system that may well be another one, like a plan's job.
+            r.where = m.systemName;
+            r.due = Obs::JobDue(view, m);
         }
 
         if (board == Board::Offers)
@@ -106,6 +115,7 @@ std::vector<Row> Build(const Obs::View& view, Board board)
                 break;
             case MissionType::Delivery: break;
             case MissionType::Supply:
+            case MissionType::Contract:
                 // What the hold carries towards the delivery, as for mining.
                 if (m.resource >= 0 && m.resource < (int)snap.player.cargoByType.size())
                     done = snap.player.cargoByType[m.resource];

@@ -46,6 +46,22 @@ enum class NpcRole;
 // L0: one system is active (as before). But the API deliberately does NOT assume a
 // single active system — in L1+ there will be many systems, each with its own level
 // of detail (fidelity), and under MMO there may be several hot systems.
+// A short market's delivery contract (#343, #407): bring `amount` of `good` to the station a
+// save knows as `station` in `system` by `deadline`, for `reward` -- which `faction` set aside
+// from its treasury when it posted it. On the boards until a pilot takes it. Saved.
+struct Contract
+{
+    int          id = 0;
+    FactionId    faction = Factions::Unaffiliated();
+    std::string  system;
+    std::string  station;  // its key in the system (SystemState::keys)
+    ResourceType good;
+    int          amount = 0;
+    double       reward = 0.0;
+    double       postedAt = 0.0, deadline = 0.0;  // world time
+    bool         taken = false;
+};
+
 class Simulation
 {
 public:
@@ -422,6 +438,8 @@ public:
     FactionMind& MindOf(FactionId f) { return minds_[f]; }
     // Surveys, settlements and sieges under way, by id (#295).
     const std::map<int, Plan>& Plans() const { return plans_; }
+    // The delivery contracts short markets have open, by id (#343, #407).
+    const std::map<int, Contract>& Contracts() const { return contracts_; }
     // A holding keeps this share of its capacity at home; only what is above it can reach out
     // -- to move, to lend a siege, or to escort a convoy.
     static constexpr float HOME_GUARD = 0.6f;
@@ -1035,6 +1053,30 @@ public:
     // an upgrade's come to its site. Null for anything else.
     const Structure* JobSite(const Plan& p) const;
 
+    // --- Delivery contracts a short market posts (#343, #407; Simulation_Contracts.cpp) ---
+    // Once a pass: pilots' contracts out of time, contracts ended (their price back in the
+    // treasury), and once every contracts rules' `every` seconds, PostContracts.
+    void StepContracts();
+    // Every market short of a good posts a contract for it, if a market near sells it cheaper
+    // than the contract pays and its owner's treasury holds the price.
+    void PostContracts();
+    // What a contract for `amount` of `good` at `st`'s market pays, `shortness` (0..1) below
+    // the line: 0 when no market within reach sells the units for enough less.
+    double ContractPrice(const SystemState& st, ResourceType good, int amount,
+                         double shortness) const;
+    // A system's market and its owner: the controller's station that trades, else the first
+    // faction station that does. A stationId of 0 -- none.
+    struct MarketHolder
+    {
+        int       stationId = 0;
+        FactionId faction = Factions::Unaffiliated();
+    };
+    MarketHolder MarketStation(const SystemState& st) const;
+    // The station a contract is for, if it still stands.
+    const Entity* ContractStation(const Contract& c) const;
+    // Whether a contract can be handed in now: docked at its station with the goods aboard.
+    bool ContractReadyNow(const ClientSession& s, const Mission& m) const;
+
     // Server-side active-system change (for the headless host on a jump): makes destId
     // active and teleports the player to the gate leading back to fromId (as the arrival
     // point). A cold destination warms (#295): its ships are made before the player sees it.
@@ -1487,8 +1529,13 @@ private:
     // nothing else. Not saved -- remade from plans_.
     std::set<std::pair<double, int>> due_;
     int                              nextPlanId_ = 1;
-    std::vector<ChronicleEntry>      chronicle_;
-    long long                        chronicleSeq_ = 0;
+    // Delivery contracts (#343, #407), by id. Saved. When markets last looked at what they are
+    // short of, as a stretch of the contracts rules' `every`: transient, so a restart looks.
+    std::map<int, Contract>     contracts_;
+    int                         nextContractId_ = 1;
+    double                      contractSlot_ = -1.0;
+    std::vector<ChronicleEntry> chronicle_;
+    long long                   chronicleSeq_ = 0;
 
     // When each structure next has something happen to it -- it is finished, or its time is
     // up -- as (instant, entity id, system). StepStructures pops what is due and touches
@@ -1556,6 +1603,20 @@ private:
     float EscortsWith(const Plan& p, const std::string& systemId) const;
     // A siege is over: break-the-siege jobs that helped lift it are done, the rest are not.
     void SiegeOver(const Plan& p);
+    // --- Contracts (#343, #407; Simulation_Contracts.cpp) ---
+    // The contracts on the board of `giver`, a station within `near` (systems by jumps).
+    void ContractsPostedAt(const ClientSession& s, const Station& giver,
+                           const std::map<std::string, int>& near, std::vector<Mission>& out) const;
+    // A pilot takes a contract off the boards: false, said why, when it is gone or taken.
+    bool TakeContract(ClientSession& s, const Mission& m);
+    // A contract handed in: the goods into the market, the price to the pilot.
+    bool CompleteContract(ClientSession& s, int index);
+    // A contract ends undone: what was set aside for it is its owner's again.
+    void EndContract(int id);
+    // A trade's fee, to the owner of `st`'s market (#343, #348): a hauler's, as a pilot's.
+    void PayFee(const SystemState& st, double fee);
+    void SaveContracts(nlohmann::json& j) const;
+    void ReadContracts(const nlohmann::json& j);
     // --- Expeditions, growing stations and the builder convoy (#342 S6; Simulation_Growth.cpp) ---
     // A mouth into `slot` opened: the factions within the expedition rules' reach of it hear
     // what is beyond -- intel on the entry system -- and are drawn that way for a while.
