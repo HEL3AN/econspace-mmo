@@ -13,6 +13,7 @@
 #include "core/Blueprint.h"
 #include "core/DataDir.h"
 #include "core/Version.h"
+#include "core/ErrorScreen.h"
 #include "core/World.h"
 #include "core/WorldLoader.h"
 #include "core/Actions.h"
@@ -283,6 +284,18 @@ void Game::Run()
         // econserver and the client picks it up here. We build the snapshot both in
         // flight and while docked; proxy-world reconciliation only in flight.
         BuildClientSnapshot();
+        // The server said goodbye, or the link is gone without a word: either way there is
+        // nothing more to play, and the reason is shown rather than the last snapshot frozen
+        // (#400). A Bye was read above, before the end of the socket behind it.
+        if (endReason_.empty() && netConn_ && !netConn_->Alive())
+        {
+            endTitle_ = heardFromServer_ ? "Connection lost" : "Could not join the server";
+            endReason_ = "The connection to the server ended (" + netConn_->CloseReason() +
+                         "). The server may have stopped or restarted, or the network dropped; "
+                         "start the game again to reconnect.";
+        }
+        if (!endReason_.empty())
+            break;
         if (mode_ == GameMode::Flying)
             ReconcileClientWorld();
 
@@ -441,6 +454,8 @@ void Game::Run()
             }
         }
     }
+    if (!endReason_.empty())
+        ErrorScreen::Show({ endTitle_, endReason_ }, shotPath_);
 }
 
 void Game::ChooseStart(const std::string& system)

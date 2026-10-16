@@ -197,7 +197,11 @@ public:
     void SetPilotName(const std::string& n);
     ~Game();
 
+    // Until the window is closed -- or the server ends the session, or the connection
+    // drops, which is then shown on a screen of its own until the player closes it (#400).
     void Run();
+    // Whether Run ended on such a failure rather than the player closing the window.
+    bool EndedOnError() const { return !endReason_.empty(); }
 
 private:
     void HandleInput(float dt);  // client: input → player command (cmd_)
@@ -448,6 +452,13 @@ private:
     // clientLink_ is the end the client sends commands on and receives snapshots/layout from.
     std::unique_ptr<Net::TcpConnection> netConn_;
     bool protocolMismatchReported_ = false;  // say it once, not every frame
+    // Why the game is over, from the server's Bye or the connection's own end (#400); Run
+    // stops and shows it. Anything heard before the Bye means the login was accepted, so a
+    // Bye after it is a session ended rather than a login refused (a wrong secret's Bye comes
+    // after the handshake too, as the only answer).
+    bool        heardFromServer_ = false;
+    std::string endTitle_;
+    std::string endReason_;
     // Where to begin (#342 S2): the server's offer to a pilot with no place in this galaxy.
     // Until it is answered there is no ship, and the screen is the choice.
     bool          choosingStart_ = false;
