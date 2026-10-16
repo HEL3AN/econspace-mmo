@@ -159,17 +159,11 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
     SystemState*                 here = SystemOf(s);
     const std::string            where = SystemName(s.systemId);
 
-    // What went with it: the ship as fitted, and the hold, at this system's prices.
+    // What went with it: the ship as fitted, at this system's prices, and the hold.
     const double value = here != nullptr ? ValueOf(s, hull, *here) : 0.0;
     int          cargo = 0;
-    double       cargoWorth = 0.0;
     for (ResourceType rt : AllResourceTypes())
-    {
-        const int n = s.ship->GetCargoAmount(rt);
-        cargo += n;
-        if (here != nullptr)
-            cargoWorth += n * here->market.GetPrice(rt);
-    }
+        cargo += s.ship->GetCargoAmount(rt);
 
     // The policy pays and is spent.
     const double cover = s.CoverOf(hull);
@@ -183,19 +177,38 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
 
     // A wreck where it fell, holding a share of what was lost: whoever gets there first
     // searches it, as a structure's (Simulation_Build.cpp). For an hour, so a busy fight does
-    // not leave the system full of them.
+    // not leave the system full of them. The ship's share is credits; the hold's is the goods
+    // themselves (#343) -- the same share of each, as a hauler's wreck holds its cargo. A wreck
+    // holds one good: the largest stack stays in it, and every other is a pod beside it.
     if (here != nullptr)
     {
-        const double worth = std::floor((value + cargoWorth) * Blueprints::Rules().wreckShare);
-        if (worth >= 1.0)
+        const double                              share = Blueprints::Rules().wreckShare;
+        const double                              worth = std::floor(value * share);
+        std::vector<std::pair<int, ResourceType>> kept;  // what survives, largest first
+        for (ResourceType rt : AllResourceTypes())
+        {
+            const int n = (int)std::floor(s.ship->GetCargoAmount(rt) * share);
+            if (n > 0)
+                kept.push_back({ n, rt });
+        }
+        std::stable_sort(kept.begin(), kept.end(),
+                         [](const auto& a, const auto& b) { return a.first > b.first; });
+        if (worth >= 1.0 || !kept.empty())
         {
             const std::string pilot = s.ship->GetPilotName();
-            auto              wreck = std::make_unique<Derelict>(
-                s.ship->GetPosition(), SHIP_WRECK_SIZE,
-                "Wreck of " + (pilot.empty() ? std::string("a ") : pilot + "'s ") + hullName,
-                worth);
-            wreck->SetExpiresAt(time_ + SHIP_WRECK_SECONDS);
-            AddStatic(s.systemId, std::move(wreck), std::string());
+            const std::string name =
+                "Wreck of " + (pilot.empty() ? std::string("a ") : pilot + "'s ") + hullName;
+            const Vector2 at = s.ship->GetPosition();
+            for (size_t i = 0; i < std::max<size_t>(1, kept.size()); i++)
+            {
+                auto wreck = std::make_unique<Derelict>(
+                    Vector2{ at.x + 2.0f * SHIP_WRECK_SIZE * (float)i, at.y }, SHIP_WRECK_SIZE,
+                    i == 0 ? name : "Cargo of " + name.substr(9), i == 0 ? worth : 0.0);
+                if (i < kept.size())
+                    wreck->SetCargo(kept[i].second, kept[i].first);
+                wreck->SetExpiresAt(time_ + SHIP_WRECK_SECONDS);
+                AddStatic(s.systemId, std::move(wreck), std::string());
+            }
         }
     }
 
