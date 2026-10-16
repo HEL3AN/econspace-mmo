@@ -7,12 +7,13 @@
 *.obj
 
 # Save files -- written at runtime by the server next to its executable. A player's
-# account is account_<name>.json since accounts became per-player (#49); ignored by
-# pattern so that running a server from anywhere inside the repository cannot put
-# someone's save one `git add .` away from the history.
+# account is account_<name>.json since accounts became per-player (#49), kept in accounts/
+# beside world.json since #392; ignored by pattern so that running a server from anywhere
+# inside the repository cannot put someone's save one `git add .` away from the history.
 savegame.json
 account.json
 account_*.json
+accounts/
 world.json
 # The client's window layout, per account on this machine (#297): a preference, not data.
 ui_layout.json

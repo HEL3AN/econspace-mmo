@@ -1187,6 +1187,10 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
     using nlohmann::json;
     json j;
     j["version"] = Save::ACCOUNT_VERSION;
+    // The world it was saved in (#392), so another world does not read its place as one of
+    // its own. A field an older build ignores, so no version bump (#20).
+    if (!worldId_.empty())
+        j["world"] = worldId_;
     j["money"] = s.account.GetMoney();
 
     // By faction id (#355): an index is this process's registry order, which a later one --
@@ -1352,10 +1356,19 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
         sk.SetXp(SkillType::Trading, (float)j["skills"].value("trading", 0));
     }
 
+    // An account from another world (#392) keeps what is the pilot's -- money, skills, ships
+    // -- and leaves behind what was the other world's: where they were and the missions its
+    // stations gave. Its system ids would name systems here, just not the same ones.
+    const json stamp = j.value("world", json());
+    const bool foreign = ForeignWorld(stamp.is_string() ? stamp.get<std::string>() : std::string());
+    if (foreign)
+        s.RecordEvent(Ev::Kind::Notice,
+                      "You were last in another world; your place and missions there are gone");
+
     // Where they were (#49). A saved system that the galaxy no longer has -- an edited
     // universe, an older save -- leaves the player wherever the session was created
     // rather than in a system that does not exist.
-    if (s.ship && j.contains("place") && j["place"].is_object())
+    if (s.ship && !foreign && j.contains("place") && j["place"].is_object())
     {
         const auto& pl = j["place"];
         std::string sys = pl.value("system", std::string());
@@ -1493,7 +1506,7 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
         }
     }
 
-    if (j.contains("missions") && j["missions"].is_array())
+    if (!foreign && j.contains("missions") && j["missions"].is_array())
     {
         std::vector<Mission> active;
         for (const auto& mj : j["missions"])

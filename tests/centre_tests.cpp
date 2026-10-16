@@ -20,6 +20,7 @@
 #include <deque>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -403,6 +404,79 @@ TEST_CASE("a pilot with no place in this galaxy is given a start (#342)")
     REQUIRE(sim.SaveAccount(s, now));
     CHECK(Host::AccountSystem(now) == b);
     CHECK_FALSE(Host::NeedsStart(sim, now));
+}
+
+TEST_CASE("a pilot from another world keeps what they own but not where they were (#392)")
+{
+    const std::string data = TEST_DATA_DIR;
+    Factions::Load(data + "factions.json");
+    REQUIRE(Archetypes::Load(data + "archetypes.json"));
+    REQUIRE(Blueprints::Load(data + "blueprints.json"));
+    // Two worlds of the same seed: the same system ids, so only the identity tells them apart.
+    auto world = [&](const std::string& id)
+    {
+        auto             sim = std::make_unique<Simulation>();
+        Gen::WorldParams p;
+        p.seed = 11;
+        p.centres = 2;
+        p.owners = Factions::MajorIds();
+        REQUIRE(sim->OpenGalaxy(p, data));
+        sim->InitGalaxy();
+        sim->MaterializeAllSystems(data + "systems/");
+        sim->SetWorldId(id);
+        return sim;
+    };
+    TempDir                           dir;
+    const std::unique_ptr<Simulation> seven = world("aaaa000000000007");
+    const std::string a = seven->Starts()[0].systemId, b = seven->Starts()[1].systemId;
+
+    // A pilot of world seven, left at the second start with money. The save says which world
+    // it was.
+    const std::string path = dir.Path("account_pilot.json");
+    {
+        ClientSession& s =
+            seven->CreateSession(b, seven->SafeArrival(b), GetShipCatalog()[0].stats);
+        s.account.SetMoney(777.0);
+        REQUIRE(seven->SaveAccount(s, path));
+    }
+    CHECK(Host::AccountWorld(path) == "aaaa000000000007");
+    CHECK(Host::AccountSystem(path) == b);
+    CHECK_FALSE(Host::NeedsStart(*seven, path));
+
+    // The world identity goes with world.json, and comes back.
+    {
+        const std::string wpath = dir.Path("world.json");
+        REQUIRE(seven->SaveWorld(wpath));
+        const std::unique_ptr<Simulation> again = world(std::string());
+        REQUIRE(again->LoadWorld(wpath) == Save::Result::Ok);
+        CHECK(again->WorldId() == "aaaa000000000007");
+    }
+
+    // In world three it is asked to choose, and put where it chose -- not at b, which is
+    // a system here only by name -- with its money.
+    const std::unique_ptr<Simulation> three = world("bbbb000000000003");
+    CHECK(three->ForeignWorld("aaaa000000000007"));
+    CHECK(Host::NeedsStart(*three, path));
+    ClientSession& t = three->CreateSession(a, three->SafeArrival(a), GetShipCatalog()[0].stats);
+    REQUIRE(three->LoadAccount(t, path) == Save::Result::Ok);
+    CHECK(t.systemId == a);
+    CHECK(t.account.GetMoney() == doctest::Approx(777.0));
+    // ...and once saved there, it is world three's.
+    REQUIRE(three->SaveAccount(t, path));
+    CHECK(Host::AccountWorld(path) == "bbbb000000000003");
+    CHECK_FALSE(Host::NeedsStart(*three, path));
+
+    // An account from before identities belongs to whichever world loads it, so nobody's
+    // place is lost by the move; a world with no identity (never saved) claims nothing.
+    CHECK_FALSE(three->ForeignWorld(std::string()));
+    const std::unique_ptr<Simulation> unsaved = world(std::string());
+    CHECK_FALSE(unsaved->ForeignWorld("aaaa000000000007"));
+    CHECK_FALSE(Host::NeedsStart(*unsaved, path));
+
+    // Two new worlds are two identities.
+    const std::string id = Host::NewWorldId();
+    CHECK(id.size() == 16);
+    CHECK(id != Host::NewWorldId());
 }
 
 TEST_CASE("the starts and the answer cross the wire (#342)")

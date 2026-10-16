@@ -569,10 +569,10 @@ static double LoginLimit(const HostClient& hc)
 
 // Progress is stored per account name (#3). There was one account.json when there could
 // only be one player; with two connected it would be one file two people write. `account`
-// is canonical -- lower case (#341).
-static std::string AccountPath(const std::string& account)
+// is canonical -- lower case (#341). `dir` is the world's accounts folder (#392).
+static std::string AccountPath(const std::string& dir, const std::string& account)
 {
-    return Host::AccountFile(GetApplicationDirectory(), account);
+    return Host::AccountFile(dir, account);
 }
 
 // The same beams, told to one player. Whether a shot is "mine" or "at me" is a fact about
@@ -692,14 +692,15 @@ static void BroadcastUniverse(std::vector<HostClient>& clients, const Simulation
 // A logged-in player into the game (#3, #342 S2): a session at `start` -- or wherever their
 // account says they were, which LoadAccount puts them back to -- then the index, the layout
 // and the galaxy, in that order.
-static void JoinPlayer(Simulation& sim, HostClient& hc, const std::string& start, NetStats& net)
+static void JoinPlayer(Simulation& sim, HostClient& hc, const std::string& accountsDir,
+                       const std::string& start, NetStats& net)
 {
     ClientSession& s = SetupHostPlayer(sim, start);
     hc.sessionId = s.id;
     s.accountName = hc.account;          // what they build is theirs (#39)
     s.ship->SetPilotName(hc.account);    // what other players see (#4)
     hc.lastEventSeq = s.LastEventSeq();  // a new session starts from now
-    const Save::Result acct = sim.LoadAccount(s, AccountPath(hc.account));
+    const Save::Result acct = sim.LoadAccount(s, AccountPath(accountsDir, hc.account));
     if (acct == Save::Result::TooNew)
     {
         // They can play, but their file is left exactly as it is. Handing
@@ -1000,6 +1001,40 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
     std::string worldPath = std::string(GetApplicationDirectory()) + "world.json";
     Simulation  sim;
     SetupHostSim(sim, dataDir, worldPath, newSeed, centres, maxRegions, maxSystems);
+
+    // Accounts live with the world (#392): in accounts/ beside world.json. Until then they
+    // were beside the executable -- which is where world.json is, so the files already
+    // there are this world's and move in once. One already in accounts/ is never written
+    // over; the old copy is left and named.
+    const std::string accountsDir = Host::AccountsDir(worldPath);
+    {
+        const Host::AccountMove move = Host::MoveAccounts(GetApplicationDirectory(), accountsDir);
+        if (!move.error.empty())
+        {
+            fprintf(stderr, "FATAL: %s: no account could be saved.\n", move.error.c_str());
+            return 1;
+        }
+        if (move.moved > 0)
+            printf("Accounts: %d file(s) moved into %s.\n", move.moved, accountsDir.c_str());
+        for (const std::string& kept : move.kept)
+            printf("Accounts: %s was left where it is: %s already has one by that name, which is "
+                   "the one in use.\n",
+                   kept.c_str(), accountsDir.c_str());
+    }
+    // ...and an account knows which world it was saved in, so one from another world -- a
+    // world.json moved aside, its accounts left -- is offered a start rather than a place
+    // in a system that only shares a name with its own. A world from before has no
+    // identity: it is given one now, and written at once, so no account is stamped with an
+    // identity a crash could lose.
+    if (sim.WorldId().empty())
+    {
+        sim.SetWorldId(Host::NewWorldId());
+        if (!sim.SaveWorld(worldPath))
+        {
+            fprintf(stderr, "FATAL: %s could not be written.\n", worldPath.c_str());
+            return 1;
+        }
+    }
     AdminConsole console;
     console.Start();
     if (randomStarts)
@@ -1177,7 +1212,7 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
 
                     Proto::Challenge chal;
                     chal.nonce = hc.nonce;
-                    const std::string  path = AccountPath(h.account);
+                    const std::string  path = AccountPath(accountsDir, h.account);
                     const Save::Result file = Host::ReadAccountAuth(path, chal.salt, hc.fileStored);
                     // No file, or one written before secrets existed (#106): the next login
                     // sets it, a migration hole that closes itself as accounts are used.
@@ -1299,7 +1334,7 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                             // Saved before it is taken away: what they earned up to this
                             // moment is theirs, and the new session loads that file next.
                             if (!other.accountReadOnly)
-                                sim.SaveAccount(*os, AccountPath(other.account));
+                                sim.SaveAccount(*os, AccountPath(accountsDir, other.account));
                             sim.DestroySession(other.sessionId);
                         }
                         // Say why before going. Send pumps synchronously, so on any socket
@@ -1323,10 +1358,11 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                     // has it; otherwise a start -- theirs to choose unless the server deals.
                     hc.account = h.account;
                     hc.authStored = a.stored;
-                    if (!Host::NeedsStart(sim, AccountPath(h.account)))
-                        JoinPlayer(sim, hc, std::string(), net);
+                    if (!Host::NeedsStart(sim, AccountPath(accountsDir, h.account)))
+                        JoinPlayer(sim, hc, accountsDir, std::string(), net);
                     else if (randomStarts)
-                        JoinPlayer(sim, hc, Host::PickStart(sim, std::string(), true, roll()), net);
+                        JoinPlayer(sim, hc, accountsDir,
+                                   Host::PickStart(sim, std::string(), true, roll()), net);
                     else
                     {
                         hc.conn->Send(Proto::EncodeStarts(Host::StartsMessage(sim, randomStarts)));
@@ -1343,8 +1379,8 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                     if (!hc.awaitingStart || !Proto::DecodeChooseStart(msg, choice))
                         continue;
                     hc.awaitingStart = false;
-                    JoinPlayer(sim, hc, Host::PickStart(sim, choice.system, randomStarts, roll()),
-                               net);
+                    JoinPlayer(sim, hc, accountsDir,
+                               Host::PickStart(sim, choice.system, randomStarts, roll()), net);
                     continue;
                 }
                 // Anything else before the hello is from a client that has not said who it
@@ -1385,7 +1421,7 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                 {
                     hc.wasDocked = s->IsDocked();
                     if (!hc.accountReadOnly)
-                        sim.SaveAccount(*s, AccountPath(hc.account));
+                        sim.SaveAccount(*s, AccountPath(accountsDir, hc.account));
                 }
         }
 
@@ -1570,7 +1606,7 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
                            hc.account.c_str());
                 else
                 {
-                    sim.SaveAccount(*s, AccountPath(hc.account));
+                    sim.SaveAccount(*s, AccountPath(accountsDir, hc.account));
                     printf("%s left. Account saved (money %.0f); galaxy still running.\n",
                            hc.account.c_str(), s->account.GetMoney());
                 }
@@ -1608,7 +1644,7 @@ static int RunHost(unsigned short port, bool isPublic, uint64_t newSeed, bool de
     for (HostClient& hc : clients)
         if (ClientSession* s = sim.Session(hc.sessionId))
             if (!hc.accountReadOnly)
-                sim.SaveAccount(*s, AccountPath(hc.account));
+                sim.SaveAccount(*s, AccountPath(accountsDir, hc.account));
     sim.SaveWorld(worldPath);
     sim.SaveDesigns(DesignsPath(worldPath));
     printf("\nShutting down. World and accounts saved.\n");

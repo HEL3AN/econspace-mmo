@@ -933,6 +933,21 @@ public:
     bool                 SaveAccount(const ClientSession& s, const std::string& path);
     Save::Result         LoadAccount(ClientSession& s, const std::string& path);
 
+    // Which world this is (#392): made once, when a world is first saved, and kept in
+    // world.json. An account is stamped with it, so a pilot from another world -- one whose
+    // world.json was moved aside while the accounts stayed -- keeps what they own and earned
+    // but not where they were: system ids are alike from seed to seed, and the place would
+    // be a different system under the same name. Empty for a world that is never saved (a
+    // test), and then no account is anybody else's. An account with no stamp is from before
+    // this, and belongs to the world that loads it.
+    const std::string& WorldId() const { return worldId_; }
+    void               SetWorldId(const std::string& id) { worldId_ = id; }
+    // Whether an account stamped `accountWorld` was last saved in another world than this.
+    bool ForeignWorld(const std::string& accountWorld) const
+    {
+        return !worldId_.empty() && !accountWorld.empty() && accountWorld != worldId_;
+    }
+
     // The designs players' ships fly (#279 fitting), kept beside the world in designs.json.
     // SaveDesigns drops first what no save names and no live ship flies, so a design lives
     // exactly as long as a ship that might fly it. Load it before any account.
@@ -1060,6 +1075,7 @@ private:
     WorldLoader::Universe              universe_;
     bool                               hasRegion_ = false;
     uint64_t                           regionSeed_ = 0;
+    std::string                        worldId_;     // (#392) empty: not a saved world
     std::map<std::string, std::string> regionDocs_;  // generated system documents, as JSON (#140)
     std::set<int>                      openSlots_;   // skeleton slots attached (#342)
     Gen::GalaxySkeleton                skeleton_;    // laid out by OpenGalaxy (#342 S2)
