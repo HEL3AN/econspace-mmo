@@ -16,7 +16,9 @@
 #include "sim/Protocol.h"
 #include "sim/SaveFile.h"
 #include "sim/SaveSchema.h"
+#include "sim/ServerConfig.h"
 #include "sim/ServerLog.h"
+#include "sim/ServerOps.h"
 #include "sim/WorldRules.h"
 #include "gen/Galaxy.h"
 #include "gen/Pack.h"
@@ -62,6 +64,7 @@
 #include <random>
 #include <thread>
 #include <iostream>
+#include <iterator>
 #include <mutex>
 #include <sstream>
 
@@ -562,17 +565,6 @@ static bool HostDrainInputs(ITransport& conn, Simulation& sim, ClientSession& s,
     return layoutDirty;
 }
 
-// Real server: listens on a port, accepts one client, runs the authoritative
-// real-time loop (receive Command -> step the world -> send Snapshot; Layout on
-// entering/changing a system). Run: econserver host [port].
-// Ctrl+C / termination request. The handler only raises a flag; saving happens on the
-// way out of the main loop, where touching files is safe.
-static volatile std::sig_atomic_t g_stopRequested = 0;
-static void                       OnInterrupt(int)
-{
-    g_stopRequested = 1;
-}
-
 // Real server: listens on a port and runs the authoritative real-time loop. The galaxy is
 // simulated whether or not anyone is connected -- that is the premise of a living world,
 // and it is what lets a player reconnect to a galaxy that moved on without them. A client
@@ -629,6 +621,7 @@ struct HostClient
     // (#14). An honest client sends exactly one per SIM_DT, so it never runs out.
     double tickBudget = 0.0;
     bool   throttleReported = false;
+    double connectedAt = 0.0;  // the server's uptime when it connected, for `who` (#400)
     // A galaxy map changed since this client was last sent one (#411).
     bool galaxyOwed = false;
 };
@@ -747,6 +740,22 @@ struct NetStats
 static const double NET_REPORT_INTERVAL = 10.0;
 // How often the metrics line is written (#400).
 static const double METRICS_INTERVAL = 60.0;
+
+// The running server as its console sees it (#400): where its world is, what it was started
+// with, and what `status`, `save`, `backup` and `shutdown` need.
+struct HostRun
+{
+    Host::ServerConfig cfg;
+    std::string        worldDir;   // ends in a separator
+    std::string        worldPath;  // world.json in it
+    std::string        accountsDir;
+    int                port = 0;  // the one listened on
+    double             uptime = 0.0;
+    double             savedAt = 0.0;      // uptime of the last save of everything
+    Log::Metrics       metrics;            // the once-a-minute line
+    double             shutdownAt = -1.0;  // uptime to stop at, asked for with a delay; -1: not
+    bool               shutdownWarned = false;  // ten seconds before it
+};
 
 // --- Chat (#347) ---------------------------------------------------------------------------
 
@@ -1515,18 +1524,228 @@ static void PrintAccess(const Host::AccessList& access)
         Log::Printf("  ignored: %s\n", p.c_str());
 }
 
+// Every account in play, the world, its designs and its corporations, written now (#400): the
+// console's `save`, the first half of `backup`, and the last thing a stopping server does.
+static bool SaveAll(Simulation& sim, const std::vector<HostClient>& clients, HostRun& run)
+{
+    bool ok = true;
+    int  accounts = 0;
+    for (const HostClient& hc : clients)
+        if (const ClientSession* s = sim.Session(hc.sessionId))
+            if (!hc.accountReadOnly)
+            {
+                ok = sim.SaveAccount(*s, AccountPath(run.accountsDir, hc.account)) && ok;
+                accounts++;
+            }
+    ok = sim.SaveWorld(run.worldPath) && ok;
+    sim.SaveDesigns(DesignsPath(run.worldPath));
+    ok = sim.Corporations().Save(CorpsPath(run.worldPath)) && ok;
+    run.savedAt = run.uptime;
+    if (ok)
+        Log::Printf("Saved the world and %d account(s) in %s.\n", accounts, run.worldDir.c_str());
+    else
+        Log::Errorf("Save FAILED: something in %s could not be written; see above.\n",
+                    run.worldDir.c_str());
+    return ok;
+}
+
+// A client taken off the server by its operator (#400) -- a ban, a name off the allowlist, a
+// kick: saved, its session ended, told why with a Bye, and removed by the loop with a line in
+// the log.
+static void TakeOff(Simulation& sim, HostClient& hc, const std::string& why,
+                    const std::string& accountsDir)
+{
+    if (ClientSession* s = sim.Session(hc.sessionId))
+    {
+        if (!hc.accountReadOnly)
+            sim.SaveAccount(*s, AccountPath(accountsDir, hc.account));
+        sim.DestroySession(hc.sessionId);
+    }
+    if (hc.conn)
+    {
+        Proto::Bye bye;
+        bye.reason = why;
+        hc.conn->Send(Proto::EncodeBye(bye));
+        hc.conn.reset();
+    }
+    hc.sessionId = 0;
+    hc.awaitingStart = false;
+    hc.lingering = false;
+    hc.removedFor = why;
+}
+
+// "2 h 05 min", "40 s": how long, for a person.
+static std::string Duration(double seconds)
+{
+    const long long s = (long long)std::max(0.0, seconds);
+    char            buf[64];
+    if (s >= 86400)
+        std::snprintf(buf, sizeof buf, "%lld d %02lld h", s / 86400, s / 3600 % 24);
+    else if (s >= 3600)
+        std::snprintf(buf, sizeof buf, "%lld h %02lld min", s / 3600, s / 60 % 60);
+    else if (s >= 60)
+        std::snprintf(buf, sizeof buf, "%lld min %02lld s", s / 60, s % 60);
+    else
+        std::snprintf(buf, sizeof buf, "%lld s", s);
+    return buf;
+}
+
+// The console's `who` (#400): everyone on the server, in play or on the way in.
+static void PrintWho(Simulation& sim, const std::vector<HostClient>& clients, double uptime)
+{
+    int inPlay = 0;
+    for (const HostClient& hc : clients)
+        inPlay += sim.Session(hc.sessionId) != nullptr ? 1 : 0;
+    Log::Printf("%d pilot(s) in play, %d connection(s).\n", inPlay, (int)clients.size());
+    for (const HostClient& hc : clients)
+    {
+        const std::string from = hc.conn ? " from " + hc.conn->PeerAddress() : std::string();
+        const std::string since = ", for " + Duration(uptime - hc.connectedAt);
+        if (const ClientSession* s = sim.Session(hc.sessionId))
+            Log::Printf("  %s  in %s%s%s%s%s\n", hc.account.c_str(), s->systemId.c_str(),
+                        s->IsDocked() ? " (docked)" : "",
+                        hc.lingering ? ", disconnected; the ship is still in space" : "",
+                        from.c_str(), since.c_str());
+        else if (hc.awaitingStart)
+            Log::Printf("  %s  choosing a start%s%s\n", hc.account.c_str(), from.c_str(),
+                        since.c_str());
+        else if (hc.conn && hc.removedFor.empty() && !hc.evicted)
+            Log::Printf("  (%s)%s%s\n",
+                        hc.pendingAccount.empty() ? "connected, not logged in"
+                                                  : ("logging in as " + hc.pendingAccount).c_str(),
+                        from.c_str(), since.c_str());
+    }
+}
+
+// The console's `status` (#400): whether the server is well, in a few lines.
+static void PrintStatus(const Simulation& sim, const std::vector<HostClient>& clients,
+                        const Host::AccessList& access, const HostRun& run)
+{
+    int hot = 0;
+    for (const auto& kv : sim.Systems())
+        hot += Simulation::IsHot(kv.second) ? 1 : 0;
+    Log::Printf("Up %s; port %d, %s; %s.\n", Duration(run.uptime).c_str(), run.port,
+                run.cfg.isPublic ? "open to other machines" : "this machine only",
+                access.ListChecked() ? "registration by allowlist" : "registration open");
+    Log::Printf("Players: %d in play, %d connection(s).\n", (int)sim.Sessions().size(),
+                (int)clients.size());
+    Log::Printf("Tick: %.2f ms mean, %.2f ms max over the last %d (a tick has %.1f ms).\n",
+                run.metrics.MeanMs(), run.metrics.MaxMs(), run.metrics.Ticks(),
+                1000.0 * (double)Sim::SIM_DT);
+    Log::Printf("World: %d region(s) open (cap %d), %d systems, %d hot; growth %s.\n",
+                (int)sim.OpenSlots().size(), sim.MaxRegions(), (int)sim.Universe().systems.size(),
+                hot, sim.GrowthPaused() ? "paused" : "running");
+    Log::Printf("Saved %s ago, in %s.\n", Duration(run.uptime - run.savedAt).c_str(),
+                run.worldDir.c_str());
+    if (run.shutdownAt >= 0.0)
+        Log::Printf("Shutting down in %s.\n", Duration(run.shutdownAt - run.uptime).c_str());
+}
+
+// A line from the operator to everyone online, as `say` sends it (#347).
+static void Announce(const std::string& text, std::vector<HostClient>& clients,
+                     const Simulation& sim, Chat::Hub& chat, NetStats& net)
+{
+    SendChat(clients, chat.Broadcast(text, ChatPilots(clients, sim), ChatClock()), net);
+}
+
 // One console line, applied: `tide`, `open [region]`, `drift`, `pause`, `resume`; `allow`,
-// `deny`, `ban`, `unban`, `access`, `reload` (#400); `say`, `mute`, `unmute` (#347); anything
-// else is `help`.
+// `deny`, `ban`, `unban`, `access`, `reload`, `who`, `kick`, `save`, `backup`, `shutdown`,
+// `status` (#400); `say`, `mute`, `unmute` (#347); anything else is `help`. The same lines come
+// from `econserver admin` through the world's admin/ folder.
 static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::string& line,
-                         std::vector<HostClient>& clients, Chat::Hub& chat, NetStats& net)
+                         std::vector<HostClient>& clients, Chat::Hub& chat, NetStats& net,
+                         HostRun& run)
 {
     std::istringstream in(line);
     std::string        verb;
     in >> verb;
     if (verb.empty())
         return;
-    if (verb == "tide")
+    if (verb == "who")
+        PrintWho(sim, clients, run.uptime);
+    else if (verb == "status")
+        PrintStatus(sim, clients, access, run);
+    else if (verb == "save")
+        SaveAll(sim, clients, run);
+    else if (verb == "backup")
+    {
+        // Saved first, and nothing runs while the files are copied -- this is the loop's own
+        // thread -- so the copy is one moment of the world, accounts and all.
+        if (!SaveAll(sim, clients, run))
+            Log::Errorf("No backup was made: the save before it failed.\n");
+        else
+        {
+            const auto  t0 = std::chrono::steady_clock::now();
+            std::string made, error;
+            if (Host::BackupWorld(run.worldDir, Host::BackupName(Log::Now()), run.cfg.backupsKept,
+                                  made, error))
+                Log::Printf(
+                    "Backup: %s (%.0f ms)%s.\n", made.c_str(),
+                    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+                        .count(),
+                    run.cfg.backupsKept > 0
+                        ? ("; the newest " + std::to_string(run.cfg.backupsKept) + " are kept")
+                              .c_str()
+                        : "");
+            else
+                Log::Errorf("Backup FAILED: %s\n", error.c_str());
+        }
+    }
+    else if (verb == "kick")
+    {
+        // Off the server now, told why; they may come back -- `ban` is for keeping them out.
+        std::string name, reason;
+        in >> name;
+        std::getline(in, reason);
+        reason = Chat::Sanitize(reason);
+        name = Host::CanonicalAccount(name);
+        const std::string why =
+            "Removed from the server by its operator" + (reason.empty() ? "" : ": " + reason);
+        int found = 0;
+        for (HostClient& hc : clients)
+            if (!name.empty() && hc.removedFor.empty() && (hc.conn || hc.lingering) &&
+                (hc.account == name || (hc.account.empty() && hc.pendingAccount == name)))
+            {
+                TakeOff(sim, hc, why, run.accountsDir);
+                found++;
+            }
+        if (name.empty())
+            Log::Printf("Usage: kick <name> [reason]\n");
+        else if (found == 0)
+            Log::Printf("Nobody called '%s' is on the server.\n", name.c_str());
+        else
+            Log::Printf("%s kicked: %s.\n", name.c_str(), why.c_str());
+    }
+    else if (verb == "shutdown")
+    {
+        // Now, or after a warning everyone online is told of; `shutdown cancel` takes it back.
+        std::string when;
+        in >> when;
+        const int seconds = when.empty() ? 0 : std::max(0, atoi(when.c_str()));
+        if (when == "cancel")
+        {
+            if (run.shutdownAt >= 0.0)
+                Announce("The shutdown is cancelled.", clients, sim, chat, net);
+            Log::Printf(run.shutdownAt >= 0.0 ? "Shutdown cancelled.\n"
+                                              : "No shutdown was waiting.\n");
+            run.shutdownAt = -1.0;
+        }
+        else if (seconds == 0)
+        {
+            Log::Printf("Shutting down now: saving, then everyone is told.\n");
+            Host::RequestStop();
+        }
+        else
+        {
+            run.shutdownAt = run.uptime + seconds;
+            run.shutdownWarned = seconds <= 10;
+            Announce("The server shuts down in " + Duration(seconds) + ".", clients, sim, chat,
+                     net);
+            Log::Printf("Shutting down in %s; everyone online has been told.\n",
+                        Duration(seconds).c_str());
+        }
+    }
+    else if (verb == "tide")
         PrintTide(sim, "");
     else if (verb == "open")
     {
@@ -1660,7 +1879,9 @@ static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::s
         }
     }
     else
-        Log::Printf("Commands: tide | open [region] (a mouth now, from the region named or the one "
+        Log::Printf("Commands: who | status | kick <name> [reason] | save | backup (save, then "
+                    "copy the world to backups/) | shutdown [seconds | cancel] | "
+                    "tide | open [region] (a mouth now, from the region named or the one "
                     "nearest to breaking) | hole <system> [<to>] (a roaming hole now) | holes | "
                     "drift <region> (into the archive now) | pause | resume "
                     "(growth) | destroy <name> (their ship is lost) | allow <name> | deny <name> | "
@@ -1681,24 +1902,51 @@ static void RaylibToLog(int level, const char* fmt, va_list args)
     Log::VPrintf(true, line.c_str(), args);
 }
 
-static int RunHost(unsigned short port, bool isPublic, bool openRegistration, uint64_t newSeed,
-                   bool dev, int centres, bool randomStarts, int maxRegions, int maxSystems)
+// Real server, on the world in `worldDir` (ending in a separator) with the settings in `cfg`
+// -- server.json's, with the command line's on top (#400).
+static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
 {
-    // Everything said from here on goes to stderr with the time on it (#400).
+    Host::ClearStop();
+    // Everything said from here on goes to stderr with the time on it (#400), and into the
+    // world's logs/, a file a day.
     Log::SetStamped(true);
+    if (!Log::SetFileDir(worldDir + "logs/"))
+        Log::Errorf("WARNING: %slogs/ could not be made; the log goes to stderr only.\n",
+                    worldDir.c_str());
     SetTraceLogCallback(RaylibToLog);
+    HostRun run;
+    run.cfg = cfg;
+    run.worldDir = worldDir;
+    run.worldPath = worldDir + "world.json";
+    const std::string& worldPath = run.worldPath;
+    Log::Printf("World: %s\n", worldDir.c_str());
+    // Nothing is moved between worlds on its own: a world beside the executable, from before
+    // --world, is named and left where it is (docs/hosting.md says how to carry it over).
+    {
+        const std::string beside = std::string(GetApplicationDirectory()) + "world.json";
+        std::error_code   ec;
+        if (std::filesystem::exists(beside, ec) && !std::filesystem::exists(worldPath, ec))
+            Log::Printf("Note: there is a world at %s; this server makes a new one in %s. To "
+                        "play the old one, stop and copy world.json, regions/, accounts/, "
+                        "designs.json and corps.json into it.\n",
+                        beside.c_str(), worldDir.c_str());
+    }
     std::string dataDir = DataDir::Path();
-    std::string worldPath = std::string(GetApplicationDirectory()) + "world.json";
     Simulation  sim;
-    SetupHostSim(sim, dataDir, worldPath, newSeed, centres, maxRegions, maxSystems);
+    // The seed of a NEW galaxy (#140); a saved world keeps its own. Choosing it is the one
+    // place a random device belongs -- generating from it is where it must not be.
+    const uint64_t newSeed =
+        cfg.seed != 0 ? cfg.seed
+                      : (((uint64_t)std::random_device{}() << 32) ^ std::random_device{}());
+    SetupHostSim(sim, dataDir, worldPath, newSeed, cfg.centres, cfg.maxRegions, cfg.maxSystems);
 
     // Accounts live with the world (#392): in accounts/ beside world.json. Until then they
-    // were beside the executable -- which is where world.json is, so the files already
-    // there are this world's and move in once. One already in accounts/ is never written
-    // over; the old copy is left and named.
-    const std::string accountsDir = Host::AccountsDir(worldPath);
+    // were beside world.json itself, so the files already there are this world's and move in
+    // once. One already in accounts/ is never written over; the old copy is left and named.
+    run.accountsDir = Host::AccountsDir(worldPath);
+    const std::string& accountsDir = run.accountsDir;
     {
-        const Host::AccountMove move = Host::MoveAccounts(GetApplicationDirectory(), accountsDir);
+        const Host::AccountMove move = Host::MoveAccounts(worldDir, accountsDir);
         if (!move.error.empty())
         {
             Log::Errorf("FATAL: %s: no account could be saved.\n", move.error.c_str());
@@ -1726,16 +1974,17 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
             return 1;
         }
     }
-    // Who may come in (#400): allowlist.txt and bans.txt beside world.json.
+    // Who may come in (#400): allowlist.txt and bans.txt beside world.json. server.json says
+    // whether the list is checked; without one, a public server or a list that exists does.
     Host::AccessList access;
     {
-        const size_t      slash = worldPath.find_last_of("/\\");
-        const std::string worldDir =
-            slash == std::string::npos ? std::string() : worldPath.substr(0, slash + 1);
         std::error_code ec;
         const bool      listExists = std::filesystem::exists(worldDir + "allowlist.txt", ec);
-        access.Open(worldDir,
-                    Host::AccessList::ListRequired(isPublic, openRegistration, listExists));
+        const bool      listRequired =
+            cfg.registration == Host::Registration::Auto
+                ? Host::AccessList::ListRequired(cfg.isPublic, false, listExists)
+                : cfg.registration == Host::Registration::Allowlist;
+        access.Open(worldDir, listRequired);
         PrintAccess(access);
         if (access.ListChecked() && access.Allowed().empty())
             Log::Printf("Nobody can log in yet: add names with `allow <name>` here or to %s, or "
@@ -1746,13 +1995,23 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
 
     AdminConsole console;
     console.Start();
+    // ...and the same console for a server nobody is sitting at: `econserver admin` (#400).
+    Host::AdminChannel adminChannel;
+    {
+        std::string error;
+        if (!adminChannel.Open(worldDir, error))
+            Log::Errorf("WARNING: no admin channel (%s); `econserver admin` will not reach this "
+                        "server.\n",
+                        error.c_str());
+    }
+    const bool randomStarts = cfg.randomStarts;
     if (randomStarts)
         Log::Printf("Starts are dealt at random; players do not choose.\n");
     // Which start a player is dealt: not the generator's, so not from its keys.
     std::mt19937_64 dealer(((uint64_t)std::random_device{}() << 32) ^ std::random_device{}());
     auto            roll = [&dealer]() { return (uint64_t)dealer(); };
-    sim.SetDevCommands(dev);
-    if (dev)
+    sim.SetDevCommands(cfg.dev);
+    if (cfg.dev)
         Log::Printf("Dev mode: debug commands (F1's money) are honoured for every client.\n");
 
     if (!Net::Startup())
@@ -1761,22 +2020,25 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
         return 1;
     }
     Net::TcpListener listener;
-    if (!listener.Listen(port, isPublic ? Net::TcpListener::Exposure::Public
-                                        : Net::TcpListener::Exposure::Loopback))
+    if (!listener.Listen((unsigned short)cfg.port, cfg.isPublic
+                                                       ? Net::TcpListener::Exposure::Public
+                                                       : Net::TcpListener::Exposure::Loopback))
     {
-        Log::Printf("host: listen on port %d FAIL\n", port);
+        Log::Printf("host: listen on port %d FAIL\n", cfg.port);
         Net::Shutdown();
         return 1;
     }
-    std::signal(SIGINT, OnInterrupt);
-    std::signal(SIGTERM, OnInterrupt);
+    run.port = listener.Port();
+    // Ctrl+C, systemd's stop, a closed terminal: each only raises a flag, and the loop saves
+    // on its way out, where touching files is safe.
+    Host::InstallStopHandlers();
     // The port actually listened on: `host 0` lets the system choose a free one, and this
     // line is where a script reads which (#306).
     Log::Printf("EconSpace server on port %d, %s. The galaxy runs with or without players; "
                 "Ctrl+C to stop.\n",
                 listener.Port(),
-                isPublic ? "open to other machines"
-                         : "this machine only (add --public to let other machines connect)");
+                cfg.isPublic ? "open to other machines"
+                             : "this machine only (add --public to let other machines connect)");
 
     using clock = std::chrono::steady_clock;
     std::vector<HostClient> clients;
@@ -1788,21 +2050,22 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
     int        refusedConnections = 0;  // since the last line about them
     double     refusalLogAcc = 0.0;
 
-    NetStats     net;
-    double       snapshotAcc = 0.0;   // time since the last round of snapshots
-    double       worldSaveAcc = 0.0;  // world checkpoint timer
-    const float  dt = 1.0f / 60.0f;
-    auto         prev = clock::now();
-    double       acc = 0.0;
-    double       galaxyAcc = 0.0;  // galaxy-snapshot broadcast timer (map statistics)
-    std::string  lastGalaxy;       // what the last broadcast said
-    Log::Metrics metrics;          // the once-a-minute line (#400)
-    double       metricsAcc = 0.0;
-    double       accessCheckAcc = 0.0;                // allowlist.txt and bans.txt looked at (#400)
-    int          corpRev = sim.Corporations().Rev();  // what corps.json holds (#347)
-    std::string  corpOnline;                          // who was online when views were sent
+    NetStats      net;
+    double        snapshotAcc = 0.0;   // time since the last round of snapshots
+    double        worldSaveAcc = 0.0;  // world checkpoint timer
+    const float   dt = 1.0f / 60.0f;
+    auto          prev = clock::now();
+    double        acc = 0.0;
+    double        galaxyAcc = 0.0;  // galaxy-snapshot broadcast timer (map statistics)
+    std::string   lastGalaxy;       // what the last broadcast said
+    double        metricsAcc = 0.0;
+    double        accessCheckAcc = 0.0;  // allowlist.txt and bans.txt looked at (#400)
+    double        adminAcc = 0.0;        // the admin channel looked at (#400)
+    int           corpRev = sim.Corporations().Rev();  // what corps.json holds (#347)
+    std::string   corpOnline;                          // who was online when views were sent
+    Log::Metrics& metrics = run.metrics;               // the once-a-minute line (#400)
 
-    while (g_stopRequested == 0)
+    while (!Host::StopRequested())
     {
         auto   now = clock::now();
         double frame = std::chrono::duration<double>(now - prev).count();
@@ -1814,6 +2077,7 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
         // Everyone waiting, not one per iteration: two clients arriving in the same
         // millisecond is the ordinary case, not a race to be lost.
         const double uptime = std::chrono::duration<double>(now - started).count();
+        run.uptime = uptime;
         while (std::unique_ptr<Net::TcpConnection> c = listener.Accept())
         {
             c->SetLimits(Net::TcpConnection::SERVER_MAX_FRAME_BYTES,
@@ -1837,6 +2101,7 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
             }
             HostClient hc;
             hc.conn = std::move(c);
+            hc.connectedAt = uptime;
             clients.push_back(std::move(hc));
             Log::Printf("Client connected; waiting for hello.\n");
         }
@@ -2239,7 +2504,32 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
             acc -= dt;
         }
         for (std::string line; console.Take(line);)
-            AdminCommand(sim, access, line, clients, chat, net);
+            AdminCommand(sim, access, line, clients, chat, net, run);
+        // The same lines from `econserver admin` (#400), twice a second; what each said goes
+        // back to whoever gave it, and the log says it was given.
+        adminAcc += frame;
+        if (adminAcc >= 0.5)
+        {
+            adminAcc = 0.0;
+            for (const Host::AdminChannel::Request& r : adminChannel.Take())
+            {
+                Log::Printf("admin: %s\n", r.command.c_str());
+                Log::BeginCapture();
+                AdminCommand(sim, access, r.command, clients, chat, net, run);
+                adminChannel.Answer(r.id, Log::EndCapture());
+            }
+        }
+        // A shutdown asked for with a delay (#400): everyone is warned again ten seconds out.
+        if (run.shutdownAt >= 0.0)
+        {
+            if (!run.shutdownWarned && uptime >= run.shutdownAt - 10.0)
+            {
+                run.shutdownWarned = true;
+                Announce("The server shuts down in 10 s.", clients, sim, chat, net);
+            }
+            if (uptime >= run.shutdownAt)
+                Host::RequestStop();
+        }
 
         // The lists edited by hand are read again (#400); then whoever they, or the console,
         // now refuse is taken off the server -- in play, logging in or choosing a start.
@@ -2262,23 +2552,7 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
                     name.empty() || !hc.removedFor.empty() ? std::string() : access.Refusal(name);
                 if (why.empty() || (!hc.conn && !hc.lingering))
                     continue;
-                if (ClientSession* s = sim.Session(hc.sessionId))
-                {
-                    if (!hc.accountReadOnly)
-                        sim.SaveAccount(*s, AccountPath(accountsDir, hc.account));
-                    sim.DestroySession(hc.sessionId);
-                }
-                if (hc.conn)
-                {
-                    Proto::Bye bye;
-                    bye.reason = why;
-                    hc.conn->Send(Proto::EncodeBye(bye));
-                    hc.conn.reset();
-                }
-                hc.sessionId = 0;
-                hc.awaitingStart = false;
-                hc.lingering = false;
-                hc.removedFor = why;
+                TakeOff(sim, hc, why, accountsDir);
             }
         }
 
@@ -2473,6 +2747,7 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
             worldSaveAcc = 0.0;
             sim.SaveWorld(worldPath);
             sim.SaveDesigns(DesignsPath(worldPath));
+            run.savedAt = uptime;
         }
 
         // A disconnect ends one session, not the server and not anyone else's game -- after
@@ -2558,15 +2833,24 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
         std::this_thread::sleep_for(std::chrono::milliseconds(4));
     }
 
+    // Stopping (#400): everything saved first, then everyone told -- a Bye says the server
+    // meant it, where a dropped socket looks like a crash.
+    Log::Printf("Shutting down.\n");
+    const bool saved = SaveAll(sim, clients, run);
     for (HostClient& hc : clients)
-        if (ClientSession* s = sim.Session(hc.sessionId))
-            if (!hc.accountReadOnly)
-                sim.SaveAccount(*s, AccountPath(accountsDir, hc.account));
-    sim.SaveWorld(worldPath);
-    sim.SaveDesigns(DesignsPath(worldPath));
-    Log::Printf("\nShutting down. World and accounts saved.\n");
+        if (hc.conn && hc.conn->Alive())
+        {
+            Proto::Bye bye;
+            bye.reason = "The server is shutting down";
+            hc.conn->Send(Proto::EncodeBye(bye));
+        }
+    clients.clear();
     Net::Shutdown();
-    return 0;
+    Log::Printf(saved ? "Shut down cleanly; the world and every account are saved.\n"
+                      : "Shut down, but the last save FAILED; see above.\n");
+    Log::SetFileDir(std::string());
+    Host::MarkStopped();
+    return saved ? 0 : 1;
 }
 
 // A save a smoke test writes and reads back. It goes under the system temp directory with a
@@ -3259,10 +3543,10 @@ static int ValidateCommand(const std::string& path)
     return problems.empty() ? 0 : 1;
 }
 
-static int RegenerateCommand(int slot)
+static int RegenerateCommand(int slot, const std::string& worldDir)
 {
     const std::string dataDir = DataDir::Path();
-    const std::string worldPath = std::string(GetApplicationDirectory()) + "world.json";
+    const std::string worldPath = worldDir + "world.json";
     if (!std::filesystem::exists(worldPath))
     {
         fprintf(stderr, "regenerate: there is no world at %s\n", worldPath.c_str());
@@ -3310,6 +3594,106 @@ static int RegenerateCommand(int slot)
     return 0;
 }
 
+// Server operations smoke test (#400): a world directory made by init, a real server on it
+// (loopback, a port the system picks), and the console commands given the way an admin on a
+// headless box gives them -- through `econserver admin`'s channel -- ending with `shutdown`,
+// after which everything must be saved and the server must have returned 0.
+// Run: econserver opstest.
+static int OpsSelftest()
+{
+    namespace fs = std::filesystem;
+    const auto        stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    const std::string dir =
+        (fs::temp_directory_path() / ("econserver_ops_" + std::to_string(stamp))).generic_string() +
+        "/";
+    Host::ServerConfig cfg;
+    cfg.port = 0;
+    cfg.seed = 7;
+    cfg.registration = Host::Registration::Open;
+    std::string error;
+    if (!Host::InitWorldDir(dir, cfg, error))
+    {
+        fprintf(stderr, "opstest: init FAIL: %s\n", error.c_str());
+        return 1;
+    }
+    std::map<std::string, std::string> said;
+    bool                               answered = true;
+    std::thread                        admin(
+        [&]()
+        {
+            // Until the server is up, nothing takes a command; it is asked again.
+            std::string status;
+            bool        up = false;
+            for (int i = 0; i < 240 && !up; i++)
+                if (!(up = Host::AdminRequest(dir, "status", status, 1.0, 30.0)))
+                    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            said["status"] = status;
+            answered = up;
+            for (const char* c :
+                 { "who", "save", "backup", "kick nobody", "shutdown 600", "shutdown cancel" })
+            {
+                std::string a;
+                answered = Host::AdminRequest(dir, c, a, 5.0, 60.0) && answered;
+                said[c] = a;
+            }
+#if defined(_WIN32)
+            std::string a;
+            answered = Host::AdminRequest(dir, "shutdown", a, 5.0, 60.0) && answered;
+            said["shutdown"] = a;
+#else
+            // What systemd's stop sends: the same clean stop as the command.
+            said["shutdown"] = "Shutting down now";
+            std::raise(SIGTERM);
+#endif
+            if (!up)
+                Host::RequestStop();
+        });
+    const int rc = RunHost(cfg, dir);
+    admin.join();
+    Log::SetStamped(false);
+
+    bool ok = true;
+    auto check = [&ok](bool cond, const char* what)
+    {
+        if (!cond)
+        {
+            fprintf(stderr, "opstest: FAIL: %s\n", what);
+            ok = false;
+        }
+    };
+    const auto has = [&said](const char* cmd, const char* text)
+    { return said[cmd].find(text) != std::string::npos; };
+    check(rc == 0, "the server returned 0 after `shutdown`");
+    check(answered, "every command was answered");
+    check(has("status", "Up ") && has("status", "Players: 0 in play"), "status says how it is");
+    check(has("who", "0 pilot(s) in play"), "who lists nobody");
+    check(has("save", "Saved the world"), "save saves");
+    check(has("backup", "Backup: "), "backup makes a copy");
+    check(has("kick nobody", "Nobody called 'nobody'"), "kick names who is not there");
+    check(has("shutdown 600", "Shutting down in 10 min"), "a shutdown can be put off");
+    check(has("shutdown cancel", "Shutdown cancelled"), "...and cancelled");
+    check(has("shutdown", "Shutting down now"), "shutdown answers before it stops");
+    std::error_code ec;
+    check(fs::exists(dir + "world.json", ec), "world.json is saved");
+    check(fs::exists(dir + "corps.json", ec), "corps.json is saved");
+    bool backedUp = false, logged = false;
+    for (fs::directory_iterator it(dir + "backups", ec), end; !ec && it != end; it.increment(ec))
+        backedUp = backedUp || fs::exists(it->path() / "world.json") ||
+                   fs::exists(it->path() / "server.json");
+    for (fs::directory_iterator it(dir + "logs", ec), end; !ec && it != end; it.increment(ec))
+    {
+        std::ifstream     in(it->path());
+        const std::string text((std::istreambuf_iterator<char>(in)),
+                               std::istreambuf_iterator<char>());
+        logged = logged || text.find("Shut down cleanly") != std::string::npos;
+    }
+    check(backedUp, "backups/<time>/ holds the world");
+    check(logged, "logs/server-<date>.log has the whole run, to the clean stop");
+    fs::remove_all(dir, ec);
+    printf("opstest: %s\n", ok ? "OK" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 int main(int argc, char** argv)
 {
     // Unbuffered stdout, set before anything writes to it. A long-running server is
@@ -3338,6 +3722,14 @@ int main(int argc, char** argv)
         return WorldSelftest();
     if (argc > 1 && std::string(argv[1]) == "ordertest")
         return OrderSelftest();
+    if (argc > 1 && std::string(argv[1]) == "opstest")
+    {
+        // Ended as `host` ends, past the console thread still reading stdin (see there).
+        const int rc = OpsSelftest();
+        fflush(stdout);
+        fflush(stderr);
+        std::_Exit(rc);
+    }
     // econserver regiondump <seed> [slot]: one region's index entries and documents.
     if (argc > 1 && std::string(argv[1]) == "regiondump")
     {
@@ -3396,57 +3788,100 @@ int main(int argc, char** argv)
     {
         if (argc < 3)
         {
-            fprintf(stderr, "usage: econserver regenerate <region>  (with the server stopped)\n");
+            fprintf(stderr, "usage: econserver regenerate <region> [--world DIR]  (with the "
+                            "server stopped)\n");
             return 2;
         }
-        return RegenerateCommand(atoi(argv[2]));
+        std::string worldDir = GetApplicationDirectory();
+        for (int i = 3; i + 1 < argc; i++)
+            if (std::string(argv[i]) == "--world")
+                worldDir = Host::WithSlash(argv[i + 1]);
+        return RegenerateCommand(atoi(argv[2]), worldDir);
     }
+    // econserver host [port] [--world DIR] [flags]: the server (#400). The world is DIR -- or
+    // the executable's folder, as before -- and its server.json, if there is one, says how
+    // it runs; a flag overrides the file for this run.
     if (argc > 1 && std::string(argv[1]) == "host")
     {
-        unsigned short port = (argc > 2) ? (unsigned short)atoi(argv[2]) : 50800;
-        // Loopback unless asked (#187): other machines can connect only with --public.
-        bool isPublic = false;
-        bool openRegistration = false;
-        bool dev = false;
-        int  centres = Gen::DEFAULT_CENTRES;
-        bool randomStarts = false;
-        int  maxRegions = 0, maxSystems = 0;
-        // The seed of a NEW galaxy (#140); a saved world keeps its own. Choosing it is the
-        // one place a random device belongs -- generating from it is where it must not be.
-        uint64_t seed = ((uint64_t)std::random_device{}() << 32) ^ std::random_device{}();
-        for (int i = 3; i < argc; i++)
-            if (std::string(argv[i]) == "--public")
-                isPublic = true;
-            // Anyone may register (#400). Without it a --public server lets in only the
-            // names in allowlist.txt beside its world.
-            else if (std::string(argv[i]) == "--open")
-                openRegistration = true;
-            else if (std::string(argv[i]) == "--dev")
-                dev = true;  // debug commands for everyone (#341); never on a public server
-            else if (std::string(argv[i]) == "--seed" && i + 1 < argc)
-                seed = std::strtoull(argv[++i], nullptr, 10);
-            // A new galaxy's civilisation centres, 1 to 6 (#342 S2); a saved world keeps its own.
-            else if (std::string(argv[i]) == "--centres" && i + 1 < argc)
-                centres = atoi(argv[++i]);
-            // Every new pilot is dealt a start rather than choosing one.
-            else if (std::string(argv[i]) == "--random-starts")
-                randomStarts = true;
-            // The cap (#342 S3): no region opens past this many regions or systems. Saved
-            // with the world; given again, it replaces what was saved.
-            else if (std::string(argv[i]) == "--max-regions" && i + 1 < argc)
-                maxRegions = std::max(1, atoi(argv[++i]));
-            else if (std::string(argv[i]) == "--max-systems" && i + 1 < argc)
-                maxSystems = std::max(1, atoi(argv[++i]));
-            // Admin packs from elsewhere than data/packs/ (#342 S7), woven into a new world.
-            else if (std::string(argv[i]) == "--packs" && i + 1 < argc)
-                g_packsDir = argv[++i];
-        if (centres < 1 || centres > Gen::MAX_CENTRES)
+        const std::vector<std::string> args(argv + 2, argv + argc);
+        Host::ServerConfig             cfg;
+        std::string                    world, packs, error;
+        // Once for --world, whose server.json the flags then go on top of.
+        if (Host::ApplyHostFlags(args, cfg, world, packs, error))
         {
-            fprintf(stderr, "--centres must be 1 to %d\n", Gen::MAX_CENTRES);
+            const std::string worldDir =
+                world.empty() ? std::string(GetApplicationDirectory()) : Host::WithSlash(world);
+            cfg = Host::ServerConfig();
+            bool exists = false;
+            if (Host::LoadServerConfig(worldDir + Host::SERVER_CONFIG_FILE, cfg, exists, error) &&
+                Host::ApplyHostFlags(args, cfg, world, packs, error))
+            {
+                g_packsDir = packs;
+                const int rc = RunHost(cfg, worldDir);
+                // Everything is saved by now. The console's thread may still be blocked reading
+                // standard input -- a pipe, a terminal -- and the C runtime's exit takes that
+                // stream's lock to flush it, which waited forever on Windows. So the two
+                // streams written to are flushed here and the process ends without that.
+                fflush(stdout);
+                fflush(stderr);
+                std::_Exit(rc);
+            }
+        }
+        fprintf(stderr, "host: %s\n", error.c_str());
+        return 2;
+    }
+    // econserver init <dir> [flags]: a world directory with a server.json for a server other
+    // machines reach and only the allowlist may join, unless the flags say otherwise (#400).
+    if (argc > 1 && std::string(argv[1]) == "init")
+    {
+        if (argc < 3 || argv[2][0] == '-')
+        {
+            fprintf(stderr, "usage: econserver init <dir> [--port N] [--private] [--open] "
+                            "[--centres N] [--max-regions N] [--max-systems N] [--seed N]\n");
             return 2;
         }
-        return RunHost(port, isPublic, openRegistration, seed, dev, centres, randomStarts,
-                       maxRegions, maxSystems);
+        Host::ServerConfig cfg;
+        cfg.isPublic = true;
+        cfg.registration = Host::Registration::Allowlist;
+        std::string world, packs, error;
+        if (!Host::ApplyHostFlags(std::vector<std::string>(argv + 3, argv + argc), cfg, world,
+                                  packs, error) ||
+            !Host::InitWorldDir(argv[2], cfg, error))
+        {
+            fprintf(stderr, "init: %s\n", error.c_str());
+            return 1;
+        }
+        const std::string dir = Host::WithSlash(argv[2]);
+        printf("A world directory is ready in %s:\n"
+               "  %sserver.json    the settings (port %d, %s, registration %s)\n"
+               "  %sallowlist.txt  who may play: one name per line\n"
+               "The world itself is made the first time the server starts:\n"
+               "  econserver host --world %s\n"
+               "While it runs, `econserver admin %s <command>` gives it console commands "
+               "(`help` lists them).\n",
+               dir.c_str(), dir.c_str(), cfg.port, cfg.isPublic ? "public" : "this machine only",
+               cfg.registration == Host::Registration::Open ? "open" : "by allowlist", dir.c_str(),
+               argv[2], argv[2]);
+        return 0;
+    }
+    // econserver admin <dir> <command...>: a console command for the server running on the
+    // world in <dir>, from the same machine (#400) -- what systemd leaves no console for.
+    if (argc > 1 && std::string(argv[1]) == "admin")
+    {
+        if (argc < 3)
+        {
+            fprintf(stderr, "usage: econserver admin <world dir> <command>  (`help` lists them)\n");
+            return 2;
+        }
+        std::string command;
+        for (int i = 3; i < argc; i++)
+            command += (command.empty() ? "" : " ") + std::string(argv[i]);
+        std::string answer;
+        const bool  ok = Host::AdminRequest(argv[2], command.empty() ? "help" : command, answer);
+        fputs(answer.c_str(), ok ? stdout : stderr);
+        if (!answer.empty() && answer.back() != '\n')
+            fputs("\n", ok ? stdout : stderr);
+        return ok ? 0 : 1;
     }
 
     std::string dataDir = DataDir::Path();

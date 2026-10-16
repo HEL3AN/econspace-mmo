@@ -105,6 +105,7 @@ jobs:
           ./build/bin/server/econserver.exe accttest
           ./build/bin/server/econserver.exe worldtest
           ./build/bin/server/econserver.exe ordertest
+          ./build/bin/server/econserver.exe opstest
 
       # The agent seam, end to end, against a real server. Deliberately scripted rather
       # than model-driven: a real model would cost money, need a key and answer
@@ -237,6 +238,7 @@ jobs:
           ./build/bin/server/econserver accttest
           ./build/bin/server/econserver worldtest
           ./build/bin/server/econserver ordertest
+          ./build/bin/server/econserver opstest
 
       # The portable package, unpacked away from the source tree, must find its own data/
       # (#399): the dev path is still compiled in, so this is the check that it loses to
@@ -399,6 +401,7 @@ jobs:
           ./build/bin/server/econserver accttest
           ./build/bin/server/econserver worldtest
           ./build/bin/server/econserver ordertest
+          ./build/bin/server/econserver opstest
 
   macos:
     name: macOS (Apple Clang)
@@ -429,6 +432,7 @@ jobs:
           ./build/bin/server/econserver accttest
           ./build/bin/server/econserver worldtest
           ./build/bin/server/econserver ordertest
+          ./build/bin/server/econserver opstest
 
       - name: Agent selftest against a live server
         run: |

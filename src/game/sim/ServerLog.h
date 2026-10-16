@@ -39,6 +39,18 @@ std::string StampLines(const std::string& text, const std::string& stamp, bool& 
 void SetStamped(bool on);
 bool Stamped();
 
+// Also into `dir` (a world's logs/, made if missing), one file a day by the date in UTC:
+// server-2026-10-17.log, stamped like stderr. Lines go there whether or not they are stamped on
+// stderr. Empty: no file. False if the folder cannot be made.
+bool SetFileDir(const std::string& dir);
+// The file a line written at `unixMillis` goes into: "server-YYYY-MM-DD.log".
+std::string FileName(int64_t unixMillis);
+
+// While on, every line written is also kept, unstamped, for EndCapture to return: what a
+// console command said, for an admin who gave it from elsewhere (#400).
+void        BeginCapture();
+std::string EndCapture();
+
 // printf, through the rules above.
 void Printf(const char* fmt, ...) ECON_LOG_FORMAT(1, 2);
 // For what has gone wrong: stderr either way.
@@ -59,6 +71,10 @@ public:
     // "metrics: 3 player(s), 4 connection(s), 2 hot system(s); tick 0.42 ms mean, 1.90 ms
     // max over 3600; out 1234.5 KB (20.6 KB/s)", over the `seconds` since the last line.
     std::string Line(int players, int connections, int hotSystems, double seconds);
+    // Since the last Line, without resetting it: for the console's `status`.
+    int    Ticks() const { return ticks_; }
+    double MeanMs() const { return ticks_ > 0 ? tickSum_ / ticks_ : 0.0; }
+    double MaxMs() const { return tickMax_; }
 
 private:
     int    ticks_ = 0;

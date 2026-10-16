@@ -1,0 +1,48 @@
+# EconSpace server as a systemd service (#400). See docs/hosting.md for the whole setup.
+#
+# Assumes the portable package unpacked in /opt/econspace (econserver and data/ side by
+# side), a system user `econspace`, and a world made with
+#   sudo -u econspace /opt/econspace/econserver init /var/lib/econspace/world
+#
+# Install:  sudo cp econserver.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now econserver
+# Console:  sudo -u econspace /opt/econspace/econserver admin /var/lib/econspace/world status
+# Log:      journalctl -u econserver -f   (also /var/lib/econspace/world/logs/)
+
+[Unit]
+Description=EconSpace server
+Wants=network-online.target
+After=network-online.target
+# A server that cannot start (a server.json with a typo, a damaged world) stops being retried
+# after five tries in five minutes, instead of filling the journal; fix it, then start it.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=econspace
+Group=econspace
+WorkingDirectory=/var/lib/econspace
+# Port, public or not, registration and the rest come from the world's server.json.
+ExecStart=/opt/econspace/econserver host --world /var/lib/econspace/world
+# No console under systemd: commands go through `econserver admin` instead.
+StandardInput=null
+# A stop is SIGTERM: the server saves everything, tells every player and exits 0. Saving a
+# large world takes a moment, so it is given time before systemd stops waiting.
+KillSignal=SIGTERM
+TimeoutStopSec=60
+# A crash or a refused start is retried; a stop asked for (`shutdown`, systemctl stop) is not.
+Restart=on-failure
+RestartSec=10
+
+# The server needs to write its world and nothing else.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/econspace
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
