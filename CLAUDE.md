@@ -116,6 +116,19 @@ cmake --build build-release
 ./build/bin/server/econserver.exe macrobench 1000  # cost per tick/pass with a 1000-system region, nobody on (#295)
 ```
 
+```sh
+cmake --build build-release --target dist   # build-release/econspace-windows.zip (econspace-linux.tar.gz): client, server, agent, data/ in one folder
+./econserver.exe host 50800 --data D:/econ/data   # any binary: data/ from elsewhere (else beside the exe, or one level up)
+```
+
+**Data is found at runtime** (#399, `core/DataDir.h`): `--data <dir>`, else `ECONSPACE_DATA`,
+else the source `data/` while a non-Release binary runs from its own build tree (so the game reads
+what the editor just wrote, no rebuild), else `data/` beside the executable or one level up. Every
+binary logs its choice to stderr. The build copies `data/` beside each executable, and the `dist`
+target installs the `dist` component (`cmake --install build-release --component dist --prefix X`)
+and zips it: copy that folder anywhere and it runs. Release binaries carry no source path
+(`-DECON_DEV_DATA=OFF` by default there).
+
 **Two builds, two jobs** (owner, 2026-10-10). `build/` is Debug: development, tests, screenshots
 and debugging -- asserts on, symbols in. `build-release/` is Release (`-O3`): playtests, builds
 published on GitHub, and **every performance number** -- an unoptimized build is two to five times

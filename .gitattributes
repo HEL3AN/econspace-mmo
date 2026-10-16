@@ -6,3 +6,6 @@
 # Бинарные файлы — без нормализации.
 *.png binary
 *.ttf binary
+
+# cmd reads batch files with CRLF; with LF a label or a goto can misparse.
+*.bat text eol=crlf

@@ -1,5 +1,7 @@
 #include "render/Textures.h"
 
+#include "core/DataDir.h"
+
 #include <cstring>
 #include <string>
 #include <unordered_map>
@@ -69,7 +71,7 @@ const Texture2D& Acquire(const char* name)
     if (it != cache.end())
         return it->second;
 
-    std::string path = std::string(GetApplicationDirectory()) + "data/textures/" + name + ".png";
+    std::string path = DataDir::Path() + "textures/" + name + ".png";
 
     Texture2D tex{ 0, 0, 0, 0, 0 };
     if (FileExists(path.c_str()))

@@ -11,6 +11,7 @@
 
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
+#include "core/DataDir.h"
 #include "core/World.h"
 #include "core/WorldLoader.h"
 #include "core/Actions.h"
@@ -70,13 +71,9 @@ Game::Game(std::unique_ptr<Net::TcpConnection> conn) : player_(500.0), netConn_(
     // (HandleEscape); leaving the game is the window's close button.
     SetExitKey(KEY_NULL);
 
-    // Presentation data: factions, archetypes, materials. In a dev build we read the source data/
-    // (the same path the editor writes to), otherwise a copy next to the exe.
-#ifdef GAME_DATA_DIR
-    dataDir_ = GAME_DATA_DIR;
-#else
-    dataDir_ = std::string(GetApplicationDirectory()) + "data/";
-#endif
+    // Presentation data: factions, archetypes, materials. Found by main() (DataDir.h): the
+    // source data/ in a dev build run from its build tree, else the copy beside the exe.
+    dataDir_ = DataDir::Path();
     // The interface: this machine's UI scale and theme, and the fonts the theme names (#297).
     {
         std::string error;

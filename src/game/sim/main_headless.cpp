@@ -6,6 +6,7 @@
 // server — no client (Game) sits on top yet, but the logic is one (Simulation).
 //
 // Run: econserver [ticks]   (default 3600 ticks = 60 s at SIM_DT=1/60).
+// Every mode takes --data <dir>; without it data/ is looked for beside the exe (DataDir.h).
 
 #include "sim/AccessList.h"
 #include "sim/Auth.h"
@@ -26,6 +27,7 @@
 #include "net/Transport.h"
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
+#include "core/DataDir.h"
 #include "core/Faction.h"
 #include "entities/Combatant.h"
 #include "entities/Nebula.h"
@@ -891,7 +893,7 @@ static nlohmann::json RegionJson(const Simulation& sim, int slot)
 static int GalaxyDump(uint64_t seed, int cap, int centres, std::vector<int> slots, bool skeleton)
 {
     SetTraceLogLevel(LOG_NONE);  // stdout is the JSON
-    std::string dataDir = SIM_DATA_DIR;
+    std::string dataDir = DataDir::Path();
     Factions::Load(dataDir + "factions.json");  // who owns the centres
     for (int s : slots)
         cap = std::max(cap, s + 1);  // a slot is where it is whatever the cap
@@ -1121,7 +1123,7 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
     // Everything said from here on goes to stderr with the time on it (#400).
     Log::SetStamped(true);
     SetTraceLogCallback(RaylibToLog);
-    std::string dataDir = SIM_DATA_DIR;
+    std::string dataDir = DataDir::Path();
     std::string worldPath = std::string(GetApplicationDirectory()) + "world.json";
     Simulation  sim;
     SetupHostSim(sim, dataDir, worldPath, newSeed, centres, maxRegions, maxSystems);
@@ -1917,7 +1919,7 @@ private:
 // check that the layout arrived and the player moved. Run: econserver hosttest.
 static int HostSelftest()
 {
-    std::string dataDir = SIM_DATA_DIR;
+    std::string dataDir = DataDir::Path();
     Simulation  sim;
     SetupHostSim(sim, dataDir);
     ClientSession& s = SetupHostPlayer(sim);
@@ -2090,7 +2092,7 @@ static int HostSelftest()
 // Run as part of: econserver hosttest.
 static int HostNameSelftest()
 {
-    const std::string dataDir = SIM_DATA_DIR;
+    const std::string dataDir = DataDir::Path();
     Simulation        sim;
     SetupHostSim(sim, dataDir);
     ClientSession& s = SetupHostPlayer(sim);
@@ -2204,7 +2206,7 @@ static int AccountSelftest()
 
     // The registry before any ship: an entity built without it has no archetype, and says
     // so (#227).
-    const std::string dataDir = SIM_DATA_DIR;
+    const std::string dataDir = DataDir::Path();
     if (!Factions::Load(dataDir + "factions.json"))
     {
         fprintf(stderr, "FATAL: %s\n", Factions::Error().c_str());
@@ -2267,7 +2269,7 @@ static int WorldSelftest()
         double d = x - y;
         return (d < 0 ? -d : d) < 1e-3;
     };
-    std::string       dataDir = SIM_DATA_DIR;
+    std::string       dataDir = DataDir::Path();
     const ScratchFile scratch("worldtest");
     const std::string path = scratch.Path();
 
@@ -2355,7 +2357,7 @@ static int WorldSelftest()
 // Run: econserver ordertest.
 static int OrderSelftest()
 {
-    std::string dataDir = SIM_DATA_DIR;
+    std::string dataDir = DataDir::Path();
     Simulation  sim;
     SetupHostSim(sim, dataDir);
     ClientSession& s = SetupHostPlayer(sim);
@@ -2474,7 +2476,7 @@ static int OrderSelftest()
 static int ValidateCommand(const std::string& path)
 {
     namespace fs = std::filesystem;
-    const std::string dataDir = SIM_DATA_DIR;
+    const std::string dataDir = DataDir::Path();
     SetTraceLogLevel(LOG_WARNING);
     if (!Factions::Load(dataDir + "factions.json") ||
         !Archetypes::Load(dataDir + "archetypes.json") ||
@@ -2566,7 +2568,7 @@ static int ValidateCommand(const std::string& path)
 
 static int RegenerateCommand(int slot)
 {
-    const std::string dataDir = SIM_DATA_DIR;
+    const std::string dataDir = DataDir::Path();
     const std::string worldPath = std::string(GetApplicationDirectory()) + "world.json";
     if (!std::filesystem::exists(worldPath))
     {
@@ -2624,6 +2626,10 @@ int main(int argc, char** argv)
     // worked and change nothing. The server logs a handful of lines, so dropping the
     // buffer entirely costs nothing.
     setvbuf(stdout, nullptr, _IONBF, 0);
+
+    // Every mode reads data/: found once, before any of them, so a copied build runs (#399).
+    if (DataDir::Resolve(argc, argv, "econserver").empty())
+        return 1;
 
     // Protocol/TCP regression tests moved to the `tests` target (ctest); here —
     // only server modes and batch simulation.
@@ -2750,7 +2756,7 @@ int main(int argc, char** argv)
                        maxRegions, maxSystems);
     }
 
-    std::string dataDir = SIM_DATA_DIR;
+    std::string dataDir = DataDir::Path();
 
     // Determinism: fix both the server RNG (Simulation) and the global raylib RNG
     // (NpcShip uses it for patrols/timers) — valid without a window.

@@ -19,6 +19,7 @@
 #include "core/Actions.h"  // WARP_MIN: when a move is worth a warp
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
+#include "core/DataDir.h"
 #include "core/Faction.h"
 #include "core/Fitting.h"
 #include "core/WorldLoader.h"
@@ -1841,6 +1842,10 @@ int main(int argc, char** argv)
         return 0;
     }
 
+    // data/ is found at runtime, so a copied build runs (#399); the choice goes to stderr.
+    if (DataDir::Resolve(argc, argv, "econagent").empty())
+        return 1;
+
     const bool selftest = argc >= 3 && std::strcmp(argv[1], "selftest") == 0;
     if (!selftest && (argc < 3 || std::strcmp(argv[1], "connect") != 0))
     {
@@ -1878,7 +1883,7 @@ int main(int argc, char** argv)
         if (std::strcmp(argv[i], "--start") == 0)
             startAt = argv[i + 1];
 
-    std::string dataDir = AGENT_DATA_DIR;
+    const std::string dataDir = DataDir::Path();
     if (!Factions::Load(dataDir + "factions.json"))
         Rpc::Log("econagent: " + Factions::Error());
     // Read locally too: describing an object to a model means saying what it can do, and

@@ -12,6 +12,7 @@
 
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
+#include "core/DataDir.h"
 #include "core/Faction.h"
 #include "entities/Combatant.h"
 #include "entities/Ship.h"
@@ -59,7 +60,7 @@ struct BenchRow
 
 BenchRow RunOne(int regionSystems, double seconds, uint64_t seed, bool allHot, int players)
 {
-    const std::string dataDir = SIM_DATA_DIR;
+    const std::string dataDir = DataDir::Path();
     BenchRow          row;
     row.region = regionSystems;
     const double memBefore = ResidentMegabytes();
@@ -176,7 +177,7 @@ int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t see
                int players)
 {
     SetTraceLogLevel(LOG_WARNING);
-    const std::string dataDir = SIM_DATA_DIR;
+    const std::string dataDir = DataDir::Path();
     if (!Factions::Load(dataDir + "factions.json"))
     {
         fprintf(stderr, "FATAL: %s\n", Factions::Error().c_str());

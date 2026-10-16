@@ -127,6 +127,7 @@ endif()
 # --- Engine (shared static library) ----------------------------------------
 add_library(engine STATIC
     src/engine/core/WorldLoader.cpp
+    src/engine/core/DataDir.cpp      # where data/ is, found at runtime (#399)
     src/engine/core/Faction.cpp
     src/engine/core/Archetype.cpp    # what a kind of object is, as data (#34)
     src/engine/core/ArchetypeEdit.cpp  # writing a tuned look back without reformatting (#118)
@@ -263,10 +264,6 @@ add_executable(econspace
 target_link_libraries(econspace PRIVATE engine netproto)  # netproto brings src/game + winsock
 set_target_properties(econspace PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/game)
-# Dev convenience: the game reads the world from the SOURCE data/ (like the editor),
-# so edits made in the editor show up immediately without a rebuild. For a "release"
-# build the define can be dropped — then it reads the copy next to the exe.
-target_compile_definitions(econspace PRIVATE GAME_DATA_DIR="${CMAKE_SOURCE_DIR}/data/")
 
 # --- Headless galaxy server (track M, M3) ----------------------------------
 # The same Simulation as in the game, but WITHOUT rendering/window/input: an
@@ -312,7 +309,6 @@ add_executable(econserver
 target_link_libraries(econserver PRIVATE engine netproto)  # netproto brings src/game + winsock
 set_target_properties(econserver PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/server)
-target_compile_definitions(econserver PRIVATE SIM_DATA_DIR="${CMAKE_SOURCE_DIR}/data/")
 
 # --- Agent bridge (MCP) ----------------------------------------------------
 # econagent wears two hats: an MCP server on stdio for a language model, and an ordinary
@@ -332,8 +328,6 @@ find_package(Threads REQUIRED)
 target_link_libraries(econagent PRIVATE engine netproto Threads::Threads)
 set_target_properties(econagent PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/agent)
-# The galaxy index and factions are read locally, as the game client reads them.
-target_compile_definitions(econagent PRIVATE AGENT_DATA_DIR="${CMAKE_SOURCE_DIR}/data/")
 
 # --- World editor ----------------------------------------------------------
 add_executable(worldeditor
@@ -352,20 +346,70 @@ target_include_directories(worldeditor PRIVATE ${CMAKE_SOURCE_DIR}/src/editor)
 target_link_libraries(worldeditor PRIVATE engine)
 set_target_properties(worldeditor PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/editor)
-# The editor edits the repository's SOURCE data (not the copy next to the exe), so
-# we bake the absolute path to data/ in at configure time.
-target_compile_definitions(worldeditor PRIVATE EDITOR_DATA_DIR="${CMAKE_SOURCE_DIR}/data/")
 
 # --- Data -------------------------------------------------------------------
-# Copy data/ next to EACH executable (they now live in different folders).
-# The target is in ALL — it runs on every build (including data/-only edits).
+# Every binary finds data/ at runtime (src/engine/core/DataDir.h, #399): --data <dir>, else
+# the source data/ while it runs from this build tree (ECON_DEV_DATA), else data/ beside the
+# executable or one level up. So a dev build reads what the editor writes, with no rebuild,
+# and a copied build reads what travels with it. Off by default in Release: a published
+# binary should not carry this machine's source path.
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(ECON_DEV_DATA_DEFAULT OFF)
+else()
+    set(ECON_DEV_DATA_DEFAULT ON)
+endif()
+option(ECON_DEV_DATA "Read the source data/ when run from the build tree" ${ECON_DEV_DATA_DEFAULT})
+if(ECON_DEV_DATA)
+    set_source_files_properties(src/engine/core/DataDir.cpp PROPERTIES COMPILE_DEFINITIONS
+        "ECON_DEV_DATA_DIR=\"${CMAKE_SOURCE_DIR}/data/\";ECON_BUILD_DIR=\"${CMAKE_BINARY_DIR}/\"")
+endif()
+
+# Copy data/ next to EACH executable (they live in different folders), so any bin/<tool>
+# folder copied elsewhere runs as it is. In ALL: it runs on every build, data-only edits too.
 add_custom_target(copy_data ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/data $<TARGET_FILE_DIR:econspace>/data
     COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/data $<TARGET_FILE_DIR:econserver>/data
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/data $<TARGET_FILE_DIR:econagent>/data
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/data $<TARGET_FILE_DIR:worldeditor>/data
-    COMMENT "Copying data/ next to game and editor executables")
-add_dependencies(copy_data econspace worldeditor)
+    COMMENT "Copying data/ next to the executables")
+add_dependencies(copy_data econspace econserver econagent worldeditor)
+
+# --- Portable package --------------------------------------------------------
+# One flat folder: the client, the server and the agent bridge side by side with data/ --
+# what a friend unpacks and runs (.zip on Windows, .tar.gz elsewhere; on Linux the server
+# is the same folder on a headless machine). Only the `dist` component is installed, so the
+# fetched libraries' own install rules stay out of it:
+#   cmake --install build-release --component dist --prefix <dir>
+#   cmake --build build-release --target dist   -> build-release/econspace-<os>.zip|.tar.gz
+install(TARGETS econspace econserver econagent RUNTIME DESTINATION . COMPONENT dist)
+install(DIRECTORY data/ DESTINATION data COMPONENT dist)
+install(FILES tools/dist/README.txt DESTINATION . COMPONENT dist)
+if(WIN32)
+    install(FILES tools/dist/start-server.bat tools/dist/connect-example.bat
+            DESTINATION . COMPONENT dist)
+    set(ECON_DIST_ARCHIVE zip)
+    set(ECON_DIST_TAR cf)
+    set(ECON_DIST_FORMAT --format=zip)
+else()
+    set(ECON_DIST_ARCHIVE tar.gz)
+    set(ECON_DIST_TAR czf)
+    set(ECON_DIST_FORMAT)
+endif()
+set(ECON_DIST_NAME "econspace-${CMAKE_SYSTEM_NAME}" CACHE STRING "Name of the portable package")
+string(TOLOWER "${ECON_DIST_NAME}" ECON_DIST_NAME)
+set(ECON_DIST_FILE ${ECON_DIST_NAME}.${ECON_DIST_ARCHIVE})
+add_custom_target(dist
+    COMMAND ${CMAKE_COMMAND} -E rm -rf dist/${ECON_DIST_NAME} ${ECON_DIST_FILE}
+    COMMAND ${CMAKE_COMMAND} --install . --component dist --prefix dist/${ECON_DIST_NAME}
+    COMMAND ${CMAKE_COMMAND} -E chdir dist ${CMAKE_COMMAND} -E tar ${ECON_DIST_TAR}
+            ../${ECON_DIST_FILE} ${ECON_DIST_FORMAT} ${ECON_DIST_NAME}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Packing ${ECON_DIST_FILE}: client, server, agent and data/")
+add_dependencies(dist econspace econserver econagent)
 
 # --- Tests (doctest + ctest) -----------------------------------------------
 # Regression unit tests for the wire protocol and TCP transport. Run with:
