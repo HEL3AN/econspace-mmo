@@ -479,6 +479,8 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
         return false;
     if (found->GetKind() == EntityKind::Npc && !static_cast<NpcShip*>(found)->IsAlive())
         return false;
+    if (HiddenFrom(s, st, *found))
+        return false;  // what a pilot has not found, they cannot aim at (#346, #415)
 
     const Vector2 shipPos = s.ship->GetPosition();
     const Vector2 at = found->GetPosition();

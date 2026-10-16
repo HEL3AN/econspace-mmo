@@ -27,6 +27,10 @@ struct FireEvent
     // is "mine" or "at me" for exactly the player it concerns and for nobody else (#3).
     int shooterSessionId = 0;
     int targetSessionId = 0;
+    // ...and which object of the system each end is, if it is one (#415): a beam from or at
+    // something a pilot has not found is not theirs to see.
+    int shooterEntityId = 0;
+    int targetEntityId = 0;
 };
 
 // Cold aggregate of a system: cheap statistical state that ALWAYS exists (even for

@@ -215,6 +215,14 @@ public:
     // What scans resolved since the last call, as a delta of the pilot's own: by session id.
     // The system's revision moves, so a layout sent later is newer than it.
     std::vector<std::pair<int, Proto::LayoutDelta>> TakeRevealDeltas();
+    // A hidden object fired on this pilot (#415): it has given itself away, and is theirs from
+    // now on as if a scan had resolved it -- in the account, and in a delta of their own that
+    // the host sends before the snapshot showing the shot. Nothing for one already found.
+    void RevealByFire(ClientSession& s, const SystemState& st, const Entity& e);
+    // Whether either end of a beam is something this pilot has not found (#415): such a beam
+    // is left out of what they are sent, as the object is.
+    bool BeamHiddenFrom(const ClientSession& s, const std::string& systemId,
+                        const FireEvent& f) const;
 
     // --- The archive (#342 S4; Simulation_Drift.cpp) ---
     // A region that drifted away at the cap: its documents as they were sealed, and what had
@@ -1449,6 +1457,9 @@ private:
     // Someone resolved a signature; the first to do so is news.
     void CreditFind(ClientSession& s, const std::string& key, const std::string& what,
                     const std::string& systemId);
+    // A signature is this pilot's from now on: in their account, in a delta of their own, and
+    // news if nobody had it. Returns the journal's line for it: "KQX-417: a hidden base -- Den".
+    std::string Resolve(ClientSession& s, const SystemState& st, const Entity& e);
 
     double time_ = 0.0;        // total simulation time (seconds)
     double maintAccum_ = 0.0;  // accumulator of coarse world maintenance (director)

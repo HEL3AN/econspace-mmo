@@ -249,6 +249,7 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
                 fe.from = npos;
                 fe.to = e->GetPosition();
                 fe.shooterFaction = npc->GetFaction();
+                fe.targetEntityId = e->GetId();  // a hidden base besieged (#415)
                 fires->push_back(fe);
                 break;
             }
@@ -429,6 +430,14 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
                 if (!account.empty() && kv.second.accountName == account)
                     ProvokeGuards(st, *targetPlayer, target->GetPosition(), kv.second.id, 0);
         const int targetSession = targetPlayer != nullptr ? targetPlayer->id : 0;
+        // A hidden base that fires on a pilot has given itself away to them (#415), before the
+        // snapshot that shows the shot and the damage.
+        if (targetSession != 0)
+        {
+            const auto victim = sessions_.find(targetSession);
+            if (victim != sessions_.end())
+                RevealByFire(victim->second, st, *e);
+        }
         if (fires != nullptr)
         {
             FireEvent fe;
@@ -436,6 +445,7 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
             fe.to = target->GetPosition();
             fe.shooterFaction = owner;
             fe.targetSessionId = targetSession;
+            fe.shooterEntityId = e->GetId();
             fires->push_back(fe);
         }
     }

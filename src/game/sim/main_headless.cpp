@@ -430,6 +430,7 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
         fe.to = ev.shotTo;
         fe.shooterFaction = Factions::Unaffiliated();
         fe.shooterSessionId = s.id;  // "mine" for this player and nobody else
+        fe.targetEntityId = c.targetId;
         fires[s.systemId].push_back(fe);
     }
     sim.StepPlayerMining(s, *sim.SystemOf(s), s.account.GetSkills().GetBonus(SkillType::Mining),
@@ -496,6 +497,7 @@ static void HostStepWorld(Simulation& sim, float dt,
             fe.to = shot.to;
             fe.shooterFaction = Factions::Unaffiliated();
             fe.shooterSessionId = s.id;
+            fe.targetEntityId = shot.targetId;
             fires[s.systemId].push_back(fe);
         }
         s.orderShots.clear();
@@ -665,13 +667,19 @@ static std::string AccountPath(const std::string& dir, const std::string& accoun
 
 // The same beams, told to one player. Whether a shot is "mine" or "at me" is a fact about
 // the recipient, not about the shot, so it is written here rather than where it happened.
-static std::vector<FireEvent> FiresFor(const std::vector<FireEvent>& all, int sessionId)
+// A beam from or at something they have not found is not theirs to see (#415).
+static std::vector<FireEvent> FiresFor(const Simulation& sim, const std::vector<FireEvent>& all,
+                                       const ClientSession& s)
 {
-    std::vector<FireEvent> out = all;
-    for (FireEvent& f : out)
+    std::vector<FireEvent> out;
+    out.reserve(all.size());
+    for (FireEvent f : all)
     {
-        f.fromPlayer = (f.shooterSessionId != 0 && f.shooterSessionId == sessionId);
-        f.targetIsPlayer = (f.targetSessionId != 0 && f.targetSessionId == sessionId);
+        if (sim.BeamHiddenFrom(s, s.systemId, f))
+            continue;
+        f.fromPlayer = (f.shooterSessionId != 0 && f.shooterSessionId == s.id);
+        f.targetIsPlayer = (f.targetSessionId != 0 && f.targetSessionId == s.id);
+        out.push_back(f);
     }
     return out;
 }
@@ -2112,7 +2120,7 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
             Proto::Snapshot snap = sim.BuildSnapshot(*s, s->systemId);
             snap.player.lastInput = hc.lastSeq;  // ack for client reconciliation
             snap.tradeAcks = std::move(acks[hc.sessionId]);
-            snap.fires = FiresFor(fires[s->systemId], s->id);
+            snap.fires = FiresFor(sim, fires[s->systemId], *s);
             // Everything this player has not seen yet; the client acknowledges by seq.
             snap.events = s->EventsSince(hc.lastEventSeq);
             if (!snap.events.empty())

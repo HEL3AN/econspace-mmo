@@ -10,6 +10,7 @@
 #include "entities/Structure.h"
 #include "gen/Galaxy.h"
 #include "gen/Region.h"
+#include "sim/FactionMind.h"
 #include "sim/Protocol.h"
 #include "sim/SaveSchema.h"
 #include "sim/Simulation.h"
@@ -17,6 +18,7 @@
 
 #include "temp_dir.h"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <memory>
@@ -399,6 +401,76 @@ TEST_CASE("a hidden base is found by scanning, and the find is the pilot's acros
     again.accountName = "seer";
     REQUIRE(sim.LoadAccount(again, path) == Save::Result::Ok);
     CHECK(InLayout(sim.BuildLayoutFor(again, a), base));
+}
+
+TEST_CASE("a hidden base that fires on a pilot is revealed to them, and to nobody else (#415)")
+{
+    LoadRegistries();
+    Rules      r;
+    Simulation sim;
+    Make(sim, 7);
+    std::string a, b;
+    TwoRegions(sim, a, b);
+    auto& ents = sim.SystemById(a)->entities;
+    ents.erase(std::remove_if(ents.begin(), ents.end(), [](const std::unique_ptr<Entity>& e)
+                              { return e->GetKind() == EntityKind::Npc; }),
+               ents.end());
+    const Vector2 at{ 300000.0f, 0.0f };
+    const int     base = sim.AddStatic(
+        a, std::make_unique<Structure>(at, 240.0f, "Den", std::string("structure.outpost_hidden")),
+        Outposts::OwnerOf(Factions::Pirates()));
+    REQUIRE(base != 0);
+    sim.TakeLayoutDeltas();
+
+    // One pilot in its reach, one beside it who is not a target -- docked, say.
+    ClientSession& victim =
+        sim.CreateSession(a, { at.x + 400.0f, at.y }, GetShipCatalog()[0].stats);
+    victim.accountName = "victim";
+    ClientSession& other = sim.CreateSession(a, { at.x - 400.0f, at.y }, GetShipCatalog()[0].stats);
+    other.accountName = "other";
+    CHECK_FALSE(InLayout(sim.BuildLayoutFor(victim, a), base));
+    std::vector<Simulation::PlayerPresence> players(1);
+    players[0].session = &victim;
+    players[0].ship = victim.ship.get();
+
+    // The tick it fires is the tick it is found: the delta is the victim's before the
+    // snapshot that shows the shot can be built.
+    std::vector<FireEvent> fires;
+    for (int i = 0; i < 120 && fires.empty(); i++)
+        sim.StepStationDefence(*sim.SystemById(a), players, &fires, 1.0f / 60.0f);
+    REQUIRE(fires.size() == 1);
+    CHECK(fires[0].targetSessionId == victim.id);
+    CHECK(fires[0].shooterEntityId == base);
+    const auto reveals = sim.TakeRevealDeltas();
+    REQUIRE(reveals.size() == 1);
+    CHECK(reveals[0].first == victim.id);
+    REQUIRE(reveals[0].second.added.size() == 1);
+    CHECK(reveals[0].second.added[0].id == base);
+
+    // Found as a scan finds it: the account has it, the journal says how.
+    const std::string key = sim.SignatureKey(*sim.SystemById(a), *ById(sim, a, base));
+    CHECK(victim.scanned.count(key) == 1);
+    bool told = false;
+    for (const Ev::Event& e : victim.journal)
+        told = told || e.text.find("revealed by its fire") != std::string::npos;
+    CHECK(told);
+    CHECK(InLayout(sim.BuildLayoutFor(victim, a), base));
+    CHECK_FALSE(sim.BeamHiddenFrom(victim, a, fires[0]));
+
+    // The other pilot: not in the layout, not the beam, and not a target for their guns.
+    CHECK_FALSE(InLayout(sim.BuildLayoutFor(other, a), base));
+    CHECK(other.scanned.empty());
+    CHECK(sim.BeamHiddenFrom(other, a, fires[0]));
+    other.weaponOn = true;
+    CHECK_FALSE(sim.StepPlayerFire(other, *sim.SystemById(a), base, 1.0f / 60.0f, nullptr));
+    victim.weaponOn = true;
+    CHECK(sim.StepPlayerFire(victim, *sim.SystemById(a), base, 1.0f / 60.0f, nullptr));
+
+    // Found once: the next volley tells nobody anything new.
+    for (int i = 0; i < 120; i++)
+        sim.StepStationDefence(*sim.SystemById(a), players, &fires, 1.0f / 60.0f);
+    CHECK(fires.size() > 1);
+    CHECK(sim.TakeRevealDeltas().empty());
 }
 
 TEST_CASE("holes and finds round-trip through the world save (#342 S9)")
