@@ -598,7 +598,18 @@ struct HostClient
     // (#14). An honest client sends exactly one per SIM_DT, so it never runs out.
     double tickBudget = 0.0;
     bool   throttleReported = false;
+    // A galaxy map changed since this client was last sent one (#411).
+    bool galaxyOwed = false;
 };
+
+// A client with a quarter of the backlog cap still unsent is not reading (#411): an agent
+// between tool calls, a link that has stalled. What is sent on a clock -- snapshots, the
+// galaxy map -- waits until it drains rather than growing the backlog to the cap, where the
+// connection would be dropped. What is said once (a layout, a delta, chat) still goes.
+static bool BackedUp(const HostClient& hc)
+{
+    return hc.conn && hc.conn->Queued() > Net::TcpConnection::SERVER_MAX_SEND_BACKLOG / 4;
+}
 
 // The rate a client may spend ticks at, and how many it may bank. Beyond the burst the
 // sender is outrunning the simulation and the extra inputs are refused rather than queued
@@ -670,6 +681,7 @@ struct NetStats
     double galaxies = 0.0;
     double chat = 0.0;  // lines and members (#347)
     int    snapCount = 0;
+    size_t queued = 0;      // the most any client had unsent at a snapshot (#411)
     double window = 0.0;    // seconds since the last report
     double reported = 0.0;  // bytes in the reports so far, for the metrics line (#400)
 
@@ -684,12 +696,13 @@ struct NetStats
         reported += total;
         const double perSec = total / window;
         Log::Printf("net: %zu client(s), %.1f KB/s out (%.1f KB/s each) -- snapshots %.0f%%, "
-                    "galaxy %.0f%%, layout %.0f%%; %.0f B per snapshot\n",
+                    "galaxy %.0f%%, layout %.0f%%; %.0f B per snapshot, up to %.1f KB unsent\n",
                     clients, perSec / 1024.0, clients ? perSec / 1024.0 / (double)clients : 0.0,
                     100.0 * snapshots / total, 100.0 * galaxies / total, 100.0 * layouts / total,
-                    snapCount ? snapshots / snapCount : 0.0);
+                    snapCount ? snapshots / snapCount : 0.0, (double)queued / 1024.0);
         snapshots = layouts = galaxies = chat = 0.0;
         snapCount = 0;
+        queued = 0;
         window = 0.0;
     }
 };
@@ -1953,6 +1966,7 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
                 {
                     net.galaxies += (double)g.size();
                     hc.conn->Send(g);
+                    hc.galaxyOwed = false;
                 }
         }
 
@@ -1984,6 +1998,14 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
                 hc.layoutSystem = s->systemId;
             }
             if (!sendSnapshots)
+                continue;
+            // A client that is not reading is not sent more to not read (#411): one snapshot
+            // a second once it has stopped acknowledging, and none while a quarter of the
+            // backlog cap is still unsent -- an agent between tool calls, or a link that has
+            // stalled, keeps its connection instead of being dropped at the cap. Nothing is
+            // lost by skipping: the journal goes out with the next one that is sent.
+            net.queued = std::max(net.queued, hc.conn->Queued());
+            if (BackedUp(hc) || !hc.snapOut.Due(uptime))
                 continue;
             Proto::Snapshot snap = sim.BuildSnapshot(*s, s->systemId);
             snap.player.lastInput = hc.lastSeq;  // ack for client reconciliation
@@ -2042,12 +2064,17 @@ static int RunHost(unsigned short port, bool isPublic, bool openRegistration, ui
             {
                 lastGalaxy = g;
                 for (HostClient& hc : clients)
-                    if (hc.sessionId != 0 && hc.conn)
-                    {
-                        net.galaxies += (double)g.size();
-                        hc.conn->Send(g);
-                    }
+                    hc.galaxyOwed = true;
             }
+            // Owed rather than sent to a client that is not reading (#411): the newest map
+            // goes out once it is, and the ones in between were never worth queueing.
+            for (HostClient& hc : clients)
+                if (hc.galaxyOwed && hc.sessionId != 0 && hc.conn && !BackedUp(hc))
+                {
+                    net.galaxies += (double)lastGalaxy.size();
+                    hc.conn->Send(lastGalaxy);
+                    hc.galaxyOwed = false;
+                }
         }
 
         net.window += frame;

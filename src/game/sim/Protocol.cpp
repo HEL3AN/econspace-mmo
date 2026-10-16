@@ -1398,6 +1398,14 @@ std::string SnapshotSender::Encode(const Snapshot& s, const std::set<int>& relev
     return j.dump();
 }
 
+bool SnapshotSender::Due(double now)
+{
+    if (Unacknowledged() >= STALL_AFTER && now - lastDue_ < STALLED_INTERVAL)
+        return false;
+    lastDue_ = now;
+    return true;
+}
+
 void SnapshotSender::Acknowledge(int n)
 {
     if (n > acked_ && n <= next_)

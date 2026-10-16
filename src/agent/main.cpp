@@ -2222,7 +2222,12 @@ int main(int argc, char** argv)
                throw Rpc::Error{ Rpc::INVALID_PARAMS, "no such tool: " + name };
            });
 
+    // From here on the connection is pumped between requests too (#411), so a model that
+    // thinks for minutes comes back to a live session with nothing missed.
+    rpc.SetLock(&g_session.Lock());
+    g_session.StartKeepalive();
     rpc.Run();
+    g_session.StopKeepalive();
     Rpc::Log("econagent: client closed the connection, exiting");
     Net::Shutdown();
     return 0;

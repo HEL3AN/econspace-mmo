@@ -76,7 +76,16 @@ void Server::Run()
     {
         if (line.empty())
             continue;
-        std::string response = HandleLine(line);
+        std::string response;
+        if (lock_ != nullptr)
+        {
+            std::lock_guard<std::mutex> hold(*lock_);
+            response = HandleLine(line);
+        }
+        else
+        {
+            response = HandleLine(line);
+        }
         if (response.empty())
             continue;
         // Unbuffered and flushed per message: an MCP client is waiting on this line, and a

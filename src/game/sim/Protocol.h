@@ -717,10 +717,22 @@ public:
     void Acknowledge(int n);
     // The base the last Encode used; 0 -- it was whole.
     int LastBase() const { return lastBase_; }
+    // Whether a snapshot is due at `now` (seconds, any steady clock), and if so counts it as
+    // sent then (#411). A client that has acknowledged nothing for STALL_AFTER snapshots is
+    // not reading -- an agent thinking between tool calls, a link that has stalled -- and is
+    // sent one a second until it acknowledges again, rather than twenty that pile up in the
+    // send backlog until the connection is dropped. Unacknowledged they would be whole ones
+    // too, so the pile grows at full price.
+    bool Due(double now);
+    // Snapshots sent past the newest acknowledged one.
+    int Unacknowledged() const { return next_ - acked_; }
 
     // How many sent states are held for a late ack: a second and a half at 20 Hz. An ack
     // older than that is answered with a whole snapshot.
     static constexpr size_t HELD = 32;
+    // Two seconds of snapshots at 20 Hz without an acknowledgement; then one a second.
+    static constexpr int    STALL_AFTER = 40;
+    static constexpr double STALLED_INTERVAL = 1.0;
 
 private:
     struct Far
@@ -732,6 +744,7 @@ private:
     int                                                 next_ = 0;
     int                                                 acked_ = 0;
     int                                                 lastBase_ = 0;
+    double                                              lastDue_ = -1e300;
     std::map<int, std::shared_ptr<const SnapshotState>> sent_;
     std::map<int, Far>                                  far_;
 };

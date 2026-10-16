@@ -174,6 +174,36 @@ void Session::Pump()
         conn_->Send(Proto::EncodeAck({ snapIn_.Latest() }));
 }
 
+void Session::StartKeepalive()
+{
+    if (keepalive_.joinable())
+        return;
+    stopKeepalive_ = false;
+    keepalive_ = std::thread(
+        [this]
+        {
+            while (!stopKeepalive_)
+            {
+                {
+                    std::lock_guard<std::mutex> hold(lock_);
+                    if (Alive())
+                        Pump();
+                }
+                // Ten times a second: far inside the server's two seconds of patience, and
+                // nothing next to the cost of decoding what arrived.
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        });
+}
+
+void Session::StopKeepalive()
+{
+    if (!keepalive_.joinable())
+        return;
+    stopKeepalive_ = true;
+    keepalive_.join();
+}
+
 bool Session::WaitUntil(const std::function<bool()>& done, double timeoutSeconds)
 {
     using clock = std::chrono::steady_clock;

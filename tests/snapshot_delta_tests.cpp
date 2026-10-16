@@ -265,6 +265,41 @@ TEST_CASE("a lost snapshot and a missing acknowledgement heal themselves")
     }
 }
 
+TEST_CASE("a client that stops acknowledging is sent one a second until it acks (#411)")
+{
+    Link            link;
+    Proto::Snapshot got;
+    Proto::Snapshot s = Base();
+
+    // Twenty a second for as long as the acknowledgements keep up.
+    double now = 0.0;
+    for (int i = 0; i < 200; i++, now += 0.05)
+    {
+        REQUIRE(link.out.Due(now));
+        s.time = now;
+        REQUIRE(link.Deliver(s, got));
+    }
+
+    // Then silence: STALL_AFTER more go out at the full rate, after that one a second.
+    int sent = 0;
+    for (int i = 0; i < 20 * 60; i++, now += 0.05)  // a minute of a model thinking
+        if (link.out.Due(now))
+        {
+            s.time = now;
+            link.out.Encode(s, {});
+            sent++;
+        }
+    CHECK(sent >= Proto::SnapshotSender::STALL_AFTER);
+    CHECK(sent <= Proto::SnapshotSender::STALL_AFTER + 60);
+
+    // One acknowledgement of the newest and it is back to twenty a second.
+    REQUIRE(link.in.Decode(link.out.Encode(s, {}), got));
+    link.out.Acknowledge(link.in.Latest());
+    CHECK(link.out.Unacknowledged() == 0);
+    for (int i = 0; i < 5; i++, now += 0.05)
+        CHECK(link.out.Due(now));
+}
+
 TEST_CASE("the area of interest: near in full, far coarse and once a second")
 {
     Proto::Interest i;
