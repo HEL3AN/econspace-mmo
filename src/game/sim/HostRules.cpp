@@ -10,9 +10,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <random>
 #include <system_error>
 #include <vector>
 
@@ -101,18 +104,26 @@ Save::Result ReadAccountAuth(const std::string& path, std::string& salt, std::st
     return Save::Result::Ok;
 }
 
-std::string AccountSystem(const std::string& path)
+// An account file as JSON, when it is one this build reads: not a missing, damaged or newer
+// one, each of which plays as a fresh account -- one that has nowhere yet.
+static bool ReadAccountJson(const std::string& path, nlohmann::json& j)
 {
     std::ifstream in(path);
     if (!in.is_open())
-        return std::string();
-    const nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
+        return false;
+    j = nlohmann::json::parse(in, nullptr, false);
     if (j.is_discarded() || !j.is_object())
-        return std::string();
+        return false;
     const auto version = j.find("version");
-    if (version != j.end() &&
-        (!version->is_number_integer() || version->get<int>() > Save::ACCOUNT_VERSION))
-        return std::string();  // a fresh account plays it: one that has nowhere yet
+    return version == j.end() ||
+           (version->is_number_integer() && version->get<int>() <= Save::ACCOUNT_VERSION);
+}
+
+std::string AccountSystem(const std::string& path)
+{
+    nlohmann::json j;
+    if (!ReadAccountJson(path, j))
+        return std::string();
     const auto place = j.find("place");
     if (place == j.end() || !place->is_object())
         return std::string();
@@ -120,10 +131,19 @@ std::string AccountSystem(const std::string& path)
     return sys != place->end() && sys->is_string() ? sys->get<std::string>() : std::string();
 }
 
+std::string AccountWorld(const std::string& path)
+{
+    nlohmann::json j;
+    if (!ReadAccountJson(path, j))
+        return std::string();
+    const auto world = j.find("world");
+    return world != j.end() && world->is_string() ? world->get<std::string>() : std::string();
+}
+
 bool NeedsStart(const Simulation& sim, const std::string& accountPath)
 {
     const std::string sys = AccountSystem(accountPath);
-    return sys.empty() || !sim.HasSystem(sys);
+    return sys.empty() || !sim.HasSystem(sys) || sim.ForeignWorld(AccountWorld(accountPath));
 }
 
 std::string PickStart(const Simulation& sim, const std::string& wanted, bool randomOnly,
@@ -167,6 +187,86 @@ WorldStart OpenWorld(Simulation& sim, const std::string& path, std::string& why)
           " is the newest): copy one over it to go on with that "
           "world, or move it aside to start a new galaxy. It has NOT been modified.";
     return WorldStart::Refused;
+}
+
+std::string AccountsDir(const std::string& worldPath)
+{
+    const size_t slash = worldPath.find_last_of("/\\");
+    return (slash == std::string::npos ? std::string() : worldPath.substr(0, slash + 1)) +
+           "accounts/";
+}
+
+// An account's file or one of the older copies a save keeps beside it: account_<x>.json and
+// account_<x>.json.bak<n>. Not a .tmp -- that is a write that never finished.
+static bool IsAccountFile(const std::string& name)
+{
+    if (name.rfind("account_", 0) != 0)
+        return false;
+    const size_t json = name.rfind(".json");
+    if (json == std::string::npos || json <= 8)
+        return false;
+    const std::string tail = name.substr(json + 5);
+    if (tail.empty())
+        return true;
+    if (tail.size() < 5 || tail.compare(0, 4, ".bak") != 0)
+        return false;
+    return std::all_of(tail.begin() + 4, tail.end(),
+                       [](char c) { return std::isdigit((unsigned char)c) != 0; });
+}
+
+AccountMove MoveAccounts(const std::string& fromDir, const std::string& toDir)
+{
+    namespace fs = std::filesystem;
+    AccountMove     out;
+    std::error_code ec;
+    fs::create_directories(toDir, ec);
+    if (!fs::is_directory(toDir, ec))
+    {
+        out.error = "cannot make " + toDir;
+        return out;
+    }
+    // Names first, then moves: renaming while iterating a directory is unspecified.
+    std::vector<std::string> names;
+    for (fs::directory_iterator it(fromDir, ec), end; !ec && it != end; it.increment(ec))
+    {
+        std::error_code fe;
+        if (!it->is_regular_file(fe))
+            continue;
+        const std::string name = it->path().filename().string();
+        if (IsAccountFile(name))
+            names.push_back(name);
+    }
+    std::sort(names.begin(), names.end());
+    for (const std::string& name : names)
+    {
+        const fs::path from = fs::path(fromDir) / name, to = fs::path(toDir) / name;
+        // Never over another file: one there is the account as it is now, and the one left
+        // behind is for a person to look at.
+        if (fs::exists(to, ec))
+        {
+            out.kept.push_back(from.generic_string());
+            continue;
+        }
+        // A rename within one folder tree: the file is wholly in one place or the other.
+        fs::rename(from, to, ec);
+        if (ec)
+            out.kept.push_back(from.generic_string());
+        else
+            out.moved++;
+    }
+    return out;
+}
+
+std::string NewWorldId()
+{
+    // Not the generator's, so not from its keys: two worlds of one seed are two worlds. The
+    // clock is mixed in because random_device has been deterministic on some MinGW builds.
+    std::random_device rd;
+    const uint64_t  stamp = (uint64_t)std::chrono::system_clock::now().time_since_epoch().count();
+    std::mt19937_64 mix(stamp ^ ((uint64_t)rd() << 32) ^ (uint64_t)rd());
+    char            buf[17];
+    snprintf(buf, sizeof buf, "%016llx", (unsigned long long)mix());
+    return buf;
 }
 
 std::string RegionsDir(const std::string& worldPath)

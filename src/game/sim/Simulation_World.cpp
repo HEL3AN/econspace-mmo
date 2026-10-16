@@ -909,6 +909,10 @@ bool Simulation::SaveWorld(const std::string& path) const
     json j;
     j["version"] = Save::WORLD_VERSION;
     j["simTime"] = time_;
+    // Which world this is, for the accounts made in it (#392). A field an older build
+    // ignores, so no version bump (#20).
+    if (!worldId_.empty())
+        j["worldId"] = worldId_;
     // The regions are not in it: each is sealed in its own file when it opens, or remade
     // from these (#140, #342 S3).
     if (hasRegion_)
@@ -1092,6 +1096,9 @@ Save::Result Simulation::LoadWorld(const std::string& path)
     Reset();
     InitGalaxy();  // skeletons with default aggregates for all systems
     time_ = j.value("simTime", 0.0);
+    // A world from before #392 has none; the host gives it one.
+    worldId_ = j.contains("worldId") && j["worldId"].is_string() ? j["worldId"].get<std::string>()
+                                                                 : std::string();
     OwnersFrom(j.value("owners", json()));  // (#340)
     for (auto it = j["galaxy"].begin(); it != j["galaxy"].end(); ++it)
     {

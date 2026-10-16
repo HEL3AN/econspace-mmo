@@ -212,6 +212,13 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   ignore does not need a bump. A save is written with `Save::WriteFileAtomic` (beside the
   file, then renamed over it, older copies kept as `.bakN`), and a *damaged* file is not
   "no file" (#341): a damaged world stops the server, a damaged account refuses its login.
+- **Accounts belong to a world** (#392). They are kept in `accounts/` beside `world.json`
+  (`Host::AccountsDir`); files left beside the executable by older builds are moved in at
+  start, never over one already there. `world.json` carries a `worldId` made when the world
+  is first saved, and each account is stamped with it: a pilot from another world keeps
+  money, skills and ships but not their place or missions, and is offered a start. System
+  ids repeat from seed to seed, so without the stamp a place would be a different system
+  under the same name. An unstamped account belongs to whichever world loads it.
 - **A login is a challenge and an answer, not a name** (#106). The server sends a nonce
   and the salt; the client replies with `H(nonce ‖ H(salt ‖ secret))`, so the secret itself
   never crosses the wire after the account is created. There is no transport encryption, so

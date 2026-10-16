@@ -41,9 +41,12 @@ Save::Result ReadAccountAuth(const std::string& path, std::string& salt, std::st
 // a damaged one, one from a newer build (which plays as a fresh account), or one that never
 // said.
 std::string AccountSystem(const std::string& path);
+// The world an account file was last saved in (#392), or empty: not stamped (from before),
+// or not readable, as above.
+std::string AccountWorld(const std::string& path);
 // Whether the player of the account at `accountPath` has to be given a start: a new
-// account, or one whose system this galaxy does not have -- a world remade under new
-// rules keeps its accounts, and they choose again.
+// account, one whose system this galaxy does not have -- a world remade under new
+// rules keeps its accounts, and they choose again -- or one from another world.
 bool NeedsStart(const Simulation& sim, const std::string& accountPath);
 // The start a player gets: `wanted` if it is one and the server lets players choose,
 // otherwise one of the starts by `roll` -- an asked-for system that is not a start is the
@@ -64,6 +67,25 @@ enum class WorldStart
     Refused
 };
 WorldStart OpenWorld(Simulation& sim, const std::string& path, std::string& why);
+
+// Where a world's accounts are kept (#392): `accounts/` beside its world.json, ending in a
+// separator as AccountFile wants. They were beside the executable, so a world started
+// afresh -- or a second world run from the same build -- had another world's pilots.
+std::string AccountsDir(const std::string& worldPath);
+// Moves the account files in `fromDir` (account_*.json, with the older copies kept beside
+// them) into `toDir`, made if need be -- once, when accounts first move beside their world.
+// Never over a file: an account already in `toDir` is the live one, and the old file is
+// left where it is and named in `kept`, as is one that would not move. `error` is set when
+// `toDir` cannot be made, and nothing is moved.
+struct AccountMove
+{
+    int                      moved = 0;
+    std::vector<std::string> kept;
+    std::string              error;
+};
+AccountMove MoveAccounts(const std::string& fromDir, const std::string& toDir);
+// A new world's identity (#392): sixteen hex digits, from the clock and random_device.
+std::string NewWorldId();
 
 // Where a world's regions are sealed (#342 S3): `regions/` beside its world.json.
 std::string RegionsDir(const std::string& worldPath);

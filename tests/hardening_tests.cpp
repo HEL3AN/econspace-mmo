@@ -230,6 +230,58 @@ TEST_CASE("Pilot and pilot are one account (#341)")
     CHECK(Host::AccountFile(dir, "ann") == dir + "account_ann.json");
 }
 
+TEST_CASE("accounts move in beside their world, and none is lost or written over (#392)")
+{
+    const TempDir     tmp;
+    const std::string world = tmp.Path("world.json");
+    const std::string to = Host::AccountsDir(world);
+    CHECK(to == tmp.Path("accounts/"));
+    CHECK(Host::AccountsDir("world.json") == "accounts/");
+    CHECK(Host::AccountsDir("C:\\saves\\world.json") == "C:\\saves\\accounts/");
+
+    // Beside the executable, where they were: two accounts with an older copy, a write that
+    // never finished, and files that are not accounts at all.
+    Spit(tmp.Path("account_ann.json"), "{\"money\": 1}");
+    Spit(tmp.Path("account_ann.json.bak1"), "{\"money\": 0}");
+    Spit(tmp.Path("account_bob.json"), "{\"money\": 2}");
+    Spit(tmp.Path("account_cid.json.tmp"), "{\"mo");
+    Spit(tmp.Path("world.json"), "{}");
+    Spit(tmp.Path("account_notes.txt"), "x");
+    // ...and bob is already in accounts/: that one is in use, and the old one stays put.
+    tmp.MakeDir("accounts");
+    Spit(tmp.Path("accounts/account_bob.json"), "{\"money\": 99}");
+
+    const Host::AccountMove m = Host::MoveAccounts(tmp.Path(""), to);
+    CHECK(m.error.empty());
+    CHECK(m.moved == 2);
+    REQUIRE(m.kept.size() == 1);
+    CHECK(m.kept[0].find("account_bob.json") != std::string::npos);
+    CHECK(Slurp(to + "account_ann.json") == "{\"money\": 1}");
+    CHECK(Slurp(to + "account_ann.json.bak1") == "{\"money\": 0}");
+    CHECK_FALSE(std::filesystem::exists(tmp.Path("account_ann.json")));
+    CHECK(Slurp(to + "account_bob.json") == "{\"money\": 99}");
+    CHECK(Slurp(tmp.Path("account_bob.json")) == "{\"money\": 2}");
+    CHECK(std::filesystem::exists(tmp.Path("account_cid.json.tmp")));
+    CHECK_FALSE(std::filesystem::exists(to + "account_cid.json.tmp"));
+    CHECK(std::filesystem::exists(tmp.Path("world.json")));
+    CHECK(std::filesystem::exists(tmp.Path("account_notes.txt")));
+    CHECK(Host::AccountFile(to, "ann") == to + "account_ann.json");
+
+    // Again, as every start does: nothing more to move, and bob is still left alone.
+    const Host::AccountMove again = Host::MoveAccounts(tmp.Path(""), to);
+    CHECK(again.moved == 0);
+    CHECK(again.kept.size() == 1);
+    CHECK(Slurp(to + "account_bob.json") == "{\"money\": 99}");
+
+    // A folder that cannot be made -- a file is in the way -- moves nothing.
+    Spit(tmp.Path("blocked"), "x");
+    tmp.MakeDir("src");
+    Spit(tmp.Path("src/account_dee.json"), "{}");
+    const Host::AccountMove blocked = Host::MoveAccounts(tmp.Path("src/"), tmp.Path("blocked/"));
+    CHECK_FALSE(blocked.error.empty());
+    CHECK(std::filesystem::exists(tmp.Path("src/account_dee.json")));
+}
+
 TEST_CASE("sending the galaxy to clients does not change how the galaxy counts its losses (#341)")
 {
     // BuildGalaxyState used to recount every system's population once a second while anyone
