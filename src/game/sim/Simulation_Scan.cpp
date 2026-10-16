@@ -126,6 +126,55 @@ void Simulation::CreditFind(ClientSession& s, const std::string& key, const std:
                  SystemName(systemId));
 }
 
+std::string Simulation::Resolve(ClientSession& s, const SystemState& st, const Entity& e)
+{
+    const std::string key = SignatureKey(st, e);
+    s.scanProgress.erase(key);
+    s.scanned.insert(key);
+    s.revealPending.push_back(e.GetId());
+    std::string what, line;
+    if (const RoamingHole* h = HoleOfGate(e.GetId()))
+    {
+        s.routesChanged = true;
+        const std::string to = static_cast<const JumpGate&>(e).GetDestination();
+        what = "a wormhole to " + SystemName(to);
+        line = SignatureCode(key) + ": " + what + " -- " + h->dressed;
+    }
+    else
+    {
+        const std::string name = KindName(e);
+        what = "a " + name;
+        line = SignatureCode(key) + ": " + name + " -- " + e.GetName();
+    }
+    CreditFind(s, key, what, st.id);
+    return line;
+}
+
+void Simulation::RevealByFire(ClientSession& s, const SystemState& st, const Entity& e)
+{
+    // Shot at by something the pilot was never told exists (#415): the beam and the damage
+    // name a place, and a client told of an effect before its cause breaks #38. So it is
+    // found, by the one it fired on -- whoever else is in the system still has to scan.
+    if (!HiddenFrom(s, st, e))
+        return;
+    s.RecordEvent(Ev::Kind::Scanned, Resolve(s, st, e) + ", revealed by its fire");
+}
+
+bool Simulation::BeamHiddenFrom(const ClientSession& s, const std::string& systemId,
+                                const FireEvent& f) const
+{
+    if (f.shooterEntityId == 0 && f.targetEntityId == 0)
+        return false;
+    const SystemState* st = SystemById(systemId);
+    if (st == nullptr)
+        return false;
+    for (const auto& e : st->entities)
+        if ((e->GetId() == f.shooterEntityId || e->GetId() == f.targetEntityId) &&
+            HiddenFrom(s, *st, *e))
+            return true;
+    return false;
+}
+
 void Simulation::StepPlayerScan(ClientSession& s)
 {
     if (s.scanUntil <= 0.0)
@@ -157,25 +206,8 @@ void Simulation::StepPlayerScan(ClientSession& s)
             partial++;
             continue;
         }
-        s.scanProgress.erase(key);
-        s.scanned.insert(key);
-        s.revealPending.push_back(e->GetId());
+        found += "\n  " + Resolve(s, *st, *e);
         resolved++;
-        std::string what;
-        if (const RoamingHole* h = HoleOfGate(e->GetId()))
-        {
-            s.routesChanged = true;
-            const std::string to = static_cast<const JumpGate&>(*e).GetDestination();
-            what = "a wormhole to " + SystemName(to);
-            found += "\n  " + SignatureCode(key) + ": " + what + " -- " + h->dressed;
-        }
-        else
-        {
-            const std::string name = KindName(*e);
-            what = "a " + name;
-            found += "\n  " + SignatureCode(key) + ": " + name + " -- " + e->GetName();
-        }
-        CreditFind(s, key, what, st->id);
     }
     std::string line = "Scan of " + SystemName(st->id) + " complete: ";
     if (resolved == 0 && partial == 0)

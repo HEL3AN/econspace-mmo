@@ -434,7 +434,7 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             Sim::StepPlayerShip(*s.ship, Proto::Command{}, 1.0f, dt);
             PlayerCombatEvents ev;
             if (StepPlayerFire(s, st, id, dt, &ev))
-                s.orderShots.push_back({ ev.shotFrom, ev.shotTo });
+                s.orderShots.push_back({ ev.shotFrom, ev.shotTo, id });
             // Gone from the system, or a ship that is a wreck now: done either way.
             const Entity* left = FindById(st, id);
             if (left == nullptr || (left->GetKind() == EntityKind::Npc &&
