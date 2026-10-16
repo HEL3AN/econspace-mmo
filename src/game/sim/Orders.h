@@ -85,6 +85,14 @@ struct Order
 // told why -- so the next decision is made with the facts.
 constexpr float ABORT_HULL_FRACTION = 0.25f;
 
+// Nearer than this, an order closes on a target that moves -- a planet, or something in orbit
+// round one (#210) -- in sublight with a hold that follows it, even when it was told to warp
+// (#377). A warp flies to a point fixed when it was ordered: after 1.8 s of spin-up and the
+// hop, a station going a hundred units a second is a few hundred units on, and a re-aim that
+// warped again landed the same distance short, for ever. A warp's own leftover is far inside
+// this, so the warp-and-follow pair cannot loop.
+constexpr float CHASE_WITHIN = 2500.0f;
+
 const char* KindName(Kind k);
 
 }  // namespace Orders

@@ -75,8 +75,7 @@ void Simulation::AbortOrder(ClientSession& s, const std::string& why)
         s.ship->DisengageAutopilot();
         s.ship->CancelWarp();
         s.ship->SetMiningOn(false);
-        if (Orders::IsHold(s.order.kind))
-            s.ship->ReleaseHold();  // nothing else would: a hold is standing
+        s.ship->ReleaseHold();  // nothing else would: a hold is standing
     }
     if (s.order.kind == Orders::Kind::Attack)
         s.weaponOn = false;  // armed for the order, and only for it
@@ -95,8 +94,7 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
         {
             s.ship->DisengageAutopilot();
             s.ship->SetMiningOn(false);
-            if (Orders::IsHold(s.order.kind))
-                s.ship->ReleaseHold();
+            s.ship->ReleaseHold();  // a hold order's, or the approach's to a moving target
         }
         if (s.order.kind == Orders::Kind::Attack)
             s.weaponOn = false;
@@ -241,6 +239,10 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
     }
     Vector2 dest = target != nullptr ? target->GetPosition() : s.order.point;
     float   size = target != nullptr ? target->GetSize() : 0.0f;
+    // A planet and whatever orbits one are where the clock puts them (#210): they move the
+    // whole time the ship is on its way.
+    const bool moving = target != nullptr &&
+                        (target->GetKind() == EntityKind::Planet || target->GetOrbit().has_value());
 
     // How close this order needs to get before it can act.
     float arrive = s.order.stopDist;
@@ -308,30 +310,55 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
     {
         // Arrived where the target was, and it is not there any more: a planet and its
         // satellites move (#210). The approach follows the target by id, so it is aimed
-        // again at where the target is now -- by then close enough to fly.
-        if (s.orderNavIssued && !s.ship->IsWarping() && !s.ship->IsAutopilotOn())
+        // again at where the target is now.
+        if (s.orderNavIssued && !s.ship->IsWarping() && !s.ship->IsAutopilotOn() &&
+            s.ship->GetHoldMode() == HoldMode::None)
             s.orderNavIssued = false;
         if (!s.orderNavIssued)
         {
-            Proto::Command nav;
             // Asked for, or simply too far to fly: across a million-unit system an order
-            // that keeps to sublight never arrives in a session (#159).
-            nav.navMode = (s.order.useWarp || dist > World::WARP_WORTH_IT) ? 2 : 1;
-            nav.navTarget = dest;
-            nav.navStopDist = arrive * 0.8f;  // aim inside the range, not at its edge
-            if (nav.navMode == 2)
+            // that keeps to sublight never arrives in a session (#159). But a warp goes to
+            // a point, and the last stretch to something that moves is flown with a hold
+            // that follows it (#377): warped again, it landed short again, for ever.
+            const bool     warp = dist > World::WARP_WORTH_IT ||
+                                  (s.order.useWarp && (!moving || dist > Orders::CHASE_WITHIN));
+            Proto::Command nav;
+            if (warp)
+            {
+                nav.navMode = 2;
+                nav.navTarget = dest;
+                nav.navStopDist = arrive * 0.8f;  // aim inside the range, not at its edge
                 BendAroundBodies(nav, s.ship->GetPosition(), st);
-            Sim::StepPlayerShip(*s.ship, nav, 1.0f, dt);
+            }
+            else if (moving)
+            {
+                // The same follow a player's hold_station flies, its ring inside the range:
+                // the target's motion fed forward and a pull towards it, so the gap closes
+                // at whatever the ship has to spare. The one path a hold already takes to
+                // the client, which predicts it from its proxy of the target (#157).
+                nav.navMode = 5;
+                nav.navHoldId = target->GetId();
+                nav.navRange = arrive * 0.8f;
+            }
+            else
+            {
+                nav.navMode = 1;
+                nav.navTarget = dest;
+                nav.navStopDist = arrive * 0.8f;
+            }
+            // The session's step, which tells a hold where its target is.
+            StepPlayerShip(s, nav, 1.0f, dt);
             s.orderNavIssued = true;
             return;
         }
-        Sim::StepPlayerShip(*s.ship, Proto::Command{}, 1.0f, dt);
+        StepPlayerShip(s, Proto::Command{}, 1.0f, dt);
         return;
     }
 
     // In range: the approach is over, whatever happens next.
     s.orderNavIssued = false;
     s.ship->DisengageAutopilot();
+    s.ship->ReleaseHold();
 
     switch (s.order.kind)
     {

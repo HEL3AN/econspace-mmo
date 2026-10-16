@@ -840,15 +840,14 @@ json GenerateSystem(const RegionParams& params, const Node& n, const std::vector
                         placed = true;
                     }
                 }
-            // Where it stays put, out of every planet's path. Not in orbit: a station riding a
-            // fast inner planet moved faster than a standing order could close on it, and the
-            // ship hung in warp beside it (seen on seed 7). Orbiting stations wait for orders
-            // that follow a moving target to the end.
-            if (!placed)
+            // Anywhere else -- and in a planet's path it orbits that planet (#210), as a
+            // satellite station does: an order closes on a moving target with a hold that
+            // follows it (#377).
+            if (!placed &&
+                !PlaceOrOrbit(rng, 200000.0, 820000.0, size, bands, moons, taken, station))
             {
                 json pos;
-                if (!Place(rng, 200000.0, 820000.0, size, bands, taken, pos) &&
-                    !Place(rng, 120000.0, 960000.0, size, bands, taken, pos))
+                if (!Place(rng, 120000.0, 960000.0, size, bands, taken, pos))
                 {
                     // A crowded system: a gap between paths that only other objects fill.
                     std::vector<Disc> none;

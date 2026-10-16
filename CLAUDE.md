@@ -257,7 +257,9 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   puts every planet at `f(world time)` and every satellite (an object with `orbits`) at its
   planet plus a turning offset; nothing integrates them per tick. A satellite is in every
   snapshot like a planet, so the client needs nothing new, and an order approaching one
-  is re-aimed after the drop-out because the target has moved since it was issued.
+  is re-aimed after the drop-out because the target has moved since it was issued. Within
+  `Orders::CHASE_WITHIN` the re-aim is a follow hold, never another warp (#377): a warp
+  goes to a fixed point, and re-warping at a station doing 100 u/s landed short for ever.
 - **Anything that moves is `f(time, seed)`** (#136), never integrated per frame. A part
   whose angle accumulated would drift between clients and two players would see the same
   station turned differently; as written nothing about motion crosses the wire. The turn is
