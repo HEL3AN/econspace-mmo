@@ -2,6 +2,7 @@
 
 #include "core/Orbits.h"
 #include "core/Archetype.h"
+#include "core/Blueprint.h"
 
 #include "entities/Star.h"
 #include "entities/Planet.h"
@@ -296,7 +297,12 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
         {
             const std::string id = t.value("archetype", std::string());
             const Archetype*  a = Archetypes::Find(id);
-            if (a == nullptr || a->kind != EntityKind::Structure)
+            // A station's archetype only for an outpost growing into one (#342 S6): its
+            // blueprint is an upgrade that builds it.
+            const Blueprint* grows = Blueprints::Find(t.value("blueprint", std::string()));
+            const bool upgrade = a != nullptr && a->kind == EntityKind::Station &&
+                                 grows != nullptr && !grows->onto.empty() && grows->archetype == id;
+            if (a == nullptr || (a->kind != EntityKind::Structure && !upgrade))
             {
                 TraceLog(LOG_WARNING,
                          "WorldLoader: structure '%s' names '%s', which is not a "

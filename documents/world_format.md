@@ -1007,7 +1007,7 @@ was down when a site was due finishes it on its first tick back.
 |------|----------|
 | `id` | what the deploy command and `econagent`'s `deploy` name |
 | `name` | what a player is shown, and what a new one is called unless its builder names it |
-| `archetype` | what it becomes: a `Structure` archetype that declares `buildable` |
+| `archetype` | what it becomes: a `Structure` archetype that declares `buildable` -- or, for an upgrade (`onto`), a `Station` archetype that does |
 | `cost` | resources taken from the hold when the site is laid down, all at once; at least one |
 | `buildSeconds` | world seconds from site to finished object |
 | `lifetime` | world seconds it stands once finished; 0 or absent -- until removed |
@@ -1018,6 +1018,7 @@ was down when a site was due finishes it on its first tick back.
 | `placement.bodyClearance` | gap to a star's surface, and to the band a planet -- or a satellite with its planet -- sweeps on its orbit |
 | `placement.perSystem` | how many of what this blueprint builds one system may hold, everyone's together; 0 -- no cap |
 | `builders` | who may build one: any of `"player"`, `"faction"`; absent -- `["player"]`. A blueprint no player may build is listed in no menu or tool (#295) |
+| `onto` | an upgrade (#342 S6): the blueprints of the finished structure it is built onto. That structure becomes its site -- keeping its place, its owner and the claim it holds -- instead of a new one going down beside it; finished, an upgrade into a `Station` archetype is a station of its builder's faction. Absent -- laid down on its own. A player may not build an upgrade yet: only factions have outposts |
 | `limits.perAccount` | how many structures one account may have standing, in the whole galaxy; 0 -- no cap |
 | `dismantle.refund` | share of the cost an owner gets back for dismantling a finished structure (default 0.5) |
 | `destruction.siteHull` | a site's hull at the moment it goes down, as a share of `hull`; it grows to all of it at completion (default 0.25) |

@@ -24,5 +24,24 @@
         "deadDays": 7,
         "warnDays": 2,
         "returnChance": 0.35
+    },
+    "expeditions": {
+        "reach": 3,
+        "curiosity": 0.8,
+        "hours": 8
+    },
+    "growth": {
+        "stationsPerRegion": 4,
+        "marketReach": 3,
+        "marketWorth": 1.2,
+        "stationWorth": 1.2,
+        "stationNeed": 0.45
+    },
+    "convoys": {
+        "hop": 120,
+        "escort": 0.25,
+        "ambush": 0.01,
+        "retryMinutes": 10,
+        "reach": 6
     }
 }

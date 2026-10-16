@@ -99,6 +99,43 @@
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
         },
         {
+            "id": "outpost_market",
+            "name": "Outpost Market",
+            "archetype": "structure.outpost_market",
+            "builders": ["faction", "player"],
+            "onto": ["outpost", "outpost_mining", "outpost_watch", "outpost_orbital",
+                     "outpost_salvage"],
+            "cost": { "Iron": 48, "Crystal": 12 },
+            "buildSeconds": 1200,
+            "hull": 6000,
+            "wreck": "derelict.outpost_ruin",
+            "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
+        },
+        {
+            "id": "trade_station",
+            "name": "Trade Station",
+            "archetype": "station.trade_hub",
+            "builders": ["faction", "player"],
+            "onto": ["outpost_market"],
+            "cost": { "Iron": 64, "Crystal": 16 },
+            "buildSeconds": 2400,
+            "hull": 12000,
+            "wreck": "derelict.outpost_ruin",
+            "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
+        },
+        {
+            "id": "mining_station",
+            "name": "Mining Station",
+            "archetype": "station.mining_outpost",
+            "builders": ["faction", "player"],
+            "onto": ["outpost_market"],
+            "cost": { "Iron": 64, "Crystal": 16 },
+            "buildSeconds": 2400,
+            "hull": 12000,
+            "wreck": "derelict.outpost_ruin",
+            "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
+        },
+        {
             "id": "anchor",
             "name": "Anchor",
             "archetype": "structure.anchor",

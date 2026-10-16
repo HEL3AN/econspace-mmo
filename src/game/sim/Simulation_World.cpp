@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <set>
@@ -269,8 +270,10 @@ void Simulation::Warm(SystemState& st)
     // The aggregate keeps fractions of a ship; the system now holds whole ones. Counted
     // here, so the next pass does not read the rounding as ships lost.
     RecountAgg(st);
-    // A siege under way here is ships too, at the outpost (#295, slice 5).
+    // A siege under way here is ships too, at the outpost (#295, slice 5), and so is a convoy
+    // passing through (#342 S6).
     FieldSieges(st);
+    FieldConvoys(st);
 }
 
 void Simulation::Cool(SystemState& st)
@@ -287,9 +290,17 @@ void Simulation::Cool(SystemState& st)
     st.provokedByNpc.clear();
     st.policeCalledUntil = 0.0;
     st.populated = false;
-    for (auto& kv : plans_)  // a siege's warships went with the rest
-        if (kv.second.target == st.id)
+    for (auto& kv : plans_)  // a siege's warships went with the rest, and a convoy's ships
+    {
+        if (kv.second.target == st.id && !kv.second.OnTheWay())
             kv.second.fielded = 0;
+        if (kv.second.fieldedIn == st.id)
+        {
+            kv.second.fielded = 0;
+            kv.second.fieldedIn.clear();
+            kv.second.hauler = 0;
+        }
+    }
     for (auto& kv : migrants_)  // ...and a ship turning for the gate is through it (#295)
         if (kv.second.from == st.id)
             kv.second.shipId = 0;
@@ -778,6 +789,7 @@ const char* PlanKindName(Plan::Kind k)
         case Plan::Kind::Siege: return "siege";
         case Plan::Kind::Return: return "return";
         case Plan::Kind::Anchor: return "anchor";
+        case Plan::Kind::Upgrade: return "upgrade";
         case Plan::Kind::Survey: break;
     }
     return "survey";
@@ -785,7 +797,7 @@ const char* PlanKindName(Plan::Kind k)
 bool PlanKindFrom(const std::string& name, Plan::Kind& out)
 {
     for (Plan::Kind k : { Plan::Kind::Survey, Plan::Kind::Settle, Plan::Kind::Siege,
-                          Plan::Kind::Return, Plan::Kind::Anchor })
+                          Plan::Kind::Return, Plan::Kind::Anchor, Plan::Kind::Upgrade })
         if (name == PlanKindName(k))
         {
             out = k;
@@ -952,6 +964,14 @@ bool Simulation::SaveWorld(const std::string& path) const
                                        { "stock", minds_[f].stock },
                                        { "unsupplied", minds_[f].unsupplied },
                                        { "lostAt", minds_[f].lostAt } };
+            // Word of a mouth it is still going by (#342 S6), by the region's slot.
+            if (!minds_[f].expeditions.empty())
+            {
+                json heard = json::object();
+                for (const auto& e : minds_[f].expeditions)
+                    heard[std::to_string(e.first)] = e.second;
+                minds[Factions::Id(f)]["expeditions"] = std::move(heard);
+            }
         }
         j["factions"] = std::move(minds);
     }
@@ -982,6 +1002,30 @@ bool Simulation::SaveWorld(const std::string& path) const
         }
         if (p.kind == Plan::Kind::Return)
             pj["force"] = p.force;
+        // An Anchor's and an Upgrade's (#342 S6): what it builds, and its convoy while that is
+        // on its way.
+        if (p.kind == Plan::Kind::Anchor || p.kind == Plan::Kind::Upgrade)
+        {
+            pj["arrived"] = p.arrived;
+            if (p.kind == Plan::Kind::Anchor)
+                pj["slot"] = p.slot;
+            else
+                pj["blueprint"] = p.blueprint;
+            if (p.OnTheWay())
+            {
+                json lent = json::array();
+                for (const Plan::Lent& l : p.lent)
+                    lent.push_back(
+                        { { "from", l.from }, { "force", l.force }, { "hops", l.hops } });
+                pj["lent"] = std::move(lent);
+                pj["force"] = p.force;
+                pj["route"] = p.route;
+                pj["leg"] = p.leg;
+                pj["legAt"] = p.legAt;
+                pj["freight"] = p.freight;
+                pj["setbacks"] = p.setbacks;
+            }
+        }
         plans.push_back(std::move(pj));
     }
     j["plans"] = std::move(plans);
@@ -1101,6 +1145,10 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             for (auto l = lost.begin(); lost.is_object() && l != lost.end(); ++l)
                 if (HasSystem(l.key()) && l.value().is_number())
                     minds_[f].lostAt[l.key()] = l.value().get<double>();
+            const json& heard = it.value().value("expeditions", json::object());
+            for (auto e = heard.begin(); heard.is_object() && e != heard.end(); ++e)
+                if (e.value().is_number())
+                    minds_[f].expeditions[std::atoi(e.key().c_str())] = e.value().get<double>();
         }
     }
     if (j.contains("plans") && j["plans"].is_array())
@@ -1136,13 +1184,36 @@ Save::Result Simulation::LoadWorld(const std::string& path)
                     l.hops = std::max(1, lj.value("hops", 1));
                     p.lent.push_back(l);
                 }
+            // An Anchor's or an Upgrade's convoy (#342 S6); one from before convoys is built.
+            p.slot = pj.value("slot", -1);
+            p.blueprint = pj.value("blueprint", std::string());
+            p.leg = pj.value("leg", -1);
+            p.legAt = pj.value("legAt", p.startedAt);
+            p.freight = pj.value("freight", 1.0f);
+            p.setbacks = pj.value("setbacks", 0);
+            const json& route = pj.value("route", json::array());
+            for (const json& r : route)
+                if (r.is_string())
+                    p.route.push_back(r.get<std::string>());
+            bool lost = p.leg >= (int)p.route.size();
+            for (const std::string& r : p.route)
+                lost = lost || !HasSystem(r);
+            if (p.OnTheWay() && lost)
+            {
+                // Its way is not this galaxy's any more: it sets out again.
+                p.route.clear();
+                p.leg = -1;
+            }
             const bool sited = p.kind == Plan::Kind::Settle || p.kind == Plan::Kind::Siege ||
-                               p.kind == Plan::Kind::Anchor;
+                               (p.kind == Plan::Kind::Anchor && p.arrived) ||
+                               p.kind == Plan::Kind::Upgrade;
             if (p.id <= 0 || plans_.count(p.id) != 0 || !HasSystem(p.target) ||
-                (sited && p.site.empty()))
+                (sited && p.site.empty()) ||
+                (p.kind == Plan::Kind::Upgrade && Blueprints::Find(p.blueprint) == nullptr))
                 continue;
             plans_[p.id] = p;
-            due_.insert({ p.dueAt, p.id });
+            if (!p.OnTheWay())  // a convoy is stepped, not due
+                due_.insert({ p.dueAt, p.id });
         }
     nextPlanId_ = std::max(1, j.value("nextPlan", 1));
     if (j.contains("migrants") && j["migrants"].is_array())

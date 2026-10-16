@@ -460,6 +460,38 @@ Each slice is its own PR with green CI, and the game works after every one.
    - Intel on a new region and a curiosity bonus.
    - The `outpost` → `outpost_market` → station chain by need.
    - The builder convoy players can meet in a hot system.
+   - *As built:* a mouth opening sends word (`expeditions` in `data/world_rules.json`): every
+     faction holding a system within `reach` 3 jumps of the mouth gets intel on the entry
+     system and the mouth, and for `hours` 8 its move, survey and settle values gain
+     `curiosity` 0.8 for any system closer to the mouth than the holding it reaches from, and
+     for every system of the region beyond (`FactionMind::expeditions`, saved). The chain is
+     three blueprints with `onto`, `"builders": ["faction", "player"]`: `outpost_market` (onto
+     any outpost but a hidden base; a new `structure.outpost_market` look, kit grammar, dock
+     and market), then `trade_station` or `mining_station` (onto the market; they build
+     `station.trade_hub` / `station.mining_outpost`, and a finished one becomes a `Station` of
+     its faction in place of the structure). An upgrade does not lay a new site: the outpost
+     itself becomes the site, keeping its place, its hull share and the claim -- still an
+     outpost for upkeep and sieges, and the site is what a player can shoot. Need, in the
+     lawful factions' own turn (`growth`): a market is worth `marketWorth` x how far the
+     nearest market is (up to `marketReach` 3 jumps) x (0.5 + 0.5 x max(traffic, ore)); a
+     station `stationWorth` x max(traffic, ore), once that is at least `stationNeed` 0.45 --
+     mining if the faction values the ore more, trade otherwise; at most `stationsPerRegion` 4
+     stations a region, natives' included. The risk is hostile presence there and the memory
+     of a loss. Player use stays gated: an upgrade is built onto an outpost, and only factions
+     have those. Anchors and upgrades are built from a convoy (`convoys`): from the faction's
+     nearest holding within `reach` 6 jumps, `hop` 120 s in every system of the way, with
+     `escort` 0.25 of its capacity lent by that holding when it can spare it. In each system it
+     passes, anyone hostile wears it down at `ambush` a second per ship, the escort first, then
+     the hauler, and the escort hits back; the hauler gone, the convoy is lost, the escort left
+     goes home, and another sets out `retryMinutes` 10 later -- the plan waits, it is never
+     cancelled. A hot system shows the hauler (a trader-role ship) and up to four escorts on
+     their leg, placed by the clock, tasked to the plan: no NPC or station fights them and no
+     recount, top-up or migration counts them, so a watched convoy goes as an unwatched one
+     does, except that a player who shoots the hauler loses it its convoy. An Anchor convoy
+     that arrives to a mouth anchored, collapsed or taken by another's site turns back with
+     its stock. A faction stores, beyond two outposts' worth, the upkeep reserve of the
+     outposts it keeps. WORLD_VERSION 14; no PROTO_VERSION bump (a grown station or a
+     retasked outpost is a LayoutDelta as before).
 7. **S7 — admin packs.**
    - The `pack.json` format and `econserver validate`.
    - Weaving at world creation, admin links and admin starts.

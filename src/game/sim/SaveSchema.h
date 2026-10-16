@@ -62,7 +62,11 @@ namespace Save
 //    regions are cut off, and regions that drifted away at the cap are in archive-<id>.json
 //    beside the sealed ones. A version 12 build would read an unstable mouth as a permanent
 //    one and a drifted or archived region as open. An older file's mouths all stay.
-inline constexpr int WORLD_VERSION = 13;
+// 14: an Anchor or an upgrade is built from what a convoy brings (#342 S6): a plan says where
+//    its convoy is on its way, what it builds and its escort; a faction remembers the mouths it
+//    has heard of; an outpost may be the site of the market or the station it grows into. A
+//    version 13 build would lay a convoy's Anchor at once and lose an upgrade with its site.
+inline constexpr int WORLD_VERSION = 14;
 
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.

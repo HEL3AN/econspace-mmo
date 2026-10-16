@@ -322,6 +322,25 @@ public:
     FactionMind& MindOf(FactionId f) { return minds_[f]; }
     // Surveys, settlements and sieges under way, by id (#295).
     const std::map<int, Plan>& Plans() const { return plans_; }
+    // A holding keeps this share of its capacity at home; only what is above it can reach out
+    // -- to move, to lend a siege, or to escort a convoy.
+    static constexpr float HOME_GUARD = 0.6f;
+
+    // --- Expeditions, growing stations and the builder convoy (#342 S6; Simulation_Growth.cpp) ---
+    // What a blueprint costs a faction's stock, counted as one number; zero for none.
+    static float BlueprintCost(const std::string& blueprint);
+    // `f` sets an upgrade going (admin, a test, and the faction's own turn): its finished
+    // outpost -- or outpost market -- in `systemId` into `blueprint`, paid now from its stock
+    // and built from what a convoy brings. The plan's id, or 0 when it may not: not its own,
+    // not what the blueprint is built onto, the region full of stations, or not the stock.
+    int BeginUpgrade(FactionId f, const std::string& systemId, const std::string& blueprint);
+    // ...and an Anchor at the unstable mouth into `slot`, the same way. 0 when it may not.
+    int BeginAnchor(FactionId f, int slot);
+    // How many stations region `slot` has, and has going up.
+    int StationsIn(int slot) const;
+    // How many jumps from `systemId` the nearest market is -- a station's, or an outpost
+    // market's: 0 where it has one, -1 where none is within reach.
+    int MarketJumps(const std::string& systemId);
     // What an outpost costs a faction's stock (#295): its blueprint's cost, counted as one
     // number. Zero when there is no outpost blueprint, which means no faction can settle.
     static float OutpostCost();
@@ -1137,8 +1156,9 @@ private:
     // where they will be when it reopens. False when the system has no such gate.
     bool CrossingGateAt(const std::string& systemId, const std::string& dest, Vector2& at,
                         float& size) const;
-    // A faction lays an Anchor's site at the mouth of `slot` and pays for it.
-    bool LayAnchor(FactionId f, const std::string& from, int slot);
+    // A faction's Anchor convoy has come to the mouth: the site goes down beside it. False,
+    // and the stock goes back, when the mouth is not one to anchor any more.
+    bool LayAnchorSite(Plan& p);
     void ResolveAnchor(const Plan& p);
     // Who, by an owner string: a faction's name, or the pilot's.
     std::string OwnerName(const std::string& owner) const;
@@ -1280,6 +1300,52 @@ private:
     // nearest few dropping out beside the shooter. Only in a hot system, once a while per
     // system, and not when a patrol is already in sight. True when anyone answered.
     bool CallPolice(SystemState& st, ClientSession& by, FactionId law);
+    // --- Expeditions, growing stations and the builder convoy (#342 S6; Simulation_Growth.cpp) ---
+    // A mouth into `slot` opened: the factions within the expedition rules' reach of it hear
+    // what is beyond -- intel on the entry system -- and are drawn that way for a while.
+    void SendWordOfMouth(int slot);
+    // What going from holding `home` to `to` is worth to `f` on top, while word of a mouth
+    // draws it: `toward` is, per system, how many jumps from a mouth it has heard of, and
+    // `drawn` the regions beyond them.
+    struct Drawn
+    {
+        std::map<std::string, int> toward;
+        std::set<int>              regions;
+    };
+    Drawn        DrawnBy(FactionId f);
+    static float DrawOf(const Drawn& d, const std::string& home, const std::string& to);
+    // What `f` would grow its outpost in `systemId` into, and what that is worth to it: empty
+    // when nothing is needed there.
+    std::string GrowthFor(FactionId f, const SystemState& st, const Structure& outpost,
+                          float& worth);
+    std::map<std::string, int> marketJumps_;  // MarketJumps, as of `marketPeriod_`
+    int                        marketPeriod_ = -1;
+    // A plan's convoy sets out from the faction's nearest holding: its way there and its
+    // escort. False when it has no way to get there.
+    bool DispatchConvoy(Plan& p);
+    // The way from `f`'s nearest holding to `target`, both ends included; just `target` when
+    // it holds nothing nearer than the convoy rules' reach.
+    std::vector<std::string> ConvoyRoute(FactionId f, const std::string& target) const;
+    // Once a pass: every convoy fights what it meets, moves on, arrives or is lost.
+    void StepConvoys();
+    // Its ships, where the system it is in is hot: the hauler and the escort, on their way
+    // between where they came in and where they go out -- or, just come in, at the gate.
+    void FieldConvoy(SystemState& st, Plan& p, bool arriving);
+    void FieldConvoys(SystemState& st);
+    void UnfieldConvoy(Plan& p);
+    // Lost on the way: the escort that is left goes home, and another sets out later.
+    void LoseConvoy(Plan& p, const std::string& how);
+    // Come to its site: the escort goes home, and the Anchor or the upgrade begins. False when
+    // there is nothing to build any more, and the plan is over.
+    bool ArriveConvoy(Plan& p);
+    // What a convoy's escort lends, and the escort that goes home after it.
+    void SendHome(const Plan& p, int hops);
+    // The Upgrade's outpost becomes its site.
+    bool StartUpgrade(Plan& p);
+    void ResolveUpgrade(const Plan& p);
+    // A finished site of a station's blueprint becomes a station of its builder's faction.
+    void FinishStation(SystemState& st, int id);
+
     // `f` takes a system: its controller, and the security a change of hands brings.
     static void TakeControl(SystemAggregate& a, FactionId f);
     void        Record(const std::string& kind, std::optional<FactionId> faction,

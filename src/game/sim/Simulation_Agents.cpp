@@ -115,6 +115,9 @@ bool Simulation::NpcHostileToNpc(const NpcShip* a, const NpcShip* b)
     // siege's face, and a player is the one thing in the system that can change its course.
     if (a->GetRole() == NpcRole::Warship || b->GetRole() == NpcRole::Warship)
         return false;
+    // ...and so does a builder convoy (#342 S6): its losses are its plan's arithmetic.
+    if (a->GetTask() != 0 || b->GetTask() != 0)
+        return false;
     Stance s = Factions::Relation(a->GetFaction(), b->GetFaction());
     return s == Stance::Hostile || s == Stance::War;
 }
@@ -228,7 +231,7 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
             // A besieger with nothing to fight fires on the outpost it was sent against
             // (#295, slice 5). The beam is the siege's: what the outpost loses is the siege's
             // arithmetic, the same where nobody is, so the shot itself takes nothing off.
-            if (npc->GetRole() != NpcRole::Warship || fires == nullptr)
+            if (npc->GetRole() != NpcRole::Warship || npc->GetTask() != 0 || fires == nullptr)
                 continue;
             for (const auto& e : st.entities)
             {
@@ -396,7 +399,7 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
         for (NpcShip* n : ships)
         {
             // Besiegers are the siege's arithmetic to count, not the battery's (#295).
-            if (!n->IsAlive() || n->GetRole() == NpcRole::Warship)
+            if (!n->IsAlive() || n->GetRole() == NpcRole::Warship || n->GetTask() != 0)
                 continue;
             if (sided)
             {
@@ -609,7 +612,9 @@ void Simulation::RecountAgg(SystemState& st)
         return;
     int tr = 0, mi = 0, po = 0, pi = 0;
     for (auto& e : st.entities)
-        if (NpcShip* n = e->GetKind() == EntityKind::Npc && !static_cast<NpcShip&>(*e).IsLeaving()
+        if (NpcShip* n = e->GetKind() == EntityKind::Npc &&
+                                 !static_cast<NpcShip&>(*e).IsLeaving() &&
+                                 static_cast<NpcShip&>(*e).GetTask() == 0
                              ? static_cast<NpcShip*>(e.get())
                              : nullptr)
             switch (n->GetRole())
@@ -819,7 +824,9 @@ void Simulation::TopUpSystem(SystemState& st, const std::vector<Vector2>& avoid)
     // Current population by role.
     int tr = 0, mi = 0, po = 0, pi = 0;
     for (auto& e : st.entities)
-        if (NpcShip* n = e->GetKind() == EntityKind::Npc && !static_cast<NpcShip&>(*e).IsLeaving()
+        if (NpcShip* n = e->GetKind() == EntityKind::Npc &&
+                                 !static_cast<NpcShip&>(*e).IsLeaving() &&
+                                 static_cast<NpcShip&>(*e).GetTask() == 0
                              ? static_cast<NpcShip*>(e.get())
                              : nullptr)
             switch (n->GetRole())
