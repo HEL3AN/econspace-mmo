@@ -13,8 +13,9 @@ Host a server
   econserver host 50800             this machine only
   econserver host 50800 --public    reachable from other machines (open TCP 50800)
 
-The server saves the world (world.json, regions/) and the accounts (account_*.json) in
-this folder. Copy them somewhere safe before replacing the folder with a newer build.
+The server keeps the world (world.json, regions/), its accounts (accounts/) and who may
+come in (allowlist.txt, bans.txt) in this folder. Copy them somewhere safe before
+replacing the folder with a newer build.
 
 Connect
 -------
