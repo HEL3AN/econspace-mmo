@@ -20,14 +20,14 @@ You fly a ship in a persistent galaxy: mine, trade, run missions, fight, build r
 
 | | |
 |---|---|
-| ![A trade hub, with the status window and the overview](media/trade-hub.png) | ![An oceanic planet and its moon, lit by the system's star](media/planet-and-moon.png) |
-| A trade hub orbiting its planet; the overview lists everything in the system by distance. | A planet and its moon, lit from the side by the system's own star. |
-| ![The wormhole's mouth at the edge of the home system](media/wormhole.png) | ![The galaxy map](media/galaxy-map.png) |
-| The wormhole at the edge of the home system: beyond it, the region is generated and uncharted. | The galaxy map — security, piracy and economy per system, and who holds it. |
-| ![Fifty-four generated systems on one screen](media/survey.png) | ![The station pack of the module library](media/module-library-station.png) |
-| The editor's survey: fifty-four systems from three seeds, flagged when one comes out empty, thin or a twin. | The module library: every part is data, drawn here at three seeds each. |
+| ![An ocean world and its moon, lit from the side by the system's star, with a ship below](media/ocean-world.jpg) | ![The overview on its Ships tab, with a Traders Guild hauler selected in the target window](media/overview-and-target.jpg) |
+| An ocean world and its moon, lit by the system's own star. | The overview lists every ship in the system by distance; a selection carries its actions — orbit, warp to, attack. |
+| ![Docked at a trade hub, the market window showing bid, ask and stock for ten goods](media/station-market.jpg) | ![Two pilots of the corporation Anchor Freight talking in local and corporation chat, the corporation window open](media/corporation-and-chat.jpg) |
+| Docked at a trade hub: every trade moves the price of the next. | Two pilots of a player corporation, `[ANCR]`, in local and corporation chat. |
+| ![The scanner has resolved a roaming wormhole, which now shows in the overview](media/scanner-wormhole.jpg) | ![The world editor's galaxy view: a hundred region slots, three civilisations and the frontier they opened](media/editor-galaxy.jpg) |
+| The scanner resolves a roaming wormhole into another region; until then nobody sees it. | The editor's galaxy: the skeleton of region slots a seed lays out, and the frontier open so far. |
 
-The project page is on **[itch.io](https://hel3an.itch.io/econspace)**. More in [media/](media/). Pictures are taken by the game and the editor themselves (`--shot`, `shot`), without the screen treatment.
+The project page is on **[itch.io](https://hel3an.itch.io/econspace)**. More in [media/](media/). Pictures are taken by the game and the editor themselves (`--shot`, `shot`) from the 0.1 Anchor release build; the game's go through its screen treatment (`--treated`).
 
 ---
 
