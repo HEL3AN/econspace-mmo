@@ -121,8 +121,9 @@ private:
 // Client connection to host:port (host is an IPv4 literal, e.g. "127.0.0.1").
 // nullptr on error, or when nothing answers within `timeoutSeconds`. The connect itself is
 // bounded rather than left to the operating system, whose idea of how long to wait for a
-// SYN that is never answered is anything from two seconds to minutes.
+// SYN that is never answered is anything from two seconds to minutes. On failure `why`, if
+// given, says what happened in words a player can act on: refused, unreachable, no answer.
 std::unique_ptr<TcpConnection> Dial(const std::string& host, unsigned short port,
-                                    double timeoutSeconds = 10.0);
+                                    double timeoutSeconds = 10.0, std::string* why = nullptr);
 
 }  // namespace Net

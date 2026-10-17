@@ -277,6 +277,7 @@ add_executable(econspace
     src/game/core/GameStation.cpp  # docked: the station, market and hangar windows (#297)
     src/game/core/GameChat.cpp     # the chat window: local, private, the operator (#347)
     src/game/core/GameScan.cpp     # the scanner window: a pass, and the signatures (#346)
+    src/game/core/ErrorScreen.cpp  # why it could not get in, until the player closes it (#400)
     src/game/core/GameCorp.cpp     # the corporation window, tickers and corp mates (#347)
     src/game/core/Actions.cpp      # what can be done about a thing: one list for every window (#297)
     src/game/core/StationList.cpp  # what the market and hangar windows list (#297)

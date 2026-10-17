@@ -11,6 +11,7 @@
 // before the window opens, so Game cannot be constructed without one.
 #include "core/DataDir.h"
 #include "core/Version.h"
+#include "core/ErrorScreen.h"
 #include "core/Game.h"
 #include "net/Tcp.h"
 #include "sim/Auth.h"
@@ -203,16 +204,26 @@ int main(int argc, char** argv)
 
     if (!Net::Startup())
     {
-        std::fprintf(stderr, "Network startup failed (winsock).\n");
+        ErrorScreen::Show({ "Could not start networking",
+                            "The system's network library (winsock) did not start." },
+                          shot);
         return 1;
     }
 
-    std::unique_ptr<Net::TcpConnection> conn = Net::Dial(host, port);
+    // Every way of not getting in is shown in a window that stays until the player closes it
+    // (#400): started from a shortcut, a line on stderr is a window that flashes and vanishes.
+    std::string                         dialError;
+    std::unique_ptr<Net::TcpConnection> conn = Net::Dial(host, port, 10.0, &dialError);
     if (!conn)
     {
         // No fallback: there is no offline mode to fall back to.
-        std::fprintf(stderr, "Could not connect to %s:%u — is econserver running there?\n",
-                     host.c_str(), port);
+        ErrorScreen::Show({ "Could not connect",
+                            "Tried " + host + ":" + std::to_string(port) + ": " + dialError +
+                                ".\n\nCheck the address and the port, that econserver is "
+                                "running there, and -- for a server on another machine -- that "
+                                "it was started with --public and its firewall lets the port "
+                                "through." },
+                          shot);
         Net::Shutdown();
         return 1;
     }
@@ -223,12 +234,17 @@ int main(int argc, char** argv)
         std::string why;
         if (!Auth::ClientHandshake(*conn, account, secret, 10.0, why))
         {
-            std::fprintf(stderr, "Could not log in as %s: %s\n", account.c_str(), why.c_str());
+            conn.reset();
+            ErrorScreen::Show({ "Could not join the server", "Logging in to " + host + ":" +
+                                                                 std::to_string(port) + " as " +
+                                                                 account + ": " + why },
+                              shot);
             Net::Shutdown();
             return 1;
         }
     }
 
+    bool failed = false;
     {
         // A shot comes from a render texture; a hidden window keeps a scripted run from
         // stealing focus from whoever is using the machine (#293).
@@ -281,8 +297,9 @@ int main(int argc, char** argv)
         if (perf)
             game.MeasurePerf(frames);
         game.Run();
+        failed = game.EndedOnError();
     }  // the socket closes with Game, before winsock is unloaded
 
     Net::Shutdown();
-    return 0;
+    return failed ? 1 : 0;  // non-zero keeps a .bat's console open on the reason (#400)
 }

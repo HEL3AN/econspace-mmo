@@ -15,6 +15,7 @@
 #endif
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -53,6 +54,17 @@ bool ConnectPending(int e)
 }
 // Windows never raises a signal for writing to a dead socket; send returns an error.
 constexpr int SEND_FLAGS = 0;
+// Why a connect failed, as the player can act on it (Dial's `why`).
+std::string ConnectFailure(int e)
+{
+    if (e == WSAECONNREFUSED)
+        return "the connection was refused: nothing is listening on that port";
+    if (e == WSAENETUNREACH || e == WSAEHOSTUNREACH)
+        return "that address cannot be reached from this machine";
+    if (e == WSAETIMEDOUT)
+        return "nothing answered";
+    return "the connection failed (error " + std::to_string(e) + ")";
+}
 #else
 using socket_t = int;
 constexpr socket_t INVALID_SOCK = -1;
@@ -77,6 +89,16 @@ bool ConnectPending(int e)
 void SetNonBlocking(socket_t s)
 {
     fcntl(s, F_SETFL, fcntl(s, F_GETFL, 0) | O_NONBLOCK);
+}
+std::string ConnectFailure(int e)
+{
+    if (e == ECONNREFUSED)
+        return "the connection was refused: nothing is listening on that port";
+    if (e == ENETUNREACH || e == EHOSTUNREACH)
+        return "that address cannot be reached from this machine";
+    if (e == ETIMEDOUT)
+        return "nothing answered";
+    return "the connection failed (" + std::string(std::strerror(e)) + ")";
 }
 // Writing to a socket the peer has closed raises SIGPIPE on POSIX, and the default
 // disposition kills the process. A server that dies because one client hung up is not a
@@ -313,11 +335,17 @@ std::unique_ptr<TcpConnection> TcpListener::Accept()
 // --- Dial ------------------------------------------------------------------
 
 std::unique_ptr<TcpConnection> Dial(const std::string& host, unsigned short port,
-                                    double timeoutSeconds)
+                                    double timeoutSeconds, std::string* why)
 {
+    const auto fail = [why](const std::string& reason)
+    {
+        if (why != nullptr)
+            *why = reason;
+        return nullptr;
+    };
     socket_t s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (s == INVALID_SOCK)
-        return nullptr;
+        return fail("no socket could be opened");
 
     sockaddr_in addr;
     std::memset(&addr, 0, sizeof(addr));
@@ -326,7 +354,7 @@ std::unique_ptr<TcpConnection> Dial(const std::string& host, unsigned short port
     if (inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1)
     {
         CloseSocket(s);
-        return nullptr;
+        return fail("\"" + host + "\" is not an IPv4 address such as 192.168.1.20");
     }
 
     // Non-blocking connect, waited on with a deadline. A blocking one leaves the wait to
@@ -339,7 +367,7 @@ std::unique_ptr<TcpConnection> Dial(const std::string& host, unsigned short port
         if (!ConnectPending(e))
         {
             CloseSocket(s);
-            return nullptr;
+            return fail(ConnectFailure(e));
         }
         fd_set writable, failed;
         FD_ZERO(&writable);
@@ -349,17 +377,23 @@ std::unique_ptr<TcpConnection> Dial(const std::string& host, unsigned short port
         timeval tv;
         tv.tv_sec = (long)timeoutSeconds;
         tv.tv_usec = (long)((timeoutSeconds - (double)tv.tv_sec) * 1e6);
-        if (select((int)s + 1, nullptr, &writable, &failed, &tv) <= 0 || !FD_ISSET(s, &writable))
+        const int ready = select((int)s + 1, nullptr, &writable, &failed, &tv);
+        if (ready == 0)
         {
             CloseSocket(s);
-            return nullptr;
+            char seconds[32];
+            std::snprintf(seconds, sizeof(seconds), "%g", timeoutSeconds);
+            return fail(std::string("nothing answered within ") + seconds + " seconds");
         }
-        int       err = 0;
-        socklen_t len = sizeof(err);
-        if (getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&err, &len) != 0 || err != 0)
+        // Refused or unreachable: the socket's own error says which, whichever set it is in.
+        int        err = 0;
+        socklen_t  len = sizeof(err);
+        const bool gotErr = getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&err, &len) == 0;
+        if (ready < 0 || !gotErr || err != 0 || !FD_ISSET(s, &writable))
         {
             CloseSocket(s);
-            return nullptr;
+            return fail(err != 0 ? ConnectFailure(err)
+                                 : ConnectFailure(ready < 0 ? LastError() : 0));
         }
     }
     return std::make_unique<TcpConnection>((unsigned long long)s);

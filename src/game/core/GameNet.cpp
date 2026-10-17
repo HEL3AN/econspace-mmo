@@ -191,6 +191,8 @@ void Game::BuildClientSnapshot()
         }
 
         std::string type = Proto::MessageType(msg);
+        if (type != "bye")
+            heardFromServer_ = true;
         if (type == "starts")
         {
             Proto::Starts st;
@@ -291,11 +293,17 @@ void Game::BuildClientSnapshot()
             // Said out loud rather than left as a silent disconnect: being displaced from
             // your own account looks exactly like a crash otherwise (#105).
             Proto::Bye b;
-            if (Proto::DecodeBye(msg, b))
+            if (Proto::DecodeBye(msg, b) && endReason_.empty())
             {
-                TraceLog(LOG_WARNING, "Server ended the session: %s", b.reason.c_str());
-                FlashMessage(b.reason);
+                // Shown until closed, not flashed: the connection ends right behind it (#400).
+                endTitle_ =
+                    heardFromServer_ ? "Disconnected by the server" : "Could not join the server";
+                endReason_ =
+                    b.reason.empty() ? std::string("The server ended the session.") : b.reason;
+                if (!heardFromServer_)  // the login's answer: say whose, as main() does
+                    endReason_ = "Logging in as " + pilotName_ + ": " + endReason_;
             }
+            continue;
         }
         else if (type == "snap")
         {
