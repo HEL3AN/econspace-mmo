@@ -669,22 +669,42 @@ TEST_CASE("a standing hold survives the wire, and costs nothing when nobody aske
 
 // #171: a route order can ask for the safe way. The server could always plan one, and
 // econagent's travel_to_system advertised the option to models -- but nothing on the wire
-// carried it, so it was accepted and silently dropped.
-TEST_CASE("a route order that asks for the safe way still asks for it after the wire")
+// carried it, so it was accepted and silently dropped. Since #432 it is a preference, and
+// the order names the systems to pass through on its way.
+TEST_CASE("a route order's preference and waypoints survive the wire")
 {
     Proto::Command c;
     c.orderKind = 1;
     c.orderDestSystem = "verge";
-    c.orderAvoidDanger = true;
+    c.orderWaypoints = { "reach", "haven" };
+    c.orderPreference = 2;
 
     Proto::Command back;
     REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), back));
     CHECK(back.orderDestSystem == "verge");
-    CHECK(back.orderAvoidDanger);
+    CHECK(back.orderWaypoints == std::vector<std::string>{ "reach", "haven" });
+    CHECK(back.orderPreference == 2);
 
     SUBCASE("and a command that does not ask does not pay for the field")
     {
-        CHECK(Proto::EncodeCommand(Proto::Command{}).find("ordSafe") == std::string::npos);
+        Proto::Command plain;
+        plain.orderKind = 1;
+        plain.orderDestSystem = "verge";
+        const std::string wire = Proto::EncodeCommand(plain);
+        CHECK(wire.find("ordPref") == std::string::npos);
+        CHECK(wire.find("ordVia") == std::string::npos);
+    }
+
+    SUBCASE("a preference past the last, or too many waypoints, is not an order")
+    {
+        Proto::Command odd = c;
+        odd.orderPreference = 9;
+        Proto::Command got;
+        REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(odd), got));
+        CHECK(got.orderPreference == 0);  // read as the default, like any index out of range
+        Proto::Command many = c;
+        many.orderWaypoints.assign(Proto::ROUTE_WAYPOINTS_MAX + 1, "reach");
+        CHECK_FALSE(Proto::DecodeCommand(Proto::EncodeCommand(many), got));
     }
 }
 

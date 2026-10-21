@@ -404,7 +404,8 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
         o.useWarp = c.orderWarp;
         o.untilFull = c.orderUntilFull;
         o.destSystem = c.orderDestSystem;
-        o.avoidDanger = c.orderAvoidDanger;
+        o.waypoints = c.orderWaypoints;
+        o.preference = c.orderPreference;
         o.blueprint = c.orderBlueprint;
         o.name = c.orderName;
         sim.GiveOrder(s, o);
@@ -3398,7 +3399,7 @@ static int OrderSelftest()
 
     // 4) Route planning across the gate graph.
     const std::string        startSys = s.systemId;
-    std::vector<std::string> self = sim.PlanRoute(startSys, startSys, false);
+    std::vector<std::string> self = sim.PlanRoute(startSys, startSys);
     bool                     selfRoute = self.size() == 1 && self[0] == startSys;
 
     // Every other system must be reachable from the start, and the path must begin and
@@ -3409,11 +3410,11 @@ static int OrderSelftest()
         // The start's own centre: civilisations are apart until their frontiers meet (S2).
         if (Gen::SlotOf(si.id) != Gen::SlotOf(startSys))
             continue;
-        std::vector<std::string> path = sim.PlanRoute(startSys, si.id, false);
+        std::vector<std::string> path = sim.PlanRoute(startSys, si.id);
         if (path.empty() || path.front() != startSys || path.back() != si.id)
             allReachable = false;
     }
-    bool noRoute = sim.PlanRoute(startSys, "nowhere", false).empty();
+    bool noRoute = sim.PlanRoute(startSys, "nowhere").empty();
 
     // Planning around danger must still produce a valid path, not give up.
     bool safeRouteOk = true;
@@ -3422,7 +3423,7 @@ static int OrderSelftest()
         // The start's own centre: civilisations are apart until their frontiers meet (S2).
         if (Gen::SlotOf(si.id) != Gen::SlotOf(startSys))
             continue;
-        std::vector<std::string> path = sim.PlanRoute(startSys, si.id, true);
+        std::vector<std::string> path = sim.PlanRoute(startSys, si.id, Route::Preference::Safer);
         if (path.empty() || path.back() != si.id)
             safeRouteOk = false;
     }

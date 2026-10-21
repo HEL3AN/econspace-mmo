@@ -23,6 +23,7 @@
 #include "core/Version.h"
 #include "core/Faction.h"
 #include "core/Fitting.h"
+#include "core/Route.h"
 #include "core/WorldLoader.h"
 #include "economy/Resource.h"
 #include "entities/Defence.h"
@@ -284,8 +285,8 @@ const std::vector<Prompt>& Prompts()
           "lot of it and asks little; one that uses it up is short and pays well. buy where "
           "it is cheap, carry it, and sell_cargo where it is dear -- the spread and the fee "
           "mean a small difference loses money, and your own trades move the price. Prefer "
-          "avoid_danger on the route when the hold is full — cargo lost is worse than time "
-          "lost." },
+          "preference 'safer' on the route when the hold is full — cargo lost is worse than "
+          "time lost." },
         { "scout", "Visit each system and report what is there",
           "Scout the galaxy. For every system in the galaxy resource, travel_to_system to "
           "it, observe, and note the stations, asteroid fields and how much traffic and "
@@ -851,24 +852,56 @@ std::vector<Tool> BuildTools()
                           return GiveOrder(c, "mine");
                       } });
 
-    tools.push_back({ "travel_to_system",
-                      "Travel to another star system, jumping gate by gate -- and through any "
-                      "roaming wormhole you have found with scan, if it lets your ship by. "
-                      "One order for the whole journey however many hops it takes.",
-                      Obj({ { "system", Str("system id, e.g. 'reach'") },
-                            { "avoid_danger", Bool("prefer safer systems over the short way") } },
-                          { "system" }),
-                      [](const Rpc::Json& args)
-                      {
-                          RequireLive();
-                          Proto::Command c = OrderCommand(Orders::Kind::Route);
-                          c.orderDestSystem = args.value("system", std::string());
-                          c.orderWarp = true;
-                          c.orderAvoidDanger = args.value("avoid_danger", false);
-                          if (c.orderDestSystem.empty())
-                              throw Rpc::Error{ Rpc::INVALID_PARAMS, "system is required" };
-                          return GiveOrder(c, "travel_to_system");
-                      } });
+    tools.push_back(
+        { "travel_to_system",
+          "Travel to another star system, jumping gate by gate -- and through any roaming "
+          "wormhole you have found with scan, if it lets your ship by. One order for the whole "
+          "journey however many hops it takes, planned over the systems you know: charted ones "
+          "and those one gate past them. preference weighs the way: 'shortest' (fewest jumps, "
+          "the default), 'safer' (keep to security 0.5 and above where any way does) or "
+          "'less_secure' (keep below 0.5). via lists systems to pass through first, in order.",
+          Obj({ { "system", Str("system id, e.g. 'reach'") },
+                { "preference", Str("'shortest', 'safer' or 'less_secure'") },
+                { "via", Rpc::Json{ { "type", "array" },
+                                    { "items", { { "type", "string" } } },
+                                    { "description",
+                                      "system ids to pass through on the way, in order" } } },
+                { "avoid_danger", Bool("the same as preference 'safer'") } },
+              { "system" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              Proto::Command c = OrderCommand(Orders::Kind::Route);
+              c.orderDestSystem = args.value("system", std::string());
+              c.orderWarp = true;
+              if (c.orderDestSystem.empty())
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "system is required" };
+              Route::Preference pref = args.value("avoid_danger", false)
+                                           ? Route::Preference::Safer
+                                           : Route::Preference::Shortest;
+              const auto        p = args.find("preference");
+              if (p != args.end() &&
+                  (!p->is_string() || !Route::PreferenceFromName(p->get<std::string>(), pref)))
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "preference is 'shortest', 'safer' or 'less_secure'" };
+              c.orderPreference = (int)pref;
+              const auto via = args.find("via");
+              if (via != args.end())
+              {
+                  if (!via->is_array() || via->size() > Proto::ROUTE_WAYPOINTS_MAX)
+                      throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                        "via is a list of at most " +
+                                            std::to_string(Proto::ROUTE_WAYPOINTS_MAX) +
+                                            " system ids" };
+                  for (const Rpc::Json& v : *via)
+                  {
+                      if (!v.is_string() || v.get<std::string>().empty())
+                          throw Rpc::Error{ Rpc::INVALID_PARAMS, "via holds system ids" };
+                      c.orderWaypoints.push_back(v.get<std::string>());
+                  }
+              }
+              return GiveOrder(c, "travel_to_system");
+          } });
 
     tools.push_back({ "abort_order", "Stop whatever the ship is currently doing.", Obj({}),
                       [](const Rpc::Json&)

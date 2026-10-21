@@ -7,6 +7,7 @@
 #include "sim/Names.h"
 #include "sim/SaveFile.h"
 
+#include "core/Route.h"
 #include "core/Blueprint.h"
 #include "core/Orbits.h"
 #include "core/World.h"
@@ -1470,91 +1471,18 @@ const WorldLoader::SystemInfo* Simulation::SystemInfoById(const std::string& id)
 // A jump today is a single hop: the client names one gate and the server checks it is
 // close enough. "Fly to Verge" therefore meant planning the hops by hand, and for an
 // agent every extra hop is another round trip to a language model. This turns the whole
-// journey into one order.
+// journey into one order. The search is Route::Find (#432), the one a client's map uses.
 std::vector<std::string>
-Simulation::PlanRoute(const std::string& from, const std::string& to, bool avoidDanger,
+Simulation::PlanRoute(const std::string& from, const std::string& to, Route::Preference preference,
                       const std::vector<WorldLoader::SystemLink>* extra) const
 {
     if (from.empty() || to.empty() || !HasSystem(from) || !HasSystem(to))
         return {};
-    if (from == to)
-        return { from };
-
-    // What one hop into a system costs. Counting hops gives the short way; weighing danger
-    // gives the way a loaded hauler survives. Both are Dijkstra over the same small graph,
-    // so the difference is only this function.
-    auto cost = [this, avoidDanger](const std::string& id) -> double
-    {
-        if (!avoidDanger)
-            return 1.0;
-        auto it = systems_.find(id);
-        if (it == systems_.end())
-            return 1.0;
-        const SystemAggregate& a = it->second.agg;
-        // Low security and a pirate presence both make a system expensive to cross. The
-        // numbers only need to order routes sensibly, not to model risk exactly.
-        double danger = (1.0 - (double)a.security) * 4.0 + (double)a.pirates * 0.5;
-        return 1.0 + danger;
-    };
-
-    std::map<std::string, double>      best;
-    std::map<std::string, std::string> cameFrom;
-    // The galaxy is a handful of systems, so a linear scan for the next node is cheaper to
-    // read than a priority queue and indistinguishable in cost.
-    std::map<std::string, bool> settled;
-    for (const auto& kv : systems_)
-        best[kv.first] = 1e18;
-    best[from] = 0.0;
-
-    for (;;)
-    {
-        std::string cur;
-        double      curCost = 1e18;
-        for (const auto& kv : best)
-            if (!settled[kv.first] && kv.second < curCost)
-            {
-                cur = kv.first;
-                curCost = kv.second;
-            }
-        if (cur.empty())
-            break;  // nothing reachable left
-        if (cur == to)
-            break;
-        settled[cur] = true;
-
-        std::vector<std::string> next = Neighbors(cur);
-        if (extra != nullptr)  // a pilot's own way through a roaming hole (#342 S9)
-            for (const WorldLoader::SystemLink& l : *extra)
-                if (l.a == cur || l.b == cur)
-                    next.push_back(l.a == cur ? l.b : l.a);
-        for (const std::string& n : next)
-        {
-            if (settled[n])
-                continue;
-            double via = curCost + cost(n);
-            auto   it = best.find(n);
-            if (it != best.end() && via < it->second)
-            {
-                it->second = via;
-                cameFrom[n] = cur;
-            }
-        }
-    }
-
-    if (best[to] >= 1e18)
-        return {};  // unreachable: say so rather than returning a partial path
-
-    std::vector<std::string> path;
-    for (std::string at = to;; at = cameFrom[at])
-    {
-        path.push_back(at);
-        if (at == from)
-            break;
-        if (cameFrom.find(at) == cameFrom.end())
-            return {};
-    }
-    std::reverse(path.begin(), path.end());
-    return path;
+    if (extra == nullptr || extra->empty())
+        return Route::Find(universe_, from, to, 0.0, time_, preference).path;
+    WorldLoader::Universe with = universe_;
+    with.links.insert(with.links.end(), extra->begin(), extra->end());
+    return Route::Find(with, from, to, 0.0, time_, preference).path;
 }
 
 WorldLoader::Universe Simulation::KnownUniverse() const

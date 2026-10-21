@@ -3,6 +3,7 @@
 #include "raylib.h"
 
 #include <string>
+#include <vector>
 
 // Standing orders: the strategic layer above the 60 Hz tick.
 //
@@ -66,10 +67,13 @@ struct Order
     bool    useWarp = false;         // MoveTo: warp instead of cruising
     bool    untilFull = false;       // Mine: keep going until the hold is full
 
-    // Route only. destSystem is where to end up; avoidDanger weighs a safer path over a
-    // shorter one, which is the difference between a hauler and a courier that arrives.
-    std::string destSystem;
-    bool        avoidDanger = false;
+    // Route only. destSystem is where to end up, by way of `waypoints` in order (#432) --
+    // each one is dropped from the front as the ship reaches it. `preference` weighs the
+    // hops as EVE's autopilot does: the shortest way, the high-security way that a loaded
+    // hauler survives, or the low-security way a hunter wants (Route::Preference).
+    std::string              destSystem;
+    std::vector<std::string> waypoints;
+    int                      preference = 0;  // Route::Preference as int
 
     // Build only: which blueprint, and what to call the site (empty -- the blueprint's name).
     // Where is `point`.

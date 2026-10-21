@@ -256,7 +256,7 @@ TEST_CASE("a route order across the galaxy is planned, not guessed")
 
     for (const WorldLoader::SystemInfo& si : f.sim.Universe().systems)
     {
-        std::vector<std::string> path = f.sim.PlanRoute(start, si.id, false);
+        std::vector<std::string> path = f.sim.PlanRoute(start, si.id);
         REQUIRE_FALSE(path.empty());
         CHECK(path.front() == start);
         CHECK(path.back() == si.id);
@@ -268,8 +268,32 @@ TEST_CASE("a route order across the galaxy is planned, not guessed")
         }
     }
 
-    CHECK(f.sim.PlanRoute(start, "nowhere", false).empty());
-    CHECK(f.sim.PlanRoute("nowhere", start, false).empty());
+    CHECK(f.sim.PlanRoute(start, "nowhere").empty());
+    CHECK(f.sim.PlanRoute("nowhere", start).empty());
+}
+
+TEST_CASE("a route order passes its waypoints in order, then arrives (#432)")
+{
+    Fixture f;
+    f.sim.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
+    f.s.ship->Teleport(f.sim.SafeArrival(f.s.systemId));
+    Orders::Order order;
+    order.kind = Orders::Kind::Route;
+    order.destSystem = "reach";
+    order.waypoints = { "verge" };
+    f.sim.GiveOrder(f.s, order);
+    REQUIRE(f.sim.RouteFor(f.s).path ==
+            std::vector<std::string>{ "core", "verge", "core", "reach" });
+    std::vector<std::string> visited{ f.s.systemId };
+    for (int tick = 0; tick < 60 * 600 && f.s.HasRunningOrder(); ++tick)
+    {
+        f.sim.StepPlayerOrder(f.s, f.World(), Sim::SIM_DT);
+        if (f.s.systemId != visited.back())
+            visited.push_back(f.s.systemId);
+    }
+    CHECK(f.s.orderStatus == Orders::Status::Done);
+    CHECK(visited == std::vector<std::string>{ "core", "verge", "core", "reach" });
+    CHECK(f.s.order.waypoints.empty());
 }
 
 TEST_CASE("the world clock advances with maintenance")

@@ -38,8 +38,9 @@ struct SystemLink
 
     std::string a;
     std::string b;
-    // Empty for a gate. "hole" for a roaming wormhole a pilot has found (#342 S9): it closes
-    // at `closesAt` (world time) and lets through ships of at most `maxMass`.
+    // Empty for a gate. "hole" for a roaming wormhole a pilot has found (#342 S9), "mouth"
+    // for an unstable mouth not yet anchored (#342 S4, #432): either closes at `closesAt`
+    // (world time) and lets through ships of at most `maxMass`.
     std::string kind;
     double      closesAt = 0.0;
     float       maxMass = 0.0f;

@@ -392,6 +392,23 @@ std::vector<WorldLoader::SystemLink> Simulation::HoleLinksOf(const ClientSession
 WorldLoader::Universe Simulation::KnownUniverseFor(const ClientSession& s) const
 {
     WorldLoader::Universe u = KnownUniverse();
+    // An unstable mouth is a limited crossing like a hole (#342 S4): it says when it closes
+    // and what it lets by, so a route planned on the map is the one the server will fly
+    // (#432). Anchoring it makes it a gate; the index is sent again (TakeTopologyChanged).
+    // By opening rather than by link: a mouth is rare and the links are the whole galaxy.
+    for (const RegionOpening& o : openings_)
+    {
+        if (o.parent < 0 || o.state != "unstable")
+            continue;
+        const std::string entry = EntryOf(o.slot);
+        for (WorldLoader::SystemLink& link : u.links)
+            if ((link.a == o.mouth && link.b == entry) || (link.a == entry && link.b == o.mouth))
+            {
+                link.kind = "mouth";
+                link.closesAt = o.closesAt;
+                link.maxMass = (float)WorldRules::MouthRules().maxMass;
+            }
+    }
     for (const WorldLoader::SystemLink& l : HoleLinksOf(s))
     {
         // The far end on the map, as a gate's far side is: located and designated.

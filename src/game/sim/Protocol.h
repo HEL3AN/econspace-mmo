@@ -24,6 +24,9 @@
 namespace Proto
 {
 
+// The most systems a route order may name to pass through on its way (#432).
+inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
+
 // Wire format version. Bump it whenever a message changes in a way an older build would
 // misread — a renamed or repurposed field, a changed unit, a changed meaning.
 //
@@ -33,7 +36,10 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    46;  // 46: an escort job carries its convoy -- where it is, where it goes next, its hauler and
+    47;  // 47: a route order carries its waypoints and a preference -- shortest, safer or less
+         // secure -- in place of avoid-danger, and the index marks an unstable mouth's link
+         // with when it closes and the mass it lets by (#432);
+         // 46: an escort job carries its convoy -- where it is, where it goes next, its hauler and
          // escorts when they are in the recipient's system, and whether the pilot has been with
          // it (#430);
          // 45: a hello carries the client's build and a hash of each shared data file, and the
@@ -229,10 +235,12 @@ struct Command
     bool        orderWarp = false;
     bool        orderUntilFull = false;
     std::string orderDestSystem;  // Route
-    // Route: weigh a safer path over the short one. The server could always plan one; until
-    // #171 nothing on the wire could ask it to, so `travel_to_system`'s avoid_danger was
-    // accepted, advertised to models in a prompt, and silently dropped.
-    bool orderAvoidDanger = false;
+    // Route: systems to pass through first, in order, and how to weigh a hop
+    // (Route::Preference: 0 shortest, 1 safer, 2 less secure) (#432). Until #171 nothing on
+    // the wire could ask for a safer way, so `travel_to_system`'s avoid_danger was accepted,
+    // advertised to models in a prompt, and silently dropped.
+    std::vector<std::string> orderWaypoints;  // at most ROUTE_WAYPOINTS_MAX
+    int                      orderPreference = 0;
     // Build: the blueprint, and what to call the site (#39). The point is `orderPoint`.
     std::string orderBlueprint;
     std::string orderName;
