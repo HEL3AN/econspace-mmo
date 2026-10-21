@@ -246,6 +246,7 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
         if (!IsHot(dest))
             Orbits::Place(dest.entities, time_);  // where the clock has the station now
         s.systemId = homeSystem;
+        Learn(s, homeSystem);  // where they wake is on their map (#431)
         Warm(dest);
         for (const auto& e : dest.entities)
             if (e->GetId() == home)
@@ -1454,14 +1455,16 @@ void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId, 
                                // Bounty/Delivery into another system would be uncompletable
     Warm(dest);
 
-    // The first ship into a system beyond the wormhole (#143): from now on it is part of
-    // the contested world, and that it was reached at all is news.
+    // On the pilot's own charts from now on (#431 K1) -- and their corporation's -- but on
+    // nobody else's: it becomes public only when a faction charts it.
+    Learn(s, destId);
+    // The first ship into a system beyond the wormhole (#143): that it was reached at all
+    // is news, and its discoverer may name it (#145).
     SystemAggregate& agg = dest.agg;
-    if (!agg.visited)
+    if (!agg.publicChart && agg.discoverer.empty())
     {
-        agg.visited = true;
         agg.discoverer = s.ship ? s.ship->GetPilotName() : std::string();
-        chartsChanged_ = true;
+        chartsChanged_ = true;  // world state: written at once
         PushEvent("First ship into " + SystemName(destId));
         s.RecordEvent(Ev::Kind::Notice, "First ship ever into " + SystemName(destId));
     }
@@ -1675,9 +1678,10 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
         named.insert(design);
     }
     j["designs"] = library;
-    // What this pilot's scans have found (#346), by signature key. A field an older build
-    // ignores, so no version bump (#20).
-    j["scanned"] = json(s.scanned);
+    // What this pilot has found (#346), by key, and the systems on their own charts (#431),
+    // as "system:<id>". A field an older build ignores, so no version bump (#20); and an
+    // older build reading it keeps no "system:" key -- it is no system's signature.
+    j["scanned"] = json(s.known);
     if (!s.accountName.empty())
         designs_.SetUsers(s.accountName, named);
 
@@ -1825,7 +1829,7 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
 
     // What they found (#346): this world's, and only what is still there -- a hole that has
     // closed since is no longer a way anywhere.
-    s.scanned.clear();
+    s.known.clear();
     if (!foreign && j.contains("scanned") && j["scanned"].is_array())
         for (const json& k : j["scanned"])
         {
@@ -1834,9 +1838,12 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
             const std::string  key = k.get<std::string>();
             const bool         hole = key.rfind("hole:", 0) == 0;
             const RoamingHole* h = hole ? HoleById(key.substr(5)) : nullptr;
-            if (hole ? (h != nullptr && h->closesAt > time_)
-                     : HasSystem(key.substr(0, key.find('/'))))
-                s.scanned.insert(key);
+            // A system on their charts (#431) that is on everyone's now needs no key.
+            const std::string chart = ChartedSystemOf(key);
+            if (!chart.empty() ? HasSystem(chart) && !OnPublicCharts(chart)
+                : hole         ? (h != nullptr && h->closesAt > time_)
+                               : HasSystem(key.substr(0, key.find('/'))))
+                s.known.insert(key);
         }
 
     // Where they were (#49). A saved system that the galaxy no longer has -- an edited
@@ -2088,5 +2095,7 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
         // docked at and is regenerated on the next dock.
         s.missions.SetMirror({}, std::move(active));
     }
+    // The systems on their own charts (#431), once their place is known.
+    LoadKnown(s);
     return Save::Result::Ok;
 }

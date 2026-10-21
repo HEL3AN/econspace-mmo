@@ -2,6 +2,7 @@
 
 #include "sim/Events.h"
 #include "sim/Orders.h"
+
 #include "player/Player.h"
 #include "missions/MissionSystem.h"
 
@@ -161,18 +162,22 @@ struct ClientSession
     };
     std::vector<Shot> orderShots;
 
-    // The ship's scanner (#346). What this pilot's scans have resolved, by signature key --
-    // saved with the account, so a hidden base found stays found -- and how far each one not
-    // yet resolved has got, which is this session's. A pass under way ends at `scanUntil`
+    // What this pilot has found, saved with the account (`scanned`): what their scans
+    // resolved (#346), by signature key -- a hidden object "<system>/<signature>", a roaming
+    // hole "hole:<id>" -- so a hidden base found stays found, and the systems on their own
+    // charts (#431 K1), "system:<id>" (Simulation::Learn). `knownRev` changes with it, from
+    // the server's one counter: it is part of the key of the pilot's map. How far each scan
+    // not yet resolved has got is this session's. A pass under way ends at `scanUntil`
     // (world time; 0 -- none) in `scanSystem`.
-    std::set<std::string>        scanned;
+    std::set<std::string>        known;
+    long long                    knownRev = 0;
     std::map<std::string, float> scanProgress;
     double                       scanUntil = 0.0;
     std::string                  scanSystem;
     // Resolved objects of the system the ship is in that the pilot's layout lacks: the host
     // sends them as a delta of the pilot's own (Simulation::TakeRevealDeltas).
     std::vector<int> revealPending;
-    // The holes this pilot knows changed (#342 S9): the host sends them the index again.
+    // The holes this pilot knows changed (#342 S9).
     bool routesChanged = false;
 
     // What happened to this player, in order. Per session rather than per world: one

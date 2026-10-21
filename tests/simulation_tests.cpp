@@ -1915,11 +1915,11 @@ TEST_CASE("the region is not decided in its first minutes, and a first ship is n
     {
         const std::string& id = sim.Universe().systems[i].id;
         names[id] = sim.Universe().systems[i].name;
-        CHECK_FALSE(sim.SystemById(id)->agg.visited);
+        CHECK_FALSE(sim.OnPublicCharts(id));
         before[id] = sim.SystemById(id)->agg.controller;
     }
     REQUIRE_FALSE(before.empty());
-    CHECK(sim.SystemById(sim.Universe().startId)->agg.visited);  // known space is known
+    CHECK(sim.OnPublicCharts(sim.Universe().startId));  // known space is known
 
     for (int i = 0; i < 60 * 300; i++)  // five simulated minutes of maintenance
         sim.MaintainWorld(1.0f / 60.0f);
@@ -1943,7 +1943,9 @@ TEST_CASE("the region is not decided in its first minutes, and a first ship is n
         sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
     const std::string entry = before.begin()->first;
     sim.ServerEnterSystem(s, entry, sim.Universe().startId);
-    CHECK(sim.SystemById(entry)->agg.visited);
+    CHECK(s.known.count(Simulation::ChartKey(entry)) ==
+          1);  // on that pilot's charts (#431), not on the public ones
+    CHECK_FALSE(sim.OnPublicCharts(entry));
     REQUIRE_FALSE(sim.Events().empty());
     CHECK(sim.Events().back().find("First ship into") != std::string::npos);
 }
@@ -1986,17 +1988,20 @@ TEST_CASE("players are told only what somebody has charted (#144)")
     for (const auto& l : known.links)
         CHECK((find(known, l.a) != nullptr && find(known, l.b) != nullptr));
     CHECK_FALSE(sim.TakeChartsChanged());
-    for (const auto& g : sim.BuildGalaxyState().systems)
-        CHECK(g.id != entry);
-
-    // The first ship through charts it, for everyone, and shows what its gates lead to.
     ClientSession& s =
         sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+    for (const auto& g : sim.BuildGalaxyState(s).systems)
+        CHECK(g.id != entry);
+
+    // The first ship through charts it -- for its pilot (#431) -- and shows them what its
+    // gates lead to. Everyone else's map stays the public one.
     sim.ServerEnterSystem(s, entry, sim.Universe().startId);
-    CHECK(sim.TakeChartsChanged());
+    CHECK(sim.TakeChartsChanged());        // its discoverer is world state, written at once
     CHECK_FALSE(sim.TakeChartsChanged());  // taken once
-    known = sim.KnownUniverse();
+    CHECK_FALSE(find(sim.KnownUniverse(), entry)->charted);
+    known = sim.KnownUniverseFor(s);
     CHECK(find(known, entry)->charted);
+    CHECK(find(known, entry)->knownBy == "own");
     CHECK(known.systems.size() > handWritten + 1);
     for (const auto& l : sim.Universe().links)
         if (l.a == entry || l.b == entry)
@@ -2270,7 +2275,7 @@ TEST_CASE("a player is not respawned beside a station that would shoot them (#22
     CHECK(Vector2Distance(f.s.ship->GetPosition(), at) > reach + 10000.0f);
 }
 
-TEST_CASE("whoever gets there first names it, once, for everyone (#145)")
+TEST_CASE("whoever gets there first names it, once, for everyone who knows it (#145)")
 {
     REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
     REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
@@ -2315,9 +2320,10 @@ TEST_CASE("whoever gets there first names it, once, for everyone (#145)")
     CHECK(sim.NameSystem(ann, "Haven"));
     CHECK_FALSE(sim.NameSystem(ann, "Other Haven"));  // once
 
-    // Everyone sees it, with its designation beside it, and the news says who.
+    // Everyone who has been there sees it, with its designation beside it, and the news says
+    // who.
     CHECK(sim.TakeChartsChanged());
-    const WorldLoader::Universe known = sim.KnownUniverse();
+    const WorldLoader::Universe known = sim.KnownUniverseFor(bo);
     bool                        seen = false;
     for (const auto& si : known.systems)
         if (si.id == entry)
@@ -2338,10 +2344,7 @@ TEST_CASE("whoever gets there first names it, once, for everyone (#145)")
     again.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
     again.AttachRegion(7, systems);
     REQUIRE(again.LoadWorld(path) == Save::Result::Ok);
-    bool kept = false;
-    for (const auto& si : again.KnownUniverse().systems)
-        kept = kept || (si.id == entry && si.name == "Haven");
-    CHECK(kept);
+    CHECK(again.SystemById(entry)->agg.givenName == "Haven");
 }
 
 TEST_CASE("a ship left beside a moving body is found beside it again (#258)")

@@ -714,9 +714,12 @@ TEST_CASE("the galaxy index survives the wire, without the server's file names")
 {
     WorldLoader::Universe u;
     u.systems.push_back(
-        { "sol", "Sol", "sol.json", { 10.5f, -20.0f }, 0.9f, "federation", true, "", "" });
+        { "sol", "Sol", "sol.json", { 10.5f, -20.0f }, 0.9f, "federation", true, "", "", "", "" });
+    // A system on one pilot's charts alone, which a faction had charted first (#431).
     u.systems.push_back(
-        { "vega", "Vega", "vega.json", { 300.0f, 40.25f }, 0.1f, "", true, "", "" });
+        { "vega", "Vega", "vega.json", { 300.0f, 40.25f }, 0.1f, "", true, "", "", "", "" });
+    u.systems.back().knownBy = "own";
+    u.systems.back().chartedBy = "guild";
     u.links.push_back({ "sol", "vega" });
     u.startId = "sol";
 
@@ -736,6 +739,10 @@ TEST_CASE("the galaxy index survives the wire, without the server's file names")
     CHECK(r.systems[1].id == "vega");
     CHECK(r.systems[1].mapPos.y == doctest::Approx(40.25f));
     CHECK(r.systems[1].owner.empty());
+    CHECK(r.systems[0].knownBy.empty());  // the public charts
+    CHECK(r.systems[0].chartedBy.empty());
+    CHECK(r.systems[1].knownBy == "own");
+    CHECK(r.systems[1].chartedBy == "guild");
     REQUIRE(r.links.size() == 1);
     CHECK(r.links[0].a == "sol");
     CHECK(r.links[0].b == "vega");

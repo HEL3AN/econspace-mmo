@@ -469,14 +469,12 @@ std::vector<Proto::LayoutDelta> Simulation::TakeLayoutDeltas()
     return out;
 }
 
-Proto::GalaxyState Simulation::BuildGalaxyState() const
+Proto::GalaxyState Simulation::GalaxyStats() const
 {
     Proto::GalaxyState gs;
     for (const auto& kv : systems_)
     {
-        const SystemAggregate& a = kv.second.agg;
-        if (!a.visited)
-            continue;  // nobody knows how a system nobody has seen is doing (#144)
+        const SystemAggregate&  a = kv.second.agg;
         Proto::GalaxySystemStat g;
         g.id = kv.first;
         g.security = a.security;

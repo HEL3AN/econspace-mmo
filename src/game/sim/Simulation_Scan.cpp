@@ -87,7 +87,7 @@ bool Simulation::HiddenFrom(const ClientSession& s, const SystemState& st, const
         return false;
     if (!e.GetOwner().empty() && e.GetOwner() == s.accountName)
         return false;  // nobody hides their own
-    return s.scanned.count(SignatureKey(st, e)) == 0;
+    return s.known.count(SignatureKey(st, e)) == 0;
 }
 
 bool Simulation::StartScan(ClientSession& s)
@@ -130,12 +130,12 @@ std::string Simulation::Resolve(ClientSession& s, const SystemState& st, const E
 {
     const std::string key = SignatureKey(st, e);
     s.scanProgress.erase(key);
-    s.scanned.insert(key);
+    s.known.insert(key);
     s.revealPending.push_back(e.GetId());
     std::string what, line;
     if (const RoamingHole* h = HoleOfGate(e.GetId()))
     {
-        s.routesChanged = true;
+        TouchHoles(s);
         const std::string to = static_cast<const JumpGate&>(e).GetDestination();
         what = "a wormhole to " + SystemName(to);
         line = SignatureCode(key) + ": " + what + " -- " + h->dressed;
@@ -236,7 +236,7 @@ Proto::ScanView Simulation::ScanViewOf(const ClientSession& s) const
         const std::string    key = SignatureKey(*st, *e);
         Proto::SignatureView g;
         g.code = SignatureCode(key);
-        if (s.scanned.count(key) != 0)
+        if (s.known.count(key) != 0)
         {
             g.progress = 1.0f;
             g.id = e->GetId();

@@ -532,6 +532,9 @@ json Registry::ToJson() const
             cj["journal"] = journal;
             cj["nextJournalSeq"] = c.nextJournalSeq;
         }
+        // Its charts (#431). A field an older build ignores, so no version bump (#20).
+        if (!c.charts.empty())
+            cj["charts"] = c.charts;
         list.push_back(std::move(cj));
     }
     return { { "version", Save::CORPS_VERSION }, { "next", nextId_ }, { "corps", list } };
@@ -633,6 +636,12 @@ bool Registry::FromJson(const json& j, std::string& why)
             c.nextJournalSeq = (int)std::max<long long>(1, whole(cj, "nextJournalSeq"));
             for (const Ev::Event& e : c.journal)
                 c.nextJournalSeq = std::max(c.nextJournalSeq, e.seq + 1);
+            const auto charts = cj.find("charts");
+            if (charts != cj.end() && charts->is_array())
+                for (const json& sj : *charts)
+                    if (sj.is_string())
+                        c.charts.insert(sj.get<std::string>());
+            c.chartsRev = ++chartsSerial_;
             // An id is never handed out twice, even after its corporation is gone.
             next = std::max(next, std::atoi(c.id.c_str() + 1) + 1);
             SortMembers(c);
@@ -643,6 +652,19 @@ bool Registry::FromJson(const json& j, std::string& why)
     Index();
     rev_++;
     return true;
+}
+
+void Registry::AddCharts(const std::string& account, const std::vector<std::string>& systems)
+{
+    auto it = byAccount_.find(account);
+    if (it == byAccount_.end())
+        return;
+    Corp& c = corps_[it->second];
+    bool  added = false;
+    for (const std::string& id : systems)
+        added = c.charts.insert(id).second || added;
+    if (added)
+        c.chartsRev = ++chartsSerial_;
 }
 
 bool Registry::Save(const std::string& path) const

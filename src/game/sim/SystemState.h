@@ -61,11 +61,15 @@ struct SystemAggregate
     float supPolice = 0.0f;
     float supPirates = 0.0f;
 
-    // Whether a player has ever been here (#143). Known space starts visited; a system
-    // beyond the wormhole does not, and until somebody goes there it is nobody's to take:
-    // a region that changed hands before anyone arrived is a world that ran without its
-    // players. Saved; an older save without it reads the default.
-    bool visited = true;
+    // Whether the system is on the public charts (#431 K1): a civilisation's own space and
+    // whatever a world faction has charted (`chartedBy`). Not saved: it follows from where
+    // the system is and from `chartedBy`. Everything else on a pilot's map is the pilot's or
+    // their corporation's (ClientSession::known). It replaced `visited` (#143), one flag
+    // for everybody, which an older save's systems are translated from on load.
+    bool publicChart = true;
+    // The world faction whose charts put it on the public ones, by id (Simulation::ChartBy);
+    // empty for none -- a centre's systems need nobody's. Saved.
+    std::string chartedBy;
 
     // Macro passes in a row that one side has held the upper hand (#225). Transient: a
     // restart begins the count again.

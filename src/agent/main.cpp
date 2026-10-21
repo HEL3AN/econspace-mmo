@@ -231,8 +231,12 @@ std::string DescribeGalaxy()
     for (const WorldLoader::SystemInfo& si : g_session.Universe().systems)
     {
         std::string line = "  " + si.id + "  " + si.name;
-        if (!si.charted)  // a gate leads there; nobody has been (#144)
-            line += "   uncharted: nobody has been there yet";
+        if (!si.charted)  // a gate leads there; you have no charts of it (#144, #431)
+            line += "   uncharted: not on your charts";
+        else if (si.knownBy == "own")  // a find of yours, on nobody else's map
+            line += "   on your charts only";
+        else if (si.knownBy == "corp")
+            line += "   on your corporation's charts";
         for (const Proto::GalaxySystemStat& g : g_session.Galaxy().systems)
             if (g.id == si.id)
             {
@@ -883,8 +887,9 @@ std::vector<Tool> BuildTools()
         { "travel_to_system",
           "Travel to another star system, jumping gate by gate -- and through any roaming "
           "wormhole you have found with scan, if it lets your ship by. One order for the whole "
-          "journey however many hops it takes, planned over the systems you know: charted ones "
-          "and those one gate past them. preference weighs the way: 'shortest' (fewest jumps, "
+          "journey however many hops it takes, planned over the systems you know -- the public "
+          "charts, your own and your corporation's (the galaxy resource) -- and those one gate "
+          "past them. preference weighs the way: 'shortest' (fewest jumps, "
           "the default), 'safer' (keep to security 0.5 and above where any way does) or "
           "'less_secure' (keep below 0.5). via lists systems to pass through first, in order.",
           Obj({ { "system", Str("system id, e.g. 'reach'") },
@@ -1518,7 +1523,8 @@ std::vector<Tool> BuildTools()
     tools.push_back(
         { "name_system",
           "Name the system you are in. Beyond the wormhole a system has only a designation "
-          "(W-3.2) until whoever got there first names it -- once, for everyone. 3 to 24 "
+          "(W-3.2) until whoever got there first names it -- once, for everyone who has it on "
+          "their charts. 3 to 24 "
           "characters, starting with a letter; letters, digits, spaces, ' and -; not a name "
           "another system has.",
           Obj({ { "name", Str("the name, e.g. 'Haven'") } }, { "name" }), [](const Rpc::Json& args)
@@ -1543,11 +1549,12 @@ std::vector<Tool> BuildTools()
               c.nameSystem = name;
               if (!Confirm(c, why))
                   return "name_system: " + why;
-              // The new name reaches everyone in the galaxy index the server resends.
+              // The new name reaches everyone who knows it, in the index the server resends.
               g_session.WaitUntil(named, 3.0);
               if (!named())
                   return Refused("name_system", seq, "the server did not name it");
-              return "name_system: " + here + " is now " + name + ", for everyone";
+              return "name_system: " + here + " is now " + name +
+                     ", for everyone who has it on their charts";
           } });
 
     tools.push_back(
@@ -2059,8 +2066,10 @@ Rpc::Json ResourcesList()
           Rpc::Json{ { "uri", "econspace://galaxy" },
                      { "name", "Galaxy" },
                      { "description",
-                       "Every system, its security, controller and gate links, plus recent "
-                       "galactic news" },
+                       "Every system on your charts -- the public charts, your own finds and "
+                       "your corporation's -- with its security, controller and gate links; "
+                       "the systems their gates lead to, uncharted; plus recent galactic "
+                       "news" },
                      { "mimeType", "text/plain" } } });
 }
 

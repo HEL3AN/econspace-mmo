@@ -229,6 +229,14 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   woven again -- player structures already stand on its gates. A bad pack stops a new world
   with every problem listed; `econserver validate` says the same without running one.
 
+- **The map is each pilot's own** (#431, `documents/world_knowledge_and_territory.md`). A pilot
+  knows the public charts (`SystemAggregate::publicChart`: centres, and what a faction charted,
+  `chartedBy`), their own (`"system:<id>"` keys in `ClientSession::known`, beside their scans,
+  saved in the account) and their corporation's (`Corps::Corp::charts`, in corps.json, so an
+  offline member's finds stay shared). The index and the
+  galaxy statistics are cut per session (`KnownUniverseFor`, `GalaxyStateFor`), built only when
+  `KnowledgeKey` changes; never send one map to everyone. A route order searches only the
+  pilot's map. A first ship in sets `discoverer` but charts the system for that pilot alone.
 - **What has a `signature` is hidden per pilot** (#346, #342 S9). A roaming hole's ends and a
   hidden base are left out of a pilot's layout and deltas (`Simulation::BuildLayoutFor`,
   `ForSession`) until their scan resolves them; the find is the account's (`scanned`). A

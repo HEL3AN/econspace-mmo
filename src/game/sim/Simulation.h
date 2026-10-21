@@ -73,10 +73,40 @@ public:
     // Loads the galaxy index (universe.json).
     void                         LoadUniverse(const std::string& path);
     const WorldLoader::Universe& Universe() const { return universe_; }
-    // The galaxy as players know it (#144): every system somebody has been to, and the
-    // systems a gate from one of those leads to -- located and designated, uncharted.
-    // Nothing further. Knowledge is shared: the first ship in charts it for everyone.
+    // The public charts (#431 K1): the civilisation centres and every system a world faction
+    // has charted, and the systems a gate from one of those leads to -- located and
+    // designated, uncharted. What a pilot with no charts of their own sees; a pilot's own map
+    // is KnownUniverseFor.
     WorldLoader::Universe KnownUniverse() const;
+
+    // --- Knowledge (#431 slice 1; Simulation_Knowledge.cpp) ---
+    // Whether a system is on the public charts.
+    bool OnPublicCharts(const std::string& systemId) const;
+    // Whether `s` has `systemId` charted: public, their own, or their corporation's.
+    bool Knows(const ClientSession& s, const std::string& systemId) const;
+    // `s` has been to `systemId`: on their own charts from now on (a "system:" key of
+    // ClientSession::known), and their corporation's, unless it is public. True when it was
+    // news to them.
+    bool Learn(ClientSession& s, const std::string& systemId);
+    // Everything on `s`'s own charts onto their corporation's: when they log in, found a
+    // corporation or join one (Corps::Corp::charts).
+    void ShareCharts(const ClientSession& s);
+    // The system a key of ClientSession::known charts, or empty for any other key.
+    static std::string ChartedSystemOf(const std::string& key);
+    static std::string ChartKey(const std::string& systemId) { return "system:" + systemId; }
+    // A world faction charts `systemId` (K2): it goes on the public charts, "charted by" it.
+    // The first faction's charts stand; true when this one's were the first. Slice 2 calls it
+    // from surveys, settling, Anchors, claims and expeditions; today a save from before #431
+    // does, for a system a faction held.
+    bool ChartBy(const std::string& systemId, FactionId faction);
+    // What decides `s`'s map, as a key: equal keys, the same map. The host sends the index
+    // when it differs from the one it last sent.
+    std::vector<long long> KnowledgeKey(const ClientSession& s) const;
+    // Changes whenever any pilot's map may have: a cheap test before asking every session.
+    long long KnowledgeStamp() const
+    {
+        return publicRev_ + knowledgeSerial_ + (long long)corps_.Rev() + corps_.ChartsSerial();
+    }
     // The first ship into a system beyond the wormhole may name it, once (#145). Says why
     // not in the player's journal when it cannot.
     bool NameSystem(ClientSession& s, const std::string& name);
@@ -197,8 +227,10 @@ public:
                             double hours, double budget);
     // The links this pilot knows through roaming holes, each with its tail (kind "hole").
     std::vector<WorldLoader::SystemLink> HoleLinksOf(const ClientSession& s) const;
-    // The galaxy index as this pilot knows it (#144): KnownUniverse, and the holes they found
-    // -- the system at the far end too, uncharted if nobody has been.
+    // The galaxy index as this pilot knows it (#144, #431): the public charts, their own and
+    // their corporation's, the systems a gate from any of those leads to, and the holes they
+    // found -- the system at the far end too, uncharted unless they know it. The host builds
+    // it only when the pilot's KnowledgeKey differs from the one it last sent.
     WorldLoader::Universe KnownUniverseFor(const ClientSession& s) const;
     // Once a pass: holes of the epoch decided, opening, re-dressed, collapsing.
     void StepHoles();
@@ -884,9 +916,16 @@ public:
         Decay
     };
 
-    // M4e-3c: galaxy snapshot (statistics of all systems + news) for the networked
-    // client's galaxy map. Reads the world without changing it (#341).
-    Proto::GalaxyState BuildGalaxyState() const;
+    // M4e-3c: galaxy snapshot (statistics + news) for the networked client's galaxy map.
+    // Reads the world without changing it (#341). GalaxyStats has every system and is the
+    // server's own; a pilot is sent GalaxyStateFor -- only the systems on their charts, for
+    // nobody knows how a system they have not seen is doing (#144, #431).
+    Proto::GalaxyState GalaxyStats() const;
+    Proto::GalaxyState GalaxyStateFor(const ClientSession& s, const Proto::GalaxyState& all) const;
+    Proto::GalaxyState BuildGalaxyState(const ClientSession& s) const
+    {
+        return GalaxyStateFor(s, GalaxyStats());
+    }
 
     // --- Players as server agents (M4d-2b, #3) ---
     // The simulation owns every connected player's ship and account, one ClientSession
@@ -1506,7 +1545,13 @@ private:
     bool ParamsFor(int slot, const std::string& homeId, const std::string& systemsDir,
                    Gen::RegionParams& params, nlohmann::json& homeDoc) const;
     // Mouths and Anchors (#342 S4).
-    bool           topologyChanged_ = false;
+    bool topologyChanged_ = false;
+    // The routes changed: the host is told, and every pilot's map is built again (#431).
+    void TopologyChanged()
+    {
+        topologyChanged_ = true;
+        PublicChartsChanged();
+    }
     RegionOpening* LiveOpening(int slot);
     // Where a mouth from `fromSlot` leads: the region that drifted from it, if one did --
     // the next mouth from a parent finds it again -- else its next free slot; -1 for none.
@@ -1646,6 +1691,32 @@ private:
     // (#225): three minutes, long enough for players to notice and answer.
     static constexpr int CONTEST_PASSES = 90;
     bool                 chartsChanged_ = false;  // a system was charted (#144)
+    // Knowledge (#431). `publicRev_` counts changes to what everyone's map is built from --
+    // the public charts, names, the galaxy's shape; `knowledgeSerial_` hands out the
+    // revisions of what pilots have found (ClientSession::knownRev).
+    long long publicRev_ = 1;
+    long long knowledgeSerial_ = 0;
+    // A pre-#431 world's finds (account -> systems), given to their discoverers when they
+    // next log in; saved in world.json until then.
+    std::map<std::string, std::set<std::string>> legacyKnown_;
+    void                                         PublicChartsChanged() { publicRev_++; }
+    void                                         SaveLegacyKnown(nlohmann::json& j) const;
+    void                                         LoadLegacyKnown(const nlohmann::json& j);
+    // After an account is read: any pre-#431 finds of theirs, the system they are in, and
+    // their charts onto their corporation's.
+    void LoadKnown(ClientSession& s);
+    // An index of the public charts, and of `s`'s when given, with the systems a gate from
+    // any of those leads to as uncharted stubs.
+    WorldLoader::Universe BuildIndex(const ClientSession* s) const;
+    // What `s` has found changed: systems or holes.
+    void TouchKnown(ClientSession& s) { s.knownRev = ++knowledgeSerial_; }
+    void TouchHoles(ClientSession& s)
+    {
+        s.routesChanged = true;
+        TouchKnown(s);
+    }
+    // Whether a system is public by where it is: hand-written space and the centres.
+    bool                 PublicByPlace(const std::string& systemId) const;
     static constexpr int SETTLE_STEPS = 3;
     unsigned int         rng_ = 0x1234567u;  // RNG state
 

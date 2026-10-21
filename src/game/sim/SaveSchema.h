@@ -70,7 +70,14 @@ namespace Save
 //    parent), and `packs` says where each pack went and what it hashed to. A version 14 build
 //    would try to open a pack's region as a frontier from nowhere, fail, and save the world
 //    without it. An older file has no packs.
-inline constexpr int WORLD_VERSION = 15;
+// 16: knowledge per pilot (#431): a system's `visited`, one flag for everybody, is gone; a
+//    system is on the public charts by its place or by `chartedBy`, a faction's charts, and a
+//    pilot's own charts are in their account. `knownPending` holds finds translated from an
+//    older file until their discoverers log in. A version 15 build would read every system
+//    beyond the wormhole as never visited and save the world so. An older file's `visited`
+//    is translated: a system a faction holds is charted by it, one nobody holds is its
+//    discoverer's own.
+inline constexpr int WORLD_VERSION = 16;
 
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.

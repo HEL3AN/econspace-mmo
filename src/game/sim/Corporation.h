@@ -67,6 +67,11 @@ struct Corp
     // since they last read it (ClientSession::corpJournalSeen). Capped, oldest dropped.
     std::vector<Ev::Event> journal;
     int                    nextJournalSeq = 1;
+    // The corporation's charts (#431 K1): every system a member has charted while in it, by
+    // id, shown on every member's map. They are the corporation's: a member who leaves takes
+    // their own charts and leaves these. `chartsRev` changes with them (not saved).
+    std::set<std::string> charts;
+    long long             chartsRev = 0;
 
     const Member* Find(const std::string& account) const;
     const Member* Ceo() const;
@@ -149,6 +154,12 @@ public:
     // Counts every change, so a host can tell whether what it sent is still true.
     int Rev() const { return rev_; }
 
+    // Systems onto the charts of `account`'s corporation (#431); nothing for a pilot in none.
+    // Counted apart from Rev, which is who is in what and is retold to everyone: charts grow
+    // each time a member goes somewhere new.
+    void      AddCharts(const std::string& account, const std::vector<std::string>& systems);
+    long long ChartsSerial() const { return chartsSerial_; }
+
     // corps.json beside the world (Save::CORPS_VERSION). A missing file is no corporations;
     // one from a later build is refused rather than read and written back without what it
     // held (#20). Read strictly: a member in two corporations, two of the same name or ticker,
@@ -167,6 +178,7 @@ private:
     std::map<std::string, std::string> byAccount_;  // account -> id
     int                                nextId_ = 1;
     int                                rev_ = 0;
+    long long                          chartsSerial_ = 0;
 };
 
 }  // namespace Corps

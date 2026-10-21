@@ -282,9 +282,9 @@ void Simulation::CloseHole(RoamingHole& h, const std::string& why)
     {
         ClientSession& s = kv.second;
         s.scanProgress.erase(key);
-        if (s.scanned.erase(key) == 0)
+        if (s.known.erase(key) == 0)
             continue;
-        s.routesChanged = true;
+        TouchHoles(s);
         if (s.systemId == h.a || s.systemId == h.b)
             s.RecordEvent(Ev::Kind::Notice, "The wormhole to " +
                                                 SystemName(s.systemId == h.a ? h.b : h.a) +
@@ -367,8 +367,8 @@ void Simulation::EnterThrough(ClientSession& s, int gateId, const std::string& d
                 s.ship->SetHeading(std::atan2(dir.y, dir.x));
             }
     // Whoever went through knows the way back.
-    if (s.scanned.insert(HoleKey(h.id)).second)
-        s.routesChanged = true;
+    if (s.known.insert(HoleKey(h.id)).second)
+        TouchHoles(s);
     h.spent += ShipMass(s);
     if (h.spent >= h.budget)
         CloseHole(h, "too much mass went through it");
@@ -378,7 +378,7 @@ std::vector<WorldLoader::SystemLink> Simulation::HoleLinksOf(const ClientSession
 {
     std::vector<WorldLoader::SystemLink> out;
     for (const RoamingHole& h : holes_)
-        if (h.open && s.scanned.count(HoleKey(h.id)) != 0)
+        if (h.open && s.known.count(HoleKey(h.id)) != 0)
         {
             WorldLoader::SystemLink l{ h.a, h.b };
             l.kind = "hole";
@@ -387,50 +387,6 @@ std::vector<WorldLoader::SystemLink> Simulation::HoleLinksOf(const ClientSession
             out.push_back(std::move(l));
         }
     return out;
-}
-
-WorldLoader::Universe Simulation::KnownUniverseFor(const ClientSession& s) const
-{
-    WorldLoader::Universe u = KnownUniverse();
-    // An unstable mouth is a limited crossing like a hole (#342 S4): it says when it closes
-    // and what it lets by, so a route planned on the map is the one the server will fly
-    // (#432). Anchoring it makes it a gate; the index is sent again (TakeTopologyChanged).
-    // By opening rather than by link: a mouth is rare and the links are the whole galaxy.
-    for (const RegionOpening& o : openings_)
-    {
-        if (o.parent < 0 || o.state != "unstable")
-            continue;
-        const std::string entry = EntryOf(o.slot);
-        for (WorldLoader::SystemLink& link : u.links)
-            if ((link.a == o.mouth && link.b == entry) || (link.a == entry && link.b == o.mouth))
-            {
-                link.kind = "mouth";
-                link.closesAt = o.closesAt;
-                link.maxMass = (float)WorldRules::MouthRules().maxMass;
-            }
-    }
-    for (const WorldLoader::SystemLink& l : HoleLinksOf(s))
-    {
-        // The far end on the map, as a gate's far side is: located and designated.
-        for (const std::string& id : { l.a, l.b })
-        {
-            bool known = false;
-            for (const WorldLoader::SystemInfo& si : u.systems)
-                known = known || si.id == id;
-            const WorldLoader::SystemInfo* info = SystemInfoById(id);
-            if (known || info == nullptr)
-                continue;
-            WorldLoader::SystemInfo seen;
-            seen.id = info->id;
-            seen.name = info->name;
-            seen.mapPos = info->mapPos;
-            seen.security = 0.0f;
-            seen.charted = false;
-            u.systems.push_back(seen);
-        }
-        u.links.push_back(l);
-    }
-    return u;
 }
 
 void Simulation::SaveHoles(nlohmann::json& j) const
