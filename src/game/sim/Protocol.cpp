@@ -1859,12 +1859,19 @@ std::string EncodeGalaxy(const GalaxyState& s)
     Stamp(j, "galaxy");
     json sys = json::array();
     for (const GalaxySystemStat& g : s.systems)
-        sys.push_back({ { "id", g.id },
-                        { "sec", g.security },
-                        { "pir", g.pirates },
-                        { "prosp", g.prosperity },
-                        { "ctrl", FacJ(g.controller) },
-                        { "claim", g.claimed } });
+    {
+        json gj = { { "id", g.id },
+                    { "sec", g.security },
+                    { "pir", g.pirates },
+                    { "prosp", g.prosperity },
+                    { "ctrl", FacJ(g.controller) },
+                    { "claim", g.claimed } };
+        if (!g.holder.empty())
+            gj["hold"] = { g.holder, g.holderTicker, g.holderName };
+        if (g.fee >= 0.0f)
+            gj["fee"] = g.fee;
+        sys.push_back(std::move(gj));
+    }
     j["sys"] = sys;
     j["news"] = s.events;
     return j.dump();
@@ -1887,6 +1894,18 @@ bool DecodeGalaxy(const std::string& s, GalaxyState& out)
             g.prosperity = gj.value("prosp", 0.5f);
             g.controller = ToFac(gj.value("ctrl", json()));
             g.claimed = gj.value("claim", false);
+            const auto hold = gj.find("hold");
+            if (hold != gj.end() && hold->is_array() && hold->size() == 3 &&
+                (*hold)[0].is_string() && (*hold)[1].is_string() && (*hold)[2].is_string())
+            {
+                g.holder = (*hold)[0].get<std::string>();
+                g.holderTicker = (*hold)[1].get<std::string>();
+                g.holderName = (*hold)[2].get<std::string>();
+            }
+            const auto fee = gj.find("fee");
+            if (fee != gj.end() && fee->is_number() && fee->get<double>() >= 0.0 &&
+                fee->get<double>() <= 1.0)
+                g.fee = fee->get<float>();
             out.systems.push_back(g);
         }
     out.events = j.value("news", std::vector<std::string>{});
@@ -2103,6 +2122,8 @@ std::string EncodeCorpAct(const CorpAct& a)
         j["pilot"] = a.pilot;
     if (!a.role.empty())
         j["role"] = a.role;
+    if (!a.value.empty())
+        j["value"] = a.value;
     return j.dump();
 }
 
@@ -2117,6 +2138,7 @@ bool DecodeCorpAct(const std::string& s, CorpAct& out)
     out.ticker = TextOf(j, "ticker");
     out.pilot = TextOf(j, "pilot");
     out.role = TextOf(j, "role");
+    out.value = TextOf(j, "value");
     return !out.verb.empty();
 }
 
@@ -2134,6 +2156,11 @@ std::string EncodeCorpView(const CorpView& v)
         for (const CorpMember& m : v.members)
             members.push_back({ { "pilot", m.pilot }, { "role", m.role }, { "on", m.online } });
         j["members"] = std::move(members);
+        j["treasury"] = v.treasury;
+        j["tax"] = v.tax;
+        j["docking"] = v.docking;
+        if (!v.holds.empty())
+            j["holds"] = v.holds;
     }
     if (!v.invites.empty())
     {
@@ -2172,6 +2199,17 @@ bool DecodeCorpView(const std::string& s, CorpView& out)
             if (!m.pilot.empty())
                 out.members.push_back(std::move(m));
         }
+    const auto treasury = j.find("treasury");
+    out.treasury = treasury != j.end() && treasury->is_number() ? treasury->get<double>() : 0.0;
+    const auto tax = j.find("tax");
+    out.tax = tax != j.end() && tax->is_number() ? tax->get<float>() : 0.0f;
+    if (!TextOf(j, "docking").empty())
+        out.docking = TextOf(j, "docking");
+    const auto holds = j.find("holds");
+    if (holds != j.end() && holds->is_array())
+        for (const json& h : *holds)
+            if (h.is_string())
+                out.holds.push_back(h.get<std::string>());
     const auto invites = j.find("invites");
     if (invites != j.end() && invites->is_array())
         for (const json& ij : *invites)

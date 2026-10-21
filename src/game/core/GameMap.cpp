@@ -10,6 +10,7 @@
 #include "core/Game.h"
 #include "core/Archetype.h"
 #include "core/ShipDesign.h"
+#include "economy/Resource.h"
 #include "sim/Orders.h"
 #include "sim/SaveFile.h"
 #include "ui/Desk.h"
@@ -811,10 +812,11 @@ void Game::DrawGalaxyMap()
 
         // Live summary: security/pirates/economy/controller, from the server's galaxy
         // snapshot (galaxyState_).
-        bool      haveStats = false;
-        float     security = 0.0f, prosperity = 0.0f;
-        int       pirates = 0;
-        FactionId controller = Factions::Unaffiliated();
+        bool                           haveStats = false;
+        float                          security = 0.0f, prosperity = 0.0f;
+        int                            pirates = 0;
+        FactionId                      controller = Factions::Unaffiliated();
+        const Proto::GalaxySystemStat* held = nullptr;  // a corporation's (#431 slice 5)
         for (const Proto::GalaxySystemStat& g : galaxyState_.systems)
             if (g.id == s.id)
             {
@@ -823,6 +825,7 @@ void Game::DrawGalaxyMap()
                 pirates = g.pirates;
                 prosperity = g.prosperity;
                 controller = g.controller;
+                held = g.holder.empty() ? nullptr : &g;
                 break;
             }
         const float ring = u(cur ? 13.0f : 10.0f);
@@ -843,9 +846,17 @@ void Game::DrawGalaxyMap()
             Ui::Text(
                 TextFormat("sec %.1f  pir %d  econ %.0f%%", security, pirates, prosperity * 100.0f),
                 (int)lx, lineY(1), notePx, secCol);
-            // Territory controller (L3) — in the faction's color.
-            Ui::Text(FactionName(controller).c_str(), (int)lx, lineY(2), notePx,
-                     FactionColor(controller));
+            // Territory controller (L3) — in the faction's color; or the corporation that holds
+            // it, with the tax its markets take (#431 slice 5).
+            if (held != nullptr)
+                Ui::Text(TextFormat("held by %s [%s]  tax %.1f%%", held->holderName.c_str(),
+                                    held->holderTicker.c_str(),
+                                    held->FeeOr((float)Goods::Rules().fee) * 100.0f),
+                         (int)lx, lineY(2), notePx,
+                         held->holder == corpView_.id ? t.standing.friendly : Ui::TEXT);
+            else
+                Ui::Text(FactionName(controller).c_str(), (int)lx, lineY(2), notePx,
+                         FactionColor(controller));
             // The node ring is tinted with the controller's color.
             DrawCircleLines((int)p.x, (int)p.y, ring, Fade(FactionColor(controller), 0.7f));
         }

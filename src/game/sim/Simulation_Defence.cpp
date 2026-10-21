@@ -205,6 +205,14 @@ void Simulation::StepOwners()
                           "crime: the standing and bounty it cost are on your account");
         b.owedStanding.Clear();
         b.owedBounty.Clear();
+        if (b.owedMoney > 0.0)  // their markets' fees (#438)
+        {
+            s.account.AddMoney(b.owedMoney);
+            s.RecordEvent(Ev::Kind::Notice, "While you were away your markets took " +
+                                                std::to_string((long long)(b.owedMoney + 0.5)) +
+                                                " cr in fees");
+            b.owedMoney = 0.0;
+        }
         b.seen = true;
         for (FactionId f : Factions::All())
             b.standing[f] = s.account.GetReputation(f);
@@ -356,6 +364,8 @@ nlohmann::json Simulation::OwnersJson() const
             o["standing"] = standing;
         if (!owed.empty())
             o["owed"] = owed;
+        if (b.owedMoney > 0.0)
+            o["owedMoney"] = b.owedMoney;
         out[kv.first] = o;
     }
     return out;
@@ -380,6 +390,9 @@ void Simulation::OwnersFrom(const nlohmann::json& j)
                 if (s->is_number() && Factions::Find(s.key(), f))
                     b.standing[f] = s->get<float>();
         }
+        const auto money = it->find("owedMoney");
+        if (money != it->end() && money->is_number() && money->get<double>() > 0.0)
+            b.owedMoney = money->get<double>();
         const auto owed = it->find("owed");
         if (owed != it->end() && owed->is_object())
             for (auto o = owed->begin(); o != owed->end(); ++o)

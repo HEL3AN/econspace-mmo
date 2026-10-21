@@ -39,21 +39,22 @@ Read chat: the latest lines -- local, private and the server's -- and who is in 
 
 ### `corp`
 
-Your corporation (#347): its name and ticker, its members with their roles and who is online, and the invites waiting for your answer. Members' armed structures never fire first on each other and guard each other's ships; standings stay your own.
+Your corporation (#347): its name and ticker, its members with their roles and who is online, its treasury, the systems it holds with its tax and docking policy there, and the invites waiting for your answer. Members' armed structures never fire first on each other and guard each other's ships; standings stay your own.
 
 No arguments.
 
 ### `corp_act`
 
-Do something about corporations. action: 'create' (name, ticker -- you become its CEO), 'invite' (pilot, online; CEO or director), 'join' or 'decline' (ticker of a corporation that invited you), 'leave' (the last member out disbands it; a CEO hands over first), 'kick' (pilot; the CEO removes anyone, a director only members), 'role' (pilot, role: ceo, director or member; CEO only -- making another CEO makes you a director). The answer is the server's.
+Do something about corporations. action: 'create' (name, ticker -- you become its CEO), 'invite' (pilot, online; CEO or director), 'join' or 'decline' (ticker of a corporation that invited you), 'leave' (the last member out disbands it; a CEO hands over first), 'kick' (pilot; the CEO removes anyone, a director only members), 'role' (pilot, role: ceo, director or member; CEO only -- making another CEO makes you a director), and the policies of the systems it holds, CEO or director: 'tax' (value: a percentage of every trade at markets there, up to the server's cap, or 'standard'; it goes to the treasury) and 'docking' (value: own, allies or all -- who docks at its structures there; allies are each structure's allow-list). A corporation holds a system with the most influence there -- its members' structures, weighed by tier -- and a claim: a finished outpost or above of a member's. The answer is the server's.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
-| `action` | string | yes | create, invite, join, decline, leave, kick or role |
+| `action` | string | yes | create, invite, join, decline, leave, kick, role, tax or docking |
 | `name` | string |  | create: the corporation's name, 3 to 24 characters |
 | `pilot` | string |  | invite, kick, role: the pilot's name |
 | `role` | string |  | role: ceo, director or member |
 | `ticker` | string |  | create: 2 to 5 letters or digits; join/decline: whose invite |
+| `value` | string |  | tax: a percentage such as 5, or standard; docking: own, allies or all |
 
 ### `choose_start`
 

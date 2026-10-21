@@ -320,7 +320,10 @@ private:
     // The security a player is shown for a system (#428): the server's live number where the
     // galaxy snapshot has one, the charted base otherwise. The banner and the map both ask.
     float ShownSecurity(const std::string& id, float base) const;
-    bool  HostileToPlayerFaction(
+    // The share of a trade the markets here take (#431 slice 5): the holder corporation's tax,
+    // from the galaxy snapshot, or the standard fee.
+    double MarketFeeHere() const;
+    bool   HostileToPlayerFaction(
         FactionId f) const;  // is the faction hostile to the player (reputation/wanted)
 
     // M4c: the client renders from the snapshot. The snapshot is built every frame
@@ -618,6 +621,7 @@ private:
     // member chosen in its list.
     Proto::CorpView corpView_;
     std::string     corpName_, corpTicker_, corpInvitee_, corpChosen_;
+    std::string     corpTax_;  // the tax field, in percent (#431 slice 5)
     Ui::Layout      corpLayout_{ 4096 };
     void            PlayScriptedClicks();
     std::string     themeToUse_;  // chosen in Settings while it was drawn: switched to next frame

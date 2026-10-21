@@ -90,6 +90,14 @@ struct SystemAggregate
     // everyone and kept. Saved.
     std::string discoverer;
     std::string givenName;
+    // The player corporation that holds it (#431 T2), by its id; empty for none. Exactly one
+    // side holds a system: while a corporation does, no faction claims it (`claimed` false,
+    // the controller nobody's). Saved.
+    std::string holderCorp;
+    // Who is taking it from its holder by influence, and for how many macro passes in a row
+    // (slice 5): a party's key (InfluenceMap::Key). Transient, like `contested`.
+    std::string claimant;
+    int         claimContest = 0;
     // Ships destroyed since the last faction step, by side -- transient.
     float     lostPirates = 0.0f;
     float     lostPolice = 0.0f;
@@ -125,8 +133,34 @@ struct SystemProfile
     // what a rival besieges to bring the race for the region back -- and which entity it is.
     std::vector<FactionId> anchors;
     std::vector<int>       anchorIds;
+    // What its structures and stations weigh toward their owners' influence (#431 T1), by
+    // tier (WorldRules::Influence): a faction's by FactionId, a player's by owner account --
+    // an account and not a corporation, because who is in which changes without this layer
+    // changing; InfluenceIn resolves it. A site still going up weighs nothing yet.
+    PerFaction<float>            factionWeight{};
+    std::map<std::string, float> playerWeight;
+    // The accounts with a claim here (T2): a finished structure of claim tier -- an outpost or
+    // above -- that can itself be besieged. Kept like `outposts` is for factions.
+    std::set<std::string> playerClaims;
     // What its belts, planets and markets do to its market every hour (#343).
     MarketRates rates;
+};
+
+// Every party's influence in one system as of now (#431 T1): the profile's structure weights
+// with owner accounts resolved to their corporations, and each faction's presence. Made when
+// asked (Simulation::InfluenceIn), never kept: corporation membership and presence change
+// without the static layer changing. A party is a faction, a corporation (by id), or a pilot
+// in none -- who counts as a corporation of one for influence, and can block a claim, but
+// holds nothing: holding needs a treasury for the tax to go to.
+struct InfluenceMap
+{
+    PerFaction<float>            faction{};
+    std::map<std::string, float> corp;         // by corporation id, or PILOT + account
+    std::set<std::string>        corpClaims;   // ...those with a claim here
+    static constexpr const char* PILOT = "~";  // an account's key: no corporation id has it
+
+    // A party's key: a faction's "f:<id>", a corporation's or pilot's as in `corp`.
+    static std::string Key(FactionId f) { return "f:" + Factions::Id(f); }
 };
 
 // State of a single star system inside the simulation. Level of detail (#295):

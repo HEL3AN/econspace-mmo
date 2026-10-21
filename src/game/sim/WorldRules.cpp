@@ -18,6 +18,7 @@ WorldRules::Contracts   g_contracts;
 WorldRules::Holes       g_holes;
 WorldRules::Scan        g_scan;
 WorldRules::Law         g_law;
+WorldRules::Influence   g_influence;
 std::string             g_error;
 
 // Reads one section's values into their places: every field known, every number zero or
@@ -80,7 +81,8 @@ bool Load(const std::string& path)
         if (it.key() != "schema" && it.key() != "tide" && it.key() != "mouths" &&
             it.key() != "archive" && it.key() != "expeditions" && it.key() != "growth" &&
             it.key() != "convoys" && it.key() != "jobs" && it.key() != "holes" &&
-            it.key() != "scan" && it.key() != "contracts" && it.key() != "law")
+            it.key() != "scan" && it.key() != "contracts" && it.key() != "law" &&
+            it.key() != "influence")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -322,6 +324,22 @@ bool Load(const std::string& path)
                          "midFrom at most highFrom at most 1, and gunsFrom at most 1";
         return false;
     }
+    // Slice 5's (#431): influence, and the most a holder may tax.
+    Influence inf;
+    if (j.contains("influence") && !ReadSection(j["influence"], path + ": influence",
+                                                { { "outpost", &inf.outpost },
+                                                  { "market", &inf.market },
+                                                  { "station", &inf.station },
+                                                  { "anchor", &inf.anchor },
+                                                  { "perShip", &inf.perShip },
+                                                  { "taxMax", &inf.taxMax } },
+                                                {}, {}, g_error))
+        return false;
+    if (inf.taxMax > 1.0)
+    {
+        g_error = path + ": influence: taxMax is a share of a trade, at most 1";
+        return false;
+    }
     g_tide = t;
     g_mouths = m;
     g_archive = a;
@@ -333,6 +351,7 @@ bool Load(const std::string& path)
     g_holes = h;
     g_scan = sc;
     g_law = lw;
+    g_influence = inf;
     return true;
 }
 
@@ -449,6 +468,16 @@ const Law& LawRules()
 void SetLawRules(const Law& l)
 {
     g_law = l;
+}
+
+const Influence& InfluenceRules()
+{
+    return g_influence;
+}
+
+void SetInfluenceRules(const Influence& i)
+{
+    g_influence = i;
 }
 
 }  // namespace WorldRules

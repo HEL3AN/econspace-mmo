@@ -134,6 +134,17 @@ std::string CorpText(const Proto::CorpView& v)
               " online. Your role: " + v.RoleOf(ChatMe()) + ".\n";
         for (const Proto::CorpMember& m : v.members)
             out += "  " + m.pilot + " -- " + m.role + (m.online ? ", online" : "") + "\n";
+        // Its money, its policies and what it holds (#431 slice 5).
+        char buf[160];
+        std::snprintf(buf, sizeof(buf),
+                      "Treasury: %.0f cr. Tax at its markets: %g%%. Docking at its structures in "
+                      "its systems: %s.\n",
+                      v.treasury, std::round(v.tax * 1000.0f) / 10.0f, v.docking.c_str());
+        out += buf;
+        std::string held;
+        for (const std::string& id : v.holds)
+            held += (held.empty() ? "" : ", ") + id;
+        out += "Holds: " + (held.empty() ? std::string("no system") : held) + "\n";
     }
     for (const Proto::CorpInvite& i : v.invites)
         out += "Invite: " + i.name + " [" + i.ticker + "] from " + i.by +
@@ -241,11 +252,20 @@ std::string DescribeGalaxy()
             if (g.id == si.id)
             {
                 char buf[160];
+                // A corporation's system (#431 slice 5): whose, and the tax its markets take.
+                const std::string holder =
+                    g.holder.empty() ? FactionName(g.controller)
+                                     : g.holderName + " [" + g.holderTicker + "] (corporation)";
                 std::snprintf(buf, sizeof(buf),
                               "   security %.2f  pirates %d  prosperity %.0f%%  held by %s",
-                              g.security, g.pirates, g.prosperity * 100.0f,
-                              FactionName(g.controller).c_str());
+                              g.security, g.pirates, g.prosperity * 100.0f, holder.c_str());
                 line += buf;
+                if (!g.holder.empty())
+                {
+                    std::snprintf(buf, sizeof(buf), ", tax %g%%",
+                                  std::round(g.FeeOr(0.0f) * 1000.0f) / 10.0f);
+                    line += buf;
+                }
                 break;
             }
         if (si.id == g_session.Snapshot().systemId)
@@ -710,8 +730,9 @@ std::vector<Tool> BuildTools()
     tools.push_back(
         { "corp",
           "Your corporation (#347): its name and ticker, its members with their roles and who "
-          "is online, and the invites waiting for your answer. Members' armed structures never "
-          "fire first on each other and guard each other's ships; standings stay your own.",
+          "is online, its treasury, the systems it holds with its tax and docking policy there, "
+          "and the invites waiting for your answer. Members' armed structures never fire first "
+          "on each other and guard each other's ships; standings stay your own.",
           Obj({}), [](const Rpc::Json&)
           {
               g_session.Pump();
@@ -726,12 +747,21 @@ std::vector<Tool> BuildTools()
           "corporation that invited you), 'leave' (the last member out disbands it; a CEO "
           "hands over first), 'kick' (pilot; the CEO removes anyone, a director only members), "
           "'role' (pilot, role: ceo, director or member; CEO only -- making another CEO makes "
-          "you a director). The answer is the server's.",
-          Obj({ { "action", Str("create, invite, join, decline, leave, kick or role") },
+          "you a director), and the policies of the systems it holds, CEO or director: 'tax' "
+          "(value: a percentage of every trade at markets there, up to the server's cap, or "
+          "'standard'; it goes to the treasury) and 'docking' (value: own, allies or all -- "
+          "who docks at its structures there; allies are each structure's allow-list). A "
+          "corporation holds a system with the most influence there -- its members' structures, "
+          "weighed by tier -- and a claim: a finished outpost or above of a member's. The "
+          "answer is the server's.",
+          Obj({ { "action",
+                  Str("create, invite, join, decline, leave, kick, role, tax or docking") },
                 { "name", Str("create: the corporation's name, 3 to 24 characters") },
                 { "ticker", Str("create: 2 to 5 letters or digits; join/decline: whose invite") },
                 { "pilot", Str("invite, kick, role: the pilot's name") },
-                { "role", Str("role: ceo, director or member") } },
+                { "role", Str("role: ceo, director or member") },
+                { "value", Str("tax: a percentage such as 5, or standard; docking: own, allies "
+                               "or all") } },
               { "action" }),
           [](const Rpc::Json& args)
           {
@@ -743,6 +773,7 @@ std::vector<Tool> BuildTools()
               act.ticker = args.value("ticker", std::string());
               act.pilot = args.value("pilot", std::string());
               act.role = args.value("role", std::string());
+              act.value = args.value("value", std::string());
               if (act.verb.empty())
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "action is required" };
               const int before = g_session.LastChatSeq();

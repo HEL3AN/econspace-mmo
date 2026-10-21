@@ -193,6 +193,7 @@ void Game::DrawMarketContent(const Ui::Frame& f)
     in.standing = DockedTier();
     in.money = player_.GetMoney();
     in.holdFree = std::max(0, snapshot_.player.cargoCap - snapshot_.player.cargoUsed);
+    in.fee = MarketFeeHere();
     const std::vector<StationList::MarketRow> rows = StationList::Market(in);
     marketSel_ = rows.empty() ? -1 : std::clamp(marketSel_, 0, (int)rows.size() - 1);
     // A new row starts at all of it: the usual sale is the whole hold.
@@ -294,9 +295,9 @@ void Game::DrawMarketContent(const Ui::Frame& f)
                         BuyCargo(m.type, m.canBuy);
                 });
         }
-        L.Text(TextFormat("Every unit traded moves the price of the next. A fee of %.0f%% is "
+        L.Text(TextFormat("Every unit traded moves the price of the next. A fee of %.1f%% is "
                           "paid on every trade.",
-                          Goods::Rules().fee * 100.0),
+                          MarketFeeHere() * 100.0),
                TextStyle::Small().Tint(t.colors.dim).Wrap());
     };
 

@@ -311,6 +311,21 @@ struct Contracts
     double rep = 2.0;
 };
 
+// Territory (#431 slice 5, T1-T3): what each kind of structure weighs toward its owner's
+// influence in a system -- an `outpost`, an outpost `market`, a `station` (a faction's, or one
+// grown from a market), an `anchor` -- and what each ship of a faction's presence there weighs
+// (`perShip`). A party holds a system with the most influence and a claim; a corporation that
+// holds one sets the fee on trades at its markets, at most `taxMax` of a trade.
+struct Influence
+{
+    double outpost = 1.0;
+    double market = 2.0;
+    double station = 4.0;
+    double anchor = 2.0;
+    double perShip = 0.25;
+    double taxMax = 0.1;
+};
+
 // Reads `path`. False, with Error() saying why, and the rules as they were, when it does
 // not read.
 bool               Load(const std::string& path);
@@ -326,6 +341,7 @@ const Contracts&   ContractRules();
 const Holes&       HoleRules();
 const Scan&        ScanRules();
 const Law&         LawRules();
+const Influence&   InfluenceRules();
 // For a test: rules of its own, without a file.
 void SetTideRules(const Tide& t);
 void SetMouthRules(const Mouths& m);
@@ -338,5 +354,6 @@ void SetContractRules(const Contracts& c);
 void SetHoleRules(const Holes& h);
 void SetScanRules(const Scan& s);
 void SetLawRules(const Law& l);
+void SetInfluenceRules(const Influence& i);
 
 }  // namespace WorldRules

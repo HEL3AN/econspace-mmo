@@ -36,7 +36,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    48;  // 48: the index and the galaxy map are each pilot's own (#431): what they and their
+    49;  // 49: influence and claims (#431 slice 5) -- a galaxy stat names the corporation that
+         // holds the system and the fee its markets take, a CorpAct carries a policy's value
+         // (tax, docking), and a CorpView the treasury, the policies and the systems held;
+         // 48: the index and the galaxy map are each pilot's own (#431): what they and their
          // corporation have charted, beside the public charts, and a system says whose
          // charts it is on (`known`) and which faction charted it (`chartedBy`);
          // 47: a route order carries its waypoints and a preference -- shortest, safer or less
@@ -614,6 +617,16 @@ struct GalaxySystemStat
     // Whether the controller holds it, so its law applies (#340): what a structure firing
     // first there costs its owner is read from this and the controller.
     bool claimed = false;
+    // The player corporation that holds it (#431 slice 5): its id, ticker and name, empty for
+    // none -- a client knows only its own corporation, so the rest travels with the id.
+    // (Braced: an aggregate initialised without them is not a missing initializer.)
+    std::string holder{};
+    std::string holderTicker{};
+    std::string holderName{};
+    // The share of a trade its markets take (T3): the holder's tax. Below zero: the standard
+    // fee (Goods::Rules().fee) -- which is what it is wherever no corporation holds.
+    float fee = -1.0f;
+    float FeeOr(float standard) const { return fee < 0.0f ? standard : fee; }
 };
 
 // Galaxy snapshot: statistics for the systems on the recipient's charts + a news feed (#431:
@@ -709,9 +722,10 @@ struct ChatMembers
 // named by a string id, and by its ticker where a player reads it.
 
 // A verb (client -> server): "create" (name, ticker), "invite" (pilot), "join" and "decline"
-// (ticker), "leave", "kick" (pilot), "role" (pilot, role: "ceo", "director", "member"). Not a
-// tick of anything, like a chat line. The answer is a chat notice to the sender, and a
-// CorpView to everyone whose picture of it changed.
+// (ticker), "leave", "kick" (pilot), "role" (pilot, role: "ceo", "director", "member"); a
+// holder's policies (#431 slice 5): "tax" (value: a percentage, or "standard") and "docking"
+// (value: "own", "allies", "all"). Not a tick of anything, like a chat line. The answer is a
+// chat notice to the sender, and a CorpView to everyone whose picture of it changed.
 struct CorpAct
 {
     std::string verb;
@@ -719,6 +733,7 @@ struct CorpAct
     std::string ticker;
     std::string pilot;
     std::string role;
+    std::string value{};  // braced: the verbs without one leave it out
 };
 
 struct CorpMember
@@ -745,6 +760,13 @@ struct CorpView
     long long               founded = 0;
     std::vector<CorpMember> members;
     std::vector<CorpInvite> invites;  // waiting for this pilot's answer
+    // Its money and what it holds (#431 slice 5): the treasury, the tax at its markets as a
+    // share (the standard one when it set none), its docking policy ("own", "allies", "all"),
+    // and the systems it holds, by id.
+    double                   treasury = 0.0;
+    float                    tax = 0.0f;
+    std::string              docking = "all";
+    std::vector<std::string> holds;
 
     // This pilot's role in it; empty when in none.
     std::string RoleOf(const std::string& pilot) const;

@@ -129,11 +129,14 @@ bool Game::CorpCommand(const std::string& text)
         act.ticker = Word(rest);
     else if (verb == "role")
         act.pilot = Word(rest, &act.role);
+    else if (verb == "tax" || verb == "docking")
+        act.value = Word(rest);
     else if (verb != "leave")
     {
         ChatNotice("/corp create <ticker> <name> | invite <pilot> | join <ticker> | decline "
-                   "<ticker> | leave | kick <pilot> | role <pilot> ceo|director|member; "
-                   "/c <text> talks to the corporation");
+                   "<ticker> | leave | kick <pilot> | role <pilot> ceo|director|member | tax "
+                   "<percent>|standard | docking own|allies|all; /c <text> talks to the "
+                   "corporation");
         return true;
     }
     SendCorpAct(act);
@@ -167,6 +170,56 @@ void Game::DrawCorpContent(const Ui::Frame& f)
                 L.Text(corpView_.name + "  [" + corpView_.ticker + "]", TextStyle::Title());
                 L.Field("Your role", RoleWord(myRole), t.colors.titleText);
                 L.Field("Founded", Date(corpView_.founded), t.colors.dim);
+                // Its money, what it holds, and the holder's policies (#431 slice 5).
+                L.Field("Treasury", TextFormat("%.0f cr", corpView_.treasury), t.colors.text);
+                std::string held;
+                for (const std::string& id : corpView_.holds)
+                    held += (held.empty() ? "" : ", ") + MapSystemName(id);
+                L.Field("Holds", held.empty() ? std::string("no system") : held,
+                        held.empty() ? t.colors.dim : t.colors.text);
+                L.Field("Tax", TextFormat("%.1f%% of every trade", corpView_.tax * 100.0f),
+                        t.colors.text);
+                L.Field("Docking",
+                        corpView_.docking == "own"      ? "members only"
+                        : corpView_.docking == "allies" ? "members and allow-lists"
+                                                        : "anyone",
+                        t.colors.text);
+                if (leads)
+                {
+                    L.Row(
+                        Box().GrowX().Gap(t.metrics.gap).Align(Ui::Align::Start, Ui::Align::Center),
+                        [&]
+                        {
+                            Ui::TextFieldOptions opt;
+                            opt.placeholder = "tax, %";
+                            opt.maxLength = 6;
+                            const Ui::EditResult r = L.TextField("tax", corpTax_, opt);
+                            if ((L.Button("settax", "Set tax", false, !Trim(corpTax_).empty()) ||
+                                 r.submitted) &&
+                                !Trim(corpTax_).empty())
+                            {
+                                acts.push_back({ "tax", "", "", "", "", Trim(corpTax_) });
+                                corpTax_.clear();
+                            }
+                            if (L.Button("stdtax", "Standard"))
+                                acts.push_back({ "tax", "", "", "", "", "standard" });
+                        });
+                    L.Tooltip("settax", "The fee on trades at every market in the systems the "
+                                        "corporation holds; it goes to the treasury");
+                    L.Row(Box().GrowX().Gap(t.metrics.rowGap),
+                          [&]
+                          {
+                              for (const char* d : { "own", "allies", "all" })
+                                  if (L.Button(TextFormat("dock_%s", d),
+                                               d == std::string("own")      ? "Dock: members"
+                                               : d == std::string("allies") ? "Dock: allies"
+                                                                            : "Dock: anyone",
+                                               corpView_.docking == d))
+                                      acts.push_back({ "docking", "", "", "", "", d });
+                          });
+                    L.Tooltip("dock_allies", "Members, and whoever each structure's rules of "
+                                             "engagement hold fire for");
+                }
                 int online = 0;
                 for (const Proto::CorpMember& m : corpView_.members)
                     online += m.online ? 1 : 0;

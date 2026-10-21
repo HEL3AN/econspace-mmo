@@ -562,7 +562,40 @@ public:
     static SystemProfile ProfileOf(const SystemState& st);
     void                 StepFactions();
     void                 StepControl(bool settling);
-    static void          SeedPresence(SystemAggregate& a);
+
+    // --- Territory (#431 slice 5, Simulation_Territory.cpp) ---
+    // What a structure weighs toward its owner's influence (WorldRules::Influence), and
+    // whether it is a claim (`claim`): finished, of an outpost's tier or above. An outpost
+    // being upgraded is still the outpost it was. 0 for a site, a buoy, a battery.
+    static float InfluenceWeight(const Structure& t, bool& claim);
+    // Every party's influence in `st` now (T1): its profile with owners read as their
+    // corporations, and each faction's presence.
+    InfluenceMap InfluenceIn(const SystemState& st) const;
+    // Claims by corporations (T2), every macro pass, hot or cold: a corporation with a claim
+    // and more influence than anyone else for ContestPasses() takes a system; a holder whose
+    // last claim is gone, or whose corporation is, loses it at once; and a held system goes to
+    // whichever party -- corporation or faction -- with a claim outweighs it as long. Called
+    // by StepControl, whose faction rule leaves a system a corporation holds alone.
+    void StepClaims(bool settling);
+    // The systems a corporation holds, by id.
+    std::vector<std::string> HeldBy(const std::string& corpId) const;
+    // The share of a trade a market in `st` takes (T3): its holder corporation's tax, or the
+    // standard fee (Goods::Rules().fee) where no corporation holds.
+    double FeeRateIn(const SystemState& st) const;
+    // Whose a trade's fee is at `market` in `st` (T3, #438): the holder corporation's where one
+    // holds; otherwise the market's owner -- a faction's treasury, or for a player's market
+    // the owner's corporation's, or the pilot's own when in none.
+    struct FeeTo
+    {
+        double      rate = 0.0;
+        bool        toFaction = false;
+        FactionId   faction = Factions::Unaffiliated();
+        std::string corp;     // a corporation's treasury
+        std::string account;  // a pilot in none
+    };
+    FeeTo       FeeAt(const SystemState& st, const Entity& market) const;
+    void        PayFee(const FeeTo& to, double fee);
+    static void SeedPresence(SystemAggregate& a);
     // Where a system's security settles (#428): its base, moved by the police/pirate balance.
     static float SecurityTarget(const SystemAggregate& a);
     // At most this far from the base either way, and the softness of the balance: with
@@ -837,7 +870,8 @@ public:
     static const Structure* UpgradeTarget(const SystemState& st, Vector2 at);
     // Whether docking at `e` is refused this pilot, and why (#433): a faction's dock for a
     // pilot it hates, a player's structure without a market for anyone but its owner and the
-    // owner's corporation (#347). Empty: admitted.
+    // owner's corporation (#347), and in a system a corporation holds, its structures for
+    // whom its docking policy leaves out (#431 T3). Empty: admitted.
     std::string DockRefusal(const ClientSession& s, const Entity& e) const;
     // Finishes every site whose time has come and takes away every structure whose time is
     // up. Each is an instant fixed when the site went down -- nothing is integrated -- so a
@@ -1660,6 +1694,8 @@ private:
         PerFaction<float>  standing;
         PerFaction<float>  owedStanding;
         PerFaction<double> owedBounty;
+        // Fees their markets took while they were away (#438), paid at login.
+        double owedMoney = 0.0;
     };
     std::map<std::string, OwnerBook> owners_;
     // Attacks under way on players' structures (#431 C2), saved with the world so one that

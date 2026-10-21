@@ -154,11 +154,27 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
                     AddToMarket(p.rates, *e);
                 if (e->Has(Component::Defensive))
                     p.defenders.push_back(static_cast<const Station*>(e.get())->GetFaction());
+                p.factionWeight[static_cast<const Station*>(e.get())->GetFaction()] +=
+                    (float)WorldRules::InfluenceRules().station;
                 break;
             case EntityKind::Structure:
             {
                 const Structure& t = static_cast<const Structure&>(*e);
-                FactionId        anchorer;
+                // What it weighs toward its owner's influence, and whether it is a claim
+                // (#431 T1, T2): a faction's counts for the faction, a player's for the
+                // account, which InfluenceIn reads as their corporation's.
+                bool        claim = false;
+                const float weight = InfluenceWeight(t, claim);
+                FactionId   by;
+                if (weight > 0.0f && Outposts::FactionOf(t.GetOwner(), by))
+                    p.factionWeight[by] += weight;
+                else if (weight > 0.0f && !t.GetOwner().empty())
+                {
+                    p.playerWeight[t.GetOwner()] += weight;
+                    if (claim)
+                        p.playerClaims.insert(t.GetOwner());
+                }
+                FactionId anchorer;
                 if (IsAnchor(t.GetBuilds()) && Outposts::FactionOf(t.GetOwner(), anchorer))
                 {
                     p.anchors.push_back(anchorer);  // a site too: it is what a rival stops
@@ -205,6 +221,9 @@ void Simulation::TakeControl(SystemAggregate& a, FactionId f)
     a.controller = f;
     a.claimed = true;
     a.contested = 0;
+    a.holderCorp.clear();  // one side holds a system (#431 slice 5)
+    a.claimant.clear();
+    a.claimContest = 0;
     if (f == Factions::Pirates())
         a.baseSecurity = std::min(a.baseSecurity, 0.15f);
     else if (was == Factions::Pirates())
@@ -449,6 +468,16 @@ void Simulation::ResolveSettle(const Plan& p)
                who + " finished an outpost in " + where + ", but " +
                    (a.controller == p.faction ? std::string("it holds it already")
                                               : FactionName(a.controller) + " holds it"));
+        return;
+    }
+    // A corporation holds it (#431 slice 5): the outpost is a claim, and the system is the
+    // faction's only once it outweighs the holder (StepClaims).
+    if (!a.holderCorp.empty())
+    {
+        const Corps::Corp* c = corps_.Find(a.holderCorp);
+        Record("settle", p.faction, p.target,
+               who + " finished an outpost in " + where + ", but " +
+                   (c != nullptr ? c->name : std::string("a corporation")) + " holds it");
         return;
     }
     TakeControl(a, p.faction);
@@ -1157,9 +1186,14 @@ void Simulation::Think(FactionId f)
 //    has to fall first (#295's slice 5).
 void Simulation::StepControl(bool settling)
 {
+    // Corporations' claims first (#431 slice 5): a system one holds is contested by influence,
+    // not by the faction rule below.
+    StepClaims(settling);
     for (auto& kv : systems_)
     {
         SystemAggregate& a = kv.second.agg;
+        if (!a.holderCorp.empty())
+            continue;
         // Nobody's system goes to whoever has held it longest in strength; a held one only
         // to an enemy of its holder.
         const float held = a.claimed ? a.presence[a.controller] : 0.0f;

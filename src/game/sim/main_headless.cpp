@@ -815,6 +815,11 @@ static Proto::CorpView CorpViewFor(const Simulation& sim, const std::string& acc
         for (const Corps::Member& m : c->members)
             v.members.push_back(
                 { m.account, Corps::RoleName(m.role), online.count(m.account) > 0 });
+        // Its money, its policies and what it holds (#431 slice 5).
+        v.treasury = std::floor(c->treasury);
+        v.tax = (float)c->TaxRate(Goods::Rules().fee, WorldRules::InfluenceRules().taxMax);
+        v.docking = Corps::DockingName(c->docking);
+        v.holds = sim.HeldBy(c->id);
     }
     for (const Corps::Corp* c : sim.Corporations().InvitesFor(account, now))
         for (const Corps::Invite& i : c->invites)
@@ -2132,9 +2137,11 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
     double        metricsAcc = 0.0;
     double        accessCheckAcc = 0.0;  // allowlist.txt and bans.txt looked at (#400)
     double        adminAcc = 0.0;        // the admin channel looked at (#400)
-    int           corpRev = sim.Corporations().Rev();  // what corps.json holds (#347)
-    std::string   corpOnline;                          // who was online when views were sent
-    Log::Metrics& metrics = run.metrics;               // the once-a-minute line (#400)
+    int           corpRev = sim.Corporations().Rev();         // what corps.json holds (#347)
+    std::string   corpOnline;                                 // who was online when views were sent
+    int           corpMoney = sim.Corporations().MoneyRev();  // treasuries as last sent
+    int           corpSavedMoney = sim.Corporations().MoneyRev();  // ...and as last written
+    Log::Metrics& metrics = run.metrics;                           // the once-a-minute line (#400)
 
     while (!Host::StopRequested())
     {
@@ -2513,7 +2520,8 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                         names.insert(p.name);
                     const double         now = ChatClock();
                     const Corps::Outcome o = sim.Corporations().Apply(
-                        hc.account, { act.verb, act.name, act.ticker, act.pilot, act.role }, names,
+                        hc.account,
+                        { act.verb, act.name, act.ticker, act.pilot, act.role, act.value }, names,
                         now);
                     std::vector<Chat::Delivery> out;
                     Chat::Delivery              told;
@@ -2766,9 +2774,13 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                 corpRev = rev;
                 sim.RetellAllowLists();
             }
-            if (changed || online != corpOnline)
+            // A fee into a treasury is not a change corps.json is written for at once: it is
+            // written with the world (#431 slice 5). The members see it now.
+            const int money = sim.Corporations().MoneyRev();
+            if (changed || online != corpOnline || money != corpMoney)
                 SendCorpViews(clients, sim, net);
             corpOnline = online;
+            corpMoney = money;
         }
 
         // Galaxy snapshot -- rarely (once a second): the statistics change slowly and the
@@ -2795,6 +2807,9 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
             // sent to a client that is not reading (#411): the newest map goes out once it
             // is, and the ones in between were never worth queueing.
             SendGalaxies(clients, sim, net, false);
+            // A system changing hands is in its corporations' views too
+            // (#431 slice 5): each is sent only if theirs changed.
+            SendCorpViews(clients, sim, net);
         }
 
         net.window += frame;
@@ -2825,6 +2840,14 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
             worldSaveAcc = 0.0;
             sim.SaveWorld(worldPath);
             sim.SaveDesigns(DesignsPath(worldPath));
+            // Treasuries move with every fee and are written here, with the world they were
+            // earned in (#431 slice 5); corps.json is written at once only for a verb.
+            if (sim.Corporations().MoneyRev() != corpSavedMoney)
+            {
+                corpSavedMoney = sim.Corporations().MoneyRev();
+                if (!sim.Corporations().Save(CorpsPath(worldPath)))
+                    Log::Errorf("Could not write %s.\n", CorpsPath(worldPath).c_str());
+            }
             run.savedAt = uptime;
         }
 
