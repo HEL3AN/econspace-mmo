@@ -175,6 +175,42 @@ TEST_CASE("Actions: a point in space offers flying, warping, and what can be bui
     CHECK(order->label.find("flying there first") != std::string::npos);
 }
 
+TEST_CASE("Actions: an upgrade is offered on one's own outpost, not in open space (#433)")
+{
+    Blueprint outpost;
+    outpost.id = "outpost";
+    outpost.name = "Outpost";
+    outpost.reach = 600.0f;
+    Blueprint market;
+    market.id = "outpost_market";
+    market.name = "Outpost Market";
+    market.reach = 600.0f;
+    market.onto = { "outpost" };
+    const std::vector<Blueprint> bps{ outpost, market };
+
+    const std::vector<Action> space = Actions::ForPoint({ 100.0f, 0.0f }, { 0.0f, 0.0f }, bps);
+    for (const Action& a : space)
+        CHECK(a.blueprint != "outpost_market");
+
+    REQUIRE(Actions::UpgradesOnto("outpost", bps).size() == 1);
+    CHECK(Actions::UpgradesOnto("outpost_market", bps).empty());
+
+    Target t = Thing(EntityKind::Structure);
+    t.upgrades = Actions::UpgradesOnto("outpost", bps);
+    CHECK_FALSE(Has(Actions::For(t, { 0.0f, 0.0f }), Verb::Build));  // someone else's
+    t.mine = t.dockable = true;
+    const std::vector<Action> near = Actions::For(t, { t.pos.x + t.size + 100.0f, t.pos.y });
+    CHECK(Has(near, Verb::Dock));
+    const Action* grow = Find(near, Verb::Build);
+    REQUIRE(grow != nullptr);
+    CHECK(grow->blueprint == "outpost_market");
+    CHECK(grow->distance == 0.0f);  // within reach of its edge: laid down at once
+    const std::vector<Action> away = Actions::For(t, { t.pos.x + 90000.0f, t.pos.y });
+    const Action*             far = Find(away, Verb::Build);  // into `away`, which outlives it
+    REQUIRE(far != nullptr);
+    CHECK(far->distance == doctest::Approx(600.0f));  // an order, flying there first
+}
+
 namespace
 {
 // Every action a menu could offer, from every list: each kind of thing near and far, its own

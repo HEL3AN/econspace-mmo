@@ -516,6 +516,31 @@ std::string Refused(const char* tool, int seq, const std::string& fallback)
     return std::string(tool) + ": " + (said.empty() ? fallback : "refused -- " + said);
 }
 
+// The structure an upgrade (#433) is built onto, from `onto`, with `at` set to where it is; 0
+// for a blueprint that is not an upgrade. Whose it is and whether it may grow is the server's
+// to say, in its own words.
+int UpgradeOnto(const Blueprint& bp, const Rpc::Json& args, Vector2& at)
+{
+    if (bp.onto.empty())
+    {
+        if (args.contains("onto"))
+            throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                              "a " + bp.name + " is not an upgrade; leave out onto" };
+        return 0;
+    }
+    const int id = (int)NumberOr(args, "onto", 0);
+    if (id == 0)
+        throw Rpc::Error{ Rpc::INVALID_PARAMS, "a " + bp.name +
+                                                   " is built onto a structure of yours: give "
+                                                   "its id as onto (blueprints says which kinds)" };
+    const auto it = g_session.Layout().find(id);
+    if (it == g_session.Layout().end() || it->second.kind != Proto::EntityKind::Structure)
+        throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                          "no structure #" + std::to_string(id) + " in this system" };
+    at = it->second.pos;
+    return id;
+}
+
 // A fit, as fitting prints one: a list of {module, in, on, count}. Read strictly -- a
 // misspelled key would otherwise be a line with no module, which the server refuses with a
 // reason that does not mention the typo.
@@ -785,8 +810,10 @@ std::vector<Tool> BuildTools()
                       } });
 
     tools.push_back({ "dock",
-                      "Approach a station and dock with it. The server may refuse on "
-                      "reputation; the order then fails and says so.",
+                      "Approach a station, or a structure with a dock, and dock with it. The "
+                      "server may refuse on reputation, or at a structure without a market "
+                      "that is not yours or your corporation's; the order then fails and "
+                      "says so.",
                       Obj({ { "station_id", Num("station id from observe") } }, { "station_id" }),
                       [](const Rpc::Json& args)
                       {
@@ -1525,7 +1552,9 @@ std::vector<Tool> BuildTools()
         { "blueprints",
           "What you can build in space (#39): each blueprint's id, what it costs from the "
           "hold, how long the site takes, how long the result stands, and how close to your "
-          "ship it must go. Marks the ones your hold can pay for now.",
+          "ship it must go. Marks the ones your hold can pay for now. An upgrade says what it "
+          "is built onto: one of your own finished structures, named with deploy's or build's "
+          "onto -- an outpost grows into a market, a market into a station (#433).",
           Obj({}), [](const Rpc::Json&)
           {
               RequireLive();
@@ -1561,7 +1590,19 @@ std::vector<Tool> BuildTools()
                                     : "until removed",
                                 bp.reach, affordable ? "  CAN AFFORD" : "");
                   out += line;
+                  if (!bp.onto.empty())
+                  {
+                      std::string onto;
+                      for (const std::string& o : bp.onto)
+                          if (const Blueprint* b = Blueprints::Find(o))
+                              if (b->byPlayers)
+                                  onto += (onto.empty() ? "" : ", ") + b->id;
+                      out += "           upgrade: built onto your own " + onto +
+                             " (onto=its id); it keeps the place and adds no structure\n";
+                  }
               }
+              out += "One outpost to a system, whoever's. A structure without a market docks "
+                     "only its owner and the owner's corporation.\n";
               if (Blueprints::PerAccount() > 0)
                   out += "At most " + std::to_string(Blueprints::PerAccount()) +
                          " structures standing per account.\n";
@@ -1574,12 +1615,15 @@ std::vector<Tool> BuildTools()
           "takes the cost at once, finishes by itself after the build time -- wait_for_event "
           "wakes on 'built' -- and everyone in the system sees it. Refused, with the reason, "
           "if the hold is short, the place is too close to something or in a planet's path, "
-          "or you are docked or warping. blueprints lists what can be built.",
+          "or you are docked or warping. An upgrade (blueprints says which) is laid onto your "
+          "own finished structure, given as onto, which becomes its site; refused on anyone "
+          "else's. blueprints lists what can be built.",
           Obj({ { "blueprint", Str("blueprint id from blueprints, e.g. 'beacon'") },
                 { "name", Str("what to call it (default: the blueprint's name); 3 to 24 "
                               "characters, letters, digits, spaces, ' and -") },
                 { "x", Num("where, world x (default: where the ship is)") },
-                { "y", Num("where, world y (default: where the ship is)") } },
+                { "y", Num("where, world y (default: where the ship is)") },
+                { "onto", Num("an upgrade: the id of your structure it is built onto") } },
               { "blueprint" }),
           [](const Rpc::Json& args)
           {
@@ -1605,10 +1649,11 @@ std::vector<Tool> BuildTools()
               const Proto::PlayerView& p = g_session.Snapshot().player;
               if (p.docked)
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "docked; undock first" };
-              const Vector2 at = { (float)NumberOr(args, "x", p.pos.x),
-                                   (float)NumberOr(args, "y", p.pos.y) };
-              const float   dx = at.x - p.pos.x, dy = at.y - p.pos.y;
-              if (std::sqrt(dx * dx + dy * dy) > bp->reach)
+              Vector2     at = { (float)NumberOr(args, "x", p.pos.x),
+                                 (float)NumberOr(args, "y", p.pos.y) };
+              const int   onto = UpgradeOnto(*bp, args, at);
+              const float dx = at.x - p.pos.x, dy = at.y - p.pos.y;
+              if (onto == 0 && std::sqrt(dx * dx + dy * dy) > bp->reach)
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                     "too far from the ship; a " + bp->name + " goes within " +
                                         std::to_string((int)bp->reach) + "u of it" };
@@ -1633,6 +1678,20 @@ std::vector<Tool> BuildTools()
               c.deployName = name;
               if (!Confirm(c, why))
                   return "deploy: " + why;
+              // An upgrade keeps the structure's id: it is the site now, of the new blueprint.
+              if (onto != 0)
+              {
+                  const auto it = g_session.Layout().find(onto);
+                  if (it == g_session.Layout().end() || it->second.blueprint != bp->id)
+                      return Refused("deploy", seq, "the server did not start the upgrade");
+                  char out[256];
+                  std::snprintf(out, sizeof(out),
+                                "deploy: #%d, %s, is being built into a %s; done in %.0fs. "
+                                "wait_for_event wakes on 'built'.",
+                                onto, it->second.name.c_str(), bp->name.c_str(),
+                                it->second.completesAt - g_session.Snapshot().time);
+                  return std::string(out);
+              }
               const Proto::EntityLayout* site = laid();
               if (site == nullptr)
                   return Refused("deploy", seq, "the server did not lay it down");
@@ -1789,13 +1848,15 @@ std::vector<Tool> BuildTools()
           "once; wait_for_event wakes on 'order_done' and later on 'built'. Refused, with the "
           "reason, before it flies if the hold is short, the place is taken, too close to "
           "something or in a planet's path; fails on arrival if that changed on the way. "
-          "blueprints lists what can be built.",
+          "An upgrade flies to your own structure given as onto (no x, y) and is built onto "
+          "it. blueprints lists what can be built.",
           Obj({ { "blueprint", Str("blueprint id from blueprints, e.g. 'beacon'") },
                 { "x", Num("where, world x") },
                 { "y", Num("where, world y") },
                 { "name", Str("what to call it (default: the blueprint's name); 3 to 24 "
-                              "characters, letters, digits, spaces, ' and -") } },
-              { "blueprint", "x", "y" }),
+                              "characters, letters, digits, spaces, ' and -") },
+                { "onto", Num("an upgrade: the id of your structure it is built onto") } },
+              { "blueprint" }),
           [](const Rpc::Json& args)
           {
               RequireLive();
@@ -1817,13 +1878,16 @@ std::vector<Tool> BuildTools()
               std::string       why;
               if (!name.empty() && !Names::ValidSystemName(name, why))
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, why };
-              if (!args.contains("x") || !args.contains("y"))
+              Vector2   at = { (float)NumberOr(args, "x", 0.0), (float)NumberOr(args, "y", 0.0) };
+              const int onto = UpgradeOnto(*bp, args, at);
+              if (onto == 0 && (!args.contains("x") || !args.contains("y")))
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "say where: x and y" };
               // A docked ship takes no orders; the station is left first.
               if (g_session.Snapshot().player.docked)
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "docked; undock first" };
               Proto::Command c = OrderCommand(Orders::Kind::Build);
-              c.orderPoint = { (float)NumberOr(args, "x", 0.0), (float)NumberOr(args, "y", 0.0) };
+              c.orderPoint = at;
+              c.orderTarget = onto;
               c.orderBlueprint = bp->id;
               c.orderName = name;
               return GiveOrder(c, "build");

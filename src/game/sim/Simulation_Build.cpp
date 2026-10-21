@@ -36,7 +36,56 @@ std::string Whole(float v)
 {
     return std::to_string((long long)std::lround(v));
 }
+
+// What an upgrade is built onto, as a player reads it: "Outpost, Mining Outpost or Watch Post".
+std::string OntoNames(const Blueprint& bp)
+{
+    std::vector<std::string> names;
+    for (const std::string& id : bp.onto)
+        if (const Blueprint* b = Blueprints::Find(id))
+            if (b->byPlayers)  // what a player cannot have is no help to name
+                names.push_back(b->name);
+    if (names.empty())
+        return "outpost";
+    std::string out;
+    for (size_t i = 0; i < names.size(); i++)
+        out += (i == 0 ? "" : i + 1 == names.size() ? " or " : ", ") + names[i];
+    return out;
+}
+
+// An outpost of any kind: what a faction settles with, and the first link of the chain.
+bool IsOutpostBlueprint(const Blueprint& bp)
+{
+    Outposts::Purpose p;
+    return Outposts::PurposeOf(bp.archetype, p);
+}
+
+// An outpost, or anything grown from one or growing from one (#342 S6).
+bool IsOutpostChain(const Structure& t)
+{
+    const Blueprint* bp = t.GetBlueprint();
+    return Outposts::IsOutpost(t.GetBuilds()) ||
+           (bp != nullptr && (!bp->onto.empty() || IsOutpostBlueprint(*bp)));
+}
 }  // namespace
+
+const Structure* Simulation::UpgradeTarget(const SystemState& st, Vector2 at)
+{
+    const Structure* best = nullptr;
+    float            nearest = 0.0f;
+    for (const auto& e : st.entities)
+    {
+        if (e->GetKind() != EntityKind::Structure)
+            continue;
+        const float d = Distance(at, e->GetPosition());
+        if (d <= e->GetSize() && (best == nullptr || d < nearest))
+        {
+            best = static_cast<const Structure*>(e.get());
+            nearest = d;
+        }
+    }
+    return best;
+}
 
 int Simulation::StructuresOwnedBy(const std::string& account) const
 {
@@ -61,19 +110,51 @@ std::string Simulation::PlacementProblem(const ClientSession& s, const Blueprint
     if (s.ship->GetWarpPhase() != WarpPhase::None)
         return "not while warping";
 
-    const float fromShip = Distance(at, s.ship->GetPosition());
-    if (fromHere && fromShip > bp.reach)
-        return "too far from the ship (" + Whole(fromShip) + " of at most " + Whole(bp.reach) + ")";
-    // An upgrade (#342 S6) is built onto an outpost, and only a faction has those yet.
     if (!bp.onto.empty())
-        return "a " + bp.name + " is built onto an outpost, and only factions have those yet";
-    const std::string where = SpotProblem(*st, bp, at);
-    if (!where.empty())
-        return where;
+    {
+        // An upgrade (#342 S6, #433): built onto an outpost of the player's own, which becomes
+        // its site. The place is the outpost's, so nothing about the spot is asked again, and
+        // it adds no structure to the account's count.
+        const Structure* onto = UpgradeTarget(*st, at);
+        if (onto == nullptr)
+            return "a " + bp.name + " is built onto your own " + OntoNames(bp) +
+                   ", and there is none there";
+        if (onto->GetOwner() != s.accountName)
+            return onto->GetName() + " is not yours: a " + bp.name +
+                   " is built only onto your own " + OntoNames(bp);
+        const Blueprint* was = onto->GetBlueprint();
+        if (was == nullptr || std::find(bp.onto.begin(), bp.onto.end(), was->id) == bp.onto.end())
+            return "a " + bp.name + " is built onto " + OntoNames(bp) + ", and " + onto->GetName() +
+                   " is not one";
+        if (onto->IsBuilding())
+            return onto->GetName() + " is still being built";
+        const float edge = Distance(onto->GetPosition(), s.ship->GetPosition()) - onto->GetSize();
+        if (fromHere && edge > bp.reach)
+            return "too far from " + onto->GetName() + " (" + Whole(edge) + " of at most " +
+                   Whole(bp.reach) + ")";
+    }
+    else
+    {
+        const float fromShip = Distance(at, s.ship->GetPosition());
+        if (fromHere && fromShip > bp.reach)
+            return "too far from the ship (" + Whole(fromShip) + " of at most " + Whole(bp.reach) +
+                   ")";
+        const std::string where = SpotProblem(*st, bp, at);
+        if (!where.empty())
+            return where;
+        // One outpost to a system (#433), whoever's and whatever it has grown into: the
+        // blueprint's cap counts only its own kind, and the chain would otherwise let a
+        // second one go up beside the first the moment it became a market.
+        if (IsOutpostBlueprint(bp))
+            for (const auto& e : st->entities)
+                if (e->GetKind() == EntityKind::Structure &&
+                    IsOutpostChain(static_cast<const Structure&>(*e)))
+                    return "this system has an outpost already: " + e->GetName();
 
-    const int cap = Blueprints::PerAccount();
-    if (cap > 0 && StructuresOwnedBy(s.accountName) >= cap)
-        return "you already have " + std::to_string(cap) + " structures standing";
+        const int cap = Blueprints::PerAccount();
+        if (cap > 0 && StructuresOwnedBy(s.accountName) >= cap)
+            return "you already have " + std::to_string(cap) + " structures standing";
+    }
 
     for (const auto& c : bp.cost)
         if (s.ship->GetCargoAmount(c.first) < c.second)
@@ -188,6 +269,8 @@ int Simulation::Deploy(ClientSession& s, const std::string& blueprint, Vector2 a
     why = PlacementProblem(s, *bp, at);
     if (!why.empty())
         return refuse(why);
+    if (!bp->onto.empty())
+        return Upgrade(s, *bp, at, name);
 
     // Committed in full when the site goes down. Dismantling it gives back what the rules
     // say (Blueprints::Refund); having it shot down gives back nothing but a wreck.
@@ -205,6 +288,30 @@ int Simulation::Deploy(ClientSession& s, const std::string& blueprint, Vector2 a
     s.RecordEvent(Ev::Kind::Notice,
                   "Building " + called + ": ready in " + Whole(bp->buildSeconds) + " s");
     return id;
+}
+
+int Simulation::Upgrade(ClientSession& s, const Blueprint& bp, Vector2 at, const std::string& name)
+{
+    SystemState* st = SystemById(s.systemId);
+    Structure*   t = st != nullptr ? const_cast<Structure*>(UpgradeTarget(*st, at)) : nullptr;
+    if (t == nullptr)
+        return 0;
+    for (const auto& c : bp.cost)
+        s.ship->RemoveCargo(c.first, c.second);
+    // As a faction's (StartUpgrade): the outpost is the site of what it grows into, as far along
+    // as a new site and as hurt as it was, by the share of its hull. It keeps its owner, and
+    // its name unless the player gives it another.
+    const float       hurt = t->MaxHull(time_) > 0.0f ? t->GetDamage() / t->MaxHull(time_) : 0.0f;
+    const std::string was = t->GetName();
+    t->Retask(bp.archetype, bp.id, name.empty() ? was : name);
+    t->StartBuilding(time_, time_ + bp.buildSeconds);
+    t->SetDamage(hurt * t->MaxHull(time_));
+    MarkStaticChanged(*st, t->GetId());
+    st->profile = ProfileOf(*st);
+    ScheduleStructure(st->id, *t);
+    s.RecordEvent(Ev::Kind::Notice, "Building " + was + " into a " + bp.name + ": ready in " +
+                                        Whole(bp.buildSeconds) + " s");
+    return t->GetId();
 }
 
 namespace

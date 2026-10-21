@@ -1285,9 +1285,10 @@ int Simulation::StepPlayerDock(ClientSession& s, SystemState& st)
         return 0;
 
     Vector2 pp = s.ship->GetPosition();
-    // Asks what is dockable rather than what is a Station (#34). The moment a player can
-    // build a dock (#44) it joins this pass by declaring the component, without this
-    // function being touched.
+    // Asks what is dockable rather than what is a Station (#34): a player's outpost (#433)
+    // joins this pass by declaring the component. A dock that refuses this pilot is passed
+    // over for another in reach, and said only when none takes them.
+    std::string refused;
     for (auto& e : st.entities)
     {
         if (!e->Has(Component::Dockable))
@@ -1296,19 +1297,12 @@ int Simulation::StepPlayerDock(ClientSession& s, SystemState& st)
         float dy = e->GetPosition().y - pp.y;
         if (std::sqrt(dx * dx + dy * dy) > e->GetSize() + e->GetArchetype()->dockRange)
             continue;
-
-        // Reputation admittance (M4f-4): at the Hated tier the owning station refuses;
-        // Hostile still admits. Reputation is authoritative here (s.account) — the player
-        // is told via the snapshot. Who owns a dock is still Station-specific state, so
-        // this one narrowing stays until ownership becomes a component too (#41).
-        if (e->GetKind() == EntityKind::Station)
+        const std::string why = DockRefusal(s, *e);
+        if (!why.empty())
         {
-            FactionId sf = static_cast<Station*>(e.get())->GetFaction();
-            if (Factions::TierOf(s.account.GetReputation(sf)) == RepTier::Hated)
-            {
-                s.RecordEvent(Ev::Kind::Notice, "Docking denied: hostile reputation");
-                return 0;
-            }
+            if (refused.empty())
+                refused = why;
+            continue;
         }
         s.ship->DisengageAutopilot();
         s.ship->ReleaseHold();
@@ -1331,7 +1325,34 @@ int Simulation::StepPlayerDock(ClientSession& s, SystemState& st)
         GenerateDockOffers(s);  // fresh station mission board (M4f-2)
         return s.dockedStationId;
     }
+    if (!refused.empty())
+        s.RecordEvent(Ev::Kind::Notice, "Docking denied: " + refused);
     return 0;
+}
+
+std::string Simulation::DockRefusal(const ClientSession& s, const Entity& e) const
+{
+    // Reputation admittance (M4f-4): at the Hated tier a faction's dock refuses -- a station's,
+    // or a structure a faction built; Hostile still admits. Reputation is authoritative here
+    // (s.account), and the player is told via the snapshot.
+    FactionId  f = Factions::Unaffiliated();
+    const bool faction = e.GetKind() == EntityKind::Station
+                             ? (f = static_cast<const Station&>(e).GetFaction(), true)
+                             : Outposts::FactionOf(e.GetOwner(), f);
+    // A structure without a market (#433) is a private dock: its owner's, and the owner's
+    // corporation's (#347). A faction's outpost takes no pilot at all; only a market is open.
+    const std::string& owner = e.GetOwner();
+    if (e.GetKind() == EntityKind::Structure && !owner.empty() && !e.Has(Component::Market))
+    {
+        if (!faction && !s.accountName.empty() &&
+            (owner == s.accountName || corps_.SameCorp(owner, s.accountName)))
+            return std::string();
+        return e.GetName() + (faction ? " is " + FactionName(f) + "'s" : " is " + owner + "'s") +
+               ", and docks only its owner's ships";
+    }
+    if (faction && Factions::TierOf(s.account.GetReputation(f)) == RepTier::Hated)
+        return "hostile reputation";
+    return std::string();
 }
 
 void Simulation::StepPlayerUndock(ClientSession& s)

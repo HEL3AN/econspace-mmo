@@ -77,7 +77,7 @@ Fly to an object by id, or to a point. Finishes when the ship arrives. Use warp 
 
 ### `dock`
 
-Approach a station and dock with it. The server may refuse on reputation; the order then fails and says so.
+Approach a station, or a structure with a dock, and dock with it. The server may refuse on reputation, or at a structure without a market that is not yours or your corporation's; the order then fails and says so.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
@@ -287,18 +287,19 @@ No arguments.
 
 ### `blueprints`
 
-What you can build in space (#39): each blueprint's id, what it costs from the hold, how long the site takes, how long the result stands, and how close to your ship it must go. Marks the ones your hold can pay for now.
+What you can build in space (#39): each blueprint's id, what it costs from the hold, how long the site takes, how long the result stands, and how close to your ship it must go. Marks the ones your hold can pay for now. An upgrade says what it is built onto: one of your own finished structures, named with deploy's or build's onto -- an outpost grows into a market, a market into a station (#433).
 
 No arguments.
 
 ### `deploy`
 
-Lay down a construction site from a blueprint, near your ship, out of the hold. It takes the cost at once, finishes by itself after the build time -- wait_for_event wakes on 'built' -- and everyone in the system sees it. Refused, with the reason, if the hold is short, the place is too close to something or in a planet's path, or you are docked or warping. blueprints lists what can be built.
+Lay down a construction site from a blueprint, near your ship, out of the hold. It takes the cost at once, finishes by itself after the build time -- wait_for_event wakes on 'built' -- and everyone in the system sees it. Refused, with the reason, if the hold is short, the place is too close to something or in a planet's path, or you are docked or warping. An upgrade (blueprints says which) is laid onto your own finished structure, given as onto, which becomes its site; refused on anyone else's. blueprints lists what can be built.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
 | `blueprint` | string | yes | blueprint id from blueprints, e.g. 'beacon' |
 | `name` | string |  | what to call it (default: the blueprint's name); 3 to 24 characters, letters, digits, spaces, ' and - |
+| `onto` | number |  | an upgrade: the id of your structure it is built onto |
 | `x` | number |  | where, world x (default: where the ship is) |
 | `y` | number |  | where, world y (default: where the ship is) |
 
@@ -332,14 +333,15 @@ Close to weapon range of a ship or a structure and fire until it is destroyed. F
 
 ### `build`
 
-A standing order to build: fly to a point (warping when far) and lay down a site from a blueprint there, out of the hold, as deploy does. Finishes when the site is down -- the site then finishes by itself after the build time, so you may leave at once; wait_for_event wakes on 'order_done' and later on 'built'. Refused, with the reason, before it flies if the hold is short, the place is taken, too close to something or in a planet's path; fails on arrival if that changed on the way. blueprints lists what can be built.
+A standing order to build: fly to a point (warping when far) and lay down a site from a blueprint there, out of the hold, as deploy does. Finishes when the site is down -- the site then finishes by itself after the build time, so you may leave at once; wait_for_event wakes on 'order_done' and later on 'built'. Refused, with the reason, before it flies if the hold is short, the place is taken, too close to something or in a planet's path; fails on arrival if that changed on the way. An upgrade flies to your own structure given as onto (no x, y) and is built onto it. blueprints lists what can be built.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
 | `blueprint` | string | yes | blueprint id from blueprints, e.g. 'beacon' |
 | `name` | string |  | what to call it (default: the blueprint's name); 3 to 24 characters, letters, digits, spaces, ' and - |
-| `x` | number | yes | where, world x |
-| `y` | number | yes | where, world y |
+| `onto` | number |  | an upgrade: the id of your structure it is built onto |
+| `x` | number |  | where, world x |
+| `y` | number |  | where, world y |
 
 ### `salvage`
 

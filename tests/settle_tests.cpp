@@ -113,16 +113,19 @@ std::string GuildSettles(Simulation& sim)
 }
 }  // namespace
 
-TEST_CASE("an outpost is built by factions; no player is offered one (#295)")
+TEST_CASE("an outpost is built by factions and players; a hidden base by factions only (#295)")
 {
     LoadRegistries();
     const Blueprint* bp = Blueprints::Find(Outposts::BLUEPRINT);
     REQUIRE(bp != nullptr);
     CHECK(bp->byFactions);
-    CHECK_FALSE(bp->byPlayers);
+    CHECK(bp->byPlayers);  // #433
     CHECK(Simulation::OutpostCost() > 0.0f);
+    const char* hidden = Outposts::BlueprintOf(Outposts::Purpose::Hidden);
+    REQUIRE(Blueprints::Find(hidden) != nullptr);
+    CHECK_FALSE(Blueprints::Find(hidden)->byPlayers);
     for (const Blueprint& b : Blueprints::All())
-        CHECK(b.id != Outposts::BLUEPRINT);
+        CHECK(b.id != hidden);
     CHECK(Blueprints::Find("beacon") != nullptr);
     CHECK(Blueprints::Find("beacon")->byPlayers);
 
@@ -136,7 +139,7 @@ TEST_CASE("an outpost is built by factions; no player is offered one (#295)")
                                          GetShipCatalog()[0].stats);
     s.accountName = "hunter";
     const int seq = s.LastEventSeq();
-    CHECK(sim.Deploy(s, Outposts::BLUEPRINT, s.ship->GetPosition(), "") == 0);
+    CHECK(sim.Deploy(s, hidden, s.ship->GetPosition(), "") == 0);
     bool told = false;
     for (const Ev::Event& e : s.EventsSince(seq))
         told = told || e.text.find("only a faction") != std::string::npos;

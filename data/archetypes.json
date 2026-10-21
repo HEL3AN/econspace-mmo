@@ -922,6 +922,7 @@
             },
             "components": {
                 "buildable": {},
+                "dockable": { "range": 200 },
                 "defensive": { "range": 2000, "damage": 8 }
             }
         },
@@ -951,6 +952,7 @@
             },
             "components": {
                 "buildable": {},
+                "dockable": { "range": 200 },
                 "defensive": { "range": 2000, "damage": 8 }
             }
         },
@@ -981,6 +983,7 @@
             },
             "components": {
                 "buildable": {},
+                "dockable": { "range": 200 },
                 "defensive": { "range": 2000, "damage": 8 }
             }
         },
@@ -1039,6 +1042,7 @@
             },
             "components": {
                 "buildable": {},
+                "dockable": { "range": 200 },
                 "defensive": { "range": 2000, "damage": 8 }
             }
         },

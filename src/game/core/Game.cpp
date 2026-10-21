@@ -275,7 +275,8 @@ void Game::Run()
                 cmd_.defenceId = 0;  // (#340): the rules are set once
                 cmd_.orderKind = 0;  // a build order (#39) is given once
                 cmd_.orderBlueprint.clear();
-                cmd_.scan = false;  // a pass is asked for once (#346)
+                cmd_.orderTarget = 0;  // ...and an upgrade's outpost with it (#433)
+                cmd_.scan = false;     // a pass is asked for once (#346)
             }
             simAccumulator_ -= SIM_DT;
         }
@@ -969,8 +970,14 @@ Actions::Target Game::ActionTarget(const Entity& e) const
         const Archetype* built = Archetypes::Find(s.GetBuilds());
         t.armed =
             built != nullptr && built->Has(Component::Defensive) && built->weaponDamage > 0.0f;
+        // A dock the server would take this pilot at (#433): a market's, or one's own. A
+        // corporation member's outpost takes them too, which the client cannot see; E docks.
+        t.dockable =
+            !s.IsBuilding() && s.Has(Component::Dockable) && (s.Has(Component::Market) || t.mine);
         if (const Blueprint* bp = s.GetBlueprint())
         {
+            if (t.mine && !s.IsBuilding())
+                t.upgrades = Actions::UpgradesOnto(bp->id, Blueprints::All());
             const double now = snapshot_.time;  // the last word from the server is near enough
             for (const auto& c : Blueprints::Refund(*bp, s.Progress(now), s.HullFraction(now)))
                 t.refund += (t.refund.empty() ? "" : ", ") + std::to_string(c.second) + " " +
@@ -1006,17 +1013,22 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
         case Verb::FlyHere: OrderAutopilot(point, a.distance); return;
         case Verb::WarpHere: OrderWarp(point, a.distance); return;
         case Verb::Build:
+        {
+            // An upgrade (#433) is offered on a structure, and goes where that is.
+            const Vector2 at = target != nullptr ? target->GetPosition() : point;
             if (a.distance <= 0.0f)  // in reach: laid down now
             {
                 cmd_.deploy = a.blueprint;
-                cmd_.deployPos = point;
+                cmd_.deployPos = at;
                 return;
             }
             // Out of reach: a standing order the server flies and lays down on arrival (#39).
             cmd_.orderKind = (int)Orders::Kind::Build;
-            cmd_.orderPoint = point;
+            cmd_.orderPoint = at;
+            cmd_.orderTarget = target != nullptr ? target->GetId() : 0;
             cmd_.orderBlueprint = a.blueprint;
             return;
+        }
         // The missions are the server's (M4f-2): a one-off command, and the next snapshot
         // says whether it was taken.
         case Verb::Accept:

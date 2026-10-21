@@ -12,6 +12,7 @@
 #include "entities/Station.h"
 #include "entities/Structure.h"
 #include "sim/ClientSession.h"
+#include "sim/Corporation.h"
 #include "sim/Protocol.h"
 #include "sim/Simulation.h"
 #include "temp_dir.h"
@@ -1045,5 +1046,246 @@ TEST_CASE(
         const Derelict* back = wreckIn(b, sys);
         REQUIRE(back != nullptr);
         CHECK(back->GetExpiresAt() == doctest::Approx(b.Time() + Blueprints::Rules().wreckSeconds));
+    }
+}
+
+// --- A player's outpost, and what it grows into (#433) -------------------------------------
+
+namespace
+{
+// A builder whose hold takes any chain of blueprints the data has.
+ClientSession& Founder(Simulation& sim, const std::string& account)
+{
+    ShipStats stats = GetShipCatalog()[0].stats;
+    stats.cargoCapacity = 2000;
+    ClientSession& s = sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f }, stats);
+    s.accountName = account;
+    return s;
+}
+
+// What `bp` costs, in the hold.
+void Pay(ClientSession& s, const char* blueprint)
+{
+    const Blueprint* bp = Blueprints::Find(blueprint);
+    REQUIRE(bp != nullptr);
+    for (const auto& c : bp->cost)
+        REQUIRE(s.ship->AddCargo(c.first, c.second));
+}
+
+// Beside a structure, within its dock and the blueprints' reach.
+void Beside(ClientSession& s, const Structure& t)
+{
+    s.ship->Teleport({ t.GetPosition().x + t.GetSize() + 60.0f, t.GetPosition().y });
+}
+
+// Finishes whatever `id` is building.
+void Finish(Simulation& sim, const std::string& sys, int id)
+{
+    Structure* t = StructureById(sim, sys, id);
+    REQUIRE(t != nullptr);
+    REQUIRE(t->IsBuilding());
+    sim.SetTime(t->GetCompletesAt());
+    sim.StepStructures();
+    REQUIRE_FALSE(StructureById(sim, sys, id)->IsBuilding());
+}
+
+bool Told(const ClientSession& s, int seq, const std::string& text)
+{
+    for (const Ev::Event& e : s.EventsSince(seq))
+        if (e.text.find(text) != std::string::npos)
+            return true;
+    return false;
+}
+
+// A structure of a loaded world, by name: ids are the load's own.
+const Structure* Named(Simulation& sim, const std::string& sys, const std::string& name)
+{
+    for (const auto& e : sim.SystemById(sys)->entities)
+        if (e->GetKind() == EntityKind::Structure && e->GetName() == name)
+            return static_cast<const Structure*>(e.get());
+    return nullptr;
+}
+}  // namespace
+
+TEST_CASE("a player's outpost is one of the structures the account's cap counts (#433)")
+{
+    LoadRegistries();
+    Simulation sim;
+    StartServer(sim, "");
+    ClientSession&   s = Founder(sim, "hunter");
+    const Blueprint& buoy = *Blueprints::Find("buoy");
+    const Blueprint& outpost = *Blueprints::Find("outpost");
+    float            along = 0.0f;
+    while (sim.StructuresOwnedBy("hunter") < Blueprints::PerAccount())
+    {
+        along += 3000.0f;
+        Pay(s, "buoy");
+        REQUIRE(sim.Deploy(s, "buoy", FreeSpot(sim, s, buoy, along), "") != 0);
+    }
+    Pay(s, "outpost");
+    bool asked = false;
+    for (int i = 0; i < 60 && !asked; i++)
+    {
+        const Vector2 p = { -150000.0f, -270000.0f + 9300.0f * (float)i };
+        if (!sim.SpotProblem(*sim.SystemOf(s), outpost, p).empty())
+            continue;
+        s.ship->Teleport(p);
+        CHECK(sim.PlacementProblem(s, outpost, p).find("you already have") == 0);
+        CHECK(sim.Deploy(s, "outpost", p, "") == 0);
+        asked = true;
+    }
+    CHECK(asked);
+}
+
+TEST_CASE("a player builds an outpost, docks at it and grows it along the chain (#433)")
+{
+    LoadRegistries();
+    Simulation sim;
+    StartServer(sim, "");
+    ClientSession&    s = Founder(sim, "hunter");
+    ClientSession&    ann = Founder(sim, "ann");
+    const std::string sys = s.systemId;
+    const Blueprint&  outpost = *Blueprints::Find("outpost");
+    const Blueprint&  market = *Blueprints::Find("outpost_market");
+    REQUIRE(outpost.byPlayers);
+    Pay(s, "outpost");
+    const Vector2 at = FreeSpot(sim, s, outpost);
+    const int     id = sim.Deploy(s, "outpost", at, "Hearth");
+    REQUIRE(id != 0);
+    CHECK(StructureById(sim, sys, id)->GetOwner() == "hunter");
+    CHECK(sim.StructuresOwnedBy("hunter") == 1);
+
+    // Not grown before it stands.
+    Pay(s, "outpost_market");
+    CHECK(sim.PlacementProblem(s, market, at) == "Hearth is still being built");
+    Finish(sim, sys, id);
+
+    SUBCASE("one outpost to a system, whoever's")
+    {
+        // Another plain one is refused by its blueprint's own cap; another kind, by this rule.
+        const Blueprint& mining = *Blueprints::Find("outpost_mining");
+        REQUIRE(mining.byPlayers);
+        Pay(ann, "outpost_mining");
+        bool asked = false;
+        for (int i = 0; i < 3600 && !asked; i++)
+        {
+            const Vector2 p = { -150000.0f - 9100.0f * (float)(i / 60),
+                                -270000.0f + 9300.0f * (float)(i % 60) };
+            if (!sim.SpotProblem(*sim.SystemById(sys), mining, p).empty())
+                continue;
+            ann.ship->Teleport(p);
+            CHECK(sim.PlacementProblem(ann, mining, p) ==
+                  "this system has an outpost already: Hearth");
+            asked = true;
+        }
+        CHECK(asked);
+    }
+
+    SUBCASE("its dock takes its owner and the owner's corporation, nobody else")
+    {
+        const Structure& t = *StructureById(sim, sys, id);
+        Beside(s, t);
+        CHECK(sim.StepPlayerDock(s, *sim.SystemOf(s)) == id);
+
+        Beside(ann, t);
+        const int seq = ann.LastEventSeq();
+        CHECK(sim.StepPlayerDock(ann, *sim.SystemOf(ann)) == 0);
+        CHECK(Told(ann, seq, "Docking denied: Hearth is hunter's"));
+
+        Corps::Registry& corps = sim.Corporations();
+        REQUIRE(corps.Create("hunter", "Hearth Holders", "HH", 1.8e9).Ok());
+        REQUIRE(corps.InviteTo("hunter", "ann", { "ann" }, 1.8e9).Ok());
+        REQUIRE(corps.Join("ann", "HH", 1.8e9).Ok());
+        CHECK(sim.StepPlayerDock(ann, *sim.SystemOf(ann)) == id);
+    }
+
+    SUBCASE("only its owner grows it")
+    {
+        Pay(ann, "outpost_market");
+        Beside(ann, *StructureById(sim, sys, id));
+        CHECK(sim.PlacementProblem(ann, market, at).find("Hearth is not yours") == 0);
+        const int seq = ann.LastEventSeq();
+        CHECK(sim.Deploy(ann, "outpost_market", at, "") == 0);
+        CHECK(Told(ann, seq, "Cannot build: Hearth is not yours"));
+        CHECK(StructureById(sim, sys, id)->GetBlueprintId() == "outpost");
+    }
+
+    SUBCASE("the cap counts structures, and an upgrade adds none")
+    {
+        const Blueprint& buoy = *Blueprints::Find("buoy");
+        float            along = 0.0f;
+        while (sim.StructuresOwnedBy("hunter") < Blueprints::PerAccount())
+        {
+            along += 3000.0f;
+            Pay(s, "buoy");
+            REQUIRE(sim.Deploy(s, "buoy", FreeSpot(sim, s, buoy, along), "") != 0);
+        }
+        Beside(s, *StructureById(sim, sys, id));
+        CHECK(sim.PlacementProblem(s, market, at).empty());
+    }
+
+    SUBCASE("market, then station, at the factions' costs and times, and still the owner's")
+    {
+        Beside(s, *StructureById(sim, sys, id));
+        const int markets = sim.SystemById(sys)->profile.markets;
+        const int iron = s.ship->GetCargoAmount(Good::Iron());
+        REQUIRE(sim.Deploy(s, "outpost_market", at, "") == id);
+        for (const auto& c : market.cost)
+            if (c.first == Good::Iron())
+                CHECK(s.ship->GetCargoAmount(Good::Iron()) == iron - c.second);
+        Structure* t = StructureById(sim, sys, id);
+        CHECK(t->IsBuilding());
+        CHECK(t->GetBlueprintId() == "outpost_market");
+        CHECK(t->GetName() == "Hearth");
+        CHECK(t->GetOwner() == "hunter");
+        CHECK(t->GetCompletesAt() == doctest::Approx(sim.Time() + market.buildSeconds));
+        CHECK(sim.StructuresOwnedBy("hunter") == 1);
+
+        // Saved half-grown, it comes back half-grown and the owner's.
+        const TempDir     tmp;
+        const std::string path = tmp.Path("world_upgrade.json");
+        REQUIRE(sim.SaveWorld(path));
+        {
+            Simulation b;
+            StartServer(b, path);
+            const Structure* back = Named(b, sys, "Hearth");
+            REQUIRE(back != nullptr);
+            CHECK(back->GetOwner() == "hunter");
+            CHECK(back->IsBuilding());
+            CHECK(back->GetBlueprintId() == "outpost_market");
+            CHECK(back->GetCompletesAt() == doctest::Approx(t->GetCompletesAt()));
+        }
+
+        // A market joins the system's economy, and is open to every pilot.
+        Finish(sim, sys, id);
+        t = StructureById(sim, sys, id);
+        CHECK(t->GetArchetype()->id == market.archetype);
+        CHECK(sim.SystemById(sys)->profile.markets == markets + 1);
+        Beside(ann, *t);
+        CHECK(sim.StepPlayerDock(ann, *sim.SystemOf(ann)) == id);
+        sim.StepPlayerUndock(ann);
+
+        // ...and then a station, which stays a structure of the player's own.
+        Pay(s, "trade_station");
+        Beside(s, *t);
+        REQUIRE(sim.Deploy(s, "trade_station", at, "Hearth Exchange") == id);
+        Finish(sim, sys, id);
+        t = StructureById(sim, sys, id);
+        REQUIRE(t != nullptr);
+        CHECK(t->GetArchetype()->id == "station.trade_hub");
+        CHECK(t->GetOwner() == "hunter");
+        CHECK(t->GetName() == "Hearth Exchange");
+        CHECK(t->Has(Component::Market));
+        CHECK(sim.SystemById(sys)->profile.markets == markets + 1);
+
+        REQUIRE(sim.SaveWorld(path));
+        Simulation c;
+        StartServer(c, path);
+        const Structure* back = Named(c, sys, "Hearth Exchange");
+        REQUIRE(back != nullptr);
+        CHECK(back->GetOwner() == "hunter");
+        CHECK_FALSE(back->IsBuilding());
+        CHECK(back->GetBuilds() == "station.trade_hub");
+        CHECK(c.StructuresOwnedBy("hunter") == 1);
     }
 }
