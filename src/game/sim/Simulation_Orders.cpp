@@ -276,17 +276,20 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             finish(Orders::Status::Failed, "there is no blueprint '" + s.order.blueprint + "'");
             return;
         }
+        // An upgrade (#433) names the outpost it is built onto, and is laid down where that is.
+        const Vector2 at = target != nullptr ? target->GetPosition() : s.order.point;
         if (!s.orderNavIssued)
         {
-            const std::string why = PlacementProblem(s, *bp, s.order.point, false);
+            const std::string why = PlacementProblem(s, *bp, at, false);
             if (!why.empty())
             {
                 finish(Orders::Status::Failed, why);
                 return;
             }
         }
-        // Well inside the reach, so the ship that stops short of its aim is still in it.
-        arrive = bp->reach * 0.6f;
+        // Well inside the reach, so the ship that stops short of its aim is still in it -- from
+        // the outpost's edge for an upgrade, as PlacementProblem measures it.
+        arrive = size + bp->reach * 0.6f;
     }
     else if (s.order.kind == Orders::Kind::Attack)
     {
@@ -413,13 +416,14 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
         {
             Sim::StepPlayerShip(*s.ship, Proto::Command{}, 1.0f, dt);
             const Blueprint&  bp = *Blueprints::Find(s.order.blueprint);
-            const std::string why = PlacementProblem(s, bp, s.order.point);
+            const Vector2     at = target != nullptr ? target->GetPosition() : s.order.point;
+            const std::string why = PlacementProblem(s, bp, at);
             if (!why.empty())
             {
                 finish(Orders::Status::Failed, why);
                 return;
             }
-            const int id = Deploy(s, bp.id, s.order.point, s.order.name);
+            const int id = Deploy(s, bp.id, at, s.order.name);
             if (id == 0)
                 finish(Orders::Status::Failed, "the system would not take it");
             else

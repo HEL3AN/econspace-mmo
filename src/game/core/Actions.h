@@ -91,7 +91,16 @@ struct Target
     bool        mine = false;
     std::string refund;
     bool        armed = false;  // it has guns, or will once built: it has rules of engagement
+    // A structure that takes this pilot at its dock (#433): a market, or one's own outpost.
+    bool dockable = false;
+    // One's own finished structure: what it can be built into (#433), from UpgradesOnto.
+    std::vector<Blueprint> upgrades;
 };
+
+// The blueprints, of `blueprints`, built onto a structure of blueprint `onto` (#342 S6, #433):
+// an outpost's market, a market's stations.
+std::vector<Blueprint> UpgradesOnto(const std::string&            onto,
+                                    const std::vector<Blueprint>& blueprints);
 
 // The distances a hold is offered at, as multiples of the target's own radius: the same
 // menu is then sensible beside a sixteen-unit ship and a station forty times larger, and
@@ -106,7 +115,8 @@ constexpr float WARP_MIN = 1800.0f;
 // the common ones, the standing behaviours, the warps, then what this kind of thing offers.
 std::vector<Action> For(const Target& target, Vector2 from);
 
-// The actions for an empty point in space: fly, warp, and whatever can be built there.
+// The actions for an empty point in space: fly, warp, and whatever can be built there -- not
+// an upgrade, which is built onto a structure and offered by For.
 std::vector<Action> ForPoint(Vector2 point, Vector2 from, const std::vector<Blueprint>& blueprints);
 
 // What the client knows about a mission it might act on. `index` is its number in the

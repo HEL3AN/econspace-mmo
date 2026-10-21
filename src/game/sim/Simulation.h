@@ -766,11 +766,23 @@ public:
     // blueprint's name), owned by the session's account. Takes the cost from the hold and
     // answers in the journal either way. Returns the site's id, or 0 when refused.
     int Deploy(ClientSession& s, const std::string& blueprint, Vector2 at, const std::string& name);
+    // An upgrade blueprint (one with `onto`) is laid down onto the player's own outpost at `at`
+    // (#433): Deploy's work once PlacementProblem has said yes. The outpost becomes the site,
+    // keeps its id and its owner, and is named `name` if one is given. Returns its id.
+    int Upgrade(ClientSession& s, const Blueprint& bp, Vector2 at, const std::string& name);
     // Why `bp` may not stand at `at` in this system, or empty when it may: inside the
     // system, clear of bodies and the paths they sweep, clear of what others use, and
     // under the blueprint's cap per system. The part of PlacementProblem that is about the
     // place rather than the builder; a faction's outpost is placed by it too (#295).
     std::string SpotProblem(const SystemState& st, const Blueprint& bp, Vector2 at) const;
+    // The structure an upgrade (#433) laid down at `at` is built onto: the one whose disc
+    // `at` falls on, the nearest of them; null when there is none. Whether it may be is
+    // PlacementProblem's to say.
+    static const Structure* UpgradeTarget(const SystemState& st, Vector2 at);
+    // Whether docking at `e` is refused this pilot, and why (#433): a faction's dock for a
+    // pilot it hates, a player's structure without a market for anyone but its owner and the
+    // owner's corporation (#347). Empty: admitted.
+    std::string DockRefusal(const ClientSession& s, const Entity& e) const;
     // Finishes every site whose time has come and takes away every structure whose time is
     // up. Each is an instant fixed when the site went down -- nothing is integrated -- so a
     // restart in between changes nothing. Called by MaintainWorld every tick, and looks at

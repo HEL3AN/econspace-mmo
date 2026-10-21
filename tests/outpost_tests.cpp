@@ -93,7 +93,10 @@ TEST_CASE("every purpose has a faction's blueprint, a look of its own and the sa
         const Blueprint* bp = Blueprints::Find(Outposts::BlueprintOf((Purpose)i));
         REQUIRE(bp != nullptr);
         CHECK(bp->byFactions);
-        CHECK_FALSE(bp->byPlayers);
+        // A player builds the plain kinds (#433); an orbital outpost is placed on a satellite's
+        // path and a hidden base is a lawless faction's, so those stay the factions' own.
+        const bool players = (Purpose)i != Purpose::Orbital && (Purpose)i != Purpose::Hidden;
+        CHECK(bp->byPlayers == players);
         float cost = 0.0f;
         for (const auto& c : bp->cost)
             cost += (float)c.second;
@@ -105,8 +108,10 @@ TEST_CASE("every purpose has a faction's blueprint, a look of its own and the sa
         Purpose back = Purpose::Open;
         CHECK(Outposts::PurposeOf(bp->archetype, back));
         CHECK(back == (Purpose)i);
+        bool offered = false;
         for (const Blueprint& b : Blueprints::All())
-            CHECK(b.id != bp->id);  // no player is offered one
+            offered = offered || b.id == bp->id;
+        CHECK(offered == players);
     }
     CHECK(looks.size() == (size_t)Outposts::PURPOSE_COUNT);
     CHECK_FALSE(Outposts::IsOutpost("structure.beacon"));

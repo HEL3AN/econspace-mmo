@@ -25,6 +25,15 @@ float Distance(Vector2 a, Vector2 b)
     return std::sqrt(dx * dx + dy * dy);
 }
 
+// "40 Iron, 10 Crystal".
+std::string CostOf(const Blueprint& bp)
+{
+    std::string cost;
+    for (const auto& c : bp.cost)
+        cost += (cost.empty() ? "" : ", ") + std::to_string(c.second) + " " + ResourceName(c.first);
+    return cost;
+}
+
 // An action's label is its verb's one name, then what tells this one apart from the others
 // of the same verb: "Orbit at 200", "Jump to Vela" (#365).
 Action Make(Verb verb, const std::string& detail = std::string(), float distance = 0.0f)
@@ -229,8 +238,22 @@ std::vector<Action> For(const Target& t, Vector2 from)
         // crime is the server's to say, by whose law it stands under -- the menu does not
         // pretend to know.
         case EntityKind::Structure:
+            if (t.dockable)
+                out.push_back(Make(Verb::Dock));
             if (t.mine)
             {
+                // What it grows into (#433), from the edge, as the server measures the reach:
+                // at once within it, a build order beyond.
+                const float edge = Distance(t.pos, from) - t.size;
+                for (const Blueprint& bp : t.upgrades)
+                {
+                    Action a =
+                        Make(Verb::Build, bp.name + " onto it (" + CostOf(bp) + ")" +
+                                              (edge > bp.reach ? ", flying there first" : ""));
+                    a.distance = edge > bp.reach ? bp.reach : 0.0f;
+                    a.blueprint = bp.id;
+                    out.push_back(a);
+                }
                 // Whom it fires at is set in the selected-item window, where it shows what
                 // each choice costs (#340).
                 if (t.armed)
@@ -273,6 +296,22 @@ std::vector<Action> ForMission(const MissionTarget& m)
     return out;
 }
 
+std::vector<Blueprint> UpgradesOnto(const std::string&            onto,
+                                    const std::vector<Blueprint>& blueprints)
+{
+    std::vector<Blueprint> out;
+    if (onto.empty())
+        return out;
+    for (const Blueprint& bp : blueprints)
+        for (const std::string& id : bp.onto)
+            if (id == onto)
+            {
+                out.push_back(bp);
+                break;
+            }
+    return out;
+}
+
 std::vector<Action> ForPoint(Vector2 point, Vector2 from, const std::vector<Blueprint>& blueprints)
 {
     std::vector<Action> out;
@@ -286,12 +325,10 @@ std::vector<Action> ForPoint(Vector2 point, Vector2 from, const std::vector<Blue
     // the server decides and says in the journal.
     for (const Blueprint& bp : blueprints)
     {
-        std::string cost;
-        for (const auto& c : bp.cost)
-            cost +=
-                (cost.empty() ? "" : ", ") + std::to_string(c.second) + " " + ResourceName(c.first);
-        Action a = Make(Verb::Build,
-                        bp.name + " (" + cost + ")" + (d > bp.reach ? ", flying there first" : ""));
+        if (!bp.onto.empty())
+            continue;  // an upgrade goes onto a structure of one's own (#433): For offers it
+        Action a = Make(Verb::Build, bp.name + " (" + CostOf(bp) + ")" +
+                                         (d > bp.reach ? ", flying there first" : ""));
         a.distance = d > bp.reach ? bp.reach : 0.0f;  // nonzero: it is an order, not a deploy
         a.blueprint = bp.id;
         out.push_back(a);
