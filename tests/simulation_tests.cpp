@@ -1998,7 +1998,9 @@ TEST_CASE("players are told only what somebody has charted (#144)")
     sim.ServerEnterSystem(s, entry, sim.Universe().startId);
     CHECK(sim.TakeChartsChanged());        // its discoverer is world state, written at once
     CHECK_FALSE(sim.TakeChartsChanged());  // taken once
-    CHECK_FALSE(find(sim.KnownUniverse(), entry)->charted);
+    const WorldLoader::Universe charts = sim.KnownUniverse();
+    REQUIRE(find(charts, entry) != nullptr);
+    CHECK_FALSE(find(charts, entry)->charted);
     known = sim.KnownUniverseFor(s);
     CHECK(find(known, entry)->charted);
     CHECK(find(known, entry)->knownBy == "own");

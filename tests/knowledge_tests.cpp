@@ -122,7 +122,9 @@ TEST_CASE("a find is its pilot's and their corporation's, and nobody else's (#43
     CHECK(sim.Knows(ann, r.entry));
     CHECK_FALSE(sim.Knows(bo, r.entry));
     CHECK_FALSE(sim.OnPublicCharts(r.entry));
-    const WorldLoader::SystemInfo* mine = In(sim.KnownUniverseFor(ann), r.entry);
+    // Kept: a pointer into an index outlives only the index it points into.
+    const WorldLoader::Universe    annMap = sim.KnownUniverseFor(ann);
+    const WorldLoader::SystemInfo* mine = In(annMap, r.entry);
     REQUIRE(mine != nullptr);
     CHECK(mine->charted);
     CHECK(mine->knownBy == "own");
@@ -147,7 +149,10 @@ TEST_CASE("a find is its pilot's and their corporation's, and nobody else's (#43
     // A corporation shares it, while its members are in it.
     Corp(sim, "ann", "bo");
     CHECK(sim.Knows(bo, r.entry));
-    CHECK(In(sim.KnownUniverseFor(bo), r.entry)->knownBy == "corp");
+    const WorldLoader::Universe    boMap = sim.KnownUniverseFor(bo);
+    const WorldLoader::SystemInfo* shared = In(boMap, r.entry);
+    REQUIRE(shared != nullptr);
+    CHECK(shared->knownBy == "corp");
     CHECK(HasStats(sim.GalaxyStateFor(bo, all), r.entry));
     CHECK_FALSE(sim.Knows(cy, r.entry));
     // ...and what a member finds later reaches the others at once.
@@ -182,7 +187,10 @@ TEST_CASE("a pilot's map is sent again when it changes, not each time the world 
     CHECK_FALSE(sim.ChartBy(r.deeper, Factions::Unaffiliated()));  // the first charts stand
     CHECK(sim.OnPublicCharts(r.deeper));
     CHECK(sim.Knows(bo, r.deeper));
-    CHECK(In(sim.KnownUniverse(), r.deeper)->chartedBy == Factions::Id(Factions::Pirates()));
+    const WorldLoader::Universe    charts = sim.KnownUniverse();
+    const WorldLoader::SystemInfo* charted = In(charts, r.deeper);
+    REQUIRE(charted != nullptr);
+    CHECK(charted->chartedBy == Factions::Id(Factions::Pirates()));
 }
 
 TEST_CASE("a route keeps to the gates on the pilot's map (#431)")
@@ -249,7 +257,10 @@ TEST_CASE("charts are kept with the account, and shared while their pilot is awa
     REQUIRE(sim.Corporations().Load(tmp.Path("corps.json")) == Save::Result::Ok);
     ClientSession& bo = Pilot(sim, "bo", r.home);
     CHECK(sim.Knows(bo, r.entry));
-    CHECK(In(sim.KnownUniverseFor(bo), r.entry)->knownBy == "corp");
+    const WorldLoader::Universe    boMap = sim.KnownUniverseFor(bo);
+    const WorldLoader::SystemInfo* shared = In(boMap, r.entry);
+    REQUIRE(shared != nullptr);
+    CHECK(shared->knownBy == "corp");
 
     // An account from another world brings no charts: its ids are that world's systems.
     {
