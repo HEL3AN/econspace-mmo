@@ -274,6 +274,9 @@ add_executable(econspace
     src/game/core/Game.cpp
     src/game/core/GameNet.cpp
     src/game/core/GameHud.cpp
+    src/game/core/GameMap.cpp      # the galaxy map and its routes (#432)
+    src/game/core/Navigation.cpp   # the map's itinerary, planned as the server plans it (#432)
+    src/game/sim/SaveFile.cpp      # ui_navigation.json is renamed into place (#432)
     src/game/core/GameWindows.cpp  # missions, radar and settings, on Ui::Layout (#297)
     src/game/core/GameStation.cpp  # docked: the station, market and hangar windows (#297)
     src/game/core/GameChat.cpp     # the chat window: local, private, the operator (#347)
@@ -491,6 +494,8 @@ add_executable(tests
     tests/camera_tests.cpp
     tests/overview_tests.cpp
     tests/route_tests.cpp
+    tests/navigation_tests.cpp
+    src/game/core/Navigation.cpp  # the map's itinerary, tested without a window (#432)
     tests/sensor_tests.cpp
     tests/gen_tests.cpp
     tests/centre_tests.cpp

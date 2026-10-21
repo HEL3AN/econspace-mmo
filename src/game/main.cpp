@@ -58,6 +58,8 @@ static int Usage(const char* exe)
                  "                 without being shown the choice\n"
                  "      --click X Y FRAME\n"
                  "                 a left click at (X, Y) on frame FRAME; repeatable\n"
+                 "      --right-click X Y FRAME\n"
+                 "                 the same with the right button: a star's menu on the map\n"
                  "      --scan FRAME\n"
                  "                 a pass of the ship's scanner on frame FRAME; repeatable\n"
                  "      --say TEXT FRAME\n"
@@ -115,6 +117,7 @@ int main(int argc, char** argv)
     {
         float x, y;
         int   frame;
+        int   button;
     };
     std::vector<Click> clicks;  // --click X Y FRAME, any number of them
     struct Say
@@ -182,10 +185,14 @@ int main(int argc, char** argv)
             cblind = true;
         else if (std::strcmp(argv[i], "--start") == 0 && i + 1 < argc)
             startAt = argv[++i];
-        else if (std::strcmp(argv[i], "--click") == 0 && i + 3 < argc)
+        else if ((std::strcmp(argv[i], "--click") == 0 ||
+                  std::strcmp(argv[i], "--right-click") == 0) &&
+                 i + 3 < argc)
         {
+            const int button =
+                argv[i][2] == 'r' ? MOUSE_BUTTON_RIGHT : MOUSE_BUTTON_LEFT;  // --right-click
             clicks.push_back({ (float)std::atof(argv[i + 1]), (float)std::atof(argv[i + 2]),
-                               std::atoi(argv[i + 3]) });
+                               std::atoi(argv[i + 3]), button });
             i += 3;
         }
         else if (std::strcmp(argv[i], "--scan") == 0 && i + 1 < argc)
@@ -253,7 +260,7 @@ int main(int argc, char** argv)
         Game game(std::move(conn));
         if (width > 0 && height > 0)
             game.SetResolution(width, height);
-        game.SetPilotName(account);
+        game.SetPilotName(account, host + ":" + std::to_string(port));
         if (uiScale > 0.0f)
             game.SetUiScale(uiScale);
         if (startZoom > 0.0f)
@@ -279,7 +286,7 @@ int main(int argc, char** argv)
         if (!startAt.empty())
             game.AnswerStartWith(startAt);
         for (const Click& c : clicks)
-            game.AddScriptedClick(c.x, c.y, c.frame);
+            game.AddScriptedClick(c.x, c.y, c.frame, c.button);
         for (const Say& s : says)
             game.AddScriptedSay(s.text, s.frame);
         for (int f : scans)

@@ -333,6 +333,10 @@ void Game::BuildClientSnapshot()
         // What the next delta is based on: once per frame, however many arrived.
         clientLink_->Send(Proto::EncodeAck({ snapIn_.Latest() }));
         snapshot_ = std::move(incoming);
+        // The map's itinerary follows the ship: a hop made, a waypoint passed, the order's
+        // word on how it goes (#432). Written only when it changed.
+        if (navigation_.Observe(snapshot_, universe_, NavigationMass()))
+            SaveNavigation();
         worldClock_.Observe(snapshot_.time, GetTime());
         // A buffer of snapshots with server timestamps — for interpolating non-own
         // entities (entity interpolation, Gambetta). We draw them "in the past", smoothing

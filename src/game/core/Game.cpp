@@ -272,8 +272,9 @@ void Game::Run()
                 cmd_.jumpGateId = cmd_.lootId = 0;
                 cmd_.deploy.clear();
                 cmd_.dismantleId = 0;
-                cmd_.defenceId = 0;  // (#340): the rules are set once
-                cmd_.orderKind = 0;  // a build order (#39) is given once
+                cmd_.defenceId = 0;       // (#340): the rules are set once
+                cmd_.orderKind = 0;       // a build order (#39) is given once
+                cmd_.abortOrder = false;  // ...and a route stopped from the map (#432)
                 cmd_.orderBlueprint.clear();
                 cmd_.orderTarget = 0;  // ...and an upgrade's outpost with it (#433)
                 cmd_.scan = false;     // a pass is asked for once (#346)
@@ -528,7 +529,7 @@ void Game::PlayScriptedClicks()
             e.params[1] = (int)c.y;
             PlayAutomationEvent(e);
         }
-        e.params[0] = MOUSE_BUTTON_LEFT;
+        e.params[0] = c.button;
         if (frameIndex_ == c.frame)
         {
             e.type = MOUSE_DOWN;
@@ -581,9 +582,10 @@ void Game::DrawPerfOverlay()
     }
 }
 
-void Game::SetPilotName(const std::string& n)
+void Game::SetPilotName(const std::string& n, const std::string& server)
 {
     pilotName_ = n;
+    LoadNavigation(server);  // the map's itinerary, this server's and this pilot's (#432)
     // Next to the executable, not in data/: it is this machine's preference, not the game's.
     desk_.UseLayoutFile(std::string(GetApplicationDirectory()) + "ui_layout.json", n);
 }
@@ -844,6 +846,11 @@ void Game::DriveStartDock()
 void Game::HandleDockedInput()
 {
     startDockFrames_ = -1;  // --dock has done its job
+    {
+        // The map is open docked too, and a star's menu is this popup (#432).
+        Ui::MouseScope scope(desk_.Owns(WIN_CONTEXT));
+        contextMenu_.Update();
+    }
     HandleMenuBar();
     if (desk_.KeyboardTaken())  // a number being typed into the market is not a hotkey
         return;
