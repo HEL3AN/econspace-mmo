@@ -56,7 +56,11 @@ void StepPlayerShip(Ship& s, const Proto::Command& cmd, float pilotBonus, float 
 
     // Piloting bonus (player skill) — a speed/maneuverability multiplier.
     s.SetPilotBonus(pilotBonus);
-    s.Update(dt);
+    // No time, no motion (#432): a command applied while a standing order flies the ship
+    // carries its intents only. A warp's speed is multiplied per step, not per second, so
+    // an Update(0) would still have advanced it.
+    if (dt > 0.0f)
+        s.Update(dt);
 }
 
 Vector2 DockBearing(Vector2 stationPos, Vector2 shipPos)
