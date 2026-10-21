@@ -22,6 +22,10 @@ struct Mission
     int         handInId = 0;      // the station it is handed in at
     std::string handInName;        // ...its name, when it is in this system; empty otherwise
     bool        anywhere = false;  // a faction plan's job (#345): handed in wherever the ship is
+    // A supply job (#429): delivered by itself beside its site (handInId, when here) or docked
+    // in its system; `aboard` once the goods are in the hold.
+    bool supply = false;
+    bool aboard = false;
 };
 
 struct State

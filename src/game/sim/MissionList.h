@@ -50,6 +50,11 @@ struct Row
     std::string where;       // the system's name (a market's contract has one too)
     std::string due;         // "due in 12 min"; empty for no time
     int         siteId = 0;  // a supply job's site, when it is in this system
+    // A supply job (#429): delivered by itself at its site or docked in its system, not
+    // handed in anywhere. The site by name, wherever it is, and whether the goods are aboard.
+    bool        supply = false;
+    std::string siteName;
+    bool        aboard = false;
     // A siege's job (#407): which side it is for -- the issuer's, besieged or besieging -- and
     // the faction it is against.
     bool      siege = false;

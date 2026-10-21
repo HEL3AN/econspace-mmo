@@ -98,6 +98,8 @@ std::vector<Row> Build(const Obs::View& view, Board board)
             r.handInName = m.siteId != 0 ? NameHere(view, m.siteId) : std::string();
             r.handInHere = m.siteId != 0 && !r.handInName.empty();
             r.siege = IsSiegeJob((MissionType)m.type);
+            r.supply = (MissionType)m.type == MissionType::Supply;
+            r.siteName = m.siteName;
             r.against = m.against;
         }
         if ((MissionType)m.type == MissionType::Escort)
@@ -148,8 +150,16 @@ std::vector<Row> Build(const Obs::View& view, Board board)
             case MissionType::Siege:
             case MissionType::Besiege: done = m.progress; break;
         }
+        if (r.supply)
+            r.aboard = done >= m.targetCount && m.targetCount > 0;
         if ((MissionType)m.type == MissionType::Escort)
             r.status = r.convoy.empty() ? std::string("escort") : r.convoy;
+        else if (r.supply && r.aboard && !r.ready)
+        {
+            // All aboard, but not where it is delivered (#429): not done until it is there.
+            r.progress = 0.9f;
+            r.status = Count(m.targetCount, m.targetCount) + " aboard";
+        }
         else if ((MissionType)m.type != MissionType::Delivery && m.targetCount > 0)
         {
             done = std::min(done, m.targetCount);

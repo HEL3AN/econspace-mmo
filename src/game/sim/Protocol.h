@@ -427,6 +427,7 @@ struct MissionView
     std::string systemName;
     double      deadline = 0.0;
     int         siteId = 0;
+    std::string siteName;  // ...and a supply job's site by name, wherever it is (#429)
     // A siege's job, either side's (#407): the faction it is against. The issuer is the side
     // it is for.
     FactionId against = Factions::Unaffiliated();

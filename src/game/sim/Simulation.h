@@ -1075,15 +1075,20 @@ public:
     // session does not hold already. GenerateDockOffers puts them before the station's own work.
     std::vector<Mission> JobsPostedAt(const ClientSession& s, int stationId) const;
     // Whether a plan's job can be handed in now: anywhere for one that is done, and for a
-    // supply job beside its site, in flight, with the goods aboard.
+    // supply job with the goods aboard in the site's system -- beside the site in flight, or
+    // docked at any station there (#429).
     bool PlanJobReadyNow(const ClientSession& s, const Mission& m) const;
     // A supply job's site, if it is in the session's system: its entity id, else 0.
     int JobSiteId(const ClientSession& s, const Mission& m) const;
     // An escort job's convoy as it is now (#430), into its view: where it is and goes next,
     // and its hauler and escorts when they are in the session's system.
     void ConvoyView(const ClientSession& s, const Mission& m, Proto::MissionView& v) const;
+    // A supply job's site by name, wherever it is; empty when it is not a supply job's or the
+    // site is gone (#429).
+    std::string JobSiteName(const Mission& m) const;
     // Once a pass: escorts that are with their convoy, convoys arrived or lost, sites that no
-    // longer need anything, and jobs out of time.
+    // longer need anything, supply jobs delivered where they are ready (#429), and jobs out of
+    // time.
     void StepJobs();
     // The session shot `killed` down: a besieger counts towards its break-the-siege jobs, and a
     // defender of a besieged outpost towards its join-the-siege jobs (#407).
@@ -1648,6 +1653,8 @@ private:
     // --- Jobs (#345; Simulation_Jobs.cpp) ---
     // A plan's job handed in: paid out of the poster's stock, and a delivery fed to its site.
     bool CompleteJob(ClientSession& s, int index);
+    // What a job paid comes off its poster's stock (#345).
+    void PayJob(const Mission& m);
     // A job ended undone, with why; `penalty` when it was the pilot's to do.
     void FailJob(ClientSession& s, int index, const std::string& why, bool penalty);
     // A delivery takes the jobs rules' share off the time the plan's site has left.

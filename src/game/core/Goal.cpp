@@ -42,8 +42,12 @@ Prompt Next(const State& s)
     // A finished mission comes first wherever the player is: it is money waiting.
     const Mission* ready = nullptr;
     for (const Mission& m : s.active)
-        if (m.ready && ready == nullptr)
+        if (m.ready && ready == nullptr && !m.supply)
             ready = &m;
+    // A supply job that is ready goes over by itself on the server's next pass (#429).
+    for (const Mission& m : s.active)
+        if (m.ready && m.supply)
+            return Make(Step::Work, Quoted(m.title) + ": delivering the goods");
     // ...and a plan's job is paid by wire (#345): handed in from wherever the ship is.
     for (const Mission& m : s.active)
         if (m.ready && m.anywhere)
@@ -83,6 +87,10 @@ Prompt Next(const State& s)
     if (!s.active.empty())
     {
         const Mission& m = s.active.front();
+        // The goods aboard and the site in this system: it is what to fly to (#429).
+        if (m.supply && m.aboard && m.handInId != 0 && !m.handInName.empty())
+            return Make(Step::FlyTo, "Fly to " + m.handInName + " to deliver " + Quoted(m.title),
+                        m.handInId);
         if (NeedsDocking(m))
         {
             if (!m.handInName.empty())
@@ -92,7 +100,7 @@ Prompt Next(const State& s)
         // A plan's job points at what it is about when that is here: a supply job's site, an
         // escort's hauler (#430).
         return Make(Step::Work, Quoted(m.title) + ": " + m.needs,
-                    m.anywhere && !m.handInName.empty() ? m.handInId : 0);
+                    (m.anywhere || m.supply) && !m.handInName.empty() ? m.handInId : 0);
     }
     if (s.nearestStationId != 0)
         return Make(Step::DockForWork, "Dock at " + s.nearestStationName + " to pick up work",
