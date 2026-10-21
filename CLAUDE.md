@@ -62,6 +62,10 @@ These are decisions, not open questions. Plan on top of them.
   macro simulation. Players design *types* in the same grammar the generator uses (M8), and
   a design's parts decide what it can do -- the rule that derives a shape from an object's
   components (#137), read in the other direction.
+- **Knowledge, territory and law have a decided design, being built in slices** (#431,
+  `documents/world_knowledge_and_territory.md`): per-pilot and public charts, native names,
+  claims, defence without windows, PvP as a crime. None of it is current behaviour until its
+  slice lands.
 
 ## Build and run
 
