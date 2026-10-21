@@ -301,15 +301,18 @@ corporation's treasury -- in `world_rules.json` → `patrols`. Patrols are prese
 count toward influence. They are cold arithmetic in a cold system like any NPC (#295).
 
 **C2. Attacks are told to offline owners.** When a structure is attacked and its owner is
-not on, a notice is kept for them (and for their corporation's officers) and shown in the
+not on, a notice is kept for them (and for their corporation's members) and shown in the
 journal on login. A Discord hook is a later slice.
 
 ### Today's code
 
 - `Simulation_Defence.cpp` keeps `OwnerBook`s in `world.json` (`owners`): standings and the
   crimes a structure committed while its owner was away, settled at login by `StepOwners`.
-  Offline notices go into the same book (`notices`, capped) and are posted to the journal by
-  the same step.
+  Attack notices are not a store of their own (owner, 2026-10-22): they are journal entries
+  (`structure_attacked`). An attack under way is kept per structure in `world.json`
+  (`attacks`) and told once when it is over; a corporation member's goes into the
+  corporation's journal (`corps.json`), which members read at once or at login; anyone
+  else's offline entry goes into the pending part of their journal in the account save.
 - NPC ships are `NpcShip` with a faction and a role; a corporation patrol needs an owner
   that is a corporation, not a faction. It is a new role whose standings and allow list come
   from the corporation's settings, not the faction registry.
@@ -360,11 +363,13 @@ Each slice bumps what it changes, once. Additions an older reader can ignore nee
 | `world.json` (`WORLD_VERSION`) | per system: `chartedBy`, `firstContact {by, kind, at}`; `visited` translated on load | 1, 2 |
 | | per system: `holderCorp`; owner policies (tax, docking) by holder | 5 |
 | | licences: `{faction, owner, until}` | 6 |
-| | `owners.<account>.notices` (offline attack notices) | 13 |
+| | `attacks`: attacks under way, per structure | 13 |
 | | corporation patrols' presence, per system | 12 |
 | account (`ACCOUNT_VERSION`) | `known`: per system {since, observedAt, observed[]}; `contacts` | 1, 14 |
+| | `journal` (pending entries), `corpJournal` {corp, seen} | 13 |
 | | `securityStatus`, `criminalUntil` (world time) | 10 |
 | `corps.json` (`CORPS_VERSION`) | shared knowledge (derived from members, not stored), `treasury`, `policies`, `patrols` | 1, 5, 12 |
+| | `journal` per corporation | 13 |
 | region documents (`GENERATOR_VERSION`) | `natives.names` per system | 3 |
 | `data/world_rules.json` | `law`, `influence`, `licences`, `patrols`, `security` | 5, 6, 10, 11, 12 |
 | `data/blueprints.json` | `tier` per blueprint; mend rate per tier | 7 |
@@ -499,8 +504,8 @@ are marked; slices without one may go in any order.
     - *Tests:* limits are enforced; a patrol guards a structure while its members are offline;
       it does not fire on corporation members.
 13. **Offline attack notices.** *Independent; small, may go early.*
-    - *Scope:* `OwnerBook.notices`, posted to the journal at login for the owner and the
-      corporation's officers; capped and merged per structure.
+    - *Scope:* journal entries, merged per structure per attack: the owner's pending journal
+      in the account save, or the corporation's journal its members read; capped.
     - *Tests:* an attack while offline is in the journal on login, once; a long siege is one
       merged notice, not hundreds.
 

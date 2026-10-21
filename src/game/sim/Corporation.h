@@ -1,5 +1,6 @@
 #pragma once
 
+#include "sim/Events.h"
 #include "sim/SaveSchema.h"
 
 #include <nlohmann/json_fwd.hpp>
@@ -61,6 +62,11 @@ struct Corp
     long long           founded = 0;
     std::vector<Member> members;  // the CEO first, then by account
     std::vector<Invite> invites;
+    // What happened to the corporation (#431 C2): the pilot's journal entry, kept for the
+    // corporation, which every member reads -- at once while on, and at login what came
+    // since they last read it (ClientSession::corpJournalSeen). Capped, oldest dropped.
+    std::vector<Ev::Event> journal;
+    int                    nextJournalSeq = 1;
 
     const Member* Find(const std::string& account) const;
     const Member* Ceo() const;
@@ -131,6 +137,11 @@ public:
     // The corporations that have invited `account` and whose invite has not run out.
     std::vector<const Corp*>           InvitesFor(const std::string& account, double now) const;
     const std::map<std::string, Corp>& All() const { return corps_; }
+
+    // Adds an entry to the journal of `account`'s corporation; its seq, or 0 when they are
+    // in none.
+    static constexpr size_t JOURNAL_CAP = 50;
+    int Record(const std::string& account, Ev::Kind kind, const std::string& text);
 
     // Drops invites older than INVITE_SECONDS.
     void Expire(double now);

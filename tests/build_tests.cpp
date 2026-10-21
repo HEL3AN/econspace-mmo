@@ -605,7 +605,10 @@ TEST_CASE("a structure is shot down, leaves a wreck, and the law decides the pri
         CHECK(mirror.byId.count(id) == 0);
         CHECK(ann.account.GetBounty(Fac::TradersGuild()) == doctest::Approx(5.0 * shots + 50.0));
         CHECK(sim.StructuresOwnedBy("hunter") == 0);
-        CHECK(s.journal.back().text.find("The site of Lantern") == 0);
+        // Told as an attack, in one entry for the whole of it (#431 C2).
+        CHECK(s.journal.back().kind == Ev::Kind::StructureAttacked);
+        CHECK(s.journal.back().text.find("Your Lantern (being built)") == 0);
+        CHECK(s.journal.back().text.find("destroyed") != std::string::npos);
 
         // The wreck its blueprint names, where it stood, worth the rule's share of the cost.
         const std::vector<const Derelict*> wrecks = Wrecks(sim, sys);

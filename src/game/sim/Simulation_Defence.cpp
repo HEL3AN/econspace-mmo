@@ -24,6 +24,18 @@ const Structure* OwnedStructure(const SystemState& st, int id)
     return nullptr;
 }
 
+// "40 s", "12 min", "3 h 5 min": how long, as a pilot reads it.
+std::string Span(double seconds)
+{
+    const long long s = seconds < 0.0 ? 0 : (long long)seconds;
+    if (s < 60)
+        return std::to_string(s) + " s";
+    if (s < 3600)
+        return std::to_string(s / 60) + " min";
+    const long long m = (s % 3600) / 60;
+    return std::to_string(s / 3600) + " h" + (m > 0 ? " " + std::to_string(m) + " min" : "");
+}
+
 // Whether what it is, or will be once built, has guns.
 bool Armed(const Structure& t)
 {
@@ -165,6 +177,11 @@ float Simulation::OwedStanding(const std::string& account, FactionId f) const
 
 void Simulation::StepOwners()
 {
+    StepAttacks();
+    // Who joined a corporation reads its journal from then on (#431 C2).
+    for (auto& kv : sessions_)
+        if (!kv.second.accountName.empty())
+            ReadCorpJournal(kv.second);
     if (owners_.empty())
         return;
     for (auto& kv : sessions_)
@@ -192,6 +209,132 @@ void Simulation::StepOwners()
         for (FactionId f : Factions::All())
             b.standing[f] = s.account.GetReputation(f);
     }
+}
+
+void Simulation::NoteAttack(const std::string& owner, const std::string& key,
+                            const std::string& name, const std::string& system,
+                            const std::string& by, float hull, bool destroyed)
+{
+    auto       it = attacks_.find(key);
+    const bool fresh = it == attacks_.end();
+    if (fresh)
+    {
+        it = attacks_.emplace(key, AttackEpisode()).first;
+        it->second.owner = owner;
+        it->second.system = system;
+        it->second.first = time_;
+    }
+    AttackEpisode& a = it->second;
+    a.name = name;
+    a.by = by;
+    a.hits++;
+    a.hull = hull;
+    a.last = time_;
+    if (destroyed)
+    {
+        const AttackEpisode over = a;
+        attacks_.erase(it);
+        EndAttack(over, true);
+        return;
+    }
+    // Whoever is on hears of it when it starts; the hits after are the same attack.
+    if (fresh)
+    {
+        const std::string what = name + " in " + SystemName(system) + " is under attack by " + by;
+        TellOwner(owner, "Your " + what, owner + "'s " + what, true);
+    }
+}
+
+void Simulation::EndAttack(const AttackEpisode& a, bool destroyed)
+{
+    std::string what = a.name + " in " + SystemName(a.system) + " was attacked by " + a.by + ": " +
+                       std::to_string(a.hits) + (a.hits == 1 ? " hit" : " hits");
+    if (a.last > a.first)
+        what += " over " + Span(a.last - a.first);
+    what += destroyed
+                ? "; it was destroyed"
+                : "; it stands at " + std::to_string((int)(a.hull * 100.0f + 0.5f)) + "% hull";
+    TellOwner(a.owner, "Your " + what, a.owner + "'s " + what, false);
+}
+
+void Simulation::TellOwner(const std::string& owner, const std::string& yours,
+                           const std::string& theirs, bool onlyOn)
+{
+    const Corps::Corp* corp = corps_.Of(owner);
+    // The corporation's journal, which its members read (#347): whoever is on now, and the
+    // rest at login. The owner is a member like any other.
+    if (corp != nullptr && !onlyOn)
+    {
+        const int seq = corps_.Record(owner, Ev::Kind::StructureAttacked, theirs);
+        for (auto& kv : sessions_)
+            if (seq != 0 && corps_.SameCorp(kv.second.accountName, owner))
+                ReadCorpJournal(kv.second);
+        return;
+    }
+    bool ownerOn = false;
+    for (auto& kv : sessions_)
+    {
+        ClientSession& s = kv.second;
+        if (s.accountName == owner)
+            ownerOn = true;
+        if (s.accountName == owner || (corp != nullptr && corps_.SameCorp(s.accountName, owner)))
+            s.RecordEvent(Ev::Kind::StructureAttacked, s.accountName == owner ? yours : theirs);
+    }
+    if (ownerOn || onlyOn)
+        return;
+    // Nobody on to read it: the pending part of the owner's journal, in their save.
+    Ev::Event e;
+    e.kind = Ev::Kind::StructureAttacked;
+    e.text = "While you were away: " + yours;
+    absent_.emplace_back(owner, e);
+    if (absent_.size() > 4 * MAX_PENDING_JOURNAL)  // nobody hosting takes them (a test)
+        absent_.erase(absent_.begin());
+}
+
+void Simulation::ReadCorpJournal(ClientSession& s)
+{
+    const Corps::Corp* c = corps_.Of(s.accountName);
+    if (c == nullptr)
+    {
+        s.corpJournalOf.clear();
+        s.corpJournalSeen = 0;
+        return;
+    }
+    if (s.corpJournalOf == c->id && s.corpJournalSeen >= c->nextJournalSeq - 1)
+        return;  // nothing new: the usual case, every tick
+    // Joined since they last read it: what came before is not theirs to read.
+    if (s.corpJournalOf != c->id)
+    {
+        s.corpJournalOf = c->id;
+        s.corpJournalSeen = c->nextJournalSeq - 1;
+        return;
+    }
+    for (const Ev::Event& e : c->journal)
+        if (e.seq > s.corpJournalSeen)
+        {
+            s.RecordEvent(e.kind, e.text);
+            s.corpJournalSeen = e.seq;
+        }
+}
+
+void Simulation::StepAttacks()
+{
+    for (auto it = attacks_.begin(); it != attacks_.end();)
+        if (time_ - it->second.last > ATTACK_EPISODE_SECONDS)
+        {
+            const AttackEpisode over = it->second;
+            it = attacks_.erase(it);
+            EndAttack(over, false);
+        }
+        else
+            ++it;
+}
+
+std::vector<std::pair<std::string, Ev::Event>> Simulation::TakeAbsentEvents()
+{
+    std::vector<std::pair<std::string, Ev::Event>> out;
+    out.swap(absent_);
+    return out;
 }
 
 nlohmann::json Simulation::OwnersJson() const

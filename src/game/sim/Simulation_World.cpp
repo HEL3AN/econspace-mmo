@@ -1164,6 +1164,20 @@ bool Simulation::SaveWorld(const std::string& path) const
     // What the world remembers of structures' owners while they are away (#340).
     if (!owners_.empty())
         j["owners"] = OwnersJson();
+    // Attacks under way on players' structures (#431 C2): one a restart interrupts is still
+    // told when it is over. An addition an older build ignores.
+    if (!attacks_.empty())
+    {
+        json attacks = json::object();
+        for (const auto& kv : attacks_)
+        {
+            const AttackEpisode& a = kv.second;
+            attacks[kv.first] = { { "owner", a.owner }, { "name", a.name }, { "system", a.system },
+                                  { "by", a.by },       { "hits", a.hits }, { "hull", a.hull },
+                                  { "first", a.first }, { "last", a.last } };
+        }
+        j["attacks"] = std::move(attacks);
+    }
 
     // Beside the real file, then renamed over it, with older copies kept (#341): a crash
     // mid-write used to leave a truncated world that the next boot replaced with a new galaxy.
@@ -1192,6 +1206,21 @@ Save::Result Simulation::LoadWorld(const std::string& path)
     worldId_ = j.contains("worldId") && j["worldId"].is_string() ? j["worldId"].get<std::string>()
                                                                  : std::string();
     OwnersFrom(j.value("owners", json()));  // (#340)
+    const json attacks = j.value("attacks", json());
+    if (attacks.is_object())
+        for (auto it = attacks.begin(); it != attacks.end(); ++it)
+            if (it->is_object() && it->value("owner", std::string()) != "")
+            {
+                AttackEpisode& a = attacks_[it.key()];
+                a.owner = it->value("owner", std::string());
+                a.name = it->value("name", std::string());
+                a.system = it->value("system", std::string());
+                a.by = it->value("by", std::string());
+                a.hits = it->value("hits", 1);
+                a.hull = it->value("hull", 1.0f);
+                a.first = it->value("first", time_);
+                a.last = it->value("last", a.first);
+            }
     for (auto it = j["galaxy"].begin(); it != j["galaxy"].end(); ++it)
     {
         const std::string& sid = it.key();
@@ -1424,6 +1453,8 @@ void Simulation::Reset()
 {
     systems_.clear();
     structureDue_.clear();
+    attacks_.clear();
+    absent_.clear();
     agentIdCounter_ = 0;
     minds_.Clear();
     mindsSeeded_ = false;

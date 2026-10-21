@@ -2674,6 +2674,19 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
         // Who is in each local channel, after the layouts above: a pilot is told who is in a
         // system once it has been told it is there (#347).
         SendPresence(clients, sim, chat, net);
+        // What happened to pilots who are not on (#431 C2): into the pending part of their
+        // journal, in their account file, which LoadAccount gives them at login. Rare -- an
+        // attack is one entry however many hits it took.
+        {
+            std::map<std::string, std::vector<Ev::Event>> absent;
+            for (auto& kv : sim.TakeAbsentEvents())
+                absent[kv.first].push_back(kv.second);
+            for (const auto& kv : absent)
+                if (sim.AppendPendingJournal(AccountPath(accountsDir, kv.first), kv.second) ==
+                    Save::Result::Corrupt)
+                    Log::Printf("%s: could not keep %d journal entries for them.\n",
+                                kv.first.c_str(), (int)kv.second.size());
+        }
         // Corporations (#347): a change is written at once -- it is a few pilots' word, and
         // rare -- and the allow-lists are told again, cut for each viewer as the corporations
         // now say, with the next deltas. Each pilot's view goes out when the corporations or

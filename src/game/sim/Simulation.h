@@ -829,6 +829,37 @@ public:
                        int byNpc);
     // Owed charges settled and standings noted, for every connected owner. Every tick.
     void StepOwners();
+
+    // --- Attacks told to owners (#431 C2, slice 13) ---
+    // An attack on a player's structure goes into the journal: the owner's own, or their
+    // corporation's (Corps::Corp::journal) when they are in one. Hits closer together than
+    // ATTACK_EPISODE_SECONDS are one attack, told once when it is over (or the structure is
+    // gone) -- a siege of hours is one entry -- and, to whoever is on, once when it starts.
+    // Nobody on to read it: the owner's entry waits in their account save (the pending part
+    // of the journal) and their corporation's in corps.json, and each is in the journal at
+    // login. A Discord relay (a later slice) would read the same entries.
+    static constexpr double ATTACK_EPISODE_SECONDS = 600.0;
+    // The pending part of an account's journal, kept in its save, at most this long.
+    static constexpr size_t MAX_PENDING_JOURNAL = 20;
+    // Journal entries for accounts that were not on, for the host to append to their saves
+    // (AppendPendingJournal). Taken, so each is written once; capped while nobody takes them.
+    std::vector<std::pair<std::string, Ev::Event>> TakeAbsentEvents();
+    // Appends `events` to the pending journal of the account saved at `path`, keeping the
+    // last MAX_PENDING_JOURNAL. Missing, damaged or newer files are left as they are (#20).
+    static Save::Result AppendPendingJournal(const std::string&            path,
+                                             const std::vector<Ev::Event>& events);
+    // Attacks that have gone quiet, ended and told. Every tick, from StepOwners.
+    void StepAttacks();
+    // What the world remembers about an attack under way on structure `key`
+    // ("<system>/<static key>"): whose it is, and what has happened so far.
+    struct AttackEpisode
+    {
+        std::string owner, name, system, by;  // `by`: who attacked, as last seen
+        int         hits = 0;
+        float       hull = 1.0f;  // what was left after the last hit
+        double      first = 0.0, last = 0.0;
+    };
+    const std::map<std::string, AttackEpisode>& Attacks() const { return attacks_; }
     // How much of a crime is waiting for its owner: what ChargeOwner put by, and not yet
     // settled. Zero for an account that owes nothing.
     float OwedStanding(const std::string& account, FactionId f) const;
@@ -1557,8 +1588,21 @@ private:
         PerFaction<double> owedBounty;
     };
     std::map<std::string, OwnerBook> owners_;
-    nlohmann::json                   OwnersJson() const;
-    void                             OwnersFrom(const nlohmann::json& j);
+    // Attacks under way on players' structures (#431 C2), saved with the world so one that
+    // a restart interrupts is still told; and what nobody was on to read, for the host.
+    std::map<std::string, AttackEpisode>           attacks_;
+    std::vector<std::pair<std::string, Ev::Event>> absent_;
+    void NoteAttack(const std::string& owner, const std::string& key, const std::string& name,
+                    const std::string& system, const std::string& by, float hull, bool destroyed);
+    void EndAttack(const AttackEpisode& a, bool destroyed);
+    // An entry for `owner` and their corporation: told to whoever is on, kept for the rest.
+    // `onlyOn`: only to whoever is on, nothing kept (an attack starting).
+    void TellOwner(const std::string& owner, const std::string& yours, const std::string& theirs,
+                   bool onlyOn);
+    // Gives `s` what their corporation's journal holds that they have not read.
+    void           ReadCorpJournal(ClientSession& s);
+    nlohmann::json OwnersJson() const;
+    void           OwnersFrom(const nlohmann::json& j);
 
     // Roaming holes (S9): what the epochs decided, the last epoch decided, and which
     // signatures somebody has already been credited with finding (#346).

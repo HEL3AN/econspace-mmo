@@ -432,7 +432,22 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
         st.provokedBy[id][by->id] = time_ + PROVOKED_SECONDS;
 
     t->TakeDamage(damage);
-    if (t->HullFraction(time_) > 0.0f)
+    // Its owner hears of it, on or off (#431 C2): a player's, shot by somebody else or
+    // besieged. Wear is not an attack, and a faction's outpost has its history instead.
+    FactionId   ownerFaction;
+    std::string attackedBy;
+    if (cause != Loss::Decay && !t->GetOwner().empty() &&
+        !Outposts::FactionOf(t->GetOwner(), ownerFaction) &&
+        (by == nullptr || by->accountName != t->GetOwner()))
+        attackedBy = by != nullptr ? (by->accountName.empty() ? "a pilot" : by->accountName)
+                     : cause == Loss::Siege ? FactionName(attacker)
+                                            : "unknown attackers";
+    const float hull = t->HullFraction(time_);
+    if (!attackedBy.empty())
+        NoteAttack(t->GetOwner(), st.id + "/" + StaticKey(st.id, id),
+                   t->GetName() + (t->IsBuilding() ? " (being built)" : ""), st.id, attackedBy,
+                   hull, hull <= 0.0f);
+    if (hull > 0.0f)
     {
         MarkStaticChanged(st, id);  // everyone sees the hull go down, and a save keeps it
         return false;
@@ -483,10 +498,10 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
         }
     }
 
-    const std::string what = (wasSite ? "The site of " : "") + name + " in " + SystemName(systemId);
-    for (auto& kv : sessions_)
-        if (!owner.empty() && kv.second.accountName == owner)
-            kv.second.RecordEvent(Ev::Kind::Notice, what + " was destroyed");
+    // Its owner was told by NoteAttack -- but not of their own shot.
+    if (by != nullptr && !owner.empty() && by->accountName == owner)
+        by->RecordEvent(Ev::Kind::Notice, (wasSite ? "The site of " : "") + name + " in " +
+                                              SystemName(systemId) + " was destroyed");
     if (by != nullptr)
         by->RecordEvent(Ev::Kind::Notice, "Destroyed " + name);
     // An Anchor (#342 S4), anyone's: the mouth it held is unstable again.
