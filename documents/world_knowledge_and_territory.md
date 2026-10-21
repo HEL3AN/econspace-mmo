@@ -384,34 +384,28 @@ The agent (`econagent`) gets each verb and each new field in the same slice, and
 
 ---
 
-## Open questions
+## Decided after the rounds
 
-These are not decided; each names a recommendation for the owner to accept or change.
+The owner settled these on 2026-10-22, taking the recommendations put to them.
 
-1. **Do factions name what they chart?** N2 gives naming to the discoverer. When the
-   discoverer is a major faction, the system could take a name from that faction's culture,
-   or keep its designation for ever. *Recommendation:* majors get a naming culture and name
-   what they chart first; nobody renames it.
-2. **Corporation–faction relations** (round 2, left open). Does a corporation have a
-   standing of its own with factions, or is it its members' (for licences, docking, police)?
-   *Recommendation:* the licence is held by the corporation and the standing threshold is
-   checked against the officer who buys it; standings stay each pilot's (#347).
-3. **How the front line binds a player's guns.** For NPC sieges D3 decides whether a siege
-   may be laid. For players there is no siege plan, only fire. *Recommendation:* behind the
-   line, a structure's mend rate is doubled; the line decides how hard, never whether.
-4. **Is a licence a one-off or a rent?** *Recommendation:* a rent, paid each period from the
-   owner's (or corporation's) money, lapsing to trespass after a grace day.
-5. **Law in a corporation's system.** L1 makes law a lawful faction's. Is a corporation that
-   pays police a source of law? *Recommendation:* yes, in systems it holds, at the security
-   its police buy, with its standings toward the attacker deciding "hostile".
-6. **A criminal who logs off.** Does the flag keep running, and does the ship stay in space?
-   *Recommendation:* the flag counts world time, so it runs out offline; a ship that
-   disconnects flagged lingers in space for the flag's remaining time rather than the usual
-   linger (`ClientSession::lingerLeft`, `StepLinger`), so logging off is no escape.
-7. **War declarations.** L2 frees fire on "declared war enemies", and nothing declares war
-   today. *Recommendation:* corporations declare war on each other for a fee, a later slice;
-   factions' stances are their war.
-8. **Who may sell charts, and what a sale reveals.** Waits for slice 16's design.
+1. **Factions name what they chart.** An inhabited system keeps its native culture's name.
+   An empty system first charted by a major faction takes a name in that faction's style.
+   Nobody renames either.
+2. **Corporation–faction relations.** A corporation's standing with a faction is the sum of
+   its members' standings. It decides licences, docking and whose police guard its
+   structures. Pilots keep their own standings (#347). Full diplomacy comes later.
+3. **The front line binds sieges and claims, not guns.** It decides whether a structure may
+   be besieged or a claim laid. Firing at ships is never limited by it.
+4. **A licence is a rent**, paid each week from the owner's or corporation's money. It lapses
+   to trespass after a grace day unpaid. The owner chose it as the more MMO-like option.
+5. **Law in a corporation's system.** A corporation that pays police in a system it holds is
+   a source of law there. The same rules apply, at the security its police buy.
+6. **A criminal who logs off.** The ship stays in space for a minute after disconnecting, as
+   in EVE. The criminal flag keeps its remaining time, and that time runs down once the
+   pilot is back.
+7. **War declarations** are a later slice. Until then, players attack each other without a
+   crime only where there is no law (security 0).
+8. **Chart trading** waits for slice 16's design, built into the map interface.
 
 ---
 
