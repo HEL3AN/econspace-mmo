@@ -28,6 +28,7 @@
 #include "core/Prediction.h"
 #include "core/Faction.h"
 #include "core/Goal.h"
+#include "core/Navigation.h"
 #include "economy/Resource.h"
 #include <algorithm>
 #include <deque>
@@ -182,19 +183,24 @@ public:
     void SetBlurForRun(bool on) { Ui::SetBlurSetting(on); }
     // The colour-blind standing palette (--cblind), for a picture of it.
     void SetColourBlindForRun(bool on) { Ui::SetColourBlindSetting(on); }
-    // A left click at (x, y) on frame `frame` (--click X Y FRAME), played into raylib's own
-    // input state: the desk, the layouts and the widgets see it exactly as they see the
-    // mouse, which a click sent to the window from outside never reaches (a hidden window
-    // has no focus to give it). For checking, in a real client, what a click does.
-    void AddScriptedClick(float x, float y, int frame) { clicks_.push_back({ x, y, frame }); }
+    // A click at (x, y) on frame `frame` (--click X Y FRAME, --right-click for the right
+    // button), played into raylib's own input state: the desk, the layouts and the widgets see
+    // it exactly as they see the mouse, which a click sent to the window from outside never
+    // reaches (a hidden window has no focus to give it). For checking, in a real client, what
+    // a click does.
+    void AddScriptedClick(float x, float y, int frame, int button = MOUSE_BUTTON_LEFT)
+    {
+        clicks_.push_back({ x, y, frame, button });
+    }
     // A chat line sent on frame `frame` (--say TEXT FRAME), as if typed into the chat window:
     // two clients and a server show what local chat does without a hand on either (#347).
     void AddScriptedSay(const std::string& text, int frame) { says_.push_back({ text, frame }); }
     // --scan FRAME: a pass of the scanner asked for on that frame (#346).
     void AddScriptedScan(int frame) { scans_.push_back(frame); }
-    // Who this client is logged in as: a discoverer may name what they found (#145), and
-    // the window layout is kept per account (#297).
-    void SetPilotName(const std::string& n);
+    // Who this client is logged in as, and on which server: a discoverer may name what they
+    // found (#145), the window layout is kept per account (#297), and the map's itinerary per
+    // server and pilot (#432).
+    void SetPilotName(const std::string& n, const std::string& server = std::string());
     ~Game();
 
     // Until the window is closed -- or the server ends the session, or the connection
@@ -278,7 +284,21 @@ private:
     void AddChatLine(const Proto::ChatLine& line);
     void ChatNotice(const std::string& text);  // a line from this client, to this pilot
     void DrawGalaxyMap();                      // full-screen star map
-    void DrawSensorScreen();                   // the sensor grid (#123)
+    // The map's routes (#432), in GameMap.cpp: the sidebar's tabs, the right-click menu on a
+    // star, and the itinerary (Navigation) -- planned here, flown by the server's route order.
+    void        DrawMapSidebar(Ui::Layout& L);
+    void        OpenMapMenu(const std::string& system, Vector2 at);
+    bool        PlotMapRoute(const std::string& system);
+    bool        AddMapWaypoint(const std::string& system);
+    void        StartMapRoute();
+    void        StopMapRoute();
+    void        MapRouteChanged(bool wasActive);  // a flown route changed: fly the new one
+    void        FocusMapSystem(const std::string& system);
+    std::string MapSystemName(const std::string& id) const;
+    double      NavigationMass() const;
+    void        SaveNavigation();
+    void        LoadNavigation(const std::string& server);
+    void        DrawSensorScreen();  // the sensor grid (#123)
     // The sensor cell under a screen point, from the last picture drawn: the id of what is
     // in it (0 if nothing) and the world point at its centre. False off the grid.
     bool             SensorPick(Vector2 screen, int& id, Vector2& world) const;
@@ -571,6 +591,7 @@ private:
     {
         float x, y;
         int   frame;
+        int   button;
     };
     std::vector<ScriptedClick> clicks_;
     // --say TEXT FRAME: a chat line typed and sent on that frame (#347).
@@ -648,6 +669,15 @@ private:
     bool    galaxyInit_ = false;
     bool    galaxyDragging_ = false;
     Vector2 galaxyDragLast_ = { 0.0f, 0.0f };
+    // The itinerary (#432), and where it is kept: ui_navigation.json beside the executable,
+    // under "server/pilot". A file this build cannot read is left alone, never overwritten.
+    Navigation          navigation_;
+    int                 mapTab_ = 0;  // the sidebar: route, favourites, legend
+    std::string         navigationKey_;
+    bool                navigationWritable_ = true;
+    std::string         mapNotice_;      // why the last thing asked of the map could not be done
+    mutable std::string navMassDesign_;  // NavigationMass, kept by design id
+    mutable double      navMass_ = 0.0;
 
     ContextMenu contextMenu_;  // right-click action menu on an object
 };
