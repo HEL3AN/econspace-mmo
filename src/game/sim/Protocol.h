@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    49;  // 49: influence and claims (#431 slice 5) -- a galaxy stat names the corporation that
+    50;  // 50: a structure's layout carries when its damage was set and whether it mends, and
+         // its damage mends on the clock at its blueprint tier's rate (#431 slice 7);
+         // 49: influence and claims (#431 slice 5) -- a galaxy stat names the corporation that
          // holds the system and the fee its markets take, a CorpAct carries a policy's value
          // (tax, docking), and a CorpView the treasury, the policies and the systems held;
          // 48: the index and the galaxy map are each pilot's own (#431): what they and their
@@ -530,8 +532,13 @@ struct EntityLayout
     // A structure's blueprint and the damage it has taken (#39). Its hull at any instant is
     // Structure::MaxHull of the time line, so a site's grows on every client with no word
     // from the server; a hit is a change and comes as a delta.
+    // The damage is as of `damagedAt`, and it mends from then at the blueprint tier's rate
+    // (#431 D1) unless `mends` is false -- a faction's outpost nobody supplies -- so a client
+    // shows it mending with no word from the server, as it shows a site going up.
     std::string blueprint;
     float       damage = 0.0f;
+    double      damagedAt = 0.0;
+    bool        mends = true;
     // A player's armed structure's rules of engagement (#340): what it fires at, and so what
     // it costs its owner. Default -- return fire.
     Defence defence;

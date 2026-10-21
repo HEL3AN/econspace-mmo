@@ -342,7 +342,7 @@ TEST_CASE("an orbital outpost moves with its planet and is still its satellite a
     CHECK(back->GetOrbit()->phase == doctest::Approx(spot.orbit->phase));
     CHECK(back->GetOrbit()->speed == doctest::Approx(spot.orbit->speed));
     CHECK(back->GetOwner() == Outposts::OwnerOf(Fac::Syndicate()));
-    CHECK(back->GetDamage() == doctest::Approx(100.0f));
+    CHECK(back->GetDamage(b.Time()) == doctest::Approx(100.0f));
 
     // Destroyed, it leaves its wreck on the same orbit (#39).
     REQUIRE(b.DamageStructure(*b.SystemById(where), back->GetId(), 1.0e6f, nullptr));

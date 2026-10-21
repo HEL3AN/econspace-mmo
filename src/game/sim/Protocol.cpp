@@ -184,7 +184,12 @@ json EntityLayoutsJson(const std::vector<Proto::EntityLayout>& v)
         if (!e.blueprint.empty())
             ej["bp"] = e.blueprint;
         if (e.damage > 0.0f)
+        {
             ej["dmg"] = e.damage;
+            ej["dmgAt"] = e.damagedAt;
+        }
+        if (!e.mends)
+            ej["nomend"] = true;
         if (!e.defence.IsDefault())
             ej["def"] = DefenceJson(e.defence);
         ents.push_back(std::move(ej));
@@ -229,6 +234,8 @@ std::vector<Proto::EntityLayout> ToEntityLayouts(const json& j, const char* key)
         e.expiresAt = ej.value("exp", 0.0);
         e.blueprint = ej.value("bp", std::string());
         e.damage = ej.value("dmg", 0.0f);
+        e.damagedAt = ej.value("dmgAt", 0.0);
+        e.mends = !ej.value("nomend", false);
         if (ej.contains("def"))
             DefenceFrom(ej["def"], e.defence);  // what it cannot read leaves the default
         out.push_back(std::move(e));

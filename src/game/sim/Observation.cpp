@@ -141,15 +141,19 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
                              !AllowListText(l.defence).empty())
                         extra += " but " + AllowListText(l.defence);
                 }
-                // Its hull once it has been hit, by the rule the server destroys it by.
-                if (l.damage > 0.0f)
-                {
-                    Structure probe(l.pos, l.size, l.name, l.archetype);
-                    probe.StartBuilding(l.startedAt, l.completesAt);
-                    probe.SetBlueprint(l.blueprint);
-                    probe.SetDamage(l.damage);
+                // Its hull once it has been hit, by the rule the server destroys it by, and
+                // what it mends (#431 D1): fire below that rate does nothing to it.
+                Structure probe(l.pos, l.size, l.name, l.archetype);
+                probe.StartBuilding(l.startedAt, l.completesAt);
+                probe.SetBlueprint(l.blueprint);
+                probe.SetDamage(l.damage, l.damagedAt);
+                probe.SetMends(l.mends, l.damagedAt);
+                if (probe.GetDamage(now) > 0.0f)
                     extra += Fmt("  hull %.0f%%", probe.HullFraction(now) * 100.0f);
-                }
+                if (probe.MendRate() > 0.0f)
+                    extra += Fmt("  mends %.0f/s", probe.MendRate());
+                else if (!l.mends)
+                    extra += "  unsupplied, not mending";
             }
         }
     }

@@ -326,7 +326,10 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   differently from an unwatched one. A siege's force is *lent* by holdings within reach and
   counted nowhere while it travels: `Plan::lent` is what each holding is short of (it does not
   regrow it) until a `Return` plan brings the survivors home. Moving presence without a plan
-  that says where it is creates or destroys ships.
+  that says where it is creates or destroys ships. A finished structure mends at its
+  blueprint tier's rate (#431 D1) as f(time) from the instant its damage was set
+  (`Structure::GetDamage(now)`), so fire below the rate does nothing, hot or cold; only an
+  unsupplied faction outpost stops mending, and upkeep decays it instead.
 - **Per-player state lives in `ClientSession`, not in `Simulation`** (#3). The ship, the
   account, the missions, the standing order and the event journal belong to a session, and
   every player verb takes the session it acts for. There is no "active system" either: a

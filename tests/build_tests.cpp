@@ -106,8 +106,12 @@ bool LoadBlueprintsInline(const std::string& body)
     const TempDir     tmp;
     const std::string path = tmp.Path("blueprints_test.json");
     {
+        // Every blueprint names a tier (#431 D1); the file's one tier, unless the body has its own.
         std::ofstream f(path);
-        f << body;
+        if (body.find("\"tiers\"") == std::string::npos && body.rfind("{ ", 0) == 0)
+            f << "{ \"tiers\": { \"t\": { \"mend\": 0.01 } }, " << body.substr(2);
+        else
+            f << body;
     }
     const bool ok = Blueprints::Load(path);
     return ok;
@@ -130,7 +134,7 @@ TEST_CASE("a blueprint is data, and a wrong one does not load (#39)")
     REQUIRE(Archetypes::Find(Structure::SITE_ARCHETYPE) != nullptr);
 
     const std::string ok = R"("archetype": "structure.beacon", "cost": { "Iron": 1 }, "hull": 10,
-                               "placement": { "reach": 100 })";
+                               "tier": "t", "placement": { "reach": 100 })";
     CHECK(LoadBlueprintsInline(R"({ "blueprints": [ { "id": "x", )" + ok + " } ] }"));
     CHECK(Blueprints::Find("x") != nullptr);
 
@@ -176,6 +180,22 @@ TEST_CASE("a blueprint is data, and a wrong one does not load (#39)")
         CHECK(LoadBlueprintsInline(R"({ "blueprints": [ { "id": "x", )" + ok +
                                    R"( } ], "dismantle": { "refund": 0.3 } })"));
         CHECK(Blueprints::Rules().refund == doctest::Approx(0.3f));
+    }
+    SUBCASE("a tier it does not name, or one the file does not have (#431 D1)")
+    {
+        CHECK(Blueprints::Find("x")->mend == doctest::Approx(0.01f));
+        CHECK_FALSE(LoadBlueprintsInline(
+            R"({ "blueprints": [ { "id": "x", "archetype": "structure.beacon",
+                 "cost": { "Iron": 1 }, "hull": 10, "placement": { "reach": 100 } } ] })"));
+        CHECK(Blueprints::Error().find("tier") != std::string::npos);
+        CHECK_FALSE(LoadBlueprintsInline(
+            R"({ "blueprints": [ { "id": "x", "archetype": "structure.beacon", "tier": "big",
+                 "cost": { "Iron": 1 }, "hull": 10, "placement": { "reach": 100 } } ] })"));
+        CHECK(Blueprints::Error().find("big") != std::string::npos);
+        CHECK_FALSE(LoadBlueprintsInline(R"({ "tiers": { "t": { "mend": 2 } }, "blueprints": [
+                 { "id": "x", )" + ok + " } ] }"));
+        CHECK_FALSE(LoadBlueprintsInline(R"({ "tiers": { "t": { "mends": 0.1 } }, "blueprints": [
+                 { "id": "x", )" + ok + " } ] }"));
     }
     SUBCASE("a blueprint that costs nothing, or may go nowhere")
     {
@@ -635,7 +655,7 @@ TEST_CASE("a structure is shot down, leaves a wreck, and the law decides the pri
         s.ship->Teleport(ann.ship->GetPosition());
         Shoot(sim, s, id);
         CHECK(s.account.GetBounty(Fac::TradersGuild()) == 0.0);
-        CHECK(StructureById(sim, sys, id)->GetDamage() == doctest::Approx(48.0f));
+        CHECK(StructureById(sim, sys, id)->GetDamage(sim.Time()) == doctest::Approx(48.0f));
     }
     SUBCASE("something too small for a wreck leaves none")
     {
@@ -733,7 +753,7 @@ TEST_CASE("damage and wrecks outlive a restart; a command and a layout carry the
     ann.ship->Teleport(p1);
     Shoot(a, ann, hit);
     Shoot(a, ann, hit);
-    const float damage = StructureById(a, sys, hit)->GetDamage();
+    const float damage = StructureById(a, sys, hit)->GetDamage(a.Time());
     REQUIRE(damage > 0.0f);
     ann.ship->Teleport(p2);
     for (int i = 0; i < 100 && StructureById(a, sys, gone) != nullptr; i++)
@@ -1406,4 +1426,72 @@ TEST_CASE("a player grows their own station into a shipyard and refits there; no
     // ...and it is open to every pilot, like any market.
     Beside(ann, *t);
     CHECK(sim.StepPlayerDock(ann, *sim.SystemOf(ann)) == id);
+}
+
+TEST_CASE("defences mend by tier: one frigate cannot bring an outpost down, enough cruisers can "
+          "(#431 slice 7)")
+{
+    LoadRegistries();
+    Simulation sim;
+    StartServer(sim, "");
+    ClientSession&    owner = Builder(sim, "hunter");
+    const std::string sys = owner.systemId;
+    const Blueprint&  outpost = *Blueprints::Find("outpost");
+    Stock(owner);
+    const Vector2 at = FreeSpot(sim, owner, *Blueprints::Find("beacon"));  // open space
+    auto          made = std::make_unique<Structure>(at, 0.0f, "Keep", outpost.archetype);
+    made->SetBlueprint(outpost.id);
+    const int id = sim.AddStatic(sys, std::move(made), "hunter");  // a player's, finished
+    REQUIRE(id != 0);
+    Law(sim, sys, false, Fac::Independent());  // nobody's law: only the guns count here
+    const float mend = StructureById(sim, sys, id)->MendRate();
+    REQUIRE(mend == doctest::Approx(outpost.mend * outpost.hull));
+
+    ShipStats frigate, cruiser;
+    REQUIRE(StatsOfDesign("cutter", frigate));
+    REQUIRE(StatsOfDesign("cruiser", cruiser));
+    const float shotsPerSecond = 2.0f;  // a player's gun fires every half second
+    auto        guns = [&](const ShipStats& stats, int n)
+    {
+        std::vector<ClientSession*> out;
+        for (int i = 0; i < n; i++)
+        {
+            ClientSession& g = sim.CreateSession(sys, at, stats);
+            g.accountName = "gun" + std::to_string(out.size()) + stats.design;
+            out.push_back(&g);
+        }
+        return out;
+    };
+    // Every gun fires as fast as it can for `seconds` of world time, or until it is down.
+    auto fire = [&](const std::vector<ClientSession*>& by, double seconds)
+    {
+        const double until = sim.Time() + seconds;
+        while (sim.Time() < until && StructureById(sim, sys, id) != nullptr)
+        {
+            for (ClientSession* g : by)
+                Shoot(sim, *g, id);
+            sim.SetTime(sim.Time() + 1.0 / shotsPerSecond);
+        }
+    };
+
+    // One frigate's fire is below the mend: ten minutes of it, and the outpost has taken no
+    // more than one shot's worth.
+    CHECK(frigate.damage * shotsPerSecond < mend);
+    fire(guns(frigate, 1), 600.0);
+    REQUIRE(StructureById(sim, sys, id) != nullptr);
+    CHECK(StructureById(sim, sys, id)->GetDamage(sim.Time()) <= frigate.damage + 0.01f);
+
+    // A few cruisers' is above it, and it comes down.
+    int n = 1;
+    while ((float)n * cruiser.damage * shotsPerSecond < mend * 1.5f)
+        n++;
+    CHECK(n <= 4);  // an outpost falls to a few pilots...
+    fire(guns(cruiser, n), 600.0);
+    CHECK(StructureById(sim, sys, id) == nullptr);
+
+    // ...a station's frame only to a fleet, and a beacon to anyone.
+    const Blueprint& station = *Blueprints::Find("trade_station");
+    CHECK(station.mend * station.hull / (cruiser.damage * shotsPerSecond) >= 8.0f);
+    const Blueprint& beacon = *Blueprints::Find("beacon");
+    CHECK(beacon.mend * beacon.hull < frigate.damage * shotsPerSecond);
 }

@@ -13,7 +13,7 @@ MCP protocol version: `2024-11-05`.
 
 ### `observe`
 
-Look at the world: the ship, the system, what is nearby, hostiles, and recent events. Start here, and call it again after anything changes. Use detail='full' only when deciding something.
+Look at the world: the ship, the system, what is nearby, hostiles, and recent events. Start here, and call it again after anything changes. Use detail='full' only when deciding something. A structure says what it mends a second (#431): fire below that rate does nothing to it.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
@@ -290,7 +290,7 @@ No arguments.
 
 ### `blueprints`
 
-What you can build in space (#39): each blueprint's id, what it costs from the hold, how long the site takes, how long the result stands, and how close to your ship it must go. Marks the ones your hold can pay for now. An upgrade says what it is built onto: one of your own finished structures, named with deploy's or build's onto -- an outpost grows into a market, a market into a station (#433).
+What you can build in space (#39): each blueprint's id, what it costs from the hold, how long the site takes, how long the result stands, how close to your ship it must go, and the hull it has and mends a second once built (its tier, #431): fire below that rate does nothing to it. Marks the ones your hold can pay for now. An upgrade says what it is built onto: one of your own finished structures, named with deploy's or build's onto -- an outpost grows into a market, a market into a station (#433).
 
 No arguments.
 

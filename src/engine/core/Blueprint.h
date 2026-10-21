@@ -33,6 +33,12 @@ struct Blueprint
     // is killable, or the map fills up and never changes again. A site has a share of it
     // that grows as it goes up (Blueprints::Destruction).
     float hull = 0.0f;
+    // Its tier (#431 D1), one of the file's `tiers`, and what that tier mends: a share of `hull`
+    // per world second, for as long as it stands finished. Fire below that rate is undone as
+    // fast as it lands, so the tier is what decides how many guns it takes -- a beacon falls to
+    // one pilot, an outpost to a few, a station's frame only to a fleet.
+    std::string tier;
+    float       mend = 0.0f;
     // The wreck it leaves when destroyed: a Derelict archetype, or empty for something too
     // small to leave anything worth searching -- a buoy goes up in a flash.
     std::string wreck;
@@ -115,9 +121,8 @@ struct Upkeep
     // The share of its hull an outpost nobody supplies loses each period. At zero it is a
     // ruin, like one shot down -- slowly enough that the faction may yet win it back.
     float decay = 0.04f;
-    // The share of its hull a supplied outpost mends each period: damage that is not followed
-    // up is repaired, so a siege has to be sustained to bring one down.
-    float repair = 0.02f;
+    // A supplied one mends at its tier's rate like any finished structure (Blueprint::mend);
+    // an unsupplied one does not mend at all.
 };
 const Upkeep& UpkeepRules();
 
@@ -132,7 +137,7 @@ struct Siege
     // The most of its capacity a faction sends, out of what its holding can spare: a siege
     // leaves home as guarded as a move does.
     float commit = 0.5f;
-    float dps = 6.0f;  // hull a besieging ship takes off an outpost per second
+    float dps = 40.0f;  // hull a besieging ship takes off an outpost per second, before it mends
     // How many besiegers each defending ship ties up: what is left over fires at the outpost.
     float defence = 0.15f;
     // Ships lost per second, per ship of the other side, by both sides while it lasts.

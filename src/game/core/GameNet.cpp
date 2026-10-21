@@ -500,7 +500,8 @@ std::unique_ptr<Entity> Game::MakeProxyFromLayout(const Proto::EntityLayout& el)
             t->StartBuilding(el.startedAt, el.completesAt);
             t->SetExpiresAt(el.expiresAt);
             t->SetBlueprint(el.blueprint);
-            t->SetDamage(el.damage);
+            t->SetDamage(el.damage, el.damagedAt);
+            t->SetMends(el.mends, el.damagedAt);
             t->SetDefence(el.defence);
             e = std::move(t);
             break;
