@@ -274,6 +274,7 @@ add_executable(econspace
     src/game/core/Game.cpp
     src/game/core/GameNet.cpp
     src/game/core/GameHud.cpp
+    src/game/core/GameMap.cpp      # the galaxy map and its routes (#432)
     src/game/core/GameWindows.cpp  # missions, radar and settings, on Ui::Layout (#297)
     src/game/core/GameStation.cpp  # docked: the station, market and hangar windows (#297)
     src/game/core/GameChat.cpp     # the chat window: local, private, the operator (#347)
