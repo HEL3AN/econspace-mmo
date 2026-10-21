@@ -476,7 +476,15 @@ Each slice is its own PR with green CI, and the game works after every one.
      nearest market is (up to `marketReach` 3 jumps) x (0.5 + 0.5 x max(traffic, ore)); a
      station `stationWorth` x max(traffic, ore), once that is at least `stationNeed` 0.45 --
      mining if the faction values the ore more, trade otherwise; at most `stationsPerRegion` 4
-     stations a region, natives' included. The risk is hostile presence there and the memory
+     stations a region, natives' included. A `shipyard` (#432; onto an outpost market, a
+     trade station or a mining station; builds `station.shipyard`) is grown by need, never
+     first: only once the region has `shipyardAfter` 1 station to bring pilots, none stands or
+     is going up in the region, none is within `shipyardReach` 4 jumps, and at least
+     `shipyardNeed` 0.45 passes through or is mined; then it is worth `shipyardWorth` 1.4 x
+     max(traffic, ore), more than a further station, and it counts against `stationsPerRegion`
+     like any other. A player grows one only from a market or station of their own (#433's
+     path); it stays their structure, docks and trades for anyone, and refits -- but issues no
+     hull, so it is never where a pilot wakes. The risk is hostile presence there and the memory
      of a loss. Player use stays gated: an upgrade is built onto an outpost, and only factions
      have those. Anchors and upgrades are built from a convoy (`convoys`): from where the
      faction makes things -- of its holdings within `reach` 6 jumps, the one with the most

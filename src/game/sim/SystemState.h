@@ -102,10 +102,11 @@ struct SystemAggregate
 // walking the system's entities, so a system need not be materialized to be weighed.
 struct SystemProfile
 {
-    int belts = 0;     // asteroid fields
-    int wrecks = 0;    // derelicts, searched or not
-    int stations = 0;  // stations of any role
-    int markets = 0;   // what a ship can trade at: a station's market, a finished outpost market
+    int belts = 0;      // asteroid fields
+    int wrecks = 0;     // derelicts, searched or not
+    int stations = 0;   // stations of any role
+    int markets = 0;    // what a ship can trade at: a station's market, a finished outpost market
+    int shipyards = 0;  // where a ship is refitted: a station's, or a finished structure's (#432)
     int planets = 0;
     int gates = 0;
     // The owner of each station that defends itself, one entry per station.

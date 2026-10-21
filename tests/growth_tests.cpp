@@ -991,3 +991,181 @@ TEST_CASE("a generated world's security stays near its base and does not saturat
     // The map is not "1.0 everywhere": mid and low space still read as such.
     CHECK(belowHigh > 0);
 }
+
+// --- Shipyards, by need (#432) --------------------------------------------------------------
+
+namespace
+{
+// A faction's holding in the first frontier whose outpost is a market already, with every
+// shipyard of that region taken away: as a frontier that has not yet grown one would be.
+Holding YardlessMarket(Simulation& sim, FactionId f)
+{
+    const Holding h = PlantOutpost(sim, f);
+    SystemState*  st = sim.SystemById(h.system);
+    for (const auto& e : st->entities)
+        if (e->GetId() == h.outpost)
+        {
+            const Blueprint& market = *Blueprints::Find(Outposts::MARKET_BLUEPRINT);
+            static_cast<Structure&>(*e).Retask(market.archetype, market.id, "Market");
+        }
+    sim.MarkStaticChanged(*st, h.outpost);
+    st->profile = Simulation::ProfileOf(*st);
+    REQUIRE(st->profile.markets >= 1);
+    // ...and of every system within two jumps, whichever region it is in.
+    std::vector<std::string> clear = sim.RegionSystems(Gen::SlotOf(h.system));
+    std::vector<std::string> ring{ h.system };
+    for (int d = 0; d < 2; d++)
+    {
+        std::vector<std::string> next;
+        for (const std::string& id : ring)
+            for (const std::string& n : sim.Neighbors(id))
+                if (sim.SystemById(n) != nullptr)
+                {
+                    next.push_back(n);
+                    clear.push_back(n);
+                }
+        ring = std::move(next);
+    }
+    std::sort(clear.begin(), clear.end());
+    clear.erase(std::unique(clear.begin(), clear.end()), clear.end());
+    for (const std::string& id : clear)
+    {
+        std::vector<int> yards;
+        for (const auto& e : sim.SystemById(id)->entities)
+            if (e->GetKind() == EntityKind::Station && e->Has(Component::Shipyard))
+                yards.push_back(e->GetId());
+        for (int y : yards)
+            REQUIRE(sim.RemoveStatic(id, y));
+    }
+    return h;
+}
+
+// What `f` first sets out to grow its market in `h` into within `minutes`, with the stock to
+// pay for anything and the market busy; empty for nothing.
+std::string FirstGrowth(Simulation& sim, FactionId f, const Holding& h, int minutes = 20)
+{
+    for (int minute = 0; minute < minutes; minute++)
+    {
+        sim.MindOf(f).stock = 8.0f * Simulation::OutpostCost();
+        sim.SystemById(h.system)->agg.prosperity = 1.0f;
+        RunMinutes(sim, 1);
+        for (const auto& kv : sim.Plans())
+            if (kv.second.kind == Plan::Kind::Upgrade && kv.second.target == h.system)
+                return kv.second.blueprint;
+    }
+    return std::string();
+}
+}  // namespace
+
+TEST_CASE("the shipyard blueprint grows a market or a station into a yard, and the rules read "
+          "(#432)")
+{
+    LoadRegistries();
+    Rules            r;
+    const Blueprint* yard = Blueprints::Find(Outposts::SHIPYARD_BLUEPRINT);
+    REQUIRE(yard != nullptr);
+    CHECK(yard->byFactions);
+    CHECK(yard->byPlayers);
+    for (const char* onto : { Outposts::MARKET_BLUEPRINT, Outposts::TRADE_STATION_BLUEPRINT,
+                              Outposts::MINING_STATION_BLUEPRINT })
+        CHECK(std::find(yard->onto.begin(), yard->onto.end(), onto) != yard->onto.end());
+    CHECK(std::find(yard->onto.begin(), yard->onto.end(), Outposts::BLUEPRINT) == yard->onto.end());
+    const Archetype* a = Archetypes::Find(yard->archetype);
+    REQUIRE(a != nullptr);
+    CHECK(a->kind == EntityKind::Station);
+    for (Component c :
+         { Component::Shipyard, Component::Dockable, Component::Market, Component::Storage })
+        CHECK(a->Has(c));
+
+    REQUIRE(WorldRules::Load(DATA + "world_rules.json"));
+    const WorldRules::Growth& g = WorldRules::GrowthRules();
+    CHECK(g.shipyardReach > 0);
+    CHECK(g.shipyardAfter > 0);
+    CHECK(g.shipyardWorth > g.stationWorth);  // the region's next station, once it is wanted
+}
+
+TEST_CASE("a faction grows a shipyard by need: after a station, none within reach, one a region "
+          "(#432)")
+{
+    LoadRegistries();
+    Rules           r;
+    const FactionId f = Fac::TradersGuild();
+    auto            rules = [](int after, int reach, int perRegion)
+    {
+        WorldRules::Growth g;
+        g.stationNeed = 0.0;
+        g.shipyardNeed = 0.0;
+        g.shipyardAfter = after;
+        g.shipyardReach = reach;
+        g.stationsPerRegion = perRegion;
+        WorldRules::SetGrowthRules(g);
+    };
+
+    SUBCASE("not first: with no station in the region to bring pilots, a station comes first")
+    {
+        Simulation sim;
+        Make(sim, 7);
+        const Holding h = YardlessMarket(sim, f);
+        const int     stations = sim.StationsIn(Gen::SlotOf(h.system));
+        rules(stations + 1, 1, stations + 2);
+        CHECK(sim.ShipyardWanted(h.system));
+        const std::string bp = FirstGrowth(sim, f, h);
+        CHECK_FALSE(bp.empty());
+        CHECK(bp != Outposts::SHIPYARD_BLUEPRINT);
+    }
+
+    SUBCASE("none within reach: the market grows into a yard, the faction's station")
+    {
+        Simulation sim;
+        Make(sim, 7);
+        const Holding h = YardlessMarket(sim, f);
+        SystemState*  st = sim.SystemById(h.system);
+        rules(0, 1, sim.StationsIn(Gen::SlotOf(h.system)) + 2);
+        REQUIRE(sim.ShipyardWanted(h.system));
+        CHECK(FirstGrowth(sim, f, h) == Outposts::SHIPYARD_BLUEPRINT);
+        // Going up, it is the region's one: no other is wanted anywhere in it.
+        for (const std::string& id : sim.RegionSystems(Gen::SlotOf(h.system)))
+            CHECK_FALSE(sim.ShipyardWanted(id));
+        REQUIRE(RunUntil(sim, 240, [&] { return st->profile.shipyards == 1; }));
+        const Entity* yard = nullptr;
+        for (const auto& e : st->entities)
+            if (e->GetKind() == EntityKind::Station && e->Has(Component::Shipyard))
+                yard = e.get();
+        REQUIRE(yard != nullptr);
+        CHECK(static_cast<const Station*>(yard)->GetFaction() == f);
+        CHECK(yard->Has(Component::Dockable));
+        CHECK(yard->Has(Component::Market));
+        CHECK(Said(sim, "station", "opened a shipyard"));
+        CHECK_FALSE(sim.ShipyardWanted(h.system));
+    }
+
+    SUBCASE("one within reach: no yard is wanted, and a station is grown instead")
+    {
+        Simulation sim;
+        Make(sim, 7);
+        const Holding h = YardlessMarket(sim, f);
+        rules(0, 2, sim.StationsIn(Gen::SlotOf(h.system)) + 2);
+        REQUIRE(sim.ShipyardWanted(h.system));
+        const std::vector<std::string>& next = sim.Neighbors(h.system);
+        REQUIRE_FALSE(next.empty());
+        REQUIRE(sim.AddStatic(next.front(),
+                              std::make_unique<Station>(Vector2{ 150000.0f, -90000.0f }, 400.0f,
+                                                        "Old Yards", Factions::Unaffiliated(),
+                                                        StationRole::Shipyard),
+                              std::string()) != 0);
+        CHECK_FALSE(sim.ShipyardWanted(h.system));
+        const std::string bp = FirstGrowth(sim, f, h);
+        CHECK_FALSE(bp.empty());
+        CHECK(bp != Outposts::SHIPYARD_BLUEPRINT);
+    }
+
+    SUBCASE("the budget: a region full of stations grows none, a yard no more than another")
+    {
+        Simulation sim;
+        Make(sim, 7);
+        const Holding h = YardlessMarket(sim, f);
+        rules(0, 1, sim.StationsIn(Gen::SlotOf(h.system)));
+        CHECK(FirstGrowth(sim, f, h, 10).empty());
+        CHECK(sim.BeginUpgrade(f, h.system, Outposts::SHIPYARD_BLUEPRINT) == 0);
+    }
+}

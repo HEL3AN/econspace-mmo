@@ -326,7 +326,8 @@
                 "dockable": { "range": 250 },
                 "market": {},
                 "storage": { "capacity": 4000 },
-                "shipyard": { "markup": 1.5 }
+                "shipyard": { "markup": 1.5 },
+                "buildable": {}
             }
         },
         {

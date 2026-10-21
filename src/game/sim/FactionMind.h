@@ -209,6 +209,7 @@ inline const char* Called(Purpose p)  // "a mining outpost"
 inline constexpr const char* MARKET_BLUEPRINT = "outpost_market";
 inline constexpr const char* TRADE_STATION_BLUEPRINT = "trade_station";
 inline constexpr const char* MINING_STATION_BLUEPRINT = "mining_station";
+inline constexpr const char* SHIPYARD_BLUEPRINT = "shipyard";  // by need, at most one a region
 
 // Which outpost an archetype is; false for anything that is not one.
 inline bool PurposeOf(const std::string& archetype, Purpose& out)
