@@ -8,8 +8,8 @@ built yet. Related: #342 (the growing world, `world_generation_v2.md`), #347 (co
 #438 (what player outposts still lack).
 
 The decisions are not re-opened here. Where a decision leaves a number or a detail free,
-the doc proposes one and marks it as tuning; what is still genuinely undecided is listed
-under **Open questions**.
+the doc proposes one and marks it as tuning; the owner's answers to what the rounds left open are
+under **Decided after the rounds**.
 
 ## Why this exists
 
@@ -142,8 +142,8 @@ filter, and subject to admin moderation: an admin may rename or clear any player
   (`natives.names`) and sealed with it, so `GENERATOR_VERSION` is bumped and a golden hash
   changes. A region sealed before it keeps designations; regenerating such a region
   (`econserver regenerate`) gives it names.
-- **Majors** (centre factions) also need a naming culture if they name what they chart: see
-  Open questions.
+- **Majors** (centre factions) also get a naming culture: they name the empty systems they
+  chart first (Decided after the rounds, 1).
 - Moderation: a server console verb `rename <system> <name|->` and the same in the editor's
   world view; the filter is a text file beside `world.json` (`names_blocked.txt`, one word
   or pattern per line, re-read like `allowlist.txt`).
@@ -238,7 +238,7 @@ Corporation structures follow the same rules.
 |---|---|---|
 | D1 | `StepUpkeep` (`Simulation_Sieges.cpp`): a supplied faction outpost mends `upkeep.repair` (2 %) of its hull per period; an unsupplied one decays. Player structures never mend. Blueprints have `hull`, no tier. | Blueprints gain `tier`; the tier's mend rate goes in `blueprints.json`. Mending runs for every finished structure: in the coarse pass when the system is cold, per tick when it is hot. Upkeep keeps the decay of an unsupplied faction outpost. |
 | D2 | `CallPolice` (`Simulation_Agents.cpp`): up to `POLICE_RESPONSE = 2` police ships already in the system, warped in. Siege contingents are lent by holdings within `siege.reach` (3 hops). | Section 5's escalation for crimes; for an attack on a structure, the owner's own ships first, then lent from holdings in reach (the `Plan::Lent` path). |
-| D3 | A faction besieges an enemy outpost "next door" to a holding of its own (`Simulation_Factions.cpp` ~775), so NPC sieges already obey a front of sorts. A player's guns obey nothing. | One predicate, `FrontOpen(system, side)`, read by the siege planner and by D1 (see Open questions for how it binds a player's guns). |
+| D3 | A faction besieges an enemy outpost "next door" to a holding of its own (`Simulation_Factions.cpp` ~775), so NPC sieges already obey a front of sorts. A player's guns obey nothing. | One predicate, `FrontOpen(system, side)`, read by the siege planner and by D1 (it binds sieges and claims, never a player's guns: Decided after the rounds, 3). |
 | D4 | Already true: `FactionMind::stock` grows strength, convoys carry it (#407), sieges cost stock. | Nothing; kept as a rule so later work does not add free strength. |
 | D5 | Already true: a claim's outpost destroyed shakes the claim (`ShakeClaim`); `StepControl` needs an outpost to claim. | Extended to corporations with T2. |
 | D6 | `PlacementProblem` (`Simulation_Build.cpp`): placement rules and builders only. `LawOver`: a player's structure is under the controller's law if the system is claimed and lawful. | A licence record per (faction, owner); `PlacementProblem` checks standing and a licence in faction space; `LawOver` treats an unlicensed structure as lawless; the siege planner may target a trespassing player structure. |
@@ -466,8 +466,8 @@ are marked; slices without one may go in any order.
    - *Tests:* one frigate cannot bring down an outpost; enough cruisers can; a cold system mends
      at the same rate as a hot one over the same time.
 8. **The front-line rule.** *Depends on 5, 7.*
-   - *Scope:* `FrontOpen(system, side)`; the siege planner reads it; a player's attacks per the
-     answer to Open question 3.
+   - *Scope:* `FrontOpen(system, side)`; the siege planner reads it; a claim may be laid only
+     where the front is open; ships' fire is never limited (Decided after the rounds, 3).
    - *Tests:* a core system with only friendly neighbours is not besieged; once a border
      system falls, it is.
 
