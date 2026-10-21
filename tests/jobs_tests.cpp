@@ -463,6 +463,172 @@ TEST_CASE("a site going up posts a supply job, and a delivery brings it closer t
     CHECK(sim.Time() < completes);
 }
 
+namespace
+{
+// A pilot docked at a station of a system other than `not`: somewhere a delivery is not.
+ClientSession& DockedElsewhere(Simulation& sim, const std::string& notIn)
+{
+    for (auto& kv : sim.Systems())
+    {
+        if (kv.first == notIn)
+            continue;
+        for (const auto& e : kv.second.entities)
+        {
+            if (e->GetKind() != EntityKind::Station)
+                continue;
+            const Vector2  at = e->GetPosition();
+            ClientSession& s = sim.CreateSession(kv.first, { at.x + e->GetSize() + 20.0f, at.y },
+                                                 GetShipCatalog()[0].stats);
+            if (sim.StepPlayerDock(s, kv.second) != 0)
+                return s;
+        }
+    }
+    FAIL("no station to dock at elsewhere");
+    return sim.CreateSession(notIn, { 0.0f, 0.0f }, GetShipCatalog()[0].stats);
+}
+
+bool Told(const ClientSession& s, const std::string& what)
+{
+    for (const Ev::Event& e : s.journal)
+        if (e.text.find(what) != std::string::npos)
+            return true;
+    return false;
+}
+}  // namespace
+
+TEST_CASE("supply goods are delivered on arrival: beside the site or docked in its system, not "
+          "elsewhere (#429)")
+{
+    LoadRegistries();
+    Rules           r;
+    const FactionId f = Fac::TradersGuild();
+    Simulation      sim;
+    Make(sim, 7);
+    const Upgrade u = MarketGoingUp(sim, f);
+    for (int minute = 0; minute < 30 && !PlanOf(sim, u.plan)->arrived; minute++)
+        RunMinutes(sim, 1);
+    REQUIRE(PlanOf(sim, u.plan) != nullptr);
+    REQUIRE(PlanOf(sim, u.plan)->arrived);
+    const Structure* site = sim.JobSite(*PlanOf(sim, u.plan));
+    REQUIRE(site != nullptr);
+
+    // Two pilots take the job at the depot in the site's system.
+    ClientSession& a = DockedAt(sim, u.h);
+    const int      offer = OfferOf(a, MissionType::Supply, u.plan);
+    REQUIRE(offer >= 0);
+    const Mission job = a.missions.Offers()[(size_t)offer];
+    REQUIRE(sim.AcceptMission(a, offer));
+    ClientSession& b = DockedAt(sim, u.h);
+    const int      offerB = OfferOf(b, MissionType::Supply, u.plan);
+    REQUIRE(offerB >= 0);
+    REQUIRE(sim.AcceptMission(b, offerB));
+
+    // The snapshot names the site wherever the pilot is.
+    CHECK(sim.JobSiteName(job) == site->GetName());
+
+    // Docked in the site's system without the goods: nothing happens.
+    sim.MaintainWorld(2.0f);
+    REQUIRE(ActiveOf(a, MissionType::Supply) >= 0);
+
+    // In flight with the goods but far from the site: nothing yet.
+    sim.StepPlayerUndock(a);
+    REQUIRE(a.ship->AddCargo(job.resource, job.targetCount));
+    a.ship->Teleport({ site->GetPosition().x + site->GetSize() + 9000.0f, site->GetPosition().y });
+    for (int pass = 0; pass < 3; pass++)
+        sim.MaintainWorld(2.0f);
+    REQUIRE(ActiveOf(a, MissionType::Supply) >= 0);
+    CHECK(a.ship->GetCargoAmount(job.resource) == job.targetCount);
+
+    // Docked at a station in another system with the goods: not delivered either.
+    ClientSession& c = DockedElsewhere(sim, job.systemId);
+    c.missions.Active().push_back(a.missions.Active()[(size_t)ActiveOf(a, MissionType::Supply)]);
+    REQUIRE(c.ship->AddCargo(job.resource, job.targetCount));
+    CHECK_FALSE(sim.MissionCompletableNow(c, c.missions.Active().back()));
+    for (int pass = 0; pass < 3; pass++)
+        sim.MaintainWorld(2.0f);
+    CHECK(ActiveOf(c, MissionType::Supply) >= 0);
+    CHECK(c.ship->GetCargoAmount(job.resource) == job.targetCount);
+    CHECK(PlanOf(sim, u.plan)->supplied == 0);
+
+    // Beside the site, undocked: delivered on the next pass, with no Hand in -- paid, the goods
+    // gone, the site sped, and the pilot told.
+    const double money = a.account.GetMoney();
+    const double completes = site->GetCompletesAt();
+    a.ship->Teleport({ site->GetPosition().x + site->GetSize() + 200.0f, site->GetPosition().y });
+    sim.MaintainWorld(2.0f);
+    CHECK(ActiveOf(a, MissionType::Supply) < 0);
+    CHECK(a.ship->GetCargoAmount(job.resource) == 0);
+    CHECK(a.account.GetMoney() == doctest::Approx(money + job.rewardMoney));
+    CHECK(PlanOf(sim, u.plan)->supplied == 1);
+    CHECK(site->GetCompletesAt() < completes);
+    CHECK(Told(a, "Delivered -- " + std::to_string(job.targetCount) + " " +
+                      ResourceName(job.resource) + " to the " + site->GetName()));
+
+    // Docked at the depot in the site's system: delivered there too.
+    REQUIRE(b.IsDocked());
+    REQUIRE(b.ship->AddCargo(job.resource, job.targetCount));
+    const Mission& mb = b.missions.Active()[(size_t)ActiveOf(b, MissionType::Supply)];
+    CHECK(sim.MissionCompletableNow(b, mb));
+    const double moneyB = b.account.GetMoney();
+    const double completesB = site->GetCompletesAt();
+    sim.MaintainWorld(2.0f);
+    CHECK(ActiveOf(b, MissionType::Supply) < 0);
+    CHECK(b.ship->GetCargoAmount(job.resource) == 0);
+    CHECK(b.account.GetMoney() > moneyB);
+    CHECK(PlanOf(sim, u.plan)->supplied == 2);
+    CHECK(site->GetCompletesAt() < completesB);
+    CHECK(Told(b, "Delivered -- "));
+}
+
+TEST_CASE("a supply job reads where it is delivered, and is not done until the goods are there "
+          "(#429)")
+{
+    LoadRegistries();
+    Proto::Snapshot snap;
+    snap.time = 1000.0;
+    Proto::MissionView m;
+    m.type = (int)MissionType::Supply;
+    m.faction = Fac::TradersGuild();
+    m.title = "Supply: Watch Post";
+    m.resource = ResourceType::FromIndex(0).Index();
+    m.targetCount = 20;
+    m.rewardMoney = 500.0;
+    m.planId = 7;
+    m.systemId = "r1-2-3";
+    m.systemName = "Vela";
+    m.deadline = 1600.0;
+    m.siteName = "Watch Post";
+    snap.missionActive.push_back(m);
+    snap.player.cargoByType.assign(64, 0);
+
+    Proto::Snapshot back;
+    REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(snap), back));
+    REQUIRE(back.missionActive.size() == 1);
+    CHECK(back.missionActive[0].siteName == "Watch Post");
+
+    Obs::View view;
+    view.snapshot = &back;
+    const std::string good = ResourceName(ResourceType::FromIndex(0));
+    CHECK(Obs::MissionNeeds(view, back.missionActive[0]) ==
+          "carry 20 " + good + " (the hold has 0) to the Watch Post in Vela (system r1-2-3)");
+    const std::string text = Obs::DescribeMissions(view);
+    CHECK(text.find("delivered at the Watch Post or docked at any station in its system") !=
+          std::string::npos);
+    CHECK(text.find("hand in anywhere") == std::string::npos);
+
+    // All aboard, elsewhere: told where it goes; not ready.
+    back.player.cargoByType[0] = 20;
+    CHECK(Obs::MissionNeeds(view, back.missionActive[0]) ==
+          "take the " + good +
+              " to the Watch Post in Vela (system r1-2-3): it is delivered beside the site, or "
+              "docked at any station there");
+    // ...and here, beside it.
+    back.missionActive[0].siteId = 55;
+    CHECK(Obs::MissionNeeds(view, back.missionActive[0]) ==
+          "fly beside the Watch Post (#55), or dock at any station in this system: the " + good +
+              " is delivered on arrival");
+}
+
 TEST_CASE("a plan's job survives the save, and one whose plan is over is dropped (#345)")
 {
     LoadRegistries();

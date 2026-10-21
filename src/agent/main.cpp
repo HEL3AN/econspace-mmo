@@ -299,7 +299,9 @@ const std::vector<Prompt>& Prompts()
           "complete_mission. Jobs a faction's plans post -- supply, escort, siege, besiege -- "
           "move the world as well as paying: a delivery speeds the faction's building, an escort "
           "guards its convoy, breaking a siege saves its outpost, joining one helps bring an "
-          "enemy's down; they are handed in anywhere, before their deadline. A market's "
+          "enemy's down; they are handed in anywhere, before their deadline -- except a "
+          "supply job, whose goods are delivered by themselves once you are beside its site or "
+          "docked at any station in its system. A market's "
           "contract pays for goods it is short of: buy them where they are cheap and hand them "
           "in docked at its station. If a faction has a bounty on you, pay_bounty before its ships "
           "find you. When the hangar offers a ship that suits the work better and you can "
@@ -988,7 +990,9 @@ std::vector<Tool> BuildTools()
           "faction's outpost) and besiege (join the faction's siege: shoot down the outpost's "
           "defenders, which costs standing with their side). A siege's job says which side it "
           "is for and whom it is against. A job names its system and has a deadline; it is "
-          "handed in anywhere, and failing one you took costs standing. A contract is a short "
+          "handed in anywhere, and failing one you took costs standing; a supply job's goods "
+          "are delivered by themselves beside its site, undocked, or docked at any station in "
+          "its system. A contract is a short "
           "market's: bring so many of a good to its station by a deadline -- it pays more than "
           "selling them there, so buy them where they are cheap -- and hand it in docked there.",
           Obj({}), [](const Rpc::Json&)
@@ -1039,9 +1043,10 @@ std::vector<Tool> BuildTools()
           "station that gave it, a delivery to its destination, docked; mining hands over the "
           "ore from the hold. A market's contract is handed in docked at its station, before "
           "its deadline, with the goods in the hold, and hands them over. A faction plan's job "
-          "(supply, escort, siege) is handed in "
-          "anywhere once it is ready; a supply job is ready beside its site, undocked, with "
-          "the goods in the hold, and hands them over.",
+          "(escort, siege, besiege) is handed in "
+          "anywhere once it is ready. A supply job delivers itself: with the goods in the hold, "
+          "beside its site undocked or docked at any station in its system, they are taken "
+          "within a couple of seconds; complete_mission there only does it at once.",
           Obj({ { "mission", Num("active mission number from missions") } }, { "mission" }),
           [](const Rpc::Json& args)
           {

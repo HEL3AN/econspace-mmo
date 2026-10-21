@@ -147,3 +147,35 @@ TEST_CASE("Goal: a plan's job points at what it is about when that is here (#430
     s.active = { Bounty() };
     CHECK(Goal::Next(s).pointAt == 0);
 }
+
+TEST_CASE("Goal: a supply job points at its site once the goods are aboard, and delivers itself "
+          "(#429)")
+{
+    Goal::Mission m;
+    m.title = "Supply: Watch Post";
+    m.needs = "carry 20 Iron (the hold has 0) to the Watch Post in Vela (system r1-2-3)";
+    m.supply = true;
+    m.handInId = 55;
+    m.handInName = "Watch Post";
+    Goal::State s = InSpace();
+    s.active.push_back(m);
+    // Without the goods: what it needs, the pointer at the site it is about (#430).
+    Goal::Prompt p = Goal::Next(s);
+    CHECK(p.step == Step::Work);
+    CHECK(p.pointAt == 55);
+
+    // With them, and the site here: fly to it.
+    s.active[0].aboard = true;
+    s.active[0].needs = "fly beside the Watch Post (#55), ...";
+    p = Goal::Next(s);
+    CHECK(p.step == Step::FlyTo);
+    CHECK(p.pointAt == 55);
+    CHECK(p.text == "Fly to Watch Post to deliver \"Supply: Watch Post\"");
+
+    // Ready: it goes over by itself -- no Hand in to chase.
+    s.active[0].ready = true;
+    s.active[0].needs.clear();
+    p = Goal::Next(s);
+    CHECK(p.step == Step::Work);
+    CHECK_FALSE(p.missionsWindow);
+}

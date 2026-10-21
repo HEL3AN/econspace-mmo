@@ -184,7 +184,8 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
             m.title = "Supply: " + site->GetName();
             m.description = "Deliver " + std::to_string(m.targetCount) + " " + ResourceName(good) +
                             " to the " + site->GetName() + " going up in " + m.systemName +
-                            ". Every delivery brings it closer to done.";
+                            ", beside it or docked at any station there. Every delivery "
+                            "brings it closer to done.";
         }
         else if (!convoyAt.empty() && p.faction == f)
         {
@@ -266,12 +267,16 @@ bool Simulation::PlanJobReadyNow(const ClientSession& s, const Mission& m) const
         return false;
     if (m.type != MissionType::Supply)
         return m.progress >= m.targetCount;
-    // Beside the site, in flight, with the goods aboard.
+    // With the goods aboard in the site's system: beside the site in flight, or docked at any
+    // station there -- a pilot expects to drop cargo off at the station, and the faction
+    // lighters it out (#429).
     const auto       it = plans_.find(m.planId);
     const Structure* site = it != plans_.end() ? JobSite(it->second) : nullptr;
-    if (site == nullptr || !FlyingIn(s, m.systemId) ||
+    if (site == nullptr || !s.ship->IsAlive() || s.systemId != m.systemId ||
         s.ship->GetCargoAmount(m.resource) < m.targetCount)
         return false;
+    if (s.IsDocked())
+        return true;
     const Vector2 a = site->GetPosition(), b = s.ship->GetPosition();
     const float   d = std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
     return d <= site->GetSize() + (float)WorldRules::JobRules().supplyRange;
@@ -325,6 +330,15 @@ void Simulation::ConvoyView(const ClientSession& s, const Mission& m, Proto::Mis
     }
 }
 
+std::string Simulation::JobSiteName(const Mission& m) const
+{
+    if (m.type != MissionType::Supply)
+        return std::string();
+    const auto       it = plans_.find(m.planId);
+    const Structure* site = it != plans_.end() ? JobSite(it->second) : nullptr;
+    return site != nullptr ? site->GetName() : std::string();
+}
+
 void Simulation::SpeedSite(Plan& p)
 {
     const double cut = WorldRules::JobRules().supplyCut;
@@ -356,25 +370,39 @@ bool Simulation::CompleteJob(ClientSession& s, int index)
         s.RecordEvent(Ev::Kind::Notice, "Hand-in refused -- " + what + " is not done yet");
         return false;
     }
-    std::string fed;
     if (m.type == MissionType::Supply)
     {
+        const std::string site = JobSiteName(m);
         s.ship->RemoveCargo(m.resource, m.targetCount);
         Plan& p = plans_[m.planId];
         p.supplied++;
         SpeedSite(p);
-        fed = "; the site is further along";
+        s.account.AddMoney(m.rewardMoney);
+        s.account.AddReputation(m.faction, m.rewardRep);
+        PayJob(m);
+        active.erase(active.begin() + index);
+        s.RecordEvent(Ev::Kind::Notice, "Delivered -- " + std::to_string(m.targetCount) + " " +
+                                            ResourceName(m.resource) + " to the " + site + " in " +
+                                            m.systemName + ", paid " + Money(m.rewardMoney) +
+                                            " by " + FactionName(m.faction) +
+                                            "; the site is further along");
+        return true;
     }
-    // The faction pays out of the stock its plans are paid from: what it gives a pilot it does
-    // not spend on its own expansion.
-    float& stock = minds_[m.faction].stock;
-    stock = std::max(0.0f, stock - (float)(m.rewardMoney / WorldRules::JobRules().creditsPerStock));
+    PayJob(m);
     s.account.AddMoney(m.rewardMoney);
     s.account.AddReputation(m.faction, m.rewardRep);
     active.erase(active.begin() + index);
     s.RecordEvent(Ev::Kind::Notice, "Job done -- " + what + ", paid " + Money(m.rewardMoney) +
-                                        " by " + FactionName(m.faction) + fed);
+                                        " by " + FactionName(m.faction));
     return true;
+}
+
+void Simulation::PayJob(const Mission& m)
+{
+    // The faction pays out of the stock its plans are paid from: what it gives a pilot it does
+    // not spend on its own expansion.
+    float& stock = minds_[m.faction].stock;
+    stock = std::max(0.0f, stock - (float)(m.rewardMoney / WorldRules::JobRules().creditsPerStock));
 }
 
 void Simulation::FailJob(ClientSession& s, int index, const std::string& why, bool penalty)
@@ -545,6 +573,13 @@ void Simulation::StepJobs()
                 if (p->supplied >= r.supplyMax)
                 {
                     FailJob(s, i, "the site has all it needs", false);
+                    continue;
+                }
+                // There with the goods: delivered, no button needed (#429). Hand in stays for
+                // a pilot who would rather not wait for the pass.
+                if (PlanJobReadyNow(s, m))
+                {
+                    CompleteJob(s, i);
                     continue;
                 }
             }

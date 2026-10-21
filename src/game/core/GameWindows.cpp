@@ -99,7 +99,9 @@ Goal::Prompt Game::CurrentGoal() const
         m.needs = r.needs;
         m.handInId = r.handInId;
         m.handInName = r.handInName;
-        m.anywhere = r.job;
+        m.anywhere = r.job && !r.supply;
+        m.supply = r.supply;
+        m.aboard = r.aboard;
         s.active.push_back(std::move(m));
     }
     float best = 0.0f;
@@ -206,7 +208,19 @@ void Game::DrawMissionsContent(const Ui::Frame& f)
                         m.rode ? t.colors.text : t.colors.dim);
             if (!m.due.empty())
                 L.Field("Time", m.due, m.due == "overdue" ? t.colors.warn : t.colors.text);
-            L.Field("Hand in", "anywhere", t.colors.text);
+            if (m.supply)
+            {
+                // Delivered by itself there (#429): beside the site, or docked in its system.
+                L.Field("Deliver at",
+                        (m.siteName.empty() ? std::string("the site") : m.siteName) + " (" +
+                            m.where + ")",
+                        t.colors.text);
+                L.Text("Beside it, undocked, or docked at any station there: the goods go over "
+                       "on arrival.",
+                       TextStyle::Small().Tint(t.colors.dim).Wrap());
+            }
+            else
+                L.Field("Hand in", "anywhere", t.colors.text);
         }
         else
         {

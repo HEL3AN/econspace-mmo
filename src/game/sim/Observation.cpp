@@ -245,6 +245,12 @@ const char* MissionKind(int type)
     return "job";
 }
 
+// A supply job's site, by name when the server gave one (#429).
+std::string SiteName(const Proto::MissionView& m)
+{
+    return m.siteName.empty() ? std::string("the site") : "the " + m.siteName;
+}
+
 // Where a mission is handed in. A delivery ends at its destination; a plan's job anywhere
 // (#345), so at no station; everything else goes back to the station that gave it -- the same
 // rule as Simulation::MissionCompletableNow.
@@ -264,11 +270,15 @@ std::string MissionLine(const Obs::View& view, size_t index, const Proto::Missio
     if (IsPlanJob((MissionType)m.type))
     {
         // A plan's job: where it is, how long it has, and that the faction pays by wire.
+        // A supply job is not handed in anywhere: it is delivered at its site (#429).
         const std::string due = Obs::JobDue(view, m);
-        out += Fmt("       reward %.0f cr, %s standing %+.1f; in %s (system %s)%s%s; hand in "
-                   "anywhere\n",
+        const std::string where =
+            (MissionType)m.type == MissionType::Supply
+                ? "delivered at " + SiteName(m) + " or docked at any station in its system"
+                : std::string("hand in anywhere");
+        out += Fmt("       reward %.0f cr, %s standing %+.1f; in %s (system %s)%s%s; %s\n",
                    m.rewardMoney, FactionName(m.faction).c_str(), m.rewardRep, m.systemName.c_str(),
-                   m.systemId.c_str(), due.empty() ? "" : ", ", due.c_str());
+                   m.systemId.c_str(), due.empty() ? "" : ", ", due.c_str(), where.c_str());
         // An escort's convoy as it is now (#430): the description is as it was when posted.
         const std::string convoy = Obs::ConvoyStatus(m, "->");
         if (!convoy.empty())
@@ -588,14 +598,21 @@ std::string MissionNeeds(const View& view, const Proto::MissionView& m)
             int held = 0;
             if (p != nullptr && m.resource >= 0 && m.resource < (int)p->cargoByType.size())
                 held = p->cargoByType[m.resource];
+            // Delivered by itself where it is ready (#429): beside the site in flight, or docked
+            // at any station in its system.
             const std::string what = ResourceName(ResourceType::FromIndex(m.resource));
+            const std::string site = SiteName(m);
             if (held < m.targetCount)
-                return Fmt("carry %d %s (the hold has %d) to the site in %s", m.targetCount,
-                           what.c_str(), held, m.systemName.c_str());
+                return Fmt("carry %d %s (the hold has %d) to %s in %s (system %s)", m.targetCount,
+                           what.c_str(), held, site.c_str(), m.systemName.c_str(),
+                           m.systemId.c_str());
             if (m.siteId != 0)
-                return Fmt("fly beside the site (#%d), undocked, and hand it in", m.siteId);
-            return Fmt("take the %s to the site in %s (system %s)", what.c_str(),
-                       m.systemName.c_str(), m.systemId.c_str());
+                return Fmt("fly beside %s (#%d), or dock at any station in this system: the %s is "
+                           "delivered on arrival",
+                           site.c_str(), m.siteId, what.c_str());
+            return Fmt("take the %s to %s in %s (system %s): it is delivered beside the site, or "
+                       "docked at any station there",
+                       what.c_str(), site.c_str(), m.systemName.c_str(), m.systemId.c_str());
         }
         case MissionType::Escort:
             // Where the convoy is now (#430), not where it was when the job was posted.
@@ -711,8 +728,10 @@ std::string DescribeMissions(const View& view)
         if ((MissionType)m.type == MissionType::Bounty || IsSiegeJob((MissionType)m.type))
             out += Fmt("       progress %d/%d\n", m.progress, m.targetCount);
         if (m.completable)
-            out += IsPlanJob((MissionType)m.type) ? "       READY TO HAND IN, anywhere\n"
-                                                  : "       READY TO HAND IN here\n";
+            out += (MissionType)m.type == MissionType::Supply
+                       ? "       READY: delivered on the next pass, or hand it in now\n"
+                   : IsPlanJob((MissionType)m.type) ? "       READY TO HAND IN, anywhere\n"
+                                                    : "       READY TO HAND IN here\n";
         else
             out += "       needs: " + MissionNeeds(view, m) + "\n";
     }
