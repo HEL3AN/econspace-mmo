@@ -586,6 +586,17 @@ void Simulation::StepSystemAgents(SystemState& st, const std::vector<PlayerPrese
                       st.entities.end());
 }
 
+// Where a system's security settles (#428): its base, moved by the balance of police and
+// pirates by at most SECURITY_SWING either way. The balance is a share, not a difference of
+// counts -- police come from a faction's presence, so a garrison of ten would otherwise push
+// every policed system to 1.0 and the number would say nothing.
+float Simulation::SecurityTarget(const SystemAggregate& a)
+{
+    const float police = std::max(0.0f, a.police), pirates = std::max(0.0f, a.pirates);
+    const float balance = (police - pirates) / (police + pirates + SECURITY_BALANCE_SOFTNESS);
+    return ClampF(a.baseSecurity + SECURITY_SWING * balance, 0.0f, 1.0f);
+}
+
 // M0 macro on REAL numbers (population in the aggregate is filled by Game::RecountAgg).
 // Security/economy drift, economy diffusion, controller changes. The population is not
 // changed — that is done by real battles and the Game spawn director.
@@ -602,9 +613,7 @@ void Simulation::StepWorldMacro()
     for (auto& kv : systems_)
     {
         SystemAggregate& a = kv.second.agg;
-        a.security = ClampF(a.security + (a.baseSecurity - a.security) * 0.05f +
-                                (a.police - a.pirates) * 0.02f,
-                            0.0f, 1.0f);
+        a.security = ClampF(a.security + (SecurityTarget(a) - a.security) * 0.05f, 0.0f, 1.0f);
         a.prosperity = ClampF(a.prosperity + (a.security - 0.5f) * 0.02f +
                                   (a.traders - 3.0f) * 0.008f - a.pirates * 0.01f,
                               0.0f, 1.0f);

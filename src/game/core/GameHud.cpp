@@ -1046,6 +1046,14 @@ void Game::DrawScaleBar()
         Ui::Text("camera free  ·  [C] back to ship", (int)x0 - 120, (int)y + 8, 11, Ui::ACCENT);
 }
 
+float Game::ShownSecurity(const std::string& id, float base) const
+{
+    for (const Proto::GalaxySystemStat& g : galaxyState_.systems)
+        if (g.id == id)
+            return g.security;
+    return base;
+}
+
 // Where the ship is, at the top of the screen: the system, how safe it is, and who wants the
 // pilot. A plate laid out like a window's content (#297) rather than coloured text loose on
 // the world, and drawn under the windows, so a window over it hides it instead of the two
@@ -1075,7 +1083,7 @@ void Game::DrawLocation(const Goal::Prompt& goal)
         {
             if (si != nullptr)
             {
-                const float sec = si->security;
+                const float sec = ShownSecurity(si->id, si->security);
                 const char* tier = sec >= 0.7f   ? "High"
                                    : sec >= 0.4f ? "Mid"
                                    : sec >= 0.2f ? "Low"
@@ -1774,7 +1782,7 @@ void Game::DrawGalaxyMap()
                            : security >= 0.4f ? GOLD
                                               : Color{ 230, 120, 60, 255 };
             Ui::Text(
-                TextFormat("sec %.2f  pir %d  econ %.0f%%", security, pirates, prosperity * 100.0f),
+                TextFormat("sec %.1f  pir %d  econ %.0f%%", security, pirates, prosperity * 100.0f),
                 (int)lx, lineY(1), notePx, secCol);
             // Territory controller (L3) — in the faction's color.
             Ui::Text(FactionName(controller).c_str(), (int)lx, lineY(2), notePx,

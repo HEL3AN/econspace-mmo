@@ -526,7 +526,13 @@ public:
     void                 StepFactions();
     void                 StepControl(bool settling);
     static void          SeedPresence(SystemAggregate& a);
-    static constexpr int ContestPasses() { return CONTEST_PASSES; }
+    // Where a system's security settles (#428): its base, moved by the police/pirate balance.
+    static float SecurityTarget(const SystemAggregate& a);
+    // At most this far from the base either way, and the softness of the balance: with
+    // police and pirates at zero it is even, and a lone ship of either moves it a fifth.
+    static constexpr float SECURITY_SWING = 0.15f;
+    static constexpr float SECURITY_BALANCE_SOFTNESS = 4.0f;
+    static constexpr int   ContestPasses() { return CONTEST_PASSES; }
 
     // System neighbors by gate lines (for macro and the spawn director), in the order the
     // links are listed. Read from an index built when the links change (#295) -- the

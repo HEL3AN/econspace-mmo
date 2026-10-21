@@ -297,7 +297,10 @@ private:
     void Undock();
 
     const WorldLoader::SystemInfo* CurrentSystemInfo() const;  // record of the current system
-    bool                           HostileToPlayerFaction(
+    // The security a player is shown for a system (#428): the server's live number where the
+    // galaxy snapshot has one, the charted base otherwise. The banner and the map both ask.
+    float ShownSecurity(const std::string& id, float base) const;
+    bool  HostileToPlayerFaction(
         FactionId f) const;  // is the faction hostile to the player (reputation/wanted)
 
     // M4c: the client renders from the snapshot. The snapshot is built every frame
