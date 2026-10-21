@@ -163,9 +163,14 @@ struct SystemState
     // Until when a structure's owner has been told that it is firing first where that is a
     // crime (#340): once a minute, not once a volley. Transient.
     std::map<int, double> crimeToldUntil;
-    // Until when the police here are already answering an attack on a structure (#39): one
-    // call brings them, and the next shot does not bring more. Transient.
+    // Until when the police here are already answering a crime (#39, #431 slice 9): one call
+    // brings them, and the next shot does not bring more. Transient.
     double policeCalledUntil = 0.0;
+    // A call whose answer from here is still to come -- the slower the lower the security --
+    // at what time, for which session, under whose law; a time of 0 is none. Transient.
+    double    policeDueAt = 0.0;
+    int       policeFor = 0;
+    FactionId policeLaw = Factions::Unaffiliated();
 
     // The static layer's revision and what changed in it since the last LayoutDelta went
     // out (#38), by entity id. Transient like the rest of a hot system: a restart begins

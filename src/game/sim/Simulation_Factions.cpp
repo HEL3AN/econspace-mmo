@@ -348,6 +348,7 @@ void Simulation::ResolveDuePlans()
             case Plan::Kind::Return: ResolveReturn(p); break;
             case Plan::Kind::Anchor: ResolveAnchor(p); break;
             case Plan::Kind::Upgrade: ResolveUpgrade(p); break;
+            case Plan::Kind::Response: RecallResponse(p); break;
         }
     }
 }
@@ -480,8 +481,9 @@ void Simulation::StepFactions()
         SeedMinds();
     ResolveDuePlans();
     StepSieges();
-    StepConvoys();  // the builder convoys on their way (#342 S6)
-    StepJobs();     // and the jobs those plans posted (#345)
+    StepResponses();  // police answering a crime from next door (#431 slice 9)
+    StepConvoys();    // the builder convoys on their way (#342 S6)
+    StepJobs();       // and the jobs those plans posted (#345)
 
     // Each faction thinks once a period, on a pass of its own (#295): spread across the
     // period rather than all on one pass, so no pass carries more than one of them -- while
@@ -534,9 +536,10 @@ void Simulation::StepFactions()
     };
     for (const auto& kv : plans_)
     {
-        if (kv.second.kind == Plan::Kind::Siege || kv.second.OnTheWay())
+        if (kv.second.kind == Plan::Kind::Siege || kv.second.kind == Plan::Kind::Response ||
+            kv.second.OnTheWay())
         {
-            // A siege's contingents, and a convoy's escort (#342 S6).
+            // A siege's contingents, a convoy's escort (#342 S6), police answering a crime.
             for (const Plan::Lent& l : kv.second.lent)
                 owes(l.from, kv.second.faction, l.force);
         }

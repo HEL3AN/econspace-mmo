@@ -13,6 +13,7 @@
 #include "sim/Corporation.h"
 #include "sim/DesignStore.h"
 #include "sim/SaveSchema.h"
+#include "sim/WorldRules.h"
 #include "sim/PlayerStep.h"
 #include "player/Player.h"
 #include "missions/MissionSystem.h"
@@ -583,6 +584,25 @@ public:
     // a player the system's lawful holder protects. Per hit, and the kill on top.
     void ChargeFirstStrike(SystemState& st, const Entity& structure, const ClientSession* player,
                            const NpcShip* npc, bool killed);
+
+    // --- Law (#431 slice 9; Simulation_Agents.cpp, numbers in WorldRules::Law) ---
+    // Whether `by` attacking `victim` in `st` is a crime, and under whose law (#41): a lawful
+    // faction's ship is that faction's wherever it is; a structure is under LawOver. The one
+    // place that decides it -- PvP, flags and licences (slice 10) are rules added here.
+    bool IsCrime(const SystemState& st, const ClientSession& by, const Entity& victim,
+                 FactionId& law) const;
+    // A crime under `law` by `by` in `st`: the police answer from real forces, as the system's
+    // security band says (WorldRules::Law) -- every free police ship here, patrols a station
+    // launches out of what the faction can spare, and police lent by systems within reach;
+    // quicker and heavier the higher the security, nobody at all below the lowest band. Only
+    // in a hot system, once per call. True when anyone is coming.
+    bool CallPolice(SystemState& st, ClientSession& by, FactionId law);
+    // A call whose answer from here was delayed, answered when its time comes. Every tick.
+    void StepPoliceCall(SystemState& st);
+    // Whether a station's or a faction structure's guns, owned by `owner`, fire on `p` without
+    // being shot at first: a pilot its faction holds as an enemy anywhere, and a criminal it
+    // wants only where security brings the guns in (WorldRules::Law::gunsFrom).
+    bool GunsOn(const SystemState& st, const ClientSession& p, FactionId owner) const;
 
     // One full step of a system: AI, movement, combat, cleanup of the fallen. `players`
     // is whoever happens to be standing in it. A cold system (#295) has no ships to step
@@ -1720,11 +1740,29 @@ private:
     void ShakeClaim(SystemState& st, FactionId f);
     bool HitStructure(SystemState& st, int id, float damage, ClientSession* by, Loss cause,
                       FactionId attacker);
-    // A crime against a structure under `law` (#39): the system's patrols that are now
-    // hostile to the shooter -- those whose law it broke, as for a ship -- come by warp, the
-    // nearest few dropping out beside the shooter. Only in a hot system, once a while per
-    // system, and not when a patrol is already in sight. True when anyone answered.
-    bool CallPolice(SystemState& st, ClientSession& by, FactionId law);
+    // What is left of a lent force goes home (#295): each holding that lent it its share of
+    // `p.force`, as many jumps away as it came, `hop` seconds a jump -- a Return each.
+    void SendHome(const Plan& p, double hop);
+    // The police answer from here, now (#431 slice 9): the system's own free police of the
+    // law warp beside `by`, and its stations launch what the faction can spare. How many of
+    // each is the band's. Returns how many came.
+    int AnswerHere(SystemState& st, ClientSession& by, FactionId law,
+                   const WorldRules::Law::Band& band);
+    // Police of `law` from systems within the band's reach, lent: taken off each home's ships
+    // and presence now, and a Response that brings them to `st`. How many set out.
+    int CallNextDoor(SystemState& st, const ClientSession& by, FactionId law,
+                     const WorldRules::Law::Band& band);
+    // Up to `want` free police of `law` taken out of `home`, by its ships where it is hot and
+    // its numbers where it is cold -- the same count either way -- with the presence behind
+    // them. How many were taken.
+    int TakePolice(SystemState& home, FactionId law, int want);
+    // A Response's police arrive and, where somebody is to see them, are ships beside whoever
+    // they answer.
+    void FieldResponse(SystemState& st, Plan& p);
+    // Once a pass: Responses arrive, and the ships a player has shot down are lost to them.
+    void StepResponses();
+    // A Response's time is up: its ships leave and what is left of it goes home.
+    void RecallResponse(const Plan& p);
     // --- Jobs (#345; Simulation_Jobs.cpp) ---
     // A plan's job handed in: paid out of the poster's stock, and a delivery fed to its site.
     bool CompleteJob(ClientSession& s, int index);

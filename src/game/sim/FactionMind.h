@@ -51,11 +51,15 @@ struct Plan
     enum class Kind
     {
         Survey,
-        Settle,  // an outpost is being built; finished, it claims the system
-        Siege,   // strength sent to bring down another faction's outpost (slice 5)
-        Return,  // what is left of a siege's contingent, on its way home to `target`
-        Anchor,  // an Anchor going up at a wormhole mouth in `target` (#342 S4)
-        Upgrade  // an outpost growing into a market, or a market into a station (#342 S6)
+        Settle,   // an outpost is being built; finished, it claims the system
+        Siege,    // strength sent to bring down another faction's outpost (slice 5)
+        Return,   // what is left of a siege's contingent, on its way home to `target`
+        Anchor,   // an Anchor going up at a wormhole mouth in `target` (#342 S4)
+        Upgrade,  // an outpost growing into a market, or a market into a station (#342 S6)
+        // Police from next door answering a crime in `target` (#431 slice 9): lent like a
+        // siege's force and sent home the same way. Never saved: a save writes it as the
+        // Returns it would end in, as a restart begins with every system cold.
+        Response
     };
     // One holding's share of a siege: where it came from, how much, and how many jumps away.
     struct Lent
@@ -115,6 +119,8 @@ struct Plan
     // any pilot has been with it at all (#407). Transient: a restart begins cold, and alone.
     float guard = 0.0f;
     bool  escorted = false;
+    // A Response's: the pilot it answers, by account. Transient, like the Response.
+    std::string pursued;
     // How many pilots' deliveries its site has had (#345): each one took a share off the time it
     // has left to build, up to the jobs rules' most. Saved.
     int supplied = 0;

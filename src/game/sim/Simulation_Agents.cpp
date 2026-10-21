@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <set>
 #include <cmath>
 
 namespace
@@ -34,12 +35,6 @@ constexpr float PLAYER_DAMAGE_SCALE = 7.0f / 6.0f;
 constexpr float NPC_AGGRO_RANGE = 3500.0f;   // AI target detection radius
 constexpr float NPC_THREAT_RANGE = 2000.0f;  // distance at which peaceful ones flee
 constexpr float DEFENCE_PERIOD = 1.0f;       // seconds between a station's shots
-// Answering an attack on a structure (#39): how many patrols come, how far from the shooter
-// they drop out of warp -- inside NPC_AGGRO_RANGE, so they engage at once -- and how long one
-// call holds before another shot brings more.
-constexpr int   POLICE_RESPONSE = 2;
-constexpr float POLICE_DROP_DISTANCE = 1500.0f;
-constexpr float POLICE_CALL_SECONDS = 60.0f;
 
 // Spawn director. "Pressure": losses in a role raise the suppression of its spawn,
 // which then slowly recovers — the player/battles really change the population.
@@ -386,7 +381,8 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
                 continue;
             if (sided)
             {
-                if (AccountHostileToFaction(*p.session, owner) || shotAtUs(p.session->id))
+                // A criminal only where security brings the guns in (#431 slice 9).
+                if (GunsOn(st, *p.session, owner) || shotAtUs(p.session->id))
                     consider(p.ship, p.session, nullptr, false);
             }
             else if (account.empty() || p.session->accountName != account)
@@ -497,64 +493,368 @@ void Simulation::ChargeFirstStrike(SystemState& st, const Entity& structure,
                     ": a crime against " + FactionName(victim) + ", on your account");
 }
 
-bool Simulation::CallPolice(SystemState& st, ClientSession& by, FactionId law)
-{
-    // Only where there are ships to send (#295): a cold system has none, and nobody can be
-    // shooting in one anyway -- whoever is shooting has made it hot.
-    if (!IsHot(st) || !by.ship || time_ < st.policeCalledUntil)
-        return false;
-    const Vector2 scene = by.ship->GetPosition();
+// --- Law (#431 slice 9) ---
+//
+// A crime is answered by ships that exist: the system's own police, patrols its stations
+// launch out of what the faction has to spare, and police lent by systems nearby -- each of
+// them missing from where it came from until it is back, as a siege's force is (#295). There
+// is no invincible police: the higher the security, the more come and the sooner, and a fleet
+// big enough could in principle fight all of it.
 
-    // The patrols that would act on this shooter, as they act on a ship's attacker: whoever
-    // the crime made wanted by them. Nearest first; one already in sight of the shooter
-    // needs no call.
-    std::vector<NpcShip*> answer;
+bool Simulation::IsCrime(const SystemState& st, const ClientSession& by, const Entity& victim,
+                         FactionId& law) const
+{
+    if (victim.GetKind() == EntityKind::Npc)
+    {
+        law = static_cast<const NpcShip&>(victim).GetFaction();
+        return Factions::IsLawful(law);
+    }
+    if (victim.GetKind() == EntityKind::Structure)
+        return LawOver(st, static_cast<const Structure&>(victim), by.accountName, law);
+    return false;
+}
+
+bool Simulation::GunsOn(const SystemState& st, const ClientSession& p, FactionId owner) const
+{
+    // An enemy of the faction is one everywhere, as it is to the faction's ships.
+    const RepTier t = Factions::TierOf(p.account.GetReputation(owner));
+    if (owner == Factions::Pirates() || t == RepTier::Hostile || t == RepTier::Hated)
+        return true;
+    // A criminal only where the law is strong enough to bring the guns in.
+    return p.account.IsWanted(owner) && st.agg.security >= WorldRules::LawRules().gunsFrom;
+}
+
+int Simulation::TakePolice(SystemState& home, FactionId law, int want)
+{
+    // Ships the faction has here, and no more than the presence behind them: what it takes
+    // away is missing from both, so the director does not make it good while it is gone.
+    float&    presence = home.agg.presence[law];
+    const int backed = (int)std::floor(presence + 1e-4f);
+    int       take = 0;
+    if (IsHot(home))
+    {
+        std::vector<NpcShip*> free;
+        for (NpcShip* n : AliveShips(home))
+            if (n->GetRole() == NpcRole::Police && n->GetFaction() == law && n->GetTask() == 0 &&
+                !n->IsLeaving())
+                free.push_back(n);
+        take = std::max(0, std::min({ want, (int)free.size(), backed }));
+        // The last made go first: the same ships on every server.
+        std::sort(free.begin(), free.end(),
+                  [](const NpcShip* a, const NpcShip* b) { return a->GetId() > b->GetId(); });
+        free.resize((size_t)take);
+        home.entities.erase(
+            std::remove_if(home.entities.begin(), home.entities.end(),
+                           [&](const std::unique_ptr<Entity>& e)
+                           { return std::find(free.begin(), free.end(), e.get()) != free.end(); }),
+            home.entities.end());
+    }
+    else if (home.agg.policeFaction == law)
+        take = std::max(0, std::min({ want, (int)std::floor(home.agg.police + 1e-4f), backed }));
+    // Off the count as they set out -- a recount does not read their going as a loss.
+    home.agg.police = std::max(0.0f, home.agg.police - (float)take);
+    presence = std::max(0.0f, presence - (float)take);
+    return take;
+}
+
+int Simulation::CallNextDoor(SystemState& st, const ClientSession& by, FactionId law,
+                             const WorldRules::Law::Band& band)
+{
+    if (band.reach <= 0 || band.called <= 0)
+        return 0;
+    // Every system within reach, nearest first, ties by id.
+    std::vector<std::pair<int, std::string>> near;
+    std::set<std::string>                    seen{ st.id };
+    std::vector<std::string>                 ring{ st.id };
+    for (int hop = 1; hop <= band.reach && !ring.empty(); hop++)
+    {
+        std::vector<std::string> next;
+        for (const std::string& id : ring)
+            for (const std::string& n : Neighbors(id))
+                if (seen.insert(n).second)
+                {
+                    near.push_back({ hop, n });
+                    next.push_back(n);
+                }
+        ring = std::move(next);
+    }
+    std::sort(near.begin(), near.end());
+
+    const WorldRules::Law&  r = WorldRules::LawRules();
+    std::vector<Plan::Lent> lent;
+    int                     need = band.called, hops = 1, sent = 0;
+    for (const auto& n : near)
+    {
+        SystemState* home = need > 0 ? SystemById(n.second) : nullptr;
+        const int    took = home != nullptr ? TakePolice(*home, law, need) : 0;
+        if (took <= 0)
+            continue;
+        lent.push_back({ n.second, (float)took, n.first });
+        need -= took;
+        sent += took;
+        hops = std::max(hops, n.first);
+    }
+    if (lent.empty())
+        return 0;
+    Plan p;
+    p.id = nextPlanId_++;
+    p.kind = Plan::Kind::Response;
+    p.faction = law;
+    p.from = lent.front().from;
+    p.target = st.id;
+    p.startedAt = time_;
+    p.arrivesAt = time_ + band.delay + hops * r.hop;
+    p.dueAt = p.arrivesAt + r.stay;
+    p.force = (float)sent;
+    p.lent = lent;
+    p.pursued = by.accountName;
+    plans_[p.id] = p;
+    due_.insert({ p.dueAt, p.id });
+    return sent;
+}
+
+int Simulation::AnswerHere(SystemState& st, ClientSession& by, FactionId law,
+                           const WorldRules::Law::Band& band)
+{
+    if (!by.ship)
+        return 0;
+    const WorldRules::Law& r = WorldRules::LawRules();
+    const Vector2          scene = by.ship->GetPosition();
+    // Around the criminal, inside the range at which a patrol engages, each from its own
+    // bearing; the AI does the rest, as for any wanted ship in sight.
+    int  dropped = 0;
+    auto drop = [&](NpcShip& n)
+    {
+        const float turn = (float)dropped++ * 2.39996f;  // the golden angle: never stacked
+        n.SetPosition({ scene.x + std::cos(turn) * (float)r.dropDistance,
+                        scene.y + std::sin(turn) * (float)r.dropDistance });
+        n.Engage(scene);
+    };
+
+    // The patrols that would act on this shooter -- whoever the crime made wanted by them --
+    // nearest first. One already in sight is answering and needs no warp, but it is one of
+    // the band's.
+    std::vector<NpcShip*> free;
+    int                   inSight = 0;
     for (NpcShip* n : AliveShips(st))
     {
-        if (n->GetRole() != NpcRole::Police || !AccountHostileToFaction(by, n->GetFaction()))
+        if (n->GetRole() != NpcRole::Police || n->GetTask() != 0 || n->IsLeaving() ||
+            !AccountHostileToFaction(by, n->GetFaction()))
             continue;
         if (Dist(n->GetPosition(), scene) <= NPC_AGGRO_RANGE)
-        {
-            st.policeCalledUntil = time_ + POLICE_CALL_SECONDS;
-            return false;
-        }
-        answer.push_back(n);
+            inSight++;
+        else
+            free.push_back(n);
     }
-    if (answer.empty())
-        return false;
-    std::sort(answer.begin(), answer.end(),
+    std::sort(free.begin(), free.end(),
               [&](const NpcShip* a, const NpcShip* b)
               {
                   const float da = Dist(a->GetPosition(), scene);
                   const float db = Dist(b->GetPosition(), scene);
                   return da != db ? da < db : a->GetId() < b->GetId();
               });
-    if ((int)answer.size() > POLICE_RESPONSE)
-        answer.resize(POLICE_RESPONSE);
+    free.resize((size_t)std::min((int)free.size(), std::max(0, band.local - inSight)));
+    for (NpcShip* n : free)
+        drop(*n);
+    int came = (int)free.size();
 
-    // A system is a million units across and a patrol flies at sublight: a structure is
-    // answered by warp. They drop out around the shooter, inside the range at which a patrol
-    // engages, and the AI does the rest -- the same as for any wanted ship in sight.
-    static const Vector2 BEARINGS[] = { { 1.0f, 0.0f }, { -1.0f, 0.0f }, { 0.0f, 1.0f } };
-    for (size_t i = 0; i < answer.size(); i++)
+    // A station of the law launches patrols on top: out of the faction's strength here that
+    // is not flying yet, then bought out of its stock. Only the system's own police -- the
+    // director flies every lawful faction's strength here under one flag.
+    if (band.launch <= 0 || st.agg.policeFaction != law || !Factions::IsLawful(law))
+        return came;
+    bool station = false;
+    for (const auto& e : st.entities)
+        station = station || (e->GetKind() == EntityKind::Station &&
+                              static_cast<const Station&>(*e).GetFaction() == law);
+    if (!station)
+        return came;
+    int flying = 0;
+    for (NpcShip* n : AliveShips(st))
+        if (n->GetRole() == NpcRole::Police && n->GetFaction() == law && n->GetTask() == 0 &&
+            !n->IsLeaving())
+            flying++;
+    float&    presence = st.agg.presence[law];
+    const int spare =
+        std::max(0, (int)std::floor(presence - SiegeForceIn(st.id, law) - (float)flying + 1e-4f));
+    int         launch = std::min(band.launch, spare);
+    const float price = (float)r.launchCost * OutpostCost();
+    float&      stock = minds_[law].stock;
+    while (launch < band.launch && price > 0.0f && stock >= price)
     {
-        const Vector2 b = BEARINGS[i % 3];
-        answer[i]->SetPosition(
-            { scene.x + b.x * POLICE_DROP_DISTANCE, scene.y + b.y * POLICE_DROP_DISTANCE });
-        answer[i]->Engage(scene);
+        stock -= price;
+        presence += 1.0f;  // bought: strength here like any other, and it fades like it
+        launch++;
     }
-    st.policeCalledUntil = time_ + POLICE_CALL_SECONDS;
-    by.RecordEvent(Ev::Kind::UnderAttack, FactionName(answer[0]->GetFaction()) +
-                                              " police answer the attack on " + FactionName(law) +
-                                              " property");
+    if (launch <= 0)
+        return came;
+    const SpawnNodes     nd = GatherNodes(st);
+    std::vector<Vector2> beat = nd.stations;
+    beat.insert(beat.end(), nd.gates.begin(), nd.gates.end());
+    beat.insert(beat.end(), nd.fields.begin(), nd.fields.end());
+    if (beat.empty())
+        beat.push_back(scene);
+    for (int i = 0; i < launch; i++)
+    {
+        SpawnNpcInto(st, scene, law, NpcRole::Police, beat);
+        drop(static_cast<NpcShip&>(*st.entities.back()));
+    }
+    return came + launch;
+}
+
+bool Simulation::CallPolice(SystemState& st, ClientSession& by, FactionId law)
+{
+    // Only where there are ships to send (#295): a cold system has none, and nobody can be
+    // shooting in one anyway -- whoever is shooting has made it hot.
+    if (!IsHot(st) || !by.ship || time_ < st.policeCalledUntil)
+        return false;
+    const WorldRules::Law& r = WorldRules::LawRules();
+    WorldRules::Law::Band  band;
+    if (!r.BandFor(st.agg.security, band))
+        return false;  // lawless in all but name: nobody comes
+    st.policeCalledUntil = time_ + r.callSeconds;
+
+    const int   called = CallNextDoor(st, by, law, band);
+    std::string fromNextDoor;
+    if (called > 0)
+        fromNextDoor = ", " + std::to_string(called) + " more on their way from next door";
+    if (band.delay > 0.0)
+    {
+        // The slower the lower the security: the answer from here comes later.
+        st.policeDueAt = time_ + band.delay;
+        st.policeFor = by.id;
+        st.policeLaw = law;
+        by.RecordEvent(Ev::Kind::UnderAttack,
+                       FactionName(law) + " police are called to the crime: in about " +
+                           std::to_string((int)std::lround(band.delay)) + " s" + fromNextDoor);
+        return true;
+    }
+    const int here = AnswerHere(st, by, law, band);
+    if (here == 0 && called == 0)
+        return false;
+    by.RecordEvent(Ev::Kind::UnderAttack, FactionName(law) + " police answer the crime: " +
+                                              std::to_string(here) + " here" + fromNextDoor);
     return true;
+}
+
+void Simulation::StepPoliceCall(SystemState& st)
+{
+    if (st.policeDueAt <= 0.0 || time_ < st.policeDueAt)
+        return;
+    st.policeDueAt = 0.0;
+    const auto            it = sessions_.find(st.policeFor);
+    WorldRules::Law::Band band;
+    // Whoever it was for has left, or docked: there is nobody to warp to.
+    if (it == sessions_.end() || it->second.systemId != st.id || !it->second.ship ||
+        it->second.IsDocked() || !WorldRules::LawRules().BandFor(st.agg.security, band))
+        return;
+    const int here = AnswerHere(st, it->second, st.policeLaw, band);
+    if (here > 0)
+        it->second.RecordEvent(Ev::Kind::UnderAttack,
+                               FactionName(st.policeLaw) +
+                                   " police answer the crime: " + std::to_string(here) + " here");
+}
+
+void Simulation::FieldResponse(SystemState& st, Plan& p)
+{
+    if (!IsHot(st) || p.fielded > 0 || !p.arrived)
+        return;
+    // Beside whoever they answer, if they are still here and in space; otherwise the police
+    // wait out their time as numbers, and go home.
+    const ClientSession* who = nullptr;
+    for (const auto& kv : sessions_)
+        if (kv.second.accountName == p.pursued && kv.second.systemId == st.id && kv.second.ship &&
+            !kv.second.IsDocked())
+            who = &kv.second;
+    if (who == nullptr)
+        return;
+    const Vector2 scene = who->ship->GetPosition();
+    const float   drop = (float)WorldRules::LawRules().dropDistance;
+    const int     n = (int)std::lround(p.force);
+    for (int i = 0; i < n; i++)
+    {
+        const float turn = (float)i * 2.39996f;
+        SpawnNpcInto(st, { scene.x + std::cos(turn) * drop, scene.y + std::sin(turn) * drop },
+                     p.faction, NpcRole::Police, { scene }, i);
+        NpcShip& ship = static_cast<NpcShip&>(*st.entities.back());
+        ship.SetTask(p.id);  // the Response's, counted by it and not by the system
+        ship.Engage(scene);
+    }
+    p.fielded = n;
+}
+
+void Simulation::StepResponses()
+{
+    std::vector<int> over;
+    for (auto& kv : plans_)
+    {
+        Plan& p = kv.second;
+        if (p.kind != Plan::Kind::Response)
+            continue;
+        SystemState* st = SystemById(p.target);
+        if (st == nullptr)
+        {
+            over.push_back(p.id);
+            continue;
+        }
+        if (!p.arrived)
+        {
+            if (time_ >= p.arrivesAt)
+            {
+                p.arrived = true;
+                FieldResponse(*st, p);
+            }
+            continue;
+        }
+        if (!IsHot(*st))
+        {
+            p.fielded = 0;
+            continue;
+        }
+        // A policeman a player shot down is one fewer to go home.
+        int alive = 0;
+        for (const auto& e : st->entities)
+            if (e->GetKind() == EntityKind::Npc &&
+                static_cast<const NpcShip&>(*e).GetTask() == p.id &&
+                static_cast<const NpcShip&>(*e).IsAlive())
+                alive++;
+        if (alive < p.fielded)
+            p.force = std::max(0.0f, p.force - (float)(p.fielded - alive));
+        p.fielded = alive;
+        if (p.force < 0.5f)
+            over.push_back(p.id);
+    }
+    for (int id : over)
+    {
+        const auto it = plans_.find(id);
+        if (it == plans_.end())
+            continue;
+        RecallResponse(it->second);
+        plans_.erase(it);  // its due entry finds nothing
+    }
+}
+
+void Simulation::RecallResponse(const Plan& p)
+{
+    SystemState* st = SystemById(p.target);
+    if (st != nullptr && IsHot(*st))
+        st->entities.erase(std::remove_if(st->entities.begin(), st->entities.end(),
+                                          [&](const std::unique_ptr<Entity>& e)
+                                          {
+                                              return e->GetKind() == EntityKind::Npc &&
+                                                     static_cast<const NpcShip&>(*e).GetTask() ==
+                                                         p.id;
+                                          }),
+                           st->entities.end());
+    SendHome(p, WorldRules::LawRules().hop);
 }
 
 void Simulation::StepSystemAgents(SystemState& st, const std::vector<PlayerPresence>& players,
                                   std::vector<FireEvent>* fires, float dt)
 {
     if (!IsHot(st))
-        return;  // nobody to step: the coarse pass keeps a cold system (#295)
+        return;          // nobody to step: the coarse pass keeps a cold system (#295)
+    StepPoliceCall(st);  // a slower answer to a crime, when its time comes (#431 slice 9)
     StepNpcAi(st, players);
 
     // Planets and what orbits them are where the clock says (#210), before anything this

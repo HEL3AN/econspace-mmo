@@ -117,7 +117,8 @@ float Simulation::LentFrom(const std::string& systemId, FactionId f) const
         const Plan& p = kv.second;
         if (p.faction != f)
             continue;
-        if (p.kind == Plan::Kind::Siege || p.OnTheWay())  // a convoy's escort too (#342 S6)
+        // A convoy's escort too (#342 S6), and police answering a crime (#431 slice 9).
+        if (p.kind == Plan::Kind::Siege || p.kind == Plan::Kind::Response || p.OnTheWay())
             for (const Plan::Lent& l : p.lent)
                 away += l.from == systemId ? l.force : 0.0f;
         else if (p.kind == Plan::Kind::Return && p.target == systemId)
@@ -321,10 +322,14 @@ void Simulation::RecallSiege(const Plan& p)
                                st->entities.end());
     }
     // ...and goes home, each holding its share of what survived, as many jumps away as it came.
+    SendHome(p, Blueprints::SiegeRules().hop);
+}
+
+void Simulation::SendHome(const Plan& p, double hop)
+{
     float lent = 0.0f;
     for (const Plan::Lent& l : p.lent)
         lent += l.force;
-    const double hop = Blueprints::SiegeRules().hop;
     for (const Plan::Lent& l : p.lent)
     {
         const float back = lent > 0.0f ? p.force * l.force / lent : 0.0f;

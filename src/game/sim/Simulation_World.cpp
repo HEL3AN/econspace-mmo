@@ -293,6 +293,8 @@ void Simulation::Cool(SystemState& st)
     st.provokedBy.clear();
     st.provokedByNpc.clear();
     st.policeCalledUntil = 0.0;
+    st.policeDueAt = 0.0;
+    st.policeFor = 0;
     st.populated = false;
     for (auto& kv : plans_)  // a siege's warships went with the rest, and a convoy's ships
     {
@@ -855,6 +857,7 @@ const char* PlanKindName(Plan::Kind k)
         case Plan::Kind::Return: return "return";
         case Plan::Kind::Anchor: return "anchor";
         case Plan::Kind::Upgrade: return "upgrade";
+        case Plan::Kind::Response: return "response";  // never saved: see SaveWorld
         case Plan::Kind::Survey: break;
     }
     return "survey";
@@ -1054,16 +1057,41 @@ bool Simulation::SaveWorld(const std::string& path) const
         j["factions"] = std::move(minds);
     }
     json plans = json::array();
+    // Police answering a crime (#431 slice 9) are a hot system's, and a restart begins with
+    // every system cold: each is written as what it would end in -- its police going home,
+    // each holding its share, a Return each -- under ids the world has not handed out yet.
+    int nextPlan = nextPlanId_;
     for (const auto& kv : plans_)
     {
         const Plan& p = kv.second;
-        json        pj = { { "id", p.id },
-                           { "kind", PlanKindName(p.kind) },
-                           { "faction", Factions::Id(p.faction) },
-                           { "from", p.from },
-                           { "target", p.target },
-                           { "startedAt", p.startedAt },
-                           { "dueAt", p.dueAt } };
+        if (p.kind != Plan::Kind::Response)
+            continue;
+        float lent = 0.0f;
+        for (const Plan::Lent& l : p.lent)
+            lent += l.force;
+        for (const Plan::Lent& l : p.lent)
+            if (lent > 0.0f && p.force * l.force > 0.0f)
+                plans.push_back({ { "id", nextPlan++ },
+                                  { "kind", PlanKindName(Plan::Kind::Return) },
+                                  { "faction", Factions::Id(p.faction) },
+                                  { "from", p.target },
+                                  { "target", l.from },
+                                  { "startedAt", time_ },
+                                  { "dueAt", time_ + l.hops * WorldRules::LawRules().hop },
+                                  { "force", p.force * l.force / lent } });
+    }
+    for (const auto& kv : plans_)
+    {
+        const Plan& p = kv.second;
+        if (p.kind == Plan::Kind::Response)
+            continue;
+        json pj = { { "id", p.id },
+                    { "kind", PlanKindName(p.kind) },
+                    { "faction", Factions::Id(p.faction) },
+                    { "from", p.from },
+                    { "target", p.target },
+                    { "startedAt", p.startedAt },
+                    { "dueAt", p.dueAt } };
         if (!p.site.empty())
             pj["site"] = p.site;
         if (p.supplied > 0)
@@ -1111,7 +1139,7 @@ bool Simulation::SaveWorld(const std::string& path) const
         plans.push_back(std::move(pj));
     }
     j["plans"] = std::move(plans);
-    j["nextPlan"] = nextPlanId_;
+    j["nextPlan"] = nextPlan;
     // Ships on their way between systems (#295): counted nowhere else, so lost if not here.
     json migrants = json::array();
     for (const auto& kv : migrants_)

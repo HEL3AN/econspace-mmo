@@ -17,6 +17,7 @@ WorldRules::Jobs        g_jobs;
 WorldRules::Contracts   g_contracts;
 WorldRules::Holes       g_holes;
 WorldRules::Scan        g_scan;
+WorldRules::Law         g_law;
 std::string             g_error;
 
 // Reads one section's values into their places: every field known, every number zero or
@@ -79,7 +80,7 @@ bool Load(const std::string& path)
         if (it.key() != "schema" && it.key() != "tide" && it.key() != "mouths" &&
             it.key() != "archive" && it.key() != "expeditions" && it.key() != "growth" &&
             it.key() != "convoys" && it.key() != "jobs" && it.key() != "holes" &&
-            it.key() != "scan" && it.key() != "contracts")
+            it.key() != "scan" && it.key() != "contracts" && it.key() != "law")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -283,6 +284,44 @@ bool Load(const std::string& path)
         g_error = path + ": scan: seconds and power must be more than zero";
         return false;
     }
+    // #431 slice 9's: the police's answer to a crime.
+    Law lw;
+    if (j.contains("law") && !ReadSection(j["law"], path + ": law",
+                                          { { "callSeconds", &lw.callSeconds },
+                                            { "dropDistance", &lw.dropDistance },
+                                            { "gunsFrom", &lw.gunsFrom },
+                                            { "highFrom", &lw.highFrom },
+                                            { "midFrom", &lw.midFrom },
+                                            { "lowFrom", &lw.lowFrom },
+                                            { "highDelay", &lw.highDelay },
+                                            { "midDelay", &lw.midDelay },
+                                            { "lowDelay", &lw.lowDelay },
+                                            { "hop", &lw.hop },
+                                            { "stay", &lw.stay },
+                                            { "launchCost", &lw.launchCost } },
+                                          { { "highLocal", &lw.highLocal },
+                                            { "midLocal", &lw.midLocal },
+                                            { "lowLocal", &lw.lowLocal },
+                                            { "highLaunch", &lw.highLaunch },
+                                            { "midLaunch", &lw.midLaunch },
+                                            { "lowLaunch", &lw.lowLaunch },
+                                            { "highReach", &lw.highReach },
+                                            { "midReach", &lw.midReach },
+                                            { "lowReach", &lw.lowReach },
+                                            { "highCalled", &lw.highCalled },
+                                            { "midCalled", &lw.midCalled },
+                                            { "lowCalled", &lw.lowCalled } },
+                                          {}, g_error))
+        return false;
+    // The bands are security, high above middle above low; a call that holds no time would
+    // bring the whole force again with every shot.
+    if (lw.callSeconds <= 0.0 || lw.stay <= 0.0 || lw.lowFrom > lw.midFrom ||
+        lw.midFrom > lw.highFrom || lw.highFrom > 1.0 || lw.gunsFrom > 1.0)
+    {
+        g_error = path + ": law: callSeconds and stay must be more than zero, lowFrom at most "
+                         "midFrom at most highFrom at most 1, and gunsFrom at most 1";
+        return false;
+    }
     g_tide = t;
     g_mouths = m;
     g_archive = a;
@@ -293,6 +332,7 @@ bool Load(const std::string& path)
     g_contracts = ct;
     g_holes = h;
     g_scan = sc;
+    g_law = lw;
     return true;
 }
 
@@ -399,6 +439,16 @@ void SetHoleRules(const Holes& h)
 void SetScanRules(const Scan& s)
 {
     g_scan = s;
+}
+
+const Law& LawRules()
+{
+    return g_law;
+}
+
+void SetLawRules(const Law& l)
+{
+    g_law = l;
 }
 
 }  // namespace WorldRules
