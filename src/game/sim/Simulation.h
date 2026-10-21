@@ -896,6 +896,15 @@ public:
     // Server step of a player ship: applies the movement axes/toggles from the command,
     // the piloting bonus, and updates the physics. Combat/mining — via separate methods.
     void StepPlayerShip(ClientSession& s, const Proto::Command& cmd, float pilotBonus, float dt);
+    // How far a player's command moves the ship (#432): a whole tick, unless a standing order
+    // is flying it. The order steps the ship once every world tick, so a command then carries
+    // only its intents -- a human client streams one a tick through an order, and each used to
+    // step the ship again: a warp ran at twice its rate on the server and was pulled back on
+    // the client at every snapshot. One step a tick is what the client predicts either way.
+    static float CommandDt(const ClientSession& s, float dt)
+    {
+        return s.HasRunningOrder() ? 0.0f : dt;
+    }
 
     // Once per world tick, after the world has moved: what the player's ship is attached
     // to (#298). A docked ship is carried to its berth beside the station, wherever the

@@ -414,7 +414,7 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     if (c.toggleWeapon)
         s.ToggleWeapon();
 
-    sim.StepPlayerShip(s, c, 1.0f, dt);
+    sim.StepPlayerShip(s, c, 1.0f, Simulation::CommandDt(s, dt));
     if (c.scan)  // a pass of the scanner (#346); the answer is in the journal either way
         sim.StartScan(s);
 

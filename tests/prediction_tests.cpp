@@ -17,6 +17,7 @@
 #include "entities/ShipType.h"
 #include "entities/Station.h"
 #include "sim/ClientSession.h"
+#include "sim/Orders.h"
 #include "sim/PlayerStep.h"
 #include "sim/Protocol.h"
 #include "sim/Simulation.h"
@@ -99,7 +100,9 @@ struct Link
         {
             const Proto::Command c = wire.front();
             wire.pop_front();
-            sim.StepPlayerShip(s, c, 1.0f, Sim::SIM_DT);
+            // What the host does with a command: a whole tick, or only its intents while a
+            // standing order flies the ship (#432).
+            sim.StepPlayerShip(s, c, 1.0f, Simulation::CommandDt(s, Sim::SIM_DT));
             if (world)
                 WorldTick();
             acked = c.seq;
@@ -115,6 +118,7 @@ struct Link
             if (Simulation::IsHot(kv.second))
                 sim.StepSystemAgents(kv.second, nobody, nullptr, Sim::SIM_DT);
         sim.StepPlayerAttachment(s, Sim::SIM_DT);
+        sim.StepPlayerOrder(s, *sim.SystemOf(s), Sim::SIM_DT);
         sim.MaintainWorld(Sim::SIM_DT);
     }
 
@@ -248,6 +252,43 @@ TEST_CASE("prediction: a warp ordered by the client is flown the same on both si
     CHECK(Dist(l.s.ship->GetPosition(), to) < 5000.0f);  // it arrived
     CHECK(worst < AGREE);
     CHECK(jump < AGREE);
+}
+
+// #432: a human client sends a command every tick, standing order or not, and the order
+// steps the ship on the world tick. The command used to step it too -- twice a tick on the
+// server, once on the client, and a warp the server flew at double rate was pulled back at
+// every snapshot. Now the command carries its intents only, and both sides agree.
+TEST_CASE("prediction: a ship flying a standing order is stepped once a tick on both sides")
+{
+    Link l;
+    l.world = true;
+    l.Snapshot();
+    const Vector2 from = l.s.ship->GetPosition();
+    Orders::Order o;
+    o.kind = Orders::Kind::MoveTo;
+    o.point = { from.x - 400000.0f, from.y + 120000.0f };
+    o.useWarp = true;
+    l.sim.GiveOrder(l.s, o);
+    const auto idle = [](int) { return Proto::Command{}; };
+
+    // Until a snapshot says so, the client cannot know the server engaged the warp; after
+    // that, every tick of it is predicted where the server flies it.
+    Fly(l, 30, 6, 3, idle);
+    REQUIRE(l.s.HasRunningOrder());
+    l.predicted.clear();
+    l.served.clear();
+    float       jump = 0.0f;
+    const float worst = Fly(l, 600, 6, 3, idle, &jump);
+    CHECK(worst < AGREE);
+    CHECK(jump < AGREE);
+    CHECK(Dist(l.s.ship->GetPosition(), from) > 100000.0f);  // it did warp
+    // A command in the middle of an order moves nothing by itself.
+    if (l.s.HasRunningOrder())
+    {
+        const Vector2 before = l.s.ship->GetPosition();
+        l.sim.StepPlayerShip(l.s, Proto::Command{}, 1.0f, Simulation::CommandDt(l.s, Sim::SIM_DT));
+        CHECK(Dist(before, l.s.ship->GetPosition()) == 0.0f);
+    }
 }
 
 TEST_CASE("prediction: an ack arriving late is replayed without a snap")
