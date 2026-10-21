@@ -144,6 +144,21 @@ std::string MissionNeeds(const View& view, const Proto::MissionView& m);
 // 40 s", "overdue". Empty for a mission with no time on it.
 std::string JobDue(const View& view, const Proto::MissionView& m);
 
+// An escort job's convoy as it is now (#430): "waiting at Vela", "en route in Vela -> Kor",
+// "with convoy" when its hauler is in this system with the ship; empty when the job is not an
+// escort or its convoy has no way yet. `arrow` is the client's arrow glyph or the agent's "->".
+std::string ConvoyStatus(const Proto::MissionView& m, const char* arrow);
+
+// Which part of one of this pilot's escort jobs' convoys a ship is (#430): its hauler, a
+// warship escorting it, or neither. The instruments mark them; the world view does not (#117).
+enum class ConvoyPart
+{
+    None,
+    Hauler,
+    Escort,
+};
+ConvoyPart ConvoyPartOf(const Proto::Snapshot& snap, int entityId);
+
 // Compass point for a world-space offset ("N", "NE", ...). Exposed because the tests pin
 // the convention: +y is down in world coordinates, so north is -y, matching what the
 // player sees on screen rather than what the raw numbers suggest.

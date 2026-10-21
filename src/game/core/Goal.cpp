@@ -89,7 +89,10 @@ Prompt Next(const State& s)
                 return Make(Step::FlyTo, "Fly to " + m.handInName + " and dock", m.handInId);
             return Make(Step::Work, Quoted(m.title) + ": fly to " + Destination(m));
         }
-        return Make(Step::Work, Quoted(m.title) + ": " + m.needs);
+        // A plan's job points at what it is about when that is here: a supply job's site, an
+        // escort's hauler (#430).
+        return Make(Step::Work, Quoted(m.title) + ": " + m.needs,
+                    m.anywhere && !m.handInName.empty() ? m.handInId : 0);
     }
     if (s.nearestStationId != 0)
         return Make(Step::DockForWork, "Dock at " + s.nearestStationName + " to pick up work",

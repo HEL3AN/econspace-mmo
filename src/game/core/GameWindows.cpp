@@ -198,6 +198,12 @@ void Game::DrawMissionsContent(const Ui::Frame& f)
             // A siege's job: the side it is for is the issuer's; this is the other (#407).
             if (m.siege)
                 L.Field("Against", FactionName(m.against), StandingColor(m.against));
+            // An escort's convoy, where it is now (#430), and whether the pilot has joined it.
+            if (!m.convoy.empty())
+                L.Field("Convoy", m.convoy, m.handInHere ? t.colors.accent : t.colors.text);
+            if (m.kind == "escort" && !offers)
+                L.Field("Joined", m.rode ? "yes" : "not yet",
+                        m.rode ? t.colors.text : t.colors.dim);
             if (!m.due.empty())
                 L.Field("Time", m.due, m.due == "overdue" ? t.colors.warn : t.colors.text);
             L.Field("Hand in", "anywhere", t.colors.text);
@@ -495,6 +501,15 @@ void Game::DrawRadarContent(const Ui::Frame& f)
             // Ships: a shape per standing (#362), the same as the overview's chips.
             default: Ui::DrawMark(p, 3.6f * u, StandingMark(a), col); break;
         }
+        // The convoy an escort job has this pilot fly with (#430): a ring round each of its
+        // ships, doubled round the hauler -- a shape, so it is not colour alone (#362).
+        const Obs::ConvoyPart part = Obs::ConvoyPartOf(snapshot_, e.id);
+        if (part != Obs::ConvoyPart::None)
+        {
+            DrawCircleLinesV(p, 5.5f * u, t.colors.accent);
+            if (part == Obs::ConvoyPart::Hauler)
+                DrawCircleLinesV(p, 9.0f * u, t.colors.accent);
+        }
         if (e.id != 0 && e.id == selId)
             DrawCircleLinesV(p, 7.0f * u, t.colors.text);
     }
@@ -515,6 +530,12 @@ void Game::DrawRadarContent(const Ui::Frame& f)
                                     "  " + Ui::Distance(Vector2Distance(e.pos, sp));
                 if (a != Sensor::Allegiance::Unowned)
                     label += std::string("  ") + Sensor::Word(a);
+                switch (Obs::ConvoyPartOf(snapshot_, e.id))
+                {
+                    case Obs::ConvoyPart::Hauler: label += "  your convoy"; break;
+                    case Obs::ConvoyPart::Escort: label += "  convoy escort"; break;
+                    case Obs::ConvoyPart::None: break;
+                }
                 const float   px = (float)Ui::FontPx(Ui::Px(t.fontSize.body));
                 const Vector2 ext = Ui::MeasureString(Ui::Face::Regular, px, label);
                 const Vector2 p = toRadar(e.pos);

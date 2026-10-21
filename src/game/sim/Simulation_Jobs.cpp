@@ -286,6 +286,45 @@ int Simulation::JobSiteId(const ClientSession& s, const Mission& m) const
     return site != nullptr ? site->GetId() : 0;
 }
 
+void Simulation::ConvoyView(const ClientSession& s, const Mission& m, Proto::MissionView& v) const
+{
+    if (m.type != MissionType::Escort)
+        return;
+    v.rode = m.rode;
+    const auto it = plans_.find(m.planId);
+    if (it == plans_.end() || !it->second.OnTheWay())
+        return;
+    const Plan&       p = it->second;
+    const std::string at = p.ConvoyAt();
+    if (at.empty())
+        return;
+    v.convoySystemId = at;
+    v.convoySystemName = SystemName(at);
+    v.convoyMoving = p.leg >= 0;
+    // Waiting, the way it will take begins where it waits; on its way, the next system along.
+    const size_t next = p.leg >= 0 ? (size_t)p.leg + 1 : 1;
+    if (next < p.route.size())
+        v.convoyNextName = SystemName(p.route[next]);
+    // Its ships are real only where somebody is to see them: the recipient's system, hot.
+    if (p.hauler == 0 || p.fieldedIn != at || s.systemId != at)
+        return;
+    const SystemState* st = SystemById(at);
+    if (st == nullptr)
+        return;
+    for (const auto& e : st->entities)
+    {
+        if (e->GetKind() != EntityKind::Npc)
+            continue;
+        const NpcShip& n = static_cast<const NpcShip&>(*e);
+        if (n.GetTask() != p.id || !n.IsAlive())
+            continue;
+        if (n.GetId() == p.hauler)
+            v.haulerId = n.GetId();
+        else
+            v.convoyEscortIds.push_back(n.GetId());
+    }
+}
+
 void Simulation::SpeedSite(Plan& p)
 {
     const double cut = WorldRules::JobRules().supplyCut;

@@ -31,6 +31,16 @@ std::string NameHere(const Obs::View& view, int id)
                 return e.name.empty() ? std::string("station") : e.name;
     return std::string();
 }
+
+// A ship in this system's snapshot, by name -- what an escort's hauler is called (#430).
+std::string ShipHere(const Obs::View& view, int id)
+{
+    if (view.snapshot != nullptr)
+        for (const Proto::EntitySnapshot& e : view.snapshot->entities)
+            if (e.id == id)
+                return e.name.empty() ? std::string("convoy hauler") : e.name;
+    return std::string();
+}
 }  // namespace
 
 const char* KindWord(int type)
@@ -90,6 +100,17 @@ std::vector<Row> Build(const Obs::View& view, Board board)
             r.siege = IsSiegeJob((MissionType)m.type);
             r.against = m.against;
         }
+        if ((MissionType)m.type == MissionType::Escort)
+        {
+            // An escort's is its convoy (#430): where it is now, and its hauler when it is here
+            // -- what the goal's pointer and the window's buttons go to.
+            r.convoy = Obs::ConvoyStatus(m, "\xe2\x86\x92");  // U+2192, in the UI's atlas
+            r.rode = m.rode;
+            r.siteId = 0;
+            r.handInId = m.haulerId;
+            r.handInName = m.haulerId != 0 ? ShipHere(view, m.haulerId) : std::string();
+            r.handInHere = !r.handInName.empty();
+        }
         if (contract)
         {
             // A market's contract (#343): handed in at its station, but on the clock and about
@@ -100,7 +121,7 @@ std::vector<Row> Build(const Obs::View& view, Board board)
 
         if (board == Board::Offers)
         {
-            r.status = r.kind;
+            r.status = r.convoy.empty() ? r.kind : r.convoy;
             rows.push_back(std::move(r));
             continue;
         }
@@ -128,7 +149,7 @@ std::vector<Row> Build(const Obs::View& view, Board board)
             case MissionType::Besiege: done = m.progress; break;
         }
         if ((MissionType)m.type == MissionType::Escort)
-            r.status = "escort";
+            r.status = r.convoy.empty() ? std::string("escort") : r.convoy;
         else if ((MissionType)m.type != MissionType::Delivery && m.targetCount > 0)
         {
             done = std::min(done, m.targetCount);

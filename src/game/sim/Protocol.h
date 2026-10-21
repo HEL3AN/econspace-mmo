@@ -33,7 +33,10 @@ namespace Proto
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    45;  // 45: a hello carries the client's build and a hash of each shared data file, and the
+    46;  // 46: an escort job carries its convoy -- where it is, where it goes next, its hauler and
+         // escorts when they are in the recipient's system, and whether the pilot has been with
+         // it (#430);
+         // 45: a hello carries the client's build and a hash of each shared data file, and the
          // server refuses a mismatch (#400);
          // 44: a siege's job for the besieging side (#407) -- a mission of a new type, and
          // a siege's job of either side names the faction it is against; 43: corporations (#347) --
@@ -427,6 +430,18 @@ struct MissionView
     // A siege's job, either side's (#407): the faction it is against. The issuer is the side
     // it is for.
     FactionId against = Factions::Unaffiliated();
+    // An escort job's convoy (#430), as it is now rather than as the description had it when
+    // the job was posted: the system it is in -- crossing it, or waiting there to set out --
+    // by id and by name; the next system on its way (empty in the last one, where its site
+    // is); its hauler and the warships with it, by entity id, only while they are in the
+    // recipient's system (0 and none otherwise); and whether the pilot has been with it.
+    std::string      convoySystemId;
+    std::string      convoySystemName;
+    std::string      convoyNextName;
+    bool             convoyMoving = false;  // on its way; false -- waiting to set out
+    int              haulerId = 0;
+    std::vector<int> convoyEscortIds;
+    bool             rode = false;
 };
 
 // Snapshot of the player's system — what the client draws.

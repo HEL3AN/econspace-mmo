@@ -253,6 +253,14 @@ json MissionJson(const Proto::MissionView& m)
         if (m.against != Factions::Unaffiliated())
             j["vs"] = FacJ(m.against);  // the other side of a siege (#407)
     }
+    if (!m.convoySystemId.empty())  // an escort's convoy (#430)
+        j["cv"] = { { "sys", m.convoySystemId },
+                    { "where", m.convoySystemName },
+                    { "next", m.convoyNextName },
+                    { "go", m.convoyMoving },
+                    { "h", m.haulerId },
+                    { "esc", m.convoyEscortIds },
+                    { "rode", m.rode } };
     return j;
 }
 
@@ -278,6 +286,20 @@ Proto::MissionView ToMission(const json& mj)
     m.siteId = mj.value("site", 0);
     if (mj.contains("vs"))
         m.against = ToFac(mj["vs"]);
+    if (mj.contains("cv") && mj["cv"].is_object())
+    {
+        const json& cv = mj["cv"];
+        m.convoySystemId = cv.value("sys", std::string());
+        m.convoySystemName = cv.value("where", std::string());
+        m.convoyNextName = cv.value("next", std::string());
+        m.convoyMoving = cv.value("go", false);
+        m.haulerId = cv.value("h", 0);
+        if (cv.contains("esc") && cv["esc"].is_array())
+            for (const json& id : cv["esc"])
+                if (id.is_number_integer())
+                    m.convoyEscortIds.push_back(id.get<int>());
+        m.rode = cv.value("rode", false);
+    }
     return m;
 }
 }  // namespace

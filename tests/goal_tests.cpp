@@ -125,3 +125,25 @@ TEST_CASE("Goal: the prompt goes once the loop is learned, or when it is turned 
     CHECK_FALSE(Goal::Shown(true, Goal::LEARNED_AFTER));
     CHECK_FALSE(Goal::Shown(false, 0));
 }
+
+TEST_CASE("Goal: a plan's job points at what it is about when that is here (#430)")
+{
+    Goal::State   s = InSpace();
+    Goal::Mission escort;
+    escort.title = "Escort: convoy to Kor";
+    escort.needs = "stay in this system with the convoy's hauler (#55) until it reaches Kor";
+    escort.anywhere = true;
+    escort.handInId = 55;
+    escort.handInName = "Guild hauler";
+    s.active = { escort };
+    const Goal::Prompt p = Goal::Next(s);
+    CHECK(p.step == Step::Work);
+    CHECK(p.pointAt == 55);
+    // Elsewhere: nothing here to point at.
+    s.active.front().handInId = 0;
+    s.active.front().handInName.clear();
+    CHECK(Goal::Next(s).pointAt == 0);
+    // A station's mission under way points at nothing: its work is not at the station.
+    s.active = { Bounty() };
+    CHECK(Goal::Next(s).pointAt == 0);
+}

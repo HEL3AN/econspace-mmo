@@ -29,7 +29,7 @@ struct Row
     std::string description;
     std::string kind;    // "bounty", "mining", "delivery", "supply", "escort", "siege",
                          // "besiege", "contract"
-    std::string status;  // how far along: "2 / 5", "ready", "deliver"
+    std::string status;  // how far along: "2 / 5", "ready", "deliver", "waiting at Vela"
     FactionId   faction = Factions::Unaffiliated();  // who gave it
     double      reward = 0.0;
     float       rep = 0.0f;
@@ -54,6 +54,10 @@ struct Row
     // the faction it is against.
     bool      siege = false;
     FactionId against = Factions::Unaffiliated();
+    // An escort job's convoy (#430): where it is now (Obs::ConvoyStatus), and whether the pilot
+    // has been with it. Its hauler, when it is here, is what the job's hand-in fields point at.
+    std::string convoy;
+    bool        rode = false;
 };
 
 std::vector<Row> Build(const Obs::View& view, Board board);

@@ -1073,6 +1073,9 @@ public:
     bool PlanJobReadyNow(const ClientSession& s, const Mission& m) const;
     // A supply job's site, if it is in the session's system: its entity id, else 0.
     int JobSiteId(const ClientSession& s, const Mission& m) const;
+    // An escort job's convoy as it is now (#430), into its view: where it is and goes next,
+    // and its hauler and escorts when they are in the session's system.
+    void ConvoyView(const ClientSession& s, const Mission& m, Proto::MissionView& v) const;
     // Once a pass: escorts that are with their convoy, convoys arrived or lost, sites that no
     // longer need anything, and jobs out of time.
     void StepJobs();

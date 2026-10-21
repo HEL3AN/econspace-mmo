@@ -563,6 +563,142 @@ TEST_CASE("a plan's job crosses the wire, and an agent reads where, when and wha
               " defenders in Vela (system r1-2-3)");
 }
 
+TEST_CASE("an escort job's view carries its convoy: where, where next, its ships here (#430)")
+{
+    LoadRegistries();
+    Rules           r;
+    const FactionId f = Fac::TradersGuild();
+    Simulation      sim;
+    Make(sim, 7);
+    const Upgrade  u = MarketGoingUp(sim, f);
+    ClientSession& s = DockedAt(sim, u.h);
+    const int      offer = OfferOf(s, MissionType::Escort, u.plan);
+    REQUIRE(offer >= 0);
+    REQUIRE(sim.AcceptMission(s, offer));
+    const int job = ActiveOf(s, MissionType::Escort);
+    REQUIRE(job >= 0);
+
+    // Taken: the view says where the convoy is now, and that the pilot has not been with it.
+    {
+        const Plan* p = PlanOf(sim, u.plan);
+        REQUIRE(p != nullptr);
+        const Proto::Snapshot     snap = sim.BuildSnapshot(s, s.systemId);
+        const Proto::MissionView& v = snap.missionActive[(size_t)job];
+        CHECK(v.convoySystemId == p->ConvoyAt());
+        CHECK_FALSE(v.convoySystemName.empty());
+        CHECK(v.convoyMoving == (p->leg >= 0));
+        CHECK_FALSE(v.rode);
+        CHECK_FALSE(Obs::ConvoyStatus(v, "->").empty());
+    }
+    sim.StepPlayerUndock(s);
+
+    // Into the system it is crossing: its hauler and escorts are named, and only there.
+    bool with = false;
+    for (int pass = 0; pass < 60 * 30 && !with; pass++)
+    {
+        const Plan* p = PlanOf(sim, u.plan);
+        REQUIRE(p != nullptr);
+        REQUIRE_FALSE(p->arrived);
+        if (p->leg >= 0 && s.systemId != p->route[(size_t)p->leg])
+            sim.ServerEnterSystem(s, p->route[(size_t)p->leg], s.systemId);
+        sim.MaintainWorld(2.0f);
+        p = PlanOf(sim, u.plan);
+        with = p != nullptr && p->hauler != 0 && p->fieldedIn == s.systemId;
+    }
+    REQUIRE(with);
+    const Plan&           p = *PlanOf(sim, u.plan);
+    const Proto::Snapshot snap = sim.BuildSnapshot(s, s.systemId);
+    REQUIRE(snap.missionActive.size() > (size_t)job);
+    const Proto::MissionView& v = snap.missionActive[(size_t)job];
+    CHECK(v.convoySystemId == s.systemId);
+    CHECK(v.convoyMoving);
+    CHECK(v.haulerId == p.hauler);
+    CHECK((int)v.convoyEscortIds.size() == p.fielded);
+    CHECK(v.rode == s.missions.Active()[(size_t)job].rode);
+    if ((size_t)p.leg + 1 < p.route.size())
+        CHECK_FALSE(v.convoyNextName.empty());
+    else
+        CHECK(v.convoyNextName.empty());
+    CHECK(Obs::ConvoyStatus(v, "->") == "with convoy");
+    CHECK(Obs::ConvoyPartOf(snap, p.hauler) == Obs::ConvoyPart::Hauler);
+    for (int id : v.convoyEscortIds)
+        CHECK(Obs::ConvoyPartOf(snap, id) == Obs::ConvoyPart::Escort);
+    // The hauler is a ship the pilot can see.
+    bool seen = false;
+    for (const Proto::EntitySnapshot& e : snap.entities)
+        seen = seen || e.id == p.hauler;
+    CHECK(seen);
+
+    // Across the wire as it went, and in what an agent reads.
+    Proto::Snapshot back;
+    REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(snap), back));
+    const Proto::MissionView& got = back.missionActive[(size_t)job];
+    CHECK(got.convoySystemId == v.convoySystemId);
+    CHECK(got.convoySystemName == v.convoySystemName);
+    CHECK(got.convoyNextName == v.convoyNextName);
+    CHECK(got.convoyMoving);
+    CHECK(got.haulerId == v.haulerId);
+    CHECK(got.convoyEscortIds == v.convoyEscortIds);
+    CHECK(got.rode == v.rode);
+    Obs::View view;
+    view.snapshot = &back;
+    const std::string text = Obs::DescribeMissions(view);
+    CHECK(text.find("convoy: with convoy") != std::string::npos);
+    CHECK(text.find("hauler #" + std::to_string(p.hauler)) != std::string::npos);
+    const std::string look = Obs::Describe(view, Obs::Detail::Brief);
+    CHECK(look.find("YOUR CONVOY'S HAULER") != std::string::npos);
+}
+
+TEST_CASE(
+    "an escort's convoy crosses the wire waiting, on its way elsewhere, and not at all (#430)")
+{
+    LoadRegistries();
+    Proto::Snapshot    snap;
+    Proto::MissionView m;
+    m.type = (int)MissionType::Escort;
+    m.faction = Fac::TradersGuild();
+    m.title = "Escort: convoy to Kor";
+    m.planId = 9;
+    m.systemId = "r1-2-3";
+    m.systemName = "Kor";
+    m.convoySystemId = "r1-1-0";
+    m.convoySystemName = "Vela";
+    m.convoyNextName = "Ost";
+    m.convoyMoving = true;
+    m.rode = true;
+    snap.missionActive.push_back(m);
+    Proto::MissionView bounty;
+    bounty.type = (int)MissionType::Bounty;
+    snap.missionActive.push_back(bounty);
+
+    Proto::Snapshot back;
+    REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(snap), back));
+    REQUIRE(back.missionActive.size() == 2);
+    const Proto::MissionView& got = back.missionActive[0];
+    CHECK(got.convoySystemId == "r1-1-0");
+    CHECK(got.convoySystemName == "Vela");
+    CHECK(got.convoyNextName == "Ost");
+    CHECK(got.convoyMoving);
+    CHECK(got.haulerId == 0);
+    CHECK(got.convoyEscortIds.empty());
+    CHECK(got.rode);
+    CHECK(back.missionActive[1].convoySystemId.empty());
+    CHECK_FALSE(back.missionActive[1].rode);
+
+    Obs::View view;
+    view.snapshot = &back;
+    CHECK(Obs::ConvoyStatus(got, "->") == "en route in Vela -> Ost");
+    CHECK(Obs::MissionNeeds(view, got) ==
+          "catch up with the convoy in Vela (system r1-1-0), bound for Kor");
+    CHECK(Obs::DescribeMissions(view).find("convoy: en route in Vela -> Ost (system r1-1-0); "
+                                           "you have been with it") != std::string::npos);
+    back.missionActive[0].convoyMoving = false;
+    back.missionActive[0].rode = false;
+    CHECK(Obs::ConvoyStatus(back.missionActive[0], "->") == "waiting at Vela");
+    CHECK(Obs::MissionNeeds(view, back.missionActive[0]) ==
+          "meet the convoy waiting to set out from Vela (system r1-1-0), bound for Kor");
+}
+
 namespace
 {
 // The scene the siege tests play on (siege_tests.cpp): a Guild outpost next to a pirate den,
