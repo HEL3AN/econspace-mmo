@@ -421,7 +421,7 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
     if (t == nullptr || damage <= 0.0f)
         return false;
     FactionId  law = Factions::Unaffiliated();
-    const bool crime = by != nullptr && LawOver(st, *t, by->accountName, law);
+    const bool crime = by != nullptr && IsCrime(st, *by, *t, law);
     if (crime)
     {
         ChargeAttack(*by, law, false);

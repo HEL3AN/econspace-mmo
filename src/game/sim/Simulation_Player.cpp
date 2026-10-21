@@ -503,7 +503,7 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
     if (found->GetKind() == EntityKind::Structure)
     {
         FactionId law = Factions::Unaffiliated();
-        if (LawOver(st, static_cast<const Structure&>(*found), s.accountName, law) && ev != nullptr)
+        if (IsCrime(st, s, *found, law) && ev != nullptr)
         {
             ev->hitLawful = true;
             ev->hitFaction = law;
@@ -524,8 +524,9 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
     // (pirate) or a serious crime (lawful). Applied to the session's account, which is the
     // only one there is. `ev` is filled as well, because the client draws the consequences
     // -- a beam, a flash, a notice -- from facts rather than by recomputing them.
-    FactionId tf = target->GetFaction();
-    if (Factions::IsLawful(tf))
+    FactionId  tf = target->GetFaction();
+    const bool crime = IsCrime(st, s, *target, tf);
+    if (crime)
     {
         if (ev != nullptr)
         {
@@ -533,6 +534,7 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
             ev->hitFaction = tf;
         }
         ChargeAttack(s, tf, false);
+        CallPolice(st, s, tf);  // ...and the law comes, from real forces (#431 slice 9)
     }
     if (!target->IsAlive())
     {
@@ -544,7 +546,7 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
             // Mission credit for the pirate, into this session's mission log.
             s.missions.OnPirateKilled();
         }
-        else if (Factions::IsLawful(tf))
+        else if (crime)
         {
             if (ev != nullptr)
             {

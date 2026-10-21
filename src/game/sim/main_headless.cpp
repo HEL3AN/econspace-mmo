@@ -1314,7 +1314,7 @@ struct NearStarts
         {
             const Plan& p = kv.second;
             if (p.kind == Plan::Kind::Survey || p.kind == Plan::Kind::Return ||
-                !seenPlans.insert(kv.first).second)
+                p.kind == Plan::Kind::Response || !seenPlans.insert(kv.first).second)
                 continue;
             // About a system within reach, or a convoy setting out from one.
             for (Start& s : starts)

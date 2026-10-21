@@ -112,5 +112,31 @@
     "scan": {
         "seconds": 10,
         "power": 1.0
+    },
+    "law": {
+        "callSeconds": 60,
+        "dropDistance": 1500,
+        "gunsFrom": 0.5,
+        "highFrom": 0.8,
+        "midFrom": 0.5,
+        "lowFrom": 0.1,
+        "highLocal": 99,
+        "midLocal": 4,
+        "lowLocal": 2,
+        "highLaunch": 4,
+        "midLaunch": 2,
+        "lowLaunch": 0,
+        "highReach": 2,
+        "midReach": 1,
+        "lowReach": 0,
+        "highCalled": 8,
+        "midCalled": 3,
+        "lowCalled": 0,
+        "highDelay": 0,
+        "midDelay": 20,
+        "lowDelay": 45,
+        "hop": 10,
+        "stay": 180,
+        "launchCost": 0.1
     }
 }

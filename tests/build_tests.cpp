@@ -947,12 +947,13 @@ TEST_CASE("an armed structure fires back, and the police answer an attack on one
             return n;
         };
         REQUIRE(near() == 0);
+        sim.SystemById(sys)->agg.security = 0.9f;  // the high band: no delay
 
         const int seq = ann.LastEventSeq();
         REQUIRE(Shoot(sim, ann, id));
+        // How many is the security band's (#431 slice 9, law_tests.cpp); here, some.
         const int came = near();
         CHECK(came >= 1);
-        CHECK(came <= 2);
         bool told = false;
         for (const Ev::Event& e : ann.EventsSince(seq))
             told = told || e.text.find("police answer") != std::string::npos;

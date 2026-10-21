@@ -216,6 +216,70 @@ struct Scan
     double power = 1.0;
 };
 
+// The police's answer to a crime (#431 slice 9): always real ships, never an invincible
+// police, and stronger and quicker the higher the system's security. A system is in the high
+// band from `highFrom`, the middle from `midFrom`, the low from `lowFrom`; below that nobody
+// comes. In each band (high/mid/low):
+// - `Local`: at most this many of the system's own free police warp to the crime -- all of
+//   them, in practice, in the high band;
+// - `Launch`: at most this many patrols a station of the law launches on top: first out of
+//   the faction's presence here not yet flying, then bought out of its stock at `launchCost`
+//   of an outpost's cost each;
+// - `Reach` and `Called`: police from systems within that many jumps, at most that many in
+//   all, lent like a siege's force: missing from home until they are back;
+// - `Delay`: seconds before any of it comes; police from next door take `hop` a jump more.
+// Police from elsewhere stay `stay` seconds, then go home. One call holds `callSeconds`: the
+// next shot in that time brings nobody more. They drop out of warp `dropDistance` from the
+// criminal, and a station's or a faction structure's guns fire on a criminal only at security
+// `gunsFrom` and above.
+struct Law
+{
+    double callSeconds = 60.0;
+    double dropDistance = 1500.0;
+    double gunsFrom = 0.5;
+    double highFrom = 0.8;
+    double midFrom = 0.5;
+    double lowFrom = 0.1;
+    int    highLocal = 99;
+    int    midLocal = 4;
+    int    lowLocal = 2;
+    int    highLaunch = 4;
+    int    midLaunch = 2;
+    int    lowLaunch = 0;
+    int    highReach = 2;
+    int    midReach = 1;
+    int    lowReach = 0;
+    int    highCalled = 8;
+    int    midCalled = 3;
+    int    lowCalled = 0;
+    double highDelay = 0.0;
+    double midDelay = 20.0;
+    double lowDelay = 45.0;
+    double hop = 10.0;
+    double stay = 180.0;
+    double launchCost = 0.1;
+
+    // One band's numbers.
+    struct Band
+    {
+        int    local = 0, launch = 0, reach = 0, called = 0;
+        double delay = 0.0;
+    };
+    // The band a system of `security` is in; false below `lowFrom`, where nobody comes.
+    bool BandFor(double security, Band& out) const
+    {
+        if (security >= highFrom)
+            out = { highLocal, highLaunch, highReach, highCalled, highDelay };
+        else if (security >= midFrom)
+            out = { midLocal, midLaunch, midReach, midCalled, midDelay };
+        else if (security >= lowFrom)
+            out = { lowLocal, lowLaunch, lowReach, lowCalled, lowDelay };
+        else
+            return false;
+        return true;
+    }
+};
+
 // Delivery contracts a market posts when it is short of a good (#343, #407). Once every `every`
 // seconds each system's market looks at its stock: a good below `shortAt` of its target is
 // short, and its owning faction posts a contract at its station for the units that bring it
@@ -261,6 +325,7 @@ const Jobs&        JobRules();
 const Contracts&   ContractRules();
 const Holes&       HoleRules();
 const Scan&        ScanRules();
+const Law&         LawRules();
 // For a test: rules of its own, without a file.
 void SetTideRules(const Tide& t);
 void SetMouthRules(const Mouths& m);
@@ -272,5 +337,6 @@ void SetJobRules(const Jobs& j);
 void SetContractRules(const Contracts& c);
 void SetHoleRules(const Holes& h);
 void SetScanRules(const Scan& s);
+void SetLawRules(const Law& l);
 
 }  // namespace WorldRules
