@@ -962,3 +962,32 @@ TEST_CASE("convoys, upgrades and word of a mouth round-trip through the save (#3
     CHECK(done[0] > 0.0);
     CHECK(done[0] == doctest::Approx(done[1]));
 }
+
+TEST_CASE("a generated world's security stays near its base and does not saturate (#428)")
+{
+    LoadRegistries();
+    Rules      rules;
+    Simulation sim;
+    Make(sim, 8);
+    RunMinutes(sim, 60.0);  // an hour of coarse passes, nobody on
+
+    int seen = 0, pinned = 0, belowHigh = 0;
+    for (const auto& kv : sim.Systems())
+    {
+        const SystemAggregate& a = kv.second.agg;
+        if (!a.seeded)
+            continue;
+        seen++;
+        // Never further from its base than the police/pirate balance can take it.
+        CHECK(a.security <= a.baseSecurity + Simulation::SECURITY_SWING + 1e-4f);
+        CHECK(a.security >= a.baseSecurity - Simulation::SECURITY_SWING - 1e-4f);
+        if (a.security >= 0.999f && a.baseSecurity < 1.0f - Simulation::SECURITY_SWING)
+            pinned++;
+        if (a.security < 0.7f)
+            belowHigh++;
+    }
+    REQUIRE(seen > 0);
+    CHECK(pinned == 0);
+    // The map is not "1.0 everywhere": mid and low space still read as such.
+    CHECK(belowHigh > 0);
+}
