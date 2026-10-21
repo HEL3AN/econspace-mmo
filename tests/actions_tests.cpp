@@ -205,7 +205,8 @@ TEST_CASE("Actions: an upgrade is offered on one's own outpost, not in open spac
     REQUIRE(grow != nullptr);
     CHECK(grow->blueprint == "outpost_market");
     CHECK(grow->distance == 0.0f);  // within reach of its edge: laid down at once
-    const Action* far = Find(Actions::For(t, { t.pos.x + 90000.0f, t.pos.y }), Verb::Build);
+    const std::vector<Action> away = Actions::For(t, { t.pos.x + 90000.0f, t.pos.y });
+    const Action*             far = Find(away, Verb::Build);  // into `away`, which outlives it
     REQUIRE(far != nullptr);
     CHECK(far->distance == doctest::Approx(600.0f));  // an order, flying there first
 }
