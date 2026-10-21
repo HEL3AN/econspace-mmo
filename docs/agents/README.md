@@ -185,8 +185,9 @@ A few that are worth knowing before reading the reference:
 
 - `move_to` takes an object id *or* a point, and `warp` for anything far away.
 - `mine` with `until_full` keeps going until the hold is full or the belt runs out.
-- `travel_to_system` is one order for a whole journey, gate by gate; `avoid_danger` prefers
-  safer systems over the short way.
+- `travel_to_system` is one order for a whole journey, gate by gate, planned over the systems
+  you know (charted, and one gate past them). `preference` is `shortest`, `safer` (security
+  0.5 and up where any way does) or `less_secure`; `via` names systems to pass through first.
 - `sell_cargo` takes a resource by the **name** `CARGO` shows — `"Iron"`, not an index.
 - `buy` takes a good by the name `MARKET` shows and buys as many as the stock, the hold and
   the money allow, up to `amount`. Every unit moves the price of the next, and every trade --

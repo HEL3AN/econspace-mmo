@@ -1,5 +1,6 @@
 #include "sim/Protocol.h"
 
+#include "core/Route.h"
 #include "core/World.h"
 #include "economy/Resource.h"
 #include "entities/Derelict.h"
@@ -557,7 +558,9 @@ std::string EncodeCommand(const Command& c)
             if (!c.orderName.empty())
                 j["ordName"] = c.orderName;
         }
-        flag("ordSafe", c.orderAvoidDanger);
+        if (!c.orderWaypoints.empty())
+            j["ordVia"] = c.orderWaypoints;
+        number("ordPref", c.orderPreference, 0);
     }
     flag("ordAbort", c.abortOrder);
     if (!c.deploy.empty())  // one command in a great many
@@ -668,6 +671,24 @@ bool ReadText(const json& j, const char* key, std::string& out)
     return out.size() <= TEXT_LIMIT;
 }
 
+// A list of short texts, at most `most` of them: a route's waypoints (#432).
+bool ReadTextList(const json& j, const char* key, size_t most, std::vector<std::string>& out)
+{
+    out.clear();
+    const auto it = j.find(key);
+    if (it == j.end())
+        return true;
+    if (!it->is_array() || it->size() > most)
+        return false;
+    for (const json& t : *it)
+    {
+        if (!t.is_string() || t.get_ref<const std::string&>().size() > TEXT_LIMIT)
+            return false;
+        out.push_back(t.get<std::string>());
+    }
+    return true;
+}
+
 // A refit's fit (#279): a list of lines, each four typed fields and nothing else. Bounded,
 // because a hull has a few dozen sockets and anything longer is not a fit.
 bool ReadFit(const json& j, const char* key, bool& present, std::vector<Ships::FitLine>& out)
@@ -748,7 +769,8 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadBool(j, "ordWarp", out.orderWarp);
     ok = ok && ReadBool(j, "ordFull", out.orderUntilFull);
     ok = ok && ReadText(j, "ordDest", out.orderDestSystem);
-    ok = ok && ReadBool(j, "ordSafe", out.orderAvoidDanger);
+    ok = ok && ReadTextList(j, "ordVia", Proto::ROUTE_WAYPOINTS_MAX, out.orderWaypoints);
+    ok = ok && ReadInt(j, "ordPref", 0, 0, Route::PREFERENCE_MAX, out.orderPreference);
     ok = ok && ReadText(j, "ordBp", out.orderBlueprint);
     ok = ok && ReadText(j, "ordName", out.orderName);
     ok = ok && ReadBool(j, "ordAbort", out.abortOrder);

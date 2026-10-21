@@ -3,6 +3,7 @@
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
+#include "core/Route.h"
 #include "core/ShipDesign.h"
 #include "entities/Derelict.h"
 #include "entities/JumpGate.h"
@@ -23,6 +24,7 @@
 #include <cmath>
 #include <fstream>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -276,7 +278,7 @@ TEST_CASE("an unanchored mouth collapses, its region drifts, and the next mouth 
     REQUIRE(o != nullptr);
     CHECK(o->state == "drifted");
     CHECK(sim.TakeTopologyChanged());
-    CHECK(sim.PlanRoute(mouth, entry, false).empty());
+    CHECK(sim.PlanRoute(mouth, entry).empty());
     CHECK(GateTo(sim, mouth, entry) == nullptr);
     CHECK(GateTo(sim, entry, mouth) == nullptr);
     bool removed = false;
@@ -295,7 +297,7 @@ TEST_CASE("an unanchored mouth collapses, its region drifts, and the next mouth 
     CHECK(sim.OpeningLog().size() == logged);
     CHECK(sim.OpeningOf(slot)->state == "unstable");
     CHECK(sim.OpeningOf(slot)->closesAt == doctest::Approx(sim.Time() + 24.0 * 3600.0));
-    CHECK(sim.PlanRoute(mouth, entry, false).size() == 2);
+    CHECK(sim.PlanRoute(mouth, entry).size() == 2);
     REQUIRE(GateTo(sim, mouth, entry) != nullptr);
     CHECK(static_cast<const JumpGate*>(GateTo(sim, mouth, entry))->IsUnstable());
     CHECK(GateTo(sim, entry, mouth) != nullptr);
@@ -467,7 +469,7 @@ TEST_CASE("mouths, anchors and drift round-trip through the save (#342 S4)")
         CHECK(b.OpeningOf(slot)->state == a.OpeningOf(slot)->state);
         CHECK(b.OpeningOf(slot)->closesAt == a.OpeningOf(slot)->closesAt);
         const std::string mouth = a.OpeningOf(slot)->mouth, entry = Simulation::EntryOf(slot);
-        CHECK(b.PlanRoute(mouth, entry, false).size() == a.PlanRoute(mouth, entry, false).size());
+        CHECK(b.PlanRoute(mouth, entry).size() == a.PlanRoute(mouth, entry).size());
         CHECK((GateTo(b, mouth, entry) == nullptr) == (GateTo(a, mouth, entry) == nullptr));
         CHECK((GateTo(b, entry, mouth) == nullptr) == (GateTo(a, entry, mouth) == nullptr));
     }
@@ -584,4 +586,74 @@ TEST_CASE("at the cap a dead region drifts into the archive and comes back decay
     REQUIRE(Simulation::ReadSealed(Simulation::SealedPath(seal, slot), 9, sealed));
     CHECK(sealed.documents.count(back) == 1);
     CHECK_FALSE(std::ifstream(Simulation::ArchivePath(seal, id)).is_open());
+}
+
+TEST_CASE("a route order plans over what its pilot knows, and round a heavy mouth (#432)")
+{
+    LoadRegistries();
+    Rules      r;
+    Simulation sim;
+    Make(sim, 7);
+    const int                        slot = OpenFromCentre(sim);
+    const Simulation::RegionOpening& o = *sim.OpeningOf(slot);
+    const std::string                mouth = o.mouth;
+    const std::string                entry = Simulation::EntryOf(slot);
+    int                              light = 0, heavy = 0;
+    for (int i = 0; i < (int)GetShipCatalog().size(); i++)
+    {
+        if (MassOf(GetShipCatalog()[i].stats) < MassOf(GetShipCatalog()[light].stats))
+            light = i;
+        if (MassOf(GetShipCatalog()[i].stats) > MassOf(GetShipCatalog()[heavy].stats))
+            heavy = i;
+    }
+    WorldRules::Mouths m;
+    m.maxMass = (MassOf(GetShipCatalog()[light].stats) + MassOf(GetShipCatalog()[heavy].stats)) / 2;
+    WorldRules::SetMouthRules(m);
+    ClientSession& s = sim.CreateSession(mouth, { 0.0f, 0.0f }, GetShipCatalog()[light].stats);
+    s.ownedShips = { light, heavy };
+    s.currentShip = light;
+
+    // The index marks the mouth as a crossing that closes and lets only so much by.
+    bool marked = false;
+    for (const WorldLoader::SystemLink& l : sim.KnownUniverseFor(s).links)
+        if (l.kind == "mouth")
+        {
+            marked = true;
+            CHECK(((l.a == mouth && l.b == entry) || (l.a == entry && l.b == mouth)));
+            CHECK(l.closesAt == doctest::Approx(o.closesAt));
+            CHECK(l.maxMass == doctest::Approx(m.maxMass));
+        }
+    CHECK(marked);
+
+    Orders::Order order;
+    order.kind = Orders::Kind::Route;
+    order.destSystem = entry;
+    sim.GiveOrder(s, order);
+    CHECK(sim.RouteFor(s).path == std::vector<std::string>{ mouth, entry });
+
+    // Too heavy for it: no way, and told why.
+    s.currentShip = heavy;
+    const Route::Result barred = sim.RouteFor(s);
+    CHECK(barred.path.empty());
+    CHECK(barred.reason.find("too heavy") != std::string::npos);
+    s.currentShip = light;
+
+    // Deep in the region the world has a way, but nobody has charted it: no order goes there
+    // blind -- the frontier one gate past the charted is as far as a route can be planned.
+    std::set<std::string> known;
+    for (const WorldLoader::SystemInfo& si : sim.KnownUniverseFor(s).systems)
+        known.insert(si.id);
+    std::string deep;
+    for (const std::string& id : sim.RegionSystems(slot))
+        if (known.count(id) == 0)
+            deep = id;
+    REQUIRE_FALSE(deep.empty());
+    CHECK_FALSE(sim.PlanRoute(mouth, deep).empty());
+    order.destSystem = deep;
+    sim.GiveOrder(s, order);
+    const Route::Result blind = sim.RouteFor(s);
+    CHECK(blind.path.empty());
+    CHECK(blind.reason.find("known map") != std::string::npos);
+    sim.StepPlayerOrder(s, *sim.SystemOf(s), 1.0f / 60.0f);
+    CHECK(s.orderStatus == Orders::Status::Failed);
 }

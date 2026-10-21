@@ -393,7 +393,7 @@ TEST_CASE("a region opened while the world runs is told before anything shows it
     CHECK((last.kind == "tide" || last.kind == "expedition"));
     if (last.kind == "expedition")
         CHECK(sim.Chronicle()[sim.Chronicle().size() - 2].kind == "tide");
-    CHECK(sim.PlanRoute(o.mouth, systems.front(), false).size() == 2);
+    CHECK(sim.PlanRoute(o.mouth, systems.front()).size() == 2);
 }
 
 TEST_CASE("a region is remade by the admin only while no player has built in it (#342 S3)")

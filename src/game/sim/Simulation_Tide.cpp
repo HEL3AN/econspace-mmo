@@ -1185,6 +1185,7 @@ void Simulation::AnchorMouth(RegionOpening& o, const std::string& owner)
     o.closesAt = 0.0;
     o.warned = false;
     RedressMouth(o);
+    topologyChanged_ = true;  // the index marks it unstable no longer (#432)
     FactionId                f;
     std::optional<FactionId> who;
     if (Outposts::FactionOf(owner, f))
@@ -1245,6 +1246,7 @@ void Simulation::AnchorLost(SystemState& st, const std::string& owner, const std
         o.mouthAt = time_;
         o.warned = false;
         RedressMouth(o);
+        topologyChanged_ = true;  // the index marks it unstable again (#432)
         Announce("anchor", whose, st.id,
                  "The " + name + " in " + where + " fell" + how + ": the mouth is unstable " +
                      "again, and collapses in " + Hours(o.closesAt - time_) +

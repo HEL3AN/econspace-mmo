@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Route.h"
 #include "core/WorldLoader.h"
 #include "gen/Galaxy.h"
 #include "entities/NpcShip.h"
@@ -925,17 +926,23 @@ public:
     // Server player combat: if the weapon is on and the target (targetId) is in range and
     // the cooldown is ready — applies damage, accumulates facts in ev. Returns true if there
     // was a shot this tick (the client draws a beam). The target is looked up in st by id.
-    // Shortest path across the gate graph, as system ids from `from` to `to` inclusive.
-    // Empty when there is no route, or when either end is unknown.
+    // A path across the whole gate graph, as system ids from `from` to `to` inclusive --
+    // what the world allows, charted or not, with no mass. Empty when there is no route, or
+    // when either end is unknown. A pilot's route order plans over what that pilot knows
+    // instead (RouteFor); both are Route::Find (#432).
     //
-    // avoidDanger weighs each hop by how dangerous the system is (low security, pirate
-    // pressure, a hostile controller) instead of counting hops. "Fastest" and "arrives"
-    // are different routes, and which one an agent wants depends on what it is carrying.
-    // `extra` are links beyond the gates that this traveller may take: the roaming holes a
-    // pilot has found (#342 S9).
+    // `preference` weighs each hop by the security of the system entered: the short way,
+    // the high-security way or the low-security way. `extra` are links beyond the gates
+    // that this traveller may take: the roaming holes a pilot has found (#342 S9).
     std::vector<std::string>
-    PlanRoute(const std::string& from, const std::string& to, bool avoidDanger,
+    PlanRoute(const std::string& from, const std::string& to,
+              Route::Preference                           preference = Route::Preference::Shortest,
               const std::vector<WorldLoader::SystemLink>* extra = nullptr) const;
+    // The route a pilot's order flies from where the ship is (#432): over the systems that
+    // pilot knows (KnownUniverseFor) -- charted, the frontier one gate past them, and the
+    // holes they found -- through the order's waypoints, under its preference, with the
+    // ship's mass against every mouth and hole. The same search the client's map previews.
+    Route::Result RouteFor(const ClientSession& s) const;
 
     // --- Standing orders (strategic layer, #26) ---
     // Give an order, replacing whatever was running; returns its id. The order executes

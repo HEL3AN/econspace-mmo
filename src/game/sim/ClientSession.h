@@ -139,6 +139,18 @@ struct ClientSession
     int            orderId = 0;             // id of the current order
     int            nextOrderId = 0;         // issuance counter
     bool           orderNavIssued = false;  // nav order already given to the ship
+    // A route order's plan (#432): the next system, found in `routeIn` at world time
+    // `routeAt`. Planned again on arrival in a system and once a second on the way -- the
+    // galaxy can change under a journey (a mouth closing, a hole found) -- never every tick:
+    // the search reads the pilot's whole index.
+    std::string routeNext;
+    std::string routeIn;
+    double      routeAt = -1.0;
+    // What the ship weighs, for the mouths and holes on a route, kept by design id: deriving
+    // a design's numbers costs more than the whole search (a design is named by its content,
+    // so the id is enough to know it has not changed).
+    mutable std::string routeMassDesign;
+    mutable double      routeMass = 0.0;
     // Shots a standing order fired (an attack, #39), for the host to add to the beams of the
     // player's system alongside the ones commands fire. Drained every world tick.
     struct Shot

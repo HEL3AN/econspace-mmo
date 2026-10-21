@@ -316,7 +316,7 @@ TEST_CASE("a new world weaves its packs in: an admin region, its links, its star
         CHECK(HasGateTo(sim, l.second, l.first));
         CHECK(sim.IsPackSlot(Gen::SlotOf(l.second)));  // what it links to never drifts away
     }
-    CHECK_FALSE(sim.PlanRoute(links.front().second, Gen::SystemId(slot, 2, 2), false).empty());
+    CHECK_FALSE(sim.PlanRoute(links.front().second, Gen::SystemId(slot, 2, 2)).empty());
 
     // Its faction is in the registry, at war with the pirates, and owns what the pack says.
     FactionId wardens;

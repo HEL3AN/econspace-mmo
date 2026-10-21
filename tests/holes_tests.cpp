@@ -315,7 +315,7 @@ TEST_CASE("a hole is hidden until scanned, then a route of the pilot's own (#342
     for (const WorldLoader::SystemLink& l : sim.KnownUniverseFor(other).links)
         CHECK(l.kind.empty());
     const std::vector<WorldLoader::SystemLink> mine = sim.HoleLinksOf(s);
-    CHECK(sim.PlanRoute(a, b, false, &mine).size() == 2);
+    CHECK(sim.PlanRoute(a, b, Route::Preference::Shortest, &mine).size() == 2);
     // The first to find it is news; finding it again is not.
     int credited = 0;
     for (const ChronicleEntry& e : sim.Chronicle())

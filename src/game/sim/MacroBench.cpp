@@ -53,6 +53,8 @@ struct BenchRow
     double macroMs = 0.0;       // StepWorldMacro, per coarse pass
     double topUpMs = 0.0;       // the spawn director, per coarse pass
     double tickMs = 0.0, worstTickMs = 0.0;
+    double routeKnownMs = 0.0;  // one route order's plan: the pilot's index and the search (#432)
+    double routeAllMs = 0.0;    // the search alone, over every system: a galaxy fully charted
     double saveMs = 0.0;
     long   saveBytes = 0;
     double memoryMb = -1.0;  // resident growth from before the world was built
@@ -147,6 +149,29 @@ BenchRow RunOne(int regionSystems, double seconds, uint64_t seed, bool allHot, i
             (e->GetKind() == EntityKind::Npc ? row.npcs : row.statics)++;
     }
 
+    // A route order's plan (#432), which it makes on arrival in a system and once a second on
+    // the way: the pilot's index, then the search through it -- and the search over the whole
+    // graph, which is what it costs once everything is charted. End to end of the galaxy.
+    {
+        const int          reps = 20;
+        const std::string& from = ids.front();
+        const std::string& to = ids.back();
+        ClientSession&     pilot =
+            sim.CreateSession(from, sim.SafeArrival(from), GetShipCatalog()[0].stats);
+        Orders::Order order;
+        order.kind = Orders::Kind::Route;
+        order.destSystem = to;
+        sim.GiveOrder(pilot, order);
+        t = Clock::now();
+        for (int i = 0; i < reps; i++)
+            (void)sim.RouteFor(pilot);
+        row.routeKnownMs = Since(t) / reps;
+        t = Clock::now();
+        for (int i = 0; i < reps; i++)
+            (void)sim.PlanRoute(from, to);
+        row.routeAllMs = Since(t) / reps;
+    }
+
     // The checkpoint the host writes once a minute, into a file of the benchmark's own.
     const std::string path = std::string(GetApplicationDirectory()) + "macrobench_world.json";
     const int         saves = 3;
@@ -207,13 +232,14 @@ int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t see
 
     // Markdown, so the table can be pasted where it is discussed.
     printf("\nPer tick (60 Hz, budget 16.7 ms) and per coarse pass (every 2 s):\n\n");
-    printf("| region | systems | links | players | hot | static | NPCs | generate ms | "
-           "materialise ms | "
-           "agents ms/tick | structures ms/tick | recount ms/pass | "
-           "macro ms/pass | top-up ms/pass | tick ms (mean / worst) | save ms | save KB | "
-           "memory MB |\n");
+    printf(
+        "| region | systems | links | players | hot | static | NPCs | generate ms | "
+        "materialise ms | "
+        "agents ms/tick | structures ms/tick | recount ms/pass | "
+        "macro ms/pass | top-up ms/pass | tick ms (mean / worst) | route plan ms (known / all) | "
+        "save ms | save KB | memory MB |\n");
     printf("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
-           "---:|---:|\n");
+           "---:|---:|---:|\n");
     for (const BenchRow& r : rows)
     {
         char mem[32];
@@ -222,10 +248,11 @@ int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t see
         else
             snprintf(mem, sizeof(mem), "n/a");
         printf("| %d | %d | %d | %d | %d | %ld | %ld | %.1f | %.1f | %.3f | %.4f | %.3f | "
-               "%.3f | %.3f | %.2f / %.1f | %.2f | %.0f | %s |\n",
+               "%.3f | %.3f | %.2f / %.1f | %.2f / %.2f | %.2f | %.0f | %s |\n",
                r.region, r.systems, r.links, r.players, r.hot, r.statics, r.npcs, r.generateMs,
                r.materializeMs, r.agentsMs, r.structuresMs, r.recountMs, r.macroMs, r.topUpMs,
-               r.tickMs, r.worstTickMs, r.saveMs, r.saveBytes / 1024.0, mem);
+               r.tickMs, r.worstTickMs, r.routeKnownMs, r.routeAllMs, r.saveMs,
+               r.saveBytes / 1024.0, mem);
     }
     return 0;
 }

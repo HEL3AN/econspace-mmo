@@ -110,12 +110,14 @@ Approach an asteroid field and mine it. With until_full, keeps going until the h
 
 ### `travel_to_system`
 
-Travel to another star system, jumping gate by gate -- and through any roaming wormhole you have found with scan, if it lets your ship by. One order for the whole journey however many hops it takes.
+Travel to another star system, jumping gate by gate -- and through any roaming wormhole you have found with scan, if it lets your ship by. One order for the whole journey however many hops it takes, planned over the systems you know: charted ones and those one gate past them. preference weighs the way: 'shortest' (fewest jumps, the default), 'safer' (keep to security 0.5 and above where any way does) or 'less_secure' (keep below 0.5). via lists systems to pass through first, in order.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
-| `avoid_danger` | boolean |  | prefer safer systems over the short way |
+| `avoid_danger` | boolean |  | the same as preference 'safer' |
+| `preference` | string |  | 'shortest', 'safer' or 'less_secure' |
 | `system` | string | yes | system id, e.g. 'reach' |
+| `via` | array |  | system ids to pass through on the way, in order |
 
 ### `abort_order`
 
@@ -372,7 +374,7 @@ Ready-made plans a client can offer its user. Each is sent to the model as writt
 
 *Find a price difference between two systems and work it*
 
-> Look for a profitable trade. Read the galaxy resource to see which systems exist and how dangerous they are. Dock somewhere, note the market prices, then travel_to_system to a neighbour and compare. A market that makes a good holds a lot of it and asks little; one that uses it up is short and pays well. buy where it is cheap, carry it, and sell_cargo where it is dear -- the spread and the fee mean a small difference loses money, and your own trades move the price. Prefer avoid_danger on the route when the hold is full — cargo lost is worse than time lost.
+> Look for a profitable trade. Read the galaxy resource to see which systems exist and how dangerous they are. Dock somewhere, note the market prices, then travel_to_system to a neighbour and compare. A market that makes a good holds a lot of it and asks little; one that uses it up is short and pays well. buy where it is cheap, carry it, and sell_cargo where it is dear -- the spread and the fee mean a small difference loses money, and your own trades move the price. Prefer preference 'safer' on the route when the hold is full — cargo lost is worse than time lost.
 
 ### `scout`
 

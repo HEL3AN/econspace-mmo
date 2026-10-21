@@ -7,6 +7,7 @@
 
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
+#include "core/Route.h"
 #include "core/World.h"
 #include "entities/Entity.h"
 #include "entities/JumpGate.h"
@@ -60,7 +61,33 @@ int Simulation::GiveOrder(ClientSession& s, const Orders::Order& o)
     s.orderStatus = Orders::Status::Running;
     s.orderDetail.clear();
     s.orderNavIssued = false;
+    s.routeNext.clear();
+    s.routeIn.clear();
+    s.routeAt = -1.0;
     return s.orderId;
+}
+
+Route::Result Simulation::RouteFor(const ClientSession& s) const
+{
+    std::vector<std::string> stops = s.order.waypoints;
+    stops.push_back(s.order.destSystem);
+    const int                   pref = std::clamp(s.order.preference, 0, Route::PREFERENCE_MAX);
+    const WorldLoader::Universe known = KnownUniverseFor(s);
+    // The mass matters only where a crossing limits it, and is worked out once per design.
+    double mass = 0.0;
+    for (const WorldLoader::SystemLink& l : known.links)
+        if (l.maxMass > 0.0f)
+        {
+            const std::string design = s.DesignOf(s.currentShip);
+            if (design != s.routeMassDesign || design.empty())
+            {
+                s.routeMassDesign = design;
+                s.routeMass = ShipMass(s);
+            }
+            mass = s.routeMass;
+            break;
+        }
+    return Route::FindVia(known, s.systemId, stops, mass, time_, (Route::Preference)pref);
 }
 
 void Simulation::AbortOrder(ClientSession& s, const std::string& why)
@@ -158,21 +185,31 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
     // journey, and a route that was safe when it was planned may not be by the third hop.
     if (s.order.kind == Orders::Kind::Route)
     {
-        if (s.systemId == s.order.destSystem)
+        // A waypoint reached is passed (#432); the journey goes on to the next.
+        while (!s.order.waypoints.empty() && s.order.waypoints.front() == s.systemId)
+            s.order.waypoints.erase(s.order.waypoints.begin());
+        if (s.order.waypoints.empty() && s.systemId == s.order.destSystem)
         {
             finish(Orders::Status::Done, "arrived in " + s.order.destSystem);
             return;
         }
-        // ...over the gates, and the roaming holes this pilot has found (#342 S9).
-        const std::vector<WorldLoader::SystemLink> holes = HoleLinksOf(s);
-        std::vector<std::string>                   path =
-            PlanRoute(s.systemId, s.order.destSystem, s.order.avoidDanger, &holes);
-        if (path.size() < 2)
+        // ...over what this pilot knows: the gates of the charted galaxy and the roaming
+        // holes they found (#342 S9), each mouth and hole only if the ship fits and it is
+        // still open. Planned on arrival and once a second, not every tick (ClientSession).
+        if (s.routeIn != s.systemId || time_ - s.routeAt >= 1.0)
         {
-            finish(Orders::Status::Failed, "no route to " + s.order.destSystem);
-            return;
+            const Route::Result route = RouteFor(s);
+            if (route.path.size() < 2)
+            {
+                finish(Orders::Status::Failed,
+                       route.reason.empty() ? "no route to " + s.order.destSystem : route.reason);
+                return;
+            }
+            s.routeNext = route.path[1];
+            s.routeIn = s.systemId;
+            s.routeAt = time_;
         }
-        const std::string& nextHop = path[1];
+        const std::string& nextHop = s.routeNext;
 
         // The gate for this hop. Gates carry their destination, so the hop names the gate.
         JumpGate* gate = nullptr;
@@ -190,6 +227,18 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
         {
             finish(Orders::Status::Failed, "no gate to " + nextHop + " in this system");
             return;
+        }
+        if (s.order.targetId != gate->GetId())
+        {
+            // The next hop changed on the way -- a link closed, a hole was found: turn for the
+            // new gate rather than finish the warp to the old one.
+            if (s.order.targetId != 0 && s.orderNavIssued)
+            {
+                s.ship->CancelWarp();
+                s.ship->DisengageAutopilot();
+            }
+            s.order.targetId = gate->GetId();
+            s.orderNavIssued = false;
         }
 
         float gateDist = DistTo(*s.ship, gate->GetPosition());

@@ -153,7 +153,8 @@ endif()
 # --- Engine (shared static library) ----------------------------------------
 add_library(engine STATIC
     src/engine/core/WorldLoader.cpp
-    src/engine/core/DataDir.cpp      # where data/ is, found at runtime (#399)
+    src/engine/core/Route.cpp        # the one route planner: map preview and route order (#432)
+    src/engine/core/DataDir.cpp     # where data/ is, found at runtime (#399)
     src/engine/core/Faction.cpp
     src/engine/core/Archetype.cpp    # what a kind of object is, as data (#34)
     src/engine/core/ArchetypeEdit.cpp  # writing a tuned look back without reformatting (#118)
@@ -489,6 +490,7 @@ add_executable(tests
     tests/silhouette_tests.cpp
     tests/camera_tests.cpp
     tests/overview_tests.cpp
+    tests/route_tests.cpp
     tests/sensor_tests.cpp
     tests/gen_tests.cpp
     tests/centre_tests.cpp
