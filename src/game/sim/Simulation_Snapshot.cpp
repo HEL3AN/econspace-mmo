@@ -211,6 +211,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         v.deadline = m.deadline;
         v.siteId = JobSiteId(s, m);
         v.against = m.against;
+        ConvoyView(s, m, v);
         return v;
     };
     if (s.IsDocked())

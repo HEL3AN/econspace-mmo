@@ -95,6 +95,8 @@ struct Seen
     const Proto::EntitySnapshot* e = nullptr;
     float                        dist = 0.0f;
     bool                         hostile = false;
+    // A ship of the convoy one of this pilot's escort jobs is with (#430).
+    Obs::ConvoyPart convoy = Obs::ConvoyPart::None;
 };
 
 // One line per object: id, what it is, its name, how far, which way, and whatever detail
@@ -185,6 +187,11 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
         if (e.cargo >= 0 && e.cargo < Goods::Count() && e.cargoAmount > 0)
             extra += Fmt("  carrying %d ", e.cargoAmount) +
                      ResourceName(ResourceType::FromIndex(e.cargo));
+        // The convoy this pilot is paid to escort (#430): whom to fly with.
+        if (s.convoy == Obs::ConvoyPart::Hauler)
+            extra += "  YOUR CONVOY'S HAULER";
+        else if (s.convoy == Obs::ConvoyPart::Escort)
+            extra += "  your convoy's escort";
     }
     if (e.kind == Proto::EntityKind::PlayerShip)
     {
@@ -262,6 +269,13 @@ std::string MissionLine(const Obs::View& view, size_t index, const Proto::Missio
                    "anywhere\n",
                    m.rewardMoney, FactionName(m.faction).c_str(), m.rewardRep, m.systemName.c_str(),
                    m.systemId.c_str(), due.empty() ? "" : ", ", due.c_str());
+        // An escort's convoy as it is now (#430): the description is as it was when posted.
+        const std::string convoy = Obs::ConvoyStatus(m, "->");
+        if (!convoy.empty())
+            out +=
+                Fmt("       convoy: %s (system %s)%s%s\n", convoy.c_str(), m.convoySystemId.c_str(),
+                    m.haulerId != 0 ? Fmt("; hauler #%d", m.haulerId).c_str() : "",
+                    m.rode ? "; you have been with it" : "; you have not been with it yet");
         // A siege has two sides, and a job is for one of them (#407).
         if (IsSiegeJob((MissionType)m.type))
             out += Fmt("       for %s (%s), against %s\n", FactionName(m.faction).c_str(),
@@ -584,6 +598,19 @@ std::string MissionNeeds(const View& view, const Proto::MissionView& m)
                        m.systemName.c_str(), m.systemId.c_str());
         }
         case MissionType::Escort:
+            // Where the convoy is now (#430), not where it was when the job was posted.
+            if (m.haulerId != 0)
+                return Fmt("stay in this system with the convoy's hauler (#%d) until it reaches "
+                           "%s (system %s)",
+                           m.haulerId, m.systemName.c_str(), m.systemId.c_str());
+            if (!m.convoySystemId.empty() && !m.convoyMoving)
+                return Fmt("meet the convoy waiting to set out from %s (system %s), bound for %s",
+                           m.convoySystemName.c_str(), m.convoySystemId.c_str(),
+                           m.systemName.c_str());
+            if (!m.convoySystemId.empty())
+                return Fmt("%s the convoy in %s (system %s), bound for %s",
+                           m.rode ? "catch up with" : "meet", m.convoySystemName.c_str(),
+                           m.convoySystemId.c_str(), m.systemName.c_str());
             return Fmt("fly with the convoy until it reaches %s (system %s)", m.systemName.c_str(),
                        m.systemId.c_str());
         case MissionType::Contract:
@@ -621,6 +648,35 @@ std::string JobDue(const View& view, const Proto::MissionView& m)
     if (left < 120.0)
         return Fmt("due in %.0f s", left);
     return Fmt("due in %.0f min", left / 60.0);
+}
+
+std::string ConvoyStatus(const Proto::MissionView& m, const char* arrow)
+{
+    if ((MissionType)m.type != MissionType::Escort || m.convoySystemId.empty())
+        return std::string();
+    if (!m.convoyMoving)
+        return "waiting at " + m.convoySystemName;
+    if (m.haulerId != 0)
+        return "with convoy";
+    return "en route in " + m.convoySystemName + " " + arrow + " " +
+           (m.convoyNextName.empty() ? std::string("its site") : m.convoyNextName);
+}
+
+ConvoyPart ConvoyPartOf(const Proto::Snapshot& snap, int entityId)
+{
+    if (entityId == 0)
+        return ConvoyPart::None;
+    for (const Proto::MissionView& m : snap.missionActive)
+    {
+        if ((MissionType)m.type != MissionType::Escort)
+            continue;
+        if (m.haulerId == entityId)
+            return ConvoyPart::Hauler;
+        for (int id : m.convoyEscortIds)
+            if (id == entityId)
+                return ConvoyPart::Escort;
+    }
+    return ConvoyPart::None;
 }
 
 std::string DescribeMissions(const View& view)
@@ -934,7 +990,8 @@ std::string Describe(const View& view, Detail detail)
     {
         float dx = e.pos.x - p.pos.x;
         float dy = e.pos.y - p.pos.y;
-        seen.push_back({ &e, std::sqrt(dx * dx + dy * dy), HostileToPlayer(e, p) });
+        seen.push_back(
+            { &e, std::sqrt(dx * dx + dy * dy), HostileToPlayer(e, p), ConvoyPartOf(snap, e.id) });
     }
     std::sort(seen.begin(), seen.end(),
               [](const Seen& a, const Seen& b) { return a.dist < b.dist; });
@@ -954,8 +1011,9 @@ std::string Describe(const View& view, Detail detail)
     {
         if (s.hostile)
             continue;  // already listed
-        bool anchor =
-            s.e->kind == Proto::EntityKind::Station || s.e->kind == Proto::EntityKind::Gate;
+        // ...and the convoy a job has the pilot escort (#430), however far it is.
+        bool anchor = s.e->kind == Proto::EntityKind::Station ||
+                      s.e->kind == Proto::EntityKind::Gate || s.convoy != ConvoyPart::None;
         if (shown >= cap && !anchor)
         {
             skipped++;
@@ -1002,8 +1060,11 @@ std::string Describe(const View& view, Detail detail)
         for (size_t i = 0; i < snap.missionActive.size(); i++)
         {
             const Proto::MissionView& m = snap.missionActive[i];
-            out += Fmt("  [%d] %s  %d/%d%s\n", (int)i, m.title.c_str(), m.progress, m.targetCount,
-                       m.completable ? "  READY TO HAND IN" : "");
+            const std::string         convoy = ConvoyStatus(m, "->");
+            out += Fmt("  [%d] %s  %d/%d%s%s%s\n", (int)i, m.title.c_str(), m.progress,
+                       m.targetCount, m.completable ? "  READY TO HAND IN" : "",
+                       convoy.empty() ? "" : ("  convoy " + convoy).c_str(),
+                       m.haulerId != 0 ? Fmt(" (hauler #%d)", m.haulerId).c_str() : "");
         }
     }
 

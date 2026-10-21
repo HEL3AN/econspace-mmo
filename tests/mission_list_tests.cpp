@@ -96,3 +96,59 @@ TEST_CASE("MissionList: offers are the docked station's board, numbered as the s
     Obs::View nothing;
     CHECK(MissionList::Build(nothing, MissionList::Board::Offers).empty());
 }
+
+TEST_CASE("MissionList: an escort job says where its convoy is and points at its hauler (#430)")
+{
+    Proto::Snapshot    snap;
+    Proto::MissionView m = Job(MissionType::Escort, 10, 0, 1, 0);
+    m.planId = 7;
+    m.systemId = "r1-2-3";
+    m.systemName = "Kor";
+    m.convoySystemId = "r1-1-0";
+    m.convoySystemName = "Vela";
+    m.convoyNextName = "Ost";
+    snap.missionActive = { m };
+    Obs::View view;
+    view.snapshot = &snap;
+
+    // Waiting to set out.
+    std::vector<MissionList::Row> rows = MissionList::Build(view, MissionList::Board::Active);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].status == "waiting at Vela");
+    CHECK(rows[0].convoy == "waiting at Vela");
+    CHECK_FALSE(rows[0].rode);
+    CHECK(rows[0].handInId == 0);
+    CHECK_FALSE(rows[0].handInHere);
+
+    // On its way, in another system: where it is and where it goes next.
+    snap.missionActive[0].convoyMoving = true;
+    rows = MissionList::Build(view, MissionList::Board::Active);
+    CHECK(rows[0].status == "en route in Vela \xe2\x86\x92 Ost");
+    CHECK(Obs::ConvoyStatus(snap.missionActive[0], "->") == "en route in Vela -> Ost");
+    snap.missionActive[0].convoyNextName.clear();
+    CHECK(MissionList::Build(view, MissionList::Board::Active)[0].status ==
+          "en route in Vela \xe2\x86\x92 its site");
+
+    // Here, with the ship: the hauler is what the job points at.
+    Proto::EntitySnapshot hauler;
+    hauler.id = 55;
+    hauler.kind = Proto::EntityKind::Npc;
+    hauler.name = "Guild hauler";
+    snap.entities.push_back(hauler);
+    snap.missionActive[0].haulerId = 55;
+    snap.missionActive[0].convoyEscortIds = { 56, 57 };
+    snap.missionActive[0].rode = true;
+    rows = MissionList::Build(view, MissionList::Board::Active);
+    CHECK(rows[0].status == "with convoy");
+    CHECK(rows[0].rode);
+    CHECK(rows[0].handInId == 55);
+    CHECK(rows[0].handInName == "Guild hauler");
+    CHECK(rows[0].handInHere);
+    CHECK(rows[0].needs.find("hauler (#55)") != std::string::npos);
+
+    // ...and the instruments know its ships for this pilot's convoy.
+    CHECK(Obs::ConvoyPartOf(snap, 55) == Obs::ConvoyPart::Hauler);
+    CHECK(Obs::ConvoyPartOf(snap, 57) == Obs::ConvoyPart::Escort);
+    CHECK(Obs::ConvoyPartOf(snap, 58) == Obs::ConvoyPart::None);
+    CHECK(Obs::ConvoyPartOf(snap, 0) == Obs::ConvoyPart::None);
+}

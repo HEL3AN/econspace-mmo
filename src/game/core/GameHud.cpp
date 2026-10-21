@@ -8,6 +8,7 @@
 #include "core/Game.h"
 #include "render/TreatmentPanel.h"
 #include "render/Perf.h"
+#include "sim/Observation.h"
 #include "sim/Overview.h"
 #include "sim/PlayerStep.h"
 
@@ -491,13 +492,25 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
                 // Another pilot under their corporation's ticker (#347).
                 const std::string name =
                     row.entity->kind == Proto::EntityKind::PlayerShip ? Tagged(row.name) : row.name;
-                Ui::Cell cell{ name, row.hostile ? t.standing.hostile
-                                     : held      ? t.colors.accent
-                                                 : t.colors.text };
+                // The convoy an escort job has this pilot fly with (#430), in the accent: it
+                // is what the pilot is here for, and the list is where that is said (#117).
+                const bool convoy =
+                    Obs::ConvoyPartOf(snapshot_, row.entity->id) != Obs::ConvoyPart::None;
+                Ui::Cell cell{ name, row.hostile      ? t.standing.hostile
+                                     : held || convoy ? t.colors.accent
+                                                      : t.colors.text };
                 chipOf(*row.entity, cell);
                 return cell;
             }
-            case 1: return Ui::Cell{ row.kind, t.colors.dim };
+            case 1:
+                switch (Obs::ConvoyPartOf(snapshot_, row.entity->id))
+                {
+                    case Obs::ConvoyPart::Hauler: return Ui::Cell{ "your convoy", t.colors.accent };
+                    case Obs::ConvoyPart::Escort:
+                        return Ui::Cell{ "convoy escort", t.colors.accent };
+                    case Obs::ConvoyPart::None: break;
+                }
+                return Ui::Cell{ row.kind, t.colors.dim };
             default: return Ui::Cell{ Ui::Distance(row.distance), t.colors.dim };
         }
     };
