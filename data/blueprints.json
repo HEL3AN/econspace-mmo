@@ -136,6 +136,18 @@
             "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
         },
         {
+            "id": "shipyard",
+            "name": "Shipyard",
+            "archetype": "station.shipyard",
+            "builders": ["faction", "player"],
+            "onto": ["outpost_market", "trade_station", "mining_station"],
+            "cost": { "Iron": 80, "Crystal": 20 },
+            "buildSeconds": 3000,
+            "hull": 12000,
+            "wreck": "derelict.outpost_ruin",
+            "placement": { "reach": 600, "clearance": 3000, "bodyClearance": 20000, "perSystem": 1 }
+        },
+        {
             "id": "anchor",
             "name": "Anchor",
             "archetype": "structure.anchor",

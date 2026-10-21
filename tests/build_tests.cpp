@@ -4,6 +4,8 @@
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
+#include "core/Fitting.h"
+#include "core/ShipDesign.h"
 #include "entities/Derelict.h"
 #include "entities/NpcShip.h"
 #include "entities/Planet.h"
@@ -1288,4 +1290,116 @@ TEST_CASE("a player builds an outpost, docks at it and grows it along the chain 
         CHECK(back->GetBuilds() == "station.trade_hub");
         CHECK(c.StructuresOwnedBy("hunter") == 1);
     }
+}
+
+// --- A player's shipyard (#432) -----------------------------------------------------------
+
+namespace
+{
+// The fit of the hull `s` flies with its tractor swapped for a laser: a refit that changes it.
+std::vector<Ships::FitLine> Rearmed(const ClientSession& s)
+{
+    const Ships::Design* stock = Archetypes::ShipCatalogue().FindDesign(
+        GetShipCatalog()[(size_t)s.currentShip].stats.design);
+    REQUIRE(stock != nullptr);
+    std::vector<Ships::FitLine> fit = Ships::Normalized(stock->fit);
+    bool                        swapped = false;
+    for (Ships::FitLine& l : fit)
+    {
+        l.scale = 0.0f;
+        if (l.module == "weapons.tractor")
+        {
+            l.module = "weapons.laser";
+            swapped = true;
+        }
+    }
+    REQUIRE(swapped);
+    return fit;
+}
+
+void EmptyHold(ClientSession& s)
+{
+    for (ResourceType rt : AllResourceTypes())
+        if (s.ship->GetCargoAmount(rt) > 0)
+            s.ship->RemoveCargo(rt, s.ship->GetCargoAmount(rt));
+}
+}  // namespace
+
+TEST_CASE("a player grows their own station into a shipyard and refits there; nobody else may "
+          "(#432)")
+{
+    LoadRegistries();
+    Simulation sim;
+    StartServer(sim, "");
+    ClientSession&    s = Founder(sim, "hunter");
+    ClientSession&    ann = Founder(sim, "ann");
+    const std::string sys = s.systemId;
+    const Blueprint&  yard = *Blueprints::Find("shipyard");
+    REQUIRE(yard.byPlayers);
+    Pay(s, "outpost");
+    const Vector2 at = FreeSpot(sim, s, *Blueprints::Find("outpost"));
+    const int     id = sim.Deploy(s, "outpost", at, "Hearth");
+    REQUIRE(id != 0);
+    Finish(sim, sys, id);
+
+    // Not from a bare outpost: a yard is grown from a market or a station.
+    Pay(s, "shipyard");
+    Beside(s, *StructureById(sim, sys, id));
+    CHECK(sim.PlacementProblem(s, yard, at).find("Hearth is not one") != std::string::npos);
+    Pay(s, "outpost_market");
+    REQUIRE(sim.Deploy(s, "outpost_market", at, "") == id);
+    Finish(sim, sys, id);
+    Pay(s, "trade_station");
+    REQUIRE(sim.Deploy(s, "trade_station", at, "") == id);
+    Finish(sim, sys, id);
+
+    // A trade station docks and trades, and refits nothing.
+    s.account.SetMoney(5000.0);
+    const std::vector<Ships::FitLine> rearmed = Rearmed(s);
+    REQUIRE(sim.StepPlayerDock(s, *sim.SystemOf(s)) == id);
+    int seq = s.LastEventSeq();
+    CHECK_FALSE(sim.RefitShip(s, rearmed));
+    CHECK(Told(s, seq, "has no shipyard"));
+    sim.StepPlayerUndock(s);
+
+    // Nobody grows another's station.
+    Pay(ann, "shipyard");
+    Beside(ann, *StructureById(sim, sys, id));
+    CHECK(sim.PlacementProblem(ann, yard, at).find("Hearth is not yours") == 0);
+    seq = ann.LastEventSeq();
+    CHECK(sim.Deploy(ann, "shipyard", at, "") == 0);
+    CHECK(Told(ann, seq, "Cannot build: Hearth is not yours"));
+    CHECK(StructureById(sim, sys, id)->GetBlueprintId() == "trade_station");
+
+    // Its owner does, at the factions' cost and time; it stays theirs.
+    const int yardsBefore = sim.SystemById(sys)->profile.shipyards;
+    Beside(s, *StructureById(sim, sys, id));
+    REQUIRE(sim.Deploy(s, "shipyard", at, "Hearth Yards") == id);
+    Structure* t = StructureById(sim, sys, id);
+    CHECK(t->IsBuilding());
+    CHECK(t->GetCompletesAt() == doctest::Approx(sim.Time() + yard.buildSeconds));
+    CHECK(sim.SystemById(sys)->profile.shipyards == yardsBefore);  // not one while going up
+    Finish(sim, sys, id);
+    t = StructureById(sim, sys, id);
+    REQUIRE(t != nullptr);
+    CHECK(t->GetArchetype()->id == yard.archetype);
+    CHECK(t->GetOwner() == "hunter");
+    CHECK(t->GetName() == "Hearth Yards");
+    CHECK(t->Has(Component::Market));
+    CHECK(t->Has(Component::Storage));
+    CHECK(sim.SystemById(sys)->profile.shipyards == yardsBefore + 1);
+    CHECK(sim.StructuresOwnedBy("hunter") == 1);
+
+    // Docked there, the ship is refitted and paid for; it is no hull-issuing station to wake at.
+    EmptyHold(s);
+    Beside(s, *t);
+    const int home = s.homeStationId;
+    REQUIRE(sim.StepPlayerDock(s, *sim.SystemOf(s)) == id);
+    REQUIRE(sim.RefitShip(s, rearmed));
+    CHECK(s.account.GetMoney() < 5000.0);
+    CHECK(Ships::IsPlayerDesign(s.DesignOf(s.currentShip)));
+    CHECK(s.homeStationId == home);
+    // ...and it is open to every pilot, like any market.
+    Beside(ann, *t);
+    CHECK(sim.StepPlayerDock(ann, *sim.SystemOf(ann)) == id);
 }

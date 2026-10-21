@@ -141,9 +141,13 @@ bool Load(const std::string& path)
     if (j.contains("growth") && !ReadSection(j["growth"], path + ": growth",
                                              { { "marketWorth", &g.marketWorth },
                                                { "stationWorth", &g.stationWorth },
-                                               { "stationNeed", &g.stationNeed } },
+                                               { "stationNeed", &g.stationNeed },
+                                               { "shipyardWorth", &g.shipyardWorth },
+                                               { "shipyardNeed", &g.shipyardNeed } },
                                              { { "stationsPerRegion", &g.stationsPerRegion },
-                                               { "marketReach", &g.marketReach } },
+                                               { "marketReach", &g.marketReach },
+                                               { "shipyardReach", &g.shipyardReach },
+                                               { "shipyardAfter", &g.shipyardAfter } },
                                              {}, g_error))
         return false;
     Convoys c;

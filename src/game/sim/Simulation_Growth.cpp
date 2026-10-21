@@ -284,16 +284,56 @@ std::string Simulation::GrowthFor(FactionId f, const SystemState& st, const Stru
     }
     // A station where a market is, and enough passes through or is mined to keep one: whichever
     // of the two the faction values more here -- and only while the region has room for one.
-    if (std::max(traffic, ore) < (float)g.stationNeed ||
-        StationsIn(Gen::SlotOf(st.id)) >= g.stationsPerRegion)
+    const int stations = StationsIn(Gen::SlotOf(st.id));
+    if (stations >= g.stationsPerRegion)
         return std::string();
-    const bool        mining = t.ore * ore > t.traffic * traffic;
-    const std::string bp =
-        mining ? Outposts::MINING_STATION_BLUEPRINT : Outposts::TRADE_STATION_BLUEPRINT;
-    if (BlueprintCost(bp) <= 0.0f)
-        return std::string();
-    worth = (float)g.stationWorth * std::max(traffic, ore) * std::min(1.0f, t.traffic + t.ore);
-    return bp;
+    const float busy = std::max(traffic, ore);
+    const float leaning = std::min(1.0f, t.traffic + t.ore);
+    std::string grow;
+    if (busy >= (float)g.stationNeed)
+    {
+        const bool        mining = t.ore * ore > t.traffic * traffic;
+        const std::string bp =
+            mining ? Outposts::MINING_STATION_BLUEPRINT : Outposts::TRADE_STATION_BLUEPRINT;
+        if (BlueprintCost(bp) > 0.0f)
+        {
+            worth = (float)g.stationWorth * busy * leaning;
+            grow = bp;
+        }
+    }
+    // ...or a shipyard (#432), by need and never first: where a station already stands in the
+    // region to bring pilots, none is within reach to refit them, and the region has no other
+    // -- standing or going up, the faction's or anyone's.
+    if (stations < g.shipyardAfter || busy < (float)g.shipyardNeed ||
+        BlueprintCost(Outposts::SHIPYARD_BLUEPRINT) <= 0.0f || !ShipyardWanted(st.id))
+        return grow;
+    const float yard = (float)g.shipyardWorth * busy * leaning;
+    if (yard > worth)
+    {
+        worth = yard;
+        grow = Outposts::SHIPYARD_BLUEPRINT;
+    }
+    return grow;
+}
+
+bool Simulation::ShipyardWanted(const std::string& systemId) const
+{
+    const int slot = Gen::SlotOf(systemId);
+    for (const auto& kv : plans_)
+        if (kv.second.kind == Plan::Kind::Upgrade &&
+            kv.second.blueprint == Outposts::SHIPYARD_BLUEPRINT &&
+            Gen::SlotOf(kv.second.target) == slot)
+            return false;
+    for (const auto& kv : systems_)
+        if (Gen::SlotOf(kv.first) == slot && kv.second.profile.shipyards > 0)
+            return false;
+    for (const auto& kv : Within(*this, systemId, WorldRules::GrowthRules().shipyardReach))
+    {
+        const SystemState* near = SystemById(kv.first);
+        if (near != nullptr && near->profile.shipyards > 0)
+            return false;
+    }
+    return true;
 }
 
 int Simulation::BeginUpgrade(FactionId f, const std::string& systemId, const std::string& blueprint)

@@ -149,6 +149,7 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
             case EntityKind::Station:
                 p.stations++;
                 p.markets += e->Has(Component::Market) ? 1 : 0;
+                p.shipyards += e->Has(Component::Shipyard) ? 1 : 0;
                 if (e->Has(Component::Market))
                     AddToMarket(p.rates, *e);
                 if (e->Has(Component::Defensive))
@@ -164,6 +165,7 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
                     p.anchorIds.push_back(t.GetId());
                 }
                 p.markets += !t.IsBuilding() && e->Has(Component::Market) ? 1 : 0;
+                p.shipyards += !t.IsBuilding() && e->Has(Component::Shipyard) ? 1 : 0;
                 if (!t.IsBuilding() && e->Has(Component::Market))
                     AddToMarket(p.rates, *e);
                 // An outpost being upgraded (#342 S6) -- into a market, or into a station -- is

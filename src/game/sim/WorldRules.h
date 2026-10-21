@@ -89,6 +89,11 @@ struct Expeditions
 // `stationNeed`. What each is worth to a faction is `marketWorth` and `stationWorth` times
 // the need, weighed against the risk like everything else it does. No region has more than
 // `stationsPerRegion` stations, whoever built them.
+// A shipyard (#432) is grown from an outpost market too, by need and never first: only where
+// none stands within `shipyardReach` jumps, once the region has `shipyardAfter` stations of
+// any other kind to bring pilots and at least `shipyardNeed` passes through or is mined there;
+// never a second in a region, and counted among its stations. It is worth `shipyardWorth` times
+// that need -- more than a further station, so the region's next station is its yard.
 struct Growth
 {
     int    stationsPerRegion = 4;
@@ -96,6 +101,10 @@ struct Growth
     double marketWorth = 1.2;
     double stationWorth = 1.2;
     double stationNeed = 0.45;
+    int    shipyardAfter = 1;
+    int    shipyardReach = 4;
+    double shipyardWorth = 1.4;
+    double shipyardNeed = 0.45;
 };
 
 // The builder convoy (#342 S6): an Anchor or an upgrade is built from what a convoy brings,

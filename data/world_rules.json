@@ -35,7 +35,11 @@
         "marketReach": 3,
         "marketWorth": 1.2,
         "stationWorth": 1.2,
-        "stationNeed": 0.45
+        "stationNeed": 0.45,
+        "shipyardAfter": 1,
+        "shipyardReach": 4,
+        "shipyardWorth": 1.4,
+        "shipyardNeed": 0.45
     },
     "convoys": {
         "hop": 120,

@@ -483,6 +483,9 @@ public:
     const std::map<int, ConvoyTally>& ConvoysByRegion() const { return convoyRegions_; }
     // How many stations region `slot` has, and has going up.
     int StationsIn(int slot) const;
+    // Whether a faction would want a shipyard for `systemId` (#432): none in its region,
+    // standing or going up, and none within the growth rules' `shipyardReach` jumps.
+    bool ShipyardWanted(const std::string& systemId) const;
     // How many jumps from `systemId` the nearest market is -- a station's, or an outpost
     // market's: 0 where it has one, -1 where none is within reach.
     int MarketJumps(const std::string& systemId);

@@ -1010,10 +1010,13 @@ bool Simulation::RefitShip(ClientSession& s, const std::vector<Ships::FitLine>& 
     SystemState* st = SystemOf(s);
     if (!s.IsDocked() || st == nullptr)
         return refuse("dock at a station with a shipyard first");
-    const Station* yard = nullptr;
+    // A faction's station, or a player's finished structure grown into a shipyard (#432).
+    const Entity* yard = nullptr;
     for (const auto& e : st->entities)
-        if (e->GetId() == s.dockedStationId && e->GetKind() == EntityKind::Station)
-            yard = static_cast<const Station*>(e.get());
+        if (e->GetId() == s.dockedStationId && (e->GetKind() == EntityKind::Station ||
+                                                (e->GetKind() == EntityKind::Structure &&
+                                                 !static_cast<const Structure&>(*e).IsBuilding())))
+            yard = e.get();
     if (yard == nullptr || yard->GetArchetype() == nullptr ||
         !yard->GetArchetype()->Has(Component::Shipyard))
         return refuse("this station has no shipyard");
@@ -1041,7 +1044,9 @@ bool Simulation::RefitShip(ClientSession& s, const std::vector<Ships::FitLine>& 
         ore.push_back((float)st->market.GetPrice(rt));
     double price = Ships::RefitPrice(ships, *now, want, ore, yard->GetArchetype()->refitMarkup);
     if (price > 0.0)
-        price *= ShipPriceMultiplier(Factions::TierOf(s.account.GetReputation(yard->GetFaction())));
+        price *= ShipPriceMultiplier(Factions::TierOf(s.account.GetReputation(
+            yard->GetKind() == EntityKind::Station ? static_cast<const Station*>(yard)->GetFaction()
+                                                   : Factions::Unaffiliated())));
     if (price > 0.0 && !s.account.CanAfford(price))
         return refuse("it costs " + Credits(price) + " here and you have " +
                       Credits(s.account.GetMoney()));
@@ -1313,9 +1318,10 @@ int Simulation::StepPlayerDock(ClientSession& s, SystemState& st)
         s.ship->Teleport(Sim::DockBerth(e->GetPosition(), e->GetSize(), s.dockBearing));
         s.RecordEvent(Ev::Kind::Docked, "Docked at " + e->GetName());
         // A shipyard is where a hull is issued, so it is where a pilot wakes when their ship
-        // is lost (#344): the last one they docked at.
-        if (e->GetArchetype() != nullptr && e->GetArchetype()->Has(Component::Shipyard) &&
-            s.homeStationId != e->GetId())
+        // is lost (#344): the last one they docked at. A station's: a player's shipyard
+        // (#432) refits, but issues no hull to wake in.
+        if (e->GetKind() == EntityKind::Station && e->GetArchetype() != nullptr &&
+            e->GetArchetype()->Has(Component::Shipyard) && s.homeStationId != e->GetId())
         {
             s.homeStationId = e->GetId();
             s.RecordEvent(Ev::Kind::Notice, e->GetName() +
