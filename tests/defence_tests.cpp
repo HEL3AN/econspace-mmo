@@ -606,3 +606,200 @@ TEST_CASE("an allow-list reaches its owner only (#340)")
     Proto::LayoutDelta forHunterToo = d;
     CHECK_FALSE(Proto::ForViewer(forHunterToo, "hunter"));  // nothing of anyone else's to cut
 }
+
+// Attacks told to owners (#431 C2, slice 13): an attack on a structure goes into the journal
+// -- the owner's, or their corporation's -- and what came while they were away is there at
+// login, once. An attack of hours is one entry, not one per hit.
+namespace
+{
+std::vector<Ev::Event> Attacks(const ClientSession& s, int since)
+{
+    std::vector<Ev::Event> out;
+    for (const Ev::Event& e : s.EventsSince(since))
+        if (e.kind == Ev::Kind::StructureAttacked)
+            out.push_back(e);
+    return out;
+}
+
+std::vector<Ev::Event> AbsentFor(Simulation& sim, const std::string& account)
+{
+    std::vector<Ev::Event> out;
+    for (const auto& kv : sim.TakeAbsentEvents())
+        if (kv.first == account)
+            out.push_back(kv.second);
+    return out;
+}
+
+// Time passes with nothing more happening: an attack under way is over.
+void Quiet(Simulation& sim)
+{
+    sim.SetTime(sim.Time() + Simulation::ATTACK_EPISODE_SECONDS + 1.0);
+    sim.StepOwners();
+}
+
+// A pilot comes in from the account saved at `path`, as the host does it.
+ClientSession& LogIn(Simulation& sim, const std::string& account, const std::string& path)
+{
+    ClientSession& s = Builder(sim, account);
+    REQUIRE(sim.LoadAccount(s, path) == Save::Result::Ok);
+    return s;
+}
+}  // namespace
+
+TEST_CASE("attack notices: an attack while the owner is away is in the journal at login, once")
+{
+    Battery           b("hunter");
+    const TempDir     tmp;
+    const std::string path = tmp.Path("hunter.json");
+    {
+        ClientSession& was = Builder(b.sim, "hunter");
+        REQUIRE(b.sim.SaveAccount(was, path));
+        b.sim.DestroySession(was.id);
+    }
+    ClientSession& ann = b.Pilot("ann", 400.0f);
+    SystemState&   st = *b.sim.SystemById(b.sys);
+    REQUIRE_FALSE(b.sim.DamageStructure(st, b.id, 5.0f, &ann));
+    b.sim.StepOwners();
+    CHECK(AbsentFor(b.sim, "hunter").empty());  // still going on: not over yet
+    REQUIRE(b.sim.Attacks().size() == 1);
+
+    SUBCASE("kept in the account save, given at login, and not again")
+    {
+        Quiet(b.sim);
+        CHECK(b.sim.Attacks().empty());
+        const auto absent = AbsentFor(b.sim, "hunter");
+        REQUIRE(absent.size() == 1);
+        CHECK(absent[0].text.find("Bastion") != std::string::npos);
+        CHECK(absent[0].text.find("ann") != std::string::npos);
+        CHECK(AbsentFor(b.sim, "ann").empty());  // a shooter is told nothing
+        REQUIRE(Simulation::AppendPendingJournal(path, absent) == Save::Result::Ok);
+
+        ClientSession& owner = LogIn(b.sim, "hunter", path);
+        const auto     told = Attacks(owner, 0);
+        REQUIRE(told.size() == 1);
+        CHECK(told[0].text == absent[0].text);
+        REQUIRE(b.sim.SaveAccount(owner, path));
+        b.sim.DestroySession(owner.id);
+        ClientSession& again = LogIn(b.sim, "hunter", path);
+        CHECK(Attacks(again, 0).empty());
+    }
+    SUBCASE("an attack a restart interrupts is still told")
+    {
+        const std::string world = tmp.Path("world_attacks.json");
+        REQUIRE(b.sim.SaveWorld(world));
+        Simulation again;
+        StartServer(again, world);
+        REQUIRE(again.Attacks().size() == 1);
+        Quiet(again);
+        CHECK(AbsentFor(again, "hunter").size() == 1);
+    }
+    SUBCASE("destroyed while away: said so, at once")
+    {
+        REQUIRE(b.sim.DamageStructure(st, b.id, 1.0e9f, &ann));
+        const auto absent = AbsentFor(b.sim, "hunter");
+        REQUIRE(absent.size() == 1);  // the same attack, now its end
+        CHECK(absent[0].text.find("destroyed") != std::string::npos);
+        CHECK(b.sim.Attacks().empty());
+    }
+}
+
+TEST_CASE("attack notices: a long siege is one merged notice, not hundreds")
+{
+    Battery        b("hunter");
+    ClientSession& ann = b.Pilot("ann", 400.0f);
+    SystemState&   st = *b.sim.SystemById(b.sys);
+    const float    hit = b.It().MaxHull(b.sim.Time()) / 2000.0f;  // it stands throughout
+    for (int i = 0; i < 600; i++)                                 // every 10 s for 100 min
+    {
+        REQUIRE_FALSE(b.sim.DamageStructure(st, b.id, hit, &ann));
+        b.sim.SetTime(b.sim.Time() + 10.0);
+        b.sim.StepOwners();
+    }
+    Quiet(b.sim);
+    const auto absent = AbsentFor(b.sim, "hunter");
+    REQUIRE(absent.size() == 1);
+    CHECK(absent[0].text.find("600 hits") != std::string::npos);
+
+    // On now: told when it starts and when it is over, never per hit.
+    ClientSession& owner = Builder(b.sim, "hunter");
+    const int      seq = owner.LastEventSeq();
+    for (int i = 0; i < 50; i++)
+    {
+        REQUIRE_FALSE(b.sim.DamageStructure(st, b.id, hit, &ann));
+        b.sim.SetTime(b.sim.Time() + 1.0);
+        b.sim.StepOwners();
+    }
+    CHECK(Attacks(owner, seq).size() == 1);
+    Quiet(b.sim);
+    const auto told = Attacks(owner, seq);
+    REQUIRE(told.size() == 2);
+    CHECK(told[1].text.find("50 hits") != std::string::npos);
+    CHECK(AbsentFor(b.sim, "hunter").empty());  // they were on
+}
+
+TEST_CASE("attack notices: the pending part of an account's journal is bounded")
+{
+    const TempDir     tmp;
+    const std::string path = tmp.Path("pilot.json");
+    {
+        Battery        b("hunter");
+        ClientSession& s = Builder(b.sim, "hunter");
+        REQUIRE(b.sim.SaveAccount(s, path));
+    }
+    std::vector<Ev::Event> many(Simulation::MAX_PENDING_JOURNAL + 7);
+    for (size_t i = 0; i < many.size(); i++)
+    {
+        many[i].kind = Ev::Kind::StructureAttacked;
+        many[i].text = "attack " + std::to_string(i);
+    }
+    REQUIRE(Simulation::AppendPendingJournal(path, many) == Save::Result::Ok);
+    Battery        b("hunter");
+    ClientSession& s = LogIn(b.sim, "hunter", path);
+    const auto     told = Attacks(s, 0);
+    REQUIRE(told.size() == Simulation::MAX_PENDING_JOURNAL);
+    CHECK(told.back().text == many.back().text);  // the newest kept
+    CHECK(Simulation::AppendPendingJournal(tmp.Path("nobody.json"), many) == Save::Result::Missing);
+}
+
+TEST_CASE("attack notices: a corporation's go into its journal, which every member reads")
+{
+    Battery           b("hunter");
+    const TempDir     tmp;
+    const std::string path = tmp.Path("hunter.json");
+    Corps::Registry&  corps = b.sim.Corporations();
+    REQUIRE(corps.Create("boss", "Hearth Holders", "HH", 1.8e9).Ok());
+    REQUIRE(corps.InviteTo("boss", "hunter", { "hunter" }, 1.8e9).Ok());
+    REQUIRE(corps.Join("hunter", "HH", 1.8e9).Ok());
+    {
+        ClientSession& was = Builder(b.sim, "hunter");  // reads the journal from here on
+        b.sim.StepOwners();
+        REQUIRE(b.sim.SaveAccount(was, path));
+        b.sim.DestroySession(was.id);
+    }
+    ClientSession& boss = Builder(b.sim, "boss");  // on: told at once
+    b.sim.StepOwners();
+    const int      seq = boss.LastEventSeq();
+    ClientSession& ann = b.Pilot("ann", 400.0f);
+    SystemState&   st = *b.sim.SystemById(b.sys);
+    REQUIRE_FALSE(b.sim.DamageStructure(st, b.id, 5.0f, &ann));
+    REQUIRE_FALSE(b.sim.DamageStructure(st, b.id, 5.0f, &ann));
+    REQUIRE(Attacks(boss, seq).size() == 1);
+    CHECK(Attacks(boss, seq)[0].text.find("hunter's Bastion") != std::string::npos);
+    Quiet(b.sim);
+    CHECK(Attacks(boss, seq).size() == 2);
+    CHECK(AbsentFor(b.sim, "hunter").empty());  // the corporation's journal keeps it
+    const Corps::Corp* c = corps.Of("hunter");
+    REQUIRE(c != nullptr);
+    REQUIRE(c->journal.size() == 1);
+
+    // It outlives a restart in corps.json, and the owner reads it at login, once.
+    Corps::Registry copy;
+    std::string     why;
+    REQUIRE(copy.FromJson(corps.ToJson(), why));
+    REQUIRE(copy.Of("hunter")->journal.size() == 1);
+    CHECK(copy.Of("hunter")->journal[0].text == c->journal[0].text);
+    ClientSession& owner = LogIn(b.sim, "hunter", path);
+    REQUIRE(Attacks(owner, 0).size() == 1);
+    b.sim.StepOwners();
+    CHECK(Attacks(owner, 0).size() == 1);
+}

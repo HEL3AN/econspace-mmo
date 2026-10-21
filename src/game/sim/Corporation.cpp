@@ -216,6 +216,23 @@ std::vector<const Corp*> Registry::InvitesFor(const std::string& account, double
     return out;
 }
 
+int Registry::Record(const std::string& account, Ev::Kind kind, const std::string& text)
+{
+    const auto it = byAccount_.find(account);
+    Corp*      c = it != byAccount_.end() ? Mutable(it->second) : nullptr;
+    if (c == nullptr)
+        return 0;
+    Ev::Event e;
+    e.seq = c->nextJournalSeq++;
+    e.kind = kind;
+    e.text = text;
+    c->journal.push_back(e);
+    if (c->journal.size() > JOURNAL_CAP)
+        c->journal.erase(c->journal.begin());
+    rev_++;  // corps.json keeps it
+    return e.seq;
+}
+
 void Registry::Expire(double now)
 {
     for (auto& kv : corps_)
@@ -505,6 +522,16 @@ json Registry::ToJson() const
                     { "members", members } };
         if (!c.invites.empty())
             cj["invites"] = invites;
+        // An addition an older build ignores (#431 C2): no CORPS_VERSION bump.
+        if (!c.journal.empty())
+        {
+            json journal = json::array();
+            for (const Ev::Event& e : c.journal)
+                journal.push_back(
+                    { { "seq", e.seq }, { "kind", Ev::KindName(e.kind) }, { "text", e.text } });
+            cj["journal"] = journal;
+            cj["nextJournalSeq"] = c.nextJournalSeq;
+        }
         list.push_back(std::move(cj));
     }
     return { { "version", Save::CORPS_VERSION }, { "next", nextId_ }, { "corps", list } };
@@ -591,6 +618,21 @@ bool Registry::FromJson(const json& j, std::string& why)
                     if (ij.is_object() && !text(ij, "account").empty())
                         c.invites.push_back(
                             { text(ij, "account"), text(ij, "by"), whole(ij, "at") });
+            const auto journal = cj.find("journal");
+            if (journal != cj.end() && journal->is_array())
+                for (const json& ej : *journal)
+                {
+                    Ev::Event e;
+                    if (!ej.is_object() || !Ev::KindFrom(text(ej, "kind"), e.kind))
+                        continue;  // a kind a later build added: not this build's to tell
+                    e.seq = (int)whole(ej, "seq");
+                    e.text = text(ej, "text");
+                    if (e.seq > 0)
+                        c.journal.push_back(e);
+                }
+            c.nextJournalSeq = (int)std::max<long long>(1, whole(cj, "nextJournalSeq"));
+            for (const Ev::Event& e : c.journal)
+                c.nextJournalSeq = std::max(c.nextJournalSeq, e.seq + 1);
             // An id is never handed out twice, even after its corporation is gone.
             next = std::max(next, std::atoi(c.id.c_str() + 1) + 1);
             SortMembers(c);

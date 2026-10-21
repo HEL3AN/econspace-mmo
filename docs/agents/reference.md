@@ -127,7 +127,7 @@ No arguments.
 
 ### `wait_for_event`
 
-Sleep until something happens, then return what happened. This is how to wait out a flight or a mining run without burning turns re-observing. Returns immediately if events are already pending.
+Sleep until something happens, then return what happened. This is how to wait out a flight or a mining run without burning turns re-observing. Returns immediately if events are already pending. 'structure_attacked' is an attack on a structure of yours or of your corporation's: one entry when it starts if you are on, and one when it is over (or the structure is gone); what happened while you were away is in the journal at login.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|

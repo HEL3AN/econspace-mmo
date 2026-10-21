@@ -18,17 +18,18 @@ namespace Ev
 
 enum class Kind
 {
-    Notice,         // something worth saying, with no other handling
-    OrderDone,      // a standing order finished as asked
-    OrderFailed,    // a standing order gave up; text says why
-    Docked,         //
-    Undocked,       //
-    Jumped,         // arrived in another system
-    CargoFull,      // the hold filled up
-    UnderAttack,    // something is shooting at us
-    ShipDestroyed,  // we died
-    Built,          // a structure of ours was finished (#39)
-    Scanned         // a pass of the scanner finished (#346); text says what it found
+    Notice,            // something worth saying, with no other handling
+    OrderDone,         // a standing order finished as asked
+    OrderFailed,       // a standing order gave up; text says why
+    Docked,            //
+    Undocked,          //
+    Jumped,            // arrived in another system
+    CargoFull,         // the hold filled up
+    UnderAttack,       // something is shooting at us
+    ShipDestroyed,     // we died
+    Built,             // a structure of ours was finished (#39)
+    Scanned,           // a pass of the scanner finished (#346); text says what it found
+    StructureAttacked  // a structure of ours, or our corporation's, was attacked (#431 C2)
 };
 
 struct Event
@@ -39,5 +40,7 @@ struct Event
 };
 
 const char* KindName(Kind k);
+// The kind KindName names; false for a name it does not know (a save from a later build).
+bool KindFrom(const std::string& name, Kind& out);
 
 }  // namespace Ev

@@ -1723,10 +1723,39 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
         }
     }
     j["missions"] = missions;
+    // How far the corporation's journal has been read (#431 C2). Additions an older build
+    // ignores. The pending part of the journal is given at login, so nothing is left of it.
+    if (!s.corpJournalOf.empty())
+        j["corpJournal"] = { { "corp", s.corpJournalOf }, { "seen", s.corpJournalSeen } };
 
     // Atomically, with an older copy kept (#341): a truncated account file used to read as a
     // name nobody had taken, and the first person to log in under it claimed it.
     return Save::WriteFileAtomic(path, j.dump(2) + "\n", ACCOUNT_BACKUPS);
+}
+
+Save::Result Simulation::AppendPendingJournal(const std::string&            path,
+                                              const std::vector<Ev::Event>& events)
+{
+    using nlohmann::json;
+    std::ifstream in(path);
+    if (!in.is_open())
+        return Save::Result::Missing;
+    json j = json::parse(in, nullptr, false);
+    in.close();
+    if (j.is_discarded() || !j.is_object())
+        return Save::Result::Corrupt;
+    if (j.value("version", Save::UNVERSIONED) > Save::ACCOUNT_VERSION)
+        return Save::Result::TooNew;  // never written over (#20)
+    json journal = j.value("journal", json::array());
+    if (!journal.is_array())
+        journal = json::array();
+    for (const Ev::Event& e : events)
+        journal.push_back({ { "kind", Ev::KindName(e.kind) }, { "text", e.text } });
+    while (journal.size() > MAX_PENDING_JOURNAL)
+        journal.erase(journal.begin());
+    j["journal"] = journal;
+    return Save::WriteFileAtomic(path, j.dump(2) + "\n", ACCOUNT_BACKUPS) ? Save::Result::Ok
+                                                                          : Save::Result::Corrupt;
 }
 
 Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
@@ -1779,6 +1808,21 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
     if (foreign)
         s.RecordEvent(Ev::Kind::Notice,
                       "You were last in another world; your place and missions there are gone");
+    // What happened while they were away (#431 C2): the pending part of their journal, which
+    // the host kept in this file, and what their corporation's journal has had since.
+    if (!foreign && j.contains("journal") && j["journal"].is_array())
+        for (const json& ej : j["journal"])
+        {
+            Ev::Kind kind;
+            if (ej.is_object() && ej.contains("text") && ej["text"].is_string() &&
+                Ev::KindFrom(ej.value("kind", std::string()), kind))
+                s.RecordEvent(kind, ej["text"].get<std::string>());
+        }
+    const json cj = j.value("corpJournal", json());
+    s.corpJournalOf = cj.is_object() ? cj.value("corp", std::string()) : std::string();
+    s.corpJournalSeen = cj.is_object() ? cj.value("seen", 0) : 0;
+    ReadCorpJournal(s);
+
     // What they found (#346): this world's, and only what is still there -- a hole that has
     // closed since is no longer a way anywhere.
     s.scanned.clear();

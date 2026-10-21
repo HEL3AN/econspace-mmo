@@ -18,8 +18,20 @@ const char* KindName(Kind k)
         case Kind::ShipDestroyed: return "ship_destroyed";
         case Kind::Built: return "built";
         case Kind::Scanned: return "scanned";
+        case Kind::StructureAttacked: return "structure_attacked";
     }
     return "notice";
+}
+
+bool KindFrom(const std::string& name, Kind& out)
+{
+    for (int k = 0; k <= (int)Kind::StructureAttacked; k++)
+        if (name == KindName((Kind)k))
+        {
+            out = (Kind)k;
+            return true;
+        }
+    return false;
 }
 
 }  // namespace Ev

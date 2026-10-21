@@ -185,4 +185,9 @@ struct ClientSession
 
     std::vector<Ev::Event> journal;
     int                    nextEventSeq = 0;
+    // How far this pilot has read their corporation's journal (Corps::Corp::journal, #431
+    // C2): which corporation, and the last entry they were given. Saved with the account, so
+    // what came while they were away is put in this journal at login.
+    std::string corpJournalOf;
+    int         corpJournalSeen = 0;
 };
