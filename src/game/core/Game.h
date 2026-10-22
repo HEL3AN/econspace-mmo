@@ -227,6 +227,13 @@ private:
     void    SellCargo(ResourceType type, int amount);
     void    BuyCargo(ResourceType type, int amount);  // an order to the server (#343)
     RepTier DockedTier() const;  // what the docked station's owner thinks of this pilot
+    // Docked at a player's structure rather than a station (#433, #438): it, found by the
+    // snapshot's id each time it is asked -- never kept -- or null.
+    const Entity* DockedStructure() const;
+    // Its storage, when the snapshot says it is this pilot's side's: what is kept and what is
+    // in the hold, a good to a row, each with a button to move it (#438).
+    void DrawStorage(Ui::Layout& L);
+    void MoveStorage(ResourceType type, int amount, bool store);  // an order to the server
 
     void SetupWindows();   // puts every window, screen and popup on the desk
     void HandleMenuBar();  // menu bar input: a button toggles its window

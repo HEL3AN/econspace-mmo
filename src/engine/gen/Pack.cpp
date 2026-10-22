@@ -128,7 +128,7 @@ const ListRule LISTS[] = {
       { "name", "pos", "size", "destination" } },
     { "structures",
       { "archetype", "name", "pos", "size", "startedAt", "completesAt", "expiresAt", "blueprint",
-        "orbits" },
+        "orbits", "grewFrom" },
       { "archetype" } },
 };
 

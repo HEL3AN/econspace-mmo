@@ -1444,8 +1444,9 @@ std::string Simulation::DockRefusal(const ClientSession& s, const Entity& e) con
     const std::string& owner = e.GetOwner();
     if (e.GetKind() == EntityKind::Structure && !owner.empty() && !e.Has(Component::Market))
     {
-        if (!faction && !s.accountName.empty() &&
-            (owner == s.accountName || corps_.SameCorp(owner, s.accountName)))
+        // The rule the client's Dock action reads too (#438).
+        if (!faction && static_cast<const Structure&>(e).DocksPilot(
+                            s.accountName, corps_.SameCorp(owner, s.accountName)))
             return std::string();
         return e.GetName() + (faction ? " is " + FactionName(f) + "'s" : " is " + owner + "'s") +
                ", and docks only its owner's ships";

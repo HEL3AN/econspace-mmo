@@ -157,6 +157,7 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
                 Structure probe(l.pos, l.size, l.name, l.archetype);
                 probe.StartBuilding(l.startedAt, l.completesAt);
                 probe.SetBlueprint(l.blueprint);
+                probe.SetGrewFrom(l.grewFrom);
                 probe.SetDamage(l.damage, l.damagedAt);
                 probe.SetMends(l.mends, l.damagedAt);
                 if (probe.GetDamage(now) > 0.0f)
@@ -1115,6 +1116,22 @@ std::string Describe(const View& view, Detail detail)
                              p.cargoByType[i]);
         if (!cargo.empty())
             out += "CARGO  " + cargo + "\n";
+    }
+    // The storage docked at, when it is the pilot's side's (#438): what store_cargo and
+    // take_cargo move.
+    if (p.storageCap > 0)
+    {
+        std::string kept;
+        int         used = 0;
+        const auto& types = AllResourceTypes();
+        for (size_t i = 0; i < types.size() && i < p.storedByType.size(); i++)
+            if (p.storedByType[i] > 0)
+            {
+                used += p.storedByType[i];
+                kept += Fmt("%s%s %d", kept.empty() ? "" : ", ", ResourceName(types[i]).c_str(),
+                            p.storedByType[i]);
+            }
+        out += Fmt("STORAGE %d/%d", used, p.storageCap) + (kept.empty() ? "" : "  " + kept) + "\n";
     }
     // The last ship lost (#344): an agent that wakes somewhere else in a smaller ship is told
     // why on every look, not only in the event that said it once.

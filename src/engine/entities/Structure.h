@@ -1,8 +1,12 @@
 #pragma once
 
+#include "economy/Resource.h"
 #include "entities/Defence.h"
 #include "entities/Entity.h"
+#include <map>
 #include <string>
+#include <utility>
+#include <vector>
 
 struct Blueprint;
 
@@ -67,6 +71,17 @@ public:
     void               SetBlueprint(std::string id) { blueprint_ = std::move(id); }
     const std::string& GetBlueprintId() const { return blueprint_; }
     const Blueprint*   GetBlueprint() const;
+    // The blueprints it was built from before this one, the first first (#438): an outpost
+    // grown into a market and then a station grew from the outpost and the market. Kept so
+    // that taking it apart returns every tier, not only the last. Retask adds to it.
+    const std::vector<std::string>& GetGrewFrom() const { return grewFrom_; }
+    void SetGrewFrom(std::vector<std::string> ids) { grewFrom_ = std::move(ids); }
+    // ...as blueprints. One that does not say (a save from before #438) is taken to have grown
+    // along the first of each blueprint's `onto`, which is what every upgrade costs alike.
+    std::vector<const Blueprint*> EarlierTiers() const;
+    // What dismantling it returns at `now` (Blueprints::Refund over every tier): the one rule
+    // for the server that pays it and the client that shows it.
+    std::vector<std::pair<ResourceType, int>> Refund(double now) const;
 
     // Its hull at world time `now`. A site's grows with it, from the destruction rules' share
     // of the finished thing's to all of it, so this is f(time) like the rest of the time
@@ -93,6 +108,25 @@ public:
     // 0..1 of its hull still standing at `now`; 0 is destroyed.
     float HullFraction(double now) const;
 
+    // Whose ships its dock takes (#433, #438), by what both sides know of it: a market's,
+    // anyone's (a lawful faction's or a holder's own refusals aside, which are the server's);
+    // a private dock's, its owner's side only. `corpMate`: the pilot is in the owner's
+    // corporation. False for a site or anything without a dock. The server's DockRefusal and
+    // the client's Dock action read this, so the menu offers what the server takes.
+    bool DocksPilot(const std::string& pilot, bool corpMate) const;
+    // Its owner's side (#438): the owner, and the members of the owner's corporation. Who may
+    // use its dock when it is private, and its storage always.
+    bool OwnersSide(const std::string& pilot, bool corpMate) const;
+
+    // Its storage (#438): goods kept aboard it rather than in a ship, by its owner's side, up to
+    // its archetype's `storage` capacity. State, saved with it; it survives an upgrade.
+    const std::map<ResourceType, int>& GetStored() const { return stored_; }
+    int                                GetStoredAmount(ResourceType type) const;
+    int                                GetStoredUsed() const;
+    int  GetStorageCapacity() const;  // 0: none, or a site, which can hold nothing yet
+    void AddStored(ResourceType type, int amount);
+    void RemoveStored(ResourceType type, int amount);
+
     // Its owner's rules of engagement (#340). Meaningful for a player's armed structure; a
     // faction's keeps its doctrine whatever this says.
     const Defence& GetDefence() const { return defence_; }
@@ -109,10 +143,12 @@ public:
     }
 
 private:
-    std::string  name_;
-    std::string  builds_;
-    std::string  blueprint_;
-    float        damage_ = 0.0f;
+    std::string                 name_;
+    std::string                 builds_;
+    std::string                 blueprint_;
+    std::vector<std::string>    grewFrom_;
+    std::map<ResourceType, int> stored_;
+    float                       damage_ = 0.0f;
     double       damagedAt_ = 0.0;  // the instant `damage_` was set; mending counts from here
     bool         mends_ = true;
     double       startedAt_ = 0.0;

@@ -183,6 +183,8 @@ json EntityLayoutsJson(const std::vector<Proto::EntityLayout>& v)
             ej["exp"] = e.expiresAt;
         if (!e.blueprint.empty())
             ej["bp"] = e.blueprint;
+        if (!e.grewFrom.empty())
+            ej["bpFrom"] = e.grewFrom;
         if (e.damage > 0.0f)
         {
             ej["dmg"] = e.damage;
@@ -235,6 +237,11 @@ std::vector<Proto::EntityLayout> ToEntityLayouts(const json& j, const char* key)
         e.completesAt = ej.value("done", 0.0);
         e.expiresAt = ej.value("exp", 0.0);
         e.blueprint = ej.value("bp", std::string());
+        const auto from = ej.find("bpFrom");
+        if (from != ej.end() && from->is_array())
+            for (const json& id : *from)
+                if (id.is_string())
+                    e.grewFrom.push_back(id.get<std::string>());
         e.damage = ej.value("dmg", 0.0f);
         e.damagedAt = ej.value("dmgAt", 0.0);
         e.mends = !ej.value("nomend", false);
@@ -551,6 +558,10 @@ std::string EncodeCommand(const Command& c)
     number("sellAmt", c.sellAmount, 0);
     number("buyType", c.buyType, -1);
     number("buyAmt", c.buyAmount, 0);
+    number("storeType", c.storeType, -1);
+    number("storeAmt", c.storeAmount, 0);
+    number("takeType", c.takeType, -1);
+    number("takeAmt", c.takeAmount, 0);
     number("refit", c.refitShip, -1);
     auto fitJson = [](const std::vector<Ships::FitLine>& lines)
     {
@@ -792,6 +803,10 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadInt(j, "sellAmt", 0, 0, ID_MAX, out.sellAmount);
     ok = ok && ReadInt(j, "buyType", -1, 0, resources - 1, out.buyType);
     ok = ok && ReadInt(j, "buyAmt", 0, 0, ID_MAX, out.buyAmount);
+    ok = ok && ReadInt(j, "storeType", -1, 0, resources - 1, out.storeType);
+    ok = ok && ReadInt(j, "storeAmt", 0, 0, ID_MAX, out.storeAmount);
+    ok = ok && ReadInt(j, "takeType", -1, 0, resources - 1, out.takeType);
+    ok = ok && ReadInt(j, "takeAmt", 0, 0, ID_MAX, out.takeAmount);
     ok = ok && ReadInt(j, "refit", -1, 0, ID_MAX, out.refitShip);
     ok = ok && ReadFit(j, "fit", out.refit, out.refitLines);
     bool saveFit = false;
@@ -1064,6 +1079,9 @@ json PlayerJson(const Proto::PlayerView& p)
     // Only where building takes a licence (#431 slice 6).
     if (!p.licence.holder.empty())
         j["lic"] = LicenceJson(p.licence);
+    // Only docked at a storage of the pilot's side (#438).
+    if (p.storageCap > 0)
+        j["store"] = { { "cap", p.storageCap }, { "t", p.storedByType } };
     return j;
 }
 
@@ -1144,6 +1162,14 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
                 g.dest = gj.value("dest", std::string());
                 p.scan.sigs.push_back(std::move(g));
             }
+    }
+    p.storageCap = 0;
+    p.storedByType.clear();
+    const auto store = pj.find("store");
+    if (store != pj.end() && store->is_object())
+    {
+        p.storageCap = store->value("cap", 0);
+        p.storedByType = store->value("t", std::vector<int>{});
     }
     p.licence = Proto::LicenceView{};
     const auto lic = pj.find("lic");

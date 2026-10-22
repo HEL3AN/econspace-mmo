@@ -36,7 +36,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    56;  // 56: security is bought (#431 slice 11) -- a CorpAct "police" names a system and a
+    57;  // 57: a player structure's storage (#438) -- a command stores and takes goods, the
+         // player's snapshot carries the storage docked at, and a structure's layout the tiers
+         // it grew through;
+         // 56: security is bought (#431 slice 11) -- a CorpAct "police" names a system and a
          // budget, and a CorpView carries the police budget of each system the corporation
          // holds;
          // 55: a system of the index carries what the pilot last saw standing there and when,
@@ -223,6 +226,13 @@ struct Command
     // to the amount.
     int buyType = -1;  // ResourceType as int (-1 — no purchase)
     int buyAmount = 0;
+    // The storage of the structure the ship is docked at (#438), as the market's pair is: put
+    // so many of a good from the hold into it, or take so many back, as far as there is room.
+    // Its owner's side only; a refusal is a Notice saying why.
+    int storeType = -1;  // ResourceType as int (-1 — nothing stored)
+    int storeAmount = 0;
+    int takeType = -1;  // ResourceType as int (-1 — nothing taken)
+    int takeAmount = 0;
     int refitShip = -1;  // switch to an ALREADY bought ship (index; -1 none)
     // Refit the ship being flown to this fit, at the shipyard it is docked at (#279
     // fitting). The fit is the whole fit, not a change to it; the hull stays the hull. The
@@ -442,6 +452,10 @@ struct PlayerView
     int              orderId = 0;
     std::string      orderDetail;  // why it finished or failed
     std::vector<int> cargoByType;  // remaining cargo per resource (AllResourceTypes order)
+    // The storage of the structure the ship is docked at (#438), when it is the pilot's side's:
+    // its capacity (0 -- none here, or not theirs) and what it holds per good, in the same order.
+    int              storageCap = 0;
+    std::vector<int> storedByType;
     // Player account (server-authoritative, M4f): the client shows it as a mirror.
     // reputation/bounty — per faction (index = FactionId in this process's registry; on the
     // wire, keyed by faction id), skillXp — Piloting/Mining/Trading.
@@ -585,9 +599,12 @@ struct EntityLayout
     // (#431 D1) unless `mends` is false -- a faction's outpost nobody supplies -- so a client
     // shows it mending with no word from the server, as it shows a site going up.
     std::string blueprint;
-    float       damage = 0.0f;
-    double      damagedAt = 0.0;
-    bool        mends = true;
+    // The blueprints it grew through before this one, the first first (#438): what taking it
+    // apart returns is every tier's share, and a client shows it before asking.
+    std::vector<std::string> grewFrom;
+    float                    damage = 0.0f;
+    double                   damagedAt = 0.0;
+    bool                     mends = true;
     // A player's armed structure's rules of engagement (#340): what it fires at, and so what
     // it costs its owner. Default -- return fire.
     Defence defence;

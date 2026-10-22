@@ -979,16 +979,18 @@ Actions::Target Game::ActionTarget(const Entity& e) const
         const Archetype* built = Archetypes::Find(s.GetBuilds());
         t.armed =
             built != nullptr && built->Has(Component::Defensive) && built->weaponDamage > 0.0f;
-        // A dock the server would take this pilot at (#433): a market's, or one's own. A
-        // corporation member's outpost takes them too, which the client cannot see; E docks.
-        t.dockable =
-            !s.IsBuilding() && s.Has(Component::Dockable) && (s.Has(Component::Market) || t.mine);
+        // A dock the server would take this pilot at (#433, #438), by the server's own rule: a
+        // market's, or one of its owner's side's -- theirs, or a corporation mate's, which the
+        // client knows from its corporation's view.
+        const bool corpMate =
+            !pilotName_.empty() && corpView_.Has(pilotName_) && corpView_.Has(s.GetOwner());
+        t.dockable = s.DocksPilot(pilotName_, corpMate);
         if (const Blueprint* bp = s.GetBlueprint())
         {
             if (t.mine && !s.IsBuilding())
                 t.upgrades = Actions::UpgradesOnto(bp->id, Blueprints::All());
-            const double now = snapshot_.time;  // the last word from the server is near enough
-            for (const auto& c : Blueprints::Refund(*bp, s.Progress(now), s.HullFraction(now)))
+            const double now = snapshot_.time;   // the last word from the server is near enough
+            for (const auto& c : s.Refund(now))  // every tier it grew through (#438)
                 t.refund += (t.refund.empty() ? "" : ", ") + std::to_string(c.second) + " " +
                             ResourceName(c.first);
         }

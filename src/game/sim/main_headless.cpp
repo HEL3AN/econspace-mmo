@@ -373,6 +373,12 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
             if (r.bought > 0)
                 acks.push_back(Proto::TradeAck{ c.buyType, 0, 0.0, 0.0, r.bought, r.cost, r.fee });
         }
+        // A structure's storage (#438): what moved shows in the snapshot, a refusal in the
+        // journal.
+        if (c.storeType >= 0 && c.storeAmount > 0)
+            sim.StoreCargo(s, c.storeType, c.storeAmount);
+        if (c.takeType >= 0 && c.takeAmount > 0)
+            sim.TakeCargo(s, c.takeType, c.takeAmount);
         if (c.refitShip >= 0)
             sim.SwitchShip(s, c.refitShip);  // only to a ship this account owns (#5)
         if (c.buyShip >= 0)

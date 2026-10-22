@@ -153,6 +153,24 @@ Buy goods from the market of the station you are docked at. Buys as many as the 
 | `amount` | number |  | how many (default: as many as you can) |
 | `resource` | string | yes | good name as observe lists it under MARKET, e.g. 'Food' |
 
+### `store_cargo`
+
+Put goods from your hold into the storage of the structure you are docked at -- your own outpost or station, or a corporation mate's. Stores all of that good unless an amount is given, as far as the storage has room. observe lists it under STORAGE while you are docked there.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `amount` | number |  | how many (default: all of it) |
+| `resource` | string | yes | good name as observe lists it under CARGO, e.g. 'Iron' |
+
+### `take_cargo`
+
+Take goods out of the storage of the structure you are docked at into your hold -- your own outpost or station, or a corporation mate's. Takes all of that good unless an amount is given, as far as the hold has room.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `amount` | number |  | how many (default: all of it) |
+| `resource` | string | yes | good name as observe lists it under STORAGE, e.g. 'Iron' |
+
 ### `missions`
 
 The job board of the station you are docked at, and the missions you have taken: what each asks, what it pays, where it is handed in and what it still needs. The numbers are what accept_mission and complete_mission take. Besides the station's own work (bounty, mining, delivery) a board carries the jobs its faction's plans post: supply (carry goods to a site going up; it then goes up faster), escort (fly with a builder convoy to its site), siege (shoot down the warships besieging the faction's outpost) and besiege (join the faction's siege: shoot down the outpost's defenders, which costs standing with their side). A siege's job says which side it is for and whom it is against. A job names its system and has a deadline; it is handed in anywhere, and failing one you took costs standing; a supply job's goods are delivered by themselves beside its site, undocked, or docked at any station in its system. A contract is a short market's: bring so many of a good to its station by a deadline -- it pays more than selling them there, so buy them where they are cheap -- and hand it in docked there.

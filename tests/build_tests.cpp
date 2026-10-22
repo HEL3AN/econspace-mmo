@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "goods_named.h"
+#include "core/Actions.h"
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
@@ -15,6 +16,7 @@
 #include "entities/Structure.h"
 #include "sim/ClientSession.h"
 #include "sim/Corporation.h"
+#include "sim/Observation.h"
 #include "sim/Protocol.h"
 #include "sim/Simulation.h"
 #include "temp_dir.h"
@@ -1543,4 +1545,218 @@ TEST_CASE("the front line binds claims and sieges, never guns (#431 D3)")
         sim.SetTime(sim.Time() + 0.5);
     }
     CHECK(StructureById(sim, sys, id) == nullptr);
+}
+
+// --- A player structure's storage, its refund and its dock (#438) --------------------------
+
+namespace
+{
+int AmountOf(const std::vector<std::pair<ResourceType, int>>& v, ResourceType g)
+{
+    for (const auto& c : v)
+        if (c.first == g)
+            return c.second;
+    return 0;
+}
+}  // namespace
+
+TEST_CASE("dismantling returns a share of every tier a structure was built up through (#438)")
+{
+    LoadRegistries();
+    const Blueprint&   outpost = *Blueprints::Find("outpost");
+    const Blueprint&   market = *Blueprints::Find("outpost_market");
+    const Blueprint&   station = *Blueprints::Find("trade_station");
+    const float        r = Blueprints::Rules().refund;
+    const ResourceType iron = Good::Iron();
+    const int          below = AmountOf(outpost.cost, iron) + AmountOf(market.cost, iron);
+    const int          top = AmountOf(station.cost, iron);
+    // Finished and whole: the rule's share of all three, rounded down once, not per tier.
+    CHECK(AmountOf(Blueprints::Refund(station, 1.0f, 1.0f, { &outpost, &market }), iron) ==
+          (int)std::floor((below + top) * (double)r + 1e-4));
+    // Shot half away: half of that, every tier alike.
+    CHECK(AmountOf(Blueprints::Refund(station, 1.0f, 0.5f, { &outpost, &market }), iron) ==
+          (int)std::floor((below + top) * (double)r * 0.5 + 1e-4));
+    // The top tier just laid down comes back whole; the ones below at the rule's share.
+    CHECK(AmountOf(Blueprints::Refund(station, 0.0f, 1.0f, { &outpost, &market }), iron) ==
+          (int)std::floor(top + below * (double)r + 1e-4));
+
+    // A structure remembers what it grew from...
+    Structure t({ 0.0f, 0.0f }, 0.0f, "Hearth", outpost.archetype);
+    t.SetBlueprint("outpost");
+    t.Retask(market.archetype, "outpost_market", "Hearth");
+    t.Retask(station.archetype, "trade_station", "Hearth");
+    CHECK(t.GetGrewFrom() == std::vector<std::string>{ "outpost", "outpost_market" });
+    CHECK(t.EarlierTiers().size() == 2);
+    // ...and one saved before it did is taken to have grown along each first `onto`.
+    Structure old({ 0.0f, 0.0f }, 0.0f, "Old", station.archetype);
+    old.SetBlueprint("trade_station");
+    const std::vector<const Blueprint*> guessed = old.EarlierTiers();
+    REQUIRE(guessed.size() == 2);
+    CHECK(guessed[0]->id == market.onto.front());
+    CHECK(guessed[1]->id == "outpost_market");
+}
+
+TEST_CASE("an outpost keeps goods for its owner's side, through an upgrade and a save (#438)")
+{
+    LoadRegistries();
+    Simulation sim;
+    StartServer(sim, "");
+    ClientSession&     s = Founder(sim, "hunter");
+    ClientSession&     ann = Founder(sim, "ann");
+    const std::string  sys = s.systemId;
+    const ResourceType iron = Good::Iron();
+    Pay(s, "outpost");
+    const Vector2 at = FreeSpot(sim, s, *Blueprints::Find("outpost"));
+    const int     id = sim.Deploy(s, "outpost", at, "Hearth");
+    REQUIRE(id != 0);
+    CHECK(StructureById(sim, sys, id)->GetStorageCapacity() == 0);  // a site keeps nothing yet
+    Finish(sim, sys, id);
+    const Structure& t = *StructureById(sim, sys, id);
+    REQUIRE(t.GetStorageCapacity() > 0);
+
+    // Undocked, there is nowhere to put it.
+    s.ship->ClearCargo();
+    REQUIRE(s.ship->AddCargo(iron, 30));
+    int seq = s.LastEventSeq();
+    CHECK(sim.StoreCargo(s, iron.Index(), 10) == 0);
+    CHECK(Told(s, seq, "Cannot store: dock"));
+
+    Beside(s, t);
+    REQUIRE(sim.StepPlayerDock(s, *sim.SystemOf(s)) == id);
+    CHECK(sim.StoreCargo(s, iron.Index(), 10) == 10);
+    CHECK(t.GetStoredAmount(iron) == 10);
+    CHECK(s.ship->GetCargoAmount(iron) == 20);
+    CHECK(sim.TakeCargo(s, iron.Index(), 4) == 4);
+    CHECK(t.GetStoredAmount(iron) == 6);
+    CHECK(s.ship->GetCargoAmount(iron) == 24);
+    // More than there is moves what there is.
+    CHECK(sim.TakeCargo(s, iron.Index(), 1000) == 6);
+    CHECK(sim.StoreCargo(s, iron.Index(), 1000) == 30);
+    CHECK(t.GetStoredAmount(iron) == 30);
+
+    // The owner sees it in the snapshot, over the wire, and an agent in observe.
+    {
+        const Proto::Snapshot snap = sim.BuildSnapshot(s, sys);
+        CHECK(snap.player.storageCap == t.GetStorageCapacity());
+        REQUIRE((size_t)iron.Index() < snap.player.storedByType.size());
+        CHECK(snap.player.storedByType[(size_t)iron.Index()] == 30);
+        Proto::Snapshot back;
+        REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(snap), back));
+        CHECK(back.player.storageCap == snap.player.storageCap);
+        CHECK(back.player.storedByType == snap.player.storedByType);
+        Obs::View view;
+        view.snapshot = &back;
+        CHECK(Obs::Describe(view, Obs::Detail::Brief).find("STORAGE 30/") != std::string::npos);
+    }
+
+    // What it keeps stops it being taken apart: nothing is lost to a dismantle.
+    sim.StepPlayerUndock(s);
+    Beside(s, t);
+    seq = s.LastEventSeq();
+    CHECK_FALSE(sim.Dismantle(s, id));
+    CHECK(Told(s, seq, "still keeps 30 units"));
+
+    // Grown into a market it keeps what it kept -- and its dock is open to anyone, its
+    // storage still only to its owner's side.
+    Pay(s, "outpost_market");
+    REQUIRE(sim.Deploy(s, "outpost_market", at, "") == id);
+    Finish(sim, sys, id);
+    const Structure& m = *StructureById(sim, sys, id);
+    CHECK(m.GetStoredAmount(iron) == 30);
+    Beside(ann, m);
+    REQUIRE(sim.StepPlayerDock(ann, *sim.SystemOf(ann)) == id);
+    REQUIRE(ann.ship->AddCargo(iron, 5));
+    seq = ann.LastEventSeq();
+    CHECK(sim.StoreCargo(ann, iron.Index(), 5) == 0);
+    CHECK(sim.TakeCargo(ann, iron.Index(), 5) == 0);
+    CHECK(Told(ann, seq, "storage is its owner's and their corporation's"));
+    CHECK(sim.BuildSnapshot(ann, sys).player.storageCap == 0);
+    CHECK(m.GetStoredAmount(iron) == 30);
+
+    // A corporation mate may use it.
+    Corps::Registry& corps = sim.Corporations();
+    REQUIRE(corps.Create("hunter", "Hearth Holders", "HH", 1.8e9).Ok());
+    REQUIRE(corps.InviteTo("hunter", "ann", { "ann" }, 1.8e9).Ok());
+    REQUIRE(corps.Join("ann", "HH", 1.8e9).Ok());
+    CHECK(sim.StoreCargo(ann, iron.Index(), 5) == 5);
+    CHECK(m.GetStoredAmount(iron) == 35);
+
+    // Saved and loaded, it keeps it, and remembers what it grew from.
+    const TempDir     tmp;
+    const std::string path = tmp.Path("world_storage.json");
+    REQUIRE(sim.SaveWorld(path));
+    Simulation b;
+    StartServer(b, path);
+    const Structure* back = Named(b, sys, "Hearth");
+    REQUIRE(back != nullptr);
+    CHECK(back->GetStoredAmount(iron) == 35);
+    CHECK(back->GetGrewFrom() == std::vector<std::string>{ "outpost" });
+}
+
+TEST_CASE("an emptied, upgraded outpost comes apart for every tier it was built through (#438)")
+{
+    LoadRegistries();
+    Simulation sim;
+    StartServer(sim, "");
+    ClientSession&    s = Founder(sim, "hunter");
+    const std::string sys = s.systemId;
+    Pay(s, "outpost");
+    const Vector2 at = FreeSpot(sim, s, *Blueprints::Find("outpost"));
+    const int     id = sim.Deploy(s, "outpost", at, "Hearth");
+    REQUIRE(id != 0);
+    Finish(sim, sys, id);
+    Pay(s, "outpost_market");
+    Beside(s, *StructureById(sim, sys, id));
+    REQUIRE(sim.Deploy(s, "outpost_market", at, "") == id);
+    Finish(sim, sys, id);
+
+    const Blueprint&   outpost = *Blueprints::Find("outpost");
+    const Blueprint&   market = *Blueprints::Find("outpost_market");
+    const ResourceType iron = Good::Iron();
+    const int          both = AmountOf(Blueprints::Refund(market, 1.0f, 1.0f, { &outpost }), iron);
+    // More than the market's share alone: the outpost under it comes back too.
+    CHECK(both > AmountOf(Blueprints::Refund(market, 1.0f, 1.0f), iron));
+
+    s.ship->ClearCargo();
+    Beside(s, *StructureById(sim, sys, id));
+    REQUIRE(sim.Dismantle(s, id));
+    CHECK(s.ship->GetCargoAmount(iron) == both);
+}
+
+TEST_CASE("the client offers Dock at a corporation mate's outpost by the server's rule (#438)")
+{
+    LoadRegistries();
+    Structure t({ 0.0f, 0.0f }, 0.0f, "Hearth", "structure.outpost");
+    t.SetBlueprint("outpost");
+    t.SetOwner("hunter");
+    REQUIRE(t.Has(Component::Dockable));
+    REQUIRE_FALSE(t.Has(Component::Market));
+    auto offers = [](const Structure& s, const std::string& pilot, bool corpMate)
+    {
+        Actions::Target target;
+        target.id = 7;
+        target.kind = EntityKind::Structure;
+        target.size = s.GetSize();
+        target.dockable = s.DocksPilot(pilot, corpMate);
+        for (const Actions::Action& a : Actions::For(target, { 0.0f, 0.0f }))
+            if (a.verb == Actions::Verb::Dock)
+                return true;
+        return false;
+    };
+    CHECK(offers(t, "hunter", false));     // its owner
+    CHECK(offers(t, "ann", true));         // a corporation mate
+    CHECK_FALSE(offers(t, "ann", false));  // anyone else
+    CHECK_FALSE(offers(t, "", true));      // nobody
+
+    // ...which is what the corporation's view tells the client: both are in it.
+    Proto::CorpView view;
+    view.members.push_back({ "hunter", "ceo", false });
+    view.members.push_back({ "ann", "member", false });
+    CHECK(offers(t, "ann", view.Has("ann") && view.Has(t.GetOwner())));
+
+    // A site docks nobody, not even its owner.
+    Structure site({ 0.0f, 0.0f }, 0.0f, "Hearth", "structure.outpost");
+    site.SetOwner("hunter");
+    site.StartBuilding(0.0, 100.0);
+    CHECK_FALSE(offers(site, "hunter", false));
 }

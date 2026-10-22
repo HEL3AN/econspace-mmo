@@ -420,7 +420,11 @@ void Game::BuildClientSnapshot()
         // and saying it here as well showed it twice (#227).
         if (p.docked && mode_ == GameMode::Flying)
         {
-            if (Station* s = StationById(p.dockedStationId))
+            // ...or a player's structure (#433, #438): docked all the same, with no station
+            // behind the windows -- the station window shows the structure and its storage.
+            Station*      s = StationById(p.dockedStationId);
+            const Entity* at = s != nullptr ? s : FindEntityById(p.dockedStationId);
+            if (at != nullptr && (s != nullptr || at->GetKind() == EntityKind::Structure))
             {
                 mode_ = GameMode::Docked;
                 dockedStation_ = s;
@@ -502,6 +506,7 @@ std::unique_ptr<Entity> Game::MakeProxyFromLayout(const Proto::EntityLayout& el)
             t->StartBuilding(el.startedAt, el.completesAt);
             t->SetExpiresAt(el.expiresAt);
             t->SetBlueprint(el.blueprint);
+            t->SetGrewFrom(el.grewFrom);
             t->SetDamage(el.damage, el.damagedAt);
             t->SetMends(el.mends, el.damagedAt);
             t->SetDefence(el.defence);

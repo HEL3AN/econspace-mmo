@@ -153,6 +153,7 @@ EVENTS
 | `HOSTILE` | anything that would shoot you, listed first and in full, because it is the reason to change plan |
 | `NEARBY` | everything else, nearest first. Stations and gates are always listed; other objects are capped (`detail: "full"` raises the cap) |
 | `MARKET` | when docked: per good, what the market pays / what it asks, and how many it holds -- the names `buy` takes |
+| `STORAGE` | when docked at your own structure, or a corporation mate's: what its storage keeps of how much it holds -- what `store_cargo` and `take_cargo` move |
 | `OFFERS`, `MISSIONS` | mission work at this station, and what you have taken |
 | `EVENTS` | what happened recently |
 | `STANDING` | reputation with each faction |
@@ -189,6 +190,8 @@ A few that are worth knowing before reading the reference:
   you know (charted, and one gate past them). `preference` is `shortest`, `safer` (security
   0.5 and up where any way does) or `less_secure`; `via` names systems to pass through first.
 - `sell_cargo` takes a resource by the **name** `CARGO` shows — `"Iron"`, not an index.
+- `store_cargo` and `take_cargo` move goods between the hold and the storage of the structure
+  you are docked at -- your own outpost or station, or a corporation mate's (#438).
 - `buy` takes a good by the name `MARKET` shows and buys as many as the stock, the hold and
   the money allow, up to `amount`. Every unit moves the price of the next, and every trade --
   a human's or a bot's -- pays the market's fee (#348), so a small price difference loses money.

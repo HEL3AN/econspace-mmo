@@ -1111,6 +1111,65 @@ std::vector<Tool> BuildTools()
                      ", money " + Money(after.money);
           } });
 
+    // A structure's storage (#438), both ways: one function, told which.
+    auto storage = [](const Rpc::Json& args, bool store) -> std::string
+    {
+        const char* tool = store ? "store_cargo" : "take_cargo";
+        RequireLive();
+        RequireDocked(store ? "storing" : "taking from storage");
+        const Proto::PlayerView& p = g_session.Snapshot().player;
+        if (p.storageCap <= 0)
+            throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                              "no storage of yours here: dock at your own structure with "
+                              "storage, or a corporation mate's" };
+        const int         type = ResourceArg(args);
+        const std::string name = ResourceName(ResourceType::FromIndex(type));
+        auto              at = [type](const std::vector<int>& v)
+        { return (size_t)type < v.size() ? v[type] : 0; };
+        const int hold = at(p.cargoByType), kept = at(p.storedByType);
+        if (store ? hold <= 0 : kept <= 0)
+            throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                              store ? "the hold has no " + name : "the storage keeps no " + name };
+        const int      seq = g_session.LastEventSeq();
+        Proto::Command c;
+        const int      amount = (int)NumberOr(args, "amount", 100000.0);
+        (store ? c.storeType : c.takeType) = type;
+        (store ? c.storeAmount : c.takeAmount) = amount;
+        std::string why;
+        if (!Confirm(c, why))
+            return std::string(tool) + ": " + why;
+        const Proto::PlayerView& after = g_session.Snapshot().player;
+        const int moved = store ? hold - at(after.cargoByType) : at(after.cargoByType) - hold;
+        if (moved <= 0)
+            return Refused(tool, seq, "nothing moved; call observe to see the storage");
+        int used = 0;
+        for (int n : after.storedByType)
+            used += n;
+        return std::string(tool) + ": " + (store ? "stored " : "took ") + std::to_string(moved) +
+               " " + name + " -- storage now " + std::to_string(used) + " / " +
+               std::to_string(after.storageCap) + ", hold " + std::to_string(after.cargoUsed) +
+               " / " + std::to_string(after.cargoCap);
+    };
+    tools.push_back(
+        { "store_cargo",
+          "Put goods from your hold into the storage of the structure you are docked at -- "
+          "your own outpost or station, or a corporation mate's. Stores all of that good "
+          "unless an amount is given, as far as the storage has room. observe lists it under "
+          "STORAGE while you are docked there.",
+          Obj({ { "resource", Str("good name as observe lists it under CARGO, e.g. 'Iron'") },
+                { "amount", Num("how many (default: all of it)") } },
+              { "resource" }),
+          [storage](const Rpc::Json& args) { return storage(args, true); } });
+    tools.push_back(
+        { "take_cargo",
+          "Take goods out of the storage of the structure you are docked at into your hold -- "
+          "your own outpost or station, or a corporation mate's. Takes all of that good unless "
+          "an amount is given, as far as the hold has room.",
+          Obj({ { "resource", Str("good name as observe lists it under STORAGE, e.g. 'Iron'") },
+                { "amount", Num("how many (default: all of it)") } },
+              { "resource" }),
+          [storage](const Rpc::Json& args) { return storage(args, false); } });
+
     tools.push_back(
         { "missions",
           "The job board of the station you are docked at, and the missions you have taken: "
