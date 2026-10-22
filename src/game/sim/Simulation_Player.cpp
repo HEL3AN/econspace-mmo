@@ -40,8 +40,9 @@ namespace
 // Sim::PLAYER_WEAPON_RANGE, shared because the client draws the targeting circle from it.
 // Every other reach -- docking, mining, salvage, a gate -- belongs to the object being
 // reached and comes from its archetype (#34). What a shot takes off is the ship's: its
-// design's guns under a player (#279 step 5, ShipStats::damage).
-constexpr float PLAYER_FIRE_INTERVAL = 0.5f;  // cooldown between player shots
+// design's guns under a player (#279 step 5, ShipStats::damage), every
+// Ships::PLAYER_FIRE_INTERVAL -- the one cooldown, which a siege's warships are reckoned at too.
+using Ships::PLAYER_FIRE_INTERVAL;
 
 // A station as a save names it (#227): the system it is in, its name, and which of that
 // name it is there. An entity id comes from a counter that interleaves every system's

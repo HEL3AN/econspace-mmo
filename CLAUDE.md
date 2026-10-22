@@ -339,7 +339,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   that says where it is creates or destroys ships. A finished structure mends at its
   blueprint tier's rate (#431 D1) as f(time) from the instant its damage was set
   (`Structure::GetDamage(now)`), so fire below the rate does nothing, hot or cold; only an
-  unsupplied faction outpost stops mending, and upkeep decays it instead.
+  unsupplied faction outpost stops mending, and upkeep decays it instead. What a besieger
+  takes off a wall is its faction's warship design's guns (`Simulation::WarshipDps`, from
+  `Ships::WarshipDps` in `core/Fitting`: the volley a player's ship of that hull and fit
+  fires, at the player cooldown), never a number in a rules file (owner, 2026-10-22); the
+  planner and the pass both read it, so a refit of the doctrine's warship moves every siege.
 - **Per-player state lives in `ClientSession`, not in `Simulation`** (#3). The ship, the
   account, the missions, the standing order and the event journal belong to a session, and
   every player verb takes the session it acts for. There is no "active system" either: a

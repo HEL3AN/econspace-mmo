@@ -367,15 +367,24 @@ bool Load(const std::string& path)
     if (j.contains("siege"))
     {
         const json& s = j["siege"];
+        // `dps` was a number standing in for the besiegers' guns; they are the faction's own
+        // warship design now (Ships::WarshipDps). Named, so an old file says what to do.
+        if (s.is_object() && s.contains("dps"))
+        {
+            g_error = path + ": siege: 'dps' is gone -- a besieging ship hits as hard as its "
+                             "faction's warship design (the doctrine's \"warship\" in ships.json); "
+                             "remove the key";
+            return false;
+        }
         if (!s.is_object() ||
             !OnlyKnownKeys(s,
-                           { "cost", "seconds", "jitter", "commit", "dps", "defence", "attrition",
-                             "shock", "reach", "hop", "pool" },
+                           { "cost", "seconds", "jitter", "commit", "defence", "attrition", "shock",
+                             "reach", "hop", "pool" },
                            err) ||
             !ReadNumber(s, "cost", siege.cost, err) ||
             !ReadNumber(s, "seconds", siege.seconds, err) ||
             !ReadNumber(s, "jitter", siege.jitter, err) ||
-            !ReadShare(s, "commit", siege.commit, err) || !ReadNumber(s, "dps", siege.dps, err) ||
+            !ReadShare(s, "commit", siege.commit, err) ||
             !ReadNumber(s, "defence", siege.defence, err) ||
             !ReadShare(s, "attrition", siege.attrition, err) ||
             !ReadShare(s, "shock", siege.shock, err) || !ReadNumber(s, "reach", siege.reach, err) ||

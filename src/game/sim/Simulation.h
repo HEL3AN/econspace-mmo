@@ -566,6 +566,10 @@ public:
     static float OutpostCost();
     // What mounting a siege costs (#295, slice 5): the siege rules' share of an outpost.
     static float SiegeCost();
+    // Hull one of `f`'s besieging warships takes off a structure a second: its own warship
+    // design's guns (Ships::WarshipDps), derived once per faction and again only when the
+    // ship catalogue is reloaded. The planner and the siege pass both read it.
+    float WarshipDps(FactionId f) const;
     // The strength of `f` in a system that is besieging an outpost there rather than
     // patrolling it: warships where the system is hot, never the director's police or pirates.
     float SiegeForceIn(const std::string& systemId, FactionId f) const;
@@ -1952,7 +1956,10 @@ private:
     // Plans by when they are due, then by id: a pass pops what is due and looks at
     // nothing else. Not saved -- remade from plans_.
     std::set<std::pair<double, int>> due_;
-    int                              nextPlanId_ = 1;
+    // WarshipDps by faction id, for the catalogue load it was derived from. Not saved.
+    mutable std::map<std::string, float> warshipDps_;
+    mutable unsigned                     warshipDpsFrom_ = 0;
+    int                                  nextPlanId_ = 1;
     // Delivery contracts (#343, #407), by id. Saved. When markets last looked at what they are
     // short of, as a stretch of the contracts rules' `every`: transient, so a restart looks.
     std::map<int, Contract>     contracts_;
