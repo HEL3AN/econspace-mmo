@@ -2157,7 +2157,14 @@ void StartSelftestWatchdog()
 int Selftest(const std::vector<Tool>& tools)
 {
     auto note = [](const char* what, bool ok)
-    { std::fprintf(stderr, "  %-22s %s\n", what, ok ? "OK" : "FAIL"); };
+    {
+        // One whole line in one write: on an unbuffered stderr (MinGW) printf-style calls
+        // may emit a piece at a time, and two clients sharing a pipe then mix their lines (#419).
+        char line[160];
+        std::snprintf(line, sizeof line, "  %-22s %s\n", what, ok ? "OK" : "FAIL");
+        std::fputs(line, stderr);
+        std::fflush(stderr);
+    };
 
     // 0) A new pilot begins somewhere (#342 S2): offered the starts, takes the first.
     if (g_session.AwaitingStart())
@@ -2227,11 +2234,18 @@ int Selftest(const std::vector<Tool>& tools)
                           bogus.find("not in this system") != std::string::npos;
     // The tool waits two seconds for the server, on purpose; a loaded CI runner with two
     // agents and a server on it can take longer (seen on Windows). What is checked here is
-    // the server's answer, not how fast it came, so wait for the answer itself.
+    // the server's answer, not how fast it came, so wait for the answer itself. The snapshot
+    // that shows the new order can still show it Active, before the server has resolved the
+    // target and failed it (#419), so wait for this order -- a new id -- to be Failed.
     if (!refused)
     {
-        g_session.WaitUntil([&] { return g_session.Snapshot().player.orderId != orderBefore; },
-                            20.0);
+        g_session.WaitUntil(
+            [&]
+            {
+                const Proto::PlayerView& q = g_session.Snapshot().player;
+                return q.orderId != orderBefore && q.orderStatus == (int)Orders::Status::Failed;
+            },
+            30.0);
         const Proto::PlayerView& p = g_session.Snapshot().player;
         refused = p.orderId != orderBefore && p.orderStatus == (int)Orders::Status::Failed;
     }
