@@ -840,6 +840,23 @@ static Proto::CorpView CorpViewFor(const Simulation& sim, const std::string& acc
             if (it != c->police.end())
                 v.police[id] = it->second;
         }
+        // ...and its patrols, with what stands there now (#431 slice 12).
+        for (const auto& kv : c->patrols)
+        {
+            Proto::PatrolView p;
+            p.system = kv.first;
+            p.systemName = sim.SystemName(kv.first);
+            p.ships = kv.second.ships;
+            if (const SystemState* st = sim.SystemById(kv.first))
+            {
+                const auto here = st->agg.patrols.find(c->id);
+                p.present = here != st->agg.patrols.end() ? here->second : 0.0f;
+            }
+            p.design = Simulation::PatrolDesign(kv.second);
+            p.engage = EngageName(kv.second.rules.engage);
+            p.upkeep = Simulation::PatrolUpkeep(kv.second);
+            v.patrols.push_back(std::move(p));
+        }
     }
     for (const Corps::Corp* c : sim.Corporations().InvitesFor(account, now))
         for (const Corps::Invite& i : c->invites)
@@ -2569,7 +2586,7 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                     const Corps::Outcome o =
                         sim.ApplyCorpAct(hc.account,
                                          { act.verb, act.name, act.ticker, act.pilot, act.role,
-                                           act.value, act.system },
+                                           act.value, act.system, act.design, act.engage },
                                          names, now);
                     std::vector<Chat::Delivery> out;
                     Chat::Delivery              told;

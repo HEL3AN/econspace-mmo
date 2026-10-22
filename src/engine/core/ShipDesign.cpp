@@ -468,7 +468,7 @@ const Design* Catalogue::FindDesign(const std::string& id) const
 
 bool ArmedRole(const std::string& role)
 {
-    return role == "patrol" || role == "pirate" || role == "warship";
+    return role == "patrol" || role == "pirate" || role == "warship" || role == "guard";
 }
 
 const std::vector<std::string>* Catalogue::DesignsFor(const std::string& faction,

@@ -2236,6 +2236,10 @@ std::string EncodeCorpAct(const CorpAct& a)
         j["value"] = a.value;
     if (!a.system.empty())
         j["system"] = a.system;
+    if (!a.design.empty())
+        j["design"] = a.design;
+    if (!a.engage.empty())
+        j["engage"] = a.engage;
     return j.dump();
 }
 
@@ -2252,6 +2256,8 @@ bool DecodeCorpAct(const std::string& s, CorpAct& out)
     out.role = TextOf(j, "role");
     out.value = TextOf(j, "value");
     out.system = TextOf(j, "system");
+    out.design = TextOf(j, "design");
+    out.engage = TextOf(j, "engage");
     return !out.verb.empty();
 }
 
@@ -2283,6 +2289,19 @@ std::string EncodeCorpView(const CorpView& v)
         }
         if (!v.police.empty())
             j["police"] = v.police;
+        if (!v.patrols.empty())
+        {
+            json patrols = json::array();
+            for (const PatrolView& p : v.patrols)
+                patrols.push_back({ { "system", p.system },
+                                    { "systemName", p.systemName },
+                                    { "ships", p.ships },
+                                    { "present", p.present },
+                                    { "design", p.design },
+                                    { "engage", p.engage },
+                                    { "upkeep", p.upkeep } });
+            j["patrols"] = std::move(patrols);
+        }
     }
     if (!v.invites.empty())
     {
@@ -2342,6 +2361,22 @@ bool DecodeCorpView(const std::string& s, CorpView& out)
         for (auto it = police->begin(); it != police->end(); ++it)
             if (it.value().is_number() && it.value().get<double>() > 0.0)
                 out.police[it.key()] = it.value().get<double>();
+    const auto patrols = j.find("patrols");
+    if (patrols != j.end() && patrols->is_array())
+        for (const json& pj : *patrols)
+            if (pj.is_object())
+            {
+                PatrolView p;
+                p.system = TextOf(pj, "system");
+                p.systemName = TextOf(pj, "systemName");
+                p.ships = pj.value("ships", 0);
+                p.present = pj.value("present", 0.0f);
+                p.design = TextOf(pj, "design");
+                p.engage = TextOf(pj, "engage");
+                p.upkeep = pj.value("upkeep", 0.0);
+                if (!p.system.empty())
+                    out.patrols.push_back(std::move(p));
+            }
     const auto invites = j.find("invites");
     if (invites != j.end() && invites->is_array())
         for (const json& ij : *invites)

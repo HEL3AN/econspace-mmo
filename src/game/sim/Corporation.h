@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/WorldLoader.h"
+#include "entities/Defence.h"
 #include "sim/Events.h"
 #include "sim/SaveSchema.h"
 
@@ -78,6 +79,29 @@ struct Licence
     int         told = 0;     // what its payer has been told: 1 unpaid, 2 lapsed
 };
 
+// A patrol a corporation keeps in a system (#431 C1, slice 12): AI ships of one design that
+// guard its members' structures and ships there while they are away. Set by its CEO or a
+// director, within the server's limits (world_rules.json -> patrols), and paid for from the
+// treasury every macro pass; what stands there now is the world's number (the system's
+// aggregate), which fights and is lost like any NPC presence.
+struct Patrol
+{
+    int ships = 0;  // how many it keeps there
+    // The design they fly: a stock design's id or a filed one's content id (#279); empty, the
+    // default doctrine's `guard` (data/ships.json).
+    std::string design;
+    // Whom they fire on first, from the rules of engagement structures use (#340): never a
+    // member, always back at whoever shot a member, a member's structure or the patrol.
+    Defence rules = DefaultRules();
+
+    static Defence DefaultRules()
+    {
+        Defence d;
+        d.engage = Engage::Enemies;
+        return d;
+    }
+};
+
 struct Corp
 {
     std::string         id;  // "c<N>", stable for the corporation's life
@@ -101,13 +125,15 @@ struct Corp
     // corporation mates keep current for them. A change of what stood there moves `chartsRev`.
     std::map<std::string, WorldLoader::Sighting> sightings;
     // Its money (#431 T4): what the markets of the systems it holds take, and what its
-    // members' markets take anywhere else. It pays for police (slice 11); its patrols' upkeep
-    // is slice 12's.
+    // members' markets take anywhere else. It pays for police (slice 11) and its patrols'
+    // upkeep (slice 12).
     double treasury = 0.0;
     // What it pays for police in each system it holds (#431 L5, slice 11), in credits an hour,
     // by system id. The coarse pass takes it from the treasury while the corporation holds the
     // system and can pay; a budget for a system it no longer holds waits, unpaid.
     std::map<std::string, double> police;
+    // Its patrols (#431 C1, slice 12), by system id.
+    std::map<std::string, Patrol> patrols;
     // The policies of a holder (T3), set by its CEO or a director: the fee on trades at markets
     // in the systems it holds, as a share (below zero: the standard fee), and who docks at its
     // structures there.
@@ -133,7 +159,9 @@ bool ValidTicker(const std::string& ticker, std::string& why);
 // policies (#431 T3), by the CEO or a director: "tax" (value: a percentage, or "standard") and
 // "docking" (value: own, allies or all); and "police" (system, value: credits an hour, 0 for
 // none), the police it pays for in a system it holds (slice 11) -- which only the world can
-// answer, so Simulation::ApplyCorpAct is the way in for every verb.
+// answer, so Simulation::ApplyCorpAct is the way in for every verb; and "patrol" (system,
+// value: ships, 0 or "none" to stand them down; design; engage), the patrol it keeps in a
+// system it holds or has structures in (slice 12), which the world answers too.
 struct Act
 {
     std::string verb;
@@ -142,7 +170,9 @@ struct Act
     std::string pilot;
     std::string role;
     std::string value{};   // braced: the verbs without one leave it out
-    std::string system{};  // "police": the system, by id
+    std::string system{};  // "police", "patrol": the system, by id
+    std::string design{};  // "patrol": the design, a name in the setter's library or a stock id
+    std::string engage{};  // "patrol": hold, return, enemies or strangers; empty -- as it was
 };
 
 // What came of an act. `error` empty: done. `told` is the actor's answer either way;
@@ -187,6 +217,16 @@ public:
     // corporation holds the system now -- the world's to say; a budget is set only there.
     Outcome SetPolice(const std::string& by, const std::string& system, const std::string& where,
                       const std::string& value, double cap, bool held);
+    // The patrol `by`'s corporation keeps in `system` (#431 slice 12), called `where`: `value`
+    // ships (0 or "none" stands it down) of `design` (resolved by the world; empty -- the
+    // default doctrine's), `designName` what the officer called it, engaging as `engage` says
+    // (empty: as it was). `allowed` is whether the corporation holds the system or has a
+    // structure there -- the world's to say; a patrol is set only there. At most `systemMax`
+    // ships in a system and `corpMax` in all.
+    Outcome SetPatrol(const std::string& by, const std::string& system, const std::string& where,
+                      const std::string& value, const std::string& design,
+                      const std::string& designName, const std::string& engage, int systemMax,
+                      int corpMax, bool allowed);
 
     // Money into a corporation's treasury (#431 T4); false for one that does not exist. Not a
     // change Rev() counts -- a fee comes with every trade, and Rev() is what writes corps.json

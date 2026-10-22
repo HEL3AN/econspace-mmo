@@ -500,13 +500,34 @@ void Simulation::StepSieges()
             FighterOf(gi, gi == Factions::Pirates() ? NpcRole::Pirate : NpcRole::Police);
         auto bite = [](const Ships::Fighter& by, const Ships::Fighter& on)
         { return on.hull > 0.0f ? by.dps / on.hull : 0.0f; };
-        const float lostHere =
-            std::min(p.force, r.attrition * bite(garrison, besieger) * defenders * PASS_SECONDS);
-        const float lostThere =
-            std::min(defenders, r.attrition * bite(besieger, garrison) * p.force * PASS_SECONDS);
+        // A player's structure is guarded by its owner's corporation's patrol here, if it
+        // keeps one (#431 slice 12): its ships stand with the garrison, by their own design's
+        // guns and hull, and the besiegers' fire is shared between the two by their numbers.
+        const std::string guardCorp = corps_.IdOf(t->GetOwner());
+        const auto patrolIt = guardCorp.empty() ? a.patrols.end() : a.patrols.find(guardCorp);
+        const Corps::Patrol* patrolSet =
+            patrolIt == a.patrols.end() ? nullptr : PatrolOf(guardCorp, p.target);
+        const float          patrol = patrolSet != nullptr ? patrolIt->second : 0.0f;
+        const Ships::Fighter guard =
+            patrolSet != nullptr ? PatrolFighter(*patrolSet) : Ships::Fighter{};
+        const float standing = defenders + patrol;
+        const float lostHere = std::min(
+            p.force, r.attrition *
+                         (bite(garrison, besieger) * defenders + bite(guard, besieger) * patrol) *
+                         PASS_SECONDS);
+        auto lostOf = [&](float side, const Ships::Fighter& as)
+        {
+            return standing > 0.0f ? std::min(side, r.attrition * bite(besieger, as) * p.force *
+                                                        PASS_SECONDS * side / standing)
+                                   : 0.0f;
+        };
+        const float lostThere = lostOf(defenders, garrison);
+        const float lostPatrol = lostOf(patrol, guard);
         p.force -= lostHere;
         a.presence[fi] = std::max(0.0f, a.presence[fi] - lostHere);
         a.presence[gi] = std::max(0.0f, a.presence[gi] - lostThere);
+        if (patrolSet != nullptr)
+            patrolIt->second = std::max(0.0f, patrolIt->second - lostPatrol);
         if (p.force < MIN_FORCE)
         {
             Announce("siege", gi, p.target,
@@ -517,8 +538,8 @@ void Simulation::StepSieges()
             over.push_back(p.id);
             continue;
         }
-        // What the garrison does not tie up fires at the outpost.
-        const float firing = std::max(0.0f, p.force - r.defence * defenders);
+        // What the garrison and the patrol do not tie up fires at the outpost.
+        const float firing = std::max(0.0f, p.force - r.defence * standing);
         if (firing > 0.0f &&
             HitStructure(*st, t->GetId(), firing * WarshipDps(p.faction) * PASS_SECONDS, nullptr,
                          Loss::Siege, p.faction))

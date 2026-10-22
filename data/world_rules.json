@@ -171,5 +171,11 @@
         "pirateHide": 0.6,
         "payAtZero": 1.6,
         "oreAtZero": 1.5
+    },
+    "patrols": {
+        "shipsMax": 12,
+        "systemMax": 6,
+        "shipHour": 150,
+        "regrowHours": 0.5
     }
 }

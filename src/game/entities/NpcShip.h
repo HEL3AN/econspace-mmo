@@ -14,13 +14,16 @@
 //  Police  — patrol of a lawful faction, attacks pirates and wanted ships.
 //  Pirate  — raider, attacks traders and the player.
 //  Warship — faction combat ship (faction wars).
+//  Guard   — a player corporation's patrol (#431 slice 12): no faction's, its corporation's;
+//            it fights as that corporation's rules of engagement say.
 enum class NpcRole
 {
     Trader,
     Miner,
     Police,
     Pirate,
-    Warship
+    Warship,
+    Guard
 };
 
 // The role as a doctrine names it in data/ships.json ("trader", "patrol", ...).
@@ -79,7 +82,8 @@ public:
     // Whether the ship is armed (fights). Peaceful roles only flee.
     bool IsCombatant() const
     {
-        return role_ == NpcRole::Police || role_ == NpcRole::Pirate || role_ == NpcRole::Warship;
+        return role_ == NpcRole::Police || role_ == NpcRole::Pirate || role_ == NpcRole::Warship ||
+               role_ == NpcRole::Guard;
     }
 
     // Combat.
@@ -113,7 +117,17 @@ public:
     // touches it, and it neither fights other NPCs nor draws a station's fire -- the plan's
     // arithmetic does that, the same where nobody is. Transient, like every ship.
     void SetTask(int plan) { task_ = plan; }
-    int  GetTask() const { return task_; }
+    // The corporation a guard is the patrol of (#431 slice 12), by id, and what it is called
+    // where it is seen ("[DH] patrol"); empty for every other ship. Server-side, and
+    // transient like every ship: where nobody is, a patrol is a number in the system's
+    // aggregate.
+    void SetCorp(const std::string& id, const std::string& label)
+    {
+        corp_ = id;
+        label_ = label;
+    }
+    const std::string& GetCorp() const { return corp_; }
+    int                GetTask() const { return task_; }
 
     // What a hauler carries (#343): goods bought in one system for another's market. Shot down,
     // it leaves them in its wreck. A hauler on its way out carries what its trip took from this
@@ -162,6 +176,8 @@ private:
     float        fireTimer_ = 0.0f;
     bool         leaving_ = false;
     int          task_ = 0;
+    std::string  corp_;
+    std::string  label_;
     ResourceType cargo_;
     int          cargoAmount_ = 0;
     double       cargoDue_ = 0.0;

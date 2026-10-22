@@ -79,7 +79,10 @@ InfluenceMap Simulation::InfluenceIn(const SystemState& st) const
         if (!id.empty() && st.profile.playerClaims.count(kv.first) != 0)
             m.corpClaims.insert(id);
     }
-    // Slice 12 adds a corporation's patrols here, as presence.
+    // ...and its patrols, as presence (slice 12), at the weight of a faction's ship.
+    for (const auto& kv : st.agg.patrols)
+        if (kv.second > 0.0f && corps_.Find(kv.first) != nullptr)
+            m.corp[kv.first] += kv.second * perShip;
     return m;
 }
 
@@ -316,7 +319,7 @@ Corps::Outcome Simulation::ApplyCorpAct(const std::string& account, const Corps:
     std::string verb = act.verb;
     for (char& ch : verb)
         ch = (char)std::tolower((unsigned char)ch);
-    if (verb != "police")
+    if (verb != "police" && verb != "patrol")
         return corps_.Apply(account, act, online, now);
     // The system by its id, or by the name a player reads.
     std::string id = SystemById(act.system) != nullptr ? act.system : std::string();
@@ -334,6 +337,8 @@ Corps::Outcome Simulation::ApplyCorpAct(const std::string& account, const Corps:
                 id = kv.first;
         }
     }
+    if (verb == "patrol")  // a corporation's own patrol (slice 12)
+        return ApplyPatrolAct(account, act, id);
     const Corps::Corp* c = corps_.Of(account);
     const SystemState* st = id.empty() ? nullptr : SystemById(id);
     const bool         held = c != nullptr && st != nullptr && st->agg.holderCorp == c->id;

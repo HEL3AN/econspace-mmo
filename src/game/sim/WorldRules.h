@@ -414,6 +414,22 @@ private:
     }
 };
 
+// A corporation's own AI patrols (#431 C1, slice 12): ships of a design it picks that guard
+// its members' structures and ships in a system it holds or has a structure in. The server's
+// limits, for its own safety: at most `systemMax` ships of one corporation in a system and
+// `shipsMax` in all. Upkeep is `shipHour` credits an hour for each ship it keeps there, of
+// the default doctrine's `guard` design; a design that fights harder (dps x hull) costs as
+// much more, a lighter one less. It is taken from the treasury every macro pass, hot or
+// cold, and a patrol it cannot pay for stands down. A ship lost is made good in
+// `regrowHours`, while the upkeep is paid.
+struct Patrols
+{
+    int    shipsMax = 12;
+    int    systemMax = 6;
+    double shipHour = 150.0;
+    double regrowHours = 0.5;
+};
+
 // Reads `path`. False, with Error() saying why, and the rules as they were, when it does
 // not read.
 bool               Load(const std::string& path);
@@ -432,6 +448,7 @@ const Law&         LawRules();
 const Influence&   InfluenceRules();
 const Licences&    LicenceRules();
 const Security&    SecurityRules();
+const Patrols&     PatrolRules();
 // For a test: rules of its own, without a file.
 void SetTideRules(const Tide& t);
 void SetMouthRules(const Mouths& m);
@@ -447,5 +464,6 @@ void SetLawRules(const Law& l);
 void SetInfluenceRules(const Influence& i);
 void SetLicenceRules(const Licences& l);
 void SetSecurityRules(const Security& s);
+void SetPatrolRules(const Patrols& p);
 
 }  // namespace WorldRules

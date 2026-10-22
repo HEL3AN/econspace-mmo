@@ -110,6 +110,10 @@ struct SystemAggregate
     // security target, puts the world's police in the air, and makes the corporation's law
     // the system's (Simulation::LawIn). Transient: the first pass after a start pays again.
     float paidPolice = 0.0f;
+    // Corporations' patrols here (#431 C1, slice 12): ships each keeps, by corporation id --
+    // presence, like a faction's, that the coarse pass pays for and makes good and that
+    // fights and is lost by the same arithmetic as any NPC's, hot or cold. Saved.
+    std::map<std::string, float> patrols;
 
     bool seeded = false;  // aggregate initialized with starting values
 };
@@ -223,6 +227,9 @@ struct SystemState
     // Players' structures standing here without the holder's leave (#431 slice 6), by entity
     // id: what the holding faction weighs evicting. Remade each pass (StepLicences), not saved.
     std::vector<int> trespass;
+    // How many of each corporation's patrol (#431 slice 12) are real ships here, while the
+    // system is hot: what a pass counts the living against, as a siege does. Transient.
+    std::map<std::string, int> patrolFielded;
 
     // The static layer's revision and what changed in it since the last LayoutDelta went
     // out (#38), by entity id. Transient like the rest of a hot system: a restart begins

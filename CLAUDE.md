@@ -453,6 +453,14 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   derived each pass (`RefreshLicences`), never saved: `Trespass` makes `LawOver` lawless and
   puts it in `SystemState::trespass`, which `Think` may besiege (`Plan::evicting`). A player
   structure found without a licence gets one asked from now, i.e. a grace day, not trespass.
+- **A corporation's patrol is presence, and its guards are no faction's** (#431 slice 12,
+  `Simulation_Patrols.cpp`). `Corps::Patrol` (corps.json) is what officers set; what stands
+  there is `SystemAggregate::patrols[corp]` (world.json), paid and regrown by `StepPatrols`
+  each macro pass, lost in `ColdLosses` and a siege's attrition by the design's `Fighter`, and
+  flown hot as `NpcRole::Guard` ships by `FieldPatrols` (shot down = taken off the number).
+  A guard's fights are `GuardHunts`/`GuardEngages`, never the faction matrix: never a member,
+  always back at whoever shot a member or the patrol, first as the patrol's `Engage` mode
+  says. Guards hold fire on a siege's warships like everyone else; the siege counts them.
 - **A ship flies a design, and a player's design is named by its content** (#279). A refit
   files `Ships::PlayerFit`'s design under `Ships::ContentId` and the ship flies that id; the
   snapshot carries only the id, so the host sends a `DesignDef` before the first snapshot

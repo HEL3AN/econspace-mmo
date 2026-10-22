@@ -21,6 +21,7 @@ WorldRules::Law         g_law;
 WorldRules::Influence   g_influence;
 WorldRules::Licences    g_licences;
 WorldRules::Security    g_security;
+WorldRules::Patrols     g_patrols;
 std::string             g_error;
 
 // Reads one section's values into their places: every field known, every number zero or
@@ -84,7 +85,8 @@ bool Load(const std::string& path)
             it.key() != "archive" && it.key() != "expeditions" && it.key() != "growth" &&
             it.key() != "convoys" && it.key() != "jobs" && it.key() != "holes" &&
             it.key() != "scan" && it.key() != "contracts" && it.key() != "law" &&
-            it.key() != "influence" && it.key() != "licences" && it.key() != "security")
+            it.key() != "influence" && it.key() != "licences" && it.key() != "security" &&
+            it.key() != "patrols")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -387,6 +389,20 @@ bool Load(const std::string& path)
                          "(lower security never pays less)";
         return false;
     }
+    // Slice 12's (#431): a corporation's patrols, and the server's limits on them.
+    Patrols pat;
+    if (j.contains("patrols") &&
+        !ReadSection(j["patrols"], path + ": patrols",
+                     { { "shipHour", &pat.shipHour }, { "regrowHours", &pat.regrowHours } },
+                     { { "shipsMax", &pat.shipsMax }, { "systemMax", &pat.systemMax } }, {},
+                     g_error))
+        return false;
+    if (pat.regrowHours <= 0.0 || pat.systemMax > pat.shipsMax)
+    {
+        g_error = path + ": patrols: regrowHours must be more than zero, and systemMax at most "
+                         "shipsMax";
+        return false;
+    }
     g_tide = t;
     g_mouths = m;
     g_archive = a;
@@ -401,6 +417,7 @@ bool Load(const std::string& path)
     g_influence = inf;
     g_licences = lc;
     g_security = sec;
+    g_patrols = pat;
     return true;
 }
 
@@ -547,6 +564,16 @@ const Security& SecurityRules()
 void SetSecurityRules(const Security& s)
 {
     g_security = s;
+}
+
+const Patrols& PatrolRules()
+{
+    return g_patrols;
+}
+
+void SetPatrolRules(const Patrols& p)
+{
+    g_patrols = p;
 }
 
 }  // namespace WorldRules

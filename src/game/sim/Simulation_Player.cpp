@@ -542,14 +542,18 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
     }
 
     NpcShip* target = static_cast<NpcShip*>(found);
+    // Whether this is a crime is decided before the shot provokes anyone (a guard that fired
+    // first on the shooter is free to shoot back at); then the patrol answers it.
+    FactionId  tf = target->GetFaction();
+    const bool crime = IsCrime(st, s, *target, tf);
     target->TakeDamage(s.ship->GetDamage());
+    if (target->GetRole() == NpcRole::Guard && corps_.IdOf(s.accountName) != target->GetCorp())
+        ProvokePatrol(st, target->GetCorp(), at, s.id, 0);
 
     // Account effects: attacking a lawful target is a crime; a kill is mission credit
     // (pirate) or a serious crime (lawful). Applied to the session's account, which is the
     // only one there is. `ev` is filled as well, because the client draws the consequences
     // -- a beam, a flash, a notice -- from facts rather than by recomputing them.
-    FactionId  tf = target->GetFaction();
-    const bool crime = IsCrime(st, s, *target, tf);
     if (crime)
     {
         if (ev != nullptr)
@@ -974,6 +978,11 @@ void Simulation::SaveDesigns(const std::string& path)
         for (const auto& [name, design] : s.designLibrary)  // a saved design is kept (#279)
             live.insert(design);
     }
+    // ...and what a corporation's patrols fly (#431 slice 12), for as long as one is set.
+    for (const auto& kv : corps_.All())
+        for (const auto& p : kv.second.patrols)
+            if (!p.second.design.empty())
+                live.insert(p.second.design);
     designs_.Prune(live);
     designs_.Save(path);
 }

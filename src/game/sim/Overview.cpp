@@ -84,6 +84,7 @@ const char* KindWord(const Proto::EntitySnapshot& e)
                 case 2: return "police";
                 case 3: return "pirate";
                 case 4: return "warship";
+                case 5: return "guard";
                 default: return "ship";
             }
         case Proto::EntityKind::Unknown: break;

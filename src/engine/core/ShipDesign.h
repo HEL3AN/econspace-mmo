@@ -146,7 +146,8 @@ struct HangarEntry
 
 // The NPC roles a doctrine names designs for, in the game's NpcRole order. The armed ones are
 // those a design must carry guns for: a patrol that cannot shoot is a trader in a uniform.
-inline constexpr const char* NPC_ROLES[] = { "trader", "miner", "patrol", "pirate", "warship" };
+inline constexpr const char* NPC_ROLES[] = { "trader", "miner",   "patrol",
+                                             "pirate", "warship", "guard" };
 bool                         ArmedRole(const std::string& role);
 
 // What a faction flies (#279 step 4): per NPC role, the designs it builds for it. The doctrine

@@ -118,6 +118,23 @@ std::string UnseenChat(size_t max)
     return out;
 }
 
+// A corporation's own patrols (#431 slice 12), one line each, and what stands in each now.
+std::string PatrolText(const Proto::CorpView& v)
+{
+    std::string out;
+    for (const Proto::PatrolView& p : v.patrols)
+    {
+        char line[200];
+        std::snprintf(line, sizeof(line),
+                      "Patrol in %s (%s): keeps %d of %s, %.1f there now, engaging %s, %.0f cr "
+                      "an hour\n",
+                      p.systemName.c_str(), p.system.c_str(), p.ships, p.design.c_str(), p.present,
+                      p.engage.c_str(), p.upkeep);
+        out += line;
+    }
+    return out;
+}
+
 // A corporation as a model reads it (#347).
 std::string CorpText(const Proto::CorpView& v)
 {
@@ -152,6 +169,7 @@ std::string CorpText(const Proto::CorpView& v)
             held += (held.empty() ? "" : ", ") + id + " (" + paid + ")";
         }
         out += "Holds: " + (held.empty() ? std::string("no system") : held) + "\n";
+        out += PatrolText(v);  // its own patrols (#431 slice 12)
         // Its licences to build in others' space (#431 slice 6), paid from the treasury.
         for (const Proto::LicenceView& l : v.licences)
             out += "Licence in " + l.system + " from " + l.holder + ": " +
@@ -666,7 +684,8 @@ std::vector<Tool> BuildTools()
           "Look at the world: the ship, the system, what is nearby, hostiles, "
           "and recent events. Start here, and call it again after anything "
           "changes. Use detail='full' only when deciding something. A structure says "
-          "what it mends a second (#431): fire below that rate does nothing to it.",
+          "what it mends a second (#431): fire below that rate does nothing to it. Full detail "
+          "lists your corporation's patrols; a guard ship nearby is a corporation's.",
           Obj({ { "detail", Str("'brief' (default) or 'full'") } }), [](const Rpc::Json& args)
           {
               g_session.Pump();
@@ -675,8 +694,9 @@ std::vector<Tool> BuildTools()
               RequireLive();
               const std::string d =
                   args.value("detail", std::string("brief")) == "full" ? "full" : "brief";
+              // In full, the corporation's patrols too (#431 slice 12): what guards its own.
               return g_session.Describe(d == "full" ? Obs::Detail::Full : Obs::Detail::Brief) +
-                     UnseenChat(10);
+                     (d == "full" ? PatrolText(g_session.Corp()) : std::string()) + UnseenChat(10);
           } });
 
     tools.push_back(
@@ -782,20 +802,32 @@ std::vector<Tool> BuildTools()
           "police it pays for in a system it holds: while paid they raise its security, fly "
           "patrols there and make attacking anyone there a crime under the corporation's law; "
           "they stand down when the treasury runs dry. Lower security pays better -- missions, "
-          "jobs, contracts and ore. A "
+          "jobs, contracts and ore. And 'patrol' (system, value: ships or 'none'; design: a "
+          "name in your design library or a stock design id, armed; engage: hold, return, "
+          "enemies or strangers), the corporation's own AI ships in a system it holds or has a "
+          "structure in: they guard its members' structures and ships while they are away, "
+          "never fire on a member, answer whoever shoots one, and engage first as the mode "
+          "says (enemies: pirates, flagged criminals, the wanted, factions the corporation "
+          "stands badly with; strangers: anyone not a member). Upkeep comes from the treasury "
+          "every pass, by the design's strength; unpaid, they stand down. The server limits "
+          "ships per system and in all. A "
           "corporation holds a system with the most influence there -- its members' structures, "
           "weighed by tier -- and a claim: a finished outpost or above of a member's. The "
           "answer is the server's.",
-          Obj({ { "action", Str("create, invite, join, decline, leave, kick, role, tax, docking or "
-                                "police") },
+          Obj({ { "action", Str("create, invite, join, decline, leave, kick, role, tax, docking, "
+                                "police or patrol") },
                 { "name", Str("create: the corporation's name, 3 to 24 characters") },
                 { "ticker", Str("create: 2 to 5 letters or digits; join/decline: whose invite") },
                 { "pilot", Str("invite, kick, role: the pilot's name") },
                 { "role", Str("role: ceo, director or member") },
                 { "value", Str("tax: a percentage such as 5, or standard; docking: own, allies "
-                               "or all; police: credits an hour, or none") },
-                { "system", Str("police: the system, by id or name, that the corporation "
-                                "holds") } },
+                               "or all; police: credits an hour, or none; patrol: ships, or "
+                               "none") },
+                { "system", Str("police, patrol: the system, by id or name") },
+                { "design", Str("patrol: a name in your design library, or a stock design id; "
+                                "left out, as it was (else the default guard)") },
+                { "engage", Str("patrol: hold, return, enemies or strangers; left out, as it "
+                                "was (else enemies)") } },
               { "action" }),
           [](const Rpc::Json& args)
           {
@@ -809,6 +841,8 @@ std::vector<Tool> BuildTools()
               act.role = args.value("role", std::string());
               act.value = args.value("value", std::string());
               act.system = args.value("system", std::string());
+              act.design = args.value("design", std::string());
+              act.engage = args.value("engage", std::string());
               if (act.verb.empty())
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "action is required" };
               const int before = g_session.LastChatSeq();

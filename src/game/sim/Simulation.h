@@ -650,6 +650,8 @@ public:
     void StepClaims(bool settling);
     // The systems a corporation holds, by id.
     std::vector<std::string> HeldBy(const std::string& corpId) const;
+    // A system's name as a player reads it: the given one, else its id.
+    std::string SystemName(const std::string& id) const;
     // Who holds a system, as a party's key (InfluenceMap::Key, or a corporation's id): empty
     // for nobody's.
     static std::string HolderOf(const SystemAggregate& a);
@@ -745,8 +747,46 @@ public:
     // where a corporation holds it and pays for police, the law of the police it pays -- the
     // faction the director flies its police under; and none anywhere else. False: lawless.
     bool LawIn(const SystemState& st, FactionId& law) const;
+    // A corporation's patrols (#431 C1, slice 12; Simulation_Patrols.cpp), every macro pass,
+    // hot or cold: each patrol where its corporation may keep one is paid for from the
+    // treasury (PatrolUpkeep for the pass), and a paid one makes good what it lost at the
+    // patrol rules' `regrowHours` a ship, up to what it keeps. One it cannot pay for, or kept
+    // where the corporation has nothing left to guard, stands down -- gone from the system's
+    // aggregate -- and an empty treasury is said once in the corporation's journal.
+    void StepPatrols(double seconds);
+    // Whether `corpId` may keep a patrol in `st`: it holds the system, or a member has a
+    // structure there.
+    bool PatrolAllowed(const SystemState& st, const std::string& corpId) const;
+    // The design a patrol flies: its own, if the catalogue knows it, else the default
+    // doctrine's `guard`.
+    static std::string PatrolDesign(const Corps::Patrol& p);
+    // ...what one of its ships fights with -- that design's guns and hull, the numbers it
+    // fights with hot and the cold pass and a siege read (one combat model, #186) -- and its
+    // upkeep, credits an hour for the whole patrol (WorldRules::Patrols).
+    static Ships::Fighter PatrolFighter(const Corps::Patrol& p);
+    static double         PatrolUpkeep(const Corps::Patrol& p);
+    // The patrol `corpId` keeps in `systemId`, as set; null for none.
+    const Corps::Patrol* PatrolOf(const std::string& corpId, const std::string& systemId) const;
+    // Whether guard `g` fires first at pilot `p`, or at NPC `n` (#431 slice 12), by its
+    // corporation's patrol rules: never at a member, always back at whoever shot a member, a
+    // member's structure or the patrol lately (the provoked books), and first as the rules
+    // of engagement say -- pirates always, and as a member's structure would (#340).
+    bool GuardHunts(const SystemState& st, const NpcShip& g, const ClientSession& p) const;
+    bool GuardEngages(const SystemState& st, const NpcShip& g, const NpcShip& n) const;
+    // Whether session `session` or NPC `npc` (0: neither) has lately shot at guard `g`, at its
+    // patrol, at a member's ship near it, or at a member's structure in `st`.
+    bool GuardProvoked(const SystemState& st, const NpcShip& g, int session, int npc) const;
+    // `corp`'s guards near `at` were shot at, or a member's ship there was, by `bySession` or
+    // `byNpc`: they answer it for PROVOKED_SECONDS, whatever their rules (but hold fire).
+    void ProvokePatrol(SystemState& st, const std::string& corp, Vector2 at, int bySession,
+                       int byNpc);
+    // The "patrol" verb (#431 slice 12) for `systemId` (resolved; empty when unknown): the
+    // design looked up in the officer's library or the stock catalogue, and the registry told
+    // whether the corporation may keep a patrol there.
+    Corps::Outcome ApplyPatrolAct(const std::string& account, const Corps::Act& act,
+                                  const std::string& systemId);
     // A corporation's verb, as the host hands it on (#347, #431): the registry's, and for
-    // "police" the world says whether the corporation holds the system first.
+    // "police" and "patrol" the world says whether the corporation holds the system first.
     Corps::Outcome ApplyCorpAct(const std::string& account, const Corps::Act& act,
                                 const std::set<std::string>& online, double now);
     // At most this far from the base either way, and the softness of the balance: with
@@ -761,8 +801,9 @@ public:
     const std::vector<std::string>& Neighbors(const std::string& id) const;
 
     // --- Step-by-step simulation of system agents (server core, M3) ---
-    // Are two NPCs hostile (faction relation matrix) — pure server logic.
-    static bool NpcHostileToNpc(const NpcShip* a, const NpcShip* b);
+    // Are two NPCs hostile (faction relation matrix) — pure server logic; a corporation's
+    // guard by its patrol's rules (GuardEngages), either way round.
+    bool NpcHostileToNpc(const SystemState& st, const NpcShip* a, const NpcShip* b) const;
 
     // A player standing in a system, as the NPC passes see them. The caller builds one
     // per session in the system: whose ship it is, and whether something is hiding it.
@@ -1686,6 +1727,10 @@ private:
     // the time, as expected losses -- counted as losses are in a hot one -- and then the
     // spawn director's arithmetic in place of its ships.
     void ColdLosses(SystemState& st);
+    // A hot system's corporation patrols (#431 slice 12) as ships: those shot down since the
+    // last look come off the aggregate, and then as many guards fly as it says -- made around
+    // the corporation's structures here, or let go when it says fewer.
+    void FieldPatrols(SystemState& st);
     // `target` is what PopulationOf says for it this pass (StepMigration worked it out).
     void ColdTopUp(SystemState& st, const Population& target);
     // `seconds` of what a system's belts, planets and stations do to its market, and of the
@@ -2211,7 +2256,6 @@ private:
     // per hit, and more for the kill. One table for ships and structures alike (#41).
     static void ChargeAttack(ClientSession& s, FactionId victim, bool killed);
 
-    void        SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& info);
-    std::string SystemName(const std::string& id) const;
-    void        PushEvent(const std::string& msg);
+    void SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& info);
+    void PushEvent(const std::string& msg);
 };

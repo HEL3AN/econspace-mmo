@@ -108,7 +108,7 @@ std::vector<NpcShip*> AliveShips(SystemState& st)
 }
 }  // namespace
 
-bool Simulation::NpcHostileToNpc(const NpcShip* a, const NpcShip* b)
+bool Simulation::NpcHostileToNpc(const SystemState& st, const NpcShip* a, const NpcShip* b) const
 {
     // A siege's warships (#295, slice 5) and the garrison they face fight by the siege's
     // arithmetic, the same whether or not anyone is here to see it; shooting at each other on
@@ -119,6 +119,12 @@ bool Simulation::NpcHostileToNpc(const NpcShip* a, const NpcShip* b)
     // ...and so does a builder convoy (#342 S6): its losses are its plan's arithmetic.
     if (a->GetTask() != 0 || b->GetTask() != 0)
         return false;
+    // A corporation's guard (#431 slice 12) has no faction to take sides by: its patrol's
+    // rules decide, and whoever it would fight fights it back.
+    if (a->GetRole() == NpcRole::Guard)
+        return GuardEngages(st, *a, *b);
+    if (b->GetRole() == NpcRole::Guard)
+        return GuardEngages(st, *b, *a);
     Stance s = Factions::Relation(a->GetFaction(), b->GetFaction());
     return s == Stance::Hostile || s == Stance::War;
 }
@@ -149,7 +155,7 @@ void Simulation::StepNpcAi(SystemState& st, const std::vector<PlayerPresence>& p
             }
             for (NpcShip* o : ships)
             {
-                if (o == n || !NpcHostileToNpc(n, o))
+                if (o == n || !NpcHostileToNpc(st, n, o))
                     continue;
                 float d = Dist(o->GetPosition(), npos);
                 if (d < bestD)
@@ -175,7 +181,7 @@ void Simulation::StepNpcAi(SystemState& st, const std::vector<PlayerPresence>& p
             bool    threatened = false;
             for (NpcShip* o : ships)
             {
-                if (o == n || !o->IsCombatant() || !NpcHostileToNpc(o, n))
+                if (o == n || !o->IsCombatant() || !NpcHostileToNpc(st, o, n))
                     continue;
                 float d = Dist(o->GetPosition(), npos);
                 if (d < td)
@@ -206,8 +212,9 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
         float                bestD = NPC_WEAPON_RANGE;
         Combatant*           target = nullptr;
         const ClientSession* targetPlayer = nullptr;  // null means the target is an NPC
+        NpcShip*             targetNpc = nullptr;
 
-        auto consider = [&](Combatant* c, const ClientSession* player)
+        auto consider = [&](Combatant* c, const ClientSession* player, NpcShip* other)
         {
             float d = Dist(c->GetPosition(), npos);
             if (d <= bestD)
@@ -215,16 +222,17 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
                 bestD = d;
                 target = c;
                 targetPlayer = player;
+                targetNpc = other;
             }
         };
 
         for (const PlayerPresence& p : players)
             if (p.ship != nullptr && p.session != nullptr && !p.hidden &&
                 NpcHunts(st, *p.session, *npc))
-                consider(p.ship, p.session);
+                consider(p.ship, p.session, nullptr);
         for (NpcShip* other : ships)
-            if (other != npc && other->IsAlive() && NpcHostileToNpc(npc, other))
-                consider(other, nullptr);
+            if (other != npc && other->IsAlive() && NpcHostileToNpc(st, npc, other))
+                consider(other, nullptr, other);
 
         if (target == nullptr)
         {
@@ -259,10 +267,19 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
         // What a volley takes off is the design's guns (#279 step 4), the same against a ship
         // or a pilot, and the same a player's ship of that design would take off (#186).
         const int targetSession = targetPlayer != nullptr ? targetPlayer->id : 0;
+        // A corporation's guard that fires first is its corporation's act, as a structure's
+        // battery is its owner's (#340, #431 slice 12): a crime where the target is under law.
+        const bool firstStrike =
+            npc->GetRole() == NpcRole::Guard &&
+            !GuardProvoked(st, *npc, targetSession, targetNpc != nullptr ? targetNpc->GetId() : 0);
         target->TakeDamage(npc->GetDamage());
         npc->ResetFireTimer();
+        if (firstStrike)
+            ChargeFirstStrike(st, *npc, targetPlayer, targetNpc, !target->IsAlive());
         if (targetPlayer != nullptr)  // the player's own guns nearby answer it (#340)
             ProvokeGuards(st, *targetPlayer, target->GetPosition(), 0, npc->GetId());
+        else if (targetNpc != nullptr && targetNpc->GetRole() == NpcRole::Guard)
+            ProvokePatrol(st, targetNpc->GetCorp(), target->GetPosition(), 0, npc->GetId());
         if (fires != nullptr)
         {
             FireEvent fe;
@@ -413,6 +430,9 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
                 if (rel == Stance::Hostile || rel == Stance::War)
                     consider(n, nullptr, n, false);
             }
+            else if (n->GetRole() == NpcRole::Guard && !n->GetCorp().empty() &&
+                     n->GetCorp() == corps_.IdOf(account))
+                continue;  // its owner's corporation's own patrol (#431 slice 12)
             else if (lately(st.provokedByNpc, n->GetId()))
                 consider(n, nullptr, n, false);  // it shot the owner: answering, not first
             else if (rules != nullptr && strikesFirstAt(n->GetFaction()))
@@ -510,7 +530,12 @@ bool Simulation::IsCrime(const SystemState& st, const ClientSession& by, const E
 {
     if (victim.GetKind() == EntityKind::Npc)
     {
-        law = static_cast<const NpcShip&>(victim).GetFaction();
+        // A corporation's guard (#431 slice 12) is as safe as the system's law makes it, as
+        // its members' structures are (LawOver) -- except from its own corporation.
+        const NpcShip& n = static_cast<const NpcShip&>(victim);
+        if (n.GetRole() == NpcRole::Guard)
+            return corps_.IdOf(by.accountName) != n.GetCorp() && LawIn(st, law);
+        law = n.GetFaction();
         return Factions::IsLawful(law);
     }
     if (victim.GetKind() == EntityKind::Structure)
@@ -593,6 +618,8 @@ bool Simulation::PoliceOnSight(const SystemState& st, const ClientSession& p,
 
 bool Simulation::NpcHunts(const SystemState& st, const ClientSession& p, const NpcShip& n) const
 {
+    if (n.GetRole() == NpcRole::Guard)  // a corporation's, by its patrol's rules (slice 12)
+        return GuardHunts(st, n, p);
     if (AccountHostileToFaction(p, n.GetFaction()) || PoliceOnSight(st, p, n))
         return true;
     // A flagged criminal is anyone's to shoot (#431 L4), and the police's to chase where the
@@ -1003,6 +1030,8 @@ void Simulation::StepWorldMacro()
         PriceMarkets();  // a mouth opened or collapsed: supply routes changed (#342 S5)
     // What holders pay for police this pass (#431 slice 11), before security drifts on it.
     StepPolicePay(MAINT_STEP);
+    // ...and for their patrols (#431 slice 12).
+    StepPatrols(MAINT_STEP);
 
     // Security and economy drift from the real populations.
     for (auto& kv : systems_)
@@ -1049,6 +1078,7 @@ void Simulation::RecountAgg(SystemState& st)
                 case NpcRole::Police: po++; break;
                 case NpcRole::Pirate: pi++; break;
                 case NpcRole::Warship: break;  // a siege's, kept by its plan (#295)
+                case NpcRole::Guard: break;    // a corporation's patrol (#431 slice 12)
             }
     st.agg.traders = (float)tr;
     st.agg.miners = (float)mi;
@@ -1268,6 +1298,7 @@ void Simulation::TopUpSystem(SystemState& st, const std::vector<Vector2>& avoid)
                 case NpcRole::Police: po++; break;
                 case NpcRole::Pirate: pi++; break;
                 case NpcRole::Warship: break;  // a siege's, not the director's (#295)
+                case NpcRole::Guard: break;    // a corporation's patrol (#431 slice 12)
             }
 
     auto pick = [&](const std::vector<Vector2>& v) -> Vector2
@@ -1338,8 +1369,21 @@ void Simulation::ColdLosses(SystemState& st)
     // The share of a ship's hull one second of the other's fire takes off.
     auto bite = [](const Ships::Fighter& by, const Ships::Fighter& on)
     { return on.hull > 0.0f ? by.dps / on.hull : 0.0f; };
+    // Corporations' patrols (#431 slice 12) trade shots with the pirates as the police do, at
+    // the same meeting rates, with their own design's guns and hull.
+    float byPatrols = 0.0f;
+    for (auto& kv : a.patrols)
+    {
+        const Corps::Patrol* set = PatrolOf(kv.first, st.id);
+        if (set == nullptr || kv.second <= 0.0f)
+            continue;
+        const Ships::Fighter guard = PatrolFighter(*set);
+        byPatrols += COLD_PIRATE_FIRE * bite(guard, pirate) * pirates * kv.second;
+        kv.second -=
+            std::min(kv.second, COLD_POLICE_FIRE * bite(pirate, guard) * pirates * kv.second);
+    }
     const float lostPirates =
-        std::min(pirates, COLD_PIRATE_FIRE * bite(cop, pirate) * pirates * police);
+        std::min(pirates, COLD_PIRATE_FIRE * bite(cop, pirate) * pirates * police + byPatrols);
     const float lostPolice =
         std::min(police, COLD_POLICE_FIRE * bite(pirate, cop) * pirates * police);
     const float lostTraders =
@@ -1454,6 +1498,7 @@ void Simulation::MaintainWorld(float dt, MaintainCost* cost)
             AccumSuppress(a.supMiners, prevMi - a.miners);
             AccumSuppress(a.supPolice, prevPo - a.police);
             AccumSuppress(a.supPirates, prevPi - a.pirates);
+            FieldPatrols(kv.second);  // guards shot down, and as many as the patrol says (#431)
             // What was destroyed, for the faction step: strength a faction committed and
             // lost (#231). A fall in the count is a loss -- a ship that leaves (#295) was taken
             // off the count when it set out, so it is not one.

@@ -144,12 +144,38 @@ bool Game::CorpCommand(const std::string& text)
         act.value = Trim(where.substr(cut + 1));
         act.system = Trim(where.substr(0, cut));
     }
+    else if (verb == "patrol")
+    {
+        // design=<name> and engage=<mode> anywhere, the ships last: a system's name may have
+        // spaces in it (#431 slice 12).
+        std::string where;
+        std::string word, more = Trim(rest);
+        while (!(word = Word(more, &more)).empty())
+        {
+            if (Lower(word).rfind("design=", 0) == 0)
+                act.design = word.substr(7);
+            else if (Lower(word).rfind("engage=", 0) == 0)
+                act.engage = word.substr(7);
+            else
+                where += (where.empty() ? "" : " ") + word;
+        }
+        const size_t cut = where.find_last_of(' ');
+        if (cut == std::string::npos)
+        {
+            ChatNotice("To keep a patrol: /corp patrol <system> <ships>|none [design=<name>] "
+                       "[engage=hold|return|enemies|strangers]");
+            return true;
+        }
+        act.value = Trim(where.substr(cut + 1));
+        act.system = Trim(where.substr(0, cut));
+    }
     else if (verb != "leave")
     {
         ChatNotice("/corp create <ticker> <name> | invite <pilot> | join <ticker> | decline "
                    "<ticker> | leave | kick <pilot> | role <pilot> ceo|director|member | tax "
                    "<percent>|standard | docking own|allies|all | police <system> <cr an "
-                   "hour>|none; /c <text> talks to the corporation");
+                   "hour>|none | patrol <system> <ships>|none [design=<name>] "
+                   "[engage=<mode>]; /c <text> talks to the corporation");
         return true;
     }
     SendCorpAct(act);
@@ -240,6 +266,27 @@ void Game::DrawCorpContent(const Ui::Frame& f)
                               "they raise security, fly patrols and answer crimes under the "
                               "corporation's law. They stand down when the treasury runs dry");
                 }
+                // Its own patrols (#431 slice 12): what each keeps and what stands there now.
+                // Set with /corp patrol; an officer can stand one down from here.
+                for (const Proto::PatrolView& p : corpView_.patrols)
+                {
+                    L.Field("Patrol, " + MapSystemName(p.system),
+                            TextFormat("%d of %s, %.1f there, %s, %.0f cr an hour", p.ships,
+                                       p.design.c_str(), p.present, p.engage.c_str(), p.upkeep),
+                            p.present > 0.0f ? t.colors.text : t.colors.dim);
+                    if (leads && L.Button("nopatrol_" + p.system, "Stand down"))
+                    {
+                        Proto::CorpAct a;
+                        a.verb = "patrol";
+                        a.value = "none";
+                        a.system = p.system;
+                        acts.push_back(a);
+                    }
+                }
+                if (leads)
+                    L.Text("/corp patrol <system> <ships> [design=<name>] [engage=<mode>] keeps "
+                           "a patrol where the corporation holds or has a structure",
+                           TextStyle::Label());
                 if (leads)
                 {
                     L.Row(
