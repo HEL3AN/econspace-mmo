@@ -99,19 +99,23 @@ float Simulation::SiegeCost()
     return Blueprints::SiegeRules().cost * OutpostCost();
 }
 
-float Simulation::WarshipDps(FactionId f) const
+Ships::Fighter Simulation::FighterOf(FactionId f, NpcRole role) const
 {
-    // The faction's own warships, not a number in a rules file (the owner's rule of
-    // 2026-10-22): a faction whose doctrine fields a heavier gun brings a wall down sooner.
-    if (warshipDpsFrom_ != Archetypes::Generation())
+    // The faction's own ships, not a number in a rules file (the owner's rule of 2026-10-22):
+    // a faction whose doctrine fields a heavier gun brings a wall down sooner, and wins its
+    // fights sooner too.
+    if (fightersFrom_ != Archetypes::Generation())
     {
-        warshipDps_.clear();
-        warshipDpsFrom_ = Archetypes::Generation();
+        fighters_.clear();
+        fightersFrom_ = Archetypes::Generation();
     }
-    const std::string& id = Factions::Id(f);
-    auto               it = warshipDps_.find(id);
-    if (it == warshipDps_.end())
-        it = warshipDps_.emplace(id, Ships::WarshipDps(Archetypes::ShipCatalogue(), id)).first;
+    const std::pair<std::string, int> key(Factions::Id(f), (int)role);
+    auto                              it = fighters_.find(key);
+    if (it == fighters_.end())
+        it = fighters_
+                 .emplace(key, Ships::RoleFighter(Archetypes::ShipCatalogue(), key.first,
+                                                  NpcRoleId(role)))
+                 .first;
     return it->second;
 }
 
@@ -487,9 +491,19 @@ void Simulation::StepSieges()
 
         // Both sides bleed, each by the other's numbers.
         // A trespasser's structure (#431 slice 6) has no garrison: nobody's ships stand by it.
-        const float defenders = p.evicting.empty() ? a.presence[gi] : 0.0f;
-        const float lostHere = std::min(p.force, r.attrition * defenders * PASS_SECONDS);
-        const float lostThere = std::min(defenders, r.attrition * p.force * PASS_SECONDS);
+        // What a ship loses is the other side's guns over its own hull, from the designs each
+        // side flies (#186): the besiegers are the faction's warships, the garrison what the
+        // director flies for it here -- its pirates, or its police.
+        const float          defenders = p.evicting.empty() ? a.presence[gi] : 0.0f;
+        const Ships::Fighter besieger = FighterOf(fi, NpcRole::Warship);
+        const Ships::Fighter garrison =
+            FighterOf(gi, gi == Factions::Pirates() ? NpcRole::Pirate : NpcRole::Police);
+        auto bite = [](const Ships::Fighter& by, const Ships::Fighter& on)
+        { return on.hull > 0.0f ? by.dps / on.hull : 0.0f; };
+        const float lostHere =
+            std::min(p.force, r.attrition * bite(garrison, besieger) * defenders * PASS_SECONDS);
+        const float lostThere =
+            std::min(defenders, r.attrition * bite(besieger, garrison) * p.force * PASS_SECONDS);
         p.force -= lostHere;
         a.presence[fi] = std::max(0.0f, a.presence[fi] - lostHere);
         a.presence[gi] = std::max(0.0f, a.presence[gi] - lostThere);

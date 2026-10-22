@@ -206,21 +206,31 @@ std::vector<FitLine> PlayerLines(const Design& d)
     return fit;
 }
 
-float WarshipDps(const Catalogue& c, const std::string& faction)
+Fighter RoleFighter(const Catalogue& c, const std::string& faction, const std::string& role)
 {
-    const std::vector<std::string>* list = c.DesignsFor(faction, "warship");
+    Fighter                         f;
+    const std::vector<std::string>* list = c.DesignsFor(faction, role);
     if (list == nullptr || list->empty())
-        return 0.0f;
-    float sum = 0.0f;
+        return f;
     for (const std::string& id : *list)
     {
         const Design* d = c.FindDesign(id);
         Stats         st;
         std::string   why;
         if (d != nullptr && Derive(c, *d, st, why))
-            sum += Dps(st);
+        {
+            f.dps += Dps(st);
+            f.hull += st.combatHull;
+        }
     }
-    return sum / (float)list->size();
+    f.dps /= (float)list->size();
+    f.hull /= (float)list->size();
+    return f;
+}
+
+float WarshipDps(const Catalogue& c, const std::string& faction)
+{
+    return RoleFighter(c, faction, "warship").dps;
 }
 
 bool ValidDesignName(const std::string& name, std::string& error)

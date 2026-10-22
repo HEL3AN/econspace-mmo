@@ -527,12 +527,12 @@ TEST_CASE("a besieger hits as hard as its faction's warship design does")
             Ships::Stats st;
             std::string  why;
             REQUIRE(Ships::Derive(c, *c.FindDesign(id), st, why));
-            sum += st.playerDamage / Ships::PLAYER_FIRE_INTERVAL;
+            sum += Ships::Dps(st);
         }
         CHECK(sim->WarshipDps(f) == doctest::Approx(sum / (float)list->size()));
         CHECK(sim->WarshipDps(f) > 0.0f);
     }
-    // Today every doctrine's warship is the cruiser: a railgun of 6 plus a player's 16, twice
+    // Today every doctrine's warship is the cruiser: a railgun of 6 plus every ship's 16, twice
     // a second.
     Ships::Stats cruiser;
     std::string  why;

@@ -141,8 +141,11 @@ struct Siege
     // design's guns (Ships::WarshipDps, Simulation::WarshipDps).
     // How many besiegers each defending ship ties up: what is left over fires at the outpost.
     float defence = 0.15f;
-    // Ships lost per second, per ship of the other side, by both sides while it lasts.
-    float attrition = 0.0002f;
+    // The share of a siege's seconds a ship spends trading fire with one ship of the other
+    // side. What that costs each side is the guns' arithmetic (#186): the other side's
+    // design's dps over its own design's hull (Simulation::FighterOf), so a faction with the
+    // better warship loses fewer. At today's designs, about 0.0002 ships a second each way.
+    float attrition = 0.0005f;
     // What losing an outpost costs the faction that held the system, as a share of its
     // strength there: a claim that rested on it is gone, and one that did not is weaker.
     float shock = 0.5f;

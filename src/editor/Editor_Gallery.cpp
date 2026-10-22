@@ -16,6 +16,7 @@
 #include "Editor.h"
 
 #include <algorithm>
+#include "core/Fitting.h"
 #include "core/ShipDesign.h"
 #include "render/Modules.h"
 
@@ -433,24 +434,24 @@ void Editor::DrawGalleryFocusBar()
                                 s.cargoCapacity, (double)s.miningRate, (double)s.buildSeconds,
                                 (double)(look.length / look.width), (double)look.massAt),
                      (int)box.x + 10, (int)box.y + 10, 13, Ui::TEXT);
-            // What an NPC flying it is (#279 step 4), and which doctrines fly it as what.
+            // What it is in a fight, whoever flies it (#186), and which doctrines fly it as what.
             std::string flown;
             for (const Ships::Doctrine& doc : ships.doctrines)
                 for (const auto& [role, designs] : doc.roles)
                     for (const std::string& id : designs)
                         if (id == d->id)
                             flown += "   " + doc.faction + " " + role;
-            Ui::Text(TextFormat("as an NPC: cruise %.0f   structure %.0f   volley %.0f%s",
-                                (double)s.cruise, (double)s.hull, (double)s.damage,
+            Ui::Text(TextFormat("in a fight: structure %.0f   volley %.0f   %.0f a second   NPC "
+                                "cruise %.0f%s",
+                                (double)s.combatHull, (double)s.volley, (double)Ships::Dps(s),
+                                (double)s.cruise,
                                 flown.empty() ? "   flown by no doctrine" : flown.c_str()),
                      (int)box.x + 10, (int)box.y + 28, 13, Ui::TEXT_DIM);
-            // And what a player flying it is (#279 step 5), if a station sells it.
+            // And what a station sells it for (#279 step 5), if one does.
             for (size_t i = 0; i < ships.hangar.size(); i++)
                 if (ships.hangar[i].design == d->id)
-                    Ui::Text(TextFormat("as a player: hangar [%d]   %.0f cr   hull %.0f   gun "
-                                        "%.0f a shot",
-                                        (int)i, (double)ships.hangar[i].price, (double)s.playerHull,
-                                        (double)s.playerDamage),
+                    Ui::Text(TextFormat("for a player: hangar [%d]   %.0f cr", (int)i,
+                                        (double)ships.hangar[i].price),
                              (int)box.x + 10, (int)box.y + 46, 13, Ui::TEXT_DIM);
         }
         else

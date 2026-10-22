@@ -51,24 +51,36 @@ inline constexpr float REFIT_REFUND = 0.5f;
 // saved design sends, and what the Fit tab draws up from the design a ship flies.
 std::vector<FitLine> PlayerLines(const Design& d);
 
-// How often a ship's guns fire under a player, in seconds: the server's cooldown between
-// shots, and what turns a design's volley into hull a second wherever that is reckoned.
+// How often a ship's guns fire, in seconds: the server's cooldown between shots, a player's
+// and an NPC's alike (one combat model, owner 2026-10-22, #186), and what turns a design's
+// volley into hull a second wherever that is reckoned.
 inline constexpr float PLAYER_FIRE_INTERVAL = 0.5f;
 
 // Hull a ship of these stats takes off a target per second with every gun it carries: its
-// design's volley under a player (Stats::playerDamage) at PLAYER_FIRE_INTERVAL.
+// design's volley (Stats::volley) at PLAYER_FIRE_INTERVAL, whoever flies it.
 inline float Dps(const Stats& s)
 {
-    return s.playerDamage / PLAYER_FIRE_INTERVAL;
+    return s.volley / PLAYER_FIRE_INTERVAL;
 }
 
+// What a ship `faction` fields in `role` ("pirate", "patrol", "warship", "trader", "miner",
+// as a doctrine names it) brings to a fight: the hull a second its guns take off (Dps) and the
+// hull it has to lose (Stats::combatHull). With several designs in the doctrine's list it is
+// their mean: a faction's ships of a role are picked from the list in turn
+// (Catalogue::Pick keyed 0..n-1), so that mix is the force it fields; a design that does not
+// derive counts as nothing. Zero both for a role no design is named for.
+struct Fighter
+{
+    float dps = 0.0f;
+    float hull = 0.0f;
+};
+Fighter RoleFighter(const Catalogue& c, const std::string& faction, const std::string& role);
+
 // What one of `faction`'s warships takes off a structure per second (the owner's rule of
-// 2026-10-22: no hand-tuned number stands in for the world). A siege's ship is the faction's
-// own warship design, crewed as a player's ship of that hull and fit is, so a faction that
-// fields a heavier gun brings a wall down sooner. With several designs in its doctrine's
-// `warship` list it is their mean: a siege's ships are picked from the list in turn
-// (Catalogue::Pick keyed 0..n-1), so that mix is the force it fields. Zero for a faction
-// whose doctrine names no warship that derives -- it cannot hurt a wall.
+// 2026-10-22: no hand-tuned number stands in for the world): RoleFighter's dps for "warship".
+// A siege's ship is the faction's own warship design, so a faction that fields a heavier gun
+// brings a wall down sooner. Zero for a faction whose doctrine names no warship that derives
+// -- it cannot hurt a wall.
 float WarshipDps(const Catalogue& c, const std::string& faction);
 
 // The named design library (#279 fitting, step 3). A player keeps designs under names of
