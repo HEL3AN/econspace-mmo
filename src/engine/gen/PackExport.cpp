@@ -32,10 +32,14 @@ std::string PackSystemId(const std::string& id)
 // The natives as factions.json spells a faction, under the pack's own id.
 json NativesFaction(const json& natives, const std::string& id)
 {
-    json       f = { { "id", id },
-                     { "name", natives.value("name", id) },
-                     { "kind", "Native" },
-                     { "lawful", natives.value("lawful", true) } };
+    json f = { { "id", id },
+               { "name", natives.value("name", id) },
+               { "kind", "Native" },
+               { "lawful", natives.value("lawful", true) } };
+    // Their culture, when the registry knows it: a pack's faction may name only one it has.
+    const std::string culture = natives.value("culture", std::string());
+    if (Factions::Culture(culture) != nullptr)
+        f["culture"] = culture;
     const json c = natives.value("color", json());
     if (c.is_array() && c.size() >= 3)
     {

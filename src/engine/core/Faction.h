@@ -90,6 +90,23 @@ enum class RepTier
     Allied
 };
 
+// How a people names a place (#431 slice 3): the sounds its words are made of and the shapes
+// its names take. A word is one to a few syllables -- an onset and a vowel each, the last
+// closed by a coda or, `endingChance` percent of the time, by one of `endings` -- and a name
+// is a pattern with the word put in: `{w}` as written, `{W}` in capitals, `{n}` a number
+// from 2 to 99. Data in factions.json's `cultures`; Gen::CultureName (gen/Names.h) speaks it.
+struct NameCulture
+{
+    std::string              id;
+    std::vector<std::string> onsets;  // "" is allowed: a syllable that starts on its vowel
+    std::vector<std::string> vowels;
+    std::vector<std::string> codas;  // "" is allowed: an open last syllable
+    std::vector<std::string> endings;
+    int                      endingChance = 0;  // percent
+    int                      minSyllables = 1, maxSyllables = 2;
+    std::vector<std::string> patterns;
+};
+
 // One faction as the registry holds it: an entry of factions.json, or one added at runtime.
 struct FactionDef
 {
@@ -99,6 +116,9 @@ struct FactionDef
     bool        lawful = true;
     std::string kind;  // "Independent", "Major", "Pirate", ... -- descriptive
     Temperament temperament;
+    // The naming culture (an id of factions.json's `cultures`) it names the places it charts
+    // in (#431 slice 3); empty for a faction that names nothing.
+    std::string culture;
 };
 
 std::string FactionName(FactionId faction);
@@ -135,6 +155,10 @@ void SetRelation(FactionId a, FactionId b, Stance stance);
 // A stance by the name factions.json writes it with ("War" .. "Ally"), and back.
 const char* StanceName(Stance s);
 bool        ParseStance(const std::string& s, Stance& out);
+
+// A naming culture by id; null when the registry has none of that id. Before any load the
+// registry has no cultures at all, and a region generated then has no native names.
+const NameCulture* Culture(const std::string& id);
 
 // Every faction in registry order, for `for (FactionId f : Factions::All())`. The order is
 // the order of the file, then of what was added -- the same on every run, which is what a

@@ -31,6 +31,7 @@ struct SurveySystem
     uint64_t       seed = 0;
     std::string    id;           // "r0-3-2"
     std::string    designation;  // "W-3.2", from the galaxy index entry
+    std::string    nativeName;  // what its natives call it (#431 slice 3); "" if nobody lives there
     int            depth = 0;
     nlohmann::json doc;             // the system document, in the shape of data/systems/*.json
     bool           centre = false;  // in a civilisation centre (#342 S2), not the frontier

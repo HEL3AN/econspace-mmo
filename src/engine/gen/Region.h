@@ -31,10 +31,11 @@ namespace Gen
 // galaxy, and a player's structure would be standing in space that is no longer there.
 // Bump it whenever the output for a given seed changes -- the golden test will say so.
 inline constexpr int GENERATOR_VERSION =
-    9;  // 9: a centre's station in a planet's path orbits it (#377);
-        // 8: every frontier region has natives, with stations and markets (#342 S5);
-        // 7: civilisation centres, and a frontier as rich and lawless as it is far from one
-        // (#342 S2); 6: keys and ids by skeleton slot (#342); 5: the leviathan dwarfs a station
+    10;  // 10: natives name the systems they live in, in their culture (#431 slice 3);
+         // 9: a centre's station in a planet's path orbits it (#377);
+         // 8: every frontier region has natives, with stations and markets (#342 S5);
+         // 7: civilisation centres, and a frontier as rich and lawless as it is far from one
+         // (#342 S2); 6: keys and ids by skeleton slot (#342); 5: the leviathan dwarfs a station
 
 struct RegionParams
 {
@@ -84,8 +85,13 @@ struct Region
     // a player may start. Empty for a frontier region.
     std::string heartId;
     // A frontier region's own minor faction (#342 S5): who lives there before anyone comes
-    // through the mouth. {id, name, theme, color, lawful, temperament, relations {majors,
-    // pirates}, home, systems}; empty for a centre, and for a region sealed before natives.
+    // through the mouth. {id, name, theme, culture, color, lawful, temperament, relations
+    // {majors, pirates}, home, systems, names}; empty for a centre, and for a region sealed
+    // before natives. `names` (#431 slice 3) maps each of `systems` to what its people call
+    // it, in `culture` (factions.json's `cultures`). It is not the system's name in the index:
+    // that stays the designation, and the native name is told to whoever has made first
+    // contact (slice 2). Absent in a region sealed before slice 3, or generated with no such
+    // culture registered.
     // Its id is a hash of the region's key (seed, slot): what saves and the wire call it.
     nlohmann::json natives = nlohmann::json::object();
     // What an admin pack wove in (#342 S7, Pack.h); all empty for a generated region but

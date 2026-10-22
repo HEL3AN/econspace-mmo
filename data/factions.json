@@ -2,9 +2,9 @@
     "factions": [
         { "id": "Independent",  "name": "Independent",  "color": [200, 200, 200], "lawful": true,  "kind": "Independent",
           "temperament": { "appetite": 0.0, "capacity": 3, "growth": 0.1, "values": {} } },
-        { "id": "TradersGuild", "name": "Traders Guild", "color": [0, 228, 48],   "lawful": true,  "kind": "Major",
+        { "id": "TradersGuild", "name": "Traders Guild", "color": [0, 228, 48],   "lawful": true,  "kind": "Major", "culture": "guild",
           "temperament": { "appetite": 0.6, "capacity": 5, "growth": 0.1, "curiosity": 0.6, "values": { "traffic": 1.0, "ore": 0.3, "unclaimed": 0.5 } } },
-        { "id": "Syndicate",    "name": "Syndicate",    "color": [230, 41, 55],   "lawful": true,  "kind": "Major",
+        { "id": "Syndicate",    "name": "Syndicate",    "color": [230, 41, 55],   "lawful": true,  "kind": "Major", "culture": "syndicate",
           "temperament": { "appetite": 0.8, "capacity": 5, "growth": 0.1, "curiosity": 0.7, "values": { "ore": 0.8, "salvage": 0.3, "unclaimed": 0.6 } } },
         { "id": "Pirates",      "name": "Pirates",      "color": [255, 161, 0],   "lawful": false, "kind": "Pirate",
           "temperament": { "appetite": 1.4, "capacity": 6, "growth": 0.08, "curiosity": 0.3, "values": { "traffic": 1.0, "salvage": 0.6, "unclaimed": 0.4 } } }
@@ -18,6 +18,71 @@
         ["TradersGuild", "Independent", "Friendly"],
         ["Syndicate",    "Independent", "Neutral"]
     ],
+    "cultures": {
+        "guild": {
+            "onsets": ["b", "br", "c", "d", "f", "g", "h", "l", "m", "n", "p", "r", "s", "st", "t", "w"],
+            "vowels": ["a", "e", "i", "o", "ea"],
+            "codas": ["", "n", "r", "l", "s", "nd", "rd"],
+            "syllables": [1, 2],
+            "endings": ["ton", "ford", "wick", "dale", "mere", "field", "gate"],
+            "endingChance": 70,
+            "patterns": ["{w}", "{w}", "{w}", "{w} Reach", "{w} Prime", "{w} Crossing", "Port {w}"]
+        },
+        "syndicate": {
+            "onsets": ["v", "x", "k", "c", "dr", "st", "n", "z", "t", "r"],
+            "vowels": ["a", "e", "o", "i", "y"],
+            "codas": ["x", "n", "r", "k", "s", "ct"],
+            "syllables": [2, 2],
+            "endings": ["ex", "ion", "ar", "is", "on", "ax"],
+            "endingChance": 40,
+            "patterns": ["{w}", "{w}", "{w} Works", "{w} Holdings", "{w}-{n}", "{w} Yards"]
+        },
+        "colonists": {
+            "onsets": ["b", "br", "c", "d", "f", "g", "h", "l", "m", "n", "p", "r", "s", "t", "w", "th"],
+            "vowels": ["a", "e", "i", "o", "u"],
+            "codas": ["", "n", "r", "l", "s", "nd", "ck", "th"],
+            "syllables": [1, 2],
+            "endings": ["ton", "ham", "ville", "wood", "brook", "stead", "more"],
+            "endingChance": 50,
+            "patterns": ["{w}", "{w}", "New {w}", "{w} Landing", "{w}'s Rest", "{w} Hollow", "Fort {w}", "{w} Hope"]
+        },
+        "clan": {
+            "onsets": ["k", "kr", "g", "gr", "dr", "th", "z", "v", "sk", "r", "b"],
+            "vowels": ["a", "u", "o", "au"],
+            "codas": ["k", "g", "rr", "sk", "x", "th", "z", "rg", "kk"],
+            "syllables": [1, 2],
+            "endings": ["a", "ul", "ag", "orn"],
+            "endingChance": 25,
+            "patterns": ["{w}", "{w}", "{w}'s Teeth", "Red {w}", "{w} Gorge", "{w} Hold", "Blood {w}"]
+        },
+        "sect": {
+            "onsets": ["s", "v", "l", "m", "c", "th", "ph", "n", "qu", "s", "al"],
+            "vowels": ["a", "e", "i", "ae", "io", "u"],
+            "codas": ["", "", "s", "m", "n", "l"],
+            "syllables": [1, 2],
+            "endings": ["ium", "aris", "eth", "on", "iel", "is", "ora"],
+            "endingChance": 60,
+            "patterns": ["{w}", "{w}", "Saint {w}", "{w} Sanctus", "Shrine of {w}", "{w} Abiding", "Vigil {w}"]
+        },
+        "automata": {
+            "onsets": ["", "x", "z", "k", "v", "t", "q", "r"],
+            "vowels": ["a", "e", "i", "o", "y"],
+            "codas": ["x", "n", "k", "r", "z", "t"],
+            "syllables": [1, 2],
+            "endings": [],
+            "endingChance": 0,
+            "patterns": ["{W}-{n}", "{W}-{n}", "{w} {n}", "Node {W}", "{w} Array", "Grid {n}-{W}"]
+        },
+        "traders": {
+            "onsets": ["m", "t", "s", "l", "v", "c", "r", "b", "d", "p", "z"],
+            "vowels": ["a", "o", "e", "i", "ia"],
+            "codas": ["", "", "n", "r", "s", "l"],
+            "syllables": [1, 2],
+            "endings": ["ona", "ar", "esh", "anda", "ir", "ano", "ez"],
+            "endingChance": 55,
+            "patterns": ["{w}", "{w}", "{w} Market", "{w} Crossing", "Fair {w}", "{w} Bazaar", "{w} Wharf"]
+        }
+    },
     "migration": { "trader": 240, "miner": 360, "patrol": 300, "pirate": 300, "travel": 90, "align": 40 },
     "repTiers": { "hated": -50, "hostile": -10, "liked": 10, "allied": 50 }
 }
