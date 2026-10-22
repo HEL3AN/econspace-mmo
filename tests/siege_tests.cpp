@@ -199,8 +199,9 @@ TEST_CASE("upkeep and sieges are rules in the data, and a wrong one does not loa
     const Blueprints::Upkeep& u = Blueprints::UpkeepRules();
     CHECK(u.share > 0.0f);
     CHECK(u.decay > 0.0f);
-    CHECK(u.repair > 0.0f);
-    CHECK(u.repair < u.decay);  // left alone, an unsupplied outpost falls faster than one mends
+    // Every outpost mends at its tier's rate (#431 D1), hull a second.
+    for (const char* id : { "outpost", "outpost_market", "anchor" })
+        CHECK(Blueprints::Find(id)->mend > 0.0f);
     const Blueprints::Siege& r = Blueprints::SiegeRules();
     CHECK(r.seconds > 0.0f);
     CHECK(r.dps > 0.0f);
@@ -233,7 +234,9 @@ TEST_CASE("a held outpost is paid for every period, and mends what it was hit fo
     Structure*  t = OutpostIn(*sim, s.frontier);
     REQUIRE(t != nullptr);
     const float hull = t->MaxHull(sim->Time());
-    t->SetDamage(hull * 0.3f);
+    const float hurt = std::min(hull * 0.9f, t->MendRate() * 30.0f);  // half a period's mending
+    t->SetDamage(hurt, sim->Time());
+    const double from = sim->Time();
 
     // Paid for out of the stock, a period's mending at a time.
     for (int pass = 0; pass < PERIOD; pass++)
@@ -241,9 +244,11 @@ TEST_CASE("a held outpost is paid for every period, and mends what it was hit fo
         sim->MindOf(Fac::TradersGuild()).stock = 10.0f;
         Pass(*sim);
     }
-    CHECK(OutpostIn(*sim, s.frontier)->GetDamage() < hull * 0.3f);
-    CHECK(OutpostIn(*sim, s.frontier)->GetDamage() ==
-          doctest::Approx(hull * (0.3f - Blueprints::UpkeepRules().repair)));
+    // ...at its tier's rate, on the clock (#431 D1): mended in full by now.
+    const Structure* back = OutpostIn(*sim, s.frontier);
+    CHECK(back->GetDamage(from + 15.0) ==
+          doctest::Approx(hurt - back->MendRate() * 15.0f).epsilon(0.01));
+    CHECK(back->GetDamage(sim->Time()) == 0.0f);
     CHECK(sim->MindOf(Fac::TradersGuild()).unsupplied.empty());
 }
 
@@ -261,8 +266,9 @@ TEST_CASE("an outpost nobody pays for falls into ruin, cold, and takes its claim
         Pass(*sim);
     }
     REQUIRE(OutpostIn(*sim, s.frontier) != nullptr);
-    CHECK(OutpostIn(*sim, s.frontier)->GetDamage() ==
+    CHECK(OutpostIn(*sim, s.frontier)->GetDamage(sim->Time()) ==
           doctest::Approx(hull * Blueprints::UpkeepRules().decay));
+    CHECK_FALSE(OutpostIn(*sim, s.frontier)->Mends());  // unsupplied, it mends nothing
     CHECK(Told(*sim, "upkeep", s.frontier, "cannot pay"));
     CHECK(sim->MindOf(Fac::TradersGuild()).unsupplied.size() == 1);
     // Said once, not every period.
@@ -303,7 +309,7 @@ TEST_CASE(
         sim->MindOf(Fac::TradersGuild()).stock = Simulation::OutpostCost();
         Pass(*sim);
     }
-    CHECK(OutpostIn(*sim, s.frontier)->GetDamage() > 0.0f);
+    CHECK(OutpostIn(*sim, s.frontier)->GetDamage(sim->Time()) > 0.0f);
     CHECK(Told(*sim, "upkeep", s.frontier, "abandoned"));
 }
 
@@ -846,4 +852,32 @@ TEST_CASE("the besieging side posts join-the-siege jobs: defenders shot down pay
     const double reward = s.missions.Active()[0].rewardMoney;
     REQUIRE(sim->CompleteMission(s, 0));
     CHECK(s.account.GetMoney() == doctest::Approx(money + reward));
+}
+
+TEST_CASE("an outpost mends at its tier's rate, the same where nobody is as where somebody is "
+          "(#431 slice 7)")
+{
+    float left[2] = { -1.0f, -1.0f };
+    for (int hot = 0; hot < 2; hot++)
+    {
+        auto        sim = World(hot == 1);
+        const Scene s = GuildOutpostNextToPirates(*sim);
+        REQUIRE(Simulation::IsHot(*sim->SystemById(s.frontier)) == (hot == 1));
+        Structure*  t = OutpostIn(*sim, s.frontier);
+        const float hull = t->MaxHull(sim->Time());
+        t->SetDamage(hull * 0.6f, sim->Time());
+        const double from = sim->Time();
+        for (int pass = 0; pass < 10; pass++)
+        {
+            sim->MindOf(Fac::TradersGuild()).stock = 10.0f;
+            Pass(*sim);
+        }
+        t = OutpostIn(*sim, s.frontier);
+        REQUIRE(t != nullptr);
+        left[hot] = t->GetDamage(sim->Time());
+        CHECK(left[hot] ==
+              doctest::Approx(hull * 0.6f - t->MendRate() * (sim->Time() - from)).epsilon(0.001));
+        CHECK(left[hot] < hull * 0.6f);
+    }
+    CHECK(left[0] == doctest::Approx(left[1]));
 }

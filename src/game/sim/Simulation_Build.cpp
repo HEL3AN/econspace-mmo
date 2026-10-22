@@ -301,11 +301,11 @@ int Simulation::Upgrade(ClientSession& s, const Blueprint& bp, Vector2 at, const
     // As a faction's (StartUpgrade): the outpost is the site of what it grows into, as far along
     // as a new site and as hurt as it was, by the share of its hull. It keeps its owner, and
     // its name unless the player gives it another.
-    const float       hurt = t->MaxHull(time_) > 0.0f ? t->GetDamage() / t->MaxHull(time_) : 0.0f;
+    const float hurt = t->MaxHull(time_) > 0.0f ? t->GetDamage(time_) / t->MaxHull(time_) : 0.0f;
     const std::string was = t->GetName();
     t->Retask(bp.archetype, bp.id, name.empty() ? was : name);
     t->StartBuilding(time_, time_ + bp.buildSeconds);
-    t->SetDamage(hurt * t->MaxHull(time_));
+    t->SetDamage(hurt * t->MaxHull(time_), time_);
     MarkStaticChanged(*st, t->GetId());
     st->profile = ProfileOf(*st);
     ScheduleStructure(st->id, *t);
@@ -431,7 +431,7 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
     if (by != nullptr && by->accountName != t->GetOwner())
         st.provokedBy[id][by->id] = time_ + PROVOKED_SECONDS;
 
-    t->TakeDamage(damage);
+    t->TakeDamage(damage, time_);
     // Its owner hears of it, on or off (#431 C2): a player's, shot by somebody else or
     // besieged. Wear is not an attack, and a faction's outpost has its history instead.
     FactionId   ownerFaction;
@@ -617,7 +617,7 @@ void Simulation::StepStructures()
         // and an entry is only a reminder to look.
         if (t->IsBuilding() && time_ >= t->GetCompletesAt())
         {
-            t->Complete();
+            t->Complete(t->GetCompletesAt());  // it mends from the moment it was done
             MarkStaticChanged(*st, id);
             st->profile = ProfileOf(*st);  // a finished outpost is a claim (#295)
             tell(t->GetOwner(), Ev::Kind::Built,

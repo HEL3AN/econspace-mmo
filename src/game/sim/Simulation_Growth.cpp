@@ -432,11 +432,11 @@ bool Simulation::StartUpgrade(Plan& p)
     }
     // The outpost is the site of what it grows into: as far along as a new site, as hurt as it
     // was, by the share of its hull.
-    const float       hurt = t->MaxHull(time_) > 0.0f ? t->GetDamage() / t->MaxHull(time_) : 0.0f;
+    const float hurt = t->MaxHull(time_) > 0.0f ? t->GetDamage(time_) / t->MaxHull(time_) : 0.0f;
     const std::string what = Outposts::Noun(t->GetBuilds());
     t->Retask(bp->archetype, bp->id, FactionName(p.faction) + " " + bp->name);
     t->StartBuilding(time_, time_ + bp->buildSeconds);
-    t->SetDamage(hurt * t->MaxHull(time_));
+    t->SetDamage(hurt * t->MaxHull(time_), time_);
     MarkStaticChanged(*st, t->GetId());
     st->profile = ProfileOf(*st);
     ScheduleStructure(st->id, *t);

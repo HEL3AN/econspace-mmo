@@ -35,8 +35,8 @@ public:
     // An upgrade (#342 S6): from now on it is building `builds`, from blueprint `blueprint`, and
     // is called `name`. The caller starts the building; the damage it has taken stays.
     void Retask(std::string builds, std::string blueprint, std::string name);
-    // The site is finished: from now on it is what it was built to be.
-    void Complete();
+    // The site is finished at `now`: from then on it is what it was built to be, and mends.
+    void Complete(double now);
     bool IsBuilding() const { return completesAt_ > 0.0; }
     // 0..1 at world time `now`; 1 for something already built.
     float Progress(double now) const;
@@ -61,9 +61,24 @@ public:
     // of the finished thing's to all of it, so this is f(time) like the rest of the time
     // line; the damage taken is the only thing that accumulates, and it is state.
     float MaxHull(double now) const;
-    float GetDamage() const { return damage_; }
-    void  SetDamage(float d) { damage_ = d < 0.0f ? 0.0f : d; }
-    void  TakeDamage(float d) { SetDamage(damage_ + d); }
+
+    // Damage, and its mending (#431 D1). A finished structure mends `MendRate` hull a second
+    // from the instant its damage was last set, so what it has taken at any moment is
+    // f(time) like the rest of the time line: the same on every client and in a system
+    // nobody is in, with no word from the server until somebody hits it again. A hit settles
+    // the mending up to its instant and adds to what is left.
+    float  GetDamage(double now) const;
+    float  GetDamageSet() const { return damage_; }     // as of GetDamagedAt -- for the wire
+    double GetDamagedAt() const { return damagedAt_; }  // and the save
+    void   SetDamage(float d, double at);
+    void   TakeDamage(float d, double now) { SetDamage(GetDamage(now) + d, now); }
+    // Hull a second it mends now: its tier's share of its blueprint's hull (Blueprint::mend)
+    // once finished, nothing while a site or while its owner does not supply it.
+    float MendRate() const;
+    // A faction's outpost its faction does not supply does not mend (upkeep decays it
+    // instead); everything else does. Settles the mending up to `now` before it changes.
+    bool Mends() const { return mends_; }
+    void SetMends(bool on, double now);
     // 0..1 of its hull still standing at `now`; 0 is destroyed.
     float HullFraction(double now) const;
 
@@ -77,6 +92,8 @@ private:
     std::string builds_;
     std::string blueprint_;
     float       damage_ = 0.0f;
+    double      damagedAt_ = 0.0;  // the instant `damage_` was set; mending counts from here
+    bool        mends_ = true;
     double      startedAt_ = 0.0;
     double      completesAt_ = 0.0;  // 0: built
     double      expiresAt_ = 0.0;    // 0: permanent

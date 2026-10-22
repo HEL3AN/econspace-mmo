@@ -184,12 +184,19 @@ void Simulation::StepUpkeep()
                 if (mind.unsupplied.erase(key) > 0)
                     Record("upkeep", f, kv.first,
                            FactionName(f) + " supplies its " + what + " again");
-                if (t->GetDamage() > 0.0f && u.repair > 0.0f)
+                // Supplied, it mends at its tier's rate (#431 D1), on the clock.
+                if (!t->Mends())
                 {
-                    t->SetDamage(std::max(0.0f, t->GetDamage() - u.repair * hull));
+                    t->SetMends(true, time_);
                     MarkStaticChanged(st, ids[i]);
                 }
                 continue;
+            }
+            // Unsupplied, it mends nothing and falls apart instead.
+            if (t->Mends())
+            {
+                t->SetMends(false, time_);
+                MarkStaticChanged(st, ids[i]);
             }
             if (mind.unsupplied.insert(key).second)
                 Record("upkeep", f, kv.first,

@@ -639,7 +639,8 @@ std::vector<Tool> BuildTools()
         { "observe",
           "Look at the world: the ship, the system, what is nearby, hostiles, "
           "and recent events. Start here, and call it again after anything "
-          "changes. Use detail='full' only when deciding something.",
+          "changes. Use detail='full' only when deciding something. A structure says "
+          "what it mends a second (#431): fire below that rate does nothing to it.",
           Obj({ { "detail", Str("'brief' (default) or 'full'") } }), [](const Rpc::Json& args)
           {
               g_session.Pump();
@@ -1625,10 +1626,12 @@ std::vector<Tool> BuildTools()
     tools.push_back(
         { "blueprints",
           "What you can build in space (#39): each blueprint's id, what it costs from the "
-          "hold, how long the site takes, how long the result stands, and how close to your "
-          "ship it must go. Marks the ones your hold can pay for now. An upgrade says what it "
-          "is built onto: one of your own finished structures, named with deploy's or build's "
-          "onto -- an outpost grows into a market, a market into a station (#433).",
+          "hold, how long the site takes, how long the result stands, how close to your "
+          "ship it must go, and the hull it has and mends a second once built (its tier, #431): "
+          "fire below that rate does nothing to it. Marks the ones your hold can pay for now. An "
+          "upgrade says what it is built onto: one of your own finished structures, named with "
+          "deploy's or build's onto -- an outpost grows into a market, a market into a station "
+          "(#433).",
           Obj({}), [](const Rpc::Json&)
           {
               RequireLive();
@@ -1654,15 +1657,16 @@ std::vector<Tool> BuildTools()
                               ResourceName(c.first);
                       affordable = affordable && held(c.first) >= c.second;
                   }
-                  char line[256];
+                  char line[384];
                   std::snprintf(line, sizeof(line),
                                 "  %-8s %-14s %s; builds in %.0fs; stands %s; within %.0fu of "
-                                "the ship%s\n",
+                                "the ship; hull %.0f, %s tier, mends %.0f/s%s\n",
                                 bp.id.c_str(), bp.name.c_str(), cost.c_str(), bp.buildSeconds,
                                 bp.lifetime > 0.0f
                                     ? (std::to_string((int)(bp.lifetime / 60.0f)) + " min").c_str()
                                     : "until removed",
-                                bp.reach, affordable ? "  CAN AFFORD" : "");
+                                bp.reach, bp.hull, bp.tier.c_str(), bp.mend * bp.hull,
+                                affordable ? "  CAN AFFORD" : "");
                   out += line;
                   if (!bp.onto.empty())
                   {

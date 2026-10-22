@@ -664,9 +664,16 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                     if (const Entity* p = FindEntityById(e->id))
                         if (p->GetKind() == EntityKind::Structure)
                         {
-                            const float h = static_cast<const Structure*>(p)->HullFraction(now);
+                            const Structure& s = *static_cast<const Structure*>(p);
+                            const float      h = s.HullFraction(now);
                             L.Field("Hull", TextFormat("%.0f%%", h * 100.0f), t.colors.text);
                             L.Bar(h, h > 0.3f ? t.colors.good : t.colors.bad);
+                            // What it mends (#431 D1): fire below this rate does nothing.
+                            if (s.MendRate() > 0.0f)
+                                L.Field("Mends", TextFormat("%.0f hull/s", s.MendRate()),
+                                        t.colors.dim);
+                            else if (!s.Mends())
+                                L.Field("Mends", "nothing: unsupplied", t.colors.warn);
                         }
                     // Its owner sets its rules, and so does their corporation's CEO or a
                     // director (#347).

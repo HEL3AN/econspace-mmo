@@ -28,11 +28,43 @@ void Structure::Retask(std::string builds, std::string blueprint, std::string na
     SetArchetype(builds_);
 }
 
-void Structure::Complete()
+void Structure::Complete(double now)
 {
     startedAt_ = 0.0;
     completesAt_ = 0.0;
+    damagedAt_ = now;  // a site does not mend: what it took while going up, it mends from here
     SetArchetype(builds_);
+}
+
+float Structure::MendRate() const
+{
+    if (IsBuilding() || !mends_)
+        return 0.0f;
+    const Blueprint* bp = GetBlueprint();
+    return bp != nullptr ? bp->mend * bp->hull : 0.0f;
+}
+
+float Structure::GetDamage(double now) const
+{
+    if (damage_ <= 0.0f)
+        return 0.0f;
+    const double since = now - damagedAt_;
+    const double left = damage_ - (since > 0.0 ? since * (double)MendRate() : 0.0);
+    return left > 0.0 ? (float)left : 0.0f;
+}
+
+void Structure::SetDamage(float d, double at)
+{
+    damage_ = d < 0.0f ? 0.0f : d;
+    damagedAt_ = at;
+}
+
+void Structure::SetMends(bool on, double now)
+{
+    if (on == mends_)
+        return;
+    SetDamage(GetDamage(now), now);
+    mends_ = on;
 }
 
 float Structure::Progress(double now) const
@@ -69,6 +101,6 @@ float Structure::HullFraction(double now) const
     const float max = MaxHull(now);
     if (max <= 0.0f)
         return 1.0f;  // nothing says what it takes: nothing has been taken
-    const float left = (max - damage_) / max;
+    const float left = (max - GetDamage(now)) / max;
     return left < 0.0f ? 0.0f : left;
 }

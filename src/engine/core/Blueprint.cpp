@@ -61,7 +61,7 @@ bool ParseBlueprint(const json& j, Blueprint& b, std::string& err)
     }
     if (!OnlyKnownKeys(j,
                        { "id", "name", "archetype", "cost", "buildSeconds", "lifetime", "hull",
-                         "wreck", "placement", "builders", "onto" },
+                         "wreck", "placement", "builders", "onto", "tier" },
                        err))
         return false;
     if (j.contains("builders"))
@@ -161,6 +161,7 @@ bool ParseBlueprint(const json& j, Blueprint& b, std::string& err)
         err = "'hull' must be more than zero: anything buildable can be destroyed";
         return false;
     }
+    b.tier = j.contains("tier") && j["tier"].is_string() ? j["tier"].get<std::string>() : "";
     if (j.contains("wreck"))
     {
         b.wreck = j["wreck"].is_string() ? j["wreck"].get<std::string>() : std::string();
@@ -221,11 +222,35 @@ bool Load(const std::string& path)
         return false;
     }
     std::string err;
-    if (!OnlyKnownKeys(j, { "blueprints", "limits", "dismantle", "destruction", "upkeep", "siege" },
-                       err))
+    if (!OnlyKnownKeys(
+            j, { "blueprints", "tiers", "limits", "dismantle", "destruction", "upkeep", "siege" },
+            err))
     {
         g_error = path + ": " + err;
         return false;
+    }
+
+    // Tiers (#431 D1): { name: { "mend": share of hull per second } }. Every blueprint names
+    // one; a name the file does not define is an error, not a structure that never mends.
+    std::vector<std::pair<std::string, float>> tiers;
+    const json                                 noTiers = json::object();
+    const json&                                tj = j.contains("tiers") ? j["tiers"] : noTiers;
+    if (!tj.is_object())
+    {
+        g_error = path + ": 'tiers' is an object of { tier: { \"mend\": share } }";
+        return false;
+    }
+    for (auto it = tj.begin(); it != tj.end(); ++it)
+    {
+        float mend = 0.0f;
+        if (!it.value().is_object() || !OnlyKnownKeys(it.value(), { "mend" }, err) ||
+            !it.value().contains("mend") || !ReadShare(it.value(), "mend", mend, err))
+        {
+            g_error = path + ": tiers: '" + it.key() +
+                      "': " + (err.empty() ? "is not { \"mend\": share }" : err);
+            return false;
+        }
+        tiers.emplace_back(it.key(), mend);
     }
 
     std::vector<Blueprint> loaded;
@@ -260,6 +285,26 @@ bool Load(const std::string& path)
                 return false;
             }
         }
+
+    // ...and every blueprint names a tier the file has.
+    for (Blueprint& b : loaded)
+    {
+        bool tiered = false;
+        for (const auto& t : tiers)
+            if (t.first == b.tier)
+            {
+                b.mend = t.second;
+                tiered = true;
+            }
+        if (!tiered)
+        {
+            g_error = path + ": blueprint '" + b.id + "': " +
+                      (b.tier.empty() ? std::string("'tier' is missing")
+                                      : "tier '" + b.tier + "' is not one of the file's 'tiers'") +
+                      ": what it mends is set by its tier";
+            return false;
+        }
+    }
 
     int perAccount = 0;
     if (j.contains("limits"))
@@ -311,10 +356,8 @@ bool Load(const std::string& path)
     if (j.contains("upkeep"))
     {
         const json& u = j["upkeep"];
-        if (!u.is_object() || !OnlyKnownKeys(u, { "share", "decay", "repair" }, err) ||
-            !ReadShare(u, "share", upkeep.share, err) ||
-            !ReadShare(u, "decay", upkeep.decay, err) ||
-            !ReadShare(u, "repair", upkeep.repair, err))
+        if (!u.is_object() || !OnlyKnownKeys(u, { "share", "decay" }, err) ||
+            !ReadShare(u, "share", upkeep.share, err) || !ReadShare(u, "decay", upkeep.decay, err))
         {
             g_error = path + ": upkeep: " + (err.empty() ? "not an object" : err);
             return false;

@@ -338,7 +338,9 @@ static bool DescribeStatic(const Entity& e, Proto::EntityLayout& el)
             el.completesAt = t.GetCompletesAt();
             el.expiresAt = t.GetExpiresAt();
             el.blueprint = t.GetBlueprintId();
-            el.damage = t.GetDamage();
+            el.damage = t.GetDamageSet();
+            el.damagedAt = t.GetDamagedAt();
+            el.mends = t.Mends();
             el.defence = t.GetDefence();  // (#340)
             break;
         }

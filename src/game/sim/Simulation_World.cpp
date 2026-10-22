@@ -768,15 +768,25 @@ nlohmann::json StateOf(const Entity& e)
         if (f.GetOre() < f.GetOreMax() - 0.005)
             s["ore"] = std::round(f.GetOre() * 100.0) / 100.0;
     }
-    if (e.GetKind() == EntityKind::Structure && static_cast<const Structure&>(e).GetDamage() > 0.0f)
-        s["damage"] = static_cast<const Structure&>(e).GetDamage();
+    // Its damage as of the instant it was set, and that instant (#431 D1): it mends from there.
+    if (e.GetKind() == EntityKind::Structure &&
+        static_cast<const Structure&>(e).GetDamageSet() > 0.0f)
+    {
+        s["damage"] = static_cast<const Structure&>(e).GetDamageSet();
+        s["damagedAt"] = static_cast<const Structure&>(e).GetDamagedAt();
+    }
+    // A faction's outpost its faction does not supply, which does not mend.
+    if (e.GetKind() == EntityKind::Structure && !static_cast<const Structure&>(e).Mends())
+        s["mends"] = false;
     if (e.GetKind() == EntityKind::Structure &&
         !static_cast<const Structure&>(e).GetDefence().IsDefault())  // (#340)
         s["defence"] = DefenceJson(static_cast<const Structure&>(e).GetDefence());
     return s;
 }
 
-void ApplyState(Entity& e, const nlohmann::json& s)
+// `now` is the world's clock: a save from before #431 says how hurt a structure is but not
+// since when, and it mends from the moment the world comes back.
+void ApplyState(Entity& e, const nlohmann::json& s, double now)
 {
     if (!s.is_object())
         return;
@@ -793,7 +803,11 @@ void ApplyState(Entity& e, const nlohmann::json& s)
     if (e.GetKind() == EntityKind::Field && s.contains("ore") && s["ore"].is_number())
         static_cast<AsteroidField&>(e).SetOre(s["ore"].get<double>());
     if (e.GetKind() == EntityKind::Structure)
-        static_cast<Structure&>(e).SetDamage(s.value("damage", 0.0f));
+    {
+        Structure& t = static_cast<Structure&>(e);
+        t.SetMends(s.value("mends", true), now);  // before the damage, which it would settle
+        t.SetDamage(s.value("damage", 0.0f), s.value("damagedAt", now));
+    }
     Defence d;  // rules it cannot read are the default: it fires back, as before #340
     if (e.GetKind() == EntityKind::Structure && s.contains("defence") &&
         DefenceFrom(s["defence"], d))
@@ -1835,7 +1849,7 @@ void Simulation::ReplayChanges(SystemState& st)
         {
             const auto e = byKey.find(it.key());
             if (e != byKey.end())
-                ApplyState(*e->second, it.value());
+                ApplyState(*e->second, it.value(), time_);
         }
 
     // Taken away. A key the data no longer has is said, and kept: the object stays gone if
@@ -1874,7 +1888,7 @@ void Simulation::ReplayChanges(SystemState& st)
             }
             std::unique_ptr<Entity>& e = built[0];
             e->SetId(NextAgentId());
-            ApplyState(*e, a);
+            ApplyState(*e, a, time_);
             st.keys[e->GetId()] = key;
             st.entities.push_back(std::move(e));
         }

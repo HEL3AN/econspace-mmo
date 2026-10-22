@@ -667,7 +667,8 @@ void Simulation::Think(FactionId f)
     // next door, so the ordinary one's hull, mended as a supplied one is.
     const Blueprint* plain = Blueprints::Find(Outposts::BLUEPRINT);
     const float      wall = plain != nullptr ? plain->hull : 0.0f;
-    const float      mend = Blueprints::UpkeepRules().repair * wall / (FACTION_PERIOD * 2.0f);
+    // ...at its tier's rate, hull a second (#431 D1): fire below it does nothing.
+    const float mend = plain != nullptr ? plain->mend * wall : 0.0f;
     // One Anchor at a time, paid for like an outpost (#342 S4) -- and an Anchor's hull, for a
     // rival weighing whether it could bring one down.
     const float anchorCost = AnchorCost();
@@ -675,6 +676,7 @@ void Simulation::Think(FactionId f)
                             mind.stock >= anchorCost + reserve;
     const Blueprint* anchorBp = Blueprints::Find(ANCHOR_BLUEPRINT);
     const float      anchorWall = anchorBp != nullptr ? anchorBp->hull : 0.0f;
+    const float      anchorMend = anchorBp != nullptr ? anchorBp->mend * anchorWall : 0.0f;
 
     enum class Act
     {
@@ -968,8 +970,9 @@ void Simulation::Think(FactionId f)
                 }
                 const float garrison = seen.presence[g];
                 const float firing = sent - siege.defence * garrison;
-                const float rate = firing * siege.dps;
-                if (sent < 1.5f || firing <= 0.0f || anchorWall / rate > siege.seconds)
+                const float rate = firing * siege.dps - anchorMend;  // an Anchor always mends
+                if (sent < 1.5f || firing <= 0.0f || rate <= 0.0f ||
+                    anchorWall / rate > siege.seconds)
                     break;
                 const float worth =
                     entry != mind.intel.end() ? promise(entry->second) : t.unclaimed + t.curiosity;
