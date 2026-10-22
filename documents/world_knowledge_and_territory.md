@@ -208,6 +208,12 @@ wears it down. A lone frigate cannot kill a station; a fleet can.
 *Proposed numbers (tuning):* a tier's mend rate is a share of its hull per second, high
 enough that a station needs about ten cruisers' sustained fire to make progress, an outpost
 two or three.
+*As built:* what a besieging ship takes off a wall is not a tuned number (owner, 2026-10-22:
+no hand-tuned number stands in for the world). It is the faction's own warship design's guns
+-- the doctrine's `warship` list in `data/ships.json`, the mean when it names several -- as a
+player's ship of that hull and fit fires them (`Ships::WarshipDps`: the volley at the player
+cooldown). Today's cruiser is 44 hull a second, so an outpost's 60 a second takes two, an
+Anchor's 135 four; a faction that fields a heavier gun brings walls down sooner.
 
 **D2. The response escalates, from real nearby strength.** An attack on a structure calls
 the owner's ships in the system, then lends from holdings within reach -- the machinery a

@@ -137,7 +137,8 @@ struct Siege
     // The most of its capacity a faction sends, out of what its holding can spare: a siege
     // leaves home as guarded as a move does.
     float commit = 0.5f;
-    float dps = 40.0f;  // hull a besieging ship takes off an outpost per second, before it mends
+    // What a besieging ship takes off a wall is not here: it is the faction's own warship
+    // design's guns (Ships::WarshipDps, Simulation::WarshipDps).
     // How many besiegers each defending ship ties up: what is left over fires at the outpost.
     float defence = 0.15f;
     // Ships lost per second, per ship of the other side, by both sides while it lasts.

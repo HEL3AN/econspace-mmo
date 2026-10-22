@@ -51,6 +51,26 @@ inline constexpr float REFIT_REFUND = 0.5f;
 // saved design sends, and what the Fit tab draws up from the design a ship flies.
 std::vector<FitLine> PlayerLines(const Design& d);
 
+// How often a ship's guns fire under a player, in seconds: the server's cooldown between
+// shots, and what turns a design's volley into hull a second wherever that is reckoned.
+inline constexpr float PLAYER_FIRE_INTERVAL = 0.5f;
+
+// Hull a ship of these stats takes off a target per second with every gun it carries: its
+// design's volley under a player (Stats::playerDamage) at PLAYER_FIRE_INTERVAL.
+inline float Dps(const Stats& s)
+{
+    return s.playerDamage / PLAYER_FIRE_INTERVAL;
+}
+
+// What one of `faction`'s warships takes off a structure per second (the owner's rule of
+// 2026-10-22: no hand-tuned number stands in for the world). A siege's ship is the faction's
+// own warship design, crewed as a player's ship of that hull and fit is, so a faction that
+// fields a heavier gun brings a wall down sooner. With several designs in its doctrine's
+// `warship` list it is their mean: a siege's ships are picked from the list in turn
+// (Catalogue::Pick keyed 0..n-1), so that mix is the force it fields. Zero for a faction
+// whose doctrine names no warship that derives -- it cannot hurt a wall.
+float WarshipDps(const Catalogue& c, const std::string& faction);
+
 // The named design library (#279 fitting, step 3). A player keeps designs under names of
 // their own; the name is the account's and the design is filed by its content, so two
 // pilots' "Miner" are two names for whatever each of them saved. Bounded, because every

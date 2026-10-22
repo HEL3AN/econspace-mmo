@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <set>
@@ -13,6 +15,8 @@
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
+#include "core/Fitting.h"
+#include "core/ShipDesign.h"
 #include "entities/Derelict.h"
 #include "entities/NpcShip.h"
 #include "entities/Ship.h"
@@ -204,7 +208,6 @@ TEST_CASE("upkeep and sieges are rules in the data, and a wrong one does not loa
         CHECK(Blueprints::Find(id)->mend > 0.0f);
     const Blueprints::Siege& r = Blueprints::SiegeRules();
     CHECK(r.seconds > 0.0f);
-    CHECK(r.dps > 0.0f);
     CHECK(Simulation::SiegeCost() > 0.0f);
     CHECK(Simulation::SiegeCost() < Simulation::OutpostCost());
 
@@ -219,9 +222,13 @@ TEST_CASE("upkeep and sieges are rules in the data, and a wrong one does not loa
         const bool ok = Blueprints::Load(path);
         return !ok;
     };
-    CHECK(refused("\"upkeep\": { \"share\": 0.01, \"decay\": 2 }"));         // a share over 1
-    CHECK(refused("\"upkeep\": { \"shares\": 0.01 }"));                      // a misspelling
-    CHECK(refused("\"siege\": { \"dps\": -1 }"));                            // negative
+    CHECK(refused("\"upkeep\": { \"share\": 0.01, \"decay\": 2 }"));  // a share over 1
+    CHECK(refused("\"upkeep\": { \"shares\": 0.01 }"));               // a misspelling
+    CHECK(refused("\"siege\": { \"seconds\": -1 }"));                 // negative
+    // A besieger's guns are its faction's warship design now: an old file that still names
+    // a number for them is told so rather than quietly ignored.
+    CHECK(refused("\"siege\": { \"dps\": 40 }"));
+    CHECK(Blueprints::Error().find("warship") != std::string::npos);
     CHECK(refused("\"siege\": { \"commit\": 0.5, \"seconds\": \"ten\" }"));  // not a number
     LoadRegistries();
     CHECK(Blueprints::UpkeepRules().decay == doctest::Approx(u.decay));
@@ -500,6 +507,96 @@ TEST_CASE("a siege goes the same way whether anybody watches or not (#295)")
     REQUIRE(fell[0] > 0.0);
     REQUIRE(fell[1] > 0.0);
     CHECK(std::fabs(fell[0] - fell[1]) <= 60.0);
+}
+
+// The owner's rule of 2026-10-22: no hand-tuned number stands in for the world. What a
+// besieging ship takes off a wall is its faction's warship design's guns -- the same volley
+// a player's ship of that hull and fit fires, at the same cooldown.
+TEST_CASE("a besieger hits as hard as its faction's warship design does")
+{
+    auto                    sim = World();
+    const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+    for (FactionId f : { Fac::Pirates(), Fac::TradersGuild(), Fac::Syndicate() })
+    {
+        const std::vector<std::string>* list = c.DesignsFor(Factions::Id(f), "warship");
+        REQUIRE(list != nullptr);
+        REQUIRE_FALSE(list->empty());
+        float sum = 0.0f;
+        for (const std::string& id : *list)
+        {
+            Ships::Stats st;
+            std::string  why;
+            REQUIRE(Ships::Derive(c, *c.FindDesign(id), st, why));
+            sum += st.playerDamage / Ships::PLAYER_FIRE_INTERVAL;
+        }
+        CHECK(sim->WarshipDps(f) == doctest::Approx(sum / (float)list->size()));
+        CHECK(sim->WarshipDps(f) > 0.0f);
+    }
+    // Today every doctrine's warship is the cruiser: a railgun of 6 plus a player's 16, twice
+    // a second.
+    Ships::Stats cruiser;
+    std::string  why;
+    REQUIRE(Ships::Derive(c, *c.FindDesign("cruiser"), cruiser, why));
+    CHECK(Ships::Dps(cruiser) == doctest::Approx(44.0f));
+    CHECK(sim->WarshipDps(Fac::Pirates()) == doctest::Approx(Ships::Dps(cruiser)));
+}
+
+TEST_CASE("a lighter gun on the warship design makes a slower siege")
+{
+    namespace fs = std::filesystem;
+    // When the outpost falls with the doctrine's warship as it is in `ships`.
+    auto fallsAt = [](const std::string& archetypes)
+    {
+        SetRandomSeed(0xC0FFEEu);
+        REQUIRE(Factions::Load(DATA + "factions.json"));
+        REQUIRE(Archetypes::Load(archetypes));
+        REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
+        auto sim = std::make_unique<Simulation>();
+        sim->LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+        sim->AttachRegion(7, std::string(TEST_WORLD_DIR) + "systems/");
+        sim->Seed(1234u);
+        sim->InitGalaxy();
+        sim->MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
+        const Scene s = GuildOutpostNextToPirates(*sim);
+        const Plan  plan = *PiratesBesiege(*sim, s);
+        const float dps = sim->WarshipDps(Fac::Pirates());
+        RunUntil(*sim, plan.dueAt - sim->Time() + 10.0,
+                 [&]() { return OutpostIn(*sim, s.frontier) == nullptr; });
+        const double at =
+            OutpostIn(*sim, s.frontier) == nullptr ? sim->Time() - plan.startedAt : 1.0e9;
+        return std::make_pair(dps, at);
+    };
+    const auto stock = fallsAt(DATA + "archetypes.json");
+
+    // The same data, but the cruiser's railgun swapped for a laser.
+    const TempDir  tmp;
+    const fs::path dir = tmp.Path("data");
+    fs::create_directories(dir);
+    for (const char* f : { "archetypes.json", "modules.json" })
+        fs::copy_file(fs::path(DATA) / f, dir / f);
+    fs::copy(fs::path(DATA) / "modules", dir / "modules", fs::copy_options::recursive);
+    std::string ships;
+    {
+        std::ifstream in(DATA + "ships.json");
+        ships.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    const std::string railgun =
+        "{ \"module\": \"weapons.railgun\", \"in\": \"bow\", \"on\": \"top\", \"count\": 1 }";
+    const size_t at = ships.find(railgun);
+    REQUIRE(at != std::string::npos);  // the cruiser's, the one railgun fitted without a scale
+    ships.replace(
+        at, railgun.size(),
+        "{ \"module\": \"weapons.laser\", \"in\": \"bow\", \"on\": \"top\", \"count\": 1 }");
+    {
+        std::ofstream out(dir / "ships.json");
+        out << ships;
+    }
+    const auto lighter = fallsAt((dir / "archetypes.json").string());
+    LoadRegistries();  // the stock data again, for whatever runs next
+
+    CHECK(lighter.first < stock.first);  // a laser takes off less than a railgun
+    REQUIRE(stock.second < 1.0e9);
+    CHECK(lighter.second > stock.second);
 }
 
 TEST_CASE("a siege and what a faction cannot supply survive a restart (#295)")

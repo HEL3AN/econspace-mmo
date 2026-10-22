@@ -21,7 +21,9 @@
 // it when the siege is over goes home the same way, each holding its share of the survivors.
 #include "sim/Simulation.h"
 
+#include "core/Archetype.h"
 #include "core/Blueprint.h"
+#include "core/Fitting.h"
 #include "entities/NpcShip.h"
 #include "entities/Station.h"
 #include "entities/Structure.h"
@@ -95,6 +97,22 @@ bool IsSiegeShip(const Entity& e, FactionId f)
 float Simulation::SiegeCost()
 {
     return Blueprints::SiegeRules().cost * OutpostCost();
+}
+
+float Simulation::WarshipDps(FactionId f) const
+{
+    // The faction's own warships, not a number in a rules file (the owner's rule of
+    // 2026-10-22): a faction whose doctrine fields a heavier gun brings a wall down sooner.
+    if (warshipDpsFrom_ != Archetypes::Generation())
+    {
+        warshipDps_.clear();
+        warshipDpsFrom_ = Archetypes::Generation();
+    }
+    const std::string& id = Factions::Id(f);
+    auto               it = warshipDps_.find(id);
+    if (it == warshipDps_.end())
+        it = warshipDps_.emplace(id, Ships::WarshipDps(Archetypes::ShipCatalogue(), id)).first;
+    return it->second;
 }
 
 Structure* Simulation::StructureByKey(SystemState& st, const std::string& key) const
@@ -487,8 +505,9 @@ void Simulation::StepSieges()
         }
         // What the garrison does not tie up fires at the outpost.
         const float firing = std::max(0.0f, p.force - r.defence * defenders);
-        if (firing > 0.0f && HitStructure(*st, t->GetId(), firing * r.dps * PASS_SECONDS, nullptr,
-                                          Loss::Siege, p.faction))
+        if (firing > 0.0f &&
+            HitStructure(*st, t->GetId(), firing * WarshipDps(p.faction) * PASS_SECONDS, nullptr,
+                         Loss::Siege, p.faction))
             over.push_back(p.id);
     }
     for (int id : over)

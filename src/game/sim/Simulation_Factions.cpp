@@ -669,6 +669,8 @@ void Simulation::Think(FactionId f)
     // One siege at a time, paid for like a settlement (slice 5).
     const Blueprints::Siege& siege = Blueprints::SiegeRules();
     const bool canSiege = !besieging && cost > 0.0f && mind.stock >= SiegeCost() + reserve;
+    // ...and what each of its own warships would take off the wall a second.
+    const float dps = WarshipDps(f);
     // What it believes an outpost takes to bring down: it cannot see which kind it is from
     // next door, so the ordinary one's hull, mended as a supplied one is.
     const Blueprint* plain = Blueprints::Find(Outposts::BLUEPRINT);
@@ -895,7 +897,7 @@ void Simulation::Think(FactionId f)
                 }
                 const float travel = hops * siege.hop;
                 const float firing = sent - siege.defence * garrison;
-                const float rate = firing * siege.dps - (seen->claimed ? mend : 0.0f);
+                const float rate = firing * dps - (seen->claimed ? mend : 0.0f);
                 if (sent < 1.5f || firing <= 0.0f || rate <= 0.0f || wall / rate > siege.seconds)
                     break;
                 int guns = 0;
@@ -979,7 +981,7 @@ void Simulation::Think(FactionId f)
                 }
                 const float garrison = seen.presence[g];
                 const float firing = sent - siege.defence * garrison;
-                const float rate = firing * siege.dps - anchorMend;  // an Anchor always mends
+                const float rate = firing * dps - anchorMend;  // an Anchor always mends
                 if (sent < 1.5f || firing <= 0.0f || rate <= 0.0f ||
                     anchorWall / rate > siege.seconds)
                     break;
@@ -1048,7 +1050,7 @@ void Simulation::Think(FactionId f)
             float sent = 0.0f;
             for (const Plan::Lent& l : pool->second.first)
                 sent += l.force;
-            const float rate = sent * siege.dps;
+            const float rate = sent * dps;
             if (pool->second.first.empty() || sent < 1.5f || rate <= 0.0f ||
                 hull / rate > siege.seconds)
                 continue;
