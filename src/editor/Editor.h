@@ -11,6 +11,8 @@
 #include "gen/Pins.h"
 #include "gen/Survey.h"
 #include <nlohmann/json.hpp>
+#include <future>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <string>
@@ -261,6 +263,8 @@ private:
         };
         std::vector<Entry>         log;
         std::map<int, std::string> packs;  // slot -> the pack woven into it
+        // world.json's `galaxy`: the name each system was given, and who found it (#431).
+        std::map<std::string, std::string> names, found;
     };
     WorldSource world_;
     bool        Saved(uint64_t seed) const { return !world_.path.empty() && world_.seed == seed; }
@@ -413,6 +417,19 @@ private:
         Rectangle                       bounds = { 0, 0, 1, 1 };  // every node, in map units
     };
     RegionMap regionMap_;
+    // Moderation of a saved world's names (#431 N3): R on a system of the region map types a
+    // name ("-" clears it), which goes to the server running that world as its console's
+    // `rename`, through the admin channel -- the server names it, so it is news and its
+    // discoverer is told. Asked off the frame loop; the answer is the map's notice.
+    struct Rename
+    {
+        bool                                      typing = false;
+        std::string                               id, text;
+        std::future<std::pair<bool, std::string>> reply;  // valid while the server is asked
+    };
+    Rename    rename_;
+    void      HandleRenameInput();
+    void      DrawRename();
     void      BuildRegionMap(uint64_t seed, std::string focus, int slot = -1);
     void      HandleRegionInput();
     void      DrawRegionMap();

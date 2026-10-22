@@ -11,6 +11,7 @@
 #include "core/Archetype.h"
 #include "core/ShipDesign.h"
 #include "economy/Resource.h"
+#include "sim/Names.h"
 #include "sim/Observation.h"
 #include "sim/Orders.h"
 #include "sim/SaveFile.h"
@@ -916,9 +917,18 @@ void Game::DrawGalaxyMap()
     // elsewhere, puts it away.
     if (nameAt.x >= 0.0f)
     {
+        // The rules a name must keep (#431 N3), checked as it is typed: the field says which
+        // one it breaks, and a name that breaks one is not sent. The server checks again,
+        // with its own word list, and says why in the journal.
+        std::string problem;
+        if (!nameBuf_.empty() && Names::AllowedSystemName(nameBuf_, {}, problem))
+            for (const WorldLoader::SystemInfo& si : universe_.systems)
+                if (Names::SameName(si.name, nameBuf_) || Names::SameName(si.id, nameBuf_) ||
+                    Names::SameName(si.designation, nameBuf_))
+                    problem = "there is already a system called " + si.name;
         const Rectangle field{ nameAt.x, nameAt.y, Ui::Px(260.0f),
-                               Ui::Px(t.metrics.buttonHeight + t.fontSize.small * 1.6f +
-                                      t.metrics.rowGap) };
+                               Ui::Px(t.metrics.buttonHeight + t.fontSize.small * 3.0f +
+                                      t.metrics.rowGap * 2.0f) };
         Ui::Layout&     N = mapNameLayout_;
         N.Begin(desk_.SurfaceFrame(WIN_MAP, field));
         N.Column(Ui::Box().Grow().Gap(t.metrics.rowGap),
@@ -933,8 +943,14 @@ void Game::DrawGalaxyMap()
                      // rides on the next numbered input like any one-shot intent: a command of
                      // its own would be one more tick of movement the server steps and this
                      // client never predicted.
-                     if (r.submitted && !nameBuf_.empty())
+                     if (r.submitted && !nameBuf_.empty() && problem.empty())
                          cmd_.nameSystem = nameBuf_;
+                     if (!problem.empty())
+                         N.Text("Not a name here: " + problem,
+                                Ui::TextStyle::Small().Tint(t.colors.warn));
+                     else
+                         N.Text("3-24 characters; letters, digits, spaces, ' and -; unique",
+                                Ui::TextStyle::Small().Tint(Ui::TEXT_DIM));
                      N.Text("[Enter] name it   [Esc] cancel", Ui::TextStyle::Small());
                  });
         N.End();

@@ -11,6 +11,7 @@
 
 #include "sim/Simulation.h"
 #include "sim/FactionMind.h"
+#include "sim/Names.h"
 #include "sim/WorldRules.h"
 #include "gen/Names.h"
 #include "gen/Region.h"
@@ -117,7 +118,117 @@ std::set<std::string> Simulation::TakenNames() const
     for (const auto& kv : systems_)
         if (!kv.second.agg.givenName.empty())
             taken.insert(Gen::FoldName(kv.second.agg.givenName));
+    // ...and what natives call their systems, before anyone has met them: a pilot who named
+    // a system so would find the same name on another the day contact is made.
+    for (const auto& kv : natives_)
+    {
+        const nlohmann::json n = nlohmann::json::parse(kv.second, nullptr, false);
+        if (n.is_object() && n.contains("names") && n["names"].is_object())
+            for (const auto& name : n["names"])
+                if (name.is_string())
+                    taken.insert(Gen::FoldName(name.get<std::string>()));
+    }
     return taken;
+}
+
+std::string Simulation::NameProblem(const std::string& name) const
+{
+    std::string why;
+    if (!Names::AllowedSystemName(name, blockedNames_, why))
+        return why;
+    if (TakenNames().count(Gen::FoldName(name)) != 0)
+        return "there is already a system called " + name;
+    return std::string();
+}
+
+std::string Simulation::SystemNamed(const std::string& which) const
+{
+    if (which.empty())
+        return std::string();
+    for (const WorldLoader::SystemInfo& info : universe_.systems)
+        if (info.id == which)
+            return info.id;
+    for (const WorldLoader::SystemInfo& info : universe_.systems)
+    {
+        const auto st = systems_.find(info.id);
+        if (Names::SameName(info.id, which) || Names::SameName(info.name, which) ||
+            (st != systems_.end() && Names::SameName(st->second.agg.givenName, which)))
+            return info.id;
+    }
+    return std::string();
+}
+
+bool Simulation::RenameSystem(const std::string& which, const std::string& name, std::string& said)
+{
+    const std::string id = SystemNamed(which);
+    auto              it = systems_.find(id);
+    if (id.empty() || it == systems_.end())
+    {
+        said = "no system is called " + which;
+        return false;
+    }
+    if (PublicByPlace(id))
+    {
+        said = SystemName(id) + " is in known space: its name is the world's (a pin, in the "
+                                "editor), not a pilot's";
+        return false;
+    }
+    SystemState&      st = it->second;
+    SystemAggregate&  a = st.agg;
+    const std::string before = SystemName(id);
+    std::string       designation = id;
+    for (const WorldLoader::SystemInfo& info : universe_.systems)
+        if (info.id == id)
+            designation = info.name;
+    // What it is called with no name given: its people's, once anyone has met them (K4).
+    const bool        met = !a.discoverer.empty() || !a.chartedBy.empty();
+    const std::string native = met ? NativeNameOf(id) : std::string();
+
+    std::string now;
+    if (name == "-")
+    {
+        if (a.givenName.empty() || a.givenName == native)
+        {
+            said = before + " has no name a pilot or a faction gave it";
+            return false;
+        }
+        now = native;
+    }
+    else
+    {
+        // Only its case changing is its own name, not another system's.
+        const bool  recased = Names::SameName(a.givenName, name) && a.givenName != name;
+        std::string why;
+        if (recased ? !Names::AllowedSystemName(name, blockedNames_, why)
+                    : !(why = NameProblem(name)).empty())
+        {
+            said = why;
+            return false;
+        }
+        now = name;
+    }
+
+    if (now.empty())
+    {
+        st.agg.givenName.clear();
+        chartsChanged_ = true;
+        PublicChartsChanged();
+        WorldLoader::NamePlanets(st.entities, designation);
+    }
+    else
+        CallSystem(st, now);
+    const std::string after = now.empty() ? designation : now;
+    Announce("renamed", std::nullopt, id,
+             "The server's admin renamed " + before + " " + after +
+                 (designation != before && designation != after ? " (" + designation + ")" : ""));
+    // Its discoverer is told, whoever named it: the find is theirs, and with the name cleared
+    // so is the naming again.
+    if (!a.discoverer.empty())
+        TellAccount(a.discoverer, Ev::Kind::Notice,
+                    "The server's admin renamed " + before + ", which you found, " + after +
+                        (now.empty() && native.empty() ? ": you may name it again" : ""));
+    said = before + " is now " + after;
+    return true;
 }
 
 bool Simulation::Knows(const ClientSession& s, const std::string& systemId) const

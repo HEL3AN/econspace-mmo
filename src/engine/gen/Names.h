@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <set>
 #include <string>
+#include <vector>
 
 // Names in a people's own tongue (#431 slice 3). A native culture names the systems its
 // people live in, and a major faction names the empty systems it is the first to chart; both
@@ -22,9 +23,17 @@ uint64_t TextKey(const std::string& text);
 std::string FoldName(const std::string& name);
 
 // True when a generated name contains a word nobody should find a system called -- a short
-// list, matched in the folded name with its spaces, hyphens and apostrophes taken out. A
-// generator throws such a name away and draws again; an admin's own filter is slice 4's.
+// list, matched anywhere in the folded name with its spaces, hyphens and apostrophes taken
+// out. A generator throws such a name away and draws again, so matching too much costs
+// nothing; it is sealed into regions, so it stays as it is.
 bool NameBlocked(const std::string& name);
+
+// The same filter for a name somebody chose (#431 N3), where matching too much refuses
+// "Parsec" for its "arse": the list as whole words of the name (split on spaces, hyphens,
+// apostrophes and digits; a plural counts), except the few entries no innocent word holds,
+// which are matched anywhere. `extra` is the server's names_blocked.txt: each entry a word
+// (or words) matched the same way, or, with a leading `*`, matched anywhere in the name.
+bool ChosenNameBlocked(const std::string& name, const std::vector<std::string>& extra = {});
 
 // A name in `culture`, drawn from `key`: the shape a player's name must have (3 to 24
 // characters, a letter first; Names::ValidSystemName), never blocked, never one of `taken`

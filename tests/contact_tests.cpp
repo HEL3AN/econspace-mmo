@@ -8,6 +8,7 @@
 #include "gen/Galaxy.h"
 #include "gen/Names.h"
 #include "gen/Region.h"
+#include "sim/Names.h"
 #include "sim/Observation.h"
 #include "sim/SaveSchema.h"
 #include "sim/Simulation.h"
@@ -16,6 +17,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cctype>
 #include <fstream>
 #include <memory>
 #include <set>
@@ -408,4 +410,168 @@ TEST_CASE("charts and names survive a save; contact is not made again on load (#
     CHECK(sim.OnPublicCharts(frontier));
     CHECK(sim.SystemById(frontier)->agg.chartedBy == Factions::Id(Fac::TradersGuild()));
     CHECK(sim.SystemById(frontier)->agg.givenName.empty());  // no name it was not given
+}
+
+// --- Naming rules (#431 slice 4; N2, N3) ------------------------------------------------------
+
+namespace
+{
+// What the journal said last: where a refusal says which rule failed.
+std::string LastSaid(const ClientSession& s)
+{
+    const std::vector<Ev::Event> all = s.EventsSince(0);
+    return all.empty() ? std::string() : all.back().text;
+}
+
+// A frontier nobody reached, found by `who`.
+std::string Found(Simulation& sim, ClientSession& who)
+{
+    const std::string frontier = GuildFrontier(sim);
+    REQUIRE_FALSE(frontier.empty());
+    sim.ServerEnterSystem(who, frontier, who.systemId);
+    REQUIRE(sim.SystemById(frontier)->agg.discoverer == who.accountName);
+    return frontier;
+}
+}  // namespace
+
+TEST_CASE("only the discoverer names a system, never whoever comes or holds it later (#431 N2)")
+{
+    auto              sim = World();
+    ClientSession&    ann = Pilot(*sim, "ann", sim->Universe().startId);
+    const std::string frontier = Found(*sim, ann);
+    ClientSession&    bo = Pilot(*sim, "bo", sim->Universe().startId);
+    sim->ServerEnterSystem(bo, frontier, bo.systemId);
+    // Even holding it: an owner gets the tax and the docks, not the history.
+    sim->SystemById(frontier)->agg.holderCorp = "boco";
+    CHECK_FALSE(sim->NameSystem(bo, "Bo's Rest"));
+    CHECK(LastSaid(bo) == "Not named: only ann, who got here first, may name it");
+    CHECK(sim->SystemById(frontier)->agg.givenName.empty());
+    CHECK(sim->NameSystem(ann, "Annsworld"));
+}
+
+TEST_CASE("a name keeps the rules, and a refusal says which one (#431 N3)")
+{
+    auto              sim = World();
+    ClientSession&    ann = Pilot(*sim, "ann", sim->Universe().startId);
+    const std::string frontier = Found(*sim, ann);
+
+    CHECK_FALSE(sim->NameSystem(ann, "Ab"));
+    CHECK(LastSaid(ann) == "Not named: a name is 3 to 24 characters");
+    CHECK_FALSE(sim->NameSystem(ann, "A Name Far Too Long For Any Map"));
+    CHECK(LastSaid(ann) == "Not named: a name is 3 to 24 characters");
+    CHECK_FALSE(sim->NameSystem(ann, "Haven!"));
+    CHECK(LastSaid(ann) == "Not named: letters, digits, spaces, ' and - only");
+    CHECK_FALSE(sim->NameSystem(ann, "-Haven"));
+    CHECK(LastSaid(ann) == "Not named: a name starts with a letter");
+
+    // The word filter: built in, and the server's own list on top.
+    CHECK_FALSE(sim->NameSystem(ann, "Shit Creek"));
+    CHECK(LastSaid(ann) == "Not named: it holds a word the server's filter refuses");
+    // ...a word as a word, so a name that only spells one inside it is a name (Scunthorpe).
+    CHECK(sim->NameProblem("Parsec").empty());
+    CHECK(sim->NameProblem("Torpedo Run").empty());
+    CHECK(sim->NameProblem("Peacock").empty());
+    CHECK(sim->NameProblem("Essex Deep").empty());
+    CHECK_FALSE(sim->NameProblem("Fuckton").empty());  // the few that no word holds innocently
+    CHECK(sim->NameProblem("Badword Bay").empty());
+    sim->SetBlockedNames({ "badword", "*vile", "rival corp" });
+    CHECK_FALSE(sim->NameSystem(ann, "Badword Bay"));  // a listed word
+    CHECK(LastSaid(ann) == "Not named: it holds a word the server's filter refuses");
+    CHECK_FALSE(sim->NameProblem("Two-Badwords").empty());     // ...hyphenated, plural
+    CHECK(sim->NameProblem("Badwordia").empty());              // ...not inside another word
+    CHECK_FALSE(sim->NameProblem("Revileton").empty());        // `*`: anywhere
+    CHECK_FALSE(sim->NameProblem("Rival Corp Hold").empty());  // an entry of two words
+    CHECK(sim->NameProblem("Rival Hold").empty());
+
+    // Unique in the world, whatever the case: another system's name or designation.
+    std::string other, why;
+    for (const WorldLoader::SystemInfo& si : sim->Universe().systems)
+        if (si.id != frontier && other.empty() && Names::AllowedSystemName(si.name, {}, why))
+            other = si.name;
+    REQUIRE_FALSE(other.empty());
+    std::string shouted = other;
+    for (char& c : shouted)
+        c = (char)std::toupper((unsigned char)c);
+    CHECK_FALSE(sim->NameSystem(ann, shouted));
+    CHECK(LastSaid(ann) == "Not named: there is already a system called " + shouted);
+    CHECK(sim->SystemById(frontier)->agg.givenName.empty());
+    CHECK(sim->NameSystem(ann, "Annsworld"));
+}
+
+TEST_CASE("a name natives will give is taken before anyone meets them (#431 N1, N3)")
+{
+    Simulation sim;
+    Galaxy(sim, 4);
+    const std::vector<std::string> homes = NativeSystems(sim);
+    REQUIRE_FALSE(homes.empty());
+    const std::string native = sim.NativeNameOf(homes[0]);
+    REQUIRE(sim.SystemById(homes[0])->agg.givenName.empty());  // nobody has met them
+    std::string lower = native;
+    for (char& c : lower)
+        c = (char)std::tolower((unsigned char)c);
+    CHECK(sim.NameProblem(lower) == "there is already a system called " + lower);
+}
+
+TEST_CASE("an admin renames or clears a name; it is news, and the discoverer is told (#431 N3)")
+{
+    const TempDir     tmp;
+    const std::string world = tmp.Path("world.json");
+    std::string       frontier;
+    {
+        auto           sim = World();
+        ClientSession& ann = Pilot(*sim, "ann", sim->Universe().startId);
+        frontier = Found(*sim, ann);
+        REQUIRE(sim->NameSystem(ann, "Rudeworld"));
+        ClientSession& cy = Pilot(*sim, "cy", sim->Universe().startId);
+        sim->ChartBy(frontier, Fac::TradersGuild());  // on everyone's map
+
+        // By its name, in any case; the new one keeps the rules.
+        std::string said;
+        CHECK_FALSE(sim->RenameSystem(frontier, "Shit Creek", said));
+        CHECK(said == "it holds a word the server's filter refuses");
+        CHECK_FALSE(sim->RenameSystem("nowhere-at-all", "Calm", said));
+        CHECK(sim->RenameSystem("rudeworld", "Calm Harbour", said));
+        CHECK(said == "Rudeworld is now Calm Harbour");
+        CHECK(sim->SystemById(frontier)->agg.givenName == "Calm Harbour");
+        CHECK(sim->Chronicle().back().kind == "renamed");
+        CHECK(sim->Chronicle().back().system == frontier);
+        CHECK(sim->Events().back().find("renamed Rudeworld Calm Harbour") != std::string::npos);
+        CHECK(LastSaid(ann).find("renamed Rudeworld, which you found, Calm Harbour") !=
+              std::string::npos);
+        // Every map that has it shows the new name.
+        const WorldLoader::Universe    index = sim->KnownUniverseFor(cy);  // alive while read
+        const WorldLoader::SystemInfo* si = In(index, frontier);
+        REQUIRE(si != nullptr);
+        CHECK(si->name == "Calm Harbour");
+        // The discoverer may not overrule it.
+        CHECK_FALSE(sim->NameSystem(ann, "Rudeworld"));
+
+        // Known space is the world's, not a moderator's.
+        CHECK_FALSE(sim->RenameSystem(sim->Universe().startId, "Mine", said));
+
+        // Cleared while she is away: its designation again, hers to name, told at login.
+        sim->DestroySession(ann.id);
+        sim->TakeAbsentEvents();
+        CHECK(sim->RenameSystem(frontier, "-", said));
+        CHECK(sim->SystemById(frontier)->agg.givenName.empty());
+        CHECK(NameOf(*sim, frontier) != "Calm Harbour");
+        CHECK_FALSE(sim->RenameSystem(frontier, "-", said));  // nothing left to clear
+        bool told = false;
+        for (const auto& kv : sim->TakeAbsentEvents())
+            told = told || (kv.first == "ann" &&
+                            kv.second.text.find("you may name it again") != std::string::npos);
+        CHECK(told);
+        ClientSession& back = Pilot(*sim, "ann", sim->Universe().startId);
+        sim->ServerEnterSystem(back, frontier, back.systemId);
+        CHECK(sim->NameSystem(back, "Second Thought"));
+        CHECK(sim->RenameSystem(frontier, "Final Word", said));
+        REQUIRE(sim->SaveWorld(world));
+    }
+    // A moderator's name is world state like any other.
+    Simulation sim;
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+    sim.AttachRegion(7, SYSTEMS);
+    REQUIRE(sim.LoadWorld(world) == Save::Result::Ok);
+    CHECK(sim.SystemById(frontier)->agg.givenName == "Final Word");
+    CHECK(sim.SystemById(frontier)->agg.discoverer == "ann");
 }

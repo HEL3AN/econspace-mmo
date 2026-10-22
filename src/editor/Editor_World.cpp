@@ -238,6 +238,15 @@ bool Editor::OpenWorldFile(const std::string& pathIn)
                 continue;
             w.log.push_back(e);
         }
+    if (j.contains("galaxy") && j["galaxy"].is_object())
+        for (auto g = j["galaxy"].begin(); g != j["galaxy"].end(); ++g)
+            if (g.value().is_object())
+            {
+                if (!g.value().value("name", std::string()).empty())
+                    w.names[g.key()] = g.value()["name"].get<std::string>();
+                if (!g.value().value("discoverer", std::string()).empty())
+                    w.found[g.key()] = g.value()["discoverer"].get<std::string>();
+            }
     if (j.contains("packs") && j["packs"].is_array())
         for (const json& p : j["packs"])
             if (p.is_object() && p.value("kind", std::string()) == "region")

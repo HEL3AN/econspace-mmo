@@ -1602,6 +1602,9 @@ static void PrintAccess(const Host::AccessList& access)
                     kv.second.c_str());
     for (const std::string& p : access.Problems())
         Log::Printf("  ignored: %s\n", p.c_str());
+    if (!access.NamesBlocked().empty())
+        Log::Printf("  %d word(s) no system name may hold, in %s\n",
+                    (int)access.NamesBlocked().size(), access.NamesBlockedPath().c_str());
 }
 
 // Every account in play, the world, its designs and its corporations, written now (#400): the
@@ -1890,6 +1893,24 @@ static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::s
         else
             Log::Printf("%s.\n", access.Unban(name, ok).c_str());
     }
+    else if (verb == "rename")
+    {
+        // Moderation of a name (#431 N3): a system beyond the wormhole called something else,
+        // or with `-` back to what it was called before anyone named it. News, and its
+        // discoverer's journal says so.
+        std::string system, name;
+        in >> system;
+        std::getline(in, name);
+        name = Chat::Sanitize(name, 64);
+        std::string said;
+        if (system.empty() || name.empty())
+            Log::Printf("Usage: rename <system> <name | -> -- the system by id, or by a "
+                        "designation or name of one word; `-` clears the name it was given.\n");
+        else if (sim.RenameSystem(system, name, said))
+            Log::Printf("%s.\n", said.c_str());
+        else
+            Log::Printf("Not renamed: %s.\n", said.c_str());
+    }
     else if (verb == "access")
         PrintAccess(access);
     else if (verb == "reload")
@@ -1966,7 +1987,9 @@ static void AdminCommand(Simulation& sim, Host::AccessList& access, const std::s
                     "drift <region> (into the archive now) | pause | resume "
                     "(growth) | destroy <name> (their ship is lost) | allow <name> | deny <name> | "
                     "ban <name> [reason] | unban <name> | "
-                    "access (who may come in) | reload (allowlist.txt and bans.txt) | "
+                    "rename <system> <name | -> (a system's name, or `-` to clear it) | "
+                    "access (who may come in) | reload (allowlist.txt, bans.txt and "
+                    "names_blocked.txt) | "
                     "say <text> (to everyone online) | mute <name> [minutes] | unmute <name>. "
                     "With the "
                     "server stopped: econserver regenerate <region>.\n");
@@ -2077,6 +2100,7 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                         access.AllowlistPath().c_str());
     }
     int accessSeen = access.Generation();
+    sim.SetBlockedNames(access.NamesBlocked());  // names_blocked.txt beside it (#431 N3)
 
     AdminConsole console;
     console.Start();
@@ -2643,13 +2667,16 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
         {
             accessCheckAcc = 0.0;
             if (access.ReloadIfChanged())
-                Log::Printf("Access: %s or %s changed; read again (%d allowed, %d banned).\n",
+                Log::Printf("Access: %s, %s or %s changed; read again (%d allowed, %d banned, "
+                            "%d word(s) no name may hold).\n",
                             access.AllowlistPath().c_str(), access.BansPath().c_str(),
-                            (int)access.Allowed().size(), (int)access.Bans().size());
+                            access.NamesBlockedPath().c_str(), (int)access.Allowed().size(),
+                            (int)access.Bans().size(), (int)access.NamesBlocked().size());
         }
         if (access.Generation() != accessSeen)
         {
             accessSeen = access.Generation();
+            sim.SetBlockedNames(access.NamesBlocked());  // the word filter of names (#431 N3)
             for (HostClient& hc : clients)
             {
                 const std::string& name = hc.account.empty() ? hc.pendingAccount : hc.account;

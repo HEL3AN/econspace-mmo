@@ -132,16 +132,55 @@ std::string FoldName(const std::string& name)
     return out;
 }
 
+namespace
+{
+// Short on purpose: it guards against what syllables can spell by accident, in English, and
+// throwing a harmless generated name away costs only another draw.
+const char* const BLOCKED[] = {
+    "fuck", "shit", "cunt",  "nigg", "nigr",  "fag",    "rape", "cock",   "dick",
+    "piss", "slut", "whore", "twat", "wank",  "nazi",   "kkk",  "anus",   "porn",
+    "cum",  "tits", "bitch", "jizz", "spunk", "retard", "sex",  "hitler", "arse",
+    "puss", "crap", "kike",  "spic", "chink", "dyke",   "homo", "pedo",   "semen",
+};
+// Of those, the ones no innocent word holds: a chosen name is refused with one anywhere in it.
+// The rest refuse a chosen name only as a word of their own -- "Parsec", "Torpedo" and
+// "Peacock" are names, not insults (the Scunthorpe problem).
+const char* const BLOCKED_ANYWHERE[] = { "fuck", "cunt",   "nigg",   "nigr", "whore",
+                                         "jizz", "retard", "hitler", "bitch" };
+
+// The folded letters with everything else taken out: what an anywhere-entry is looked for in.
+std::string Bare(const std::string& text)
+{
+    std::string bare;
+    for (char c : FoldName(text))
+        if (c >= 'a' && c <= 'z')
+            bare += c;
+    return bare;
+}
+
+// The words of a name: runs of letters, split on spaces, hyphens, apostrophes and digits.
+std::vector<std::string> Words(const std::string& name)
+{
+    std::vector<std::string> out(1);
+    for (char c : FoldName(name))
+        if (c >= 'a' && c <= 'z')
+            out.back() += c;
+        else if (!out.back().empty())
+            out.emplace_back();
+    if (out.back().empty())
+        out.pop_back();
+    return out;
+}
+
+// A word is `w`, or `w` made plural.
+bool IsWord(const std::string& token, const std::string& w)
+{
+    return !w.empty() && (token == w || token == w + "s" || token == w + "es");
+}
+}  // namespace
+
 bool NameBlocked(const std::string& name)
 {
-    // Short on purpose: it guards against what syllables can spell by accident, in English,
-    // and throwing a harmless name away costs only another draw.
-    static const char* const BLOCKED[] = {
-        "fuck", "shit", "cunt",  "nigg", "nigr",  "fag",    "rape", "cock",   "dick",
-        "piss", "slut", "whore", "twat", "wank",  "nazi",   "kkk",  "anus",   "porn",
-        "cum",  "tits", "bitch", "jizz", "spunk", "retard", "sex",  "hitler", "arse",
-        "puss", "crap", "kike",  "spic", "chink", "dyke",   "homo", "pedo",   "semen",
-    };
     std::string bare;
     for (char c : FoldName(name))
         if (c != ' ' && c != '-' && c != '\'')
@@ -149,6 +188,52 @@ bool NameBlocked(const std::string& name)
     for (const char* b : BLOCKED)
         if (bare.find(b) != std::string::npos)
             return true;
+    return false;
+}
+
+bool ChosenNameBlocked(const std::string& name, const std::vector<std::string>& extra)
+{
+    const std::vector<std::string> words = Words(name);
+    const std::string              bare = Bare(name);
+    auto                           asWord = [&](const std::string& w)
+    {
+        for (const std::string& t : words)
+            if (IsWord(t, w))
+                return true;
+        return false;
+    };
+    for (const char* b : BLOCKED)
+        if (asWord(b))
+            return true;
+    for (const char* b : BLOCKED_ANYWHERE)
+        if (bare.find(b) != std::string::npos)
+            return true;
+    // The name's words between spaces, for an entry of more than one word ("rival corp").
+    std::string spaced = " ";
+    for (const std::string& t : words)
+        spaced += t + " ";
+    for (const std::string& entry : extra)
+    {
+        const bool anywhere = !entry.empty() && entry[0] == '*';
+        if (anywhere)
+        {
+            const std::string w = Bare(entry.substr(1));
+            if (!w.empty() && bare.find(w) != std::string::npos)
+                return true;
+            continue;
+        }
+        const std::vector<std::string> phrase = Words(entry);
+        if (phrase.size() == 1 && asWord(phrase[0]))
+            return true;
+        if (phrase.size() > 1)
+        {
+            std::string p = " ";
+            for (const std::string& t : phrase)
+                p += t + " ";
+            if (spaced.find(p) != std::string::npos)
+                return true;
+        }
+    }
     return false;
 }
 

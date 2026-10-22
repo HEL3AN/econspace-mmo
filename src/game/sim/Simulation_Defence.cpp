@@ -306,10 +306,30 @@ void Simulation::TellOwner(const std::string& owner, const std::string& yours,
     if (ownerOn || onlyOn)
         return;
     // Nobody on to read it: the pending part of the owner's journal, in their save.
+    KeepForAbsent(owner, kind, yours);
+}
+
+void Simulation::TellAccount(const std::string& account, Ev::Kind kind, const std::string& text)
+{
+    if (account.empty())
+        return;
+    bool on = false;
+    for (auto& kv : sessions_)
+        if (kv.second.accountName == account)
+        {
+            kv.second.RecordEvent(kind, text);
+            on = true;
+        }
+    if (!on)
+        KeepForAbsent(account, kind, text);
+}
+
+void Simulation::KeepForAbsent(const std::string& account, Ev::Kind kind, const std::string& text)
+{
     Ev::Event e;
     e.kind = kind;
-    e.text = "While you were away: " + yours;
-    absent_.emplace_back(owner, e);
+    e.text = "While you were away: " + text;
+    absent_.emplace_back(account, e);
     if (absent_.size() > 4 * MAX_PENDING_JOURNAL)  // nobody hosting takes them (a test)
         absent_.erase(absent_.begin());
 }
