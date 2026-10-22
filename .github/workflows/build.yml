@@ -153,12 +153,17 @@ jobs:
           port=$(sed -n 's/.*EconSpace server on port \([0-9]*\).*/\1/p' mc.log)
 
           # Two people sharing a galaxy. Each has to complete its own scripted run.
-          agent selftest 127.0.0.1 $port alice alice-secret &
+          # Each client writes to its own file: two on one pipe mix their lines and the
+          # log no longer says which one failed (#419).
+          agent selftest 127.0.0.1 $port alice alice-secret > alice.log 2>&1 &
           alice=$!
-          agent selftest 127.0.0.1 $port bob bob-secret &
+          agent selftest 127.0.0.1 $port bob bob-secret > bob.log 2>&1 &
           bob=$!
-          wait $alice
-          wait $bob
+          status=0
+          wait $alice || status=1
+          wait $bob || status=1
+          for c in alice bob; do echo "--- $c ---"; cat $c.log; done
+          [ $status -eq 0 ] || exit 1
 
           # One account, one session: a second login for a name displaces the first, and
           # the newcomer still plays normally afterwards. The second login waits until the
@@ -299,12 +304,17 @@ jobs:
           port=$(sed -n 's/.*EconSpace server on port \([0-9]*\).*/\1/p' mc.log)
 
           # Two people sharing a galaxy. Each has to complete its own scripted run.
-          agent selftest 127.0.0.1 $port alice alice-secret &
+          # Each client writes to its own file: two on one pipe mix their lines and the
+          # log no longer says which one failed (#419).
+          agent selftest 127.0.0.1 $port alice alice-secret > alice.log 2>&1 &
           alice=$!
-          agent selftest 127.0.0.1 $port bob bob-secret &
+          agent selftest 127.0.0.1 $port bob bob-secret > bob.log 2>&1 &
           bob=$!
-          wait $alice
-          wait $bob
+          status=0
+          wait $alice || status=1
+          wait $bob || status=1
+          for c in alice bob; do echo "--- $c ---"; cat $c.log; done
+          [ $status -eq 0 ] || exit 1
 
           # One account, one session: a second login for a name displaces the first, and
           # the newcomer still plays normally afterwards. The second login waits until the

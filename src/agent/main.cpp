@@ -2126,7 +2126,14 @@ void StartSelftestWatchdog()
 int Selftest(const std::vector<Tool>& tools)
 {
     auto note = [](const char* what, bool ok)
-    { std::fprintf(stderr, "  %-22s %s\n", what, ok ? "OK" : "FAIL"); };
+    {
+        // One whole line in one write: on an unbuffered stderr (MinGW) printf-style calls
+        // may emit a piece at a time, and two clients sharing a pipe then mix their lines (#419).
+        char line[160];
+        std::snprintf(line, sizeof line, "  %-22s %s\n", what, ok ? "OK" : "FAIL");
+        std::fputs(line, stderr);
+        std::fflush(stderr);
+    };
 
     // 0) A new pilot begins somewhere (#342 S2): offered the starts, takes the first.
     if (g_session.AwaitingStart())
