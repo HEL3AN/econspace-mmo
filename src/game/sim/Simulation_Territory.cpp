@@ -327,7 +327,7 @@ bool IsPilotParty(const std::string& party)
     return party.rfind(InfluenceMap::PILOT, 0) == 0;
 }
 
-std::string PilotOf(const std::string& party)
+std::string PilotIn(const std::string& party)
 {
     return party.substr(std::string(InfluenceMap::PILOT).size());
 }
@@ -370,7 +370,7 @@ const Corps::Licence* Simulation::LicenceOf(const std::string& party,
 {
     if (IsPilotParty(party))
     {
-        const auto o = owners_.find(PilotOf(party));
+        const auto o = owners_.find(PilotIn(party));
         if (o == owners_.end())
             return nullptr;
         const auto l = o->second.licences.find(system);
@@ -388,7 +388,7 @@ float Simulation::PartyStanding(const std::string& party, FactionId f) const
     float s = 0.0f;
     if (IsPilotParty(party))
     {
-        OwnerStanding(PilotOf(party), f, s);
+        OwnerStanding(PilotIn(party), f, s);
         return s;
     }
     // A corporation's is the sum of its members' (Decided after the rounds, 2): each pilot's
@@ -436,7 +436,7 @@ bool Simulation::Admits(const SystemState& st, const std::string& holder, const 
                     pilots.push_back(m.account);
         }
         else
-            pilots.push_back(PilotOf(party));
+            pilots.push_back(PilotIn(party));
         for (const auto& e : st.entities)
             if (e->GetKind() == EntityKind::Structure && corps_.IdOf(e->GetOwner()) == holder)
                 for (const std::string& p : pilots)
@@ -475,7 +475,7 @@ void Simulation::SetLicence(const std::string& party, const std::string& system,
                             const Corps::Licence& l)
 {
     if (IsPilotParty(party))
-        owners_[PilotOf(party)].licences[system] = l;
+        owners_[PilotIn(party)].licences[system] = l;
     else
         corps_.SetLicence(party, system, l);
 }
@@ -484,7 +484,7 @@ void Simulation::DropLicence(const std::string& party, const std::string& system
 {
     if (IsPilotParty(party))
     {
-        const auto o = owners_.find(PilotOf(party));
+        const auto o = owners_.find(PilotIn(party));
         if (o != owners_.end())
             o->second.licences.erase(system);
     }
@@ -498,7 +498,7 @@ void Simulation::TellParty(const std::string& party, const std::string& text)
     // members read.
     if (IsPilotParty(party))
     {
-        TellOwner(PilotOf(party), text, text, false, Ev::Kind::Notice);
+        TellOwner(PilotIn(party), text, text, false, Ev::Kind::Notice);
         return;
     }
     const Corps::Corp* c = corps_.Find(party);
@@ -512,7 +512,7 @@ bool Simulation::PayRent(const std::string& party, const std::string& holder, do
 {
     if (IsPilotParty(party))
     {
-        const std::string account = PilotOf(party);
+        const std::string account = PilotIn(party);
         ClientSession*    on = nullptr;
         for (auto& kv : sessions_)
             if (kv.second.accountName == account)
