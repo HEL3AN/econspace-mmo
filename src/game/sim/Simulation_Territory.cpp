@@ -24,7 +24,9 @@
 #include "entities/Structure.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -229,6 +231,115 @@ bool Simulation::FrontOpen(const std::string& system, const std::string& side) c
             return true;
     }
     return false;
+}
+
+// --- Security bought with police (#431 L5, slice 11) ---------------------------------------
+//
+// A corporation pays the world's police to keep its law in the systems it holds, as a budget
+// per system out of its treasury: the money comes off every macro pass, hot or cold, and what
+// it bought is a number in the aggregate the security target and the spawn director read. So
+// a system nobody is in is policed by the same arithmetic as one somebody is looking at.
+
+void Simulation::StepPolicePay(double seconds)
+{
+    const WorldRules::Security&  r = WorldRules::SecurityRules();
+    std::map<std::string, float> paid;   // system -> credits an hour, this pass
+    std::set<std::string>        broke;  // systems whose holder could not pay
+    std::vector<std::string>     ids;    // by id: Debit changes a corporation, not the list
+    for (const auto& kv : corps_.All())
+        ids.push_back(kv.first);
+    for (const std::string& id : ids)
+    {
+        const Corps::Corp* c = corps_.Find(id);
+        if (c == nullptr)
+            continue;
+        const std::map<std::string, double> budgets = c->police;  // a copy, as Debit runs
+        for (const auto& b : budgets)
+        {
+            const SystemState* st = SystemById(b.first);
+            if (st == nullptr || st->agg.holderCorp != id)
+                continue;  // waits for the corporation to hold it again
+            const double perHour = std::min(b.second, r.budgetMax);
+            if (perHour <= 0.0)
+                continue;
+            if (corps_.Debit(id, perHour * seconds / 3600.0))
+                paid[b.first] = (float)perHour;
+            else
+                broke.insert(b.first);
+        }
+    }
+    for (auto& kv : systems_)
+    {
+        SystemAggregate& a = kv.second.agg;
+        const auto       it = paid.find(kv.first);
+        const float      was = a.paidPolice;
+        a.paidPolice = it != paid.end() ? it->second : 0.0f;
+        if (was <= 0.0f || a.paidPolice > 0.0f || broke.count(kv.first) == 0)
+            continue;
+        // The money ran out: said once, in the corporation's journal, which its members read.
+        const Corps::Corp* c = corps_.Find(a.holderCorp);
+        if (c == nullptr || c->Ceo() == nullptr)
+            continue;
+        const int seq =
+            corps_.Record(c->Ceo()->account, Ev::Kind::Notice,
+                          Tag(*c) + " can no longer pay for police in " + SystemName(kv.first) +
+                              ": the treasury is empty, and they stand down");
+        for (auto& sv : sessions_)
+            if (seq != 0 && corps_.IdOf(sv.second.accountName) == c->id)
+                ReadCorpJournal(sv.second);
+    }
+}
+
+bool Simulation::LawIn(const SystemState& st, FactionId& law) const
+{
+    const SystemAggregate& a = st.agg;
+    law = Factions::Unaffiliated();
+    if (a.claimed && Factions::IsLawful(a.controller))
+    {
+        law = a.controller;
+        return true;
+    }
+    // A corporation that pays for police where it holds is a source of law there (Decided
+    // after the rounds, 5): the same rules, at the security its police buy. The law is the
+    // police's it pays -- the faction the director flies them under.
+    if (!a.holderCorp.empty() && a.paidPolice > 0.0f)
+    {
+        law = Factions::IsLawful(a.policeFaction) ? a.policeFaction : Factions::DefaultPolice();
+        return Factions::IsLawful(law);
+    }
+    return false;
+}
+
+Corps::Outcome Simulation::ApplyCorpAct(const std::string& account, const Corps::Act& act,
+                                        const std::set<std::string>& online, double now)
+{
+    std::string verb = act.verb;
+    for (char& ch : verb)
+        ch = (char)std::tolower((unsigned char)ch);
+    if (verb != "police")
+        return corps_.Apply(account, act, online, now);
+    // The system by its id, or by the name a player reads.
+    std::string id = SystemById(act.system) != nullptr ? act.system : std::string();
+    if (id.empty())
+    {
+        std::string want = act.system;
+        for (char& ch : want)
+            ch = (char)std::tolower((unsigned char)ch);
+        for (const auto& kv : systems_)
+        {
+            std::string name = SystemName(kv.first);
+            for (char& ch : name)
+                ch = (char)std::tolower((unsigned char)ch);
+            if (!want.empty() && name == want)
+                id = kv.first;
+        }
+    }
+    const Corps::Corp* c = corps_.Of(account);
+    const SystemState* st = id.empty() ? nullptr : SystemById(id);
+    const bool         held = c != nullptr && st != nullptr && st->agg.holderCorp == c->id;
+    return corps_.SetPolice(account, id.empty() ? act.system : id,
+                            id.empty() ? act.system : SystemName(id), act.value,
+                            WorldRules::SecurityRules().budgetMax, held);
 }
 
 std::vector<std::string> Simulation::HeldBy(const std::string& corpId) const

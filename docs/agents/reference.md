@@ -45,16 +45,17 @@ No arguments.
 
 ### `corp_act`
 
-Do something about corporations. action: 'create' (name, ticker -- you become its CEO), 'invite' (pilot, online; CEO or director), 'join' or 'decline' (ticker of a corporation that invited you), 'leave' (the last member out disbands it; a CEO hands over first), 'kick' (pilot; the CEO removes anyone, a director only members), 'role' (pilot, role: ceo, director or member; CEO only -- making another CEO makes you a director), and the policies of the systems it holds, CEO or director: 'tax' (value: a percentage of every trade at markets there, up to the server's cap, or 'standard'; it goes to the treasury) and 'docking' (value: own, allies or all -- who docks at its structures there; allies are each structure's allow-list). A corporation holds a system with the most influence there -- its members' structures, weighed by tier -- and a claim: a finished outpost or above of a member's. The answer is the server's.
+Do something about corporations. action: 'create' (name, ticker -- you become its CEO), 'invite' (pilot, online; CEO or director), 'join' or 'decline' (ticker of a corporation that invited you), 'leave' (the last member out disbands it; a CEO hands over first), 'kick' (pilot; the CEO removes anyone, a director only members), 'role' (pilot, role: ceo, director or member; CEO only -- making another CEO makes you a director), and the policies of the systems it holds, CEO or director: 'tax' (value: a percentage of every trade at markets there, up to the server's cap, or 'standard'; it goes to the treasury) and 'docking' (value: own, allies or all -- who docks at its structures there; allies are each structure's allow-list), and 'police' (system, value: credits an hour from the treasury, or 'none'), the world's police it pays for in a system it holds: while paid they raise its security, fly patrols there and make attacking anyone there a crime under the corporation's law; they stand down when the treasury runs dry. Lower security pays better -- missions, jobs, contracts and ore. A corporation holds a system with the most influence there -- its members' structures, weighed by tier -- and a claim: a finished outpost or above of a member's. The answer is the server's.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
-| `action` | string | yes | create, invite, join, decline, leave, kick, role, tax or docking |
+| `action` | string | yes | create, invite, join, decline, leave, kick, role, tax, docking or police |
 | `name` | string |  | create: the corporation's name, 3 to 24 characters |
 | `pilot` | string |  | invite, kick, role: the pilot's name |
 | `role` | string |  | role: ceo, director or member |
+| `system` | string |  | police: the system, by id or name, that the corporation holds |
 | `ticker` | string |  | create: 2 to 5 letters or digits; join/decline: whose invite |
-| `value` | string |  | tax: a percentage such as 5, or standard; docking: own, allies or all |
+| `value` | string |  | tax: a percentage such as 5, or standard; docking: own, allies or all; police: credits an hour, or none |
 
 ### `choose_start`
 
@@ -334,7 +335,7 @@ Set the rules of engagement of an armed structure you built, from anywhere in it
 
 ### `attack`
 
-Close to weapon range of a ship -- an NPC's or another player's -- or a structure and fire until it is destroyed. Finishes when it is gone; aborts like any order if the hull gets critical. A destroyed structure leaves a wreck where it fits; a player's ship shot down is their loss, insurance and wreck as any. Shooting what a lawful faction owns, a player's structure in a system a lawful faction holds, or another player in such a system with security above zero is a crime: reputation and bounty with that faction, per hit and more for the kill, the police called, a CRIMINAL flag (about 15 minutes; anyone may then shoot you freely, police chase you, lawful docks refuse you) and a fall in your security status (observe's LAW line). At a low status police in high security engage on sight; it recovers with time and pirate kills. Pirates and pilots marked CRIMINAL in observe are free targets. Your own structures are dismantled, not attacked.
+Close to weapon range of a ship -- an NPC's or another player's -- or a structure and fire until it is destroyed. Finishes when it is gone; aborts like any order if the hull gets critical. A destroyed structure leaves a wreck where it fits; a player's ship shot down is their loss, insurance and wreck as any. Shooting what a lawful faction owns, a player's structure in a system a lawful faction holds -- or a corporation that pays for police there -- or another player in such a system with security above zero is a crime: reputation and bounty with the law's faction, per hit and more for the kill, the police called, a CRIMINAL flag (about 15 minutes; anyone may then shoot you freely, police chase you, lawful docks refuse you) and a fall in your security status (observe's LAW line). At a low status police in high security engage on sight; it recovers with time and pirate kills. Pirates and pilots marked CRIMINAL in observe are free targets. Your own structures are dismantled, not attacked.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|

@@ -700,8 +700,26 @@ public:
     // what a test that builds in a held system starts from. Nothing where none is needed.
     void        GrantLicence(const std::string& account, const std::string& system);
     static void SeedPresence(SystemAggregate& a);
-    // Where a system's security settles (#428): its base, moved by the police/pirate balance.
+    // A convoy of strength `strength` crossing a system of `danger` ships at `security`: the
+    // chance it is attacked, and the share of its freight an attack takes on the average.
+    static float AmbushChance(float danger, float security);
+    static float AmbushHarm(float strength, float danger);
+    // Where a system's security settles (#428): its base, moved by the police/pirate balance,
+    // and raised by the police its holder pays for (#431 L5, slice 11: `paidPolice`).
     static float SecurityTarget(const SystemAggregate& a);
+    // The police corporations pay for (#431 slice 11), every macro pass, hot or cold: each
+    // budget of a system its corporation holds is taken from the treasury for the pass, and
+    // what was paid is the system's `paidPolice`; a treasury that cannot pay it stops it, and
+    // the corporation's journal says so once. `seconds` is the pass.
+    void StepPolicePay(double seconds);
+    // The law over a system (#431 L1, L5): its holder's where a lawful faction holds it;
+    // where a corporation holds it and pays for police, the law of the police it pays -- the
+    // faction the director flies its police under; and none anywhere else. False: lawless.
+    bool LawIn(const SystemState& st, FactionId& law) const;
+    // A corporation's verb, as the host hands it on (#347, #431): the registry's, and for
+    // "police" the world says whether the corporation holds the system first.
+    Corps::Outcome ApplyCorpAct(const std::string& account, const Corps::Act& act,
+                                const std::set<std::string>& online, double now);
     // At most this far from the base either way, and the softness of the balance: with
     // police and pirates at zero it is even, and a lone ship of either moves it a fifth.
     static constexpr float SECURITY_SWING = 0.15f;
@@ -1079,8 +1097,9 @@ public:
     float OwedStanding(const std::string& account, FactionId f) const;
     // The faction whose law makes attacking this structure a crime, if any (#41): a lawful
     // faction's own outpost is that faction's; anything else -- a player's, the world's --
-    // is under the law of the system's holder when that is a lawful faction. Nobody's in a
-    // system nobody holds, a pirate's, and never for its own owner.
+    // is under the system's law (LawIn): a lawful faction's holding, or a corporation's that
+    // pays for police. Nobody's in a system nobody holds, a pirate's, and never for its own
+    // owner.
     bool LawOver(const SystemState& st, const Structure& t, const std::string& attacker,
                  FactionId& law) const;
     // Damage to a structure, from `by` (null -- not a player). Every hit is a change to the
@@ -2099,10 +2118,6 @@ private:
     // `security` when asked.
     float ConvoyDanger(FactionId f, const std::string& systemId, bool truth,
                        float* security = nullptr) const;
-    // A convoy of strength `strength` crossing a system of `danger` ships at `security`: the
-    // chance it is attacked, and the share of its freight an attack takes on the average.
-    static float AmbushChance(float danger, float security);
-    static float AmbushHarm(float strength, float danger);
     // Once a pass: every convoy moves on, fights what it meets, arrives, turns back or is lost.
     void StepConvoys();
     // The convoy has crossed the system it is in: whatever is hostile there falls on it, or not.

@@ -79,10 +79,11 @@ bool Simulation::SetDefence(ClientSession& s, int id, const Defence& d)
     StepOwners();
 
     // What the mode will cost here, said once, where the owner reads it.
-    const bool lawful = st.agg.claimed && Factions::IsLawful(st.agg.controller);
+    FactionId  law = Factions::Unaffiliated();
+    const bool lawful = LawIn(st, law);
     s.RecordEvent(Ev::Kind::Notice, "Rules of engagement for " + t->GetName() + ": " +
                                         EngageLabel(d.engage) + ". " +
-                                        DefenceCost(d.engage, lawful, st.agg.controller));
+                                        DefenceCost(d.engage, lawful, law));
     // Set by a director of the owner's corporation: the owner hears of it, since what the
     // battery does is still on their account.
     if (t->GetOwner() != s.accountName)

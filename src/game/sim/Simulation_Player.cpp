@@ -694,7 +694,9 @@ Simulation::PlayerMiningResult Simulation::StepPlayerMining(ClientSession& s, Sy
 
         // The ship sets the pace, the deposit how rich it is (#193), and the mining skill
         // (passed as a multiplier) speeds both up.
-        float rate = s.ship->GetStats().miningRate * e->GetArchetype()->extractRate * miningBonus;
+        // ...and the poorer the system's security, the richer the pickings (#431 L5, slice 11).
+        float rate = s.ship->GetStats().miningRate * e->GetArchetype()->extractRate * miningBonus *
+                     (float)WorldRules::SecurityRules().Ore(st.agg.security);
         s.miningProgress += rate * dt;
         while (s.miningProgress >= 1.0f)
         {
@@ -1287,8 +1289,13 @@ void Simulation::GenerateDockOffers(ClientSession& s)
     // The work the faction's plans want done goes first (#345): it is what the world around
     // the station is actually doing.
     std::vector<Mission> board = JobsPostedAt(s, giver->GetId());
-    for (const Mission& m : s.missions.Offers())
+    // A station's own work pays the better the lower the security here (#431 L5, slice 11).
+    const double risk = WorldRules::SecurityRules().Pay(SystemOf(s)->agg.security);
+    for (Mission m : s.missions.Offers())
+    {
+        m.rewardMoney *= risk;
         board.push_back(m);
+    }
     s.missions.SetOffers(std::move(board));
 }
 

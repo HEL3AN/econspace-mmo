@@ -113,7 +113,11 @@ double Simulation::ContractPrice(const SystemState& st, ResourceType good, int a
     // a contract lies between, so it beats the one and never pays for the other.
     const double lo = amount * st.market.Bid(good) * (1.0 - fee);
     const double hi = amount * st.market.Ask(good) * (1.0 + fee);
-    const double across = std::clamp(r.premium + r.premiumShort * shortness, 0.0, 1.0);
+    // Lower security pays better (#431 L5, slice 11): the premium grows, never past the price
+    // of buying here.
+    const double across = std::clamp((r.premium + r.premiumShort * shortness) *
+                                         WorldRules::SecurityRules().Pay(st.agg.security),
+                                     0.0, 1.0);
     const double price = lo + (hi - lo) * across;
     // Somewhere to fill it from: the cheapest market near that has the units, for less.
     double cheapest = -1.0;

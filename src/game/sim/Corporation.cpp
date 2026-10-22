@@ -302,6 +302,8 @@ Outcome Registry::Apply(const std::string& account, const Act& act,
     }
     if (verb == "tax" || verb == "docking")
         return SetPolicy(account, verb, act.value, WorldRules::InfluenceRules().taxMax);
+    if (verb == "police")  // whether it holds the system is the world's to say
+        return Refuse("a police budget is set through the world, not the registry alone");
     return Refuse("there is no corporation verb '" + act.verb.substr(0, 16) + "'");
 }
 
@@ -593,6 +595,55 @@ Outcome Registry::SetPolicy(const std::string& by, const std::string& verb,
     return o;
 }
 
+Outcome Registry::SetPolice(const std::string& by, const std::string& system,
+                            const std::string& where, const std::string& value, double cap,
+                            bool held)
+{
+    const Corp* in = Of(by);
+    if (in == nullptr)
+        return Refuse("you are in no corporation");
+    if (in->Find(by)->role == Role::Member)
+        return Refuse("only the CEO or a director sets the corporation's policies");
+    if (system.empty())
+        return Refuse("name a system the corporation holds");
+    std::string v = value;
+    while (!v.empty() && v.back() == ' ')
+        v.pop_back();
+    double perHour = 0.0;
+    if (Lower(v) != "none" && Lower(v) != "off")
+    {
+        char* end = nullptr;
+        perHour = v.empty() ? -1.0 : std::strtod(v.c_str(), &end);
+        if (v.empty() || end == nullptr || *end != '\0' || !(perHour >= 0.0))
+            return Refuse("a police budget is credits an hour, such as 1200, or none");
+    }
+    // Stopping is always allowed -- the system may have been lost since -- but paying only
+    // where the corporation holds it: police serve the holder's law.
+    if (perHour > 0.0 && !held)
+        return Refuse(Tag(*in) + " does not hold " + where);
+    if (perHour > cap + 1e-9)
+    {
+        char buf[96];
+        std::snprintf(buf, sizeof(buf), "this server allows at most %.0f cr an hour for police",
+                      cap);
+        return Refuse(buf);
+    }
+    Corp& c = *Mutable(in->id);
+    if (perHour > 0.0)
+        c.police[system] = perHour;
+    else
+        c.police.erase(system);
+    rev_++;
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.0f cr an hour", perHour);
+    Outcome o;
+    o.corp = c.id;
+    o.told = perHour > 0.0 ? Tag(c) + " pays " + buf + " for police in " + where
+                           : Tag(c) + " pays for no police in " + where;
+    o.announce = by + ": " + o.told;
+    return o;
+}
+
 bool Registry::Credit(const std::string& id, double amount)
 {
     Corp* c = Mutable(id);
@@ -686,6 +737,9 @@ json Registry::ToJson() const
                                       { "told", l.second.told } };
             cj["licences"] = licences;
         }
+        // Slice 11's addition, which an older build ignores: no CORPS_VERSION bump.
+        if (!c.police.empty())
+            cj["police"] = c.police;
         list.push_back(std::move(cj));
     }
     return { { "version", Save::CORPS_VERSION }, { "next", nextId_ }, { "corps", list } };
@@ -831,6 +885,25 @@ bool Registry::FromJson(const json& j, std::string& why)
                     lc.told = (int)whole(*l, "told");
                     c.licences[l.key()] = lc;
                 }
+            const auto police = cj.find("police");
+            if (police != cj.end())
+            {
+                if (!police->is_object())
+                {
+                    why = c.id + "'s police budgets are not a list of systems";
+                    return false;
+                }
+                for (auto pit = police->begin(); pit != police->end(); ++pit)
+                {
+                    if (!pit.value().is_number() || !(pit.value().get<double>() > 0.0))
+                    {
+                        why =
+                            c.id + "'s police budget in " + pit.key() + " is not one it could have";
+                        return false;
+                    }
+                    c.police[pit.key()] = pit.value().get<double>();
+                }
+            }
             // An id is never handed out twice, even after its corporation is gone.
             next = std::max(next, std::atoi(c.id.c_str() + 1) + 1);
             SortMembers(c);

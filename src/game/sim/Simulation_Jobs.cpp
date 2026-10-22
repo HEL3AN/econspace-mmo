@@ -241,6 +241,10 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
             continue;
         if (Holds(s, p.id, m.type))
             continue;  // one of each a plan's, a pilot
+        // Lower security pays better (#431 L5, slice 11): by where the work is.
+        const SystemState* there = SystemById(p.target);
+        if (there != nullptr)
+            m.rewardMoney *= WorldRules::SecurityRules().Pay(there->agg.security);
         m.rewardMoney *= repMul;
         m.rewardRep *= repMul;
         found.push_back({ jumps, std::move(m) });

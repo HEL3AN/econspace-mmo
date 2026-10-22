@@ -131,12 +131,25 @@ bool Game::CorpCommand(const std::string& text)
         act.pilot = Word(rest, &act.role);
     else if (verb == "tax" || verb == "docking")
         act.value = Word(rest);
+    else if (verb == "police")
+    {
+        // The budget last: a system's name may have spaces in it.
+        std::string  where = Trim(rest);
+        const size_t cut = where.find_last_of(' ');
+        if (cut == std::string::npos)
+        {
+            ChatNotice("To pay for police: /corp police <system> <credits an hour>|none");
+            return true;
+        }
+        act.value = Trim(where.substr(cut + 1));
+        act.system = Trim(where.substr(0, cut));
+    }
     else if (verb != "leave")
     {
         ChatNotice("/corp create <ticker> <name> | invite <pilot> | join <ticker> | decline "
                    "<ticker> | leave | kick <pilot> | role <pilot> ceo|director|member | tax "
-                   "<percent>|standard | docking own|allies|all; /c <text> talks to the "
-                   "corporation");
+                   "<percent>|standard | docking own|allies|all | police <system> <cr an "
+                   "hour>|none; /c <text> talks to the corporation");
         return true;
     }
     SendCorpAct(act);
@@ -184,6 +197,49 @@ void Game::DrawCorpContent(const Ui::Frame& f)
                         : corpView_.docking == "allies" ? "members and allow-lists"
                                                         : "anyone",
                         t.colors.text);
+                // The police it pays for in each system it holds, and the security there
+                // (#431 slice 11): security is bought, out of the treasury.
+                for (const std::string& id : corpView_.holds)
+                {
+                    const auto  it = corpView_.police.find(id);
+                    const float paid = it != corpView_.police.end() ? (float)it->second : 0.0f;
+                    float       security = -1.0f;
+                    for (const Proto::GalaxySystemStat& g : galaxyState_.systems)
+                        if (g.id == id)
+                            security = g.security;
+                    std::string text = paid > 0.0f ? TextFormat("%.0f cr an hour", paid)
+                                                   : std::string("none paid");
+                    if (security >= 0.0f)
+                        text += TextFormat(", security %.1f", security);
+                    L.Field("Police, " + MapSystemName(id), text,
+                            paid > 0.0f ? t.colors.text : t.colors.dim);
+                    if (!leads)
+                        continue;
+                    L.Row(
+                        Box().GrowX().Gap(t.metrics.gap).Align(Ui::Align::Start, Ui::Align::Center),
+                        [&]
+                        {
+                            std::string&         field = corpPolice_[id];
+                            Ui::TextFieldOptions opt;
+                            opt.placeholder = "cr an hour";
+                            opt.maxLength = 7;
+                            const Ui::EditResult r = L.TextField("police_" + id, field, opt);
+                            const bool set = L.Button("setpolice_" + id, "Pay police", false,
+                                                      !Trim(field).empty()) ||
+                                             r.submitted;
+                            if (set && !Trim(field).empty())
+                            {
+                                acts.push_back({ "police", "", "", "", "", Trim(field), id });
+                                field.clear();
+                            }
+                            if (paid > 0.0f && L.Button("nopolice_" + id, "Stop"))
+                                acts.push_back({ "police", "", "", "", "", "none", id });
+                        });
+                    L.Tooltip("setpolice_" + id,
+                              "Credits an hour from the treasury for the world's police here: "
+                              "they raise security, fly patrols and answer crimes under the "
+                              "corporation's law. They stand down when the treasury runs dry");
+                }
                 if (leads)
                 {
                     L.Row(

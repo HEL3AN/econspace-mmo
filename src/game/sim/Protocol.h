@@ -36,7 +36,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    55;  // 55: a system of the index carries what the pilot last saw standing there and when,
+    56;  // 56: security is bought (#431 slice 11) -- a CorpAct "police" names a system and a
+         // budget, and a CorpView carries the police budget of each system the corporation
+         // holds;
+         // 55: a system of the index carries what the pilot last saw standing there and when,
          // and whether that is live (#431 slice 14);
          // 54: licences (#431 slice 6) -- a command buys one, a structure's layout says whether
          // it stands licensed, unpaid or trespassing, the player's snapshot what building here
@@ -785,8 +788,10 @@ struct ChatMembers
 // A verb (client -> server): "create" (name, ticker), "invite" (pilot), "join" and "decline"
 // (ticker), "leave", "kick" (pilot), "role" (pilot, role: "ceo", "director", "member"); a
 // holder's policies (#431 slice 5): "tax" (value: a percentage, or "standard") and "docking"
-// (value: "own", "allies", "all"). Not a tick of anything, like a chat line. The answer is a
-// chat notice to the sender, and a CorpView to everyone whose picture of it changed.
+// (value: "own", "allies", "all"); and "police" (system, value: credits an hour, or "none"),
+// what it pays for police in a system it holds (#431 slice 11). Not a tick of anything, like
+// a chat line. The answer is a chat notice to the sender, and a CorpView to everyone whose
+// picture of it changed.
 struct CorpAct
 {
     std::string verb;
@@ -794,7 +799,8 @@ struct CorpAct
     std::string ticker;
     std::string pilot;
     std::string role;
-    std::string value{};  // braced: the verbs without one leave it out
+    std::string value{};   // braced: the verbs without one leave it out
+    std::string system{};  // "police": the system, by id or by name
 };
 
 struct CorpMember
@@ -830,6 +836,9 @@ struct CorpView
     std::vector<std::string> holds;
     // Its licences to build in other holders' systems (#431 slice 6).
     std::vector<LicenceView> licences;
+    // What it pays for police in each system it holds (#431 slice 11), in credits an hour,
+    // by system id; a system it pays nothing in is not listed.
+    std::map<std::string, double> police;
 
     // This pilot's role in it; empty when in none.
     std::string RoleOf(const std::string& pilot) const;

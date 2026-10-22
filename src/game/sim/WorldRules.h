@@ -358,6 +358,62 @@ struct Licences
     double evict = 1.0;
 };
 
+// What security does, and how it is bought (#431 L5, slice 11). A system's security settles
+// at its base, moved by the balance of police and pirates (Simulation::SecurityTarget), plus
+// what its holder pays for police: a corporation sets a budget in credits an hour for each
+// system it holds, the coarse pass takes it from its treasury, and while it is paid the
+// system's security target rises by `policeSwing` times budget / (budget + `policeHalf`) --
+// half the swing at `policeHalf` an hour -- and the world's police (the faction role
+// `police`) fly one ship there for every `shipHour` an hour, at most `shipsMax`, under the
+// same law as a faction's holding. No budget above `budgetMax` is taken. Unpaid, it stops.
+//
+// What security does besides the police's answer (`law`): of the pirates' strength in a
+// system, `pirateHide` of it at security 1 (and less, in proportion, below) lies low rather
+// than flies, and leaves for darker systems next door; a convoy's danger is the convoys'
+// `policed`. And lower security pays better: a mission's, a job's and a contract's premium
+// pay is `payAtZero` times as much at security 0 as at 1, and ore comes out of a belt
+// `oreAtZero` times as fast -- in between, in proportion.
+struct Security
+{
+    double policeSwing = 0.3;
+    double policeHalf = 3000.0;
+    double shipHour = 600.0;
+    int    shipsMax = 8;
+    double budgetMax = 30000.0;
+    double pirateHide = 0.6;
+    double payAtZero = 1.6;
+    double oreAtZero = 1.5;
+
+    // What a budget of `perHour` buys: the rise in the security target, and the ships.
+    double Swing(double perHour) const
+    {
+        return perHour > 0.0 ? policeSwing * perHour / (perHour + policeHalf) : 0.0;
+    }
+    int Ships(double perHour) const
+    {
+        if (perHour <= 0.0 || shipHour <= 0.0)
+            return 0;
+        const double n = perHour / shipHour + 1e-9;
+        return n >= (double)shipsMax ? shipsMax : (int)n;
+    }
+    // The pay at `security` against the pay at 1, and the same for ore.
+    double Pay(double security) const { return Risk(payAtZero, security); }
+    double Ore(double security) const { return Risk(oreAtZero, security); }
+    // The share of the pirates' strength that flies at `security`.
+    double PiratesFly(double security) const
+    {
+        const double s = security < 0.0 ? 0.0 : security > 1.0 ? 1.0 : security;
+        return 1.0 - pirateHide * s;
+    }
+
+private:
+    static double Risk(double atZero, double security)
+    {
+        const double s = security < 0.0 ? 0.0 : security > 1.0 ? 1.0 : security;
+        return 1.0 + (atZero - 1.0) * (1.0 - s);
+    }
+};
+
 // Reads `path`. False, with Error() saying why, and the rules as they were, when it does
 // not read.
 bool               Load(const std::string& path);
@@ -375,6 +431,7 @@ const Scan&        ScanRules();
 const Law&         LawRules();
 const Influence&   InfluenceRules();
 const Licences&    LicenceRules();
+const Security&    SecurityRules();
 // For a test: rules of its own, without a file.
 void SetTideRules(const Tide& t);
 void SetMouthRules(const Mouths& m);
@@ -389,5 +446,6 @@ void SetScanRules(const Scan& s);
 void SetLawRules(const Law& l);
 void SetInfluenceRules(const Influence& i);
 void SetLicenceRules(const Licences& l);
+void SetSecurityRules(const Security& s);
 
 }  // namespace WorldRules

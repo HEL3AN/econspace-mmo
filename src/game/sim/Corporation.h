@@ -101,9 +101,13 @@ struct Corp
     // corporation mates keep current for them. A change of what stood there moves `chartsRev`.
     std::map<std::string, WorldLoader::Sighting> sightings;
     // Its money (#431 T4): what the markets of the systems it holds take, and what its
-    // members' markets take anywhere else. Police paid from it are slice 11's, its patrols'
-    // upkeep slice 12's: nothing spends it yet.
+    // members' markets take anywhere else. It pays for police (slice 11); its patrols' upkeep
+    // is slice 12's.
     double treasury = 0.0;
+    // What it pays for police in each system it holds (#431 L5, slice 11), in credits an hour,
+    // by system id. The coarse pass takes it from the treasury while the corporation holds the
+    // system and can pay; a budget for a system it no longer holds waits, unpaid.
+    std::map<std::string, double> police;
     // The policies of a holder (T3), set by its CEO or a director: the fee on trades at markets
     // in the systems it holds, as a share (below zero: the standard fee), and who docks at its
     // structures there.
@@ -127,7 +131,9 @@ bool ValidTicker(const std::string& ticker, std::string& why);
 // A verb, as a client sends it (Proto::CorpAct): "create" (name, ticker), "invite" (pilot),
 // "join" and "decline" (ticker), "leave", "kick" (pilot), "role" (pilot, role); a holder's
 // policies (#431 T3), by the CEO or a director: "tax" (value: a percentage, or "standard") and
-// "docking" (value: own, allies or all).
+// "docking" (value: own, allies or all); and "police" (system, value: credits an hour, 0 for
+// none), the police it pays for in a system it holds (slice 11) -- which only the world can
+// answer, so Simulation::ApplyCorpAct is the way in for every verb.
 struct Act
 {
     std::string verb;
@@ -135,7 +141,8 @@ struct Act
     std::string ticker;
     std::string pilot;
     std::string role;
-    std::string value{};  // braced: the verbs without one leave it out
+    std::string value{};   // braced: the verbs without one leave it out
+    std::string system{};  // "police": the system, by id
 };
 
 // What came of an act. `error` empty: done. `told` is the actor's answer either way;
@@ -175,6 +182,11 @@ public:
     // A holder's policy (#431 T3): `verb` "tax" or "docking". A tax above `taxCap` is refused.
     Outcome SetPolicy(const std::string& by, const std::string& verb, const std::string& value,
                       double taxCap);
+    // The police `by`'s corporation pays for in `system` (#431 slice 11), called `where`:
+    // `value` credits an hour, at most `cap`; 0 or "none" stops it. `held` is whether the
+    // corporation holds the system now -- the world's to say; a budget is set only there.
+    Outcome SetPolice(const std::string& by, const std::string& system, const std::string& where,
+                      const std::string& value, double cap, bool held);
 
     // Money into a corporation's treasury (#431 T4); false for one that does not exist. Not a
     // change Rev() counts -- a fee comes with every trade, and Rev() is what writes corps.json
