@@ -251,7 +251,7 @@ TEST_CASE("cold systems still progress: stock, presence, prices and outposts (#2
     CHECK(founded);
     bool claimedBeyond = false;
     for (const auto& kv : sim->Systems())
-        claimedBeyond = claimedBeyond || (kv.second.agg.claimed && !kv.second.agg.visited);
+        claimedBeyond = claimedBeyond || (kv.second.agg.claimed && !kv.second.agg.publicChart);
     CHECK(claimedBeyond);
     // Populations are kept: every lawful holding has police, and pirates hold somewhere.
     for (const auto& kv : sim->Systems())

@@ -345,7 +345,7 @@ TEST_CASE("a hole is hidden until scanned, then a route of the pilot's own (#342
     CHECK(sim.HoleById(id) == nullptr);
     CHECK(ById(sim, a, nearId) == nullptr);
     CHECK(ById(sim, b, farId) == nullptr);
-    CHECK(s.scanned.count("hole:" + id) == 0);
+    CHECK(s.known.count("hole:" + id) == 0);
     CHECK(sim.HoleLinksOf(s).empty());
 }
 
@@ -449,7 +449,7 @@ TEST_CASE("a hidden base that fires on a pilot is revealed to them, and to nobod
 
     // Found as a scan finds it: the account has it, the journal says how.
     const std::string key = sim.SignatureKey(*sim.SystemById(a), *ById(sim, a, base));
-    CHECK(victim.scanned.count(key) == 1);
+    CHECK(victim.known.count(key) == 1);
     bool told = false;
     for (const Ev::Event& e : victim.journal)
         told = told || e.text.find("revealed by its fire") != std::string::npos;
@@ -459,7 +459,7 @@ TEST_CASE("a hidden base that fires on a pilot is revealed to them, and to nobod
 
     // The other pilot: not in the layout, not the beam, and not a target for their guns.
     CHECK_FALSE(InLayout(sim.BuildLayoutFor(other, a), base));
-    CHECK(other.scanned.empty());
+    CHECK(other.known.empty());
     CHECK(sim.BeamHiddenFrom(other, a, fires[0]));
     other.weaponOn = true;
     CHECK_FALSE(sim.StepPlayerFire(other, *sim.SystemById(a), base, 1.0f / 60.0f, nullptr));

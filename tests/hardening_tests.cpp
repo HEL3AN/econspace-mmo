@@ -309,7 +309,7 @@ TEST_CASE("sending the galaxy to clients does not change how the galaxy counts i
         }
         REQUIRE_FALSE(where.empty());
         if (watched)
-            sim->BuildGalaxyState();
+            sim->GalaxyStats();
         Tick(*sim, 150);
         const SystemAggregate& a = sim->SystemById(where)->agg;
         return std::vector<float>{ a.supPirates, a.lostPirates, a.pirates, a.security };

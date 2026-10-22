@@ -110,7 +110,7 @@ Approach an asteroid field and mine it. With until_full, keeps going until the h
 
 ### `travel_to_system`
 
-Travel to another star system, jumping gate by gate -- and through any roaming wormhole you have found with scan, if it lets your ship by. One order for the whole journey however many hops it takes, planned over the systems you know: charted ones and those one gate past them. preference weighs the way: 'shortest' (fewest jumps, the default), 'safer' (keep to security 0.5 and above where any way does) or 'less_secure' (keep below 0.5). via lists systems to pass through first, in order.
+Travel to another star system, jumping gate by gate -- and through any roaming wormhole you have found with scan, if it lets your ship by. One order for the whole journey however many hops it takes, planned over the systems you know -- the public charts, your own and your corporation's (the galaxy resource) -- and those one gate past them. preference weighs the way: 'shortest' (fewest jumps, the default), 'safer' (keep to security 0.5 and above where any way does) or 'less_secure' (keep below 0.5). via lists systems to pass through first, in order.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
@@ -275,7 +275,7 @@ Pay off the bounty a faction has on you, at a station, so its ships stop hunting
 
 ### `name_system`
 
-Name the system you are in. Beyond the wormhole a system has only a designation (W-3.2) until whoever got there first names it -- once, for everyone. 3 to 24 characters, starting with a letter; letters, digits, spaces, ' and -; not a name another system has.
+Name the system you are in. Beyond the wormhole a system has only a designation (W-3.2) until whoever got there first names it -- once, for everyone who has it on their charts. 3 to 24 characters, starting with a letter; letters, digits, spaces, ' and -; not a name another system has.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
@@ -358,7 +358,7 @@ Search a wreck (a derelict observe marks 'lootable') and take what it pays. A wr
 | URI | Name | What |
 |---|---|---|
 | `econspace://system` | Current system | Everything visible where the ship is, in full |
-| `econspace://galaxy` | Galaxy | Every system, its security, controller and gate links, plus recent galactic news |
+| `econspace://galaxy` | Galaxy | Every system on your charts -- the public charts, your own finds and your corporation's -- with its security, controller and gate links; the systems their gates lead to, uncharted; plus recent galactic news |
 
 ## Prompts
 

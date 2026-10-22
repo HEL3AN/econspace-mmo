@@ -36,7 +36,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    47;  // 47: a route order carries its waypoints and a preference -- shortest, safer or less
+    48;  // 48: the index and the galaxy map are each pilot's own (#431): what they and their
+         // corporation have charted, beside the public charts, and a system says whose
+         // charts it is on (`known`) and which faction charted it (`chartedBy`);
+         // 47: a route order carries its waypoints and a preference -- shortest, safer or less
          // secure -- in place of avoid-danger, and the index marks an unstable mouth's link
          // with when it closes and the mass it lets by (#432);
          // 46: an escort job carries its convoy -- where it is, where it goes next, its hauler and
@@ -613,8 +616,9 @@ struct GalaxySystemStat
     bool claimed = false;
 };
 
-// Galaxy snapshot: statistics for all systems + a news feed. Sent by the server
-// periodically (about once a second) — the networked galaxy map comes alive.
+// Galaxy snapshot: statistics for the systems on the recipient's charts + a news feed (#431:
+// each pilot's own). Sent by the server periodically (about once a second) — the networked
+// galaxy map comes alive.
 struct GalaxyState
 {
     std::vector<GalaxySystemStat> systems;

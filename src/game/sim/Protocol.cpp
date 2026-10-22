@@ -1906,7 +1906,9 @@ std::string EncodeUniverse(const WorldLoader::Universe& u)
                         { "owner", si.owner },
                         { "charted", si.charted },
                         { "desig", si.designation },
-                        { "found", si.discoverer } });
+                        { "found", si.discoverer },
+                        { "known", si.knownBy },
+                        { "chartedBy", si.chartedBy } });
     json links = json::array();
     for (const WorldLoader::SystemLink& l : u.links)
         if (l.kind.empty())
@@ -1940,6 +1942,8 @@ bool DecodeUniverse(const std::string& s, WorldLoader::Universe& out)
             si.charted = sj.value("charted", true);
             si.designation = sj.value("desig", std::string());
             si.discoverer = sj.value("found", std::string());
+            si.knownBy = sj.value("known", std::string());
+            si.chartedBy = sj.value("chartedBy", std::string());
             out.systems.push_back(si);
         }
     if (j.contains("links") && j["links"].is_array())

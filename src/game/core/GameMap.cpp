@@ -396,6 +396,9 @@ void Game::DrawMapSidebar(Ui::Layout& L)
         L.Text("Filled: charted. A ring alone: uncharted -- a gate leads there, and nothing "
                "more is known.",
                note);
+        L.Text("Charted: the public charts, and what you and your corporation have found. "
+               "Your finds are nobody else's.",
+               note);
         L.Text("The ring's colour is who holds the system; a triangle over it, that they "
                "would shoot you.",
                note);
@@ -848,9 +851,13 @@ void Game::DrawGalaxyMap()
         }
         if (cur)
             Ui::Text("you are here", (int)lx, lineY(3), notePx, Ui::TEXT_DIM);
+        // ...and whose charts it is on, when they are not the public ones (#431).
+        const char* whose = s.knownBy == "own"    ? "  -- your charts only"
+                            : s.knownBy == "corp" ? "  -- your corporation's charts"
+                                                  : "";
         if (detail && !s.discoverer.empty())
-            Ui::Text(TextFormat("found by %s", s.discoverer.c_str()), (int)lx, lineY(cur ? 4 : 3),
-                     notePx, Ui::TEXT_DIM);
+            Ui::Text(TextFormat("found by %s%s", s.discoverer.c_str(), whose), (int)lx,
+                     lineY(cur ? 4 : 3), notePx, Ui::TEXT_DIM);
         if (cur && CanNameHere())
         {
             if (desk_.KeyboardFocus().Holds(WIN_MAP, "name"))

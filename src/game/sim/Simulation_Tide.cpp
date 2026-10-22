@@ -601,6 +601,7 @@ int Simulation::OpenNext(int fromSlot, const std::string& by, const std::string&
                               : std::string()));
         }
         openedNow_.push_back(slot);
+        PublicChartsChanged();
     }
     // Word of it reaches the factions nearby, and the expeditions begin (S6).
     SendWordOfMouth(slot);
@@ -627,7 +628,11 @@ void Simulation::MaterializeOpened(int slot)
                 const nlohmann::json r = nlohmann::json::parse(back->second);
                 st.agg.givenName = r.value("name", std::string());
                 st.agg.discoverer = r.value("discoverer", std::string());
-                st.agg.visited = r.value("visited", st.agg.visited);
+                // Whose charts it was on (#431): a faction's stay public. A pilot's own
+                // charts of it are by its old id, which is slice 15's to translate.
+                FactionId by;
+                if (Factions::Find(r.value("chartedBy", std::string()), by))
+                    ChartBy(info.id, by);
                 const nlohmann::json& c = r.value("changes", nlohmann::json());
                 if (c.is_object())
                 {
@@ -1138,7 +1143,7 @@ void Simulation::CollapseMouth(RegionOpening& o)
     o.closesAt = 0.0;
     o.warned = false;
     CutMouth(o);
-    topologyChanged_ = true;
+    TopologyChanged();
     Announce("mouth", std::nullopt, o.mouth,
              "The mouth in " + SystemName(o.mouth) + " collapsed unanchored: the region beyond " +
                  "drifts, cut off, until the tide finds it again");
@@ -1161,7 +1166,7 @@ int Simulation::ReopenRegion(int slot, const std::string& by, const std::string&
     o->state = WorldRules::MouthRules().anchors ? "unstable" : "open";
     o->closesAt = o->state == "unstable" ? time_ + WorldRules::TideRules().mouthHours * HOUR : 0.0;
     RestoreMouth(*o);
-    topologyChanged_ = true;
+    TopologyChanged();
     Announce("tide", std::nullopt, o->mouth,
              "The tide found the drifting region again: a mouth reopened in " +
                  SystemName(o->mouth) +

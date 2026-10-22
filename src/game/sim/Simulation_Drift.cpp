@@ -291,7 +291,7 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
         if (const SystemState* st = SystemById(id))
             systems[id] = { { "name", st->agg.givenName },
                             { "discoverer", st->agg.discoverer },
-                            { "visited", st->agg.visited },
+                            { "chartedBy", st->agg.chartedBy },
                             { "changes", ChangesOf(*st) } };
     json history = json::array();
     for (const ChronicleEntry& e : chronicle_)
@@ -395,7 +395,7 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
     o->fading = false;
     if (!sealDir_.empty())
         std::remove(SealedPath(sealDir_, slot).c_str());  // the slot's file is the next region's
-    topologyChanged_ = true;
+    TopologyChanged();
     chartsChanged_ = true;
     Announce("drift", std::nullopt, mouth,
              "The region beyond " + SystemName(mouth) +
@@ -551,7 +551,7 @@ int Simulation::BringBack(int id, int slot, int fromSlot, const std::string& by,
     archives_.erase(a);
     if (!sealDir_.empty())
         std::remove(ArchivePath(sealDir_, id).c_str());
-    topologyChanged_ = true;
+    TopologyChanged();
 
     std::string names;
     for (const std::string& n : named)

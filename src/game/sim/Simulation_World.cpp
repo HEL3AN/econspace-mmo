@@ -129,8 +129,9 @@ void Simulation::SeedAggregate(SystemState& st, const WorldLoader::SystemInfo& i
     if (!info.owner.empty() && !Factions::Find(info.owner, a.controller))
         TraceLog(LOG_WARNING, "Universe: %s is owned by '%s', which is not a faction -- held by %s",
                  info.id.c_str(), info.owner.c_str(), Factions::Id(a.controller).c_str());
-    // Beyond a wormhole nobody has been; a civilisation's own space is charted (#342 S2).
-    a.visited = regionDocs_.count(info.id) == 0 || InCentre(info.id);
+    // Beyond a wormhole nobody has been; a civilisation's own space is charted (#342 S2) --
+    // on the public charts (#431), which a faction's charts add to (ChartBy).
+    a.publicChart = PublicByPlace(info.id);
     a.claimed = !info.owner.empty();
     SeedPresence(a);
     a.seeded = true;
@@ -995,19 +996,25 @@ bool Simulation::SaveWorld(const std::string& path) const
     }
     // ...and which regions opened, when and from where, and how the tide stands (S3).
     SaveGrowth(j);
+    SaveLegacyKnown(j);
     json galaxy = json::object();
     for (const auto& kv : systems_)
     {
         const SystemAggregate& a = kv.second.agg;
-        galaxy[kv.first] = {
-            { "traders", a.traders },       { "miners", a.miners },
-            { "police", a.police },         { "pirates", a.pirates },
-            { "security", a.security },     { "baseSecurity", a.baseSecurity },
-            { "prosperity", a.prosperity }, { "controller", Factions::Id(a.controller) },
-            { "visited", a.visited },       { "presence", PresenceJson(a.presence) },
-            { "claimed", a.claimed },       { "discoverer", a.discoverer },
-            { "name", a.givenName }
-        };
+        galaxy[kv.first] = { { "traders", a.traders },
+                             { "miners", a.miners },
+                             { "police", a.police },
+                             { "pirates", a.pirates },
+                             { "security", a.security },
+                             { "baseSecurity", a.baseSecurity },
+                             { "prosperity", a.prosperity },
+                             { "controller", Factions::Id(a.controller) },
+                             { "presence", PresenceJson(a.presence) },
+                             { "claimed", a.claimed },
+                             { "discoverer", a.discoverer },
+                             { "name", a.givenName } };
+        if (!a.chartedBy.empty())  // on the public charts by a faction's (#431)
+            galaxy[kv.first]["chartedBy"] = a.chartedBy;
         // What its market holds, by good id (#343): only where there is one. A field an older
         // build ignores, and an older file's markets start at their targets.
         if (kv.second.profile.markets > 0)
@@ -1266,10 +1273,25 @@ Save::Result Simulation::LoadWorld(const std::string& path)
         FactionId controller;
         if (gj.contains("controller") && FactionInSave(gj["controller"], controller))
             a.controller = controller;
-        a.visited = gj.value("visited", a.visited);
         a.claimed = gj.value("claimed", a.claimed);
         a.discoverer = gj.value("discoverer", a.discoverer);
         a.givenName = gj.value("name", a.givenName);
+        a.chartedBy.clear();
+        a.publicChart = PublicByPlace(sid);
+        FactionId by;
+        if (gj.contains("chartedBy") && FactionInSave(gj["chartedBy"], by))
+            ChartBy(sid, by);
+        // A world from before #431 said only `visited`, one flag for everybody. Translated
+        // as the design says: a system a faction holds goes on the public charts, charted by
+        // it; one nobody holds is its discoverer's own find, given to them at their next
+        // login (legacyKnown_). Space that was public by its place stays public.
+        if (gj.value("visited", false) && !a.publicChart)
+        {
+            if (a.claimed)
+                ChartBy(sid, a.controller);
+            else if (!a.discoverer.empty())
+                legacyKnown_[a.discoverer].insert(sid);
+        }
         if (gj.contains("stock") && gj["stock"].is_object())
             for (auto g = gj["stock"].begin(); g != gj["stock"].end(); ++g)
             {
@@ -1282,6 +1304,9 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             SeedPresence(a);
         a.seeded = true;
     }
+
+    // A pre-#431 world's finds not yet handed to their discoverers.
+    LoadLegacyKnown(j);
 
     // What factions knew (#295). An older save has none: the factions start again from
     // what they hold and what is next door, the first time they are stepped.
@@ -1503,6 +1528,8 @@ void Simulation::Reset()
     tidePasses_ = 0;
     archives_.clear();  // the save's too (S4)
     nextArchive_ = 1;
+    legacyKnown_.clear();  // a save's (#431)
+    PublicChartsChanged();
 }
 
 SystemState* Simulation::SystemById(const std::string& id)
@@ -1546,10 +1573,17 @@ Simulation::PlanRoute(const std::string& from, const std::string& to, Route::Pre
 
 WorldLoader::Universe Simulation::KnownUniverse() const
 {
+    return BuildIndex(nullptr);
+}
+
+WorldLoader::Universe Simulation::BuildIndex(const ClientSession* s) const
+{
+    // Charted for this index: public, or on the charts of the pilot it is built for (#431).
     auto charted = [&](const std::string& id)
     {
         auto it = systems_.find(id);
-        return it == systems_.end() || it->second.agg.visited;
+        return it == systems_.end() || it->second.agg.publicChart ||
+               (s != nullptr && Knows(*s, id));
     };
     std::set<std::string> frontier;  // uncharted, but a charted system has a gate to it
     for (const WorldLoader::SystemLink& l : universe_.links)
@@ -1567,12 +1601,19 @@ WorldLoader::Universe Simulation::KnownUniverse() const
         if (charted(info.id))
         {
             out.systems.push_back(info);
-            const SystemAggregate& a = systems_.at(info.id).agg;
-            out.systems.back().discoverer = a.discoverer;
+            auto st = systems_.find(info.id);
+            if (st == systems_.end())
+                continue;
+            const SystemAggregate&   a = st->second.agg;
+            WorldLoader::SystemInfo& si = out.systems.back();
+            si.discoverer = a.discoverer;
+            si.chartedBy = a.chartedBy;
+            if (!a.publicChart && s != nullptr)  // whose charts: theirs, or their corporation's
+                si.knownBy = s->known.count(ChartKey(info.id)) != 0 ? "own" : "corp";
             if (!a.givenName.empty())
             {
-                out.systems.back().designation = info.name;
-                out.systems.back().name = a.givenName;
+                si.designation = info.name;
+                si.name = a.givenName;
             }
         }
         else if (frontier.count(info.id))
@@ -1622,7 +1663,8 @@ bool Simulation::NameSystem(ClientSession& s, const std::string& name)
 
     const std::string designation = SystemName(s.systemId);
     a.givenName = name;
-    chartsChanged_ = true;  // everyone's index changes
+    chartsChanged_ = true;  // written at once, and everyone who knows it sees the name
+    PublicChartsChanged();
     // Its planets are called after it (#259). A client already here keeps the names its
     // layout gave it until it next enters; everyone after sees the new ones.
     WorldLoader::NamePlanets(it->second.entities, name);

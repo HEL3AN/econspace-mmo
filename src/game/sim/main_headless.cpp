@@ -627,6 +627,10 @@ struct HostClient
     double connectedAt = 0.0;  // the server's uptime when it connected, for `who` (#400)
     // A galaxy map changed since this client was last sent one (#411).
     bool galaxyOwed = false;
+    // What this pilot's map was last built from, and the galaxy statistics last queued for
+    // them (#431): each pilot's own, so each is compared on its own.
+    std::vector<long long> knowledgeSent;
+    std::string            galaxySent;
 };
 
 // A client with a quarter of the backlog cap still unsent is not reading (#411): an agent
@@ -958,22 +962,79 @@ static void SendUniverse(HostClient& hc, const Simulation& sim, NetStats& net)
         hc.conn->Send(f);
         hc.factionsSent = Factions::Count();
     }
-    // What is charted (#144), and the holes this pilot found (#342 S9).
+    // What this pilot has charted, their corporation and the public charts (#144, #431), and
+    // the holes they found (#342 S9).
     const ClientSession* s = sim.Session(hc.sessionId);
     const std::string    u =
         Proto::EncodeUniverse(s != nullptr ? sim.KnownUniverseFor(*s) : sim.KnownUniverse());
+    if (s != nullptr)
+        hc.knowledgeSent = sim.KnowledgeKey(*s);
     net.galaxies += (double)u.size();
     hc.conn->Send(u);
 }
 
-// ...and to everyone logged in, whenever the index changes: when a first ship charts a
-// system (#144). Knowledge is shared, so everyone gets the same index.
-static void BroadcastUniverse(std::vector<HostClient>& clients, const Simulation& sim,
-                              NetStats& net)
+// ...and again to each pilot whose map changed since they were last sent it (#431): a system
+// they or a corporation member charted, a faction's charts, a name, a region opening, a hole
+// they found. Each pilot's own, so only theirs goes out. Asked of every session only when
+// something anywhere changed (`stampSeen`), so a quiet galaxy costs one comparison a frame.
+// True when anyone was sent one: their galaxy statistics are due too.
+static bool SendKnowledge(std::vector<HostClient>& clients, const Simulation& sim, NetStats& net,
+                          long long& stampSeen)
 {
+    const long long stamp = sim.KnowledgeStamp();
+    if (stamp == stampSeen)
+        return false;
+    stampSeen = stamp;
+    bool sent = false;
     for (HostClient& hc : clients)
-        if (hc.sessionId != 0 && hc.conn)
-            SendUniverse(hc, sim, net);
+    {
+        const ClientSession* s = sim.Session(hc.sessionId);
+        if (s == nullptr || !hc.conn || sim.KnowledgeKey(*s) == hc.knowledgeSent)
+            continue;
+        SendUniverse(hc, sim, net);
+        sent = true;
+    }
+    return sent;
+}
+
+// The galaxy statistics, each pilot the systems on their charts (#144, #431). Built once for
+// the whole galaxy, then cut per pilot; pilots whose charts are the same share one encoding.
+// Queued only when it is not what the pilot was last sent (#341), and held back from a client
+// that is not reading (#411) unless `now` -- a region opening is said once, at once.
+static void SendGalaxies(std::vector<HostClient>& clients, const Simulation& sim, NetStats& net,
+                         bool now)
+{
+    if (clients.empty())
+        return;
+    const Proto::GalaxyState                      all = sim.GalaxyStats();
+    std::map<std::vector<long long>, std::string> made;
+    for (HostClient& hc : clients)
+    {
+        const ClientSession* s = sim.Session(hc.sessionId);
+        if (s == nullptr || !hc.conn)
+            continue;
+        // Pilots with no charts of their own share one encoding, per corporation: the key of
+        // their map without what they found (its third place), which then adds nothing.
+        std::vector<long long> key = sim.KnowledgeKey(*s);
+        auto                   own = s->known.lower_bound(Simulation::ChartKey(""));
+        if (own == s->known.end() || Simulation::ChartedSystemOf(*own).empty())
+            key[2] = 0;
+        auto it = made.find(key);
+        if (it == made.end())
+            it = made.emplace(std::move(key), Proto::EncodeGalaxy(sim.GalaxyStateFor(*s, all)))
+                     .first;
+        if (it->second != hc.galaxySent)
+        {
+            hc.galaxySent = it->second;
+            hc.galaxyOwed = true;
+        }
+        if (hc.galaxyOwed && (now || !BackedUp(hc)))
+        {
+            net.galaxies += (double)hc.galaxySent.size();
+            hc.conn->Send(hc.galaxySent);
+            hc.galaxyOwed = false;
+        }
+    }
 }
 
 // A logged-in player into the game (#3, #342 S2): a session at `start` -- or wherever their
@@ -1026,12 +1087,13 @@ static void JoinPlayer(Simulation& sim, HostClient& hc, const std::string& accou
     hc.wasDocked = s.IsDocked();
     SendUniverse(hc, sim, net);  // the index first: the layout names a system
     const std::string lay = LayoutFor(sim, s.systemId, s);
-    const std::string gal = Proto::EncodeGalaxy(sim.BuildGalaxyState());
+    const std::string gal = Proto::EncodeGalaxy(sim.BuildGalaxyState(s));
     net.layouts += (double)lay.size();
     net.galaxies += (double)gal.size();
     hc.conn->Send(lay);
     hc.layoutSystem = s.systemId;
     hc.conn->Send(gal);
+    hc.galaxySent = gal;
 }
 
 // How often each client is sent a snapshot. Not once per loop iteration, which is what it
@@ -1981,6 +2043,7 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
             return 1;
         }
     }
+
     // Who may come in (#400): allowlist.txt and bans.txt beside world.json. server.json says
     // whether the list is checked; without one, a public server or a list that exists does.
     Host::AccessList access;
@@ -2064,7 +2127,8 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
     auto          prev = clock::now();
     double        acc = 0.0;
     double        galaxyAcc = 0.0;  // galaxy-snapshot broadcast timer (map statistics)
-    std::string   lastGalaxy;       // what the last broadcast said
+    long long     knowledgeSeen = sim.KnowledgeStamp();  // what pilots' maps were built from
+    long long     corpChartsSaved = sim.Corporations().ChartsSerial();  // in corps.json (#431)
     double        metricsAcc = 0.0;
     double        accessCheckAcc = 0.0;  // allowlist.txt and bans.txt looked at (#400)
     double        adminAcc = 0.0;        // the admin channel looked at (#400)
@@ -2458,6 +2522,9 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                     told.line.text = o.Ok() ? o.told : "Corporation: " + o.told;
                     told.line.at = (long long)now;
                     out.push_back(told);
+                    // A pilot who founds or joins a corporation brings their charts (#431).
+                    if (o.Ok())
+                        sim.ShareCharts(*s);
                     if (o.Ok())
                     {
                         Log::Printf("corp: %s %s -> %s\n", hc.account.c_str(), act.verb.c_str(),
@@ -2591,17 +2658,13 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
             sim.SaveWorld(worldPath);
             sim.SaveDesigns(DesignsPath(worldPath));
             worldSaveAcc = 0.0;
-            BroadcastUniverse(clients, sim, net);
-            const std::string g = Proto::EncodeGalaxy(sim.BuildGalaxyState());
-            lastGalaxy = g;
-            for (HostClient& hc : clients)
-                if (hc.sessionId != 0 && hc.conn)
-                {
-                    net.galaxies += (double)g.size();
-                    hc.conn->Send(g);
-                    hc.galaxyOwed = false;
-                }
+            SendKnowledge(clients, sim, net, knowledgeSeen);
+            SendGalaxies(clients, sim, net, true);
         }
+        // Each pilot's map, when it changed (#431) -- a system charted, a hole found -- before
+        // a layout or a snapshot names a system it adds.
+        if (SendKnowledge(clients, sim, net, knowledgeSeen))
+            galaxyAcc = 1.0;  // and the statistics that now include it, straight away
 
         // Before the snapshots below, never after (#38).
         SendLayoutDeltas(clients, sim, net);
@@ -2621,13 +2684,7 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
             // still has its session until the cleanup below; it has no socket (#202).
             if (s == nullptr || !hc.conn)
                 continue;
-            // The roaming holes this pilot knows changed (#342 S9): their index, before a
-            // layout or a snapshot names where one leads.
-            if (s->routesChanged)
-            {
-                s->routesChanged = false;
-                SendUniverse(hc, sim, net);
-            }
+
             // A layout is not on the snapshot clock: it answers "you are somewhere else
             // now", and waiting 50 ms to say so would draw the old system for a moment.
             if (layoutDirty[hc.sessionId] || s->systemId != hc.layoutSystem)
@@ -2698,11 +2755,15 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                     online += hc.account + " ";
             const int  rev = sim.Corporations().Rev();
             const bool changed = rev != corpRev;
+            // ...and its charts (#431), written when they grow; nobody is retold anything.
+            const long long charts = sim.Corporations().ChartsSerial();
+            if ((changed || charts != corpChartsSaved) && !worldPath.empty() &&
+                !sim.Corporations().Save(CorpsPath(worldPath)))
+                Log::Errorf("Could not write %s.\n", CorpsPath(worldPath).c_str());
+            corpChartsSaved = charts;
             if (changed)
             {
                 corpRev = rev;
-                if (!worldPath.empty() && !sim.Corporations().Save(CorpsPath(worldPath)))
-                    Log::Errorf("Could not write %s.\n", CorpsPath(worldPath).c_str());
                 sim.RetellAllowLists();
             }
             if (changed || online != corpOnline)
@@ -2715,14 +2776,12 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
         galaxyAcc += frame;
         if (sim.TakeChartsChanged())
         {
-            BroadcastUniverse(clients, sim, net);
             // A system charted or named is a claim made once, for good: it is written now
             // rather than at the next checkpoint, so a crash cannot take it back (#308).
             // It happens a handful of times in a session, so the write costs nothing.
             sim.SaveWorld(worldPath);
             sim.SaveDesigns(DesignsPath(worldPath));
             worldSaveAcc = 0.0;
-            galaxyAcc = 1.0;  // and the statistics that now include it, straight away
         }
         // A design filed by a refit is written at once (#279): the ship that flies it is
         // paid for, and a crash before the checkpoint would leave it naming nothing.
@@ -2732,24 +2791,10 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
         {
             galaxyAcc = 0.0;
             // Only when it changed (#341): a client is sent the whole map at login, and a
-            // galaxy that has not moved in a second is the same map again.
-            const std::string g =
-                clients.empty() ? std::string() : Proto::EncodeGalaxy(sim.BuildGalaxyState());
-            if (!g.empty() && g != lastGalaxy)
-            {
-                lastGalaxy = g;
-                for (HostClient& hc : clients)
-                    hc.galaxyOwed = true;
-            }
-            // Owed rather than sent to a client that is not reading (#411): the newest map
-            // goes out once it is, and the ones in between were never worth queueing.
-            for (HostClient& hc : clients)
-                if (hc.galaxyOwed && hc.sessionId != 0 && hc.conn && !BackedUp(hc))
-                {
-                    net.galaxies += (double)lastGalaxy.size();
-                    hc.conn->Send(lastGalaxy);
-                    hc.galaxyOwed = false;
-                }
+            // galaxy that has not moved in a second is the same map again. Owed rather than
+            // sent to a client that is not reading (#411): the newest map goes out once it
+            // is, and the ones in between were never worth queueing.
+            SendGalaxies(clients, sim, net, false);
         }
 
         net.window += frame;
@@ -3135,7 +3180,7 @@ static int HostNameSelftest()
         // As RunHost does it: the index when it changed, the journal in the snapshot.
         if (sim.TakeChartsChanged())
         {
-            link.Server().Send(Proto::EncodeUniverse(sim.KnownUniverse()));
+            link.Server().Send(Proto::EncodeUniverse(sim.KnownUniverseFor(s)));
             indexSent = true;
         }
         Proto::Snapshot snap = sim.BuildSnapshot(s, s.systemId);
@@ -3184,9 +3229,8 @@ static int HostNameSelftest()
     sim.SaveWorld(path);
     Simulation again;
     SetupHostSim(again, dataDir, path);
-    bool kept = false;
-    for (const auto& si : again.KnownUniverse().systems)
-        kept = kept || (si.id == entry && si.name == "Selftest Haven");
+    const SystemState* keptIn = again.SystemById(entry);
+    const bool         kept = keptIn != nullptr && keptIn->agg.givenName == "Selftest Haven";
     std::remove(path.c_str());
 
     printf("Name selftest: in-flight %s, refusal-said %s (\"%s\"), named-for-all %s, "
