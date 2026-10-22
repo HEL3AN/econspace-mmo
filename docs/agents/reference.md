@@ -359,7 +359,7 @@ Search a wreck (a derelict observe marks 'lootable') and take what it pays. A wr
 | URI | Name | What |
 |---|---|---|
 | `econspace://system` | Current system | Everything visible where the ship is, in full |
-| `econspace://galaxy` | Galaxy | Every system on your charts -- the public charts, your own finds and your corporation's -- with its security, controller and gate links; the systems their gates lead to, uncharted; plus recent galactic news |
+| `econspace://galaxy` | Galaxy | Every system on your charts -- the public charts, your own finds and your corporation's -- with its security, controller and gate links, and where your corporation's front is open: another side holds it and you or nobody hold a system next door, so a claim may be laid or a structure besieged there (never a limit on guns); the systems their gates lead to, uncharted; plus recent galactic news |
 
 ## Prompts
 

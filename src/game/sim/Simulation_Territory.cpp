@@ -118,20 +118,23 @@ void Simulation::StepClaims(bool settling)
 
         // The challenger: of the parties with a claim here, other than the holder, the one
         // with the most influence. A faction challenges this way only a corporation's system;
-        // between factions their own rule stands.
+        // between factions their own rule stands. And a claim is laid only where the side's
+        // front is open (#431 D3): a held system is taken from next door, so a core whose every
+        // neighbour is its holder's own falls only once a border system has.
         std::string bestKey;
         float       best = 0.0f;
         bool        isFaction = false;
         FactionId   bestFaction = Factions::Unaffiliated();
         for (const std::string& id : m.corpClaims)
-            if (id != a.holderCorp && (bestKey.empty() || m.corp.at(id) > best))
+            if (id != a.holderCorp && (bestKey.empty() || m.corp.at(id) > best) &&
+                FrontOpen(kv.first, id))
             {
                 bestKey = id;
                 best = m.corp.at(id);
             }
         if (!a.holderCorp.empty())
             for (FactionId f : st.profile.outposts)
-                if (bestKey.empty() || m.faction[f] > best)
+                if ((bestKey.empty() || m.faction[f] > best) && FrontOpen(kv.first, f))
                 {
                     bestKey = InfluenceMap::Key(f);
                     best = m.faction[f];
@@ -191,6 +194,39 @@ void Simulation::StepClaims(bool settling)
         if (!settling)
             Announce("claim", std::nullopt, kv.first, text);
     }
+}
+
+std::string Simulation::HolderOf(const SystemAggregate& a)
+{
+    if (!a.holderCorp.empty())
+        return a.holderCorp;
+    return a.claimed ? InfluenceMap::Key(a.controller) : std::string();
+}
+
+bool Simulation::FrontOpen(const std::string& system, const std::string& side) const
+{
+    const auto it = systems_.find(system);
+    if (it == systems_.end())
+        return false;
+    const std::string holder = HolderOf(it->second.agg);
+    if (holder.empty() || holder == side)
+        return true;
+    // A faction's allies open its front as its own holdings do; a corporation has none yet.
+    FactionId  f = Factions::Unaffiliated();
+    const bool faction = side.rfind("f:", 0) == 0 && Factions::Find(side.substr(2), f);
+    for (const std::string& n : Neighbors(system))
+    {
+        const auto nb = systems_.find(n);
+        if (nb == systems_.end())
+            continue;
+        const SystemAggregate& a = nb->second.agg;
+        const std::string      k = HolderOf(a);
+        if (k.empty() || k == side)
+            return true;
+        if (faction && a.holderCorp.empty() && Factions::Relation(f, a.controller) == Stance::Ally)
+            return true;
+    }
+    return false;
 }
 
 std::vector<std::string> Simulation::HeldBy(const std::string& corpId) const

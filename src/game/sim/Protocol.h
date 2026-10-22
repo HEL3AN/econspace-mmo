@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    51;  // 51: PvP under the law (#431 slice 10): another pilot's ship says whether they are
+    52;  // 52: a galaxy stat says whether the recipient's corporation's front is open there
+         // (#431 slice 8);
+         // 51: PvP under the law (#431 slice 10): another pilot's ship says whether they are
          // flagged a criminal and their security status, and the player their own status and
          // what is left of their flag;
          // 50: a structure's layout carries when its damage was set and whether it mends, and
@@ -645,6 +647,10 @@ struct GalaxySystemStat
     // fee (Goods::Rules().fee) -- which is what it is wherever no corporation holds.
     float fee = -1.0f;
     float FeeOr(float standard) const { return fee < 0.0f ? standard : fee; }
+    // The front line (#431 D3): another side holds it, and the recipient's corporation may
+    // besiege or lay a claim there -- it holds a system next door, or one next door is nobody's.
+    // False for a pilot in no corporation, and wherever nobody else holds.
+    bool front = false;
 };
 
 // Galaxy snapshot: statistics for the systems on the recipient's charts + a news feed (#431:

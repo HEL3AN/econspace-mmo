@@ -881,3 +881,84 @@ TEST_CASE("an outpost mends at its tier's rate, the same where nobody is as wher
     }
     CHECK(left[0] == doctest::Approx(left[1]));
 }
+
+// --- The front line (#431 D3, slice 8) ------------------------------------------------------
+
+TEST_CASE("a core with only its holder's neighbours is not besieged; once a border falls, it is "
+          "(#431 D3)")
+{
+    auto sim = World();
+    // A Guild system `core` with a Guild outpost, every system the Guild's but one: the
+    // pirates' `den`, two jumps away through `border`.
+    std::string core, border, den;
+    for (const auto& kv : sim->Systems())
+    {
+        const auto& near = sim->Neighbors(kv.first);
+        for (const std::string& b : near)
+            for (const std::string& p : sim->Neighbors(b))
+                if (den.empty() && p != kv.first &&
+                    std::find(near.begin(), near.end(), p) == near.end())
+                {
+                    core = kv.first;
+                    border = b;
+                    den = p;
+                }
+        if (!den.empty())
+            break;
+    }
+    REQUIRE_FALSE(den.empty());
+    for (auto& kv : sim->Systems())
+    {
+        SystemAggregate& a = kv.second.agg;
+        a.claimed = true;
+        a.controller = kv.first == den ? Fac::Pirates() : Fac::TradersGuild();
+    }
+    const Simulation::OutpostSpot spot =
+        sim->FindOutpostSpot(Fac::TradersGuild(), Outposts::Purpose::Open, border, core);
+    REQUIRE(spot.found);
+    const Blueprint* bp = Blueprints::Find(Outposts::BLUEPRINT);
+    auto t = std::make_unique<Structure>(spot.at, 0.0f, "Traders Guild Outpost", bp->archetype);
+    t->SetBlueprint(bp->id);
+    REQUIRE(sim->AddStatic(core, std::move(t), Outposts::OwnerOf(Fac::TradersGuild())) != 0);
+
+    const float cap = Factions::TemperamentOf(Fac::Pirates()).capacity;
+    const float guild = Factions::TemperamentOf(Fac::TradersGuild()).capacity;
+    // The pirates with strength and stock to spare, the core's garrison thin, and the pirates
+    // knowing it -- for `passes`, or until they lay siege.
+    auto tempt = [&](int passes)
+    {
+        for (int pass = 0; pass < passes && SiegeBy(*sim, Fac::Pirates()) == nullptr; pass++)
+        {
+            for (auto& kv : sim->Systems())
+            {
+                const bool theirs =
+                    kv.second.agg.claimed && kv.second.agg.controller == Fac::Pirates();
+                kv.second.agg.presence[Fac::Pirates()] = theirs ? cap : 0.0f;
+                kv.second.agg.presence[Fac::TradersGuild()] = kv.first == core ? 1.0f
+                                                              : theirs         ? 0.0f
+                                                                               : guild;
+                if (kv.first != core)
+                    sim->MindOf(Fac::Pirates()).intel.erase(kv.first);
+            }
+            sim->MindOf(Fac::Pirates()).stock = Simulation::OutpostCost() * 2.0f;
+            sim->MindOf(Fac::TradersGuild()).stock = 1.0f;  // its upkeep, not a siege
+            sim->MindOf(Fac::Pirates()).intel[core] = sim->Observe(*sim->SystemById(core));
+            Pass(*sim);
+        }
+    };
+
+    // Behind the line: the core borders only the Guild's systems.
+    CHECK_FALSE(sim->FrontOpen(core, Fac::Pirates()));
+    tempt(3 * PERIOD);
+    CHECK(SiegeBy(*sim, Fac::Pirates()) == nullptr);
+    CHECK(sim->SystemById(core)->agg.controller == Fac::TradersGuild());
+
+    // The border falls to the pirates, and the core is on the front line.
+    sim->SystemById(border)->agg.controller = Fac::Pirates();
+    CHECK(sim->FrontOpen(core, Fac::Pirates()));
+    tempt(3 * PERIOD);
+    const Plan* p = SiegeBy(*sim, Fac::Pirates());
+    REQUIRE(p != nullptr);
+    CHECK(p->target == core);
+    CHECK(p->against == Fac::TradersGuild());
+}

@@ -1892,6 +1892,8 @@ std::string EncodeGalaxy(const GalaxyState& s)
             gj["hold"] = { g.holder, g.holderTicker, g.holderName };
         if (g.fee >= 0.0f)
             gj["fee"] = g.fee;
+        if (g.front)
+            gj["front"] = true;
         sys.push_back(std::move(gj));
     }
     j["sys"] = sys;
@@ -1928,6 +1930,7 @@ bool DecodeGalaxy(const std::string& s, GalaxyState& out)
             if (fee != gj.end() && fee->is_number() && fee->get<double>() >= 0.0 &&
                 fee->get<double>() <= 1.0)
                 g.fee = fee->get<float>();
+            g.front = gj.value("front", false);
             out.systems.push_back(g);
         }
     out.events = j.value("news", std::vector<std::string>{});

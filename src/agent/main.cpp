@@ -266,6 +266,9 @@ std::string DescribeGalaxy()
                                   std::round(g.FeeOr(0.0f) * 1000.0f) / 10.0f);
                     line += buf;
                 }
+                // The front line (#431 D3): your corporation may lay a claim or besiege here.
+                if (g.front)
+                    line += "   front open to your corporation";
                 break;
             }
         if (si.id == g_session.Snapshot().systemId)
@@ -2108,9 +2111,11 @@ Rpc::Json ResourcesList()
                      { "name", "Galaxy" },
                      { "description",
                        "Every system on your charts -- the public charts, your own finds and "
-                       "your corporation's -- with its security, controller and gate links; "
-                       "the systems their gates lead to, uncharted; plus recent galactic "
-                       "news" },
+                       "your corporation's -- with its security, controller and gate links, "
+                       "and where your corporation's front is open: another side holds it and "
+                       "you or nobody hold a system next door, so a claim may be laid or a "
+                       "structure besieged there (never a limit on guns); the systems their "
+                       "gates lead to, uncharted; plus recent galactic news" },
                      { "mimeType", "text/plain" } } });
 }
 

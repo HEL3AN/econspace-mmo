@@ -417,6 +417,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   so no faction's garrison, income or law is there. The faction rule in `StepControl` skips
   such a system; `StepClaims` contests it. A market's fee is `FeeAt`'s: the holder's tax, or
   the market's owner (a player's market pays its owner's corporation or the pilot, #438).
+  A held system is besieged or claimed only from next door (#431 D3, `FrontOpen(system, side)`,
+  side = a faction's `InfluenceMap::Key` or a corporation's id): a gate neighbour the side or a
+  faction's ally holds, or nobody's. The faction siege planner, the Anchor siege, `StepControl`
+  and `StepClaims` all read it; a ship's guns never do. Roaming holes are not neighbours, so
+  they open no front.
 - **A ship flies a design, and a player's design is named by its content** (#279). A refit
   files `Ships::PlayerFit`'s design under `Ships::ContentId` and the ship flies that id; the
   snapshot carries only the id, so the host sends a `DesignDef` before the first snapshot
