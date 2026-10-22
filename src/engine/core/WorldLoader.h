@@ -3,6 +3,7 @@
 #include "entities/Entity.h"
 #include "raylib.h"
 #include <nlohmann/json_fwd.hpp>
+#include <map>
 #include <vector>
 #include <memory>
 #include <string>
@@ -40,6 +41,9 @@ struct Sighting
     double                  at = -1.0;  // below zero: never observed
     std::vector<SeenObject> seen;
     int                     more = 0;  // ...stood there beyond MAX_SEEN
+    // Seen before its region drifted away and came back renamed (#431 slice 15, M3): the
+    // geography holds, what stood there must be looked at again. A fresh sighting clears it.
+    bool outdated = false;
 
     bool Observed() const { return at >= 0.0; }
     // The same things stood there: the date alone is not news.
@@ -48,6 +52,10 @@ struct Sighting
 // Compact JSON, for the account, corps.json and the wire alike.
 nlohmann::json ToJson(const Sighting& s);
 Sighting       SightingFrom(const nlohmann::json& j);
+// A region's systems renamed (#431 slice 15): each sighting kept by a system of `ids` moves
+// to its new id, and is marked outdated when `outdate`. Anything else stays as it was.
+void RenameSightings(std::map<std::string, Sighting>&          sightings,
+                     const std::map<std::string, std::string>& ids, bool outdate);
 
 // A system's record in the galaxy index (data/universe.json).
 struct SystemInfo
@@ -77,6 +85,9 @@ struct SystemInfo
     // aggregate initialised without them is not a missing initializer.)
     Sighting observed{};
     bool     observedLive{ false };
+    // Its region drifted away (#431 slice 15, M3): cut off from the galaxy, or gone into the
+    // archive. Kept on the charts of whoever knew it, and no way there until it comes back.
+    bool drifted{ false };
 };
 
 // A link between two systems (for drawing on the star map).

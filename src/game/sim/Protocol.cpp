@@ -2032,6 +2032,8 @@ std::string EncodeUniverse(const WorldLoader::Universe& u)
             sys.back()["seen"] = WorldLoader::ToJson(si.observed);
         if (si.observedLive)
             sys.back()["live"] = true;
+        if (si.drifted)  // cut off, or in the archive (#431 slice 15)
+            sys.back()["drifted"] = true;
     }
     json links = json::array();
     for (const WorldLoader::SystemLink& l : u.links)
@@ -2070,6 +2072,7 @@ bool DecodeUniverse(const std::string& s, WorldLoader::Universe& out)
             si.chartedBy = sj.value("chartedBy", std::string());
             si.observed = WorldLoader::SightingFrom(sj.value("seen", json()));
             si.observedLive = sj.value("live", false);
+            si.drifted = sj.value("drifted", false);
             out.systems.push_back(si);
         }
     if (j.contains("links") && j["links"].is_array())

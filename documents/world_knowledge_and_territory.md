@@ -580,6 +580,15 @@ are marked; slices without one may go in any order.
       ids translated and marked outdated until re-observed.
     - *Tests:* archive and return: the pilot still knows the geography under the new ids, and
       its observed layer is outdated.
+    - *Built:* a drifted region's systems say `drifted` in the pilot's index; an archived
+      region's charts are renamed into `a<archive>:<id>` (no system is called that, and its slot
+      may take a region whose ids are the same) and shown, drifted and unlinked to the galaxy,
+      from the archive's own geography while the slot is empty. On return they are renamed to
+      the new ids and every sighting of them is `outdated` until looked at again. The world
+      keeps the renamings (`archive.renames` in world.json); sessions and corporations are
+      renamed at once, and an account saves how many it has seen (`chartRenames`) and is read
+      through the rest. The map draws such a system faint, and the map and econagent's galaxy
+      resource say "drifted away" and "before it drifted: outdated".
 16. **Chart trading in the map UI (design only).** *Depends on 1, 14.*
     - *Scope:* a design document and an owner discussion; no code. What is sold (systems,
       layers, a region), to whom (factions, players), at what price and with what proof.

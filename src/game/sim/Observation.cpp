@@ -982,7 +982,11 @@ std::string DescribeObserved(const WorldLoader::SystemInfo& si, double now)
         what = "nothing standing";
     if (markets > 0)
         what += Fmt(" (%d %s)", markets, markets == 1 ? "market" : "markets");
-    return what + (si.observedLive ? "  -- live" : "  -- as of " + DescribeAge(now - o.at));
+    if (si.observedLive)
+        return what + "  -- live";
+    // Seen before its region drifted away and came back (#431 slice 15): to be looked at again.
+    return what + "  -- as of " + DescribeAge(now - o.at) +
+           (o.outdated ? ", before it drifted: outdated" : "");
 }
 
 std::string Compass(float dx, float dy)
@@ -1008,6 +1012,11 @@ std::string ChartsOf(const WorldLoader::SystemInfo& si)
     if (!si.discoverer.empty())
         out += (out.empty() ? "" : ", ") + std::string("found by ") + si.discoverer;
     return out;
+}
+
+std::string DriftOf(const WorldLoader::SystemInfo& si)
+{
+    return si.drifted ? "drifted away: no way there" : std::string();
 }
 
 std::string Describe(const View& view, Detail detail)

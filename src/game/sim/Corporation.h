@@ -236,6 +236,10 @@ public:
     // always taken; only a change of what stood there is news to its members' maps.
     void Sight(const std::string& id, const std::string& systemId,
                const WorldLoader::Sighting& now);
+    // A region's systems renamed (#431 slice 15): into the archive when it drifted away, out
+    // of it when it came back into another slot. Every corporation's charts and sightings of
+    // a system of `ids` move to its new id; what they saw is outdated when `outdate`.
+    void RenameCharts(const std::map<std::string, std::string>& ids, bool outdate);
 
     // corps.json beside the world (Save::CORPS_VERSION). A missing file is no corporations;
     // one from a later build is refused rather than read and written back without what it

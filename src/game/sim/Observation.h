@@ -142,6 +142,9 @@ std::string DescribeScan(const View& view);
 // map, observe and the galaxy resource all say alike: "charted by Syndicate", "found by
 // Vega", or both when a pilot was there before a faction. Empty for a centre's own space.
 std::string ChartsOf(const WorldLoader::SystemInfo& si);
+// A system whose region drifted away (#431 slice 15, M3), in the same words everywhere:
+// "drifted away: no way there". Empty for any other.
+std::string DriftOf(const WorldLoader::SystemInfo& si);
 
 // Who owns the station the player is docked at, from the layout. Independent when not
 // docked or the layout does not say -- which is also what the server assumes.

@@ -406,6 +406,9 @@ void Game::DrawMapSidebar(Ui::Layout& L)
                "or your corporation last saw it, dimmed, with how long ago -- live only where "
                "you, a member or a structure of yours is.",
                note);
+        L.Text("Faint: its region drifted away. You keep its charts, and there is no way there "
+               "until it comes back -- renamed, and what stood there to be seen again.",
+               note);
         L.Text("The ring's colour is who holds the system; a triangle over it, that they "
                "would shoot you.",
                note);
@@ -771,7 +774,7 @@ void Game::DrawGalaxyMap()
             const float     detailW = fmaxf(nameW, u(s.charted ? 190.0f : 80.0f));
             const int       lines = !s.charted ? 1
                                     : cur      ? (CanNameHere() ? 6 : 5)
-                                               : (Obs::ChartsOf(s).empty() ? 3 : 4);
+                                               : (Obs::ChartsOf(s).empty() && !s.drifted ? 3 : 4);
             const float     bottom = (float)lineY(lines) + line - nameY;
             const Rectangle nameBox{ p.x + gapX, nameY, nameW, (float)namePx + u(2.0f) };
             const Rectangle leftBox{ p.x - gapX - nameW, nameY, nameW, (float)namePx + u(2.0f) };
@@ -808,7 +811,11 @@ void Game::DrawGalaxyMap()
             }
             continue;
         }
-        DrawCircleV(p, u(cur ? 10.0f : 7.0f), cur ? Ui::ACCENT : Ui::TEXT_DIM);
+        // A drifted region's (#431 slice 15): kept on the charts, faint, no way there.
+        DrawCircleV(p, u(cur ? 10.0f : 7.0f),
+                    cur         ? Ui::ACCENT
+                    : s.drifted ? Fade(Ui::TEXT_DIM, 0.35f)
+                                : Ui::TEXT_DIM);
         if (cur)
             DrawCircleLines((int)p.x, (int)p.y, u(16.0f), Fade(Ui::ACCENT, 0.6f));
         if (named)
@@ -894,10 +901,12 @@ void Game::DrawGalaxyMap()
                             : s.knownBy == "corp" ? "  -- your corporation's charts"
                                                   : "";
         // Whose charts made it public, and who got here first: "charted by Syndicate".
-        const std::string charts = detail ? Obs::ChartsOf(s) : std::string();
+        std::string charts = detail ? Obs::ChartsOf(s) : std::string();
+        if (detail && s.drifted)  // ...and that its region drifted away (#431 slice 15)
+            charts += (charts.empty() ? "" : ", ") + Obs::DriftOf(s);
         if (!charts.empty())
             Ui::Text(TextFormat("%s%s", charts.c_str(), whose), (int)lx, lineY(cur ? 5 : 4), notePx,
-                     Ui::TEXT_DIM);
+                     s.drifted ? t.colors.warn : Ui::TEXT_DIM);
         if (cur && CanNameHere())
         {
             if (desk_.KeyboardFocus().Holds(WIN_MAP, "name"))

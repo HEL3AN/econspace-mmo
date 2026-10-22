@@ -1819,6 +1819,9 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
     for (const auto& [system, sighting] : s.sightings)
         observed[system] = WorldLoader::ToJson(sighting);
     j["observed"] = observed;
+    // ...and how many renamings of charts it has been through (#431 slice 15), so a load reads
+    // it through the ones after. Ignored by an older build: no version bump.
+    j["chartRenames"] = chartRenames_.size();
     if (!s.accountName.empty())
         designs_.SetUsers(s.accountName, named);
 
@@ -1970,33 +1973,48 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
 
     // What they found (#346): this world's, and only what is still there -- a hole that has
     // closed since is no longer a way anywhere.
-    s.known.clear();
+    // Read through the renamings since it was saved (#431 slice 15): a region that drifted
+    // into the archive, or came back from it into another slot, since.
+    std::set<std::string>                        scanned;
+    std::map<std::string, WorldLoader::Sighting> seenThere;
     if (!foreign && j.contains("scanned") && j["scanned"].is_array())
         for (const json& k : j["scanned"])
-        {
-            if (!k.is_string())
-                continue;
-            const std::string  key = k.get<std::string>();
-            const bool         hole = key.rfind("hole:", 0) == 0;
-            const RoamingHole* h = hole ? HoleById(key.substr(5)) : nullptr;
-            // A system on their charts (#431) that is on everyone's now needs no key.
-            const std::string chart = ChartedSystemOf(key);
-            if (!chart.empty() ? HasSystem(chart) && !OnPublicCharts(chart)
-                : hole         ? (h != nullptr && h->closesAt > time_)
-                               : HasSystem(key.substr(0, key.find('/'))))
-                s.known.insert(key);
-        }
-    // ...and what they saw there (#431 slice 14): this world's, of systems it still has.
-    s.sightings.clear();
-    s.liveSystems.clear();
+            if (k.is_string())
+                scanned.insert(k.get<std::string>());
     const json observed = j.value("observed", json());
     if (!foreign && observed.is_object())
         for (auto o = observed.begin(); o != observed.end(); ++o)
         {
             WorldLoader::Sighting seen = WorldLoader::SightingFrom(o.value());
-            if (seen.Observed() && HasSystem(o.key()))
-                s.sightings[o.key()] = std::move(seen);
+            if (seen.Observed())
+                seenThere[o.key()] = std::move(seen);
         }
+    const json   seenRenames = j.value("chartRenames", json());
+    const size_t renamesSeen =
+        seenRenames.is_number_unsigned() ? seenRenames.get<size_t>() : (size_t)0;
+    for (size_t i = renamesSeen; i < chartRenames_.size(); ++i)
+        RenameKnowledge(scanned, seenThere, chartRenames_[i]);
+    // A system of the galaxy, or one of the archive's (slice 15): kept, marked drifted.
+    auto there = [&](const std::string& id) { return HasSystem(id) || IsArchivedChart(id); };
+
+    s.known.clear();
+    for (const std::string& key : scanned)
+    {
+        const bool         hole = key.rfind("hole:", 0) == 0;
+        const RoamingHole* h = hole ? HoleById(key.substr(5)) : nullptr;
+        // A system on their charts (#431) that is on everyone's now needs no key.
+        const std::string chart = ChartedSystemOf(key);
+        if (!chart.empty() ? IsArchivedChart(chart) || (HasSystem(chart) && !OnPublicCharts(chart))
+            : hole         ? (h != nullptr && h->closesAt > time_)
+                           : there(key.substr(0, key.find('/'))))
+            s.known.insert(key);
+    }
+    // ...and what they saw there (#431 slice 14): this world's, of systems it still has.
+    s.sightings.clear();
+    s.liveSystems.clear();
+    for (auto& [system, seen] : seenThere)
+        if (there(system))
+            s.sightings[system] = std::move(seen);
 
     // Where they were (#49). A saved system that the galaxy no longer has -- an edited
     // universe, an older save -- leaves the player wherever the session was created
@@ -2005,6 +2023,13 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
     {
         const auto& pl = j["place"];
         std::string sys = pl.value("system", std::string());
+        // Left in a region that went into the archive and came back since: where it is now.
+        for (size_t i = renamesSeen; i < chartRenames_.size(); ++i)
+        {
+            const auto to = chartRenames_[i].ids.find(sys);
+            if (to != chartRenames_[i].ids.end())
+                sys = to->second;
+        }
         if (!sys.empty() && HasSystem(sys))
         {
             s.systemId = sys;

@@ -1,14 +1,17 @@
 #include <doctest/doctest.h>
 
 #include "core/Archetype.h"
+#include "core/Blueprint.h"
 #include "core/Faction.h"
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
 #include "entities/Structure.h"
+#include "gen/Galaxy.h"
 #include "gen/Region.h"
 #include "sim/Protocol.h"
 #include "sim/SaveSchema.h"
 #include "sim/Simulation.h"
+#include "sim/WorldRules.h"
 
 #include "temp_dir.h"
 
@@ -568,4 +571,184 @@ TEST_CASE("what a pilot saw is kept with the account and corporation, and bounde
     REQUIRE(corp->sightings.count(r.entry) == 1);
     CHECK(corp->sightings.at(r.entry).seen.size() == WorldLoader::Sighting::MAX_SEEN);
     CHECK(corp->sightings.at(r.entry).at == doctest::Approx(mine.at));
+}
+
+// --- Drift marks (#431 slice 15, M3) ----------------------------------------------------------
+
+namespace
+{
+
+Gen::WorldParams GalaxyParams(uint64_t seed)
+{
+    Gen::WorldParams p;
+    p.seed = seed;
+    p.centres = 3;
+    p.owners = Factions::MajorIds();
+    p.pirates = Factions::Id(Factions::Pirates());
+    p.unaffiliated = Factions::Id(Factions::Unaffiliated());
+    return p;
+}
+
+// A whole generated world of `seed`, its regions sealed under `seal`.
+void MakeGalaxy(Simulation& sim, uint64_t seed, const std::string& seal)
+{
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    REQUIRE(Blueprints::Load(std::string(TEST_DATA_DIR) + "blueprints.json"));
+    sim.SetSealDir(seal);
+    REQUIRE(sim.OpenGalaxy(GalaxyParams(seed), TEST_DATA_DIR, {}));
+    sim.InitGalaxy();
+    sim.MaterializeAllSystems(std::string(TEST_DATA_DIR) + "systems/");
+}
+
+// The world saved at `path` read back into `sim`, as a restart does.
+void Reopen(Simulation& sim, uint64_t seed, const std::string& seal, const std::string& path)
+{
+    Simulation::WorldHeader h;
+    REQUIRE(Simulation::ReadWorldHeader(path, h));
+    sim.SetSealDir(seal);
+    REQUIRE(sim.OpenGalaxy(GalaxyParams(seed), TEST_DATA_DIR, h.log));
+    REQUIRE(sim.LoadWorld(path) == Save::Result::Ok);
+    sim.MaterializeAllSystems(std::string(TEST_DATA_DIR) + "systems/");
+}
+
+// Someone at `system` long enough to see it, then back at `home`.
+void Visit(Simulation& sim, ClientSession& s, const std::string& system, const std::string& home)
+{
+    sim.ServerEnterSystem(s, system, home);
+    Pass(sim);
+    sim.ServerEnterSystem(s, home, system);
+    Pass(sim);
+}
+
+}  // namespace
+
+TEST_CASE("a region's charts drift with it into the archive and come back under its new ids, "
+          "outdated (#431 slice 15)")
+{
+    const TempDir     tmp;
+    const std::string seal = tmp.MakeDir("regions");
+    const std::string world = tmp.Path("world.json");
+    const std::string corps = tmp.Path("corps.json");
+    const std::string accounts = tmp.Path("accounts") + "/";
+    std::filesystem::create_directories(accounts);
+    WorldRules::Archive rules = WorldRules::ArchiveRules(), keep = rules;
+    rules.returnChance = 1.0;  // the next mouth from its parent brings it back
+
+    int         frontier = -1, parent = -1, archive = -1;
+    std::string mouth, system;
+    {
+        Simulation a;
+        MakeGalaxy(a, 9, seal);
+        a.SetWorldId("w1");
+        for (const Simulation::RegionOpening& o : a.OpeningLog())
+            if (o.parent >= 0 && frontier < 0)
+                frontier = o.slot;
+        REQUIRE(frontier >= 0);
+        parent = a.OpeningOf(frontier)->parent;
+        mouth = a.OpeningOf(frontier)->mouth;
+        for (const std::string& id : a.RegionSystems(frontier))
+            if (system.empty() && !a.OnPublicCharts(id))
+                system = id;
+        REQUIRE_FALSE(system.empty());
+
+        // Ann and Bo are a corporation; Dee is on her own, and offline when it goes.
+        ClientSession& ann = Pilot(a, "ann", mouth);
+        Pilot(a, "bo", mouth);
+        Corp(a, "ann", "bo");
+        ClientSession& dee = Pilot(a, "dee", mouth);
+        Visit(a, ann, system, mouth);
+        Visit(a, dee, system, mouth);
+        REQUIRE(a.Knows(ann, system));
+        REQUIRE(ann.sightings.count(system) == 1);
+        REQUIRE(a.SaveAccount(dee, accounts + "account_dee.json"));
+        a.DestroySession(dee.id);
+
+        // Into the dark: kept by whoever knew it, under its archived id, marked drifted.
+        std::string why;
+        archive = a.ArchiveRegionNow(frontier, why);
+        REQUIRE(archive >= 0);
+        const std::string gone = Simulation::ArchivedId(archive, system);
+        CHECK_FALSE(a.HasSystem(system));
+        CHECK(ann.known.count(Simulation::ChartKey(gone)) == 1);
+        CHECK(ann.known.count(Simulation::ChartKey(system)) == 0);
+        CHECK(ann.sightings.count(gone) == 1);
+        const Corps::Corp* corp = a.Corporations().Of("bo");
+        REQUIRE(corp != nullptr);
+        CHECK(corp->charts.count(gone) == 1);
+        const WorldLoader::SystemInfo there = MapOf(a, ann, gone);
+        CHECK(there.charted);
+        CHECK(there.drifted);
+        CHECK(there.knownBy == "own");
+        CHECK_FALSE(there.observed.outdated);
+        // ...and nobody who did not know it sees it.
+        ClientSession& eve = Pilot(a, "eve", mouth);
+        CHECK(In(a.KnownUniverseFor(eve), gone) == nullptr);
+        // The wire says so.
+        WorldLoader::Universe got;
+        REQUIRE(Proto::DecodeUniverse(Proto::EncodeUniverse(a.KnownUniverseFor(ann)), got));
+        REQUIRE(In(got, gone) != nullptr);
+        CHECK(In(got, gone)->drifted);
+
+        // A drifted region's charts survive a restart.
+        a.PauseGrowth(true);
+        REQUIRE(a.SaveAccount(ann, accounts + "account_ann.json"));
+        REQUIRE(a.SaveWorld(world));
+        REQUIRE(a.Corporations().Save(corps));
+    }
+
+    Simulation b;
+    Reopen(b, 9, seal, world);
+    REQUIRE(b.Corporations().Load(corps) == Save::Result::Ok);
+    const std::string gone = Simulation::ArchivedId(archive, system);
+    ClientSession&    ann = Pilot(b, "ann", mouth);
+    REQUIRE(b.LoadAccount(ann, accounts + "account_ann.json") == Save::Result::Ok);
+    CHECK(ann.known.count(Simulation::ChartKey(gone)) == 1);
+    CHECK(MapOf(b, ann, gone).drifted);
+
+    // It comes back into another slot: the same geography under new ids, and what was seen
+    // standing there outdated until somebody looks again.
+    WorldRules::SetArchiveRules(rules);
+    std::string why;
+    const int   slot = b.OpenMouthNow(parent, why);
+    WorldRules::SetArchiveRules(keep);
+    REQUIRE(slot >= 0);
+    REQUIRE(b.OpeningOf(slot)->archive == archive);
+    const std::string back = "r" + std::to_string(slot) + system.substr(system.find('-'));
+    REQUIRE(b.HasSystem(back));
+
+    CHECK(b.Knows(ann, back));
+    CHECK(ann.known.count(Simulation::ChartKey(gone)) == 0);
+    WorldLoader::SystemInfo there = MapOf(b, ann, back);
+    CHECK(there.charted);
+    CHECK_FALSE(there.drifted);
+    CHECK(there.observed.Observed());
+    CHECK(there.observed.outdated);
+
+    // Her corporation's charts translate too.
+    const Corps::Corp* corp = b.Corporations().Of("bo");
+    REQUIRE(corp != nullptr);
+    CHECK(corp->charts.count(back) == 1);
+    CHECK(corp->charts.count(gone) == 0);
+    REQUIRE(corp->sightings.count(back) == 1);
+    CHECK(corp->sightings.at(back).outdated);
+
+    // Dee, offline through all of it, is read through both renamings.
+    ClientSession& dee = Pilot(b, "dee", mouth);
+    REQUIRE(b.LoadAccount(dee, accounts + "account_dee.json") == Save::Result::Ok);
+    CHECK(dee.known.count(Simulation::ChartKey(back)) == 1);
+    CHECK(dee.known.count(Simulation::ChartKey(system)) == 0);
+    REQUIRE(dee.sightings.count(back) == 1);
+    CHECK(dee.sightings.at(back).outdated);
+    WorldLoader::Universe got;
+    REQUIRE(Proto::DecodeUniverse(Proto::EncodeUniverse(b.KnownUniverseFor(dee)), got));
+    REQUIRE(In(got, back) != nullptr);
+    CHECK(In(got, back)->observed.outdated);
+
+    // Looking again makes it current.
+    b.ServerEnterSystem(ann, back, b.OpeningOf(slot)->mouth);
+    Pass(b);
+    there = MapOf(b, ann, back);
+    CHECK_FALSE(there.observed.outdated);
+    CHECK(there.observedLive);
 }

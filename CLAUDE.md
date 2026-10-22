@@ -246,7 +246,10 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   calls `ChartBy`, cold or hot: public, and if nobody from outside was there, first contact --
   the natives' name or the faction's `ChartedName` goes into `givenName` and nobody renames it.
   A pilot is the discoverer only where no faction came first. Restoring charts from a save is
-  `MarkCharted`, never `ChartBy`, or every load would make contact again.
+  `MarkCharted`, never `ChartBy`, or every load would make contact again. A region that drifts
+  into the archive takes its charts with it as `a<archive>:<id>`, and back under its new ids,
+  outdated (slice 15): rename charts only through `RenameCharts`, whose log in world.json is
+  what reads an offline account (`chartRenames`) through the renamings it missed.
 - **What has a `signature` is hidden per pilot** (#346, #342 S9). A roaming hole's ends and a
   hidden base are left out of a pilot's layout and deltas (`Simulation::BuildLayoutFor`,
   `ForSession`) until their scan resolves them; the find is the account's (`scanned`). A

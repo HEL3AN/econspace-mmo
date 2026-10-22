@@ -936,10 +936,29 @@ void Registry::Sight(const std::string& id, const std::string& systemId,
     if (it == corps_.end())
         return;
     WorldLoader::Sighting& kept = it->second.sightings[systemId];
-    const bool             news = !kept.Observed() || !kept.SameAs(now);
+    const bool             news = !kept.Observed() || kept.outdated || !kept.SameAs(now);
     kept = now;
     if (news)
         it->second.chartsRev = ++chartsSerial_;
+}
+
+void Registry::RenameCharts(const std::map<std::string, std::string>& ids, bool outdate)
+{
+    for (auto& [id, c] : corps_)
+    {
+        bool renamed = false;
+        for (const auto& [from, to] : ids)
+            if (c.charts.erase(from) != 0)
+            {
+                c.charts.insert(to);
+                renamed = true;
+            }
+        for (const auto& kv : c.sightings)
+            renamed = renamed || ids.count(kv.first) != 0;
+        WorldLoader::RenameSightings(c.sightings, ids, outdate);
+        if (renamed)
+            c.chartsRev = ++chartsSerial_;  // its members' maps change, and corps.json with them
+    }
 }
 
 bool Registry::Save(const std::string& path) const

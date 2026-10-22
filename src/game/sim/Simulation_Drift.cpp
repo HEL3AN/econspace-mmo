@@ -320,6 +320,7 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
     a.slot = slot;
     a.archivedAt = time_;
     a.text = doc.dump();
+    ChartArchive(a);
     if (!sealDir_.empty())
     {
         std::error_code ec;
@@ -395,6 +396,12 @@ bool Simulation::ArchiveRegion(int slot, std::string& why)
     o->fading = false;
     if (!sealDir_.empty())
         std::remove(SealedPath(sealDir_, slot).c_str());  // the slot's file is the next region's
+    // Whoever knew it keeps it (#431 slice 15, M3), under its archived id: its slot is free,
+    // and the next region there has ids of the same names.
+    ChartRename renamed;
+    for (const std::string& sid : ids)
+        renamed.ids[sid] = ArchivedId(id, sid);
+    RenameCharts(std::move(renamed));
     TopologyChanged();
     chartsChanged_ = true;
     Announce("drift", std::nullopt, mouth,
@@ -545,6 +552,16 @@ int Simulation::BringBack(int id, int slot, int fromSlot, const std::string& by,
         o.closesAt = time_ + WorldRules::TideRules().mouthHours * 3600.0;
     }
     MaterializeOpened(slot);
+    // Its charts come back under the new ids (#431 slice 15, M3): the geography holds, and
+    // what was seen standing there is outdated until somebody looks again.
+    ChartRename renamed;
+    renamed.back = true;
+    for (const json& s : old.systems)
+    {
+        const std::string was = s.value("id", std::string());
+        renamed.ids[ArchivedId(id, was)] = ids[was];
+    }
+    RenameCharts(std::move(renamed));
     for (RegionOpening& e : openings_)
         if (e.state == "archived" && e.archive == id)
             e.state = "returned";
@@ -577,17 +594,36 @@ void Simulation::SaveArchive(json& j) const
             e["doc"] = json::parse(kv.second.text);
         list.push_back(std::move(e));
     }
-    j["archive"] = { { "next", nextArchive_ }, { "regions", std::move(list) } };
+    // How charts were renamed as regions went and came back (#431 slice 15): what an account
+    // saved before a renaming is read through. An addition an older build ignores.
+    json renames = json::array();
+    for (const ChartRename& r : chartRenames_)
+        renames.push_back({ { "ids", r.ids }, { "back", r.back } });
+    j["archive"] = { { "next", nextArchive_ },
+                     { "regions", std::move(list) },
+                     { "renames", std::move(renames) } };
 }
 
 void Simulation::LoadArchive(const json& j)
 {
     archives_.clear();
+    chartRenames_.clear();
     nextArchive_ = 1;
     if (!j.contains("archive") || !j["archive"].is_object())
         return;
     const json& a = j["archive"];
     nextArchive_ = std::max(1, a.value("next", 1));
+    for (const json& e : a.value("renames", json::array()))
+    {
+        ChartRename r;
+        const json  ids = e.is_object() ? e.value("ids", json()) : json();
+        if (ids.is_object())
+            for (auto it = ids.begin(); it != ids.end(); ++it)
+                if (it.value().is_string())
+                    r.ids[it.key()] = it.value().get<std::string>();
+        r.back = e.is_object() && e.value("back", false);
+        chartRenames_.push_back(std::move(r));  // even empty: an account counts them
+    }
     for (const json& e : a.value("regions", json::array()))
     {
         if (!e.is_object() || !e.contains("id") || !e["id"].is_number_integer())
@@ -612,7 +648,139 @@ void Simulation::LoadArchive(const json& j)
             continue;
         }
         r.text = check.dump();  // as it is kept in memory, whatever the file's layout
+        ChartArchive(r);
         nextArchive_ = std::max(nextArchive_, r.id + 1);
         archives_[r.id] = std::move(r);
     }
+}
+
+// --- Drift marks (#431 slice 15, M3) ----------------------------------------------------------
+//
+// A pilot's charts are ids. A region that drifts into the archive leaves the galaxy, and its
+// slot is the next region's, whose ids are the same; when it comes back it is renamed for
+// another slot. So the charts are renamed with it: into "a<archive>:<id>" as it goes, which
+// no system is called, and out of that into its new ids as it comes back -- when what was seen
+// standing there is outdated. The world keeps the list of renamings; an account remembers how
+// many it had seen when it was saved and is read through the rest.
+
+std::string Simulation::ArchivedId(int archive, const std::string& systemId)
+{
+    return "a" + std::to_string(archive) + ":" + systemId;
+}
+
+bool Simulation::IsArchivedChart(const std::string& id) const
+{
+    if (id.size() < 4 || id[0] != 'a' || id.find(':') == std::string::npos)
+        return false;
+    const auto a = archives_.find(std::atoi(id.c_str() + 1));
+    if (a == archives_.end())
+        return false;
+    for (const WorldLoader::SystemInfo& si : a->second.charts)
+        if (si.id == id)
+            return true;
+    return false;
+}
+
+bool Simulation::DriftedAway(const std::string& systemId) const
+{
+    if (IsArchivedChart(systemId))
+        return true;
+    const RegionOpening* o =
+        regionDocs_.count(systemId) != 0 ? OpeningOf(Gen::SlotOf(systemId)) : nullptr;
+    return o != nullptr && o->state == "drifted";
+}
+
+void Simulation::ChartArchive(ArchivedRegion& a)
+{
+    a.charts.clear();
+    a.links.clear();
+    const json  doc = json::parse(a.text, nullptr, false);
+    Gen::Region r;
+    if (!doc.is_object() || !doc.contains("region") || !Gen::RegionFromJson(doc["region"], r))
+        return;
+    const json            systems = doc.value("systems", json::object());
+    std::set<std::string> in;
+    for (const json& s : r.systems)
+    {
+        WorldLoader::SystemInfo si;
+        const std::string       id = s.value("id", std::string());
+        si.id = ArchivedId(a.id, id);
+        si.name = s.value("name", id);
+        const json map = s.value("map", json::array());
+        if (map.is_array() && map.size() >= 2 && map[0].is_number() && map[1].is_number())
+            si.mapPos = { map[0].get<float>(), map[1].get<float>() };
+        si.security = s.value("security", 0.0f);
+        si.owner = s.value("owner", std::string());
+        si.drifted = true;
+        const json kept = systems.is_object() ? systems.value(id, json()) : json();
+        if (kept.is_object())
+        {
+            si.discoverer = kept.value("discoverer", std::string());
+            si.chartedBy = kept.value("chartedBy", std::string());
+            const std::string given = kept.value("name", std::string());
+            if (!given.empty())
+            {
+                si.designation = si.name;
+                si.name = given;
+            }
+        }
+        in.insert(id);
+        a.charts.push_back(std::move(si));
+    }
+    for (const json& l : r.links)  // within it: the way in is cut
+        if (l.is_array() && l.size() >= 2 && l[0].is_string() && l[1].is_string() &&
+            in.count(l[0].get<std::string>()) != 0 && in.count(l[1].get<std::string>()) != 0)
+            a.links.emplace_back(ArchivedId(a.id, l[0].get<std::string>()),
+                                 ArchivedId(a.id, l[1].get<std::string>()));
+}
+
+void Simulation::RenameKnowledge(std::set<std::string>&                        known,
+                                 std::map<std::string, WorldLoader::Sighting>& sightings,
+                                 const ChartRename&                            r)
+{
+    std::set<std::string> out;
+    for (const std::string& key : known)
+    {
+        // "system:<id>", and what a scan resolved there, "<id>/<signature>" (#346).
+        const std::string chart = ChartedSystemOf(key);
+        const size_t      slash = key.find('/');
+        if (!chart.empty())
+        {
+            const auto to = r.ids.find(chart);
+            out.insert(to != r.ids.end() ? ChartKey(to->second) : key);
+        }
+        else if (slash != std::string::npos && key.rfind("hole:", 0) != 0)
+        {
+            const auto to = r.ids.find(key.substr(0, slash));
+            out.insert(to != r.ids.end() ? to->second + key.substr(slash) : key);
+        }
+        else
+            out.insert(key);
+    }
+    known = std::move(out);
+    WorldLoader::RenameSightings(sightings, r.ids, r.back);
+}
+
+void Simulation::RenameCharts(ChartRename r)
+{
+    for (auto& kv : sessions_)
+    {
+        ClientSession& s = kv.second;
+        RenameKnowledge(s.known, s.sightings, r);
+        TouchKnown(s);
+    }
+    corps_.RenameCharts(r.ids, r.back);
+    for (auto& kv : legacyKnown_)  // a pre-#431 world's finds, not yet taken by their pilot
+    {
+        std::set<std::string> renamed;
+        for (const std::string& id : kv.second)
+        {
+            const auto to = r.ids.find(id);
+            renamed.insert(to != r.ids.end() ? to->second : id);
+        }
+        kv.second = std::move(renamed);
+    }
+    chartRenames_.push_back(std::move(r));
+    chartsChanged_ = true;  // the log is world state, written at once
+    PublicChartsChanged();
 }

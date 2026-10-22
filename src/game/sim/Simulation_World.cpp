@@ -1672,6 +1672,7 @@ WorldLoader::Universe Simulation::BuildIndex(const ClientSession* s) const
                 si.designation = info.name;
                 si.name = a.givenName;
             }
+            si.drifted = DriftedAway(info.id);  // cut off (#431 slice 15)
         }
         else if (frontier.count(info.id))
         {
@@ -1681,12 +1682,40 @@ WorldLoader::Universe Simulation::BuildIndex(const ClientSession* s) const
             seen.mapPos = info.mapPos;
             seen.security = 0.0f;
             seen.charted = false;
+            seen.drifted = DriftedAway(info.id);
             out.systems.push_back(seen);
         }
     }
     for (const WorldLoader::SystemLink& l : universe_.links)
         if (charted(l.a) || charted(l.b))
             out.links.push_back(l);
+    if (s == nullptr)
+        return out;
+    // A region in the archive (#431 slice 15, M3): what the pilot or their corporation knew of
+    // it, or a faction charted for everyone, stays on their map, marked drifted, with no way
+    // there -- while its slot is empty: a region that took its place is where it was.
+    const Corps::Corp* corp = s->accountName.empty() ? nullptr : corps_.Of(s->accountName);
+    for (const auto& kv : archives_)
+    {
+        if (openSlots_.count(kv.second.slot) != 0)
+            continue;
+        std::set<std::string> in;
+        for (const WorldLoader::SystemInfo& info : kv.second.charts)
+        {
+            const bool own = s->known.count(ChartKey(info.id)) != 0;
+            const bool ours = corp != nullptr && corp->charts.count(info.id) != 0;
+            if (!own && !ours && info.chartedBy.empty())
+                continue;
+            out.systems.push_back(info);
+            WorldLoader::SystemInfo& si = out.systems.back();
+            si.knownBy = !info.chartedBy.empty() ? "" : own ? "own" : "corp";
+            si.observed = LastSeen(*s, info.id);
+            in.insert(info.id);
+        }
+        for (const WorldLoader::SystemLink& l : kv.second.links)
+            if (in.count(l.a) != 0 && in.count(l.b) != 0)
+                out.links.push_back(l);
+    }
     return out;
 }
 
