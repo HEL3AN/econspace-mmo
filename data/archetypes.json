@@ -774,6 +774,7 @@
                 "buildable": {},
                 "dockable": { "range": 200 },
                 "market": {},
+                "storage": { "capacity": 2000 },
                 "defensive": { "range": 2000, "damage": 8 }
             }
         },
@@ -924,6 +925,7 @@
             "components": {
                 "buildable": {},
                 "dockable": { "range": 200 },
+                "storage": { "capacity": 1000 },
                 "defensive": { "range": 2000, "damage": 8 }
             }
         },
@@ -954,6 +956,7 @@
             "components": {
                 "buildable": {},
                 "dockable": { "range": 200 },
+                "storage": { "capacity": 1000 },
                 "defensive": { "range": 2000, "damage": 8 }
             }
         },
@@ -985,6 +988,7 @@
             "components": {
                 "buildable": {},
                 "dockable": { "range": 200 },
+                "storage": { "capacity": 1000 },
                 "defensive": { "range": 2000, "damage": 8 }
             }
         },
@@ -1044,6 +1048,7 @@
             "components": {
                 "buildable": {},
                 "dockable": { "range": 200 },
+                "storage": { "capacity": 1000 },
                 "defensive": { "range": 2000, "damage": 8 }
             }
         },

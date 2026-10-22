@@ -449,17 +449,36 @@ const Siege& SiegeRules()
 }
 
 std::vector<std::pair<ResourceType, int>> Refund(const Blueprint& bp, float progress,
-                                                 float hullFraction)
+                                                 float                                hullFraction,
+                                                 const std::vector<const Blueprint*>& earlier)
 {
     const float p = progress < 0.0f ? 0.0f : (progress > 1.0f ? 1.0f : progress);
     const float h = hullFraction < 0.0f ? 0.0f : (hullFraction > 1.0f ? 1.0f : hullFraction);
     const float share = (1.0f - p * (1.0f - g_teardown.refund)) * h;
+    // Each good in the order it is first named, the tiers below first.
+    std::vector<std::pair<ResourceType, double>> sum;
+    auto                                         add = [&sum](const Blueprint& b, float s)
+    {
+        for (const auto& c : b.cost)
+        {
+            size_t i = 0;
+            while (i < sum.size() && sum[i].first != c.first)
+                i++;
+            if (i == sum.size())
+                sum.emplace_back(c.first, 0.0);
+            sum[i].second += (double)c.second * (double)s;
+        }
+    };
+    for (const Blueprint* b : earlier)
+        if (b != nullptr)
+            add(*b, g_teardown.refund * h);  // finished, and as hurt as the whole of it
+    add(bp, share);
     std::vector<std::pair<ResourceType, int>> back;
-    for (const auto& c : bp.cost)
+    for (const auto& c : sum)
     {
         // A hair under the product before rounding down: 10 x 0.3 is 2.9999998 in a float,
         // and the refund the rule states is 3, not 2.
-        const int n = (int)std::floor((double)c.second * (double)share + 1e-4);
+        const int n = (int)std::floor(c.second + 1e-4);
         if (n > 0)
             back.emplace_back(c.first, n);
     }

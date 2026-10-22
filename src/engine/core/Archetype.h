@@ -32,7 +32,7 @@ enum class Component
     Mineable,     // holds a deposit that can be extracted
     Market,       // buys and sells resources
     Defensive,    // fires on hostiles within range
-    Storage,      // holds cargo that is not aboard a ship (reserved for #44)
+    Storage,      // holds cargo that is not aboard a ship (#438)
     JumpLink,     // connects this system to another
     Hazard,       // changes the conditions of anything inside it
     Salvageable,  // pays out once to whoever reaches it first
@@ -153,7 +153,7 @@ struct Archetype
     float jumpRange = 0.0f;          // JumpLink: added to the object's radius
     float weaponRange = 0.0f;        // Defensive
     float weaponDamage = 0.0f;       // Defensive: per second
-    float storageCapacity = 0.0f;    // Storage: reserved for #44, nothing reads it yet
+    float storageCapacity = 0.0f;    // Storage: units a player structure keeps (#438)
     float hazardRadius = 0.0f;       // Hazard: 0 means "the object's own radius"
     bool  hazardHidesShips = false;  // Hazard: ships inside are invisible to NPCs
     float refitMarkup = 1.5f;        // Shipyard: what a module costs over its ore here

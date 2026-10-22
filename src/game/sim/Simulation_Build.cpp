@@ -361,10 +361,14 @@ std::string Simulation::DismantleProblem(const ClientSession& s, int id) const
         return "too far from " + t->GetName() + " (" + Whole(d) + " of at most " +
                Whole(bp->reach) + ")";
 
+    // What it keeps goes nowhere by itself (#438): emptied first, as a hold would be.
+    if (t->GetStoredUsed() > 0)
+        return t->GetName() + " still keeps " + std::to_string(t->GetStoredUsed()) +
+               " units in its storage: dock and take them out first";
     // What comes back has to fit: a refusal can be acted on, material lost to a full hold
-    // cannot.
+    // cannot. Every tier it was built up through, not only the last (#438).
     int units = 0;
-    for (const auto& c : Blueprints::Refund(*bp, t->Progress(time_), t->HullFraction(time_)))
+    for (const auto& c : t->Refund(time_))
         units += c.second;
     const int room = s.ship->GetCargoCapacity() - s.ship->GetCargoUsed();
     if (units > room)
@@ -381,9 +385,8 @@ bool Simulation::Dismantle(ClientSession& s, int id)
         s.RecordEvent(Ev::Kind::Notice, "Cannot dismantle: " + why);
         return false;
     }
-    const Structure* t = StructureIn(*SystemOf(s), id);
-    const auto       back =
-        Blueprints::Refund(*t->GetBlueprint(), t->Progress(time_), t->HullFraction(time_));
+    const Structure*  t = StructureIn(*SystemOf(s), id);
+    const auto        back = t->Refund(time_);
     const std::string name = t->GetName();
     if (!RemoveStatic(s.systemId, id))
     {
@@ -394,6 +397,80 @@ bool Simulation::Dismantle(ClientSession& s, int id)
         s.ship->AddCargo(c.first, c.second);
     s.RecordEvent(Ev::Kind::Notice, "Dismantled " + name + ": " + Amounts(back) + " to the hold");
     return true;
+}
+
+const Structure* Simulation::DockedStorage(const ClientSession& s, std::string* why) const
+{
+    auto no = [why](const std::string& text) -> const Structure*
+    {
+        if (why != nullptr)
+            *why = text;
+        return nullptr;
+    };
+    const SystemState* st = SystemOf(s);
+    if (st == nullptr || !s.ship || !s.IsDocked())
+        return no("dock at a structure with storage first");
+    const Structure* t = StructureIn(*st, s.dockedStationId);
+    if (t == nullptr || t->GetStorageCapacity() <= 0)
+        return no("there is no storage here");
+    if (!t->OwnersSide(s.accountName, corps_.SameCorp(t->GetOwner(), s.accountName)))
+        return no(t->GetName() + "'s storage is its owner's and their corporation's");
+    return t;
+}
+
+int Simulation::StoreCargo(ClientSession& s, int type, int amount)
+{
+    std::string      why;
+    const Structure* found = DockedStorage(s, &why);
+    if (found == nullptr || type < 0 || type >= Goods::Count() || amount <= 0)
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Cannot store: " + (why.empty() ? "no such good" : why));
+        return 0;
+    }
+    Structure&         t = const_cast<Structure&>(*found);
+    const ResourceType good = ResourceType::FromIndex(type);
+    const int          room = t.GetStorageCapacity() - t.GetStoredUsed();
+    const int          n = std::min({ amount, s.ship->GetCargoAmount(good), room });
+    if (n <= 0)
+    {
+        s.RecordEvent(Ev::Kind::Notice,
+                      "Cannot store: " + (room <= 0 ? t.GetName() + "'s storage is full"
+                                                    : "the hold has no " + ResourceName(good)));
+        return 0;
+    }
+    s.ship->RemoveCargo(good, n);
+    t.AddStored(good, n);
+    s.RecordEvent(Ev::Kind::Notice,
+                  "Stored " + std::to_string(n) + " " + ResourceName(good) + " in " + t.GetName());
+    return n;
+}
+
+int Simulation::TakeCargo(ClientSession& s, int type, int amount)
+{
+    std::string      why;
+    const Structure* found = DockedStorage(s, &why);
+    if (found == nullptr || type < 0 || type >= Goods::Count() || amount <= 0)
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Cannot take: " + (why.empty() ? "no such good" : why));
+        return 0;
+    }
+    Structure&         t = const_cast<Structure&>(*found);
+    const ResourceType good = ResourceType::FromIndex(type);
+    const int          room = s.ship->GetCargoCapacity() - s.ship->GetCargoUsed();
+    const int          n = std::min({ amount, t.GetStoredAmount(good), room });
+    if (n <= 0)
+    {
+        s.RecordEvent(Ev::Kind::Notice,
+                      "Cannot take: " + (room <= 0
+                                             ? std::string("the hold is full")
+                                             : t.GetName() + " keeps no " + ResourceName(good)));
+        return 0;
+    }
+    t.RemoveStored(good, n);
+    s.ship->AddCargo(good, n);
+    s.RecordEvent(Ev::Kind::Notice,
+                  "Took " + std::to_string(n) + " " + ResourceName(good) + " from " + t.GetName());
+    return n;
 }
 
 bool Simulation::LawOver(const SystemState& st, const Structure& t, const std::string& attacker,

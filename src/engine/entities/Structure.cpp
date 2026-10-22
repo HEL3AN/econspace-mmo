@@ -1,5 +1,6 @@
 #include "entities/Structure.h"
 
+#include "core/Archetype.h"
 #include "core/Blueprint.h"
 
 Structure::Structure(Vector2 pos, float size, std::string name, std::string builds)
@@ -22,6 +23,10 @@ void Structure::StartBuilding(double startedAt, double completesAt)
 
 void Structure::Retask(std::string builds, std::string blueprint, std::string name)
 {
+    // What it was is a tier it grew from (#438); one that never said (a save from before)
+    // keeps nothing here, and EarlierTiers finds its way down by `onto`.
+    if (!blueprint_.empty())
+        grewFrom_.push_back(blueprint_);
     builds_ = std::move(builds);
     blueprint_ = std::move(blueprint);
     name_ = std::move(name);
@@ -103,4 +108,81 @@ float Structure::HullFraction(double now) const
         return 1.0f;  // nothing says what it takes: nothing has been taken
     const float left = (max - GetDamage(now)) / max;
     return left < 0.0f ? 0.0f : left;
+}
+
+std::vector<const Blueprint*> Structure::EarlierTiers() const
+{
+    std::vector<const Blueprint*> out;
+    for (const std::string& id : grewFrom_)
+        if (const Blueprint* b = Blueprints::Find(id))
+            out.push_back(b);
+    if (!grewFrom_.empty())
+        return out;
+    // Down the first `onto` of each, a few tiers at most: a file that names a loop is not
+    // a reason to spin.
+    const Blueprint* b = GetBlueprint();
+    for (int depth = 0; b != nullptr && !b->onto.empty() && depth < 8; depth++)
+    {
+        b = Blueprints::Find(b->onto.front());
+        if (b != nullptr)
+            out.insert(out.begin(), b);
+    }
+    return out;
+}
+
+std::vector<std::pair<ResourceType, int>> Structure::Refund(double now) const
+{
+    const Blueprint* bp = GetBlueprint();
+    if (bp == nullptr)
+        return {};
+    return Blueprints::Refund(*bp, Progress(now), HullFraction(now), EarlierTiers());
+}
+
+bool Structure::OwnersSide(const std::string& pilot, bool corpMate) const
+{
+    return !pilot.empty() && (GetOwner() == pilot || corpMate);
+}
+
+bool Structure::DocksPilot(const std::string& pilot, bool corpMate) const
+{
+    if (IsBuilding() || !Has(Component::Dockable))
+        return false;
+    return Has(Component::Market) || OwnersSide(pilot, corpMate);
+}
+
+int Structure::GetStoredAmount(ResourceType type) const
+{
+    const auto it = stored_.find(type);
+    return it == stored_.end() ? 0 : it->second;
+}
+
+int Structure::GetStoredUsed() const
+{
+    int n = 0;
+    for (const auto& kv : stored_)
+        n += kv.second;
+    return n;
+}
+
+int Structure::GetStorageCapacity() const
+{
+    if (IsBuilding() || !Has(Component::Storage))
+        return 0;
+    return (int)archetype_->storageCapacity;
+}
+
+void Structure::AddStored(ResourceType type, int amount)
+{
+    if (amount > 0)
+        stored_[type] += amount;
+}
+
+void Structure::RemoveStored(ResourceType type, int amount)
+{
+    const auto it = stored_.find(type);
+    if (it == stored_.end() || amount <= 0)
+        return;
+    it->second -= amount;
+    if (it->second <= 0)
+        stored_.erase(it);
 }

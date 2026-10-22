@@ -353,6 +353,15 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
             st->StartBuilding(t.value("startedAt", 0.0), t.value("completesAt", 0.0));
             st->SetExpiresAt(t.value("expiresAt", 0.0));
             st->SetBlueprint(t.value("blueprint", std::string()));
+            // The tiers it grew through (#438), the first first.
+            if (t.contains("grewFrom") && t["grewFrom"].is_array())
+            {
+                std::vector<std::string> from;
+                for (const json& id : t["grewFrom"])
+                    if (id.is_string())
+                        from.push_back(id.get<std::string>());
+                st->SetGrewFrom(std::move(from));
+            }
             ApplyOrbit(*st, t);
             entities.push_back(std::move(st));
         }
@@ -443,6 +452,8 @@ nlohmann::json WorldLoader::DescribeObject(const Entity& e, std::string& array)
             o["archetype"] = t.GetBuilds();
             if (!t.GetBlueprintId().empty())
                 o["blueprint"] = t.GetBlueprintId();
+            if (!t.GetGrewFrom().empty())
+                o["grewFrom"] = t.GetGrewFrom();
             if (t.IsBuilding())
             {
                 o["startedAt"] = t.GetStartedAt();

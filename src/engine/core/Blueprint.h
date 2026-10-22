@@ -159,8 +159,13 @@ const Siege& SiegeRules();
 // and `hullFraction` of its hull still standing -- what was shot off is gone. Rounded down,
 // so taking a thing apart never makes material. One function, for the server that pays it and
 // for a client that shows it before asking.
+//
+// `earlier` are the tiers it was built up through before `bp` (#438), each finished, so each
+// returns the finished share of its cost: an outpost grown into a market and a station gives
+// back something of all three, not only the station's frame. Summed before rounding down.
 std::vector<std::pair<ResourceType, int>> Refund(const Blueprint& bp, float progress,
-                                                 float hullFraction);
+                                                 float                                hullFraction,
+                                                 const std::vector<const Blueprint*>& earlier = {});
 
 const std::string& Error();
 }  // namespace Blueprints

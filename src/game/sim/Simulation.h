@@ -1038,6 +1038,16 @@ public:
     // RemoveStatic. Answers in the journal either way; false when refused.
     bool Dismantle(ClientSession& s, int id);
 
+    // --- A structure's storage (#438) ---
+    // The structure the ship is docked at, when it has storage the pilot may use -- its owner's
+    // side, the owner and the owner's corporation (Structure::OwnersSide) -- or null, with why
+    // not in `why` when it is given.
+    const Structure* DockedStorage(const ClientSession& s, std::string* why = nullptr) const;
+    // From the hold into it, and back: as many of good `type` as the hold has (or it holds), up
+    // to `amount` and as far as there is room. What moved; 0 with a Notice saying why.
+    int StoreCargo(ClientSession& s, int type, int amount);
+    int TakeCargo(ClientSession& s, int type, int amount);
+
     // --- Rules of engagement (#340) ---
     // Why this player may not set the rules of structure `id` to `d`, or empty when they may:
     // it is theirs -- or a member's of the corporation they are CEO or a director of (#347) --

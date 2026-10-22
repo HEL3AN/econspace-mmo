@@ -795,7 +795,7 @@ declaring the component, without the pass being edited.
 | `mineable` | `extractRate`, `range` | holds a deposit; `extractRate` multiplies the mining ship's own rate (1 is an ordinary belt, and the default) |
 | `market` | — | buys and sells resources |
 | `defensive` | `range`, `damage` | a station fires once a second on the nearest hostile ship within reach; `damage` is per second |
-| `storage` | `capacity` | *reserved for #44*: holds cargo that is not aboard a ship |
+| `storage` | `capacity` | units of goods a player's structure keeps off any ship (#438) |
 | `jumpLink` | `range` | connects this system to another |
 | `hazard` | `radius`, `hidesShips` | changes conditions inside it; `radius` 0 means the object's own radius |
 | `salvageable` | `range` | pays out once to whoever reaches it first |
@@ -816,9 +816,11 @@ side to take, so it fires as its owner's rules of engagement say (#340): hold, r
 whoever shot at the structure in the last minute, and whoever shot its owner's ship inside
 its reach. The allow-list is sent to the owner only; everyone else's layout carries the mode.
 
-`storage` is **reserved**: it is parsed and checked, so data written with it now stays
-valid, but no pass reads it yet -- holding cargo off a ship arrives with the player-mutable
-world (#44). `buildable` is a marker: a blueprint may only name an archetype that declares
+`storage` is what a player's structure keeps (#438): its owner and the members of the owner's
+corporation, docked at it, move goods between the hold and it, up to `capacity` units. What it
+keeps is state, saved with the structure (`stored`), and survives an upgrade; a structure
+that keeps anything is not dismantled until it is emptied. A station's archetype may declare
+it too, for when a player's structure grows into one. `buildable` is a marker: a blueprint may only name an archetype that declares
 it, and what building one costs and takes is the blueprint's, not the archetype's, because
 one kind of object may be made more than one way.
 

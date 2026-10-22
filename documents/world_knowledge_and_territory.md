@@ -585,8 +585,8 @@ are marked; slices without one may go in any order.
       layers, a region), to whom (factions, players), at what price and with what proof.
 
 Related work outside this plan: faction shipyards by need and the player shipyard upgrade
-(#432 part D, with #433); the remaining #438 items (storage, station perks, refunds, client
-docking at a corp mate's outpost).
+(#432 part D, with #433); the remaining #438 items (station perks; storage, refunds over
+every tier and client docking at a corp mate's outpost are done).
 
 ---
 

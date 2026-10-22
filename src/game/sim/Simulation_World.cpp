@@ -781,6 +781,15 @@ nlohmann::json StateOf(const Entity& e)
     if (e.GetKind() == EntityKind::Structure &&
         !static_cast<const Structure&>(e).GetDefence().IsDefault())  // (#340)
         s["defence"] = DefenceJson(static_cast<const Structure&>(e).GetDefence());
+    // What its storage keeps (#438), by good id. An older build reads it empty.
+    if (e.GetKind() == EntityKind::Structure &&
+        !static_cast<const Structure&>(e).GetStored().empty())
+    {
+        nlohmann::json stored = nlohmann::json::object();
+        for (const auto& kv : static_cast<const Structure&>(e).GetStored())
+            stored[Goods::Id(kv.first)] = kv.second;
+        s["stored"] = std::move(stored);
+    }
     return s;
 }
 
@@ -807,6 +816,13 @@ void ApplyState(Entity& e, const nlohmann::json& s, double now)
         Structure& t = static_cast<Structure&>(e);
         t.SetMends(s.value("mends", true), now);  // before the damage, which it would settle
         t.SetDamage(s.value("damage", 0.0f), s.value("damagedAt", now));
+        if (s.contains("stored") && s["stored"].is_object())
+            for (auto g = s["stored"].begin(); g != s["stored"].end(); ++g)
+            {
+                ResourceType good;  // a good this build does not have is let go
+                if (g.value().is_number_integer() && Goods::Find(g.key(), good))
+                    t.AddStored(good, g.value().get<int>());
+            }
     }
     Defence d;  // rules it cannot read are the default: it fires back, as before #340
     if (e.GetKind() == EntityKind::Structure && s.contains("defence") &&

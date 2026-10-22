@@ -71,6 +71,69 @@ void Game::BuyCargo(ResourceType type, int amount)
     clientLink_->Send(Proto::EncodeCommand(c));
 }
 
+const Entity* Game::DockedStructure() const
+{
+    if (mode_ != GameMode::Docked || dockedStation_ != nullptr)
+        return nullptr;
+    const Entity* e = FindEntityById(snapshot_.player.dockedStationId);
+    return e != nullptr && e->GetKind() == EntityKind::Structure ? e : nullptr;
+}
+
+void Game::MoveStorage(ResourceType type, int amount, bool store)
+{
+    if (amount <= 0)
+        return;
+    // The server moves what the hold, the storage and the room allow; the snapshot shows it,
+    // and a refusal comes back in the journal.
+    Proto::Command c;
+    (store ? c.storeType : c.takeType) = type.Index();
+    (store ? c.storeAmount : c.takeAmount) = amount;
+    clientLink_->Send(Proto::EncodeCommand(c));
+}
+
+void Game::DrawStorage(Ui::Layout& L)
+{
+    using Ui::Box;
+    using Ui::TextStyle;
+    const Ui::Theme&         t = Ui::CurrentTheme();
+    const Proto::PlayerView& p = snapshot_.player;
+    if (p.storageCap <= 0)
+        return;  // none here, or not this pilot's side's
+    int used = 0;
+    for (int n : p.storedByType)
+        used += n;
+    L.Divider();
+    L.Text("STORAGE", TextStyle::Label());
+    L.Field("Kept", TextFormat("%d / %d", used, p.storageCap), t.colors.text);
+    L.Field("Hold", TextFormat("%d / %d", p.cargoUsed, p.cargoCap), t.colors.text);
+    const std::vector<ResourceType> types = AllResourceTypes();
+    bool                            any = false;
+    for (size_t i = 0; i < types.size(); i++)
+    {
+        const int hold = i < p.cargoByType.size() ? p.cargoByType[i] : 0;
+        const int kept = i < p.storedByType.size() ? p.storedByType[i] : 0;
+        if (hold <= 0 && kept <= 0)
+            continue;
+        any = true;
+        const std::string id = Goods::Id(types[i]);
+        L.Row(Box().GrowX().Gap(t.metrics.rowGap).Align(Ui::Align::Start, Ui::Align::Center),
+              [&]
+              {
+                  L.Text(TextFormat("%s  %d held, %d kept", ResourceName(types[i]).c_str(), hold,
+                                    kept),
+                         TextStyle::Body());
+                  if (hold > 0 && used < p.storageCap &&
+                      L.Button("store_" + id, TextFormat("Store %d", hold)))
+                      MoveStorage(types[i], hold, true);
+                  if (kept > 0 && p.cargoUsed < p.cargoCap &&
+                      L.Button("take_" + id, TextFormat("Take %d", kept)))
+                      MoveStorage(types[i], kept, false);
+              });
+    }
+    if (!any)
+        L.Text("Nothing in the hold or kept here.", TextStyle::Small().Tint(t.colors.dim));
+}
+
 // Where the world would be: the hall the windows stand in. A picture, not a window -- the
 // station's name, large and quiet, under whatever the player has open.
 void Game::DrawStationHall()
@@ -78,7 +141,8 @@ void Game::DrawStationHall()
     using Ui::Box;
     const Ui::Theme& t = Ui::CurrentTheme();
     DrawRectangle(0, 0, screenWidth_, screenHeight_, t.colors.backdrop);
-    if (dockedStation_ == nullptr || hudHidden_)
+    const Entity* structure = DockedStructure();
+    if ((dockedStation_ == nullptr && structure == nullptr) || hudHidden_)
         return;
     Ui::Layout& L = hallLayout_;
     L.Begin({ 0.0f, 0.0f, (float)screenWidth_, (float)screenHeight_ }, Ui::Scale());
@@ -89,6 +153,12 @@ void Game::DrawStationHall()
                  .Align(Ui::Align::Center, Ui::Align::End),
              [&]
              {
+                 if (dockedStation_ == nullptr)  // a player's structure (#433)
+                 {
+                     L.Text(structure->GetName(), Ui::TextStyle::Heading().Tint(t.colors.dim));
+                     L.Text(structure->GetOwner(), Ui::TextStyle::Label());
+                     return;
+                 }
                  L.Text(dockedStation_->GetName(), Ui::TextStyle::Heading().Tint(t.colors.dim));
                  L.Text(StationRoleName(dockedStation_->GetRole()) + "  ·  " +
                             FactionName(dockedStation_->GetFaction()),
@@ -114,7 +184,25 @@ void Game::DrawStationContent(const Ui::Frame& f)
         {
             if (dockedStation_ == nullptr)
             {
-                L.Text("Not docked", TextStyle::Body().Tint(t.colors.dim));
+                // A player's structure (#433): whose it is, its storage (#438), the way out.
+                const Entity* structure = DockedStructure();
+                if (structure == nullptr)
+                {
+                    L.Text("Not docked", TextStyle::Body().Tint(t.colors.dim));
+                    return;
+                }
+                L.Scroll(Box().Grow().Id("info").Gap(t.metrics.rowGap),
+                         [&]
+                         {
+                             L.Text(structure->GetName(), TextStyle::Title());
+                             L.Field("Owner", structure->GetOwner(), t.colors.text);
+                             L.Field("Money", TextFormat("%.0f cr", player_.GetMoney()),
+                                     t.colors.money);
+                             DrawStorage(L);
+                             DrawLicenceHere(L);
+                         });
+                if (L.Button("undock", "Undock", true))
+                    Undock();
                 return;
             }
             const FactionId sf = dockedStation_->GetFaction();

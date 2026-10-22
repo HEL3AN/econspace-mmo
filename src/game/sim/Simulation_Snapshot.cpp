@@ -176,6 +176,13 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         p.orderDetail = s.orderDetail;
         for (ResourceType rt : AllResourceTypes())
             p.cargoByType.push_back(s.ship->GetCargoAmount(rt));
+        // The storage docked at, when it is the pilot's side's (#438).
+        if (const Structure* store = DockedStorage(s))
+        {
+            p.storageCap = store->GetStorageCapacity();
+            for (ResourceType rt : AllResourceTypes())
+                p.storedByType.push_back(store->GetStoredAmount(rt));
+        }
 
         // Player account (server-authoritative, M4f): the client shows it as a mirror.
         p.money = s.account.GetMoney();
@@ -344,6 +351,7 @@ static bool DescribeStatic(const Entity& e, Proto::EntityLayout& el)
             el.completesAt = t.GetCompletesAt();
             el.expiresAt = t.GetExpiresAt();
             el.blueprint = t.GetBlueprintId();
+            el.grewFrom = t.GetGrewFrom();  // (#438)
             el.damage = t.GetDamageSet();
             el.damagedAt = t.GetDamagedAt();
             el.mends = t.Mends();
