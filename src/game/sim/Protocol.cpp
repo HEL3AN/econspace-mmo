@@ -848,6 +848,7 @@ constexpr double POS_UNIT = 100.0;
 constexpr double ANGLE_UNIT = 1000.0;  // milliradians
 constexpr double HULL_UNIT = 1000.0;   // thousandths of the hull
 constexpr double SIZE_UNIT = 100.0;
+constexpr double STATUS_UNIT = 100.0;  // hundredths of a security status point
 // A far entity's heading, in milliradians: about three degrees, which is what a dot on the
 // sensor screen can show.
 constexpr long long FAR_ANGLE_STEP = 50;
@@ -892,6 +893,11 @@ EntityWire WireOf(const Proto::EntitySnapshot& e, float grid)
         j["n"] = e.name;
     if (!e.design.empty())
         j["d"] = e.design;
+    if (e.criminal)
+        j["cr"] = 1;
+    const long long status = Quantise(e.securityStatus, STATUS_UNIT);
+    if (status != 0)
+        j["ss"] = status;
     return w;
 }
 
@@ -927,6 +933,8 @@ Proto::EntitySnapshot EntityOf(int id, const json& j)
     }
     e.name = TextOf(j, "n");
     e.design = TextOf(j, "d");
+    e.criminal = IntOf(j, "cr", 0) != 0;
+    e.securityStatus = (float)((double)IntOf(j, "ss", 0) / STATUS_UNIT);
     return e;
 }
 
@@ -972,6 +980,11 @@ json PlayerJson(const Proto::PlayerView& p)
                { "ship", p.shipIndex } };
     if (p.warpViaSet)  // only during the first leg of a bent warp
         j["warpVia"] = V2(p.warpVia);
+    // Under the law (#431 slice 10): only once there is something to say.
+    if (p.securityStatus != 0.0f)
+        j["secSt"] = Round2(p.securityStatus);
+    if (p.criminalLeft > 0.0)
+        j["crimLeft"] = std::ceil(p.criminalLeft);  // whole seconds
     // Only when there is one; as a field of the player it goes again only when it changes.
     if (!p.library.empty())
     {
@@ -1046,6 +1059,8 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
     p.reputation = ToPerFaction<float>(pj.value("rep", json()));
     p.bounty = ToPerFaction<double>(pj.value("bounty", json()));
     p.skillXp = pj.value("skillXp", std::vector<float>{});
+    p.securityStatus = pj.value("secSt", 0.0f);
+    p.criminalLeft = pj.value("crimLeft", 0.0);
     p.orderKind = pj.value("ordKind", 0);
     p.orderStatus = pj.value("ordStatus", 0);
     p.orderId = pj.value("ordId", 0);

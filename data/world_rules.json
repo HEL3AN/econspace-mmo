@@ -137,7 +137,15 @@
         "lowDelay": 45,
         "hop": 10,
         "stay": 180,
-        "launchCost": 0.1
+        "launchCost": 0.1,
+        "flagSeconds": 900,
+        "flagLinger": 60,
+        "statusCrime": 1.0,
+        "statusKill": 2.5,
+        "statusPirateKill": 0.1,
+        "statusPerDay": 0.5,
+        "onSightBelow": 5,
+        "onSightFrom": 0.5
     },
     "influence": {
         "outpost": 1,

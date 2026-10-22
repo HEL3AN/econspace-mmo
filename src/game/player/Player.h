@@ -3,6 +3,8 @@
 #include "player/Skills.h"
 #include "core/Faction.h"
 
+#include <algorithm>
+
 // The player-pilot: the persona — wallet, skills, reputation with factions.
 class Player
 {
@@ -39,9 +41,24 @@ public:
         }
     }
 
+    // Under the law (#431 slice 10). A pilot's security status runs from -10 to +10: a crime
+    // takes it down, time and pirate kills bring it back. The criminal flag is seconds left
+    // rather than a moment, because it runs down only while the pilot is in the world: one
+    // who logs off keeps what is left of it (Decided after the rounds, 6).
+    static constexpr float STATUS_MIN = -10.0f;
+    static constexpr float STATUS_MAX = 10.0f;
+    float                  GetSecurityStatus() const { return status_; }
+    void   SetSecurityStatus(float v) { status_ = std::clamp(v, STATUS_MIN, STATUS_MAX); }
+    void   AddSecurityStatus(float d) { SetSecurityStatus(status_ + d); }
+    double CriminalLeft() const { return criminalLeft_; }
+    void   SetCriminalLeft(double seconds) { criminalLeft_ = std::max(0.0, seconds); }
+    bool   IsCriminal() const { return criminalLeft_ > 0.0; }
+
 private:
     double             money_;
     Skills             skills_;
     PerFaction<float>  reputation_;
     PerFaction<double> bounty_;
+    float              status_ = 0.0f;
+    double             criminalLeft_ = 0.0;
 };

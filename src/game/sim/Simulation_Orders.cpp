@@ -283,6 +283,10 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
 
     // Everything else acts on a place: an object by id, or a bare point.
     Entity* target = s.order.targetId != 0 ? FindById(st, s.order.targetId) : nullptr;
+    // ...or, for an attack, another pilot's ship (#431 slice 10), which is a session's.
+    if (target == nullptr && s.order.targetId != 0 && s.order.kind == Orders::Kind::Attack)
+        if (ClientSession* pilot = PilotTarget(s, st, s.order.targetId))
+            target = pilot->ship.get();
     if (s.order.targetId != 0 && target == nullptr)
     {
         finish(Orders::Status::Failed, "target is not in this system");
@@ -292,8 +296,9 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
     float   size = target != nullptr ? target->GetSize() : 0.0f;
     // A planet and whatever orbits one are where the clock puts them (#210): they move the
     // whole time the ship is on its way.
-    const bool moving = target != nullptr &&
-                        (target->GetKind() == EntityKind::Planet || target->GetOrbit().has_value());
+    const bool moving = target != nullptr && (target->GetKind() == EntityKind::Planet ||
+                                              target->GetKind() == EntityKind::PlayerShip ||
+                                              target->GetOrbit().has_value());
 
     // How close this order needs to get before it can act.
     float arrive = s.order.stopDist;
@@ -344,7 +349,8 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
     {
         // Something to shoot at, and within the weapon's reach of it -- a structure from its
         // edge, as StepPlayerFire measures it.
-        const bool ship = target != nullptr && target->GetKind() == EntityKind::Npc;
+        const bool ship = target != nullptr && (target->GetKind() == EntityKind::Npc ||
+                                                target->GetKind() == EntityKind::PlayerShip);
         const bool built = target != nullptr && target->GetKind() == EntityKind::Structure;
         if (!ship && !built)
         {
@@ -487,11 +493,19 @@ void Simulation::StepPlayerOrder(ClientSession& s, SystemState& st, float dt)
             Sim::StepPlayerShip(*s.ship, Proto::Command{}, 1.0f, dt);
             PlayerCombatEvents ev;
             if (StepPlayerFire(s, st, id, dt, &ev))
-                s.orderShots.push_back({ ev.shotFrom, ev.shotTo, id });
-            // Gone from the system, or a ship that is a wreck now: done either way.
+                s.orderShots.push_back({ ev.shotFrom, ev.shotTo, id, ev.victimSession });
+            if (ev.killedPilot)
+            {
+                finish(Orders::Status::Done, "target destroyed");
+                return;
+            }
+            // Gone from the system, or a ship that is a wreck now: done either way. Another
+            // pilot's ship that docked, left or hid is gone from the order too.
             const Entity* left = FindById(st, id);
-            if (left == nullptr || (left->GetKind() == EntityKind::Npc &&
-                                    !static_cast<const NpcShip*>(left)->IsAlive()))
+            if (left == nullptr && PilotTarget(s, st, id) == nullptr)
+                finish(Orders::Status::Done, "target destroyed");
+            else if (left != nullptr && left->GetKind() == EntityKind::Npc &&
+                     !static_cast<const NpcShip*>(left)->IsAlive())
                 finish(Orders::Status::Done, "target destroyed");
             return;
         }

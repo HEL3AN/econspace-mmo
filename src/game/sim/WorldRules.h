@@ -232,6 +232,13 @@ struct Scan
 // next shot in that time brings nobody more. They drop out of warp `dropDistance` from the
 // criminal, and a station's or a faction structure's guns fire on a criminal only at security
 // `gunsFrom` and above.
+//
+// What a crime costs the pilot (#431 slice 10): a criminal flag for `flagSeconds`, renewed by
+// each crime, that runs down only while they are in the world; a flagged pilot who drops the
+// connection leaves the ship in space `flagLinger` seconds. Security status falls by
+// `statusCrime` a crime and `statusKill` more for a kill, rises `statusPirateKill` a pirate
+// shot down and `statusPerDay` a day in the world without a flag, back up to zero. At
+// minus `onSightBelow` or below, police engage the pilot on sight in systems of `onSightFrom`.
 struct Law
 {
     double callSeconds = 60.0;
@@ -258,6 +265,14 @@ struct Law
     double hop = 10.0;
     double stay = 180.0;
     double launchCost = 0.1;
+    double flagSeconds = 900.0;
+    double flagLinger = 60.0;
+    double statusCrime = 1.0;
+    double statusKill = 2.5;
+    double statusPirateKill = 0.1;
+    double statusPerDay = 0.5;
+    double onSightBelow = 5.0;
+    double onSightFrom = 0.5;
 
     // One band's numbers.
     struct Band

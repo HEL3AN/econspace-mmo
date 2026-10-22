@@ -652,10 +652,33 @@ public:
 
     // --- Law (#431 slice 9; Simulation_Agents.cpp, numbers in WorldRules::Law) ---
     // Whether `by` attacking `victim` in `st` is a crime, and under whose law (#41): a lawful
-    // faction's ship is that faction's wherever it is; a structure is under LawOver. The one
-    // place that decides it -- PvP, flags and licences (slice 10) are rules added here.
+    // faction's ship is that faction's wherever it is; a structure is under LawOver; another
+    // pilot's ship is under the law of the system it is in (#431 slice 10): a crime where a
+    // lawful faction holds it at a security above zero, unless the pilot is fair game -- flagged
+    // a criminal, or an enemy of that law (AccountHostileToFaction). The one place that
+    // decides it.
     bool IsCrime(const SystemState& st, const ClientSession& by, const Entity& victim,
                  FactionId& law) const;
+    // The pilot flying the ship with entity id `shipId`, if any.
+    const ClientSession* PilotOf(int shipId) const;
+    // Another pilot's ship that `by` can aim at in `st` (#431 slice 10): in that system, in
+    // space, not in cover and not already lost. Null otherwise. A lingering ship is a target:
+    // that is what lingering is for (#341).
+    ClientSession* PilotTarget(const ClientSession& by, const SystemState& st, int shipId);
+    // What a crime costs the pilot on top of standing and bounty (#431 slice 10): the
+    // criminal flag, renewed, and a fall in security status -- more for a kill.
+    void MarkCrime(ClientSession& s, bool killed);
+    // The pilot's own law clock, every world tick while they are in the world (not while
+    // their ship lingers after a disconnect): the flag runs down, and without one the
+    // security status recovers towards zero. Says so when the flag lapses.
+    void StepPilotLaw(ClientSession& s, float dt);
+    // Whether `police` engages `p` on sight for their security status alone: police of a
+    // lawful faction, in a system of WorldRules::Law::onSightFrom or more, and a pilot at
+    // -onSightBelow or below.
+    bool PoliceOnSight(const SystemState& st, const ClientSession& p, const NpcShip& police) const;
+    // What an NPC holds against a player in `st`: its faction's enmity by account, and the
+    // police's on-sight rule.
+    bool NpcHunts(const SystemState& st, const ClientSession& p, const NpcShip& n) const;
     // A crime under `law` by `by` in `st`: the police answer from real forces, as the system's
     // security band says (WorldRules::Law) -- every free police ship here, patrols a station
     // launches out of what the faction can spare, and police lent by systems within reach;
@@ -869,9 +892,10 @@ public:
     // PlacementProblem's to say.
     static const Structure* UpgradeTarget(const SystemState& st, Vector2 at);
     // Whether docking at `e` is refused this pilot, and why (#433): a faction's dock for a
-    // pilot it hates, a player's structure without a market for anyone but its owner and the
-    // owner's corporation (#347), and in a system a corporation holds, its structures for
-    // whom its docking policy leaves out (#431 T3). Empty: admitted.
+    // pilot it hates or a lawful faction's for a flagged criminal (#431 slice 10), a player's
+    // structure without a market for anyone but its owner and the owner's corporation (#347),
+    // and in a system a corporation holds, its structures for whom its docking policy leaves
+    // out (#431 T3). Empty: admitted.
     std::string DockRefusal(const ClientSession& s, const Entity& e) const;
     // Finishes every site whose time has come and takes away every structure whose time is
     // up. Each is an instant fixed when the site went down -- nothing is integrated -- so a
@@ -1055,6 +1079,8 @@ public:
         FactionId killedFaction = Factions::Unaffiliated();
         Vector2   shotFrom = { 0.0f, 0.0f };  // player's shot beam (for render/snapshot)
         Vector2   shotTo = { 0.0f, 0.0f };
+        int       victimSession = 0;  // another pilot was hit: their session (#431 slice 10)
+        bool      killedPilot = false;
     };
     // Server player combat: if the weapon is on and the target (targetId) is in range and
     // the cooldown is ready — applies damage, accumulates facts in ev. Returns true if there
@@ -1093,6 +1119,11 @@ public:
     // The bit itself lives on the session (ClientSession::ToggleWeapon).
     bool StepPlayerFire(ClientSession& s, SystemState& st, int targetId, float dt,
                         PlayerCombatEvents* ev);
+    // ...at another pilot's ship (#431 slice 10): in range and off cooldown, the hit goes on
+    // the victim's ship, IsCrime decides what it costs the shooter, and a kill is the loss
+    // every ship takes (ServerRespawnPlayer, on the world tick).
+    bool FirePilot(ClientSession& s, SystemState& st, ClientSession& victim,
+                   PlayerCombatEvents* ev);
 
     // Result of the server player mining for a tick.
     struct PlayerMiningResult

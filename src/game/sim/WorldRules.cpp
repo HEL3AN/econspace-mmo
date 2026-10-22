@@ -300,7 +300,15 @@ bool Load(const std::string& path)
                                             { "lowDelay", &lw.lowDelay },
                                             { "hop", &lw.hop },
                                             { "stay", &lw.stay },
-                                            { "launchCost", &lw.launchCost } },
+                                            { "launchCost", &lw.launchCost },
+                                            { "flagSeconds", &lw.flagSeconds },
+                                            { "flagLinger", &lw.flagLinger },
+                                            { "statusCrime", &lw.statusCrime },
+                                            { "statusKill", &lw.statusKill },
+                                            { "statusPirateKill", &lw.statusPirateKill },
+                                            { "statusPerDay", &lw.statusPerDay },
+                                            { "onSightBelow", &lw.onSightBelow },
+                                            { "onSightFrom", &lw.onSightFrom } },
                                           { { "highLocal", &lw.highLocal },
                                             { "midLocal", &lw.midLocal },
                                             { "lowLocal", &lw.lowLocal },
@@ -318,10 +326,12 @@ bool Load(const std::string& path)
     // The bands are security, high above middle above low; a call that holds no time would
     // bring the whole force again with every shot.
     if (lw.callSeconds <= 0.0 || lw.stay <= 0.0 || lw.lowFrom > lw.midFrom ||
-        lw.midFrom > lw.highFrom || lw.highFrom > 1.0 || lw.gunsFrom > 1.0)
+        lw.midFrom > lw.highFrom || lw.highFrom > 1.0 || lw.gunsFrom > 1.0 ||
+        lw.flagSeconds <= 0.0 || lw.onSightFrom > 1.0)
     {
-        g_error = path + ": law: callSeconds and stay must be more than zero, lowFrom at most "
-                         "midFrom at most highFrom at most 1, and gunsFrom at most 1";
+        g_error = path + ": law: callSeconds, stay and flagSeconds must be more than zero, "
+                         "lowFrom at most midFrom at most highFrom at most 1, and gunsFrom and "
+                         "onSightFrom at most 1";
         return false;
     }
     // Slice 5's (#431): influence, and the most a holder may tax.
