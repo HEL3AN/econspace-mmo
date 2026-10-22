@@ -2203,11 +2203,18 @@ int Selftest(const std::vector<Tool>& tools)
                           bogus.find("not in this system") != std::string::npos;
     // The tool waits two seconds for the server, on purpose; a loaded CI runner with two
     // agents and a server on it can take longer (seen on Windows). What is checked here is
-    // the server's answer, not how fast it came, so wait for the answer itself.
+    // the server's answer, not how fast it came, so wait for the answer itself. The snapshot
+    // that shows the new order can still show it Active, before the server has resolved the
+    // target and failed it (#419), so wait for this order -- a new id -- to be Failed.
     if (!refused)
     {
-        g_session.WaitUntil([&] { return g_session.Snapshot().player.orderId != orderBefore; },
-                            20.0);
+        g_session.WaitUntil(
+            [&]
+            {
+                const Proto::PlayerView& q = g_session.Snapshot().player;
+                return q.orderId != orderBefore && q.orderStatus == (int)Orders::Status::Failed;
+            },
+            30.0);
         const Proto::PlayerView& p = g_session.Snapshot().player;
         refused = p.orderId != orderBefore && p.orderStatus == (int)Orders::Status::Failed;
     }
