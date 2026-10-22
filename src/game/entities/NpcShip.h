@@ -3,6 +3,7 @@
 #include "entities/Entity.h"
 #include "entities/Combatant.h"
 #include "core/Faction.h"
+#include "core/Fitting.h"
 #include "economy/Resource.h"
 #include <string>
 #include <vector>
@@ -64,7 +65,7 @@ public:
     NpcRole   GetRole() const { return role_; }
     // The design it flies; empty only when no ship catalogue is loaded.
     const std::string& GetDesign() const { return design_; }
-    float              GetDamage() const { return damage_; }  // per volley, against a ship
+    float              GetDamage() const { return damage_; }  // per volley: the design's
     float              GetSpeed() const { return speed_; }
     AiState            GetState() const { return state_; }
     bool               IsPirate() const { return faction_ == Factions::Pirates(); }
@@ -135,8 +136,9 @@ public:
         PickNewTarget();
     }
 
+    // Its guns fire at a player's cooldown (Ships::PLAYER_FIRE_INTERVAL): one combat model.
     bool ReadyToFire() const { return fireTimer_ <= 0.0f; }
-    void ResetFireTimer() { fireTimer_ = 0.9f; }
+    void ResetFireTimer() { fireTimer_ = Ships::PLAYER_FIRE_INTERVAL; }
 
 private:
     void PickNewTarget();
@@ -154,7 +156,7 @@ private:
     Vector2 aiPoint_ = { 0.0f, 0.0f };  // pursuit target or threat point
 
     std::string  design_;
-    float        damage_ = 6.0f;  // the design's; these defaults are only for no catalogue
+    float        damage_ = 0.0f;  // the design's; with no catalogue it has no guns
     float        maxHull_ = 60.0f;
     float        hull_ = 60.0f;
     float        fireTimer_ = 0.0f;

@@ -27,11 +27,10 @@
 
 namespace
 {
-// NPC combat parameters (server combat/AI simulation).
-constexpr float PIRATE_WEAPON_RANGE = 230.0f;  // NPC fire range
-// An NPC's guns are its design's (data/ships.json); against a player they hit this much
-// harder -- 7 to the player for 6 to a ship before designs did the arithmetic.
-constexpr float PLAYER_DAMAGE_SCALE = 7.0f / 6.0f;
+// An NPC fights as a player does (owner, 2026-10-22, #186): its design's volley
+// (Ships::Stats::volley) at the player's cooldown, from the player's range. What differs
+// between a raider and a pilot is the fit, in data/ships.json.
+constexpr float NPC_WEAPON_RANGE = Sim::PLAYER_WEAPON_RANGE;
 constexpr float NPC_AGGRO_RANGE = 3500.0f;   // AI target detection radius
 constexpr float NPC_THREAT_RANGE = 2000.0f;  // distance at which peaceful ones flee
 constexpr float DEFENCE_PERIOD = 1.0f;       // seconds between a station's shots
@@ -45,15 +44,22 @@ constexpr float SPAWN_MIN_PLAYER_DIST = 2600.0f;  // do not spawn closer to the 
 constexpr float MAINT_STEP = 2.0f;                // coarse world maintenance period
 constexpr int   DIRECTOR_BUDGET = 2;              // ships the director adds to a system a pass
 
-// A cold system's losses per pass (#295), per pirate and per ship of the other side: what
-// the hot world showed when measured -- seeds 3 and 7, two hours each, every system hot,
-// 75 000 system-passes, every death counted by role against the populations that met. Ships
-// in a system a million units across seldom meet: 27 traders, 4 miners, 2 pirates and one
-// policeman died in all that time.
-constexpr float COLD_TRADER_LOSS = 6e-5f;    // traders lost, per pirate per trader
-constexpr float COLD_MINER_LOSS = 6e-6f;     // miners lost, per pirate per miner
-constexpr float COLD_PIRATE_LOSS = 1.5e-5f;  // pirates lost, per pirate per policeman
-constexpr float COLD_POLICE_LOSS = 7e-6f;    // police lost, per pirate per policeman
+// A cold system's fights per pass (#295): how many seconds, per pirate and per ship of the
+// other side, the one has the other under its guns. That is how often ships meet in a system
+// a million units across -- geometry and behaviour, not guns -- and what a meeting costs is
+// the guns' arithmetic: a side loses (seconds of fire) x (the other's dps) / (its own hull),
+// with both from the designs the doctrines fly (Simulation::FighterOf), the numbers a hot
+// system's ships fight with (one combat model, owner 2026-10-22, #186). A refit of the
+// pirates' raider moves cold losses as it moves hot ones.
+//
+// Measured on the hot world -- seeds 3 and 7, two hours each, every system hot, 75 000
+// system-passes, every death counted by role against the populations that met (27 traders,
+// 4 miners, 2 pirates and one policeman in all that time) -- when every armed ship took off a
+// ninth of its target's hull a second: the losses seen then, times nine.
+constexpr float COLD_TRADER_FIRE = 5.4e-4f;   // pirate on trader
+constexpr float COLD_MINER_FIRE = 5.4e-5f;    // pirate on miner
+constexpr float COLD_PIRATE_FIRE = 1.35e-4f;  // police on pirate
+constexpr float COLD_POLICE_FIRE = 6.3e-5f;   // pirate on police
 
 // A system a gate into is an ambush spot: the pirates hold it, or its security is low.
 bool Dangerous(const SystemAggregate& a)
@@ -197,7 +203,7 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
             continue;
 
         Vector2              npos = npc->GetPosition();
-        float                bestD = PIRATE_WEAPON_RANGE;
+        float                bestD = NPC_WEAPON_RANGE;
         Combatant*           target = nullptr;
         const ClientSession* targetPlayer = nullptr;  // null means the target is an NPC
 
@@ -236,7 +242,7 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
                     continue;
                 const Stance rel = Factions::Relation(npc->GetFaction(), owner);
                 if ((rel != Stance::Hostile && rel != Stance::War) ||
-                    Dist(e->GetPosition(), npos) > PIRATE_WEAPON_RANGE + e->GetSize())
+                    Dist(e->GetPosition(), npos) > NPC_WEAPON_RANGE + e->GetSize())
                     continue;
                 npc->ResetFireTimer();
                 FireEvent fe;
@@ -250,10 +256,10 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
             continue;
         }
 
-        // What a volley takes off is the design's guns (#279 step 4); a player is hit a sixth
-        // harder than a ship of its own kind, as before, so one raider is a threat on its own.
+        // What a volley takes off is the design's guns (#279 step 4), the same against a ship
+        // or a pilot, and the same a player's ship of that design would take off (#186).
         const int targetSession = targetPlayer != nullptr ? targetPlayer->id : 0;
-        target->TakeDamage(npc->GetDamage() * (targetSession != 0 ? PLAYER_DAMAGE_SCALE : 1.0f));
+        target->TakeDamage(npc->GetDamage());
         npc->ResetFireTimer();
         if (targetPlayer != nullptr)  // the player's own guns nearby answer it (#340)
             ProvokeGuards(st, *targetPlayer, target->GetPosition(), 0, npc->GetId());
@@ -1321,10 +1327,25 @@ void Simulation::ColdLosses(SystemState& st)
     const float      pirates = a.pirates, police = a.police;
     if (pirates <= 0.0f)
         return;
-    const float lostPirates = std::min(pirates, COLD_PIRATE_LOSS * pirates * police);
-    const float lostPolice = std::min(police, COLD_POLICE_LOSS * pirates * police);
-    const float lostTraders = std::min(a.traders, COLD_TRADER_LOSS * pirates * a.traders);
-    const float lostMiners = std::min(a.miners, COLD_MINER_LOSS * pirates * a.miners);
+    // Who is here, as the director flies them (PopulationOf): the pirates' raiders, the
+    // police under its flag, traders under a lawful controller's or nobody's, miners nobody's.
+    const FactionId trade =
+        Factions::IsLawful(a.controller) ? a.controller : Factions::Unaffiliated();
+    const Ships::Fighter pirate = FighterOf(Factions::Pirates(), NpcRole::Pirate);
+    const Ships::Fighter cop = FighterOf(a.policeFaction, NpcRole::Police);
+    const Ships::Fighter trader = FighterOf(trade, NpcRole::Trader);
+    const Ships::Fighter miner = FighterOf(Factions::Unaffiliated(), NpcRole::Miner);
+    // The share of a ship's hull one second of the other's fire takes off.
+    auto bite = [](const Ships::Fighter& by, const Ships::Fighter& on)
+    { return on.hull > 0.0f ? by.dps / on.hull : 0.0f; };
+    const float lostPirates =
+        std::min(pirates, COLD_PIRATE_FIRE * bite(cop, pirate) * pirates * police);
+    const float lostPolice =
+        std::min(police, COLD_POLICE_FIRE * bite(pirate, cop) * pirates * police);
+    const float lostTraders =
+        std::min(a.traders, COLD_TRADER_FIRE * bite(pirate, trader) * pirates * a.traders);
+    const float lostMiners =
+        std::min(a.miners, COLD_MINER_FIRE * bite(pirate, miner) * pirates * a.miners);
     a.pirates -= lostPirates;
     a.police -= lostPolice;
     a.traders -= lostTraders;

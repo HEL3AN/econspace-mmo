@@ -82,8 +82,8 @@ draws nothing.
 | `bowHeavy` | frame | optional, default false; the class may carry its mass forward of the middle |
 | `plain` | rules | the share of a drawn ship's sockets its trim leaves empty |
 | `cruise` | rules | the share of its top speed an NPC flies its rounds at |
-| `playerHull` | rules | the structure a ship has under a player over the same design under a crew |
-| `playerGun` | rules | the shot a player's ship fires with no guns fitted; fitted guns add to it |
+| `baseHull` | rules | the structure every ship has in a fight beyond what its parts give, whoever flies it |
+| `baseGun` | rules | the shot every ship fires with no guns fitted; fitted guns add to it |
 | `hangar` | top level | what a station sells to players, in order: `{ "design", "price" }`, the starter first — see "The hangar" |
 | `fit[].scale` | design | optional; how big the module is drawn, over its `look` |
 | `frame`, `bow`, `mid`, `stern` | design | the frame and one section per position; `mid` is a list |
@@ -108,11 +108,11 @@ All sums run over the frame, every section and every fitted module × its count.
 | turn rate | stabiliser / `rcsPerTurn` (rad/s) | `turnSpeed` |
 | hold | Σ cargo | `cargoCapacity` |
 | mining | Σ mining | `miningRate` |
-| structure | Σ hull | `NpcShip` hull |
-| volley | Σ damage — what one volley takes off a ship | `NpcShip` damage |
+| parts' structure | Σ hull | `hull` |
+| fitted guns | Σ damage | `damage` (an armed role's design must have some) |
 | cruise | top speed × `cruise` | `NpcShip` speed |
-| structure under a player | Σ hull + `playerHull` | `hull` |
-| a player's shot | Σ damage + `playerGun` | `damage` |
+| structure in a fight | Σ hull + `baseHull` | `combatHull`: `NpcShip` and `ShipStats` hull |
+| volley | Σ damage + `baseGun` — what one volley takes off a target | `volley`: `NpcShip` and `ShipStats` damage |
 | cost | Σ cost per resource | — |
 | build time | `buildSecondsPerMass × mass + buildSecondsPerPart × parts` | — |
 
@@ -191,11 +191,15 @@ numbers, the client predicts its own with the same ones (`Sim::StepPlayerShip`),
 hangar window and the agent's `hangar` tool show them -- one source, so a number a pilot is
 shown is the number the ship flies by.
 
-A ship under a player is the same design an NPC would fly, with two differences that are the
-pilot's, not the parts': `playerHull` more structure (the shields are every player ship's, as
-before), and a gun of `playerGun` a shot that a fitted gun adds its damage to. They are what
-every player hull had before hulls were designs -- 100 hull and 16 a shot -- less what the
-frames already give, so a hauler is now a little tougher than a courier because its frame is.
+A ship under a player is the same design an NPC would fly, and fights the same (one combat
+model, owner 2026-10-22, #186): `baseHull` more structure than its parts give and a gun of
+`baseGun` a shot that a fitted gun adds its damage to, a volley every
+`Ships::PLAYER_FIRE_INTERVAL` from `Sim::PLAYER_WEAPON_RANGE`, whoever flies it. Only the
+shields are a player ship's alone, as before. The two rules are what every player hull had
+before hulls were designs -- 100 hull and 16 a shot -- less what the frames already give, so a
+hauler is a little tougher than a courier because its frame is. What makes a raider weaker or
+stronger than a pilot is its fit, here, and never a multiplier in code; a cold system's fights
+and a siege's attrition are reckoned from the same numbers (`Ships::RoleFighter`).
 
 `ship.player` names the starter's design instead of a shape of its own: it says what a
 player's ship *is* (its glyph, layer and size), and the design it flies says what it looks
@@ -262,15 +266,18 @@ within 15% of that:
 | Role | Design (class) | Speed | Hull | Volley |
 |------|------|------|------|------|
 | before, every role | `ship.npc` | 120-180, mean 150 | 60 | 6 |
-| trader | hauler (hauler) | 142 | 60 | -- |
-| miner | miner (barge) | 162 | 60 | -- |
-| patrol | cutter (frigate) | 161 | 60 | 6 |
-| patrol, Syndicate | cruiser (cruiser) / cutter | 151 / 161 | 66 / 60 | 6 |
-| pirate | raider (raider) | 158 | 60 | 6 |
-| warship | cruiser (cruiser) | 151 | 66 | 6 |
+| trader | hauler (hauler) | 142 | 108 | -- |
+| miner | miner (barge) | 162 | 108 | -- |
+| patrol | cutter (frigate) | 161 | 108 | 22 |
+| patrol, Syndicate | cruiser (cruiser) / cutter | 151 / 161 | 114 / 108 | 22 |
+| pirate | raider (raider) | 158 | 108 | 22 |
+| warship | cruiser (cruiser) | 151 | 114 | 22 |
 
-Fire rate (0.9 s) and range (230) stay the server's, the same for every NPC: the parts do
-not say anything about them yet.
+Hull and volley are the design's in a fight (`combatHull`, `volley`), the same as a player's
+ship of it. Until #186 an NPC had only its parts' hull and guns (60 and 6 a volley) and fired
+every 0.9 s from 230 -- about 7 a second against 44 from the same design under a player; it
+now fires at the player's cooldown and range, so every armed design above takes 44 a second
+off its target.
 
 ## How it maps to the hull classes (Proposal A)
 
@@ -311,5 +318,5 @@ split bow.
 5. **Fitting** (next): a player changes the fit of a hull they own. The seam is `ShipStats`
    -- everything the game reads about a player's ship comes through it, from `Derive` -- so a
    refit is a design per ship rather than per hangar entry, and a fitted gun adds to
-   `playerGun` the way it adds to an NPC's volley. A per-ship design has to travel with the
+   `baseGun` the way it adds to an NPC's volley. A per-ship design has to travel with the
    account (a save version) and in the snapshot (`design` is an id today).

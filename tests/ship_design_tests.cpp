@@ -133,9 +133,9 @@ TEST_CASE("a hull's numbers are its design's, derived, and nothing typed beside 
         CHECK(t.stats.rcsAccel == doctest::Approx(s.rcsAccel));
         CHECK(t.stats.cargoCapacity == s.cargoCapacity);
         CHECK(t.stats.miningRate == doctest::Approx(s.miningRate));
-        // Under a player the same design has more hull and a gun its fitted guns add to.
-        CHECK(t.stats.hull == doctest::Approx(s.hull + c.rules.playerHull));
-        CHECK(t.stats.damage == doctest::Approx(s.damage + c.rules.playerGun));
+        // In a fight every design has more hull than its parts and a gun its fitted guns add to.
+        CHECK(t.stats.hull == doctest::Approx(s.hull + c.rules.baseHull));
+        CHECK(t.stats.damage == doctest::Approx(s.damage + c.rules.baseGun));
         CHECK(ShipTypeOf(d->id) == &t);
     }
     CHECK(ShipTypeOf("no such design") == nullptr);
@@ -205,10 +205,9 @@ TEST_CASE("the hangar: a list of designs, the starter first, and a mistake is a 
           std::string::npos);
     CHECK(ErrorAfter([](nlohmann::json& j) { j["hangar"][1]["cost"] = 5; }).find("cost") !=
           std::string::npos);
-    CHECK(
-        ErrorAfter([](nlohmann::json& j) { j["rules"].erase("playerHull"); }).find("playerHull") !=
-        std::string::npos);
-    CHECK(ErrorAfter([](nlohmann::json& j) { j["rules"].erase("playerGun"); }).find("playerGun") !=
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["rules"].erase("baseHull"); }).find("baseHull") !=
+          std::string::npos);
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["rules"].erase("baseGun"); }).find("baseGun") !=
           std::string::npos);
 }
 
@@ -725,8 +724,10 @@ TEST_CASE("every faction flies a design in every role, and an armed role's desig
 TEST_CASE("NPCs fly within 15% of what every NPC flew before designs (#279 step 4)")
 {
     // Before step 4 every NPC was the same: a hull of 60, a volley of 6 against a ship, and a
-    // speed rolled between 120 and 180. The switch keeps every role close to that, so it
-    // changes how a fight looks, not how it goes.
+    // speed rolled between 120 and 180. The switch kept every role's parts close to that. Since
+    // #186 an NPC fights with what the same design has under a player -- these plus the
+    // catalogue's baseHull and baseGun -- so the parts still order the roles, and the fight is
+    // a player's.
     const Ships::Catalogue c = Shipped();
     for (const Ships::Doctrine& d : c.doctrines)
         for (const auto& [role, designs] : d.roles)
@@ -781,8 +782,10 @@ TEST_CASE("an NPC is drawn as the design it flies and is as fast, tough and arme
     CHECK(raider.GetDesign() == "raider");
     REQUIRE(raider.GetArchetype() != nullptr);
     CHECK(raider.GetArchetype()->design == "raider");
-    CHECK(raider.GetMaxHull() == doctest::Approx(s.hull));
-    CHECK(raider.GetDamage() == doctest::Approx(s.damage));
+    // In a fight it is what the design is under a player too (#186): its parts plus the
+    // catalogue's baseHull and baseGun.
+    CHECK(raider.GetMaxHull() == doctest::Approx(s.combatHull));
+    CHECK(raider.GetDamage() == doctest::Approx(s.volley));
     CHECK(raider.GetSpeed() == doctest::Approx(s.cruise));
     CHECK(raider.GetSize() == doctest::Approx(raider.GetArchetype()->defaultSize));
 

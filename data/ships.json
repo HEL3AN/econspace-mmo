@@ -7,8 +7,8 @@
         "buildSecondsPerPart": 6,
         "plain": 0.5,
         "cruise": 0.47,
-        "playerHull": 48,
-        "playerGun": 16
+        "baseHull": 48,
+        "baseGun": 16
     },
     "modules": [
         { "id": "hull.cockpit", "mass": 2, "cost": { "Iron": 4, "Ice": 2 },

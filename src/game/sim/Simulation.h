@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Fitting.h"
 #include "core/Route.h"
 #include "core/WorldLoader.h"
 #include "gen/Galaxy.h"
@@ -566,10 +567,15 @@ public:
     static float OutpostCost();
     // What mounting a siege costs (#295, slice 5): the siege rules' share of an outpost.
     static float SiegeCost();
+    // What one of `f`'s ships in `role` brings to a fight: its doctrine's designs' guns and
+    // structure (Ships::RoleFighter), the same numbers an NPC of that design fights with hot
+    // and a player's ship of it fights with (one combat model, owner 2026-10-22, #186). Derived
+    // once per faction and role, and again only when the ship catalogue is reloaded. The cold
+    // pass, the siege's attrition and the siege planner read it.
+    Ships::Fighter FighterOf(FactionId f, NpcRole role) const;
     // Hull one of `f`'s besieging warships takes off a structure a second: its own warship
-    // design's guns (Ships::WarshipDps), derived once per faction and again only when the
-    // ship catalogue is reloaded. The planner and the siege pass both read it.
-    float WarshipDps(FactionId f) const;
+    // design's guns (Ships::WarshipDps). The planner and the siege pass both read it.
+    float WarshipDps(FactionId f) const { return FighterOf(f, NpcRole::Warship).dps; }
     // The strength of `f` in a system that is besieging an outpost there rather than
     // patrolling it: warships where the system is hot, never the director's police or pirates.
     float SiegeForceIn(const std::string& systemId, FactionId f) const;
@@ -1985,10 +1991,10 @@ private:
     // Plans by when they are due, then by id: a pass pops what is due and looks at
     // nothing else. Not saved -- remade from plans_.
     std::set<std::pair<double, int>> due_;
-    // WarshipDps by faction id, for the catalogue load it was derived from. Not saved.
-    mutable std::map<std::string, float> warshipDps_;
-    mutable unsigned                     warshipDpsFrom_ = 0;
-    int                                  nextPlanId_ = 1;
+    // FighterOf by faction id and role, for the catalogue load it was derived from. Not saved.
+    mutable std::map<std::pair<std::string, int>, Ships::Fighter> fighters_;
+    mutable unsigned                                              fightersFrom_ = 0;
+    int                                                           nextPlanId_ = 1;
     // Delivery contracts (#343, #407), by id. Saved. When markets last looked at what they are
     // short of, as a stretch of the contracts rules' `every`: transient, so a restart looks.
     std::map<int, Contract>     contracts_;

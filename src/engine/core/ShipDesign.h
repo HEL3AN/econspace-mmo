@@ -124,12 +124,13 @@ struct Rules
     // The share of its top speed an NPC flies its rounds at. A ship on a job is not racing,
     // and today's traffic moves at about half what the same hull does under a player.
     float cruise = 0.5f;
-    // What a ship has under a player over the same design under a crew (#279 step 5): this
-    // much more structure, and a gun of this much a shot that fitted guns add to. They are
-    // what every player hull had before ships were designs -- 100 hull, 16 a shot -- less what
-    // the frames already give.
-    float playerHull = 0.0f;
-    float playerGun = 0.0f;
+    // What every ship has in a fight beyond what its parts give (#279 step 5): this much more
+    // structure, and a gun of this much a shot that fitted guns add to. They are what every
+    // player hull had before ships were designs -- 100 hull, 16 a shot -- less what the frames
+    // already give. A ship has them whoever flies it: one combat model for NPCs and players
+    // (owner, 2026-10-22, #186), so what differs between the two is the fit.
+    float baseHull = 0.0f;
+    float baseGun = 0.0f;
 };
 
 // A hull a station sells to players (#279 step 5). An account owns hulls by their place in
@@ -190,12 +191,13 @@ struct Stats
     float turnSpeed = 0.0f;  // rad/s
     int   cargoCapacity = 0;
     float miningRate = 0.0f;
-    float hull = 0.0f;    // NpcShip's hull
-    float damage = 0.0f;  // per volley, against a ship
+    float hull = 0.0f;    // what its parts give: frame, sections and armour
+    float damage = 0.0f;  // what its fitted guns add to a volley; zero for an unarmed design
     float cruise = 0.0f;  // what an NPC flies its rounds at: maxSpeed * rules.cruise
-    // The same under a player: hull + rules.playerHull, damage + rules.playerGun.
-    float playerHull = 0.0f;
-    float playerDamage = 0.0f;
+    // What it is in a fight, under a player or a crew alike: hull + rules.baseHull, and what
+    // one volley takes off a target, damage + rules.baseGun (Ships::Dps for it a second).
+    float combatHull = 0.0f;
+    float volley = 0.0f;
     Cost  cost;       // every part's, summed, in ResourceType order
     int   parts = 0;  // frame, sections and every fitted module counted once each
     float buildSeconds = 0.0f;

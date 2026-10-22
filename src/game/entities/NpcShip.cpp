@@ -43,8 +43,11 @@ NpcShip::NpcShip(Vector2 pos, FactionId faction, NpcRole role, std::vector<Vecto
         SetArchetype(a->id);
         size_ = a->defaultSize;
         speed_ = a->ship.cruise;
-        damage_ = a->ship.damage;
-        maxHull_ = hull_ = a->ship.hull;
+        // ...and it fights as the same design does under a player (owner, 2026-10-22, #186):
+        // the same volley at the same cooldown, the same structure. What makes a pirate
+        // weaker or stronger than a pilot is the fit, in data.
+        damage_ = a->ship.volley;
+        maxHull_ = hull_ = a->ship.combatHull;
     }
     PickNewTarget();
 }

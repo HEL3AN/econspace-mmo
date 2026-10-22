@@ -1,6 +1,10 @@
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -20,6 +24,7 @@
 #include "sim/FactionMind.h"
 #include "sim/Simulation.h"
 #include "factions_named.h"
+#include "temp_dir.h"
 
 // Cold systems (#295, slice 4): NPC ships exist only where a player is, and for a minute
 // after; everywhere else the population, its losses, the market and the bodies are kept as
@@ -360,4 +365,163 @@ TEST_CASE("a warmed system's ships fly their doctrine's designs, the same on eve
             }
     }
     CHECK(compared > 0);
+}
+
+// One combat model for NPCs and players (owner, 2026-10-22, #186): an NPC fires its design's
+// volley at a player's cooldown, a cold system's fights are reckoned from the same numbers,
+// and what makes a raider weaker or stronger than a pilot is the fit in data/ships.json.
+namespace
+{
+// Hull `target` loses over `ticks` calls of `shoot`.
+template <typename Shoot> float HullLost(const Combatant& target, int ticks, Shoot shoot)
+{
+    const float before = target.GetHull();
+    for (int i = 0; i < ticks; i++)
+        shoot();
+    return before - target.GetHull();
+}
+
+NpcShip& PutNpc(SystemState& st, Vector2 at, FactionId f, NpcRole role, const std::string& design,
+                int id)
+{
+    st.entities.push_back(
+        std::make_unique<NpcShip>(at, f, role, std::vector<Vector2>{ at }, design));
+    st.entities.back()->SetId(id);
+    return static_cast<NpcShip&>(*st.entities.back());
+}
+}  // namespace
+
+TEST_CASE("an NPC of a design hits as hard as a player's ship of that design (#186)")
+{
+    auto              sim = ColdWorld();
+    const std::string sys = sim->Universe().startId;
+    SystemState&      st = *sim->SystemById(sys);
+    const float       dt = 1.0f / 60.0f;
+    const int         ticks = 100;  // 1.67 s: four volleys at a half-second cooldown
+    const Vector2     at = { 300000.0f, -300000.0f };
+
+    for (const char* design : { "raider", "cutter", "cruiser" })
+    {
+        INFO(design);
+        // A lawful patrol flying the design, on a pirate beside it.
+        NpcShip& npc = PutNpc(st, at, Fac::TradersGuild(), NpcRole::Police, design, 900001);
+        NpcShip& npcTarget =
+            PutNpc(st, { at.x + 100.0f, at.y }, Fac::Pirates(), NpcRole::Pirate, "cruiser", 900002);
+        const float byNpc = HullLost(npcTarget, ticks,
+                                     [&]()
+                                     {
+                                         npc.Update(dt);
+                                         npcTarget.Update(dt);
+                                         sim->StepNpcCombat(st, {}, nullptr);
+                                     });
+
+        // A pilot in a ship of the same design, on another pirate like it.
+        ShipStats stats;
+        REQUIRE(StatsOfDesign(design, stats));
+        ClientSession& pilot = sim->CreateSession(sys, { at.x, at.y + 20000.0f }, stats);
+        pilot.weaponOn = true;
+        NpcShip&    pilotTarget = PutNpc(st, { at.x + 100.0f, at.y + 20000.0f }, Fac::Pirates(),
+                                         NpcRole::Pirate, "cruiser", 900003);
+        const float byPilot = HullLost(pilotTarget, ticks, [&]()
+                                       { sim->StepPlayerFire(pilot, st, 900003, dt, nullptr); });
+
+        Ships::Stats d;
+        std::string  why;
+        REQUIRE(
+            Ships::Derive(Archetypes::ShipCatalogue(), *Archetypes::FindDesign(design), d, why));
+        CHECK(npc.GetDamage() == doctest::Approx(d.volley));
+        CHECK(npc.GetMaxHull() == doctest::Approx(stats.hull));  // the same structure, too
+        CHECK(byPilot == doctest::Approx(4.0f * d.volley));
+        CHECK(byNpc == doctest::Approx(byPilot));
+
+        sim->DestroySession(pilot.id);
+        st.entities.erase(std::remove_if(st.entities.begin(), st.entities.end(),
+                                         [](const std::unique_ptr<Entity>& e)
+                                         { return e->GetId() >= 900001 && e->GetId() <= 900003; }),
+                          st.entities.end());
+    }
+}
+
+TEST_CASE("a warmed system's armed ships fight with the numbers its cold pass reckons with (#186)")
+{
+    auto              sim = ColdWorld();
+    ClientSession&    p = Arrive(*sim);
+    const std::string sys = p.systemId;
+    REQUIRE(Simulation::IsHot(*sim->SystemById(sys)));
+    int armed = 0;
+    for (const NpcShip* n : ShipsIn(*sim, sys))
+    {
+        if (!n->IsCombatant())
+            continue;
+        const std::vector<std::string>* list = Archetypes::ShipCatalogue().DesignsFor(
+            Factions::Id(n->GetFaction()), NpcRoleId(n->GetRole()));
+        REQUIRE(list != nullptr);
+        if (list->size() != 1)
+            continue;  // a mix is reckoned by its mean, which no one ship of it flies
+        const Ships::Fighter f = sim->FighterOf(n->GetFaction(), n->GetRole());
+        CHECK(n->GetDamage() / Ships::PLAYER_FIRE_INTERVAL == doctest::Approx(f.dps));
+        CHECK(n->GetMaxHull() == doctest::Approx(f.hull));
+        armed++;
+    }
+    CHECK(armed > 0);
+}
+
+TEST_CASE("a lighter gun on the pirates' raider costs a cold system fewer traders (#186)")
+{
+    namespace fs = std::filesystem;
+    // The pirates' dps, and the suppression one cold pass leaves on a system's traders, with
+    // the archetypes (and the ship catalogue beside them) at `archetypes`.
+    auto onePass = [](const std::string& archetypes)
+    {
+        SetRandomSeed(0xC0FFEEu);
+        REQUIRE(Factions::Load(DATA + "factions.json"));
+        REQUIRE(Archetypes::Load(archetypes));
+        REQUIRE(Blueprints::Load(DATA + "blueprints.json"));
+        auto sim = std::make_unique<Simulation>();
+        sim->LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+        sim->AttachRegion(7, std::string(TEST_WORLD_DIR) + "systems/");
+        sim->Seed(1234u);
+        sim->InitGalaxy();
+        sim->MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
+        SystemState& st = *sim->SystemById(sim->Universe().startId);
+        REQUIRE_FALSE(Simulation::IsHot(st));
+        st.agg.pirates = 4.0f;
+        st.agg.traders = 6.0f;
+        st.agg.supTraders = 0.0f;
+        sim->MaintainWorld(2.0f);
+        return std::make_pair(sim->FighterOf(Fac::Pirates(), NpcRole::Pirate).dps,
+                              st.agg.supTraders);
+    };
+    const auto stock = onePass(DATA + "archetypes.json");
+
+    // The same data, but the raider's railgun swapped for a laser.
+    const TempDir  tmp;
+    const fs::path dir = tmp.Path("data");
+    fs::create_directories(dir);
+    for (const char* f : { "archetypes.json", "modules.json" })
+        fs::copy_file(fs::path(DATA) / f, dir / f);
+    fs::copy(fs::path(DATA) / "modules", dir / "modules", fs::copy_options::recursive);
+    std::string ships;
+    {
+        std::ifstream in(DATA + "ships.json");
+        ships.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    const std::string railgun = "\"module\": \"weapons.railgun\", \"in\": \"bow\", \"on\": "
+                                "\"top\", \"count\": 1, \"scale\": 0.18";
+    const size_t      at = ships.find(railgun);
+    REQUIRE(at != std::string::npos);  // the raider's, the one railgun fitted at that scale
+    ships.replace(at, railgun.size(),
+                  "\"module\": \"weapons.laser\", \"in\": \"bow\", \"on\": \"top\", "
+                  "\"count\": 1, \"scale\": 0.18");
+    {
+        std::ofstream out(dir / "ships.json");
+        out << ships;
+    }
+    const auto lighter = onePass((dir / "archetypes.json").string());
+    REQUIRE(Archetypes::Load(DATA + "archetypes.json"));  // the stock data again
+
+    REQUIRE(stock.second > 0.0f);
+    CHECK(lighter.first < stock.first);  // a laser takes off less than a railgun
+    // ...and the traders the pass costs fall in the same proportion as the raider's guns.
+    CHECK(lighter.second / stock.second == doctest::Approx(lighter.first / stock.first));
 }

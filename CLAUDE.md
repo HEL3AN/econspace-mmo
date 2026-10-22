@@ -344,6 +344,15 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   `Ships::WarshipDps` in `core/Fitting`: the volley a player's ship of that hull and fit
   fires, at the player cooldown), never a number in a rules file (owner, 2026-10-22); the
   planner and the pass both read it, so a refit of the doctrine's warship moves every siege.
+- **NPCs and players fight by one model** (owner, 2026-10-22, #186). An NPC's guns and hull
+  are its design's as a player's ship of it has them (`Ships::Stats::volley`, `combatHull`),
+  fired at `Ships::PLAYER_FIRE_INTERVAL` from `Sim::PLAYER_WEAPON_RANGE`; only the shields are
+  a player ship's alone. What a cold system's fights and a siege's attrition cost each side is
+  the other's dps over its own hull, from the same designs (`Simulation::FighterOf`, i.e.
+  `Ships::RoleFighter`); the rates in code and `attrition` in blueprints.json are how often
+  ships meet, never what a gun does. A pirate too strong or too weak for a new pilot is a
+  change to its fit in `data/ships.json`, never a multiplier. A station is not a design: its
+  guns are its archetype's `defensive.damage` a second.
 - **Per-player state lives in `ClientSession`, not in `Simulation`** (#3). The ship, the
   account, the missions, the standing order and the event journal belong to a session, and
   every player verb takes the session it acts for. There is no "active system" either: a

@@ -856,8 +856,8 @@ bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error)
     out.hull = sum.hull;
     out.damage = sum.damage;
     out.cruise = out.maxSpeed * r.cruise;
-    out.playerHull = out.hull + r.playerHull;
-    out.playerDamage = out.damage + r.playerGun;
+    out.combatHull = out.hull + r.baseHull;
+    out.volley = out.damage + r.baseGun;
     for (ResourceType t : AllResourceTypes())
         if (cost[(size_t)t.Index()] > 0)
             out.cost.emplace_back(t, cost[(size_t)t.Index()]);
@@ -1014,14 +1014,14 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
     const json& rj = j["rules"];
     if (!OnlyKnownKeys(rj,
                        { "speedBase", "speedPerAccel", "rcsPerTurn", "buildSecondsPerMass",
-                         "buildSecondsPerPart", "plain", "cruise", "playerHull", "playerGun" },
+                         "buildSecondsPerPart", "plain", "cruise", "baseHull", "baseGun" },
                        error))
     {
         error = "rules: " + error;
         return false;
     }
     for (const char* key : { "speedBase", "speedPerAccel", "rcsPerTurn", "buildSecondsPerMass",
-                             "buildSecondsPerPart", "plain", "cruise", "playerHull", "playerGun" })
+                             "buildSecondsPerPart", "plain", "cruise", "baseHull", "baseGun" })
         if (!rj.contains(key))
         {
             error = std::string("rules: '") + key + "' is missing";
@@ -1034,8 +1034,8 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
         !ReadNumber(rj, "buildSecondsPerPart", c.rules.buildSecondsPerPart, error) ||
         !ReadNumber(rj, "plain", c.rules.plain, error) ||
         !ReadNumber(rj, "cruise", c.rules.cruise, error) ||
-        !ReadNumber(rj, "playerHull", c.rules.playerHull, error) ||
-        !ReadNumber(rj, "playerGun", c.rules.playerGun, error))
+        !ReadNumber(rj, "baseHull", c.rules.baseHull, error) ||
+        !ReadNumber(rj, "baseGun", c.rules.baseGun, error))
     {
         error = "rules: " + error;
         return false;
