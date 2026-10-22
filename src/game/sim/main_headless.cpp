@@ -3042,6 +3042,8 @@ static int HostSelftest()
     // Somewhere the rules allow, found by asking them: the ship starts beside a station that
     // orbits a planet, and nothing may stand in a satellite's path. The ship is put there
     // first, as if it had flown -- this tests the wire, not travel.
+    // The start is a faction's space: building there takes its licence (#431 slice 6).
+    sim.GrantLicence(s.accountName, s.systemId);
     auto placeFor = [&](const Blueprint& bp, Proto::Command& c)
     {
         const Vector2 from = s.ship->GetPosition();
