@@ -334,6 +334,10 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     // journal; an accepted name reaches everyone in the galaxy index.
     if (!c.nameSystem.empty())
         sim.NameSystem(s, c.nameSystem);
+    // A licence to build here (#431 slice 6): docked at the holding faction's station, or in a
+    // corporation's system anywhere -- so not a docked verb either; a refusal says why.
+    if (c.buyLicence)
+        sim.BuyLicence(s);
 
     // A refit (#279 fitting). Not under the docked verbs below: asked for in flight, it is
     // refused with a reason rather than dropped without a word.
@@ -822,6 +826,7 @@ static Proto::CorpView CorpViewFor(const Simulation& sim, const std::string& acc
         v.tax = (float)c->TaxRate(Goods::Rules().fee, WorldRules::InfluenceRules().taxMax);
         v.docking = Corps::DockingName(c->docking);
         v.holds = sim.HeldBy(c->id);
+        v.licences = sim.CorpLicences(c->id);  // (#431 slice 6)
     }
     for (const Corps::Corp* c : sim.Corporations().InvitesFor(account, now))
         for (const Corps::Invite& i : c->invites)
@@ -3037,6 +3042,8 @@ static int HostSelftest()
     // Somewhere the rules allow, found by asking them: the ship starts beside a station that
     // orbits a planet, and nothing may stand in a satellite's path. The ship is put there
     // first, as if it had flown -- this tests the wire, not travel.
+    // The start is a faction's space: building there takes its licence (#431 slice 6).
+    sim.GrantLicence(s.accountName, s.systemId);
     auto placeFor = [&](const Blueprint& bp, Proto::Command& c)
     {
         const Vector2 from = s.ship->GetPosition();

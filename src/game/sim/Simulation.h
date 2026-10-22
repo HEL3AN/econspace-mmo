@@ -619,8 +619,53 @@ public:
         std::string corp;     // a corporation's treasury
         std::string account;  // a pilot in none
     };
-    FeeTo       FeeAt(const SystemState& st, const Entity& market) const;
-    void        PayFee(const FeeTo& to, double fee);
+    FeeTo FeeAt(const SystemState& st, const Entity& market) const;
+    void  PayFee(const FeeTo& to, double fee);
+
+    // --- Licences (#431 slice 6, Simulation_Territory.cpp) ---
+    // Building in a system a faction or a corporation holds takes the holder's leave and a
+    // licence, a weekly rent (WorldRules::Licences). A licence is its party's: a corporation's,
+    // on its record and paid from its treasury, or a pilot's in none, in the world's book of
+    // owners and paid from their money. Rent comes due in the coarse pass, hot or cold, and is
+    // taken if the party can pay and the holder still admits it; unpaid a grace later, it
+    // lapses, and what the party has there trespasses: lawless to shoot (LawOver), and the
+    // holding faction may weigh evicting it (Think).
+    //
+    // Who grants a licence in `st`: a holder corporation's id, or a lawful faction's key
+    // (InfluenceMap::Key); empty where none is needed -- nobody's system, the frontier, the
+    // lawless', or what the world's unaffiliated keep.
+    std::string LicenceHolder(const SystemState& st) const;
+    // ...as a player reads it: the faction's name, or the corporation's name and ticker.
+    std::string HolderName(const std::string& holder) const;
+    // The party `account` builds for: their corporation's id, or InfluenceMap::PILOT + account.
+    std::string PartyOf(const std::string& account) const;
+    // A party's licence in a system; null for none.
+    const Corps::Licence* LicenceOf(const std::string& party, const std::string& system) const;
+    // A party's standing with a faction: a pilot's own, a corporation's the sum of its members'
+    // (Decided after the rounds, 2) -- each as last known, 0 for one never seen.
+    float PartyStanding(const std::string& party, FactionId f) const;
+    // Whether `holder` would license `party` in `st`: a faction for a standing of the rules'
+    // or more, a corporation by its docking policy. `why` says why not.
+    bool Admits(const SystemState& st, const std::string& holder, const std::string& party,
+                std::string& why) const;
+    // Why `account` may not build in `st` now for want of leave or a licence; empty: free to.
+    std::string LicenceProblem(const std::string& account, const SystemState& st) const;
+    // The verb (Command::buyLicence): a period's rent, paid now, for the system the pilot is
+    // in. A licence still paid for is extended a period from where it runs to.
+    bool BuyLicence(ClientSession& s);
+    // What building in the pilot's system takes, for their snapshot; a corporation's licences
+    // for its members' view.
+    Proto::LicenceView              LicenceViewFor(const ClientSession& s) const;
+    std::vector<Proto::LicenceView> CorpLicences(const std::string& corpId) const;
+    // Once a pass: rent due is taken or goes unpaid, unpaid becomes lapsed after the grace, a
+    // licence for a system the party has nothing in ends with its period, and every player
+    // structure in a held system is told where it stands (Structure::SetLicence).
+    void StepLicences();
+    // ...the last part for one system, at once: after a purchase, a build, a change of holder.
+    void RefreshLicences(SystemState& st);
+    // A period's licence for `account`'s party in `system`, without the purchase or its gate:
+    // what a test that builds in a held system starts from. Nothing where none is needed.
+    void        GrantLicence(const std::string& account, const std::string& system);
     static void SeedPresence(SystemAggregate& a);
     // Where a system's security settles (#428): its base, moved by the police/pirate balance.
     static float SecurityTarget(const SystemAggregate& a);
@@ -1751,8 +1796,13 @@ private:
         PerFaction<float>  standing;
         PerFaction<float>  owedStanding;
         PerFaction<double> owedBounty;
-        // Fees their markets took while they were away (#438), paid at login.
+        // Fees their markets took while they were away (#438), paid at login -- less any
+        // licence's rent taken meanwhile, which may leave it below zero (#431 slice 6).
         double owedMoney = 0.0;
+        // Their money as of when they were last on, so rent can be taken while they are away
+        // within what they had (#431 slice 6), and their licences, by system.
+        double                                money = 0.0;
+        std::map<std::string, Corps::Licence> licences;
     };
     std::map<std::string, OwnerBook> owners_;
     // Attacks under way on players' structures (#431 C2), saved with the world so one that
@@ -1765,7 +1815,16 @@ private:
     // An entry for `owner` and their corporation: told to whoever is on, kept for the rest.
     // `onlyOn`: only to whoever is on, nothing kept (an attack starting).
     void TellOwner(const std::string& owner, const std::string& yours, const std::string& theirs,
-                   bool onlyOn);
+                   bool onlyOn, Ev::Kind kind = Ev::Kind::StructureAttacked);
+    // A party's licence set or dropped (#431 slice 6), wherever the party keeps it; and a word
+    // to whoever pays it: the pilot, or the corporation's journal.
+    void SetLicence(const std::string& party, const std::string& system, const Corps::Licence& l);
+    void DropLicence(const std::string& party, const std::string& system);
+    void TellParty(const std::string& party, const std::string& text);
+    // A period's rent taken from the party and paid to the holder; false, nothing taken, when
+    // it cannot pay -- `why` says so.
+    bool PayRent(const std::string& party, const std::string& holder, double rent,
+                 std::string& why);
     // Gives `s` what their corporation's journal holds that they have not read.
     void           ReadCorpJournal(ClientSession& s);
     nlohmann::json OwnersJson() const;
@@ -1892,7 +1951,8 @@ private:
     // `f` sends what `lent` lends against `against`'s outpost `site` in `to`, coming in from
     // its neighbour `via`, and pays. The force sets out now and arrives when the farthest has.
     void BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent, const std::string& via,
-                    const std::string& to, FactionId against, const std::string& site);
+                    const std::string& to, FactionId against, const std::string& site,
+                    const std::string& evicting = std::string());
     // The pooled force reaches the outpost: it is strength there from now on, and ships where
     // somebody is to see them. False when the outpost has gone since: it turns back.
     bool ArriveSiege(Plan& p);

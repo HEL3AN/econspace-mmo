@@ -83,6 +83,10 @@ struct Plan
     // A Return's force is what is coming home.
     FactionId against = Factions::Unaffiliated();
     float     force = 0.0f;
+    // A siege evicting a trespasser (#431 slice 6): the owner of the player's structure it is
+    // against, standing unlicensed in the faction's own space; empty for a faction's outpost.
+    // No garrison stands with it, and no faction posts jobs to break it.
+    std::string evicting;
     // A siege's contingents, as they set out (their sum is the force it began with), the
     // neighbour of the target they come in from, and when the last of them gets there. Until
     // then the force is on the way: counted nowhere, firing at nothing, and missing from home.

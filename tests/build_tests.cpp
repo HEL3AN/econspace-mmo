@@ -65,6 +65,7 @@ ClientSession& Builder(Simulation& sim, const std::string& account)
     ClientSession& s =
         sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
     s.accountName = account;
+    sim.GrantLicence(account, s.systemId);  // the start is the Guild's space (#431 slice 6)
     return s;
 }
 
@@ -1086,6 +1087,7 @@ ClientSession& Founder(Simulation& sim, const std::string& account)
     stats.cargoCapacity = 2000;
     ClientSession& s = sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f }, stats);
     s.accountName = account;
+    sim.GrantLicence(account, s.systemId);  // (#431 slice 6)
     return s;
 }
 

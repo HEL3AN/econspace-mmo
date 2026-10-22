@@ -1125,6 +1125,8 @@ bool Simulation::SaveWorld(const std::string& path) const
         {
             pj["against"] = Factions::Id(p.against);
             pj["force"] = p.force;
+            if (!p.evicting.empty())  // (#431 slice 6): an addition an older build ignores
+                pj["evicting"] = p.evicting;
             json lent = json::array();
             for (const Plan::Lent& l : p.lent)
                 lent.push_back({ { "from", l.from }, { "force", l.force }, { "hops", l.hops } });
@@ -1391,6 +1393,7 @@ Save::Result Simulation::LoadWorld(const std::string& path)
                 (!pj.contains("against") || !FactionByName(pj["against"], p.against)))
                 continue;
             p.force = std::max(0.0f, pj.value("force", 0.0f));
+            p.evicting = pj.value("evicting", std::string());
             // A siege from before pooling (version 7) is already at its outpost, and lent by
             // nobody: what is left of it stays where it is, as it did then.
             p.arrived = pj.value("arrived", true);

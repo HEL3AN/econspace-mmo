@@ -668,6 +668,27 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                     else if (el.expiresAt > 0.0)
                         L.Field("Stands", TextFormat("%.0f min more", (el.expiresAt - now) / 60.0),
                                 t.colors.dim);
+                    // Whether it stands by the holder's leave (#431 slice 6): a trespasser is
+                    // anyone's to shoot, and that is worth seeing before firing.
+                    switch ((LicenceState)el.licence)
+                    {
+                        case LicenceState::Licensed:
+                            L.Field(
+                                "Licence",
+                                TextFormat("paid, %.0f h more", (el.licenceUntil - now) / 3600.0),
+                                t.colors.text);
+                            break;
+                        case LicenceState::Unpaid:
+                            L.Field("Licence",
+                                    TextFormat("unpaid, lapses in %.0f h",
+                                               (el.licenceUntil - now) / 3600.0),
+                                    t.colors.warn);
+                            break;
+                        case LicenceState::Trespass:
+                            L.Field("Licence", "none: trespassing, lawless to shoot", t.colors.bad);
+                            break;
+                        case LicenceState::None: break;
+                    }
                     // Its hull, from the proxy, which knows its blueprint and its time line: a
                     // site's grows as it goes up (#39).
                     if (const Entity* p = FindEntityById(e->id))

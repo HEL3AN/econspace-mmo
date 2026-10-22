@@ -274,6 +274,12 @@ Pay off the bounty a faction has on you, at a station, so its ships stop hunting
 |---|---|---|---|
 | `faction` | string |  | faction name; default: the faction that owns this station |
 
+### `buy_licence`
+
+Buy, or renew a week ahead, the licence to build in the system you are in (#431). A system a faction or a corporation holds takes its leave and a weekly rent: a faction licenses those whose standing with it is high enough -- a corporation's is its members' together -- and sells it docked at one of its stations there; a corporation by its docking policy, anywhere in its system. Paid from your money, or for your corporation from its treasury by its CEO or a director, and taken each week from then on. Unpaid a day past due, what you have there trespasses: anyone may shoot it, and the faction may evict it. observe says what building here takes.
+
+No arguments.
+
 ### `name_system`
 
 Name the system you are in. Beyond the wormhole a system has only a designation (W-3.2) until whoever got there first names it -- once, for everyone who has it on their charts. A system its people live in keeps their name, and one a faction charted before any pilot came keeps the faction's name or its designation. 3 to 24 characters, starting with a letter; letters, digits, spaces, ' and -; not a name another system has.

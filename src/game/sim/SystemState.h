@@ -145,6 +145,9 @@ struct SystemProfile
     // The accounts with a claim here (T2): a finished structure of claim tier -- an outpost or
     // above -- that can itself be besieged. Kept like `outposts` is for factions.
     std::set<std::string> playerClaims;
+    // Every account with a structure here, finished or a site (#431 slice 6): where licences
+    // are looked at each pass.
+    std::set<std::string> builders;
     // What its belts, planets and markets do to its market every hour (#343).
     MarketRates rates;
 };
@@ -212,6 +215,9 @@ struct SystemState
     double    policeDueAt = 0.0;
     int       policeFor = 0;
     FactionId policeLaw = Factions::Unaffiliated();
+    // Players' structures standing here without the holder's leave (#431 slice 6), by entity
+    // id: what the holding faction weighs evicting. Remade each pass (StepLicences), not saved.
+    std::vector<int> trespass;
 
     // The static layer's revision and what changed in it since the last LayoutDelta went
     // out (#38), by entity id. Transient like the rest of a hot system: a restart begins

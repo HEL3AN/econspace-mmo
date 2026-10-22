@@ -165,6 +165,7 @@ void Game::DrawStationContent(const Ui::Frame& f)
                             clientLink_->Send(Proto::EncodeCommand(c));
                         }
                     }
+                    DrawLicenceHere(L);  // building in this system (#431 slice 6)
                 });
             if (L.Button("undock", "Undock", true))
                 Undock();

@@ -166,6 +166,8 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
                 bool        claim = false;
                 const float weight = InfluenceWeight(t, claim);
                 FactionId   by;
+                if (!t.GetOwner().empty() && !Outposts::FactionOf(t.GetOwner(), by))
+                    p.builders.insert(t.GetOwner());
                 if (weight > 0.0f && Outposts::FactionOf(t.GetOwner(), by))
                     p.factionWeight[by] += weight;
                 else if (weight > 0.0f && !t.GetOwner().empty())
@@ -703,6 +705,7 @@ void Simulation::Think(FactionId f)
     int         anchorSlot = -1;        // the mouth an Anchor would hold
     std::string grow;                   // what an upgrade would make its outpost (#342 S6)
     bool        againstAnchor = false;  // the siege is of an Anchor rather than an outpost
+    std::string evictSite, evictOwner;  // ...or of a trespasser's structure (#431 slice 6)
     // What a region behind a mouth promises, from what was seen of its entry system (#342
     // S4): what the place offers, and a whole region nobody holds.
     auto promise = [&](const Intel& seen)
@@ -1003,6 +1006,71 @@ void Simulation::Think(FactionId f)
             }
         }
 
+    // Evicting a trespasser (#431 slice 6): a player's structure standing in a system it holds
+    // with no licence, or a lapsed one. Not done for being there -- weighed like any siege: worth
+    // the rules' `evict` to it, against what bringing it down would take and its guns. It sees
+    // its own systems, so the structure's hull is known, not guessed.
+    if (canSiege)
+        for (auto& kv : systems_)
+        {
+            SystemState& st = kv.second;
+            if (st.trespass.empty() || !st.agg.claimed || st.agg.controller != f)
+                continue;
+            const Structure* target = nullptr;
+            for (const auto& e : st.entities)
+                if (e->GetId() == st.trespass.front() && e->GetKind() == EntityKind::Structure)
+                    target = static_cast<const Structure*>(e.get());
+            if (target == nullptr)
+                continue;
+            const float hull = target->HullFraction(time_) * target->MaxHull(time_);
+            // Its own garrison first -- the trespasser is in its system -- then its holdings
+            // within reach, as for any siege.
+            auto pool = pools.find(kv.first);
+            if (pool == pools.end())
+            {
+                std::vector<Plan::Lent> lent;
+                const float             own = std::min(st.agg.presence[f] - t.capacity * HOME_GUARD,
+                                                       t.capacity * siege.commit);
+                if (own >= MIN_LEND)
+                {
+                    Plan::Lent here;
+                    here.from = kv.first;
+                    here.force = own;
+                    here.hops = 1;
+                    lent.push_back(here);
+                }
+                std::string in;
+                for (const Plan::Lent& l :
+                     PoolFor(f, kv.first, std::max(0.0f, siege.pool * t.capacity - own), &in))
+                    lent.push_back(l);
+                pool = pools.emplace(kv.first, std::make_pair(std::move(lent), in)).first;
+            }
+            float sent = 0.0f;
+            for (const Plan::Lent& l : pool->second.first)
+                sent += l.force;
+            const float rate = sent * siege.dps;
+            if (pool->second.first.empty() || sent < 1.5f || rate <= 0.0f ||
+                hull / rate > siege.seconds)
+                continue;
+            const Archetype* a = target->GetArchetype();
+            const float      guns = a != nullptr && a->Has(Component::Defensive) ? 0.5f : 0.0f;
+            const float      risk = guns + hull / rate / siege.seconds;
+            const float      score = (float)WorldRules::LicenceRules().evict - risk / t.appetite;
+            if (score > bestScore)
+            {
+                bestScore = score;
+                act = Act::Siege;
+                againstAnchor = false;
+                from = pool->second.first.front().from;
+                to = kv.first;
+                enemy = Factions::Unaffiliated();
+                lend = pool->second.first;
+                via = pool->second.second;
+                evictSite = StaticKey(kv.first, target->GetId());
+                evictOwner = target->GetOwner();
+            }
+        }
+
     // Anchoring (#342 S4): an unstable mouth in a system it holds, or has come to in strength,
     // or next door to one it holds. Worth what the region behind it promises, judged on what
     // its surveyors saw of the entry system -- it looks first, if it has not; the risk is who
@@ -1154,6 +1222,16 @@ void Simulation::Think(FactionId f)
         SystemState& dest = systems_[to];
         mind.intel[to] = Observe(dest);
         ChartBy(to, f);
+        // A trespasser in its own space (#431 slice 6), if it still is one: policing its own
+        // system, not a front (D3).
+        if (!evictSite.empty())
+        {
+            const Structure* t = StructureByKey(dest, evictSite);
+            if (t != nullptr && t->GetLicence() == LicenceState::Trespass && dest.agg.claimed &&
+                dest.agg.controller == f)
+                BeginSiege(f, lend, via, to, enemy, evictSite, evictOwner);
+            return;
+        }
         // An Anchor may be besieged in a system it holds itself; an outpost never is. And only
         // where its front is still open (#431 D3).
         if (dest.agg.claimed && dest.agg.controller != f && !Hostile(f, dest.agg.controller))

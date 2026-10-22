@@ -66,6 +66,17 @@ struct Invite
     long long   at = 0;
 };
 
+// A licence to build in a system somebody holds (#431 slice 6): a weekly rent to the holder,
+// kept by the party that pays it -- on a corporation's record here, on a pilot's in the
+// world's book of owners. `until` is world time (Simulation::Time), not Unix seconds: the
+// rent runs on the world's clock, which stops while the server does.
+struct Licence
+{
+    std::string holder;       // who granted it: a faction's "f:<id>" or a corporation's id
+    double      until = 0.0;  // paid to; unpaid after it, lapsed a grace later
+    int         told = 0;     // what its payer has been told: 1 unpaid, 2 lapsed
+};
+
 struct Corp
 {
     std::string         id;  // "c<N>", stable for the corporation's life
@@ -93,6 +104,9 @@ struct Corp
     // structures there.
     double  tax = -1.0;
     Docking docking = Docking::All;
+    // Its licences to build in other holders' systems (#431 slice 6), by system id, the rent
+    // paid from the treasury.
+    std::map<std::string, Licence> licences;
 
     const Member* Find(const std::string& account) const;
     const Member* Ceo() const;
@@ -162,6 +176,12 @@ public:
     // and retells allow-lists -- but MoneyRev() does: the host sends members their view on
     // it, and the treasury is written with the world.
     bool Credit(const std::string& id, double amount);
+    // ...and out of it (#431 slice 6): false, and nothing taken, when it holds less.
+    bool Debit(const std::string& id, double amount);
+    // A corporation's licence in `system` set or dropped (#431 slice 6). Counted as MoneyRev:
+    // written with the world, and retold to the members.
+    void SetLicence(const std::string& id, const std::string& system, const Licence& l);
+    void DropLicence(const std::string& id, const std::string& system);
     int  MoneyRev() const { return moneyRev_; }
 
     // The corporation `account` is in; null for none.

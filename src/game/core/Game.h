@@ -270,6 +270,9 @@ private:
     // of who is in which.
     void DrawCorpContent(const Ui::Frame& f);
     void SendCorpAct(const Proto::CorpAct& act);
+    // What building in this system takes (#431 slice 6), and the button that buys or renews
+    // the licence: in the station window and the corporation window alike.
+    void DrawLicenceHere(Ui::Layout& L);
     bool CorpCommand(const std::string& rest);  // "/corp <verb> ...", as typed in chat
     // A pilot's ticker, as far as this client knows: its own corporation's members, and the
     // pilots in local. Empty for none, or not known.

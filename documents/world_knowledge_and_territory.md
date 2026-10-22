@@ -481,6 +481,17 @@ are marked; slices without one may go in any order.
      space; `LawOver` treats unlicensed as lawless; the siege planner may target a trespasser.
    - *Tests:* below the threshold a build is refused with the reason; licensed, it is guarded
      and attacking it is a crime; unlicensed, it is free to shoot and gets besieged.
+   - *Built:* a licence is a party's (a corporation, or a pilot in none) per system, kept on
+     the corporation's record (`corps.json`) or the pilot's book of owners (`world.json`),
+     `{holder, until, told}` in world time. Bought with `Command::buyLicence` docked at a
+     station of the holding faction, or anywhere in a corporation's system, by the pilot or
+     the corporation's CEO or a director (from the treasury). Rent (`licences` in
+     `world_rules.json`: 2000 cr a week, a day's grace, standing 10) is taken in the coarse
+     pass; a corporation holder admits by its docking policy. A player structure already
+     standing when licences arrived, or whose system changed hands, is asked rent from then,
+     so it has the grace day before trespassing. Trespass is weighed by `Think` as a siege of
+     the structure (`Plan::evicting`), worth `licences.evict`. A corporation holder's own rent
+     price is a later choice; for now the rules' price serves every holder.
 
 **Defence**
 

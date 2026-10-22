@@ -154,5 +154,12 @@
         "anchor": 2,
         "perShip": 0.25,
         "taxMax": 0.1
+    },
+    "licences": {
+        "rent": 2000,
+        "periodDays": 7,
+        "graceHours": 24,
+        "standing": 10,
+        "evict": 1.0
     }
 }

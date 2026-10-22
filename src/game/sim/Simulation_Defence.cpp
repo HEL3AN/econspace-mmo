@@ -182,6 +182,12 @@ void Simulation::StepOwners()
     for (auto& kv : sessions_)
         if (!kv.second.accountName.empty())
             ReadCorpJournal(kv.second);
+    // A corporation's members' standings are noted while they are on: the corporation's
+    // standing with a faction is theirs together, on or off (#431 slice 6).
+    for (auto& kv : sessions_)
+        if (!kv.second.accountName.empty() && owners_.count(kv.second.accountName) == 0 &&
+            !corps_.IdOf(kv.second.accountName).empty())
+            owners_[kv.second.accountName];
     if (owners_.empty())
         return;
     for (auto& kv : sessions_)
@@ -213,7 +219,16 @@ void Simulation::StepOwners()
                                                 " cr in fees");
             b.owedMoney = 0.0;
         }
+        else if (b.owedMoney < 0.0)  // ...or less than the rent their licences took (#431)
+        {
+            s.account.AddMoney(b.owedMoney);
+            s.RecordEvent(Ev::Kind::Notice,
+                          "While you were away " + std::to_string((long long)(-b.owedMoney + 0.5)) +
+                              " cr went in licence rent, more than your markets took");
+            b.owedMoney = 0.0;
+        }
         b.seen = true;
+        b.money = s.account.GetMoney();
         for (FactionId f : Factions::All())
             b.standing[f] = s.account.GetReputation(f);
     }
@@ -266,14 +281,14 @@ void Simulation::EndAttack(const AttackEpisode& a, bool destroyed)
 }
 
 void Simulation::TellOwner(const std::string& owner, const std::string& yours,
-                           const std::string& theirs, bool onlyOn)
+                           const std::string& theirs, bool onlyOn, Ev::Kind kind)
 {
     const Corps::Corp* corp = corps_.Of(owner);
     // The corporation's journal, which its members read (#347): whoever is on now, and the
     // rest at login. The owner is a member like any other.
     if (corp != nullptr && !onlyOn)
     {
-        const int seq = corps_.Record(owner, Ev::Kind::StructureAttacked, theirs);
+        const int seq = corps_.Record(owner, kind, theirs);
         for (auto& kv : sessions_)
             if (seq != 0 && corps_.SameCorp(kv.second.accountName, owner))
                 ReadCorpJournal(kv.second);
@@ -286,13 +301,13 @@ void Simulation::TellOwner(const std::string& owner, const std::string& yours,
         if (s.accountName == owner)
             ownerOn = true;
         if (s.accountName == owner || (corp != nullptr && corps_.SameCorp(s.accountName, owner)))
-            s.RecordEvent(Ev::Kind::StructureAttacked, s.accountName == owner ? yours : theirs);
+            s.RecordEvent(kind, s.accountName == owner ? yours : theirs);
     }
     if (ownerOn || onlyOn)
         return;
     // Nobody on to read it: the pending part of the owner's journal, in their save.
     Ev::Event e;
-    e.kind = Ev::Kind::StructureAttacked;
+    e.kind = kind;
     e.text = "While you were away: " + yours;
     absent_.emplace_back(owner, e);
     if (absent_.size() > 4 * MAX_PENDING_JOURNAL)  // nobody hosting takes them (a test)
@@ -364,8 +379,21 @@ nlohmann::json Simulation::OwnersJson() const
             o["standing"] = standing;
         if (!owed.empty())
             o["owed"] = owed;
-        if (b.owedMoney > 0.0)
+        if (b.owedMoney != 0.0)
             o["owedMoney"] = b.owedMoney;
+        // What they had when last on, and their licences (#431 slice 6): additions an older
+        // build ignores.
+        if (b.seen && b.money != 0.0)
+            o["money"] = b.money;
+        if (!b.licences.empty())
+        {
+            nlohmann::json licences = nlohmann::json::object();
+            for (const auto& l : b.licences)
+                licences[l.first] = { { "holder", l.second.holder },
+                                      { "until", l.second.until },
+                                      { "told", l.second.told } };
+            o["licences"] = licences;
+        }
         out[kv.first] = o;
     }
     return out;
@@ -391,8 +419,24 @@ void Simulation::OwnersFrom(const nlohmann::json& j)
                     b.standing[f] = s->get<float>();
         }
         const auto money = it->find("owedMoney");
-        if (money != it->end() && money->is_number() && money->get<double>() > 0.0)
+        if (money != it->end() && money->is_number())
             b.owedMoney = money->get<double>();
+        const auto had = it->find("money");
+        if (had != it->end() && had->is_number())
+            b.money = had->get<double>();
+        const auto licences = it->find("licences");
+        if (licences != it->end() && licences->is_object())
+            for (auto l = licences->begin(); l != licences->end(); ++l)
+            {
+                if (!l->is_object() || !l->contains("holder") || !(*l)["holder"].is_string() ||
+                    !l->contains("until") || !(*l)["until"].is_number())
+                    continue;
+                Corps::Licence lc;
+                lc.holder = (*l)["holder"].get<std::string>();
+                lc.until = (*l)["until"].get<double>();
+                lc.told = l->value("told", 0);
+                b.licences[l.key()] = lc;
+            }
         const auto owed = it->find("owed");
         if (owed != it->end() && owed->is_object())
             for (auto o = owed->begin(); o != owed->end(); ++o)
