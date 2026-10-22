@@ -36,7 +36,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    50;  // 50: a structure's layout carries when its damage was set and whether it mends, and
+    51;  // 51: PvP under the law (#431 slice 10): another pilot's ship says whether they are
+         // flagged a criminal and their security status, and the player their own status and
+         // what is left of their flag;
+         // 50: a structure's layout carries when its damage was set and whether it mends, and
          // its damage mends on the clock at its blueprint tier's rate (#431 slice 7);
          // 49: influence and claims (#431 slice 5) -- a galaxy stat names the corporation that
          // holds the system and the fee its markets take, a CorpAct carries a policy's value
@@ -300,6 +303,10 @@ struct EntitySnapshot
     // A belt's ore (#348): what is left and what it holds full, filled in from the
     // snapshot's `belts` by CompleteFromLayout; -1 -- not a belt, or not told.
     int oreLeft = -1, oreMax = -1;
+    // Another pilot under the law (#431 slice 10): flagged a criminal -- anyone may shoot them
+    // without a crime -- and their security status, -10..+10.
+    bool  criminal = false;
+    float securityStatus = 0.0f;
 };
 
 // One entry of a player's design library: their name for it, and the design's id.
@@ -404,6 +411,10 @@ struct PlayerView
     std::vector<float>  reputation;  // one per faction
     std::vector<double> bounty;      // one per faction
     std::vector<float>  skillXp;     // 3 skills (Piloting/Mining/Trading)
+    // Under the law (#431 slice 10): the pilot's security status, -10..+10, and the seconds
+    // left on their criminal flag (0 -- not flagged).
+    float  securityStatus = 0.0f;
+    double criminalLeft = 0.0;
 };
 
 // Trade acknowledgment (server -> client): what a sale or a purchase came to, for the client

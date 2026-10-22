@@ -379,6 +379,8 @@ void Game::BuildClientSnapshot()
             player_.SetReputation(f, i < p.reputation.size() ? p.reputation[i] : 0.0f);
             player_.SetBounty(f, i < p.bounty.size() ? p.bounty[i] : 0.0);
         }
+        player_.SetSecurityStatus(p.securityStatus);  // under the law (#431 slice 10)
+        player_.SetCriminalLeft(p.criminalLeft);
         if (p.skillXp.size() >= 3)
         {
             player_.GetSkills().SetXp(SkillType::Piloting, p.skillXp[0]);

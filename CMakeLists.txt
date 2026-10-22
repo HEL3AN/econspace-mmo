@@ -521,6 +521,7 @@ add_executable(tests
     tests/settle_tests.cpp         # stock, outposts, and claims that need one (#295)
     tests/siege_tests.cpp          # upkeep, decay and sieges of outposts (#295)
     tests/law_tests.cpp            # the police answer a crime from real forces (#431)
+    tests/pvp_tests.cpp            # PvP under the law: criminal flags, security status (#431)
     tests/outpost_tests.cpp        # outposts placed by purpose, and what each looks like (#318)
     tests/cold_tests.cpp           # ships only where a player is; the rest as numbers (#295)
     tests/hardening_tests.cpp      # exploits and lost saves closed before a public playtest (#341)

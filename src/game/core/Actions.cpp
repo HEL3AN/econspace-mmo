@@ -264,11 +264,16 @@ std::vector<Action> For(const Target& t, Vector2 from)
             else
                 out.push_back(Make(Verb::Attack));
             break;
-        // Scenery and the player's own ship: going there is all there is to do with them.
+        // Another pilot's ship may be shot at (#431 slice 10); the server decides whether
+        // that is a crime. One's own is scenery here.
+        case EntityKind::PlayerShip:
+            if (!t.mine)
+                out.push_back(Make(Verb::Attack));
+            break;
+        // Scenery: going there is all there is to do with them.
         case EntityKind::Star:
         case EntityKind::Planet:
         case EntityKind::Nebula:
-        case EntityKind::PlayerShip:
         case EntityKind::Unknown: break;
     }
     return out;

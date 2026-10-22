@@ -131,8 +131,7 @@ void Simulation::StepNpcAi(SystemState& st, const std::vector<PlayerPresence>& p
             bool    found = false;
             for (const PlayerPresence& p : players)
             {
-                if (p.ship == nullptr || p.session == nullptr ||
-                    !AccountHostileToFaction(*p.session, n->GetFaction()))
+                if (p.ship == nullptr || p.session == nullptr || !NpcHunts(st, *p.session, *n))
                     continue;
                 float d = Dist(p.ship->GetPosition(), npos);
                 if (d < bestD)
@@ -215,7 +214,7 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
 
         for (const PlayerPresence& p : players)
             if (p.ship != nullptr && p.session != nullptr && !p.hidden &&
-                AccountHostileToFaction(*p.session, npc->GetFaction()))
+                NpcHunts(st, *p.session, *npc))
                 consider(p.ship, p.session);
         for (NpcShip* other : ships)
             if (other != npc && other->IsAlive() && NpcHostileToNpc(npc, other))
@@ -469,7 +468,7 @@ void Simulation::ChargeFirstStrike(SystemState& st, const Entity& structure,
     {
         victim = st.agg.controller;
         if (!st.agg.claimed || !Factions::IsLawful(victim) ||
-            AccountHostileToFaction(*player, victim))
+            AccountHostileToFaction(*player, victim) || player->account.IsCriminal())
             return;
     }
     else
@@ -511,7 +510,92 @@ bool Simulation::IsCrime(const SystemState& st, const ClientSession& by, const E
     }
     if (victim.GetKind() == EntityKind::Structure)
         return LawOver(st, static_cast<const Structure&>(victim), by.accountName, law);
+    if (victim.GetKind() == EntityKind::PlayerShip)
+    {
+        // Another pilot is under the law of the system they are in (#431 L1, L2): where a
+        // lawful faction holds it and security is above zero. A pilot flagged a criminal, or
+        // one that law holds as an enemy -- wanted by it, or hated -- is fair game.
+        law = st.agg.controller;
+        const ClientSession* pilot = PilotOf(victim.GetId());
+        if (pilot == nullptr || pilot == &by || !st.agg.claimed || !Factions::IsLawful(law) ||
+            st.agg.security <= 0.0f)
+            return false;
+        return !pilot->account.IsCriminal() && !AccountHostileToFaction(*pilot, law);
+    }
     return false;
+}
+
+const ClientSession* Simulation::PilotOf(int shipId) const
+{
+    for (const auto& kv : sessions_)
+        if (kv.second.ship && kv.second.ship->GetId() == shipId)
+            return &kv.second;
+    return nullptr;
+}
+
+ClientSession* Simulation::PilotTarget(const ClientSession& by, const SystemState& st, int shipId)
+{
+    for (auto& kv : sessions_)
+    {
+        ClientSession& p = kv.second;
+        if (!p.ship || p.ship->GetId() != shipId)
+            continue;
+        if (&p == &by || p.systemId != st.id || p.IsDocked() || !p.ship->IsAlive() || InCover(p))
+            return nullptr;
+        return &p;
+    }
+    return nullptr;
+}
+
+void Simulation::MarkCrime(ClientSession& s, bool killed)
+{
+    const WorldRules::Law& r = WorldRules::LawRules();
+    const bool             was = s.account.IsCriminal();
+    s.account.SetCriminalLeft(r.flagSeconds);  // renewed by every crime, never stacked
+    // As standing and bounty are charged: the hit, and the kill on top (ChargeAttack).
+    s.account.AddSecurityStatus(-(float)(r.statusCrime + (killed ? r.statusKill : 0.0)));
+    if (!was)
+        s.RecordEvent(Ev::Kind::UnderAttack,
+                      "You are flagged a criminal for " +
+                          std::to_string((int)std::lround(r.flagSeconds / 60.0)) +
+                          " min: anyone may shoot you without a crime, and lawful docks refuse "
+                          "you");
+}
+
+void Simulation::StepPilotLaw(ClientSession& s, float dt)
+{
+    if (dt <= 0.0f || s.Lingering())
+        return;  // the flag runs down only while the pilot is here (Decided after the rounds, 6)
+    if (s.account.IsCriminal())
+    {
+        s.account.SetCriminalLeft(s.account.CriminalLeft() - dt);
+        if (!s.account.IsCriminal())
+            s.RecordEvent(Ev::Kind::Notice, "Your criminal flag has lapsed");
+        return;
+    }
+    const float status = s.account.GetSecurityStatus();
+    if (status < 0.0f)
+        s.account.SetSecurityStatus(
+            std::min(0.0f, status + (float)(WorldRules::LawRules().statusPerDay * dt / 86400.0)));
+}
+
+bool Simulation::PoliceOnSight(const SystemState& st, const ClientSession& p,
+                               const NpcShip& police) const
+{
+    const WorldRules::Law& r = WorldRules::LawRules();
+    return police.GetRole() == NpcRole::Police && Factions::IsLawful(police.GetFaction()) &&
+           st.agg.security >= r.onSightFrom &&
+           p.account.GetSecurityStatus() <= -(float)r.onSightBelow;
+}
+
+bool Simulation::NpcHunts(const SystemState& st, const ClientSession& p, const NpcShip& n) const
+{
+    if (AccountHostileToFaction(p, n.GetFaction()) || PoliceOnSight(st, p, n))
+        return true;
+    // A flagged criminal is anyone's to shoot (#431 L4), and the police's to chase where the
+    // law holds at all.
+    return p.account.IsCriminal() && n.GetRole() == NpcRole::Police &&
+           Factions::IsLawful(n.GetFaction()) && st.agg.security > 0.0f;
 }
 
 bool Simulation::GunsOn(const SystemState& st, const ClientSession& p, FactionId owner) const
@@ -520,8 +604,11 @@ bool Simulation::GunsOn(const SystemState& st, const ClientSession& p, FactionId
     const RepTier t = Factions::TierOf(p.account.GetReputation(owner));
     if (owner == Factions::Pirates() || t == RepTier::Hostile || t == RepTier::Hated)
         return true;
-    // A criminal only where the law is strong enough to bring the guns in.
-    return p.account.IsWanted(owner) && st.agg.security >= WorldRules::LawRules().gunsFrom;
+    // A criminal only where the law is strong enough to bring the guns in: one this faction
+    // wants, or a pilot flagged for a crime anywhere if it is a faction of the law (#431 L4).
+    const bool criminal =
+        p.account.IsWanted(owner) || (p.account.IsCriminal() && Factions::IsLawful(owner));
+    return criminal && st.agg.security >= WorldRules::LawRules().gunsFrom;
 }
 
 int Simulation::TakePolice(SystemState& home, FactionId law, int want)
@@ -639,7 +726,7 @@ int Simulation::AnswerHere(SystemState& st, ClientSession& by, FactionId law,
     for (NpcShip* n : AliveShips(st))
     {
         if (n->GetRole() != NpcRole::Police || n->GetTask() != 0 || n->IsLeaving() ||
-            !AccountHostileToFaction(by, n->GetFaction()))
+            !NpcHunts(st, by, *n))
             continue;
         if (Dist(n->GetPosition(), scene) <= NPC_AGGRO_RANGE)
             inSight++;

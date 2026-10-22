@@ -78,6 +78,9 @@ bool HostileToPlayer(const Proto::EntitySnapshot& e, const Proto::PlayerView& p)
         return false;
     if (RoleName(e.role) == std::string("pirate"))
         return true;
+    // A flagged criminal is the police's to chase (#431 slice 10).
+    if (p.criminalLeft > 0.0 && RoleName(e.role) == std::string("police"))
+        return true;
 
     const size_t idx = (size_t)e.faction.Index();
     if (idx < p.bounty.size() && p.bounty[idx] > 0.0)
@@ -205,6 +208,11 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
         if (name.empty())
             name = "another pilot";
         extra = Fmt("  player  hull %d%%", (int)(e.hullFrac * 100.0f));
+        // What the law says of them (#431 slice 10): a criminal is free to shoot.
+        if (e.criminal)
+            extra += "  CRIMINAL";
+        if (e.securityStatus != 0.0f)
+            extra += Fmt("  status %+.1f", e.securityStatus);
     }
 
     std::string line =
@@ -987,6 +995,16 @@ std::string Describe(const View& view, Detail detail)
     out += Fmt("       %s  stabilizer %s  weapons %s  mining %s%s\n", mode,
                p.stabilizer ? "on" : "off", p.weaponOn ? "ARMED" : "off", p.mining ? "on" : "off",
                p.autopilot ? "  autopilot engaged" : "");
+    // Under the law (#431 slice 10), once there is anything to say.
+    if (p.criminalLeft > 0.0)
+    {
+        const int left = (int)std::ceil(p.criminalLeft);
+        out += Fmt("LAW    CRIMINAL for %d:%02d -- anyone may shoot you, police chase you, lawful "
+                   "docks refuse you  security status %+.1f\n",
+                   left / 60, left % 60, p.securityStatus);
+    }
+    else if (p.securityStatus != 0.0f)
+        out += Fmt("LAW    security status %+.1f\n", p.securityStatus);
     // A standing hold runs until something releases it (#157, #298), so say it is running.
     // A keep is said as what it does (#309): this distance from that object.
     if (p.holdMode == 2)

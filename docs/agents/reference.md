@@ -328,7 +328,7 @@ Set the rules of engagement of an armed structure you built, from anywhere in it
 
 ### `attack`
 
-Close to weapon range of a ship or a structure and fire until it is destroyed. Finishes when it is gone; aborts like any order if the hull gets critical. A destroyed structure leaves a wreck where it fits. Shooting what a lawful faction owns, or a player's structure in a system a lawful faction holds, is a crime: reputation and bounty with that faction, per hit and more for the kill. Your own structures are dismantled, not attacked.
+Close to weapon range of a ship -- an NPC's or another player's -- or a structure and fire until it is destroyed. Finishes when it is gone; aborts like any order if the hull gets critical. A destroyed structure leaves a wreck where it fits; a player's ship shot down is their loss, insurance and wreck as any. Shooting what a lawful faction owns, a player's structure in a system a lawful faction holds, or another player in such a system with security above zero is a crime: reputation and bounty with that faction, per hit and more for the kill, the police called, a CRIMINAL flag (about 15 minutes; anyone may then shoot you freely, police chase you, lawful docks refuse you) and a fall in your security status (observe's LAW line). At a low status police in high security engage on sight; it recovers with time and pirate kills. Pirates and pilots marked CRIMINAL in observe are free targets. Your own structures are dismantled, not attacked.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|

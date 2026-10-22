@@ -510,6 +510,10 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
                         return Ui::Cell{ "convoy escort", t.colors.accent };
                     case Obs::ConvoyPart::None: break;
                 }
+                // A pilot flagged a criminal is free to shoot (#431 slice 10): said in the
+                // list, the instrument, never on the ship itself (#117).
+                if (row.entity->kind == Proto::EntityKind::PlayerShip && row.entity->criminal)
+                    return Ui::Cell{ "criminal", t.standing.hostile };
                 return Ui::Cell{ row.kind, t.colors.dim };
             default: return Ui::Cell{ Ui::Distance(row.distance), t.colors.dim };
         }
@@ -621,8 +625,13 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                         : mate       ? corpView_.name + " [" + tick + "]"
                                      : "[" + tick + "]",
                         mate ? t.standing.friendly : t.colors.text);
+                // What the law says of them (#431 slice 10): shooting a criminal is no crime.
+                L.Field("Security status", TextFormat("%+.1f", e->securityStatus),
+                        e->securityStatus < 0.0f ? t.colors.warn : t.colors.text);
+                if (e->criminal)
+                    L.Field("Flag", "criminal: free to shoot", t.standing.hostile);
             }
-            if (e->kind == Proto::EntityKind::Npc)
+            if (e->kind == Proto::EntityKind::Npc || e->kind == Proto::EntityKind::PlayerShip)
             {
                 L.Field("Hull", TextFormat("%.0f%%", e->hullFrac * 100.0f), t.colors.text);
                 L.Bar(e->hullFrac, e->hullFrac > 0.3f ? t.colors.good : t.colors.bad);
@@ -1138,6 +1147,20 @@ void Game::DrawLocation(const Goal::Prompt& goal)
                               });
                         if (!wanted.empty())
                             L.Text("Wanted by " + wanted, TextStyle::Label().Tint(t.colors.bad));
+                        // Under the law (#431 slice 10): the flag while it runs, and the
+                        // pilot's own security status once it is anything but clean.
+                        if (player_.IsCriminal())
+                        {
+                            const int left = (int)std::ceil(player_.CriminalLeft());
+                            L.Text(TextFormat("CRIMINAL  %d:%02d  lawful docks refuse you",
+                                              left / 60, left % 60),
+                                   TextStyle::Label().Tint(t.colors.bad));
+                        }
+                        const float status = player_.GetSecurityStatus();
+                        if (status != 0.0f)
+                            L.Text(TextFormat("Security status  %+.1f", status),
+                                   TextStyle::Label().Tint(status < 0.0f ? t.colors.warn
+                                                                         : t.colors.dim));
                     });
             }
             // What to do next (#364), under where the player is: a line, not a window, so

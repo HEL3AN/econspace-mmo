@@ -87,7 +87,7 @@ struct Target
     bool        looted = false;   // a wreck already searched
     std::string destinationName;  // a gate: where it leads, if the galaxy index knows
     // A structure: whether the viewer built it, and what dismantling it would return now
-    // ("5 Iron, 1 Crystal"; empty when that is not known).
+    // ("5 Iron, 1 Crystal"; empty when that is not known). A pilot's ship: the viewer's own.
     bool        mine = false;
     std::string refund;
     bool        armed = false;  // it has guns, or will once built: it has rules of engagement

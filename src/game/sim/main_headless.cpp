@@ -460,6 +460,7 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
         fe.shooterFaction = Factions::Unaffiliated();
         fe.shooterSessionId = s.id;  // "mine" for this player and nobody else
         fe.targetEntityId = c.targetId;
+        fe.targetSessionId = ev.victimSession;  // "at me" for a pilot shot at (#431 slice 10)
         fires[s.systemId].push_back(fe);
     }
     sim.StepPlayerMining(s, *sim.SystemOf(s), s.account.GetSkills().GetBonus(SkillType::Mining),
@@ -527,6 +528,7 @@ static void HostStepWorld(Simulation& sim, float dt,
             fe.shooterFaction = Factions::Unaffiliated();
             fe.shooterSessionId = s.id;
             fe.targetEntityId = shot.targetId;
+            fe.targetSessionId = shot.targetSession;
             fires[s.systemId].push_back(fe);
         }
         s.orderShots.clear();

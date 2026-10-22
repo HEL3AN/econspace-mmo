@@ -373,6 +373,10 @@ bool Simulation::BeginLinger(ClientSession& s)
     if (!s.ship || s.IsDocked())
         return false;
     s.lingerLeft = LINGER_SECONDS;
+    // A criminal's ship stays a minute, as in EVE (#431, Decided after the rounds, 6): logging
+    // off is not a way out of the price of a crime. The flag itself waits for them to be back.
+    if (s.account.IsCriminal())
+        s.lingerLeft = std::max(s.lingerLeft, (float)WorldRules::LawRules().flagLinger);
     return true;
 }
 
@@ -448,6 +452,17 @@ void Simulation::StepPlayerShip(ClientSession& s, const Proto::Command& cmd, flo
                     holdPtr = &hold;
                     break;
                 }
+        // ...or another pilot's ship, which is a session's rather than the system's: an
+        // attack order chases one with a follow hold (#431 slice 10).
+        if (holdPtr == nullptr)
+            if (const ClientSession* p = PilotOf(holdId))
+                if (p->systemId == s.systemId && !p->IsDocked() && p != &s)
+                {
+                    hold.pos = p->ship->GetPosition();
+                    if (s.holdTrackId == holdId)
+                        hold.vel = s.holdTrackVel;
+                    holdPtr = &hold;
+                }
         // A target that is gone -- destroyed, or in another system now -- releases the
         // hold rather than leaving the ship steering at a stale point forever.
         if (holdPtr == nullptr)
@@ -467,7 +482,8 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
     if (!s.weaponOn || !s.ship || targetId == 0)
         return false;
 
-    // The target, by id, in the player's system: a ship, or something somebody built (#39).
+    // The target, by id, in the player's system: a ship, something somebody built (#39), or
+    // another pilot's ship (#431 slice 10), which belongs to a session rather than the system.
     Entity* found = nullptr;
     for (auto& e : st.entities)
         if (e->GetId() == targetId)
@@ -475,6 +491,9 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
             found = e.get();
             break;
         }
+    if (found == nullptr)
+        if (ClientSession* pilot = PilotTarget(s, st, targetId))
+            return FirePilot(s, st, *pilot, ev);
     if (found == nullptr ||
         (found->GetKind() != EntityKind::Npc && found->GetKind() != EntityKind::Structure))
         return false;
@@ -503,18 +522,21 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
     // costs the shooter is decided by whose law it stands under, not by its owner's colour.
     if (found->GetKind() == EntityKind::Structure)
     {
-        FactionId law = Factions::Unaffiliated();
-        if (IsCrime(st, s, *found, law) && ev != nullptr)
+        FactionId  law = Factions::Unaffiliated();
+        const bool crime = IsCrime(st, s, *found, law);
+        if (crime && ev != nullptr)
         {
             ev->hitLawful = true;
             ev->hitFaction = law;
         }
-        if (DamageStructure(st, targetId, s.ship->GetDamage(), &s) && ev != nullptr &&
-            ev->hitLawful)
+        const bool killed = DamageStructure(st, targetId, s.ship->GetDamage(), &s);
+        if (killed && crime && ev != nullptr)
         {
             ev->killedLawful = true;
             ev->killedFaction = law;
         }
+        if (crime)
+            MarkCrime(s, killed);  // the flag and the status (#431 slice 10)
         return true;
     }
 
@@ -537,7 +559,10 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
         ChargeAttack(s, tf, false);
         CallPolice(st, s, tf);  // ...and the law comes, from real forces (#431 slice 9)
     }
-    if (!target->IsAlive())
+    const bool killed = !target->IsAlive();
+    if (crime)
+        MarkCrime(s, killed);  // the flag and the status (#431 slice 10)
+    if (killed)
     {
         CreditJobKill(s, *target);  // a besieger, for a break-the-siege job (#345)
         if (target->IsPirate())
@@ -546,6 +571,8 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
                 ev->killedPirate = true;
             // Mission credit for the pirate, into this session's mission log.
             s.missions.OnPirateKilled();
+            // ...and a little of the pilot's standing with the law back (#431 L4).
+            s.account.AddSecurityStatus((float)WorldRules::LawRules().statusPirateKill);
         }
         else if (crime)
         {
@@ -556,6 +583,70 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
             }
             ChargeAttack(s, tf, true);
         }
+    }
+    return true;
+}
+
+bool Simulation::FirePilot(ClientSession& s, SystemState& st, ClientSession& victim,
+                           PlayerCombatEvents* ev)
+{
+    // The hit is applied by the server to the victim's own ship, from where both ships are
+    // now -- never from an interpolated position (CLAUDE.md, #157).
+    Ship&         target = *victim.ship;
+    const Vector2 shipPos = s.ship->GetPosition();
+    const Vector2 at = target.GetPosition();
+    const float   dx = at.x - shipPos.x;
+    const float   dy = at.y - shipPos.y;
+    if (std::sqrt(dx * dx + dy * dy) > PLAYER_WEAPON_RANGE || s.fireTimer > 0.0f)
+        return false;
+    s.fireTimer = PLAYER_FIRE_INTERVAL;
+    if (ev != nullptr)
+    {
+        ev->shotFrom = shipPos;
+        ev->shotTo = at;
+        ev->victimSession = victim.id;
+    }
+
+    FactionId  law = Factions::Unaffiliated();
+    const bool crime = IsCrime(st, s, target, law);
+    target.TakeDamage(s.ship->GetDamage());
+    const bool killed = !target.IsAlive();
+    // The victim's own guns nearby answer the shooter, as they would an NPC (#340).
+    ProvokeGuards(st, victim, at, s.id, 0);
+    if (crime)
+    {
+        if (ev != nullptr)
+        {
+            ev->hitLawful = true;
+            ev->hitFaction = law;
+        }
+        ChargeAttack(s, law, false);
+        if (killed)
+        {
+            ChargeAttack(s, law, true);
+            if (ev != nullptr)
+            {
+                ev->killedLawful = true;
+                ev->killedFaction = law;
+            }
+        }
+        MarkCrime(s, killed);
+        CallPolice(st, s, law);
+    }
+    if (killed)
+    {
+        // The loss itself is the one every lost ship takes (ServerRespawnPlayer, #344), on the
+        // world tick: insurance, the wreck, waking at home. Said to both pilots here.
+        if (ev != nullptr)
+            ev->killedPilot = true;
+        const std::string shooter =
+            s.accountName.empty() ? std::string("another pilot") : s.accountName;
+        const std::string lost =
+            victim.accountName.empty() ? std::string("another pilot") : victim.accountName;
+        victim.RecordEvent(Ev::Kind::UnderAttack, "Shot down by " + shooter);
+        s.RecordEvent(Ev::Kind::Notice,
+                      "You shot down " + lost +
+                          (crime ? ": a crime against " + FactionName(law) : std::string()));
     }
     return true;
 }
@@ -916,6 +1007,7 @@ void Simulation::StepPlayerAccountTick(ClientSession& s, float dt)
     if (!s.IsDocked())
         s.account.GetSkills().AddXp(SkillType::Piloting, 4.0f * dt);
     s.account.DecayBounty(1.0 * dt);
+    StepPilotLaw(s, dt);  // the criminal flag and security status (#431 slice 10)
 }
 
 bool Simulation::PayBounty(ClientSession& s, FactionId faction)
@@ -1367,6 +1459,10 @@ std::string Simulation::DockRefusal(const ClientSession& s, const Entity& e) con
     }
     if (faction && Factions::TierOf(s.account.GetReputation(f)) == RepTier::Hated)
         return "hostile reputation";
+    // A lawful faction's dock refuses a flagged criminal (#431 L4) until the flag lapses.
+    if (faction && Factions::IsLawful(f) && s.account.IsCriminal())
+        return "you are flagged a criminal for another " +
+               std::to_string((int)std::ceil(s.account.CriminalLeft() / 60.0)) + " min";
     return std::string();
 }
 
@@ -1420,6 +1516,11 @@ void Simulation::StepPlayerAttachment(ClientSession& s, float dt)
                 target = e.get();
                 break;
             }
+    // ...or another pilot's ship in this system (#431 slice 10).
+    if (target == nullptr && id != 0)
+        if (const ClientSession* p = PilotOf(id))
+            if (p != &s && p->systemId == s.systemId && !p->IsDocked())
+                target = p->ship.get();
     if (target == nullptr)
     {
         s.holdTrackId = 0;
@@ -1594,6 +1695,11 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
     }
     j["reputation"] = rep;
     j["bounty"] = bounty;
+    // Under the law (#431 slice 10): fields an older build ignores, so no version bump (#20).
+    // The flag is what is left of it: it runs down only while the pilot is in the world.
+    j["securityStatus"] = s.account.GetSecurityStatus();
+    if (s.account.IsCriminal())
+        j["criminalLeft"] = s.account.CriminalLeft();
 
     const Skills& sk = s.account.GetSkills();
     j["skills"] = { { "piloting", sk.GetXp(SkillType::Piloting) },
@@ -1804,6 +1910,10 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
     };
     perFaction("reputation", [&](FactionId f, double x) { s.account.SetReputation(f, (float)x); });
     perFaction("bounty", [&](FactionId f, double x) { s.account.SetBounty(f, x); });
+    const json status = j.value("securityStatus", json());
+    s.account.SetSecurityStatus(status.is_number() ? status.get<float>() : 0.0f);
+    const json flag = j.value("criminalLeft", json());
+    s.account.SetCriminalLeft(flag.is_number() ? flag.get<double>() : 0.0);
     if (j.contains("skills"))
     {
         Skills& sk = s.account.GetSkills();

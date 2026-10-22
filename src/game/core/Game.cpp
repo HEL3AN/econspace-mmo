@@ -970,6 +970,8 @@ Actions::Target Game::ActionTarget(const Entity& e) const
     t.name = e.GetName();
     if (t.kind == EntityKind::Derelict)
         t.looted = static_cast<const Derelict&>(e).IsLooted();
+    if (t.kind == EntityKind::PlayerShip)  // one's own ship, or another pilot's (#431 slice 10)
+        t.mine = playerShip_ && e.GetId() == playerShip_->GetId();
     if (t.kind == EntityKind::Structure)
     {
         const Structure& s = static_cast<const Structure&>(e);

@@ -279,13 +279,13 @@ security pays better (missions, bounties, ore). The details are to be refined la
 
 | Rule | Today | What changes |
 |---|---|---|
-| L1 | `StepPlayerFire` (`Simulation_Player.cpp` ~461) accepts only an NPC or a structure as a target: there is no PvP. | It accepts a player ship (one not docked, in range, not hidden), and the hit is applied to that session's ship by the server. Prediction is untouched: a hit is never computed from an interpolated position (CLAUDE.md, #157). |
-| L2 | `ChargeAttack` charges standing and bounty for hitting a lawful faction's NPC; `LawOver` decides it for structures. | `IsCrime(st, by, victim, law)` exists since slice 9 for ships and structures. Slice 10: one `IsCrime(attacker, victim, system)` used for ships, players and structures, reading flags, war and licences. |
+| L1 | *Done in slice 10.* `StepPlayerFire` takes another pilot's ship (`PilotTarget`: in the system, in space, not in cover, alive) and `FirePilot` applies the hit to that session's ship from live positions; a kill is `ServerRespawnPlayer`'s loss on the world tick. An attack order chases a pilot with a follow hold. | War enemies (a later slice). |
+| L2 | *Done in slice 10 for pilots.* `IsCrime(st, by, victim, law)` decides ships, structures and pilots: a pilot is under the law of the system (lawful holder, security > 0) unless flagged or an enemy of that law. | Licences (slice 6) and war. |
 | L3 | *Done in slice 9.* `CallPolice` answers every crime by the system's security band (`world_rules.json` -> `law`): its free police warp in, a station launches patrols from spare presence then from stock, police within reach are lent as a `Plan::Kind::Response` and go home as Returns; `GunsOn` brings station and faction-structure guns in on a criminal at >= `gunsFrom`. | Paid police from the treasury (slice 11). |
-| L4 | Bounty per faction (`Account::bounty_`), standing, `AccountHostileToFaction` (pirates, wanted, hostile tier). No flag, no status. | A `criminalUntil` and a `securityStatus` on the account; the flag in the snapshot so every client can show it; docks read it. |
+| L4 | *Done in slice 10.* `Player` carries `securityStatus` and `criminalLeft` (seconds, saved with the account, run down by `StepPilotLaw` only while the pilot is in the world); `MarkCrime` flags and charges status beside `ChargeAttack`; lawful docks refuse a flagged pilot; police (`NpcHunts`) chase one, and engage on sight at a low status (`PoliceOnSight`); a flagged pilot's ship lingers `flagLinger`. The snapshot carries both for every pilot. | -- |
 | L5 | After #434, `SecurityTarget` = base + `SECURITY_SWING` (0.15) x the police/pirate balance; drift 5 % a pass. | A paid-police term, from the owner's treasury, added to the target; pirate spawns, convoy losses and rewards read security. |
 
-**Proposed numbers (tuning, `world_rules.json` → `law`):** flag 15 minutes; security status
+**Numbers (tuning, `world_rules.json` → `law`, in place since slice 10):** flag 15 minutes; security status
 from -10 to +10, -1 for a crime, -2.5 for a kill, +0.1 per pirate kill, +0.5 per day without
 a crime; police engage on sight at status -5 or below in systems of 0.5 and above.
 

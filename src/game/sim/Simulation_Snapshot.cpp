@@ -183,6 +183,8 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
             p.reputation.push_back(s.account.GetReputation(f));
             p.bounty.push_back(s.account.GetBounty(f));
         }
+        p.securityStatus = s.account.GetSecurityStatus();  // (#431 slice 10)
+        p.criminalLeft = s.account.CriminalLeft();
         p.skillXp = { (float)s.account.GetSkills().GetXp(SkillType::Piloting),
                       (float)s.account.GetSkills().GetXp(SkillType::Mining),
                       (float)s.account.GetSkills().GetXp(SkillType::Trading) };
@@ -246,6 +248,9 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         es.hullFrac = other.ship->GetMaxHull() > 0.0f
                           ? other.ship->GetHull() / other.ship->GetMaxHull()
                           : 1.0f;
+        // What the law says of them, for every pilot's instruments (#431 slice 10, #117).
+        es.criminal = other.account.IsCriminal();
+        es.securityStatus = other.account.GetSecurityStatus();
         snap.entities.push_back(es);
     }
 
