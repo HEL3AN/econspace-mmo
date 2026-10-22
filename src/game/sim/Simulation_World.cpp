@@ -1297,16 +1297,17 @@ Save::Result Simulation::LoadWorld(const std::string& path)
         a.chartedBy.clear();
         a.publicChart = PublicByPlace(sid);
         FactionId by;
-        if (gj.contains("chartedBy") && FactionInSave(gj["chartedBy"], by))
-            ChartBy(sid, by);
+        if (gj.contains("chartedBy") && FactionInSave(gj["chartedBy"], by) && CanChart(sid, by))
+            MarkCharted(a, by);
         // A world from before #431 said only `visited`, one flag for everybody. Translated
         // as the design says: a system a faction holds goes on the public charts, charted by
         // it; one nobody holds is its discoverer's own find, given to them at their next
-        // login (legacyKnown_). Space that was public by its place stays public.
+        // login (legacyKnown_). Space that was public by its place stays public. Natives at
+        // home chart nothing for the centres (#431 slice 2): theirs goes to the discoverer.
         if (gj.value("visited", false) && !a.publicChart)
         {
-            if (a.claimed)
-                ChartBy(sid, a.controller);
+            if (a.claimed && CanChart(sid, a.controller))
+                MarkCharted(a, a.controller);
             else if (!a.discoverer.empty())
                 legacyKnown_[a.discoverer].insert(sid);
         }
@@ -1314,6 +1315,16 @@ Save::Result Simulation::LoadWorld(const std::string& path)
         a.holderCorp = gj.contains("holder") && gj["holder"].is_string()
                            ? gj["holder"].get<std::string>()
                            : std::string();
+        // A world from before factions charted what they reached (#431 slice 2): what one
+        // holds beyond the wormhole, it reached -- charted by it, as the playtest expected.
+        // Contact was made then; it is not news now, and no name is given that was not.
+        if (j.value("version", Save::UNVERSIONED) < 17 && !a.publicChart && a.claimed &&
+            CanChart(sid, a.controller))
+            MarkCharted(a, a.controller);
+        // Whoever made contact knows the natives' name for it (K4): a region sealed with
+        // names, contacted before contact revealed them, shows them now.
+        if (a.givenName.empty() && (!a.discoverer.empty() || !a.chartedBy.empty()))
+            a.givenName = NativeNameOf(sid);
         if (gj.contains("stock") && gj["stock"].is_object())
             for (auto g = gj["stock"].begin(); g != gj["stock"].end(); ++g)
             {
@@ -1670,6 +1681,12 @@ bool Simulation::NameSystem(ClientSession& s, const std::string& name)
     SystemAggregate& a = it->second.agg;
     if (!a.givenName.empty())
         return refuse(SystemName(s.systemId) + " already has its name");
+    if (a.discoverer.empty() && !a.chartedBy.empty())  // a faction came first (#431)
+    {
+        FactionId by;
+        return refuse(Factions::Find(a.chartedBy, by) ? FactionName(by) + " charted it first"
+                                                      : "a faction charted it first");
+    }
     const std::string pilot = s.ship ? s.ship->GetPilotName() : std::string();
     if (a.discoverer.empty() || a.discoverer != pilot)
         return refuse("only " +
@@ -1684,12 +1701,9 @@ bool Simulation::NameSystem(ClientSession& s, const std::string& name)
             return refuse("there is already a system called " + name);
 
     const std::string designation = SystemName(s.systemId);
-    a.givenName = name;
-    chartsChanged_ = true;  // written at once, and everyone who knows it sees the name
-    PublicChartsChanged();
-    // Its planets are called after it (#259). A client already here keeps the names its
-    // layout gave it until it next enters; everyone after sees the new ones.
-    WorldLoader::NamePlanets(it->second.entities, name);
+    // A client already here keeps the planet names its layout gave it until it next
+    // enters; everyone after sees the new ones.
+    CallSystem(it->second, name);
     PushEvent(designation + " is now " + name + ", named by " + pilot);
     s.RecordEvent(Ev::Kind::Notice, "Named " + designation + " " + name);
     return true;

@@ -241,7 +241,10 @@ std::string DescribeGalaxy()
     std::string out = "GALAXY\n";
     for (const WorldLoader::SystemInfo& si : g_session.Universe().systems)
     {
-        std::string line = "  " + si.id + "  " + si.name;
+        std::string       line = "  " + si.id + "  " + si.name;
+        const std::string charts = si.charted ? Obs::ChartsOf(si) : std::string();
+        if (!charts.empty())  // whose charts made it public, who was first (#431)
+            line += "   " + charts;
         if (!si.charted)  // a gate leads there; you have no charts of it (#144, #431)
             line += "   uncharted: not on your charts";
         else if (si.knownBy == "own")  // a find of yours, on nobody else's map
@@ -1559,7 +1562,8 @@ std::vector<Tool> BuildTools()
         { "name_system",
           "Name the system you are in. Beyond the wormhole a system has only a designation "
           "(W-3.2) until whoever got there first names it -- once, for everyone who has it on "
-          "their charts. 3 to 24 "
+          "their charts. A system its people live in keeps their name, and one a faction "
+          "charted before any pilot came keeps the faction's name or its designation. 3 to 24 "
           "characters, starting with a letter; letters, digits, spaces, ' and -; not a name "
           "another system has.",
           Obj({ { "name", Str("the name, e.g. 'Haven'") } }, { "name" }), [](const Rpc::Json& args)
@@ -2111,7 +2115,8 @@ Rpc::Json ResourcesList()
                      { "name", "Galaxy" },
                      { "description",
                        "Every system on your charts -- the public charts, your own finds and "
-                       "your corporation's -- with its security, controller and gate links, "
+                       "your corporation's -- with its security, controller, gate links and who "
+                       "charted it or found it first, "
                        "and where your corporation's front is open: another side holds it and "
                        "you or nobody hold a system next door, so a claim may be laid or a "
                        "structure besieged there (never a limit on guns); the systems their "

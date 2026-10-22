@@ -36,7 +36,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    52;  // 52: a galaxy stat says whether the recipient's corporation's front is open there
+    53;  // 53: a system's `found` is only a pilot who came before any faction, its `name` may
+         // be its natives' or its first charter's, and the map says "charted by" (#431 slice
+         // 2): the same fields, meaning less and more than an older client takes them for;
+         // 52: a galaxy stat says whether the recipient's corporation's front is open there
          // (#431 slice 8);
          // 51: PvP under the law (#431 slice 10): another pilot's ship says whether they are
          // flagged a criminal and their security status, and the player their own status and

@@ -242,6 +242,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   galaxy statistics are cut per session (`KnownUniverseFor`, `GalaxyStateFor`), built only when
   `KnowledgeKey` changes; never send one map to everyone. A route order searches only the
   pilot's map. A first ship in sets `discoverer` but charts the system for that pilot alone.
+  Wherever a faction *reaches* a system (survey, move, siege, site, claim, convoy, Anchor) it
+  calls `ChartBy`, cold or hot: public, and if nobody from outside was there, first contact --
+  the natives' name or the faction's `ChartedName` goes into `givenName` and nobody renames it.
+  A pilot is the discoverer only where no faction came first. Restoring charts from a save is
+  `MarkCharted`, never `ChartBy`, or every load would make contact again.
 - **What has a `signature` is hidden per pilot** (#346, #342 S9). A roaming hole's ends and a
   hidden base are left out of a pilot's layout and deltas (`Simulation::BuildLayoutFor`,
   `ForSession`) until their scan resolves them; the find is the account's (`scanned`). A

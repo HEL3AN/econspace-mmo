@@ -820,6 +820,7 @@ bool Simulation::ArriveConvoy(Plan& p)
     p.lent.clear();
     p.route.clear();
     p.leg = -1;
+    ChartBy(p.target, p.faction);  // it came (#431 K2)
     const bool begun = p.kind == Plan::Kind::Anchor ? LayAnchorSite(p) : StartUpgrade(p);
     // What it lost on the way is made up from the faction's stock, as far as that goes.
     if (begun && p.freight < 1.0f)

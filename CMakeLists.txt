@@ -533,6 +533,7 @@ add_executable(tests
     tests/mouth_tests.cpp          # unstable mouths, Anchors, drift and the archive (#342 S4)
     tests/holes_tests.cpp          # roaming holes and the scanner (#342 S9, #346)
     tests/knowledge_tests.cpp      # who knows which systems: public, own, corporation (#431)
+    tests/contact_tests.cpp        # factions chart what they reach; first contact (#431)
     tests/prediction_tests.cpp     # the client's prediction against the server, same commands (#358)
     tests/natives_tests.cpp        # natives, their stations and frontier prices (#342 S5)
     tests/pack_tests.cpp           # admin packs: checked, woven, sealed (#342 S7)

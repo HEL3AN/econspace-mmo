@@ -96,10 +96,19 @@ public:
     static std::string ChartedSystemOf(const std::string& key);
     static std::string ChartKey(const std::string& systemId) { return "system:" + systemId; }
     // A world faction charts `systemId` (K2): it goes on the public charts, "charted by" it.
-    // The first faction's charts stand; true when this one's were the first. Slice 2 calls it
-    // from surveys, settling, Anchors, claims and expeditions; today a save from before #431
-    // does, for a system a faction held.
+    // Called wherever a faction reaches a system -- a survey resolving, ships moving in or
+    // coming to besiege, a site laid, a claim taken, a convoy arriving, a mouth anchored --
+    // in a cold system as in a hot one, since all of those are the macro layer's. Nobody
+    // charts what is public by its place (a centre), nor do a region's own natives chart
+    // their home for the centres. If nobody from outside had been there, this is first
+    // contact (K4): the natives' names become known, or an empty system takes the name the
+    // faction gives it (decided after the rounds, 1), and it is news. The first faction's
+    // charts stand; true when this one's were the first. A sale of charts (slice 16) is a
+    // call of this for the buyer.
     bool ChartBy(const std::string& systemId, FactionId faction);
+    // What the natives of `systemId`'s region call it (natives.names, #431 slice 3); empty
+    // where nobody lives, or for a region sealed before natives had names.
+    std::string NativeNameOf(const std::string& systemId) const;
     // What decides `s`'s map, as a key: equal keys, the same map. The host sends the index
     // when it differs from the one it last sent.
     std::vector<long long> KnowledgeKey(const ClientSession& s) const;
@@ -1804,8 +1813,18 @@ private:
     // next log in; saved in world.json until then.
     std::map<std::string, std::set<std::string>> legacyKnown_;
     void                                         PublicChartsChanged() { publicRev_++; }
-    void                                         SaveLegacyKnown(nlohmann::json& j) const;
-    void                                         LoadLegacyKnown(const nlohmann::json& j);
+    // Whether `faction` may chart `systemId` (ChartBy): not public by place, not charted
+    // yet, and not its own natives' home.
+    bool CanChart(const std::string& systemId, FactionId faction) const;
+    // The charts' fields alone, as a save or the archive restores them: no first contact.
+    void MarkCharted(SystemAggregate& a, FactionId faction);
+    // A system's name, as its people or its first charter give it: kept like a player's
+    // (`givenName`), on every map that has it, and on its planets.
+    void CallSystem(SystemState& st, const std::string& name);
+    // Folded names already taken in the world, for a new one to differ from (N3).
+    std::set<std::string> TakenNames() const;
+    void                  SaveLegacyKnown(nlohmann::json& j) const;
+    void                  LoadLegacyKnown(const nlohmann::json& j);
     // After an account is read: any pre-#431 finds of theirs, the system they are in, and
     // their charts onto their corporation's.
     void LoadKnown(ClientSession& s);
@@ -2010,10 +2029,11 @@ private:
     // A finished site of a station's blueprint becomes a station of its builder's faction.
     void FinishStation(SystemState& st, int id);
 
-    // `f` takes a system: its controller, and the security a change of hands brings.
-    static void TakeControl(SystemAggregate& a, FactionId f);
-    void        Record(const std::string& kind, std::optional<FactionId> faction,
-                       const std::string& system, const std::string& text);
+    // `f` takes a system: its controller, and the security a change of hands brings. Taking
+    // it is reaching it: `f` charts it (ChartBy).
+    void TakeControl(const std::string& systemId, FactionId f);
+    void Record(const std::string& kind, std::optional<FactionId> faction,
+                const std::string& system, const std::string& text);
     // News: the feed every client shows, and the history, which keeps who and where.
     void        Announce(const std::string& kind, std::optional<FactionId> faction,
                          const std::string& system, const std::string& text);
