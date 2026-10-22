@@ -323,6 +323,11 @@ public:
         int         slot = 0;  // where it was
         double      archivedAt = 0.0;
         std::string text;  // the archive document, as JSON
+        // Its geography as charts keep it (#431 slice 15): each system located, named and
+        // linked, under its archived id (ArchivedId) -- what a pilot who knew it still sees,
+        // marked drifted. Made from `text`, never saved apart from it.
+        std::vector<WorldLoader::SystemInfo> charts;
+        std::vector<WorldLoader::SystemLink> links;
     };
     const std::map<int, ArchivedRegion>& Archives() const { return archives_; }
     // Where archive `id` is kept under `dir`.
@@ -331,6 +336,24 @@ public:
     // opened from it and no player structure in it; whether anyone comes to it, and the cap,
     // are not asked. The archive's id, or -1 with `why`.
     int ArchiveRegionNow(int slot, std::string& why);
+    // What a system of archive `archive` is called on the charts while it is in the dark
+    // (#431 slice 15, M3): "a<archive>:<id>". Its slot may take another region whose ids are
+    // the same, so the charts that knew it must not say "<id>".
+    static std::string ArchivedId(int archive, const std::string& systemId);
+    // Whether `id` is a system of an archive that is still in it.
+    bool IsArchivedChart(const std::string& id) const;
+    // Whether `systemId`'s region drifted away and was not found again: cut off, or archived.
+    bool DriftedAway(const std::string& systemId) const;
+    // Every renaming of charts so far (#431 slice 15): a region's ids into the archive, or out
+    // of it into the slot it came back to (`back`: what was seen there is outdated). Sessions
+    // and corporations are renamed at once; an account saved before is renamed when it is
+    // read, from the number of renamings its save says it had seen.
+    struct ChartRename
+    {
+        std::map<std::string, std::string> ids;
+        bool                               back = false;
+    };
+    const std::vector<ChartRename>& ChartRenames() const { return chartRenames_; }
 
     // A world file's header, read before the galaxy is made from it: its seed, the rules'
     // versions, its centres, its log and its growth settings. False when the file is missing
@@ -1819,6 +1842,15 @@ private:
     // The archive (#342 S4; Simulation_Drift.cpp).
     std::map<int, ArchivedRegion> archives_;
     int                           nextArchive_ = 1;
+    std::vector<ChartRename>      chartRenames_;  // saved with the archive
+    // Renames `known` (keys of ClientSession::known) and `sightings` by one renaming.
+    static void RenameKnowledge(std::set<std::string>&                        known,
+                                std::map<std::string, WorldLoader::Sighting>& sightings,
+                                const ChartRename&                            r);
+    // A renaming into the log, and onto every session and corporation now.
+    void RenameCharts(ChartRename r);
+    // An archive's `charts` and `links`, from its document.
+    static void ChartArchive(ArchivedRegion& a);
     // A region coming back: what AttachRegion makes in place of the slot's own (null: its own),
     // and what is restored into its systems when they are built, by system id.
     const Gen::Region*                 returning_ = nullptr;

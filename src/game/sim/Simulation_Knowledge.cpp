@@ -370,7 +370,7 @@ void Simulation::StepObservations()
                 continue;
             const WorldLoader::Sighting now = SightingOf(*st, &s);
             WorldLoader::Sighting&      kept = s.sightings[system];
-            news = news || !kept.Observed() || !kept.SameAs(now);
+            news = news || !kept.Observed() || kept.outdated || !kept.SameAs(now);
             kept = now;
         }
         if (news)

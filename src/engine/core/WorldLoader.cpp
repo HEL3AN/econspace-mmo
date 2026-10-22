@@ -58,6 +58,8 @@ json WorldLoader::ToJson(const Sighting& s)
     json j = { { "at", s.at }, { "seen", seen } };
     if (s.more > 0)
         j["more"] = s.more;
+    if (s.outdated)
+        j["outdated"] = true;
     return j;
 }
 
@@ -68,6 +70,8 @@ WorldLoader::Sighting WorldLoader::SightingFrom(const json& j)
         return s;
     s.at = j.value("at", -1.0);
     s.more = std::max(0, j.value("more", 0));
+    const auto outdated = j.find("outdated");
+    s.outdated = outdated != j.end() && outdated->is_boolean() && outdated->get<bool>();
     const auto seen = j.find("seen");
     if (seen == j.end() || !seen->is_array())
         return s;
@@ -86,6 +90,24 @@ WorldLoader::Sighting WorldLoader::SightingFrom(const json& j)
                            o[2].get<std::string>(), (flags & 1) != 0, (flags & 2) != 0 });
     }
     return s;
+}
+
+void WorldLoader::RenameSightings(std::map<std::string, Sighting>&          sightings,
+                                  const std::map<std::string, std::string>& ids, bool outdate)
+{
+    std::map<std::string, Sighting> out;
+    for (auto& [system, seen] : sightings)
+    {
+        const auto to = ids.find(system);
+        if (to == ids.end())
+        {
+            out[system] = std::move(seen);
+            continue;
+        }
+        seen.outdated = seen.outdated || outdate;
+        out[to->second] = std::move(seen);
+    }
+    sightings = std::move(out);
 }
 
 WorldLoader::Universe WorldLoader::LoadUniverse(const std::string& path)

@@ -265,6 +265,8 @@ std::string DescribeGalaxy()
             line += "   on your charts only";
         else if (si.knownBy == "corp")
             line += "   on your corporation's charts";
+        if (si.drifted)  // its region drifted away (#431 slice 15): kept, unreachable
+            line += "   " + Obs::DriftOf(si);
         for (const Proto::GalaxySystemStat& g : g_session.Galaxy().systems)
             if (g.id == si.id)
             {

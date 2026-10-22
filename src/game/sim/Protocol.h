@@ -36,7 +36,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    57;  // 57: a player structure's storage (#438) -- a command stores and takes goods, the
+    58;  // 58: drift marks (#431 slice 15) -- a system of the index says whether its region
+         // drifted away (cut off, or a chart of the archive's, by an id no system has), and its
+         // observed layer whether it is outdated, seen before the region came back renamed;
+         // 57: a player structure's storage (#438) -- a command stores and takes goods, the
          // player's snapshot carries the storage docked at, and a structure's layout the tiers
          // it grew through;
          // 56: security is bought (#431 slice 11) -- a CorpAct "police" names a system and a
