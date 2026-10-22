@@ -10,9 +10,13 @@
 // what their corporation charted -- differs from the one it last sent.
 
 #include "sim/Simulation.h"
+#include "sim/FactionMind.h"
 #include "sim/WorldRules.h"
 #include "gen/Names.h"
 #include "gen/Region.h"
+
+#include "entities/Station.h"
+#include "entities/Structure.h"
 
 #include <nlohmann/json.hpp>
 
@@ -144,6 +148,127 @@ void Simulation::ShareCharts(const ClientSession& s)
             systems.push_back(id);
     }
     corps_.AddCharts(s.accountName, systems);
+}
+
+// The observed layer (#431 slice 14, M1): what stands in a system is known only as of the last
+// time somebody whose eyes count for the pilot was there. A summary per system and per pilot
+// (and per corporation) -- kind, name, owner -- never a copy of the system, and bounded.
+
+WorldLoader::Sighting Simulation::SightingOf(const SystemState& st, const ClientSession* s) const
+{
+    WorldLoader::Sighting out;
+    out.at = time_;
+    for (const auto& e : st.entities)
+    {
+        WorldLoader::SeenObject o;
+        if (e->GetKind() == EntityKind::Station)
+        {
+            const Station& station = static_cast<const Station&>(*e);
+            o.kind = "station";
+            o.owner = Outposts::OwnerOf(station.GetFaction());
+        }
+        else if (e->GetKind() == EntityKind::Structure)
+        {
+            const Structure& t = static_cast<const Structure&>(*e);
+            o.kind = t.GetBuilds();
+            o.owner = t.GetOwner();
+            o.building = t.IsBuilding();
+        }
+        else
+            continue;
+        // A hidden base is the finder's alone (#346); a corporation's record shares none.
+        if (s != nullptr ? HiddenFrom(*s, st, *e) : SignatureOf(*e) > 0.0f)
+            continue;
+        o.name = e->GetName();
+        o.market = !o.building && e->Has(Component::Market);
+        if (out.seen.size() < WorldLoader::Sighting::MAX_SEEN)
+            out.seen.push_back(std::move(o));
+        else
+            out.more++;
+    }
+    return out;
+}
+
+WorldLoader::Sighting Simulation::LastSeen(const ClientSession& s,
+                                           const std::string&   systemId) const
+{
+    WorldLoader::Sighting out;
+    auto                  own = s.sightings.find(systemId);
+    if (own != s.sightings.end())
+        out = own->second;
+    const Corps::Corp* corp = s.accountName.empty() ? nullptr : corps_.Of(s.accountName);
+    if (corp != nullptr)
+    {
+        auto theirs = corp->sightings.find(systemId);
+        if (theirs != corp->sightings.end() && theirs->second.at > out.at)
+            out = theirs->second;
+    }
+    return out;
+}
+
+void Simulation::StepObservations()
+{
+    // Who has eyes where: every pilot in a system, and the owner of every structure standing
+    // in one -- an account; a faction's is no pilot's -- and the corporations they are in.
+    std::map<std::string, std::set<std::string>> accountsAt, corpsAt;
+    for (const auto& kv : sessions_)
+        if (!kv.second.accountName.empty())
+            accountsAt[kv.second.systemId].insert(kv.second.accountName);
+    for (const auto& kv : systems_)
+        for (const auto& e : kv.second.entities)
+        {
+            FactionId f;
+            if (e->GetKind() == EntityKind::Structure && !e->GetOwner().empty() &&
+                !Outposts::FactionOf(e->GetOwner(), f))
+                accountsAt[kv.first].insert(e->GetOwner());
+        }
+    for (const auto& [system, accounts] : accountsAt)
+        for (const std::string& a : accounts)
+            if (const Corps::Corp* c = corps_.Of(a))
+                corpsAt[system].insert(c->id);
+
+    // A corporation's record, kept for its members whether they are on or not.
+    for (const auto& [system, corps] : corpsAt)
+        if (const SystemState* st = SystemById(system))
+        {
+            const WorldLoader::Sighting now = SightingOf(*st, nullptr);
+            for (const std::string& id : corps)
+                corps_.Sight(id, system, now);
+        }
+
+    // Each pilot's own: wherever they, a corporation mate or a structure of theirs is.
+    for (auto& kv : sessions_)
+    {
+        ClientSession&        s = kv.second;
+        const Corps::Corp*    corp = s.accountName.empty() ? nullptr : corps_.Of(s.accountName);
+        std::set<std::string> live;
+        if (HasSystem(s.systemId))
+            live.insert(s.systemId);
+        for (const auto& [system, accounts] : accountsAt)
+            if (!s.accountName.empty() && accounts.count(s.accountName) != 0)
+                live.insert(system);
+        if (corp != nullptr)
+            for (const auto& [system, corps] : corpsAt)
+                if (corps.count(corp->id) != 0)
+                    live.insert(system);
+        bool news = live != s.liveSystems;
+        for (const std::string& system : live)
+        {
+            const SystemState* st = SystemById(system);
+            if (st == nullptr)
+                continue;
+            const WorldLoader::Sighting now = SightingOf(*st, &s);
+            WorldLoader::Sighting&      kept = s.sightings[system];
+            news = news || !kept.Observed() || !kept.SameAs(now);
+            kept = now;
+        }
+        if (news)
+        {
+            // Leaving is news too: the map turns from live to "as of" there.
+            s.liveSystems = std::move(live);
+            TouchKnown(s);
+        }
+    }
 }
 
 std::vector<long long> Simulation::KnowledgeKey(const ClientSession& s) const

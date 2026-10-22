@@ -1646,6 +1646,11 @@ WorldLoader::Universe Simulation::BuildIndex(const ClientSession* s) const
             si.chartedBy = a.chartedBy;
             if (!a.publicChart && s != nullptr)  // whose charts: theirs, or their corporation's
                 si.knownBy = s->known.count(ChartKey(info.id)) != 0 ? "own" : "corp";
+            if (s != nullptr)  // ...and what they saw there, and when (#431 slice 14)
+            {
+                si.observed = LastSeen(*s, info.id);
+                si.observedLive = s->liveSystems.count(info.id) != 0;
+            }
             if (!a.givenName.empty())
             {
                 si.designation = info.name;

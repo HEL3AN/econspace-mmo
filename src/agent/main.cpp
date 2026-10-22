@@ -281,6 +281,10 @@ std::string DescribeGalaxy()
                     line += "   front open to your corporation";
                 break;
             }
+        // What stands there, as of when you or your corporation last saw it (#431 slice 14).
+        const std::string seen = Obs::DescribeObserved(si, g_session.Snapshot().time);
+        if (!seen.empty())
+            line += "   seen: " + seen;
         if (si.id == g_session.Snapshot().systemId)
             line += "   <- you are here";
         out += line + "\n";
@@ -2165,12 +2169,15 @@ Rpc::Json ResourcesList()
                      { "name", "Galaxy" },
                      { "description",
                        "Every system on your charts -- the public charts, your own finds and "
-                       "your corporation's -- with its security, controller, gate links and who "
-                       "charted it or found it first, "
-                       "and where your corporation's front is open: another side holds it and "
-                       "you or nobody hold a system next door, so a claim may be laid or a "
-                       "structure besieged there (never a limit on guns); the systems their "
-                       "gates lead to, uncharted; plus recent galactic news" },
+                       "your corporation's -- with its security, controller and gate links, "
+                       "which are live, and who charted it or found it first; its stations, "
+                       "structures and markets as you or your "
+                       "corporation last saw them, with how long ago (live where you, a member "
+                       "or a structure of yours is); and where your corporation's front is "
+                       "open: another side holds it and you or nobody hold a system next door, "
+                       "so a claim may be laid or a structure besieged there (never a limit on "
+                       "guns); the systems their gates lead to, uncharted; plus recent galactic "
+                       "news" },
                      { "mimeType", "text/plain" } } });
 }
 

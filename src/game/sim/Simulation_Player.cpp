@@ -1804,6 +1804,12 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
     // as "system:<id>". A field an older build ignores, so no version bump (#20); and an
     // older build reading it keeps no "system:" key -- it is no system's signature.
     j["scanned"] = json(s.known);
+    // ...and what they saw standing in each system, and when (#431 slice 14): one bounded
+    // summary per system. Ignored by an older build, so no version bump either.
+    json observed = json::object();
+    for (const auto& [system, sighting] : s.sightings)
+        observed[system] = WorldLoader::ToJson(sighting);
+    j["observed"] = observed;
     if (!s.accountName.empty())
         designs_.SetUsers(s.accountName, named);
 
@@ -1970,6 +1976,17 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
                 : hole         ? (h != nullptr && h->closesAt > time_)
                                : HasSystem(key.substr(0, key.find('/'))))
                 s.known.insert(key);
+        }
+    // ...and what they saw there (#431 slice 14): this world's, of systems it still has.
+    s.sightings.clear();
+    s.liveSystems.clear();
+    const json observed = j.value("observed", json());
+    if (!foreign && observed.is_object())
+        for (auto o = observed.begin(); o != observed.end(); ++o)
+        {
+            WorldLoader::Sighting seen = WorldLoader::SightingFrom(o.value());
+            if (seen.Observed() && HasSystem(o.key()))
+                s.sightings[o.key()] = std::move(seen);
         }
 
     // Where they were (#49). A saved system that the galaxy no longer has -- an edited

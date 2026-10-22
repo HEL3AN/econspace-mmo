@@ -401,6 +401,10 @@ void Game::DrawMapSidebar(Ui::Layout& L)
         L.Text("Charted: the public charts, and what you and your corporation have found. "
                "Your finds are nobody else's.",
                note);
+        L.Text("Who holds a system and how safe it is are live. What stands there is as you "
+               "or your corporation last saw it, dimmed, with how long ago -- live only where "
+               "you, a member or a structure of yours is.",
+               note);
         L.Text("The ring's colour is who holds the system; a triangle over it, that they "
                "would shoot you.",
                note);
@@ -765,8 +769,8 @@ void Game::DrawGalaxyMap()
                 nameW += u(8.0f) + (float)Ui::TextWidth(s.designation.c_str(), notePx);
             const float     detailW = fmaxf(nameW, u(s.charted ? 190.0f : 80.0f));
             const int       lines = !s.charted ? 1
-                                    : cur      ? (CanNameHere() ? 5 : 4)
-                                               : (Obs::ChartsOf(s).empty() ? 2 : 3);
+                                    : cur      ? (CanNameHere() ? 6 : 5)
+                                               : (Obs::ChartsOf(s).empty() ? 3 : 4);
             const float     bottom = (float)lineY(lines) + line - nameY;
             const Rectangle nameBox{ p.x + gapX, nameY, nameW, (float)namePx + u(2.0f) };
             const Rectangle leftBox{ p.x - gapX - nameW, nameY, nameW, (float)namePx + u(2.0f) };
@@ -877,8 +881,13 @@ void Game::DrawGalaxyMap()
             // The node ring is tinted with the controller's color.
             DrawCircleLines((int)p.x, (int)p.y, ring, Fade(FactionColor(controller), 0.7f));
         }
+        // What stands there (#431 slice 14): live where this pilot, a corporation mate or a
+        // structure of theirs is; elsewhere as last seen, dimmed, with how long ago.
+        if (detail)
+            Ui::Text(Obs::DescribeObserved(s, snapshot_.time).c_str(), (int)lx, lineY(3), notePx,
+                     s.observedLive ? Ui::TEXT : Fade(Ui::TEXT_DIM, 0.75f));
         if (cur)
-            Ui::Text("you are here", (int)lx, lineY(3), notePx, Ui::TEXT_DIM);
+            Ui::Text("you are here", (int)lx, lineY(4), notePx, Ui::TEXT_DIM);
         // ...and whose charts it is on, when they are not the public ones (#431).
         const char* whose = s.knownBy == "own"    ? "  -- your charts only"
                             : s.knownBy == "corp" ? "  -- your corporation's charts"
@@ -886,14 +895,14 @@ void Game::DrawGalaxyMap()
         // Whose charts made it public, and who got here first: "charted by Syndicate".
         const std::string charts = detail ? Obs::ChartsOf(s) : std::string();
         if (!charts.empty())
-            Ui::Text(TextFormat("%s%s", charts.c_str(), whose), (int)lx, lineY(cur ? 4 : 3), notePx,
+            Ui::Text(TextFormat("%s%s", charts.c_str(), whose), (int)lx, lineY(cur ? 5 : 4), notePx,
                      Ui::TEXT_DIM);
         if (cur && CanNameHere())
         {
             if (desk_.KeyboardFocus().Holds(WIN_MAP, "name"))
-                nameAt = { lx, (float)lineY(4) + line * 0.5f };  // drawn after the clip
+                nameAt = { lx, (float)lineY(5) + line * 0.5f };  // drawn after the clip
             else
-                Ui::Text("[N] name this system", (int)lx, lineY(5), hintPx, Ui::ACCENT);
+                Ui::Text("[N] name this system", (int)lx, lineY(6), hintPx, Ui::ACCENT);
         }
     }
 

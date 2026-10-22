@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    54;  // 54: licences (#431 slice 6) -- a command buys one, a structure's layout says whether
+    55;  // 55: a system of the index carries what the pilot last saw standing there and when,
+         // and whether that is live (#431 slice 14);
+         // 54: licences (#431 slice 6) -- a command buys one, a structure's layout says whether
          // it stands licensed, unpaid or trespassing, the player's snapshot what building here
          // takes, and a CorpView the corporation's licences;
          // 53: a system's `found` is only a pilot who came before any faction, its `name` may
