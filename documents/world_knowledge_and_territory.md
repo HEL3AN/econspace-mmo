@@ -219,6 +219,12 @@ core -- systems whose every neighbour is its own -- cannot be besieged until a b
 falls first.
 *Why:* this defends core territory by geography instead of a "cannot be taken" flag: a big
 enough fleet takes the border, then the next system.
+*As built (slice 8):* `FrontOpen(system, side)`, side a faction or a corporation. A system
+nobody holds, or the side's own, is always open. A neighbour is a link in the route graph:
+gates, admin links and an Anchor's or an unstable mouth's gates while they stand. A roaming
+hole is not one: it is a pilot's secret and closes, so a hole found into a core would put
+that core on the front line with nothing the defender could see coming. A corporation has no
+allies yet; a faction's are those of `Stance::Ally`.
 
 **D4. War starts with the economy.** A faction's strength is grown from its stock, so its
 convoys and trade are the way in. Cutting supply weakens a holding before any siege.

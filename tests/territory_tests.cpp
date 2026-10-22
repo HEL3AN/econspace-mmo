@@ -75,6 +75,16 @@ struct Fringe
         REQUIRE(r.Join("boris", "DH", NOW).Ok());
         REQUIRE(r.Create("dima", "Kestrel Union", "KX", NOW).Ok());
     }
+    // Verge's one gate is to core, the Guild's: behind that line nobody else may lay a claim
+    // (#431 D3). Core made nobody's -- and nobody's garrison -- opens verge's front to everyone.
+    void OpenFront()
+    {
+        SystemAggregate& core = sim.SystemById("core")->agg;
+        core.claimed = false;
+        core.controller = Factions::Unaffiliated();
+        for (FactionId g : Factions::All())
+            core.presence[g] = 0.0f;
+    }
     SystemState&     St() { return *sim.SystemById(sys); }
     SystemAggregate& Agg() { return St().agg; }
     std::string      Id(const std::string& account) { return sim.Corporations().IdOf(account); }
@@ -161,6 +171,7 @@ TEST_CASE("a claim needs the most influence, held for the contest (#431 T2)")
     // The contest is the coarse pass's, reading the profile and the aggregate only: the same
     // for a system nobody is in as for one somebody is.
     Fringe f;
+    f.OpenFront();  // core nobody's: verge on the front line (#431 D3)
     f.Build("outpost", "anna");
     f.Contest();
     // An outpost against the Independents' station: the claim is there, the influence is not.
@@ -195,6 +206,7 @@ TEST_CASE("a contest flips the holder; destroying its claim drops it; a faction 
           "(#431 T2)")
 {
     Fringe f;
+    f.OpenFront();            // core nobody's: verge on the front line (#431 D3)
     f.Agg().claimed = false;  // nobody's: the station is the world's to stand, not a claim
     f.Agg().controller = Factions::Unaffiliated();
     f.St().entities.erase(std::remove_if(f.St().entities.begin(), f.St().entities.end(),
@@ -247,7 +259,8 @@ TEST_CASE("a contest flips the holder; destroying its claim drops it; a faction 
 
 TEST_CASE("the holder's tax is charged at its markets and goes to its treasury (#431 T3)")
 {
-    Fringe    f;
+    Fringe f;
+    f.OpenFront();  // core nobody's: verge on the front line (#431 D3)
     const int market = f.Build("outpost_market", "boris");
     f.Build("outpost_market", "anna");
     f.Build("outpost", "anna");
@@ -333,7 +346,8 @@ TEST_CASE("a player's market pays its owner where no corporation holds the syste
 
 TEST_CASE("the holder's docking policy at its structures (#431 T3)")
 {
-    Fringe    f;
+    Fringe f;
+    f.OpenFront();  // core nobody's: verge on the front line (#431 D3)
     const int market = f.Build("outpost_market", "anna");
     f.Build("outpost_market", "boris");
     f.Build("outpost", "anna");
@@ -375,6 +389,7 @@ TEST_CASE("the holder, the treasury and the policies outlive a restart (#431 sli
     std::string id;
     {
         Fringe f;
+        f.OpenFront();  // core nobody's: verge on the front line (#431 D3)
         f.Build("outpost_market", "anna");
         f.Build("outpost_market", "boris");
         f.Build("outpost", "anna");
@@ -443,6 +458,7 @@ TEST_CASE("a policy on the wire, and a holder in the galaxy (#431 slice 5)")
     s.holderTicker = "DH";
     s.holderName = "Deep Haul";
     s.fee = 0.05f;
+    s.front = true;
     g.systems.push_back(s);
     g.systems.push_back(Proto::GalaxySystemStat{});
     Proto::GalaxyState gb;
@@ -450,6 +466,119 @@ TEST_CASE("a policy on the wire, and a holder in the galaxy (#431 slice 5)")
     REQUIRE(gb.systems.size() == 2);
     CHECK(gb.systems[0].holderName == "Deep Haul");
     CHECK(gb.systems[0].FeeOr(0.02f) == doctest::Approx(0.05f));
+    CHECK(gb.systems[0].front);
     CHECK(gb.systems[1].holder.empty());
+    CHECK_FALSE(gb.systems[1].front);
     CHECK(gb.systems[1].FeeOr(0.02f) == doctest::Approx(0.02f));
+}
+
+// --- The front line (#431 D3, slice 8) -----------------------------------------------------------
+// The fixture is a line: verge -- core -- reach. Verge's one gate is to core.
+
+TEST_CASE("the front line: a held system is open only from a held or nobody's neighbour (#431 D3)")
+{
+    Fringe            f;
+    const std::string dh = f.Id("anna"), kx = f.Id("dima");
+    const std::string guild = InfluenceMap::Key(Fac::TradersGuild());
+    SystemAggregate&  core = f.sim.SystemById("core")->agg;
+    REQUIRE(core.claimed);
+    REQUIRE(core.controller == Fac::TradersGuild());
+    // Verge is the Independents', and core next door the Guild's: closed to everyone else.
+    CHECK(Simulation::HolderOf(f.Agg()) == InfluenceMap::Key(Fac::Independent()));
+    CHECK_FALSE(f.sim.FrontOpen(f.sys, dh));
+    CHECK_FALSE(f.sim.FrontOpen(f.sys, Fac::Syndicate()));
+    CHECK(f.sim.FrontOpen(f.sys, Fac::Independent()));  // its own: nothing to cross
+    CHECK(f.sim.FrontOpen(f.sys, guild));               // from its holding next door
+    CHECK(f.sim.FrontOpen("core", Fac::Syndicate()));   // reach, next door, is theirs
+    CHECK_FALSE(f.sim.FrontOpen("core", dh));
+
+    SUBCASE("a border that falls to nobody opens it to everyone")
+    {
+        f.OpenFront();
+        CHECK(f.sim.FrontOpen(f.sys, dh));
+        CHECK(f.sim.FrontOpen(f.sys, kx));
+        CHECK(f.sim.FrontOpen(f.sys, Fac::Syndicate()));
+        CHECK(f.sim.FrontOpen("core", dh));  // nobody's: nothing to cross
+    }
+    SUBCASE("a corporation's holding next door opens it to that corporation alone")
+    {
+        f.OpenFront();
+        core.holderCorp = dh;
+        CHECK(Simulation::HolderOf(core) == dh);
+        CHECK(f.sim.FrontOpen(f.sys, dh));
+        CHECK_FALSE(f.sim.FrontOpen(f.sys, kx));
+        CHECK_FALSE(f.sim.FrontOpen(f.sys, Fac::Syndicate()));
+    }
+    SUBCASE("a roaming hole opens no front: it is a pilot's secret, and it closes")
+    {
+        REQUIRE_FALSE(f.sim.OpenHoleNow(f.sys, "reach", 1.0e9, 10.0, 1.0e9).empty());
+        CHECK_FALSE(f.sim.FrontOpen(f.sys, Fac::Syndicate()));  // reach is theirs, by a hole
+        CHECK(f.sim.Neighbors(f.sys) == std::vector<std::string>{ "core" });
+    }
+}
+
+TEST_CASE("a claim is laid only where the front is open; behind the line it waits (#431 D3)")
+{
+    Fringe f;
+    // Enough to outweigh the Independents' station, as in T2 -- but core, verge's one gate, is
+    // the Guild's: Deep Haul has no border with verge.
+    for (int i = 0; i < 3; i++)
+        f.Build("outpost", "anna");
+    f.Build("outpost_market", "boris");
+    f.Contest();
+    CHECK(f.Agg().holderCorp.empty());
+    CHECK(f.Agg().controller == Fac::Independent());
+    CHECK(f.Agg().claimContest == 0);
+
+    // The border falls -- core is nobody's now -- and the claim goes through, over a contest.
+    f.OpenFront();
+    f.Contest(Simulation::ContestPasses() - 1);
+    CHECK(f.Agg().holderCorp.empty());
+    f.Contest(1);
+    CHECK(f.Agg().holderCorp == f.Id("anna"));
+
+    SUBCASE("...and a faction takes it back only from its own side of the line")
+    {
+        // The Syndicate builds and outweighs Deep Haul, but core is the Guild's again: the
+        // Syndicate has no border with verge.
+        SystemAggregate& core = f.sim.SystemById("core")->agg;
+        core.claimed = true;
+        core.controller = Fac::TradersGuild();
+        f.Build("outpost", Outposts::OwnerOf(Fac::Syndicate()));
+        f.Agg().presence[Fac::Syndicate()] = 1000.0f;
+        f.Contest();
+        CHECK(f.Agg().holderCorp == f.Id("anna"));
+        // Core nobody's again, and it does.
+        f.OpenFront();
+        f.Contest();
+        CHECK(f.Agg().holderCorp.empty());
+        CHECK(f.Agg().controller == Fac::Syndicate());
+    }
+}
+
+TEST_CASE("the galaxy tells a corporation's pilot where its front is open (#431 D3)")
+{
+    Fringe         f;
+    ClientSession& anna = f.Pilot("anna");
+    ClientSession& cara = f.Pilot("cara");  // in no corporation
+    auto           front = [&](const ClientSession& s, const std::string& id)
+    {
+        for (const Proto::GalaxySystemStat& g : f.sim.BuildGalaxyState(s).systems)
+            if (g.id == id)
+                return g.front;
+        FAIL("not on the charts: " << id);
+        return false;
+    };
+    // Verge is behind the Guild's line; core, the Guild's, borders reach -- the Syndicate's,
+    // not Deep Haul's.
+    CHECK_FALSE(front(anna, "verge"));
+    CHECK_FALSE(front(anna, "core"));
+    // Deep Haul holds reach: core borders it, and is open; verge is still behind core.
+    SystemAggregate& reach = f.sim.SystemById("reach")->agg;
+    reach.claimed = false;
+    reach.holderCorp = f.Id("anna");
+    CHECK(front(anna, "core"));
+    CHECK_FALSE(front(anna, "verge"));
+    CHECK_FALSE(front(anna, "reach"));  // its own: no front there
+    CHECK_FALSE(front(cara, "core"));   // a pilot in no corporation lays no claim
 }

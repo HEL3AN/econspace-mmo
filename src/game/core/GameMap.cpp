@@ -403,6 +403,11 @@ void Game::DrawMapSidebar(Ui::Layout& L)
         L.Text("The ring's colour is who holds the system; a triangle over it, that they "
                "would shoot you.",
                note);
+        L.Text("A second, outer ring: your corporation's front is open there -- another "
+               "side holds it, and you or nobody hold a system next door, so a claim may be "
+               "laid or a structure besieged. Behind the line nobody may, until a border falls. "
+               "Guns are never bound by it; a wormhole you found opens no front.",
+               note);
         L.Text("sec, pir, econ: security, pirates, prosperity.", note);
         L.Text("A dashed line: a wormhole your scans found. Only you see it, and it closes.", note);
         L.Text("Your route: bright ahead, dim behind. A ring round the destination, a number "
@@ -817,6 +822,7 @@ void Game::DrawGalaxyMap()
         int                            pirates = 0;
         FactionId                      controller = Factions::Unaffiliated();
         const Proto::GalaxySystemStat* held = nullptr;  // a corporation's (#431 slice 5)
+        bool                           front = false;   // your corporation's front (#431 D3)
         for (const Proto::GalaxySystemStat& g : galaxyState_.systems)
             if (g.id == s.id)
             {
@@ -826,6 +832,7 @@ void Game::DrawGalaxyMap()
                 prosperity = g.prosperity;
                 controller = g.controller;
                 held = g.holder.empty() ? nullptr : &g;
+                front = g.front;
                 break;
             }
         const float ring = u(cur ? 13.0f : 10.0f);
@@ -835,6 +842,11 @@ void Game::DrawGalaxyMap()
         if (hostileHeld)
             Ui::DrawMark({ p.x, p.y - ring - u(6.0f) }, u(4.5f), Ui::Mark::Triangle,
                          t.standing.hostile);
+        // Where your corporation's front is open (#431 D3) -- another side holds it, and you
+        // hold, or nobody holds, a system next door -- a second ring outside the holder's: a
+        // claim may be laid or a structure besieged there. Behind the line, none.
+        if (front)
+            DrawCircleLines((int)p.x, (int)p.y, ring + u(4.0f), Fade(t.colors.warn, 0.8f));
         if (haveStats && !detail)
             // Crowded: the controller only as the ring's colour.
             DrawCircleLines((int)p.x, (int)p.y, ring, Fade(FactionColor(controller), 0.7f));
@@ -848,15 +860,19 @@ void Game::DrawGalaxyMap()
                 (int)lx, lineY(1), notePx, secCol);
             // Territory controller (L3) — in the faction's color; or the corporation that holds
             // it, with the tax its markets take (#431 slice 5).
+            const std::string holder =
+                held != nullptr ? TextFormat("held by %s [%s]  tax %.1f%%",
+                                             held->holderName.c_str(), held->holderTicker.c_str(),
+                                             held->FeeOr((float)Goods::Rules().fee) * 100.0f)
+                                : FactionName(controller);
             if (held != nullptr)
-                Ui::Text(TextFormat("held by %s [%s]  tax %.1f%%", held->holderName.c_str(),
-                                    held->holderTicker.c_str(),
-                                    held->FeeOr((float)Goods::Rules().fee) * 100.0f),
-                         (int)lx, lineY(2), notePx,
+                Ui::Text(holder.c_str(), (int)lx, lineY(2), notePx,
                          held->holder == corpView_.id ? t.standing.friendly : Ui::TEXT);
             else
-                Ui::Text(FactionName(controller).c_str(), (int)lx, lineY(2), notePx,
-                         FactionColor(controller));
+                Ui::Text(holder.c_str(), (int)lx, lineY(2), notePx, FactionColor(controller));
+            if (front)
+                Ui::Text("  front open", (int)lx + Ui::TextWidth(holder.c_str(), notePx), lineY(2),
+                         notePx, t.colors.warn);
             // The node ring is tinted with the controller's color.
             DrawCircleLines((int)p.x, (int)p.y, ring, Fade(FactionColor(controller), 0.7f));
         }

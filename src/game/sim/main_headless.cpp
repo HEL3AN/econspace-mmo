@@ -1013,8 +1013,9 @@ static void SendGalaxies(std::vector<HostClient>& clients, const Simulation& sim
 {
     if (clients.empty())
         return;
-    const Proto::GalaxyState                      all = sim.GalaxyStats();
-    std::map<std::vector<long long>, std::string> made;
+    const Proto::GalaxyState all = sim.GalaxyStats();
+    // ...keyed by corporation as well: the front line is each corporation's own (#431 D3).
+    std::map<std::pair<std::vector<long long>, std::string>, std::string> made;
     for (HostClient& hc : clients)
     {
         const ClientSession* s = sim.Session(hc.sessionId);
@@ -1026,9 +1027,11 @@ static void SendGalaxies(std::vector<HostClient>& clients, const Simulation& sim
         auto                   own = s->known.lower_bound(Simulation::ChartKey(""));
         if (own == s->known.end() || Simulation::ChartedSystemOf(*own).empty())
             key[2] = 0;
-        auto it = made.find(key);
+        const Corps::Corp* corp = sim.Corporations().Of(s->accountName);
+        auto               whose = std::make_pair(std::move(key), corp != nullptr ? corp->id : "");
+        auto               it = made.find(whose);
         if (it == made.end())
-            it = made.emplace(std::move(key), Proto::EncodeGalaxy(sim.GalaxyStateFor(*s, all)))
+            it = made.emplace(std::move(whose), Proto::EncodeGalaxy(sim.GalaxyStateFor(*s, all)))
                      .first;
         if (it->second != hc.galaxySent)
         {

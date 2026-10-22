@@ -1495,3 +1495,50 @@ TEST_CASE("defences mend by tier: one frigate cannot bring an outpost down, enou
     const Blueprint& beacon = *Blueprints::Find("beacon");
     CHECK(beacon.mend * beacon.hull < frigate.damage * shotsPerSecond);
 }
+
+TEST_CASE("the front line binds claims and sieges, never guns (#431 D3)")
+{
+    LoadRegistries();
+    Simulation sim;
+    StartServer(sim, "");
+    ClientSession&    owner = Builder(sim, "hunter");
+    const std::string sys = owner.systemId;
+    const Blueprint&  outpost = *Blueprints::Find("outpost");
+    Stock(owner);
+    const Vector2 at = FreeSpot(sim, owner, *Blueprints::Find("beacon"));
+    auto          made = std::make_unique<Structure>(at, 0.0f, "Keep", outpost.archetype);
+    made->SetBlueprint(outpost.id);
+    const int id = sim.AddStatic(sys, std::move(made), "hunter");
+    REQUIRE(id != 0);
+    // Deep Haul holds the system, deep in the Guild's space: every neighbour is the Guild's.
+    REQUIRE(sim.Corporations().Create("hunter", "Deep Haul", "DH", sim.Time()).Ok());
+    REQUIRE(sim.Corporations().Create("raider", "Kestrel Union", "KX", sim.Time()).Ok());
+    const std::string dh = sim.Corporations().IdOf("hunter");
+    const std::string kx = sim.Corporations().IdOf("raider");
+    Law(sim, sys, false, Factions::Unaffiliated());
+    sim.SystemById(sys)->agg.holderCorp = dh;
+    REQUIRE_FALSE(sim.Neighbors(sys).empty());
+    for (const std::string& n : sim.Neighbors(sys))
+        Law(sim, n, true, Fac::TradersGuild());
+    CHECK_FALSE(sim.FrontOpen(sys, kx));
+    CHECK_FALSE(sim.FrontOpen(sys, Fac::Pirates()));
+
+    // Behind the line, guns are still guns: a few cruisers bring the outpost down.
+    ShipStats cruiser;
+    REQUIRE(StatsOfDesign("cruiser", cruiser));
+    std::vector<ClientSession*> guns;
+    for (int i = 0; i < 4; i++)
+    {
+        ClientSession& g = sim.CreateSession(sys, at, cruiser);
+        g.accountName = i == 0 ? std::string("raider") : "raider" + std::to_string(i);
+        guns.push_back(&g);
+    }
+    const double until = sim.Time() + 600.0;
+    while (sim.Time() < until && StructureById(sim, sys, id) != nullptr)
+    {
+        for (ClientSession* g : guns)
+            Shoot(sim, *g, id);
+        sim.SetTime(sim.Time() + 0.5);
+    }
+    CHECK(StructureById(sim, sys, id) == nullptr);
+}

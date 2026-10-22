@@ -579,6 +579,23 @@ public:
     void StepClaims(bool settling);
     // The systems a corporation holds, by id.
     std::vector<std::string> HeldBy(const std::string& corpId) const;
+    // Who holds a system, as a party's key (InfluenceMap::Key, or a corporation's id): empty
+    // for nobody's.
+    static std::string HolderOf(const SystemAggregate& a);
+    // The front line (#431 D3, slice 8): whether `side` -- a party's key, a faction's
+    // InfluenceMap::Key or a corporation's id -- may besiege a structure in `system` or lay a
+    // claim to it. True where nothing is to be crossed (the system is nobody's or the side's
+    // own); otherwise only from next door: a gate neighbour the side holds, an ally of a
+    // faction side holds, or nobody holds. A neighbour is a link in the route graph -- gates,
+    // admin links and a mouth's gates while it stands -- never a roaming hole, which is a
+    // pilot's secret and closes. It reads the aggregates alone, so a cold system is the same
+    // as a hot one. It binds sieges and claims, never a ship's guns (Decided after the
+    // rounds, 3).
+    bool FrontOpen(const std::string& system, const std::string& side) const;
+    bool FrontOpen(const std::string& system, FactionId f) const
+    {
+        return FrontOpen(system, InfluenceMap::Key(f));
+    }
     // The share of a trade a market in `st` takes (T3): its holder corporation's tax, or the
     // standard fee (Goods::Rules().fee) where no corporation holds.
     double FeeRateIn(const SystemState& st) const;

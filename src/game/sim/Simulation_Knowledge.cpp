@@ -130,9 +130,21 @@ Proto::GalaxyState Simulation::GalaxyStateFor(const ClientSession&      s,
 {
     Proto::GalaxyState out;
     out.events = all.events;
+    // ...and where their corporation's front is open (#431 D3): held by another side, and
+    // theirs to besiege or claim from next door.
+    const Corps::Corp* corp = s.accountName.empty() ? nullptr : corps_.Of(s.accountName);
     for (const Proto::GalaxySystemStat& g : all.systems)
         if (Knows(s, g.id))
+        {
             out.systems.push_back(g);
+            const SystemState* st = corp != nullptr ? SystemById(g.id) : nullptr;
+            if (st != nullptr)
+            {
+                const std::string holder = HolderOf(st->agg);
+                out.systems.back().front =
+                    !holder.empty() && holder != corp->id && FrontOpen(g.id, corp->id);
+            }
+        }
     return out;
 }
 

@@ -808,74 +808,6 @@ void Simulation::Think(FactionId f)
                 }
             }
 
-            // Besieging (slice 5): an enemy's outpost next door, which it has seen, can reach
-            // with what its holdings within reach spare (#295: pooled), and can bring down
-            // before its besiegers give up. Worth what the system is worth with nobody's claim
-            // on it and one more wreck in it -- which is what is left when the outpost falls;
-            // the risk is the garrison against what it brings, the guns, and the time it would
-            // take to get there and bring it down.
-            if (canSiege && wall > 0.0f)
-                for (FactionId g : seen->outposts)
-                {
-                    if (!Hostile(f, g) || (seen->claimed && seen->controller != g))
-                        continue;
-                    const float garrison = seen->presence[g];
-                    // It asks its holdings within reach for all the rules let a siege have.
-                    auto pool = pools.find(nid);
-                    if (pool == pools.end())
-                    {
-                        std::string in;
-                        auto        lent = PoolFor(f, nid, siege.pool * t.capacity, &in);
-                        pool = pools.emplace(nid, std::make_pair(std::move(lent), in)).first;
-                    }
-                    float sent = 0.0f;
-                    int   hops = 0;
-                    for (const Plan::Lent& l : pool->second.first)
-                    {
-                        sent += l.force;
-                        hops = std::max(hops, l.hops);
-                    }
-                    const float travel = hops * siege.hop;
-                    const float firing = sent - siege.defence * garrison;
-                    const float rate = firing * siege.dps - (seen->claimed ? mend : 0.0f);
-                    if (sent < 1.5f || firing <= 0.0f || rate <= 0.0f ||
-                        wall / rate > siege.seconds)
-                        break;
-                    int guns = 0;
-                    for (FactionId d : o.defenders)
-                        if (d != f)
-                            guns++;
-                    // ...and to the law, a lawless base next door is what keeps its own systems
-                    // unsafe: bringing one down is worth the order it brings, as the lawless
-                    // fear the law in a system they would reach into.
-                    const float order = Factions::IsLawful(f) && !Factions::IsLawful(g)
-                                            ? ORDER_WORTH * (1.0f - seen->security)
-                                            : 0.0f;
-                    const float worth = t.traffic * o.traffic + t.ore * o.ore +
-                                        t.salvage * std::min(1.0f, o.salvage + 0.25f) +
-                                        t.unclaimed + order;
-                    // The share of its force the garrison would tie up, the guns, and how much
-                    // of its time there it would take to bring the outpost down -- all as it
-                    // saw them, and that sighting will be older by the time it has got there.
-                    const float risk =
-                        siege.defence * garrison / sent + 0.5f * guns + wall / rate / siege.seconds;
-                    const float score =
-                        worth - Intelligence::BelievedRisk(
-                                    risk, Intelligence::Staleness(*seen, time_ + travel)) /
-                                    t.appetite;
-                    if (score > bestScore)
-                    {
-                        bestScore = score;
-                        act = Act::Siege;
-                        from = kv.first;
-                        to = nid;
-                        enemy = g;
-                        lend = pool->second.first;
-                        via = pool->second.second;
-                    }
-                    break;  // one outpost in a system is what it would besiege
-                }
-
             // Reaching: only where it has looked, and only with strength to spare -- and
             // only into a system it may take: nobody's, or an enemy's. Never a friend's or
             // a neutral power's (`closed`) -- that would be a war nobody declared.
@@ -917,9 +849,88 @@ void Simulation::Think(FactionId f)
         }
     }
 
+    // Besieging (slice 5): an enemy's outpost it has seen where its front is open (#431 D3) --
+    // next door to a holding of its own or an ally's, or to a system nobody holds; never in a
+    // core whose every neighbour is the enemy's. One it can reach with what its holdings within
+    // reach spare (#295: pooled), and can bring down before its besiegers give up. Worth what
+    // the system is worth with nobody's claim on it and one more wreck in it -- which is what
+    // is left when the outpost falls; the risk is the garrison against what it brings, the
+    // guns, and the time it would take to get there and bring it down.
+    if (canSiege && wall > 0.0f)
+        for (const auto& ik : mind.intel)
+        {
+            const std::string& nid = ik.first;
+            const Intel* const seen = &ik.second;
+            if (seen->outposts.empty() || systems_.count(nid) == 0 || !FrontOpen(nid, f))
+                continue;
+            if (seen->claimed && (seen->controller == f || !Hostile(f, seen->controller)))
+                continue;  // a friend's or a neutral's: no war nobody declared
+            const SystemOffer o = OfferOf(*seen);
+            for (FactionId g : seen->outposts)
+            {
+                if (!Hostile(f, g) || (seen->claimed && seen->controller != g))
+                    continue;
+                const float garrison = seen->presence[g];
+                // It asks its holdings within reach for all the rules let a siege have.
+                auto pool = pools.find(nid);
+                if (pool == pools.end())
+                {
+                    std::string in;
+                    auto        lent = PoolFor(f, nid, siege.pool * t.capacity, &in);
+                    pool = pools.emplace(nid, std::make_pair(std::move(lent), in)).first;
+                }
+                float sent = 0.0f;
+                int   hops = 0;
+                for (const Plan::Lent& l : pool->second.first)
+                {
+                    sent += l.force;
+                    hops = std::max(hops, l.hops);
+                }
+                const float travel = hops * siege.hop;
+                const float firing = sent - siege.defence * garrison;
+                const float rate = firing * siege.dps - (seen->claimed ? mend : 0.0f);
+                if (sent < 1.5f || firing <= 0.0f || rate <= 0.0f || wall / rate > siege.seconds)
+                    break;
+                int guns = 0;
+                for (FactionId d : o.defenders)
+                    if (d != f)
+                        guns++;
+                // ...and to the law, a lawless base next door is what keeps its own systems
+                // unsafe: bringing one down is worth the order it brings, as the lawless
+                // fear the law in a system they would reach into.
+                const float order = Factions::IsLawful(f) && !Factions::IsLawful(g)
+                                        ? ORDER_WORTH * (1.0f - seen->security)
+                                        : 0.0f;
+                const float worth = t.traffic * o.traffic + t.ore * o.ore +
+                                    t.salvage * std::min(1.0f, o.salvage + 0.25f) + t.unclaimed +
+                                    order;
+                // The share of its force the garrison would tie up, the guns, and how much
+                // of its time there it would take to bring the outpost down -- all as it
+                // saw them, and that sighting will be older by the time it has got there.
+                const float risk =
+                    siege.defence * garrison / sent + 0.5f * guns + wall / rate / siege.seconds;
+                const float score =
+                    worth - Intelligence::BelievedRisk(
+                                risk, Intelligence::Staleness(*seen, time_ + travel)) /
+                                t.appetite;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    act = Act::Siege;
+                    from = pool->second.first.front().from;
+                    to = nid;
+                    enemy = g;
+                    lend = pool->second.first;
+                    via = pool->second.second;
+                }
+                break;  // one outpost in a system is what it would besiege
+            }
+        }
+
     // Besieging a rival's Anchor at a wormhole mouth (#342 S4), built or going up: brought down,
-    // the mouth is open to anyone again. Wherever it stands within reach -- in a system it holds
-    // or next door to one, never a friend's or a neutral power's. Worth what the region behind
+    // the mouth is open to anyone again. Wherever it stands within reach and its front is open
+    // (#431 D3) -- in a system it holds, or next door to one, an ally's or nobody's -- never a
+    // friend's or a neutral power's. Worth what the region behind
     // the mouth promises; the risk is reckoned as for an outpost, against the Anchor's hull.
     if (canSiege && anchorWall > 0.0f)
         for (auto& kv : systems_)
@@ -931,17 +942,8 @@ void Simulation::Think(FactionId f)
             const SystemAggregate& a = kv.second.agg;
             if (a.claimed && a.controller != f && !Hostile(f, a.controller))
                 continue;
-            auto holds = [&](const std::string& id)
-            {
-                const auto it = systems_.find(id);
-                return it != systems_.end() && it->second.agg.claimed &&
-                       it->second.agg.controller == f;
-            };
-            bool near = holds(nid);
-            for (const std::string& n : Neighbors(nid))
-                near = near || holds(n);
             const auto k = mind.intel.find(nid);
-            if (!near || k == mind.intel.end())
+            if (!FrontOpen(nid, f) || k == mind.intel.end())
                 continue;
             const Intel& seen = k->second;
             for (FactionId g : here.anchors)
@@ -1147,8 +1149,11 @@ void Simulation::Think(FactionId f)
         // system be a friend's now. Then it does nothing this period.
         SystemState& dest = systems_[to];
         mind.intel[to] = Observe(dest);
-        // An Anchor may be besieged in a system it holds itself; an outpost never is.
+        // An Anchor may be besieged in a system it holds itself; an outpost never is. And only
+        // where its front is still open (#431 D3).
         if (dest.agg.claimed && dest.agg.controller != f && !Hostile(f, dest.agg.controller))
+            return;
+        if (!FrontOpen(to, f))
             return;
         if (!againstAnchor && dest.agg.claimed && dest.agg.controller == f)
             return;
@@ -1223,8 +1228,11 @@ void Simulation::StepControl(bool settling)
         // first -- by a siege, or by anyone's guns.
         const bool fortified = a.claimed && std::find(outposts.begin(), outposts.end(),
                                                       a.controller) != outposts.end();
+        // ...and a held system is taken only from next door (#431 D3): a faction's core, every
+        // neighbour its own, is not taken by whoever gathers there until a border falls.
+        const bool front = FrontOpen(kv.first, challenger);
         const bool upper = (challenger != a.controller || !a.claimed) && anchored && !fortified &&
-                           strongest > held * 1.5f + 1.0f &&
+                           front && strongest > held * 1.5f + 1.0f &&
                            strongest >= Factions::TemperamentOf(challenger).capacity * 0.5f;
         a.contested = upper ? a.contested + 1 : 0;
         if (a.contested < ContestPasses())

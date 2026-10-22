@@ -977,6 +977,9 @@ std::string Describe(const View& view, Detail detail)
                               g.holderTicker.c_str(),
                               std::round(g.FeeOr((float)Goods::Rules().fee) * 1000.0f) / 10.0f)
                         : "  controlled by " + FactionName(g.controller);
+                // ...and whether your corporation may lay a claim or besiege here (#431 D3).
+                if (g.front)
+                    sysExtra += ", front open to your corporation";
                 break;
             }
     }
