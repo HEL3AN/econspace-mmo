@@ -1067,6 +1067,14 @@ float Game::ShownSecurity(const std::string& id, float base) const
     return base;
 }
 
+double Game::MarketFeeHere() const
+{
+    for (const Proto::GalaxySystemStat& g : galaxyState_.systems)
+        if (g.id == layout_.systemId)
+            return g.FeeOr((float)Goods::Rules().fee);
+    return Goods::Rules().fee;
+}
+
 // Where the ship is, at the top of the screen: the system, how safe it is, and who wants the
 // pilot. A plate laid out like a window's content (#297) rather than coloured text loose on
 // the world, and drawn under the windows, so a window over it hides it instead of the two

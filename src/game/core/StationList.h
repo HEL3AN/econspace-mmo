@@ -46,6 +46,9 @@ struct MarketInput
     RepTier            standing = RepTier::Neutral;
     double             money = 0.0;
     int                holdFree = 0;
+    // The share of a trade the market takes: its system's holder's tax (#431 slice 5); below
+    // zero, the standard fee.
+    double fee = -1.0;
 };
 
 // Every good, in AllResourceTypes order.

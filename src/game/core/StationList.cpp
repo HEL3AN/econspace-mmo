@@ -9,7 +9,7 @@ std::vector<MarketRow> Market(const MarketInput& in)
 {
     const double           mul = (double)in.tradeBonus * SellPriceMultiplier(in.standing);
     const double           markup = 1.0 / std::min(1.0f, SellPriceMultiplier(in.standing));
-    const double           fee = Goods::Rules().fee;
+    const double           fee = in.fee < 0.0 ? Goods::Rules().fee : in.fee;
     std::vector<MarketRow> rows;
     auto                   at = [](const auto& v, size_t i) { return i < v.size() ? v[i] : 0; };
     for (ResourceType type : AllResourceTypes())

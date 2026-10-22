@@ -138,5 +138,13 @@
         "hop": 10,
         "stay": 180,
         "launchCost": 0.1
+    },
+    "influence": {
+        "outpost": 1,
+        "market": 2,
+        "station": 4,
+        "anchor": 2,
+        "perShip": 0.25,
+        "taxMax": 0.1
     }
 }

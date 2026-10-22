@@ -486,6 +486,14 @@ Proto::GalaxyState Simulation::GalaxyStats() const
         g.prosperity = a.prosperity;
         g.controller = a.controller;
         g.claimed = a.claimed;
+        // Its holder corporation, and the tax it set (#431 slice 5).
+        if (const Corps::Corp* c = a.holderCorp.empty() ? nullptr : corps_.Find(a.holderCorp))
+        {
+            g.holder = c->id;
+            g.holderTicker = c->ticker;
+            g.holderName = c->name;
+            g.fee = (float)FeeRateIn(kv.second);
+        }
         gs.systems.push_back(std::move(g));
     }
     gs.events = events_;

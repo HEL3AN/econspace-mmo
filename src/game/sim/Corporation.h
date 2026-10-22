@@ -36,6 +36,18 @@ const char* RoleName(Role r);   // "member", "director", "ceo"
 const char* RoleLabel(Role r);  // what a player reads: "Member", "Director", "CEO"
 bool        RoleFrom(const std::string& name, Role& out);
 
+// Who docks at the corporation's structures in a system it holds (#431 T3): its members only,
+// its members and whoever each structure's rules of engagement hold fire for (its allow-list),
+// or anyone -- each with the limits a dock already has (a private dock is the members' only).
+enum class Docking
+{
+    Own,
+    Allies,
+    All,
+};
+const char* DockingName(Docking d);  // "own", "allies", "all"
+bool        DockingFrom(const std::string& name, Docking& out);
+
 inline constexpr int    MEMBERS_MAX = 200;
 inline constexpr int    INVITES_MAX = 50;  // pending, per corporation
 inline constexpr double INVITE_SECONDS = 7.0 * 86400.0;
@@ -72,9 +84,20 @@ struct Corp
     // their own charts and leaves these. `chartsRev` changes with them (not saved).
     std::set<std::string> charts;
     long long             chartsRev = 0;
+    // Its money (#431 T4): what the markets of the systems it holds take, and what its
+    // members' markets take anywhere else. Police paid from it are slice 11's, its patrols'
+    // upkeep slice 12's: nothing spends it yet.
+    double treasury = 0.0;
+    // The policies of a holder (T3), set by its CEO or a director: the fee on trades at markets
+    // in the systems it holds, as a share (below zero: the standard fee), and who docks at its
+    // structures there.
+    double  tax = -1.0;
+    Docking docking = Docking::All;
 
     const Member* Find(const std::string& account) const;
     const Member* Ceo() const;
+    // The fee its markets take: its tax, or `standard` when it set none, never above `cap`.
+    double TaxRate(double standard, double cap) const;
 };
 
 // Whether a name and a ticker have the shape the rules allow; `why` says what is wrong.
@@ -83,7 +106,9 @@ bool ValidName(const std::string& name, std::string& why);
 bool ValidTicker(const std::string& ticker, std::string& why);
 
 // A verb, as a client sends it (Proto::CorpAct): "create" (name, ticker), "invite" (pilot),
-// "join" and "decline" (ticker), "leave", "kick" (pilot), "role" (pilot, role).
+// "join" and "decline" (ticker), "leave", "kick" (pilot), "role" (pilot, role); a holder's
+// policies (#431 T3), by the CEO or a director: "tax" (value: a percentage, or "standard") and
+// "docking" (value: own, allies or all).
 struct Act
 {
     std::string verb;
@@ -91,6 +116,7 @@ struct Act
     std::string ticker;
     std::string pilot;
     std::string role;
+    std::string value{};  // braced: the verbs without one leave it out
 };
 
 // What came of an act. `error` empty: done. `told` is the actor's answer either way;
@@ -127,6 +153,16 @@ public:
     Outcome Leave(const std::string& account);
     Outcome Kick(const std::string& by, const std::string& pilot);
     Outcome SetRole(const std::string& by, const std::string& pilot, Role role);
+    // A holder's policy (#431 T3): `verb` "tax" or "docking". A tax above `taxCap` is refused.
+    Outcome SetPolicy(const std::string& by, const std::string& verb, const std::string& value,
+                      double taxCap);
+
+    // Money into a corporation's treasury (#431 T4); false for one that does not exist. Not a
+    // change Rev() counts -- a fee comes with every trade, and Rev() is what writes corps.json
+    // and retells allow-lists -- but MoneyRev() does: the host sends members their view on
+    // it, and the treasury is written with the world.
+    bool Credit(const std::string& id, double amount);
+    int  MoneyRev() const { return moneyRev_; }
 
     // The corporation `account` is in; null for none.
     const Corp* Of(const std::string& account) const;
@@ -179,6 +215,7 @@ private:
     int                                nextId_ = 1;
     int                                rev_ = 0;
     long long                          chartsSerial_ = 0;
+    int                                moneyRev_ = 0;
 };
 
 }  // namespace Corps

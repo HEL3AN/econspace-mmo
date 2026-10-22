@@ -708,31 +708,21 @@ double Simulation::StepPlayerLoot(ClientSession& s, SystemState& st, int derelic
 // Whether the session is docked somewhere that trades, and whose it is. Every station has a
 // market today, so this refuses nothing yet -- it starts refusing the moment a player builds
 // a dock that is not also a market (#44), which is the point of the component being real
-// (#34). `feeTo` is the faction a trade's fee goes to (#343): the station's, or the faction
-// that built the structure; false for a market a player built, whose fee leaves the economy
-// until owners are paid (#44).
-static bool DockedMarket(const ClientSession& s, const SystemState& st, FactionId& owner,
-                         bool* feeTo = nullptr)
+// (#34). `owner` is the faction whose standing prices the trade: the station's, or the faction
+// that built the structure. Whose the fee is, and how much, is FeeAt's (#431 T3, #438).
+static const Entity* DockedMarket(const ClientSession& s, const SystemState& st, FactionId& owner)
 {
     owner = Factions::Unaffiliated();
-    if (feeTo != nullptr)
-        *feeTo = false;
     for (const auto& e : st.entities)
         if (e->GetId() == s.dockedStationId)
         {
-            bool faction = false;
             if (e->GetKind() == EntityKind::Station)
-            {
                 owner = static_cast<const Station&>(*e).GetFaction();
-                faction = true;
-            }
-            else if (!(faction = Outposts::FactionOf(e->GetOwner(), owner)))
+            else if (!Outposts::FactionOf(e->GetOwner(), owner))
                 owner = Factions::Unaffiliated();
-            if (feeTo != nullptr)
-                *feeTo = faction;
-            return e->Has(Component::Market);
+            return e->Has(Component::Market) ? e.get() : nullptr;
         }
-    return false;
+    return nullptr;
 }
 
 Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, SystemState& st,
@@ -740,10 +730,11 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, System
 {
     PlayerSellResult r;
     FactionId        sf;
-    bool             feeTo = false;
+    const Entity*    at = nullptr;
     if (!s.ship || resourceType < 0 || resourceType >= Goods::Count() ||
-        !DockedMarket(s, st, sf, &feeTo))
+        (at = DockedMarket(s, st, sf)) == nullptr)
         return r;
+    const FeeTo feeTo = FeeAt(st, *at);
 
     const ResourceType type = ResourceType::FromIndex(resourceType);
     const int          have = s.ship->GetCargoAmount(type);
@@ -762,15 +753,15 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, System
     const float  sellMul = SellPriceMultiplier(Factions::TierOf(s.account.GetReputation(sf)));
     const double paid = std::min(
         r.gross * s.account.GetSkills().GetBonus(SkillType::Trading) * sellMul, ask * sold);
-    // Everybody pays the fee, human or agent (#348), and it is the market's owner's (#343).
-    r.fee = paid * Goods::Rules().fee;
-    if (feeTo)
-        minds_[sf].treasury += r.fee;
+    // Everybody pays the fee, human or agent (#348): the market's owner's (#343, #438), or the
+    // holder's tax where a corporation holds the system (#431 T3).
+    r.fee = paid * feeTo.rate;
     const double revenue = paid - r.fee;
     s.account.AddMoney(revenue);
     s.account.GetSkills().AddXp(SkillType::Trading, (float)(revenue * 0.05));
     s.account.AddReputation(sf, (float)(revenue * 0.002));
     r.revenue = revenue;
+    PayFee(feeTo, r.fee);  // after: a pilot selling at their own market is paid it back
     return r;
 }
 
@@ -779,21 +770,22 @@ Simulation::PlayerBuyResult Simulation::StepPlayerBuy(ClientSession& s, SystemSt
 {
     PlayerBuyResult r;
     FactionId       sf;
-    bool            feeTo = false;
     if (!s.ship || amount <= 0 || resourceType < 0 || resourceType >= Goods::Count())
         return r;
     const ResourceType type = ResourceType::FromIndex(resourceType);
     const std::string  name = ResourceName(type);
-    if (!DockedMarket(s, st, sf, &feeTo))
+    const Entity*      at = DockedMarket(s, st, sf);
+    if (at == nullptr)
     {
         s.RecordEvent(Ev::Kind::Notice, "Buying " + name + " refused: no market here");
         return r;
     }
+    const FeeTo feeTo = FeeAt(st, *at);
     // A station that thinks badly of a pilot charges more; one that likes them does not
     // charge less -- the spread is the market's living (#343).
     const double markup =
         1.0 / std::min(1.0f, SellPriceMultiplier(Factions::TierOf(s.account.GetReputation(sf))));
-    const double fee = Goods::Rules().fee;
+    const double fee = feeTo.rate;
     // As many as the stock, the hold and the money allow: counted down one at a time, since
     // every unit bought raises the price of the next.
     const int room = s.ship->GetCargoCapacity() - s.ship->GetCargoUsed();
@@ -813,10 +805,9 @@ Simulation::PlayerBuyResult Simulation::StepPlayerBuy(ClientSession& s, SystemSt
     const double price = st.market.Buy(type, n, bought) * markup;
     r.fee = price * fee;
     r.cost = price + r.fee;
-    if (feeTo)
-        minds_[sf].treasury += r.fee;
     r.bought = bought;
     s.account.AddMoney(-r.cost);
+    PayFee(feeTo, r.fee);
     s.ship->AddCargo(type, bought);
     s.account.GetSkills().AddXp(SkillType::Trading, (float)(price * 0.01));
     return r;
@@ -1358,6 +1349,21 @@ std::string Simulation::DockRefusal(const ClientSession& s, const Entity& e) con
             return std::string();
         return e.GetName() + (faction ? " is " + FactionName(f) + "'s" : " is " + owner + "'s") +
                ", and docks only its owner's ships";
+    }
+    // In a system a corporation holds, its own structures dock whom it says (#431 T3): its
+    // members, its members and each structure's allow-list, or anyone.
+    const SystemState* st = SystemOf(s);
+    if (e.GetKind() == EntityKind::Structure && !faction && !owner.empty() && st != nullptr &&
+        !st->agg.holderCorp.empty() && corps_.IdOf(owner) == st->agg.holderCorp)
+    {
+        const Corps::Corp* c = corps_.Find(st->agg.holderCorp);
+        const bool         member = corps_.SameCorp(owner, s.accountName);
+        const bool ally = static_cast<const Structure&>(e).GetDefence().Allows(s.accountName);
+        if (c != nullptr && !member && c->docking != Corps::Docking::All &&
+            !(c->docking == Corps::Docking::Allies && !s.accountName.empty() && ally))
+            return e.GetName() + " docks only " +
+                   (c->docking == Corps::Docking::Own ? "members of " : "members and friends of ") +
+                   c->name + " [" + c->ticker + "]";
     }
     if (faction && Factions::TierOf(s.account.GetReputation(f)) == RepTier::Hated)
         return "hostile reputation";

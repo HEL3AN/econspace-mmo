@@ -958,7 +958,13 @@ std::string Describe(const View& view, Detail detail)
         for (const Proto::GalaxySystemStat& g : view.galaxy->systems)
             if (g.id == snap.systemId)
             {
-                sysExtra += "  controlled by " + FactionName(g.controller);
+                // A corporation's system says whose, and what its markets take (#431 slice 5).
+                sysExtra +=
+                    !g.holder.empty()
+                        ? Fmt("  held by %s [%s], tax %g%%", g.holderName.c_str(),
+                              g.holderTicker.c_str(),
+                              std::round(g.FeeOr((float)Goods::Rules().fee) * 1000.0f) / 10.0f)
+                        : "  controlled by " + FactionName(g.controller);
                 break;
             }
     }
@@ -1061,8 +1067,15 @@ std::string Describe(const View& view, Detail detail)
                           ResourceName(types[i]).c_str(), snap.marketPrices[i],
                           i < snap.marketAsk.size() ? snap.marketAsk[i] : 0.0f,
                           i < snap.marketStock.size() ? snap.marketStock[i] : 0);
-        out += Fmt("MARKET (bid/ask x stock; fee %.0f%% a trade) ", Goods::Rules().fee * 100.0) +
-               prices + "\n";
+        // The fee is the system's holder's tax where a corporation holds it (#431 slice 5).
+        float fee = (float)Goods::Rules().fee;
+        if (view.galaxy != nullptr)
+            for (const Proto::GalaxySystemStat& g : view.galaxy->systems)
+                if (g.id == snap.systemId)
+                    fee = g.FeeOr(fee);
+        out +=
+            Fmt("MARKET (bid/ask x stock; fee %g%% a trade) ", std::round(fee * 1000.0f) / 10.0f) +
+            prices + "\n";
     }
     if (!snap.missionOffers.empty())
     {

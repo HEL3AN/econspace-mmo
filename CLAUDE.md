@@ -402,6 +402,13 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   a member's armed structures never fire first on a member and guard members' ships, and
   the CEO and directors set members' rules of engagement. Its verbs are a `CorpAct`, not a
   `Command`, and they are answered with a chat notice.
+- **One side holds a system: a faction or a corporation** (#431 slice 5,
+  `Simulation_Territory.cpp`). A corporation holds one with the most influence (its members'
+  structures by tier, `world_rules.json` → `influence`) and a claim (a finished outpost or
+  above), held for `ContestPasses()`; then `agg.holderCorp` is its id and `claimed` is false,
+  so no faction's garrison, income or law is there. The faction rule in `StepControl` skips
+  such a system; `StepClaims` contests it. A market's fee is `FeeAt`'s: the holder's tax, or
+  the market's owner (a player's market pays its owner's corporation or the pilot, #438).
 - **A ship flies a design, and a player's design is named by its content** (#279). A refit
   files `Ships::PlayerFit`'s design under `Ships::ContentId` and the ship flies that id; the
   snapshot carries only the id, so the host sends a `DesignDef` before the first snapshot

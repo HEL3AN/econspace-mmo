@@ -1015,6 +1015,10 @@ bool Simulation::SaveWorld(const std::string& path) const
                              { "name", a.givenName } };
         if (!a.chartedBy.empty())  // on the public charts by a faction's (#431)
             galaxy[kv.first]["chartedBy"] = a.chartedBy;
+        // Its holder corporation (#431 slice 5): an addition an older build ignores, and it
+        // reads the system as nobody's -- which, for the faction layer, it is.
+        if (!a.holderCorp.empty())
+            galaxy[kv.first]["holder"] = a.holderCorp;
         // What its market holds, by good id (#343): only where there is one. A field an older
         // build ignores, and an older file's markets start at their targets.
         if (kv.second.profile.markets > 0)
@@ -1292,6 +1296,10 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             else if (!a.discoverer.empty())
                 legacyKnown_[a.discoverer].insert(sid);
         }
+        // A corporation that is not in corps.json any more loses it on the next pass.
+        a.holderCorp = gj.contains("holder") && gj["holder"].is_string()
+                           ? gj["holder"].get<std::string>()
+                           : std::string();
         if (gj.contains("stock") && gj["stock"].is_object())
             for (auto g = gj["stock"].begin(); g != gj["stock"].end(); ++g)
             {

@@ -3,6 +3,7 @@
 #include "core/Faction.h"
 #include "sim/Names.h"
 #include "sim/SaveFile.h"
+#include "sim/WorldRules.h"
 
 #include <nlohmann/json.hpp>
 
@@ -79,6 +80,33 @@ bool RoleFrom(const std::string& name, Role& out)
             return true;
         }
     return false;
+}
+
+const char* DockingName(Docking d)
+{
+    switch (d)
+    {
+        case Docking::Own: return "own";
+        case Docking::Allies: return "allies";
+        case Docking::All: return "all";
+    }
+    return "all";
+}
+
+bool DockingFrom(const std::string& name, Docking& out)
+{
+    for (Docking d : { Docking::Own, Docking::Allies, Docking::All })
+        if (Lower(name) == DockingName(d))
+        {
+            out = d;
+            return true;
+        }
+    return false;
+}
+
+double Corp::TaxRate(double standard, double cap) const
+{
+    return std::clamp(tax < 0.0 ? standard : tax, 0.0, std::max(0.0, cap));
 }
 
 const Member* Corp::Find(const std::string& account) const
@@ -272,6 +300,8 @@ Outcome Registry::Apply(const std::string& account, const Act& act,
             return Refuse("a role is ceo, director or member");
         return SetRole(account, act.pilot, r);
     }
+    if (verb == "tax" || verb == "docking")
+        return SetPolicy(account, verb, act.value, WorldRules::InfluenceRules().taxMax);
     return Refuse("there is no corporation verb '" + act.verb.substr(0, 16) + "'");
 }
 
@@ -503,6 +533,76 @@ Outcome Registry::SetRole(const std::string& by, const std::string& pilot, Role 
     return o;
 }
 
+Outcome Registry::SetPolicy(const std::string& by, const std::string& verb,
+                            const std::string& value, double taxCap)
+{
+    const Corp* in = Of(by);
+    if (in == nullptr)
+        return Refuse("you are in no corporation");
+    if (in->Find(by)->role == Role::Member)
+        return Refuse("only the CEO or a director sets the corporation's policies");
+    Corp&       c = *Mutable(in->id);
+    std::string now;
+    if (Lower(verb) == "tax")
+    {
+        std::string v = value;
+        while (!v.empty() && (v.back() == '%' || v.back() == ' '))
+            v.pop_back();
+        if (Lower(v) == "standard" || Lower(v) == "default")
+        {
+            c.tax = -1.0;
+            now = "the standard fee";
+        }
+        else
+        {
+            char*        end = nullptr;
+            const double pct = v.empty() ? -1.0 : std::strtod(v.c_str(), &end);
+            if (v.empty() || end == nullptr || *end != '\0' || !(pct >= 0.0))
+                return Refuse("a tax is a percentage of a trade, such as 5, or 'standard'");
+            if (pct / 100.0 > taxCap + 1e-9)
+            {
+                char buf[96];
+                std::snprintf(buf, sizeof(buf), "this server allows a tax of at most %.1f%%",
+                              taxCap * 100.0);
+                return Refuse(buf);
+            }
+            c.tax = pct / 100.0;
+            char buf[64];
+            std::snprintf(buf, sizeof(buf), "%.1f%% of every trade", pct);
+            now = buf;
+        }
+        now = "The tax at markets in systems " + Tag(c) + " holds is " + now;
+    }
+    else
+    {
+        Docking d;
+        if (!DockingFrom(value, d))
+            return Refuse("docking is own, allies or all");
+        c.docking = d;
+        now = Tag(c) + "'s structures in the systems it holds dock " +
+              (d == Docking::Own      ? std::string("its members only")
+               : d == Docking::Allies ? std::string("its members and whoever each one's rules of "
+                                                    "engagement hold fire for")
+                                      : std::string("anyone"));
+    }
+    rev_++;
+    Outcome o;
+    o.corp = c.id;
+    o.told = now;
+    o.announce = by + ": " + now;
+    return o;
+}
+
+bool Registry::Credit(const std::string& id, double amount)
+{
+    Corp* c = Mutable(id);
+    if (c == nullptr || !(amount > 0.0))
+        return c != nullptr;
+    c->treasury += amount;
+    moneyRev_++;
+    return true;
+}
+
 json Registry::ToJson() const
 {
     json list = json::array();
@@ -535,6 +635,13 @@ json Registry::ToJson() const
         // Its charts (#431). A field an older build ignores, so no version bump (#20).
         if (!c.charts.empty())
             cj["charts"] = c.charts;
+        // Additions an older build ignores too (#431 slice 5): its money and its policies.
+        if (c.treasury != 0.0)
+            cj["treasury"] = c.treasury;
+        if (c.tax >= 0.0)
+            cj["tax"] = c.tax;
+        if (c.docking != Docking::All)
+            cj["docking"] = DockingName(c.docking);
         list.push_back(std::move(cj));
     }
     return { { "version", Save::CORPS_VERSION }, { "next", nextId_ }, { "corps", list } };
@@ -642,6 +749,23 @@ bool Registry::FromJson(const json& j, std::string& why)
                     if (sj.is_string())
                         c.charts.insert(sj.get<std::string>());
             c.chartsRev = ++chartsSerial_;
+            const auto treasury = cj.find("treasury");
+            const auto tax = cj.find("tax");
+            const auto docking = cj.find("docking");
+            if ((treasury != cj.end() &&
+                 (!treasury->is_number() || treasury->get<double>() < 0.0)) ||
+                (tax != cj.end() &&
+                 (!tax->is_number() || tax->get<double>() < 0.0 || tax->get<double>() > 1.0)) ||
+                (docking != cj.end() &&
+                 (!docking->is_string() || !DockingFrom(docking->get<std::string>(), c.docking))))
+            {
+                why = c.id + "'s treasury, tax or docking is not one it could have";
+                return false;
+            }
+            if (treasury != cj.end())
+                c.treasury = treasury->get<double>();
+            if (tax != cj.end())
+                c.tax = tax->get<double>();
             // An id is never handed out twice, even after its corporation is gone.
             next = std::max(next, std::atoi(c.id.c_str() + 1) + 1);
             SortMembers(c);
