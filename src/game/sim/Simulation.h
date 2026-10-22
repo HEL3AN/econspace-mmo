@@ -128,9 +128,27 @@ public:
     {
         return publicRev_ + knowledgeSerial_ + (long long)corps_.Rev() + corps_.ChartsSerial();
     }
-    // The first ship into a system beyond the wormhole may name it, once (#145). Says why
-    // not in the player's journal when it cannot.
+    // The first ship into a system beyond the wormhole may name it, once (#145). Only its
+    // discoverer, never a later owner, and never a system its people or a faction named
+    // (#431 N1, N2); and only a name NameProblem passes (N3). Says why not in the player's
+    // journal when it cannot.
     bool NameSystem(ClientSession& s, const std::string& name);
+    // Why `name` may not be a system's name (#431 N3), in words for whoever chose it: its
+    // shape, the word filter (built in, and the server's BlockedNames), or another system --
+    // its name, designation or id, or what its natives will call it -- has it, whatever the
+    // case. Empty if it may.
+    std::string NameProblem(const std::string& name) const;
+    // Admin moderation (#431 N3; the console's `rename`): `system` -- an id, designation or
+    // name -- beyond the wormhole is called `name`, or with "-" loses the name it was given
+    // and is called what it would be without one: its people's name, else its designation,
+    // which its discoverer may then name again. Every map that has it sees it; it is news,
+    // and its discoverer is told in their journal, at once or at their next login. `said`
+    // is what to tell the admin either way.
+    bool RenameSystem(const std::string& system, const std::string& name, std::string& said);
+    // The server's own word filter (names_blocked.txt beside world.json), on top of the
+    // built-in one; the host gives it whenever the file is read.
+    void SetBlockedNames(std::vector<std::string> words) { blockedNames_ = std::move(words); }
+    const std::vector<std::string>& BlockedNames() const { return blockedNames_; }
     // Set when a system is charted; whoever sends the index takes it and resends.
     bool TakeChartsChanged()
     {
@@ -1836,6 +1854,10 @@ private:
     // it cannot pay -- `why` says so.
     bool PayRent(const std::string& party, const std::string& holder, double rent,
                  std::string& why);
+    // An entry in `account`'s own journal: now, if they are on, else waiting in the pending
+    // part of it (absent_) until their next login.
+    void TellAccount(const std::string& account, Ev::Kind kind, const std::string& text);
+    void KeepForAbsent(const std::string& account, Ev::Kind kind, const std::string& text);
     // Gives `s` what their corporation's journal holds that they have not read.
     void           ReadCorpJournal(ClientSession& s);
     nlohmann::json OwnersJson() const;
@@ -1891,10 +1913,15 @@ private:
     // A system's name, as its people or its first charter give it: kept like a player's
     // (`givenName`), on every map that has it, and on its planets.
     void CallSystem(SystemState& st, const std::string& name);
-    // Folded names already taken in the world, for a new one to differ from (N3).
-    std::set<std::string> TakenNames() const;
-    void                  SaveLegacyKnown(nlohmann::json& j) const;
-    void                  LoadLegacyKnown(const nlohmann::json& j);
+    // Folded names already taken in the world, for a new one to differ from (N3): every
+    // system's designation, id and given name, and every name an open region's natives have
+    // for their systems, revealed or not.
+    std::set<std::string>    TakenNames() const;
+    std::vector<std::string> blockedNames_;  // SetBlockedNames: not world state, never saved
+    // The system `which` names: an id, or a designation or name in any case. Empty if none.
+    std::string SystemNamed(const std::string& which) const;
+    void        SaveLegacyKnown(nlohmann::json& j) const;
+    void        LoadLegacyKnown(const nlohmann::json& j);
     // After an account is read: any pre-#431 finds of theirs, the system they are in, and
     // their charts onto their corporation's.
     void LoadKnown(ClientSession& s);

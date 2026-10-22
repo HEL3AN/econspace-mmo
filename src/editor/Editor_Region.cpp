@@ -9,12 +9,15 @@
 
 #include "Editor.h"
 
+#include "core/AdminChannel.h"
 #include "core/Faction.h"
 #include "gen/Region.h"
 #include "ui/UiTheme.h"
 #include "raymath.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <string>
 
 using nlohmann::json;
@@ -335,8 +338,89 @@ int Editor::RegionHit(Vector2 p) const
 
 // ---- Input ----------------------------------------------------------------------------
 
+void Editor::HandleRenameInput()
+{
+    // The server's answer, when it has come.
+    if (rename_.reply.valid() &&
+        rename_.reply.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+    {
+        const std::pair<bool, std::string> r = rename_.reply.get();
+        std::string                        said = r.second;
+        while (!said.empty() && (said.back() == '\n' || said.back() == '\r' || said.back() == '.'))
+            said.pop_back();
+        regionMap_.notice = (r.first ? "server: " : "not sent: ") + said;
+        // What it said is what the world now calls it; world.json follows when it next saves.
+        if (r.first && said.find("Not renamed") == std::string::npos &&
+            said.find(" is now ") != std::string::npos)
+        {
+            if (rename_.text == "-")
+                world_.names.erase(rename_.id);
+            else
+                world_.names[rename_.id] = rename_.text;
+        }
+    }
+    if (!rename_.typing)
+        return;
+    for (int c = GetCharPressed(); c > 0; c = GetCharPressed())
+        if (c >= 32 && c < 127 && rename_.text.size() < 24)
+            rename_.text += (char)c;
+    if (IsKeyPressed(KEY_BACKSPACE) && !rename_.text.empty())
+        rename_.text.pop_back();
+    if (IsKeyPressed(KEY_ESCAPE))
+        rename_.typing = false;
+    if (IsKeyPressed(KEY_ENTER) && !rename_.text.empty())
+    {
+        rename_.typing = false;
+        const std::string dir = std::filesystem::path(world_.path).parent_path().generic_string();
+        const std::string command = "rename " + rename_.id + " " + rename_.text;
+        regionMap_.notice = "asking the server: " + command;
+        rename_.reply = std::async(std::launch::async,
+                                   [dir, command]
+                                   {
+                                       std::string answer;
+                                       const bool  ok =
+                                           Host::AdminRequest(dir, command, answer, 3.0, 10.0);
+                                       return std::make_pair(ok, answer);
+                                   });
+    }
+}
+
+void Editor::DrawRename()
+{
+    if (!rename_.typing)
+        return;
+    const Rectangle r = RegionMapRect();
+    const Rectangle box{ r.x + 10.0f, r.y + r.height - 58.0f, 520.0f, 30.0f };
+    DrawRectangleRec(box, Ui::PANEL_BG);
+    DrawRectangleLinesEx(box, 1.0f, Ui::ACCENT);
+    const std::string shown = "rename " + rename_.id + " to: " + rename_.text + "_";
+    Ui::Text(shown.c_str(), (int)box.x + 8, (int)box.y + 8, 13, Ui::TEXT);
+    Ui::Text("Enter  ask the server    -  clear the name    Esc  cancel", (int)box.x,
+             (int)(box.y - 16.0f), 11, Ui::TEXT_DIM);
+}
+
 void Editor::HandleRegionInput()
 {
+    HandleRenameInput();
+    if (rename_.typing)
+        return;  // the keys are the name's
+    // R: rename the system under the cursor, on the server running this saved world.
+    if (IsKeyPressed(KEY_R) && !rename_.reply.valid())
+    {
+        const int hit = RegionHit(GetMousePosition());
+        if (!Saved(regionMap_.seed))
+            regionMap_.notice = "renaming is for a saved world's systems: open one (world <dir>)";
+        else if (hit >= 0)
+        {
+            rename_.typing = true;
+            rename_.id = regionMap_.region.systems[(size_t)hit].value("id", std::string());
+            rename_.text.clear();
+            while (GetCharPressed() > 0)  // the R itself
+            {
+            }
+            return;
+        }
+    }
     if (IsKeyPressed(KEY_ESCAPE))
     {
         ToggleRegionMap();
@@ -487,6 +571,9 @@ void Editor::DrawRegionMap()
         // The designation, the character unless ordinary, and what is there worth a stop.
         const float lx = p.x + kNode + 9.0f;
         std::string name = s.value("name", id);
+        // A saved world's own name for it (#431), given by a pilot, a faction or its people.
+        if (Saved(m.seed) && world_.names.count(id))
+            name = world_.names.at(id);
         Ui::Text(name.c_str(), (int)lx, (int)(p.y - 13.0f), 13, Ui::TEXT);
         // Empty is the survey's verdict (#141), and as loud here: nothing worth a stop.
         std::string tag = sum.character == "ordinary" ? std::string() : sum.character;
@@ -521,6 +608,13 @@ void Editor::DrawRegionMap()
         lines.push_back({ TextFormat("%s   %s   depth %d", s.value("name", id).c_str(), id.c_str(),
                                      Gen::DepthOf(id)),
                           Ui::ACCENT });
+        if (Saved(m.seed) && (world_.names.count(id) || world_.found.count(id)))
+            lines.push_back({ (world_.names.count(id) ? "called " + world_.names.at(id)
+                                                      : std::string("unnamed")) +
+                                  (world_.found.count(id) ? ", found by " + world_.found.at(id)
+                                                          : std::string()) +
+                                  "   R  rename",
+                              Ui::TEXT });
         const auto  doc = m.region.documents.find(id);
         std::string stars;
         for (const std::string& t :
@@ -582,6 +676,7 @@ void Editor::DrawRegionMap()
 
     if (!m.notice.empty())
         Ui::Text(m.notice.c_str(), (int)r.x + 10, (int)(r.y + r.height - 22.0f), 13, PIN_CHANGED);
+    DrawRename();
 }
 
 void Editor::DrawRegionPanel()
@@ -719,7 +814,9 @@ void Editor::DrawRegionPanel()
     const int ky = screenHeight_ - 89;
     DrawLine(x, ky - 6, x + (int)kPanelW - 28, ky - 6, Ui::PANEL_BORDER);
     Ui::Text("click  open the system for editing", x, ky, 11, Ui::TEXT_DIM);
-    Ui::Text("hover  what is there    E  export as a pack", x, ky + 15, 11, Ui::TEXT_DIM);
+    Ui::Text(Saved(m.seed) ? "hover  what is there    E  pack    R  rename"
+                           : "hover  what is there    E  export as a pack",
+             x, ky + 15, 11, Ui::TEXT_DIM);
     Ui::Text("PgDn / PgUp  next / previous seed", x, ky + 30, 11, Ui::TEXT_DIM);
     Ui::Text("Tab  next open region    F5  the galaxy", x, ky + 45, 11, Ui::TEXT_DIM);
     Ui::Text("Esc  back", x, ky + 60, 11, Ui::TEXT_DIM);

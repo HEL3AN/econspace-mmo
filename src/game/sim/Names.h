@@ -1,7 +1,10 @@
 #pragma once
 
+#include "gen/Names.h"
+
 #include <cctype>
 #include <string>
+#include <vector>
 
 // What a player may call a system they found (#145). Names are world state everybody sees,
 // so the rule is narrow on purpose: 3 to 24 characters, starting with a letter, of
@@ -35,6 +38,23 @@ inline bool ValidSystemName(const std::string& n, std::string& why)
             why = "no trailing or doubled spaces";
             return false;
         }
+    }
+    return true;
+}
+
+// What a pilot may call a system (#431 N3): the shape above, and through the word filter --
+// the built-in list and `blocked`, the server's names_blocked.txt (the agent, which has not
+// got it, checks the built-in list and leaves the rest to the server). Uniqueness and who may
+// name are still the simulation's.
+inline bool AllowedSystemName(const std::string& n, const std::vector<std::string>& blocked,
+                              std::string& why)
+{
+    if (!ValidSystemName(n, why))
+        return false;
+    if (Gen::NameBlocked(n, blocked))
+    {
+        why = "it holds a word the server's filter refuses";
+        return false;
     }
     return true;
 }

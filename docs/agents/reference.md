@@ -282,7 +282,7 @@ No arguments.
 
 ### `name_system`
 
-Name the system you are in. Beyond the wormhole a system has only a designation (W-3.2) until whoever got there first names it -- once, for everyone who has it on their charts. A system its people live in keeps their name, and one a faction charted before any pilot came keeps the faction's name or its designation. 3 to 24 characters, starting with a letter; letters, digits, spaces, ' and -; not a name another system has.
+Name the system you are in. Beyond the wormhole a system has only a designation (W-3.2) until whoever got there first names it -- once, for everyone who has it on their charts. Only the discoverer may name it -- never a later owner or corporation. A system its people live in keeps their name, and one a faction charted before any pilot came keeps the faction's name or its designation. The rules: 3 to 24 characters, starting with a letter; letters, digits, spaces, ' and -; no word the server's filter refuses; not a name another system has or its natives use, whatever the case. A refusal says which rule failed. The server's admin may rename or clear a name; you are told in your journal.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|

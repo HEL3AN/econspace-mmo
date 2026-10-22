@@ -467,6 +467,18 @@ are marked; slices without one may go in any order.
      rules.
    - *Tests:* the owner of a system cannot name it; a filtered word is refused; an admin
      rename reaches every client's index.
+   - *Built:* `Simulation::NameProblem` is the one rule set (shape, `Gen::NameBlocked` with the
+     server's list, unique against every designation, given name and native name, revealed or
+     not), used by `NameSystem` and `RenameSystem`; `NameSystem` also refuses a system its
+     people named. `names_blocked.txt` is read with the allowlist and bans
+     (`Host::AccessList`, re-read on change). The console's `rename <system> <name|->` (so
+     `econserver admin <dir> rename ...` too) and R on a saved world's region map in the
+     editor, which sends that command through the admin channel (now in the engine,
+     `core/AdminChannel.h`), so the server is still the one that names: a chronicle entry
+     (`renamed`) and a journal entry for the discoverer, at once or at login (#445's pending
+     journal). `-` clears a given name back to its people's or its designation, and the
+     discoverer may name it again. The client's name field and econagent's `name_system` say
+     which rule a name breaks before it is sent.
 
 **Territory**
 

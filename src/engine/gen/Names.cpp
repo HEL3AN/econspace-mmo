@@ -132,7 +132,16 @@ std::string FoldName(const std::string& name)
     return out;
 }
 
-bool NameBlocked(const std::string& name)
+std::string BlockedWord(const std::string& word)
+{
+    std::string bare;
+    for (char c : FoldName(word))
+        if (c != ' ' && c != '-' && c != '\'' && c != '\t')
+            bare += c;
+    return bare;
+}
+
+bool NameBlocked(const std::string& name, const std::vector<std::string>& extra)
 {
     // Short on purpose: it guards against what syllables can spell by accident, in English,
     // and throwing a harmless name away costs only another draw.
@@ -142,13 +151,16 @@ bool NameBlocked(const std::string& name)
         "cum",  "tits", "bitch", "jizz", "spunk", "retard", "sex",  "hitler", "arse",
         "puss", "crap", "kike",  "spic", "chink", "dyke",   "homo", "pedo",   "semen",
     };
-    std::string bare;
-    for (char c : FoldName(name))
-        if (c != ' ' && c != '-' && c != '\'')
-            bare += c;
+    const std::string bare = BlockedWord(name);
     for (const char* b : BLOCKED)
         if (bare.find(b) != std::string::npos)
             return true;
+    for (const std::string& w : extra)
+    {
+        const std::string b = BlockedWord(w);
+        if (!b.empty() && bare.find(b) != std::string::npos)
+            return true;
+    }
     return false;
 }
 

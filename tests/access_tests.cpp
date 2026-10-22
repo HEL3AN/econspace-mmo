@@ -146,6 +146,15 @@ TEST_CASE("a file edited by hand is read again when it changes (#400)")
     WriteText(folder + "bans.txt", "dave cheating\n");
     CHECK(access.ReloadIfChanged());
     CHECK(access.Refusal("dave").find("cheating") != std::string::npos);
+
+    // The word filter of names lives with them (#431 N3): a word a line, comments as theirs.
+    CHECK(access.NamesBlocked().empty());
+    WriteText(folder + "names_blocked.txt", "# words no system may be called\nbadword\n\n"
+                                            "  rival corp  # the other server\n");
+    CHECK(access.ReloadIfChanged());
+    REQUIRE(access.NamesBlocked().size() == 2);
+    CHECK(access.NamesBlocked()[0] == "badword");
+    CHECK(access.NamesBlocked()[1] == "rival corp");
 }
 
 TEST_CASE("log lines carry an ISO time in UTC, once per line (#400)")

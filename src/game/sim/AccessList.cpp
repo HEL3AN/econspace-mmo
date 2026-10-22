@@ -76,6 +76,7 @@ void AccessList::Open(const std::string& dir, bool listRequired)
 {
     allowPath_ = dir + "allowlist.txt";
     banPath_ = dir + "bans.txt";
+    blockPath_ = dir + "names_blocked.txt";
     listRequired_ = listRequired;
     Reload();
 }
@@ -113,8 +114,10 @@ void AccessList::Reload()
 {
     allowStamp_ = StampOf(allowPath_);
     banStamp_ = StampOf(banPath_);
+    blockStamp_ = StampOf(blockPath_);
     allowed_.clear();
     bans_.clear();
+    blocked_.clear();
     problems_.clear();
 
     const auto readFile = [this](const std::string& path, bool isBans)
@@ -145,12 +148,25 @@ void AccessList::Reload()
     };
     readFile(allowPath_, false);
     readFile(banPath_, true);
+    // A word a line, the rest of it a word too: "space port" blocks "spaceport" (#431 N3).
+    std::string text;
+    if (!blockPath_.empty() && ReadText(blockPath_, text))
+        for (std::string line : Lines(text))
+        {
+            const size_t hash = line.find('#');
+            if (hash != std::string::npos)
+                line.erase(hash);
+            line = Trim(line);
+            if (!line.empty())
+                blocked_.push_back(line);
+        }
     generation_++;
 }
 
 bool AccessList::ReloadIfChanged()
 {
-    if (StampOf(allowPath_) != allowStamp_ || StampOf(banPath_) != banStamp_)
+    if (StampOf(allowPath_) != allowStamp_ || StampOf(banPath_) != banStamp_ ||
+        StampOf(blockPath_) != blockStamp_)
     {
         Reload();
         return true;

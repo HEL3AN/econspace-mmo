@@ -1687,6 +1687,9 @@ bool Simulation::NameSystem(ClientSession& s, const std::string& name)
     if (InCentre(s.systemId))
         return refuse(SystemName(s.systemId) + " was named long before you were born");
     SystemAggregate& a = it->second.agg;
+    // Its people named it long ago (N1): theirs, revealed at first contact.
+    if (const std::string native = NativeNameOf(s.systemId); !native.empty())
+        return refuse("its people call it " + native);
     if (!a.givenName.empty())
         return refuse(SystemName(s.systemId) + " already has its name");
     if (a.discoverer.empty() && !a.chartedBy.empty())  // a faction came first (#431)
@@ -1700,13 +1703,8 @@ bool Simulation::NameSystem(ClientSession& s, const std::string& name)
         return refuse("only " +
                       (a.discoverer.empty() ? std::string("its discoverer") : a.discoverer) +
                       ", who got here first, may name it");
-    std::string why;
-    if (!Names::ValidSystemName(name, why))
+    if (const std::string why = NameProblem(name); !why.empty())
         return refuse(why);
-    for (const auto& info : universe_.systems)
-        if (Names::SameName(info.name, name) || Names::SameName(info.id, name) ||
-            Names::SameName(systems_[info.id].agg.givenName, name))
-            return refuse("there is already a system called " + name);
 
     const std::string designation = SystemName(s.systemId);
     // A client already here keeps the planet names its layout gave it until it next
