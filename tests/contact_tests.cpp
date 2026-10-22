@@ -467,10 +467,21 @@ TEST_CASE("a name keeps the rules, and a refusal says which one (#431 N3)")
     // The word filter: built in, and the server's own list on top.
     CHECK_FALSE(sim->NameSystem(ann, "Shit Creek"));
     CHECK(LastSaid(ann) == "Not named: it holds a word the server's filter refuses");
-    CHECK(sim->NameProblem("Bad Word Bay").empty());
-    sim->SetBlockedNames({ "badword" });
-    CHECK_FALSE(sim->NameSystem(ann, "Bad-Word Bay"));  // spaces and hyphens do not hide it
+    // ...a word as a word, so a name that only spells one inside it is a name (Scunthorpe).
+    CHECK(sim->NameProblem("Parsec").empty());
+    CHECK(sim->NameProblem("Torpedo Run").empty());
+    CHECK(sim->NameProblem("Peacock").empty());
+    CHECK(sim->NameProblem("Essex Deep").empty());
+    CHECK_FALSE(sim->NameProblem("Fuckton").empty());  // the few that no word holds innocently
+    CHECK(sim->NameProblem("Badword Bay").empty());
+    sim->SetBlockedNames({ "badword", "*vile", "rival corp" });
+    CHECK_FALSE(sim->NameSystem(ann, "Badword Bay"));  // a listed word
     CHECK(LastSaid(ann) == "Not named: it holds a word the server's filter refuses");
+    CHECK_FALSE(sim->NameProblem("Two-Badwords").empty());     // ...hyphenated, plural
+    CHECK(sim->NameProblem("Badwordia").empty());              // ...not inside another word
+    CHECK_FALSE(sim->NameProblem("Revileton").empty());        // `*`: anywhere
+    CHECK_FALSE(sim->NameProblem("Rival Corp Hold").empty());  // an entry of two words
+    CHECK(sim->NameProblem("Rival Hold").empty());
 
     // Unique in the world, whatever the case: another system's name or designation.
     std::string other, why;

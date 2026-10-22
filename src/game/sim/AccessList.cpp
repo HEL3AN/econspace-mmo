@@ -148,7 +148,7 @@ void AccessList::Reload()
     };
     readFile(allowPath_, false);
     readFile(banPath_, true);
-    // A word a line, the rest of it a word too: "space port" blocks "spaceport" (#431 N3).
+    // An entry a line, kept whole: "rival corp" is one entry of two words (#431 N3).
     std::string text;
     if (!blockPath_.empty() && ReadText(blockPath_, text))
         for (std::string line : Lines(text))

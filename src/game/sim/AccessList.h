@@ -12,10 +12,11 @@
 //   allowlist.txt   one account per line: the only names that may log in, or create an
 //                   account. `#` starts a comment; anything after the name is ignored.
 //   bans.txt        one account per line, then the reason, which the player is told.
-//   names_blocked.txt  one word per line that no system a pilot names may hold (#431 N3), on
-//                   top of the built-in filter: matched anywhere in the name, ignoring case,
-//                   spaces, ' and -. `#` starts a comment here too. A moderation list like
-//                   the other two, so it lives, and is read again, with them.
+//   names_blocked.txt  one entry per line that no system a pilot names may hold (#431 N3),
+//                   on top of the built-in filter: a word (or words), matched as a word of
+//                   the name in any case, or `*word`, matched anywhere in it
+//                   (Gen::ChosenNameBlocked). `#` starts a comment here too. A moderation
+//                   list like the other two, so it lives, and is read again, with them.
 //
 // Whether the list is checked is decided once, when the server starts: yes if the server is
 // reachable from other machines (--public) or allowlist.txt is there, unless --open says
@@ -64,7 +65,7 @@ public:
 
     const std::set<std::string>&              Allowed() const { return allowed_; }
     const std::map<std::string, std::string>& Bans() const { return bans_; }
-    // names_blocked.txt's words, as typed (Gen::NameBlocked folds them).
+    // names_blocked.txt's entries, as typed (Gen::ChosenNameBlocked folds them).
     const std::vector<std::string>& NamesBlocked() const { return blocked_; }
     // Lines of the files that were not a name, as "file:line: text", from the last read.
     const std::vector<std::string>& Problems() const { return problems_; }

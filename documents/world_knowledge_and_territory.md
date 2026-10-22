@@ -467,8 +467,8 @@ are marked; slices without one may go in any order.
      rules.
    - *Tests:* the owner of a system cannot name it; a filtered word is refused; an admin
      rename reaches every client's index.
-   - *Built:* `Simulation::NameProblem` is the one rule set (shape, `Gen::NameBlocked` with the
-     server's list, unique against every designation, given name and native name, revealed or
+   - *Built:* `Simulation::NameProblem` is the one rule set (shape, `Gen::ChosenNameBlocked`
+     with the server's list, unique against every designation, given name and native name, revealed or
      not), used by `NameSystem` and `RenameSystem`; `NameSystem` also refuses a system its
      people named. `names_blocked.txt` is read with the allowlist and bans
      (`Host::AccessList`, re-read on change). The console's `rename <system> <name|->` (so
@@ -478,7 +478,11 @@ are marked; slices without one may go in any order.
      (`renamed`) and a journal entry for the discoverer, at once or at login (#445's pending
      journal). `-` clears a given name back to its people's or its designation, and the
      discoverer may name it again. The client's name field and econagent's `name_system` say
-     which rule a name breaks before it is sent.
+     which rule a name breaks before it is sent. The filter of a chosen name matches whole
+     words (split on spaces, hyphens, apostrophes and digits), so "Parsec", "Torpedo" and
+     "Peacock" are names; only a few unambiguous entries, and a `*word` line of
+     names_blocked.txt, match anywhere. The generator keeps its own substring rule
+     (`Gen::NameBlocked`): a throwaway draw costs nothing, and its output is sealed.
 
 **Territory**
 

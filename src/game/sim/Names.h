@@ -51,7 +51,7 @@ inline bool AllowedSystemName(const std::string& n, const std::vector<std::strin
 {
     if (!ValidSystemName(n, why))
         return false;
-    if (Gen::NameBlocked(n, blocked))
+    if (Gen::ChosenNameBlocked(n, blocked))
     {
         why = "it holds a word the server's filter refuses";
         return false;

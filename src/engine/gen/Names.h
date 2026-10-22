@@ -22,15 +22,18 @@ uint64_t TextKey(const std::string& text);
 // A name folded for comparison: ASCII lower case. Names are unique regardless of case (N3).
 std::string FoldName(const std::string& name);
 
-// True when a name contains a word nobody should find a system called -- a short built-in
-// list, and `extra` (an admin's names_blocked.txt, #431 slice 4) -- matched in the folded
-// name with its spaces, hyphens and apostrophes taken out. A generator throws such a name
-// away and draws again; a pilot's is refused (Names::Allowed). The generator passes no
-// `extra`, so an admin's list never changes what a seed makes.
-bool NameBlocked(const std::string& name, const std::vector<std::string>& extra = {});
-// A word of a filter as NameBlocked matches it: folded, its spaces, hyphens and apostrophes
-// taken out. Empty for a line with nothing in it to match.
-std::string BlockedWord(const std::string& word);
+// True when a generated name contains a word nobody should find a system called -- a short
+// list, matched anywhere in the folded name with its spaces, hyphens and apostrophes taken
+// out. A generator throws such a name away and draws again, so matching too much costs
+// nothing; it is sealed into regions, so it stays as it is.
+bool NameBlocked(const std::string& name);
+
+// The same filter for a name somebody chose (#431 N3), where matching too much refuses
+// "Parsec" for its "arse": the list as whole words of the name (split on spaces, hyphens,
+// apostrophes and digits; a plural counts), except the few entries no innocent word holds,
+// which are matched anywhere. `extra` is the server's names_blocked.txt: each entry a word
+// (or words) matched the same way, or, with a leading `*`, matched anywhere in the name.
+bool ChosenNameBlocked(const std::string& name, const std::vector<std::string>& extra = {});
 
 // A name in `culture`, drawn from `key`: the shape a player's name must have (3 to 24
 // characters, a letter first; Names::ValidSystemName), never blocked, never one of `taken`
