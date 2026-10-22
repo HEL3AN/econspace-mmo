@@ -341,6 +341,23 @@ struct Influence
     double taxMax = 0.1;
 };
 
+// Licences (#431 slice 6): building in a system a faction or a corporation holds. A party --
+// a corporation, or a pilot in none -- needs the holder's leave: with a faction, a standing of
+// `standing` or more (a corporation's is the sum of its members'); with a corporation, its
+// docking policy letting the party in. And it needs a licence, a rent of `rent` credits every
+// `periodDays` days, paid from the corporation's treasury or the pilot's own money. Unpaid,
+// it holds `graceHours` more, then lapses: what the party has there is trespassing, lawless
+// to shoot, and the holding faction weighs evicting it -- worth `evict` to it, against the
+// risk like any siege. Nobody's systems, the lawless' and the frontier need none.
+struct Licences
+{
+    double rent = 2000.0;
+    double periodDays = 7.0;
+    double graceHours = 24.0;
+    double standing = 10.0;
+    double evict = 1.0;
+};
+
 // Reads `path`. False, with Error() saying why, and the rules as they were, when it does
 // not read.
 bool               Load(const std::string& path);
@@ -357,6 +374,7 @@ const Holes&       HoleRules();
 const Scan&        ScanRules();
 const Law&         LawRules();
 const Influence&   InfluenceRules();
+const Licences&    LicenceRules();
 // For a test: rules of its own, without a file.
 void SetTideRules(const Tide& t);
 void SetMouthRules(const Mouths& m);
@@ -370,5 +388,6 @@ void SetHoleRules(const Holes& h);
 void SetScanRules(const Scan& s);
 void SetLawRules(const Law& l);
 void SetInfluenceRules(const Influence& i);
+void SetLicenceRules(const Licences& l);
 
 }  // namespace WorldRules

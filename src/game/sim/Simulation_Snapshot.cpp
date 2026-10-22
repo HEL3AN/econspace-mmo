@@ -145,7 +145,8 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         p.loss.paid = s.lastLoss.paid;
         p.loss.cargo = s.lastLoss.cargo;
         p.loss.wokeAt = s.lastLoss.wokeAt;
-        p.scan = ScanViewOf(s);  // (#346)
+        p.scan = ScanViewOf(s);         // (#346)
+        p.licence = LicenceViewFor(s);  // (#431 slice 6)
         p.cargoUsed = s.ship->GetCargoUsed();
         p.cargoCap = s.ship->GetCargoCapacity();
         p.warpPhase = (int)s.ship->GetWarpPhase();
@@ -346,7 +347,9 @@ static bool DescribeStatic(const Entity& e, Proto::EntityLayout& el)
             el.damage = t.GetDamageSet();
             el.damagedAt = t.GetDamagedAt();
             el.mends = t.Mends();
-            el.defence = t.GetDefence();  // (#340)
+            el.defence = t.GetDefence();       // (#340)
+            el.licence = (int)t.GetLicence();  // (#431 slice 6)
+            el.licenceUntil = t.GetLicenceUntil();
             break;
         }
         case EntityKind::Npc:         // dynamic: created by the client from the snapshot

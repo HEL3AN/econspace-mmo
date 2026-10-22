@@ -328,6 +328,7 @@ TEST_CASE("an Anchor makes a mouth permanent gates named for its builder, until 
     const Vector2  other = AnchorSpot(sim, *sim.SystemById(mouth), *gate, &spot);
     ClientSession& s = sim.CreateSession(mouth, spot, GetShipCatalog()[roomy].stats);
     s.accountName = "kessler";
+    sim.GrantLicence("kessler", mouth);  // building in a held system (#431 slice 6)
     s.ownedShips = { roomy };
     s.currentShip = roomy;
     for (const auto& c : bp.cost)

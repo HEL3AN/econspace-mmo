@@ -16,6 +16,17 @@ struct Blueprint;
 // and can do nothing yet. After that it is what it was built to be, until `expiresAt`, if
 // it has one. Nothing accumulates, so a site is as far along on every client as on the
 // server, and a restart in the middle of building costs nothing.
+// Whether a player's structure stands by the leave of the system's holder (#431 slice 6),
+// as the server last worked it out from its owner's licence. Nothing of it is saved: it is
+// derived each pass, and sent with the layout so everyone can tell a trespasser.
+enum class LicenceState
+{
+    None,      // needs none: nobody's system, the frontier, the lawless', or its owner's own
+    Licensed,  // the rent is paid
+    Unpaid,    // the rent is due and unpaid; it lapses at the instant given
+    Trespass,  // no licence, or a lapsed one: lawless to shoot, and the holder may evict it
+};
+
 class Structure : public Entity
 {
 public:
@@ -87,15 +98,27 @@ public:
     const Defence& GetDefence() const { return defence_; }
     void           SetDefence(Defence d) { defence_ = std::move(d); }
 
+    // Its licence (#431 slice 6), set by the server: the state, and the instant that goes
+    // with it -- paid to while licensed, lapsing at while unpaid; 0 otherwise.
+    LicenceState GetLicence() const { return licence_; }
+    double       GetLicenceUntil() const { return licenceUntil_; }
+    void         SetLicence(LicenceState l, double until)
+    {
+        licence_ = l;
+        licenceUntil_ = until;
+    }
+
 private:
-    std::string name_;
-    std::string builds_;
-    std::string blueprint_;
-    float       damage_ = 0.0f;
-    double      damagedAt_ = 0.0;  // the instant `damage_` was set; mending counts from here
-    bool        mends_ = true;
-    double      startedAt_ = 0.0;
-    double      completesAt_ = 0.0;  // 0: built
-    double      expiresAt_ = 0.0;    // 0: permanent
-    Defence     defence_;
+    std::string  name_;
+    std::string  builds_;
+    std::string  blueprint_;
+    float        damage_ = 0.0f;
+    double       damagedAt_ = 0.0;  // the instant `damage_` was set; mending counts from here
+    bool         mends_ = true;
+    double       startedAt_ = 0.0;
+    double       completesAt_ = 0.0;  // 0: built
+    double       expiresAt_ = 0.0;    // 0: permanent
+    Defence      defence_;
+    LicenceState licence_ = LicenceState::None;
+    double       licenceUntil_ = 0.0;
 };

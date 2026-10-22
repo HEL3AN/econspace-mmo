@@ -603,6 +603,32 @@ bool Registry::Credit(const std::string& id, double amount)
     return true;
 }
 
+bool Registry::Debit(const std::string& id, double amount)
+{
+    Corp* c = Mutable(id);
+    if (c == nullptr || !(amount >= 0.0) || c->treasury < amount)
+        return false;
+    c->treasury -= amount;
+    moneyRev_++;
+    return true;
+}
+
+void Registry::SetLicence(const std::string& id, const std::string& system, const Licence& l)
+{
+    if (Corp* c = Mutable(id))
+    {
+        c->licences[system] = l;
+        moneyRev_++;
+    }
+}
+
+void Registry::DropLicence(const std::string& id, const std::string& system)
+{
+    Corp* c = Mutable(id);
+    if (c != nullptr && c->licences.erase(system) > 0)
+        moneyRev_++;
+}
+
 json Registry::ToJson() const
 {
     json list = json::array();
@@ -642,6 +668,16 @@ json Registry::ToJson() const
             cj["tax"] = c.tax;
         if (c.docking != Docking::All)
             cj["docking"] = DockingName(c.docking);
+        // Its licences (#431 slice 6): an addition an older build ignores.
+        if (!c.licences.empty())
+        {
+            json licences = json::object();
+            for (const auto& l : c.licences)
+                licences[l.first] = { { "holder", l.second.holder },
+                                      { "until", l.second.until },
+                                      { "told", l.second.told } };
+            cj["licences"] = licences;
+        }
         list.push_back(std::move(cj));
     }
     return { { "version", Save::CORPS_VERSION }, { "next", nextId_ }, { "corps", list } };
@@ -766,6 +802,19 @@ bool Registry::FromJson(const json& j, std::string& why)
                 c.treasury = treasury->get<double>();
             if (tax != cj.end())
                 c.tax = tax->get<double>();
+            const auto licences = cj.find("licences");
+            if (licences != cj.end() && licences->is_object())
+                for (auto l = licences->begin(); l != licences->end(); ++l)
+                {
+                    Licence lc;
+                    lc.holder = l->is_object() ? text(*l, "holder") : std::string();
+                    const auto until = l->is_object() ? l->find("until") : l->end();
+                    if (lc.holder.empty() || until == l->end() || !until->is_number())
+                        continue;  // not a licence this build can read: none
+                    lc.until = until->get<double>();
+                    lc.told = (int)whole(*l, "told");
+                    c.licences[l.key()] = lc;
+                }
             // An id is never handed out twice, even after its corporation is gone.
             next = std::max(next, std::atoi(c.id.c_str() + 1) + 1);
             SortMembers(c);

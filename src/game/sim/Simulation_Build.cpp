@@ -155,6 +155,10 @@ std::string Simulation::PlacementProblem(const ClientSession& s, const Blueprint
         if (cap > 0 && StructuresOwnedBy(s.accountName) >= cap)
             return "you already have " + std::to_string(cap) + " structures standing";
     }
+    // In somebody's space, by their leave and a licence (#431 slice 6) -- an upgrade too.
+    const std::string licence = LicenceProblem(s.accountName, *st);
+    if (!licence.empty())
+        return licence;
 
     for (const auto& c : bp.cost)
         if (s.ship->GetCargoAmount(c.first) < c.second)
@@ -404,8 +408,11 @@ bool Simulation::LawOver(const SystemState& st, const Structure& t, const std::s
         law = owner;
         return Factions::IsLawful(owner);
     }
-    // A player's, or the world's: as safe as the system's law makes it.
+    // A player's, or the world's: as safe as the system's law makes it -- unless it stands in
+    // the holder's space without a licence (#431 slice 6), where it is nobody's to guard.
     law = st.agg.controller;
+    if (t.GetLicence() == LicenceState::Trespass)
+        return false;
     return st.agg.claimed && Factions::IsLawful(law);
 }
 

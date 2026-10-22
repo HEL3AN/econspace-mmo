@@ -220,6 +220,22 @@ void Game::DrawCorpContent(const Ui::Frame& f)
                     L.Tooltip("dock_allies", "Members, and whoever each structure's rules of "
                                              "engagement hold fire for");
                 }
+                // Its licences to build in others' space (#431 slice 6), the rent from the
+                // treasury.
+                const double now = worldClock_.Now(GetTime());
+                for (const Proto::LicenceView& l : corpView_.licences)
+                {
+                    const bool ok = l.state == "licensed";
+                    L.Field("Licence in " + MapSystemName(l.system),
+                            l.state == "licensed" ? TextFormat("%s, %.0f h paid", l.holder.c_str(),
+                                                               (l.until - now) / 3600.0)
+                            : l.state == "unpaid"
+                                ? TextFormat("%s, UNPAID: lapses in %.0f h", l.holder.c_str(),
+                                             (l.until - now) / 3600.0)
+                                : TextFormat("%s, LAPSED: trespassing", l.holder.c_str()),
+                            ok ? t.colors.text : t.colors.bad);
+                }
+                DrawLicenceHere(L);
                 int online = 0;
                 for (const Proto::CorpMember& m : corpView_.members)
                     online += m.online ? 1 : 0;
@@ -359,4 +375,48 @@ void Game::DrawCorpContent(const Ui::Frame& f)
         corpName_.clear(), corpTicker_.clear();
     if (!acts.empty() && acts.back().verb == "kick")
         corpChosen_.clear();
+}
+
+void Game::DrawLicenceHere(Ui::Layout& L)
+{
+    using Ui::TextStyle;
+    const Ui::Theme&          t = Ui::CurrentTheme();
+    const Proto::LicenceView& l = snapshot_.player.licence;
+    if (l.holder.empty())
+        return;  // nobody here asks for one
+    const double now = worldClock_.Now(GetTime());
+    L.Divider();
+    L.Text("LICENCE TO BUILD HERE", TextStyle::Label());
+    L.Field("Granted by", l.holder, t.colors.text);
+    L.Field("Rent", TextFormat("%.0f cr every %.0f days", l.rent, l.periodDays), t.colors.money);
+    const bool paid = l.state == "licensed";
+    L.Field(l.party == "you" ? "Yours" : "Held by " + l.party,
+            paid                  ? TextFormat("paid, %.0f h more", (l.until - now) / 3600.0)
+            : l.state == "unpaid" ? TextFormat("UNPAID: lapses in %.0f h", (l.until - now) / 3600.0)
+            : l.state == "trespass" ? std::string("LAPSED: what stands here trespasses")
+                                    : std::string("none"),
+            paid                ? t.colors.good
+            : l.state == "none" ? t.colors.dim
+                                : t.colors.bad);
+    if (!l.admitted)
+    {
+        L.Text(l.why, TextStyle::Small().Tint(t.colors.bad).Wrap());
+        return;
+    }
+    if (!l.canPay)
+    {
+        L.Text("Your corporation's CEO or a director pays its licences, from the treasury.",
+               TextStyle::Small().Tint(t.colors.dim).Wrap());
+        return;
+    }
+    if (L.Button("licence",
+                 TextFormat("%s  %.0f cr", paid ? "Renew a week ahead" : "Buy a licence", l.rent)))
+    {
+        Proto::Command c;
+        c.buyLicence = true;
+        clientLink_->Send(Proto::EncodeCommand(c));
+    }
+    L.Tooltip("licence", "Building here takes the holder's licence, a rent taken each week. "
+                         "Unpaid a day past due, what you have here trespasses: anyone may shoot "
+                         "it, and the holder may evict it.");
 }

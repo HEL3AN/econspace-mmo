@@ -192,6 +192,8 @@ json EntityLayoutsJson(const std::vector<Proto::EntityLayout>& v)
             ej["nomend"] = true;
         if (!e.defence.IsDefault())
             ej["def"] = DefenceJson(e.defence);
+        if (e.licence != 0)
+            ej["lic"] = json::array({ e.licence, e.licenceUntil });
         ents.push_back(std::move(ej));
     }
     return ents;
@@ -238,9 +240,45 @@ std::vector<Proto::EntityLayout> ToEntityLayouts(const json& j, const char* key)
         e.mends = !ej.value("nomend", false);
         if (ej.contains("def"))
             DefenceFrom(ej["def"], e.defence);  // what it cannot read leaves the default
+        const auto lic = ej.find("lic");
+        if (lic != ej.end() && lic->is_array() && lic->size() == 2 &&
+            (*lic)[0].is_number_integer() && (*lic)[1].is_number())
+        {
+            e.licence = (*lic)[0].get<int>();
+            e.licenceUntil = (*lic)[1].get<double>();
+        }
         out.push_back(std::move(e));
     }
     return out;
+}
+
+// A licence (#431 slice 6), in the snapshot and in a corporation's view.
+json LicenceJson(const Proto::LicenceView& l)
+{
+    json j = { { "holder", l.holder }, { "party", l.party },     { "ok", l.admitted },
+               { "rent", l.rent },     { "days", l.periodDays }, { "state", l.state },
+               { "until", l.until },   { "pay", l.canPay } };
+    if (!l.system.empty())
+        j["sys"] = l.system;
+    if (!l.why.empty())
+        j["why"] = l.why;
+    return j;
+}
+
+Proto::LicenceView LicenceFrom(const json& j)
+{
+    Proto::LicenceView l;
+    l.system = j.value("sys", std::string());
+    l.holder = j.value("holder", std::string());
+    l.party = j.value("party", std::string());
+    l.admitted = j.value("ok", false);
+    l.why = j.value("why", std::string());
+    l.rent = j.value("rent", 0.0);
+    l.periodDays = j.value("days", 7.0);
+    l.state = j.value("state", std::string("none"));
+    l.until = j.value("until", 0.0);
+    l.canPay = j.value("pay", false);
+    return l;
 }
 
 json MissionJson(const Proto::MissionView& m)
@@ -584,6 +622,7 @@ std::string EncodeCommand(const Command& c)
         j["def"] = DefenceJson(c.defence);
     }
     flag("scan", c.scan);
+    flag("buyLic", c.buyLicence);
     return j.dump();
 }
 
@@ -787,6 +826,7 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadInt(j, "dismantle", 0, 0, ID_MAX, out.dismantleId);
     ok = ok && ReadInt(j, "defId", 0, 0, ID_MAX, out.defenceId);
     ok = ok && ReadBool(j, "scan", out.scan);
+    ok = ok && ReadBool(j, "buyLic", out.buyLicence);
     if (ok && j.contains("def"))
         ok = DefenceFrom(j["def"], out.defence);
     return ok;
@@ -1021,6 +1061,9 @@ json PlayerJson(const Proto::PlayerView& p)
         }
         j["scan"] = { { "until", p.scan.until }, { "secs", p.scan.seconds }, { "sigs", sigs } };
     }
+    // Only where building takes a licence (#431 slice 6).
+    if (!p.licence.holder.empty())
+        j["lic"] = LicenceJson(p.licence);
     return j;
 }
 
@@ -1102,6 +1145,10 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
                 p.scan.sigs.push_back(std::move(g));
             }
     }
+    p.licence = Proto::LicenceView{};
+    const auto lic = pj.find("lic");
+    if (lic != pj.end() && lic->is_object())
+        p.licence = LicenceFrom(*lic);
     p.library.clear();
     const auto lib = pj.find("lib");
     if (lib != pj.end() && lib->is_array())
@@ -2186,6 +2233,13 @@ std::string EncodeCorpView(const CorpView& v)
         j["docking"] = v.docking;
         if (!v.holds.empty())
             j["holds"] = v.holds;
+        if (!v.licences.empty())
+        {
+            json licences = json::array();
+            for (const LicenceView& l : v.licences)
+                licences.push_back(LicenceJson(l));
+            j["licences"] = std::move(licences);
+        }
     }
     if (!v.invites.empty())
     {
@@ -2235,6 +2289,11 @@ bool DecodeCorpView(const std::string& s, CorpView& out)
         for (const json& h : *holds)
             if (h.is_string())
                 out.holds.push_back(h.get<std::string>());
+    const auto licences = j.find("licences");
+    if (licences != j.end() && licences->is_array())
+        for (const json& l : *licences)
+            if (l.is_object())
+                out.licences.push_back(LicenceFrom(l));
     const auto invites = j.find("invites");
     if (invites != j.end() && invites->is_array())
         for (const json& ij : *invites)

@@ -144,6 +144,14 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
                              !AllowListText(l.defence).empty())
                         extra += " but " + AllowListText(l.defence);
                 }
+                // Whether it stands by the holder's leave (#431 slice 6).
+                if (l.licence == (int)LicenceState::Licensed)
+                    extra += Fmt("  licensed %.0fh", (l.licenceUntil - now) / 3600.0);
+                else if (l.licence == (int)LicenceState::Unpaid)
+                    extra +=
+                        Fmt("  licence UNPAID, lapses in %.0fh", (l.licenceUntil - now) / 3600.0);
+                else if (l.licence == (int)LicenceState::Trespass)
+                    extra += "  TRESPASSING (lawless to shoot)";
                 // Its hull once it has been hit, by the rule the server destroys it by, and
                 // what it mends (#431 D1): fire below that rate does nothing to it.
                 Structure probe(l.pos, l.size, l.name, l.archetype);
@@ -1002,6 +1010,25 @@ std::string Describe(const View& view, Detail detail)
     out += sysName == snap.systemId ? Fmt("SYSTEM %s%s\n", sysName.c_str(), sysExtra.c_str())
                                     : Fmt("SYSTEM %s (%s)%s\n", sysName.c_str(),
                                           snap.systemId.c_str(), sysExtra.c_str());
+
+    // What building here takes (#431 slice 6): the holder's licence, a weekly rent.
+    if (!p.licence.holder.empty())
+    {
+        const Proto::LicenceView& l = p.licence;
+        const std::string         whose = l.party == "you" ? "yours" : l.party + "'s";
+        out += Fmt("       building here takes a licence from %s, %.0f cr every %.0f days; %s: ",
+                   l.holder.c_str(), l.rent, l.periodDays, whose.c_str());
+        out += l.state == "licensed" ? Fmt("paid, %.0fh more", (l.until - snap.time) / 3600.0)
+               : l.state == "unpaid"
+                   ? Fmt("UNPAID, lapses in %.0fh", (l.until - snap.time) / 3600.0)
+               : l.state == "trespass" ? std::string("LAPSED, trespassing")
+                                       : std::string("none");
+        if (!l.admitted)
+            out += " -- not granted: " + l.why;
+        else if (!l.canPay)
+            out += " -- your corporation's CEO or a director buys it";
+        out += "\n";
+    }
 
     // --- What we are flying -------------------------------------------------
     // Docked is attached: the ship goes round with a station on an orbit (#298).

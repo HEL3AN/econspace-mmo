@@ -19,6 +19,7 @@ WorldRules::Holes       g_holes;
 WorldRules::Scan        g_scan;
 WorldRules::Law         g_law;
 WorldRules::Influence   g_influence;
+WorldRules::Licences    g_licences;
 std::string             g_error;
 
 // Reads one section's values into their places: every field known, every number zero or
@@ -82,7 +83,7 @@ bool Load(const std::string& path)
             it.key() != "archive" && it.key() != "expeditions" && it.key() != "growth" &&
             it.key() != "convoys" && it.key() != "jobs" && it.key() != "holes" &&
             it.key() != "scan" && it.key() != "contracts" && it.key() != "law" &&
-            it.key() != "influence")
+            it.key() != "influence" && it.key() != "licences")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -350,6 +351,21 @@ bool Load(const std::string& path)
         g_error = path + ": influence: taxMax is a share of a trade, at most 1";
         return false;
     }
+    // Slice 6's (#431): licences to build in a holder's space.
+    Licences lc;
+    if (j.contains("licences") && !ReadSection(j["licences"], path + ": licences",
+                                               { { "rent", &lc.rent },
+                                                 { "periodDays", &lc.periodDays },
+                                                 { "graceHours", &lc.graceHours },
+                                                 { "standing", &lc.standing },
+                                                 { "evict", &lc.evict } },
+                                               {}, {}, g_error))
+        return false;
+    if (lc.periodDays <= 0.0)
+    {
+        g_error = path + ": licences: periodDays must be more than zero";
+        return false;
+    }
     g_tide = t;
     g_mouths = m;
     g_archive = a;
@@ -362,6 +378,7 @@ bool Load(const std::string& path)
     g_scan = sc;
     g_law = lw;
     g_influence = inf;
+    g_licences = lc;
     return true;
 }
 
@@ -488,6 +505,16 @@ const Influence& InfluenceRules()
 void SetInfluenceRules(const Influence& i)
 {
     g_influence = i;
+}
+
+const Licences& LicenceRules()
+{
+    return g_licences;
+}
+
+void SetLicenceRules(const Licences& l)
+{
+    g_licences = l;
 }
 
 }  // namespace WorldRules

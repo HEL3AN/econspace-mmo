@@ -334,6 +334,10 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     // journal; an accepted name reaches everyone in the galaxy index.
     if (!c.nameSystem.empty())
         sim.NameSystem(s, c.nameSystem);
+    // A licence to build here (#431 slice 6): docked at the holding faction's station, or in a
+    // corporation's system anywhere -- so not a docked verb either; a refusal says why.
+    if (c.buyLicence)
+        sim.BuyLicence(s);
 
     // A refit (#279 fitting). Not under the docked verbs below: asked for in flight, it is
     // refused with a reason rather than dropped without a word.
@@ -822,6 +826,7 @@ static Proto::CorpView CorpViewFor(const Simulation& sim, const std::string& acc
         v.tax = (float)c->TaxRate(Goods::Rules().fee, WorldRules::InfluenceRules().taxMax);
         v.docking = Corps::DockingName(c->docking);
         v.holds = sim.HeldBy(c->id);
+        v.licences = sim.CorpLicences(c->id);  // (#431 slice 6)
     }
     for (const Corps::Corp* c : sim.Corporations().InvitesFor(account, now))
         for (const Corps::Invite& i : c->invites)

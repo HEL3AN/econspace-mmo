@@ -427,6 +427,16 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   faction's ally holds, or nobody's. The faction siege planner, the Anchor siege, `StepControl`
   and `StepClaims` all read it; a ship's guns never do. Roaming holes are not neighbours, so
   they open no front.
+- **Building in a held system takes a licence** (#431 slice 6, `Simulation_Territory.cpp`).
+  `LicenceHolder` is the holder corporation or a lawful faction (not the unaffiliated); the
+  party is the owner's corporation or the pilot (`PartyOf`). Leave is a standing (a
+  corporation's = its members' summed) or the holder corporation's docking policy; the rent
+  (`world_rules.json` → `licences`) is kept on `Corps::Corp::licences` or the pilot's
+  `OwnerBook`, in world time, and taken in the coarse pass from the treasury or the pilot's
+  money -- offline, within the money noted when last on. A structure's `LicenceState` is
+  derived each pass (`RefreshLicences`), never saved: `Trespass` makes `LawOver` lawless and
+  puts it in `SystemState::trespass`, which `Think` may besiege (`Plan::evicting`). A player
+  structure found without a licence gets one asked from now, i.e. a grace day, not trespass.
 - **A ship flies a design, and a player's design is named by its content** (#279). A refit
   files `Ships::PlayerFit`'s design under `Ships::ContentId` and the ship flies that id; the
   snapshot carries only the id, so the host sends a `DesignDef` before the first snapshot

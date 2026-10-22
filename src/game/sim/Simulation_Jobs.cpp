@@ -205,7 +205,7 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
                 ". Meet it there; while you are with it you are part of its escort. "
                 "Paid when it arrives.";
         }
-        else if (p.kind == Plan::Kind::Siege && p.against == f)
+        else if (p.kind == Plan::Kind::Siege && p.against == f && p.evicting.empty())
         {
             m.type = MissionType::Siege;
             m.against = p.faction;
@@ -441,8 +441,8 @@ float Simulation::DefendersShown(const Plan& p) const
     // Those a pilot can find there: the pirates as pirates, a lawful garrison as the police the
     // director flies under its flag. Anyone else's strength there is numbers, not ships.
     const SystemState* st = SystemById(p.target);
-    if (st == nullptr || p.kind != Plan::Kind::Siege)
-        return 0.0f;
+    if (st == nullptr || p.kind != Plan::Kind::Siege || !p.evicting.empty())
+        return 0.0f;  // ...and a trespasser's structure has nobody's ships (#431 slice 6)
     const bool shown = p.against == Factions::Pirates() ||
                        (Factions::IsLawful(p.against) && st->agg.policeFaction == p.against);
     return shown ? st->agg.presence[p.against] : 0.0f;

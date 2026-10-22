@@ -145,6 +145,13 @@ std::string CorpText(const Proto::CorpView& v)
         for (const std::string& id : v.holds)
             held += (held.empty() ? "" : ", ") + id;
         out += "Holds: " + (held.empty() ? std::string("no system") : held) + "\n";
+        // Its licences to build in others' space (#431 slice 6), paid from the treasury.
+        for (const Proto::LicenceView& l : v.licences)
+            out += "Licence in " + l.system + " from " + l.holder + ": " +
+                   (l.state == "licensed" ? "paid"
+                    : l.state == "unpaid" ? "UNPAID, lapsing"
+                                          : "LAPSED, its structures there trespass") +
+                   "\n";
     }
     for (const Proto::CorpInvite& i : v.invites)
         out += "Invite: " + i.name + " [" + i.ticker + "] from " + i.by +
@@ -1556,6 +1563,49 @@ std::vector<Tool> BuildTools()
                                  "detail='full' to see the bounty now");
               return "pay_bounty: paid " + Money(moneyBefore - after.money) + " to " +
                      FactionName(f) + "; no longer wanted by them. Money now " + Money(after.money);
+          } });
+
+    tools.push_back(
+        { "buy_licence",
+          "Buy, or renew a week ahead, the licence to build in the system you are in (#431). A "
+          "system a faction or a corporation holds takes its leave and a weekly rent: a faction "
+          "licenses those whose standing with it is high enough -- a corporation's is its "
+          "members' together -- and sells it docked at one of its stations there; a "
+          "corporation by its docking policy, anywhere in its system. Paid from your money, or "
+          "for your corporation from its treasury by its CEO or a director, and taken each week "
+          "from then on. Unpaid a day past due, what you have there trespasses: anyone may shoot "
+          "it, and the faction may evict it. observe says what building here takes.",
+          Obj({}), [](const Rpc::Json&)
+          {
+              RequireLive();
+              const Proto::LicenceView& l = g_session.Snapshot().player.licence;
+              if (l.holder.empty())
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "nobody holds this system in a way that asks for a licence: "
+                                    "build freely" };
+              if (!l.admitted)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    l.holder + " will not license you: " + l.why };
+              const double   before = l.until;
+              const int      seq = g_session.LastEventSeq();
+              Proto::Command c;
+              c.buyLicence = true;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "buy_licence: " + why;
+              const Proto::LicenceView& after = g_session.Snapshot().player.licence;
+              if (after.state != "licensed" || after.until <= before)
+                  return Refused("buy_licence", seq,
+                                 "the server did not sell it; call observe to see why");
+              char buf[240];
+              std::snprintf(buf, sizeof(buf),
+                            "buy_licence: licensed by %s to build here for %.0f h; %.0f cr is "
+                            "taken every %.0f days from %s",
+                            after.holder.c_str(),
+                            (after.until - g_session.Snapshot().time) / 3600.0, after.rent,
+                            after.periodDays,
+                            after.party == "you" ? "your money" : "the corporation's treasury");
+              return std::string(buf);
           } });
 
     tools.push_back(

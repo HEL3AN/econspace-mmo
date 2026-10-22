@@ -1465,6 +1465,7 @@ void Simulation::MaintainWorld(float dt, MaintainCost* cost)
         }
         Lap(cost ? &cost->topUp : nullptr, lap);
         StepContracts();  // what the markets are short of, and the contracts for it (#343)
+        StepLicences();   // rent due, lapses, and where each player's structure stands (#431)
         // Last, when no pass over the systems is under way: what it opens adds systems (S3).
         StepTide(MAINT_STEP);
         Lap(cost ? &cost->macro : nullptr, lap);

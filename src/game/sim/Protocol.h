@@ -36,7 +36,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    53;  // 53: a system's `found` is only a pilot who came before any faction, its `name` may
+    54;  // 54: licences (#431 slice 6) -- a command buys one, a structure's layout says whether
+         // it stands licensed, unpaid or trespassing, the player's snapshot what building here
+         // takes, and a CorpView the corporation's licences;
+         // 53: a system's `found` is only a pilot who came before any faction, its `name` may
          // be its natives' or its first charter's, and the map says "charted by" (#431 slice
          // 2): the same fields, meaning less and more than an older client takes them for;
          // 52: a galaxy stat says whether the recipient's corporation's front is open there
@@ -277,6 +280,11 @@ struct Command
     Defence defence;
     // Start a pass of the ship's scanner (#346); the signatures it resolves are this pilot's.
     bool scan = false;
+    // Buy, or renew, the licence to build in the system the ship is in (#431 slice 6): for the
+    // pilot's corporation from its treasury (its CEO or a director), or for a pilot in none from
+    // their own money; at a station of the holding faction, or anywhere in a corporation's
+    // system. A refusal is a Notice saying why.
+    bool buyLicence = false;
 };
 
 // Entity kind. The wire uses the engine's enum rather than a parallel copy, so there is
@@ -354,6 +362,25 @@ struct ScanView
     std::vector<SignatureView> sigs;
 };
 
+// A licence to build (#431 slice 6), as one pilot sees it. In the snapshot: what the holder of
+// the system the pilot is in asks of whoever builds there, and where the pilot's party -- their
+// corporation, or themselves in none -- stands with it; `holder` empty where none is needed.
+// In a CorpView: one of the corporation's licences, by `system`. Its own type rather than
+// fields of the player's view because the corporation's view lists the same thing per system.
+struct LicenceView
+{
+    std::string system;            // the system's id (a CorpView's; the snapshot's is its own)
+    std::string holder;            // who grants it, as a player reads it; empty: none needed here
+    std::string party;             // whose it would be: "you", or the corporation's name and ticker
+    bool        admitted = false;  // the holder would grant it: the standing, or the policy
+    std::string why;               // ...and why it would not
+    double      rent = 0.0;        // a period's rent
+    double      periodDays = 7.0;
+    std::string state = "none";  // "none", "licensed", "unpaid" or "trespass"
+    double      until = 0.0;     // licensed: paid to; unpaid: lapses at (world time)
+    bool canPay = false;  // this pilot may buy it: one in no corporation, or its CEO or a director
+};
+
 // Player ship state in the snapshot.
 struct PlayerView
 {
@@ -371,7 +398,8 @@ struct PlayerView
     // What each of those hulls is insured for, in the same order; 0 -- not insured (#344).
     std::vector<double> insured;
     LossView            loss;
-    ScanView            scan;  // (#346)
+    ScanView            scan;     // (#346)
+    LicenceView         licence;  // building in the system the pilot is in (#431 slice 6)
 
     Vector2 pos = { 0.0f, 0.0f };
     Vector2 vel = { 0.0f, 0.0f };
@@ -558,6 +586,10 @@ struct EntityLayout
     // A player's armed structure's rules of engagement (#340): what it fires at, and so what
     // it costs its owner. Default -- return fire.
     Defence defence;
+    // Whether it stands by the holder's leave (#431 slice 6): LicenceState as int, and the
+    // instant that goes with it -- paid to while licensed, lapsing at while unpaid.
+    int    licence = 0;
+    double licenceUntil = 0.0;
 };
 
 // Full static "layout" of a system — what the client builds the world proxy from.
@@ -794,6 +826,8 @@ struct CorpView
     float                    tax = 0.0f;
     std::string              docking = "all";
     std::vector<std::string> holds;
+    // Its licences to build in other holders' systems (#431 slice 6).
+    std::vector<LicenceView> licences;
 
     // This pilot's role in it; empty when in none.
     std::string RoleOf(const std::string& pilot) const;

@@ -65,6 +65,15 @@ std::string NounOf(const Structure& t)
     return Outposts::Noun(t.GetBuilds());
 }
 
+// What a siege is against, for the chronicle: "the Syndicate watch post", or for a trespasser
+// (#431 slice 6) "anna's Depot".
+std::string Against(const Plan& p, const Structure* t)
+{
+    if (!p.evicting.empty())
+        return p.evicting + "'s " + (t != nullptr ? t->GetName() : std::string("structure"));
+    return "the " + FactionName(p.against) + " " + (t != nullptr ? NounOf(*t) : "outpost");
+}
+
 float CostOf(const Blueprint* bp)
 {
     float cost = 0.0f;
@@ -212,7 +221,7 @@ void Simulation::StepUpkeep()
 
 void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
                             const std::string& via, const std::string& to, FactionId against,
-                            const std::string& site)
+                            const std::string& site, const std::string& evicting)
 {
     SystemState* st = SystemById(to);
     if (st == nullptr || lent.empty())
@@ -263,6 +272,7 @@ void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
     p.dueAt = p.arrivesAt + r.seconds + rng.Range(0, std::max(0, (int)r.jitter));
     p.site = site;
     p.against = against;
+    p.evicting = evicting;
     p.force = force;
     p.lent = sent;
     plans_[p.id] = p;
@@ -270,8 +280,8 @@ void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
     char ships[32];
     std::snprintf(ships, sizeof ships, "%.0f", std::max(1.0, std::round((double)force)));
     Record("siege", f, to,
-           FactionName(f) + " sent " + ships + " ships from " + whence + " against the " +
-               FactionName(against) + " " + NounOf(*t) + " in " + SystemName(to));
+           FactionName(f) + " sent " + ships + " ships from " + whence + " against " +
+               Against(p, t) + " in " + SystemName(to));
     if (p.arrivesAt <= time_ && !ArriveSiege(plans_[p.id]))
     {
         RecallSiege(plans_[p.id]);
@@ -286,15 +296,15 @@ bool Simulation::ArriveSiege(Plan& p)
     if (t == nullptr)
     {
         Record("siege", p.faction, p.target,
-               FactionName(p.faction) + " turned back from " + SystemName(p.target) + ": the " +
-                   FactionName(p.against) + " outpost is gone");
+               FactionName(p.faction) + " turned back from " + SystemName(p.target) + ": " +
+                   Against(p, nullptr) + " is gone");
         return false;
     }
     p.arrived = true;
     st->agg.presence[p.faction] += p.force;
     Announce("siege", p.faction, p.target,
-             FactionName(p.faction) + " laid siege to the " + FactionName(p.against) + " " +
-                 NounOf(*t) + " in " + SystemName(p.target));
+             FactionName(p.faction) + " laid siege to " + Against(p, t) + " in " +
+                 SystemName(p.target));
     FieldSiege(*st, p, true);
     return true;
 }
@@ -303,11 +313,10 @@ void Simulation::ResolveSiege(const Plan& p)
 {
     SiegeOver(p);  // its jobs (#345)
     RecallSiege(p);
-    SystemState*      st = SystemById(p.target);
-    const Structure*  t = st != nullptr ? StructureByKey(*st, p.site) : nullptr;
-    const std::string what = t != nullptr ? FactionName(p.against) + " " + NounOf(*t) : "outpost";
+    SystemState*     st = SystemById(p.target);
+    const Structure* t = st != nullptr ? StructureByKey(*st, p.site) : nullptr;
     Record("siege", p.faction, p.target,
-           FactionName(p.faction) + " gave up the siege of the " + what + " in " +
+           FactionName(p.faction) + " gave up the siege of " + Against(p, t) + " in " +
                SystemName(p.target));
 }
 
@@ -452,14 +461,15 @@ void Simulation::StepSieges()
         {
             // Brought down by somebody else, or fallen into ruin: nothing left to besiege.
             Record("siege", fi, p.target,
-                   FactionName(p.faction) + " ended the siege in " + SystemName(p.target) +
-                       ": the " + FactionName(p.against) + " outpost is gone");
+                   FactionName(p.faction) + " ended the siege in " + SystemName(p.target) + ": " +
+                       Against(p, nullptr) + " is gone");
             over.push_back(p.id);
             continue;
         }
 
         // Both sides bleed, each by the other's numbers.
-        const float defenders = a.presence[gi];
+        // A trespasser's structure (#431 slice 6) has no garrison: nobody's ships stand by it.
+        const float defenders = p.evicting.empty() ? a.presence[gi] : 0.0f;
         const float lostHere = std::min(p.force, r.attrition * defenders * PASS_SECONDS);
         const float lostThere = std::min(defenders, r.attrition * p.force * PASS_SECONDS);
         p.force -= lostHere;
@@ -468,13 +478,15 @@ void Simulation::StepSieges()
         if (p.force < MIN_FORCE)
         {
             Announce("siege", gi, p.target,
-                     FactionName(p.against) + " drove the " + FactionName(p.faction) +
-                         " besiegers from its " + NounOf(*t) + " in " + SystemName(p.target));
+                     (p.evicting.empty() ? FactionName(p.against) : p.evicting) + " drove the " +
+                         FactionName(p.faction) + " besiegers from " +
+                         (p.evicting.empty() ? "its " + NounOf(*t) : t->GetName()) + " in " +
+                         SystemName(p.target));
             over.push_back(p.id);
             continue;
         }
         // What the garrison does not tie up fires at the outpost.
-        const float firing = std::max(0.0f, p.force - r.defence * a.presence[gi]);
+        const float firing = std::max(0.0f, p.force - r.defence * defenders);
         if (firing > 0.0f && HitStructure(*st, t->GetId(), firing * r.dps * PASS_SECONDS, nullptr,
                                           Loss::Siege, p.faction))
             over.push_back(p.id);
