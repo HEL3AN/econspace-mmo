@@ -178,6 +178,44 @@ TEST_CASE("a mistake in factions.json is a load error, not a silent Independent 
         CHECK_FALSE(LoadJson(j));
         CHECK(Mentions("first"));
     }
+    SUBCASE("a naming culture is read as strictly (#431 slice 3)")
+    {
+        json j = base;
+        j["factions"][1]["culture"] = "nosuch";
+        CHECK_FALSE(LoadJson(j));
+        CHECK(Mentions("nosuch"));
+
+        j = base;
+        j["cultures"]["guild"]["vowel"] = json::array({ "a" });  // misspelt
+        CHECK_FALSE(LoadJson(j));
+        CHECK(Mentions("vowel"));
+
+        j = base;
+        j["cultures"]["guild"]["vowels"] = json::array();
+        CHECK_FALSE(LoadJson(j));
+
+        j = base;
+        j["cultures"]["guild"]["onsets"].push_back("Br");  // upper case is the pattern's job
+        CHECK_FALSE(LoadJson(j));
+
+        j = base;
+        j["cultures"]["guild"]["patterns"] = json::array({ "Port Nowhere" });  // no word
+        CHECK_FALSE(LoadJson(j));
+        CHECK(Mentions("pattern"));
+
+        j = base;
+        j["cultures"]["guild"]["patterns"] = json::array({ "{w} {x}" });
+        CHECK_FALSE(LoadJson(j));
+
+        j = base;
+        j["cultures"]["guild"]["syllables"] = json::array({ 3, 1 });
+        CHECK_FALSE(LoadJson(j));
+
+        j = base;
+        j["cultures"]["guild"]["endings"] = json::array();
+        CHECK_FALSE(LoadJson(j));  // a chance of an ending, with none to choose
+        CHECK(Mentions("endingChance"));
+    }
     SUBCASE("no file, or not JSON")
     {
         CHECK_FALSE(Factions::Load(DATA + "no_such_factions.json"));

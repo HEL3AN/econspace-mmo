@@ -442,6 +442,12 @@ are marked; slices without one may go in any order.
      has made first contact.
    - *Tests:* the same seed gives the same names on three compilers; names are unique in the
      region; before contact a pilot sees designations, after it names.
+   - *Built (generator part):* cultures are data, `cultures` in `data/factions.json` (sounds,
+     syllable counts, endings, name patterns), one per native theme plus one per major
+     (`culture` on the faction); `gen/Names.h` speaks them (`CultureName`, and
+     `ChartedName` for slice 2's `ChartBy`), with a short built-in word blocklist. Regions
+     write `natives.culture` and `natives.names` (`GENERATOR_VERSION` 10); the index keeps
+     the designation until the reveal.
 4. **Naming rules.** *Depends on 2, 3.*
    - *Scope:* `NameSystem` refuses inhabited systems and everyone but the discoverer; the
      word filter (`names_blocked.txt`); console and editor `rename`; the agent's tool says the

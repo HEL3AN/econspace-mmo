@@ -1,4 +1,5 @@
 #include "gen/Region.h"
+#include "gen/Names.h"
 #include "gen/Rng.h"
 
 #include <algorithm>
@@ -1509,6 +1510,27 @@ void PlaceNatives(const RegionParams& params, const std::vector<Node>& nodes, Re
     if (systems.empty())
         return;
 
+    // What they call the places they live in (#431 slice 3): a name in their culture per
+    // system, drawn from that system's own key, unique in the region.
+    json               names = json::object();
+    const NameCulture* culture = Factions::Culture(ThemeName(theme));
+    if (culture != nullptr)
+    {
+        std::set<std::string> taken;
+        for (const json& s : systems)
+            for (const Node& n : nodes)
+                if (n.id == s.get<std::string>())
+                {
+                    const std::string name = CultureName(
+                        *culture, Key(params.seed, NATIVES, 2, (uint64_t)n.index), taken);
+                    if (!name.empty())
+                    {
+                        taken.insert(FoldName(name));
+                        names[n.id] = name;
+                    }
+                }
+    }
+
     const char* majors =
         theme == Theme::Clan ? "Hostile" : (theme == Theme::Traders ? "Friendly" : "Neutral");
     region.natives = { { "id", id },
@@ -1524,6 +1546,9 @@ void PlaceNatives(const RegionParams& params, const std::vector<Node>& nodes, Re
                            { "pirates", theme == Theme::Clan ? "Neutral" : "Hostile" } } },
                        { "home", systems.front() },
                        { "systems", systems } };
+    region.natives["culture"] = ThemeName(theme);
+    if (!names.empty())
+        region.natives["names"] = names;
 }
 
 }  // namespace
@@ -1694,6 +1719,10 @@ FactionId RegisterNatives(const nlohmann::json& natives)
     d.name = natives.value("name", d.id);
     d.kind = "Native";
     d.lawful = natives.value("lawful", true);
+    // The culture they name in, when this registry has it (#431 slice 3).
+    const std::string culture = natives.value("culture", std::string());
+    if (Factions::Culture(culture) != nullptr)
+        d.culture = culture;
     const json c = natives.value("color", json());
     if (c.is_array() && c.size() >= 3 && c[0].is_number() && c[1].is_number() && c[2].is_number())
         d.color = Color{ (unsigned char)std::max(0, std::min(255, c[0].get<int>())),

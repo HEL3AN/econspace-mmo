@@ -164,6 +164,7 @@ add_library(engine STATIC
     src/engine/gen/Galaxy.cpp        # the skeleton of region slots, from a seed (#342)
     src/engine/core/Fitting.cpp       # what a refit may change, and what it costs (#279)
     src/engine/gen/Region.cpp        # the region beyond the wormhole, from a seed (#140)
+    src/engine/gen/Names.cpp         # names in a people's own tongue, by culture (#431)
     src/engine/gen/Pins.cpp          # hand-written exceptions applied after generation (#147)
     src/engine/gen/Pack.cpp          # admin packs woven into a new world (#342 S7)
     src/engine/gen/PackExport.cpp    # a region written as a pack, or one begun from nothing (#342 S8)

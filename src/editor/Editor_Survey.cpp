@@ -473,7 +473,12 @@ void Editor::DrawSurvey(bool labels)
         const int                 twin = survey_.twinOf[(size_t)surveySelected_];
         float                     y = box.y + 10.0f;
         const int                 x = (int)box.x + 12;
-        Ui::Text(TextFormat("%s   seed %llu   %s   %s depth %d", c.system.designation.c_str(),
+        // What its natives call it beside the designation (#431 slice 3): judging a culture's
+        // names is part of judging the region.
+        const std::string title = c.system.nativeName.empty()
+                                      ? c.system.designation
+                                      : c.system.designation + " \"" + c.system.nativeName + "\"";
+        Ui::Text(TextFormat("%s   seed %llu   %s   %s depth %d", title.c_str(),
                             (unsigned long long)c.system.seed, c.system.id.c_str(),
                             c.system.centre ? "centre" : "frontier", c.system.depth),
                  x, (int)y, 18, Ui::ACCENT);

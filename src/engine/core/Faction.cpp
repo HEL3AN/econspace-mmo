@@ -15,6 +15,7 @@ namespace
 struct Registry
 {
     std::vector<FactionDef>          factions;
+    std::vector<NameCulture>         cultures;  // as the file lists them (a JSON object: by id)
     std::vector<std::vector<Stance>> relation;  // [a][b], kept symmetric
     Migration                        migration;
     int                              pirates = 0, police = 0, traders = 0;  // roles, by index
@@ -124,21 +125,24 @@ bool ReadFaction(const json& j, FactionDef& d, std::string& error)
     d.id = j["id"].get<std::string>();
     const std::string where = "faction '" + d.id + "': ";
     std::string       why;
-    if (!OnlyKnownKeys(j, { "id", "name", "color", "lawful", "kind", "temperament" }, why))
+    if (!OnlyKnownKeys(j, { "id", "name", "color", "lawful", "kind", "temperament", "culture" },
+                       why))
     {
         error = where + why;
         return false;
     }
     if ((j.contains("name") && !j["name"].is_string()) ||
         (j.contains("kind") && !j["kind"].is_string()) ||
+        (j.contains("culture") && !j["culture"].is_string()) ||
         (j.contains("lawful") && !j["lawful"].is_boolean()))
     {
-        error = where + "'name' and 'kind' are strings, 'lawful' is true or false";
+        error = where + "'name', 'kind' and 'culture' are strings, 'lawful' is true or false";
         return false;
     }
     d.name = j.value("name", d.id);
     d.kind = j.value("kind", std::string());
     d.lawful = j.value("lawful", true);
+    d.culture = j.value("culture", std::string());
     if (j.contains("color"))
     {
         const json& c = j["color"];
@@ -196,6 +200,135 @@ bool ReadFaction(const json& j, FactionDef& d, std::string& error)
     return true;
 }
 
+const NameCulture* FindCulture(const Registry& r, const std::string& id)
+{
+    for (const NameCulture& c : r.cultures)
+        if (c.id == id)
+            return &c;
+    return nullptr;
+}
+
+// A list of sounds: strings of lower-case letters (and an apostrophe), "" only where `empty`
+// allows it, at least one entry where `required`.
+bool ReadSounds(const json& c, const char* key, bool empty, bool required,
+                std::vector<std::string>& out, std::string& error)
+{
+    if (!c.contains(key))
+    {
+        if (required)
+            error = std::string("'") + key + "' is missing";
+        return !required;
+    }
+    if (!c[key].is_array() || (required && c[key].empty()))
+    {
+        error = std::string("'") + key + "' is a list of sounds" + (required ? ", not empty" : "");
+        return false;
+    }
+    for (const json& v : c[key])
+    {
+        if (!v.is_string() || (!empty && v.get<std::string>().empty()))
+        {
+            error = std::string("'") + key + "': " + v.dump() + " is not a sound";
+            return false;
+        }
+        for (char ch : v.get<std::string>())
+            if (!(ch >= 'a' && ch <= 'z') && ch != '\'')
+            {
+                error = std::string("'") + key + "': " + v.dump() + " -- lower-case letters only";
+                return false;
+            }
+        out.push_back(v.get<std::string>());
+    }
+    return true;
+}
+
+// One entry of `cultures` (#431 slice 3), as strictly as a faction: a misspelt key would
+// otherwise be a culture that silently names everything the same way.
+bool ReadCulture(const std::string& id, const json& c, NameCulture& out, std::string& error)
+{
+    const std::string where = "culture '" + id + "': ";
+    std::string       why;
+    if (!c.is_object() ||
+        !OnlyKnownKeys(
+            c, { "onsets", "vowels", "codas", "endings", "endingChance", "syllables", "patterns" },
+            why))
+    {
+        error = where + (why.empty() ? "not an object" : why);
+        return false;
+    }
+    out.id = id;
+    if (!ReadSounds(c, "onsets", true, true, out.onsets, why) ||
+        !ReadSounds(c, "vowels", false, true, out.vowels, why) ||
+        !ReadSounds(c, "codas", true, true, out.codas, why) ||
+        !ReadSounds(c, "endings", false, false, out.endings, why))
+    {
+        error = where + why;
+        return false;
+    }
+    if (c.contains("endingChance"))
+    {
+        if (!c["endingChance"].is_number_integer() || c["endingChance"].get<int>() < 0 ||
+            c["endingChance"].get<int>() > 100)
+        {
+            error = where + "'endingChance' is a whole percent, 0..100";
+            return false;
+        }
+        out.endingChance = c["endingChance"].get<int>();
+    }
+    if (out.endingChance > 0 && out.endings.empty())
+    {
+        error = where + "an 'endingChance' with no 'endings'";
+        return false;
+    }
+    if (c.contains("syllables"))
+    {
+        const json& s = c["syllables"];
+        if (!s.is_array() || s.size() != 2 || !s[0].is_number_integer() ||
+            !s[1].is_number_integer() || s[0].get<int>() < 1 || s[1].get<int>() < s[0].get<int>() ||
+            s[1].get<int>() > 4)
+        {
+            error = where + "'syllables' is [least, most], 1..4";
+            return false;
+        }
+        out.minSyllables = s[0].get<int>();
+        out.maxSyllables = s[1].get<int>();
+    }
+    if (!c.contains("patterns") || !c["patterns"].is_array() || c["patterns"].empty())
+    {
+        error = where + "'patterns' is a list of names with {w} or {W} in them, not empty";
+        return false;
+    }
+    for (const json& p : c["patterns"])
+    {
+        const std::string text = p.is_string() ? p.get<std::string>() : std::string();
+        bool              word = false, ok = !text.empty();
+        for (size_t i = 0; ok && i < text.size(); i++)
+        {
+            const char ch = text[i];
+            if (ch == '{')
+            {
+                const size_t      close = text.find('}', i);
+                const std::string token =
+                    close == std::string::npos ? std::string() : text.substr(i, close - i + 1);
+                ok = token == "{w}" || token == "{W}" || token == "{n}";
+                word = word || token == "{w}" || token == "{W}";
+                i = close == std::string::npos ? text.size() : close;
+            }
+            else
+                ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == ' ' ||
+                     ch == '\'' || ch == '-';
+        }
+        if (!ok || !word)
+        {
+            error = where + "pattern " + p.dump() +
+                    " -- letters, spaces, ' and -, with {w} or {W}, and {n} if it likes";
+            return false;
+        }
+        out.patterns.push_back(text);
+    }
+    return true;
+}
+
 bool Parse(const json& data, Registry& r, std::string& error)
 {
     std::string why;
@@ -204,10 +337,27 @@ bool Parse(const json& data, Registry& r, std::string& error)
         error = "not a JSON object";
         return false;
     }
-    if (!OnlyKnownKeys(data, { "factions", "relations", "roles", "migration", "repTiers" }, why))
+    if (!OnlyKnownKeys(
+            data, { "factions", "relations", "roles", "migration", "repTiers", "cultures" }, why))
     {
         error = why;
         return false;
+    }
+    // How peoples name places (#431 slice 3), before the factions that speak them.
+    if (data.contains("cultures"))
+    {
+        if (!data["cultures"].is_object())
+        {
+            error = "'cultures' is an object: id -> culture";
+            return false;
+        }
+        for (auto it = data["cultures"].begin(); it != data["cultures"].end(); ++it)
+        {
+            NameCulture c;
+            if (!ReadCulture(it.key(), it.value(), c, error))
+                return false;
+            r.cultures.push_back(std::move(c));
+        }
     }
     if (!data.contains("factions") || !data["factions"].is_array() || data["factions"].empty())
     {
@@ -222,6 +372,11 @@ bool Parse(const json& data, Registry& r, std::string& error)
         if (IndexOf(r, d.id) >= 0)
         {
             error = "faction '" + d.id + "' is listed twice";
+            return false;
+        }
+        if (!d.culture.empty() && FindCulture(r, d.culture) == nullptr)
+        {
+            error = "faction '" + d.id + "': culture '" + d.culture + "' is not in 'cultures'";
             return false;
         }
         r.factions.push_back(d);
@@ -397,6 +552,12 @@ bool ReadDef(const json& entry, FactionDef& out, std::string& error)
     FactionDef d;
     if (!ReadFaction(entry, d, error))
         return false;
+    // A pack's faction speaks a culture the server's factions.json has (#431 slice 3).
+    if (!d.culture.empty() && FindCulture(g_registry, d.culture) == nullptr)
+    {
+        error = "faction '" + d.id + "': culture '" + d.culture + "' is not in factions.json";
+        return false;
+    }
     out = d;
     return true;
 }
@@ -511,6 +672,11 @@ std::vector<std::string> MajorIds()
 const Temperament& TemperamentOf(FactionId f)
 {
     return Def(f).temperament;
+}
+
+const NameCulture* Culture(const std::string& id)
+{
+    return FindCulture(g_registry, id);
 }
 
 const Migration& MigrationRules()

@@ -6,10 +6,13 @@
 #include "core/World.h"
 #include "core/WorldLoader.h"
 #include "entities/Entity.h"
+#include "core/Faction.h"
 #include "gen/Galaxy.h"
+#include "gen/Names.h"
 #include "gen/Pins.h"
 #include "gen/Region.h"
 #include "gen/Rng.h"
+#include "sim/Names.h"
 
 #include "raymath.h"
 #include <algorithm>
@@ -42,6 +45,7 @@ std::string Dump(const Gen::Region& r)
     all["links"] = r.links;
     all["entry"] = r.entryId;
     all["wormhole"] = r.wormhole;
+    all["natives"] = r.natives;
     for (const auto& kv : r.documents)
         all["docs"][kv.first] = kv.second;
     return all.dump();
@@ -90,7 +94,10 @@ TEST_CASE("the rules have not changed without saying so")
     //
     // Split by what they cover (#342): the skeleton, and a region per slot, so a change to
     // one breaks only its own hash and says which part of the galaxy moved.
-    CHECK(Gen::GENERATOR_VERSION == 9);
+    // Natives name their systems from the cultures in factions.json (#431 slice 3): the
+    // shipped file is part of what these hashes hold.
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
+    CHECK(Gen::GENERATOR_VERSION == 10);
     // The skeleton has a version of its own (#342 S3): regions are sealed when they open and a
     // change to their rules leaves a live world alone, but the skeleton is always remade, so a
     // change to it is a change to every world -- bump Gen::SKELETON_VERSION with this hash.
@@ -98,8 +105,8 @@ TEST_CASE("the rules have not changed without saying so")
     const uint64_t skeleton = Fnv1a(Gen::SkeletonJson(Gen::GenerateGalaxySkeleton(1, 100)).dump());
     MESSAGE("skeleton hash for seed 1, 100 slots: " << skeleton);
     CHECK(skeleton == 3947093538462403513ull);
-    const uint64_t GOLDEN[] = { 841637185298009687ull, 3536181191166326267ull,
-                                3979183196878774665ull };
+    const uint64_t GOLDEN[] = { 6030138455038416130ull, 6531195564020364153ull,
+                                4206759979341422154ull };
     for (int slot = 0; slot < 3; slot++)
     {
         CAPTURE(slot);
@@ -966,4 +973,172 @@ TEST_CASE("a planet takes what orbits it along, and the rest are re-pointed (#23
     MESSAGE(problems[0]);
     CHECK(problems[0].find("orbits planet 7") != std::string::npos);
     CHECK(served.documents["a"] == generated.documents.at("a"));
+}
+
+// ---- Native names (#431 slice 3) --------------------------------------------------------
+
+namespace
+{
+const char* const CULTURES[] = { "colonists", "clan",  "sect",     "automata",
+                                 "traders",   "guild", "syndicate" };
+
+std::vector<std::string> Draw(const std::string& culture, int count)
+{
+    const NameCulture* c = Factions::Culture(culture);
+    REQUIRE(c != nullptr);
+    std::vector<std::string> out;
+    for (int i = 0; i < count; i++)
+        out.push_back(Gen::CultureName(*c, Gen::Key(5, 77, (uint64_t)i)));
+    return out;
+}
+}  // namespace
+
+TEST_CASE("every culture names alike on every compiler, in the shape a name must have")
+{
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
+    // Golden, as the region hashes are: CI runs it on three compilers.
+    std::string all;
+    for (const char* c : CULTURES)
+    {
+        CAPTURE(c);
+        const std::vector<std::string> names = Draw(c, 200);
+        std::string                    sample;
+        for (size_t i = 0; i < 8; i++)
+            sample += names[i] + (i < 7 ? ", " : "");
+        MESSAGE(std::string(c) << ": " << sample);  // to judge a culture by ear
+        for (const std::string& n : names)
+        {
+            CAPTURE(n);
+            std::string why;
+            CHECK(Names::ValidSystemName(n, why));
+            CHECK_FALSE(Gen::NameBlocked(n));
+            all += n + "|";
+        }
+    }
+    const uint64_t h = Gen::TextKey(all);
+    MESSAGE("culture names hash: " << h);
+    CHECK(h == 9519694584863867237ull);
+    CHECK(Draw("sect", 20) == Draw("sect", 20));
+}
+
+TEST_CASE("a native region's systems are named by its people, uniquely, and kept by the seal")
+{
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
+    int named = 0;
+    for (uint64_t seed = 1; seed <= 40; seed++)
+    {
+        CAPTURE(seed);
+        const Gen::Region r = Gen::GenerateRegion(Params(seed, 1));
+        if (r.natives.empty())
+            continue;
+        REQUIRE(r.natives.contains("names"));
+        CHECK(r.natives["culture"] == r.natives["theme"]);
+        const nlohmann::json& names = r.natives["names"];
+        std::set<std::string> folded;
+        for (const nlohmann::json& id : r.natives["systems"])
+        {
+            REQUIRE(names.contains(id.get<std::string>()));
+            const std::string n = names[id.get<std::string>()].get<std::string>();
+            std::string       why;
+            CHECK(Names::ValidSystemName(n, why));
+            CHECK(folded.insert(Gen::FoldName(n)).second);  // unique in the region
+            named++;
+        }
+        CHECK(names.size() == r.natives["systems"].size());
+        // The index keeps the designation: the name is told at first contact (slice 2).
+        for (const nlohmann::json& e : r.systems)
+            if (names.contains(e["id"].get<std::string>()))
+                CHECK(e["name"] != names[e["id"].get<std::string>()]);
+        // Sealed and read back, the names come with it.
+        Gen::Region back;
+        REQUIRE(Gen::RegionFromJson(Gen::RegionToJson(r), back));
+        CHECK(back.natives["names"] == names);
+    }
+    CHECK(named > 20);
+}
+
+TEST_CASE("each culture sounds like itself")
+{
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
+    std::map<std::string, std::set<std::string>> sets;
+    std::map<std::string, double>                digits, vowelShare;
+    for (const char* c : CULTURES)
+    {
+        int withDigit = 0, letters = 0, vowels = 0;
+        for (const std::string& n : Draw(c, 300))
+        {
+            sets[c].insert(Gen::FoldName(n));
+            withDigit += n.find_first_of("0123456789") != std::string::npos ? 1 : 0;
+            for (char ch : Gen::FoldName(n))
+                if (ch >= 'a' && ch <= 'z')
+                {
+                    letters++;
+                    vowels += std::string("aeiou").find(ch) != std::string::npos ? 1 : 0;
+                }
+        }
+        digits[c] = withDigit / 300.0;
+        vowelShare[c] = (double)vowels / letters;
+        CHECK(sets[c].size() > 200);  // varied: few repeats in 300 draws
+    }
+    // Two peoples rarely land on the same name.
+    for (const char* a : CULTURES)
+        for (const char* b : CULTURES)
+            if (std::string(a) < b)
+            {
+                int same = 0;
+                for (const std::string& n : sets[a])
+                    same += (int)sets[b].count(n);
+                CAPTURE(a);
+                CAPTURE(b);
+                CHECK(same < 6);
+            }
+    // Machines number their places; people do not.
+    CHECK(digits["automata"] > 0.5);
+    for (const char* c : { "colonists", "clan", "sect", "traders", "guild" })
+        CHECK(digits[c] == 0.0);
+    // A clan's names are harsh, a sect's liquid.
+    CHECK(vowelShare["clan"] + 0.05 < vowelShare["sect"]);
+}
+
+TEST_CASE("a generated name never spells a blocked word")
+{
+    CHECK(Gen::NameBlocked("Fuckton"));
+    CHECK(Gen::NameBlocked("Port SHIT"));
+    CHECK(Gen::NameBlocked("Pi'ss-7"));
+    CHECK(Gen::NameBlocked("Ha Nazi Reach"));
+    CHECK_FALSE(Gen::NameBlocked("Bramton"));
+    CHECK_FALSE(Gen::NameBlocked("Saint Valerium"));
+
+    NameCulture c;
+    c.onsets = { "f" };
+    c.vowels = { "u" };
+    c.codas = { "ck" };
+    c.minSyllables = c.maxSyllables = 1;
+    c.patterns = { "{w}" };
+    CHECK(Gen::CultureName(c, 1).empty());  // every draw is blocked: nothing, not the word
+    c.codas = { "ck", "n" };
+    for (uint64_t k = 0; k < 50; k++)
+        CHECK(Gen::CultureName(c, k) == "Fun");
+    // And a taken name is drawn again.
+    CHECK(Gen::CultureName(c, 3, { "fun" }).empty());
+}
+
+TEST_CASE("a major names what it charts in its own style (decided after the rounds, 1)")
+{
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
+    FactionId guild, syndicate, pirates;
+    REQUIRE(Factions::Find("TradersGuild", guild));
+    REQUIRE(Factions::Find("Syndicate", syndicate));
+    REQUIRE(Factions::Find("Pirates", pirates));
+    const std::string a = Gen::ChartedName(guild, 7, "r14-3-2");
+    CHECK_FALSE(a.empty());
+    CHECK(Gen::ChartedName(guild, 7, "r14-3-2") == a);  // the same everywhere
+    CHECK(Gen::ChartedName(guild, 7, "r14-3-2", { Gen::FoldName(a) }) != a);
+    CHECK(Gen::ChartedName(guild, 8, "r14-3-2") != a);
+    std::set<std::string> differ;
+    for (int k = 1; k <= 20; k++)
+        differ.insert(Gen::ChartedName(guild, 7, "r14-3-" + std::to_string(k)));
+    CHECK(differ.size() > 15);
+    CHECK_FALSE(Gen::ChartedName(syndicate, 7, "r14-3-2").empty());
+    CHECK(Gen::ChartedName(pirates, 7, "r14-3-2").empty());  // no culture: the designation stays
 }

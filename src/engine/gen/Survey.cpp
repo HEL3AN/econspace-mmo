@@ -26,6 +26,8 @@ std::vector<SurveySystem> GenerateSurvey(const RegionParams& base, uint64_t firs
             s.id = entry.value("id", std::string());
             s.designation = entry.value("name", s.id);
             s.depth = DepthOf(s.id);
+            if (region.natives.contains("names") && region.natives["names"].contains(s.id))
+                s.nativeName = region.natives["names"][s.id].get<std::string>();
             const auto doc = region.documents.find(s.id);
             if (doc != region.documents.end())
                 s.doc = doc->second;
@@ -48,6 +50,8 @@ void AddRegion(const Region& region, uint64_t seed, bool centre, std::vector<Sur
         s.designation = entry.value("name", s.id);
         s.depth = DepthOf(s.id);
         s.centre = centre;
+        if (region.natives.contains("names") && region.natives["names"].contains(s.id))
+            s.nativeName = region.natives["names"][s.id].get<std::string>();
         const auto doc = region.documents.find(s.id);
         if (doc != region.documents.end())
             s.doc = doc->second;
