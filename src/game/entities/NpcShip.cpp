@@ -19,6 +19,7 @@ const char* NpcRoleId(NpcRole role)
         case NpcRole::Police: return "patrol";
         case NpcRole::Pirate: return "pirate";
         case NpcRole::Warship: return "warship";
+        case NpcRole::Guard: return "guard";
     }
     return "trader";
 }
@@ -194,6 +195,11 @@ std::string NpcShip::GetName() const
         case NpcRole::Police: roleName = "patrol"; break;
         case NpcRole::Pirate: roleName = "raider"; break;
         case NpcRole::Warship: roleName = "warship"; break;
+        case NpcRole::Guard: roleName = "patrol"; break;
     }
+    if (!label_.empty())
+        return label_;
+    if (role_ == NpcRole::Guard)
+        return "Corporation patrol";
     return FactionName(faction_) + " " + roleName;
 }

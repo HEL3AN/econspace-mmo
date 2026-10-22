@@ -797,7 +797,7 @@ TEST_CASE("an NPC is drawn as the design it flies and is as fast, tough and arme
     CHECK(stranger.GetDesign() == c.Pick("Syndicate", "patrol", 0));
 
     // Every NpcRole has the name the doctrines use.
-    for (NpcRole r :
-         { NpcRole::Trader, NpcRole::Miner, NpcRole::Police, NpcRole::Pirate, NpcRole::Warship })
+    for (NpcRole r : { NpcRole::Trader, NpcRole::Miner, NpcRole::Police, NpcRole::Pirate,
+                       NpcRole::Warship, NpcRole::Guard })
         CHECK(c.DesignsFor("default", NpcRoleId(r)) != nullptr);
 }

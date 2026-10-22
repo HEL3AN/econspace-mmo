@@ -286,7 +286,8 @@
             "miner": ["miner"],
             "patrol": ["cutter"],
             "pirate": ["raider"],
-            "warship": ["cruiser"]
+            "warship": ["cruiser"],
+            "guard": ["cutter"]
         },
         "Syndicate": {
             "patrol": ["cruiser", "cutter"]

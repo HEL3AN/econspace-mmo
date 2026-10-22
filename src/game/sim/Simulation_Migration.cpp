@@ -48,6 +48,7 @@ float Interval(int role)
         case NpcRole::Police: return m.patrol;
         case NpcRole::Pirate: return m.pirate;
         case NpcRole::Warship: break;
+        case NpcRole::Guard: break;
     }
     return 0.0f;
 }
@@ -68,7 +69,7 @@ float& CountOf(SystemAggregate& a, int role)
 int Simulation::KeepOf(const std::string& systemId, NpcRole role) const
 {
     const SystemState* st = SystemById(systemId);
-    if (st == nullptr || role == NpcRole::Warship)
+    if (st == nullptr || role == NpcRole::Warship || role == NpcRole::Guard)
         return 0;
     return PopulationOf(*st, RoomOf(*st)).keep[(int)role];
 }
@@ -342,6 +343,7 @@ void Simulation::SpawnRoleAt(SystemState& st, NpcRole role, FactionId faction, V
             break;
         }
         case NpcRole::Warship: break;
+        case NpcRole::Guard: break;
     }
     if (route.empty())
         route = { at };

@@ -140,6 +140,9 @@ void Simulation::ProvokeGuards(SystemState& st, const ClientSession& victim, Vec
         if (byNpc != 0)
             st.provokedByNpc[e->GetId()][byNpc] = until;
     }
+    // ...and their corporation's patrol near them (#431 slice 12).
+    ProvokePatrol(st, corps_.IdOf(victim.accountName), at, bySession != victim.id ? bySession : 0,
+                  byNpc);
 }
 
 bool Simulation::OwnerStanding(const std::string& account, FactionId f, float& out) const

@@ -277,6 +277,7 @@ void Simulation::Warm(SystemState& st)
     // passing through (#342 S6).
     FieldSieges(st);
     FieldConvoys(st);
+    FieldPatrols(st);  // ...and a corporation's patrol (#431 slice 12)
 }
 
 void Simulation::Cool(SystemState& st)
@@ -293,6 +294,7 @@ void Simulation::Cool(SystemState& st)
     st.defenceCooldown.clear();
     st.provokedBy.clear();
     st.provokedByNpc.clear();
+    st.patrolFielded.clear();
     st.policeCalledUntil = 0.0;
     st.policeDueAt = 0.0;
     st.policeFor = 0;
@@ -1049,6 +1051,9 @@ bool Simulation::SaveWorld(const std::string& path) const
         // reads the system as nobody's -- which, for the faction layer, it is.
         if (!a.holderCorp.empty())
             galaxy[kv.first]["holder"] = a.holderCorp;
+        // Corporations' patrols here (#431 slice 12): the same.
+        if (!a.patrols.empty())
+            galaxy[kv.first]["patrols"] = a.patrols;
         // What its market holds, by good id (#343): only where there is one. A field an older
         // build ignores, and an older file's markets start at their targets.
         if (kv.second.profile.markets > 0)
@@ -1333,6 +1338,12 @@ Save::Result Simulation::LoadWorld(const std::string& path)
         a.holderCorp = gj.contains("holder") && gj["holder"].is_string()
                            ? gj["holder"].get<std::string>()
                            : std::string();
+        // ...and its patrols, which stand down on the next pass if it has none set.
+        a.patrols.clear();
+        if (gj.contains("patrols") && gj["patrols"].is_object())
+            for (auto pit = gj["patrols"].begin(); pit != gj["patrols"].end(); ++pit)
+                if (pit.value().is_number() && pit.value().get<float>() > 0.0f)
+                    a.patrols[pit.key()] = pit.value().get<float>();
         // A world from before factions charted what they reached (#431 slice 2): what one
         // holds beyond the wormhole, it reached -- charted by it, as the playtest expected.
         // Contact was made then; it is not news now, and no name is given that was not.

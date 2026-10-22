@@ -304,6 +304,8 @@ Outcome Registry::Apply(const std::string& account, const Act& act,
         return SetPolicy(account, verb, act.value, WorldRules::InfluenceRules().taxMax);
     if (verb == "police")  // whether it holds the system is the world's to say
         return Refuse("a police budget is set through the world, not the registry alone");
+    if (verb == "patrol")  // ...and where it may keep a patrol, and what the design is
+        return Refuse("a patrol is set through the world, not the registry alone");
     return Refuse("there is no corporation verb '" + act.verb.substr(0, 16) + "'");
 }
 
@@ -644,6 +646,72 @@ Outcome Registry::SetPolice(const std::string& by, const std::string& system,
     return o;
 }
 
+Outcome Registry::SetPatrol(const std::string& by, const std::string& system,
+                            const std::string& where, const std::string& value,
+                            const std::string& design, const std::string& designName,
+                            const std::string& engage, int systemMax, int corpMax, bool allowed)
+{
+    const Corp* in = Of(by);
+    if (in == nullptr)
+        return Refuse("you are in no corporation");
+    if (in->Find(by)->role == Role::Member)
+        return Refuse("only the CEO or a director sets the corporation's patrols");
+    if (system.empty())
+        return Refuse("name a system the corporation holds or has a structure in");
+    std::string v = value;
+    while (!v.empty() && v.back() == ' ')
+        v.pop_back();
+    long ships = 0;
+    if (Lower(v) != "none" && Lower(v) != "off")
+    {
+        char* end = nullptr;
+        ships = v.empty() ? -1 : std::strtol(v.c_str(), &end, 10);
+        if (v.empty() || end == nullptr || *end != '\0' || ships < 0)
+            return Refuse("a patrol is a number of ships, such as 3, or none");
+    }
+    const auto was = in->patrols.find(system);
+    Defence    rules = was != in->patrols.end() ? was->second.rules : Patrol::DefaultRules();
+    if (!engage.empty() && !EngageFrom(Lower(engage), rules.engage))
+        return Refuse("a patrol engages as hold, return, enemies or strangers");
+    // Standing one down is always allowed -- the system may have been lost since -- but
+    // keeping one only where the corporation has something to guard.
+    if (ships > 0 && !allowed)
+        return Refuse(Tag(*in) + " neither holds " + where + " nor has a structure there");
+    if (ships > systemMax)
+        return Refuse("this server allows at most " + std::to_string(systemMax) +
+                      " patrol ships in a system");
+    long elsewhere = 0;
+    for (const auto& p : in->patrols)
+        if (p.first != system)
+            elsewhere += p.second.ships;
+    if (ships > 0 && elsewhere + ships > corpMax)
+        return Refuse("this server allows a corporation at most " + std::to_string(corpMax) +
+                      " patrol ships, and " + Tag(*in) + " keeps " + std::to_string(elsewhere) +
+                      " elsewhere");
+    Corp&   c = *Mutable(in->id);
+    Outcome o;
+    o.corp = c.id;
+    if (ships > 0)
+    {
+        Patrol& p = c.patrols[system];
+        p.ships = (int)ships;
+        p.design = design;
+        p.rules = rules;
+        const std::string flies = designName.empty() ? std::string() : " of " + designName;
+        o.told = Tag(c) + " keeps " + std::to_string(ships) + " patrol ship" +
+                 (ships == 1 ? "" : "s") + flies + " in " + where + ", engaging " +
+                 EngageLabel(rules.engage);
+    }
+    else
+    {
+        c.patrols.erase(system);
+        o.told = Tag(c) + " stands its patrol in " + where + " down";
+    }
+    rev_++;
+    o.announce = by + ": " + o.told;
+    return o;
+}
+
 bool Registry::Credit(const std::string& id, double amount)
 {
     Corp* c = Mutable(id);
@@ -740,6 +808,20 @@ json Registry::ToJson() const
         // Slice 11's addition, which an older build ignores: no CORPS_VERSION bump.
         if (!c.police.empty())
             cj["police"] = c.police;
+        // ...and slice 12's patrols, the same.
+        if (!c.patrols.empty())
+        {
+            json patrols = json::object();
+            for (const auto& p : c.patrols)
+            {
+                json pj = { { "ships", p.second.ships } };
+                if (!p.second.design.empty())
+                    pj["design"] = p.second.design;
+                pj["rules"] = DefenceJson(p.second.rules);
+                patrols[p.first] = std::move(pj);
+            }
+            cj["patrols"] = std::move(patrols);
+        }
         list.push_back(std::move(cj));
     }
     return { { "version", Save::CORPS_VERSION }, { "next", nextId_ }, { "corps", list } };
@@ -902,6 +984,32 @@ bool Registry::FromJson(const json& j, std::string& why)
                         return false;
                     }
                     c.police[pit.key()] = pit.value().get<double>();
+                }
+            }
+            const auto patrols = cj.find("patrols");
+            if (patrols != cj.end())
+            {
+                if (!patrols->is_object())
+                {
+                    why = c.id + "'s patrols are not a list of systems";
+                    return false;
+                }
+                for (auto pit = patrols->begin(); pit != patrols->end(); ++pit)
+                {
+                    const json& pj = pit.value();
+                    Patrol      p;
+                    const auto  ships = pj.is_object() ? pj.find("ships") : pj.end();
+                    const auto  rules = pj.is_object() ? pj.find("rules") : pj.end();
+                    if (ships == pj.end() || !ships->is_number_integer() ||
+                        ships->get<int>() <= 0 ||
+                        (rules != pj.end() && !DefenceFrom(*rules, p.rules)))
+                    {
+                        why = c.id + "'s patrol in " + pit.key() + " is not one it could have";
+                        return false;
+                    }
+                    p.ships = ships->get<int>();
+                    p.design = text(pj, "design");
+                    c.patrols[pit.key()] = p;
                 }
             }
             // An id is never handed out twice, even after its corporation is gone.

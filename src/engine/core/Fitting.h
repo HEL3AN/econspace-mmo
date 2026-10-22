@@ -75,6 +75,10 @@ struct Fighter
     float hull = 0.0f;
 };
 Fighter RoleFighter(const Catalogue& c, const std::string& faction, const std::string& role);
+// ...and what one ship of design `id` brings (a stock design or one filed into the catalogue):
+// what a corporation's patrol of it fights with (#431 slice 12). Zero both for a design that
+// does not derive or is not known.
+Fighter DesignFighter(const Catalogue& c, const std::string& id);
 
 // What one of `faction`'s warships takes off a structure per second (the owner's rule of
 // 2026-10-22: no hand-tuned number stands in for the world): RoleFighter's dps for "warship".

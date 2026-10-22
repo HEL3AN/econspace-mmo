@@ -228,6 +228,20 @@ Fighter RoleFighter(const Catalogue& c, const std::string& faction, const std::s
     return f;
 }
 
+Fighter DesignFighter(const Catalogue& c, const std::string& id)
+{
+    Fighter       f;
+    const Design* d = c.FindDesign(id);
+    Stats         st;
+    std::string   why;
+    if (d != nullptr && Derive(c, *d, st, why))
+    {
+        f.dps = Dps(st);
+        f.hull = st.combatHull;
+    }
+    return f;
+}
+
 float WarshipDps(const Catalogue& c, const std::string& faction)
 {
     return RoleFighter(c, faction, "warship").dps;

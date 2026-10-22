@@ -36,7 +36,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    58;  // 58: drift marks (#431 slice 15) -- a system of the index says whether its region
+    59;  // 59: a corporation's own patrols (#431 slice 12) -- a CorpAct "patrol" names a
+         // system, ships, a design and an engagement mode, a CorpView carries the patrols, and
+         // an NPC's role may be a corporation's guard (NpcRole 5);
+         // 58: drift marks (#431 slice 15) -- a system of the index says whether its region
          // drifted away (cut off, or a chart of the archive's, by an id no system has), and its
          // observed layer whether it is outdated, seen before the region came back renamed;
          // 57: a player structure's storage (#438) -- a command stores and takes goods, the
@@ -820,7 +823,22 @@ struct CorpAct
     std::string pilot;
     std::string role;
     std::string value{};   // braced: the verbs without one leave it out
-    std::string system{};  // "police": the system, by id or by name
+    std::string system{};  // "police", "patrol": the system, by id or by name
+    std::string design{};  // "patrol": a name in the sender's design library, or a stock id
+    std::string engage{};  // "patrol": "hold", "return", "enemies", "strangers"; empty: as was
+};
+
+// A patrol a corporation keeps (#431 slice 12): where, how many it keeps and how many stand
+// there now, the design they fly and whom they engage, and what it costs an hour.
+struct PatrolView
+{
+    std::string system;
+    std::string systemName;
+    int         ships = 0;
+    float       present = 0.0f;
+    std::string design;
+    std::string engage;  // EngageName
+    double      upkeep = 0.0;
 };
 
 struct CorpMember
@@ -859,6 +877,8 @@ struct CorpView
     // What it pays for police in each system it holds (#431 slice 11), in credits an hour,
     // by system id; a system it pays nothing in is not listed.
     std::map<std::string, double> police;
+    // Its patrols (#431 slice 12), by system id.
+    std::vector<PatrolView> patrols;
 
     // This pilot's role in it; empty when in none.
     std::string RoleOf(const std::string& pilot) const;

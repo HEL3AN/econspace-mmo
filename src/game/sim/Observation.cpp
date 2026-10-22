@@ -64,6 +64,7 @@ const char* RoleName(int role)
         case 2: return "police";
         case 3: return "pirate";
         case 4: return "warship";
+        case 5: return "guard";
         default: return "ship";
     }
 }

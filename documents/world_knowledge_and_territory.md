@@ -325,9 +325,11 @@ journal on login. A Discord hook is a later slice.
   (`attacks`) and told once when it is over; a corporation member's goes into the
   corporation's journal (`corps.json`), which members read at once or at login; anyone
   else's offline entry goes into the pending part of their journal in the account save.
-- NPC ships are `NpcShip` with a faction and a role; a corporation patrol needs an owner
-  that is a corporation, not a faction. It is a new role whose standings and allow list come
-  from the corporation's settings, not the faction registry.
+- *Done in slice 12 (C1).* A corporation's patrol is `Corps::Patrol` on its record in
+  `corps.json` (ships, design, rules of engagement), set by a `CorpAct` "patrol"; what stands
+  there is presence, `SystemAggregate::patrols` by corporation in `world.json`. Where somebody
+  is, it flies as `NpcRole::Guard` ships: no faction's, its corporation's (`NpcShip::GetCorp`),
+  picking fights by `GuardHunts`/`GuardEngages` from the same rules a structure keeps.
 
 ---
 
@@ -562,6 +564,27 @@ are marked; slices without one may go in any order.
       arithmetic like any NPC.
     - *Tests:* limits are enforced; a patrol guards a structure while its members are offline;
       it does not fire on corporation members.
+    - *Built:* `CorpAct` "patrol" (system, ships or none, design, engage), by the CEO or a
+      director, where the corporation holds the system or a member has a structure there;
+      at most `systemMax` ships in a system and `shipsMax` in all (`world_rules.json` ->
+      `patrols`). The design is a name in the officer's library or a stock id, and must carry
+      guns; none named, the default doctrine's new `guard` role (`data/ships.json`). Every
+      macro pass, hot or cold, `StepPatrols` takes the upkeep from the treasury -- `shipHour`
+      a ship of the default guard, scaled by the design's dps x hull -- and a paid patrol
+      makes good a ship every `regrowHours`; unpaid, or with nothing left to guard, it stands
+      down and the corporation's journal says so once. Its ships are presence: influence at
+      a faction ship's weight; in the cold pass they trade shots with pirates at the police's
+      meeting rates; at a member's besieged structure they stand with the garrison in the
+      siege's attrition and tie up besiegers (both by their designs' `Fighter`s, #186). Where
+      somebody is, `FieldPatrols` flies them as guards around the members' structures, counts
+      the ones shot down off the number, and lets go what the number no longer covers. A guard
+      never fires on a member, answers whoever shot a member, a member's structure or the
+      patrol (the provoked books), and fires first as its mode says; a first strike is the
+      CEO's crime, as a structure's is its owner's. Shooting a guard is a crime under the
+      system's law, as shooting a member's structure is. The corporation window lists each
+      patrol with a Stand down button, `/corp patrol` sets one; econagent's `corp`,
+      `corp_act` and full `observe` carry them. PROTO_VERSION 59. Not built: the faction
+      siege planner does not yet weigh a patrol when it decides to evict.
 13. **Offline attack notices.** *Independent; small, may go early.*
     - *Scope:* journal entries, merged per structure per attack: the owner's pending journal
       in the account save, or the corporation's journal its members read; capped.

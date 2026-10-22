@@ -13,7 +13,7 @@ MCP protocol version: `2024-11-05`.
 
 ### `observe`
 
-Look at the world: the ship, the system, what is nearby, hostiles, and recent events. Start here, and call it again after anything changes. Use detail='full' only when deciding something. A structure says what it mends a second (#431): fire below that rate does nothing to it.
+Look at the world: the ship, the system, what is nearby, hostiles, and recent events. Start here, and call it again after anything changes. Use detail='full' only when deciding something. A structure says what it mends a second (#431): fire below that rate does nothing to it. Full detail lists your corporation's patrols; a guard ship nearby is a corporation's.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
@@ -45,17 +45,19 @@ No arguments.
 
 ### `corp_act`
 
-Do something about corporations. action: 'create' (name, ticker -- you become its CEO), 'invite' (pilot, online; CEO or director), 'join' or 'decline' (ticker of a corporation that invited you), 'leave' (the last member out disbands it; a CEO hands over first), 'kick' (pilot; the CEO removes anyone, a director only members), 'role' (pilot, role: ceo, director or member; CEO only -- making another CEO makes you a director), and the policies of the systems it holds, CEO or director: 'tax' (value: a percentage of every trade at markets there, up to the server's cap, or 'standard'; it goes to the treasury) and 'docking' (value: own, allies or all -- who docks at its structures there; allies are each structure's allow-list), and 'police' (system, value: credits an hour from the treasury, or 'none'), the world's police it pays for in a system it holds: while paid they raise its security, fly patrols there and make attacking anyone there a crime under the corporation's law; they stand down when the treasury runs dry. Lower security pays better -- missions, jobs, contracts and ore. A corporation holds a system with the most influence there -- its members' structures, weighed by tier -- and a claim: a finished outpost or above of a member's. The answer is the server's.
+Do something about corporations. action: 'create' (name, ticker -- you become its CEO), 'invite' (pilot, online; CEO or director), 'join' or 'decline' (ticker of a corporation that invited you), 'leave' (the last member out disbands it; a CEO hands over first), 'kick' (pilot; the CEO removes anyone, a director only members), 'role' (pilot, role: ceo, director or member; CEO only -- making another CEO makes you a director), and the policies of the systems it holds, CEO or director: 'tax' (value: a percentage of every trade at markets there, up to the server's cap, or 'standard'; it goes to the treasury) and 'docking' (value: own, allies or all -- who docks at its structures there; allies are each structure's allow-list), and 'police' (system, value: credits an hour from the treasury, or 'none'), the world's police it pays for in a system it holds: while paid they raise its security, fly patrols there and make attacking anyone there a crime under the corporation's law; they stand down when the treasury runs dry. Lower security pays better -- missions, jobs, contracts and ore. And 'patrol' (system, value: ships or 'none'; design: a name in your design library or a stock design id, armed; engage: hold, return, enemies or strangers), the corporation's own AI ships in a system it holds or has a structure in: they guard its members' structures and ships while they are away, never fire on a member, answer whoever shoots one, and engage first as the mode says (enemies: pirates, flagged criminals, the wanted, factions the corporation stands badly with; strangers: anyone not a member). Upkeep comes from the treasury every pass, by the design's strength; unpaid, they stand down. The server limits ships per system and in all. A corporation holds a system with the most influence there -- its members' structures, weighed by tier -- and a claim: a finished outpost or above of a member's. The answer is the server's.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
-| `action` | string | yes | create, invite, join, decline, leave, kick, role, tax, docking or police |
+| `action` | string | yes | create, invite, join, decline, leave, kick, role, tax, docking, police or patrol |
+| `design` | string |  | patrol: a name in your design library, or a stock design id; left out, as it was (else the default guard) |
+| `engage` | string |  | patrol: hold, return, enemies or strangers; left out, as it was (else enemies) |
 | `name` | string |  | create: the corporation's name, 3 to 24 characters |
 | `pilot` | string |  | invite, kick, role: the pilot's name |
 | `role` | string |  | role: ceo, director or member |
-| `system` | string |  | police: the system, by id or name, that the corporation holds |
+| `system` | string |  | police, patrol: the system, by id or name |
 | `ticker` | string |  | create: 2 to 5 letters or digits; join/decline: whose invite |
-| `value` | string |  | tax: a percentage such as 5, or standard; docking: own, allies or all; police: credits an hour, or none |
+| `value` | string |  | tax: a percentage such as 5, or standard; docking: own, allies or all; police: credits an hour, or none; patrol: ships, or none |
 
 ### `choose_start`
 
