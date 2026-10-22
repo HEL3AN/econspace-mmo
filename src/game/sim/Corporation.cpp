@@ -661,6 +661,14 @@ json Registry::ToJson() const
         // Its charts (#431). A field an older build ignores, so no version bump (#20).
         if (!c.charts.empty())
             cj["charts"] = c.charts;
+        // ...and what it saw there (#431 slice 14), ignored by an older build too.
+        if (!c.sightings.empty())
+        {
+            json seen = json::object();
+            for (const auto& [system, sighting] : c.sightings)
+                seen[system] = WorldLoader::ToJson(sighting);
+            cj["observed"] = seen;
+        }
         // Additions an older build ignores too (#431 slice 5): its money and its policies.
         if (c.treasury != 0.0)
             cj["treasury"] = c.treasury;
@@ -784,6 +792,14 @@ bool Registry::FromJson(const json& j, std::string& why)
                 for (const json& sj : *charts)
                     if (sj.is_string())
                         c.charts.insert(sj.get<std::string>());
+            const auto observed = cj.find("observed");
+            if (observed != cj.end() && observed->is_object())
+                for (auto o = observed->begin(); o != observed->end(); ++o)
+                {
+                    WorldLoader::Sighting seen = WorldLoader::SightingFrom(o.value());
+                    if (seen.Observed())
+                        c.sightings[o.key()] = std::move(seen);
+                }
             c.chartsRev = ++chartsSerial_;
             const auto treasury = cj.find("treasury");
             const auto tax = cj.find("tax");
@@ -838,6 +854,19 @@ void Registry::AddCharts(const std::string& account, const std::vector<std::stri
         added = c.charts.insert(id).second || added;
     if (added)
         c.chartsRev = ++chartsSerial_;
+}
+
+void Registry::Sight(const std::string& id, const std::string& systemId,
+                     const WorldLoader::Sighting& now)
+{
+    auto it = corps_.find(id);
+    if (it == corps_.end())
+        return;
+    WorldLoader::Sighting& kept = it->second.sightings[systemId];
+    const bool             news = !kept.Observed() || !kept.SameAs(now);
+    kept = now;
+    if (news)
+        it->second.chartsRev = ++chartsSerial_;
 }
 
 bool Registry::Save(const std::string& path) const

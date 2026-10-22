@@ -937,6 +937,53 @@ std::string DescribeLoss(const Proto::LossView& loss)
     return out + "\n";
 }
 
+std::string DescribeAge(double seconds)
+{
+    seconds = std::max(0.0, seconds);
+    if (seconds < 60.0)
+        return "just now";
+    if (seconds < 3600.0)
+        return Fmt("%dm ago", (int)(seconds / 60.0));
+    if (seconds < 48.0 * 3600.0)
+        return Fmt("%dh %dm ago", (int)(seconds / 3600.0), (int)(seconds / 60.0) % 60);
+    return Fmt("%dd ago", (int)(seconds / 86400.0));
+}
+
+std::string DescribeObserved(const WorldLoader::SystemInfo& si, double now)
+{
+    if (!si.charted)
+        return std::string();
+    const WorldLoader::Sighting& o = si.observed;
+    if (!o.Observed())
+        return "nothing seen there yet";
+    int stations = 0, structures = 0, sites = 0, markets = 0;
+    for (const WorldLoader::SeenObject& s : o.seen)
+    {
+        if (s.kind == "station")
+            stations++;
+        else if (s.building)
+            sites++;
+        else
+            structures++;
+        markets += s.market ? 1 : 0;
+    }
+    structures += o.more;  // beyond the summary's bound: counted, not named
+    std::string what;
+    auto        add = [&](int n, const char* one, const char* many)
+    {
+        if (n > 0)
+            what += Fmt("%s%d %s", what.empty() ? "" : ", ", n, n == 1 ? one : many);
+    };
+    add(stations, "station", "stations");
+    add(structures, "structure", "structures");
+    add(sites, "site", "sites");
+    if (what.empty())
+        what = "nothing standing";
+    if (markets > 0)
+        what += Fmt(" (%d %s)", markets, markets == 1 ? "market" : "markets");
+    return what + (si.observedLive ? "  -- live" : "  -- as of " + DescribeAge(now - o.at));
+}
+
 std::string Compass(float dx, float dy)
 {
     if (std::fabs(dx) < 0.001f && std::fabs(dy) < 0.001f)

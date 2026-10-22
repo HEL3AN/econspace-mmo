@@ -11,6 +11,44 @@
 // Loading the game world from JSON files.
 namespace WorldLoader
 {
+// One thing that stood in a system when it was last looked at (#431 slice 14): a station or a
+// structure, as what it is, what it is called and whose -- a line of a summary, never the
+// object, so what an account keeps of a system it saw is a few words and not a copy of it.
+struct SeenObject
+{
+    std::string kind;  // "station", or a structure's archetype ("structure.outpost")
+    std::string name;
+    std::string owner;             // as a structure's: "faction:<id>", an account, or empty
+    bool        market = false;    // a ship can trade there
+    bool        building = false;  // a site still going up
+
+    bool operator==(const SeenObject& o) const
+    {
+        return kind == o.kind && name == o.name && owner == o.owner && market == o.market &&
+               building == o.building;
+    }
+};
+
+// The observed layer of one system (#431 M1): what stood there the last time a pilot, their
+// corporation or their structures were present, and when (world time). Geography is known for
+// good and owner and security travel live with the galaxy statistics; this is the part that
+// is only as true as the date beside it.
+struct Sighting
+{
+    // A summary is bounded whatever a system holds: past this, only how many more.
+    static constexpr size_t MAX_SEEN = 32;
+    double                  at = -1.0;  // below zero: never observed
+    std::vector<SeenObject> seen;
+    int                     more = 0;  // ...stood there beyond MAX_SEEN
+
+    bool Observed() const { return at >= 0.0; }
+    // The same things stood there: the date alone is not news.
+    bool SameAs(const Sighting& o) const { return seen == o.seen && more == o.more; }
+};
+// Compact JSON, for the account, corps.json and the wire alike.
+nlohmann::json ToJson(const Sighting& s);
+Sighting       SightingFrom(const nlohmann::json& j);
+
 // A system's record in the galaxy index (data/universe.json).
 struct SystemInfo
 {
@@ -33,6 +71,12 @@ struct SystemInfo
     // the public charts, by id, when one did.
     std::string knownBy;
     std::string chartedBy;
+    // What this pilot last saw standing there, and when (#431 slice 14) -- theirs or their
+    // corporation's, whichever is newer -- and whether it is live: they, a corporation member
+    // or a structure of theirs is there now, so it is what stands there now. (Braced: an
+    // aggregate initialised without them is not a missing initializer.)
+    Sighting observed{};
+    bool     observedLive{ false };
 };
 
 // A link between two systems (for drawing on the star map).

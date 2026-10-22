@@ -1990,6 +1990,7 @@ std::string EncodeUniverse(const WorldLoader::Universe& u)
     Stamp(j, "universe");
     json sys = json::array();
     for (const WorldLoader::SystemInfo& si : u.systems)
+    {
         sys.push_back({ { "id", si.id },
                         { "name", si.name },
                         { "pos", V2(si.mapPos) },
@@ -2000,6 +2001,12 @@ std::string EncodeUniverse(const WorldLoader::Universe& u)
                         { "found", si.discoverer },
                         { "known", si.knownBy },
                         { "chartedBy", si.chartedBy } });
+        // The observed layer (#431 slice 14), only where there is one.
+        if (si.observed.Observed())
+            sys.back()["seen"] = WorldLoader::ToJson(si.observed);
+        if (si.observedLive)
+            sys.back()["live"] = true;
+    }
     json links = json::array();
     for (const WorldLoader::SystemLink& l : u.links)
         if (l.kind.empty())
@@ -2035,6 +2042,8 @@ bool DecodeUniverse(const std::string& s, WorldLoader::Universe& out)
             si.discoverer = sj.value("found", std::string());
             si.knownBy = sj.value("known", std::string());
             si.chartedBy = sj.value("chartedBy", std::string());
+            si.observed = WorldLoader::SightingFrom(sj.value("seen", json()));
+            si.observedLive = sj.value("live", false);
             out.systems.push_back(si);
         }
     if (j.contains("links") && j["links"].is_array())

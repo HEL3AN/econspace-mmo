@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/WorldLoader.h"
 #include "sim/Events.h"
 #include "sim/SaveSchema.h"
 
@@ -95,6 +96,10 @@ struct Corp
     // their own charts and leaves these. `chartsRev` changes with them (not saved).
     std::set<std::string> charts;
     long long             chartsRev = 0;
+    // ...and what its members and structures last saw standing in each system, and when
+    // (#431 slice 14): the observed layer of its charts, which an offline member's
+    // corporation mates keep current for them. A change of what stood there moves `chartsRev`.
+    std::map<std::string, WorldLoader::Sighting> sightings;
     // Its money (#431 T4): what the markets of the systems it holds take, and what its
     // members' markets take anywhere else. Police paid from it are slice 11's, its patrols'
     // upkeep slice 12's: nothing spends it yet.
@@ -215,6 +220,10 @@ public:
     // each time a member goes somewhere new.
     void      AddCharts(const std::string& account, const std::vector<std::string>& systems);
     long long ChartsSerial() const { return chartsSerial_; }
+    // What corporation `id` sees standing in `systemId` now (#431 slice 14). The date is
+    // always taken; only a change of what stood there is news to its members' maps.
+    void Sight(const std::string& id, const std::string& systemId,
+               const WorldLoader::Sighting& now);
 
     // corps.json beside the world (Save::CORPS_VERSION). A missing file is no corporations;
     // one from a later build is refused rather than read and written back without what it

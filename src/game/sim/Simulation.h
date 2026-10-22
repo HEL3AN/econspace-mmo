@@ -109,6 +109,17 @@ public:
     // What the natives of `systemId`'s region call it (natives.names, #431 slice 3); empty
     // where nobody lives, or for a region sealed before natives had names.
     std::string NativeNameOf(const std::string& systemId) const;
+    // The observed layer (#431 slice 14, M1). What stands in `st` now, as a summary: its
+    // stations and structures, bounded, leaving out what `s` has not found (#346) -- or, for
+    // a corporation's record (`s` null), anything hidden at all.
+    WorldLoader::Sighting SightingOf(const SystemState& st, const ClientSession* s) const;
+    // What `s` last saw standing in `systemId`, theirs or their corporation's, whichever is
+    // newer; never observed when neither looked.
+    WorldLoader::Sighting LastSeen(const ClientSession& s, const std::string& systemId) const;
+    // Every coarse pass: wherever a pilot, a corporation member or a structure of theirs is,
+    // what stands there is observed -- into the pilot's record and their corporation's -- and
+    // their map is live there. Elsewhere it stays as last seen.
+    void StepObservations();
     // What decides `s`'s map, as a key: equal keys, the same map. The host sends the index
     // when it differs from the one it last sent.
     std::vector<long long> KnowledgeKey(const ClientSession& s) const;

@@ -4,6 +4,7 @@
 #include "core/Faction.h"
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
+#include "entities/Structure.h"
 #include "gen/Region.h"
 #include "sim/Protocol.h"
 #include "sim/SaveSchema.h"
@@ -358,4 +359,213 @@ TEST_CASE("a pilot knows the system they log in to (#431 K6)")
     REQUIRE(sim.LoadAccount(back, acct) == Save::Result::Ok);
     CHECK(back.systemId == r.entry);
     CHECK(back.known.count(Simulation::ChartKey(r.entry)) == 1);
+}
+
+// --- The map over time (#431 slice 14, M1) ----------------------------------------------------
+
+namespace
+{
+
+// One coarse pass of the world: what anyone of a pilot's is looking at goes onto their maps.
+void Pass(Simulation& sim)
+{
+    sim.MaintainWorld(2.0f);
+}
+
+// A structure of `owner`'s in `system` (an account, or a faction's "faction:<id>").
+int Build(Simulation& sim, const std::string& system, const std::string& name,
+          const std::string& owner)
+{
+    auto t =
+        std::make_unique<Structure>(Vector2{ 5000.0f, 5000.0f }, 0.0f, name, "structure.beacon");
+    const int id = sim.AddStatic(system, std::move(t), owner);
+    REQUIRE(id != 0);
+    return id;
+}
+
+bool Saw(const WorldLoader::Sighting& o, const std::string& name)
+{
+    for (const WorldLoader::SeenObject& s : o.seen)
+        if (s.name == name)
+            return true;
+    return false;
+}
+
+// What `s`'s map says of `system`, as the host would send it.
+WorldLoader::SystemInfo MapOf(const Simulation& sim, const ClientSession& s,
+                              const std::string& system)
+{
+    const WorldLoader::Universe    u = sim.KnownUniverseFor(s);
+    const WorldLoader::SystemInfo* si = In(u, system);
+    REQUIRE(si != nullptr);
+    return *si;
+}
+
+}  // namespace
+
+TEST_CASE("what stands in a system is as last seen; geography stays, and it is live where "
+          "you are (#431 slice 14)")
+{
+    Simulation sim;
+    Make(sim);
+    const Region   r = Find(sim);
+    ClientSession& ann = Pilot(sim, "ann", r.home);
+
+    sim.ServerEnterSystem(ann, r.entry, r.home);
+    Pass(sim);
+    WorldLoader::SystemInfo there = MapOf(sim, ann, r.entry);
+    CHECK(there.observed.Observed());
+    CHECK(there.observedLive);
+    const double left = sim.Time();
+
+    // She goes home. The system stays on her map, as she last saw it, no longer live.
+    sim.ServerEnterSystem(ann, r.home, r.entry);
+    Pass(sim);
+    there = MapOf(sim, ann, r.entry);
+    CHECK(there.charted);
+    CHECK_FALSE(there.observedLive);
+    CHECK(there.observed.at <= left + 0.001);
+    const std::vector<long long> key = sim.KnowledgeKey(ann);
+
+    // Somebody builds there while she is away: not on her map, and her map is not even sent
+    // again for it.
+    Build(sim, r.entry, "Zed's Beacon", "zed");
+    Pass(sim);
+    Pass(sim);
+    there = MapOf(sim, ann, r.entry);
+    CHECK_FALSE(Saw(there.observed, "Zed's Beacon"));
+    CHECK(sim.KnowledgeKey(ann) == key);  // nothing she can see changed
+    CHECK(there.charted);                 // the geography is hers for good
+
+    // ...until she returns.
+    sim.ServerEnterSystem(ann, r.entry, r.home);
+    Pass(sim);
+    there = MapOf(sim, ann, r.entry);
+    CHECK(there.observedLive);
+    CHECK(Saw(there.observed, "Zed's Beacon"));
+    CHECK(sim.KnowledgeKey(ann) != key);
+    // The wire carries it, date and all.
+    WorldLoader::Universe got;
+    REQUIRE(Proto::DecodeUniverse(Proto::EncodeUniverse(sim.KnownUniverseFor(ann)), got));
+    const WorldLoader::SystemInfo* wire = In(got, r.entry);
+    REQUIRE(wire != nullptr);
+    CHECK(wire->observedLive);
+    CHECK(wire->observed.at == doctest::Approx(there.observed.at));
+    CHECK(Saw(wire->observed, "Zed's Beacon"));
+}
+
+TEST_CASE("owner and security on the public charts are live, never as seen (#431 slice 14)")
+{
+    Simulation sim;
+    Make(sim);
+    const Region   r = Find(sim);
+    ClientSession& ann = Pilot(sim, "ann", r.home);
+    std::string    elsewhere;  // a public system she has never been to
+    for (const auto& si : sim.KnownUniverse().systems)
+        if (si.charted && si.id != r.home && sim.OnPublicCharts(si.id))
+            elsewhere = si.id;
+    REQUIRE_FALSE(elsewhere.empty());
+    Pass(sim);
+    CHECK_FALSE(MapOf(sim, ann, elsewhere).observed.Observed());  // nothing seen there yet
+
+    SystemState* st = sim.SystemById(elsewhere);
+    REQUIRE(st != nullptr);
+    st->agg.security = 0.123f;
+    st->agg.controller = Factions::Pirates();
+    bool found = false;
+    for (const Proto::GalaxySystemStat& g : sim.GalaxyStateFor(ann, sim.GalaxyStats()).systems)
+        if (g.id == elsewhere)
+        {
+            found = true;
+            CHECK(g.security == doctest::Approx(0.123f));
+            CHECK(g.controller == Factions::Pirates());
+        }
+    CHECK(found);
+}
+
+TEST_CASE("a corporation's eyes and structures keep its members' maps live (#431 slice 14)")
+{
+    Simulation sim;
+    Make(sim);
+    const Region   r = Find(sim);
+    ClientSession& ann = Pilot(sim, "ann", r.home);
+    ClientSession& bo = Pilot(sim, "bo", r.home);
+    Corp(sim, "ann", "bo");
+
+    // ann is at the entry: bo, at home, sees it live through her.
+    sim.ServerEnterSystem(ann, r.entry, r.home);
+    Build(sim, r.entry, "Zed's Beacon", "zed");
+    Pass(sim);
+    WorldLoader::SystemInfo seen = MapOf(sim, bo, r.entry);
+    CHECK(seen.observedLive);
+    CHECK(Saw(seen.observed, "Zed's Beacon"));
+
+    // She leaves: it is as of then for both of them.
+    sim.ServerEnterSystem(ann, r.home, r.entry);
+    Pass(sim);
+    CHECK_FALSE(MapOf(sim, bo, r.entry).observedLive);
+    CHECK(MapOf(sim, bo, r.entry).observed.Observed());
+    Build(sim, r.entry, "Later Beacon", "zed");
+    Pass(sim);
+    CHECK_FALSE(Saw(MapOf(sim, bo, r.entry).observed, "Later Beacon"));
+
+    // A structure of ann's watches the deeper system for both, with nobody there and ann off.
+    sim.ServerEnterSystem(ann, r.entry, r.home);
+    sim.ServerEnterSystem(ann, r.deeper, r.entry);  // charted for the corporation
+    Build(sim, r.deeper, "Ann's Beacon", "ann");
+    sim.DestroySession(ann.id);
+    Pass(sim);
+    Build(sim, r.deeper, "Zed's Second", "zed");
+    Pass(sim);
+    seen = MapOf(sim, bo, r.deeper);
+    CHECK(seen.observedLive);
+    CHECK(Saw(seen.observed, "Zed's Second"));
+    // ...and a pilot in no corporation has none of it.
+    ClientSession& cy = Pilot(sim, "cy", r.home);
+    Pass(sim);
+    CHECK_FALSE(sim.Knows(cy, r.deeper));
+    CHECK(cy.liveSystems.count(r.deeper) == 0);
+}
+
+TEST_CASE("what a pilot saw is kept with the account and corporation, and bounded "
+          "(#431 slice 14)")
+{
+    const TempDir     tmp;
+    const std::string acct = tmp.Path("account_ann.json");
+    Simulation        sim;
+    Make(sim);
+    const Region   r = Find(sim);
+    ClientSession& ann = Pilot(sim, "ann", r.home);
+    Pilot(sim, "bo", r.home);
+    Corp(sim, "ann", "bo");
+    const size_t extra = 8;
+    for (size_t i = 0; i < WorldLoader::Sighting::MAX_SEEN + extra; ++i)
+        Build(sim, r.entry, "Beacon " + std::to_string(i), "zed");
+    sim.ServerEnterSystem(ann, r.entry, r.home);
+    Pass(sim);
+    sim.ServerEnterSystem(ann, r.home, r.entry);
+    Pass(sim);
+
+    // However much stands there, a summary is MAX_SEEN lines and a count.
+    const WorldLoader::Sighting mine = ann.sightings.at(r.entry);
+    CHECK(mine.seen.size() == WorldLoader::Sighting::MAX_SEEN);
+    CHECK(mine.more >= (int)extra);
+    CHECK(WorldLoader::ToJson(mine).dump().size() < 4096);
+
+    REQUIRE(sim.SaveAccount(ann, acct));
+    REQUIRE(sim.Corporations().Save(tmp.Path("corps.json")));
+    sim.DestroySession(ann.id);
+    ClientSession& back = Pilot(sim, "ann", r.home);
+    REQUIRE(sim.LoadAccount(back, acct) == Save::Result::Ok);
+    REQUIRE(back.sightings.count(r.entry) == 1);
+    CHECK(back.sightings.at(r.entry).SameAs(mine));
+    CHECK(back.sightings.at(r.entry).at == doctest::Approx(mine.at));
+
+    Corps::Registry reg;
+    REQUIRE(reg.Load(tmp.Path("corps.json")) == Save::Result::Ok);
+    const Corps::Corp* corp = reg.Of("bo");
+    REQUIRE(corp != nullptr);
+    REQUIRE(corp->sightings.count(r.entry) == 1);
+    CHECK(corp->sightings.at(r.entry).seen.size() == WorldLoader::Sighting::MAX_SEEN);
+    CHECK(corp->sightings.at(r.entry).at == doctest::Approx(mine.at));
 }

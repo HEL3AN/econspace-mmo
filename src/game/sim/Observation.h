@@ -52,6 +52,13 @@ std::string Describe(const View& view, Detail detail);
 // numbers them, because those numbers are what accept_mission and complete_mission take.
 std::string DescribeMissions(const View& view);
 
+// A system's observed layer in one line (#431 slice 14): its stations, structures and markets
+// as last seen, and "live" or "as of <how long ago>" -- the map and the galaxy resource say it
+// the same way. Empty for an uncharted system, which nobody here has seen at all.
+std::string DescribeObserved(const WorldLoader::SystemInfo& si, double now);
+// "just now", "12m ago", "3h 5m ago", "4d ago".
+std::string DescribeAge(double seconds);
+
 // What this account owns, which ship it flies, and what each other hull would cost here
 // (#109) -- at the price this player would be charged, which depends on its standing with
 // the station's owner, rather than the catalog's.

@@ -3,6 +3,7 @@
 #include "sim/Events.h"
 #include "sim/Orders.h"
 
+#include "core/WorldLoader.h"
 #include "player/Player.h"
 #include "missions/MissionSystem.h"
 
@@ -170,11 +171,19 @@ struct ClientSession
     // the server's one counter: it is part of the key of the pilot's map. How far each scan
     // not yet resolved has got is this session's. A pass under way ends at `scanUntil`
     // (world time; 0 -- none) in `scanSystem`.
-    std::set<std::string>        known;
-    long long                    knownRev = 0;
-    std::map<std::string, float> scanProgress;
-    double                       scanUntil = 0.0;
-    std::string                  scanSystem;
+    std::set<std::string> known;
+    long long             knownRev = 0;
+    // ...and, of each system they have looked at, what stood there and when (#431 slice 14):
+    // the observed layer of the same record, saved with the account (`observed`), one bounded
+    // summary per system (Simulation::StepObservations). A value per system rather than a key
+    // in `known`, which is keys alone -- and a public system is in no key of it. A change of
+    // what stood there, not of the date, is a change of `knownRev`. `liveSystems` is where
+    // their map is live now: they, a corporation member or a structure of theirs is there.
+    std::map<std::string, WorldLoader::Sighting> sightings;
+    std::set<std::string>                        liveSystems;
+    std::map<std::string, float>                 scanProgress;
+    double                                       scanUntil = 0.0;
+    std::string                                  scanSystem;
     // Resolved objects of the system the ship is in that the pilot's layout lacks: the host
     // sends them as a delta of the pilot's own (Simulation::TakeRevealDeltas).
     std::vector<int> revealPending;

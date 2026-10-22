@@ -48,6 +48,46 @@ static Color ColorFromJson(const json& arr)
     return Color{ (unsigned char)arr[0], (unsigned char)arr[1], (unsigned char)arr[2], 255 };
 }
 
+json WorldLoader::ToJson(const Sighting& s)
+{
+    // [kind, name, owner, flags]: an account keeps one of these per system it has seen.
+    json seen = json::array();
+    for (const SeenObject& o : s.seen)
+        seen.push_back(
+            json::array({ o.kind, o.name, o.owner, (o.market ? 1 : 0) | (o.building ? 2 : 0) }));
+    json j = { { "at", s.at }, { "seen", seen } };
+    if (s.more > 0)
+        j["more"] = s.more;
+    return j;
+}
+
+WorldLoader::Sighting WorldLoader::SightingFrom(const json& j)
+{
+    Sighting s;
+    if (!j.is_object())
+        return s;
+    s.at = j.value("at", -1.0);
+    s.more = std::max(0, j.value("more", 0));
+    const auto seen = j.find("seen");
+    if (seen == j.end() || !seen->is_array())
+        return s;
+    for (const json& o : *seen)
+    {
+        if (!o.is_array() || o.size() < 4 || !o[0].is_string() || !o[1].is_string() ||
+            !o[2].is_string() || !o[3].is_number_integer())
+            continue;
+        if (s.seen.size() >= Sighting::MAX_SEEN)  // a peer's or a file's: bounded all the same
+        {
+            s.more++;
+            continue;
+        }
+        const int flags = o[3].get<int>();
+        s.seen.push_back({ o[0].get<std::string>(), o[1].get<std::string>(),
+                           o[2].get<std::string>(), (flags & 1) != 0, (flags & 2) != 0 });
+    }
+    return s;
+}
+
 WorldLoader::Universe WorldLoader::LoadUniverse(const std::string& path)
 {
     Universe universe;
