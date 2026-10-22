@@ -180,6 +180,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
 
 ## Things that will trip you up
 
+- **Never keep a pointer into a returned index.** `KnownUniverse()`, `KnownUniverseFor()`,
+  `Actions::For()` and their kind return a vector by value; `const auto* si = Find(sim.KnownUniverseFor(s), id)`
+  points into a temporary that is gone by the next line. Copy the vector to a local first. It
+  passes on MinGW and fails only under ASan or GCC with garbage values, and three PRs in one
+  night (#437, #443, #453) tripped on it.
 - **A standing hold is the one place prediction tolerates a difference** (#157). Orbit and
   keep-at-range follow something that *moves*, so the step is told where the target is:
   the server from the live entity, the client from its interpolated proxy. The two differ
