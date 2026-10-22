@@ -20,6 +20,7 @@ WorldRules::Scan        g_scan;
 WorldRules::Law         g_law;
 WorldRules::Influence   g_influence;
 WorldRules::Licences    g_licences;
+WorldRules::Security    g_security;
 std::string             g_error;
 
 // Reads one section's values into their places: every field known, every number zero or
@@ -83,7 +84,7 @@ bool Load(const std::string& path)
             it.key() != "archive" && it.key() != "expeditions" && it.key() != "growth" &&
             it.key() != "convoys" && it.key() != "jobs" && it.key() != "holes" &&
             it.key() != "scan" && it.key() != "contracts" && it.key() != "law" &&
-            it.key() != "influence" && it.key() != "licences")
+            it.key() != "influence" && it.key() != "licences" && it.key() != "security")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -366,6 +367,26 @@ bool Load(const std::string& path)
         g_error = path + ": licences: periodDays must be more than zero";
         return false;
     }
+    // Slice 11's (#431): what security does, and how a holder buys it.
+    Security sec;
+    if (j.contains("security") && !ReadSection(j["security"], path + ": security",
+                                               { { "policeSwing", &sec.policeSwing },
+                                                 { "policeHalf", &sec.policeHalf },
+                                                 { "shipHour", &sec.shipHour },
+                                                 { "budgetMax", &sec.budgetMax },
+                                                 { "pirateHide", &sec.pirateHide },
+                                                 { "payAtZero", &sec.payAtZero },
+                                                 { "oreAtZero", &sec.oreAtZero } },
+                                               { { "shipsMax", &sec.shipsMax } }, {}, g_error))
+        return false;
+    if (sec.policeSwing > 1.0 || sec.pirateHide > 1.0 || sec.policeHalf <= 0.0 ||
+        sec.shipHour <= 0.0 || sec.payAtZero < 1.0 || sec.oreAtZero < 1.0)
+    {
+        g_error = path + ": security: policeSwing and pirateHide must be at most 1, policeHalf "
+                         "and shipHour more than zero, and payAtZero and oreAtZero at least 1 "
+                         "(lower security never pays less)";
+        return false;
+    }
     g_tide = t;
     g_mouths = m;
     g_archive = a;
@@ -379,6 +400,7 @@ bool Load(const std::string& path)
     g_law = lw;
     g_influence = inf;
     g_licences = lc;
+    g_security = sec;
     return true;
 }
 
@@ -515,6 +537,16 @@ const Licences& LicenceRules()
 void SetLicenceRules(const Licences& l)
 {
     g_licences = l;
+}
+
+const Security& SecurityRules()
+{
+    return g_security;
+}
+
+void SetSecurityRules(const Security& s)
+{
+    g_security = s;
 }
 
 }  // namespace WorldRules

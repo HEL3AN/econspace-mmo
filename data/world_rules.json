@@ -161,5 +161,15 @@
         "graceHours": 24,
         "standing": 10,
         "evict": 1.0
+    },
+    "security": {
+        "policeSwing": 0.3,
+        "policeHalf": 3000,
+        "shipHour": 600,
+        "shipsMax": 8,
+        "budgetMax": 30000,
+        "pirateHide": 0.6,
+        "payAtZero": 1.6,
+        "oreAtZero": 1.5
     }
 }

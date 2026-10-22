@@ -408,12 +408,13 @@ bool Simulation::LawOver(const SystemState& st, const Structure& t, const std::s
         law = owner;
         return Factions::IsLawful(owner);
     }
-    // A player's, or the world's: as safe as the system's law makes it -- unless it stands in
-    // the holder's space without a licence (#431 slice 6), where it is nobody's to guard.
+    // A player's, or the world's: as safe as the system's law makes it (LawIn) -- unless it
+    // stands in the holder's space without a licence (#431 slice 6), where it is nobody's to
+    // guard.
     law = st.agg.controller;
     if (t.GetLicence() == LicenceState::Trespass)
         return false;
-    return st.agg.claimed && Factions::IsLawful(law);
+    return LawIn(st, law);
 }
 
 bool Simulation::DamageStructure(SystemState& st, int id, float damage, ClientSession* by)

@@ -466,9 +466,8 @@ void Simulation::ChargeFirstStrike(SystemState& st, const Entity& structure,
     }
     else if (player != nullptr)
     {
-        victim = st.agg.controller;
-        if (!st.agg.claimed || !Factions::IsLawful(victim) ||
-            AccountHostileToFaction(*player, victim) || player->account.IsCriminal())
+        if (!LawIn(st, victim) || AccountHostileToFaction(*player, victim) ||
+            player->account.IsCriminal())
             return;
     }
     else
@@ -515,10 +514,8 @@ bool Simulation::IsCrime(const SystemState& st, const ClientSession& by, const E
         // Another pilot is under the law of the system they are in (#431 L1, L2): where a
         // lawful faction holds it and security is above zero. A pilot flagged a criminal, or
         // one that law holds as an enemy -- wanted by it, or hated -- is fair game.
-        law = st.agg.controller;
         const ClientSession* pilot = PilotOf(victim.GetId());
-        if (pilot == nullptr || pilot == &by || !st.agg.claimed || !Factions::IsLawful(law) ||
-            st.agg.security <= 0.0f)
+        if (pilot == nullptr || pilot == &by || !LawIn(st, law) || st.agg.security <= 0.0f)
             return false;
         return !pilot->account.IsCriminal() && !AccountHostileToFaction(*pilot, law);
     }
@@ -976,12 +973,15 @@ void Simulation::StepSystemAgents(SystemState& st, const std::vector<PlayerPrese
 // Where a system's security settles (#428): its base, moved by the balance of police and
 // pirates by at most SECURITY_SWING either way. The balance is a share, not a difference of
 // counts -- police come from a faction's presence, so a garrison of ten would otherwise push
-// every policed system to 1.0 and the number would say nothing.
+// every policed system to 1.0 and the number would say nothing. On top, what its holder pays
+// for police (#431 L5, slice 11): security is bought, and a system nobody pays for keeps what
+// its place and its ships give it.
 float Simulation::SecurityTarget(const SystemAggregate& a)
 {
     const float police = std::max(0.0f, a.police), pirates = std::max(0.0f, a.pirates);
     const float balance = (police - pirates) / (police + pirates + SECURITY_BALANCE_SOFTNESS);
-    return ClampF(a.baseSecurity + SECURITY_SWING * balance, 0.0f, 1.0f);
+    const float paid = (float)WorldRules::SecurityRules().Swing(a.paidPolice);
+    return ClampF(a.baseSecurity + SECURITY_SWING * balance + paid, 0.0f, 1.0f);
 }
 
 // M0 macro on REAL numbers (population in the aggregate is filled by Game::RecountAgg).
@@ -995,6 +995,8 @@ void Simulation::StepWorldMacro()
     macroSteps_++;
     if (marketsStale_)
         PriceMarkets();  // a mouth opened or collapsed: supply routes changed (#342 S5)
+    // What holders pay for police this pass (#431 slice 11), before security drifts on it.
+    StepPolicePay(MAINT_STEP);
 
     // Security and economy drift from the real populations.
     for (auto& kv : systems_)
@@ -1204,7 +1206,13 @@ Simulation::Population Simulation::PopulationOf(const SystemState& st, const Roo
     const int traders = (ctrl == Factions::Pirates()) ? 1 : (int)roundf(2.0f + sec * 4.0f);
 
     // What it keeps once the losses are forgotten (#295): what it holds above this leaves.
-    p.keep = { traders, 2, (int)roundf(lawPresence), (int)roundf(here[Factions::Pirates()]) };
+    // The police a holder pays for fly on top of any faction's (#431 slice 11); of the
+    // pirates' strength, the higher the security the more of it lies low -- and what it does
+    // not keep here leaves for darker systems next door (StepMigration).
+    const WorldRules::Security& sr = WorldRules::SecurityRules();
+    const int                   paid = sr.Ships(agg.paidPolice);
+    const float                 pirates = here[Factions::Pirates()] * (float)sr.PiratesFly(sec);
+    p.keep = { traders, 2, (int)roundf(lawPresence) + paid, (int)roundf(pirates) };
     // "Pressure": recent losses temporarily cut the target (recovers in MaintainWorld).
     p.traders = (int)roundf(p.keep[0] * (1.0f - agg.supTraders));
     p.miners = (int)roundf(p.keep[1] * (1.0f - agg.supMiners));

@@ -289,7 +289,7 @@ security pays better (missions, bounties, ore). The details are to be refined la
 | L2 | *Done in slice 10 for pilots.* `IsCrime(st, by, victim, law)` decides ships, structures and pilots: a pilot is under the law of the system (lawful holder, security > 0) unless flagged or an enemy of that law. | Licences (slice 6) and war. |
 | L3 | *Done in slice 9.* `CallPolice` answers every crime by the system's security band (`world_rules.json` -> `law`): its free police warp in, a station launches patrols from spare presence then from stock, police within reach are lent as a `Plan::Kind::Response` and go home as Returns; `GunsOn` brings station and faction-structure guns in on a criminal at >= `gunsFrom`. | Paid police from the treasury (slice 11). |
 | L4 | *Done in slice 10.* `Player` carries `securityStatus` and `criminalLeft` (seconds, saved with the account, run down by `StepPilotLaw` only while the pilot is in the world); `MarkCrime` flags and charges status beside `ChargeAttack`; lawful docks refuse a flagged pilot; police (`NpcHunts`) chase one, and engage on sight at a low status (`PoliceOnSight`); a flagged pilot's ship lingers `flagLinger`. The snapshot carries both for every pilot. | -- |
-| L5 | After #434, `SecurityTarget` = base + `SECURITY_SWING` (0.15) x the police/pirate balance; drift 5 % a pass. | A paid-police term, from the owner's treasury, added to the target; pirate spawns, convoy losses and rewards read security. |
+| L5 | *Done in slice 11.* `SecurityTarget` = base + `SECURITY_SWING` (0.15) x the police/pirate balance + what the holder pays (`world_rules.json` -> `security`: `policeSwing` x budget / (budget + `policeHalf`)); drift 5 % a pass. A corporation sets a budget per held system (`CorpAct` "police"); `StepPolicePay` takes it from the treasury every macro pass, hot or cold, into the aggregate's `paidPolice`, which flies one police ship per `shipHour` (the role `police`'s faction) and makes the corporation's law the system's (`LawIn`). Of the pirates' strength, `pirateHide` x security lies low; convoys read security (`convoys.policed`); missions, jobs, contract premiums (`payAtZero`) and ore (`oreAtZero`) pay more the lower it is. | Factions pay for their police in presence, as before; a faction treasury buying police is not built. |
 
 **Numbers (tuning, `world_rules.json` → `law`, in place since slice 10):** flag 15 minutes; security status
 from -10 to +10, -1 for a crime, -2.5 for a kill, +0.1 per pirate kill, +0.5 per day without
@@ -525,6 +525,13 @@ are marked; slices without one may go in any order.
       convoy losses and rewards read security.
     - *Tests:* paying police raises security over passes; rewards scale down as security rises;
       a 24 h `--news` run stays stable.
+    - *Built:* a corporation's police budget per held system (`CorpAct` "police", in
+      `corps.json`, shown in the corporation window and econagent's `corp`), paid each macro
+      pass from the treasury and stopped, with a journal entry, when it runs dry; while paid the
+      system is lawful under the hired police (`LawIn`: `IsCrime`, `LawOver`, a structure
+      firing first) and the director flies them. Pirates lie low with security, and the pay of
+      missions, jobs and contract premiums and the yield of ore rise as it falls
+      (`world_rules.json` -> `security`). The same arithmetic cold and hot.
 
 **Corporations**
 

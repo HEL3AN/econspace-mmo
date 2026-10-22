@@ -105,6 +105,11 @@ struct SystemAggregate
     float     lostPirates = 0.0f;
     float     lostPolice = 0.0f;
     FactionId policeFaction = Factions::Unaffiliated();  // whose police the director sent
+    // What the holding corporation paid for police here in the last macro pass (#431 L5,
+    // slice 11), in credits an hour; 0 when it pays nothing, or could not. It raises the
+    // security target, puts the world's police in the air, and makes the corporation's law
+    // the system's (Simulation::LawIn). Transient: the first pass after a start pays again.
+    float paidPolice = 0.0f;
 
     bool seeded = false;  // aggregate initialized with starting values
 };

@@ -2205,6 +2205,8 @@ std::string EncodeCorpAct(const CorpAct& a)
         j["role"] = a.role;
     if (!a.value.empty())
         j["value"] = a.value;
+    if (!a.system.empty())
+        j["system"] = a.system;
     return j.dump();
 }
 
@@ -2220,6 +2222,7 @@ bool DecodeCorpAct(const std::string& s, CorpAct& out)
     out.pilot = TextOf(j, "pilot");
     out.role = TextOf(j, "role");
     out.value = TextOf(j, "value");
+    out.system = TextOf(j, "system");
     return !out.verb.empty();
 }
 
@@ -2249,6 +2252,8 @@ std::string EncodeCorpView(const CorpView& v)
                 licences.push_back(LicenceJson(l));
             j["licences"] = std::move(licences);
         }
+        if (!v.police.empty())
+            j["police"] = v.police;
     }
     if (!v.invites.empty())
     {
@@ -2303,6 +2308,11 @@ bool DecodeCorpView(const std::string& s, CorpView& out)
         for (const json& l : *licences)
             if (l.is_object())
                 out.licences.push_back(LicenceFrom(l));
+    const auto police = j.find("police");
+    if (police != j.end() && police->is_object())
+        for (auto it = police->begin(); it != police->end(); ++it)
+            if (it.value().is_number() && it.value().get<double>() > 0.0)
+                out.police[it.key()] = it.value().get<double>();
     const auto invites = j.find("invites");
     if (invites != j.end() && invites->is_array())
         for (const json& ij : *invites)
