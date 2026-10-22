@@ -632,7 +632,7 @@ void Simulation::MaterializeOpened(int slot)
                 // charts of it are by its old id, which is slice 15's to translate.
                 FactionId by;
                 if (Factions::Find(r.value("chartedBy", std::string()), by))
-                    ChartBy(info.id, by);
+                    MarkCharted(st.agg, by);  // contact was made long ago
                 const nlohmann::json& c = r.value("changes", nlohmann::json());
                 if (c.is_object())
                 {
@@ -1198,6 +1198,8 @@ void Simulation::AnchorMouth(RegionOpening& o, const std::string& owner)
     Announce("anchor", who, o.mouth,
              o.anchoredBy + " anchored the mouth in " + SystemName(o.mouth) +
                  ": the way beyond holds, through the " + o.anchoredBy + " Gate");
+    if (who)
+        ChartBy(o.mouth, *who);  // a faction's Anchor: it is there (#431 K2)
     for (auto& kv : sessions_)
         if (!owner.empty() && kv.second.accountName == owner)
             kv.second.RecordEvent(Ev::Kind::Notice, "Your Anchor holds the mouth in " +

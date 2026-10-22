@@ -1568,14 +1568,22 @@ void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId, 
     // nobody else's: it becomes public only when a faction charts it.
     Learn(s, destId);
     // The first ship into a system beyond the wormhole (#143): that it was reached at all
-    // is news, and its discoverer may name it (#145).
+    // is news, and its discoverer may name it (#145). Only where no faction came first: a
+    // system on the public charts was reached by somebody (#431 K3). It is first contact
+    // (K4): where people live, their name for it is known from now on, and theirs stands.
     SystemAggregate& agg = dest.agg;
     if (!agg.publicChart && agg.discoverer.empty())
     {
         agg.discoverer = s.ship ? s.ship->GetPilotName() : std::string();
         chartsChanged_ = true;  // world state: written at once
-        PushEvent("First ship into " + SystemName(destId));
-        s.RecordEvent(Ev::Kind::Notice, "First ship ever into " + SystemName(destId));
+        const std::string designation = SystemName(destId);
+        const std::string native = agg.givenName.empty() ? NativeNameOf(destId) : std::string();
+        if (!native.empty())
+            CallSystem(dest, native);
+        const std::string people =
+            native.empty() ? std::string() : ": its people call it " + native;
+        PushEvent("First ship into " + designation + people);
+        s.RecordEvent(Ev::Kind::Notice, "First ship ever into " + designation + people);
     }
 }
 

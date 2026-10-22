@@ -77,7 +77,12 @@ namespace Save
 //    beyond the wormhole as never visited and save the world so. An older file's `visited`
 //    is translated: a system a faction holds is charted by it, one nobody holds is its
 //    discoverer's own.
-inline constexpr int WORLD_VERSION = 16;
+// 17: factions chart what they reach (#431 slice 2): a system held beyond the wormhole has
+//    `chartedBy` its holder, and a `name` may be its natives' or its first charter's, not only
+//    a player's. In a version 16 file a held system with no `chartedBy` was simply never
+//    charted -- the playtest's bug; read now, it is charted by its holder, and a system
+//    somebody reached shows its natives' name.
+inline constexpr int WORLD_VERSION = 17;
 
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.

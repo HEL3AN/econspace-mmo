@@ -87,7 +87,10 @@ struct SystemAggregate
 
     // Who got here first, and what they called it (#145). A system beyond the wormhole
     // has a designation until its discoverer names it; the name is world state, seen by
-    // everyone and kept. Saved.
+    // everyone and kept. Saved. The discoverer is a pilot who came before any faction; where
+    // a faction came first it stays empty (#431 K3). The name may also be its natives', known
+    // from first contact, or the one the major that charted it first gave it (#431 slice 2):
+    // either way nobody names it again.
     std::string discoverer;
     std::string givenName;
     // The player corporation that holds it (#431 T2), by its id; empty for none. Exactly one

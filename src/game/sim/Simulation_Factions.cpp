@@ -215,9 +215,10 @@ float Simulation::OutpostCost()
     return cost;
 }
 
-void Simulation::TakeControl(SystemAggregate& a, FactionId f)
+void Simulation::TakeControl(const std::string& systemId, FactionId f)
 {
-    const FactionId was = a.controller;
+    SystemAggregate& a = systems_[systemId].agg;
+    const FactionId  was = a.controller;
     a.controller = f;
     a.claimed = true;
     a.contested = 0;
@@ -228,6 +229,7 @@ void Simulation::TakeControl(SystemAggregate& a, FactionId f)
         a.baseSecurity = std::min(a.baseSecurity, 0.15f);
     else if (was == Factions::Pirates())
         a.baseSecurity = std::max(a.baseSecurity, 0.5f);
+    ChartBy(systemId, f);  // it is there: its charts are (#431 K2)
 }
 
 // What a system offers, seen by anyone: how much passes through, how much ore there is,
@@ -341,6 +343,7 @@ void Simulation::ResolveSurvey(const Plan& p)
     Record("survey", p.faction, p.target,
            FactionName(p.faction) + " surveyed " + SystemName(p.target) + ": " +
                DescribeSurvey(seen, p.faction));
+    ChartBy(p.target, p.faction);  // after the line: it names the system by its designation
 }
 
 // Plans whose time has come, a few per pass (#295). One that misses its pass because the
@@ -383,6 +386,7 @@ bool Simulation::Settle(FactionId f, const std::string& from, const std::string&
     if (st == nullptr || cost <= 0.0f || mind.stock < cost)
         return false;
     const Intel& seen = mind.intel[to] = Observe(*st);
+    ChartBy(to, f);  // its builders came, whatever they find (#431 K2)
     if (st->agg.claimed || st->profile.outpostSite)
         return false;
 
@@ -480,7 +484,7 @@ void Simulation::ResolveSettle(const Plan& p)
                    (c != nullptr ? c->name : std::string("a corporation")) + " holds it");
         return;
     }
-    TakeControl(a, p.faction);
+    TakeControl(p.target, p.faction);
     minds_[p.faction].intel[p.target] = Observe(*st);
     Outposts::Purpose purpose = Outposts::Purpose::Open;
     Outposts::PurposeOf(site->GetBuilds(), purpose);
@@ -1149,6 +1153,7 @@ void Simulation::Think(FactionId f)
         // system be a friend's now. Then it does nothing this period.
         SystemState& dest = systems_[to];
         mind.intel[to] = Observe(dest);
+        ChartBy(to, f);
         // An Anchor may be besieged in a system it holds itself; an outpost never is. And only
         // where its front is still open (#431 D3).
         if (dest.agg.claimed && dest.agg.controller != f && !Hostile(f, dest.agg.controller))
@@ -1177,6 +1182,7 @@ void Simulation::Think(FactionId f)
     // Arriving, it sees the place as it is -- and if that is a friend's or a neutral's
     // after all, it turns back rather than start a war on old news.
     mind.intel[to] = Observe(dest);
+    ChartBy(to, f);  // an expedition arriving (#431 K2), even one that turns back
     if (dest.agg.claimed && (dest.agg.controller == f || !Hostile(f, dest.agg.controller)))
         return;
     const float move =
@@ -1238,7 +1244,7 @@ void Simulation::StepControl(bool settling)
         if (a.contested < ContestPasses())
             continue;
         const bool wasClaimed = a.claimed;
-        TakeControl(a, challenger);
+        TakeControl(kv.first, challenger);
         if (!settling)
             PushEvent(!wasClaimed ? FactionName(challenger) + " claim " + SystemName(kv.first)
                       : challenger == Factions::Pirates()

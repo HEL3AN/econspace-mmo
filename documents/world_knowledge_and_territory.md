@@ -442,6 +442,13 @@ are marked; slices without one may go in any order.
      `firstContact`; chronicle lines; "charted by <Faction>" on the map and in the agent.
    - *Tests:* a faction settles an unvisited system: it is public, charted by it, and the
      first pilot in is not its discoverer; a system no faction reached is still a pilot's find.
+   - *Built:* `ChartBy` from surveys, moves and sieges arriving, sites laid, claims
+     (`TakeControl`), convoys and faction Anchors; a region's own natives chart nothing for the
+     centres, and nobody charts a centre. First contact is not a stored record: it is whoever
+     came first, `discoverer` (a pilot) or `chartedBy` with no discoverer (a faction), and the
+     news (`contact` in the chronicle). Its names -- the natives' or the major's -- are kept in
+     `givenName`, which `NameSystem` already refuses to overwrite. `WORLD_VERSION` 17 charts a
+     version 16 world's held systems by their holders; `PROTO_VERSION` 53.
 3. **The native name generator.** *Generator part independent; the reveal depends on 2.*
    - *Scope:* per-culture system names in `gen/`, written to `natives.names`; bump
      `GENERATOR_VERSION` and the golden hashes; the names replace designations for whoever

@@ -11,6 +11,8 @@
 
 #include "sim/Simulation.h"
 #include "sim/WorldRules.h"
+#include "gen/Names.h"
+#include "gen/Region.h"
 
 #include <nlohmann/json.hpp>
 
@@ -31,17 +33,87 @@ std::string Simulation::ChartedSystemOf(const std::string& key)
     return key.rfind(prefix, 0) == 0 ? key.substr(prefix.size()) : std::string();
 }
 
-bool Simulation::ChartBy(const std::string& systemId, FactionId faction)
+bool Simulation::CanChart(const std::string& systemId, FactionId faction) const
 {
-    auto it = systems_.find(systemId);
-    if (it == systems_.end() || !it->second.agg.chartedBy.empty())
+    const auto it = systems_.find(systemId);
+    if (it == systems_.end() || PublicByPlace(systemId) || !it->second.agg.chartedBy.empty())
         return false;
-    SystemAggregate& a = it->second.agg;
+    // A region's natives have always known their home; their charts are not the centres'.
+    const int slot = Gen::SlotOf(systemId);
+    return natives_.count(slot) == 0 || NativesOf(slot) != faction;
+}
+
+void Simulation::MarkCharted(SystemAggregate& a, FactionId faction)
+{
     a.chartedBy = Factions::Id(faction);
     a.publicChart = true;
     chartsChanged_ = true;  // world state, written at once
     PublicChartsChanged();
+}
+
+bool Simulation::ChartBy(const std::string& systemId, FactionId faction)
+{
+    if (!CanChart(systemId, faction))
+        return false;
+    SystemState&     st = systems_[systemId];
+    SystemAggregate& a = st.agg;
+    // Nobody from outside before it (K4): no pilot found it, and no faction charted it, or
+    // CanChart would have refused.
+    const bool first = a.discoverer.empty();
+    MarkCharted(a, faction);
+    if (!first)
+        return true;  // a pilot was here first: theirs to name, and their find was the news
+
+    const std::string designation = SystemName(systemId);
+    const std::string native = NativeNameOf(systemId);
+    std::string       name = native;
+    if (name.empty() && a.givenName.empty())
+        name = Gen::ChartedName(faction, regionSeed_, systemId, TakenNames());
+    if (!name.empty() && a.givenName.empty())
+        CallSystem(st, name);
+    const std::string who = FactionName(faction);
+    Announce("contact", faction, systemId,
+             !native.empty()
+                 ? who + " made first contact in " + designation + ": its people call it " + native
+             : !name.empty() ? who + " charted " + designation + " and named it " + name
+                             : who + " charted " + designation);
     return true;
+}
+
+std::string Simulation::NativeNameOf(const std::string& systemId) const
+{
+    const auto it = natives_.find(Gen::SlotOf(systemId));
+    if (it == natives_.end())
+        return std::string();
+    const nlohmann::json n = nlohmann::json::parse(it->second, nullptr, false);
+    if (!n.is_object() || !n.contains("names") || !n["names"].is_object())
+        return std::string();
+    const nlohmann::json& names = n["names"];
+    const auto            name = names.find(systemId);
+    return name != names.end() && name->is_string() ? name->get<std::string>() : std::string();
+}
+
+void Simulation::CallSystem(SystemState& st, const std::string& name)
+{
+    st.agg.givenName = name;
+    chartsChanged_ = true;  // written at once, and everyone who knows it sees the name
+    PublicChartsChanged();
+    // Its planets are called after it (#259), as when a pilot names it.
+    WorldLoader::NamePlanets(st.entities, name);
+}
+
+std::set<std::string> Simulation::TakenNames() const
+{
+    std::set<std::string> taken;
+    for (const WorldLoader::SystemInfo& info : universe_.systems)
+    {
+        taken.insert(Gen::FoldName(info.name));
+        taken.insert(Gen::FoldName(info.id));
+    }
+    for (const auto& kv : systems_)
+        if (!kv.second.agg.givenName.empty())
+            taken.insert(Gen::FoldName(kv.second.agg.givenName));
+    return taken;
 }
 
 bool Simulation::Knows(const ClientSession& s, const std::string& systemId) const

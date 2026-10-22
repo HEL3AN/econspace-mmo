@@ -276,7 +276,7 @@ Pay off the bounty a faction has on you, at a station, so its ships stop hunting
 
 ### `name_system`
 
-Name the system you are in. Beyond the wormhole a system has only a designation (W-3.2) until whoever got there first names it -- once, for everyone who has it on their charts. 3 to 24 characters, starting with a letter; letters, digits, spaces, ' and -; not a name another system has.
+Name the system you are in. Beyond the wormhole a system has only a designation (W-3.2) until whoever got there first names it -- once, for everyone who has it on their charts. A system its people live in keeps their name, and one a faction charted before any pilot came keeps the faction's name or its designation. 3 to 24 characters, starting with a letter; letters, digits, spaces, ' and -; not a name another system has.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
@@ -359,7 +359,7 @@ Search a wreck (a derelict observe marks 'lootable') and take what it pays. A wr
 | URI | Name | What |
 |---|---|---|
 | `econspace://system` | Current system | Everything visible where the ship is, in full |
-| `econspace://galaxy` | Galaxy | Every system on your charts -- the public charts, your own finds and your corporation's -- with its security, controller and gate links, and where your corporation's front is open: another side holds it and you or nobody hold a system next door, so a claim may be laid or a structure besieged there (never a limit on guns); the systems their gates lead to, uncharted; plus recent galactic news |
+| `econspace://galaxy` | Galaxy | Every system on your charts -- the public charts, your own finds and your corporation's -- with its security, controller, gate links and who charted it or found it first, and where your corporation's front is open: another side holds it and you or nobody hold a system next door, so a claim may be laid or a structure besieged there (never a limit on guns); the systems their gates lead to, uncharted; plus recent galactic news |
 
 ## Prompts
 

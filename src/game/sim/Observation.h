@@ -131,6 +131,11 @@ std::string DescribeLoss(const Proto::LossView& loss);
 // which ships they let through (#342 S9). Empty when there is nothing to say.
 std::string DescribeScan(const View& view);
 
+// Whose charts put a system on the map and who reached it first (#431), in one phrase the
+// map, observe and the galaxy resource all say alike: "charted by Syndicate", "found by
+// Vega", or both when a pilot was there before a faction. Empty for a centre's own space.
+std::string ChartsOf(const WorldLoader::SystemInfo& si);
+
 // Who owns the station the player is docked at, from the layout. Independent when not
 // docked or the layout does not say -- which is also what the server assumes.
 FactionId DockedFaction(const View& view);

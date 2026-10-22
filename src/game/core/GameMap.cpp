@@ -11,6 +11,7 @@
 #include "core/Archetype.h"
 #include "core/ShipDesign.h"
 #include "economy/Resource.h"
+#include "sim/Observation.h"
 #include "sim/Orders.h"
 #include "sim/SaveFile.h"
 #include "ui/Desk.h"
@@ -765,7 +766,7 @@ void Game::DrawGalaxyMap()
             const float     detailW = fmaxf(nameW, u(s.charted ? 190.0f : 80.0f));
             const int       lines = !s.charted ? 1
                                     : cur      ? (CanNameHere() ? 5 : 4)
-                                               : (s.discoverer.empty() ? 2 : 3);
+                                               : (Obs::ChartsOf(s).empty() ? 2 : 3);
             const float     bottom = (float)lineY(lines) + line - nameY;
             const Rectangle nameBox{ p.x + gapX, nameY, nameW, (float)namePx + u(2.0f) };
             const Rectangle leftBox{ p.x - gapX - nameW, nameY, nameW, (float)namePx + u(2.0f) };
@@ -882,9 +883,11 @@ void Game::DrawGalaxyMap()
         const char* whose = s.knownBy == "own"    ? "  -- your charts only"
                             : s.knownBy == "corp" ? "  -- your corporation's charts"
                                                   : "";
-        if (detail && !s.discoverer.empty())
-            Ui::Text(TextFormat("found by %s%s", s.discoverer.c_str(), whose), (int)lx,
-                     lineY(cur ? 4 : 3), notePx, Ui::TEXT_DIM);
+        // Whose charts made it public, and who got here first: "charted by Syndicate".
+        const std::string charts = detail ? Obs::ChartsOf(s) : std::string();
+        if (!charts.empty())
+            Ui::Text(TextFormat("%s%s", charts.c_str(), whose), (int)lx, lineY(cur ? 4 : 3), notePx,
+                     Ui::TEXT_DIM);
         if (cur && CanNameHere())
         {
             if (desk_.KeyboardFocus().Holds(WIN_MAP, "name"))

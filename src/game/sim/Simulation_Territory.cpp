@@ -170,7 +170,7 @@ void Simulation::StepClaims(bool settling)
                                                  : std::string();
         if (isFaction)
         {
-            TakeControl(a, bestFaction);  // clears the holder
+            TakeControl(kv.first, bestFaction);  // clears the holder
             const std::string text = FactionName(bestFaction) + " took " + where + " from " + from;
             if (was != nullptr && was->Ceo() != nullptr)
                 corps_.Record(was->Ceo()->account, Ev::Kind::Notice, text);

@@ -943,6 +943,17 @@ std::string Compass(float dx, float dy)
     return points[idx];
 }
 
+std::string ChartsOf(const WorldLoader::SystemInfo& si)
+{
+    std::string out;
+    FactionId   by;
+    if (!si.chartedBy.empty())
+        out = "charted by " + (Factions::Find(si.chartedBy, by) ? FactionName(by) : si.chartedBy);
+    if (!si.discoverer.empty())
+        out += (out.empty() ? "" : ", ") + std::string("found by ") + si.discoverer;
+    return out;
+}
+
 std::string Describe(const View& view, Detail detail)
 {
     if (view.snapshot == nullptr)
@@ -962,6 +973,9 @@ std::string Describe(const View& view, Detail detail)
             {
                 sysName = si.name;
                 sysExtra = Fmt("  security %.2f", si.security);
+                const std::string charts = ChartsOf(si);
+                if (!charts.empty())
+                    sysExtra += "  " + charts;
                 break;
             }
     }
