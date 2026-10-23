@@ -4004,6 +4004,31 @@ int main(int argc, char** argv)
             sizes = { 20, 100, 500, 1000 };
         return MacroBench(sizes, seconds, seed, allHot, players);
     }
+    // econserver fleetbench [--days D] [--systems N] [--every H] [seed ...]: the long run of
+    // factions that buy their ships (#464), as a table every H world hours; exit 1 if a
+    // faction that still holds systems let its ships fall to nothing. Without seeds, 1 2 3.
+    if (argc > 1 && std::string(argv[1]) == "fleetbench")
+    {
+        std::vector<uint64_t> seeds;
+        double                days = 7.0, every = 12.0, shock = 0.0;
+        int                   systems = 100;
+        for (int i = 2; i < argc; i++)
+            if (std::string(argv[i]) == "--days" && i + 1 < argc)
+                days = atof(argv[++i]);
+            else if (std::string(argv[i]) == "--systems" && i + 1 < argc)
+                systems = std::max(1, atoi(argv[++i]));
+            else if (std::string(argv[i]) == "--shock" && i + 1 < argc)
+                shock = atof(argv[++i]);
+            else if (std::string(argv[i]) == "--every" && i + 1 < argc)
+                every = atof(argv[++i]);
+            else if (std::string(argv[i]) == "--data" && i + 1 < argc)
+                ++i;  // read where the data folder is found
+            else if (std::strtoull(argv[i], nullptr, 10) > 0)
+                seeds.push_back(std::strtoull(argv[i], nullptr, 10));
+        if (seeds.empty())
+            seeds = { 1, 2, 3 };
+        return FleetBench(seeds, days, systems, every, shock);
+    }
     if (argc > 1 && std::string(argv[1]) == "validate")
         return ValidateCommand(argc > 2 ? argv[2] : std::string());
     if (argc > 1 && std::string(argv[1]) == "regenerate")

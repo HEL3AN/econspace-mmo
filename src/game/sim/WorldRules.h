@@ -474,10 +474,24 @@ struct Charts
 // its people's culture as a prior weighing `culture` of the whole: c = 0 is the economy
 // alone. `cultures` maps a culture id (a native theme, a major's `culture`) to weights by
 // family or line id; one that names no family, or no line, leans neither way in it.
+//
+// A holding grows by buying ships (slice 4): from its holder's treasury, at its own market's
+// ask, the goods leaving the market -- so money limits how many ships, not only how good
+// (owner, 2026-10-23). A good dearer than `dearAt` times its base is not bought; the order
+// falls to the next fit, and to the doctrine's own design last. What keeps a poor faction
+// from emptying the map is the world's own feedback: every holding pays its holder
+// `holdingIncome` credits an hour at full prosperity (half that at none), and a faction
+// whose holdings stand below `defensiveBelow` of what they keep plans no outposts, sieges
+// or Anchors until they recover. A new world's factions begin with `foundingHours` of their
+// holdings' income in the treasury, to man what they hold.
 struct Styles
 {
     double                                               culture = 0.25;
     double                                               hours = 24.0;
+    double                                               dearAt = 2.0;
+    double                                               holdingIncome = 1500.0;
+    double                                               defensiveBelow = 0.4;
+    double                                               foundingHours = 24.0;
     std::map<std::string, std::map<std::string, double>> cultures;
 };
 

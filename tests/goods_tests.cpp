@@ -17,6 +17,7 @@
 #include "sim/Protocol.h"
 #include "sim/SaveSchema.h"
 #include "sim/Simulation.h"
+#include "sim/WorldRules.h"
 #include "temp_dir.h"
 #include "factions_named.h"
 
@@ -280,6 +281,17 @@ TEST_CASE("stations make and use goods in the coarse pass, and the stock outlive
     const ResourceType steel = Good::Named("Steel");
     std::string        refinery;
     double             stock = 0.0;
+    // Factions buy their guns at these markets (#464): with no money, they leave the steel to
+    // pile up, which is what this case watches.
+    const WorldRules::Styles rich = WorldRules::StyleRules();
+    WorldRules::Styles       poor = rich;
+    poor.holdingIncome = 0.0;
+    WorldRules::SetStyleRules(poor);
+    struct Restore
+    {
+        WorldRules::Styles was;
+        ~Restore() { WorldRules::SetStyleRules(was); }
+    } restore{ rich };
     {
         Simulation sim;
         StartServer(sim);

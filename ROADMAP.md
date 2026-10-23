@@ -63,7 +63,7 @@ An honest snapshot of where EconSpace is and where it is going. The project inve
 
 In order. Releases are the owner's call.
 
-1. **#464 — NPC fits from the living world.** Gang, faction, wealth and location decide an NPC's fit; design first.
+1. **#464 — NPC fits from the living world.** Gang, faction, wealth and location decide an NPC's fit. Slices 1-4 are built (variants, fleets, region style, buying with money limiting the count); next: refit and drift, pirates and captures, what players and agents see, damage types.
 2. **#466 — a corporation's enemy list**, with the war declarations #431 deferred.
 3. **#425-#427 — playtest polish** from 0.1: docking, reconnect, the job board, planet surfaces, UI overlaps and raw numbers.
 4. **A playtest on a fresh world** (so much has changed since 0.1 that an old world would not show it), then **0.2** if the owner decides to tag it.

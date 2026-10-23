@@ -12,3 +12,14 @@
 // hot as before cold systems (#295), for the comparison.
 int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t seed, bool allHot,
                int players);
+
+// `econserver fleetbench` (#464, slice 4): the long run of a world whose factions buy their
+// ships. For each seed, a centre, its frontier and a region of `regionSystems` run cold for
+// `days` world days, one coarse pass at a time, and every `everyHours` the table prints, per
+// faction that holds anything, its ships in all (presence), its holdings, what they keep, and
+// its treasury -- the curves the slice's PR shows. Fails (exit 1) where a faction that still
+// holds systems has let its ships fall to nothing: the poor faction emptying the map the
+// owner asked to guard against. With `shockHours`, at that hour every holding loses 70% of
+// its ships at once -- a war everywhere -- and the table shows what comes back, and how fast.
+int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystems,
+               double everyHours, double shockHours);

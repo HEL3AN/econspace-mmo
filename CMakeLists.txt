@@ -554,6 +554,7 @@ add_executable(tests
     tests/patrol_tests.cpp         # a corporation's own AI patrols (#431 slice 12)
     tests/fleet_tests.cpp          # what each side in a system flies, design by design (#464)
     tests/style_tests.cpp          # what a region's NPCs fly, from its markets (#464)
+    tests/buying_tests.cpp         # holdings buy their ships, and money limits how many (#464)
     tests/outpost_tests.cpp        # outposts placed by purpose, and what each looks like (#318)
     tests/cold_tests.cpp           # ships only where a player is; the rest as numbers (#295)
     tests/hardening_tests.cpp      # exploits and lost saves closed before a public playtest (#341)

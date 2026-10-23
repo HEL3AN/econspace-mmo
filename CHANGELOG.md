@@ -31,6 +31,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 - Police answer a crime from real forces, by the system's security (#447); security is bought with police, and it matters (#460).
 - NPCs and players fight by one combat model: an NPC fires its design's real fit (#463).
 - A siege hits as hard as the faction's warships do (#458).
+- Factions buy the ships their holdings grow by, at their markets in the region's style, and money limits how many; weapon costs now come from family goods, so refit prices change for players too (#464).
 
 ### Corporations and structures
 - A corporation keeps its own AI patrols (#465): weighed by sieges, bought, fully set, and unseen members counted (#467).
