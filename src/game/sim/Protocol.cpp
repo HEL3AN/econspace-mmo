@@ -612,6 +612,8 @@ std::string EncodeCommand(const Command& c)
         j["payB"] = c.payBountyFaction;
     if (!c.nameSystem.empty())
         j["nameSys"] = c.nameSystem;
+    if (!c.nameSystemId.empty())
+        j["nameSysId"] = c.nameSystemId;
     flag("dbgMoney", c.debugMoney);
     number("acceptM", c.acceptOffer, -1);
     number("completeM", c.completeMission, -1);
@@ -847,6 +849,7 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadInt(j, "insure", -1, 0, ID_MAX, out.insureShip);
     ok = ok && ReadText(j, "payB", out.payBountyFaction);
     ok = ok && ReadText(j, "nameSys", out.nameSystem);
+    ok = ok && ReadText(j, "nameSysId", out.nameSystemId);
     ok = ok && ReadBool(j, "dbgMoney", out.debugMoney);
     ok = ok && ReadInt(j, "acceptM", -1, 0, ID_MAX, out.acceptOffer);
     ok = ok && ReadInt(j, "completeM", -1, 0, ID_MAX, out.completeMission);
@@ -2108,6 +2111,8 @@ std::string EncodeUniverse(const WorldLoader::Universe& u)
             sys.back()["live"] = true;
         if (si.drifted)  // cut off, or in the archive (#431 slice 15)
             sys.back()["drifted"] = true;
+        if (si.nativeNamed)  // its name is its people's (#513)
+            sys.back()["nat"] = true;
     }
     json links = json::array();
     for (const WorldLoader::SystemLink& l : u.links)
@@ -2147,6 +2152,7 @@ bool DecodeUniverse(const std::string& s, WorldLoader::Universe& out)
             si.observed = WorldLoader::SightingFrom(sj.value("seen", json()));
             si.observedLive = sj.value("live", false);
             si.drifted = sj.value("drifted", false);
+            si.nativeNamed = sj.value("nat", false);
             out.systems.push_back(si);
         }
     if (j.contains("links") && j["links"].is_array())

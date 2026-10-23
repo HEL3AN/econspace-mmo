@@ -250,6 +250,9 @@ void Game::OpenMapMenu(const std::string& system, Vector2 at)
         if (galaxyState_.chartBuyer && g.id == system && g.chartPrice > 0)
             items.push_back({ TextFormat("Sell charts  %d cr", g.chartPrice),
                               [this, system] { SellChart(system); } });
+    // Its discoverer may name it from anywhere (#513); anyone else is told why not.
+    items.push_back(
+        { "Name this system", [this, system] { BeginNaming(system); }, NamingRefusal(system) });
     items.push_back({ navigation_.Favorite(system) ? "Remove from favourites" : "Add to favourites",
                       [this, system]
                       {
@@ -259,6 +262,65 @@ void Game::OpenMapMenu(const std::string& system, Vector2 at)
     contextMenu_.Open(at, std::move(items), MapSystemName(system));
 }
 
+// The star the map is about (#513): its name, who found it, and what can be done to name it.
+// The button is always there for the one selected; where naming is refused it is dimmed and the
+// line under it says why.
+void Game::DrawMapSystemInfo(Ui::Layout& L)
+{
+    using Ui::Box;
+    using Ui::TextStyle;
+    const Ui::Theme&               t = Ui::CurrentTheme();
+    const std::string              id = MapSelection();
+    const WorldLoader::SystemInfo* si = nullptr;
+    for (const WorldLoader::SystemInfo& s : universe_.systems)
+        if (s.id == id)
+            si = &s;
+    if (si == nullptr)
+        return;
+    L.Text(si->name, TextStyle::Title().Wrap());
+    if (!si->designation.empty())
+        L.Text(si->designation, TextStyle::Small().Tint(t.colors.dim));
+    const std::string charts = Obs::ChartsOf(*si);
+    if (!charts.empty())
+        L.Text(charts, TextStyle::Small().Tint(t.colors.dim).Wrap());
+
+    if (desk_.KeyboardFocus().Holds(WIN_MAP, "name") && nameTarget_ == id)
+    {
+        // The rules a name must keep (#431 N3), checked as it is typed: the field says which
+        // one it breaks, and a name that breaks one is not sent. The server checks again,
+        // with its own word list, and says why in the journal.
+        std::string problem;
+        if (!nameBuf_.empty() && Names::AllowedSystemName(nameBuf_, {}, problem))
+            for (const WorldLoader::SystemInfo& o : universe_.systems)
+                if (Names::SameName(o.name, nameBuf_) || Names::SameName(o.id, nameBuf_) ||
+                    Names::SameName(o.designation, nameBuf_))
+                    problem = "there is already a system called " + o.name;
+        Ui::TextFieldOptions o;
+        o.maxLength = 24;
+        o.placeholder = "a name for this system";
+        const Ui::EditResult r = L.TextField("name", nameBuf_, o);
+        // It rides on the next numbered input like any one-shot intent: a command of its own
+        // would be one more tick of movement the server steps and this client never predicted.
+        if (r.submitted && !nameBuf_.empty() && problem.empty())
+        {
+            cmd_.nameSystem = nameBuf_;
+            cmd_.nameSystemId = id;
+        }
+        if (!problem.empty())
+            L.Text("Not a name here: " + problem, TextStyle::Small().Tint(t.colors.warn).Wrap());
+        else
+            L.Text("3-24 characters; letters, digits, spaces, ' and -; unique",
+                   TextStyle::Small().Tint(t.colors.dim).Wrap());
+        L.Text("[Enter] name it   [Esc] cancel", TextStyle::Small());
+        return;
+    }
+    const std::string why = NamingRefusal(id);
+    if (L.Button("nameSystem", "Name this system  [N]", false, why.empty()))
+        BeginNaming(id);
+    if (!why.empty())
+        L.Text("Can't name it: " + why, TextStyle::Small().Tint(t.colors.dim).Wrap());
+}
+
 // The map's sidebar: the route, the favourites, and the legend with the news.
 void Game::DrawMapSidebar(Ui::Layout& L)
 {
@@ -266,6 +328,8 @@ void Game::DrawMapSidebar(Ui::Layout& L)
     using Ui::TextStyle;
     const Ui::Theme& t = Ui::CurrentTheme();
     const TextStyle  note = TextStyle::Small().Wrap();
+    DrawMapSystemInfo(L);
+    L.Divider();
     L.Tabs("mapTabs", { "Route", "Favourites", "Legend", "Charts" }, mapTab_);
     if (!mapNotice_.empty())
         L.Text(mapNotice_, TextStyle::Small().Tint(t.colors.warn).Wrap());
@@ -603,7 +667,6 @@ void Game::DrawGalaxyMap()
     auto        u = [k](float units) { return units * k; };
     const int   namePx = (int)Ui::Px(t.fontSize.body + 3.0f);
     const int   notePx = (int)Ui::Px(t.fontSize.label + 1.0f);
-    const int   hintPx = (int)Ui::Px(t.fontSize.body + 1.0f);
     const float line = (float)notePx + u(3.0f);  // one line of notes under the name
 
     const std::vector<WorldLoader::SystemInfo>& systems = universe_.systems;
@@ -614,7 +677,6 @@ void Game::DrawGalaxyMap()
                  (int)(area.y + area.height * 0.5f), namePx, t.colors.dim);
         return;
     }
-    Vector2 nameAt{ -1.0f, -1.0f };  // where the name field goes, while it is being typed in
 
     // Extents in mapPos.
     float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
@@ -787,17 +849,25 @@ void Game::DrawGalaxyMap()
 
     // A right click on a star opens its menu (#432): the nearest within reach of the cursor.
     std::string clickedSystem;
-    if (over && Ui::MousePressed(MOUSE_BUTTON_RIGHT))
+    // Either click selects it (#513): the sidebar is about the star last clicked.
+    if (over && (Ui::MousePressed(MOUSE_BUTTON_RIGHT) || Ui::MousePressed(MOUSE_BUTTON_LEFT)))
     {
-        float nearest = u(14.0f);
+        float       nearest = u(14.0f);
+        std::string picked;
         for (const auto& s : systems)
         {
             const float d = Vector2Distance(m, toScreen(s.mapPos));
             if (d <= nearest)
             {
                 nearest = d;
-                clickedSystem = s.id;
+                picked = s.id;
             }
+        }
+        if (!picked.empty())
+        {
+            mapSelected_ = picked;
+            if (Ui::MousePressed(MOUSE_BUTTON_RIGHT))
+                clickedSystem = picked;
         }
     }
 
@@ -892,7 +962,7 @@ void Game::DrawGalaxyMap()
                 nameW += u(8.0f) + (float)Ui::TextWidth(s.designation.c_str(), notePx);
             const float     detailW = fmaxf(nameW, u(s.charted ? 190.0f : 80.0f));
             const int       lines = !s.charted ? 1
-                                    : cur      ? (CanNameHere() ? 6 : 5)
+                                    : cur      ? 5
                                                : (Obs::ChartsOf(s).empty() && !s.drifted ? 3 : 4);
             const float     bottom = (float)lineY(lines) + line - nameY;
             const Rectangle nameBox{ p.x + gapX, nameY, nameW, (float)namePx + u(2.0f) };
@@ -985,6 +1055,8 @@ void Game::DrawGalaxyMap()
                                 : Ui::TEXT_DIM);
         if (cur)
             DrawCircleLines((int)p.x, (int)p.y, u(16.0f), Fade(Ui::ACCENT, 0.6f));
+        if (s.id == MapSelection())  // the star the sidebar is about (#513)
+            DrawCircleLines((int)p.x, (int)p.y, u(13.0f), Fade(Ui::TEXT, 0.8f));
         if (named)
         {
             Ui::Text(s.name.c_str(), (int)lx, (int)nameY, namePx, cur ? Ui::ACCENT : Ui::TEXT);
@@ -1074,62 +1146,10 @@ void Game::DrawGalaxyMap()
         if (!charts.empty())
             Ui::Text(TextFormat("%s%s", charts.c_str(), whose), (int)lx, lineY(cur ? 5 : 4), notePx,
                      s.drifted ? t.colors.warn : Ui::TEXT_DIM);
-        if (cur && CanNameHere())
-        {
-            if (desk_.KeyboardFocus().Holds(WIN_MAP, "name"))
-                nameAt = { lx, (float)lineY(5) + line * 0.5f };  // drawn after the clip
-            else
-                Ui::Text("[N] name this system", (int)lx, lineY(6), hintPx, Ui::ACCENT);
-        }
     }
 
     EndScissorMode();
 
     if (!clickedSystem.empty())
         OpenMapMenu(clickedSystem, m);
-
-    // The name field (#145): a Ui::Layout text field with the keyboard routed to it by the
-    // desk (#297). Enter sends the name on the next numbered input; Esc, or a click
-    // elsewhere, puts it away.
-    if (nameAt.x >= 0.0f)
-    {
-        // The rules a name must keep (#431 N3), checked as it is typed: the field says which
-        // one it breaks, and a name that breaks one is not sent. The server checks again,
-        // with its own word list, and says why in the journal.
-        std::string problem;
-        if (!nameBuf_.empty() && Names::AllowedSystemName(nameBuf_, {}, problem))
-            for (const WorldLoader::SystemInfo& si : universe_.systems)
-                if (Names::SameName(si.name, nameBuf_) || Names::SameName(si.id, nameBuf_) ||
-                    Names::SameName(si.designation, nameBuf_))
-                    problem = "there is already a system called " + si.name;
-        const Rectangle field{ nameAt.x, nameAt.y, Ui::Px(260.0f),
-                               Ui::Px(t.metrics.buttonHeight + t.fontSize.small * 3.0f +
-                                      t.metrics.rowGap * 2.0f) };
-        Ui::Layout&     N = mapNameLayout_;
-        N.Begin(desk_.SurfaceFrame(WIN_MAP, field));
-        N.Column(Ui::Box().Grow().Gap(t.metrics.rowGap),
-                 [&]
-                 {
-                     Ui::TextFieldOptions o;
-                     o.maxLength = 24;
-                     o.placeholder = "a name for this system";
-                     const Ui::EditResult r = N.TextField("name", nameBuf_, o);
-                     // The server checks it and says why not in the journal, which flashes
-                     // here; a name it accepts comes back to everyone in the galaxy index. It
-                     // rides on the next numbered input like any one-shot intent: a command of
-                     // its own would be one more tick of movement the server steps and this
-                     // client never predicted.
-                     if (r.submitted && !nameBuf_.empty() && problem.empty())
-                         cmd_.nameSystem = nameBuf_;
-                     if (!problem.empty())
-                         N.Text("Not a name here: " + problem,
-                                Ui::TextStyle::Small().Tint(t.colors.warn));
-                     else
-                         N.Text("3-24 characters; letters, digits, spaces, ' and -; unique",
-                                Ui::TextStyle::Small().Tint(Ui::TEXT_DIM));
-                     N.Text("[Enter] name it   [Esc] cancel", Ui::TextStyle::Small());
-                 });
-        N.End();
-        N.Draw();
-    }
 }

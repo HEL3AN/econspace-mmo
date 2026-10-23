@@ -5,6 +5,8 @@
 
 #include "sim/Simulation.h"
 #include "sim/Names.h"
+#include "sim/NamingRule.h"
+#include "sim/Observation.h"
 #include "sim/SaveFile.h"
 
 #include "core/Route.h"
@@ -1717,6 +1719,7 @@ WorldLoader::Universe Simulation::BuildIndex(const ClientSession* s) const
             WorldLoader::SystemInfo& si = out.systems.back();
             si.discoverer = a.discoverer;
             si.chartedBy = a.chartedBy;
+            si.nativeNamed = !a.givenName.empty() && a.givenName == NativeNameOf(info.id);
             if (!a.publicChart && s != nullptr)  // whose charts: theirs, or their corporation's
                 si.knownBy = s->known.count(ChartKey(info.id)) != 0 ? "own" : "corp";
             if (s != nullptr)  // ...and what they saw there, and when (#431 slice 14)
@@ -1778,40 +1781,46 @@ WorldLoader::Universe Simulation::BuildIndex(const ClientSession* s) const
 
 bool Simulation::NameSystem(ClientSession& s, const std::string& name)
 {
-    auto refuse = [&](const std::string& why)
+    return NameSystem(s, s.systemId, name);
+}
+
+std::string Simulation::NamingRefusal(const ClientSession& s, const std::string& systemId,
+                                      const std::string& name) const
+{
+    auto it = systems_.find(systemId);
+    if (it == systems_.end())
+        return "only a system beyond the wormhole can be named";
+    if (InCentre(systemId))
+        return SystemName(systemId) + " was named long before you were born";
+    if (regionDocs_.count(systemId) == 0)
+        return "only a system beyond the wormhole can be named";
+    const SystemAggregate&  a = it->second.agg;
+    WorldLoader::SystemInfo si;
+    si.name = SystemName(systemId);
+    si.designation = a.givenName.empty() ? std::string() : systemId;
+    si.nativeNamed = !a.givenName.empty() && a.givenName == NativeNameOf(systemId);
+    si.discoverer = a.discoverer;
+    si.chartedBy = a.chartedBy;
+    si.knownBy = a.publicChart ? "" : "own";
+    const std::string pilot = s.ship ? s.ship->GetPilotName() : std::string();
+    if (const std::string why = Names::NamingRefusal(si, pilot); !why.empty())
+        return why;
+    return name.empty() ? std::string() : NameProblem(name);
+}
+
+bool Simulation::NameSystem(ClientSession& s, const std::string& systemId, const std::string& name)
+{
+    if (const std::string why = NamingRefusal(s, systemId, name); !why.empty())
     {
         s.RecordEvent(Ev::Kind::Notice, "Not named: " + why);
         return false;
-    };
-    auto it = systems_.find(s.systemId);
-    if (it == systems_.end() || regionDocs_.count(s.systemId) == 0)
-        return refuse("only a system beyond the wormhole can be named");
-    if (InCentre(s.systemId))
-        return refuse(SystemName(s.systemId) + " was named long before you were born");
-    SystemAggregate& a = it->second.agg;
-    // Its people named it long ago (N1): theirs, revealed at first contact.
-    if (const std::string native = NativeNameOf(s.systemId); !native.empty())
-        return refuse("its people call it " + native);
-    if (!a.givenName.empty())
-        return refuse(SystemName(s.systemId) + " already has its name");
-    if (a.discoverer.empty() && !a.chartedBy.empty())  // a faction came first (#431)
-    {
-        FactionId by;
-        return refuse(Factions::Find(a.chartedBy, by) ? FactionName(by) + " charted it first"
-                                                      : "a faction charted it first");
     }
+    SystemState&      st = systems_.find(systemId)->second;
     const std::string pilot = s.ship ? s.ship->GetPilotName() : std::string();
-    if (a.discoverer.empty() || a.discoverer != pilot)
-        return refuse("only " +
-                      (a.discoverer.empty() ? std::string("its discoverer") : a.discoverer) +
-                      ", who got here first, may name it");
-    if (const std::string why = NameProblem(name); !why.empty())
-        return refuse(why);
-
-    const std::string designation = SystemName(s.systemId);
-    // A client already here keeps the planet names its layout gave it until it next
+    const std::string designation = SystemName(systemId);
+    // A client already there keeps the planet names its layout gave it until it next
     // enters; everyone after sees the new ones.
-    CallSystem(it->second, name);
+    CallSystem(st, name);
     PushEvent(designation + " is now " + name + ", named by " + pilot);
     s.RecordEvent(Ev::Kind::Notice, "Named " + designation + " " + name);
     return true;

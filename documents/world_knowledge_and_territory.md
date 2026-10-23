@@ -129,7 +129,7 @@ centres' label for a place they have not seen.
 **N2. Empty systems keep their designation until the discoverer names them.** Only the
 discoverer may name one -- never the later owner, never a faction that arrives after.
 *Why:* naming is the explorer's reward (K5); an owner gets the tax and the docks, not the
-history.
+history. The discoverer names it **from anywhere** (map, the star's menu, or the agent tool with a system), the journal says so on discovery, and a refusal always says why (#513).
 
 **N3. Names have rules:** 3 to 24 characters of letters, digits, spaces, `'` and `-`
 (today's `Names::ValidSystemName`), unique in the world regardless of case, through a word

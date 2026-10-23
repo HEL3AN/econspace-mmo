@@ -168,7 +168,13 @@ public:
     // discoverer, never a later owner, and never a system its people or a faction named
     // (#431 N1, N2); and only a name NameProblem passes (N3). Says why not in the player's
     // journal when it cannot.
-    bool NameSystem(ClientSession& s, const std::string& name);
+    bool NameSystem(ClientSession& s, const std::string& name);  // the system the ship is in
+    // From anywhere (#513): `systemId` may be any system the pilot has found.
+    bool NameSystem(ClientSession& s, const std::string& systemId, const std::string& name);
+    // Why `s` may not name `systemId` -- and, when `name` is not empty, not that name -- in
+    // words; empty if they may. The one place the rules are checked.
+    std::string NamingRefusal(const ClientSession& s, const std::string& systemId,
+                              const std::string& name) const;
     // Why `name` may not be a system's name (#431 N3), in words for whoever chose it: its
     // shape, the word filter (built in, and the server's BlockedNames), or another system --
     // its name, designation or id, or what its natives will call it -- has it, whatever the

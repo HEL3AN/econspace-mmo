@@ -9,6 +9,7 @@
 #include "gen/Names.h"
 #include "gen/Region.h"
 #include "sim/Names.h"
+#include "sim/NamingRule.h"
 #include "sim/Observation.h"
 #include "sim/SaveSchema.h"
 #include "sim/Simulation.h"
@@ -574,4 +575,96 @@ TEST_CASE("an admin renames or clears a name; it is news, and the discoverer is 
     REQUIRE(sim.LoadWorld(world) == Save::Result::Ok);
     CHECK(sim.SystemById(frontier)->agg.givenName == "Final Word");
     CHECK(sim.SystemById(frontier)->agg.discoverer == "ann");
+}
+
+TEST_CASE("the discoverer names a system from anywhere, and the journal says how (#513)")
+{
+    auto              sim = World();
+    ClientSession&    ann = Pilot(*sim, "ann", sim->Universe().startId);
+    const std::string frontier = Found(*sim, ann);
+    // The discovery says where to name it.
+    bool told = false;
+    for (const Ev::Event& e : ann.EventsSince(0))
+        told = told || e.text.find("you may name it (map") != std::string::npos;
+    CHECK(told);
+
+    // She leaves: the ship is nowhere near, and the name is still hers to give.
+    sim->ServerEnterSystem(ann, sim->Universe().startId, frontier);
+    REQUIRE(ann.systemId != frontier);
+    CHECK(sim->NamingRefusal(ann, frontier, "Annsworld").empty());
+    CHECK_FALSE(sim->NameSystem(ann, frontier, "Ab"));  // a bad name is refused, with why
+    CHECK(sim->NamingRefusal(ann, frontier, "Ab") == "a name is 3 to 24 characters");
+    CHECK(LastSaid(ann) == "Not named: a name is 3 to 24 characters");
+    CHECK(sim->NameSystem(ann, frontier, "Annsworld"));
+    CHECK(NameOf(*sim, frontier) == "Annsworld");
+    // Once: a second name is refused with the name it has.
+    CHECK(sim->NamingRefusal(ann, frontier, "Other Name") == "Annsworld already has its name");
+}
+
+TEST_CASE("a refusal to name says why, whoever asks and wherever they are (#513)")
+{
+    auto              sim = World();
+    ClientSession&    ann = Pilot(*sim, "ann", sim->Universe().startId);
+    ClientSession&    bo = Pilot(*sim, "bo", sim->Universe().startId);
+    const std::string frontier = Found(*sim, ann);
+
+    // Not the discoverer, from the other end of the map.
+    CHECK(sim->NamingRefusal(bo, frontier, "Bo's Rest") ==
+          "only ann, who got here first, may name it");
+    CHECK_FALSE(sim->NameSystem(bo, frontier, "Bo's Rest"));
+    CHECK(sim->SystemById(frontier)->agg.givenName.empty());
+    // The same words, from what the index tells a client.
+    {
+        const WorldLoader::Universe    index = sim->KnownUniverseFor(ann);
+        const WorldLoader::SystemInfo* si = In(index, frontier);
+        REQUIRE(si != nullptr);
+        CHECK(Names::NamingRefusal(*si, "ann").empty());
+        CHECK(Names::NamingRefusal(*si, "bo") == "only ann, who got here first, may name it");
+    }
+
+    const std::string centre = sim->Universe().startId;
+
+    // A faction came first, and gave it nothing: the faction's, not a pilot's.
+    std::string other;
+    for (const std::string& n : sim->Neighbors(frontier))
+        if (n != centre && sim->SystemById(n) != nullptr &&
+            sim->SystemById(n)->agg.discoverer.empty() && !sim->SystemById(n)->agg.publicChart &&
+            sim->SystemById(n)->agg.givenName.empty())
+            other = n;
+    if (!other.empty())
+    {
+        sim->SystemById(other)->agg.chartedBy = Factions::Id(Fac::Syndicate());
+        CHECK(sim->NamingRefusal(ann, other, "Annsworld") == "Syndicate charted it first");
+    }
+
+    // Not a system there is.
+    CHECK(sim->NamingRefusal(ann, "no-such-system", "Annsworld") ==
+          "only a system beyond the wormhole can be named");
+}
+
+TEST_CASE("a name that is its people's cannot be given, and the index says so (#513, N1)")
+{
+    Simulation sim;
+    Galaxy(sim, 4);
+    const std::vector<std::string> homes = NativeSystems(sim);
+    REQUIRE_FALSE(homes.empty());
+    ClientSession& ann = Pilot(sim, "ann", sim.Universe().startId);
+    sim.ServerEnterSystem(ann, homes[0], ann.systemId);
+    const std::string native = sim.NativeNameOf(homes[0]);
+    CHECK(sim.NamingRefusal(ann, homes[0], "Annsworld") == "its people call it " + native);
+    // A centre is named long before anyone is born.
+    const std::string centre = sim.Starts().front().systemId;
+    CHECK(sim.NamingRefusal(ann, centre, "Annsworld") ==
+          sim.SystemName(centre) + " was named long before you were born");
+    const WorldLoader::Universe    index = sim.KnownUniverseFor(ann);
+    const WorldLoader::SystemInfo* si = In(index, homes[0]);
+    REQUIRE(si != nullptr);
+    CHECK(si->nativeNamed);
+    CHECK(Names::NamingRefusal(*si, "ann") == "its people call it " + native);
+    // ...and it survives the wire.
+    WorldLoader::Universe back;
+    REQUIRE(Proto::DecodeUniverse(Proto::EncodeUniverse(index), back));
+    const WorldLoader::SystemInfo* sb = In(back, homes[0]);
+    REQUIRE(sb != nullptr);
+    CHECK(sb->nativeNamed);
 }

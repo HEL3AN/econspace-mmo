@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    63;  // 63: personal hangars at NPC stations (#472) -- a container "hangar", a PlayerView's
+    64;  // 64: a Command's nameSystem may name any system by `nameSystemId`, not only the one the
+         // ship is in, and the galaxy index marks a name that is its people's (#513);
+         // 63: personal hangars at NPC stations (#472) -- a container "hangar", a PlayerView's
          // hangar, a Command's rentHangar, and where a sale takes from and a purchase goes;
          // 62: one verb moves goods between containers (#472) -- a Command's move names where
          // from, where to, the good and how many;
@@ -290,8 +292,10 @@ struct Command
     bool        debugMoney = false;    // F1: grant debug money
     int         acceptOffer = -1;      // accept the mission offer by its number (#425; -1 none)
     int         completeMission = -1;  // hand in active mission by index (-1 none)
-    // Name the system the ship is in, as its discoverer (#145); empty -- not this command.
+    // Name a system as its discoverer (#145); empty -- not this command. From anywhere
+    // (#513): `nameSystemId` says which, and empty means the one the ship is in.
     std::string nameSystem;
+    std::string nameSystemId;
 
     // Standing order (one-shot, #26/#72). The client sends an INTENT, exactly as it does
     // for docking or trading: the server decides whether the order is possible and owns
