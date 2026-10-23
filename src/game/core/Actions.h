@@ -119,8 +119,9 @@ std::vector<Action> For(const Target& target, Vector2 from);
 // an upgrade, which is built onto a structure and offered by For.
 std::vector<Action> ForPoint(Vector2 point, Vector2 from, const std::vector<Blueprint>& blueprints);
 
-// What the client knows about a mission it might act on. `index` is its number in the
-// snapshot's list -- the number accept_mission and complete_mission take.
+// What the client knows about a mission it might act on. `index` is the number
+// accept_mission and complete_mission take: an offer's own number (#425), which stays the same
+// while the board changes, and an active mission's place in the snapshot's list.
 struct MissionTarget
 {
     int  index = -1;

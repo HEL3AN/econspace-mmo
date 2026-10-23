@@ -3,11 +3,8 @@
 #include "entities/Station.h"
 #include "raylib.h"  // GetRandomValue, TextFormat
 
-void MissionSystem::GenerateOffers(Station* giver, const std::vector<Station*>& allStations,
-                                   float rewardMul)
+Mission MissionSystem::MakeOffer(Station* giver, const std::vector<Station*>& allStations)
 {
-    offers_.clear();
-
     bool canDeliver = allStations.size() >= 2;
 
     // Weighted type pool biased by the station's role — each has its own character.
@@ -32,14 +29,7 @@ void MissionSystem::GenerateOffers(Station* giver, const std::vector<Station*>& 
         case StationRole::Military: add(MissionType::Bounty, 3); break;
         case StationRole::Shipyard: break;  // shipyard — no bias, a bit of everything
     }
-
-    for (int i = 0; i < 4; i++)
-    {
-        Mission m = Generate(pool[GetRandomValue(0, (int)pool.size() - 1)], giver, allStations);
-        m.rewardMoney *= rewardMul;  // reward depends on reputation
-        m.rewardRep *= rewardMul;
-        offers_.push_back(m);
-    }
+    return Generate(pool[GetRandomValue(0, (int)pool.size() - 1)], giver, allStations);
 }
 
 bool MissionSystem::Accept(int offerIndex)
@@ -62,7 +52,7 @@ void MissionSystem::OnPirateKilled()
 }
 
 Mission MissionSystem::Generate(MissionType type, Station* giver,
-                                const std::vector<Station*>& allStations) const
+                                const std::vector<Station*>& allStations)
 {
     Mission m;
     m.type = type;

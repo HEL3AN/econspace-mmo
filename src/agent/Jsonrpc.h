@@ -65,4 +65,12 @@ private:
 // Writes a diagnostic to stderr. Never use printf here: see the note above.
 void Log(const std::string& text);
 
+// Holds a tool call's arguments to the tool's own input schema (#425), and throws an
+// INVALID_PARAMS Error naming the first thing wrong: an argument the schema requires that is
+// missing or null, or a number or a flag given as something else. Without it a handler read a
+// missing id as 0 -- `dock` with no station_id flew the ship at the point (0, 0), into the
+// star. A string property is not checked for type: a few tools take a name or a number there
+// on purpose, and say so in their own refusal.
+void CheckArguments(const Json& schema, const Json& args);
+
 }  // namespace Rpc

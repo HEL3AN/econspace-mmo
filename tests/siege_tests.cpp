@@ -914,7 +914,7 @@ TEST_CASE("the besieging side posts join-the-siege jobs: defenders shot down pay
     // ...and the besieged's board, had it one, would carry the other side's: never this one.
     for (const Mission& m : s.missions.Offers())
         CHECK(m.type != MissionType::Siege);
-    REQUIRE(sim->AcceptMission(s, offer));
+    REQUIRE(sim->AcceptMission(s, s.missions.Offers()[(size_t)offer].offerId));
 
     // Into the den: its pirates are ships there now.
     sim->StepPlayerUndock(s);

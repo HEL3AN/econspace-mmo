@@ -160,8 +160,13 @@ struct Convoys
 //   Posted within `reach` of where the convoy is, too: that is where a pilot meets it (#407).
 // - Siege: shoot down `siegeKills` of the besiegers, `siegePerKill` each.
 // Done, a job is worth `rep` standing with the poster; failed by the pilot, `failRep` less.
+// A station's own work (bounty, mining, delivery) stays on its board, under the same number,
+// for `offerLife` seconds of world time (#425), `stationOffers` of it at a time: docking again
+// does not draw a new board, and a pilot takes the job they read.
 struct Jobs
 {
+    double offerLife = 1800.0;
+    int    stationOffers = 4;
     int    reach = 4;
     int    perBoard = 3;
     double creditsPerStock = 50.0;

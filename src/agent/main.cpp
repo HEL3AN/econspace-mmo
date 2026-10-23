@@ -909,25 +909,29 @@ std::vector<Tool> BuildTools()
               return "Begun.\n" + g_session.Describe(Obs::Detail::Brief);
           } });
 
-    tools.push_back({ "move_to",
-                      "Fly to an object by id, or to a point. Finishes when the ship "
-                      "arrives. Use warp for anything far away.",
-                      Obj({ { "target_id", Num("object id from observe") },
-                            { "x", Num("destination x, if no target_id") },
-                            { "y", Num("destination y, if no target_id") },
-                            { "stop_distance", Num("how close to stop (default 150)") },
-                            { "warp", Bool("warp instead of cruising") } }),
-                      [](const Rpc::Json& args)
-                      {
-                          RequireLive();
-                          Proto::Command c = OrderCommand(Orders::Kind::MoveTo);
-                          c.orderTarget = (int)NumberOr(args, "target_id", 0);
-                          c.orderPoint = { (float)NumberOr(args, "x", 0.0),
-                                           (float)NumberOr(args, "y", 0.0) };
-                          c.orderStopDist = (float)NumberOr(args, "stop_distance", 150.0);
-                          c.orderWarp = args.value("warp", false);
-                          return GiveOrder(c, "move_to");
-                      } });
+    tools.push_back(
+        { "move_to",
+          "Fly to an object by id, or to a point. Finishes when the ship "
+          "arrives. Use warp for anything far away.",
+          Obj({ { "target_id", Num("object id from observe") },
+                { "x", Num("destination x, if no target_id") },
+                { "y", Num("destination y, if no target_id") },
+                { "stop_distance", Num("how close to stop (default 150)") },
+                { "warp", Bool("warp instead of cruising") } }),
+          [](const Rpc::Json& args)
+          {
+              // Neither an object nor a whole point is no destination: read as
+              // (0, 0), it was the star (#425).
+              if (!args.contains("target_id") && !(args.contains("x") && args.contains("y")))
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "say where: target_id, or both x and y" };
+              RequireLive();
+              Proto::Command c = OrderCommand(Orders::Kind::MoveTo);
+              c.orderTarget = (int)NumberOr(args, "target_id", 0);
+              c.orderPoint = { (float)NumberOr(args, "x", 0.0), (float)NumberOr(args, "y", 0.0) };
+              c.orderStopDist = (float)NumberOr(args, "stop_distance", 150.0);
+              c.orderWarp = args.value("warp", false);
+              return GiveOrder(c, "move_to");
+          } });
 
     tools.push_back({ "dock",
                       "Approach a station, or a structure with a dock, and dock with it. The "
@@ -1249,19 +1253,35 @@ std::vector<Tool> BuildTools()
           "Take a job from the board of the station you are docked at. It joins your active "
           "missions and stays with you across systems until you hand it in. At most "
           "5 can be active at once.",
-          Obj({ { "offer", Num("offer number from missions") } }, { "offer" }),
+          Obj({ { "offer", Num("the offer's number, as missions shows it; it stays the same "
+                               "while the offer is on the board") } },
+              { "offer" }),
           [](const Rpc::Json& args)
           {
               RequireLive();
               RequireDocked("taking work");
               const Proto::Snapshot& before = g_session.Snapshot();
-              const int i = IndexArg(args, "offer", before.missionOffers.size(), "missions");
-              const Proto::MissionView taken = before.missionOffers[i];
+              // By the offer's own number (#425): a place on the board named another job once
+              // the board had changed, and the pilot took that one instead.
+              if (!args["offer"].is_number_integer())
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "offer is the number missions shows, e.g. 12" };
+              const int                 id = args["offer"].get<int>();
+              const Proto::MissionView* found = nullptr;
+              for (const Proto::MissionView& m : before.missionOffers)
+                  if (m.offerId == id)
+                      found = &m;
+              if (found == nullptr)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "no offer " + std::to_string(id) +
+                                        " on this board: taken, or its time is up; call "
+                                        "missions to see the board as it is now" };
+              const Proto::MissionView taken = *found;
               const size_t             activeBefore = before.missionActive.size();
 
               const int      seq = g_session.LastEventSeq();
               Proto::Command c;
-              c.acceptOffer = i;
+              c.acceptOffer = id;
               std::string why;
               if (!Confirm(c, why))
                   return "accept_mission: " + why;
@@ -1276,7 +1296,7 @@ std::vector<Tool> BuildTools()
                      "]; it needs: " +
                      (m.completable ? std::string("nothing more, hand it in")
                                     : Obs::MissionNeeds(CurrentView(), m)) +
-                     (taken.title == m.title ? "" : " (the board had changed)");
+                     (taken.title == m.title ? "" : " (not the job offered: " + taken.title + ")");
           } });
 
     tools.push_back(
@@ -2262,6 +2282,7 @@ std::string RunTool(const std::vector<Tool>& tools, const std::string& name, con
             // failed check. A refused login is exactly this case (#106).
             try
             {
+                Rpc::CheckArguments(t.schema, args);
                 return t.run(args);
             }
             catch (const Rpc::Error& e)
@@ -2432,7 +2453,21 @@ int Selftest(const std::vector<Tool>& tools)
     const std::string scanned = RunTool(tools, "scan", Rpc::Json::object());
     note("scan", scanned.find("Scan of") != std::string::npos);
 
-    // 4) An order naming something absent must be refused, not silently swallowed.
+    // 4) An order missing what it requires is refused before anything is sent (#425): a dock
+    // with no station read the id as 0, and flew the ship at (0, 0) -- the star.
+    g_phase = "refusing orders with nothing to aim at";
+    const int         ordersBefore = g_session.Snapshot().player.orderId;
+    const std::string noStation = RunTool(tools, "dock", Rpc::Json::object());
+    const std::string noPlace = RunTool(tools, "move_to", Rpc::Json{ { "x", 100.0 } });
+    const std::string badId = RunTool(tools, "dock", Rpc::Json{ { "station_id", "the hub" } });
+    note("dock without a station refused",
+         noStation.find("error: station_id is required") != std::string::npos);
+    note("move_to without a destination refused", noPlace.find("error: say where") == 0);
+    note("an id that is not a number refused",
+         badId.find("error: station_id must be a number") == 0);
+    note("nothing sent for them", g_session.Snapshot().player.orderId == ordersBefore);
+
+    // ...and an order naming something absent must be refused, not silently swallowed.
     g_phase = "waiting for a bad order to be refused";
     const int   orderBefore = g_session.Snapshot().player.orderId;
     std::string bogus = RunTool(tools, "dock", Rpc::Json{ { "station_id", 999999 } });
@@ -2479,7 +2514,11 @@ int Selftest(const std::vector<Tool>& tools)
         note("missions lists a board", listed);
 
         g_phase = "accepting a mission";
-        std::string take = RunTool(tools, "accept_mission", Rpc::Json{ { "offer", 0 } });
+        // By the offer's own number (#425), as missions shows it.
+        const int   first = g_session.Snapshot().missionOffers.empty()
+                                ? 0
+                                : g_session.Snapshot().missionOffers.front().offerId;
+        std::string take = RunTool(tools, "accept_mission", Rpc::Json{ { "offer", first } });
         accepted = take.find("taken") != std::string::npos;
         note("accept_mission", accepted);
 
@@ -2752,7 +2791,10 @@ int main(int argc, char** argv)
                    params.contains("arguments") ? params["arguments"] : Rpc::Json::object();
                for (const Tool& t : tools)
                    if (name == t.name)
+                   {
+                       Rpc::CheckArguments(t.schema, args);  // nothing missing read as 0 (#425)
                        return TextResult(t.run(args));
+                   }
                throw Rpc::Error{ Rpc::INVALID_PARAMS, "no such tool: " + name };
            });
 

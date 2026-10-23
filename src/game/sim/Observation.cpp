@@ -731,10 +731,12 @@ std::string DescribeMissions(const View& view)
         out += "OFFERS  this station has no work on its board\n";
     else
     {
+        // By each offer's own number (#425), which stays the same while it is on the board:
+        // the place in the list does not, and taking "the third" took another job.
         out += Fmt("OFFERS at %s -- accept_mission takes the number\n",
                    StationName(view, snap.player.dockedStationId).c_str());
-        for (size_t i = 0; i < snap.missionOffers.size(); i++)
-            out += MissionLine(view, i, snap.missionOffers[i]);
+        for (const Proto::MissionView& m : snap.missionOffers)
+            out += MissionLine(view, (size_t)m.offerId, m);
     }
 
     if (snap.missionActive.empty())
@@ -1220,9 +1222,8 @@ std::string Describe(const View& view, Detail detail)
     if (!snap.missionOffers.empty())
     {
         out += Fmt("OFFERS (%d at this station)\n", (int)snap.missionOffers.size());
-        for (size_t i = 0; i < snap.missionOffers.size(); i++)
-            out += Fmt("  [%d] %s  %.0f cr\n", (int)i, snap.missionOffers[i].title.c_str(),
-                       snap.missionOffers[i].rewardMoney);
+        for (const Proto::MissionView& m : snap.missionOffers)
+            out += Fmt("  [%d] %s  %.0f cr\n", m.offerId, m.title.c_str(), m.rewardMoney);
     }
 
     // --- Standing business --------------------------------------------------

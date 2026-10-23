@@ -252,7 +252,7 @@ TEST_CASE("a convoy on its way posts an escort job; a pilot with it is paid when
     // ...and the station's own work is still there.
     CHECK(s.missions.Offers().size() > 1);
 
-    REQUIRE(sim.AcceptMission(s, offer));
+    REQUIRE(sim.AcceptMission(s, s.missions.Offers()[(size_t)offer].offerId));
     CHECK(OfferOf(s, MissionType::Escort, u.plan) < 0);
     sim.StepPlayerUndock(s);
     // Not yet with it, until a pass finds the pilot where the convoy is.
@@ -343,7 +343,7 @@ TEST_CASE("an escort the convoy never saw fails when it arrives, and costs stand
     ClientSession& s = DockedAt(sim, u.h);
     const int      offer = OfferOf(s, MissionType::Escort, u.plan);
     REQUIRE(offer >= 0);
-    REQUIRE(sim.AcceptMission(s, offer));
+    REQUIRE(sim.AcceptMission(s, s.missions.Offers()[(size_t)offer].offerId));
     // Docked the whole way: never with it.
     const float standing = s.account.GetReputation(f);
     for (int minute = 0; minute < 60 && !s.missions.Active().empty(); minute++)
@@ -380,7 +380,7 @@ TEST_CASE("pilots with a convoy stand between it and an ambush (#345)")
         {
             const int offer = OfferOf(s, MissionType::Escort, u.plan);
             REQUIRE(offer >= 0);
-            REQUIRE(sim.AcceptMission(s, offer));
+            REQUIRE(sim.AcceptMission(s, s.missions.Offers()[(size_t)offer].offerId));
         }
         sim.StepPlayerUndock(s);
         if (s.systemId != where)
@@ -430,7 +430,7 @@ TEST_CASE("a site going up posts a supply job, and a delivery brings it closer t
     CHECK(ResourceName(job.resource) == "Iron");
     CHECK(job.targetCount == 24);
     CHECK(job.deadline == doctest::Approx(site->GetCompletesAt()));
-    REQUIRE(sim.AcceptMission(s, offer));
+    REQUIRE(sim.AcceptMission(s, s.missions.Offers()[(size_t)offer].offerId));
     sim.StepPlayerUndock(s);
 
     // Not without the goods, and not away from the site.
@@ -517,11 +517,11 @@ TEST_CASE("supply goods are delivered on arrival: beside the site or docked in i
     const int      offer = OfferOf(a, MissionType::Supply, u.plan);
     REQUIRE(offer >= 0);
     const Mission job = a.missions.Offers()[(size_t)offer];
-    REQUIRE(sim.AcceptMission(a, offer));
+    REQUIRE(sim.AcceptMission(a, a.missions.Offers()[(size_t)offer].offerId));
     ClientSession& b = DockedAt(sim, u.h);
     const int      offerB = OfferOf(b, MissionType::Supply, u.plan);
     REQUIRE(offerB >= 0);
-    REQUIRE(sim.AcceptMission(b, offerB));
+    REQUIRE(sim.AcceptMission(b, b.missions.Offers()[(size_t)offerB].offerId));
 
     // The snapshot names the site wherever the pilot is.
     CHECK(sim.JobSiteName(job) == site->GetName());
@@ -640,7 +640,7 @@ TEST_CASE("a plan's job survives the save, and one whose plan is over is dropped
     ClientSession& s = DockedAt(sim, u.h);
     const int      offer = OfferOf(s, MissionType::Escort, u.plan);
     REQUIRE(offer >= 0);
-    REQUIRE(sim.AcceptMission(s, offer));
+    REQUIRE(sim.AcceptMission(s, s.missions.Offers()[(size_t)offer].offerId));
     s.missions.Active()[0].rode = true;
     const Mission was = s.missions.Active()[0];
 
@@ -740,7 +740,7 @@ TEST_CASE("an escort job's view carries its convoy: where, where next, its ships
     ClientSession& s = DockedAt(sim, u.h);
     const int      offer = OfferOf(s, MissionType::Escort, u.plan);
     REQUIRE(offer >= 0);
-    REQUIRE(sim.AcceptMission(s, offer));
+    REQUIRE(sim.AcceptMission(s, s.missions.Offers()[(size_t)offer].offerId));
     const int job = ActiveOf(s, MissionType::Escort);
     REQUIRE(job >= 0);
 
@@ -971,7 +971,7 @@ TEST_CASE("a siege posts a break-the-siege job on the besieged's board; besieger
     REQUIRE(sim->StepPlayerDock(s, *sim->SystemById(frontier)) == station);
     const int offer = OfferOf(s, MissionType::Siege, plan);
     REQUIRE(offer >= 0);
-    REQUIRE(sim->AcceptMission(s, offer));
+    REQUIRE(sim->AcceptMission(s, s.missions.Offers()[(size_t)offer].offerId));
     const int need = s.missions.Active()[0].targetCount;
     REQUIRE(need >= 1);
     sim->StepPlayerUndock(s);

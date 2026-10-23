@@ -73,6 +73,7 @@ std::vector<Row> Build(const Obs::View& view, Board board)
         const Proto::MissionView& m = list[i];
         Row                       r;
         r.index = (int)i;
+        r.offerId = board == Board::Offers ? m.offerId : 0;
         r.title = m.title;
         r.description = m.description;
         r.kind = KindWord(m.type);

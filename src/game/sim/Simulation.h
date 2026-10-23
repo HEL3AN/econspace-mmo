@@ -1463,11 +1463,22 @@ public:
     bool AccountHostileToFaction(const ClientSession& s, FactionId f) const;
 
     // --- Player missions (server-authoritative, M4f-2) ---
-    // Generates the offer board at the docked station (called from StepPlayerDock).
+    // Shows the session the board of the station it is docked at (called from StepPlayerDock):
+    // its faction's jobs, then the station's own work -- the same offers, under the same
+    // numbers, until each one's time is up (#425, StationWork), priced by the session's
+    // standing.
     void GenerateDockOffers(ClientSession& s);
-    // Takes an offer from the board, unless the session already carries
-    // MissionSystem::MAX_ACTIVE missions. true -- taken.
-    bool AcceptMission(ClientSession& s, int offerIndex);
+    // Takes the offer numbered `offerId` (Mission::offerId) from the board, unless it is no
+    // longer there -- taken by somebody else, or its time up -- or the session already carries
+    // MissionSystem::MAX_ACTIVE missions; each refusal is said in the journal. By number, not
+    // by place on the board (#425): a board that changed between the look and the click used
+    // to hand the pilot whatever job had moved into that place. true -- taken.
+    bool AcceptMission(ClientSession& s, int offerId);
+    // A station's own work (#425): the offers on its board at the base reward, kept for the
+    // jobs rules' `offerLife` each and topped up to `stationOffers` as they are taken or run
+    // out. The world's, not a pilot's: everyone docked there reads the same board, and what
+    // one takes is gone for the rest. Not saved -- a restart draws new boards.
+    std::vector<Mission> StationWork(SystemState& st, int stationId);
     // Server-side mission hand-in: checks the condition, credits rewards to the account,
     // removes cargo (Mining), deletes from the log. true — handed in.
     bool CompleteMission(ClientSession& s, int activeIndex);
@@ -2100,6 +2111,15 @@ private:
     double                      contractSlot_ = -1.0;
     std::vector<ChronicleEntry> chronicle_;
     long long                   chronicleSeq_ = 0;
+    // Stations' own work (#425, StationWork), by station id: each offer with the world time
+    // it is taken off at. Numbered from nextOfferId_, below Offers::CONTRACT_BASE.
+    struct StationOffer
+    {
+        Mission m;
+        double  until = 0.0;
+    };
+    std::map<int, std::vector<StationOffer>> stationOffers_;
+    int                                      nextOfferId_ = 1;
 
     // When each structure next has something happen to it -- it is finished, or its time is
     // up -- as (instant, entity id, system). StepStructures pops what is due and touches

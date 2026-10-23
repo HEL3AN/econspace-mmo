@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    60;  // 60: a patrol's threshold and allow-list (#431 slice 12, #186) -- a CorpAct "patrol"
+    61;  // 61: a mission offer carries its number, and a Command's acceptOffer names that
+         // number rather than a place on the board (#425);
+         // 60: a patrol's threshold and allow-list (#431 slice 12, #186) -- a CorpAct "patrol"
          // may carry them, and a CorpView's patrols show them;
          // 59: a corporation's own patrols (#431 slice 12) -- a CorpAct "patrol" names a
          // system, ships, a design and an engagement mode, a CorpView carries the patrols, and
@@ -262,7 +264,7 @@ struct Command
     int         insureShip = -1;       // insure an owned hull by catalog index (-1 none, #344)
     std::string payBountyFaction;      // pay off bounty with a faction (its id; empty none)
     bool        debugMoney = false;    // F1: grant debug money
-    int         acceptOffer = -1;      // accept mission offer by board index (-1 none)
+    int         acceptOffer = -1;      // accept the mission offer by its number (#425; -1 none)
     int         completeMission = -1;  // hand in active mission by index (-1 none)
     // Name the system the ship is in, as its discoverer (#145); empty -- not this command.
     std::string nameSystem;
@@ -500,6 +502,7 @@ struct MissionView
     std::string description;
     int         giverStationId = 0;
     int         destStationId = 0;
+    int         offerId = 0;   // an offer's number, which accepting it names (#425)
     int         resource = 0;  // ResourceType as int
     int         targetCount = 0;
     int         progress = 0;

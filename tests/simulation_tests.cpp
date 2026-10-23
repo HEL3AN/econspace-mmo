@@ -35,6 +35,7 @@
 #include "net/Transport.h"
 #include "sim/Orders.h"
 #include "sim/Simulation.h"
+#include "sim/WorldRules.h"
 #include "temp_dir.h"
 #include "factions_named.h"
 
@@ -959,8 +960,8 @@ TEST_CASE("one player cannot take the whole board (#219)")
     station->SetId(91);
     f.World().entities.push_back(std::move(station));
 
-    // The board is regenerated on every dock, so docking again is how a player would hoard;
-    // the test does the same.
+    // Docking again is how a player would have hoarded when every dock drew a new board; the
+    // board is the station's now (#425), and topped up as work is taken, but the cap holds.
     int guard = 0;
     while ((int)f.s.missions.Active().size() < MissionSystem::MAX_ACTIVE && guard++ < 50)
     {
@@ -970,7 +971,7 @@ TEST_CASE("one player cannot take the whole board (#219)")
             REQUIRE(f.sim.StepPlayerDock(f.s, f.World()) == 91);
         }
         const int seq = f.s.LastEventSeq();
-        REQUIRE(f.sim.AcceptMission(f.s, 0));
+        REQUIRE(f.sim.AcceptMission(f.s, f.s.missions.Offers().front().offerId));
         CHECK(NoticeSince(f.s, seq).find("Mission taken") != std::string::npos);
     }
     REQUIRE((int)f.s.missions.Active().size() == MissionSystem::MAX_ACTIVE);
@@ -983,7 +984,7 @@ TEST_CASE("one player cannot take the whole board (#219)")
     const size_t offers = f.s.missions.Offers().size();
     REQUIRE(offers > 0);
     const int seq = f.s.LastEventSeq();
-    CHECK_FALSE(f.sim.AcceptMission(f.s, 0));
+    CHECK_FALSE(f.sim.AcceptMission(f.s, f.s.missions.Offers().front().offerId));
     CHECK((int)f.s.missions.Active().size() == MissionSystem::MAX_ACTIVE);
     CHECK(f.s.missions.Offers().size() == offers);  // still on the board for someone else
     CHECK(NoticeSince(f.s, seq).find(std::to_string(MissionSystem::MAX_ACTIVE)) !=
@@ -2948,4 +2949,194 @@ TEST_CASE("a region can be asked for at another size, for measuring (#295)")
     sim.AttachRegion(7, std::string(TEST_WORLD_DIR) + "systems/", 60);
     CHECK(sim.RegionDocuments().size() == 60);
     CHECK(sim.Universe().systems.size() == known + 60);
+}
+
+TEST_CASE("a follow holds 5000 from an orbiting exchange for a minute, commands or none (#425)")
+{
+    // The playtest's case: hold_station follow at 5000 on an exchange going round a planet that
+    // itself goes round the star; on 0.1 the distance grew from 5022 to 6175 in a minute. Held
+    // as the host holds it -- the world moves, the attachment is measured, the order steps --
+    // with and without a human client streaming a command every tick, which the host gives no
+    // time while an order flies the ship (#444).
+    for (const bool streamed : { false, true })
+    {
+        Fixture       f;
+        Entity* const station = AddOrbitingStation(f);
+        const Vector2 at = station->GetPosition();
+        f.s.ship->Teleport({ at.x - 5022.0f, at.y });
+        Orders::Order o;
+        o.kind = Orders::Kind::Follow;
+        o.targetId = 44;
+        o.stopDist = 5000.0f;
+        REQUIRE(f.sim.GiveOrder(f.s, o) > 0);
+
+        double      t = 0.0;
+        const float dt = Sim::SIM_DT;
+        float       worst = 0.0f;
+        for (int i = 0; i < 60 * 90; i++)
+        {
+            t += dt;
+            f.sim.SetTime(t);
+            Orbits::Place(f.World().entities, t);
+            f.sim.StepPlayerAttachment(f.s, dt);
+            if (streamed)
+                f.sim.StepPlayerShip(f.s, Proto::Command{}, 1.0f, Simulation::CommandDt(f.s, dt));
+            f.sim.StepPlayerOrder(f.s, f.World(), dt);
+            if (i >= 60 * 30)  // settled; then a minute of it, measured every tick
+                worst = std::max(worst, std::fabs(Vector2Distance(f.s.ship->GetPosition(),
+                                                                  station->GetPosition()) -
+                                                  5000.0f));
+        }
+        CAPTURE(streamed);
+        CHECK(Vector2Distance(at, station->GetPosition()) > 5000.0f);  // it went a long way
+        CHECK(f.s.ship->GetHoldMode() == HoldMode::Follow);
+        CHECK(worst < 5.0f);
+    }
+}
+
+// --- 0.1 playtest findings (#425) ---
+
+TEST_CASE("a pilot who left docked comes back docked, at that station wherever it is (#425)")
+{
+    Fixture       f;
+    Entity* const station = AddOrbitingStation(f);
+    const Vector2 at = station->GetPosition();
+    f.s.ship->Teleport({ at.x, at.y - 700.0f });
+    REQUIRE(f.sim.StepPlayerDock(f.s, f.World()) == 44);
+    const Vector2 bearing = f.s.dockBearing;
+
+    const TempDir     tmp;
+    const std::string path = tmp.Path("account_docked.json");
+    REQUIRE(f.sim.SaveAccount(f.s, path));
+
+    // Ten minutes later the station is somewhere else on its orbit.
+    f.sim.SetTime(600.0);
+    Orbits::Place(f.World().entities, 600.0);
+    const Vector2 now = station->GetPosition();
+    REQUIRE(Vector2Distance(at, now) > 5000.0f);
+
+    SUBCASE("the station is still there")
+    {
+        ClientSession& back = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                                  GetShipCatalog()[0].stats);
+        REQUIRE(f.sim.LoadAccount(back, path) == Save::Result::Ok);
+        CHECK(back.IsDocked());
+        CHECK(back.dockedStationId == 44);
+        CHECK(back.dockBearing.x == doctest::Approx(bearing.x));
+        CHECK(back.dockBearing.y == doctest::Approx(bearing.y));
+        // At the berth beside where the station is now, not where it was when they left.
+        CHECK(Vector2Distance(back.ship->GetPosition(),
+                              Sim::DockBerth(now, station->GetSize(), back.dockBearing)) < 0.5f);
+        // ...with the station's board in front of them, as a dock would have shown it.
+        CHECK_FALSE(back.missions.Offers().empty());
+        const Proto::Snapshot snap = f.sim.BuildSnapshot(back, back.systemId);
+        CHECK(snap.player.docked);
+        CHECK(snap.player.dockedStationId == 44);
+    }
+
+    SUBCASE("the station is gone: in space where it was, and told why")
+    {
+        const float size = station->GetSize();
+        auto&       all = f.World().entities;
+        all.erase(std::remove_if(all.begin(), all.end(),
+                                 [](const std::unique_ptr<Entity>& e) { return e->GetId() == 44; }),
+                  all.end());
+        ClientSession& back = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                                  GetShipCatalog()[0].stats);
+        const int      seq = back.LastEventSeq();
+        REQUIRE(f.sim.LoadAccount(back, path) == Save::Result::Ok);
+        CHECK_FALSE(back.IsDocked());
+        CHECK(Vector2Distance(back.ship->GetPosition(), at) < size + 200.0f);
+        bool told = false;
+        for (const Ev::Event& e : back.EventsSince(seq))
+            told = told || e.text.find("Moon Dock, where you were docked, is no longer there") !=
+                               std::string::npos;
+        CHECK(told);
+    }
+}
+
+namespace
+{
+// The numbers of a station's own work on the session's board, in order.
+std::vector<int> StationOfferIds(const ClientSession& s)
+{
+    std::vector<int> ids;
+    for (const Mission& m : s.missions.Offers())
+        if (Offers::IsStationWork(m.offerId))
+            ids.push_back(m.offerId);
+    return ids;
+}
+
+std::vector<std::string> OfferTexts(const ClientSession& s)
+{
+    std::vector<std::string> out;
+    for (const Mission& m : s.missions.Offers())
+        out.push_back(m.description);
+    return out;
+}
+}  // namespace
+
+TEST_CASE("a station's board keeps its offers and their numbers for a while (#425)")
+{
+    Fixture       f;
+    Entity* const station = AddOrbitingStation(f);
+    auto          dock = [&](ClientSession& s)
+    {
+        const Vector2 at = station->GetPosition();
+        s.ship->Teleport({ at.x, at.y - 700.0f });
+        return f.sim.StepPlayerDock(s, f.World());
+    };
+    REQUIRE(dock(f.s) == 44);
+    const std::vector<int> first = StationOfferIds(f.s);
+    REQUIRE(first.size() == (size_t)WorldRules::JobRules().stationOffers);
+    const std::vector<std::string> texts = OfferTexts(f.s);
+
+    // Docking again a few minutes later shows the same board: same jobs, same numbers.
+    f.sim.StepPlayerUndock(f.s);
+    f.sim.SetTime(300.0);
+    REQUIRE(dock(f.s) == 44);
+    CHECK(StationOfferIds(f.s) == first);
+    CHECK(OfferTexts(f.s) == texts);
+
+    // Taken by its number, it is the job that number was -- not whatever is in that place now.
+    const int   want = first[2];
+    std::string what;
+    for (const Mission& m : f.s.missions.Offers())
+        if (m.offerId == want)
+            what = m.description;
+    // Another pilot docked there sees the same board, and the job gone once it is taken.
+    ClientSession& other = f.sim.CreateSession(f.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                               GetShipCatalog()[0].stats);
+    REQUIRE(dock(other) == 44);
+    CHECK(StationOfferIds(other) == first);
+    REQUIRE(f.sim.AcceptMission(f.s, want));
+    CHECK(f.s.missions.Active().back().description == what);
+    for (int id : StationOfferIds(other))
+        CHECK(id != want);
+
+    // A number no longer on the board is refused, and says so -- here and for the other pilot,
+    // whose board was drawn before it was taken.
+    for (ClientSession* s : { &f.s, &other })
+    {
+        const int    seq = s->LastEventSeq();
+        const size_t held = s->missions.Active().size();
+        CHECK_FALSE(f.sim.AcceptMission(*s, want));
+        CHECK(s->missions.Active().size() == held);
+        CHECK(NoticeSince(*s, seq).find("offer " + std::to_string(want) +
+                                        " is no longer on the board") != std::string::npos);
+    }
+
+    // The rest kept their numbers; the board is topped up with a new one.
+    const std::vector<int> after = StationOfferIds(f.s);
+    CHECK(after.size() == first.size());
+    for (int id : first)
+        if (id != want)
+            CHECK(std::find(after.begin(), after.end(), id) != after.end());
+
+    // Once their time is up, the station posts new work under new numbers.
+    f.sim.StepPlayerUndock(f.s);
+    f.sim.SetTime(300.0 + WorldRules::JobRules().offerLife + 1.0);
+    REQUIRE(dock(f.s) == 44);
+    for (int id : StationOfferIds(f.s))
+        CHECK(std::find(after.begin(), after.end(), id) == after.end());
 }
