@@ -603,7 +603,8 @@ TEST_CASE("a structure is shot down, leaves a wreck, and the law decides the pri
     // A site just laid down is the rule's share of the finished thing, and grows.
     Structure* t = StructureById(sim, sys, id);
     REQUIRE(t != nullptr);
-    CHECK(t->MaxHull(sim.Time()) == doctest::Approx(beacon.hull * Blueprints::Rules().siteHull));
+    CHECK(t->MaxHull(sim.Time()) ==
+          doctest::Approx(static_cast<double>(beacon.hull) * Blueprints::Rules().siteHull));
     CHECK(t->MaxHull(t->GetCompletesAt()) == doctest::Approx(beacon.hull));
 
     SUBCASE("under a lawful holder's law, every hit and the kill are crimes")
@@ -1449,7 +1450,7 @@ TEST_CASE("defences mend by tier: one frigate cannot bring an outpost down, enou
     REQUIRE(id != 0);
     Law(sim, sys, false, Fac::Independent());  // nobody's law: only the guns count here
     const float mend = StructureById(sim, sys, id)->MendRate();
-    REQUIRE(mend == doctest::Approx(outpost.mend * outpost.hull));
+    REQUIRE(mend == doctest::Approx(static_cast<double>(outpost.mend) * outpost.hull));
 
     ShipStats frigate, cruiser;
     REQUIRE(StatsOfDesign("cutter", frigate));
