@@ -179,37 +179,25 @@ void Simulation::ServerRespawnPlayer(ClientSession& s)
     // A wreck where it fell, holding a share of what was lost: whoever gets there first
     // searches it, as a structure's (Simulation_Build.cpp). For an hour, so a busy fight does
     // not leave the system full of them. The ship's share is credits; the hold's is the goods
-    // themselves (#343) -- the same share of each, as a hauler's wreck holds its cargo. A wreck
-    // holds one good: the largest stack stays in it, and every other is a pod beside it.
+    // themselves (#343) -- the same share of each, as a hauler's wreck holds its cargo. One
+    // wreck holds every good of it (#472).
     if (here != nullptr)
     {
-        const double                              share = Blueprints::Rules().wreckShare;
-        const double                              worth = std::floor(value * share);
-        std::vector<std::pair<int, ResourceType>> kept;  // what survives, largest first
+        const double share = Blueprints::Rules().wreckShare;
+        const double worth = std::floor(value * share);
+        Inventory    kept;  // what survives
         for (ResourceType rt : AllResourceTypes())
-        {
-            const int n = (int)std::floor(s.ship->GetCargoAmount(rt) * share);
-            if (n > 0)
-                kept.push_back({ n, rt });
-        }
-        std::stable_sort(kept.begin(), kept.end(),
-                         [](const auto& a, const auto& b) { return a.first > b.first; });
-        if (worth >= 1.0 || !kept.empty())
+            kept.Add(rt, (int)std::floor(s.ship->GetCargoAmount(rt) * share));
+        if (worth >= 1.0 || !kept.Empty())
         {
             const std::string pilot = s.ship->GetPilotName();
             const std::string name =
                 "Wreck of " + (pilot.empty() ? std::string("a ") : pilot + "'s ") + hullName;
-            const Vector2 at = s.ship->GetPosition();
-            for (size_t i = 0; i < std::max<size_t>(1, kept.size()); i++)
-            {
-                auto wreck = std::make_unique<Derelict>(
-                    Vector2{ at.x + 2.0f * SHIP_WRECK_SIZE * (float)i, at.y }, SHIP_WRECK_SIZE,
-                    i == 0 ? name : "Cargo of " + name.substr(9), i == 0 ? worth : 0.0);
-                if (i < kept.size())
-                    wreck->SetCargo(kept[i].second, kept[i].first);
-                wreck->SetExpiresAt(time_ + SHIP_WRECK_SECONDS);
-                AddStatic(s.systemId, std::move(wreck), std::string());
-            }
+            auto wreck =
+                std::make_unique<Derelict>(s.ship->GetPosition(), SHIP_WRECK_SIZE, name, worth);
+            wreck->Contents() = kept;
+            wreck->SetExpiresAt(time_ + SHIP_WRECK_SECONDS);
+            AddStatic(s.systemId, std::move(wreck), std::string());
         }
     }
 
@@ -771,24 +759,31 @@ double Simulation::StepPlayerLoot(ClientSession& s, SystemState& st, int derelic
             float   dy = dr->GetPosition().y - sp.y;
             if (std::sqrt(dx * dx + dy * dy) > dr->GetSize() + e->GetArchetype()->salvageRange)
                 return 0.0;
-            // What a hauler carried (#343): as much as the hold has room for. What does not fit
-            // stays for the next search, and the wreck is searched once it is empty.
+            // What it holds (#343, #472): every good, as much as the hold has room for. What
+            // does not fit stays for the next search, and it is searched once it is empty.
             if (dr->GetCargoAmount() > 0)
             {
-                const int room = s.ship->GetCargoCapacity() - s.ship->GetCargoUsed();
-                const int took = std::min(room, dr->GetCargoAmount());
-                if (took <= 0)
+                int         room = s.ship->GetCargoCapacity() - s.ship->GetCargoUsed();
+                std::string took;
+                const auto  goods = dr->Contents().All();  // a copy: taking changes it
+                for (const auto& kv : goods)
                 {
-                    s.RecordEvent(Ev::Kind::Notice, "The hold is full: the wreck's " +
-                                                        ResourceName(dr->GetCargo()) +
-                                                        " stays where it is");
+                    const int n = std::min(room, kv.second);
+                    if (n <= 0)
+                        break;
+                    dr->Contents().Remove(kv.first, n);
+                    s.ship->AddCargo(kv.first, n);
+                    room -= n;
+                    took += (took.empty() ? "" : ", ") + std::to_string(n) + " " +
+                            ResourceName(kv.first);
+                }
+                if (took.empty())
+                {
+                    s.RecordEvent(Ev::Kind::Notice, "The hold is full: what " + dr->GetBaseName() +
+                                                        " holds stays where it is");
                     return 0.0;
                 }
-                s.ship->AddCargo(dr->GetCargo(), took);
-                dr->SetCargo(dr->GetCargo(), dr->GetCargoAmount() - took);
-                s.RecordEvent(Ev::Kind::Notice, "Took " + std::to_string(took) + " " +
-                                                    ResourceName(dr->GetCargo()) +
-                                                    " from the wreck");
+                s.RecordEvent(Ev::Kind::Notice, "Took " + took + " from " + dr->GetBaseName());
                 if (dr->GetCargoAmount() > 0)
                 {
                     MarkStaticChanged(st, derelictId);

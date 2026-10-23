@@ -549,6 +549,7 @@ add_executable(tests
     tests/mission_list_tests.cpp   # what the missions window lists (#297)
     tests/inventory_tests.cpp      # what the inventory window lists, and what a move offers (#472)
     tests/hangar_tests.cpp         # personal hangars at the stations, and their rent (#472)
+    tests/can_tests.cpp            # jettison into cans, wrecks that hold every good (#472)
     tests/station_list_tests.cpp   # what the market and hangar windows list (#297)
     tests/settle_tests.cpp         # stock, outposts, and claims that need one (#295)
     tests/siege_tests.cpp          # upkeep, decay and sieges of outposts (#295)

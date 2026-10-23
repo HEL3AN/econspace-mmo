@@ -1271,9 +1271,20 @@ public:
         Inventory*  goods = nullptr;
         int         capacity = 0;
         std::string name;
+        bool        accepts = true;  // false: goods come out and never go in -- a wreck
+        int         canId = 0;       // a can or a wreck in space: told to everyone when it changes
     };
+    // A can a pilot jettisons into (#472): how much it holds, how big it is, and how long it
+    // floats -- as long as a lost ship's wreck.
+    static constexpr int   CAN_UNITS = 1000;
+    static constexpr float CAN_SIZE = 14.0f;
+    // The pilot's own can within reach to add to, or a new one beside the ship; its id, or 0
+    // with why.
+    int CanFor(ClientSession& s, std::string& why);
     // The container `id` names for this session, as InventoryList names it ("hold",
-    // "storage"); false, with why, when there is none such here or it is not theirs.
+    // "storage", "hangar", "can:<id>"); false, with why, when there is none such here or it is
+    // not theirs. As a destination, "can" is a jettison: into the pilot's own can within reach,
+    // or a new one (MoveGoods).
     bool ContainerOf(ClientSession& s, const std::string& id, Container& out, std::string& why);
     // As many of good `type` as `from` has, up to `amount` and as far as `to` has room. What
     // moved; 0 with a Notice "Cannot <verb>: why".

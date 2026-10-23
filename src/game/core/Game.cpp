@@ -403,6 +403,7 @@ void Game::Run()
         // Above everything, and never treated: a settings screen seen through the effect
         // it is adjusting is a settings screen you cannot read while adjusting it.
         desk_.Draw(Ui::Layer::Overlay);
+        TakeWorldDrop();   // a good let go over no window: jettisoned (#472)
         Ui::Drag::Draw();  // what is being dragged, over everything (#472)
         // Not a window: it is read, never clicked, so it takes no part in who owns the mouse.
         if (perfOverlay_)

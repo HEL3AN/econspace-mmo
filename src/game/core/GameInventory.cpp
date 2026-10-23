@@ -30,6 +30,17 @@ void Game::RequestMove(const std::string& from, const std::string& to, ResourceT
     clientLink_->Send(Proto::EncodeCommand(c));
 }
 
+void Game::TakeWorldDrop()
+{
+    // Goods let go over no window, in space, are jettisoned into a can (#472): the same move
+    // the Jettison button sends, from wherever they were dragged out of.
+    if (mode_ != GameMode::Flying || !desk_.WorldOwnsMouse() || !Ui::Drag::Dropping())
+        return;
+    const Ui::DragPayload* d = Ui::Drag::Take("goods");
+    if (d != nullptr && d->item >= 0 && d->item < Goods::Count())
+        RequestMove(d->source, "can", ResourceType::FromIndex(d->item), d->amount);
+}
+
 void Game::TakeMarketDrop(Ui::Layout& L)
 {
     const Ui::DragPayload* d = L.Dropped("marketdrop", 0, "goods");
@@ -121,7 +132,8 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
     const Ui::Theme& t = Ui::CurrentTheme();
     Ui::Layout&      L = inventoryLayout_;
 
-    const std::vector<Container> all = InventoryList::Reachable(snapshot_.player);
+    const std::vector<Container> all =
+        InventoryList::Reachable(snapshot_, layout_.byId, pilotName_);
     if (InventoryList::Find(all, inventorySel_) == nullptr)
         inventorySel_ = all.front().id;  // the hold is always there
     const Container&                      sel = *InventoryList::Find(all, inventorySel_);
@@ -271,7 +283,7 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
               {
                   for (const Container& to : all)
                   {
-                      if (to.id == sel.id)
+                      if (to.id == sel.id || to.takeOnly)
                           continue;
                       const int n = InventoryList::Movable(sel, to, row.type, amount);
                       if (L.Button("move_" + to.id, TextFormat("Move %d to %s", n, to.name.c_str()),
@@ -279,6 +291,10 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
                           RequestMove(sel.id, to.id, row.type, n);
                   }
               });
+        // In space, out of the hold into a can beside the ship (#472).
+        if (!docked && sel.id == "hold" &&
+            L.Button("jettison", TextFormat("Jettison %d into a can", amount), false, amount > 0))
+            RequestMove("hold", "can", row.type, amount);
     };
 
     const bool wide = f.Area().width >= Ui::Px(420.0f);
@@ -301,9 +317,11 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
                      L.Column(Box().GrowX().Gap(t.metrics.rowGap), containers);
                      L.Column(Box().Grow().Gap(t.metrics.rowGap), details);
                  }
-                 L.Text(all.size() > 1 ? "Drag a good onto a container to move it, or onto the "
-                                         "market to sell it there. Shift drags all of it."
-                                       : "Drag a good onto the market to sell it there.",
+                 L.Text(!docked ? "Drag a good onto a container to move it, or out of the "
+                                  "window into space to jettison it. Shift drags all of it."
+                        : all.size() > 1 ? "Drag a good onto a container to move it, or onto the "
+                                           "market to sell it there. Shift drags all of it."
+                                         : "Drag a good onto the market to sell it there.",
                         TextStyle::Small().Tint(t.colors.dim).Wrap());
              });
     L.End();
