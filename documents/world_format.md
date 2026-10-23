@@ -5,12 +5,9 @@ and the **world editor** (`worldeditor`): the editor reads and writes exactly th
 files.
 
 Status (revised 2026-10-23): **a current reference.** Every format below is read by the
-code on main. Not covered here: `data/world_rules.json`, the server's tuning numbers by
-section (`tide`, `mouths`, `archive`, `expeditions`, `growth`, `convoys`, `jobs`,
-`contracts`, `holes`, `scan`, `law`, `influence`, `licences`, `security`, `patrols`,
-`charts`),
-whose reader and defaults are `src/game/sim/WorldRules.h`; and the save files (`world.json`,
-accounts, `corps.json`), which are the server's, not content.
+code on main, the server's rule numbers in `data/world_rules.json` included. Not covered
+here: the save files (`world.json`, accounts, `corps.json`), which are the server's, not
+content.
 
 Parsing — `src/engine/core/WorldLoader.cpp`. Entities — `src/engine/entities/`.
 
@@ -31,7 +28,7 @@ data/
   materials.json       materials: a shader and its bindings (#121)
   look.json            the screen treatment's passes (#120)
   shaders/             the shaders materials and the treatment name
-  world_rules.json     the server's rule numbers (WorldRules.h)
+  world_rules.json     the server's rule numbers: how the world grows, what rules cost
   ui_themes/           the client's interface themes (see ui.md)
   fonts/               the interface's typefaces, with their licences
   textures/            sprites (PNG), optional
@@ -1273,6 +1270,321 @@ buildable structure, a blueprint that costs nothing -- and `econserver` refuses 
 on one. Clients read the file only to offer what can be built.
 
 ---
+
+## world_rules.json — the server's rule numbers (#342 S3)
+
+How fast the world grows and what its rules cost, in one file the server reads at start:
+how often the tide opens a region, how long a mouth stays, what police and licences cost,
+what a job pays. A host who wants a faster or slower world changes a number here and
+restarts; no rule's number lives in the C++ (CLAUDE.md, "a rule's number goes in
+`data/world_rules.json`"). The reader is `src/game/sim/WorldRules.{h,cpp}`, whose comments say
+how each rule works in more words than these tables.
+
+It is strict like every other data file (#191): an unknown section or field is a load error,
+every number must be zero or more, a whole number where the table says *count*, and some
+fields are checked against each other (named in each table). A file that does not read stops
+the server (`FATAL: ...` in its log) rather than run a world by rules nobody chose.
+
+- `tide` is required. Every other section may be left out, and so may any field: what is
+  missing takes the **default** below, which is what `WorldRules.h` declares. The shipped
+  file sets every field; where it differs from the default, the table says so.
+- `schema` is the file's format version, 1. It is not read yet.
+- Times are **world time**, which stops while the server is down. "A pass" is the coarse pass
+  that steps the whole galaxy, cold systems included.
+- `econserver <ticks> --news --rules my_rules.json` runs an empty world under another file, to
+  see what a number changes before a server runs on it (`--players K` puts pilots in it).
+
+### tide — how regions open
+
+Every region on the edge gathers tide once a `period`, whether anybody is there or not: from
+time, shared out over the edge by each region's strain; from players in it; from how much of
+it has been explored; and from factions surveying it. At `threshold × (1 + open / maxRegions)`
+-- slower toward the cap -- it opens a mouth into its next slot.
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `period` | 60 | seconds | between two steps of the tide; more than 0 |
+| `threshold` | 100 | tide | what a region gathers before it opens a mouth; more than 0 |
+| `base` | 0.0278 | tide a period | from time alone, for the whole edge: about one region in 60 h |
+| `perPlayer` | 0.15 | tide a period | for each player in the region this period... |
+| `playerCap` | 10 | count | ...counting at most this many |
+| `perExplore` | 0.93 | tide a period | for exploring it, bent by the curve below |
+| `exploreKnee` | 0.6 | share | the explored share where it starts to count fast; more than 0 |
+| `exploreCurve` | 3 | power | how sharply: below the knee it counts for little |
+| `surveyedWeight` | 0.25 | share | a system only a faction has surveyed counts this much of one a player has been in |
+| `perSurvey` | 0.2 | tide | for each faction survey of the region this period |
+| `minGapHours` | 6 | hours | a region opens no second mouth sooner |
+| `mouthHours` | 24 | hours | an unstable mouth's life before it collapses, unless anchored |
+| `playersPerMouth` | 20 | count | the world allows one young mouth, and one more for every this many players on; more than 0 |
+
+### mouths — until a mouth is anchored (#342 S4)
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `anchors` | true | true/false | false: every mouth is permanent at once, and no Anchor is needed |
+| `maxMass` | 45 | mass | the heaviest ship an unstable mouth lets through: a scout or a courier |
+| `warnHours` | 2 | hours | before a collapse, the chronicle says the mouth is failing |
+
+### archive — regions nobody comes to (#342 S4)
+
+At the cap, a frontier region nobody has been in for `deadDays`, with no player structure in
+it, drifts into the archive and frees its slot.
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `deadDays` | 7 | days | without a visit before it drifts away; more than 0 |
+| `warnDays` | 2 | days | the chronicle warns this long before |
+| `returnChance` | 0.35 | chance | when a slot opens, an archived region comes back instead of a fresh one; at most 1 |
+
+### expeditions — a mouth opening is news (#342 S6)
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `reach` | 3 | jumps | every faction holding a system this close to a new mouth learns of it |
+| `curiosity` | 0.8 | worth | how much more it values going that way |
+| `hours` | 8 | hours | for this long |
+
+### growth — stations grown by need (#342 S6, #432)
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `stationsPerRegion` | 4 | count | no region has more stations, whoever built them |
+| `marketReach` | 3 | jumps | an outpost becomes an outpost market where the nearest market is this far; more than 0 |
+| `marketWorth` | 1.2 | worth | what a market is worth to a faction, times the need |
+| `stationWorth` | 1.2 | worth | the same for a trade or mining station |
+| `stationNeed` | 0.45 | need | an outpost market becomes a station at this much trade or mining |
+| `shipyardAfter` | 1 | count | a shipyard only once the region has this many other stations |
+| `shipyardReach` | 4 | jumps | ...and none stands this close |
+| `shipyardWorth` | 1.4 | worth | what a shipyard is worth, times the need: more than another station |
+| `shipyardNeed` | 0.45 | need | the trade or mining a shipyard needs |
+
+### convoys — what an Anchor or an upgrade is built from (#342 S6, #407)
+
+A convoy's fate follows from its own strength against the dangers of its way. Checks:
+`hop`, `reach`, `hauler` and `calm` more than 0; `policed` and `turnBack` at most 1;
+`escort` at most `escortMax`.
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `hop` | 120 | seconds | spent in each system it passes |
+| `reach` | 6 | jumps | it sets out from the faction's holdings this close |
+| `hauler` | 1 | ships | the hauler's own worth |
+| `escort` | 0.25 | share | of the faction's capacity its holding lends as escort... |
+| `escortPerDanger` | 1 | ships | ...plus this many for each ship of the worst danger on the way... |
+| `escortMax` | 0.6 | share | ...up to this much of its capacity |
+| `calm` | 3 | ships | where the danger is this many ships, it is attacked as likely as not |
+| `policed` | 0.6 | share | that chance is this much less at security 1 |
+| `harm` | 1.5 | factor | freight lost by how far the danger outweighs it |
+| `bite` | 0.5 | share | escort lost, and strength taken off the attackers, in a fight |
+| `turnBack` | 0.5 | share | with less freight than this left, it turns back |
+| `balk` | 4 | factor | it turns back before a system whose danger is this many times its strength |
+| `avoid` | 0.5 | jumps | a ship of danger counts as this many jumps when it picks a way |
+| `wait` | 0.35 | share | it is held back while it expects to lose more freight than this... |
+| `maxWaits` | 3 | count | ...at most this many times; then it goes anyway |
+| `retryMinutes` | 10 | minutes | the next sets out this long after one is lost |
+
+### jobs — what faction plans post (#345, #425)
+
+Checks: `supplyShare` and `supplyCut` at most 1; `creditsPerStock` and `offerLife` more than 0.
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `reach` | 4 | jumps | a station of the poster this close to a plan shows its jobs |
+| `perBoard` | 3 | count | at most this many on a board, nearest first |
+| `creditsPerStock` | 50 | credits | a unit of the faction's stock pays this; it posts nothing it cannot pay for |
+| `supplyShare` | 0.5 | share | a supply job asks for this much of the largest line of the site's cost |
+| `supplyMarkup` | 1.6 | factor | paid at this times the good's price |
+| `supplyRange` | 1500 | units | handed in this close to the site's edge |
+| `supplyCut` | 0.35 | share | each delivery takes this off the time the site has left |
+| `supplyMax` | 2 | count | deliveries a site at most |
+| `escortBase` | 400 | credits | an escort job pays this... |
+| `escortPerJump` | 150 | credits | ...and this for each jump of the convoy's way |
+| `escortForce` | 2 | ships | a pilot with the convoy counts as this much escort |
+| `escortSlack` | 600 | seconds | due this long after the convoy would arrive |
+| `siegeKills` | 3 | count | a siege job asks for this many of the besiegers shot down... |
+| `siegePerKill` | 250 | credits | ...paying this each |
+| `rep` | 3 | standing | done, a job is worth this with the poster |
+| `failRep` | 1.5 | standing | failed by the pilot, this less |
+| `offerLife` | 1800 | seconds | a station's own work (bounty, mining, delivery) stays on its board this long |
+| `stationOffers` | 4 | count | ...this many at a time |
+
+### contracts — markets short of a good (#343, #407)
+
+Checks: `every`, `hours` and `minAmount` more than 0; `maxAmount` at least `minAmount`;
+`shortAt` at most `fillTo` at most 1; `premium + premiumShort` less than 1.
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `every` | 600 | seconds | how often each market looks at its stock |
+| `shortAt` | 0.5 | share | a good below this of its target is short |
+| `fillTo` | 0.8 | share | the contract asks for what brings it back to this |
+| `minAmount` | 10 | count | units, at least... |
+| `maxAmount` | 40 | count | ...and at most |
+| `hours` | 2 | hours | due this long after it is posted |
+| `premium` | 0.5 | share | the price lies this far from what selling here fetches toward what buying here costs... |
+| `premiumShort` | 0.4 | share | ...and this much further as the stock empties |
+| `sourceReach` | 3 | jumps | posted only if a market this close sells the units... |
+| `sourceMargin` | 0.1 | share | ...for this much less than the contract pays |
+| `perMarket` | 1 | count | open at one market at most |
+| `perBoard` | 2 | count | on one station's board at most, nearest first |
+| `rep` | 2 | standing | done, one is worth this with the poster |
+
+### holes — roaming wormholes (#342 S9)
+
+At the start of every epoch each live region throws for a hole to another region. Checks:
+`epochHours`, `minHours` and `budgetMin` more than 0; `maxHours` and `budgetMax` at least
+their minima; the chances, `smallWeight + mediumWeight` and `lowMass` at most 1.
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `epochHours` | 4 | hours | the schedule's step |
+| `perRegion` | 0.3 | chance | a region gets a hole this epoch... |
+| `atCap` | 0.6 | chance | ...this, once the galaxy is at its cap and the tide opens nothing new... |
+| `drifted` | 1 | chance | ...and this for a region cut off by a collapsed mouth, so the stranded have a way out |
+| `minHours` | 4 | hours | a hole lives at least... |
+| `maxHours` | 24 | hours | ...and at most this long |
+| `smallMass` | 45 | mass | the heaviest ship a small hole lets through: a scout or a courier |
+| `mediumMass` | 60 | mass | ...a medium one: and a cutter or a raider |
+| `largeMass` | 100 | mass | ...a large one: anything the hangar sells |
+| `smallWeight` | 0.4 | share | of holes that are small |
+| `mediumWeight` | 0.35 | share | of holes that are medium; large is the rest |
+| `budgetMin` | 4 | factor | it collapses after at least this times its class's mass has passed... |
+| `budgetMax` | 10 | factor | ...and at most this |
+| `endingHours` | 4 | hours | it is called ending this long before it closes |
+| `lowMass` | 0.5 | share | its mass is called low below this of its budget |
+
+### scan — the ship's scanner (#346)
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `seconds` | 10 | seconds | a pass takes this long; more than 0 |
+| `power` | 1 | factor | a pass adds this times a signature's strength to what the pilot has resolved; at 1 it is found. More than 0 |
+
+### law — the police's answer to a crime (#431 slices 9-10)
+
+A system is in the high band from `highFrom`, the middle from `midFrom`, the low from
+`lowFrom`; below that nobody comes. Checks: `callSeconds`, `stay` and `flagSeconds` more than
+0; `lowFrom` at most `midFrom` at most `highFrom` at most 1; `gunsFrom` and `onSightFrom` at
+most 1.
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `highFrom` / `midFrom` / `lowFrom` | 0.8 / 0.5 / 0.1 | security | where each band begins |
+| `highLocal` / `midLocal` / `lowLocal` | 99 / 4 / 2 | count | the system's own free police that warp to the crime, at most |
+| `highLaunch` / `midLaunch` / `lowLaunch` | 4 / 2 / 0 | count | patrols a station of the law launches on top, at most |
+| `highReach` / `midReach` / `lowReach` | 2 / 1 / 0 | jumps | police come from systems this close... |
+| `highCalled` / `midCalled` / `lowCalled` | 8 / 3 / 0 | count | ...this many at most in all, lent like a siege's force |
+| `highDelay` / `midDelay` / `lowDelay` | 0 / 20 / 45 | seconds | before any of it comes |
+| `hop` | 10 | seconds | police from next door take this much longer a jump |
+| `stay` | 180 | seconds | police from elsewhere stay this long, then go home |
+| `launchCost` | 0.1 | share | a launched patrol not in the faction's presence is bought at this of an outpost's cost |
+| `callSeconds` | 60 | seconds | one call holds this long: the next shot in that time brings nobody more |
+| `dropDistance` | 1500 | units | police drop out of warp this far from the criminal |
+| `gunsFrom` | 0.5 | security | a station's or a faction structure's guns fire on a criminal only from here up |
+| `flagSeconds` | 900 | seconds | a crime flags the pilot this long, renewed by each crime, running down only while they play |
+| `flagLinger` | 60 | seconds | a flagged pilot who drops the connection leaves the ship in space this long |
+| `statusCrime` | 1 | status | security status lost for a crime... |
+| `statusKill` | 2.5 | status | ...and this more for a kill |
+| `statusPirateKill` | 0.1 | status | gained for each pirate shot down... |
+| `statusPerDay` | 0.5 | status | ...and for each day in the world without a flag, back up to zero |
+| `onSightBelow` | 5 | status | at minus this or below, police engage the pilot on sight... |
+| `onSightFrom` | 0.5 | security | ...in systems of this security and above |
+
+### influence — who holds a system (#431 slice 5)
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `outpost` | 1 | influence | what an outpost weighs toward its owner |
+| `market` | 2 | influence | an outpost market |
+| `station` | 4 | influence | a station: a faction's, or one grown from a market |
+| `anchor` | 2 | influence | an Anchor |
+| `perShip` | 0.25 | influence | each ship of a faction's presence there |
+| `taxMax` | 0.1 | share | the most a corporation that holds a system may take of a trade at its markets; at most 1 |
+
+### licences — building in held space (#431 slice 6, #509)
+
+The rent follows the system: `share` of a period of its economy's output at base prices,
+times `securityBase + securitySlope × security`, never below `rent` nor above `ceiling`.
+Checks: `periodDays` more than 0; a `ceiling` other than 0 is at least `rent`.
+
+| Field | Default | Shipped | Unit | What it does |
+|---|---|---|---|---|
+| `rent` | 2000 | 3000 | credits a period | the floor; with `share` 0 it is the whole rent |
+| `share` | 0 | 0.01 | share | of the system's output in a period |
+| `ceiling` | 0 | 30000 | credits a period | the most a rent is; 0, no ceiling |
+| `securityBase` | 1 | 0.5 | factor | the rent's factor at security 0... |
+| `securitySlope` | 0 | 1 | factor | ...plus this times the security: a safe harbour is worth more |
+| `periodDays` | 7 | — | days | how often the rent is due |
+| `graceHours` | 24 | — | hours | unpaid, a licence holds this much longer, then lapses into trespass |
+| `standing` | 10 | — | standing | a faction gives leave from this standing (a corporation's is its members' sum) |
+| `evict` | 1 | — | worth | what evicting a trespasser is worth to the holding faction, weighed against the risk |
+
+### hangars — personal hangars at NPC stations (#472)
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `freeUnits` | 100 | units | free to every pilot at every station whose archetype keeps `storage` |
+| `rentPerUnit` | 2 | credits a period | a unit rented beyond that, up to the archetype's `storage` |
+| `periodDays` | 30 | days | how often the rent is due; more than 0 |
+
+### security — what police cost a holder, and what security does (#431 slice 11)
+
+A corporation sets a police budget in credits an hour for each system it holds; while it is
+paid, the system's security target rises by `policeSwing × budget / (budget + policeHalf)`.
+Checks: `policeSwing` and `pirateHide` at most 1; `policeHalf` and `shipHour` more than 0;
+`payAtZero` and `oreAtZero` at least 1.
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `policeSwing` | 0.3 | security | the most a budget can raise the target |
+| `policeHalf` | 3000 | credits an hour | the budget that buys half of it |
+| `shipHour` | 600 | credits an hour | the world's police fly one ship for each this much... |
+| `shipsMax` | 8 | count | ...at most this many |
+| `budgetMax` | 30000 | credits an hour | no budget above this is taken |
+| `pirateHide` | 0.6 | share | of the pirates' strength that lies low at security 1, less below |
+| `payAtZero` | 1.6 | factor | a mission's, job's or contract's premium at security 0 against security 1 |
+| `oreAtZero` | 1.5 | factor | how much faster ore comes out of a belt at security 0 |
+
+### patrols — a corporation's own AI patrols (#431 slice 12)
+
+Checks: `regrowHours` more than 0; `systemMax` at most `shipsMax`.
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `shipsMax` | 12 | count | ships of one corporation's patrols, in all |
+| `systemMax` | 6 | count | ...and in one system |
+| `shipHour` | 150 | credits an hour | upkeep of a ship of the default doctrine's `guard` design; a design that fights harder costs more |
+| `regrowHours` | 0.5 | hours | a ship lost is made good this long after, while the upkeep is paid |
+
+### charts — charts sold to factions (#346, #431 slice 16)
+
+A faction pays for how much a pilot's chart changes its own picture of a system. All of it
+is divided by `1 + rarity ×` the number of other factions with intel on the system.
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `system` | 300 | credits | a system it has no intel on at all; nothing for a centre |
+| `station` | 150 | credits | each station more or fewer than it believes stands there... |
+| `structure` | 60 | credits | ...and each structure, when the pilot looked more recently than it did... |
+| `halfLifeHours` | 24 | hours | ...halved for every this long since the pilot looked; more than 0 |
+| `find` | 400 | credits | each hidden thing the pilot's scans resolved there that it was never told of |
+| `rarity` | 0.25 | factor | how much each other faction that knows the system takes off |
+
+### styles — what a region's NPCs fly, and how factions pay for it (#464)
+
+A region's style is a share per weapon family and hull line, proportional to how much of each
+one's goods its markets hold and make, with its people's culture as a prior. Checks: `culture`
+and `defensiveBelow` at most 1; `dearAt` at least 1.
+
+| Field | Default | Unit | What it does |
+|---|---|---|---|
+| `culture` | 0.25 | share | how much the culture weighs against the economy; 0 is the economy alone |
+| `hours` | 24 | hours | a market's supply is its stock plus this much of its production |
+| `dearAt` | 2 | factor | a good dearer than this times its base price is not bought |
+| `holdingIncome` | 1500 | credits an hour | what each holding pays its holder at full prosperity, half at none |
+| `defensiveBelow` | 0.4 | share | a faction whose holdings stand below this of what they keep plans no outposts, sieges or Anchors |
+| `foundingHours` | 24 | hours | a new world's factions begin with this much of their income in the treasury |
+| `cultures` | none | | culture id (a native theme, a major's `culture`) → weight by weapon family or hull line id; a weight is a number of 0 or more. The shipped file weighs seven cultures |
 
 ## Minimal System Example
 
