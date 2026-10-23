@@ -765,6 +765,11 @@ bool, or one to four numbers). The sources:
 | `item.partSeed` | float | 0..1, this part's own -- one rock in a belt from the next |
 | `item.angle` | float | radians, the part's own turn with its spin -- how far a planet has turned |
 | `texture.noise` | sampler2D | a fixed table of random values noise is read from (#426) |
+| `item.partShape` | vec4 | the part's half length, half width (a ring's thickness), sides and form, in the object's radii (#516) |
+| `item.frame` | vec4 | the whole object on screen: centre (pixels), radius (pixels), heading (#516) |
+| `livery.accent` | vec4 | the livery's stripe colour (#516) |
+| `livery.params` | vec4 | the livery's wear, grime, stripe pattern, panel scale |
+| `livery.style` | vec4 | the livery's panel aspect, patchwork, window warmth, windows lit |
 
 **An unknown source is a load error**, unlike an unknown pass in `look.json`, which is
 skipped. Losing a pass makes the picture plainer; losing a uniform makes a material draw
@@ -793,6 +798,28 @@ includes it binds `"noiseTex": "texture.noise"`. A body that covers more of the 
 the backend can afford to paint every frame (`paintBudget` in `data/look.json`, millions of pixels, default 1) is painted
 at reduced resolution -- never below half -- and scaled back up. `worldeditor ... noshaders`
 compiles no materials at all, which is how the stand-ins are judged.
+
+**Finishing a built thing (#516).** Two more fields on a material, and a list beside them
+(`documents/built_surfaces.md` is the design):
+
+- `"roles": { "panel": "plating.recess", "antenna": "truss" }` -- an object on this material
+  draws its parts of those roles on those materials; any other role stays on this one. A key
+  that is not a role, or a material not in the file, is a load error.
+- `"fallback": "hull"` -- what to draw with when this material has no shader on the player's
+  driver, followed down the chain. Without one the part is drawn plain. A material naming one
+  that is not in the file is a load error. `worldeditor ... nopaint` switches off every
+  material with a fallback, which is how the fallen-back look is judged.
+- `"liveries": [ { "id": "guild", "base": [242, 236, 222], "accent": [38, 78, 150],
+  "wear": 0.2, "grime": 0.2, "stripes": 1, "panels": 1.0, "aspect": 2.4, "patchwork": 0.03,
+  "warmth": 0.7, "windows": 0.5 }, ... ]` -- a people's palette, picked by the culture of the
+  faction that owns the object (`factions.json`), or by the faction's id when it has none; the
+  one called `default` for anything else. `base` multiplies the object's colour before it is
+  drawn, shader or not; the rest reach a material through the `livery.*` sources. An unknown
+  field is a load error (`note` is allowed).
+
+A built object whose surface reads its parts (`item.partShape`, `item.partSeed`, `item.angle`)
+is bound by `paintBudget` as a painted body is: covering more of the screen than the budget, it
+is drawn whole at reduced resolution and scaled back up.
 
 ### `style` — the glyph grammar
 

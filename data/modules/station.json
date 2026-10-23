@@ -312,13 +312,13 @@
             "variants": [
                 { "id": "wing", "shape": { "vars": { "pl": [0.68, 0.78], "pw": [0.7, 0.9], "cell": [[40, 60, 110], [50, 50, 80], [60, 70, 90]] }, "parts": [
                     {"form": "bar", "length": 1.9, "width": 0.06, "role": "antenna"},
-                    {"form": "bar", "at": [-0.55, 0.0], "length": "$pl", "width": "$pw", "role": "panel", "tint": "$cell", "row": {"count": 2, "step": [0.95, 0.0]}},
+                    {"form": "bar", "at": [-0.55, 0.0], "length": "$pl", "width": "$pw", "role": "panel", "tint": "$cell", "material": "solar", "row": {"count": 2, "step": [0.95, 0.0]}},
                     {"form": "bar", "at": [-0.55, 0.0], "length": "$pl", "width": 0.04, "role": "trim", "alpha": 0.6, "row": {"count": 2, "step": [0.95, 0.0]}, "chance": 0.6},
                     {"form": "disc", "at": [-0.95, 0.0], "radius": 0.12, "role": "trim"}
                 ]}},
                 { "id": "accordion", "shape": [
                     {"form": "bar", "length": 1.9, "width": 0.07, "role": "antenna"},
-                    {"form": "bar", "at": [-0.65, 0.0], "angle": 90, "length": [1.1, 1.5], "width": 0.17, "role": "panel", "tint": [[40, 60, 110], [50, 50, 80]], "row": {"count": [5, 7], "step": [0.22, 0.0], "taper": [0.88, 1.0]}},
+                    {"form": "bar", "at": [-0.65, 0.0], "angle": 90, "length": [1.1, 1.5], "width": 0.17, "role": "panel", "tint": [[40, 60, 110], [50, 50, 80]], "material": "solar", "row": {"count": [5, 7], "step": [0.22, 0.0], "taper": [0.88, 1.0]}},
                     {"form": "disc", "at": [-0.95, 0.0], "radius": 0.14, "role": "trim"},
                     {"form": "disc", "at": [0.92, 0.0], "radius": 0.06, "role": "light", "tint": [[255, 70, 60], [255, 255, 255]], "blink": [1.6, 2.4], "chance": 0.5}
                 ]},
@@ -328,7 +328,7 @@
                     {"form": "disc", "radius": 0.2, "role": "hull"}
                 ]},
                 { "id": "petals", "shape": { "vars": { "cell": [[40, 60, 110], [50, 50, 80], [60, 70, 90]] }, "parts": [
-                    {"form": "capsule", "length": [0.5, 0.6], "width": [0.2, 0.28], "role": "panel", "tint": "$cell", "row": {"count": 8, "step": [-0.176, 0.424], "turn": 45, "centred": true}},
+                    {"form": "capsule", "length": [0.5, 0.6], "width": [0.2, 0.28], "role": "panel", "tint": "$cell", "material": "solar", "row": {"count": 8, "step": [-0.176, 0.424], "turn": 45, "centred": true}},
                     {"form": "ring", "radius": 0.3, "width": 0.05, "role": "trim", "chance": 0.6},
                     {"form": "disc", "radius": 0.22, "role": "hull"},
                     {"form": "disc", "radius": 0.06, "role": "light", "tint": [[255, 70, 60], [255, 255, 255]], "blink": [1.6, 2.4], "chance": 0.4}

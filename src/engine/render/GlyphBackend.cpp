@@ -209,13 +209,33 @@ bool ShapeBackend::BeginMaterial(const Item& item, const Lighting::Sample& light
     return BeginMaterialAt(item, light, item.pos, item.size);
 }
 
+bool ShapeBackend::Drawable(const std::string& id) const
+{
+    return materials_ != nullptr && materials_->Has(id);
+}
+
+bool ShapeBackend::BuiltSurface(const Item& item) const
+{
+    // A surface that reads its parts -- their proportions, seeds, turns -- is one finished
+    // part by part (#516), and costs by the pixel what a painted body does. `hull` reads
+    // none, so an object that fell back to it is as cheap as it always was.
+    if (materials_ == nullptr || item.material.empty())
+        return false;
+    const Material* m = Materials::Pick("", item.material, "hull",
+                                        [this](const std::string& id) { return Drawable(id); });
+    return m != nullptr && m->readsPart;
+}
+
 bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& light, Vector2 at,
-                                   float size, Vector2 axis, const Material* own, float partSeed,
-                                   float angle)
+                                   float size, Vector2 axis, const Material* own,
+                                   const Piece* piece)
 {
     if (materials_ == nullptr || (own == nullptr && item.material.empty()))
         return false;
-    const Material* m = own != nullptr ? own : Materials::Find(item.material);
+    const Material* m =
+        own != nullptr ? own
+                       : Materials::Pick("", item.material, "hull",
+                                         [this](const std::string& id) { return Drawable(id); });
     if (m == nullptr)
         return false;
 
@@ -241,10 +261,36 @@ bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& lig
     in.screenPos.y *= paintScale_;
     in.screenSize *= paintScale_;
     in.axis = { axis.x, -axis.y };
-    in.partSeed = partSeed;
-    // A piece's angle is measured the way raylib's y runs, downward; turned into OpenGL's
-    // sense with the rest, so a pattern turns the same way as the outline it is drawn in.
-    in.angle = -angle * DEG2RAD;
+    // The whole object, for a part that needs to know where on it it is (#516).
+    Vector2 centre = GetWorldToScreen2D(item.pos, view_);
+    centre.y = (float)GetScreenHeight() - centre.y;
+    in.frame[0] = centre.x * paintScale_;
+    in.frame[1] = centre.y * paintScale_;
+    in.frame[2] = item.size * view_.zoom * paintScale_;
+    in.frame[3] = -item.heading;
+    in.livery = Materials::FindLivery(item.livery);
+    // A part's own inputs only reach a material that reads them. One that does not -- the
+    // hull under a planet's craters -- then has the same inputs for every piece of a body
+    // and keeps one bind for all of them (#296).
+    if (piece != nullptr && m->readsPart)
+    {
+        in.partSeed = piece->seed;
+        // A piece's angle is measured the way raylib's y runs, downward; turned into
+        // OpenGL's sense with the rest, so a pattern turns the same way as its outline.
+        in.angle = -piece->angle * DEG2RAD;
+        const float   object = item.size > 0.0f ? item.size : 1.0f;
+        const Vector2 run = Axis(*piece);
+        const bool    elongated = run.x != 0.0f || run.y != 0.0f;
+        // A ring has no length: what a pattern on it needs is how thick its band is.
+        const bool band = piece->form == Form::Ring || piece->form == Form::Arc;
+        in.partShape[0] = (elongated ? piece->length * 0.5f
+                           : band    ? piece->width
+                                     : piece->radius) /
+                          object;
+        in.partShape[1] = ShadeRadius(*piece) / object;
+        in.partShape[2] = (float)piece->sides;
+        in.partShape[3] = (float)(int)piece->form;
+    }
 
     // Already bound with exactly these inputs: keep it (#296). Every mark on a planet is
     // shaded as the planet -- the body's centre, radius and light -- so a crater field was
@@ -254,6 +300,8 @@ bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& lig
         bound_ && boundMaterial_ == m && boundItem_ == &item && boundAt_.x == in.screenPos.x &&
         boundAt_.y == in.screenPos.y && boundSize_ == in.screenSize && boundAxis_.x == in.axis.x &&
         boundAxis_.y == in.axis.y && boundSeed_ == in.partSeed && boundAngle_ == in.angle &&
+        boundShape_[0] == in.partShape[0] && boundShape_[1] == in.partShape[1] &&
+        boundShape_[2] == in.partShape[2] && boundShape_[3] == in.partShape[3] &&
         boundLight_.dir.x == in.light.dir.x && boundLight_.dir.y == in.light.dir.y &&
         boundLight_.strength == in.light.strength && ColorIsEqual(boundLight_.tint, in.light.tint);
     if (same)
@@ -271,6 +319,8 @@ bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& lig
     boundAxis_ = in.axis;
     boundSeed_ = in.partSeed;
     boundAngle_ = in.angle;
+    for (int k = 0; k < 4; k++)
+        boundShape_[k] = in.partShape[k];
     boundLight_ = in.light;
     return true;
 }
@@ -287,13 +337,23 @@ void ShapeBackend::Draw(const Item& described)
     // A ship is never drawn smaller than it can be found (#426); everything below, its
     // composition and its culling, works on the size it is shown at.
     const float shown = ShownSize(described.kind, described.size, view_.zoom);
-    Item        enlarged;
-    if (shown != described.size)
+    // A livery's base colour is the colour the object is painted (#516): applied here, to
+    // the object's colour, so that it holds with a shader and without one alike (#120).
+    const Livery* livery =
+        described.livery.empty() ? nullptr : Materials::FindLivery(described.livery);
+    const bool painted = livery != nullptr && livery->id == described.livery;
+    Item       enlarged;
+    if (shown != described.size || painted)
     {
         enlarged = described;
         enlarged.size = shown;
+        if (painted)
+            enlarged.color = { (unsigned char)(described.color.r * livery->base.r / 255),
+                               (unsigned char)(described.color.g * livery->base.g / 255),
+                               (unsigned char)(described.color.b * livery->base.b / 255),
+                               described.color.a };
     }
-    const Item& item = shown != described.size ? enlarged : described;
+    const Item& item = (shown != described.size || painted) ? enlarged : described;
 
     Perf::Count(Perf::Counter::Items);
     // What the light does to this object, asked once. An object is small next to the
@@ -316,6 +376,19 @@ void ShapeBackend::Draw(const Item& described)
         {
             Perf::Count(Perf::Counter::Culled);
             return;
+        }
+        // A built thing covering more of the screen than the paint budget (#516) is drawn
+        // whole into the offscreen target at reduced resolution and scaled back up, as a
+        // planet flown over is (#426): its surfaces are finished part by part, and a station
+        // filling a 1080p screen is two million fragments of them on an integrated GPU.
+        if (paintScale_ == 1.0f && BuiltSurface(item))
+        {
+            Rectangle   clip{};
+            const float scale =
+                PaintScaleFor(item.pos, item.size * Reach(*item.shape, item.id), clip);
+            if (scale < 1.0f &&
+                PaintInto(scale, clip, [&]() { return DrawComposition(item, item.color, light); }))
+                return;
         }
         DrawComposition(item, item.color, light);
         return;
@@ -630,14 +703,20 @@ void ShapeBackend::DrawSoftOnSurface(const Item& item, const Piece& p, bool emis
 
 const Material* ShapeBackend::OwnMaterial(const Piece& p) const
 {
-    if (p.material.empty() || materials_ == nullptr || !materials_->Has(p.material))
+    if (p.material.empty() || materials_ == nullptr)
+        return nullptr;
+    // Down the material's fallback chain (#516): a radiator whose shader failed is drawn as
+    // the plating it falls back to, and that as the hull.
+    const Material* m =
+        Materials::Pick(p.material, "", "", [this](const std::string& id) { return Drawable(id); });
+    if (m == nullptr)
         return nullptr;
     // Below a few pixels there is no surface to paint, and the plain colour of the part is a
     // truer picture of a dot than a shader working on nine fragments.
     const float r = p.surface ? p.bodyRadius : ShadeRadius(p);
     if (r * view_.zoom < MIN_SHADED_PIXELS)
         return nullptr;
-    return Materials::Find(p.material);
+    return m;
 }
 
 bool ShapeBackend::DrawOwnMaterial(const Item& item, const Piece& p, const Material& m)
@@ -647,31 +726,16 @@ bool ShapeBackend::DrawOwnMaterial(const Item& item, const Piece& p, const Mater
     // screen -- a planet flown over, a nebula flown into.
     if (p.form == Form::Disc && !p.surface && paintScale_ == 1.0f)
     {
-        const float     w = (float)rlGetFramebufferWidth(), h = (float)rlGetFramebufferHeight();
-        const Vector2   c = GetWorldToScreen2D(p.pos, view_);
-        const float     reach = p.radius * m.reach * view_.zoom + 2.0f;
-        const Rectangle box{ std::fmax(0.0f, c.x - reach), std::fmax(0.0f, c.y - reach), 0.0f,
-                             0.0f };
-        const float     x1 = std::fmin(w, c.x + reach), y1 = std::fmin(h, c.y + reach);
-        const Rectangle clip{ box.x, box.y, std::fmax(0.0f, x1 - box.x),
-                              std::fmax(0.0f, y1 - box.y) };
-        const float     area = clip.width * clip.height;
-        const float     budget = materials_ != nullptr ? materials_->PaintBudget() : area;
-        if (area > budget)
-        {
-            // In eighths, so the target is not resized every frame as a planet grows.
-            const float scale =
-                std::fmax(PAINT_MIN_SCALE, std::floor(std::sqrt(budget / area) * 8.0f) / 8.0f);
-            if (scale < 1.0f && PaintScaled(item, p, m, scale, clip))
-                return true;
-        }
+        Rectangle   clip{};
+        const float scale = PaintScaleFor(p.pos, p.radius * m.reach, clip);
+        if (scale < 1.0f && PaintScaled(item, p, m, scale, clip))
+            return true;
     }
 
     const Vector2          at = p.surface ? p.bodyPos : p.pos;
     const float            r = p.surface ? p.bodyRadius : ShadeRadius(p);
     const Lighting::Sample l = LightAt(at);
-    if (!BeginMaterialAt(item, l, at, r, p.surface ? Vector2{ 0.0f, 0.0f } : Axis(p), &m, p.seed,
-                         p.angle))
+    if (!BeginMaterialAt(item, l, at, r, p.surface ? Vector2{ 0.0f, 0.0f } : Axis(p), &m, &p))
         return false;
     Perf::Count(Perf::Counter::Painted);
     DrawPainted(item, p, m);
@@ -698,6 +762,40 @@ void ShapeBackend::DrawPainted(const Item& item, const Piece& p, const Material&
 
 bool ShapeBackend::PaintScaled(const Item& item, const Piece& p, const Material& m, float scale,
                                Rectangle box)
+{
+    return PaintInto(scale, box,
+                     [&]()
+                     {
+                         const Vector2          at = p.pos;
+                         const Lighting::Sample l = LightAt(at);
+                         const bool             begun =
+                             BeginMaterialAt(item, l, at, ShadeRadius(p), Axis(p), &m, &p);
+                         if (begun)
+                         {
+                             Perf::Count(Perf::Counter::Painted);
+                             DrawPainted(item, p, m);
+                         }
+                         return begun;
+                     });
+}
+
+float ShapeBackend::PaintScaleFor(Vector2 centre, float reach, Rectangle& clip) const
+{
+    const float   w = (float)rlGetFramebufferWidth(), h = (float)rlGetFramebufferHeight();
+    const Vector2 c = GetWorldToScreen2D(centre, view_);
+    const float   r = reach * view_.zoom + 2.0f;
+    const float   x0 = std::fmax(0.0f, c.x - r), y0 = std::fmax(0.0f, c.y - r);
+    const float   x1 = std::fmin(w, c.x + r), y1 = std::fmin(h, c.y + r);
+    clip = { x0, y0, std::fmax(0.0f, x1 - x0), std::fmax(0.0f, y1 - y0) };
+    const float area = clip.width * clip.height;
+    const float budget = materials_ != nullptr ? materials_->PaintBudget() : area;
+    if (area <= budget || area <= 0.0f)
+        return 1.0f;
+    // In eighths, so the target is not resized every frame as a body grows.
+    return std::fmax(PAINT_MIN_SCALE, std::floor(std::sqrt(budget / area) * 8.0f) / 8.0f);
+}
+
+bool ShapeBackend::PaintInto(float scale, Rectangle box, const std::function<bool()>& draw)
 {
     if (materials_ == nullptr)
         return false;
@@ -729,14 +827,7 @@ bool ShapeBackend::PaintScaled(const Item& item, const Piece& p, const Material&
                               RL_FUNC_ADD, RL_FUNC_ADD);
     BeginBlendMode(BLEND_CUSTOM_SEPARATE);
     paintScale_ = (float)sw / (float)w;
-    const Vector2          at = p.pos;
-    const Lighting::Sample l = LightAt(at);
-    const bool begun = BeginMaterialAt(item, l, at, ShadeRadius(p), Axis(p), &m, p.seed, p.angle);
-    if (begun)
-    {
-        Perf::Count(Perf::Counter::Painted);
-        DrawPainted(item, p, m);
-    }
+    const bool begun = draw();
     EndMaterial();
     rlDrawRenderBatchActive();
     EndBlendMode();
@@ -795,6 +886,15 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
     // uncomposed path follows. Without it a star would be shaded by the light it emits,
     // which is how a sun ends up looking like a moon (#119).
     const bool emissive = Emissive(item);
+
+    // The object's surface for each role (#516), resolved once: a station on `plating` draws
+    // its panels on the recessed plating and its struts as truss, each down its own fallback
+    // chain if this driver could not compile it.
+    const Material* byRole[5] = { nullptr, nullptr, nullptr, nullptr, nullptr };
+    if (materials_ != nullptr && !item.material.empty())
+        for (int r = 0; r < 5; r++)
+            byRole[r] = Materials::Pick("", item.material, RoleName((Role)r),
+                                        [this](const std::string& id) { return Drawable(id); });
 
     // Whether the body is painted by a material of its own (#426). If it is, its stand-ins --
     // the continents of discs, the bands, the sunspots -- are not drawn: the shader already
@@ -905,9 +1005,11 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         // anyway is worse than not: a rail two pixels wide is *entirely* the part of a
         // cylinder that turns away from the viewer, so it comes out the darkest thing on
         // screen. The same argument as minPixels, one level down.
-        const float shadePixels = shadeR * view_.zoom;
-        const bool  shaded = shadePixels >= MIN_SHADED_PIXELS &&
-                             BeginMaterialAt(item, pieceLight, shadeAt, shadeR, shadeAxis);
+        const float     shadePixels = shadeR * view_.zoom;
+        const Material* surface = byRole[(int)p.role];
+        const bool shaded = shadePixels >= MIN_SHADED_PIXELS && surface != nullptr &&
+                            BeginMaterialAt(item, pieceLight, shadeAt, shadeR, shadeAxis, surface,
+                                            p.surface ? nullptr : &p);
         if (!shaded)
             EndMaterial();
 

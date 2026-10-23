@@ -31,17 +31,51 @@ const NamedSource SOURCES[] = {
     { Source::ItemSeed, "item.seed" },
     { Source::ItemPartSeed, "item.partSeed" },
     { Source::ItemAngle, "item.angle" },
+    { Source::ItemPartShape, "item.partShape" },
+    { Source::ItemFrame, "item.frame" },
     { Source::LightDir, "light.dir" },
     { Source::LightTint, "light.tint" },
     { Source::LightSurface, "light.surface" },
     { Source::LightStrength, "light.strength" },
     { Source::LightAmbient, "light.ambient" },
+    { Source::LiveryAccent, "livery.accent" },
+    { Source::LiveryParams, "livery.params" },
+    { Source::LiveryStyle, "livery.style" },
     { Source::ClockTime, "clock.time" },
     { Source::TextureNoise, "texture.noise" },
 };
 
 std::vector<Material> g_materials;
+std::vector<Livery>   g_liveries;
 std::string           g_error;
+
+// What a material is given when the object has no livery and the file defines no default.
+const Livery NEUTRAL_LIVERY{};
+
+UniformValue FourOf(const float* f)
+{
+    UniformValue u;
+    u.count = 4;
+    for (int i = 0; i < 4; i++)
+        u.v[i] = f[i];
+    return u;
+}
+
+// A colour in a livery: three or four bytes, as an archetype writes one.
+bool ReadColor(const json& j, Color& out)
+{
+    if (!j.is_array() || (j.size() != 3 && j.size() != 4))
+        return false;
+    unsigned char c[4] = { 0, 0, 0, 255 };
+    for (size_t i = 0; i < j.size(); i++)
+    {
+        if (!j[i].is_number() || j[i].get<float>() < 0.0f || j[i].get<float>() > 255.0f)
+            return false;
+        c[i] = (unsigned char)j[i].get<float>();
+    }
+    out = { c[0], c[1], c[2], c[3] };
+    return true;
+}
 
 UniformValue One(float a)
 {
@@ -152,6 +186,8 @@ UniformValue Resolve(const Binding& b, const MaterialInputs& in)
         case Source::ItemSeed: return One(haveItem ? SeedOf(in.item->id) : 0.0f);
         case Source::ItemPartSeed: return One(in.partSeed);
         case Source::ItemAngle: return One(in.angle);
+        case Source::ItemPartShape: return FourOf(in.partShape);
+        case Source::ItemFrame: return FourOf(in.frame);
 
         case Source::LightDir: return Two(in.light.dir.x, in.light.dir.y);
         case Source::LightTint: return Four(in.light.tint);
@@ -159,11 +195,26 @@ UniformValue Resolve(const Binding& b, const MaterialInputs& in)
         case Source::LightStrength: return One(in.light.strength);
         case Source::LightAmbient: return One(in.ambient);
 
+        case Source::LiveryAccent:
+            return Four(in.livery != nullptr ? in.livery->accent : NEUTRAL_LIVERY.accent);
+        case Source::LiveryParams:
+            return FourOf(in.livery != nullptr ? in.livery->params : NEUTRAL_LIVERY.params);
+        case Source::LiveryStyle:
+            return FourOf(in.livery != nullptr ? in.livery->style : NEUTRAL_LIVERY.style);
+
         case Source::ClockTime: return One(in.time);
 
         case Source::TextureNoise: return UniformValue{ 0, {} };  // bound by the library
     }
     return UniformValue{};
+}
+
+const std::string& Material::ForRole(const std::string& role) const
+{
+    for (const auto& r : roles)
+        if (r.first == role)
+            return r.second;
+    return id;
 }
 
 namespace Materials
@@ -240,13 +291,143 @@ bool Load(const std::string& path)
                     }
                 }
                 mat.bindings.push_back(b);
+                mat.readsPart = mat.readsPart || b.source == Source::ItemPartSeed ||
+                                b.source == Source::ItemAngle || b.source == Source::ItemPartShape;
             }
+        }
+        if (m.contains("roles"))
+        {
+            if (!m["roles"].is_object())
+            {
+                g_error = "material '" + mat.id + "': roles maps a role to a material";
+                return false;
+            }
+            for (auto it = m["roles"].begin(); it != m["roles"].end(); ++it)
+            {
+                Role role;
+                if (!RoleFromName(it.key(), role) || !it.value().is_string())
+                {
+                    g_error = "material '" + mat.id + "': roles: '" + it.key() +
+                              "' is not a role, or names no material";
+                    return false;
+                }
+                mat.roles.emplace_back(it.key(), it.value().get<std::string>());
+            }
+        }
+        if (m.contains("fallback"))
+        {
+            if (!m["fallback"].is_string())
+            {
+                g_error = "material '" + mat.id + "': fallback names a material";
+                return false;
+            }
+            mat.fallback = m["fallback"].get<std::string>();
         }
         loaded.push_back(mat);
     }
 
+    // Every material a material names must be in the file: a typo here would quietly draw a
+    // radiator as plating, or a station plain on the one driver whose shader failed.
+    auto defined = [&](const std::string& id)
+    {
+        for (const Material& m : loaded)
+            if (m.id == id)
+                return true;
+        return false;
+    };
+    for (const Material& m : loaded)
+    {
+        for (const auto& r : m.roles)
+            if (!defined(r.second))
+            {
+                g_error = "material '" + m.id + "': role '" + r.first + "' names material '" +
+                          r.second + "', which is not defined";
+                return false;
+            }
+        if (!m.fallback.empty() && !defined(m.fallback))
+        {
+            g_error =
+                "material '" + m.id + "': falls back to '" + m.fallback + "', which is not defined";
+            return false;
+        }
+    }
+
+    std::vector<Livery> liveries;
+    if (j.contains("liveries"))
+    {
+        if (!j["liveries"].is_array())
+        {
+            g_error = path + ": liveries is not an array";
+            return false;
+        }
+        for (const json& l : j["liveries"])
+        {
+            Livery lv;
+            lv.id = l.value("id", std::string());
+            const std::string who = "livery '" + lv.id + "': ";
+            if (lv.id.empty())
+            {
+                g_error = "a livery has no id";
+                return false;
+            }
+            for (auto it = l.begin(); it != l.end(); ++it)
+            {
+                const std::string& k = it.key();
+                if (k == "id" || k == "note")
+                    continue;
+                if (k == "base" || k == "accent")
+                {
+                    if (!ReadColor(it.value(), k == "base" ? lv.base : lv.accent))
+                    {
+                        g_error = who + k + " is three or four numbers, 0 to 255";
+                        return false;
+                    }
+                    continue;
+                }
+                static const char* const PARAMS[] = { "wear", "grime", "stripes", "panels" };
+                static const char* const STYLE[] = { "aspect", "patchwork", "warmth", "windows" };
+                float*                   slot = nullptr;
+                for (int i = 0; i < 4; i++)
+                {
+                    if (k == PARAMS[i])
+                        slot = &lv.params[i];
+                    if (k == STYLE[i])
+                        slot = &lv.style[i];
+                }
+                // Strict like the archetypes (#191): a misspelt field would otherwise be a
+                // livery that quietly kept its default.
+                if (slot == nullptr || !it.value().is_number())
+                {
+                    g_error = who + "unknown field '" + k + "', or not a number";
+                    return false;
+                }
+                *slot = it.value().get<float>();
+            }
+            liveries.push_back(lv);
+        }
+    }
+
     g_materials = std::move(loaded);
+    g_liveries = std::move(liveries);
     return true;
+}
+
+const Livery* FindLivery(const std::string& id)
+{
+    const Livery* fallback = nullptr;
+    for (const Livery& l : g_liveries)
+    {
+        if (l.id == id)
+            return &l;
+        if (l.id == "default")
+            fallback = &l;
+    }
+    return fallback;
+}
+
+const std::vector<Livery>& Liveries()
+{
+    return g_liveries;
 }
 
 const Material* Find(const std::string& id)
@@ -297,6 +478,15 @@ std::vector<std::string> UnknownInArchetypes()
                               "', which is not defined -- drawing it as the object");
         }
     }
+    // Every module in the library, too (#516): a kit places them by tag and by the seed, so
+    // which archetype wears a radiator is not written anywhere a check above would see.
+    for (const Module& m : Modules::All())
+        for (const ModuleVariant& v : m.variants)
+            for (const Part& q : v.shape.parts)
+                if (!q.material.empty() && Find(q.material) == nullptr)
+                    out.push_back("module '" + m.id + "' (" + v.id + ") has a part on material '" +
+                                  q.material +
+                                  "', which is not defined -- drawing it as the object");
     return out;
 }
 

@@ -210,6 +210,7 @@ Render::Item Editor::GalleryItem(const Archetype& a, Vector2 pos, float size) co
     it.heading = galleryHeading_;
     it.thrusting = galleryThrusting_;
     it.id = gallerySeed_;
+    it.livery = galleryLivery_;
     return it;
 }
 
@@ -338,7 +339,15 @@ Camera2D Editor::GalleryFocusCamera(const Archetype& a) const
     cam.offset = { box.x + box.width / 2.0f, box.y + box.height / 2.0f };
     cam.target = galleryPan_;
     cam.zoom = (fminf(box.width, box.height) * 0.45f) / fmaxf(reach, 1e-3f) * galleryZoom_;
+    // A fleet is laid on a square grid three reaches apart, and framed whole.
+    if (galleryFleet_ > 1)
+        cam.zoom /= (float)GalleryFleetColumns() * 1.5f;
     return cam;
+}
+
+int Editor::GalleryFleetColumns() const
+{
+    return (int)std::ceil(std::sqrt((float)std::max(1, galleryFleet_)));
 }
 
 void Editor::DrawGalleryFocus()
@@ -351,8 +360,27 @@ void Editor::DrawGalleryFocus()
     DrawRectangleRec(box, Fade(Ui::PANEL_BG, 0.75f));
     BeginClip(box);
     BeginMode2D(cam);
-    Render::Present({ GalleryItem(a, { 0.0f, 0.0f }, size) }, GalleryLighting({ 0.0f, 0.0f }, size),
-                    cam, *backend_);
+    if (galleryFleet_ > 1)
+    {
+        // `fleet N` (#516): N of the card at once, each its own object -- its own seed and a
+        // heading of its own -- for what many of a kind on screen cost.
+        const int                 cols = GalleryFleetColumns();
+        const float               step = size * Render::Extent(a.visual.shape) * 3.0f;
+        std::vector<Render::Item> fleet;
+        for (int i = 0; i < galleryFleet_; i++)
+        {
+            const Vector2 at = { ((float)(i % cols) - (float)(cols - 1) * 0.5f) * step,
+                                 ((float)(i / cols) - (float)(cols - 1) * 0.5f) * step };
+            Render::Item  it = GalleryItem(a, at, size);
+            it.id = gallerySeed_ + i;
+            it.heading = galleryHeading_ + (float)i * 0.7f;
+            fleet.push_back(it);
+        }
+        Render::Present(fleet, GalleryLighting({ 0.0f, 0.0f }, size), cam, *backend_);
+    }
+    else
+        Render::Present({ GalleryItem(a, { 0.0f, 0.0f }, size) },
+                        GalleryLighting({ 0.0f, 0.0f }, size), cam, *backend_);
     if (gallerySockets_)
     {
         // Where the sections offer a place, coloured by kind, with a tick for which way it

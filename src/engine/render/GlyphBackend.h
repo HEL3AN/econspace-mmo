@@ -2,6 +2,7 @@
 
 #include "render/MaterialLibrary.h"
 #include "render/Scene.h"
+#include <functional>
 
 namespace Render
 {
@@ -114,11 +115,12 @@ private:
     // Turns the item's material on for what follows, positioned on `at` with radius
     // `size` in world units. A composition passes each piece's own centre and cross
     // section (#135); an uncomposed object passes its own.
-    // `own` is a part's own material (#426) in place of the object's, and `partSeed` and
-    // `angle` (degrees, as a piece has it) are that part's, for the sources that ask.
+    // `own` is the material to use in place of the object's: a part's own (#426), or the
+    // object's surface for the part's role (#516). `piece` is the part, for the sources that
+    // ask about it -- its seed, its turn, its proportions; null for none.
     bool BeginMaterialAt(const Item& item, const Lighting::Sample& light, Vector2 at, float size,
                          Vector2 axis = { 0.0f, 0.0f }, const Material* own = nullptr,
-                         float partSeed = 0.0f, float angle = 0.0f);
+                         const Piece* piece = nullptr);
     bool BeginMaterial(const Item& item, const Lighting::Sample& light);
     void EndMaterial();
     // The shapes themselves, split off so that whichever of its ten returns is taken, the
@@ -145,6 +147,15 @@ private:
     // resolution every frame (#426). False if it could not be.
     bool PaintScaled(const Item& item, const Piece& p, const Material& m, float scale,
                      Rectangle box);
+    // Whatever `draw` draws, painted into the offscreen target at `scale` of the target's
+    // resolution and drawn back over `box` (screen pixels): a piece (PaintScaled) or a whole
+    // built object (#516). False if it could not be, and nothing was drawn.
+    bool PaintInto(float scale, Rectangle box, const std::function<bool()>& draw);
+    // The resolution to paint something `reach` world units round `centre` at, under the
+    // paint budget: 1 when it fits, else down to PAINT_MIN_SCALE. `clip` is its box on screen.
+    float PaintScaleFor(Vector2 centre, float reach, Rectangle& clip) const;
+    // Whether an object's surface is a built one, finished part by part (#516).
+    bool BuiltSurface(const Item& item) const;
     // The primitive under a material of a piece's own, the material already begun.
     void DrawPainted(const Item& item, const Piece& p, const Material& m);
 
@@ -177,7 +188,10 @@ private:
     // is painted at reduced resolution (PaintScaled).
     float            paintScale_ = 1.0f;
     float            boundAngle_ = 0.0f;
+    float            boundShape_[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     Lighting::Sample boundLight_{};
+    // Whether the material library has a shader for a material, for Materials::Pick.
+    bool             Drawable(const std::string& id) const;
     Camera2D         view_{};
     MaterialLibrary* materials_ = nullptr;  // borrowed; null draws everything plain
 };

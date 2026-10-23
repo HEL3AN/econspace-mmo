@@ -278,6 +278,16 @@ an antialiased limb (`bCoverage`). Its noise reads a table rather than hashing: 
 | `item.partSeed` | `float` | 0..1, this part's own: one rock in a belt from the next |
 | `item.angle` | `float` | radians, this part's own turn with its spin: how far a planet has turned |
 | `texture.noise` | `sampler2D` | a fixed 256 x 256 table of random values that `body.glsl` reads noise from |
+| `item.partShape` | `vec4` | the part's half length, half width (a ring's thickness), sides and form, in the object's radii: what a pattern fits itself to (#516) |
+| `item.frame` | `vec4` | the whole object on screen: centre and radius in pixels, heading -- which side of it a part is on |
+| `livery.accent` | `vec4` | the livery's stripe colour: the culture that built the object, never its side (#117) |
+| `livery.params` | `vec4` | wear, grime, stripe pattern, panel scale |
+| `livery.style` | `vec4` | panel aspect, patchwork, window warmth, windows lit |
+
+A built thing -- a station, a ship -- is finished by `built.fs` under several materials
+(`plating`, `plating.recess`, `truss`, `radiator`, `solar`, `glass`, `nozzle`, ...), chosen per
+part by its role through the object material's `roles` and by a part's own `material`, each
+with a `fallback` to `hull`. `documents/built_surfaces.md` is the design.
 
 The gallery's **STATE** sliders feed the `item.*` values a static picture never shows:
 **intensity** for damage, **heading**, **thrusting**. Drag intensity down to see what `hull`

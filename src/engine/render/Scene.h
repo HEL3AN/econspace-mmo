@@ -46,6 +46,11 @@ struct Item
     // Which material shades it (#121), from its archetype. Empty draws it plain.
     std::string material;
 
+    // Whose style it is built in (#516): a livery id from materials.json -- the culture of
+    // the faction that owns it. Empty for no livery: the object's own colour, and the
+    // default livery's wear and grime for a material that asks.
+    std::string livery;
+
     // What it is made of (#122). Borrowed from the process-wide archetype registry, on the
     // same terms as `Entity::archetype_`: valid until the next Archetypes::Load, which
     // every executable calls once before building a world. Not copied, because a scene is

@@ -65,3 +65,17 @@ Station::Station(Vector2 pos, float size, std::string name, FactionId faction, S
 {
     SetArchetype(ArchetypeIdForStationRole(role));
 }
+
+Render::Item Station::Describe() const
+{
+    Render::Item it = Entity::Describe();
+    // The livery of the people who built it (#516) -- its owner's culture, or the owner
+    // itself for a faction that has none. An art palette, not allegiance (#117): whether a
+    // Guild hub is friend or target is the overview's to say.
+    if (faction_.Index() < Factions::Count())
+    {
+        const FactionDef& f = Factions::Def(faction_);
+        it.livery = f.culture.empty() ? f.id : f.culture;
+    }
+    return it;
+}
