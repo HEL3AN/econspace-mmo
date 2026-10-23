@@ -1,6 +1,6 @@
 name: release
 
-# A release is a tag (#400): pushing v0.1.0 builds Release on Windows and on Linux, runs the
+# A release is a tag (#400): pushing v0.1.0 builds Release on Windows, Linux and macOS, runs the
 # tests against exactly those binaries, packs the portable folders and opens a DRAFT GitHub
 # Release with them and generated notes. Nothing is published until a person reads the draft
 # and presses Publish.
@@ -175,9 +175,98 @@ jobs:
           path: build-release/econspace-*-linux.tar.gz
           if-no-files-found: error
 
+  macos:
+    name: macOS package (Apple Clang, universal)
+    # Universal (#478): one archive runs on Apple silicon and on Intel. raylib, GLFW and the
+    # rest are built from source here and link only system frameworks, so a second slice
+    # costs build time and nothing else. The runner is arm64; the minimum macOS (11) is
+    # CMakeLists.txt's CMAKE_OSX_DEPLOYMENT_TARGET. Unsigned until SignPath (#186), which is
+    # why the README and the release notes say how to open it.
+    runs-on: macos-15
+    timeout-minutes: 60
+    outputs:
+      number: ${{ steps.version.outputs.number }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DWARNINGS_AS_ERRORS=ON
+          "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+
+      - name: Build
+        # A bare -j starts every compile at once; on a 3-core, 7 GB runner that swaps.
+        run: cmake --build build-release -j "$(sysctl -n hw.ncpu)"
+
+      - name: Test
+        run: ctest --test-dir build-release --output-on-failure
+
+      - name: Server smoke tests
+        timeout-minutes: 10
+        run: |
+          ./build-release/bin/server/econserver hosttest
+          ./build-release/bin/server/econserver accttest
+          ./build-release/bin/server/econserver worldtest
+          ./build-release/bin/server/econserver ordertest
+          ./build-release/bin/server/econserver opstest
+
+      - name: Version
+        id: version
+        run: |
+          set -e
+          line=$(./build-release/bin/server/econserver --version)
+          echo "$line"
+          number=$(echo "$line" | sed -n 's/.*(\(.*\))$/\1/p')
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$number" ]; then
+            echo "The tag $GITHUB_REF_NAME does not match the build's version $number."
+            exit 1
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      # As on Linux: packed, unpacked away from the source tree, and asked to run. Every
+      # binary must carry both slices and ask for nothing newer than macOS 11.
+      - name: Pack and run from elsewhere
+        timeout-minutes: 15
+        run: |
+          set -e
+          cmake --build build-release --target dist
+          pkg=$(ls build-release/econspace-*-macos.tar.gz)
+          mkdir -p "$RUNNER_TEMP/pkg"
+          tar xzf "$pkg" -C "$RUNNER_TEMP/pkg"
+          dir=$(ls -d "$RUNNER_TEMP"/pkg/econspace-*-macos)
+          ls -l "$dir"
+          ls "$dir/README.txt" "$dir/HOSTING.md" "$dir/data/goods.json"
+          for exe in econspace econserver econagent worldeditor; do
+            file "$dir/$exe"
+            archs=$(lipo -archs "$dir/$exe")
+            case "$archs" in *arm64*x86_64*|*x86_64*arm64*) ;; *) echo "$exe is not universal: $archs"; exit 1 ;; esac
+            minos=$(otool -l "$dir/$exe" | awk '/LC_BUILD_VERSION/{b=1} b&&/minos/{print $2; exit}')
+            echo "$exe: $archs, minos $minos"
+            [ "$minos" = "11.0" ] || { echo "$exe asks for macOS $minos"; exit 1; }
+          done
+          otool -L "$dir/econspace"
+          "$dir/econserver" --version
+          # The Intel slice too, where the runner has Rosetta.
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            arch -x86_64 "$dir/econserver" --version
+          else
+            echo "No Rosetta on this runner: the x86_64 slice is checked by lipo only."
+          fi
+          (cd "$dir" && ./econserver host 0 > "$RUNNER_TEMP/server.log" 2>&1) &
+          trap 'pkill -f "$dir/econserver" || true; kill %1 2>/dev/null || true; cat "$RUNNER_TEMP/server.log"' EXIT
+          for _ in $(seq 1 150); do grep -q "EconSpace server on port" "$RUNNER_TEMP/server.log" && break; sleep 0.2; done
+          port=$(sed -n 's/.*EconSpace server on port \([0-9]*\).*/\1/p' "$RUNNER_TEMP/server.log")
+          "$dir/econagent" selftest 127.0.0.1 "$port" packaged packaged-secret
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-macos
+          path: build-release/econspace-*-macos.tar.gz
+          if-no-files-found: error
+
   release:
     name: Draft release
-    needs: [ windows, linux ]
+    needs: [ windows, linux, macos ]
     if: github.ref_type == 'tag' || inputs.draft
     runs-on: ubuntu-latest
     permissions:
@@ -196,18 +285,31 @@ jobs:
           NAME: ${{ needs.windows.outputs.name }}
           NUMBER: ${{ needs.windows.outputs.number }}
           LINUX_NUMBER: ${{ needs.linux.outputs.number }}
+          MACOS_NUMBER: ${{ needs.macos.outputs.number }}
         run: |
           set -e
-          if [ "$NUMBER" != "$LINUX_NUMBER" ]; then
-            echo "Windows built $NUMBER and Linux $LINUX_NUMBER"; exit 1
+          if [ "$NUMBER" != "$LINUX_NUMBER" ] || [ "$NUMBER" != "$MACOS_NUMBER" ]; then
+            echo "Windows built $NUMBER, Linux $LINUX_NUMBER and macOS $MACOS_NUMBER"; exit 1
           fi
           ls -l packages
           # Always --draft: publishing is a person's decision. A run by hand names the tag the
           # version would have; a draft does not create it.
           tag="v$NUMBER"
           [ "$GITHUB_REF_TYPE" = "tag" ] && tag="$GITHUB_REF_NAME"
+          # What a player needs before the list of changes: which file, and how to open an
+          # unsigned build. GitHub appends the generated notes after it.
+          cat > "$RUNNER_TEMP/notes.md" <<'NOTES'
+          ## Downloads
+
+          - **Windows**: `econspace-*-windows.zip`. Unzip anywhere. Windows may warn that the program is unrecognised: *More info* -> *Run anyway*.
+          - **Linux**: `econspace-*-linux.tar.gz`. The same folder is the server for a headless machine: see `HOSTING.md` inside.
+          - **macOS** (universal: Apple silicon and Intel, macOS 11 or later): `econspace-*-macos.tar.gz`. The build is not signed yet, so macOS will not open it with a double-click. Either right-click (Control-click) a program in Finder, choose *Open* and confirm, once per program; or clear the quarantine on the whole folder in Terminal: `xattr -dr com.apple.quarantine econspace-*-macos`.
+
+          Each folder has a `README.txt`. A client plays only on a server of the same release.
+          NOTES
           gh release create "$tag" packages/* \
             --draft \
             --target "$GITHUB_SHA" \
             --title "$NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
             --generate-notes

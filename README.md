@@ -101,7 +101,7 @@ The repository has several documents at the top. Each owns one thing:
 **Tools**
 - `worldeditor` — a **gallery** that shows every kind of object at once, lit and treated exactly as the game draws them, with their look editable live; a survey of generated systems; region and galaxy maps of a seed or a saved world; and editors for pins and admin packs.
 - `econserver` — the same simulation, headless, with smoke tests, a console and an admin channel, `validate` for packs, and batch runs that print a world's news.
-- A portable package for each release (client, server, agent and `data/` in one folder) and a guide to [hosting a server for friends](docs/hosting.md).
+- A portable package for each release on Windows, Linux and macOS (client, server, agent, editor and `data/` in one folder) and a guide to [hosting a server for friends](docs/hosting.md).
 
 ---
 
@@ -122,6 +122,14 @@ ctest --test-dir build --output-on-failure   # the unit suite
 ```
 
 `build/` (Debug) is for development and tests. To play, or to measure anything, build Release in a second directory: `cmake -S . -B build-release -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release` and `cmake --build build-release`; an unoptimized build is several times slower. `cmake --build build-release --target dist` makes the portable package.
+
+**Downloading a release.** Each release has `econspace-<version>-<codename>-windows.zip`, `-linux.tar.gz` and `-macos.tar.gz`: one folder, no installer. Windows may call the program unrecognised: *More info* → *Run anyway*. The macOS build is universal (Apple silicon and Intel, macOS 11 or later) and **not signed** yet, so macOS refuses to open it with a double-click. Either right-click (Control-click) a program in Finder, choose *Open* and confirm, once per program; or clear the quarantine on the whole folder in Terminal:
+
+```sh
+xattr -dr com.apple.quarantine econspace-<version>-<codename>-macos
+```
+
+Signing comes with the beta (#186). The `README.txt` inside each folder says how to start a server and connect.
 
 On Windows, close a running executable before rebuilding — Windows will not let it be overwritten. On Linux the binaries have no `.exe` suffix.
 
