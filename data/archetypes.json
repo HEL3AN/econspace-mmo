@@ -222,7 +222,7 @@
             "color": [200, 200, 210, 255],
             "layer": 4,
             "size": 700,
-            "material": "hull",
+            "material": "plating",
             "shape": {
                 "sections": [
                     {"form": "polygon", "sides": 6, "radius": 0.55, "role": "hull", "pitch": 0.2},
@@ -1118,7 +1118,7 @@
             "color": [255, 255, 255, 255],
             "layer": 6,
             "size": 16,
-            "material": "hull",
+            "material": "plating",
             "design": "scout",
             "components": {}
         },
@@ -1132,7 +1132,7 @@
             "color": [200, 200, 200, 255],
             "layer": 5,
             "size": 10,
-            "material": "hull",
+            "material": "plating",
             "design": "scout",
             "components": {}
         },

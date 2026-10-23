@@ -3,6 +3,7 @@
 #include "render/Lighting.h"
 #include "raylib.h"
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Render
@@ -42,12 +43,29 @@ enum class Source
     ItemSeed,        // float, 0..1 -- the object's own, from its id: two planets of a kind differ
     ItemPartSeed,    // float, 0..1 -- this part's own: one rock in a field from the next
     ItemAngle,       // float, radians -- this part's own turn, its spin included (#136)
+    // vec4 -- the part's own proportions, in the object's radii: half its length along its
+    // axis, half its width across it (its radius if it is round), its sides, its form (#516).
+    // What lets a pattern fit the part it is on -- seams that meet its edges -- rather than
+    // run on in raw world units.
+    ItemPartShape,
+    // vec4 -- the whole object on screen: its centre (pixels, origin bottom left), its radius
+    // in pixels, and its heading in OpenGL's sense (#516). What a part needs to know which
+    // side of the object it is on -- a window on the night side -- and to lay grime that
+    // runs on from one part to the next.
+    ItemFrame,
 
     LightDir,       // vec2, unit vector toward the strongest light (#119)
     LightTint,      // vec4, 0..1 -- the colour of the light arriving: a rim, a glow
     LightSurface,   // vec4, 0..1 -- what that light does to an albedo, its hue capped (#361)
     LightStrength,  // float, 0..1
     LightAmbient,   // float -- the floor nothing goes below
+
+    // The object's livery (#516): the art palette of the people who built it, never an
+    // allegiance colour (#117). Its base colour is applied to the object's colour before
+    // anything is drawn, shader or not; these are what only a material can use.
+    LiveryAccent,  // vec4, 0..1 -- stripes, bands, the colour that says whose style this is
+    LiveryParams,  // vec4 -- wear, grime, stripe pattern, panel scale
+    LiveryStyle,   // vec4 -- panel aspect, patchwork, window warmth, window density
 
     ClockTime,  // float, seconds
 
@@ -88,6 +106,38 @@ struct Material
     // there to draw on unless the primitive under the shader is that much larger. The shader
     // is still told the part's own radius, so a limb stays at 1. A round part only.
     float reach = 1.0f;
+
+    // A surface for each role (#516): an object on `plating` draws its panel-role parts on
+    // `roles["panel"]` and so on, and a role it does not name stays on this material. One
+    // level deep -- a material named here is used as it is, its own `roles` ignored. Both
+    // names are checked when the file loads: an unknown role or material is a load error.
+    std::vector<std::pair<std::string, std::string>> roles;
+
+    // What to draw with when this material has no shader on this driver (#120, #516): a
+    // built surface falls back to `hull`, which is what the object wore before it had one.
+    // Followed until a material with a shader is found; empty, the part is drawn plain.
+    std::string fallback;
+
+    // Whether any binding reads these. A material that does not read a part's seed, turn
+    // or proportions can be bound once for every part that shares the rest (#296) -- a
+    // planet's craters -- rather than once per part.
+    bool readsPart = false;
+
+    // The material a part of this role is drawn with: the one `roles` names, or this one.
+    const std::string& ForRole(const std::string& role) const;
+};
+
+// A people's art palette for what they build (#516). Chosen by the culture of the faction
+// that owns the object (factions.json), so a Guild hub and a Syndicate one are kin but not
+// twins. An art decision, like every colour in the world view (#117): which side a player is
+// on is the instruments' business, and two cultures may well be at war in the same livery.
+struct Livery
+{
+    std::string id;
+    Color       base = { 255, 255, 255, 255 };           // multiplies the object's colour
+    Color       accent = { 200, 160, 60, 255 };          // stripes and bands
+    float       params[4] = { 0.3f, 0.3f, 1.0f, 1.0f };  // wear, grime, stripes, panel scale
+    float       style[4] = { 2.0f, 0.1f, 0.5f, 0.3f };   // aspect, patchwork, warmth, windows
 };
 
 // Everything a binding can be resolved from. Gathered by the backend once per item, so
@@ -103,6 +153,9 @@ struct MaterialInputs
     float            time = 0.0f;
     float            partSeed = 0.0f;  // 0..1
     float            angle = 0.0f;     // radians, already in OpenGL's sense (counter-clockwise)
+    float            partShape[4] = { 0.0f, 0.0f, 0.0f, 0.0f };  // see Source::ItemPartShape
+    float            frame[4] = { 0.0f, 0.0f, 0.0f, 0.0f };      // see Source::ItemFrame
+    const Livery*    livery = nullptr;  // null: the registry's default, or a neutral one
 };
 
 // An object's seed as a material sees it: its id spread over 0..1, the same on every client.
@@ -128,11 +181,42 @@ const std::vector<Material>& All();
 
 const std::string& Error();
 
+// A livery by id, or the one called "default", or null when the file has neither.
+const Livery*              FindLivery(const std::string& id);
+const std::vector<Livery>& Liveries();
+
+// The material a part is drawn with: its own if it has one, else the object's surface for
+// its role (the object material's `roles`), then down `fallback` until `has` says a material
+// can be drawn on this driver. Null when nothing in the chain can: the part is drawn plain.
+template <class Has>
+const Material* Pick(const std::string& own, const std::string& object, const std::string& role,
+                     Has has);
+
 // Every archetype in the registry that names a material this registry does not define,
 // one line each, naming both. Such an object draws plain -- exactly what it did before
 // materials existed -- so nothing on screen would ever say it was a typo (#191). The
 // check cannot live in Archetypes::Load: the server and the tests load no materials.
 std::vector<std::string> UnknownInArchetypes();
 }  // namespace Materials
+
+template <class Has>
+const Material* Materials::Pick(const std::string& own, const std::string& object,
+                                const std::string& role, Has has)
+{
+    const Material* m = nullptr;
+    if (!own.empty())
+        m = Find(own);
+    else if (const Material* o = Find(object))
+        m = Find(o->ForRole(role));
+    // A fallback chain is short and written in the data, but a loop in it must not hang the
+    // renderer: never more steps than there are materials.
+    for (size_t step = 0; m != nullptr && step <= All().size(); step++)
+    {
+        if (has(m->id))
+            return m;
+        m = m->fallback.empty() ? nullptr : Find(m->fallback);
+    }
+    return nullptr;
+}
 
 }  // namespace Render

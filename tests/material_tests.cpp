@@ -1,6 +1,8 @@
 #include <doctest/doctest.h>
 
 #include "core/Archetype.h"
+#include "core/Faction.h"
+#include "entities/Station.h"
 #include "render/Material.h"
 #include "render/Scene.h"
 #include "temp_dir.h"
@@ -29,11 +31,12 @@ TEST_CASE("every source is named the same way in data and in code")
 {
     // The names are what a material file says, so a rename that misses one would turn a
     // binding into a load error rather than into anything visible.
-    const char* names[] = { "item.color", "item.intensity", "item.heading",    "item.thrusting",
-                            "item.size",  "item.screenPos", "item.screenSize", "light.dir",
-                            "light.tint", "light.surface",  "light.strength",  "light.ambient",
-                            "clock.time", "item.axis",      "item.seed",       "item.partSeed",
-                            "item.angle", "texture.noise" };
+    const char* names[] = { "item.color",    "item.intensity", "item.heading",    "item.thrusting",
+                            "item.size",     "item.screenPos", "item.screenSize", "light.dir",
+                            "light.tint",    "light.surface",  "light.strength",  "light.ambient",
+                            "clock.time",    "item.axis",      "item.seed",       "item.partSeed",
+                            "item.angle",    "texture.noise",  "item.partShape",  "item.frame",
+                            "livery.accent", "livery.params",  "livery.style" };
     for (const char* n : names)
     {
         Render::Source s;
@@ -267,4 +270,161 @@ TEST_CASE("a part's material is checked like an archetype's, modules included (#
     CHECK(namedOcean);
 
     REQUIRE(Render::Materials::Load(std::string(TEST_DATA_DIR) + "materials.json"));
+}
+
+// --- Built surfaces (#516) -----------------------------------------------------------------
+
+TEST_CASE("a part's proportions, the object's frame and its livery reach a material (#516)")
+{
+    Render::Item           item;
+    Render::MaterialInputs in;
+    in.item = &item;
+    const float shape[4] = { 0.4f, 0.08f, 6.0f, 3.0f };
+    const float frame[4] = { 640.0f, 360.0f, 120.0f, -0.5f };
+    for (int k = 0; k < 4; k++)
+    {
+        in.partShape[k] = shape[k];
+        in.frame[k] = frame[k];
+    }
+    const Render::UniformValue s = Render::Resolve(Bound("s", "item.partShape"), in);
+    CHECK(s.count == 4);
+    CHECK(s.v[0] == doctest::Approx(0.4f));
+    CHECK(s.v[3] == doctest::Approx(3.0f));
+    const Render::UniformValue f = Render::Resolve(Bound("f", "item.frame"), in);
+    CHECK(f.v[2] == doctest::Approx(120.0f));
+    CHECK(f.v[3] == doctest::Approx(-0.5f));
+
+    // No livery at all is a neutral one, never zeros: a material fed a black accent and no
+    // wear would draw something, wrongly, rather than plainly.
+    const Render::UniformValue a = Render::Resolve(Bound("a", "livery.accent"), in);
+    CHECK(a.count == 4);
+    CHECK(a.v[3] == doctest::Approx(1.0f));
+    CHECK(Render::Resolve(Bound("p", "livery.params"), in).v[3] == doctest::Approx(1.0f));
+
+    Render::Livery lv;
+    lv.accent = { 255, 0, 0, 255 };
+    lv.params[1] = 0.75f;
+    lv.style[0] = 3.0f;
+    in.livery = &lv;
+    CHECK(Render::Resolve(Bound("a", "livery.accent"), in).v[0] == doctest::Approx(1.0f));
+    CHECK(Render::Resolve(Bound("p", "livery.params"), in).v[1] == doctest::Approx(0.75f));
+    CHECK(Render::Resolve(Bound("y", "livery.style"), in).v[0] == doctest::Approx(3.0f));
+}
+
+TEST_CASE("an object's surface is chosen by role, and falls back down a chain (#516)")
+{
+    const TempDir     tmp;
+    const std::string path = tmp.Path("surfaces.json");
+    auto              write = [&](const char* text)
+    {
+        std::ofstream out(path);
+        out << text;
+    };
+    write(R"({ "materials": [
+        { "id": "hull", "bindings": { "c": "item.screenPos" } },
+        { "id": "plating", "fallback": "hull", "roles": { "panel": "recess", "antenna": "truss" },
+          "bindings": { "s": "item.partShape" } },
+        { "id": "recess", "fallback": "hull", "bindings": {} },
+        { "id": "truss", "bindings": {} },
+        { "id": "radiator", "fallback": "plating", "bindings": {} } ] })");
+    REQUIRE(Render::Materials::Load(path));
+
+    auto all = [](const std::string&) { return true; };
+    auto only = [](const char* id) { return [id](const std::string& m) { return m == id; }; };
+    using Render::Materials::Pick;
+
+    // By role: a panel on plating is recessed plating; a role it does not name stays plating.
+    CHECK(Pick("", "plating", "panel", all)->id == "recess");
+    CHECK(Pick("", "plating", "hull", all)->id == "plating");
+    CHECK(Pick("", "plating", "trim", all)->id == "plating");
+    // A part's own material wins over the object's.
+    CHECK(Pick("radiator", "plating", "panel", all)->id == "radiator");
+    // A driver that compiled only `hull`: everything built falls back to what it wore before.
+    CHECK(Pick("", "plating", "panel", only("hull"))->id == "hull");
+    CHECK(Pick("radiator", "plating", "hull", only("hull"))->id == "hull");
+    // ...and one that compiled nothing draws plain, as does a strut with no fallback.
+    CHECK(Pick("", "plating", "hull", only("none")) == nullptr);
+    CHECK(Pick("", "plating", "antenna", only("hull")) == nullptr);
+
+    // Whether a material reads a part's own inputs, which decides whether pieces can share a
+    // bind (#296): the hull under a planet's craters must keep sharing one.
+    CHECK_FALSE(Render::Materials::Find("hull")->readsPart);
+    CHECK(Render::Materials::Find("plating")->readsPart);
+
+    SUBCASE("an unknown role, or a material named that is not there, refuses the file")
+    {
+        write(R"({ "materials": [ { "id": "p", "roles": { "hul": "p" }, "bindings": {} } ] })");
+        CHECK_FALSE(Render::Materials::Load(path));
+        CHECK(Render::Materials::Error().find("hul") != std::string::npos);
+        write(R"({ "materials": [ { "id": "p", "roles": { "panel": "q" }, "bindings": {} } ] })");
+        CHECK_FALSE(Render::Materials::Load(path));
+        write(R"({ "materials": [ { "id": "p", "fallback": "hul", "bindings": {} } ] })");
+        CHECK_FALSE(Render::Materials::Load(path));
+        CHECK(Render::Materials::Error().find("hul") != std::string::npos);
+    }
+    SUBCASE("a loop in the fallbacks ends rather than hanging the renderer")
+    {
+        write(R"({ "materials": [ { "id": "a", "fallback": "b", "bindings": {} },
+                                  { "id": "b", "fallback": "a", "bindings": {} } ] })");
+        REQUIRE(Render::Materials::Load(path));
+        CHECK(Pick("a", "", "", only("none")) == nullptr);
+    }
+    REQUIRE(Render::Materials::Load(std::string(TEST_DATA_DIR) + "materials.json"));
+}
+
+TEST_CASE("a livery is read strictly, and a missing one is the default (#516)")
+{
+    const TempDir     tmp;
+    const std::string path = tmp.Path("liveries.json");
+    auto              write = [&](const char* text)
+    {
+        std::ofstream out(path);
+        out << text;
+    };
+    write(R"({ "materials": [], "liveries": [
+        { "id": "default", "base": [255, 255, 255], "wear": 0.3 },
+        { "id": "guild", "base": [240, 236, 220], "accent": [40, 80, 150, 255], "stripes": 1,
+          "aspect": 2.4 } ] })");
+    REQUIRE(Render::Materials::Load(path));
+    REQUIRE(Render::Materials::FindLivery("guild") != nullptr);
+    CHECK(Render::Materials::FindLivery("guild")->accent.b == 150);
+    CHECK(Render::Materials::FindLivery("guild")->params[2] == doctest::Approx(1.0f));
+    CHECK(Render::Materials::FindLivery("guild")->style[0] == doctest::Approx(2.4f));
+    CHECK(Render::Materials::FindLivery("nobody")->id == "default");
+
+    // A misspelt field is a load error, as in the archetypes (#191).
+    write(R"({ "materials": [], "liveries": [ { "id": "x", "grim": 0.4 } ] })");
+    CHECK_FALSE(Render::Materials::Load(path));
+    CHECK(Render::Materials::Error().find("grim") != std::string::npos);
+    write(R"({ "materials": [], "liveries": [ { "id": "x", "base": [300, 0, 0] } ] })");
+    CHECK_FALSE(Render::Materials::Load(path));
+
+    // What ships: a livery for every culture a faction is built by, so no major faction's
+    // stations quietly wear the default.
+    REQUIRE(Render::Materials::Load(std::string(TEST_DATA_DIR) + "materials.json"));
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
+    for (FactionId f : Factions::All())
+    {
+        const FactionDef& def = Factions::Def(f);
+        if (def.culture.empty())
+            continue;
+        INFO("faction: ", def.id, " culture: ", def.culture);
+        REQUIRE(Render::Materials::FindLivery(def.culture) != nullptr);
+        CHECK(Render::Materials::FindLivery(def.culture)->id == def.culture);
+    }
+}
+
+TEST_CASE("a station wears its owner's culture as its livery (#516)")
+{
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
+    FactionId guild;
+    REQUIRE(Factions::Find("TradersGuild", guild));
+    const Station hub({ 0.0f, 0.0f }, 700.0f, "Hub", guild, StationRole::TradeHub);
+    CHECK(hub.Describe().livery == Factions::Def(guild).culture);
+    // A faction with no culture of its own is its own livery: the pirates have a look.
+    FactionId pirates;
+    REQUIRE(Factions::Find("Pirates", pirates));
+    const Station den({ 0.0f, 0.0f }, 700.0f, "Den", pirates, StationRole::TradeHub);
+    CHECK(den.Describe().livery == "Pirates");
 }

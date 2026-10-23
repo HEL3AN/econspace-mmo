@@ -141,6 +141,12 @@ public:
     void FocusGallery(const std::string& which, float zoom = 1.0f);
     // `gallery card ID seed N [sockets]`: which object of the type, and its sockets shown.
     void SetGallerySeed(int seed) { gallerySeed_ = seed; }
+    // For a shot (#516): where the light comes from (radians, as the LIGHT slider), whose
+    // livery the cards wear, which way they point and how damaged they are.
+    void SetGalleryLight(float angle) { galleryLightAngle_ = angle; }
+    void SetGalleryLivery(const std::string& id) { galleryLivery_ = id; }
+    void SetGalleryHeading(float radians) { galleryHeading_ = radians; }
+    void SetGalleryIntensity(float whole) { galleryIntensity_ = whole; }
     void ShowGallerySockets() { gallerySockets_ = true; }
     void SetGalleryThrusting() { galleryThrusting_ = true; }
     // Every card at one scale, so sizes compare -- the panel's toggle, from the command line.
@@ -372,7 +378,8 @@ private:
     Vector2 galleryPan_ = { 0.0f, 0.0f };  // world units, from the object's centre
     // Which object of the type is drawn ([ and ] step it): a kit and every range decide by
     // the seed, so one seed says nothing about whether the rules make sense (#240).
-    int gallerySeed_ = 0;
+    int         gallerySeed_ = 0;
+    std::string galleryLivery_;  // empty: none, as an unowned object
     // Draw the sockets a type's sections offer, coloured by kind (K): how a kit's choices
     // are judged -- why a hatch is where it is.
     bool gallerySockets_ = false;

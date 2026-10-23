@@ -118,6 +118,14 @@ int main(int argc, char** argv)
             card = argv[++i];
         else if (arg == "seed" && i + 1 < argc)
             editor.SetGallerySeed(std::atoi(argv[++i]));  // which object of a type
+        else if (arg == "light" && i + 1 < argc)
+            editor.SetGalleryLight((float)std::atof(argv[++i]));  // radians: the night side
+        else if (arg == "livery" && i + 1 < argc)
+            editor.SetGalleryLivery(argv[++i]);  // whose style (#516)
+        else if (arg == "heading" && i + 1 < argc)
+            editor.SetGalleryHeading((float)std::atof(argv[++i]));
+        else if (arg == "damage" && i + 1 < argc)
+            editor.SetGalleryIntensity(1.0f - (float)std::atof(argv[++i]));
         else if (arg == "sockets")
             editor.ShowGallerySockets();
         else if (arg == "thrusting")

@@ -28,6 +28,8 @@ public:
 
     std::unique_ptr<Entity> Clone() const override { return std::make_unique<Station>(*this); }
     std::string             GetName() const override { return name_; }
+    // As any entity, wearing the livery of its owner's culture (#516).
+    Render::Item Describe() const override;
 
     FactionId   GetFaction() const { return faction_; }
     StationRole GetRole() const { return role_; }

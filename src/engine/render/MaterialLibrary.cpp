@@ -102,18 +102,35 @@ void MaterialLibrary::Load(const std::string& dataDir)
         TraceLog(LOG_ERROR, "Materials: %s", p.c_str());
     }
 
+    // One program per shader file, however many materials bind it (#516): the built surfaces
+    // are one shader under several sets of constants, and every Begin sets all of a
+    // material's uniforms anyway, so they can share it. Compiling the same text eight times
+    // is startup time on a laptop for nothing.
+    std::map<std::string, Shader> programs;
     for (const Material& m : Materials::All())
     {
         if (paintingOff_)
         {
+            // The likelier driver failure (#426): only the plain materials are left. A
+            // painting is a material no archetype wears as a whole, or one with a fallback of
+            // its own (#516) -- which is then what is drawn in its place.
             bool worn = false;
             for (const Archetype& a : Archetypes::All())
                 worn = worn || a.visual.material == m.id;
-            if (!worn)
+            if (!worn || !m.fallback.empty())
             {
                 problems_.push_back(m.id + ": painting switched off");
                 continue;
             }
+        }
+        if (const auto shared = programs.find(m.shader); shared != programs.end())
+        {
+            Compiled c;
+            c.shader = shared->second;
+            for (const Binding& b : m.bindings)
+                c.locations[b.uniform] = GetShaderLocation(c.shader, b.uniform.c_str());
+            shaders_[m.id] = c;
+            continue;
         }
         const std::string path = dataDir + "shaders/materials/" + m.shader + ".fs";
         if (!FileExists(path.c_str()))
@@ -157,6 +174,7 @@ void MaterialLibrary::Load(const std::string& dataDir)
         for (const Binding& b : m.bindings)
             c.locations[b.uniform] = GetShaderLocation(s, b.uniform.c_str());
         shaders_[m.id] = c;
+        programs[m.shader] = s;
     }
 
     if (!shaders_.empty())
@@ -169,8 +187,18 @@ void MaterialLibrary::Load(const std::string& dataDir)
 
 void MaterialLibrary::Unload()
 {
+    // Materials may share a program (see Load); each program is unloaded once.
+    std::vector<unsigned int> unloaded;
     for (auto& entry : shaders_)
+    {
+        bool done = false;
+        for (unsigned int id : unloaded)
+            done = done || id == entry.second.shader.id;
+        if (done)
+            continue;
+        unloaded.push_back(entry.second.shader.id);
         UnloadShader(entry.second.shader);
+    }
     shaders_.clear();
     problems_.clear();
     if (noise_.id != 0)

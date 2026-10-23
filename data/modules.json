@@ -161,11 +161,11 @@
             "variants": [
                 { "id": "fins", "shape": [
                     {"form": "bar", "length": 1.8, "width": 0.1, "role": "panel"},
-                    {"form": "bar", "at": [-0.75, 0.38], "angle": 90, "length": 0.72, "width": 0.12, "role": "trim", "row": {"count": 6, "step": [0.3, 0.0]}}
+                    {"form": "bar", "at": [-0.75, 0.38], "angle": 90, "length": 0.72, "width": 0.12, "role": "trim", "material": "radiator", "row": {"count": 6, "step": [0.3, 0.0]}}
                 ]},
                 { "id": "hot", "shape": [
                     {"form": "bar", "length": 1.8, "width": 0.1, "role": "panel"},
-                    {"form": "bar", "at": [-0.75, 0.38], "angle": 90, "length": 0.72, "width": 0.12, "role": "light", "tint": [255, 120, 50], "alpha": 0.75, "row": {"count": 6, "step": [0.3, 0.0]}}
+                    {"form": "bar", "at": [-0.75, 0.38], "angle": 90, "length": 0.72, "width": 0.12, "role": "light", "tint": [255, 120, 50], "alpha": 0.75, "material": "radiator", "row": {"count": 6, "step": [0.3, 0.0]}}
                 ]}
             ]
         },
@@ -258,13 +258,13 @@
             "variants": [
                 { "id": "lit", "shape": [
                     {"form": "bar", "length": 1.9, "width": 0.34, "role": "panel"},
-                    {"form": "bar", "at": [-0.8, 0.0], "length": 0.16, "width": 0.18, "role": "light", "tint": [255, 225, 160], "alpha": 0.85, "row": {"count": 6, "step": [0.32, 0.0]}}
+                    {"form": "bar", "at": [-0.8, 0.0], "length": 0.16, "width": 0.18, "role": "light", "tint": [255, 225, 160], "alpha": 0.85, "material": "glass", "row": {"count": 6, "step": [0.32, 0.0]}}
                 ]},
                 { "id": "sparse", "shape": [
                     {"form": "bar", "length": 1.9, "width": 0.34, "role": "panel"},
                     {"form": "bar", "at": [-0.8, 0.0], "length": 0.16, "width": 0.18, "role": "trim", "alpha": 0.5, "row": {"count": 6, "step": [0.32, 0.0]}},
-                    {"form": "bar", "at": [-0.16, 0.0], "length": 0.16, "width": 0.18, "role": "light", "tint": [255, 225, 160], "alpha": 0.85},
-                    {"form": "bar", "at": [0.8, 0.0], "length": 0.16, "width": 0.18, "role": "light", "tint": [255, 225, 160], "alpha": 0.85}
+                    {"form": "bar", "at": [-0.16, 0.0], "length": 0.16, "width": 0.18, "role": "light", "tint": [255, 225, 160], "alpha": 0.85, "material": "glass"},
+                    {"form": "bar", "at": [0.8, 0.0], "length": 0.16, "width": 0.18, "role": "light", "tint": [255, 225, 160], "alpha": 0.85, "material": "glass"}
                 ]},
                 { "id": "dark", "shape": [
                     {"form": "bar", "length": 1.9, "width": 0.34, "role": "panel"},

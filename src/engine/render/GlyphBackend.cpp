@@ -209,13 +209,21 @@ bool ShapeBackend::BeginMaterial(const Item& item, const Lighting::Sample& light
     return BeginMaterialAt(item, light, item.pos, item.size);
 }
 
+bool ShapeBackend::Drawable(const std::string& id) const
+{
+    return materials_ != nullptr && materials_->Has(id);
+}
+
 bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& light, Vector2 at,
-                                   float size, Vector2 axis, const Material* own, float partSeed,
-                                   float angle)
+                                   float size, Vector2 axis, const Material* own,
+                                   const Piece* piece)
 {
     if (materials_ == nullptr || (own == nullptr && item.material.empty()))
         return false;
-    const Material* m = own != nullptr ? own : Materials::Find(item.material);
+    const Material* m =
+        own != nullptr ? own
+                       : Materials::Pick("", item.material, "hull",
+                                         [this](const std::string& id) { return Drawable(id); });
     if (m == nullptr)
         return false;
 
@@ -241,10 +249,36 @@ bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& lig
     in.screenPos.y *= paintScale_;
     in.screenSize *= paintScale_;
     in.axis = { axis.x, -axis.y };
-    in.partSeed = partSeed;
-    // A piece's angle is measured the way raylib's y runs, downward; turned into OpenGL's
-    // sense with the rest, so a pattern turns the same way as the outline it is drawn in.
-    in.angle = -angle * DEG2RAD;
+    // The whole object, for a part that needs to know where on it it is (#516).
+    Vector2 centre = GetWorldToScreen2D(item.pos, view_);
+    centre.y = (float)GetScreenHeight() - centre.y;
+    in.frame[0] = centre.x * paintScale_;
+    in.frame[1] = centre.y * paintScale_;
+    in.frame[2] = item.size * view_.zoom * paintScale_;
+    in.frame[3] = -item.heading;
+    in.livery = Materials::FindLivery(item.livery);
+    // A part's own inputs only reach a material that reads them. One that does not -- the
+    // hull under a planet's craters -- then has the same inputs for every piece of a body
+    // and keeps one bind for all of them (#296).
+    if (piece != nullptr && m->readsPart)
+    {
+        in.partSeed = piece->seed;
+        // A piece's angle is measured the way raylib's y runs, downward; turned into
+        // OpenGL's sense with the rest, so a pattern turns the same way as its outline.
+        in.angle = -piece->angle * DEG2RAD;
+        const float   object = item.size > 0.0f ? item.size : 1.0f;
+        const Vector2 run = Axis(*piece);
+        const bool    elongated = run.x != 0.0f || run.y != 0.0f;
+        // A ring has no length: what a pattern on it needs is how thick its band is.
+        const bool band = piece->form == Form::Ring || piece->form == Form::Arc;
+        in.partShape[0] = (elongated ? piece->length * 0.5f
+                           : band    ? piece->width
+                                     : piece->radius) /
+                          object;
+        in.partShape[1] = ShadeRadius(*piece) / object;
+        in.partShape[2] = (float)piece->sides;
+        in.partShape[3] = (float)(int)piece->form;
+    }
 
     // Already bound with exactly these inputs: keep it (#296). Every mark on a planet is
     // shaded as the planet -- the body's centre, radius and light -- so a crater field was
@@ -254,6 +288,8 @@ bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& lig
         bound_ && boundMaterial_ == m && boundItem_ == &item && boundAt_.x == in.screenPos.x &&
         boundAt_.y == in.screenPos.y && boundSize_ == in.screenSize && boundAxis_.x == in.axis.x &&
         boundAxis_.y == in.axis.y && boundSeed_ == in.partSeed && boundAngle_ == in.angle &&
+        boundShape_[0] == in.partShape[0] && boundShape_[1] == in.partShape[1] &&
+        boundShape_[2] == in.partShape[2] && boundShape_[3] == in.partShape[3] &&
         boundLight_.dir.x == in.light.dir.x && boundLight_.dir.y == in.light.dir.y &&
         boundLight_.strength == in.light.strength && ColorIsEqual(boundLight_.tint, in.light.tint);
     if (same)
@@ -271,6 +307,8 @@ bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& lig
     boundAxis_ = in.axis;
     boundSeed_ = in.partSeed;
     boundAngle_ = in.angle;
+    for (int k = 0; k < 4; k++)
+        boundShape_[k] = in.partShape[k];
     boundLight_ = in.light;
     return true;
 }
@@ -287,13 +325,23 @@ void ShapeBackend::Draw(const Item& described)
     // A ship is never drawn smaller than it can be found (#426); everything below, its
     // composition and its culling, works on the size it is shown at.
     const float shown = ShownSize(described.kind, described.size, view_.zoom);
-    Item        enlarged;
-    if (shown != described.size)
+    // A livery's base colour is the colour the object is painted (#516): applied here, to
+    // the object's colour, so that it holds with a shader and without one alike (#120).
+    const Livery* livery =
+        described.livery.empty() ? nullptr : Materials::FindLivery(described.livery);
+    const bool painted = livery != nullptr && livery->id == described.livery;
+    Item       enlarged;
+    if (shown != described.size || painted)
     {
         enlarged = described;
         enlarged.size = shown;
+        if (painted)
+            enlarged.color = { (unsigned char)(described.color.r * livery->base.r / 255),
+                               (unsigned char)(described.color.g * livery->base.g / 255),
+                               (unsigned char)(described.color.b * livery->base.b / 255),
+                               described.color.a };
     }
-    const Item& item = shown != described.size ? enlarged : described;
+    const Item& item = (shown != described.size || painted) ? enlarged : described;
 
     Perf::Count(Perf::Counter::Items);
     // What the light does to this object, asked once. An object is small next to the
@@ -630,14 +678,20 @@ void ShapeBackend::DrawSoftOnSurface(const Item& item, const Piece& p, bool emis
 
 const Material* ShapeBackend::OwnMaterial(const Piece& p) const
 {
-    if (p.material.empty() || materials_ == nullptr || !materials_->Has(p.material))
+    if (p.material.empty() || materials_ == nullptr)
+        return nullptr;
+    // Down the material's fallback chain (#516): a radiator whose shader failed is drawn as
+    // the plating it falls back to, and that as the hull.
+    const Material* m =
+        Materials::Pick(p.material, "", "", [this](const std::string& id) { return Drawable(id); });
+    if (m == nullptr)
         return nullptr;
     // Below a few pixels there is no surface to paint, and the plain colour of the part is a
     // truer picture of a dot than a shader working on nine fragments.
     const float r = p.surface ? p.bodyRadius : ShadeRadius(p);
     if (r * view_.zoom < MIN_SHADED_PIXELS)
         return nullptr;
-    return Materials::Find(p.material);
+    return m;
 }
 
 bool ShapeBackend::DrawOwnMaterial(const Item& item, const Piece& p, const Material& m)
@@ -670,8 +724,7 @@ bool ShapeBackend::DrawOwnMaterial(const Item& item, const Piece& p, const Mater
     const Vector2          at = p.surface ? p.bodyPos : p.pos;
     const float            r = p.surface ? p.bodyRadius : ShadeRadius(p);
     const Lighting::Sample l = LightAt(at);
-    if (!BeginMaterialAt(item, l, at, r, p.surface ? Vector2{ 0.0f, 0.0f } : Axis(p), &m, p.seed,
-                         p.angle))
+    if (!BeginMaterialAt(item, l, at, r, p.surface ? Vector2{ 0.0f, 0.0f } : Axis(p), &m, &p))
         return false;
     Perf::Count(Perf::Counter::Painted);
     DrawPainted(item, p, m);
@@ -731,7 +784,7 @@ bool ShapeBackend::PaintScaled(const Item& item, const Piece& p, const Material&
     paintScale_ = (float)sw / (float)w;
     const Vector2          at = p.pos;
     const Lighting::Sample l = LightAt(at);
-    const bool begun = BeginMaterialAt(item, l, at, ShadeRadius(p), Axis(p), &m, p.seed, p.angle);
+    const bool             begun = BeginMaterialAt(item, l, at, ShadeRadius(p), Axis(p), &m, &p);
     if (begun)
     {
         Perf::Count(Perf::Counter::Painted);
@@ -795,6 +848,15 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
     // uncomposed path follows. Without it a star would be shaded by the light it emits,
     // which is how a sun ends up looking like a moon (#119).
     const bool emissive = Emissive(item);
+
+    // The object's surface for each role (#516), resolved once: a station on `plating` draws
+    // its panels on the recessed plating and its struts as truss, each down its own fallback
+    // chain if this driver could not compile it.
+    const Material* byRole[5] = { nullptr, nullptr, nullptr, nullptr, nullptr };
+    if (materials_ != nullptr && !item.material.empty())
+        for (int r = 0; r < 5; r++)
+            byRole[r] = Materials::Pick("", item.material, RoleName((Role)r),
+                                        [this](const std::string& id) { return Drawable(id); });
 
     // Whether the body is painted by a material of its own (#426). If it is, its stand-ins --
     // the continents of discs, the bands, the sunspots -- are not drawn: the shader already
@@ -905,9 +967,11 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
         // anyway is worse than not: a rail two pixels wide is *entirely* the part of a
         // cylinder that turns away from the viewer, so it comes out the darkest thing on
         // screen. The same argument as minPixels, one level down.
-        const float shadePixels = shadeR * view_.zoom;
-        const bool  shaded = shadePixels >= MIN_SHADED_PIXELS &&
-                             BeginMaterialAt(item, pieceLight, shadeAt, shadeR, shadeAxis);
+        const float     shadePixels = shadeR * view_.zoom;
+        const Material* surface = byRole[(int)p.role];
+        const bool shaded = shadePixels >= MIN_SHADED_PIXELS && surface != nullptr &&
+                            BeginMaterialAt(item, pieceLight, shadeAt, shadeR, shadeAxis, surface,
+                                            p.surface ? nullptr : &p);
         if (!shaded)
             EndMaterial();
 
