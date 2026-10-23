@@ -1107,6 +1107,7 @@ enum Find : uint64_t
     ROGUE,
     ANCIENT_GATE,
     RICH_BELT,  // PlaceHidden's
+    CACHE,      // ...and so is this: appended, never reordered
 };
 
 void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Region& region)
@@ -1789,6 +1790,40 @@ void PlaceHidden(const RegionParams& params, const std::vector<Node>& nodes, Reg
                             { "resource", "Crystal" },
                             { "ore", 1200 + 150 * n->depth },
                             { "archetype", "field.rich" } });
+            }
+    }
+
+    // Derelict caches: a hauler's lost hold, or something somebody hid. Goods worth the
+    // flight, hidden until scanned -- about one a region, one to a system, deeper likelier.
+    {
+        static const char* GOODS[] = { "Circuits", "Ammunition", "RepairPaste", "Medicine" };
+        static const char* NAMES[] = { "Lost Hold", "Dead Drop", "Jettisoned Cargo", "Stash" };
+        Rng                rng = stream(CACHE);
+        const int count = (rng.Chance(60 + more) ? 1 : 0) + (rng.Chance(25 + more) ? 1 : 0) +
+                          (rng.Chance(10 + more) ? 1 : 0);
+        std::set<std::string> hosts;
+        for (int i = 0; i < count; i++)
+            if (const Node* n = PickHost(rng, nodes, region, 2))
+            {
+                if (!hosts.insert(n->id).second)
+                    continue;  // one to a system: a second roll there is a miss
+                const char* good = GOODS[rng.Range(0, 3)];
+                const char* name = NAMES[rng.Range(0, 3)];
+                const int   amount = 12 + 3 * n->depth + rng.Range(0, 10);
+                json        cargo = { { good, amount } };
+                // Sometimes a second good with it: a hold, not a crate.
+                if (rng.Chance(40))
+                {
+                    const char* other = GOODS[rng.Range(0, 3)];
+                    if (std::string(other) != good)
+                        cargo[other] = 6 + n->depth + rng.Range(0, 6);
+                }
+                PlaceFind(rng, region.documents[n->id], "derelicts", 250000.0, 820000.0,
+                          { { "name", name },
+                            { "size", 45 },
+                            { "reward", 150 + 50 * n->depth },
+                            { "cargo", cargo },
+                            { "archetype", "derelict.cache" } });
             }
     }
 }

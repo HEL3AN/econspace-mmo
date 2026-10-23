@@ -121,7 +121,7 @@ const ListRule LISTS[] = {
       { "name", "size", "resource", "ore" } },
     { "nebulae", { "name", "pos", "radius", "archetype", "orbits" }, { "radius" } },
     { "derelicts",
-      { "name", "pos", "size", "reward", "expiresAt", "archetype", "orbits" },
+      { "name", "pos", "size", "reward", "expiresAt", "archetype", "orbits", "cargo" },
       { "name" } },
     { "gates",
       { "name", "pos", "size", "destination", "archetype" },
@@ -261,6 +261,22 @@ void CheckDocument(const json& doc, const std::string& where,
                     problems.push_back(at + ": " + Quoted(res) +
                                        " is \"Iron\", \"Ice\" or "
                                        "\"Crystal\"");
+            if (std::string(rule.list) == "derelicts" && o.contains("cargo"))
+            {
+                if (!o["cargo"].is_object())
+                    problems.push_back(at + ": \"cargo\" is an object of good id -> amount");
+                else
+                    for (auto c = o["cargo"].begin(); c != o["cargo"].end(); ++c)
+                    {
+                        ResourceType good;
+                        if (!Goods::Find(c.key(), good))
+                            problems.push_back(at + ": cargo: " + Quoted(c.key()) +
+                                               " is not a good");
+                        else if (!c.value().is_number_integer() || c.value().get<int>() <= 0)
+                            problems.push_back(at + ": cargo: " + Quoted(c.key()) +
+                                               " is not a positive whole amount");
+                    }
+            }
             if (o.contains("archetype") && o["archetype"].is_string() &&
                 Archetypes::Find(o["archetype"].get<std::string>()) == nullptr)
                 problems.push_back(at + ": unknown archetype " +

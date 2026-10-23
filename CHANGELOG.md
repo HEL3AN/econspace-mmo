@@ -26,6 +26,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 - Rich belts: crystal mined twice as fast, hidden deep in the frontier until your scanner finds them; a find a faction pays for (#346).
 - A probe module raises your scanner's power by half per probe (a hidden base takes two passes instead of three); the refit and the agent's view show it (#346).
 - A corporation treasury players can fund: any member deposits, the CEO or a director withdraws, and a ledger lists who and what -- the pilots' own acts beside market fees, rent, police and patrol upkeep -- in a Treasury tab and in econagent's corp view (#509).
+- Derelict caches: goods hidden deep in the frontier, four scanner passes to find, then searched for their cargo; a find a faction pays for (#346).
 - Defences mend by tier: damage below the repair rate does nothing (#450).
 - Security settles near its base, and the banner and the map show the same number (#434).
 

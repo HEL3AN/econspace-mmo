@@ -809,12 +809,16 @@ void ApplyState(Entity& e, const nlohmann::json& s, double now)
     if (e.GetKind() == EntityKind::Derelict && s.value("looted", false))
         static_cast<Derelict&>(e).SetLooted();
     if (e.GetKind() == EntityKind::Derelict && s.contains("cargo") && s["cargo"].is_object())
+    {
+        // What is left, not more of it: the description may say what it began with (#346).
+        static_cast<Derelict&>(e).Contents().Clear();
         for (auto c = s["cargo"].begin(); c != s["cargo"].end(); ++c)
         {
             ResourceType good;  // a good this build does not have is let go
             if (c.value().is_number_integer() && Goods::Find(c.key(), good))
                 static_cast<Derelict&>(e).Contents().Add(good, c.value().get<int>());
         }
+    }
     if (e.GetKind() == EntityKind::Field && s.contains("ore") && s["ore"].is_number())
         static_cast<AsteroidField&>(e).SetOre(s["ore"].get<double>());
     if (e.GetKind() == EntityKind::Structure)

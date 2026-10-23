@@ -754,6 +754,8 @@ double Simulation::StepPlayerLoot(ClientSession& s, SystemState& st, int derelic
                 e->GetKind() == EntityKind::Derelict ? static_cast<Derelict*>(e.get()) : nullptr;
             if (dr == nullptr || dr->IsLooted())
                 return 0.0;
+            if (HiddenFrom(s, st, *dr))
+                return 0.0;  // a cache nobody has found is not there to search (#346)
             Vector2 sp = s.ship->GetPosition();
             float   dx = dr->GetPosition().x - sp.x;
             float   dy = dr->GetPosition().y - sp.y;
