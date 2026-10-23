@@ -333,6 +333,19 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::BuildSystem(const json& data)
                                                           d["name"],
                                                           (double)d.value("reward", 500.0)));
             static_cast<Derelict&>(*entities.back()).SetExpiresAt(d.value("expiresAt", 0.0));
+            // What it holds (#346): good id -> amount. One good for now; a later one that is
+            // not in this build's goods is let go, as a save's wreck cargo is.
+            if (d.contains("cargo") && d["cargo"].is_object())
+                for (auto c = d["cargo"].begin(); c != d["cargo"].end(); ++c)
+                {
+                    ResourceType good;
+                    if (c.value().is_number_integer() && Goods::Find(c.key(), good))
+                    {
+                        static_cast<Derelict&>(*entities.back())
+                            .SetCargo(good, c.value().get<int>());
+                        break;
+                    }
+                }
             ApplyArchetype(*entities.back(), d);
             ApplyOrbit(*entities.back(), d);
         }
@@ -461,6 +474,8 @@ nlohmann::json WorldLoader::DescribeObject(const Entity& e, std::string& array)
             o["reward"] = d.GetReward();
             if (d.GetExpiresAt() > 0.0)  // a structure's wreck decays (#41)
                 o["expiresAt"] = d.GetExpiresAt();
+            if (d.GetCargoAmount() > 0)  // what it holds (#346); a save's state keeps the rest
+                o["cargo"] = { { Goods::Id(d.GetCargo()), d.GetCargoAmount() } };
             break;
         }
         case EntityKind::Structure:

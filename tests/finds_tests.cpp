@@ -4,6 +4,7 @@
 #include "core/Blueprint.h"
 #include "core/Faction.h"
 #include "entities/AsteroidField.h"
+#include "entities/Derelict.h"
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
 #include "gen/Galaxy.h"
@@ -156,6 +157,54 @@ TEST_CASE("a rich belt is hidden until scanned, then mined like any belt and sol
     CHECK_FALSE(InLayout(w.sim.BuildLayoutFor(bob, at), id));
 
     // A faction that never heard of it pays for it as a hidden find.
+    for (FactionId f : Factions::All())
+        w.sim.MindOf(f).intel.erase(at);
+    const Simulation::ChartOffer o = w.sim.ChartOfferFor(ann, Fac::TradersGuild(), at);
+    CHECK(o.finds >= 1);
+}
+
+TEST_CASE("a derelict cache is hidden until scanned, then searched for its goods and sold as a "
+          "find (#346)")
+{
+    World         w;
+    std::string   at;
+    const Entity* e = w.Find("derelict.cache", at);
+    REQUIRE(e != nullptr);
+    const int          id = e->GetId();
+    Derelict&          cache = *const_cast<Derelict*>(static_cast<const Derelict*>(e));
+    const SystemState& st = *w.sim.SystemById(at);
+    const std::string  key = w.sim.SignatureKey(st, cache);
+    const int          held = cache.GetCargoAmount();
+    REQUIRE(held > 0);
+
+    ClientSession& ann = w.Pilot("ann");
+    w.sim.ServerEnterSystem(ann, at, ann.systemId);
+    REQUIRE(ann.systemId == at);
+    CHECK_FALSE(InLayout(w.sim.BuildLayoutFor(ann, at), id));
+
+    // Standing on it, she cannot search what she has not found.
+    ann.ship->SetPosition(cache.GetPosition());
+    w.sim.StepPlayerLoot(ann, *w.sim.SystemOf(ann), id);
+    CHECK(cache.GetCargoAmount() == held);
+    CHECK(ann.ship->GetCargoUsed() == 0);
+
+    // Strength 0.25: four passes.
+    for (int i = 0; i < 3; i++)
+        w.Pass(ann);
+    CHECK_FALSE(InLayout(w.sim.BuildLayoutFor(ann, at), id));
+    w.Pass(ann);
+    CHECK(InLayout(w.sim.BuildLayoutFor(ann, at), id));
+    CHECK(ann.known.count(key) == 1);
+
+    // Found, it gives up what it holds (as much as the hold takes).
+    w.sim.StepPlayerLoot(ann, *w.sim.SystemOf(ann), id);
+    CHECK(ann.ship->GetCargoUsed() > 0);
+    CHECK(cache.GetCargoAmount() < held);
+
+    // Another pilot has not found it, and a faction pays for the find.
+    ClientSession& bob = w.Pilot("bob");
+    w.sim.ServerEnterSystem(bob, at, bob.systemId);
+    CHECK_FALSE(InLayout(w.sim.BuildLayoutFor(bob, at), id));
     for (FactionId f : Factions::All())
         w.sim.MindOf(f).intel.erase(at);
     const Simulation::ChartOffer o = w.sim.ChartOfferFor(ann, Fac::TradersGuild(), at);

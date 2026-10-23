@@ -97,7 +97,7 @@ TEST_CASE("the rules have not changed without saying so")
     // Natives name their systems from the cultures in factions.json (#431 slice 3): the
     // shipped file is part of what these hashes hold.
     REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
-    CHECK(Gen::GENERATOR_VERSION == 11);
+    CHECK(Gen::GENERATOR_VERSION == 12);
     // The skeleton has a version of its own (#342 S3): regions are sealed when they open and a
     // change to their rules leaves a live world alone, but the skeleton is always remade, so a
     // change to it is a change to every world -- bump Gen::SKELETON_VERSION with this hash.
@@ -105,8 +105,8 @@ TEST_CASE("the rules have not changed without saying so")
     const uint64_t skeleton = Fnv1a(Gen::SkeletonJson(Gen::GenerateGalaxySkeleton(1, 100)).dump());
     MESSAGE("skeleton hash for seed 1, 100 slots: " << skeleton);
     CHECK(skeleton == 3947093538462403513ull);
-    const uint64_t GOLDEN[] = { 14967538230027455343ull, 186449245494983447ull,
-                                14455930784038575196ull };
+    const uint64_t GOLDEN[] = { 14967538230027455343ull, 11653928899509546435ull,
+                                17233063676574546352ull };
     for (int slot = 0; slot < 3; slot++)
     {
         CAPTURE(slot);
@@ -566,6 +566,51 @@ TEST_CASE("rich belts: in most regions, deep, one to a system, and hidden (#346)
     MESSAGE("rich belts: " << total << " in " << regionsWith << " of " << seeds << " regions");
     CHECK(regionsWith >= seeds * 8 / 10);  // most regions have one to find
     CHECK(total <= seeds * 2);             // and never many
+}
+
+TEST_CASE("derelict caches: about one a region, deep, with goods, and hidden (#346)")
+{
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const Archetype* cache = Archetypes::Find("derelict.cache");
+    REQUIRE(cache != nullptr);
+    CHECK(cache->kind == EntityKind::Derelict);
+    CHECK(cache->Has(Component::Signature));
+    CHECK(cache->Has(Component::Salvageable));
+    CHECK(cache->signatureStrength == doctest::Approx(0.25f));  // four passes
+    const int seeds = 60;
+    int       regionsWith = 0, total = 0;
+    for (uint64_t seed = 1; seed <= (uint64_t)seeds; seed++)
+    {
+        CAPTURE(seed);
+        const Gen::Region r = Gen::GenerateRegion(Params(seed));
+        int               here = 0;
+        for (const auto& kv : r.documents)
+        {
+            int inSystem = 0;
+            for (const auto& d : kv.second["derelicts"])
+                if (d.value("archetype", "") == std::string("derelict.cache"))
+                {
+                    inSystem++;
+                    CHECK(Gen::DepthOf(kv.first) >= 2);
+                    REQUIRE(d["cargo"].is_object());
+                    CHECK(d["cargo"].size() == 1);
+                    for (auto c = d["cargo"].begin(); c != d["cargo"].end(); ++c)
+                    {
+                        ResourceType good;
+                        CHECK(Goods::Find(c.key(), good));
+                        CHECK(c.value().get<int>() > 0);
+                    }
+                }
+            CHECK(inSystem <= 1);
+            here += inSystem;
+        }
+        CHECK(here <= 3);
+        regionsWith += here > 0 ? 1 : 0;
+        total += here;
+    }
+    MESSAGE("derelict caches: " << total << " in " << regionsWith << " of " << seeds << " regions");
+    CHECK(regionsWith >= seeds / 2);  // most regions hold one to find
+    CHECK(total <= seeds * 2);        // and never many
 }
 
 TEST_CASE("a satellite is a place the slowest ship can reach (#210)")
