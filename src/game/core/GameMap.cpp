@@ -940,8 +940,8 @@ void Game::DrawGalaxyMap()
                     return "Licence: none, your corporation's";
                 }
                 if (!g.licenceBy.empty())
-                    return TextFormat("Licence: %s, %.0f cr a week",
-                                      g.licenceBy.c_str(), g.licenceRent);
+                    return TextFormat("Licence: %s, %.0f cr a week", g.licenceBy.c_str(),
+                                      g.licenceRent);
                 kind = 2;
                 return "Licence: none needed";
             }
