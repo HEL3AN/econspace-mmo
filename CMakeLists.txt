@@ -695,6 +695,9 @@ if(ECON_FUZZ)
     foreach(_t fuzz_frames fuzz_decode fuzz_login)
         add_executable(${_t} tests/fuzz/${_t}.cpp)
         target_link_libraries(${_t} PRIVATE netproto ${_econ_fuzz_engine})
+        # ClusterFuzzLite runs a target in a bare image with no GL or X11. Nothing here opens a
+        # window, so drop the libraries raylib names but these targets never call.
+        target_link_options(${_t} PRIVATE -Wl,--as-needed -Wl,--gc-sections)
         set_target_properties(${_t} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/fuzz)
     endforeach()
     # The seed corpus is written by the encoders: an ordinary executable, not a fuzzer.
