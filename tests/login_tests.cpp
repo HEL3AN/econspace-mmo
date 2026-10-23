@@ -38,7 +38,13 @@ TEST_CASE("a hello that is not a name is rejected")
         CHECK(Login::ReadHello(HelloFor(bad), true, h, version) == Login::HelloVerdict::Rejected);
     CHECK(Login::ReadHello(HelloFor(std::string(33, 'a')), true, h, version) ==
           Login::HelloVerdict::Rejected);
-    CHECK(Login::ReadHello("not json", true, h, version) == Login::HelloVerdict::Rejected);
+    // The right version, but no name that is text.
+    const std::string v = std::to_string(Proto::PROTO_VERSION);
+    CHECK(Login::ReadHello(R"({"t":"hello","v":)" + v + R"(,"acct":5})", true, h, version) ==
+          Login::HelloVerdict::Rejected);
+    // Not JSON at all is no version at all, which is told apart from a wrong one below.
+    CHECK(Login::ReadHello("not json", true, h, version) == Login::HelloVerdict::WrongVersion);
+    CHECK(version == 0);
 }
 
 TEST_CASE("a second hello on one connection is rejected, whatever it says")
