@@ -6,8 +6,11 @@
 #include "core/Faction.h"
 #include "economy/Market.h"
 #include "entities/Station.h"
+#include "entities/Structure.h"
 #include "gen/Galaxy.h"
 #include "gen/Region.h"
+#include "sim/Corporation.h"
+#include "sim/FactionMind.h"
 #include "sim/Protocol.h"
 #include "sim/SaveSchema.h"
 #include "sim/Simulation.h"
@@ -19,7 +22,9 @@
 
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <set>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -237,6 +242,108 @@ TEST_CASE("natives are sealed with their region, restored on load and back from 
     REQUIRE(b.OpeningOf(slot)->archive >= 0);
     CHECK(Factions::Id(b.NativesOf(slot)) == id);
     CHECK(FactionName(b.NativesOf(slot)) == name);
+}
+
+TEST_CASE("a region an older build sealed in the archive comes back with its members' "
+          "structures the corporation's (#498)")
+{
+    LoadRegistries();
+    // Seals a frontier with a depot of a corporation member's in it, as a build of world
+    // `version` wrote the archive, and brings it back: who owns the depot then, and the
+    // corporation's id.
+    auto run = [](int version)
+    {
+        TempDir           dir;
+        const std::string seal = dir.MakeDir("regions");
+        const std::string path = dir.Path("world.json");
+        int               archive = -1, parent = -1;
+        {
+            Simulation a;
+            Make(a, 9, seal);
+            const int frontier = FirstFrontier(a);
+            REQUIRE(frontier >= 0);
+            parent = a.OpeningOf(frontier)->parent;
+            // A faction's, so the region may drift away; it is made a member's below.
+            const Blueprint* bp = Blueprints::Find("outpost");
+            REQUIRE(bp != nullptr);
+            auto t = std::make_unique<Structure>(Vector2{ 300000.0f, -300000.0f }, 0.0f,
+                                                 "Depot boris", bp->archetype);
+            t->SetBlueprint(bp->id);
+            REQUIRE(a.AddStatic(a.RegionSystems(frontier).front(), std::move(t),
+                                Outposts::OwnerOf(Factions::Pirates())) != 0);
+            std::string why;
+            archive = a.ArchiveRegionNow(frontier, why);
+            REQUIRE(archive >= 0);
+            REQUIRE(a.SaveWorld(path));
+        }
+        // As an older build kept it: the depot named by its builder's account, and the world
+        // file listing the archive without a version of its own.
+        {
+            const std::string file = Simulation::ArchivePath(seal, archive);
+            nlohmann::json    doc = nlohmann::json::parse(ReadText(file));
+            int               depots = 0;
+            for (auto& s : doc["systems"])
+                for (auto& added : s["changes"]["added"])
+                    if (added.value("array", std::string()) == "structures")
+                    {
+                        added["owner"] = "boris";
+                        depots++;
+                    }
+            REQUIRE(depots == 1);
+            std::ofstream(file) << doc.dump();
+            nlohmann::json w = nlohmann::json::parse(ReadText(path));
+            w["version"] = version;
+            for (auto& e : w["archive"]["regions"])
+                e.erase("version");
+            std::ofstream(path) << w.dump();
+        }
+
+        // The current build reads that world and writes it back: the archive it lists is
+        // still as the older build sealed it, and the world file is current now.
+        auto open = [&](Simulation& sim)
+        {
+            REQUIRE(Factions::Load(DATA + "factions.json"));
+            Simulation::WorldHeader h;
+            REQUIRE(Simulation::ReadWorldHeader(path, h));
+            sim.SetSealDir(seal);
+            REQUIRE(sim.OpenGalaxy(Params(9), DATA, h.log));
+            REQUIRE(sim.LoadWorld(path) == Save::Result::Ok);
+        };
+        {
+            Simulation between;
+            open(between);
+            between.MaterializeAllSystems(DATA + "systems/");
+            REQUIRE(between.SaveWorld(path));
+        }
+
+        // A restart, the corporation known before the systems are built, and the region back.
+        Simulation b;
+        open(b);
+        Corps::Registry& r = b.Corporations();
+        REQUIRE(r.Create("anna", "Deep Haul", "DH", 1.8e9).Ok());
+        REQUIRE(r.InviteTo("anna", "boris", { "boris" }, 1.8e9).Ok());
+        REQUIRE(r.Join("boris", "DH", 1.8e9).Ok());
+        b.MaterializeAllSystems(DATA + "systems/");
+        WorldRules::Archive rules = WorldRules::ArchiveRules(), keep = rules;
+        rules.returnChance = 1.0;
+        WorldRules::SetArchiveRules(rules);
+        std::string why;
+        const int   slot = b.OpenMouthNow(parent, why);
+        WorldRules::SetArchiveRules(keep);
+        REQUIRE(slot >= 0);
+        REQUIRE(b.OpeningOf(slot)->archive == archive);
+        std::string owner = "(gone)";
+        for (const std::string& id : b.RegionSystems(slot))
+            for (const auto& e : b.SystemById(id)->entities)
+                if (e->GetKind() == EntityKind::Structure && e->GetName() == "Depot boris")
+                    owner = e->GetOwner();
+        return std::make_pair(owner, r.IdOf("boris"));
+    };
+    const auto old = run(17);
+    CHECK(old.first == Corps::OwnerOf(old.second));
+    // A current build's archive says what it means: a member's own, built before joining.
+    const auto now = run(Save::WORLD_VERSION);
+    CHECK(now.first == "boris");
 }
 
 TEST_CASE("a market's prices follow its distance from a centre (#342 S5)")

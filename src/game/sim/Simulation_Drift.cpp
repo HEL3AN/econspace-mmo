@@ -531,6 +531,7 @@ int Simulation::BringBack(int id, int slot, int fromSlot, const std::string& by,
         s["changes"] = std::move(c);
         if (!s.value("name", std::string()).empty())
             named.push_back(s.value("name", std::string()));
+        s["version"] = a->second.version;  // what its changes mean (#498)
         returnState_[text(it.key())] = s.dump();
     }
 
@@ -588,7 +589,8 @@ void Simulation::SaveArchive(json& j) const
     {
         json e = { { "id", kv.second.id },
                    { "slot", kv.second.slot },
-                   { "archivedAt", kv.second.archivedAt } };
+                   { "archivedAt", kv.second.archivedAt },
+                   { "version", kv.second.version } };
         // Beside the sealed regions, when there is somewhere to keep them; in here when not.
         if (sealDir_.empty())
             e["doc"] = json::parse(kv.second.text);
@@ -632,6 +634,9 @@ void Simulation::LoadArchive(const json& j)
         r.id = e["id"].get<int>();
         r.slot = e.value("slot", 0);
         r.archivedAt = e.value("archivedAt", 0.0);
+        // Before #498 the entry did not say: it was sealed by the build that wrote the world
+        // file it is listed in, or an older one, which reads the same.
+        r.version = e.value("version", worldVersionRead_);
         if (e.contains("doc") && e["doc"].is_object())
             r.text = e["doc"].dump();
         else if (!sealDir_.empty())
