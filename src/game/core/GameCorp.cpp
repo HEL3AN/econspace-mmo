@@ -61,6 +61,43 @@ const char* RoleWord(const std::string& role)
     return "Member";
 }
 
+// A ledger line as a player reads it (#509), and how long ago it was.
+std::string LedgerWhat(const Proto::LedgerLine& l)
+{
+    const std::string times = l.count > 1 ? " x" + std::to_string(l.count) : std::string();
+    if (l.kind == "deposit")
+        return l.who + " deposited";
+    if (l.kind == "withdraw")
+        return l.who + " withdrew";
+    if (l.kind == "fees")
+        return "Market fees" + times;
+    if (l.kind == "rent_paid")
+        return "Licence rent to " + l.note + times;
+    if (l.kind == "rent_received")
+        return "Licence rent from " + l.note + times;
+    if (l.kind == "police")
+        return "Police in " + l.note + times;
+    if (l.kind == "patrol")
+        return "Patrol upkeep in " + l.note + times;
+    if (l.kind == "ships")
+        return "Patrol ships replaced in " + l.note + times;
+    return l.kind + times;
+}
+
+std::string Ago(long long at)
+{
+    const long long s = (long long)std::time(nullptr) - at;
+    if (at <= 0 || s < 0)
+        return std::string();
+    if (s < 90)
+        return "now";
+    if (s < 5400)
+        return std::to_string((s + 30) / 60) + " min ago";
+    if (s < 2 * 86400)
+        return std::to_string((s + 1800) / 3600) + " h ago";
+    return std::to_string((s + 43200) / 86400) + " d ago";
+}
+
 bool TickerChar(char c)
 {
     return std::isalnum((unsigned char)c) != 0;
@@ -175,7 +212,7 @@ bool Game::CorpCommand(const std::string& text)
         act.ticker = Word(rest);
     else if (verb == "role")
         act.pilot = Word(rest, &act.role);
-    else if (verb == "tax" || verb == "docking")
+    else if (verb == "tax" || verb == "docking" || verb == "deposit" || verb == "withdraw")
         act.value = Word(rest);
     else if (verb == "police")
     {
@@ -224,7 +261,8 @@ bool Game::CorpCommand(const std::string& text)
     {
         ChatNotice("/corp create <ticker> <name> | invite <pilot> | join <ticker> | decline "
                    "<ticker> | leave | kick <pilot> | role <pilot> ceo|director|member | tax "
-                   "<percent>|standard | docking own|allies|all | police <system> <cr an "
+                   "<percent>|standard | docking own|allies|all | deposit <cr> | withdraw <cr> | "
+                   "police <system> <cr an "
                    "hour>|none | patrol <system> <ships>|none [design=<name>] "
                    "[engage=<mode>] | transfer <structure id> <pilot>|[TICKER] | take "
                    "<structure id>; /c <text> talks to the corporation");
@@ -261,6 +299,12 @@ void Game::DrawCorpContent(const Ui::Frame& f)
                 L.Text(corpView_.name + "  [" + corpView_.ticker + "]", TextStyle::Title());
                 L.Field("Your role", RoleWord(myRole), t.colors.titleText);
                 L.Field("Founded", Date(corpView_.founded), t.colors.dim);
+                L.Tabs("corpTabs", { "Corporation", "Treasury" }, corpTab_);
+                if (corpTab_ == 1)
+                {
+                    DrawTreasuryTab(L, leads, acts);
+                    return;
+                }
                 // Its money, what it holds, and the holder's policies (#431 slice 5).
                 L.Field("Treasury", TextFormat("%.0f cr", corpView_.treasury), t.colors.text);
                 std::string held;
@@ -573,6 +617,64 @@ void Game::DrawCorpContent(const Ui::Frame& f)
         corpName_.clear(), corpTicker_.clear();
     if (!acts.empty() && acts.back().verb == "kick")
         corpChosen_.clear();
+}
+
+// The treasury (#509): what it holds, the pilot's deposit and, for an officer, withdrawal, and
+// the ledger -- the last flows in and out, the automatic ones beside the pilots' own.
+void Game::DrawTreasuryTab(Ui::Layout& L, bool leads, std::vector<Proto::CorpAct>& acts)
+{
+    using Ui::Box;
+    using Ui::Size;
+    using Ui::TextStyle;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    L.Field("Treasury", TextFormat("%.0f cr", corpView_.treasury), t.colors.money);
+    L.Field("Your money", TextFormat("%.0f cr", snapshot_.player.money), t.colors.text);
+    L.Row(Box().GrowX().Gap(t.metrics.gap).Align(Ui::Align::Start, Ui::Align::Center),
+          [&]
+          {
+              Ui::TextFieldOptions opt;
+              opt.placeholder = "credits";
+              opt.maxLength = 10;
+              opt.accept = [](char c) { return c >= '0' && c <= '9'; };
+              L.TextField("treasuryAmount", corpAmount_, opt);
+              const bool ready = !Trim(corpAmount_).empty();
+              if (L.Button("deposit", "Deposit", false, ready))
+              {
+                  acts.push_back({ "deposit", "", "", "", "", Trim(corpAmount_) });
+                  corpAmount_.clear();
+              }
+              if (L.Button("withdraw", "Withdraw", false, ready && leads))
+              {
+                  acts.push_back({ "withdraw", "", "", "", "", Trim(corpAmount_) });
+                  corpAmount_.clear();
+              }
+          });
+    L.Tooltip("deposit", "Put some of your own money into the corporation's treasury, which "
+                         "pays its licences, police and patrols");
+    L.Tooltip("withdraw", "The CEO or a director takes money out of the treasury, to themselves");
+    L.Text("LEDGER", TextStyle::Label());
+    if (corpView_.ledger.empty())
+    {
+        L.Text("Nothing has gone in or out yet.", TextStyle::Small().Tint(t.colors.dim));
+        return;
+    }
+    Ui::TableSpec table;
+    table.id = "ledger";
+    table.columns = { { "when", Size::Fit(0.0f, 96.0f), Ui::Align::Start },
+                      { "what", Size::Grow(), Ui::Align::Start, false, true },
+                      { "credits", Size::Fit(0.0f, 110.0f), Ui::Align::End } };
+    table.rows = (int)corpView_.ledger.size();
+    table.cell = [&](int r, int c)
+    {
+        const Proto::LedgerLine& l = corpView_.ledger[(size_t)r];
+        if (c == 0)
+            return Ui::Cell{ Ago(l.at), t.colors.dim };
+        if (c == 1)
+            return Ui::Cell{ LedgerWhat(l), t.colors.text };
+        return Ui::Cell{ TextFormat("%s%.0f", l.amount >= 0.0 ? "+" : "-", std::fabs(l.amount)),
+                         l.amount >= 0.0 ? t.colors.good : t.colors.bad };
+    };
+    L.Table(table);
 }
 
 void Game::DrawLicenceHere(Ui::Layout& L)

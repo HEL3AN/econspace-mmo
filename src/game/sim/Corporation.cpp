@@ -295,6 +295,7 @@ Outcome Registry::Apply(const std::string& account, const Act& act,
 {
     if (account.empty())
         return Refuse("only an account can be in a corporation");
+    clock_ = now;
     const std::string verb = Lower(act.verb);
     if (verb == "create")
         return Create(account, act.name, act.ticker, now);
@@ -323,6 +324,8 @@ Outcome Registry::Apply(const std::string& account, const Act& act,
         return Refuse("a patrol is set through the world, not the registry alone");
     if (verb == "transfer" || verb == "take")  // ...and whose a structure is (#468)
         return Refuse("a structure is handed over through the world, not the registry alone");
+    if (verb == "deposit" || verb == "withdraw")  // ...and where a pilot's money is (#509)
+        return Refuse("the treasury is paid into and out of through the world, not the registry");
     return Refuse("there is no corporation verb '" + act.verb.substr(0, 16) + "'");
 }
 
@@ -751,24 +754,133 @@ Outcome Registry::SetPatrol(const std::string& by, const std::string& system,
     return o;
 }
 
-bool Registry::Credit(const std::string& id, double amount)
+void Registry::Post(Corp& c, const char* kind, const std::string& who, const std::string& note,
+                    double signedAmount)
+{
+    if (kind == nullptr || *kind == '\0' || signedAmount == 0.0)
+        return;
+    const long long at = (long long)clock_;
+    // The automatic flows join the latest line of their kind: one a trade, a pass, would
+    // otherwise push every deposit out of a ledger of eighty lines in an hour.
+    const std::string k = kind;
+    if (k != "deposit" && k != "withdraw")
+    {
+        const size_t look = std::min<size_t>(6, c.ledger.size());
+        for (size_t i = 0; i < look; i++)
+        {
+            LedgerEntry& e = c.ledger[c.ledger.size() - 1 - i];
+            if (e.kind == k && e.who == who && e.note == note &&
+                (e.amount < 0.0) == (signedAmount < 0.0) && at - e.at <= LEDGER_MERGE_SECONDS)
+            {
+                e.amount += signedAmount;
+                e.count++;
+                return;
+            }
+        }
+    }
+    LedgerEntry e;
+    e.at = at;
+    e.kind = k;
+    e.who = who;
+    e.note = note;
+    e.amount = signedAmount;
+    c.ledger.push_back(std::move(e));
+    if (c.ledger.size() > LEDGER_CAP)
+        c.ledger.erase(c.ledger.begin(), c.ledger.end() - (long)LEDGER_CAP);
+}
+
+bool Registry::Credit(const std::string& id, double amount, const char* kind,
+                      const std::string& who, const std::string& note)
 {
     Corp* c = Mutable(id);
     if (c == nullptr || !(amount > 0.0))
         return c != nullptr;
     c->treasury += amount;
+    Post(*c, kind, who, note, amount);
     moneyRev_++;
     return true;
 }
 
-bool Registry::Debit(const std::string& id, double amount)
+bool Registry::Debit(const std::string& id, double amount, const char* kind, const std::string& who,
+                     const std::string& note)
 {
     Corp* c = Mutable(id);
     if (c == nullptr || !(amount >= 0.0) || c->treasury < amount)
         return false;
     c->treasury -= amount;
+    Post(*c, kind, who, note, -amount);
     moneyRev_++;
     return true;
+}
+
+namespace
+{
+// Whole credits from what a pilot typed; false for anything else, zero and negative included.
+bool WholeCredits(const std::string& text, double& out)
+{
+    char*        end = nullptr;
+    const double v = std::strtod(text.c_str(), &end);
+    if (text.empty() || end == text.c_str() || *end != '\0' || !std::isfinite(v) || v < 1.0 ||
+        v > 1.0e12)
+        return false;
+    out = std::floor(v);
+    return true;
+}
+
+std::string Cr(double v)
+{
+    return std::to_string((long long)std::floor(v)) + " cr";
+}
+}  // namespace
+
+Outcome Registry::Deposit(const std::string& account, const std::string& value, double have,
+                          double& put)
+{
+    put = 0.0;
+    const Corp* c = Of(account);
+    if (c == nullptr)
+        return Refuse("you are in no corporation");
+    double amount = 0.0;
+    if (!WholeCredits(value, amount))
+        return Refuse("say how many credits to deposit: a whole number, at least 1");
+    if (have < amount)
+        return Refuse("you hold " + Cr(have) + ", and a deposit of " + Cr(amount) +
+                      " is more than that");
+    const std::string id = c->id;
+    Credit(id, amount, "deposit", account);
+    put = amount;
+    Outcome o;
+    o.corp = id;
+    o.told = "You put " + Cr(amount) + " into the treasury of " + Tag(*Find(id)) +
+             ", which holds " + Cr(Find(id)->treasury) + " now";
+    o.announce = account + " deposited " + Cr(amount);
+    return o;
+}
+
+Outcome Registry::Withdraw(const std::string& account, const std::string& value, double& taken)
+{
+    taken = 0.0;
+    const Corp* c = Of(account);
+    if (c == nullptr)
+        return Refuse("you are in no corporation");
+    const Member* m = c->Find(account);
+    if (m == nullptr || m->role == Role::Member)
+        return Refuse("only the CEO or a director takes money out of the treasury");
+    double amount = 0.0;
+    if (!WholeCredits(value, amount))
+        return Refuse("say how many credits to withdraw: a whole number, at least 1");
+    if (c->treasury < amount)
+        return Refuse("the treasury of " + Tag(*c) + " holds " + Cr(c->treasury) +
+                      ", and a withdrawal of " + Cr(amount) + " is more than that");
+    const std::string id = c->id;
+    Debit(id, amount, "withdraw", account);
+    taken = amount;
+    Outcome o;
+    o.corp = id;
+    o.told = "You take " + Cr(amount) + " out of the treasury of " + Tag(*Find(id)) +
+             ", which holds " + Cr(Find(id)->treasury) + " now";
+    o.announce = account + " withdrew " + Cr(amount);
+    return o;
 }
 
 void Registry::SetLicence(const std::string& id, const std::string& system, const Licence& l)
@@ -830,6 +942,19 @@ json Registry::ToJson() const
         // Additions an older build ignores too (#431 slice 5): its money and its policies.
         if (c.treasury != 0.0)
             cj["treasury"] = c.treasury;
+        // Its ledger (#509): an addition an older build ignores, so no version bump.
+        if (!c.ledger.empty())
+        {
+            json ledger = json::array();
+            for (const LedgerEntry& e : c.ledger)
+                ledger.push_back({ { "at", e.at },
+                                   { "kind", e.kind },
+                                   { "who", e.who },
+                                   { "note", e.note },
+                                   { "amount", e.amount },
+                                   { "count", e.count } });
+            cj["ledger"] = ledger;
+        }
         if (c.tax >= 0.0)
             cj["tax"] = c.tax;
         if (c.docking != Docking::All)
@@ -993,6 +1118,25 @@ bool Registry::FromJson(const json& j, std::string& why)
                 c.treasury = treasury->get<double>();
             if (tax != cj.end())
                 c.tax = tax->get<double>();
+            // The ledger (#509): a line this build cannot read is dropped, not the file.
+            const auto ledger = cj.find("ledger");
+            if (ledger != cj.end() && ledger->is_array())
+                for (const json& lj : *ledger)
+                {
+                    const auto amount = lj.is_object() ? lj.find("amount") : lj.end();
+                    if (amount == lj.end() || !amount->is_number() || text(lj, "kind").empty())
+                        continue;
+                    LedgerEntry e;
+                    e.at = whole(lj, "at");
+                    e.kind = text(lj, "kind");
+                    e.who = text(lj, "who");
+                    e.note = text(lj, "note");
+                    e.amount = amount->get<double>();
+                    e.count = (int)std::max<long long>(1, whole(lj, "count"));
+                    c.ledger.push_back(std::move(e));
+                }
+            if (c.ledger.size() > LEDGER_CAP)
+                c.ledger.erase(c.ledger.begin(), c.ledger.end() - (long)LEDGER_CAP);
             const auto licences = cj.find("licences");
             if (licences != cj.end() && licences->is_object())
                 for (auto l = licences->begin(); l != licences->end(); ++l)
