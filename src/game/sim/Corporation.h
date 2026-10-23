@@ -122,6 +122,22 @@ struct Patrol
     }
 };
 
+// One line of a corporation's treasury ledger (#509): what went in or out, by whom and why. A
+// deposit or a withdrawal is a pilot's act and always its own line; the automatic flows --
+// market fees, rent, police, patrol upkeep -- come with every trade or pass, so a run of the
+// same kind within LEDGER_MERGE_SECONDS is one line that counts them (`count`).
+struct LedgerEntry
+{
+    long long   at = 0;  // Unix seconds, from the registry's clock
+    std::string kind;    // deposit, withdraw, fees, rent_paid, rent_received, police, patrol, ships
+    std::string who;     // the pilot, for a deposit or a withdrawal
+    std::string note;    // what it was for: a system's name, a holder
+    double      amount = 0;  // credits, signed: in positive, out negative
+    int         count = 1;   // how many flows the line sums
+};
+inline constexpr size_t    LEDGER_CAP = 80;  // kept per corporation, oldest dropped
+inline constexpr long long LEDGER_MERGE_SECONDS = 3600;
+
 struct Corp
 {
     std::string         id;  // "c<N>", stable for the corporation's life
@@ -148,6 +164,8 @@ struct Corp
     // members' markets take anywhere else. It pays for police (slice 11) and its patrols'
     // upkeep (slice 12).
     double treasury = 0.0;
+    // ...and where it came from and went (#509): the last LEDGER_CAP flows, oldest first.
+    std::vector<LedgerEntry> ledger;
     // What it pays for police in each system it holds (#431 L5, slice 11), in credits an hour,
     // by system id. The coarse pass takes it from the treasury while the corporation holds the
     // system and can pay; a budget for a system it no longer holds waits, unpaid.
@@ -183,7 +201,10 @@ bool ValidTicker(const std::string& ticker, std::string& why);
 // value: ships, 0 or "none" to stand them down; design; engage), the patrol it keeps in a
 // system it holds or has structures in (slice 12), which the world answers too; and
 // "transfer" (system, value: the structure's id; pilot or ticker: to whom) and "take" (system,
-// value), a structure handed over or an abandoned one taken (#468), which the world answers.
+// value), a structure handed over or an abandoned one taken (#468), which the world answers;
+// and "deposit" (value: credits, from the pilot's own money; any member) and "withdraw"
+// (value: credits, to the pilot; the CEO or a director, no cap) -- the treasury's (#509), which
+// the world answers too, as it holds the pilot's money.
 struct Act
 {
     std::string verb;
@@ -260,9 +281,22 @@ public:
     // change Rev() counts -- a fee comes with every trade, and Rev() is what writes corps.json
     // and retells allow-lists -- but MoneyRev() does: the host sends members their view on
     // it, and the treasury is written with the world.
-    bool Credit(const std::string& id, double amount);
+    // `kind` (see LedgerEntry) puts it in the ledger (#509), with `who` and `note`; empty, it
+    // is not recorded -- a test's funding.
+    bool Credit(const std::string& id, double amount, const char* kind = "",
+                const std::string& who = std::string(), const std::string& note = std::string());
     // ...and out of it (#431 slice 6): false, and nothing taken, when it holds less.
-    bool Debit(const std::string& id, double amount);
+    bool Debit(const std::string& id, double amount, const char* kind = "",
+               const std::string& who = std::string(), const std::string& note = std::string());
+    // A member's deposit into their corporation (#509): `have` is the pilot's own money, which
+    // the world takes when this answers Ok. Whole credits only.
+    Outcome Deposit(const std::string& account, const std::string& value, double have, double& put);
+    // A withdrawal by its CEO or a director, to themselves; the world gives them the credits
+    // (`taken`) when this answers Ok. Refused when the treasury holds less.
+    Outcome Withdraw(const std::string& account, const std::string& value, double& taken);
+    // The time ledger lines are stamped with, Unix seconds: set by the host every frame (and by
+    // every Apply), as nothing here keeps a clock of its own.
+    void SetClock(double now) { clock_ = now; }
     // A corporation's licence in `system` set or dropped (#431 slice 6). Counted as MoneyRev:
     // written with the world, and retold to the members.
     void SetLicence(const std::string& id, const std::string& system, const Licence& l);
@@ -335,6 +369,10 @@ private:
     int                                rev_ = 0;
     long long                          chartsSerial_ = 0;
     int                                moneyRev_ = 0;
+    double                             clock_ = 0.0;
+
+    void Post(Corp& c, const char* kind, const std::string& who, const std::string& note,
+              double signedAmount);
 };
 
 }  // namespace Corps

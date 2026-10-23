@@ -933,6 +933,10 @@ public:
     // "police" and "patrol" the world says whether the corporation holds the system first.
     Corps::Outcome ApplyCorpAct(const std::string& account, const Corps::Act& act,
                                 const std::set<std::string>& online, double now);
+    // "deposit" and "withdraw" (#509): the registry's rules, with the pilot's own money taken
+    // or given here, where it is kept.
+    Corps::Outcome ApplyTreasuryAct(const std::string& account, const std::string& verb,
+                                    const std::string& value, double now);
     // At most this far from the base either way, and the softness of the balance: with
     // police and pirates at zero it is even, and a lone ship of either moves it a fifth.
     static constexpr float SECURITY_SWING = 0.15f;

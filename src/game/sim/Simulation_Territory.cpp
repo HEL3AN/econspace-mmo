@@ -268,7 +268,7 @@ void Simulation::StepPolicePay(double seconds)
             const double perHour = std::min(b.second, r.budgetMax);
             if (perHour <= 0.0)
                 continue;
-            if (corps_.Debit(id, perHour * seconds / 3600.0))
+            if (corps_.Debit(id, perHour * seconds / 3600.0, "police", "", SystemName(b.first)))
                 paid[b.first] = (float)perHour;
             else
                 broke.insert(b.first);
@@ -322,6 +322,8 @@ Corps::Outcome Simulation::ApplyCorpAct(const std::string& account, const Corps:
     std::string verb = act.verb;
     for (char& ch : verb)
         ch = (char)std::tolower((unsigned char)ch);
+    if (verb == "deposit" || verb == "withdraw")  // a pilot's money is the world's (#509)
+        return ApplyTreasuryAct(account, verb, act.value, now);
     if (verb != "police" && verb != "patrol" && verb != "transfer" && verb != "take")
         return corps_.Apply(account, act, online, now);
     // The system by its id, or by the name a player reads.
@@ -367,6 +369,29 @@ Corps::Outcome Simulation::ApplyCorpAct(const std::string& account, const Corps:
     return corps_.SetPolice(account, id.empty() ? act.system : id,
                             id.empty() ? act.system : SystemName(id), act.value,
                             WorldRules::SecurityRules().budgetMax, held);
+}
+
+Corps::Outcome Simulation::ApplyTreasuryAct(const std::string& account, const std::string& verb,
+                                            const std::string& value, double now)
+{
+    corps_.SetClock(now);
+    ClientSession* on = nullptr;
+    for (auto& kv : sessions_)
+        if (!account.empty() && kv.second.accountName == account)
+            on = &kv.second;
+    if (on == nullptr)
+    {
+        Corps::Outcome o;
+        o.error = o.told = "only a pilot who is playing moves money in or out of a treasury";
+        return o;
+    }
+    double         moved = 0.0;
+    Corps::Outcome o = verb == "deposit"
+                           ? corps_.Deposit(account, value, on->account.GetMoney(), moved)
+                           : corps_.Withdraw(account, value, moved);
+    if (o.Ok())
+        on->account.AddMoney(verb == "deposit" ? -moved : moved);
+    return o;
 }
 
 std::vector<std::string> Simulation::HeldBy(const std::string& corpId) const
@@ -422,7 +447,7 @@ void Simulation::PayFee(const FeeTo& to, double fee)
     if (to.toFaction)
         minds_[to.faction].treasury += fee;
     else if (!to.corp.empty())
-        corps_.Credit(to.corp, fee);
+        corps_.Credit(to.corp, fee, "fees");
     else if (!to.account.empty())
     {
         for (auto& kv : sessions_)
@@ -680,7 +705,7 @@ bool Simulation::PayRent(const std::string& party, const std::string& holder, do
             b.owedMoney -= rent;
         }
     }
-    else if (!corps_.Debit(party, rent))
+    else if (!corps_.Debit(party, rent, "rent_paid", "", HolderName(holder)))
     {
         const Corps::Corp* c = corps_.Find(party);
         why = "the rent is " + Credits(rent) + " and the treasury holds " +
@@ -691,7 +716,11 @@ bool Simulation::PayRent(const std::string& party, const std::string& holder, do
     if (FactionKey(holder, f))
         minds_[f].treasury += rent;
     else
-        corps_.Credit(holder, rent);
+    {
+        const Corps::Corp* payer = IsPilotParty(party) ? nullptr : corps_.Find(party);
+        corps_.Credit(holder, rent, "rent_received", "",
+                      payer != nullptr ? Tag(*payer) : PilotIn(party));
+    }
     return true;
 }
 

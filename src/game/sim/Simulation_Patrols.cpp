@@ -147,7 +147,8 @@ void Simulation::StepPatrols(double seconds)
             const SystemState* st = SystemById(p.first);
             if (st == nullptr || p.second.ships <= 0 || !PatrolAllowed(*st, id))
                 continue;  // nothing to guard there now: it stands down, unpaid
-            if (corps_.Debit(id, PatrolUpkeep(p.second) * seconds / 3600.0))
+            if (corps_.Debit(id, PatrolUpkeep(p.second) * seconds / 3600.0, "patrol", "",
+                             SystemName(p.first)))
                 kept[p.first][id] = std::min(p.second.ships, r.systemMax);
             else
                 broke.insert({ p.first, id });
@@ -171,7 +172,7 @@ void Simulation::StepPatrols(double seconds)
                 const Corps::Patrol* set = PatrolOf(pk.first, kv.first);
                 const double price = set != nullptr ? PatrolShipPrice(*set, kv.second) : 0.0;
                 const std::pair<std::string, std::string> key(pk.first, kv.first);
-                if (corps_.Debit(pk.first, price * (double)gain))
+                if (corps_.Debit(pk.first, price * (double)gain, "ships", "", SystemName(kv.first)))
                 {
                     n += gain;
                     patrolShort_.erase(key);

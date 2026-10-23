@@ -608,6 +608,7 @@ add_executable(tests
     tests/corp_tests.cpp           # corporations: roles, the corp channel, trusted structures (#347)
     tests/territory_tests.cpp      # influence, claims, a holder's tax and docking (#431 slice 5)
     tests/licence_tests.cpp        # licences: leave and rent to build in a holder's space (#431 slice 6)
+    tests/treasury_tests.cpp       # a corporation treasury: deposit, withdraw, the ledger (#509)
     tests/ownership_tests.cpp      # whose a structure is, and handing it over (#468)
     tests/chart_sales_tests.cpp    # charts sold to factions, priced by what they lack (#431 slice 16)
     tests/finds_tests.cpp          # rich belts and other hidden finds (#346)

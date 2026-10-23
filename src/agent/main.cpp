@@ -48,6 +48,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <set>
 #include <string>
 #include <thread>
@@ -179,6 +180,24 @@ std::string CorpText(const Proto::CorpView& v)
         }
         out += "Holds: " + (held.empty() ? std::string("no system") : held) + "\n";
         out += PatrolText(v);  // its own patrols (#431 slice 12)
+        // Its treasury's ledger (#509), newest first: pilots' deposits and withdrawals beside
+        // the fees, rent, police and patrol upkeep that come and go by themselves.
+        if (!v.ledger.empty())
+        {
+            out += "Treasury ledger, newest first:\n";
+            const long long now = (long long)std::time(nullptr);
+            for (const Proto::LedgerLine& l : v.ledger)
+            {
+                char              line[200];
+                const std::string times =
+                    l.count > 1 ? " x" + std::to_string(l.count) : std::string();
+                std::snprintf(line, sizeof(line), "  %+.0f cr  %s%s%s%s%s%s  (%lld min ago)\n",
+                              l.amount, l.kind.c_str(), l.who.empty() ? "" : " by ", l.who.c_str(),
+                              l.note.empty() ? "" : " -- ", l.note.c_str(), times.c_str(),
+                              l.at > 0 ? (now - l.at) / 60 : 0LL);
+                out += line;
+            }
+        }
         // Its licences to build in others' space (#431 slice 6), paid from the treasury.
         for (const Proto::LicenceView& l : v.licences)
             out += "Licence in " + l.system + " from " + l.holder + ": " +
@@ -854,9 +873,13 @@ std::vector<Tool> BuildTools()
           "storage and its rules of engagement go with it, and the system's holder must license "
           "the new owner. 'take' (structure_id) makes an abandoned one -- a disbanded "
           "corporation's -- yours (your corporation's if you are in one), from your ship within "
-          "its reach, by the same licence as building there. The answer is the server's.",
+          "its reach, by the same licence as building there. 'deposit' (value: whole credits) "
+          "puts your own money into your corporation's treasury -- any member; 'withdraw' "
+          "(value: credits) takes some out to you -- the CEO or a director, no cap. Both are "
+          "refused, and say so, when the money is not there. The corp tool lists the treasury's "
+          "ledger. The answer is the server's.",
           Obj({ { "action", Str("create, invite, join, decline, leave, kick, role, tax, docking, "
-                                "police, patrol, transfer or take") },
+                                "police, patrol, transfer, take, deposit or withdraw") },
                 { "name", Str("create: the corporation's name, 3 to 24 characters") },
                 { "ticker", Str("create: 2 to 5 letters or digits; join/decline: whose invite; "
                                 "transfer: the corporation it goes to") },
@@ -866,7 +889,7 @@ std::vector<Tool> BuildTools()
                 { "role", Str("role: ceo, director or member") },
                 { "value", Str("tax: a percentage such as 5, or standard; docking: own, allies "
                                "or all; police: credits an hour, or none; patrol: ships, or "
-                               "none") },
+                               "none; deposit, withdraw: whole credits") },
                 { "system", Str("police, patrol: the system, by id or name; transfer, take: "
                                 "where the structure is (left out: where you are)") },
                 { "design", Str("patrol: a name in your design library, or a stock design id; "
@@ -888,7 +911,11 @@ std::vector<Tool> BuildTools()
               act.ticker = args.value("ticker", std::string());
               act.pilot = args.value("pilot", std::string());
               act.role = args.value("role", std::string());
-              act.value = args.value("value", std::string());
+              const auto val = args.find("value");  // credits may arrive as a number
+              if (val != args.end() && val->is_number())
+                  act.value = std::to_string((long long)val->get<double>());
+              else
+                  act.value = args.value("value", std::string());
               act.system = args.value("system", std::string());
               act.design = args.value("design", std::string());
               act.engage = args.value("engage", std::string());

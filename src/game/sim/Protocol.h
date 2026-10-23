@@ -36,7 +36,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    65;  // 65: a wreck holds every good, and a pilot can jettison into a can (#472) -- an
+    66;  // 66: a corporation's treasury can be paid into and out of (#509) -- a CorpAct
+         // "deposit" and "withdraw" (value: credits), and a CorpView carries the treasury's
+         // ledger;
+         // 65: a wreck holds every good, and a pilot can jettison into a can (#472) -- an
          // EntityLayout's and an EntitySnapshot's holds replace a wreck's one cargo;
          // 64: a Command's nameSystem may name any system by `nameSystemId`, not only the one the
          // ship is in, and the galaxy index marks a name that is its people's (#513);
@@ -906,6 +909,19 @@ struct CorpAct
     std::string allow{};      // "patrol": the allow-list, comma separated, "none"; empty: as was
 };
 
+// One line of a corporation's treasury ledger (#509), newest first in a CorpView: `kind` is
+// deposit, withdraw, fees, rent_paid, rent_received, police, patrol or ships; `amount` is
+// signed credits; `count` how many flows a line sums.
+struct LedgerLine
+{
+    long long   at = 0;  // Unix seconds
+    std::string kind;
+    std::string who;
+    std::string note;
+    double      amount = 0.0;
+    int         count = 1;
+};
+
 // A patrol a corporation keeps (#431 slice 12): where, how many it keeps and how many stand
 // there now, the design they fly and whom they engage, and what it costs an hour.
 struct PatrolView
@@ -949,6 +965,7 @@ struct CorpView
     // share (the standard one when it set none), its docking policy ("own", "allies", "all"),
     // and the systems it holds, by id.
     double                   treasury = 0.0;
+    std::vector<LedgerLine>  ledger;  // the treasury's last lines, newest first (#509)
     float                    tax = 0.0f;
     std::string              docking = "all";
     std::vector<std::string> holds;

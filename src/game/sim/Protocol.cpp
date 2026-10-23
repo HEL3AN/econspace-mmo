@@ -2423,6 +2423,18 @@ std::string EncodeCorpView(const CorpView& v)
             members.push_back({ { "pilot", m.pilot }, { "role", m.role }, { "on", m.online } });
         j["members"] = std::move(members);
         j["treasury"] = v.treasury;
+        if (!v.ledger.empty())
+        {
+            json ledger = json::array();
+            for (const LedgerLine& l : v.ledger)
+                ledger.push_back({ { "at", l.at },
+                                   { "kind", l.kind },
+                                   { "who", l.who },
+                                   { "note", l.note },
+                                   { "amount", l.amount },
+                                   { "count", l.count } });
+            j["ledger"] = std::move(ledger);
+        }
         j["tax"] = v.tax;
         j["docking"] = v.docking;
         if (!v.holds.empty())
@@ -2491,6 +2503,21 @@ bool DecodeCorpView(const std::string& s, CorpView& out)
         }
     const auto treasury = j.find("treasury");
     out.treasury = treasury != j.end() && treasury->is_number() ? treasury->get<double>() : 0.0;
+    const auto ledger = j.find("ledger");
+    if (ledger != j.end() && ledger->is_array())
+        for (const json& lj : *ledger)
+            if (lj.is_object())
+            {
+                LedgerLine l;
+                l.at = lj.value("at", 0LL);
+                l.kind = TextOf(lj, "kind");
+                l.who = TextOf(lj, "who");
+                l.note = TextOf(lj, "note");
+                l.amount = lj.value("amount", 0.0);
+                l.count = lj.value("count", 1);
+                if (!l.kind.empty())
+                    out.ledger.push_back(std::move(l));
+            }
     const auto tax = j.find("tax");
     out.tax = tax != j.end() && tax->is_number() ? tax->get<float>() : 0.0f;
     if (!TextOf(j, "docking").empty())

@@ -495,9 +495,12 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
 // collected per system so each client is told about its own sky. A system with nobody in
 // it keeps living, which is the premise of the whole galaxy -- once nobody has been there
 // for a minute, as numbers in the coarse pass rather than as ships stepped here (#295).
+static double ChatClock();
+
 static void HostStepWorld(Simulation& sim, float dt,
                           std::map<std::string, std::vector<FireEvent>>& fires)
 {
+    sim.Corporations().SetClock(ChatClock());  // what the treasury's ledger is stamped with
     // Who is standing where. A docked player is not in space: NPCs cannot see or shoot
     // them, which is what makes a station a refuge.
     std::map<std::string, std::vector<Simulation::PlayerPresence>> present;
@@ -839,6 +842,12 @@ static Proto::CorpView CorpViewFor(const Simulation& sim, const std::string& acc
                 { m.account, Corps::RoleName(m.role), online.count(m.account) > 0 });
         // Its money, its policies and what it holds (#431 slice 5).
         v.treasury = std::floor(c->treasury);
+        // ...and where it went, the last lines of the ledger, newest first (#509).
+        constexpr size_t LEDGER_SENT = 40;
+        for (auto it = c->ledger.rbegin(); it != c->ledger.rend() && v.ledger.size() < LEDGER_SENT;
+             ++it)
+            v.ledger.push_back(
+                { it->at, it->kind, it->who, it->note, std::floor(it->amount), it->count });
         v.tax = (float)c->TaxRate(Goods::Rules().fee, WorldRules::InfluenceRules().taxMax);
         v.docking = Corps::DockingName(c->docking);
         v.holds = sim.HeldBy(c->id);

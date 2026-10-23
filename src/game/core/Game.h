@@ -304,6 +304,7 @@ private:
     // What building in this system takes (#431 slice 6), and the button that buys or renews
     // the licence: in the station window and the corporation window alike.
     void DrawLicenceHere(Ui::Layout& L);
+    void DrawTreasuryTab(Ui::Layout& L, bool leads, std::vector<Proto::CorpAct>& acts);
     // Handing the docked structure over (#468): to a pilot or a corporation's [TICKER], for its
     // owner -- or its corporation's CEO or a director. Nothing for anyone else.
     void DrawTransfer(Ui::Layout& L, const Entity& structure);
@@ -695,7 +696,9 @@ private:
     // member chosen in its list.
     Proto::CorpView corpView_;
     std::string     corpName_, corpTicker_, corpInvitee_, corpChosen_;
-    std::string     corpTax_;  // the tax field, in percent (#431 slice 5)
+    std::string     corpTax_;      // the tax field, in percent (#431 slice 5)
+    int             corpTab_ = 0;  // 0 the corporation, 1 its treasury (#509)
+    std::string     corpAmount_;   // the treasury tab's amount field
     Ui::Layout      corpLayout_{ 4096 };
     void            PlayScriptedClicks();
     std::string     themeToUse_;  // chosen in Settings while it was drawn: switched to next frame
