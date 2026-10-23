@@ -147,6 +147,11 @@ public:
     void SetGalleryLivery(const std::string& id) { galleryLivery_ = id; }
     void SetGalleryHeading(float radians) { galleryHeading_ = radians; }
     void SetGalleryIntensity(float whole) { galleryIntensity_ = whole; }
+    // `fleet N`: N of the focused card at once, for what many of a kind cost (#516).
+    void SetGalleryFleet(int n) { galleryFleet_ = n; }
+    // `budget MP`: the paint budget in place of look.json's, millions of pixels -- a shot of
+    // what a desktop or a laptop setting draws (#516).
+    void SetPaintBudget(float megapixels) { paintBudget_ = megapixels; }
     void ShowGallerySockets() { gallerySockets_ = true; }
     void SetGalleryThrusting() { galleryThrusting_ = true; }
     // Every card at one scale, so sizes compare -- the panel's toggle, from the command line.
@@ -380,6 +385,9 @@ private:
     // the seed, so one seed says nothing about whether the rules make sense (#240).
     int         gallerySeed_ = 0;
     std::string galleryLivery_;  // empty: none, as an unowned object
+    int         galleryFleet_ = 1;
+    float       paintBudget_ = 0.0f;  // 0: look.json's
+    int         GalleryFleetColumns() const;
     // Draw the sockets a type's sections offer, coloured by kind (K): how a kit's choices
     // are judged -- why a hatch is where it is.
     bool gallerySockets_ = false;

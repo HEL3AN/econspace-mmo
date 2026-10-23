@@ -128,7 +128,10 @@ void MaterialLibrary::Load(const std::string& dataDir)
             Compiled c;
             c.shader = shared->second;
             for (const Binding& b : m.bindings)
+            {
                 c.locations[b.uniform] = GetShaderLocation(c.shader, b.uniform.c_str());
+                c.slots.push_back(c.locations[b.uniform]);
+            }
             shaders_[m.id] = c;
             continue;
         }
@@ -172,7 +175,10 @@ void MaterialLibrary::Load(const std::string& dataDir)
         // every frame afterwards, which is what lets a material list more bindings than a
         // particular shader uses.
         for (const Binding& b : m.bindings)
+        {
             c.locations[b.uniform] = GetShaderLocation(s, b.uniform.c_str());
+            c.slots.push_back(c.locations[b.uniform]);
+        }
         shaders_[m.id] = c;
         programs[m.shader] = s;
     }
@@ -200,6 +206,7 @@ void MaterialLibrary::Unload()
         UnloadShader(entry.second.shader);
     }
     shaders_.clear();
+    constantsOn_.clear();
     problems_.clear();
     if (noise_.id != 0)
         UnloadTexture(noise_);
@@ -217,10 +224,20 @@ bool MaterialLibrary::Begin(const Material& m, const MaterialInputs& in)
         return false;
 
     Compiled& c = it->second;
-    for (const Binding& b : m.bindings)
+    // Its constants are already on the program if this material was the last to set them
+    // (#516): a station's parts bind the same material dozens of times a frame, and the
+    // materials of one shader share its program, so only a change of material resets them.
+    const Material*& last = constantsOn_[c.shader.id];
+    const bool       sameConstants = last == &m;
+    last = &m;
+    // The program once, then its uniforms: SetShaderValue makes the program current for every
+    // value it sets, which was a glUseProgram per uniform per part.
+    rlEnableShader(c.shader.id);
+    for (size_t i = 0; i < m.bindings.size() && i < c.slots.size(); i++)
     {
-        const int loc = c.locations[b.uniform];
-        if (loc < 0)
+        const Binding& b = m.bindings[i];
+        const int      loc = c.slots[i];
+        if (loc < 0 || (sameConstants && b.source == Source::Constant))
             continue;
         if (b.source == Source::TextureNoise)
         {
@@ -230,7 +247,7 @@ bool MaterialLibrary::Begin(const Material& m, const MaterialInputs& in)
             rlActiveTextureSlot(unit);
             rlEnableTexture(noise_.id);
             rlActiveTextureSlot(0);
-            SetShaderValue(c.shader, loc, &unit, SHADER_UNIFORM_INT);
+            rlSetUniform(loc, &unit, SHADER_UNIFORM_INT, 1);
             continue;
         }
         const UniformValue u = Resolve(b, in);
@@ -241,7 +258,7 @@ bool MaterialLibrary::Begin(const Material& m, const MaterialInputs& in)
             type = SHADER_UNIFORM_VEC3;
         else if (u.count == 4)
             type = SHADER_UNIFORM_VEC4;
-        SetShaderValue(c.shader, loc, u.v, type);
+        rlSetUniform(loc, u.v, type, 1);
     }
 
     BeginShaderMode(c.shader);

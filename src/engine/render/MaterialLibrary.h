@@ -78,16 +78,22 @@ private:
     {
         Shader                     shader;
         std::map<std::string, int> locations;  // uniform name -> location, -1 for absent
+        // The same, in the order of the material's bindings: what Begin reads, every part of
+        // every object, without a lookup by name (#516).
+        std::vector<int> slots;
     };
 
     std::map<std::string, Compiled> shaders_;  // keyed by material id
-    std::vector<std::string>        problems_;
-    bool                            active_ = false;
-    bool                            disabled_ = false;
-    bool                            paintingOff_ = false;
-    float                           paintBudget_ = 1000000.0f;
-    Texture2D                       noise_{};
-    RenderTexture2D                 paint_{};
+    // Which material last set its constants on each program (#516): materials of one shader
+    // share it, so its constants are set again only when the material changes.
+    std::map<unsigned int, const Material*> constantsOn_;
+    std::vector<std::string>                problems_;
+    bool                                    active_ = false;
+    bool                                    disabled_ = false;
+    bool                                    paintingOff_ = false;
+    float                                   paintBudget_ = 1000000.0f;
+    Texture2D                               noise_{};
+    RenderTexture2D                         paint_{};
 };
 
 }  // namespace Render

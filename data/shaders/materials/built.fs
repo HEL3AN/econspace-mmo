@@ -342,8 +342,9 @@ void main()
     alb *= 0.94 + 0.12 * bHash(vec3(partSeed * 113.0, seed * 7.0, 4.2));
     // Brushed: a faint grain along the part, which is what tells metal from stone.
     if (detail > 0.0 && kind <= 4)
-        alb *= 0.975 + 0.05 * bNoise(vec3(q.x / pitchE * 0.6, q.y / pitchE * 22.0, partSeed * 9.0)) *
-                           detail;
+        // A hash per fine line across the part, not noise: grain is lines, and a hash is
+        // a few instructions where a noise is four texture reads.
+        alb *= 0.975 + 0.05 * bHash(vec3(floor(q.y / pitchE * 22.0), partSeed * 9.0, 1.3)) * detail;
     // A panel replaced from another batch -- primer, a different alloy: the patchwork of a
     // people who mend rather than refit.
     if (kind <= 1 || kind == 4)
@@ -494,21 +495,29 @@ void main()
     float grime = 0.0;
     if (livery.y > 0.0 && kind != 7)
     {
-        float g = R > 10.0 ? bFbm(vec3(oc * 2.6, seed * 31.0 + 1.7), oct) : 0.5;
-        float streak = bNoise(vec3(q.x / pitchE * 0.18, q.y / pitchE * 2.4, partSeed * 23.0));
-        grime = clamp((g - 0.42) * 2.6, 0.0, 1.0) * (0.55 + 0.45 * streak);
+        // Three octaves at most: grime is a broad stain, and its fine grain is the streaks'.
+        float g = R > 10.0 ? bFbm(vec3(oc * 2.6, seed * 31.0 + 1.7), min(oct, 3)) : 0.5;
+        grime = clamp((g - 0.42) * 2.6, 0.0, 1.0);
+        // Streaks only where there is a stain to streak -- most of a clean hull is not.
+        if (grime > 0.0)
+            grime *= 0.55 + 0.45 * bNoise(vec3(q.x / pitchE * 0.18, q.y / pitchE * 2.4,
+                                               partSeed * 23.0));
         grime = clamp(grime * livery.y * 1.6 + seam * 0.35 * livery.y, 0.0, 1.0);
         alb = mix(alb, alb * vec3(0.45, 0.41, 0.36), grime * 0.7);
     }
     // Wear: paint chipped back to bare metal at the panels' edges, more on an old hull.
     if (livery.x > 0.0 && detail > 0.0 && kind != 6 && kind != 7)
     {
-        float chip = bNoise(vec3(q / pitchE * 7.0, seed * 11.0 + partSeed * 3.0));
         float nearEdge = 1.0 - smoothstep(0.0, 0.16, min(min(f.x, 1.0 - f.x) * size.x,
                                                            min(f.y, 1.0 - f.y) * size.y) /
                                                        pitchE);
-        float worn = step(1.0 - livery.x * 0.75, chip) * nearEdge * detail;
-        alb = mix(alb, BARE * (0.75 + 0.25 * ph.y), worn * 0.8);
+        // The noise only where a chip could be: the edges of the plates, not their middles.
+        if (nearEdge > 0.0)
+        {
+            float chip = bNoise(vec3(q / pitchE * 7.0, seed * 11.0 + partSeed * 3.0));
+            float worn = step(1.0 - livery.x * 0.75, chip) * nearEdge * detail;
+            alb = mix(alb, BARE * (0.75 + 0.25 * ph.y), worn * 0.8);
+        }
     }
     alb *= 1.0 - seam * (kind == 4 ? 0.6 : 0.32);
 

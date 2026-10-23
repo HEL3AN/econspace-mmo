@@ -214,6 +214,18 @@ bool ShapeBackend::Drawable(const std::string& id) const
     return materials_ != nullptr && materials_->Has(id);
 }
 
+bool ShapeBackend::BuiltSurface(const Item& item) const
+{
+    // A surface that reads its parts -- their proportions, seeds, turns -- is one finished
+    // part by part (#516), and costs by the pixel what a painted body does. `hull` reads
+    // none, so an object that fell back to it is as cheap as it always was.
+    if (materials_ == nullptr || item.material.empty())
+        return false;
+    const Material* m = Materials::Pick("", item.material, "hull",
+                                        [this](const std::string& id) { return Drawable(id); });
+    return m != nullptr && m->readsPart;
+}
+
 bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& light, Vector2 at,
                                    float size, Vector2 axis, const Material* own,
                                    const Piece* piece)
@@ -364,6 +376,19 @@ void ShapeBackend::Draw(const Item& described)
         {
             Perf::Count(Perf::Counter::Culled);
             return;
+        }
+        // A built thing covering more of the screen than the paint budget (#516) is drawn
+        // whole into the offscreen target at reduced resolution and scaled back up, as a
+        // planet flown over is (#426): its surfaces are finished part by part, and a station
+        // filling a 1080p screen is two million fragments of them on an integrated GPU.
+        if (paintScale_ == 1.0f && BuiltSurface(item))
+        {
+            Rectangle   clip{};
+            const float scale =
+                PaintScaleFor(item.pos, item.size * Reach(*item.shape, item.id), clip);
+            if (scale < 1.0f &&
+                PaintInto(scale, clip, [&]() { return DrawComposition(item, item.color, light); }))
+                return;
         }
         DrawComposition(item, item.color, light);
         return;
@@ -701,24 +726,10 @@ bool ShapeBackend::DrawOwnMaterial(const Item& item, const Piece& p, const Mater
     // screen -- a planet flown over, a nebula flown into.
     if (p.form == Form::Disc && !p.surface && paintScale_ == 1.0f)
     {
-        const float     w = (float)rlGetFramebufferWidth(), h = (float)rlGetFramebufferHeight();
-        const Vector2   c = GetWorldToScreen2D(p.pos, view_);
-        const float     reach = p.radius * m.reach * view_.zoom + 2.0f;
-        const Rectangle box{ std::fmax(0.0f, c.x - reach), std::fmax(0.0f, c.y - reach), 0.0f,
-                             0.0f };
-        const float     x1 = std::fmin(w, c.x + reach), y1 = std::fmin(h, c.y + reach);
-        const Rectangle clip{ box.x, box.y, std::fmax(0.0f, x1 - box.x),
-                              std::fmax(0.0f, y1 - box.y) };
-        const float     area = clip.width * clip.height;
-        const float     budget = materials_ != nullptr ? materials_->PaintBudget() : area;
-        if (area > budget)
-        {
-            // In eighths, so the target is not resized every frame as a planet grows.
-            const float scale =
-                std::fmax(PAINT_MIN_SCALE, std::floor(std::sqrt(budget / area) * 8.0f) / 8.0f);
-            if (scale < 1.0f && PaintScaled(item, p, m, scale, clip))
-                return true;
-        }
+        Rectangle   clip{};
+        const float scale = PaintScaleFor(p.pos, p.radius * m.reach, clip);
+        if (scale < 1.0f && PaintScaled(item, p, m, scale, clip))
+            return true;
     }
 
     const Vector2          at = p.surface ? p.bodyPos : p.pos;
@@ -752,6 +763,40 @@ void ShapeBackend::DrawPainted(const Item& item, const Piece& p, const Material&
 bool ShapeBackend::PaintScaled(const Item& item, const Piece& p, const Material& m, float scale,
                                Rectangle box)
 {
+    return PaintInto(scale, box,
+                     [&]()
+                     {
+                         const Vector2          at = p.pos;
+                         const Lighting::Sample l = LightAt(at);
+                         const bool             begun =
+                             BeginMaterialAt(item, l, at, ShadeRadius(p), Axis(p), &m, &p);
+                         if (begun)
+                         {
+                             Perf::Count(Perf::Counter::Painted);
+                             DrawPainted(item, p, m);
+                         }
+                         return begun;
+                     });
+}
+
+float ShapeBackend::PaintScaleFor(Vector2 centre, float reach, Rectangle& clip) const
+{
+    const float   w = (float)rlGetFramebufferWidth(), h = (float)rlGetFramebufferHeight();
+    const Vector2 c = GetWorldToScreen2D(centre, view_);
+    const float   r = reach * view_.zoom + 2.0f;
+    const float   x0 = std::fmax(0.0f, c.x - r), y0 = std::fmax(0.0f, c.y - r);
+    const float   x1 = std::fmin(w, c.x + r), y1 = std::fmin(h, c.y + r);
+    clip = { x0, y0, std::fmax(0.0f, x1 - x0), std::fmax(0.0f, y1 - y0) };
+    const float area = clip.width * clip.height;
+    const float budget = materials_ != nullptr ? materials_->PaintBudget() : area;
+    if (area <= budget || area <= 0.0f)
+        return 1.0f;
+    // In eighths, so the target is not resized every frame as a body grows.
+    return std::fmax(PAINT_MIN_SCALE, std::floor(std::sqrt(budget / area) * 8.0f) / 8.0f);
+}
+
+bool ShapeBackend::PaintInto(float scale, Rectangle box, const std::function<bool()>& draw)
+{
     if (materials_ == nullptr)
         return false;
     const int        w = rlGetFramebufferWidth(), h = rlGetFramebufferHeight();
@@ -782,14 +827,7 @@ bool ShapeBackend::PaintScaled(const Item& item, const Piece& p, const Material&
                               RL_FUNC_ADD, RL_FUNC_ADD);
     BeginBlendMode(BLEND_CUSTOM_SEPARATE);
     paintScale_ = (float)sw / (float)w;
-    const Vector2          at = p.pos;
-    const Lighting::Sample l = LightAt(at);
-    const bool             begun = BeginMaterialAt(item, l, at, ShadeRadius(p), Axis(p), &m, &p);
-    if (begun)
-    {
-        Perf::Count(Perf::Counter::Painted);
-        DrawPainted(item, p, m);
-    }
+    const bool begun = draw();
     EndMaterial();
     rlDrawRenderBatchActive();
     EndBlendMode();

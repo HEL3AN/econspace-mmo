@@ -135,7 +135,10 @@ up". A few more, from the work on the look:
 Synthetic input (`SendKeys`, `mouse_event`) does not reach a raylib window, so the game and
 the editor take their view from arguments and save it themselves: `--shot f.png --frames N`
 on the client, `shot out.png` in the editor, `--click X Y FRAME` for a click (examples in
-CLAUDE.md). Screenshot runs open their window hidden. The owner works in VS Code, where file
+CLAUDE.md). Screenshot runs open their window hidden. For a built surface (#516) a gallery
+shot also takes `light A` (radians: put the night side in view), `livery ID`, `heading H`,
+`damage D`, `fleet N` (N of the card at once, for `perf`) and `budget MP` (the paint budget in
+place of look.json's). The owner works in VS Code, where file
 cards do not render — open a screenshot with `Start-Process` rather than only sending it.
 
 The owner plays on the same laptop the agents run on (Intel UHD 620): performance numbers

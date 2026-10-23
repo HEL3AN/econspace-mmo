@@ -817,6 +817,10 @@ compiles no materials at all, which is how the stand-ins are judged.
   drawn, shader or not; the rest reach a material through the `livery.*` sources. An unknown
   field is a load error (`note` is allowed).
 
+A built object whose surface reads its parts (`item.partShape`, `item.partSeed`, `item.angle`)
+is bound by `paintBudget` as a painted body is: covering more of the screen than the budget, it
+is drawn whole at reduced resolution and scaled back up.
+
 ### `style` — the glyph grammar
 
 Glyphs were the game's primary look until 2026-09-03 and are being demoted to a sensor

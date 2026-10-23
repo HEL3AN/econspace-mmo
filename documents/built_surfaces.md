@@ -194,25 +194,46 @@ The rules, cheapest path first (ships are many and small):
    finer cuts from 10–18 px, access panels from 12–22 px; window panes from ~1 px high,
    otherwise a glow. A ship 40 px long is lit plating and its livery — no seams to alias.
 3. **Grime octaves follow the object's size** (`bOctaves(R, 4)`), and none under 10 px.
-4. **One noise lookup is four `texelFetch`es** of #501's table; a fully detailed plating
-   fragment does at most ~6 lookups (grime fBm up to 4, streak, chip, grain) — fewer than a
-   planet's.
-5. **One program, many materials**; parts of one object bind per part (as `hull` already did,
-   #135). The `readsPart` flag keeps planets' crater marks sharing one bind (#296), because
-   `hull` reads no part inputs.
-6. **No paint budget is needed** for built parts: a station is not one disc that grows past the
-   screen; its parts are capsules and plates that each cover a fraction of it. A disc part with
-   a material of its own still goes through `paintBudget` if it ever does.
+4. **One noise lookup is four `texelFetch`es** of #501's table. A plating fragment does a
+   grime fBm of at most three octaves; the streak noise only where there is grime, the chip
+   noise only near a plate's edge; the brushed grain is a hash per line, not a noise.
+5. **One program, many materials**, and `Begin` sets the program once and its uniforms by
+   index (it was a `glUseProgram` and a map lookup per uniform), and skips a material's
+   constants when that material set them last. Parts of one object bind per part (as `hull`
+   already did, #135); the `readsPart` flag keeps planets' crater marks sharing one bind
+   (#296), because `hull` reads no part inputs.
+6. **The paint budget covers built things too.** A built object whose box on screen covers
+   more than `paintBudget` (look.json, shipped 0.5 MP) is drawn whole into #426's offscreen
+   target at reduced resolution — never below half — and scaled back up, exactly as a planet
+   flown over is. That bounds what a station filling a 1080p screen costs on an integrated GPU,
+   at the price of softness close up there; a desktop raises the budget in F10.
 
-**Measured** — desktop numbers, i5-12600K / RTX 3060 Ti, Release, `perf` 300 frames: see the PR
-body for the table (station filling the screen, many ships on screen, before/after).
+**Measured** (desktop: i5-12600K / RTX 3060 Ti, Release, vsync at 120 Hz; GPU time of the
+world phase, median of 3–5 runs of 300 frames; other agents shared the GPU, so ±0.2 ms):
 
-**UHD 620 estimate**: the desktop GPU is ~25–40× faster in fill-bound shader work. A station
-filling a 1080p screen is ~2 MP of `built` with ~1.3× overdraw; at the desktop's measured cost
-that is a few milliseconds on the laptop — inside a 16 ms frame but not free. The lever if it
-is too much: a `detail` cap in `look.json` (drop seams/grime above N MP covered), the same idea
-as `paintBudget`. Ships are cheap: at flying zoom most parts are flat and the rest take the
-no-seam branch.
+| scene (editor card, 1280×720) | before (`hull`) | after |
+|---|---|---|
+| hub fitted (~0.1 MP) | 0.59 ms | 0.71 ms |
+| hub zoom 3 (fills the card, ~0.5 MP) | 0.72 | 0.96 |
+| hub zoom 6 (the core fills the card) | 0.29 | 0.68 |
+| 100 scouts at ~31 px (flying size) | 4.2 | 2.7 |
+| 100 scouts at ~90 px | 7.6 | 8.5 |
+| scout zoom 2 (fills the card) | 0.61 | 0.72 |
+
+The fleet rows are draw-call bound (100–300 binds, the same number before and after), which
+is why they are noisy and do not grow with the shader. With the shader swapped for `hull.fs`
+under the same bindings, the hub at zoom 6 costs what `hull` does (0.35 ms): the difference is
+shading, not binding — about **0.6 ms per megapixel** of built surface on this desktop, close to
+#501's rocky planet (0.5 ms per megapixel). In the client at 1920×1080 by a Syndicate exchange:
+world 0.70 ms GPU at zoom 0.35, 0.46 ms at zoom 1.5 (the station across the screen, painted at
+reduced resolution); frames held the 120 Hz cap throughout.
+
+**UHD 620 estimate** (not measured): by the same reckoning #501 used for planets (the laptop
+some 25–40× slower in fill-bound shading), a megapixel of built surface costs 15–25 ms there.
+Hence the budget: a station across the whole screen is bounded to 0.5 MP of shading, ~8–12 ms
+plus the pass — tight, and the first thing slice 6 measures on the laptop. At flying zoom a
+station is 0.1–0.2 MP (2–5 ms), and a hundred ships at flying size are ~0.02 MP of shading:
+what they cost is their draw calls, as before.
 
 ## 6. Player designs (M8)
 
@@ -256,8 +277,10 @@ Each slice is one PR with before/after contact sheets; cheap agents can take the
 4. **Derelicts and gates** — `derelict.*` on a `derelict` livery (wear 1, grime 1, no lit
    windows, scorch baked by seed); `gate.*` on `plating.trim` with their own markings.
 5. **Damage** — the `frame` surface and the part-loss hook with #138.
-6. **Laptop pass** — measure on the UHD 620; add the `detail` cap to `look.json` if a station
-   at full screen costs more than ~3 ms there.
+6. **Laptop pass** — measure on the UHD 620 (and check that `built.fs` compiles on Intel's
+   driver: it was only compiled on NVIDIA here; a failure falls back to `hull`). If a station
+   at full screen is still over ~4 ms there, a cheaper tier: plates without grime noise above
+   a size, or the shipped budget lowered to 0.35.
 7. **Tuning** — a gallery sheet per culture across every archetype, with the owner.
 
 ## 9. Questions for the owner
@@ -272,3 +295,5 @@ Each slice is one PR with before/after contact sheets; cheap agents can take the
 5. **The night side** in a dim system is dark (the built surfaces use 0.75 of the scene's
    ambient floor, so shadows read). Keep, or back to the full floor so nothing is ever dark?
 6. **Damage**: scorch with embers now — too much fire for a hull at 40%?
+7. **The paint budget** now also softens a station seen close on the shipped 0.5 MP (the
+   contact sheet shows both). Keep one budget for planets and built things, or a separate one?

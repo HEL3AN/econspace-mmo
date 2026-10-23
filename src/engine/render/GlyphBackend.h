@@ -2,6 +2,7 @@
 
 #include "render/MaterialLibrary.h"
 #include "render/Scene.h"
+#include <functional>
 
 namespace Render
 {
@@ -146,6 +147,15 @@ private:
     // resolution every frame (#426). False if it could not be.
     bool PaintScaled(const Item& item, const Piece& p, const Material& m, float scale,
                      Rectangle box);
+    // Whatever `draw` draws, painted into the offscreen target at `scale` of the target's
+    // resolution and drawn back over `box` (screen pixels): a piece (PaintScaled) or a whole
+    // built object (#516). False if it could not be, and nothing was drawn.
+    bool PaintInto(float scale, Rectangle box, const std::function<bool()>& draw);
+    // The resolution to paint something `reach` world units round `centre` at, under the
+    // paint budget: 1 when it fits, else down to PAINT_MIN_SCALE. `clip` is its box on screen.
+    float PaintScaleFor(Vector2 centre, float reach, Rectangle& clip) const;
+    // Whether an object's surface is a built one, finished part by part (#516).
+    bool BuiltSurface(const Item& item) const;
     // The primitive under a material of a piece's own, the material already begun.
     void DrawPainted(const Item& item, const Piece& p, const Material& m);
 

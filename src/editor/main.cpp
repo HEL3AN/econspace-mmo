@@ -124,6 +124,10 @@ int main(int argc, char** argv)
             editor.SetGalleryLivery(argv[++i]);  // whose style (#516)
         else if (arg == "heading" && i + 1 < argc)
             editor.SetGalleryHeading((float)std::atof(argv[++i]));
+        else if (arg == "budget" && i + 1 < argc)
+            editor.SetPaintBudget((float)std::atof(argv[++i]));  // paintBudget, megapixels
+        else if (arg == "fleet" && i + 1 < argc)
+            editor.SetGalleryFleet(std::atoi(argv[++i]));  // many at once, for `perf`
         else if (arg == "damage" && i + 1 < argc)
             editor.SetGalleryIntensity(1.0f - (float)std::atof(argv[++i]));
         else if (arg == "sockets")
