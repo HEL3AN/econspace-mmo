@@ -233,7 +233,10 @@ TEST_CASE("the admin channel carries a command and its answer, and nothing stale
     // A command given while the server runs: taken once, answered, the answer read back.
     std::thread admin([&]() { Host::AdminRequest(dir, "kick bob  being rude", answer, 5.0, 5.0); });
     std::vector<Host::AdminChannel::Request> got;
-    for (int i = 0; i < 200 && got.empty(); i++)
+    // The server waits as long as the request does (its 5 s to be taken): on a busy machine the
+    // thread can take seconds to write its file (#504).
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (got.empty() && std::chrono::steady_clock::now() < deadline)
     {
         got = server.Take();
         if (got.empty())
