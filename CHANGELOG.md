@@ -49,6 +49,9 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 - Supply job cargo is delivered on arrival, and the job says where it goes (#435).
 - Escort jobs show their convoy: where it is, where it goes, its ships (#436).
 
+### Security
+- The server's untrusted input is fuzzed: the frame reader, every decoder and the login, by libFuzzer targets in `tests/fuzz/` that ClusterFuzzLite runs on pull requests and weekly. The first run found that a client could be ended by one line of JSON with a field of the wrong type; decoders now read such a field as its default (#518).
+
 ### The look
 - The screen treatment no longer leaves a black curved frame or a red and cyan line at the screen's edge (#426).
 - Planets are round at any zoom, and their bands end at the limb rather than in a straight edge (#426).

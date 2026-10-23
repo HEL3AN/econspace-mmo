@@ -1,0 +1,59 @@
+# Fuzzing on pull requests (#518), by ClusterFuzzLite.
+#
+# A short run of the fuzz targets (tests/fuzz) over a change to what the server reads from
+# strangers: the protocol, the transport, the login. "code-change" mode runs only against
+# the code the change touches, for about five minutes, under the address and the
+# undefined-behaviour sanitizers. A crash fails the check and the input is attached to the
+# run. The longer, corpus-keeping run is cflite_batch.yml.
+name: Fuzz (PR)
+
+on:
+  pull_request:
+    paths:
+      - "src/game/sim/Protocol*"
+      - "src/game/sim/Login*"
+      - "src/game/sim/Auth*"
+      - "src/game/sim/Chat*"
+      - "src/game/sim/Compat*"
+      - "src/game/net/**"
+      - "tests/fuzz/**"
+      - ".clusterfuzzlite/**"
+      - ".github/workflows/cflite_pr.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cflite-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: Fuzz (${{ matrix.sanitizer }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, undefined]
+    steps:
+      - name: Build the fuzz targets
+        id: build
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: c++
+          sanitizer: ${{ matrix.sanitizer }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run the fuzz targets
+        id: run
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 300
+          mode: code-change
+          sanitizer: ${{ matrix.sanitizer }}
+          report-unreproducible-crashes: false

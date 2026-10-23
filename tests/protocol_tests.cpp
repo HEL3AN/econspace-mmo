@@ -963,3 +963,52 @@ TEST_CASE("a command that says nothing is a few bytes, and still says it (#341)"
     CHECK(back.sellType == 0);
     CHECK(back.refitShip == 0);
 }
+
+// Found by the fuzzers (#518): the client-side decoders read their fields with nlohmann's
+// value(), which throws on a field of the wrong type. A hostile server, or anyone between a
+// client and its server -- there is no transport encryption -- could end the client with one
+// line of JSON. A field that is not what it must be reads as its default, like every other
+// field.
+TEST_CASE("a decoder never throws on a field of the wrong type")
+{
+    const std::string v = std::to_string(Proto::PROTO_VERSION);
+
+    WorldLoader::Universe u;
+    // The input the fuzzer found: `start` is an array, not text.
+    CHECK_NOTHROW(
+        Proto::DecodeUniverse(R"({"links":[],"start":[],"t":"universe","v":)" + v + "}", u));
+    CHECK(u.startId.empty());
+
+    // Wrong types inside a system: each field falls back, the rest is kept.
+    REQUIRE(Proto::DecodeUniverse(
+        R"({"t":"universe","v":)" + v +
+            R"(,"start":"sol","sys":[{"id":"sol","name":7,"pos":["x",2],"sec":"high",)"
+            R"("charted":1,"seen":5}]})",
+        u));
+    REQUIRE(u.systems.size() == 1);
+    CHECK(u.systems[0].id == "sol");
+    CHECK(u.systems[0].name.empty());
+    CHECK(u.systems[0].security == doctest::Approx(0.5f));
+    CHECK(u.systems[0].charted);
+    CHECK(u.startId == "sol");
+
+    // A number that does not fit the field is clamped, not cast out of range.
+    REQUIRE(Proto::DecodeUniverse(R"({"t":"universe","v":)" + v +
+                                      R"(,"sys":[{"id":"a","sec":1e300,"pos":[1e300,-1e300]}]})",
+                                  u));
+    REQUIRE(u.systems.size() == 1);
+    CHECK(std::isfinite(u.systems[0].security));
+    CHECK(std::isfinite(u.systems[0].mapPos.x));
+    CHECK(std::isfinite(u.systems[0].mapPos.y));
+
+    // And the other client decoders, on the same kind of hostile field.
+    Proto::SystemLayout lay;
+    Proto::Snapshot     snap;
+    Proto::GalaxyState  galaxy;
+    CHECK_NOTHROW(Proto::DecodeLayout(R"({"t":"layout","v":)" + v +
+                                          R"(,"ents":[{"id":"a","pos":"b","size":{}}],"sys":[]})",
+                                      lay));
+    CHECK_NOTHROW(Proto::DecodeSnapshot(
+        R"({"t":"snap","v":)" + v + R"(,"seq":"x","player":[],"ents":{"a":1}})", snap));
+    CHECK_NOTHROW(Proto::DecodeGalaxy(R"({"t":"galaxy","v":)" + v + R"(,"time":"now"})", galaxy));
+}

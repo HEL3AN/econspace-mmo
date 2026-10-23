@@ -22,23 +22,7 @@
 namespace Host
 {
 
-std::string CanonicalAccount(const std::string& typed)
-{
-    // Rejecting is better than mangling: two names differing only in punctuation would
-    // otherwise share one account file, which is one player spending another's money.
-    if (typed.empty() || typed.size() > 32)
-        return std::string();
-    std::string out;
-    out.reserve(typed.size());
-    for (char c : typed)
-    {
-        const unsigned char u = (unsigned char)c;
-        if (!std::isalnum(u) && c != '_' && c != '-')
-            return std::string();
-        out.push_back((char)std::tolower(u));
-    }
-    return out;
-}
+// CanonicalAccount is defined in Login.cpp, with the other code that reads a name off the wire.
 
 std::string AccountFile(const std::string& dir, const std::string& canonical)
 {
