@@ -21,6 +21,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 - The map remembers what you saw, and when (#457); a region's charts go into the archive and come back with it (#462).
 - A corporation holds a system by influence and a claim (#449), and only from next door (#454).
 - Building in a faction's space takes a licence, by standing and rent (#456).
+- Sell charts to a faction from the map, docked at its station: it pays by what its own picture lacks -- a system it never saw, what was built since its last look, your scanner finds -- and plans on what it bought (#479).
 - Defences mend by tier: damage below the repair rate does nothing (#450).
 - Security settles near its base, and the banner and the map show the same number (#434).
 
