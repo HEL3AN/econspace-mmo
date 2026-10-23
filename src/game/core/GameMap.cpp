@@ -332,7 +332,8 @@ void Game::DrawMapSidebar(Ui::Layout& L)
                     [&]
                     {
                         L.Column(Box().GrowX(),
-                                 [&] {
+                                 [&]
+                                 {
                                      L.Text(std::to_string(i + 1) + ".  " +
                                                 MapSystemName(waypoints[i]),
                                             TextStyle::Body().Wrap());
@@ -385,10 +386,9 @@ void Game::DrawMapSidebar(Ui::Layout& L)
                                    .Align(Ui::Align::Start, Ui::Align::Center),
                                [&]
                                {
-                                   L.Column(Box().GrowX(),
-                                            [&] {
-                                                L.Text(MapSystemName(id), TextStyle::Body().Wrap());
-                                            });
+                                   L.Column(
+                                       Box().GrowX(), [&]
+                                       { L.Text(MapSystemName(id), TextStyle::Body().Wrap()); });
                                    if (L.Button("showFav" + std::to_string(i), "Show"))
                                        FocusMapSystem(id);
                                    if (L.Button("plotFav" + std::to_string(i), "Plot", false,
@@ -696,9 +696,8 @@ void Game::DrawGalaxyMap()
     }
 
     Vector2 c{ area.x + area.width / 2.0f, area.y + area.height / 2.0f };
-    auto    toScreen = [&](Vector2 mp) -> Vector2 {
-        return { c.x + (mp.x - galaxyCenter_.x) * scale, c.y + (mp.y - galaxyCenter_.y) * scale };
-    };
+    auto    toScreen = [&](Vector2 mp) -> Vector2
+    { return { c.x + (mp.x - galaxyCenter_.x) * scale, c.y + (mp.y - galaxyCenter_.y) * scale }; };
     auto posById = [&](const std::string& id, Vector2& out) -> bool
     {
         for (const auto& s : systems)

@@ -1617,8 +1617,8 @@ public:
     // system, and (through heading, when given) facing away from it. Without such a gate,
     // SafeArrival.
     static constexpr float ARRIVAL_CLEARANCE = 200.0f;
-    Vector2                ArrivalFrom(const std::string& destId, const std::string& fromId,
-                                       const ClientSession* who = nullptr, float* heading = nullptr) const;
+    Vector2 ArrivalFrom(const std::string& destId, const std::string& fromId,
+                        const ClientSession* who = nullptr, float* heading = nullptr) const;
 
     // How close a body must be for a saved ship to be kept beside it rather than at a point
     // in space (#258): within this of its surface.
@@ -2341,7 +2341,7 @@ private:
     // Turned back with what is left: the escort and the freight go home, another sets out later.
     void TurnBackConvoy(Plan& p, const std::string& where, const std::string& why);
     // A convoy's end, counted for the report.
-    void                       TallyConvoy(const Plan& p, long long ConvoyTally::*what);
+    void                       TallyConvoy(const Plan& p, long long ConvoyTally::* what);
     ConvoyTally                convoyTally_;
     std::map<int, ConvoyTally> convoyRegions_;
     // Its ships, where the system it is in is hot: the hauler and the escort, on their way

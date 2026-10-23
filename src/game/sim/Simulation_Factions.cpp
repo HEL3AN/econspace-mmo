@@ -684,7 +684,7 @@ void Simulation::Think(FactionId f)
     // rival weighing whether it could bring one down.
     const float anchorCost = AnchorCost();
     const bool  canAnchor = WorldRules::MouthRules().anchors && !anchoring && anchorCost > 0.0f &&
-                           mind.stock >= anchorCost + reserve;
+                            mind.stock >= anchorCost + reserve;
     const Blueprint* anchorBp = Blueprints::Find(ANCHOR_BLUEPRINT);
     const float      anchorWall = anchorBp != nullptr ? anchorBp->hull : 0.0f;
     const float      anchorMend = anchorBp != nullptr ? anchorBp->mend * anchorWall : 0.0f;
@@ -1385,8 +1385,7 @@ std::vector<Plan::Lent> Simulation::PoolFor(FactionId f, const std::string& targ
         if (spare >= MIN_LEND)
             offers.push_back({ kv.second.first, kv.first, spare });
     }
-    std::sort(offers.begin(), offers.end(),
-              [](const Offer& a, const Offer& b)
+    std::sort(offers.begin(), offers.end(), [](const Offer& a, const Offer& b)
               { return a.hops != b.hops ? a.hops < b.hops : a.id < b.id; });
     std::vector<Plan::Lent> lent;
     float                   total = 0.0f;

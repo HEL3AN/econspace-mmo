@@ -2143,8 +2143,8 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
         const bool      listExists = std::filesystem::exists(worldDir + "allowlist.txt", ec);
         const bool      listRequired =
             cfg.registration == Host::Registration::Auto
-                     ? Host::AccessList::ListRequired(cfg.isPublic, false, listExists)
-                     : cfg.registration == Host::Registration::Allowlist;
+                ? Host::AccessList::ListRequired(cfg.isPublic, false, listExists)
+                : cfg.registration == Host::Registration::Allowlist;
         access.Open(worldDir, listRequired);
         PrintAccess(access);
         if (access.ListChecked() && access.Allowed().empty())
@@ -3464,8 +3464,8 @@ static int WorldSelftest()
     uint64_t   savedSeed = 0;
     int        savedRules = 0, savedCentres = 0;
     bool       loaded = Simulation::ReadWorldSeed(path, savedSeed, savedRules, &savedCentres) &&
-                  savedSeed == 1 && savedRules == Gen::GENERATOR_VERSION &&
-                  savedCentres == a.CentreCount();
+                        savedSeed == 1 && savedRules == Gen::GENERATOR_VERSION &&
+                        savedCentres == a.CentreCount();
     SetupHostSim(b, dataDir, path);
     bool haveSys = b.HasSystem(sid);
     bool time = approx(b.Time(), 2.0);
@@ -3554,8 +3554,8 @@ static int OrderSelftest()
     float dx = s.ship->GetPosition().x - move.point.x;
     float dy = s.ship->GetPosition().y - move.point.y;
     bool  arrived = moveFinished && s.orderStatus == Orders::Status::Done &&
-                   std::sqrt(dx * dx + dy * dy) <= move.stopDist * 1.5f;
-    bool idOk = id > 0;
+                    std::sqrt(dx * dx + dy * dy) <= move.stopDist * 1.5f;
+    bool  idOk = id > 0;
 
     // 2) An order naming something that is not here must fail, not hang.
     Orders::Order bogus;
