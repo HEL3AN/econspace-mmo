@@ -3920,6 +3920,56 @@ static int OpsSelftest()
     return ok ? 0 : 1;
 }
 
+// What `econserver --help` prints, and an unknown mode under its complaint (#484).
+static void PrintUsage(FILE* to)
+{
+    fprintf(to,
+            "%s (%s) -- the authoritative server, and the tools around a world\n"
+            "\n"
+            "  econserver host [port] [flags]\n"
+            "      run the server, on port 50800 unless given\n"
+            "      --world DIR      the world's folder (the executable's own by default)\n"
+            "      --public         reachable from other machines; only the allowlist gets in\n"
+            "      --open           ...and anyone may register\n"
+            "      --dev            honour debug commands such as F1's money\n"
+            "      --centres N      a new world's civilisations (1-6, 3 by default)\n"
+            "      --random-starts  deal a new pilot a start instead of offering the choice\n"
+            "      --max-regions N, --max-systems N, --seed N, --packs DIR\n"
+            "  econserver init <dir> [flags]\n"
+            "      a world folder with a server.json, for `host --world <dir>`\n"
+            "  econserver admin [--world DIR] <command...>\n"
+            "      a console command for the server running on that world (`help` lists them)\n"
+            "  econserver validate [path]\n"
+            "      check the admin packs and pins, without running a world\n"
+            "  econserver regenerate <region> [--world DIR]\n"
+            "      reseal a region by today's rules, with the server stopped\n"
+            "  econserver [ticks] [--news] [--seed N] [--players K] [--rules F] ...\n"
+            "      a batch run of a world nobody is in; 3600 ticks without a number\n"
+            "  econserver galaxydump <seed> [slot ...] [--cap N] [--centres N]\n"
+            "  econserver regiondump <seed> [slot]\n"
+            "      what a seed generates, as JSON (never saved)\n"
+            "  econserver macrobench [N ...]\n"
+            "  econserver fleetbench [--days D] [seed ...]\n"
+            "      what the world costs to run, and how factions' fleets fare over days\n"
+            "  econserver hosttest | accttest | worldtest | ordertest | opstest\n"
+            "      the self-tests\n"
+            "\n"
+            "Every mode takes --data <dir> for the data folder; --version prints the version.\n"
+            "Every mode and flag, with examples: CLAUDE.md, \"Build and run\".\n",
+            Version::NAME, Version::NUMBER);
+}
+
+// A batch run's tick count: digits only, so a typo is not read as zero ticks.
+static bool IsTickCount(const char* s)
+{
+    if (!*s)
+        return false;
+    for (; *s; s++)
+        if (!std::isdigit((unsigned char)*s))
+            return false;
+    return true;
+}
+
 int main(int argc, char** argv)
 {
     // Unbuffered stdout, set before anything writes to it. A long-running server is
@@ -3934,6 +3984,13 @@ int main(int argc, char** argv)
     if (argc > 1 && (std::string(argv[1]) == "--version" || std::string(argv[1]) == "version"))
     {
         printf("%s (%s)\n", Version::NAME, Version::NUMBER);
+        return 0;
+    }
+    // ...and so is the usage: a newcomer's first question, asked before there is a data/.
+    if (argc > 1 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h" ||
+                     std::string(argv[1]) == "help"))
+    {
+        PrintUsage(stdout);
         return 0;
     }
     // Every mode reads data/: found once, before any of them, so a copied build runs (#399).
@@ -4158,6 +4215,15 @@ int main(int argc, char** argv)
         if (!answer.empty() && answer.back() != '\n')
             fputs("\n", ok ? stdout : stderr);
         return ok ? 0 : 1;
+    }
+
+    // Every mode has returned by now; what is left is a batch run of <ticks>. Anything else
+    // in its place is a typo -- `hots 50800` -- that would quietly run zero ticks (#484).
+    if (argc > 1 && !IsTickCount(argv[1]))
+    {
+        fprintf(stderr, "econserver: unknown mode '%s'\n\n", argv[1]);
+        PrintUsage(stderr);
+        return 2;
     }
 
     std::string dataDir = DataDir::Path();
