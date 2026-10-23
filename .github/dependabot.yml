@@ -1,4 +1,5 @@
-# Dependabot keeps the GitHub Actions we pin (checkout, setup-msys2) up to date.
+# Dependabot keeps the GitHub Actions we pin up to date. Every `uses:` is pinned by full commit
+# SHA with a `# vX` comment (OpenSSF Scorecard, #519); Dependabot updates both together.
 #
 # It cannot see raylib or nlohmann/json: those come in through CMake FetchContent,
 # which is not a package manager Dependabot understands. Their versions are pinned

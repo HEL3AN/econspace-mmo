@@ -60,6 +60,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 - `.gitignore` covers per-machine settings and the rest of a world folder (#470).
 - The design for knowledge, territory and law (#439); the top-level documents and design notes brought up to date with `main` (#469, #471); README screenshots from the 0.1 build (#424).
 - Releases ship a macOS archive beside Windows and Linux: universal (Apple silicon and Intel), macOS 11 or later, unsigned; every package now carries the world editor (#478).
+- OpenSSF Scorecard runs weekly with a README badge; every workflow action is pinned by commit SHA (Dependabot keeps them current) and every workflow declares read-only token permissions (#519).
 
 ## [0.1.0] - 2026-10-17 "Anchor"
 

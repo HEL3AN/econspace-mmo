@@ -36,10 +36,10 @@ jobs:
       name: ${{ steps.version.outputs.name }}
       number: ${{ steps.version.outputs.number }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up MSYS2 / MinGW-w64
-        uses: msys2/setup-msys2@v2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
         with:
           msystem: MINGW64
           install: >-
@@ -94,7 +94,7 @@ jobs:
           dir=$(ls -d build-release/dist/econspace-*-windows)
           ls "$dir/README.txt" "$dir/HOSTING.md" "$dir/start-server.bat" "$dir/econserver.exe" "$dir/data/goods.json"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: package-windows
           path: build-release/econspace-*-windows.zip
@@ -108,7 +108,7 @@ jobs:
     outputs:
       number: ${{ steps.version.outputs.number }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install raylib's build dependencies
         run: |
@@ -169,7 +169,7 @@ jobs:
           port=$(sed -n 's/.*EconSpace server on port \([0-9]*\).*/\1/p' "$RUNNER_TEMP/server.log")
           timeout -k 10 300 "$dir/econagent" selftest 127.0.0.1 "$port" packaged packaged-secret
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: package-linux
           path: build-release/econspace-*-linux.tar.gz
@@ -187,7 +187,7 @@ jobs:
     outputs:
       number: ${{ steps.version.outputs.number }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Configure
         run: >-
@@ -258,7 +258,7 @@ jobs:
           port=$(sed -n 's/.*EconSpace server on port \([0-9]*\).*/\1/p' "$RUNNER_TEMP/server.log")
           "$dir/econagent" selftest 127.0.0.1 "$port" packaged packaged-secret
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: package-macos
           path: build-release/econspace-*-macos.tar.gz
@@ -272,9 +272,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: packages
           merge-multiple: true

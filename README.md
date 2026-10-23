@@ -6,6 +6,7 @@ You fly a ship in a persistent galaxy: mine, trade, run missions, fight, build r
 
 [![Build](https://github.com/HEL3AN/econspace-mmo/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/HEL3AN/econspace-mmo/actions/workflows/build.yml)
 [![CodeQL](https://github.com/HEL3AN/econspace-mmo/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/HEL3AN/econspace-mmo/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/HEL3AN/econspace-mmo/badge)](https://scorecard.dev/viewer/?uri=github.com/HEL3AN/econspace-mmo)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Language: C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
 ![Platforms: Windows | Linux | macOS](https://img.shields.io/badge/platforms-Windows%20(MinGW)%20%7C%20Linux%20(GCC)%20%7C%20macOS%20(Clang)-lightgrey.svg)
