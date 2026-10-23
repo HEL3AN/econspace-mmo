@@ -105,8 +105,8 @@ TEST_CASE("the rules have not changed without saying so")
     const uint64_t skeleton = Fnv1a(Gen::SkeletonJson(Gen::GenerateGalaxySkeleton(1, 100)).dump());
     MESSAGE("skeleton hash for seed 1, 100 slots: " << skeleton);
     CHECK(skeleton == 3947093538462403513ull);
-    const uint64_t GOLDEN[] = { 14967538230027455343ull, 11653928899509546435ull,
-                                17233063676574546352ull };
+    const uint64_t GOLDEN[] = { 14967538230027455343ull, 13601127138528730021ull,
+                                10590983283579350898ull };
     for (int slot = 0; slot < 3; slot++)
     {
         CAPTURE(slot);
@@ -593,7 +593,7 @@ TEST_CASE("derelict caches: about one a region, deep, with goods, and hidden (#3
                     inSystem++;
                     CHECK(Gen::DepthOf(kv.first) >= 2);
                     REQUIRE(d["cargo"].is_object());
-                    CHECK(d["cargo"].size() == 1);
+                    CHECK((d["cargo"].size() == 1 || d["cargo"].size() == 2));
                     for (auto c = d["cargo"].begin(); c != d["cargo"].end(); ++c)
                     {
                         ResourceType good;

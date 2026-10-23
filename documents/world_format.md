@@ -1056,7 +1056,7 @@ at runtime reads it; the survey screen (#141) and a reader of the document do.
 | `pos` | [x,y] | position |
 | `size` | number | radius (optional, default 16) |
 | `reward` | number | credits for salvaging (optional, default 500) |
-| `cargo` | object | what it holds, good id -> whole amount, e.g. `{ "Circuits": 20 }` (#346); one good is read. A search takes what the hold has room for before the credits are paid |
+| `cargo` | object | what it holds, good id -> whole amount, e.g. `{ "Circuits": 20, "Medicine": 8 }` (#346). A search takes what the hold has room for before the credits are paid |
 
 ### gates[]
 | Field | Type | Description |

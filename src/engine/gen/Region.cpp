@@ -1810,11 +1810,19 @@ void PlaceHidden(const RegionParams& params, const std::vector<Node>& nodes, Reg
                 const char* good = GOODS[rng.Range(0, 3)];
                 const char* name = NAMES[rng.Range(0, 3)];
                 const int   amount = 12 + 3 * n->depth + rng.Range(0, 10);
+                json        cargo = { { good, amount } };
+                // Sometimes a second good with it: a hold, not a crate.
+                if (rng.Chance(40))
+                {
+                    const char* other = GOODS[rng.Range(0, 3)];
+                    if (std::string(other) != good)
+                        cargo[other] = 6 + n->depth + rng.Range(0, 6);
+                }
                 PlaceFind(rng, region.documents[n->id], "derelicts", 250000.0, 820000.0,
                           { { "name", name },
                             { "size", 45 },
                             { "reward", 150 + 50 * n->depth },
-                            { "cargo", { { good, amount } } },
+                            { "cargo", cargo },
                             { "archetype", "derelict.cache" } });
             }
     }
