@@ -28,5 +28,9 @@ sleep 8 && powershell -File tools/capture-window.ps1 -Out system.png
 whole system) and `--shapes` starts on the shape backend that F2 switches to. The binaries
 carry MinGW's runtime inside them, so they start from any shell or from Explorer.
 
+The client can also save its own frame, which is usually simpler: `econspace connect ... --shot f.png --frames 120` (and `shot out.png` in the editor; the full list is in [CLAUDE.md](../CLAUDE.md#build-and-run)).
+
+[`dist/`](dist/) holds the files the release package carries beside the binaries: `README.txt` (what a downloader reads first), `econserver.service` (a systemd unit, see [docs/hosting.md](../docs/hosting.md)) and, on Windows, `start-server.bat` and `connect-example.bat`. `cmake --build build-release --target dist` puts them in the archive.
+
 A new tool is welcome here when it saves more time than it costs to keep working — and when
 it does, give it a CI step so it keeps working.

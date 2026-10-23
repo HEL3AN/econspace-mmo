@@ -1,6 +1,7 @@
 ## What & why
 
-<!-- What does this change do, and why? Link any related issue (e.g. "Closes #12"). -->
+<!-- What does this change do, and why? Link any related issue (e.g. "Closes #12").
+     If it adds a new type, store, window or message: why could no existing one carry it? -->
 
 ## Type
 
@@ -16,9 +17,12 @@
 
 - [ ] Builds cleanly (`cmake --build build`) with no new `-Wall -Wextra` warnings. CI builds with `-Werror`.
 - [ ] `ctest --test-dir build --output-on-failure` passes.
-- [ ] The server smoke tests pass: `econserver hosttest`, `accttest`, `worldtest`, `ordertest`.
+- [ ] The server smoke tests pass: `econserver hosttest`, `accttest`, `worldtest`, `ordertest`, `opstest`.
 - [ ] If the wire changed: `PROTO_VERSION` is bumped and `econagent selftest` passes against a live server.
 - [ ] If a save format changed meaning: `Save::WORLD_VERSION` / `Save::ACCOUNT_VERSION` is bumped.
+- [ ] If the generator's output changed: `Gen::GENERATOR_VERSION` (or `SKELETON_VERSION`) is bumped and the golden hashes in `tests/gen_tests.cpp` updated.
+- [ ] If an econagent tool changed: `docs/agents/reference.md` is regenerated (`tools/gen_agent_reference.py`).
+- [ ] No saves or accounts are committed (`world.json`, `regions/`, `accounts/`, `corps.json`, `designs.json`).
 - [ ] If anything visual changed: it was **looked at** (`worldeditor gallery shapes` or the game), and a screenshot is below. No test can see a picture.
 - [ ] If `data/` changed: `documents/world_format.md` describes it.
 - [ ] Follows [CONVENTIONS.md](../CONVENTIONS.md); comments and docs are in English.

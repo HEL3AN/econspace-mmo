@@ -23,15 +23,23 @@ know. In this codebase that means, among others:
   created. A way to log in as someone else, to recover a secret, or to replay an answer is a
   vulnerability. There is no transport encryption — that is a known limitation, documented in
   `CLAUDE.md`, not a finding.
-- **The transport** (#14). A frame length is four bytes the peer chose; `TcpConnection` caps it
-  and caps the send backlog. A way to make the server allocate, block or crash on input is a
-  vulnerability.
+- **The transport** (#14, #341). A frame length is four bytes the peer chose; `TcpConnection`
+  caps it and caps the send backlog, and `Host::Gate` limits connections in all and per
+  address, new accounts per address and retries after a wrong secret. A way to make the server
+  allocate, block or crash on input, or to get past those limits, is a vulnerability.
+- **Who may come in** (#400). A public server lets in only the names in `allowlist.txt` (unless
+  it runs `--open`), never those in `bans.txt`, and refuses them before any challenge. A way
+  around either list belongs here. Nonces and salts come from the operating system's
+  generator; a predictable one is a finding.
 - **Authority**. The server owns the world. A client that can move faster than the simulation
   allows, act on something it cannot reach, trade without being docked, or change another
   player's account has found a hole in it.
 - **Saves**. Account and world files carry a schema version and refuse a newer one (#20). A
   crafted file that the server loads into something wrong, or writes back over a real account,
   belongs here.
+- **What a pilot may know** (#346, #431). Hidden objects (a roaming hole, a hidden base) are left
+  out of a pilot's layout until their scan resolves them, and the galaxy index is cut to each
+  pilot's own map. A way for a client to learn what its pilot has not found is a leak.
 - **`econagent`**. It is an MCP server on stdio and a game client; anything that lets a tool
   call escape what an ordinary player could do is in scope.
 

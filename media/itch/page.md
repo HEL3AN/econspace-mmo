@@ -2,9 +2,9 @@
 
 **Published:** https://hel3an.itch.io/econspace. This file is the draft it was made from; the live page is the source of truth.
 
-> **DRAFT for the owner.** Nothing here has been published. Every claim below is meant to
-> match what the repository does today (checked against README.md, ROADMAP.md and the code
-> on 2026-10-10); anything marked *(owner)* is a decision this draft does not make.
+> **The draft the live page was made from**, kept for reference. Its claims were checked
+> against the code on 2026-10-10 and the features list was brought up to date on 2026-10-23;
+> anything marked *(owner)* is a decision this draft does not make.
 
 ## Assets in this folder
 
@@ -29,9 +29,9 @@ and the world is generated rather than drawn.*
 EconSpace is a 2D space MMO in the spirit of EVE Online. You fly a ship in a persistent
 galaxy that keeps simulating whether anyone is watching: factions trade, patrol, raid and
 take territory on their own, and a market moves with what is bought and sold. The game
-begins where the map ends — a wormhole at the edge of the home system opens into a region
-generated from a seed, where nothing has a name until somebody gets there first and names
-it. Everything you see is generated as well: stations, planets and wrecks are compositions
+begins where the map ends — every server generates its own world from a seed, and as it
+grows, wormholes open into regions where nothing has a name until somebody gets there first
+and names it. Everything you see is generated as well: stations, planets and wrecks are compositions
 described in data, lit by the stars of the system they are in. And you may not be the only
 kind of player: the game ships its own MCP server, so a language model can log in and play
 by exactly the rules you do.
@@ -46,12 +46,16 @@ by exactly the rules you do.
 - **Fly by choosing, not by pointing.** Systems are a million units across. The overview
   lists everything by distance; right-click a row to approach, orbit, keep at range, warp,
   dock or jump. Warp is server-authoritative and bends around stars and planets.
-- **A region nobody has mapped.** Beyond the wormhole, systems are generated from the
-  world's seed — stars, planets, belts, wrecks and rare finds — and stay uncharted until
-  somebody visits. The first visitor names them, once, for everyone.
-- **Mining, trading, missions and combat.** A station market with price impact and
-  recovery, ship refits, bounty, mining and delivery missions, reputation with factions,
-  wanted levels and bounties.
+- **A world that grows.** Each server generates a whole world from its seed: civilisation
+  centres to start in, and a frontier that opens region by region. New regions have native
+  factions, stations and markets from the first minute; a wormhole mouth stays only if
+  someone builds an Anchor on it. Every pilot has their own map, and the first to reach a
+  system names it.
+- **Mining, trading, missions and combat.** Markets whose prices follow their stock, ships
+  you design and refit, jobs posted by faction plans, ship loss and insurance, one combat
+  model for players and NPCs, and PvP that is a crime under the law.
+- **Corporations and territory.** Members and roles, chat, outposts that keep goods, systems
+  held by influence and a claim, police and patrols paid from the treasury.
 - **AI agents are players.** `econagent` is an MCP server written in C++ that is also an
   ordinary game client: an agent observes the world as text, gives standing orders, waits
   on an event journal and acts — with no rules of its own.

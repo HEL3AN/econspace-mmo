@@ -14,11 +14,11 @@ your friends to use a secret they use nowhere else.
 
 You need `econserver` with `data/` beside it. Either unpack a release, or build one.
 
-**From a release.** Download `econspace-linux.tar.gz` and unpack it into `/opt/econspace`:
+**From a release.** Download `econspace-<version>-<codename>-linux.tar.gz` (for 0.1, `econspace-0.1.0-anchor-linux.tar.gz`) and unpack it into `/opt/econspace`:
 
 ```sh
 sudo mkdir -p /opt/econspace
-sudo tar xzf econspace-linux.tar.gz -C /opt/econspace --strip-components=1
+sudo tar xzf econspace-0.1.0-anchor-linux.tar.gz -C /opt/econspace --strip-components=1
 ls /opt/econspace          # econserver, econspace, econagent, data/, README.txt
 ```
 
@@ -33,9 +33,9 @@ sudo apt-get install -y build-essential cmake git libasound2-dev libgl1-mesa-dev
 git clone https://github.com/HEL3AN/econspace-mmo.git
 cd econspace-mmo
 cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
-cmake --build build-release -j "$(nproc)" --target dist   # -> build-release/econspace-linux.tar.gz
+cmake --build build-release -j "$(nproc)" --target dist   # -> build-release/econspace-<version>-<codename>-linux.tar.gz
 sudo mkdir -p /opt/econspace
-sudo tar xzf build-release/econspace-linux.tar.gz -C /opt/econspace --strip-components=1
+sudo tar xzf build-release/econspace-*-linux.tar.gz -C /opt/econspace --strip-components=1
 ```
 
 Always a **Release** build for a server people play on: a Debug build is several times slower.
@@ -250,7 +250,7 @@ a message that names both versions; they need the new client too.
 ## 10. The friend's side (Windows)
 
 1. Ask the owner to add your account name to the allowlist.
-2. Download `econspace-windows.zip` and unzip it anywhere (no installer, no admin rights).
+2. Download `econspace-<version>-<codename>-windows.zip` and unzip it anywhere (no installer, no admin rights).
    Windows may warn that the program is unrecognised: *More info* -> *Run anyway*.
 3. Edit `connect-example.bat` (right click -> *Edit*): put in the server's address, your
    account name and a secret of your own, and save it -- or make a copy, such as

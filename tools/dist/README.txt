@@ -22,8 +22,8 @@ Without --world the world is kept in this folder, as before:
   econserver host 50800             this machine only
   econserver host 50800 --public    reachable from other machines (open TCP 50800)
 
-Either way the world (world.json, regions/), its accounts (accounts/) and who may come in
-(allowlist.txt, bans.txt) are in the world folder. Keep it out of the program's folder, or
+Either way the world (world.json, regions/, corps.json, designs.json), its accounts
+(accounts/) and who may come in (allowlist.txt, bans.txt) are in the world folder. Keep it out of the program's folder, or
 copy it somewhere safe before replacing the folder with a newer build. The console's
 `backup` command copies it to backups/ while the server runs.
 

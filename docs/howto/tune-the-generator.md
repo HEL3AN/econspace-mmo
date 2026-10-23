@@ -1,14 +1,14 @@
 # Tune the generator
 
-The region beyond the wormhole is generated from a seed by `Gen::GenerateRegion`
-(`src/engine/gen/Region.cpp`). A rule there is code, so changing one means a rebuild -- but
+Every region of a world -- a civilisation centre or the frontier the tide opens -- is generated
+from the world's seed and its slot by `Gen::GenerateRegion` (`src/engine/gen/Region.cpp`). A rule there is code, so changing one means a rebuild -- but
 judging one does not mean starting a server and flying around. A single good system proves
 nothing about a generator, because a single good system can be arranged
 ([#141](https://github.com/HEL3AN/econspace-mmo/issues/141)). The survey screen shows fifty of
 them at once.
 
 ```sh
-./build/bin/editor/worldeditor.exe survey 1 shapes        # seeds 1, 2, 3: every system of each region
+./build/bin/editor/worldeditor.exe survey 1 shapes        # from seed 1: a centre and its frontier per seed
 ./build/bin/editor/worldeditor.exe survey 40 shapes card 7 # from seed 40, with the eighth card enlarged
 ```
 
