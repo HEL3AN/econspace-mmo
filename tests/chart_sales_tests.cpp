@@ -9,14 +9,19 @@
 #include "entities/Structure.h"
 #include "gen/Galaxy.h"
 #include "gen/Region.h"
+#include "sim/Corporation.h"
 #include "sim/FactionMind.h"
 #include "sim/Protocol.h"
+#include "sim/SaveSchema.h"
 #include "sim/Simulation.h"
 #include "sim/WorldRules.h"
 
 #include "factions_named.h"
 #include "temp_dir.h"
 
+#include <nlohmann/json.hpp>
+
+#include <cstdio>
 #include <memory>
 #include <string>
 
