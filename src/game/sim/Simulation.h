@@ -658,6 +658,18 @@ public:
     static bool DoctrineMix(const std::string& key, const std::map<std::string, float>& fleet);
     // A hot system's role fleets, counted off the ships that are there (RecountAgg).
     void RecountFleets(SystemState& st) const;
+    // --- Region styles (#464, slice 3) ---
+    // The culture region `slot`'s people speak: its natives', else that of the faction that
+    // holds most of its systems; empty for none.
+    std::string RegionCulture(int slot) const;
+    // What region `slot`'s markets hold and make, by good index: every system of it with a
+    // market, its stock plus StyleRules().hours of what its sources and recipes make.
+    std::vector<double> RegionSupply(int slot) const;
+    // The share of each weapon family and hull line its NPCs fly (Ships::StyleFrom): its
+    // supply, with its culture's lean (WorldRules::Styles) as a prior. Derived, never saved.
+    Ships::Style RegionStyle(int slot) const;
+    // Every open region's style, as the last faction period reckoned it. Not saved.
+    const std::map<int, Ships::Style>& Styles() const { return styles_; }
     // Hull one of `f`'s besieging warships takes off a structure a second: its own warship
     // design's guns (Ships::WarshipDps). The planner and the siege pass both read it.
     float WarshipDps(FactionId f) const { return FighterOf(f, NpcRole::Warship).dps; }
@@ -2233,6 +2245,12 @@ private:
     // The catalogue load the fleets were last checked against (ReconcileFleets' `verify`);
     // 0 after a world is loaded. Not saved.
     unsigned fleetsVerifiedFrom_ = 0;
+    // Each open region's style (#464), reckoned once a faction period (StepStyles). Not saved:
+    // it follows from the markets and the documents.
+    std::map<int, Ships::Style> styles_;
+    // Reckons every open region's style, and logs where a region's leading family or line
+    // changed -- and every region the first time.
+    void StepStyles();
     // Patrols that could not pay to replace a lost ship (#431 slice 12), (corporation, system):
     // told once in the corporation's journal, and again only after a replacement is paid.
     // Not saved -- a restart may say it once more.

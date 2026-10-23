@@ -534,6 +534,9 @@ void Simulation::StepFactions()
     if (phase != 0)
         return;
 
+    // Once a period, what each region's NPCs would fly, from its markets (#464).
+    StepStyles();
+
     // Once a period, what factions have built is paid for out of what they saved, or is not
     // (slice 5) -- the bill comes before this period's yield, which is next period's to spend.
     StepUpkeep();

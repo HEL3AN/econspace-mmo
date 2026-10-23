@@ -3,6 +3,7 @@
 #include "core/Faction.h"
 #include "core/JsonKeys.h"
 #include "render/Modules.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -1418,6 +1419,81 @@ std::string ContentId(const Design& d)
     char buf[16];
     std::snprintf(buf, sizeof buf, "u:%08x", (unsigned)h);
     return buf;
+}
+
+namespace
+{
+std::string Leading(const std::vector<std::pair<std::string, float>>& shares)
+{
+    std::string best;
+    float       most = -1.0f;
+    for (const auto& [id, share] : shares)
+        if (share > most)
+        {
+            best = id;
+            most = share;
+        }
+    return best;
+}
+
+// One vector of a style: `ids` with the goods each is made of.
+template <class T>
+std::vector<std::pair<std::string, float>>
+Shares(const std::vector<T>& of, const std::vector<double>& supply,
+       const std::map<std::string, double>* culture, double weight)
+{
+    std::vector<std::pair<std::string, float>> out;
+    if (of.empty())
+        return out;
+    std::vector<double> economy, lean;
+    double              economyTotal = 0.0, leanTotal = 0.0;
+    for (const T& x : of)
+    {
+        double units = 0.0;
+        for (ResourceType g : x.goods)
+            if ((size_t)g.Index() < supply.size())
+                units += std::max(0.0, supply[(size_t)g.Index()]);
+        economy.push_back(units);
+        economyTotal += units;
+        double w = 0.0;
+        if (culture != nullptr)
+        {
+            const auto it = culture->find(x.id);
+            w = it != culture->end() ? std::max(0.0, it->second) : 0.0;
+        }
+        lean.push_back(w);
+        leanTotal += w;
+    }
+    const double n = (double)of.size();
+    // Nothing to trade: the people alone. Nothing to lean on: evenly.
+    const double c = economyTotal > 0.0 ? std::clamp(weight, 0.0, 1.0) : 1.0;
+    for (size_t i = 0; i < of.size(); ++i)
+    {
+        const double e = economyTotal > 0.0 ? economy[i] / economyTotal : 0.0;
+        const double p = leanTotal > 0.0 ? lean[i] / leanTotal : 1.0 / n;
+        out.emplace_back(of[i].id, (float)((1.0 - c) * e + c * p));
+    }
+    return out;
+}
+}  // namespace
+
+std::string Style::LeadingFamily() const
+{
+    return Leading(families);
+}
+
+std::string Style::LeadingLine() const
+{
+    return Leading(lines);
+}
+
+Style StyleFrom(const Catalogue& c, const std::vector<double>& supply,
+                const std::map<std::string, double>* culture, double cultureWeight)
+{
+    Style s;
+    s.families = Shares(c.families, supply, culture, cultureWeight);
+    s.lines = Shares(c.lines, supply, culture, cultureWeight);
+    return s;
 }
 
 bool IsPlayerDesign(const std::string& id)

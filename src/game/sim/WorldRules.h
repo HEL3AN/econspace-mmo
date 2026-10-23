@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <string>
 
 // How the world grows (#342 S3): the rules of the tide, read from data/world_rules.json.
@@ -455,6 +456,19 @@ struct Charts
     double rarity = 0.25;
 };
 
+// What a region's NPCs fly (#464, documents/npc_fits_living_world.md): the file's `styles`.
+// A region's style is a share per weapon family and per hull line, proportional to how much
+// of each one's goods its markets hold and make -- stock plus `hours` of production -- with
+// its people's culture as a prior weighing `culture` of the whole: c = 0 is the economy
+// alone. `cultures` maps a culture id (a native theme, a major's `culture`) to weights by
+// family or line id; one that names no family, or no line, leans neither way in it.
+struct Styles
+{
+    double                                               culture = 0.25;
+    double                                               hours = 24.0;
+    std::map<std::string, std::map<std::string, double>> cultures;
+};
+
 // Reads `path`. False, with Error() saying why, and the rules as they were, when it does
 // not read.
 bool               Load(const std::string& path);
@@ -475,6 +489,7 @@ const Licences&    LicenceRules();
 const Security&    SecurityRules();
 const Patrols&     PatrolRules();
 const Charts&      ChartRules();
+const Styles&      StyleRules();
 // For a test: rules of its own, without a file.
 void SetTideRules(const Tide& t);
 void SetMouthRules(const Mouths& m);
@@ -492,5 +507,6 @@ void SetLicenceRules(const Licences& l);
 void SetSecurityRules(const Security& s);
 void SetPatrolRules(const Patrols& p);
 void SetChartRules(const Charts& c);
+void SetStyleRules(const Styles& s);
 
 }  // namespace WorldRules

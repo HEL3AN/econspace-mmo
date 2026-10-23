@@ -3514,12 +3514,31 @@ static int WorldSelftest()
         kept = removed && built != 0 && goneStays && builtBack;
     }
 
-    bool ok = ticked && loaded && time && sec && prosp && pir && ctrl && kept;
+    // What every open region's NPCs would fly (#464): shares that add up, for each region.
+    bool styles = true;
+    for (const Simulation::RegionOpening& o : a.OpeningLog())
+    {
+        const Ships::Style s = a.RegionStyle(o.slot);
+        float              families = 0.0f, lines = 0.0f;
+        std::string        said;
+        for (const auto& [id, share] : s.families)
+        {
+            families += share;
+            said += " " + id + " " + std::to_string((int)std::lround(100.0f * share)) + "%";
+        }
+        for (const auto& [id, share] : s.lines)
+            lines += share;
+        printf("  region %d (%s):%s, %s hulls\n", o.slot, a.RegionCulture(o.slot).c_str(),
+               said.c_str(), s.LeadingLine().c_str());
+        styles = styles && approx(families, 1.0) && approx(lines, 1.0);
+    }
+
+    bool ok = ticked && loaded && time && sec && prosp && pir && ctrl && kept && styles;
     printf("World selftest: clock %s, load %s, time %s, security %s, prosperity %s, "
-           "pirates %s, controller %s, built/removed kept %s => %s\n",
+           "pirates %s, controller %s, built/removed kept %s, region styles %s => %s\n",
            ticked ? "OK" : "FAIL", loaded ? "OK" : "FAIL", time ? "OK" : "FAIL",
            sec ? "OK" : "FAIL", prosp ? "OK" : "FAIL", pir ? "OK" : "FAIL", ctrl ? "OK" : "FAIL",
-           kept ? "OK" : "FAIL", ok ? "PASS" : "FAIL");
+           kept ? "OK" : "FAIL", styles ? "OK" : "FAIL", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
 

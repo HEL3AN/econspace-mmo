@@ -7,15 +7,23 @@
 // migration or a siege's ships lent and given back -- all of them proportional -- leave its
 // mix alone, and only what knows which ship it was edits a design's count. See
 // documents/npc_fits_living_world.md.
+//
+// Region styles (#464, slice 3): what a region's markets hold and make leans what its NPCs
+// fly, in proportion, with its people's culture as a modest prior.
 
 #include "sim/Simulation.h"
+#include "sim/WorldRules.h"
 #include "core/Archetype.h"
 #include "core/Faction.h"
 #include "core/Fitting.h"
 #include "core/ShipDesign.h"
 #include "entities/NpcShip.h"
+#include "gen/Region.h"
+#include "raylib.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <nlohmann/json.hpp>
 
 namespace
 {
@@ -241,4 +249,130 @@ void Simulation::RecountFleets(SystemState& st) const
             r == NpcRole::Pirate)
             a.fleets[FleetKey(n.GetFaction(), r)][n.GetDesign()] += 1.0f;
     }
+}
+
+namespace
+{
+// What one system's market holds and makes, by good, onto `supply`.
+void AddSupply(const SystemState& st, double hours, std::vector<double>& supply)
+{
+    if (st.profile.markets <= 0)
+        return;
+    const MarketRates& r = st.profile.rates;
+    for (ResourceType g : AllResourceTypes())
+    {
+        const size_t i = (size_t)g.Index();
+        if (i >= supply.size())
+            continue;
+        double made = i < r.source.size() ? r.source[i] : 0.0;
+        for (const Recipe& rec : r.recipes)
+            for (const auto& out : rec.out)
+                if ((size_t)out.first.Index() == i)
+                    made += out.second * rec.rate;
+        supply[i] += st.market.Stock(g) + hours * made;
+    }
+}
+}  // namespace
+
+std::string Simulation::RegionCulture(int slot) const
+{
+    // Its natives' (#342 S5): they speak the culture of their theme.
+    const auto natives = natives_.find(slot);
+    if (natives != natives_.end())
+    {
+        const nlohmann::json j = nlohmann::json::parse(natives->second, nullptr, false);
+        if (j.is_object())
+        {
+            const std::string culture = j.value("culture", j.value("theme", std::string()));
+            if (!culture.empty())
+                return culture;
+        }
+    }
+    // Else whoever holds most of it: a centre's major, or a frontier's conqueror.
+    std::map<int, int> held;
+    for (const auto& kv : systems_)
+        if (Gen::SlotOf(kv.first) == slot && kv.second.agg.claimed)
+            held[kv.second.agg.controller.Index()]++;
+    int best = -1, most = 0;
+    for (const auto& [f, n] : held)
+        if (n > most)
+        {
+            best = f;
+            most = n;
+        }
+    if (best < 0)
+        return std::string();
+    for (FactionId f : Factions::All())
+        if (f.Index() == best)
+            return Factions::Def(f).culture;
+    return std::string();
+}
+
+std::vector<double> Simulation::RegionSupply(int slot) const
+{
+    std::vector<double> supply((size_t)Goods::Count(), 0.0);
+    const double        hours = WorldRules::StyleRules().hours;
+    for (const auto& kv : systems_)
+        if (Gen::SlotOf(kv.first) == slot)
+            AddSupply(kv.second, hours, supply);
+    return supply;
+}
+
+Ships::Style Simulation::RegionStyle(int slot) const
+{
+    const WorldRules::Styles& rules = WorldRules::StyleRules();
+    const std::string         culture = RegionCulture(slot);
+    const auto                lean = rules.cultures.find(culture);
+    return Ships::StyleFrom(Archetypes::ShipCatalogue(), RegionSupply(slot),
+                            lean != rules.cultures.end() ? &lean->second : nullptr, rules.culture);
+}
+
+void Simulation::StepStyles()
+{
+    // Every region's supply in one walk over the systems, not one walk per region.
+    const WorldRules::Styles&          rules = WorldRules::StyleRules();
+    std::map<int, std::vector<double>> supply;
+    for (const RegionOpening& o : openings_)
+        if (o.state != "archived")
+            supply[o.slot].assign((size_t)Goods::Count(), 0.0);
+    for (const auto& kv : systems_)
+    {
+        const auto it = supply.find(Gen::SlotOf(kv.first));
+        if (it != supply.end())
+            AddSupply(kv.second, rules.hours, it->second);
+    }
+    std::map<int, Ships::Style> next;
+    for (auto& [slot, units] : supply)
+    {
+        const std::string culture = RegionCulture(slot);
+        const auto        lean = rules.cultures.find(culture);
+        Ships::Style      s =
+            Ships::StyleFrom(Archetypes::ShipCatalogue(), units,
+                             lean != rules.cultures.end() ? &lean->second : nullptr, rules.culture);
+        // Said where it is news: a region's first reckoning, or a new lead.
+        const auto was = styles_.find(slot);
+        if (was == styles_.end() || was->second.LeadingFamily() != s.LeadingFamily() ||
+            was->second.LeadingLine() != s.LeadingLine())
+        {
+            std::string families, lines;
+            char        buf[64];
+            for (const auto& [id, share] : s.families)
+            {
+                std::snprintf(buf, sizeof buf, "%s%s %.0f%%", families.empty() ? "" : ", ",
+                              id.c_str(), 100.0 * share);
+                families += buf;
+            }
+            for (const auto& [id, share] : s.lines)
+            {
+                std::snprintf(buf, sizeof buf, "%s%s %.0f%%", lines.empty() ? "" : ", ", id.c_str(),
+                              100.0 * share);
+                lines += buf;
+            }
+            TraceLog(LOG_INFO, "World: region %d (%s) fits %s; hulls %s", slot,
+                     culture.empty() ? "no culture" : culture.c_str(), families.c_str(),
+                     lines.c_str());
+        }
+        next[slot] = std::move(s);
+    }
+    styles_ = std::move(next);
 }
