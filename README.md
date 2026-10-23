@@ -16,7 +16,7 @@ You fly a ship in a persistent galaxy: mine, trade, run missions, fight, build r
 
 ## Play
 
-1. Download the latest build from [GitHub Releases](https://github.com/HEL3AN/econspace-mmo/releases/latest) or [itch.io](https://hel3an.itch.io/econspace): a zip for Windows, a tarball for Linux. Unpack it anywhere; it runs from its own folder.
+1. Download the latest build from [GitHub Releases](https://github.com/HEL3AN/econspace-mmo/releases/latest) or [itch.io](https://hel3an.itch.io/econspace): a zip for Windows, a tarball for Linux and one for macOS (universal: Apple silicon and Intel, macOS 11 or later). Unpack it anywhere; it runs from its own folder.
 2. Start a server, then connect a client to it under an account name and a secret of your choice (the first login creates the account):
 
 ```sh
@@ -24,7 +24,15 @@ You fly a ship in a persistent galaxy: mine, trade, run missions, fight, build r
 ./econspace connect 127.0.0.1 50800 pilot hunter2      # in a second terminal
 ```
 
-On Windows, `start-server.bat` and `connect-example.bat` in the zip do the same with a double-click. To play with friends over a network, one of you hosts: [docs/hosting.md](docs/hosting.md) is the whole guide.
+On Windows, `start-server.bat` and `connect-example.bat` in the zip do the same with a double-click.
+
+**On macOS** the build is not signed yet, so macOS refuses to open it with a double-click ("cannot be verified"). Either right-click (Control-click) a program in Finder, choose *Open* and confirm, once per program; or clear the quarantine on the whole folder in Terminal, then run it from there as above:
+
+```sh
+xattr -dr com.apple.quarantine econspace-<version>-<codename>-macos
+```
+
+Signing comes with the beta. Nobody on the team plays on a Mac yet, so a screenshot or a bug report from one is especially welcome. To play with friends over a network, one of you hosts: [docs/hosting.md](docs/hosting.md) is the whole guide.
 
 A client plays only on a server of the **same release**; a mismatch is refused with the version to get. `econspace --version` says which one you have. `main` has moved well past the last release, so a server built from source does not take a downloaded client.
 
@@ -101,7 +109,7 @@ The repository has several documents at the top. Each owns one thing:
 **Tools**
 - `worldeditor` — a **gallery** that shows every kind of object at once, lit and treated exactly as the game draws them, with their look editable live; a survey of generated systems; region and galaxy maps of a seed or a saved world; and editors for pins and admin packs.
 - `econserver` — the same simulation, headless, with smoke tests, a console and an admin channel, `validate` for packs, and batch runs that print a world's news.
-- A portable package for each release (client, server, agent and `data/` in one folder) and a guide to [hosting a server for friends](docs/hosting.md).
+- A portable package for each release on Windows, Linux and macOS (client, server, agent, editor and `data/` in one folder) and a guide to [hosting a server for friends](docs/hosting.md).
 
 ---
 

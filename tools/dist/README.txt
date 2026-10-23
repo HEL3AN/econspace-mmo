@@ -7,6 +7,7 @@ This folder runs from anywhere: the programs read the game data from data/ besid
   econspace   the game client
   econserver  the server -- the world lives here; every player connects to one
   econagent   an MCP server, so an AI agent can play (see docs/agents in the repository)
+  worldeditor the world editor; `worldeditor gallery` shows every kind of object at once
 
 Host a server
 -------------
@@ -39,3 +40,15 @@ The first login with a name creates that account and sets its secret. There is n
 encryption on the connection: use a secret you use nowhere else.
 
 On Windows, start-server.bat and connect-example.bat do the same with a double-click.
+
+macOS
+-----
+The build is not signed yet, so macOS refuses to open a downloaded copy ("cannot be opened
+because the developer cannot be verified"). Either right-click (Control-click) a program in
+Finder, choose Open and confirm once, or clear the quarantine flag on the whole folder in
+Terminal:
+
+  xattr -dr com.apple.quarantine econspace-<version>-<codename>-macos
+
+Then run the programs from Terminal in this folder, as above: ./econspace connect ...
+The build is universal (Apple silicon and Intel) and needs macOS 11 or later.

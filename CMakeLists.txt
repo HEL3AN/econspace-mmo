@@ -6,6 +6,12 @@
 # Minimum CMake version we require.
 cmake_minimum_required(VERSION 3.16)
 
+# The oldest macOS a build runs on (#478). Read only on Apple, and only before project().
+# 11 is the first release on Apple silicon, so an arm64 slice cannot go lower anyway, and it
+# keeps every Intel Mac still updated. A release is built universal on top of this:
+# -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" (.github/workflows/release.yml).
+set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
+
 # Project name and language. After this line CMake knows we write in C++.
 # C as well as C++: Clay, the layout engine inside windows, is C99 and is compiled as C (#297).
 project(EconSpace VERSION 0.1.0 LANGUAGES C CXX)
@@ -437,17 +443,18 @@ add_custom_target(copy_data ALL
 add_dependencies(copy_data econspace econserver econagent worldeditor)
 
 # --- Portable package --------------------------------------------------------
-# One flat folder: the client, the server and the agent bridge side by side with data/ --
-# what a friend unpacks and runs (.zip on Windows, .tar.gz elsewhere; on Linux the server
-# is the same folder on a headless machine). Only the `dist` component is installed, so the
+# One flat folder: the client, the server, the agent bridge and the editor side by side with
+# data/ -- what a friend unpacks and runs (.zip on Windows, .tar.gz elsewhere; on Linux the
+# server is the same folder on a headless machine). On macOS the binaries are plain
+# executables, not an .app bundle, so they find data/ beside themselves exactly as on Linux. Only the `dist` component is installed, so the
 # fetched libraries' own install rules stay out of it:
 #   cmake --install build-release --component dist --prefix <dir>
 #   cmake --build build-release --target dist   -> build-release/econspace-<version>-<codename>-<os>.zip|.tar.gz
-install(TARGETS econspace econserver econagent RUNTIME DESTINATION . COMPONENT dist)
+install(TARGETS econspace econserver econagent worldeditor RUNTIME DESTINATION . COMPONENT dist)
 install(DIRECTORY data/ DESTINATION data COMPONENT dist)
 install(FILES tools/dist/README.txt DESTINATION . COMPONENT dist)
 install(FILES docs/hosting.md DESTINATION . RENAME HOSTING.md COMPONENT dist)
-if(NOT WIN32)
+if(NOT WIN32 AND NOT APPLE)
     install(FILES tools/dist/econserver.service DESTINATION . COMPONENT dist)  # docs/hosting.md
 endif()
 if(WIN32)
@@ -464,7 +471,13 @@ endif()
 # econspace-0.1.0-anchor-windows: the version and its codename in the name, so two releases
 # downloaded into one folder are told apart (#400). Not a cache variable: a cached name would
 # keep the version of the first configure after the project's had moved on.
-string(TOLOWER "econspace-${PROJECT_VERSION}-${ECON_CODENAME}-${CMAKE_SYSTEM_NAME}" ECON_DIST_NAME)
+# The platform as a player names it: CMake calls macOS "Darwin".
+if(APPLE)
+    set(ECON_DIST_OS macos)
+else()
+    set(ECON_DIST_OS ${CMAKE_SYSTEM_NAME})
+endif()
+string(TOLOWER "econspace-${PROJECT_VERSION}-${ECON_CODENAME}-${ECON_DIST_OS}" ECON_DIST_NAME)
 set(ECON_DIST_FILE ${ECON_DIST_NAME}.${ECON_DIST_ARCHIVE})
 add_custom_target(dist
     COMMAND ${CMAKE_COMMAND} -E rm -rf dist/${ECON_DIST_NAME} ${ECON_DIST_FILE}
@@ -472,8 +485,8 @@ add_custom_target(dist
     COMMAND ${CMAKE_COMMAND} -E chdir dist ${CMAKE_COMMAND} -E tar ${ECON_DIST_TAR}
             ../${ECON_DIST_FILE} ${ECON_DIST_FORMAT} ${ECON_DIST_NAME}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    COMMENT "Packing ${ECON_DIST_FILE}: client, server, agent and data/")
-add_dependencies(dist econspace econserver econagent)
+    COMMENT "Packing ${ECON_DIST_FILE}: client, server, agent, editor and data/")
+add_dependencies(dist econspace econserver econagent worldeditor)
 
 # --- Tests (doctest + ctest) -----------------------------------------------
 # Regression unit tests for the wire protocol and TCP transport. Run with:
