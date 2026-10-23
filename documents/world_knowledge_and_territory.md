@@ -7,7 +7,7 @@ cuts the work into slices.
 **Built (as of 2026-10-23):** slices 1-16 are on main -- 1 #443, 2 #453, 3 #448, 4 #459,
 5 #449, 6 #456, 7 #450, 8 #454, 9 #447, 10 #452, 11 #460, 12 #465 with its follow-ups in
 #467, 13 #445, 14 #457, 15 #462, 16 (chart sales to factions, with #346)
-(`PROTO_VERSION` 61, `WORLD_VERSION` 17). **Still planned:** selling charts to players
+(`PROTO_VERSION` 61, `WORLD_VERSION` 18). **Still planned:** selling charts to players
 (#473); war declarations; and the questions under **Open design questions** at the end. The sections
 headed "The code before the slices" record the starting point each slice changed; each
 slice's *Built* note in the slice plan says what is there now. Related: #342 (the growing world, `world_generation_v2.md`), #347 (corporations),
