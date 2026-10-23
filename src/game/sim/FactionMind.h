@@ -92,9 +92,14 @@ struct Plan
     // neighbour of the target they come in from, and when the last of them gets there. Until
     // then the force is on the way: counted nowhere, firing at nothing, and missing from home.
     std::vector<Lent> lent;
-    std::string       via;
-    double            arrivesAt = 0.0;
-    bool              arrived = false;
+    // What one of its ships brings to the fight (#464): the force-weighted mean of what each
+    // holding's warship fleet flew when it set out (Simulation::FighterIn), so a siege from a
+    // laser holding fights with lasers wherever it goes. Zero in a siege from before fleets,
+    // which fights as its faction's doctrine. Saved.
+    float       dps = 0.0f, hull = 0.0f;
+    std::string via;
+    double      arrivesAt = 0.0;
+    bool        arrived = false;
     // How many of its ships are real, while the target is hot: what a pass counts the
     // living against. Transient -- a cold system has none, and a restart begins cold.
     int fielded = 0;

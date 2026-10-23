@@ -1099,6 +1099,7 @@ void Simulation::RecountAgg(SystemState& st)
     st.agg.miners = (float)mi;
     st.agg.police = (float)po;
     st.agg.pirates = (float)pi;
+    RecountFleets(st);  // ...and which designs they are (#464)
 }
 
 int Simulation::LivePirates(const SystemState& st)
@@ -1189,11 +1190,12 @@ void Simulation::SpawnNpcInto(SystemState& st, Vector2 pos, FactionId faction, N
     // a role with several in its faction's doctrine flies all of them and a ship keeps its
     // own for life. Not by the id when the caller has a better key: ids depend on what was
     // made before, and a system that warms must find the same sky whatever warmed first.
+    // It is drawn from what its side keeps here (#464), the doctrine's pick where that is
+    // nothing yet.
     const int id = NextAgentId();
     auto      npc = std::make_unique<NpcShip>(
         pos, faction, role, std::move(waypoints),
-        Archetypes::ShipCatalogue().Pick(Factions::Id(faction), NpcRoleId(role),
-                                         (unsigned)(pick >= 0 ? pick : id)));
+        FleetDesign(st, faction, role, (unsigned)(pick >= 0 ? pick : id)));
     npc->SetId(id);
     st.entities.push_back(std::move(npc));
 }
@@ -1377,10 +1379,10 @@ void Simulation::ColdLosses(SystemState& st)
     // police under its flag, traders under a lawful controller's or nobody's, miners nobody's.
     const FactionId trade =
         Factions::IsLawful(a.controller) ? a.controller : Factions::Unaffiliated();
-    const Ships::Fighter pirate = FighterOf(Factions::Pirates(), NpcRole::Pirate);
-    const Ships::Fighter cop = FighterOf(a.policeFaction, NpcRole::Police);
-    const Ships::Fighter trader = FighterOf(trade, NpcRole::Trader);
-    const Ships::Fighter miner = FighterOf(Factions::Unaffiliated(), NpcRole::Miner);
+    const Ships::Fighter pirate = FighterIn(st, Factions::Pirates(), NpcRole::Pirate);
+    const Ships::Fighter cop = FighterIn(st, a.policeFaction, NpcRole::Police);
+    const Ships::Fighter trader = FighterIn(st, trade, NpcRole::Trader);
+    const Ships::Fighter miner = FighterIn(st, Factions::Unaffiliated(), NpcRole::Miner);
     // The share of a ship's hull one second of the other's fire takes off.
     auto bite = [](const Ships::Fighter& by, const Ships::Fighter& on)
     { return on.hull > 0.0f ? by.dps / on.hull : 0.0f; };
@@ -1524,6 +1526,9 @@ void Simulation::MaintainWorld(float dt, MaintainCost* cost)
         StepWorldMacro();
         Lap(cost ? &cost->macro : nullptr, lap);
         StepMigration();  // before the director, which leaves to next door what it can spare
+        // Fleets are checked against the catalogue once after a load or a reload (#464).
+        const bool verify = fleetsVerifiedFrom_ != Archetypes::Generation();
+        fleetsVerifiedFrom_ = Archetypes::Generation();
         size_t nth = 0;
         for (auto& kv : systems_)
         {
@@ -1542,8 +1547,10 @@ void Simulation::MaintainWorld(float dt, MaintainCost* cost)
             if (!IsHot(kv.second))
             {
                 ColdTopUp(kv.second, target);
+                ReconcileFleets(kv.second, verify);  // which ships, for as many (#464)
                 continue;
             }
+            ReconcileFleets(kv.second, verify);  // ...before the director draws from them
             // Player-avoidance, per system: everyone standing in this one.
             std::vector<Vector2> avoid;
             for (const auto& sv : sessions_)

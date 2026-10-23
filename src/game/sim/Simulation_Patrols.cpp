@@ -110,7 +110,7 @@ float Simulation::PatrolAsWarships(const SystemState& st, const std::string& own
     const Corps::Patrol* set = here == st.agg.patrols.end() ? nullptr : PatrolOf(corp, st.id);
     if (set == nullptr || here->second <= 0.0f)
         return 0.0f;
-    const double warship = Strength(FighterOf(f, NpcRole::Warship));
+    const double warship = Strength(FighterIn(st, f, NpcRole::Warship));  // its fleet here (#464)
     return warship > 0.0 ? (float)((double)here->second * Strength(PatrolFighter(*set)) / warship)
                          : 0.0f;
 }

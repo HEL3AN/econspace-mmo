@@ -633,6 +633,30 @@ public:
     // once per faction and role, and again only when the ship catalogue is reloaded. The cold
     // pass, the siege's attrition and the siege planner read it.
     Ships::Fighter FighterOf(FactionId f, NpcRole role) const;
+    // --- Fleets (#464; Simulation_Fleets.cpp) ---
+    // The key of `f`'s fleet of `role` in SystemAggregate::fleets: "<faction id>/<role id>".
+    static std::string FleetKey(FactionId f, NpcRole role);
+    // What `f`'s ships of `role` in this system bring to a fight: the count-weighted mean of
+    // their designs' (Ships::DesignFighter), and the doctrine's (FighterOf) where it keeps no
+    // fleet. What the cold pass, the patrols and the sieges read.
+    Ships::Fighter FighterIn(const SystemState& st, FactionId f, NpcRole role) const;
+    // The design a ship of `role` that `f` sends out here flies: drawn from its fleet, weighted
+    // by count, by `key` -- so the same key finds the same design and a system that warms
+    // finds the same sky -- and the doctrine's pick where it keeps no fleet.
+    std::string FleetDesign(const SystemState& st, FactionId f, NpcRole role, unsigned key) const;
+    // Every fleet here brought to the number it describes (SystemAggregate::fleets): the four
+    // role populations under whoever flies them now, and each faction's presence as the
+    // warships it would lend a siege. Scaled design by design; an empty one seeded from the
+    // doctrine in equal shares, as Pick spreads them; one whose number is gone dropped; a
+    // design the catalogue no longer has folded into the role's stock design, counted --
+    // looked for only with `verify`, which the macro pass asks for once after a load or a
+    // catalogue reload: nothing else puts a design in a fleet that the catalogue lacks.
+    void ReconcileFleets(SystemState& st, bool verify = true) const;
+    // Whether a fleet (by its FleetKey) is exactly what its doctrine seeds: such a fleet is
+    // not saved, since the first pass after a load makes it again.
+    static bool DoctrineMix(const std::string& key, const std::map<std::string, float>& fleet);
+    // A hot system's role fleets, counted off the ships that are there (RecountAgg).
+    void RecountFleets(SystemState& st) const;
     // Hull one of `f`'s besieging warships takes off a structure a second: its own warship
     // design's guns (Ships::WarshipDps). The planner and the siege pass both read it.
     float WarshipDps(FactionId f) const { return FighterOf(f, NpcRole::Warship).dps; }
@@ -2184,6 +2208,12 @@ private:
     // FighterOf by faction id and role, for the catalogue load it was derived from. Not saved.
     mutable std::map<std::pair<std::string, int>, Ships::Fighter> fighters_;
     mutable unsigned                                              fightersFrom_ = 0;
+    // Ships::DesignFighter by design id (#464), the same way. Not saved.
+    mutable std::map<std::string, Ships::Fighter> designFighters_;
+    mutable unsigned                              designFightersFrom_ = 0;
+    // The catalogue load the fleets were last checked against (ReconcileFleets' `verify`);
+    // 0 after a world is loaded. Not saved.
+    unsigned fleetsVerifiedFrom_ = 0;
     // Patrols that could not pay to replace a lost ship (#431 slice 12), (corporation, system):
     // told once in the corporation's journal, and again only after a replacement is paid.
     // Not saved -- a restart may say it once more.

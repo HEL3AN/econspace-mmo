@@ -633,6 +633,35 @@ TEST_CASE("a siege and what a faction cannot supply survive a restart (#295)")
     CHECK(back.arrived);
     CHECK(back.arrivesAt == doctest::Approx(plan.arrivesAt));
     CHECK(back.via == plan.via);
+    // ...and what its ships fight with (#464).
+    CHECK(plan.dps > 0.0f);
+    CHECK(back.dps == doctest::Approx(plan.dps));
+    CHECK(back.hull == doctest::Approx(plan.hull));
+}
+
+TEST_CASE("a siege fights with the warships its holdings keep, not with a doctrine (#464)")
+{
+    auto        sim = World();
+    const Scene s = GuildOutpostNextToPirates(*sim);
+    // The den's warships are lasers: a cruiser refitted (a variant of the stock design).
+    SystemAggregate& den = sim->SystemById(s.den)->agg;
+    den.fleets[Simulation::FleetKey(Fac::Pirates(), NpcRole::Warship)] = { { "cruiser~laser",
+                                                                             5.0f } };
+    const Plan*             plan = PiratesBesiege(*sim, s);
+    const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+    const Ships::Fighter    lasers = Ships::DesignFighter(c, "cruiser~laser");
+    const Ships::Fighter    stock = Ships::DesignFighter(c, "cruiser");
+    REQUIRE(lasers.dps < stock.dps);  // a laser of 3 where the railgun of 6 was
+    CHECK(plan->dps == doctest::Approx(lasers.dps));
+    CHECK(plan->hull == doctest::Approx(lasers.hull));
+    // The den's mix is kept by every pass, however many ships it lent.
+    const auto& fleets = sim->SystemById(s.den)->agg.fleets;
+    const auto  fleet = fleets.find(Simulation::FleetKey(Fac::Pirates(), NpcRole::Warship));
+    if (fleet != fleets.end())
+    {
+        CHECK(fleet->second.size() == 1);
+        CHECK(fleet->second.count("cruiser~laser") == 1);
+    }
 }
 
 // --- Pooled sieges (#295, the owner's decision of 2026-10-11) ---------------------------------
