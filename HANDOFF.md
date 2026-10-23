@@ -76,7 +76,7 @@ cmake --build build-release -j 8
 
 - **0.1 Anchor** was tagged on 2026-10-17 (GitHub Releases and itch.io). `main` has moved far
   past it: `PROTO_VERSION` 67, `Save::WORLD_VERSION` 18, `Save::ACCOUNT_VERSION` 9,
-  `Gen::GENERATOR_VERSION` 10, `Gen::SKELETON_VERSION` 1. Clients of 0.1 cannot join, and so
+  `Gen::GENERATOR_VERSION` 12, `Gen::SKELETON_VERSION` 1. Clients of 0.1 cannot join, and so
   much of the world has changed that **the next playtest starts on a fresh world**.
 - **World generation v2** (#342) slices S1-S9 are built; S10 (scale to 10,000) is not.
 - **Knowledge, territory and law** (#431) slices 1-16 are built, including the slice 12
@@ -88,16 +88,33 @@ cmake --build build-release -j 8
   hands a structure over with its licence, and a disbanded corporation's are abandoned.
 - Player outposts with storage, refunds and corporation docking (#433, #438); routes and
   shipyards ported from the playtester fork (#432, ideas rebuilt rather than merged).
+- **The look, 2026-10-23:** natural bodies are painted by shaders (#426/#501, close to real
+  photographs; `paintBudget` 0.5 shipped for integrated GPUs), and built things have a first
+  pass of plating and culture liveries on the trade hub and the scout (#516/#526; rollout plan
+  and the owner's decisions in [documents/built_surfaces.md](documents/built_surfaces.md)).
+- **Holds and storage** (#472) slices 1-4: inventory window with drag and drop in the window
+  framework, one `move` verb, rented hangars at NPC stations, cans and multi-good wrecks.
+- **Scanning** (#346) is complete: rich belts, derelict caches, a probe module.
+- **Corporations:** a treasury with deposit, withdraw and a ledger; licences bought where they
+  are granted; licence rent from the system's economy (#509).
+- **Security tooling:** OpenSSF Scorecard with SHA-pinned actions (#519); ClusterFuzzLite on
+  the frame reader, every decoder and the login (#518; it found a client crash on a wrong-typed
+  field, fixed).
+- **Agents run on Sonnet** by default (`CLAUDE_CODE_SUBAGENT_MODEL` in the per-machine
+  `.claude/settings.local.json`); Opus only for look prototypes, with the owner's yes.
 
 ## Next
 
 In order; the details are in [ROADMAP.md](ROADMAP.md#next).
 
-1. #464, NPC fits from the living world: slices 1-4 built (variants, fleets, region style,
-   buying); next slice 5, refit and drift ([the design](documents/npc_fits_living_world.md)).
-2. #466, a corporation's enemy list, with war declarations.
-3. #425-#427, the 0.1 playtest polish.
-4. A playtest on a fresh world, then 0.2 if the owner decides to tag it.
+1. **A playtest on a fresh world** (Release build; PROTO 67, GENERATOR 12). Check on the
+   owner's laptop: painted bodies and built surfaces at `paintBudget` 0.5 (#515), the laptop's
+   frame time near a planet and a station.
+2. Then **0.2 Beacon** if the owner tags it: bump `project(VERSION)` in CMakeLists.txt from
+   0.1.0, merge Dependabot's held artifact bumps (#524, #525) together with a release dry run.
+3. #516 rollout (built surfaces on every station, structure and ship; Sonnet).
+4. #464 slices 5-8 (refit and drift, pirates, showing styles, damage types), #472 slices 5-12.
+5. Design talks first: #473 player exchange, #514 faction birth and death, #511 pirate spread.
 
 ## Things to know before touching this code
 
