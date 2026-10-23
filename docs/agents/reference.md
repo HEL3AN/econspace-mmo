@@ -142,25 +142,35 @@ Sleep until something happens, then return what happened. This is how to wait ou
 
 ### `sell_cargo`
 
-Sell cargo at the station you are docked at. Sells everything of that good unless an amount is given; every unit lowers the price of the next, and every trade pays the market's fee.
+Sell cargo at the station you are docked at. Sells everything of that good unless an amount is given; every unit lowers the price of the next, and every trade pays the market's fee. Sells from your hold, or from your hangar here with from='hangar'.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
 | `amount` | number |  | how much (default: all of it) |
+| `from` | string |  | 'hold' (default) or 'hangar' |
 | `resource` | string | yes | resource name as observe lists it under CARGO, e.g. 'Iron' |
 
 ### `buy`
 
-Buy goods from the market of the station you are docked at. Buys as many as the market holds, your hold takes and your money pays for, up to the amount; every unit raises the price of the next, and every trade pays the market's fee. observe lists the MARKET with what it pays / asks and how many it holds.
+Buy goods from the market of the station you are docked at. Buys as many as the market holds, your hold takes and your money pays for, up to the amount; every unit raises the price of the next, and every trade pays the market's fee. observe lists the MARKET with what it pays / asks and how many it holds. With to='hangar' the goods go into your hangar here instead, which is how to buy more than a hold.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
 | `amount` | number |  | how many (default: as many as you can) |
 | `resource` | string | yes | good name as observe lists it under MARKET, e.g. 'Food' |
+| `to` | string |  | 'hold' (default) or 'hangar' |
+
+### `rent_hangar`
+
+Set how many units of hangar you rent at the station you are docked at, on top of the units every pilot has free there; inventory shows the hangar, the rent and the most a station lets one pilot keep. More is paid at once for what is left of the period (a new rent pays a whole period) and then every period of world time, to the station's faction; fewer is at once and nothing is paid back. Unpaid rent closes the hangar until it is paid, which docking there does when you have the money. 0 ends the rent.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `units` | number | yes | units to rent on top of the free ones |
 
 ### `move_goods`
 
-Move goods between two containers where you are, by the ids inventory lists them by: 'hold' (the ship you fly) and, docked at your own structure or a corporation mate's, 'storage'. Moves all of that good unless an amount is given, as far as the destination has room.
+Move goods between two containers where you are, by the ids inventory lists them by: 'hold' (the ship you fly); docked at a station, 'hangar' (yours there); docked at your own structure or a corporation mate's, 'storage'. Moves all of that good unless an amount is given, as far as the destination has room.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|

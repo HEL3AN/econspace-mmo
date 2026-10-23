@@ -14,16 +14,19 @@
 //
 // A container is (place, holder, division) -- documents/holds_and_storage.md. What is
 // reachable comes from the snapshot: the hold always, and, docked at a structure whose storage
-// is the pilot's side's (#438), that storage.
+// is the pilot's side's (#438), that storage; docked at a station that keeps hangars, the
+// pilot's hangar there.
 namespace InventoryList
 {
 
 struct Container
 {
-    std::string      id;     // what a move names it by: "hold", "storage"
-    std::string      name;   // what the window calls it: "Hold", "Storage"
+    std::string      id;     // what a move names it by: "hold", "hangar", "storage"
+    std::string      name;   // what the window calls it: "Hold", "Hangar", "Storage"
     std::vector<int> goods;  // how many of each good, in AllResourceTypes order
     int              capacity = 0;
+    // Nothing goes in or out: a hangar whose rent is owed (#472).
+    bool closed = false;
 
     int Amount(ResourceType type) const;
     int Used() const;

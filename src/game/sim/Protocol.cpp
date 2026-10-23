@@ -562,6 +562,11 @@ std::string EncodeCommand(const Command& c)
     number("loot", c.lootId, 0);
     number("sellType", c.sellType, -1);
     number("sellAmt", c.sellAmount, 0);
+    if (!c.sellFrom.empty())
+        j["sellFrom"] = c.sellFrom;
+    if (!c.buyTo.empty())
+        j["buyTo"] = c.buyTo;
+    number("rentHangar", c.rentHangar, -1);
     number("buyType", c.buyType, -1);
     number("buyAmt", c.buyAmount, 0);
     if (c.moveType >= 0)  // (#472)
@@ -818,6 +823,9 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadInt(j, "sellAmt", 0, 0, ID_MAX, out.sellAmount);
     ok = ok && ReadInt(j, "buyType", -1, 0, resources - 1, out.buyType);
     ok = ok && ReadInt(j, "buyAmt", 0, 0, ID_MAX, out.buyAmount);
+    ok = ok && ReadText(j, "sellFrom", out.sellFrom);
+    ok = ok && ReadText(j, "buyTo", out.buyTo);
+    ok = ok && ReadInt(j, "rentHangar", -1, 0, ID_MAX, out.rentHangar);
     ok = ok && ReadText(j, "mvFrom", out.moveFrom);
     ok = ok && ReadText(j, "mvTo", out.moveTo);
     ok = ok && ReadInt(j, "mvType", -1, 0, resources - 1, out.moveType);
@@ -1102,6 +1110,12 @@ json PlayerJson(const Proto::PlayerView& p)
     // Only docked at a storage of the pilot's side (#438).
     if (p.storageCap > 0)
         j["store"] = { { "cap", p.storageCap }, { "t", p.storedByType } };
+    if (p.hangar.capacity > 0)  // (#472)
+        j["hgr"] = { { "cap", p.hangar.capacity },     { "free", p.hangar.free },
+                     { "rent", p.hangar.rented },      { "most", p.hangar.most },
+                     { "rate", p.hangar.rentPerUnit }, { "days", p.hangar.periodDays },
+                     { "until", p.hangar.paidUntil },  { "owed", p.hangar.owed },
+                     { "t", p.hangar.goods } };
     return j;
 }
 
@@ -1190,6 +1204,20 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
     {
         p.storageCap = store->value("cap", 0);
         p.storedByType = store->value("t", std::vector<int>{});
+    }
+    p.hangar = Proto::HangarView{};
+    const auto hgr = pj.find("hgr");
+    if (hgr != pj.end() && hgr->is_object())
+    {
+        p.hangar.capacity = hgr->value("cap", 0);
+        p.hangar.free = hgr->value("free", 0);
+        p.hangar.rented = hgr->value("rent", 0);
+        p.hangar.most = hgr->value("most", 0);
+        p.hangar.rentPerUnit = hgr->value("rate", 0.0);
+        p.hangar.periodDays = hgr->value("days", 0.0);
+        p.hangar.paidUntil = hgr->value("until", 0.0);
+        p.hangar.owed = hgr->value("owed", 0.0);
+        p.hangar.goods = hgr->value("t", std::vector<int>{});
     }
     p.licence = Proto::LicenceView{};
     const auto lic = pj.find("lic");

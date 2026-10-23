@@ -1141,10 +1141,12 @@ std::vector<Tool> BuildTools()
     tools.push_back({ "sell_cargo",
                       "Sell cargo at the station you are docked at. Sells everything of "
                       "that good unless an amount is given; every unit lowers the price of "
-                      "the next, and every trade pays the market's fee.",
+                      "the next, and every trade pays the market's fee. Sells from your hold, "
+                      "or from your hangar here with from='hangar'.",
                       Obj({ { "resource", Str("resource name as observe lists it under "
                                               "CARGO, e.g. 'Iron'") },
-                            { "amount", Num("how much (default: all of it)") } },
+                            { "amount", Num("how much (default: all of it)") },
+                            { "from", Str("'hold' (default) or 'hangar'") } },
                           { "resource" }),
                       [](const Rpc::Json& args)
                       {
@@ -1155,6 +1157,7 @@ std::vector<Tool> BuildTools()
                           Proto::Command c;
                           c.sellType = ResourceArg(args);
                           c.sellAmount = (int)NumberOr(args, "amount", 100000.0);
+                          c.sellFrom = args.value("from", std::string());
                           g_session.Send(c);
                           g_session.WaitUntil([] { return false; }, 0.5);  // let the ack land
                           return std::string("sell sent; call observe to see the result");
@@ -1165,9 +1168,11 @@ std::vector<Tool> BuildTools()
           "Buy goods from the market of the station you are docked at. Buys as many as the "
           "market holds, your hold takes and your money pays for, up to the amount; every "
           "unit raises the price of the next, and every trade pays the market's fee. observe "
-          "lists the MARKET with what it pays / asks and how many it holds.",
+          "lists the MARKET with what it pays / asks and how many it holds. With to='hangar' "
+          "the goods go into your hangar here instead, which is how to buy more than a hold.",
           Obj({ { "resource", Str("good name as observe lists it under MARKET, e.g. 'Food'") },
-                { "amount", Num("how many (default: as many as you can)") } },
+                { "amount", Num("how many (default: as many as you can)") },
+                { "to", Str("'hold' (default) or 'hangar'") } },
               { "resource" }),
           [](const Rpc::Json& args)
           {
@@ -1180,29 +1185,41 @@ std::vector<Tool> BuildTools()
               const int stock = (size_t)type < snap.marketStock.size() ? snap.marketStock[type] : 0;
               if (stock <= 0)
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "this market has no " + name };
-              if (p.cargoUsed >= p.cargoCap)
+              // Into the hold, or another container here (#472).
+              const std::string               to = args.value("to", std::string("hold"));
+              const auto                      here = InventoryList::Reachable(p);
+              const InventoryList::Container* into = InventoryList::Find(here, to);
+              if (into == nullptr)
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
-                                    "the hold is full (" + std::to_string(p.cargoUsed) + " / " +
-                                        std::to_string(p.cargoCap) + "); sell something first" };
-              const int    have = (size_t)type < p.cargoByType.size() ? p.cargoByType[type] : 0;
+                                    "no container '" + to + "' here; call inventory" };
+              if (into->Room() <= 0)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, into->name + " is full (" +
+                                                             std::to_string(into->Used()) + " / " +
+                                                             std::to_string(into->capacity) +
+                                                             "); sell or move something first" };
+              const int    have = into->Amount(ResourceType::FromIndex(type));
               const double moneyBefore = p.money;
 
               const int      seq = g_session.LastEventSeq();
               Proto::Command c;
               c.buyType = type;
               c.buyAmount = (int)NumberOr(args, "amount", 100000.0);
+              c.buyTo = to == "hold" ? std::string() : to;
               std::string why;
               if (!Confirm(c, why))
                   return "buy: " + why;
-              const Proto::PlayerView& after = g_session.Snapshot().player;
-              const int now = (size_t)type < after.cargoByType.size() ? after.cargoByType[type] : 0;
-              if (now <= have)
+              const Proto::PlayerView&        after = g_session.Snapshot().player;
+              const auto                      there = InventoryList::Reachable(after);
+              const InventoryList::Container* now = InventoryList::Find(there, to);
+              const int                       got =
+                  now != nullptr ? now->Amount(ResourceType::FromIndex(type)) - have : 0;
+              if (got <= 0)
                   return Refused("buy", seq,
                                  "the server sold nothing; call observe to see the market and "
                                  "your money as they are now");
-              return "buy: bought " + std::to_string(now - have) + " " + name + " for " +
-                     Money(moneyBefore - after.money) + " with the fee -- the hold now " +
-                     std::to_string(after.cargoUsed) + " / " + std::to_string(after.cargoCap) +
+              return "buy: bought " + std::to_string(got) + " " + name + " for " +
+                     Money(moneyBefore - after.money) + " with the fee -- " + now->name + " now " +
+                     std::to_string(now->Used()) + " / " + std::to_string(now->capacity) +
                      ", money " + Money(after.money);
           } });
 
@@ -1264,11 +1281,46 @@ std::vector<Tool> BuildTools()
                std::to_string(b2->Used()) + " / " + std::to_string(b2->capacity);
     };
     tools.push_back(
+        { "rent_hangar",
+          "Set how many units of hangar you rent at the station you are docked at, on top of "
+          "the units every pilot has free there; inventory shows the hangar, the rent and the "
+          "most a station lets one pilot keep. More is paid at once for what is left of the "
+          "period (a new rent pays a whole period) and then every period of world time, to "
+          "the station's faction; fewer is at once and nothing is paid back. Unpaid rent "
+          "closes the hangar until it is paid, which docking there does when you have the "
+          "money. 0 ends the rent.",
+          Obj({ { "units", Num("units to rent on top of the free ones") } }, { "units" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              RequireDocked("renting a hangar");
+              const Proto::HangarView& h = g_session.Snapshot().player.hangar;
+              if (h.capacity <= 0)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "this station keeps no hangars" };
+              const int units = (int)NumberOr(args, "units", -1.0);
+              if (units < 0 || units > h.most - h.free)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "units is 0 to " + std::to_string(h.most - h.free) + " here" };
+              const int      seq = g_session.LastEventSeq();
+              Proto::Command c;
+              c.rentHangar = units;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "rent_hangar: " + why;
+              const Proto::HangarView& after = g_session.Snapshot().player.hangar;
+              if (after.rented != units)
+                  return Refused("rent_hangar", seq, "the rent did not change; call inventory");
+              return "rent_hangar: renting " + std::to_string(units) +
+                     " units -- the hangar holds " + std::to_string(after.capacity) + ", money " +
+                     Money(g_session.Snapshot().player.money);
+          } });
+
+    tools.push_back(
         { "move_goods",
           "Move goods between two containers where you are, by the ids inventory lists them "
-          "by: 'hold' (the ship you fly) and, docked at your own structure or a corporation "
-          "mate's, 'storage'. Moves all of that good unless an amount is given, as far as the "
-          "destination has room.",
+          "by: 'hold' (the ship you fly); docked at a station, 'hangar' (yours there); docked "
+          "at your own structure or a corporation mate's, 'storage'. Moves all of that good "
+          "unless an amount is given, as far as the destination has room.",
           Obj({ { "resource", Str("good name as inventory lists it, e.g. 'Iron'") },
                 { "from", Str("container id the goods are in, e.g. 'hold'") },
                 { "to", Str("container id to put them in, e.g. 'storage'") },

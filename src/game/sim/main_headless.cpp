@@ -365,7 +365,7 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
         if (c.sellType >= 0 && c.sellAmount > 0)
         {
             Simulation::PlayerSellResult r =
-                sim.StepPlayerSell(s, *sim.SystemOf(s), c.sellType, c.sellAmount);
+                sim.StepPlayerSell(s, *sim.SystemOf(s), c.sellType, c.sellAmount, c.sellFrom);
             if (r.sold > 0)
                 acks.push_back(
                     Proto::TradeAck{ c.sellType, r.sold, r.gross, r.revenue, 0, 0.0, r.fee });
@@ -373,10 +373,12 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
         if (c.buyType >= 0 && c.buyAmount > 0)  // a refusal says why, in the journal (#343)
         {
             const Simulation::PlayerBuyResult r =
-                sim.StepPlayerBuy(s, *sim.SystemOf(s), c.buyType, c.buyAmount);
+                sim.StepPlayerBuy(s, *sim.SystemOf(s), c.buyType, c.buyAmount, c.buyTo);
             if (r.bought > 0)
                 acks.push_back(Proto::TradeAck{ c.buyType, 0, 0.0, 0.0, r.bought, r.cost, r.fee });
         }
+        if (c.rentHangar >= 0)  // a hangar's rented room (#472)
+            sim.RentHangar(s, c.rentHangar);
         // Goods between containers (#472): what moved shows in the snapshot, a refusal in the
         // journal. The older pair is the same move.
         if (c.moveType >= 0 && c.moveAmount > 0)

@@ -794,6 +794,14 @@ std::string DescribeInventory(const View& view)
     for (const InventoryList::Container& c : all)
     {
         out += Fmt("%s (%s) %d / %d", c.name.c_str(), c.id.c_str(), c.Used(), c.capacity);
+        if (c.id == "hangar")  // (#472)
+        {
+            const Proto::HangarView& h = p.hangar;
+            out += Fmt(" [%d free + %d rented, at most %d here; rent %.1f cr a unit every %.0f "
+                       "days%s]",
+                       h.free, h.rented, h.most, h.rentPerUnit, h.periodDays,
+                       h.owed > 0.0 ? Fmt(", CLOSED: %.0f cr owed", h.owed).c_str() : "");
+        }
         const auto rows = InventoryList::Rows(c, prices);
         if (rows.empty())
             out += ": empty";

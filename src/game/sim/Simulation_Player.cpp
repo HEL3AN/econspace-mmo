@@ -827,7 +827,8 @@ static const Entity* DockedMarket(const ClientSession& s, const SystemState& st,
 }
 
 Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, SystemState& st,
-                                                        int resourceType, int amount)
+                                                        int resourceType, int amount,
+                                                        const std::string& from)
 {
     PlayerSellResult r;
     FactionId        sf;
@@ -836,9 +837,17 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, System
         (at = DockedMarket(s, st, sf)) == nullptr)
         return r;
     const FeeTo feeTo = FeeAt(st, *at);
+    // From the hold, or from another container here: the hangar (#472).
+    Container   src;
+    std::string why;
+    if (!ContainerOf(s, from.empty() ? "hold" : from, src, why))
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Selling refused: " + why);
+        return r;
+    }
 
     const ResourceType type = ResourceType::FromIndex(resourceType);
-    const int          have = s.ship->GetCargoAmount(type);
+    const int          have = src.goods->Amount(type);
     const int          sold = amount < have ? amount : have;
     if (sold <= 0)
         return r;
@@ -846,7 +855,7 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, System
     // read before the sale moves the stock, for the cap below.
     const double ask = st.market.Ask(type);
     r.gross = st.market.Sell(type, sold);
-    s.ship->RemoveCargo(type, sold);
+    src.goods->Remove(type, sold);
     r.sold = sold;
 
     // The trading skill and the station's owner's opinion raise what it pays -- never above
@@ -867,7 +876,8 @@ Simulation::PlayerSellResult Simulation::StepPlayerSell(ClientSession& s, System
 }
 
 Simulation::PlayerBuyResult Simulation::StepPlayerBuy(ClientSession& s, SystemState& st,
-                                                      int resourceType, int amount)
+                                                      int resourceType, int amount,
+                                                      const std::string& to)
 {
     PlayerBuyResult r;
     FactionId       sf;
@@ -882,6 +892,15 @@ Simulation::PlayerBuyResult Simulation::StepPlayerBuy(ClientSession& s, SystemSt
         return r;
     }
     const FeeTo feeTo = FeeAt(st, *at);
+    // Into the hold, or into another container here: the hangar, which is how a pilot buys more
+    // than one hold's worth (#472).
+    Container   dst;
+    std::string why;
+    if (!ContainerOf(s, to.empty() ? "hold" : to, dst, why))
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Buying " + name + " refused: " + why);
+        return r;
+    }
     // A station that thinks badly of a pilot charges more; one that likes them does not
     // charge less -- the spread is the market's living (#343).
     const double markup =
@@ -889,17 +908,17 @@ Simulation::PlayerBuyResult Simulation::StepPlayerBuy(ClientSession& s, SystemSt
     const double fee = feeTo.rate;
     // As many as the stock, the hold and the money allow: counted down one at a time, since
     // every unit bought raises the price of the next.
-    const int room = s.ship->GetCargoCapacity() - s.ship->GetCargoUsed();
+    const int room = dst.capacity - dst.goods->Used();
     const int stock = (int)st.market.Stock(type);
     int       n = std::min({ amount, room, stock });
     while (n > 0 && st.market.QuoteBuy(type, n) * markup * (1.0 + fee) > s.account.GetMoney())
         n--;
     if (n <= 0)
     {
-        const char* why = room <= 0    ? "the hold is full"
-                          : stock <= 0 ? "the market has none"
-                                       : "not enough money for one";
-        s.RecordEvent(Ev::Kind::Notice, "Buying " + name + " refused: " + why);
+        const std::string no = room <= 0    ? dst.name + " is full"
+                               : stock <= 0 ? std::string("the market has none")
+                                            : std::string("not enough money for one");
+        s.RecordEvent(Ev::Kind::Notice, "Buying " + name + " refused: " + no);
         return r;
     }
     int          bought = 0;
@@ -909,7 +928,7 @@ Simulation::PlayerBuyResult Simulation::StepPlayerBuy(ClientSession& s, SystemSt
     r.bought = bought;
     s.account.AddMoney(-r.cost);
     PayFee(feeTo, r.fee);
-    s.ship->AddCargo(type, bought);
+    dst.goods->Add(type, bought);
     s.account.GetSkills().AddXp(SkillType::Trading, (float)(price * 0.01));
     return r;
 }
@@ -1503,6 +1522,7 @@ int Simulation::StepPlayerDock(ClientSession& s, SystemState& st)
                                                 "wake here");
         }
         GenerateDockOffers(s);  // fresh station mission board (M4f-2)
+        SettleHangar(s);        // rent owed here, paid if it can be (#472)
         return s.dockedStationId;
     }
     if (!refused.empty())

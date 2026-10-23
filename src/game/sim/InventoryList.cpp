@@ -34,6 +34,16 @@ std::vector<Container> Reachable(const Proto::PlayerView& p)
     hold.goods = p.cargoByType;
     hold.capacity = p.cargoCap;
     out.push_back(hold);
+    if (p.docked && p.hangar.capacity > 0)  // (#472)
+    {
+        Container h;
+        h.id = "hangar";
+        h.name = "Hangar";
+        h.goods = p.hangar.goods;
+        h.capacity = p.hangar.capacity;
+        h.closed = p.hangar.owed > 0.0;
+        out.push_back(h);
+    }
     if (p.docked && p.storageCap > 0)
     {
         Container store;
@@ -90,7 +100,7 @@ std::vector<Row> Rows(const Container& c, const std::vector<float>& prices, std:
 
 int Movable(const Container& from, const Container& to, ResourceType type, int wanted)
 {
-    if (from.id == to.id)
+    if (from.id == to.id || from.closed || to.closed)
         return 0;
     return std::max(0, std::min({ wanted, from.Amount(type), to.Room() }));
 }
