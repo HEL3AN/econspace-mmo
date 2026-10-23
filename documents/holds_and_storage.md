@@ -351,15 +351,32 @@ on price and speed, and earn the gap.**
 
   - `volume`: the goods' volume (units until slice 7); a ship counts as its hull's volume.
   - `jumps`: the route's length (`Route`, #432), the safer preference.
-  - `risk`: 1 plus the sum over the route's systems of `(1 - security)`, so a route through
+  - `risk`: `1 + riskWeight × mean(1 - security)` over the route's systems, so a route through
     lawless space costs more; a route through a system under siege or held by a faction at war
-    with the carrier is refused.
+    with the carrier is refused. **The mean, not the sum** (owner, 2026-10-23): length is already
+    counted once by `jumps`, and a sum counted it twice, so a long lawless route grew almost with
+    the square of its length (100 Iron over five lawless jumps quoted 2,330 for goods worth
+    1,000).
   - `insure`: the service guarantees delivery, so the risky part of the value is priced in; it
     never loses a shipment.
   - `minFee`: no delivery is cheaper than this, so moving one unit next door is not free.
   - **Time:** `hoursPerJump` of world time per jump (2 h by default), at least one hour. A player
     flies a jump in minutes.
   - The fee goes to the faction's treasury, as rent does.
+  - **Numbers** (owner, 2026-10-23; data in `world_rules.json`, tuning): `rate` 1 cr per unit per
+    jump, `minFee` 50 cr, `insure` 0.05, `hoursPerJump` 2, `riskWeight` 2 *(call: it keeps a
+    lawless route clearly dearer once the mean replaced the sum)*. With prices from `goods.json`:
+
+    | Shipment | Route | risk | Fee | Of the goods' value | Time |
+    |---|---|---|---|---|---|
+    | 100 Iron (worth 1,000) | 3 jumps, security 0.9 | 1.2 | 370 | 37 % | 6 h |
+    | 20 Circuits (worth 2,600) | 3 jumps, security 0.9 | 1.2 | 98 | 4 % | 6 h |
+    | 20 Circuits | 5 jumps, security 0.3 | 2.4 | 662 | 25 % | 10 h |
+    | 100 Iron | 5 jumps, security 0.3 | 2.4 | 1,270 | 127 % | 10 h |
+
+    Bulky cheap goods are not worth shipping and compact dear ones are, which gives volume
+    (slice 7) its point. Through lawless space the quote leaves room for a courier who flies it in
+    minutes for half the price and takes the risk themselves.
 - **Player courier contracts (#473)**: the issuer puts the goods and a reward (and a collateral)
   on a contract; a courier picks them up and carries them in their hold, physically, through
   the real danger. **The NPC quote is shown beside every contract** when it is posted and when
