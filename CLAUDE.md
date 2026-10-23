@@ -97,6 +97,7 @@ cmake --build build-release
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --sensor 2000000 --shot s.png  # the sensor screen (V), 2M across
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --theme glass --blur --open settings --click 565 141 60 --shot t.png --frames 90  # a UI theme for one run; a click played into raylib's input on frame 60
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --dock --fit --shot f.png --frames 900  # the hangar's Fit tab, docked
+./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --dock --open inventory --drag 500 230 900 300 800 0 --shot i.png --frames 830  # a drag held from (500,230) to (900,300) from frame 800 (RELEASE 0: never let go), #472
 ./build/bin/game/econspace.exe connect 127.0.0.1 50800 pilot hunter2 --open scanner --scan 600 --scan 2600 --shot s.png --frames 4200  # two passes of the scanner (P), #346
 ./build/bin/editor/worldeditor.exe
 ./build/bin/editor/worldeditor.exe gallery           # every archetype at once, for tuning a look (F3)

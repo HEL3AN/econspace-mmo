@@ -221,8 +221,9 @@ void Game::SetupWindows()
     // Where the station's stack of tabs stands (#364): beside the station window, under the
     // location plate and the goal line.
     constexpr Rectangle DOCKED_STACK{ 344.0f, 96.0f, 520.0f, 500.0f };
-    auto                fullScreen = [this]()
-    { return Rectangle{ 0.0f, 0.0f, (float)screenWidth_, (float)screenHeight_ }; };
+    auto                fullScreen = [this]() {
+        return Rectangle{ 0.0f, 0.0f, (float)screenWidth_, (float)screenHeight_ };
+    };
 
     // Registered in the menu bar's order. The places are the ones the windows have always
     // had at 1280 x 720; anchored, they now keep to their side at any other size.
@@ -301,6 +302,17 @@ void Game::SetupWindows()
     corp.resizable = true;
     corp.minSize = { 280.0f, 220.0f };
     desk_.AddWindow(corp, "CORPORATION", false, [this](Ui::Frame& f) { DrawCorpContent(f); });
+    // The inventory (#472): the hold and whatever else holds goods here. In space and docked
+    // alike, in the bottom right corner, which nothing else takes in either: beside the
+    // station's stack docked, so a good can be dragged from it onto the market. It is opened
+    // from the cargo line too.
+    WindowSpec inventory =
+        panel(WIN_INVENTORY, "Cargo", "Inventory: the hold, and storage where you are  (I)",
+              Anchor::BottomRight, { 8.0f, 8.0f, 520.0f, 340.0f });
+    inventory.resizable = true;
+    inventory.minSize = { 300.0f, 220.0f };
+    desk_.AddWindow(inventory, "INVENTORY", false,
+                    [this](Ui::Frame& f) { DrawInventoryContent(f); });
 
     // The two screens cover the world view and the windows; whichever opened last is on top.
     // Covering means the windows are not drawn at all while one is open: the map is drawn
@@ -317,8 +329,9 @@ void Game::SetupWindows()
     map.draw = [this]() { DrawGalaxyMap(); };
     desk_.AddSurface(screen(WIN_MAP, "Map", "Galaxy map  (G)", Ui::EscRule::Close), false, map);
     Ui::Desk::Surface sensor;
-    sensor.bounds = [this]()
-    { return Rectangle{ MenuBarW(), 0.0f, screenWidth_ - MenuBarW(), (float)screenHeight_ }; };
+    sensor.bounds = [this]() {
+        return Rectangle{ MenuBarW(), 0.0f, screenWidth_ - MenuBarW(), (float)screenHeight_ };
+    };
     sensor.draw = [this]() { DrawSensorScreen(); };
     WindowSpec sensorSpec = screen(WIN_SENSOR, "Sensor", "Sensor screen  (V)", Ui::EscRule::Close);
     sensorSpec.context = CTX_SPACE;  // a readout of the space around the ship
@@ -437,7 +450,8 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
                                                  Overview::Sort::Distance };
     const std::vector<Overview::Row> rows = Overview::Build(
         snapshot_.entities, snapshot_.player.pos, filters[overviewTab_],
-        SORTS[std::clamp(overviewSort_.column, 0, 2)], [this](const Proto::EntitySnapshot& e)
+        SORTS[std::clamp(overviewSort_.column, 0, 2)],
+        [this](const Proto::EntitySnapshot& e)
         { return e.kind == Proto::EntityKind::Npc && HostileToPlayerFaction(e.faction); });
 
     const int  selId = selected_ != nullptr ? selected_->GetId() : 0;
@@ -842,7 +856,7 @@ void Game::DrawDefenceControls(Ui::Layout& L, const Proto::EntityLayout& el)
         "Never fires, not even back",
         "Fires back at whoever shot at it in the last minute",
         ("Also fires first at factions you stand below the threshold with, and at players "
-         "wanted by a lawful faction"),
+          "wanted by a lawful faction"),
         "Fires at everyone but you and the names on the allow-list",
     };
     for (int row = 0; row < 2; row++)
@@ -1022,10 +1036,18 @@ void Game::DrawStatusContent(const Ui::Frame& f)
                      L.Field("Speed", TextFormat("%.0f", playerShip_->GetSpeed()), t.colors.text);
                      L.Field("Money", TextFormat("%.0f", player_.GetMoney()), t.colors.money);
                      // From the snapshot: the server collects ore into its own ship.
-                     L.Field("Cargo",
-                             TextFormat("%d / %d", snapshot_.player.cargoUsed,
-                                        snapshot_.player.cargoCap),
-                             t.colors.text);
+                     // The cargo line opens the inventory (#472).
+                     L.Row(Box().Id("cargo").GrowX(),
+                           [&]
+                           {
+                               L.Field("Cargo",
+                                       TextFormat("%d / %d", snapshot_.player.cargoUsed,
+                                                  snapshot_.player.cargoCap),
+                                       L.Hovered("cargo") ? t.colors.accent : t.colors.text);
+                           });
+                     L.Tooltip("cargo", "Inventory  (I)");
+                     if (L.Clicked("cargo"))
+                         desk_.Toggle(WIN_INVENTORY);
                  });
     };
     auto systems = [&]
@@ -1327,7 +1349,7 @@ void Game::DrawSpaceBrackets()
         const float nearFade = 1.0f - 0.55f * LogRamp(dist, 2000.0f, 30000.0f);
         float       alpha =
             hostile ? 0.95f * std::max(0.7f, std::min(nearFade, 1.0f)) * std::max(0.7f, zoomFade)
-                    : 0.6f * nearFade * zoomFade;
+                          : 0.6f * nearFade * zoomFade;
         if (alpha < 0.03f)
             continue;
         CornerBracket(sp, r, Ui::Px(hostile ? 4.0f : 3.0f), hostile ? 2.0f * thin : thin,
@@ -1440,8 +1462,8 @@ void Game::DrawHud()
         const float       range = playerShip_->GetHoldRange();
         std::string       line =
             hm == HoldMode::Orbit  ? TextFormat("ORBITING %s  at %.0f", name.c_str(), range)
-            : hm == HoldMode::Keep ? TextFormat("HOLDING %.0f FROM %s", range, name.c_str())
-                                   : TextFormat("FOLLOWING %s  at %.0f", name.c_str(), range);
+                  : hm == HoldMode::Keep ? TextFormat("HOLDING %.0f FROM %s", range, name.c_str())
+                                         : TextFormat("FOLLOWING %s  at %.0f", name.c_str(), range);
         if (t != nullptr)
             line += TextFormat("  (now %.0f)",
                                Vector2Distance(t->GetPosition(), playerShip_->GetPosition()));
@@ -1618,8 +1640,7 @@ void Game::DrawSensorScreen()
                                                 [&]
                                                 {
                                                     L.Row(Box().Width(Size::Fixed(t.fontSize.body)),
-                                                          [&]
-                                                          {
+                                                          [&] {
                                                               L.Text(std::string(1, l.glyph),
                                                                      TextStyle::Strong());
                                                           });

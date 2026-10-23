@@ -197,6 +197,12 @@ Hand in an active mission for its reward. A bounty or mining job goes back to th
 |---|---|---|---|
 | `mission` | number | yes | active mission number from missions |
 
+### `inventory`
+
+Every place that holds goods for you where you are: your hold, and docked at your own structure (or a corporation mate's) its storage -- how full each is and what it holds, priced at the market here. The same lists as the inventory window.
+
+No arguments.
+
 ### `hangar`
 
 The ships you own, the one you are flying, and what every other hull costs at this station -- at the price you would actually pay, which depends on your standing with the station's owner.

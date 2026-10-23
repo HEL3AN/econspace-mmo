@@ -63,6 +63,10 @@ std::string DescribeAge(double seconds);
 // (#109) -- at the price this player would be charged, which depends on its standing with
 // the station's owner, rather than the catalog's.
 std::string DescribeHangar(const View& view);
+// Every container reachable from where the pilot is -- the hold, and docked at one's own
+// structure its storage -- and what each holds, priced at the market here (#472). The same
+// lists as the inventory window (InventoryList).
+std::string DescribeInventory(const View& view);
 
 // --- Fitting (#279) ---------------------------------------------------------------------
 // The design the ship being flown has: its refit if it has one, else its hull's stock

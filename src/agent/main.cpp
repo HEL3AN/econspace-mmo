@@ -201,8 +201,8 @@ Rpc::Json TextResult(const std::string& text)
 std::string DescribeStarts()
 {
     const Proto::Starts& s = g_session.Starts();
-    std::string out = "NO SHIP YET: this pilot has not begun. Choose where with "
-                      "choose_start" +
+    std::string          out = "NO SHIP YET: this pilot has not begun. Choose where with "
+                               "choose_start" +
                       std::string(s.randomOnly ? " (this server deals starts at random: call "
                                                  "it with no start)"
                                                : "") +
@@ -691,7 +691,8 @@ std::vector<Tool> BuildTools()
           "changes. Use detail='full' only when deciding something. A structure says "
           "what it mends a second (#431): fire below that rate does nothing to it. Full detail "
           "lists your corporation's patrols; a guard ship nearby is a corporation's.",
-          Obj({ { "detail", Str("'brief' (default) or 'full'") } }), [](const Rpc::Json& args)
+          Obj({ { "detail", Str("'brief' (default) or 'full'") } }),
+          [](const Rpc::Json& args)
           {
               g_session.Pump();
               if (g_session.AwaitingStart())
@@ -785,7 +786,8 @@ std::vector<Tool> BuildTools()
           "is online, its treasury, the systems it holds with its tax and docking policy there, "
           "and the invites waiting for your answer. Members' armed structures never fire first "
           "on each other and guard each other's ships; standings stay your own.",
-          Obj({}), [](const Rpc::Json&)
+          Obj({}),
+          [](const Rpc::Json&)
           {
               g_session.Pump();
               RequireLive();
@@ -909,25 +911,25 @@ std::vector<Tool> BuildTools()
               return "Begun.\n" + g_session.Describe(Obs::Detail::Brief);
           } });
 
-    tools.push_back({ "move_to",
-                      "Fly to an object by id, or to a point. Finishes when the ship "
-                      "arrives. Use warp for anything far away.",
-                      Obj({ { "target_id", Num("object id from observe") },
-                            { "x", Num("destination x, if no target_id") },
-                            { "y", Num("destination y, if no target_id") },
-                            { "stop_distance", Num("how close to stop (default 150)") },
-                            { "warp", Bool("warp instead of cruising") } }),
-                      [](const Rpc::Json& args)
-                      {
-                          RequireLive();
-                          Proto::Command c = OrderCommand(Orders::Kind::MoveTo);
-                          c.orderTarget = (int)NumberOr(args, "target_id", 0);
-                          c.orderPoint = { (float)NumberOr(args, "x", 0.0),
-                                           (float)NumberOr(args, "y", 0.0) };
-                          c.orderStopDist = (float)NumberOr(args, "stop_distance", 150.0);
-                          c.orderWarp = args.value("warp", false);
-                          return GiveOrder(c, "move_to");
-                      } });
+    tools.push_back(
+        { "move_to",
+          "Fly to an object by id, or to a point. Finishes when the ship "
+          "arrives. Use warp for anything far away.",
+          Obj({ { "target_id", Num("object id from observe") },
+                { "x", Num("destination x, if no target_id") },
+                { "y", Num("destination y, if no target_id") },
+                { "stop_distance", Num("how close to stop (default 150)") },
+                { "warp", Bool("warp instead of cruising") } }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              Proto::Command c = OrderCommand(Orders::Kind::MoveTo);
+              c.orderTarget = (int)NumberOr(args, "target_id", 0);
+              c.orderPoint = { (float)NumberOr(args, "x", 0.0), (float)NumberOr(args, "y", 0.0) };
+              c.orderStopDist = (float)NumberOr(args, "stop_distance", 150.0);
+              c.orderWarp = args.value("warp", false);
+              return GiveOrder(c, "move_to");
+          } });
 
     tools.push_back({ "dock",
                       "Approach a station, or a structure with a dock, and dock with it. The "
@@ -943,7 +945,8 @@ std::vector<Tool> BuildTools()
                           return GiveOrder(c, "dock");
                       } });
 
-    tools.push_back({ "undock", "Leave the station.", Obj({}), [](const Rpc::Json&)
+    tools.push_back({ "undock", "Leave the station.", Obj({}),
+                      [](const Rpc::Json&)
                       {
                           RequireLive();
                           return GiveOrder(OrderCommand(Orders::Kind::Undock), "undock");
@@ -1094,27 +1097,27 @@ std::vector<Tool> BuildTools()
               return out;
           } });
 
-    tools.push_back({ "sell_cargo",
-                      "Sell cargo at the station you are docked at. Sells everything of "
-                      "that good unless an amount is given; every unit lowers the price of "
-                      "the next, and every trade pays the market's fee.",
-                      Obj({ { "resource", Str("resource name as observe lists it under "
-                                              "CARGO, e.g. 'Iron'") },
-                            { "amount", Num("how much (default: all of it)") } },
-                          { "resource" }),
-                      [](const Rpc::Json& args)
-                      {
-                          RequireLive();
-                          if (!g_session.Snapshot().player.docked)
-                              throw Rpc::Error{ Rpc::INVALID_PARAMS,
-                                                "not docked; dock at a station first" };
-                          Proto::Command c;
-                          c.sellType = ResourceArg(args);
-                          c.sellAmount = (int)NumberOr(args, "amount", 100000.0);
-                          g_session.Send(c);
-                          g_session.WaitUntil([] { return false; }, 0.5);  // let the ack land
-                          return std::string("sell sent; call observe to see the result");
-                      } });
+    tools.push_back(
+        { "sell_cargo",
+          "Sell cargo at the station you are docked at. Sells everything of "
+          "that good unless an amount is given; every unit lowers the price of "
+          "the next, and every trade pays the market's fee.",
+          Obj({ { "resource", Str("resource name as observe lists it under "
+                                  "CARGO, e.g. 'Iron'") },
+                { "amount", Num("how much (default: all of it)") } },
+              { "resource" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              if (!g_session.Snapshot().player.docked)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "not docked; dock at a station first" };
+              Proto::Command c;
+              c.sellType = ResourceArg(args);
+              c.sellAmount = (int)NumberOr(args, "amount", 100000.0);
+              g_session.Send(c);
+              g_session.WaitUntil([] { return false; }, 0.5);  // let the ack land
+              return std::string("sell sent; call observe to see the result");
+          } });
 
     tools.push_back(
         { "buy",
@@ -1237,7 +1240,8 @@ std::vector<Tool> BuildTools()
           "its system. A contract is a short "
           "market's: bring so many of a good to its station by a deadline -- it pays more than "
           "selling them there, so buy them where they are cheap -- and hand it in docked there.",
-          Obj({}), [](const Rpc::Json&)
+          Obj({}),
+          [](const Rpc::Json&)
           {
               RequireLive();
               return Obs::DescribeMissions(CurrentView());
@@ -1321,11 +1325,24 @@ std::vector<Tool> BuildTools()
                      Money(after.player.money);
           } });
 
+    tools.push_back({ "inventory",
+                      "Every place that holds goods for you where you are: your hold, and docked "
+                      "at your own structure (or a corporation mate's) its storage -- how full "
+                      "each is and what it holds, priced at the market here. The same lists as "
+                      "the inventory window.",
+                      Obj({}),
+                      [](const Rpc::Json&)
+                      {
+                          RequireLive();
+                          return Obs::DescribeInventory(CurrentView());
+                      } });
+
     tools.push_back({ "hangar",
                       "The ships you own, the one you are flying, and what every other hull "
                       "costs at this station -- at the price you would actually pay, which "
                       "depends on your standing with the station's owner.",
-                      Obj({}), [](const Rpc::Json&)
+                      Obj({}),
+                      [](const Rpc::Json&)
                       {
                           RequireLive();
                           return Obs::DescribeHangar(CurrentView());
@@ -1444,7 +1461,8 @@ std::vector<Tool> BuildTools()
                       "them, which modules go on each kind of socket and what one costs at "
                       "this station. The fit is printed in the form preview_fit and refit "
                       "take.",
-                      Obj({}), [](const Rpc::Json&)
+                      Obj({}),
+                      [](const Rpc::Json&)
                       {
                           RequireLive();
                           return Obs::DescribeFitting(CurrentView());
@@ -1455,7 +1473,8 @@ std::vector<Tool> BuildTools()
           "What a fit would make of the ship you fly, without paying: speed, turn, cargo, "
           "mining, hull and guns before and after, the price here, and whether the server "
           "would take it. Pass the whole fit, not a change to it.",
-          Obj({ { "fit", FitSchema() } }, { "fit" }), [](const Rpc::Json& args)
+          Obj({ { "fit", FitSchema() } }, { "fit" }),
+          [](const Rpc::Json& args)
           {
               RequireLive();
               return Obs::DescribeQuote(Obs::QuoteFit(CurrentView(), FitArg(args)));
@@ -1468,7 +1487,8 @@ std::vector<Tool> BuildTools()
           "out refund half their ore. Only the fit changes, never the hull; side and edge "
           "sockets take pairs, drives go in the stern, and a ship keeps a drive. Pass the whole "
           "fit; preview_fit first says what it does and costs.",
-          Obj({ { "fit", FitSchema() } }, { "fit" }), [](const Rpc::Json& args)
+          Obj({ { "fit", FitSchema() } }, { "fit" }),
+          [](const Rpc::Json& args)
           {
               RequireLive();
               RequireDocked("refitting");
@@ -1504,7 +1524,8 @@ std::vector<Tool> BuildTools()
                       "The designs you saved under names of your own: the hull each is for, how "
                       "it would fly, and, for the hull you fly, what applying it costs at this "
                       "station. At most 24.",
-                      Obj({}), [](const Rpc::Json&)
+                      Obj({}),
+                      [](const Rpc::Json&)
                       {
                           RequireLive();
                           return Obs::DescribeDesigns(CurrentView());
@@ -1704,7 +1725,8 @@ std::vector<Tool> BuildTools()
           "for your corporation from its treasury by its CEO or a director, and taken each week "
           "from then on. Unpaid a day past due, what you have there trespasses: anyone may shoot "
           "it, and the faction may evict it. observe says what building here takes.",
-          Obj({}), [](const Rpc::Json&)
+          Obj({}),
+          [](const Rpc::Json&)
           {
               RequireLive();
               const Proto::LicenceView& l = g_session.Snapshot().player.licence;
@@ -1748,7 +1770,8 @@ std::vector<Tool> BuildTools()
           "server's filter refuses; not a name another system has or its natives use, "
           "whatever the case. A refusal says which rule failed. The server's admin may rename "
           "or clear a name; you are told in your journal.",
-          Obj({ { "name", Str("the name, e.g. 'Haven'") } }, { "name" }), [](const Rpc::Json& args)
+          Obj({ { "name", Str("the name, e.g. 'Haven'") } }, { "name" }),
+          [](const Rpc::Json& args)
           {
               RequireLive();
               const std::string name = args.contains("name") && args["name"].is_string()
@@ -1787,7 +1810,8 @@ std::vector<Tool> BuildTools()
           "again until it is resolved. A resolved wormhole is then a gate in observe and a "
           "route travel_to_system can take; a resolved object has an id like any other. "
           "Undocked, not warping, and stay in the system while it runs.",
-          Obj({}), [](const Rpc::Json&)
+          Obj({}),
+          [](const Rpc::Json&)
           {
               RequireLive();
               const int      seq = g_session.LastEventSeq();
@@ -1821,7 +1845,8 @@ std::vector<Tool> BuildTools()
           "upgrade says what it is built onto: one of your own finished structures, named with "
           "deploy's or build's onto -- an outpost grows into a market, a market into a station "
           "(#433).",
-          Obj({}), [](const Rpc::Json&)
+          Obj({}),
+          [](const Rpc::Json&)
           {
               RequireLive();
               if (Blueprints::All().empty())
@@ -2437,7 +2462,7 @@ int Selftest(const std::vector<Tool>& tools)
     const int   orderBefore = g_session.Snapshot().player.orderId;
     std::string bogus = RunTool(tools, "dock", Rpc::Json{ { "station_id", 999999 } });
     bool        refused = bogus.find("refused") != std::string::npos ||
-                          bogus.find("not in this system") != std::string::npos;
+                   bogus.find("not in this system") != std::string::npos;
     // The tool waits two seconds for the server, on purpose; a loaded CI runner with two
     // agents and a server on it can take longer (seen on Windows). What is checked here is
     // the server's answer, not how fast it came, so wait for the answer itself. The snapshot
@@ -2691,7 +2716,9 @@ int main(int argc, char** argv)
     // it needs one. The system map is the same projection observe returns, which is the
     // point -- there is one description of the world, not one per consumer.
     rpc.On("resources/list",
-           [](const Rpc::Json&) { return Rpc::Json{ { "resources", ResourcesList() } }; });
+           [](const Rpc::Json&) {
+               return Rpc::Json{ { "resources", ResourcesList() } };
+           });
 
     rpc.On("resources/read",
            [](const Rpc::Json& params)
@@ -2723,7 +2750,9 @@ int main(int argc, char** argv)
     // tool surface: if a prompt here cannot be carried out with the tools above, the tools
     // are incomplete.
     rpc.On("prompts/list",
-           [](const Rpc::Json&) { return Rpc::Json{ { "prompts", PromptsList(false) } }; });
+           [](const Rpc::Json&) {
+               return Rpc::Json{ { "prompts", PromptsList(false) } };
+           });
 
     rpc.On("prompts/get",
            [](const Rpc::Json& params)
@@ -2742,7 +2771,9 @@ int main(int argc, char** argv)
            });
 
     rpc.On("tools/list",
-           [&tools](const Rpc::Json&) { return Rpc::Json{ { "tools", ToolsList(tools) } }; });
+           [&tools](const Rpc::Json&) {
+               return Rpc::Json{ { "tools", ToolsList(tools) } };
+           });
 
     rpc.On("tools/call",
            [&tools](const Rpc::Json& params)

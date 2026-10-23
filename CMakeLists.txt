@@ -205,6 +205,7 @@ add_library(engine STATIC
     src/engine/ui/Paint.cpp            # chamfers, glow, shadows, dashes: a theme's renderer tokens
     src/engine/ui/ContextMenu.cpp
     src/engine/ui/Input.cpp            # who the mouse belongs to while something draws (#297)
+    src/engine/ui/Drag.cpp             # ...and what it carries between windows (#472)
     src/engine/ui/Focus.cpp            # ...and who the keyboard belongs to: one text field
     src/engine/ui/DeskLayout.cpp       # the window manager's rules, with no drawing -- tested
     src/engine/ui/Desk.cpp             # ...and the half that reads the mouse and draws
@@ -291,6 +292,8 @@ add_executable(econspace
     src/game/core/Prediction.cpp   # the own ship predicted and reconciled, without a window (#358)
     src/game/sim/Overview.cpp      # what the overview lists and in what order (#157)
     src/game/sim/MissionList.cpp   # what the missions window lists (#297)
+    src/game/sim/InventoryList.cpp # what the inventory window lists (#472)
+    src/game/core/GameInventory.cpp # the inventory window: containers, moves, drag and drop (#472)
     src/game/sim/Observation.cpp   # what a mission still needs, in the agent's words (#297)
     src/game/sim/Sensor.cpp        # the sensor screen's grid and allegiance colours (#123)
     src/game/sim/PlayerStep.cpp
@@ -371,6 +374,7 @@ add_executable(econagent
     src/agent/Jsonrpc.cpp
     src/agent/Session.cpp
     src/game/sim/Observation.cpp   # the world as text, which is what a model reads
+    src/game/sim/InventoryList.cpp # the containers reachable here, as the window lists them (#472)
     src/game/sim/Orders.cpp        # order kinds, shared with the server
     src/game/entities/ShipType.cpp # the hangar catalog and what a station charges (#109)
 )
@@ -516,9 +520,11 @@ add_executable(tests
     tests/layout_tests.cpp         # rows, columns, growing and wrapping, without a window (#297)
     tests/intel_tests.cpp          # what factions know, and surveying (#295)
     tests/widget_tests.cpp         # tables, tabs, fields, sliders and the keyboard focus (#297)
+    tests/drag_tests.cpp           # drag and drop between windows (#472)
     tests/actions_tests.cpp        # one list of actions, each matched by an agent's tool (#297)
     tests/goal_tests.cpp           # what to do next, from the player's state (#364)
     tests/mission_list_tests.cpp   # what the missions window lists (#297)
+    tests/inventory_tests.cpp      # what the inventory window lists, and what a move offers (#472)
     tests/station_list_tests.cpp   # what the market and hangar windows list (#297)
     tests/settle_tests.cpp         # stock, outposts, and claims that need one (#295)
     tests/siege_tests.cpp          # upkeep, decay and sieges of outposts (#295)
@@ -553,6 +559,7 @@ add_executable(tests
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/MissionList.cpp   # the missions window's rows, tested without one (#297)
+    src/game/sim/InventoryList.cpp # the inventory window's containers and rows (#472)
     src/game/core/Actions.cpp      # the actions every window offers, tested without one (#297)
     src/game/core/StationList.cpp  # the market's and the hangar's rows, tested without them (#297)
     src/game/core/Goal.cpp         # the goal prompt, tested without a window (#364)

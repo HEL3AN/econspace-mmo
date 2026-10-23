@@ -192,6 +192,13 @@ public:
     {
         clicks_.push_back({ x, y, frame, button });
     }
+    // A drag (--drag X1 Y1 X2 Y2 FRAME RELEASE, #472): pressed at the first point on `frame`,
+    // pulled to the second over the next frames and let go on `release` -- or held, with 0, so
+    // a screenshot shows the drag under way. Played into raylib's input as a click is.
+    void AddScriptedDrag(Vector2 from, Vector2 to, int frame, int release)
+    {
+        drags_.push_back({ from, to, frame, release });
+    }
     // A chat line sent on frame `frame` (--say TEXT FRAME), as if typed into the chat window:
     // two clients and a server show what local chat does without a hand on either (#347).
     void AddScriptedSay(const std::string& text, int frame) { says_.push_back({ text, frame }); }
@@ -230,10 +237,16 @@ private:
     // Docked at a player's structure rather than a station (#433, #438): it, found by the
     // snapshot's id each time it is asked -- never kept -- or null.
     const Entity* DockedStructure() const;
-    // Its storage, when the snapshot says it is this pilot's side's: what is kept and what is
-    // in the hold, a good to a row, each with a button to move it (#438).
-    void DrawStorage(Ui::Layout& L);
-    void MoveStorage(ResourceType type, int amount, bool store);  // an order to the server
+    // The inventory window (#472, GameInventory.cpp): the containers reachable here -- the hold,
+    // and a structure's storage when it is this pilot's side's (#438) -- what each holds, and
+    // moves between them by button or by dragging a row onto another container.
+    void DrawInventoryContent(const Ui::Frame& f);
+    // An order to the server to move goods between two containers here, by their
+    // InventoryList ids; a refusal comes back in the journal.
+    void RequestMove(const std::string& from, const std::string& to, ResourceType type, int amount);
+    // A good dragged from the inventory onto the market (#472): chosen there, with the amount
+    // dragged ready to sell. Selling stays a click.
+    void TakeMarketDrop(Ui::Layout& L);
 
     void SetupWindows();   // puts every window, screen and popup on the desk
     void HandleMenuBar();  // menu bar input: a button toggles its window
@@ -334,7 +347,7 @@ private:
     // from the galaxy snapshot, or the standard fee.
     double MarketFeeHere() const;
     bool   HostileToPlayerFaction(
-        FactionId f) const;  // is the faction hostile to the player (reputation/wanted)
+          FactionId f) const;  // is the faction hostile to the player (reputation/wanted)
 
     // M4c: the client renders from the snapshot. The snapshot is built every frame
     // (world from the server + player state); windows/rendering read it, not the live objects
@@ -551,6 +564,7 @@ private:
     static constexpr const char* WIN_CHAT = "chat";                // local and private chat (#347)
     static constexpr const char* WIN_CHAT_DOCKED = "chat_docked";  // ...where it is docked
     static constexpr const char* WIN_CORP = "corp";                // the corporation (#347)
+    static constexpr const char* WIN_INVENTORY = "inventory";      // holds and storage (#472)
     const char*                  ChatWindow() const
     {
         return mode_ == GameMode::Docked ? WIN_CHAT_DOCKED : WIN_CHAT;
@@ -576,11 +590,19 @@ private:
     Ui::Layout scannerLayout_;  // (#346)
     int        lossSeen_ = 0;   // the last loss (Proto::LossView::seq) already shown (#344)
     Ui::Layout hallLayout_;
-    int        marketSel_ = 0;
-    float      sellAmount_ = 0.0f;   // how much of the chosen commodity to sell
-    int        sellAmountFor_ = -1;  // ...chosen for this row; another row starts at its hold
-    float      buyAmount_ = 1.0f;    // how much of it to buy (#343)
-    int        hangarSel_ = -1;      // -1: the hull being flown
+    // The inventory window (#472): the container shown, the good chosen in it, how many of it a
+    // move carries (a new choice starts at all of it), and the filter typed.
+    Ui::Layout  inventoryLayout_;
+    std::string inventorySel_ = "hold";
+    int         inventoryGood_ = -1;
+    float       inventoryAmount_ = 0.0f;
+    std::string inventoryAmountFor_;  // the container and good the amount was chosen for
+    std::string inventoryFilter_;
+    int         marketSel_ = 0;
+    float       sellAmount_ = 0.0f;   // how much of the chosen commodity to sell
+    int         sellAmountFor_ = -1;  // ...chosen for this row; another row starts at its hold
+    float       buyAmount_ = 1.0f;    // how much of it to buy (#343)
+    int         hangarSel_ = -1;      // -1: the hull being flown
     // The hangar's Fit tab (#279): the fit being drawn up, the design it was drawn up from
     // (another one -- a refit landed, another hull -- starts it again), and the chosen socket.
     int                         hangarTab_ = 0;
@@ -607,6 +629,12 @@ private:
         int   button;
     };
     std::vector<ScriptedClick> clicks_;
+    struct ScriptedDrag
+    {
+        Vector2 from, to;
+        int     frame, release;
+    };
+    std::vector<ScriptedDrag> drags_;  // --drag (#472)
     // --say TEXT FRAME: a chat line typed and sent on that frame (#347).
     struct ScriptedSay
     {

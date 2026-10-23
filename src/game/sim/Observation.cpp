@@ -7,6 +7,7 @@
 #include "entities/ShipType.h"
 #include "entities/Structure.h"
 #include "missions/Mission.h"
+#include "sim/InventoryList.h"
 
 #include <algorithm>
 #include <cmath>
@@ -757,6 +758,41 @@ std::string DescribeMissions(const View& view)
         else
             out += "       needs: " + MissionNeeds(view, m) + "\n";
     }
+    return out;
+}
+
+std::string DescribeInventory(const View& view)
+{
+    if (view.snapshot == nullptr)
+        return "No world state yet.\n";
+    const Proto::Snapshot&          snap = *view.snapshot;
+    const Proto::PlayerView&        p = snap.player;
+    static const std::vector<float> NO_PRICES;
+    const std::vector<float>&       prices = p.docked ? snap.marketPrices : NO_PRICES;
+    const auto                      all = InventoryList::Reachable(p);
+    std::string                     out =
+        p.docked ? Fmt("INVENTORY docked at %s\n", StationName(view, p.dockedStationId).c_str())
+                                     : std::string("INVENTORY in space\n");
+    for (const InventoryList::Container& c : all)
+    {
+        out += Fmt("%s (%s) %d / %d", c.name.c_str(), c.id.c_str(), c.Used(), c.capacity);
+        const auto rows = InventoryList::Rows(c, prices);
+        if (rows.empty())
+            out += ": empty";
+        for (size_t i = 0; i < rows.size(); i++)
+        {
+            const InventoryList::Row& r = rows[i];
+            out += Fmt("%s %s %d", i == 0 ? ":" : ",", r.name.c_str(), r.amount);
+            if (r.price > 0.0f)
+                out += Fmt(" (%.1f cr each here, %.0f cr)", r.price, r.value);
+        }
+        out += "\n";
+    }
+    if (all.size() > 1)
+        out += "Move goods between them with store_cargo (hold to storage) and take_cargo "
+               "(storage to hold).\n";
+    else if (p.docked)
+        out += "Nothing here keeps goods for you but the hold.\n";
     return out;
 }
 
