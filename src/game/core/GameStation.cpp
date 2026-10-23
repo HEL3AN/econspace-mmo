@@ -165,7 +165,7 @@ void Game::DrawStationContent(const Ui::Frame& f)
                                  if (L.Button("inventory", "Inventory  (I)"))
                                      desk_.SetOpen(WIN_INVENTORY, true);
                              }
-                             DrawLicenceHere(L);
+                             DrawLicenceOffer(L);
                              DrawTransfer(L, *structure);
                          });
                 if (L.Button("undock", "Undock", true))
@@ -220,7 +220,7 @@ void Game::DrawStationContent(const Ui::Frame& f)
                             clientLink_->Send(Proto::EncodeCommand(c));
                         }
                     }
-                    DrawLicenceHere(L);  // building in this system (#431 slice 6)
+                    DrawLicenceOffer(L);  // building in this system (#431 slice 6, #509)
                 });
             if (L.Button("undock", "Undock", true))
                 Undock();

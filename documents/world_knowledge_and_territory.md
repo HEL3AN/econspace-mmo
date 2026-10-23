@@ -553,9 +553,15 @@ are marked; slices without one may go in any order.
      and attacking it is a crime; unlicensed, it is free to shoot and gets besieged.
    - *Built:* a licence is a party's (a corporation, or a pilot in none) per system, kept on
      the corporation's record (`corps.json`) or the pilot's book of owners (`world.json`),
-     `{holder, until, told}` in world time. Bought with `Command::buyLicence` docked at a
-     station of the holding faction, or anywhere in a corporation's system, by the pilot or
-     the corporation's CEO or a director (from the treasury). Rent (`licences` in
+     `{holder, until, told}` in world time. Bought where it is granted (#509), with
+     `Command::buyLicence` docked at a station of the holding faction or at a structure of
+     the holding corporation (`Simulation::LicenceDock`), by the pilot or the corporation's
+     CEO or a director (from the treasury); the snapshot's `LicenceView` says where and
+     whether the pilot is there (`where`, `atHolder`), the station window offers it only
+     there, a refused build says who grants it, the price and where to buy, the corporation
+     window (a pilot in none: the same view) lists what the party holds with Renew, and the
+     galaxy statistics carry the terms of every system (`licenceBy`, `licenceRent`) for the
+     map. Rent (`licences` in
      `world_rules.json`: 2000 cr a week, a day's grace, standing 10) is taken in the coarse
      pass; a corporation holder admits by its docking policy. A player structure already
      standing when licences arrived, or whose system changed hands, is asked rent from then,

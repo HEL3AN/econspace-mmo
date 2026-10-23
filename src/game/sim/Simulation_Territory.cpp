@@ -627,12 +627,41 @@ std::string Simulation::LicenceProblem(const std::string& account, const SystemS
     std::string       why;
     if (!Admits(st, holder, party, why))
         return "building in " + where + " takes a licence from " + from + ", and " + why;
-    FactionId f;
+    const Entity* dock = LicenceDock(st, holder);
     return "building in " + where + " takes a licence from " + from + " (" +
-           Credits(WorldRules::LicenceRules().rent) + " a week" +
+           Credits(LicenceRent(st)) + " a week" +
            (l != nullptr && l->holder == holder ? ", and yours is unpaid" : std::string()) +
-           "): buy one " +
-           (FactionKey(holder, f) ? "docked at one of its stations here" : std::string("here"));
+           "): buy one docked at " +
+           (dock != nullptr ? dock->GetName() : std::string("its station here"));
+}
+
+double Simulation::LicenceRent(const SystemState&) const
+{
+    return WorldRules::LicenceRules().rent;
+}
+
+const Entity* Simulation::LicenceDock(const SystemState& st, const std::string& holder,
+                                      int dockedId) const
+{
+    FactionId     f;
+    const bool    byFaction = FactionKey(holder, f);
+    const Entity* first = nullptr;
+    for (const auto& e : st.entities)
+    {
+        if (dockedId != 0 && e->GetId() != dockedId)
+            continue;
+        bool sells = false;
+        if (byFaction)
+            sells = e->GetKind() == EntityKind::Station &&
+                    static_cast<const Station&>(*e).GetFaction() == f;
+        else
+            sells = e->GetKind() == EntityKind::Structure && e->Has(Component::Dockable) &&
+                    !static_cast<const Structure&>(*e).IsBuilding() &&
+                    corps_.IdOf(e->GetOwner()) == holder;
+        if (sells && first == nullptr)
+            first = e.get();
+    }
+    return first;
 }
 
 void Simulation::SetLicence(const std::string& party, const std::string& system,
@@ -741,17 +770,14 @@ bool Simulation::BuyLicence(ClientSession& s)
         return refuse("nobody here licenses building -- " + where + " is open to anyone");
     if (party == holder)
         return refuse(where + " is your corporation's: it needs no licence");
-    FactionId f;
-    if (FactionKey(holder, f))
+    // Bought where it is granted (#509): docked at one of the holder's stations here -- a
+    // faction's, or a structure of the holding corporation.
+    if (s.dockedStationId == 0 || LicenceDock(*st, holder, s.dockedStationId) == nullptr)
     {
-        // Bought where the faction does business: docked at one of its stations here.
-        const Entity* at = nullptr;
-        for (const auto& e : st->entities)
-            if (s.dockedStationId != 0 && e->GetId() == s.dockedStationId)
-                at = e.get();
-        if (at == nullptr || at->GetKind() != EntityKind::Station ||
-            static_cast<const Station&>(*at).GetFaction() != f)
-            return refuse("dock at a " + FactionName(f) + " station in " + where + " to buy one");
+        const Entity* dock = LicenceDock(*st, holder);
+        return refuse("dock at " +
+                      (dock != nullptr ? dock->GetName() : HolderName(holder) + "'s station") +
+                      " in " + where + " to buy one");
     }
     if (!IsPilotParty(party))
     {
@@ -777,7 +803,8 @@ bool Simulation::BuyLicence(ClientSession& s)
             return refuse("it is paid for " + Hours(had->until - time_) + " more already");
         from = had->until;
     }
-    if (!PayRent(party, holder, r.rent, why))
+    const double rent = LicenceRent(*st);
+    if (!PayRent(party, holder, rent, why))
         return refuse(why);
     Corps::Licence l;
     l.holder = holder;
@@ -785,7 +812,7 @@ bool Simulation::BuyLicence(ClientSession& s)
     SetLicence(party, st->id, l);
     RefreshLicences(*st);
     const std::string text = "Licensed by " + HolderName(holder) + " to build in " + where +
-                             " for " + Hours(l.until - time_) + ": " + Credits(r.rent) + " paid" +
+                             " for " + Hours(l.until - time_) + ": " + Credits(rent) + " paid" +
                              (IsPilotParty(party) ? "" : " from the treasury") +
                              ", and taken each week from then on";
     if (IsPilotParty(party))
@@ -820,8 +847,12 @@ Proto::LicenceView Simulation::LicenceViewFor(const ClientSession& s) const
     const Corps::Corp* c = IsPilotParty(party) ? nullptr : corps_.Find(party);
     v.party = c != nullptr ? Tag(*c) : std::string("you");
     v.admitted = Admits(*st, holder, party, v.why);
-    v.rent = r.rent;
+    v.rent = LicenceRent(*st);
     v.periodDays = r.periodDays;
+    // Where it is sold, and whether the pilot is there (#509).
+    if (const Entity* dock = LicenceDock(*st, holder))
+        v.where = dock->GetName();
+    v.atHolder = s.dockedStationId != 0 && LicenceDock(*st, holder, s.dockedStationId) != nullptr;
     const Corps::Member* m = c != nullptr ? c->Find(s.accountName) : nullptr;
     v.canPay = c == nullptr || (m != nullptr && m->role != Corps::Role::Member);
     if (const Corps::Licence* l = LicenceOf(party, st->id))
@@ -830,22 +861,35 @@ Proto::LicenceView Simulation::LicenceViewFor(const ClientSession& s) const
     return v;
 }
 
-std::vector<Proto::LicenceView> Simulation::CorpLicences(const std::string& corpId) const
+std::vector<Proto::LicenceView> Simulation::PartyLicences(const std::string& party) const
 {
     std::vector<Proto::LicenceView> out;
-    const Corps::Corp*              c = corps_.Find(corpId);
-    if (c == nullptr)
+    const Corps::Corp*              c = IsPilotParty(party) ? nullptr : corps_.Find(party);
+    const std::map<std::string, Corps::Licence>* held = nullptr;
+    if (c != nullptr)
+        held = &c->licences;
+    else if (IsPilotParty(party))
+    {
+        const auto o = owners_.find(PilotIn(party));
+        if (o != owners_.end())
+            held = &o->second.licences;
+    }
+    if (held == nullptr)
         return out;
     const WorldRules::Licences& r = WorldRules::LicenceRules();
-    for (const auto& kv : c->licences)
+    for (const auto& kv : *held)
     {
+        const SystemState* st = SystemById(kv.first);
         Proto::LicenceView v;
         v.system = kv.first;
         v.holder = HolderName(kv.second.holder);
-        v.party = Tag(*c);
+        v.party = c != nullptr ? Tag(*c) : std::string("you");
         v.admitted = true;
-        v.rent = r.rent;
+        v.rent = st != nullptr ? LicenceRent(*st) : r.rent;
         v.periodDays = r.periodDays;
+        if (st != nullptr)
+            if (const Entity* dock = LicenceDock(*st, kv.second.holder))
+                v.where = dock->GetName();
         StateOf(kv.second, time_, r.graceHours * 3600.0, v.state, v.until);
         out.push_back(std::move(v));
     }
@@ -900,7 +944,7 @@ void Simulation::RefreshLicences(SystemState& st)
                 SetLicence(party, st.id, fresh);
                 TellParty(party, t.GetName() + " in " + SystemName(st.id) + " stands in " +
                                      HolderName(holder) + "'s space: a licence is " +
-                                     Credits(WorldRules::LicenceRules().rent) +
+                                     Credits(LicenceRent(st)) +
                                      " a week, asked from now. Unpaid, it trespasses in " +
                                      Hours(grace));
                 l = LicenceOf(party, st.id);
@@ -976,7 +1020,7 @@ void Simulation::StepLicences()
             // The system changed hands: the new holder asks its rent from now.
             TellParty(party, where + " is " + HolderName(holder) + "'s now: the licence from " +
                                  HolderName(l.holder) + " is void, and " + HolderName(holder) +
-                                 " asks " + Credits(r.rent) + " a week from now");
+                                 " asks " + Credits(LicenceRent(*st)) + " a week from now");
             l.holder = holder;
             l.until = time_;
             l.told = 0;
@@ -1002,7 +1046,7 @@ void Simulation::StepLicences()
         }
         // Due: taken if the holder still admits the party and it can pay.
         std::string why;
-        if (Admits(*st, holder, party, why) && PayRent(party, holder, r.rent, why))
+        if (Admits(*st, holder, party, why) && PayRent(party, holder, LicenceRent(*st), why))
         {
             l.until += period;
             l.told = 0;

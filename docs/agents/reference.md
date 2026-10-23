@@ -336,7 +336,7 @@ Pay off the bounty a faction has on you, at a station, so its ships stop hunting
 
 ### `buy_licence`
 
-Buy, or renew a week ahead, the licence to build in the system you are in (#431). A system a faction or a corporation holds takes its leave and a weekly rent: a faction licenses those whose standing with it is high enough -- a corporation's is its members' together -- and sells it docked at one of its stations there; a corporation by its docking policy, anywhere in its system. Paid from your money, or for your corporation from its treasury by its CEO or a director, and taken each week from then on. Unpaid a day past due, what you have there trespasses: anyone may shoot it, and the faction may evict it. observe says what building here takes.
+Buy, or renew a week ahead, the licence to build in the system you are in (#431). A system a faction or a corporation holds takes its leave and a weekly rent: a faction licenses those whose standing with it is high enough -- a corporation's is its members' together -- and a corporation by its docking policy. It is bought where it is granted (#509): docked at one of the holder's stations there, or at a structure of the holding corporation; a refused build says where. Paid from your money, or for your corporation from its treasury by its CEO or a director, and taken each week from then on. Unpaid a day past due, what you have there trespasses: anyone may shoot it, and the faction may evict it. observe says what building here takes.
 
 No arguments.
 

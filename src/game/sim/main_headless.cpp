@@ -851,7 +851,7 @@ static Proto::CorpView CorpViewFor(const Simulation& sim, const std::string& acc
         v.tax = (float)c->TaxRate(Goods::Rules().fee, WorldRules::InfluenceRules().taxMax);
         v.docking = Corps::DockingName(c->docking);
         v.holds = sim.HeldBy(c->id);
-        v.licences = sim.CorpLicences(c->id);  // (#431 slice 6)
+        v.licences = sim.PartyLicences(c->id);  // (#431 slice 6)
         // ...and what it pays for police in each (#431 slice 11).
         for (const std::string& id : v.holds)
         {
@@ -879,6 +879,8 @@ static Proto::CorpView CorpViewFor(const Simulation& sim, const std::string& acc
             v.patrols.push_back(std::move(p));
         }
     }
+    else
+        v.licences = sim.PartyLicences(sim.PartyOf(account));  // a pilot's own (#509)
     for (const Corps::Corp* c : sim.Corporations().InvitesFor(account, now))
         for (const Corps::Invite& i : c->invites)
             if (i.account == account)

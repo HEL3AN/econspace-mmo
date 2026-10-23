@@ -333,6 +333,10 @@ json LicenceJson(const Proto::LicenceView& l)
         j["sys"] = l.system;
     if (!l.why.empty())
         j["why"] = l.why;
+    if (!l.where.empty())
+        j["where"] = l.where;
+    if (l.atHolder)
+        j["here"] = true;
     return j;
 }
 
@@ -349,6 +353,8 @@ Proto::LicenceView LicenceFrom(const json& j)
     l.state = Val(j, "state", std::string("none"));
     l.until = Val(j, "until", 0.0);
     l.canPay = Val(j, "pay", false);
+    l.where = Val(j, "where", std::string());
+    l.atHolder = Val(j, "here", false);
     return l;
 }
 
@@ -2085,6 +2091,8 @@ std::string EncodeGalaxy(const GalaxyState& s)
             gj["front"] = true;
         if (g.chartPrice > 0)
             gj["chart"] = { g.chartPrice, g.chartWhat };
+        if (!g.licenceBy.empty())
+            gj["lic"] = { g.licenceBy, g.licenceRent };
         sys.push_back(std::move(gj));
     }
     j["sys"] = sys;
@@ -2131,6 +2139,13 @@ bool DecodeGalaxy(const std::string& s, GalaxyState& out)
             {
                 g.chartPrice = (*chart)[0].get<int>();
                 g.chartWhat = (*chart)[1].get<std::string>();
+            }
+            const auto lic = gj.find("lic");
+            if (lic != gj.end() && lic->is_array() && lic->size() == 2 && (*lic)[0].is_string() &&
+                (*lic)[1].is_number())
+            {
+                g.licenceBy = (*lic)[0].get<std::string>();
+                g.licenceRent = (*lic)[1].get<double>();
             }
             out.systems.push_back(g);
         }
@@ -2439,13 +2454,6 @@ std::string EncodeCorpView(const CorpView& v)
         j["docking"] = v.docking;
         if (!v.holds.empty())
             j["holds"] = v.holds;
-        if (!v.licences.empty())
-        {
-            json licences = json::array();
-            for (const LicenceView& l : v.licences)
-                licences.push_back(LicenceJson(l));
-            j["licences"] = std::move(licences);
-        }
         if (!v.police.empty())
             j["police"] = v.police;
         if (!v.patrols.empty())
@@ -2463,6 +2471,14 @@ std::string EncodeCorpView(const CorpView& v)
                                     { "upkeep", p.upkeep } });
             j["patrols"] = std::move(patrols);
         }
+    }
+    // A pilot in no corporation holds licences of their own (#509).
+    if (!v.licences.empty())
+    {
+        json licences = json::array();
+        for (const LicenceView& l : v.licences)
+            licences.push_back(LicenceJson(l));
+        j["licences"] = std::move(licences);
     }
     if (!v.invites.empty())
     {

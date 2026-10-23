@@ -462,22 +462,9 @@ void Game::DrawCorpContent(const Ui::Frame& f)
                     L.Tooltip("dock_allies", "Members, and whoever each structure's rules of "
                                              "engagement hold fire for");
                 }
-                // Its licences to build in others' space (#431 slice 6), the rent from the
-                // treasury.
-                const double now = worldClock_.Now(GetTime());
-                for (const Proto::LicenceView& l : corpView_.licences)
-                {
-                    const bool ok = l.state == "licensed";
-                    L.Field("Licence in " + MapSystemName(l.system),
-                            l.state == "licensed" ? TextFormat("%s, %.0f h paid", l.holder.c_str(),
-                                                               (l.until - now) / 3600.0)
-                            : l.state == "unpaid"
-                                ? TextFormat("%s, UNPAID: lapses in %.0f h", l.holder.c_str(),
-                                             (l.until - now) / 3600.0)
-                                : TextFormat("%s, LAPSED: trespassing", l.holder.c_str()),
-                            ok ? t.colors.text : t.colors.bad);
-                }
-                DrawLicenceHere(L);
+                // The licences it holds, in others' space (#431 slice 6, #509): bought where
+                // they are granted, so here they are listed and renewed, not offered.
+                DrawLicencesHeld(L, leads);
                 int online = 0;
                 for (const Proto::CorpMember& m : corpView_.members)
                     online += m.online ? 1 : 0;
@@ -584,6 +571,7 @@ void Game::DrawCorpContent(const Ui::Frame& f)
                                   acts.push_back({ "decline", "", inv.ticker, "", "" });
                           });
                 }
+                DrawLicencesHeld(L, true);
                 L.Divider();
                 L.Text("Found a corporation", TextStyle::Title());
                 L.FormRow("Name",
@@ -677,7 +665,58 @@ void Game::DrawTreasuryTab(Ui::Layout& L, bool leads, std::vector<Proto::CorpAct
     L.Table(table);
 }
 
-void Game::DrawLicenceHere(Ui::Layout& L)
+// The licences this pilot's party holds (#509): a corporation's, or their own in none -- the
+// system, who granted it, what it costs and until when -- with Renew, which buys another week
+// where it is granted: docked at the holder's station there.
+void Game::DrawLicencesHeld(Ui::Layout& L, bool mayPay)
+{
+    using Ui::Box;
+    using Ui::TextStyle;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    if (corpView_.licences.empty())
+        return;
+    const double              now = worldClock_.Now(GetTime());
+    const Proto::LicenceView& here = snapshot_.player.licence;
+    L.Divider();
+    L.Text("LICENCES TO BUILD", TextStyle::Label());
+    for (const Proto::LicenceView& l : corpView_.licences)
+    {
+        const bool        ok = l.state == "licensed";
+        const double      days = (l.until - now) / 86400.0;
+        const std::string name = MapSystemName(l.system);
+        L.Field(name,
+                l.state == "licensed"
+                    ? TextFormat("%s, paid until %.1f d from now", l.holder.c_str(), days)
+                : l.state == "unpaid"
+                    ? TextFormat("%s, UNPAID: lapses in %.0f h", l.holder.c_str(), days * 24.0)
+                    : TextFormat("%s, LAPSED: trespassing", l.holder.c_str()),
+                ok ? t.colors.text : t.colors.bad);
+        const bool dockedThere = here.atHolder && snapshot_.systemId == l.system;
+        L.Row(Box().GrowX().Gap(t.metrics.gap).Align(Ui::Align::Start, Ui::Align::Center),
+              [&]
+              {
+                  L.Text(TextFormat("%.0f cr a week", l.rent),
+                         TextStyle::Small().Tint(t.colors.money));
+                  if (L.Button("renew_" + l.system, "Renew", false, dockedThere && mayPay))
+                  {
+                      Proto::Command c;
+                      c.buyLicence = true;
+                      clientLink_->Send(Proto::EncodeCommand(c));
+                  }
+              });
+        std::string tip =
+            !mayPay ? "Your corporation's CEO or a director pays its licences, from the treasury"
+            : dockedThere
+                ? "Pay a week ahead"
+                : "A licence is renewed where it is granted: docked at " +
+                      (l.where.empty() ? l.holder + "'s station" : l.where) + " in " + name;
+        L.Tooltip("renew_" + l.system, tip);
+    }
+}
+
+// What building in this system takes, offered where it is granted (#509): docked at the
+// holder's station or structure here. Anywhere else it only says where to go.
+void Game::DrawLicenceOffer(Ui::Layout& L)
 {
     using Ui::TextStyle;
     const Ui::Theme&          t = Ui::CurrentTheme();
@@ -686,7 +725,15 @@ void Game::DrawLicenceHere(Ui::Layout& L)
         return;  // nobody here asks for one
     const double now = worldClock_.Now(GetTime());
     L.Divider();
-    L.Text("LICENCE TO BUILD HERE", TextStyle::Label());
+    L.Text("LICENCES", TextStyle::Label());
+    if (!l.atHolder)
+    {
+        L.Text("Building in this system takes " + l.holder + "'s licence, " +
+                   std::string(TextFormat("%.0f cr every %.0f days", l.rent, l.periodDays)) +
+                   "; it is sold docked at " + (l.where.empty() ? "its stations" : l.where) + ".",
+               TextStyle::Small().Tint(t.colors.dim).Wrap());
+        return;
+    }
     L.Field("Granted by", l.holder, t.colors.text);
     L.Field("Rent", TextFormat("%.0f cr every %.0f days", l.rent, l.periodDays), t.colors.money);
     const bool paid = l.state == "licensed";

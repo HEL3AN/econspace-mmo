@@ -36,7 +36,11 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    66;  // 66: a corporation's treasury can be paid into and out of (#509) -- a CorpAct
+    67;  // 67: a licence is bought where it is granted (#509) -- a LicenceView says where and
+         // whether the pilot is docked there, the galaxy statistics say whose licence building
+         // in a system takes and its rent, and a CorpView lists the licences of a pilot in no
+         // corporation too;
+         // 66: a corporation's treasury can be paid into and out of (#509) -- a CorpAct
          // "deposit" and "withdraw" (value: credits), and a CorpView carries the treasury's
          // ledger;
          // 65: a wreck holds every good, and a pilot can jettison into a can (#472) -- an
@@ -443,6 +447,10 @@ struct LicenceView
     std::string why;               // ...and why it would not
     double      rent = 0.0;        // a period's rent
     double      periodDays = 7.0;
+    // Where the holder sells it (#509): the name of its station, or of a structure of its, in
+    // the system -- and whether the pilot is docked at one now, where it is bought.
+    std::string where;
+    bool        atHolder = false;
     std::string state = "none";  // "none", "licensed", "unpaid" or "trespass"
     double      until = 0.0;     // licensed: paid to; unpaid: lapses at (world time)
     bool canPay = false;  // this pilot may buy it: one in no corporation, or its CEO or a director
@@ -786,6 +794,11 @@ struct GalaxySystemStat
     // nothing -- and what that is, in a few words ("new system, 2 changes, 1 hidden find").
     int         chartPrice = 0;
     std::string chartWhat{};
+    // What building here takes (#509): the holder whose licence it needs, as a player reads
+    // it, and its rent a week -- empty for a system anyone builds in (and for one the
+    // recipient's own corporation holds, which the client sees from `holder`).
+    std::string licenceBy{};
+    double      licenceRent = 0.0;
 };
 
 // Galaxy snapshot: statistics for the systems on the recipient's charts + a news feed (#431:

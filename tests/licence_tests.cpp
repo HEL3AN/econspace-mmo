@@ -412,3 +412,160 @@ TEST_CASE("a licence on the wire: the command, the snapshot's view, a structure'
     REQUIRE(lb.entities.size() == 1);
     CHECK(lb.entities[0].licence == (int)LicenceState::Trespass);
 }
+
+// --- Bought where it is granted (#509) ---
+
+namespace
+{
+std::string NameOf(Core& c, int id)
+{
+    for (const auto& e : c.St().entities)
+        if (e->GetId() == id)
+            return e->GetName();
+    return std::string();
+}
+}  // namespace
+
+TEST_CASE("a licence is bought docked at a station of the holder, and the refusal says where "
+          "(#509)")
+{
+    Core           c;
+    ClientSession& cara = c.Pilot("cara");
+    cara.account.SetMoney(10000.0);
+    cara.account.AddReputation(Fac::TradersGuild(), 15.0f);
+    const std::string hub = NameOf(c, c.Hub());
+    REQUIRE_FALSE(hub.empty());
+
+    // The refusal for want of a licence names who grants it, the price and where to buy.
+    const std::string why = c.sim.LicenceProblem("cara", c.St());
+    CHECK(why.find("licence from Traders Guild") != std::string::npos);
+    CHECK(why.find("2000 cr a week") != std::string::npos);
+    CHECK(why.find("buy one docked at " + hub) != std::string::npos);
+
+    // In flight: no sale, and the offer says where to go.
+    Proto::LicenceView v = c.sim.LicenceViewFor(cara);
+    CHECK(v.where == hub);
+    CHECK_FALSE(v.atHolder);
+    CHECK_FALSE(c.sim.BuyLicence(cara));
+    CHECK(cara.account.GetMoney() == doctest::Approx(10000.0));
+
+    // Docked somewhere that is not the holder's -- a structure of the pilot's own -- no sale.
+    cara.dockedStationId = c.Build("outpost", "cara");
+    CHECK_FALSE(c.sim.LicenceViewFor(cara).atHolder);
+    CHECK_FALSE(c.sim.BuyLicence(cara));
+    CHECK(cara.account.GetMoney() == doctest::Approx(10000.0));
+
+    // At the holder's station: offered, and sold.
+    cara.dockedStationId = c.Hub();
+    CHECK(c.sim.LicenceViewFor(cara).atHolder);
+    REQUIRE(c.sim.BuyLicence(cara));
+    CHECK(cara.account.GetMoney() == doctest::Approx(8000.0));
+    CHECK(c.sim.LicenceProblem("cara", c.St()).empty());
+
+    // What the party holds, for the corporation window of a pilot in none.
+    const std::vector<Proto::LicenceView> held = c.sim.PartyLicences(c.sim.PartyOf("cara"));
+    REQUIRE(held.size() == 1);
+    CHECK(held[0].system == "core");
+    CHECK(held[0].holder == "Traders Guild");
+    CHECK(held[0].where == hub);
+    CHECK(held[0].state == "licensed");
+    CHECK(held[0].party == "you");
+}
+
+TEST_CASE("a corporation's system sells its licence at its own structures, to a corporation's "
+          "CEO or a director from the treasury (#509)")
+{
+    Core             c;
+    Corps::Registry& r = c.sim.Corporations();
+    REQUIRE(r.Create("erik", "Rival", "RV", NOW).Ok());
+    const std::string rival = r.IdOf("erik");
+    const int         dock = c.Build("outpost", Corps::OwnerOf(rival));
+    c.St().agg.holderCorp = rival;  // the Rivals hold core now
+    REQUIRE(c.sim.LicenceHolder(c.St()) == rival);
+
+    ClientSession& anna = c.Pilot("anna");    // Deep Haul's CEO
+    ClientSession& boris = c.Pilot("boris");  // ...and a member
+    REQUIRE(r.Credit(c.Corp(), 5000.0));
+    const std::string where = NameOf(c, dock);
+
+    // Not "anywhere in the system" any more: docked at a structure of the holder's.
+    CHECK(c.sim.LicenceProblem("anna", c.St()).find("buy one docked at " + where) !=
+          std::string::npos);
+    CHECK_FALSE(c.sim.BuyLicence(anna));
+    anna.dockedStationId = c.Hub();  // the Guild's station is not the holder's
+    CHECK_FALSE(c.sim.BuyLicence(anna));
+    CHECK(r.Find(c.Corp())->treasury == doctest::Approx(5000.0));
+
+    // A member docked there cannot pay for the corporation; its CEO can.
+    boris.dockedStationId = dock;
+    CHECK_FALSE(c.sim.LicenceViewFor(boris).canPay);
+    CHECK_FALSE(c.sim.BuyLicence(boris));
+    anna.dockedStationId = dock;
+    const Proto::LicenceView v = c.sim.LicenceViewFor(anna);
+    CHECK(v.atHolder);
+    CHECK(v.where == where);
+    CHECK(v.canPay);
+    REQUIRE(c.sim.BuyLicence(anna));
+    CHECK(r.Find(c.Corp())->treasury == doctest::Approx(3000.0));
+    CHECK(r.Find(rival)->treasury == doctest::Approx(2000.0));
+    CHECK(c.sim.LicenceProblem("boris", c.St()).empty());
+
+    // Both treasuries say so in their ledgers (#509): rent paid, and rent received.
+    const auto& paid = r.Find(c.Corp())->ledger;
+    REQUIRE_FALSE(paid.empty());
+    CHECK(paid.back().kind == "rent_paid");
+    CHECK(paid.back().note == "Rival [RV]");
+    CHECK(paid.back().amount == doctest::Approx(-2000.0));
+    const auto& got = r.Find(rival)->ledger;
+    REQUIRE_FALSE(got.empty());
+    CHECK(got.back().kind == "rent_received");
+    CHECK(got.back().note == "Deep Haul [DH]");
+    CHECK(got.back().amount == doctest::Approx(2000.0));
+}
+
+TEST_CASE("the terms of building are in the galaxy statistics, and where it is sold on the wire "
+          "(#509)")
+{
+    Core                     c;
+    const Proto::GalaxyState gs = c.sim.GalaxyStats();
+    bool                     core = false, verge = false;
+    for (const Proto::GalaxySystemStat& g : gs.systems)
+    {
+        if (g.id == "core")
+        {
+            core = true;
+            CHECK(g.licenceBy == "Traders Guild");
+            CHECK(g.licenceRent == doctest::Approx(2000.0));
+        }
+        if (g.id == "verge")
+        {
+            verge = true;
+            CHECK(g.licenceBy.empty());
+        }
+    }
+    CHECK(core);
+    CHECK(verge);
+    Proto::GalaxyState back;
+    REQUIRE(Proto::DecodeGalaxy(Proto::EncodeGalaxy(gs), back));
+    for (const Proto::GalaxySystemStat& g : back.systems)
+        if (g.id == "core")
+        {
+            CHECK(g.licenceBy == "Traders Guild");
+            CHECK(g.licenceRent == doctest::Approx(2000.0));
+        }
+
+    // A pilot in no corporation has licences of their own in the view that carries them.
+    Proto::CorpView    v;
+    Proto::LicenceView l;
+    l.system = "core";
+    l.holder = "Traders Guild";
+    l.where = "Helios Hub";
+    l.atHolder = true;
+    v.licences.push_back(l);
+    Proto::CorpView vb;
+    REQUIRE(Proto::DecodeCorpView(Proto::EncodeCorpView(v), vb));
+    REQUIRE(vb.licences.size() == 1);
+    CHECK(vb.id.empty());
+    CHECK(vb.licences[0].where == "Helios Hub");
+    CHECK(vb.licences[0].atHolder);
+}
