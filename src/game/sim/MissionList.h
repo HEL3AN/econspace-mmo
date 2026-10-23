@@ -30,6 +30,10 @@ struct Row
     int         offerId = 0;
     std::string title;
     std::string description;
+    // The title and what tells it from another of its kind, short enough for a row (#427):
+    // "Delivery to Vela Yards", "Bounty: 3 pirates", "Supply: 20 Steel, Kelos". A board of
+    // three rows that all read "Delivery" asks for a click on each to tell them apart.
+    std::string summary;
     std::string kind;    // "bounty", "mining", "delivery", "supply", "escort", "siege",
                          // "besiege", "contract"
     std::string status;  // how far along: "2 / 5", "ready", "deliver", "waiting at Vela"

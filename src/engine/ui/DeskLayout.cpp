@@ -1049,7 +1049,7 @@ void DeskLayout::Load(const nlohmann::json& windows)
 }
 
 bool DeskLayout::ReadFile(const nlohmann::json& file, const std::string& account, DeskLayout& into,
-                          std::string& error)
+                          std::string& error, const std::string& fallback)
 {
     if (!file.is_object())
     {
@@ -1067,7 +1067,9 @@ bool DeskLayout::ReadFile(const nlohmann::json& file, const std::string& account
     const auto accounts = file.find("accounts");
     if (accounts != file.end() && accounts->is_object())
     {
-        const auto mine = accounts->find(account);
+        auto mine = accounts->find(account);
+        if (mine == accounts->end() && !fallback.empty())
+            mine = accounts->find(fallback);
         if (mine != accounts->end())
             into.Load(*mine);
     }

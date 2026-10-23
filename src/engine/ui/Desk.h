@@ -97,7 +97,9 @@ public:
 
     // Reads one account's layout from a file shared by every account on this machine, and
     // keeps it there from now on. A file from a newer build is neither read nor written.
-    void UseLayoutFile(const std::string& path, const std::string& account);
+    // `fallback`: the key read instead while `account` has nothing saved (DeskLayout::ReadFile).
+    void UseLayoutFile(const std::string& path, const std::string& account,
+                       const std::string& fallback = std::string());
 
     const DeskLayout& Layout() const { return layout_; }
 

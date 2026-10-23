@@ -307,7 +307,8 @@ std::vector<Desk::MenuSlot> Desk::MenuSlots() const
     return slots;
 }
 
-void Desk::UseLayoutFile(const std::string& path, const std::string& account)
+void Desk::UseLayoutFile(const std::string& path, const std::string& account,
+                         const std::string& fallback)
 {
     file_ = path;
     account_ = account;
@@ -324,7 +325,7 @@ void Desk::UseLayoutFile(const std::string& path, const std::string& account)
         return;
     }
     std::string error;
-    if (!DeskLayout::ReadFile(file, account, layout_, error))
+    if (!DeskLayout::ReadFile(file, account, layout_, error, fallback))
     {
         TraceLog(LOG_WARNING, "UI layout: %s: %s; not used, not overwritten", path.c_str(),
                  error.c_str());

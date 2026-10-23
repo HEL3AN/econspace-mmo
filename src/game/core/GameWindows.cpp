@@ -37,19 +37,6 @@ std::string Credits(double v)
         std::snprintf(buf, sizeof(buf), "%.0f", v);
     return buf;
 }
-
-// A world distance as an instrument says it: 800, 25k, 1.2M.
-std::string Span(float u)
-{
-    char buf[32];
-    if (u >= 1000000.0f)
-        std::snprintf(buf, sizeof(buf), "%.1fM", u / 1000000.0f);
-    else if (u >= 1000.0f)
-        std::snprintf(buf, sizeof(buf), "%.0fk", u / 1000.0f);
-    else
-        std::snprintf(buf, sizeof(buf), "%.0f", u);
-    return buf;
-}
 }  // namespace
 
 Color Game::StandingColor(FactionId f) const
@@ -91,6 +78,7 @@ Goal::Prompt Game::CurrentGoal() const
     Obs::View view;
     view.snapshot = &snapshot_;
     view.layout = &layout_.byId;
+    view.forPlayer = true;  // a window: names, not ids (#427)
     for (const MissionList::Row& r : MissionList::Build(view, MissionList::Board::Active))
     {
         Goal::Mission m;
@@ -136,6 +124,7 @@ void Game::DrawMissionsContent(const Ui::Frame& f)
     Obs::View view;
     view.snapshot = &snapshot_;
     view.layout = &layout_.byId;
+    view.forPlayer = true;
     missionsTab_ = std::clamp(missionsTab_, 0, 1);
     const bool                          offers = missionsTab_ == 1;
     const std::vector<MissionList::Row> rows =
@@ -166,13 +155,14 @@ void Game::DrawMissionsContent(const Ui::Frame& f)
         const MissionList::Row& row = rows[r];
         switch (c)
         {
-            case 0: return Ui::Cell{ row.title, row.ready ? t.colors.good : t.colors.text };
+            case 0: return Ui::Cell{ row.summary, row.ready ? t.colors.good : t.colors.text };
             case 1: return Ui::Cell{ row.status, row.ready ? t.colors.good : t.colors.dim };
             default: return Ui::Cell{ Credits(row.reward), t.colors.money };
         }
     };
     table.rowFill = [&](int r) { return r == sel ? t.colors.selected : Color{ 0, 0, 0, 0 }; };
-    table.tooltip = [&](int r) { return rows[r].title; };
+    table.tooltip = [&](int r)
+    { return rows[r].description.empty() ? rows[r].summary : rows[r].description; };
 
     // The chosen mission in full, and its buttons.
     auto details = [&]
@@ -380,7 +370,7 @@ void Game::DrawRadarContent(const Ui::Frame& f)
                          L.Spacer();
                          // How far across the scope reaches, side to side.
                          if (lastScale > 0.0f)
-                             L.Text(Span(radarScope_.width / lastScale) + " across",
+                             L.Text(Ui::Distance(radarScope_.width / lastScale) + " across",
                                     TextStyle::Small().Tint(t.colors.dim));
                      });
                  L.Row(Box().Id("scope").Grow().Border(t.colors.border, t.metrics.border), [] {});

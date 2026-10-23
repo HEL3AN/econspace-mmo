@@ -345,7 +345,10 @@ void Game::DrawMarketContent(const Ui::Frame& f)
                 {
                     if (L.Button("buy", TextFormat("Buy %d  ~%.0f cr", amount, m.buyUnit * amount)))
                         BuyCargo(m.type, amount);
-                    if (L.Button("buymax", TextFormat("Buy %d", m.canBuy), true))
+                    // The most there is room and money for -- only when it is more than the
+                    // amount above, or the two buttons say the same thing (#427).
+                    if (m.canBuy > amount &&
+                        L.Button("buymax", TextFormat("Buy most: %d", m.canBuy), true))
                         BuyCargo(m.type, m.canBuy);
                 });
         }

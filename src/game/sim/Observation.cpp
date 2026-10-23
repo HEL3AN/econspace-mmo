@@ -239,17 +239,31 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
 // print a bare number that looks like an id observe would list.
 std::string StationName(const Obs::View& view, int id)
 {
+    auto named = [&](const std::string& name)
+    { return view.forPlayer ? name : Fmt("%s (#%d)", name.c_str(), id); };
     if (view.layout != nullptr)
     {
         auto it = view.layout->find(id);
         if (it != view.layout->end() && !it->second.name.empty())
-            return Fmt("%s (#%d)", it->second.name.c_str(), id);
+            return named(it->second.name);
     }
     if (view.snapshot != nullptr)
         for (const Proto::EntitySnapshot& e : view.snapshot->entities)
             if (e.id == id && !e.name.empty())
-                return Fmt("%s (#%d)", e.name.c_str(), id);
-    return Fmt("station #%d, not in this system", id);
+                return named(e.name);
+    return view.forPlayer ? std::string("a station in another system")
+                          : Fmt("station #%d, not in this system", id);
+}
+
+// " (system w-1-1)" and " (#12)" after a name, for an agent, whose tools take them; nothing
+// for a player (View::forPlayer).
+std::string SystemTag(const Obs::View& view, const std::string& id)
+{
+    return view.forPlayer || id.empty() ? std::string() : " (system " + id + ")";
+}
+std::string EntityTag(const Obs::View& view, int id)
+{
+    return view.forPlayer ? std::string() : Fmt(" (#%d)", id);
 }
 
 const char* MissionKind(int type)
@@ -626,33 +640,35 @@ std::string MissionNeeds(const View& view, const Proto::MissionView& m)
             const std::string what = ResourceName(ResourceType::FromIndex(m.resource));
             const std::string site = SiteName(m);
             if (held < m.targetCount)
-                return Fmt("carry %d %s (the hold has %d) to %s in %s (system %s)", m.targetCount,
+                return Fmt("carry %d %s (the hold has %d) to %s in %s%s", m.targetCount,
                            what.c_str(), held, site.c_str(), m.systemName.c_str(),
-                           m.systemId.c_str());
+                           SystemTag(view, m.systemId).c_str());
             if (m.siteId != 0)
-                return Fmt("fly beside %s (#%d), or dock at any station in this system: the %s is "
+                return Fmt("fly beside %s%s, or dock at any station in this system: the %s is "
                            "delivered on arrival",
-                           site.c_str(), m.siteId, what.c_str());
-            return Fmt("take the %s to %s in %s (system %s): it is delivered beside the site, or "
+                           site.c_str(), EntityTag(view, m.siteId).c_str(), what.c_str());
+            return Fmt("take the %s to %s in %s%s: it is delivered beside the site, or "
                        "docked at any station there",
-                       what.c_str(), site.c_str(), m.systemName.c_str(), m.systemId.c_str());
+                       what.c_str(), site.c_str(), m.systemName.c_str(),
+                       SystemTag(view, m.systemId).c_str());
         }
         case MissionType::Escort:
             // Where the convoy is now (#430), not where it was when the job was posted.
             if (m.haulerId != 0)
-                return Fmt("stay in this system with the convoy's hauler (#%d) until it reaches "
-                           "%s (system %s)",
-                           m.haulerId, m.systemName.c_str(), m.systemId.c_str());
+                return Fmt("stay in this system with the convoy's hauler%s until it reaches "
+                           "%s%s",
+                           EntityTag(view, m.haulerId).c_str(), m.systemName.c_str(),
+                           SystemTag(view, m.systemId).c_str());
             if (!m.convoySystemId.empty() && !m.convoyMoving)
-                return Fmt("meet the convoy waiting to set out from %s (system %s), bound for %s",
-                           m.convoySystemName.c_str(), m.convoySystemId.c_str(),
+                return Fmt("meet the convoy waiting to set out from %s%s, bound for %s",
+                           m.convoySystemName.c_str(), SystemTag(view, m.convoySystemId).c_str(),
                            m.systemName.c_str());
             if (!m.convoySystemId.empty())
-                return Fmt("%s the convoy in %s (system %s), bound for %s",
-                           m.rode ? "catch up with" : "meet", m.convoySystemName.c_str(),
-                           m.convoySystemId.c_str(), m.systemName.c_str());
-            return Fmt("fly with the convoy until it reaches %s (system %s)", m.systemName.c_str(),
-                       m.systemId.c_str());
+                return Fmt("%s the convoy in %s%s, bound for %s", m.rode ? "catch up with" : "meet",
+                           m.convoySystemName.c_str(), SystemTag(view, m.convoySystemId).c_str(),
+                           m.systemName.c_str());
+            return Fmt("fly with the convoy until it reaches %s%s", m.systemName.c_str(),
+                       SystemTag(view, m.systemId).c_str());
         case MissionType::Contract:
         {
             int held = 0;
@@ -660,20 +676,20 @@ std::string MissionNeeds(const View& view, const Proto::MissionView& m)
                 held = p->cargoByType[m.resource];
             const std::string what = ResourceName(ResourceType::FromIndex(m.resource));
             if (held < m.targetCount)
-                return Fmt("carry %d %s (the hold has %d) to %s in %s (system %s)", m.targetCount,
+                return Fmt("carry %d %s (the hold has %d) to %s in %s%s", m.targetCount,
                            what.c_str(), held, StationName(view, m.destStationId).c_str(),
-                           m.systemName.c_str(), m.systemId.c_str());
-            return Fmt("dock at %s in %s (system %s)", StationName(view, m.destStationId).c_str(),
-                       m.systemName.c_str(), m.systemId.c_str());
+                           m.systemName.c_str(), SystemTag(view, m.systemId).c_str());
+            return Fmt("dock at %s in %s%s", StationName(view, m.destStationId).c_str(),
+                       m.systemName.c_str(), SystemTag(view, m.systemId).c_str());
         }
         case MissionType::Siege:
-            return Fmt("shoot down %d more besieger%s in %s (system %s)",
-                       m.targetCount - m.progress, m.targetCount - m.progress == 1 ? "" : "s",
-                       m.systemName.c_str(), m.systemId.c_str());
+            return Fmt("shoot down %d more besieger%s in %s%s", m.targetCount - m.progress,
+                       m.targetCount - m.progress == 1 ? "" : "s", m.systemName.c_str(),
+                       SystemTag(view, m.systemId).c_str());
         case MissionType::Besiege:
-            return Fmt("shoot down %d more of the %s defenders in %s (system %s)",
-                       m.targetCount - m.progress, FactionName(m.against).c_str(),
-                       m.systemName.c_str(), m.systemId.c_str());
+            return Fmt("shoot down %d more of the %s defenders in %s%s", m.targetCount - m.progress,
+                       FactionName(m.against).c_str(), m.systemName.c_str(),
+                       SystemTag(view, m.systemId).c_str());
     }
     return "dock at " + StationName(view, HandInStation(m));
 }

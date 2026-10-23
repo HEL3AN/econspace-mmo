@@ -40,6 +40,10 @@ struct View
     const std::map<int, Proto::EntityLayout>* layout = nullptr;    // statics by id, may be null
     const WorldLoader::Universe*              universe = nullptr;  // system names, may be null
     const Proto::GalaxyState*                 galaxy = nullptr;    // map stats, may be null
+    // Said for a player rather than an agent (#427): a thing by its name alone. An agent
+    // needs "Vela Hub (#12)" and "(system w-1-1)" because its tools take those ids; in a
+    // window they are internals leaking, and the pointer and the map say where it is.
+    bool forPlayer = false;
 };
 
 // Renders the situation report. Never throws; missing optional inputs simply mean fewer

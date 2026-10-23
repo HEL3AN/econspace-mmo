@@ -616,7 +616,12 @@ void Game::SetPilotName(const std::string& n, const std::string& server)
     pilotName_ = n;
     LoadNavigation(server);  // the map's itinerary, this server's and this pilot's (#432)
     // Next to the executable, not in data/: it is this machine's preference, not the game's.
-    desk_.UseLayoutFile(std::string(GetApplicationDirectory()) + "ui_layout.json", n);
+    // Per pilot on a server, as the itinerary is (#427): one name on two servers is two
+    // pilots, and a pilot's windows are what they arranged where they play. What was kept
+    // under the bare name before is where a server with nothing of its own yet starts.
+    if (layoutFile_)
+        desk_.UseLayoutFile(std::string(GetApplicationDirectory()) + "ui_layout.json",
+                            server.empty() ? n : n + "@" + server, n);
 }
 
 void Game::HandleInput(float dt)

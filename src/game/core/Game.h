@@ -205,9 +205,14 @@ public:
     // --scan FRAME: a pass of the scanner asked for on that frame (#346).
     void AddScriptedScan(int frame) { scans_.push_back(frame); }
     // Who this client is logged in as, and on which server: a discoverer may name what they
-    // found (#145), the window layout is kept per account (#297), and the map's itinerary per
-    // server and pilot (#432).
+    // found (#145), and the window layout (#297, #427) and the map's itinerary (#432) are
+    // kept per server and pilot.
     void SetPilotName(const std::string& n, const std::string& server = std::string());
+    // A scripted run (--shot, --perf) shows the default layout and leaves the player's alone
+    // (#427): a screenshot is of the windows as a new pilot finds them, and a script that
+    // opened the missions must not find them open again in the next game. Before
+    // SetPilotName.
+    void UseNoLayoutFile() { layoutFile_ = false; }
     ~Game();
 
     // Until the window is closed -- or the server ends the session, or the connection
@@ -447,6 +452,7 @@ private:
     RenderTexture2D shotTarget_ = {};
     bool            shotTreated_ = false;  // --treated
     bool            hudHidden_ = false;    // --nohud
+    bool            layoutFile_ = true;    // ui_layout.json read and written (UseNoLayoutFile)
     int             perfFrames_ = -1;      // --perf: frames left to measure; -1 when not
     int             perfTotal_ = 0;        // ...out of this many
     bool            perfOverlay_ = false;  // F9: the frame's cost on screen
@@ -726,6 +732,10 @@ private:
     float   galaxyZoom_ = 1.0f;
     Vector2 galaxyCenter_ = { 0.0f, 0.0f };
     bool    galaxyInit_ = false;
+    // The picture's size the first view was fitted to, while nobody has zoomed or panned:
+    // the window settles over its first frames, and a fit to a size it then left cut the
+    // neighbourhood off at the top (#427). Zero once the player has moved the view.
+    Vector2 galaxyFitSize_ = { 0.0f, 0.0f };
     bool    galaxyDragging_ = false;
     Vector2 galaxyDragLast_ = { 0.0f, 0.0f };
     // The itinerary (#432), and where it is kept: ui_navigation.json beside the executable,

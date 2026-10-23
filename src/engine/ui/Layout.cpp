@@ -196,6 +196,11 @@ float Layout::U(float units) const
     return std::round(units * scale_);
 }
 
+float Layout::LinePx(const TextStyle& s) const
+{
+    return LineHeight((float)FontPx(s.size * scale_));  // as Text lays it out
+}
+
 std::string_view Layout::Keep(std::string_view s)
 {
     strings_.emplace_back(s);

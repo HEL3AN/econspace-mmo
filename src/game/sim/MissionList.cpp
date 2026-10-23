@@ -1,5 +1,6 @@
 #include "sim/MissionList.h"
 
+#include "economy/Resource.h"
 #include "missions/Mission.h"
 
 #include <algorithm>
@@ -41,6 +42,33 @@ std::string ShipHere(const Obs::View& view, int id)
                 return e.name.empty() ? std::string("convoy hauler") : e.name;
     return std::string();
 }
+
+// Row::summary: the title, then the one thing that differs between two of a kind.
+std::string Summary(const Obs::View& view, const Proto::MissionView& m)
+{
+    const std::string what =
+        std::to_string(m.targetCount) + " " + ResourceName(ResourceType::FromIndex(m.resource));
+    const std::string in = m.systemName.empty() ? std::string() : ", " + m.systemName;
+    switch ((MissionType)m.type)
+    {
+        case MissionType::Bounty:
+            return m.title + ": " + std::to_string(m.targetCount) + " pirates";
+        case MissionType::Mining: return m.title + ": " + what;
+        case MissionType::Delivery:
+        {
+            const std::string to = NameHere(view, m.destStationId);
+            return m.title + " to " + (to.empty() ? std::string("another system") : to);
+        }
+        case MissionType::Supply:
+        case MissionType::Contract: return m.title + ": " + what + in;
+        case MissionType::Escort:
+            return m.title + (m.systemName.empty() ? std::string() : " to " + m.systemName);
+        case MissionType::Siege:
+        case MissionType::Besiege:
+            return m.title + (m.systemName.empty() ? std::string() : " in " + m.systemName);
+    }
+    return m.title;
+}
 }  // namespace
 
 const char* KindWord(int type)
@@ -76,6 +104,7 @@ std::vector<Row> Build(const Obs::View& view, Board board)
         r.offerId = board == Board::Offers ? m.offerId : 0;
         r.title = m.title;
         r.description = m.description;
+        r.summary = Summary(view, m);
         r.kind = KindWord(m.type);
         r.faction = m.faction;
         r.reward = m.rewardMoney;
