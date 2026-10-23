@@ -991,7 +991,8 @@ void Simulation::Think(FactionId f)
                     siege.defence * garrison / sent + anchorWall / rate / siege.seconds;
                 const float score =
                     worth - Intelligence::BelievedRisk(
-                                risk, Intelligence::Staleness(seen, time_ + hops * siege.hop)) /
+                                risk, Intelligence::Staleness(
+                                          seen, time_ + static_cast<double>(hops) * siege.hop)) /
                                 t.appetite;
                 if (score > bestScore)
                 {

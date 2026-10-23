@@ -274,7 +274,7 @@ TEST_CASE("an outpost nobody pays for falls into ruin, cold, and takes its claim
     }
     REQUIRE(OutpostIn(*sim, s.frontier) != nullptr);
     CHECK(OutpostIn(*sim, s.frontier)->GetDamage(sim->Time()) ==
-          doctest::Approx(hull * Blueprints::UpkeepRules().decay));
+          doctest::Approx(static_cast<double>(hull) * Blueprints::UpkeepRules().decay));
     CHECK_FALSE(OutpostIn(*sim, s.frontier)->Mends());  // unsupplied, it mends nothing
     CHECK(Told(*sim, "upkeep", s.frontier, "cannot pay"));
     CHECK(sim->MindOf(Fac::TradersGuild()).unsupplied.size() == 1);
@@ -775,7 +775,8 @@ TEST_CASE("a lawful faction pools its holdings to bring down a pirate base, and 
     CHECK(plan.force == doctest::Approx(lent));
     CHECK(plan.force > cap * Blueprints::SiegeRules().commit);  // more than one holding sends
     CHECK(plan.arrivesAt ==
-          doctest::Approx(plan.startedAt + hops * Blueprints::SiegeRules().hop).epsilon(1e-6));
+          doctest::Approx(plan.startedAt + static_cast<double>(hops) * Blueprints::SiegeRules().hop)
+              .epsilon(1e-6));
     CHECK(Told(*sim, "siege", r.den, "Traders Guild sent"));
     CHECK(sim->SiegeForceIn(r.den, Fac::TradersGuild()) == 0.0f);  // still on the way
 
