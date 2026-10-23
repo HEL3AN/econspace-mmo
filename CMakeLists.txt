@@ -55,6 +55,28 @@ if(MINGW)
     add_link_options(-static-libgcc -static-libstdc++ -static)
 endif()
 
+# --- Fuzzing switch (#518) -----------------------------------------------------------------
+# libFuzzer ships with clang's runtime and the targets use POSIX socket pairs, so this is
+# clang on Linux only, and off unless asked. ClusterFuzzLite passes its own flags and engine
+# (CFLAGS, CXXFLAGS, LIB_FUZZING_ENGINE); by hand, neither is set, and the default is libFuzzer
+# with the address and undefined-behaviour sanitizers. The coverage instrumentation has to be
+# on everything the targets link -- netproto, engine, raylib -- or the fuzzer is blind to it.
+option(ECON_FUZZ "Build the libFuzzer targets in tests/fuzz (clang on Linux)" OFF)
+if(ECON_FUZZ)
+    if(NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+        message(FATAL_ERROR "ECON_FUZZ needs clang on Linux (this is ${CMAKE_CXX_COMPILER_ID} on ${CMAKE_SYSTEM_NAME})")
+    endif()
+    if(DEFINED ENV{LIB_FUZZING_ENGINE} AND NOT "$ENV{LIB_FUZZING_ENGINE}" STREQUAL "")
+        set(_econ_fuzz_engine "$ENV{LIB_FUZZING_ENGINE}")
+    else()
+        set(_econ_fuzz_engine "-fsanitize=fuzzer")
+        set(_econ_fuzz_flags "-fsanitize=fuzzer-no-link,address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_econ_fuzz_flags}")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_econ_fuzz_flags}")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address,undefined")
+    endif()
+endif()
+
 # Generate build/compile_commands.json — a project "map" for the editor
 # (VS Code uses it to resolve #include and hints correctly; clang-tidy needs it too).
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -254,6 +276,7 @@ add_library(netproto STATIC
     src/game/sim/Chat.cpp        # what a chat line may be and who hears it (#347)
     src/game/sim/Auth.cpp       # proving an account is itself (#106) -- both sides need it
     src/game/sim/Compat.cpp     # whether a client's build and data match the server's (#400)
+    src/game/sim/Login.cpp      # what a hello and an answer are: the login's untrusted bytes (#518)
     src/game/net/Tcp.cpp
     src/game/net/OsRandom.cpp    # nonces and salts from the system's generator (#351)
 )
@@ -505,6 +528,7 @@ add_executable(tests
     tests/protocol_tests.cpp
     tests/snapshot_delta_tests.cpp  # deltas against an acknowledged state, the area of interest (#349)
     tests/auth_tests.cpp
+    tests/login_tests.cpp          # the hello and the answer, as the host loop reads them (#518)
     tests/compat_tests.cpp         # the same build and the same data, or a Bye that says what differs (#400)
     tests/net_tests.cpp
     tests/raw_socket.cpp           # a peer that ignores the framing rules (#14)
@@ -659,6 +683,25 @@ target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/src)  # agent/Jsonr
 set_target_properties(tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/tests)
 add_test(NAME unit COMMAND tests)
+
+# --- Fuzzing: libFuzzer targets over what the server reads from strangers (#518) -----------
+# The option and the instrumentation flags are near the top of this file, before anything is
+# compiled; the targets are here. Each links netproto (the wire and the transport) and nothing
+# else of ours; raylib comes with it because the protocol's headers share its types, but no
+# window or GPU is ever touched. Run by ClusterFuzzLite (.clusterfuzzlite/), and by hand:
+#   CC=clang CXX=clang++ cmake -S . -B build-fuzz -DECON_FUZZ=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+#   cmake --build build-fuzz --target fuzz_decode && build-fuzz/bin/fuzz/fuzz_decode corpus/
+if(ECON_FUZZ)
+    foreach(_t fuzz_frames fuzz_decode fuzz_login)
+        add_executable(${_t} tests/fuzz/${_t}.cpp)
+        target_link_libraries(${_t} PRIVATE netproto ${_econ_fuzz_engine})
+        set_target_properties(${_t} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/fuzz)
+    endforeach()
+    # The seed corpus is written by the encoders: an ordinary executable, not a fuzzer.
+    add_executable(fuzz_seeds tests/fuzz/fuzz_seeds.cpp)
+    target_link_libraries(fuzz_seeds PRIVATE netproto)
+    set_target_properties(fuzz_seeds PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/fuzz)
+endif()
 
 # --- cppcheck: static analysis as a separate target (if installed) ----------
 # Install in MSYS2: pacman -S mingw-w64-x86_64-cppcheck

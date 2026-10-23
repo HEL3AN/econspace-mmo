@@ -1,0 +1,50 @@
+# Fuzzing in batch (#518), by ClusterFuzzLite.
+#
+# Weekly, an hour per sanitizer, over the whole of every target. The corpus the fuzzers
+# grow is kept between runs (in the Actions cache ClusterFuzzLite manages), so each run
+# starts where the last ended and the pull-request run (cflite_pr.yml) starts from it too.
+# A crash fails the run; the input is attached as an artifact.
+name: Fuzz (batch)
+
+on:
+  schedule:
+    - cron: "23 3 * * 0" # Sundays, 03:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cflite-batch
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: Fuzz (${{ matrix.sanitizer }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, undefined]
+    steps:
+      - name: Build the fuzz targets
+        id: build
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: c++
+          sanitizer: ${{ matrix.sanitizer }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run the fuzz targets
+        id: run
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 3600
+          mode: batch
+          sanitizer: ${{ matrix.sanitizer }}
+          output-sarif: false

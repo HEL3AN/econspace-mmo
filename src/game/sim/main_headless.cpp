@@ -13,6 +13,7 @@
 #include "sim/Chat.h"
 #include "sim/Compat.h"
 #include "sim/HostRules.h"
+#include "sim/Login.h"
 #include "sim/MacroBench.h"
 #include "sim/Protocol.h"
 #include "sim/SaveFile.h"
@@ -2316,9 +2317,10 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                 if (type == "hello")
                 {
                     Proto::Hello h;
-                    const int    version = Proto::MessageVersion(msg);
-                    if (hc.sessionId == 0 && hc.pendingAccount.empty() &&
-                        version != Proto::PROTO_VERSION)
+                    int          version = 0;
+                    const bool   fresh = hc.sessionId == 0 && hc.pendingAccount.empty();
+                    const Login::HelloVerdict verdict = Login::ReadHello(msg, fresh, h, version);
+                    if (verdict == Login::HelloVerdict::WrongVersion)
                     {
                         // Told, with both numbers (#341): dropped in silence, a client one
                         // version behind looked exactly like a server that was down.
@@ -2331,9 +2333,7 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                         hc.conn.reset();
                         break;
                     }
-                    if (hc.sessionId != 0 || !hc.pendingAccount.empty() ||
-                        !Proto::DecodeHello(msg, h) ||
-                        (h.account = Host::CanonicalAccount(h.account)).empty())
+                    if (verdict != Login::HelloVerdict::Ok)
                     {
                         Log::Printf("Rejected a hello (not a name, or a second one "
                                     "on the same connection).\n");
@@ -2472,9 +2472,7 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                     // it against yet -- but the proof still has to match the value being
                     // registered, so a client that gets this wrong is caught rather than
                     // creating an account nobody can log into afterwards.
-                    const std::string against = hc.isNewAccount ? a.stored : hc.fileStored;
-                    const bool        shaped = against.size() == 64;
-                    if (!shaped || a.proof != Auth::Proof(hc.nonce, against))
+                    if (!Login::AnswerAccepted(hc.isNewAccount, hc.fileStored, a, hc.nonce))
                     {
                         // One guess per connection: a wrong answer ends it, so guessing
                         // costs a fresh socket every time.
