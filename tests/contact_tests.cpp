@@ -653,7 +653,7 @@ TEST_CASE("a name that is its people's cannot be given, and the index says so (#
     const std::string native = sim.NativeNameOf(homes[0]);
     CHECK(sim.NamingRefusal(ann, homes[0], "Annsworld") == "its people call it " + native);
     // A centre is named long before anyone is born.
-    const std::string centre = sim.Universe().startId;
+    const std::string centre = sim.Starts().front().systemId;
     CHECK(sim.NamingRefusal(ann, centre, "Annsworld") ==
           sim.SystemName(centre) + " was named long before you were born");
     const WorldLoader::Universe    index = sim.KnownUniverseFor(ann);
