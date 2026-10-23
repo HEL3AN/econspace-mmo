@@ -3,6 +3,7 @@
 #include "economy/Resource.h"
 #include "render/Silhouette.h"
 #include <nlohmann/json.hpp>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -270,6 +271,25 @@ bool Validate(const Catalogue& c, const Design& d, std::string& error);
 // catalogue, is a load error: a family whose module has no look for a socket its guns are on.
 bool MakeVariant(const Catalogue& c, const Design& base, const Family& family, const Line* line,
                  Design& out, std::string& error);
+
+// A region's style (#464): the share of each weapon family and each hull line its NPCs fly,
+// each list in catalogue order and summing to 1 (empty where the catalogue has none).
+struct Style
+{
+    std::vector<std::pair<std::string, float>> families, lines;
+    // The family or line with the largest share; empty for none.
+    std::string LeadingFamily() const;
+    std::string LeadingLine() const;
+};
+
+// The style of a region whose markets hold and make `supply` (units by good index) and
+// whose people lean by `culture` (weights by family or line id; null for no lean): for each
+// family, and each line, the share of its goods in the supply, times 1 - `cultureWeight`,
+// plus its share of the culture's weights, times `cultureWeight`. Proportional -- twice the
+// goods is twice the share -- and with no supply at all, the culture alone. A culture that
+// names no family (or no line) leans evenly across them.
+Style StyleFrom(const Catalogue& c, const std::vector<double>& supply,
+                const std::map<std::string, double>* culture, double cultureWeight);
 
 // The design's stats. False, with the reason, for a design that does not validate.
 bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error);

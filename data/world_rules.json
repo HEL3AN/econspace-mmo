@@ -187,5 +187,18 @@
         "find": 400,
         "halfLifeHours": 24,
         "rarity": 0.25
+    },
+    "styles": {
+        "culture": 0.25,
+        "hours": 24,
+        "cultures": {
+            "clan": { "railgun": 3, "laser": 1, "brawler": 1 },
+            "sect": { "laser": 3, "railgun": 1, "heavy": 1 },
+            "automata": { "laser": 2, "railgun": 1, "light": 1 },
+            "colonists": {},
+            "traders": { "light": 1 },
+            "guild": { "laser": 2, "railgun": 1, "light": 1 },
+            "syndicate": { "railgun": 2, "laser": 1, "heavy": 1 }
+        }
     }
 }

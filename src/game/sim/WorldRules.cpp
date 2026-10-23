@@ -23,6 +23,7 @@ WorldRules::Licences    g_licences;
 WorldRules::Security    g_security;
 WorldRules::Patrols     g_patrols;
 WorldRules::Charts      g_charts;
+WorldRules::Styles      g_styles;
 std::string             g_error;
 
 // Reads one section's values into their places: every field known, every number zero or
@@ -87,7 +88,7 @@ bool Load(const std::string& path)
             it.key() != "convoys" && it.key() != "jobs" && it.key() != "holes" &&
             it.key() != "scan" && it.key() != "contracts" && it.key() != "law" &&
             it.key() != "influence" && it.key() != "licences" && it.key() != "security" &&
-            it.key() != "patrols" && it.key() != "charts")
+            it.key() != "patrols" && it.key() != "charts" && it.key() != "styles")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -429,6 +430,49 @@ bool Load(const std::string& path)
         g_error = path + ": charts: halfLifeHours must be more than zero";
         return false;
     }
+    // #464's: what a region's NPCs fly. `cultures` is an object of objects, read apart.
+    Styles sty;
+    if (j.contains("styles"))
+    {
+        json rest = j["styles"];
+        if (rest.is_object() && rest.contains("cultures"))
+        {
+            const json cs = rest["cultures"];
+            rest.erase("cultures");
+            if (!cs.is_object())
+            {
+                g_error = path + ": styles: 'cultures' is not an object of culture -> weights";
+                return false;
+            }
+            for (auto c = cs.begin(); c != cs.end(); ++c)
+            {
+                if (!c.value().is_object())
+                {
+                    g_error = path + ": styles: culture '" + c.key() + "' is not an object";
+                    return false;
+                }
+                auto& weights = sty.cultures[c.key()];
+                for (auto w = c.value().begin(); w != c.value().end(); ++w)
+                {
+                    if (!w.value().is_number() || w.value().get<double>() < 0.0)
+                    {
+                        g_error = path + ": styles: culture '" + c.key() + "': '" + w.key() +
+                                  "' is not a weight of zero or more";
+                        return false;
+                    }
+                    weights[w.key()] = w.value().get<double>();
+                }
+            }
+        }
+        if (!ReadSection(rest, path + ": styles",
+                         { { "culture", &sty.culture }, { "hours", &sty.hours } }, {}, {}, g_error))
+            return false;
+        if (sty.culture > 1.0)
+        {
+            g_error = path + ": styles: 'culture' is a share of the whole, at most 1";
+            return false;
+        }
+    }
     g_tide = t;
     g_mouths = m;
     g_archive = a;
@@ -445,6 +489,7 @@ bool Load(const std::string& path)
     g_security = sec;
     g_patrols = pat;
     g_charts = ch;
+    g_styles = sty;
     return true;
 }
 
@@ -611,6 +656,16 @@ const Charts& ChartRules()
 void SetChartRules(const Charts& c)
 {
     g_charts = c;
+}
+
+const Styles& StyleRules()
+{
+    return g_styles;
+}
+
+void SetStyleRules(const Styles& s)
+{
+    g_styles = s;
 }
 
 }  // namespace WorldRules
