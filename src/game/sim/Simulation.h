@@ -1176,6 +1176,40 @@ public:
     int MoveGoods(ClientSession& s, const std::string& from, const std::string& to, int type,
                   int amount, const char* verb = "move");
 
+    // --- Personal hangars at NPC stations (#472, Simulation_Hangars.cpp) ---
+    // One pilot's at one station: what it holds, the units rented on top of the free ones,
+    // the instant the rent is paid to, unpaid rent (the hangar is closed while there is any),
+    // and whom the rent goes to -- the station's faction, as last seen.
+    struct Hangar
+    {
+        Inventory   goods;
+        int         rented = 0;
+        double      paidUntil = 0.0;
+        double      owed = 0.0;
+        std::string holder;
+    };
+    // The station the ship is docked at when it keeps hangars, or null with why.
+    const Entity* DockedHangarStation(const ClientSession& s, std::string* why = nullptr) const;
+    // A station's key in the hangars: its system, name and which of that name it is.
+    std::string   HangarKey(const SystemState& st, const Entity& station) const;
+    Hangar*       HangarOf(const std::string& key, const std::string& account, bool create);
+    const Hangar* FindHangar(const std::string& key, const std::string& account) const;
+    // The most one pilot may keep at a station: its archetype's storage, never below the free
+    // units; and what one hangar holds now, the free units and the rented, within that.
+    static int HangarMost(const Entity& station);
+    static int HangarCapacity(const Hangar& h, const Entity& station);
+    // Rent `units` on top of the free ones at the station docked at: more pays for what is left
+    // of the period (a new rent, a whole one), fewer is at once and returns nothing, and never
+    // below what is held above the free units. False with a Notice saying why.
+    bool RentHangar(ClientSession& s, int units);
+    // Docked at a station: its hangar's rent owed paid from the pilot's money, if it can be.
+    void SettleHangar(ClientSession& s);
+    // Rent fallen due, from the macro pass: paid, or owed and the hangar closed.
+    void              StepHangars();
+    bool              RentsHangar(const std::string& account) const;
+    Proto::HangarView HangarViewFor(const ClientSession& s) const;
+    const std::map<std::string, std::map<std::string, Hangar>>& Hangars() const { return hangars_; }
+
     // --- Rules of engagement (#340) ---
     // Why this player may not set the rules of structure `id` to `d`, or empty when they may:
     // it is theirs -- or a member's of the corporation they are CEO or a director of (#347) --
@@ -1428,8 +1462,8 @@ public:
         double revenue = 0.0;  // net revenue credited to account_ (skill+reputation)
         double fee = 0.0;      // the trade's fee, taken from the revenue (#348)
     };
-    PlayerSellResult StepPlayerSell(ClientSession& s, SystemState& st, int resourceType,
-                                    int amount);
+    PlayerSellResult StepPlayerSell(ClientSession& s, SystemState& st, int resourceType, int amount,
+                                    const std::string& from = "hold");
     // Buy from the system market at the station docked at (#343): as much as the market has,
     // the hold takes and the money pays for, up to `amount`, at the ask -- each unit dearer
     // than the last -- with the fee on top. A purchase that comes to nothing says why in the
@@ -1440,7 +1474,8 @@ public:
         double cost = 0.0;  // what the account paid, the fee included
         double fee = 0.0;
     };
-    PlayerBuyResult StepPlayerBuy(ClientSession& s, SystemState& st, int resourceType, int amount);
+    PlayerBuyResult StepPlayerBuy(ClientSession& s, SystemState& st, int resourceType, int amount,
+                                  const std::string& to = "hold");
 
     // Switch to another ship this account owns. Refuses one it does not: the stats are
     // looked up from the catalog here rather than taken from the caller, so "refit me to
@@ -2057,6 +2092,10 @@ private:
     void           ReadCorpJournal(ClientSession& s);
     nlohmann::json OwnersJson() const;
     void           OwnersFrom(const nlohmann::json& j);
+    // Personal hangars by station key, then by account (#472); saved with the world.
+    std::map<std::string, std::map<std::string, Hangar>> hangars_;
+    nlohmann::json                                       HangarsJson() const;
+    void                                                 HangarsFrom(const nlohmann::json& j);
 
     // Roaming holes (S9): what the epochs decided, the last epoch decided, and which
     // signatures somebody has already been credited with finding (#346).

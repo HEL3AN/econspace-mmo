@@ -164,6 +164,11 @@
         "standing": 10,
         "evict": 1.0
     },
+    "hangars": {
+        "freeUnits": 100,
+        "rentPerUnit": 2,
+        "periodDays": 30
+    },
     "security": {
         "policeSwing": 0.3,
         "policeHalf": 3000,

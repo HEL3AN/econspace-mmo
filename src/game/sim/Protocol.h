@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    62;  // 62: one verb moves goods between containers (#472) -- a Command's move names where
+    63;  // 63: personal hangars at NPC stations (#472) -- a container "hangar", a PlayerView's
+         // hangar, a Command's rentHangar, and where a sale takes from and a purchase goes;
+         // 62: one verb moves goods between containers (#472) -- a Command's move names where
          // from, where to, the good and how many;
          // 61: a mission offer carries its number, and a Command's acceptOffer names that
          // number rather than a place on the board (#425); and structure ownership (#468) -- a
@@ -238,6 +240,13 @@ struct Command
     // Station trade (server-authoritative, M4e-3b): sell resource / refit.
     int sellType = -1;   // ResourceType as int (-1 — no sale)
     int sellAmount = 0;  // amount to sell (server clamps to cargo)
+    // Which container a sale takes from and a purchase goes into (#472): "hold" or, at a
+    // station, "hangar"; empty is the hold.
+    std::string sellFrom;
+    std::string buyTo;
+    // Rent so many units of hangar on top of the free ones at the station docked at (#472);
+    // -1: not this command. A refusal is a Notice saying why.
+    int rentHangar = -1;
     // A purchase (#343): as much of the good as the stock, the hold and the money allow, up
     // to the amount.
     int buyType = -1;  // ResourceType as int (-1 — no purchase)
@@ -419,6 +428,21 @@ struct LicenceView
     bool canPay = false;  // this pilot may buy it: one in no corporation, or its CEO or a director
 };
 
+// The pilot's hangar at the station docked at (#472), when it keeps hangars: how much it holds
+// and how much more may be rented, the rent, and what is in it. `capacity` 0: none here.
+struct HangarView
+{
+    int              capacity = 0;  // free + rented, at most `most`
+    int              free = 0;      // units free at every station
+    int              rented = 0;    // units rented on top
+    int              most = 0;      // the most one pilot may have here: the archetype's storage
+    double           rentPerUnit = 0.0;  // a unit's rent for a period
+    double           periodDays = 0.0;
+    double           paidUntil = 0.0;  // world time; 0: no rent running
+    double           owed = 0.0;       // unpaid rent: the hangar is closed until it is paid
+    std::vector<int> goods;            // per good, AllResourceTypes order
+};
+
 // Player ship state in the snapshot.
 struct PlayerView
 {
@@ -438,6 +462,7 @@ struct PlayerView
     LossView            loss;
     ScanView            scan;     // (#346)
     LicenceView         licence;  // building in the system the pilot is in (#431 slice 6)
+    HangarView          hangar;   // the pilot's hangar where docked (#472)
 
     Vector2 pos = { 0.0f, 0.0f };
     Vector2 vel = { 0.0f, 0.0f };

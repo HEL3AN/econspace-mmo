@@ -454,6 +454,22 @@ bool Simulation::ContainerOf(ClientSession& s, const std::string& id, Container&
         out.name = mine.GetName() + "'s storage";
         return true;
     }
+    if (id == "hangar")  // (#472)
+    {
+        const Entity* station = DockedHangarStation(s, &why);
+        if (station == nullptr)
+            return false;
+        Hangar& h = *HangarOf(HangarKey(*SystemOf(s), *station), s.accountName, true);
+        if (h.owed > 0.0)
+        {
+            why = "your hangar at " + station->GetName() + " is closed until the rent owed is paid";
+            return false;
+        }
+        out.goods = &h.goods;
+        out.capacity = HangarCapacity(h, *station);
+        out.name = "your hangar at " + station->GetName();
+        return true;
+    }
     why = "there is no container called '" + id + "' here";
     return false;
 }

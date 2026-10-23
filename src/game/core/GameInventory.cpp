@@ -41,6 +41,76 @@ void Game::TakeMarketDrop(Ui::Layout& L)
     sellAmountFor_ = marketSel_;
 }
 
+void Game::DrawHangarRent(Ui::Layout& L)
+{
+    using Ui::Box;
+    using Ui::TextStyle;
+    const Ui::Theme&         t = Ui::CurrentTheme();
+    const Proto::HangarView& h = snapshot_.player.hangar;
+    if (h.capacity <= 0)
+        return;
+    const int most = std::max(0, h.most - h.free);
+    if (rentFor_ != h.rented)  // the field follows what the server says is rented
+    {
+        rentUnits_ = (float)h.rented;
+        rentFor_ = h.rented;
+    }
+    // Two lines, so the goods below keep the room: what it is, and the field to change it. The
+    // terms are the rent button's tooltip.
+    const std::string paid =
+        h.rented > 0 && h.paidUntil > 0.0
+            ? TextFormat(", paid %.0f days more",
+                         std::max(0.0, (h.paidUntil - snapshot_.time) / 86400.0))
+            : std::string();
+    L.Field("Hangar", TextFormat("%d free + %d rented%s", h.free, h.rented, paid.c_str()),
+            t.colors.text);
+    if (h.owed > 0.0)
+    {
+        L.Text(TextFormat("Closed: %.0f cr of rent is owed. Docking here pays it when the money "
+                          "is there.",
+                          h.owed),
+               TextStyle::Small().Tint(t.colors.bad).Wrap());
+        if (L.Button("payowed", TextFormat("Pay %.0f cr", h.owed), true))
+        {
+            Proto::Command c;
+            c.rentHangar = h.rented;
+            clientLink_->Send(Proto::EncodeCommand(c));
+        }
+        return;
+    }
+    L.Row(Box().GrowX().Gap(t.metrics.rowGap).Align(Ui::Align::Start, Ui::Align::Center),
+          [&]
+          {
+              L.Text("Rent", TextStyle::Label());
+              L.NumberField("rent", rentUnits_, 0.0f, (float)most);
+              const int want = std::clamp((int)rentUnits_, 0, most);
+              // A rent begun pays a whole period; more units pay for what is left of it.
+              const double period = h.periodDays * 86400.0;
+              const double left = h.rented > 0 && h.paidUntil > snapshot_.time && period > 0.0
+                                      ? (h.paidUntil - snapshot_.time) / period
+                                      : 1.0;
+              const double cost = want > h.rented
+                                      ? (h.rented > 0 ? (want - h.rented) * h.rentPerUnit * left
+                                                      : want * h.rentPerUnit)
+                                      : 0.0;
+              if (L.Button("setrent",
+                           want > h.rented ? TextFormat("Rent %d  ~%.0f cr", want, cost)
+                                           : TextFormat("Rent %d", want),
+                           true, want != h.rented))
+              {
+                  Proto::Command c;
+                  c.rentHangar = want;
+                  clientLink_->Send(Proto::EncodeCommand(c));
+              }
+              L.Tooltip("setrent",
+                        TextFormat("Units on top of the %d free, at most %d here. %.1f cr a unit "
+                                   "every %.0f days, to the station's owner; more is paid now for "
+                                   "what is left of the period. Unpaid, the hangar closes until "
+                                   "it is paid; nothing in it is lost.",
+                                   h.free, most, h.rentPerUnit, h.periodDays));
+          });
+}
+
 void Game::DrawInventoryContent(const Ui::Frame& f)
 {
     using InventoryList::Container;
@@ -110,8 +180,11 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
                          .ThemeCorners(),
                      [&]
                      {
-                         L.Field(c.name, TextFormat("%d / %d", c.Used(), c.capacity),
-                                 isSel ? t.colors.text : t.colors.dim);
+                         L.Field(c.closed ? c.name + "  (closed)" : c.name,
+                                 TextFormat("%d / %d", c.Used(), c.capacity),
+                                 c.closed ? t.colors.bad
+                                 : isSel  ? t.colors.text
+                                          : t.colors.dim);
                          L.Bar(frac, frac >= 1.0f ? t.colors.warn : t.colors.accent);
                      });
             if (L.Clicked("cont", (uint32_t)i))
@@ -124,7 +197,9 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
     };
 
     Ui::TableSpec table;
-    table.id = "goods";
+    // One table per container: each fits its own room, which the hangar's rent lines make
+    // smaller than the hold's.
+    table.id = "goods_" + inventorySel_;
     table.columns = { { "good", Size::Grow(), Ui::Align::Start, false },
                       { "amount", Size::Fit(44.0f), Ui::Align::End, false },
                       { "price", Size::Fit(40.0f), Ui::Align::End, false },
@@ -163,6 +238,8 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
 
     auto details = [&]
     {
+        if (sel.id == "hangar")
+            DrawHangarRent(L);
         L.TextField("filter", inventoryFilter_, { "Filter by name", 32, Size::Grow() });
         const Ui::TableEvents ev = L.Table(table);
         if (ev.clicked >= 0)
