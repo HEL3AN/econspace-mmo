@@ -24,7 +24,7 @@ An honest snapshot of where EconSpace is and where it is going. The project inve
 - A galaxy skeleton of region slots per seed, several civilisation centres as starts, and a new pilot choosing one.
 - The tide opens new regions while the server runs; an opened region is sealed into the save. A mouth stays only if an Anchor is built on it; otherwise the region drifts, and at the cap it may go into an archive and come back decayed.
 - New regions are alive from the first minute: native factions with stations, markets and names in their own culture; expeditions from neighbours grow outposts into stations.
-- Roaming wormholes and a scanner that resolves hidden things (#346).
+- Roaming wormholes and a scanner that resolves hidden things (#346): the holes, pirate hidden bases, and rich belts deep in the frontier.
 - Charts sold to factions from the map (#346, #431 slice 16): a faction pays by what its own picture lacks -- a system it never saw, what was built since its last look, a pilot's scanner finds -- fresh and rare worth most, and decides on what it bought.
 - Admin packs, validated and woven into a new world, and pins (#147); `econserver validate`.
 - Factions are a data registry, not a compiled enum (#355).

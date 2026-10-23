@@ -106,10 +106,15 @@ Simulation::OutpostSpot Simulation::FindOutpostSpot(FactionId f, Outposts::Purpo
                 if (static_cast<const JumpGate&>(*e).GetDestination() == from)
                     arrival = e.get();
                 break;
+            // A faction does not build at what nobody has found (#346).
             case EntityKind::Field:
-                belts.push_back(static_cast<const AsteroidField*>(e.get()));
+                if (SignatureOf(*e) <= 0.0f)
+                    belts.push_back(static_cast<const AsteroidField*>(e.get()));
                 break;
-            case EntityKind::Derelict: wrecks.push_back(e.get()); break;
+            case EntityKind::Derelict:
+                if (SignatureOf(*e) <= 0.0f)
+                    wrecks.push_back(e.get());
+                break;
             case EntityKind::Nebula:
                 if (!e->GetOrbit())  // a cloud that moves would leave the base behind
                     clouds.push_back(e.get());

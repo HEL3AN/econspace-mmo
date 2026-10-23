@@ -110,9 +110,10 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         snap.marketAsk.push_back((float)(std::round(market.Ask(rt) * 100.0) / 100.0));
         snap.marketStock.push_back((int)market.Stock(rt));
     }
-    // What is left of each belt (#348), in whole units.
+    // What is left of each belt (#348), in whole units -- of the belts this pilot may see: a
+    // hidden one's id would say it is there (#346).
     for (const auto& e : it->second.entities)
-        if (e->GetKind() == EntityKind::Field)
+        if (e->GetKind() == EntityKind::Field && !HiddenFrom(s, it->second, *e))
         {
             const AsteroidField& f = static_cast<const AsteroidField&>(*e);
             snap.belts.push_back({ f.GetId(), (int)f.GetOre(), f.GetOreMax() });

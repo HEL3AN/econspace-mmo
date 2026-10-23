@@ -31,7 +31,8 @@ namespace Gen
 // galaxy, and a player's structure would be standing in space that is no longer there.
 // Bump it whenever the output for a given seed changes -- the golden test will say so.
 inline constexpr int GENERATOR_VERSION =
-    10;  // 10: natives name the systems they live in, in their culture (#431 slice 3);
+    11;  // 11: rich belts, hidden until scanned (#346);
+         // 10: natives name the systems they live in, in their culture (#431 slice 3);
          // 9: a centre's station in a planet's path orbits it (#377);
          // 8: every frontier region has natives, with stations and markets (#342 S5);
          // 7: civilisation centres, and a frontier as rich and lawless as it is far from one

@@ -339,7 +339,7 @@ Name the system you are in. Beyond the wormhole a system has only a designation 
 
 ### `scan`
 
-Run one pass of your ship's scanner over the whole system you are in (#346), and wait for it (about 10 s). Some things are hidden until scanned: roaming wormholes (shortcuts to another region that open and close on their own, with a ship-mass limit) and pirate hidden bases. Each pass resolves part of each signature; scan again until it is resolved. A resolved wormhole is then a gate in observe and a route travel_to_system can take; a resolved object has an id like any other. Undocked, not warping, and stay in the system while it runs.
+Run one pass of your ship's scanner over the whole system you are in (#346), and wait for it (about 10 s). Some things are hidden until scanned: roaming wormholes (shortcuts to another region that open and close on their own, with a ship-mass limit), pirate hidden bases and rich belts (crystal, mined twice as fast). Each pass resolves part of each signature; scan again until it is resolved. A resolved wormhole is then a gate in observe and a route travel_to_system can take; a resolved object has an id like any other. Undocked, not warping, and stay in the system while it runs.
 
 No arguments.
 
