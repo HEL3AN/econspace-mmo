@@ -160,6 +160,15 @@ Buy goods from the market of the station you are docked at. Buys as many as the 
 | `resource` | string | yes | good name as observe lists it under MARKET, e.g. 'Food' |
 | `to` | string |  | 'hold' (default) or 'hangar' |
 
+### `jettison`
+
+In space, put goods from your hold into a cargo can beside the ship: your own can within reach if there is one, otherwise a new one. Anyone can take from a can with salvage or move_goods, and it floats for an hour -- a hand-over between two pilots, or a lighter hold to run with. All of that good unless an amount is given.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `amount` | number |  | how many (default: all of it) |
+| `resource` | string | yes | good name as inventory lists it under the hold, e.g. 'Iron' |
+
 ### `rent_hangar`
 
 Set how many units of hangar you rent at the station you are docked at, on top of the units every pilot has free there; inventory shows the hangar, the rent and the most a station lets one pilot keep. More is paid at once for what is left of the period (a new rent pays a whole period) and then every period of world time, to the station's faction; fewer is at once and nothing is paid back. Unpaid rent closes the hangar until it is paid, which docking there does when you have the money. 0 ends the rent.
@@ -170,7 +179,7 @@ Set how many units of hangar you rent at the station you are docked at, on top o
 
 ### `move_goods`
 
-Move goods between two containers where you are, by the ids inventory lists them by: 'hold' (the ship you fly); docked at a station, 'hangar' (yours there); docked at your own structure or a corporation mate's, 'storage'. Moves all of that good unless an amount is given, as far as the destination has room.
+Move goods between two containers where you are, by the ids inventory lists them by: 'hold' (the ship you fly); docked at a station, 'hangar' (yours there); docked at your own structure or a corporation mate's, 'storage'; in space, 'can:<id>' for a can or wreck within reach (take from any, put into your own), and 'can' as a destination jettisons. Moves all of that good unless an amount is given, as far as the destination has room.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|

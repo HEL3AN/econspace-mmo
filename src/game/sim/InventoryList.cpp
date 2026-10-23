@@ -1,7 +1,10 @@
 #include "sim/InventoryList.h"
 
+#include "core/Archetype.h"
+
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 
 namespace InventoryList
 {
@@ -56,6 +59,58 @@ std::vector<Container> Reachable(const Proto::PlayerView& p)
     return out;
 }
 
+std::vector<Container> Reachable(const Proto::Snapshot&                    snap,
+                                 const std::map<int, Proto::EntityLayout>& layout,
+                                 const std::string&                        account)
+{
+    std::vector<Container> out = Reachable(snap.player);
+    if (snap.player.docked)
+        return out;
+    for (const Proto::EntitySnapshot& e : snap.entities)
+    {
+        if (e.kind != Proto::EntityKind::Derelict || Total(e.holds) <= 0)
+            continue;
+        const auto l = layout.find(e.id);
+        if (l == layout.end())
+            continue;
+        const Archetype* a = Archetypes::Find(l->second.archetype);
+        if (a == nullptr || !a->Has(Component::Salvageable))
+            continue;
+        const float reach = e.size + a->salvageRange;
+        const float dx = e.pos.x - snap.player.pos.x, dy = e.pos.y - snap.player.pos.y;
+        if (dx * dx + dy * dy > reach * reach)
+            continue;
+        Container c;
+        c.id = "can:" + std::to_string(e.id);
+        c.name = l->second.name;
+        c.goods = e.holds;
+        const bool mine = !account.empty() && l->second.owner == account;
+        c.takeOnly = !mine;
+        c.capacity = mine ? std::max(CAN_UNITS, Total(e.holds)) : Total(e.holds);
+        out.push_back(c);
+    }
+    return out;
+}
+
+int Total(const std::vector<int>& goods)
+{
+    int n = 0;
+    for (int g : goods)
+        n += std::max(0, g);
+    return n;
+}
+
+std::string Describe(const std::vector<int>& goods)
+{
+    std::string                     out;
+    const std::vector<ResourceType> types = AllResourceTypes();
+    for (size_t i = 0; i < goods.size() && i < types.size(); i++)
+        if (goods[i] > 0)
+            out +=
+                (out.empty() ? "" : ", ") + std::to_string(goods[i]) + " " + ResourceName(types[i]);
+    return out;
+}
+
 const Container* Find(const std::vector<Container>& all, std::string_view id)
 {
     for (const Container& c : all)
@@ -100,7 +155,7 @@ std::vector<Row> Rows(const Container& c, const std::vector<float>& prices, std:
 
 int Movable(const Container& from, const Container& to, ResourceType type, int wanted)
 {
-    if (from.id == to.id || from.closed || to.closed)
+    if (from.id == to.id || from.closed || to.closed || to.takeOnly)
         return 0;
     return std::max(0, std::min({ wanted, from.Amount(type), to.Room() }));
 }

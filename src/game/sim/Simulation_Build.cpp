@@ -454,6 +454,42 @@ bool Simulation::ContainerOf(ClientSession& s, const std::string& id, Container&
         out.name = mine.GetName() + "'s storage";
         return true;
     }
+    if (id.rfind("can:", 0) == 0)  // a can or a wreck within reach, in space (#472)
+    {
+        if (s.IsDocked())
+        {
+            why = "undock first: a can is in space";
+            return false;
+        }
+        SystemState* st = SystemOf(s);
+        const int    can = std::atoi(id.c_str() + 4);
+        Derelict*    d = nullptr;
+        if (st != nullptr)
+            for (auto& e : st->entities)
+                if (e->GetId() == can && e->GetKind() == EntityKind::Derelict &&
+                    e->Has(Component::Salvageable))
+                    d = static_cast<Derelict*>(e.get());
+        if (d == nullptr)
+        {
+            why = "there is no can #" + std::to_string(can) + " here";
+            return false;
+        }
+        const float reach = d->GetSize() + d->GetArchetype()->salvageRange;
+        const float dx = d->GetPosition().x - s.ship->GetPosition().x;
+        const float dy = d->GetPosition().y - s.ship->GetPosition().y;
+        if (dx * dx + dy * dy > reach * reach)
+        {
+            why = d->GetName() + " is out of reach";
+            return false;
+        }
+        out.goods = &d->Contents();
+        out.name = d->GetBaseName();
+        out.canId = can;
+        // One's own jettisoned can takes more; a wreck, or another pilot's can, only gives.
+        out.accepts = !s.accountName.empty() && d->GetOwner() == s.accountName;
+        out.capacity = out.accepts ? std::max(CAN_UNITS, d->GetCargoAmount()) : d->GetCargoAmount();
+        return true;
+    }
     if (id == "hangar")  // (#472)
     {
         const Entity* station = DockedHangarStation(s, &why);
@@ -488,8 +524,23 @@ int Simulation::MoveGoods(ClientSession& s, const std::string& from, const std::
         return refuse("it is already there");
     Container   a, b;
     std::string why;
-    if (!ContainerOf(s, from, a, why) || !ContainerOf(s, to, b, why))
+    if (!ContainerOf(s, from, a, why))
         return refuse(why);
+    // A jettison (#472): into the pilot's own can within reach, or a new one.
+    std::string into = to;
+    if (to == "can")
+    {
+        if (a.goods->Amount(ResourceType::FromIndex(type)) <= 0)
+            return refuse(a.name + " has no " + ResourceName(ResourceType::FromIndex(type)));
+        const int can = CanFor(s, why);
+        if (can == 0)
+            return refuse(why);
+        into = "can:" + std::to_string(can);
+    }
+    if (!ContainerOf(s, into, b, why))
+        return refuse(why);
+    if (!b.accepts)
+        return refuse("nothing can be put into " + b.name);
     const ResourceType good = ResourceType::FromIndex(type);
     const int          room = std::max(0, b.capacity - b.goods->Used());
     const int          n = std::min({ amount, a.goods->Amount(good), room });
@@ -497,9 +548,70 @@ int Simulation::MoveGoods(ClientSession& s, const std::string& from, const std::
         return refuse(room <= 0 ? b.name + " is full" : a.name + " has no " + ResourceName(good));
     a.goods->Remove(good, n);
     b.goods->Add(good, n);
+    // A can or a wreck that changed is everyone's news (#38); one emptied is searched.
+    for (const Container* c : { &a, &b })
+        if (c->canId != 0)
+        {
+            SystemState* st = SystemOf(s);
+            for (auto& e : st->entities)
+                if (e->GetId() == c->canId)
+                {
+                    Derelict& d = static_cast<Derelict&>(*e);
+                    if (d.Contents().Empty() && d.GetReward() <= 0.0)
+                        d.SetLooted();
+                }
+            MarkStaticChanged(*st, c->canId);
+        }
     s.RecordEvent(Ev::Kind::Notice, "Moved " + std::to_string(n) + " " + ResourceName(good) +
                                         " from " + a.name + " to " + b.name);
     return n;
+}
+
+int Simulation::CanFor(ClientSession& s, std::string& why)
+{
+    SystemState* st = SystemOf(s);
+    if (st == nullptr || !s.ship || s.accountName.empty())
+    {
+        why = "there is no ship";
+        return 0;
+    }
+    if (s.IsDocked())
+    {
+        why = "undock first: goods are jettisoned in space";
+        return 0;
+    }
+    if (s.ship->IsWarping())
+    {
+        why = "not in warp";
+        return 0;
+    }
+    // One's own can, within reach, not full: added to rather than a second beside it.
+    const Vector2 at = s.ship->GetPosition();
+    for (auto& e : st->entities)
+    {
+        if (e->GetKind() != EntityKind::Derelict || e->GetOwner() != s.accountName ||
+            e->GetArchetype() == nullptr || e->GetArchetype()->id != "derelict.can")
+            continue;
+        const Derelict& d = static_cast<const Derelict&>(*e);
+        const float     reach = d.GetSize() + d.GetArchetype()->salvageRange;
+        const float     dx = d.GetPosition().x - at.x, dy = d.GetPosition().y - at.y;
+        if (dx * dx + dy * dy <= reach * reach && d.GetCargoAmount() < CAN_UNITS)
+            return d.GetId();
+    }
+    const std::string pilot =
+        s.ship->GetPilotName().empty() ? s.accountName : s.ship->GetPilotName();
+    // Beside the ship, behind it: where something dropped out of the hold would be.
+    const float h = s.ship->GetHeading();  // radians
+    const float off = s.ship->GetSize() + CAN_SIZE * 2.0f;
+    auto        can =
+        std::make_unique<Derelict>(Vector2{ at.x - std::cos(h) * off, at.y - std::sin(h) * off },
+                                   CAN_SIZE, "Cargo can of " + pilot, 0.0);
+    can->SetArchetype("derelict.can");
+    can->SetExpiresAt(time_ + SHIP_WRECK_SECONDS);
+    const int id = AddStatic(s.systemId, std::move(can), s.accountName);
+    if (id == 0)
+        why = "the system would not take a can";
+    return id;
 }
 
 int Simulation::StoreCargo(ClientSession& s, int type, int amount)

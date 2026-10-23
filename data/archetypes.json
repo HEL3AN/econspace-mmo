@@ -500,6 +500,28 @@
             }
         },
         {
+            "id": "derelict.can",
+            "name": "Cargo can",
+            "kind": "Derelict",
+            "glyph": "o",
+            "sprite": "derelict",
+            "color": [150, 140, 110, 255],
+            "layer": 3,
+            "size": 14,
+            "material": "hull",
+            "shape": {
+                "sections": [
+                    {"form": "polygon", "sides": 4, "at": [0, 0], "angle": 45, "radius": 0.7, "role": "hull", "spin": -0.5}
+                ],
+                "parts": [
+                    {"form": "bar", "at": [0, 0], "angle": 0, "length": 0.9, "width": 0.12, "role": "panel", "alpha": 0.8, "minPixels": 12, "spin": -0.5}
+                ]
+            },
+            "components": {
+                "salvageable": { "range": 120 }
+            }
+        },
+        {
             "id": "derelict.leviathan",
             "name": "Leviathan Wreck",
             "kind": "Derelict",

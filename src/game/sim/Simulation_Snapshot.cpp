@@ -338,10 +338,8 @@ static bool DescribeStatic(const Entity& e, Proto::EntityLayout& el)
             el.reward = d.GetReward();
             el.looted = d.IsLooted();
             if (d.GetCargoAmount() > 0)
-            {
-                el.cargo = d.GetCargo().Index();
-                el.cargoAmount = d.GetCargoAmount();
-            }
+                for (ResourceType rt : AllResourceTypes())
+                    el.holds.push_back(d.Contents().Amount(rt));
             break;
         }
         case EntityKind::Structure:

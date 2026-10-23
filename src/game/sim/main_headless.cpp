@@ -354,6 +354,11 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     if (!c.applyDesign.empty())
         sim.ApplyDesign(s, c.applyDesign);
 
+    // Goods between containers (#472), docked or in space -- a can is in space: what moved
+    // shows in the snapshot, a refusal in the journal.
+    if (c.moveType >= 0 && c.moveAmount > 0)
+        sim.MoveGoods(s, c.moveFrom, c.moveTo, c.moveType, c.moveAmount);
+
     // Station trade/hangar: sell, refit, buy, pay off bounty. Account effects
     // (money/skill/reputation/bounty) are applied by the core in account_ (server-authoritative).
     if (s.IsDocked())
@@ -375,10 +380,6 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
         }
         if (c.rentHangar >= 0)  // a hangar's rented room (#472)
             sim.RentHangar(s, c.rentHangar);
-        // Goods between containers (#472): what moved shows in the snapshot, a refusal in the
-        // journal. The older pair is the same move.
-        if (c.moveType >= 0 && c.moveAmount > 0)
-            sim.MoveGoods(s, c.moveFrom, c.moveTo, c.moveType, c.moveAmount);
         if (c.storeType >= 0 && c.storeAmount > 0)
             sim.StoreCargo(s, c.storeType, c.storeAmount);
         if (c.takeType >= 0 && c.takeAmount > 0)

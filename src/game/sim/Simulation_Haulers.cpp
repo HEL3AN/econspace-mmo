@@ -210,7 +210,7 @@ void Simulation::LeaveCargoWreck(SystemState& st, const NpcShip& ship)
     auto wreck =
         std::make_unique<Derelict>(ship.GetPosition(), std::max(30.0f, ship.GetSize() * 3.0f),
                                    "Wreck of " + ship.GetName(), 0.0);
-    wreck->SetCargo(ship.GetCargo(), ship.GetCargoAmount());
+    wreck->Contents().Add(ship.GetCargo(), ship.GetCargoAmount());
     // ...for a while, like any wreck (#41): an instant on the clock, so it goes on time in a
     // system nobody is in.
     if (Blueprints::Rules().wreckSeconds > 0.0f)

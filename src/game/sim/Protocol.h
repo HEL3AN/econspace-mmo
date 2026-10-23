@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    63;  // 63: personal hangars at NPC stations (#472) -- a container "hangar", a PlayerView's
+    64;  // 64: a wreck holds every good, and a pilot can jettison into a can (#472) -- an
+         // EntityLayout's and an EntitySnapshot's holds replace a wreck's one cargo;
+         // 63: personal hangars at NPC stations (#472) -- a container "hangar", a PlayerView's
          // hangar, a Command's rentHangar, and where a sale takes from and a purchase goes;
          // 62: one verb moves goods between containers (#472) -- a Command's move names where
          // from, where to, the good and how many;
@@ -356,10 +358,12 @@ struct EntitySnapshot
     // for anything else. It is what the client draws, so it is the server's word, not a guess
     // from the role.
     std::string design;
-    // What it carries (#343): an NPC hauler's cargo, a wreck's (filled in from the layout by
-    // CompleteFromLayout); -1 -- nothing.
+    // What it carries (#343): an NPC hauler's cargo; -1 -- nothing.
     int cargo = -1;  // ResourceType as int
     int cargoAmount = 0;
+    // What a wreck or a can holds, per good (#472), filled in from the layout by
+    // CompleteFromLayout; empty -- nothing.
+    std::vector<int> holds{};
     // A belt's ore (#348): what is left and what it holds full, filled in from the
     // snapshot's `belts` by CompleteFromLayout; -1 -- not a belt, or not told.
     int oreLeft = -1, oreMax = -1;
@@ -633,10 +637,10 @@ struct EntityLayout
     // "abandoned" for a disbanded corporation's. Empty for the world's.
     std::string ownerName;
     bool        looted = false;  // derelict: already searched -- a wreck changes once (#38)
-    // derelict: what a hauler's wreck holds (#343), ResourceType as int (-1 nothing), and how
-    // many; a search that takes part of it is a change, and comes as a delta.
-    int cargo = -1;
-    int cargoAmount = 0;
+    // derelict: what a wreck or a can holds (#343, #472), how many of each good in
+    // AllResourceTypes order; empty -- nothing. A search or a move that takes part of it is a
+    // change, and comes as a delta.
+    std::vector<int> holds{};
     // A structure's time line, in world seconds (#39). While `completesAt` is ahead of the
     // clock it is a site and `archetype` is what it will become; 0 -- built. `expiresAt` 0 --
     // it stays. Instants rather than a progress figure, so the site advances on every client

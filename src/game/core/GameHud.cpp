@@ -8,6 +8,7 @@
 #include "core/Game.h"
 #include "render/TreatmentPanel.h"
 #include "render/Perf.h"
+#include "sim/InventoryList.h"
 #include "sim/Observation.h"
 #include "sim/Overview.h"
 #include "sim/PlayerStep.h"
@@ -647,13 +648,19 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                 L.Field("Hull", TextFormat("%.0f%%", e->hullFrac * 100.0f), t.colors.text);
                 L.Bar(e->hullFrac, e->hullFrac > 0.3f ? t.colors.good : t.colors.bad);
             }
-            // A hauler's hold, or what its wreck still holds (#343).
-            if ((e->kind == Proto::EntityKind::Npc || e->kind == Proto::EntityKind::Derelict) &&
-                e->cargo >= 0 && e->cargo < Goods::Count() && e->cargoAmount > 0)
-                L.Field(e->kind == Proto::EntityKind::Npc ? "Cargo" : "Holds",
+            // A hauler's hold (#343), or what a wreck or a can still holds (#472).
+            if (e->kind == Proto::EntityKind::Npc && e->cargo >= 0 && e->cargo < Goods::Count() &&
+                e->cargoAmount > 0)
+                L.Field("Cargo",
                         TextFormat("%d %s", e->cargoAmount,
                                    ResourceName(ResourceType::FromIndex(e->cargo)).c_str()),
                         t.colors.text);
+            else if (e->kind == Proto::EntityKind::Derelict && InventoryList::Total(e->holds) > 0)
+            {
+                L.Text("Holds", Ui::TextStyle::Label());
+                L.Text(InventoryList::Describe(e->holds),
+                       Ui::TextStyle::Body().Tint(t.colors.text).Wrap());
+            }
             else if (e->kind == Proto::EntityKind::Structure)
             {
                 const auto l = layout_.byId.find(e->id);

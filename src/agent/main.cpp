@@ -1213,10 +1213,17 @@ std::vector<Tool> BuildTools()
                    const char* tool) -> std::string
     {
         RequireLive();
-        const Proto::PlayerView&                    p = g_session.Snapshot().player;
-        const std::vector<InventoryList::Container> here = InventoryList::Reachable(p);
+        const std::vector<InventoryList::Container> here =
+            InventoryList::Reachable(g_session.Snapshot(), g_session.Layout(), g_session.Account());
+        // 'can' as a destination is a jettison: the server finds the can, or makes one.
+        InventoryList::Container jettison;
+        jettison.id = "can";
+        jettison.name = "a can";
+        jettison.capacity = InventoryList::CAN_UNITS;
         auto named = [&](const std::string& id) -> const InventoryList::Container&
         {
+            if (id == "can" && &id == &to)
+                return jettison;
             const InventoryList::Container* c = InventoryList::Find(here, id);
             if (c == nullptr)
             {
@@ -1240,6 +1247,8 @@ std::vector<Tool> BuildTools()
         const std::string  name = ResourceName(good);
         if (a.Amount(good) <= 0)
             throw Rpc::Error{ Rpc::INVALID_PARAMS, a.name + " has no " + name };
+        if (b.takeOnly)
+            throw Rpc::Error{ Rpc::INVALID_PARAMS, "nothing can be put into " + b.name };
         if (b.Room() <= 0)
             throw Rpc::Error{ Rpc::INVALID_PARAMS, b.name + " is full" };
         const int      before = a.Amount(good);
@@ -1253,17 +1262,59 @@ std::vector<Tool> BuildTools()
         if (!Confirm(c, why))
             return std::string(tool) + ": " + why;
         const std::vector<InventoryList::Container> after =
-            InventoryList::Reachable(g_session.Snapshot().player);
+            InventoryList::Reachable(g_session.Snapshot(), g_session.Layout(), g_session.Account());
         const InventoryList::Container* a2 = InventoryList::Find(after, from);
-        const InventoryList::Container* b2 = InventoryList::Find(after, to);
-        const int                       moved = a2 != nullptr ? before - a2->Amount(good) : 0;
+        const InventoryList::Container* b2 =
+            to == "can" ? &jettison : InventoryList::Find(after, to);
+        const int moved = a2 != nullptr ? before - a2->Amount(good) : before;
         if (moved <= 0 || b2 == nullptr)
             return Refused(tool, seq, "nothing moved; call inventory to see what is where");
+        if (a2 == nullptr)  // a can emptied out of reach of the list
+            return std::string(tool) + ": moved " + std::to_string(moved) + " " + name + " from " +
+                   a.name + " to " + b.name;
         return std::string(tool) + ": moved " + std::to_string(moved) + " " + name + " from " +
                a.name + " to " + b.name + " -- " + a2->name + " now " + std::to_string(a2->Used()) +
                " / " + std::to_string(a2->capacity) + ", " + b2->name + " " +
                std::to_string(b2->Used()) + " / " + std::to_string(b2->capacity);
     };
+    tools.push_back(
+        { "jettison",
+          "In space, put goods from your hold into a cargo can beside the ship: your own can "
+          "within reach if there is one, otherwise a new one. Anyone can take from a can with "
+          "salvage or move_goods, and it floats for an hour -- a hand-over between two pilots, "
+          "or a lighter hold to run with. All of that good unless an amount is given.",
+          Obj({ { "resource", Str("good name as inventory lists it under the hold, e.g. 'Iron'") },
+                { "amount", Num("how many (default: all of it)") } },
+              { "resource" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              const Proto::PlayerView& p = g_session.Snapshot().player;
+              if (p.docked)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "docked; undock first -- a can is in space" };
+              const int type = ResourceArg(args);
+              const int have = (size_t)type < p.cargoByType.size() ? p.cargoByType[type] : 0;
+              const std::string name = ResourceName(ResourceType::FromIndex(type));
+              if (have <= 0)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "the hold has no " + name };
+              const int      seq = g_session.LastEventSeq();
+              Proto::Command c;
+              c.moveFrom = "hold";
+              c.moveTo = "can";
+              c.moveType = type;
+              c.moveAmount = (int)NumberOr(args, "amount", 100000.0);
+              std::string why;
+              if (!Confirm(c, why))
+                  return "jettison: " + why;
+              const Proto::PlayerView& after = g_session.Snapshot().player;
+              const int now = (size_t)type < after.cargoByType.size() ? after.cargoByType[type] : 0;
+              if (now >= have)
+                  return Refused("jettison", seq, "nothing went out; call inventory");
+              return "jettison: " + std::to_string(have - now) + " " + name +
+                     " into a can beside the ship -- inventory lists it, by its can id";
+          } });
+
     tools.push_back(
         { "rent_hangar",
           "Set how many units of hangar you rent at the station you are docked at, on top of "
@@ -1303,8 +1354,10 @@ std::vector<Tool> BuildTools()
         { "move_goods",
           "Move goods between two containers where you are, by the ids inventory lists them "
           "by: 'hold' (the ship you fly); docked at a station, 'hangar' (yours there); docked "
-          "at your own structure or a corporation mate's, 'storage'. Moves all of that good "
-          "unless an amount is given, as far as the destination has room.",
+          "at your own structure or a corporation mate's, 'storage'; in space, 'can:<id>' for a "
+          "can or wreck within reach (take from any, put into your own), and 'can' as a "
+          "destination jettisons. Moves all of that good unless an amount is given, as far as "
+          "the destination has room.",
           Obj({ { "resource", Str("good name as inventory lists it, e.g. 'Iron'") },
                 { "from", Str("container id the goods are in, e.g. 'hold'") },
                 { "to", Str("container id to put them in, e.g. 'storage'") },
@@ -1460,7 +1513,7 @@ std::vector<Tool> BuildTools()
                       Obj({}), [](const Rpc::Json&)
                       {
                           RequireLive();
-                          return Obs::DescribeInventory(CurrentView());
+                          return Obs::DescribeInventory(CurrentView(), g_session.Account());
                       } });
 
     tools.push_back({ "hangar",
@@ -2356,11 +2409,9 @@ std::vector<Tool> BuildTools()
                   return head + GiveOrder(c, "move_to") + " Then call salvage again.";
               }
 
-              const std::string name = wreck.name;         // the layout may change under a pump
-              const int         held = wreck.cargoAmount;  // ...and so may what it holds
-              const std::string good = wreck.cargo >= 0 && wreck.cargo < Goods::Count()
-                                           ? ResourceName(ResourceType::FromIndex(wreck.cargo))
-                                           : std::string();
+              const std::string name = wreck.name;  // the layout may change under a pump
+              const int         held = InventoryList::Total(wreck.holds);     // ...and so may
+              const std::string good = InventoryList::Describe(wreck.holds);  // what it holds
               const double      before = p.money;
               Proto::Command    c;
               c.lootId = id;
@@ -2372,14 +2423,15 @@ std::vector<Tool> BuildTools()
               const double paid = g_session.Snapshot().player.money - before;
               const auto   now = g_session.Layout().find(id);
               // A hauler's wreck holds its cargo (#343): the hold takes what it has room for.
-              const int left = now != g_session.Layout().end() ? now->second.cargoAmount : 0;
+              const int left =
+                  now != g_session.Layout().end() ? InventoryList::Total(now->second.holds) : 0;
               if (now != g_session.Layout().end() && now->second.looted)
                   return "salvage: searched " + name + ", +" + Money(paid) +
-                         (held > 0 ? ", took " + std::to_string(held) + " " + good : "");
+                         (held > 0 ? ", took " + good : "");
               if (held > 0 && left < held)
-                  return "salvage: took " + std::to_string(held - left) + " " + good + " from " +
-                         name + "; " + std::to_string(left) +
-                         " more is left and the hold is full -- sell, then come back";
+                  return "salvage: took " + std::to_string(held - left) + " units from " + name +
+                         "; " + InventoryList::Describe(now->second.holds) +
+                         " is left and the hold is full -- sell, then come back";
               return "salvage: the server did not let you search " + name +
                      " -- someone may have got there first, or the ship drifted out of reach; "
                      "call observe";

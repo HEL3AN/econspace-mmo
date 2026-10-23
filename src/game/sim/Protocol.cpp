@@ -174,8 +174,8 @@ json EntityLayoutsJson(const std::vector<Proto::EntityLayout>& v)
             ej["ownn"] = e.ownerName;
         if (e.looted)
             ej["looted"] = true;
-        if (e.cargo >= 0 && e.cargoAmount > 0)
-            ej["cargo"] = json::array({ e.cargo, e.cargoAmount });
+        if (!e.holds.empty())
+            ej["holds"] = e.holds;
         if (e.completesAt > 0.0)
         {
             ej["start"] = e.startedAt;
@@ -229,13 +229,10 @@ std::vector<Proto::EntityLayout> ToEntityLayouts(const json& j, const char* key)
         e.owner = ej.value("own", std::string());
         e.ownerName = ej.value("ownn", e.owner);
         e.looted = ej.value("looted", false);
-        const auto cargo = ej.find("cargo");
-        if (cargo != ej.end() && cargo->is_array() && cargo->size() == 2 &&
-            (*cargo)[0].is_number_integer() && (*cargo)[1].is_number_integer())
-        {
-            e.cargo = (*cargo)[0].get<int>();
-            e.cargoAmount = (*cargo)[1].get<int>();
-        }
+        const auto holds = ej.find("holds");
+        if (holds != ej.end() && holds->is_array() && holds->size() <= (size_t)Goods::Count())
+            for (const json& n : *holds)
+                e.holds.push_back(n.is_number_integer() ? std::max(0, n.get<int>()) : 0);
         e.startedAt = ej.value("start", 0.0);
         e.completesAt = ej.value("done", 0.0);
         e.expiresAt = ej.value("exp", 0.0);
@@ -2478,11 +2475,8 @@ static std::string ShownName(const EntityLayout& l)
 // things the entity list does not carry.
 static void CompleteHolds(EntitySnapshot& e, const EntityLayout& l, const Snapshot& s)
 {
-    if (l.kind == EntityKind::Derelict && e.cargo < 0 && l.cargo >= 0)
-    {
-        e.cargo = l.cargo;
-        e.cargoAmount = l.cargoAmount;
-    }
+    if (l.kind == EntityKind::Derelict)
+        e.holds = l.holds;
     if (l.kind == EntityKind::Field)
         for (const Snapshot::BeltOre& b : s.belts)
             if (b.id == l.id)
