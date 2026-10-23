@@ -18,6 +18,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 - Every pilot has their own map: public charts, their own finds and their corporation's (#443).
 - Factions chart what they reach, and first contact reveals native names (#453); native names follow their culture (#448).
 - The discoverer names a system and the admin moderates (#459).
+- The discoverer can name a system from anywhere: a "Name this system" item in the star's map menu and a button in the map's system info, both dimmed with the reason where naming is refused; the journal says so on discovery; econagent `name_system` takes a system (#513).
 - The map remembers what you saw, and when (#457); a region's charts go into the archive and come back with it (#462).
 - A corporation holds a system by influence and a claim (#449), and only from next door (#454).
 - Building in a faction's space takes a licence, by standing and rent (#456).

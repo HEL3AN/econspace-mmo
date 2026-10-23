@@ -347,9 +347,14 @@ private:
     // in it (0 if nothing) and the world point at its centre. False off the grid.
     bool             SensorPick(Vector2 screen, int& id, Vector2& world) const;
     Sensor::Standing ViewerStanding() const;  // this pilot's standing, for the instruments
-    bool CanNameHere() const;  // in a system this pilot found and nobody has named (#145)
-    void HandleEscape();       // Esc closes whatever is on top, and never quits
-    void SaveTreatment();      // writes what was tuned in F10's panel
+    // Why this pilot may not name that system (#513), in words; empty if they may. The same
+    // rule the server applies (Names::NamingRefusal), over what the galaxy index tells.
+    std::string NamingRefusal(const std::string& system) const;
+    void        BeginNaming(const std::string& system);  // the name field, for that system
+    std::string MapSelection() const;                    // the star the sidebar is about
+    void        DrawMapSystemInfo(Ui::Layout& L);        // ...its facts, and Name this system
+    void        HandleEscape();   // Esc closes whatever is on top, and never quits
+    void        SaveTreatment();  // writes what was tuned in F10's panel
 
     // The windows in GameWindows.cpp (#297).
     void  ApplyUiScale(float s);  // the player's own UI scale, saved; <= 0: the automatic one
@@ -717,8 +722,10 @@ private:
     std::string defenceList_;
     Defence     defenceSeen_;  // what the layout said when they were read from it
 
-    std::string pilotName_;  // the account this client logged in as
-    std::string nameBuf_;    // the map's name field (#145), while it has the keyboard
+    std::string pilotName_;    // the account this client logged in as
+    std::string mapSelected_;  // the star last clicked on the map (#513); empty -- where we are
+    std::string nameTarget_;   // the system the name field is for
+    std::string nameBuf_;      // the map's name field (#145), while it has the keyboard
 
     // The sensor screen (#123): V opens it, the wheel steps its range. It covers the world
     // view and the windows while open, and the flight keys keep working, because flying by

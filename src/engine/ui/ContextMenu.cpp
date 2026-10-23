@@ -26,6 +26,12 @@ float FontSize()
 }
 }  // namespace
 
+// What a row says: the label, and for a disabled one why it is.
+static std::string ItemText(const ContextMenu::Item& it)
+{
+    return it.disabled.empty() ? it.label : it.label + "  --  " + it.disabled;
+}
+
 void ContextMenu::Open(Vector2 pos, std::vector<Item> items, std::string header)
 {
     if (items.empty())
@@ -37,7 +43,7 @@ void ContextMenu::Open(Vector2 pos, std::vector<Item> items, std::string header)
 
     width_ = Ui::Px(140.0f);
     for (const Item& it : items_)
-        width_ = std::max(width_, Ui::MeasureString(Ui::Face::Regular, FontSize(), it.label).x +
+        width_ = std::max(width_, Ui::MeasureString(Ui::Face::Regular, FontSize(), ItemText(it)).x +
                                       2.0f * Pad());
     if (!header_.empty())
         width_ = std::max(width_, Ui::MeasureString(Ui::Face::Strong, FontSize(), header_).x +
@@ -86,7 +92,11 @@ bool ContextMenu::Update()
             const int             idx = y < 0.0f ? -1 : (int)(y / RowHeight());
             std::function<void()> action;
             if (idx >= 0 && idx < (int)items_.size())
+            {
                 action = items_[idx].action;
+                if (!items_[idx].disabled.empty())
+                    return true;  // says why it cannot: the menu stays open
+            }
             if (idx < 0)
                 return true;  // the header: the menu stays open
             Close();
@@ -132,11 +142,14 @@ void ContextMenu::Draw() const
     {
         const Rectangle row{ b.x, b.y + top + rowH * (float)i, b.width, rowH };
         const bool      hover = Ui::MouseOver(row);
-        if (hover)
+        const bool      off = !items_[i].disabled.empty();
+        if (hover && !off)
             DrawRectangleRec(row, t.colors.selected);
         Ui::DrawString(
-            Ui::Face::Regular, items_[i].label,
+            Ui::Face::Regular, ItemText(items_[i]),
             { std::round(b.x + Pad()), Ui::CentredTop(Ui::Face::Regular, px, row.y, rowH) }, px,
-            hover ? t.colors.accent : t.colors.text);
+            off     ? t.colors.dim
+            : hover ? t.colors.accent
+                    : t.colors.text);
     }
 }

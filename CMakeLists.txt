@@ -302,6 +302,7 @@ add_executable(econspace
     src/game/sim/InventoryList.cpp # what the inventory window lists (#472)
     src/game/core/GameInventory.cpp # the inventory window: containers, moves, drag and drop (#472)
     src/game/sim/Observation.cpp   # what a mission still needs, in the agent's words (#297)
+    src/game/sim/NamingRule.cpp    # who may name a system, and the reason when not (#513)
     src/game/sim/Sensor.cpp        # the sensor screen's grid and allegiance colours (#123)
     src/game/sim/PlayerStep.cpp
     src/game/sim/WarpPath.cpp
@@ -325,6 +326,7 @@ add_executable(econserver
     src/game/sim/ProcessMemory.cpp        # resident memory, for the benchmark (#295)
     src/game/sim/Simulation.cpp
     src/game/sim/ClientSession.cpp        # one connected player, extracted from Simulation (#3)
+    src/game/sim/NamingRule.cpp    # who may name a system, and the reason when not (#513)
     src/game/sim/DesignStore.cpp          # the designs players fly, filed by content (#279)
     src/game/sim/Corporation.cpp          # players' corporations: members, roles, invites (#347)
     src/game/sim/Simulation_World.cpp     # galaxy, hydration, routes, persistence (#17)
@@ -384,6 +386,7 @@ add_executable(econagent
     src/agent/Jsonrpc.cpp
     src/agent/Session.cpp
     src/game/sim/Observation.cpp   # the world as text, which is what a model reads
+    src/game/sim/NamingRule.cpp    # who may name a system, and the reason when not (#513)
     src/game/sim/InventoryList.cpp # the containers reachable here, as the window lists them (#472)
     src/game/sim/Orders.cpp        # order kinds, shared with the server
     src/game/entities/ShipType.cpp # the hangar catalog and what a station charges (#109)
@@ -582,6 +585,7 @@ add_executable(tests
     tests/chart_sales_tests.cpp    # charts sold to factions, priced by what they lack (#431 slice 16)
     tests/finds_tests.cpp          # rich belts and other hidden finds (#346)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
+    src/game/sim/NamingRule.cpp    # who may name a system, and the reason when not (#513)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/MissionList.cpp   # the missions window's rows, tested without one (#297)
     src/game/sim/InventoryList.cpp # the inventory window's containers and rows (#472)

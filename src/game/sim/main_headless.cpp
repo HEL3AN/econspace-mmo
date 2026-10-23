@@ -333,7 +333,7 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     // word for everyone not at a station (#308). The server says why it refuses, in the
     // journal; an accepted name reaches everyone in the galaxy index.
     if (!c.nameSystem.empty())
-        sim.NameSystem(s, c.nameSystem);
+        sim.NameSystem(s, c.nameSystemId.empty() ? s.systemId : c.nameSystemId, c.nameSystem);
     // A licence to build here (#431 slice 6): docked at the holding faction's station, or in a
     // corporation's system anywhere -- so not a docked verb either; a refusal says why.
     if (c.buyLicence)

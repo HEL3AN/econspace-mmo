@@ -1694,6 +1694,12 @@ void Simulation::ServerEnterSystem(ClientSession& s, const std::string& destId, 
             native.empty() ? std::string() : ": its people call it " + native;
         PushEvent("First ship into " + designation + people);
         s.RecordEvent(Ev::Kind::Notice, "First ship ever into " + designation + people);
+        // Where nobody's people had a name for it, its finder may give it one -- and nobody
+        // found where to do that in the 0.1 playtest (#513).
+        if (native.empty() && agg.givenName.empty())
+            s.RecordEvent(Ev::Kind::Notice,
+                          "You discovered " + designation +
+                              " -- you may name it (map \u2192 star \u2192 Name this system)");
     }
 }
 

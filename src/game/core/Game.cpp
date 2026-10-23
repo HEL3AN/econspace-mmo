@@ -7,6 +7,8 @@
 #include "core/Game.h"
 #include "ui/Drag.h"
 #include "render/Perf.h"
+#include "sim/NamingRule.h"
+#include "sim/Observation.h"
 #include "sim/PlayerStep.h"
 #include "sim/WarpPath.h"
 
@@ -270,6 +272,7 @@ void Game::Run()
                 cmd_.dock = cmd_.undock = false;
                 cmd_.navMode = 0;
                 cmd_.nameSystem.clear();
+                cmd_.nameSystemId.clear();
                 cmd_.jumpGateId = cmd_.lootId = 0;
                 cmd_.deploy.clear();
                 cmd_.dismantleId = 0;
@@ -712,11 +715,10 @@ void Game::HandleInput(float dt)
         desk_.Toggle(WIN_SENSOR);
     // While it is open, the mouse points at cells rather than at the world behind them.
     const bool onSensor = desk_.Owns(WIN_SENSOR);
-    if (desk_.IsOpen(WIN_MAP) && key(KEY_N) && CanNameHere())
+    if (desk_.IsOpen(WIN_MAP) && key(KEY_N) && NamingRefusal(MapSelection()).empty())
     {
-        // The field is drawn on the map, which takes it from here (DrawGalaxyMap).
-        nameBuf_.clear();
-        desk_.KeyboardFocus().Take(WIN_MAP, "name");
+        // A shortcut for the sidebar's button, for the star it is about (#513).
+        BeginNaming(MapSelection());
         while (GetCharPressed() != 0)
         {
             // the N that opened the field is not the name's first letter
@@ -1282,12 +1284,29 @@ void Game::HandleEscape()
     desk_.Escape();
 }
 
-bool Game::CanNameHere() const
+std::string Game::NamingRefusal(const std::string& system) const
 {
     for (const WorldLoader::SystemInfo& si : universe_.systems)
-        if (si.id == snapshot_.systemId)
-            return !pilotName_.empty() && si.discoverer == pilotName_ && si.designation.empty();
-    return false;
+        if (si.id == system)
+            return si.drifted ? "its region has drifted away"
+                              : Names::NamingRefusal(si, pilotName_);
+    return "it is not on your map";
+}
+
+void Game::BeginNaming(const std::string& system)
+{
+    mapSelected_ = system;
+    nameTarget_ = system;
+    nameBuf_.clear();
+    desk_.KeyboardFocus().Take(WIN_MAP, "name");
+}
+
+std::string Game::MapSelection() const
+{
+    for (const WorldLoader::SystemInfo& si : universe_.systems)
+        if (si.id == mapSelected_)
+            return mapSelected_;
+    return snapshot_.systemId;
 }
 
 void Game::UpdateShipDrawPose()

@@ -37,6 +37,8 @@
 
 #include "raylib.h"
 
+#include "sim/NamingRule.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -1943,7 +1945,8 @@ std::vector<Tool> BuildTools()
 
     tools.push_back(
         { "name_system",
-          "Name the system you are in. Beyond the wormhole a system has only a designation "
+          "Name a system you discovered -- from anywhere, you need not be there (pass system; "
+          "without it, the one you are in). Beyond the wormhole a system has only a designation "
           "(W-3.2) until whoever got there first names it -- once, for everyone who has it on "
           "their charts. Only the discoverer may name it -- never a later owner or corporation. "
           "A system its people live in keeps their name, and one a faction charted before any "
@@ -1952,7 +1955,10 @@ std::vector<Tool> BuildTools()
           "server's filter refuses; not a name another system has or its natives use, "
           "whatever the case. A refusal says which rule failed. The server's admin may rename "
           "or clear a name; you are told in your journal.",
-          Obj({ { "name", Str("the name, e.g. 'Haven'") } }, { "name" }), [](const Rpc::Json& args)
+          Obj({ { "name", Str("the name, e.g. 'Haven'") },
+                { "system", Str("system id to name; default the one you are in") } },
+              { "name" }),
+          [](const Rpc::Json& args)
           {
               RequireLive();
               const std::string name = args.contains("name") && args["name"].is_string()
@@ -1961,8 +1967,23 @@ std::vector<Tool> BuildTools()
               std::string       why;
               if (!Names::AllowedSystemName(name, {}, why))  // the server's own list it checks
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, why };
-              const std::string here = g_session.Snapshot().systemId;
-              auto              named = [&]
+              const std::string here = args.contains("system") && args["system"].is_string() &&
+                                               !args["system"].get<std::string>().empty()
+                                           ? args["system"].get<std::string>()
+                                           : g_session.Snapshot().systemId;
+              // The same rules the server applies, over what the index tells: the reason
+              // comes back at once, before anything is sent.
+              {
+                  const auto& systems = g_session.Universe().systems;
+                  const auto  it = std::find_if(systems.begin(), systems.end(),
+                                                [&](const auto& si) { return si.id == here; });
+                  if (it == systems.end())
+                      throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                        "no system " + here + " on your charts" };
+                  if (const std::string no = Names::NamingRefusal(*it, ChatMe()); !no.empty())
+                      return "name_system (" + here + "): " + no;
+              }
+              auto named = [&]
               {
                   for (const auto& si : g_session.Universe().systems)
                       if (si.id == here)
@@ -1972,6 +1993,7 @@ std::vector<Tool> BuildTools()
               const int      seq = g_session.LastEventSeq();
               Proto::Command c;
               c.nameSystem = name;
+              c.nameSystemId = here;
               if (!Confirm(c, why))
                   return "name_system: " + why;
               // The new name reaches everyone who knows it, in the index the server resends.

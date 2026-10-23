@@ -88,6 +88,8 @@ struct SystemInfo
     // Its region drifted away (#431 slice 15, M3): cut off from the galaxy, or gone into the
     // archive. Kept on the charts of whoever knew it, and no way there until it comes back.
     bool drifted{ false };
+    // The name is its people's, learnt at first contact (#431 N1) -- so nobody may name it.
+    bool nativeNamed{ false };
 };
 
 // A link between two systems (for drawing on the star map).

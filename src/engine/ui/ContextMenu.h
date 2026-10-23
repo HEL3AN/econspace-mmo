@@ -15,8 +15,14 @@ public:
     // Menu item: a label and the action run when it's selected.
     struct Item
     {
+        Item(std::string l, std::function<void()> a, std::string off = std::string())
+            : label(std::move(l)), action(std::move(a)), disabled(std::move(off))
+        {
+        }
         std::string           label;
         std::function<void()> action;
+        // Not empty: the item is shown dimmed, with this as the reason, and does nothing.
+        std::string disabled;
     };
 
     // Opens at the cursor position. A header, when given, is a line above the actions that
