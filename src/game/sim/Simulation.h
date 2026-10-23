@@ -3,6 +3,7 @@
 #include "core/Fitting.h"
 #include "core/Route.h"
 #include "core/WorldLoader.h"
+#include "economy/Inventory.h"
 #include "gen/Galaxy.h"
 #include "entities/NpcShip.h"
 #include "sim/SystemState.h"
@@ -1213,10 +1214,28 @@ public:
     // side, the owner and the owner's corporation (Structure::OwnersSide) -- or null, with why
     // not in `why` when it is given.
     const Structure* DockedStorage(const ClientSession& s, std::string* why = nullptr) const;
-    // From the hold into it, and back: as many of good `type` as the hold has (or it holds), up
-    // to `amount` and as far as there is room. What moved; 0 with a Notice saying why.
+    // From the hold into it, and back: MoveGoods between "hold" and "storage", saying "store"
+    // and "take" when refused.
     int StoreCargo(ClientSession& s, int type, int amount);
     int TakeCargo(ClientSession& s, int type, int amount);
+
+    // --- Containers (#472) ---
+    // A container reachable from where a session is: its goods, how much it may hold and what
+    // the journal calls it. One store underneath every kind -- a hold, a structure's storage --
+    // so a move is one rule (documents/holds_and_storage.md).
+    struct Container
+    {
+        Inventory*  goods = nullptr;
+        int         capacity = 0;
+        std::string name;
+    };
+    // The container `id` names for this session, as InventoryList names it ("hold",
+    // "storage"); false, with why, when there is none such here or it is not theirs.
+    bool ContainerOf(ClientSession& s, const std::string& id, Container& out, std::string& why);
+    // As many of good `type` as `from` has, up to `amount` and as far as `to` has room. What
+    // moved; 0 with a Notice "Cannot <verb>: why".
+    int MoveGoods(ClientSession& s, const std::string& from, const std::string& to, int type,
+                  int amount, const char* verb = "move");
 
     // --- Rules of engagement (#340) ---
     // Why this player may not set the rules of structure `id` to `d`, or empty when they may:

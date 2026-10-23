@@ -53,32 +53,13 @@ bool Ship::AddCargo(ResourceType type, int amount)
 {
     if (GetCargoUsed() + amount > stats_.cargoCapacity)
         return false;
-    cargo_[type] += amount;
+    cargo_.Add(type, amount);
     return true;
 }
 
 void Ship::RemoveCargo(ResourceType type, int amount)
 {
-    auto it = cargo_.find(type);
-    if (it == cargo_.end())
-        return;
-    it->second -= amount;
-    if (it->second < 0)
-        it->second = 0;
-}
-
-int Ship::GetCargoAmount(ResourceType type) const
-{
-    auto it = cargo_.find(type);
-    return (it != cargo_.end()) ? it->second : 0;
-}
-
-int Ship::GetCargoUsed() const
-{
-    int sum = 0;
-    for (const auto& [type, amount] : cargo_)
-        sum += amount;
-    return sum;
+    cargo_.Remove(type, amount);
 }
 
 void Ship::ApplyView(Vector2 pos, float heading, Vector2 vel, float hull, float shields)

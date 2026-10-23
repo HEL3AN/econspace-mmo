@@ -21,20 +21,12 @@ void Game::RequestMove(const std::string& from, const std::string& to, ResourceT
 {
     if (amount <= 0 || from == to)
         return;
-    // Today's stores have a verb each way between the hold and a structure's storage (#438).
+    // One verb between any two containers here, by the ids InventoryList gives them.
     Proto::Command c;
-    if (from == "hold" && to == "storage")
-    {
-        c.storeType = type.Index();
-        c.storeAmount = amount;
-    }
-    else if (from == "storage" && to == "hold")
-    {
-        c.takeType = type.Index();
-        c.takeAmount = amount;
-    }
-    else
-        return;
+    c.moveFrom = from;
+    c.moveTo = to;
+    c.moveType = type.Index();
+    c.moveAmount = amount;
     clientLink_->Send(Proto::EncodeCommand(c));
 }
 

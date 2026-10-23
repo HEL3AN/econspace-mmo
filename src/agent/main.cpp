@@ -31,6 +31,7 @@
 #include "missions/MissionSystem.h"
 #include "sim/Chat.h"
 #include "sim/Corporation.h"
+#include "sim/InventoryList.h"
 #include "sim/Names.h"
 #include "sim/Orders.h"
 
@@ -1205,64 +1206,99 @@ std::vector<Tool> BuildTools()
                      ", money " + Money(after.money);
           } });
 
-    // A structure's storage (#438), both ways: one function, told which.
-    auto storage = [](const Rpc::Json& args, bool store) -> std::string
+    // Goods between two containers where the ship is (#472): one function for move_goods and
+    // for the older pair, store_cargo and take_cargo, which are two of its cases.
+    auto move = [](const Rpc::Json& args, const std::string& from, const std::string& to,
+                   const char* tool) -> std::string
     {
-        const char* tool = store ? "store_cargo" : "take_cargo";
         RequireLive();
-        RequireDocked(store ? "storing" : "taking from storage");
-        const Proto::PlayerView& p = g_session.Snapshot().player;
-        if (p.storageCap <= 0)
-            throw Rpc::Error{ Rpc::INVALID_PARAMS,
-                              "no storage of yours here: dock at your own structure with "
-                              "storage, or a corporation mate's" };
-        const int         type = ResourceArg(args);
-        const std::string name = ResourceName(ResourceType::FromIndex(type));
-        auto              at = [type](const std::vector<int>& v)
-        { return (size_t)type < v.size() ? v[type] : 0; };
-        const int hold = at(p.cargoByType), kept = at(p.storedByType);
-        if (store ? hold <= 0 : kept <= 0)
-            throw Rpc::Error{ Rpc::INVALID_PARAMS,
-                              store ? "the hold has no " + name : "the storage keeps no " + name };
+        const Proto::PlayerView&                    p = g_session.Snapshot().player;
+        const std::vector<InventoryList::Container> here = InventoryList::Reachable(p);
+        auto named = [&](const std::string& id) -> const InventoryList::Container&
+        {
+            const InventoryList::Container* c = InventoryList::Find(here, id);
+            if (c == nullptr)
+            {
+                std::string ids;
+                for (const InventoryList::Container& k : here)
+                    ids += (ids.empty() ? "" : ", ") + k.id;
+                throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                  "no container '" + id + "' here; here there is " + ids +
+                                      (id == "storage" ? " -- storage is your own structure's, "
+                                                         "or a corporation mate's, docked there"
+                                                       : "") };
+            }
+            return *c;
+        };
+        const InventoryList::Container& a = named(from);
+        const InventoryList::Container& b = named(to);
+        if (from == to)
+            throw Rpc::Error{ Rpc::INVALID_PARAMS, "from and to are the same container" };
+        const int          type = ResourceArg(args);
+        const ResourceType good = ResourceType::FromIndex(type);
+        const std::string  name = ResourceName(good);
+        if (a.Amount(good) <= 0)
+            throw Rpc::Error{ Rpc::INVALID_PARAMS, a.name + " has no " + name };
+        if (b.Room() <= 0)
+            throw Rpc::Error{ Rpc::INVALID_PARAMS, b.name + " is full" };
+        const int      before = a.Amount(good);
         const int      seq = g_session.LastEventSeq();
         Proto::Command c;
-        const int      amount = (int)NumberOr(args, "amount", 100000.0);
-        (store ? c.storeType : c.takeType) = type;
-        (store ? c.storeAmount : c.takeAmount) = amount;
+        c.moveFrom = from;
+        c.moveTo = to;
+        c.moveType = type;
+        c.moveAmount = (int)NumberOr(args, "amount", 100000.0);
         std::string why;
         if (!Confirm(c, why))
             return std::string(tool) + ": " + why;
-        const Proto::PlayerView& after = g_session.Snapshot().player;
-        const int moved = store ? hold - at(after.cargoByType) : at(after.cargoByType) - hold;
-        if (moved <= 0)
-            return Refused(tool, seq, "nothing moved; call observe to see the storage");
-        int used = 0;
-        for (int n : after.storedByType)
-            used += n;
-        return std::string(tool) + ": " + (store ? "stored " : "took ") + std::to_string(moved) +
-               " " + name + " -- storage now " + std::to_string(used) + " / " +
-               std::to_string(after.storageCap) + ", hold " + std::to_string(after.cargoUsed) +
-               " / " + std::to_string(after.cargoCap);
+        const std::vector<InventoryList::Container> after =
+            InventoryList::Reachable(g_session.Snapshot().player);
+        const InventoryList::Container* a2 = InventoryList::Find(after, from);
+        const InventoryList::Container* b2 = InventoryList::Find(after, to);
+        const int                       moved = a2 != nullptr ? before - a2->Amount(good) : 0;
+        if (moved <= 0 || b2 == nullptr)
+            return Refused(tool, seq, "nothing moved; call inventory to see what is where");
+        return std::string(tool) + ": moved " + std::to_string(moved) + " " + name + " from " +
+               a.name + " to " + b.name + " -- " + a2->name + " now " + std::to_string(a2->Used()) +
+               " / " + std::to_string(a2->capacity) + ", " + b2->name + " " +
+               std::to_string(b2->Used()) + " / " + std::to_string(b2->capacity);
     };
+    tools.push_back(
+        { "move_goods",
+          "Move goods between two containers where you are, by the ids inventory lists them "
+          "by: 'hold' (the ship you fly) and, docked at your own structure or a corporation "
+          "mate's, 'storage'. Moves all of that good unless an amount is given, as far as the "
+          "destination has room.",
+          Obj({ { "resource", Str("good name as inventory lists it, e.g. 'Iron'") },
+                { "from", Str("container id the goods are in, e.g. 'hold'") },
+                { "to", Str("container id to put them in, e.g. 'storage'") },
+                { "amount", Num("how many (default: all of it)") } },
+              { "resource", "from", "to" }),
+          [move](const Rpc::Json& args)
+          {
+              return move(args, args.value("from", std::string()), args.value("to", std::string()),
+                          "move_goods");
+          } });
     tools.push_back(
         { "store_cargo",
           "Put goods from your hold into the storage of the structure you are docked at -- "
           "your own outpost or station, or a corporation mate's. Stores all of that good "
-          "unless an amount is given, as far as the storage has room. observe lists it under "
-          "STORAGE while you are docked there.",
+          "unless an amount is given, as far as the storage has room. The same as move_goods "
+          "from 'hold' to 'storage'.",
           Obj({ { "resource", Str("good name as observe lists it under CARGO, e.g. 'Iron'") },
                 { "amount", Num("how many (default: all of it)") } },
               { "resource" }),
-          [storage](const Rpc::Json& args) { return storage(args, true); } });
+          [move](const Rpc::Json& args) { return move(args, "hold", "storage", "store_cargo"); } });
     tools.push_back(
         { "take_cargo",
           "Take goods out of the storage of the structure you are docked at into your hold -- "
           "your own outpost or station, or a corporation mate's. Takes all of that good unless "
-          "an amount is given, as far as the hold has room.",
+          "an amount is given, as far as the hold has room. The same as move_goods from "
+          "'storage' to 'hold'.",
           Obj({ { "resource", Str("good name as observe lists it under STORAGE, e.g. 'Iron'") },
                 { "amount", Num("how many (default: all of it)") } },
               { "resource" }),
-          [storage](const Rpc::Json& args) { return storage(args, false); } });
+          [move](const Rpc::Json& args) { return move(args, "storage", "hold", "take_cargo"); } });
 
     tools.push_back(
         { "missions",

@@ -428,59 +428,72 @@ const Structure* Simulation::DockedStorage(const ClientSession& s, std::string* 
     return t;
 }
 
+bool Simulation::ContainerOf(ClientSession& s, const std::string& id, Container& out,
+                             std::string& why)
+{
+    if (!s.ship)
+    {
+        why = "there is no ship";
+        return false;
+    }
+    if (id == "hold")
+    {
+        out.goods = &s.ship->Hold();
+        out.capacity = s.ship->GetCargoCapacity();
+        out.name = "the hold";
+        return true;
+    }
+    if (id == "storage")
+    {
+        const Structure* t = DockedStorage(s, &why);
+        if (t == nullptr)
+            return false;
+        Structure& mine = const_cast<Structure&>(*t);
+        out.goods = &mine.Storage();
+        out.capacity = mine.GetStorageCapacity();
+        out.name = mine.GetName() + "'s storage";
+        return true;
+    }
+    why = "there is no container called '" + id + "' here";
+    return false;
+}
+
+int Simulation::MoveGoods(ClientSession& s, const std::string& from, const std::string& to,
+                          int type, int amount, const char* verb)
+{
+    auto refuse = [&](const std::string& why)
+    {
+        s.RecordEvent(Ev::Kind::Notice, std::string("Cannot ") + verb + ": " + why);
+        return 0;
+    };
+    if (type < 0 || type >= Goods::Count() || amount <= 0)
+        return refuse("no such good");
+    if (from == to)
+        return refuse("it is already there");
+    Container   a, b;
+    std::string why;
+    if (!ContainerOf(s, from, a, why) || !ContainerOf(s, to, b, why))
+        return refuse(why);
+    const ResourceType good = ResourceType::FromIndex(type);
+    const int          room = std::max(0, b.capacity - b.goods->Used());
+    const int          n = std::min({ amount, a.goods->Amount(good), room });
+    if (n <= 0)
+        return refuse(room <= 0 ? b.name + " is full" : a.name + " has no " + ResourceName(good));
+    a.goods->Remove(good, n);
+    b.goods->Add(good, n);
+    s.RecordEvent(Ev::Kind::Notice, "Moved " + std::to_string(n) + " " + ResourceName(good) +
+                                        " from " + a.name + " to " + b.name);
+    return n;
+}
+
 int Simulation::StoreCargo(ClientSession& s, int type, int amount)
 {
-    std::string      why;
-    const Structure* found = DockedStorage(s, &why);
-    if (found == nullptr || type < 0 || type >= Goods::Count() || amount <= 0)
-    {
-        s.RecordEvent(Ev::Kind::Notice, "Cannot store: " + (why.empty() ? "no such good" : why));
-        return 0;
-    }
-    Structure&         t = const_cast<Structure&>(*found);
-    const ResourceType good = ResourceType::FromIndex(type);
-    const int          room = t.GetStorageCapacity() - t.GetStoredUsed();
-    const int          n = std::min({ amount, s.ship->GetCargoAmount(good), room });
-    if (n <= 0)
-    {
-        s.RecordEvent(Ev::Kind::Notice,
-                      "Cannot store: " + (room <= 0 ? t.GetName() + "'s storage is full"
-                                                    : "the hold has no " + ResourceName(good)));
-        return 0;
-    }
-    s.ship->RemoveCargo(good, n);
-    t.AddStored(good, n);
-    s.RecordEvent(Ev::Kind::Notice,
-                  "Stored " + std::to_string(n) + " " + ResourceName(good) + " in " + t.GetName());
-    return n;
+    return MoveGoods(s, "hold", "storage", type, amount, "store");
 }
 
 int Simulation::TakeCargo(ClientSession& s, int type, int amount)
 {
-    std::string      why;
-    const Structure* found = DockedStorage(s, &why);
-    if (found == nullptr || type < 0 || type >= Goods::Count() || amount <= 0)
-    {
-        s.RecordEvent(Ev::Kind::Notice, "Cannot take: " + (why.empty() ? "no such good" : why));
-        return 0;
-    }
-    Structure&         t = const_cast<Structure&>(*found);
-    const ResourceType good = ResourceType::FromIndex(type);
-    const int          room = s.ship->GetCargoCapacity() - s.ship->GetCargoUsed();
-    const int          n = std::min({ amount, t.GetStoredAmount(good), room });
-    if (n <= 0)
-    {
-        s.RecordEvent(Ev::Kind::Notice,
-                      "Cannot take: " + (room <= 0
-                                             ? std::string("the hold is full")
-                                             : t.GetName() + " keeps no " + ResourceName(good)));
-        return 0;
-    }
-    t.RemoveStored(good, n);
-    s.ship->AddCargo(good, n);
-    s.RecordEvent(Ev::Kind::Notice,
-                  "Took " + std::to_string(n) + " " + ResourceName(good) + " from " + t.GetName());
-    return n;
+    return MoveGoods(s, "storage", "hold", type, amount, "take");
 }
 
 bool Simulation::LawOver(const SystemState& st, const Structure& t, const std::string& attacker,

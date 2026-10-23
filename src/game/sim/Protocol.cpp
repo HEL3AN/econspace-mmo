@@ -564,6 +564,13 @@ std::string EncodeCommand(const Command& c)
     number("sellAmt", c.sellAmount, 0);
     number("buyType", c.buyType, -1);
     number("buyAmt", c.buyAmount, 0);
+    if (c.moveType >= 0)  // (#472)
+    {
+        j["mvFrom"] = c.moveFrom;
+        j["mvTo"] = c.moveTo;
+        j["mvType"] = c.moveType;
+        j["mvAmt"] = c.moveAmount;
+    }
     number("storeType", c.storeType, -1);
     number("storeAmt", c.storeAmount, 0);
     number("takeType", c.takeType, -1);
@@ -811,6 +818,10 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadInt(j, "sellAmt", 0, 0, ID_MAX, out.sellAmount);
     ok = ok && ReadInt(j, "buyType", -1, 0, resources - 1, out.buyType);
     ok = ok && ReadInt(j, "buyAmt", 0, 0, ID_MAX, out.buyAmount);
+    ok = ok && ReadText(j, "mvFrom", out.moveFrom);
+    ok = ok && ReadText(j, "mvTo", out.moveTo);
+    ok = ok && ReadInt(j, "mvType", -1, 0, resources - 1, out.moveType);
+    ok = ok && ReadInt(j, "mvAmt", 0, 0, ID_MAX, out.moveAmount);
     ok = ok && ReadInt(j, "storeType", -1, 0, resources - 1, out.storeType);
     ok = ok && ReadInt(j, "storeAmt", 0, 0, ID_MAX, out.storeAmount);
     ok = ok && ReadInt(j, "takeType", -1, 0, resources - 1, out.takeType);

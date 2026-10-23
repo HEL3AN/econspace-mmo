@@ -187,6 +187,7 @@ add_library(engine STATIC
     src/engine/entities/Structure.cpp  # anything a player built (#39)
     src/engine/entities/Defence.cpp    # its owner's rules of engagement (#340)
     src/engine/economy/Resource.cpp
+    src/engine/economy/Inventory.cpp   # goods by type, as any container holds them (#472)
     src/engine/render/Textures.cpp
     src/engine/render/Scene.cpp        # what an object looks like, apart from who draws it (#35)
     src/engine/render/Modules.cpp      # the module library: things placed by name, in variants (#240)

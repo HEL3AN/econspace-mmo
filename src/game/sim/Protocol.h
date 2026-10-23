@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    61;  // 61: a mission offer carries its number, and a Command's acceptOffer names that
+    62;  // 62: one verb moves goods between containers (#472) -- a Command's move names where
+         // from, where to, the good and how many;
+         // 61: a mission offer carries its number, and a Command's acceptOffer names that
          // number rather than a place on the board (#425); and structure ownership (#468) -- a
          // layout object's owner may be a corporation, "corp:<id>", and carries `ownerName`,
          // the owner as a player reads it; a CorpAct "transfer" (value: a structure's id,
@@ -242,9 +244,16 @@ struct Command
     // to the amount.
     int buyType = -1;  // ResourceType as int (-1 — no purchase)
     int buyAmount = 0;
-    // The storage of the structure the ship is docked at (#438), as the market's pair is: put
-    // so many of a good from the hold into it, or take so many back, as far as there is room.
-    // Its owner's side only; a refusal is a Notice saying why.
+    // Move goods from one container to another where the ship is (#472): so many of a good,
+    // as far as `moveFrom` has them and `moveTo` has room. A container is named as
+    // InventoryList names it: "hold", "storage" (the structure docked at, its owner's side's).
+    // A refusal is a Notice saying why.
+    std::string moveFrom;
+    std::string moveTo;
+    int         moveType = -1;  // ResourceType as int (-1 — nothing moved)
+    int         moveAmount = 0;
+    // The pair `move` replaced (#438): hold to storage and back. Still honoured, as a move, for
+    // a peer that sends them; nothing in this build does.
     int storeType = -1;  // ResourceType as int (-1 — nothing stored)
     int storeAmount = 0;
     int takeType = -1;  // ResourceType as int (-1 — nothing taken)

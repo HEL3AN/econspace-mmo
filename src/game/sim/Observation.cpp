@@ -791,8 +791,7 @@ std::string DescribeInventory(const View& view)
         out += "\n";
     }
     if (all.size() > 1)
-        out += "Move goods between them with store_cargo (hold to storage) and take_cargo "
-               "(storage to hold).\n";
+        out += "Move goods between them with move_goods, naming each by the id in brackets.\n";
     else if (p.docked)
         out += "Nothing here keeps goods for you but the hold.\n";
     return out;

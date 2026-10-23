@@ -158,9 +158,20 @@ Buy goods from the market of the station you are docked at. Buys as many as the 
 | `amount` | number |  | how many (default: as many as you can) |
 | `resource` | string | yes | good name as observe lists it under MARKET, e.g. 'Food' |
 
+### `move_goods`
+
+Move goods between two containers where you are, by the ids inventory lists them by: 'hold' (the ship you fly) and, docked at your own structure or a corporation mate's, 'storage'. Moves all of that good unless an amount is given, as far as the destination has room.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `amount` | number |  | how many (default: all of it) |
+| `from` | string | yes | container id the goods are in, e.g. 'hold' |
+| `resource` | string | yes | good name as inventory lists it, e.g. 'Iron' |
+| `to` | string | yes | container id to put them in, e.g. 'storage' |
+
 ### `store_cargo`
 
-Put goods from your hold into the storage of the structure you are docked at -- your own outpost or station, or a corporation mate's. Stores all of that good unless an amount is given, as far as the storage has room. observe lists it under STORAGE while you are docked there.
+Put goods from your hold into the storage of the structure you are docked at -- your own outpost or station, or a corporation mate's. Stores all of that good unless an amount is given, as far as the storage has room. The same as move_goods from 'hold' to 'storage'.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
@@ -169,7 +180,7 @@ Put goods from your hold into the storage of the structure you are docked at -- 
 
 ### `take_cargo`
 
-Take goods out of the storage of the structure you are docked at into your hold -- your own outpost or station, or a corporation mate's. Takes all of that good unless an amount is given, as far as the hold has room.
+Take goods out of the storage of the structure you are docked at into your hold -- your own outpost or station, or a corporation mate's. Takes all of that good unless an amount is given, as far as the hold has room. The same as move_goods from 'storage' to 'hold'.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|

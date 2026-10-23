@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "goods_named.h"
+#include "economy/Inventory.h"
 #include "sim/InventoryList.h"
 #include "sim/Observation.h"
 
@@ -26,6 +27,25 @@ Proto::PlayerView Pilot()
     return p;
 }
 }  // namespace
+
+TEST_CASE("Inventory: goods by type, as every container holds them")
+{
+    Inventory inv;
+    CHECK(inv.Empty());
+    inv.Add(Good::Iron(), 10);
+    inv.Add(Good::Iron(), 5);
+    inv.Add(Good::Ice(), 0);  // nothing
+    inv.Add(Good::Ice(), -3);
+    CHECK(inv.Amount(Good::Iron()) == 15);
+    CHECK(inv.Amount(Good::Ice()) == 0);
+    CHECK(inv.Used() == 15);
+    CHECK(inv.All().size() == 1);  // none at zero
+
+    CHECK(inv.Remove(Good::Iron(), 4) == 4);
+    CHECK(inv.Remove(Good::Iron(), 100) == 11);  // what there was
+    CHECK(inv.Remove(Good::Ice(), 1) == 0);
+    CHECK(inv.Empty());
+}
 
 TEST_CASE("Inventory: in space only the hold is reachable")
 {
@@ -127,5 +147,5 @@ TEST_CASE("Inventory: the agent's inventory tool reads the same containers as th
     snap.player.storedByType.assign((size_t)Goods::Count(), 0);
     text = Obs::DescribeInventory(v);
     CHECK(text.find("Storage (storage) 0 / 100: empty") != std::string::npos);
-    CHECK(text.find("store_cargo") != std::string::npos);
+    CHECK(text.find("move_goods") != std::string::npos);
 }

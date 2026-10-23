@@ -377,8 +377,10 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
             if (r.bought > 0)
                 acks.push_back(Proto::TradeAck{ c.buyType, 0, 0.0, 0.0, r.bought, r.cost, r.fee });
         }
-        // A structure's storage (#438): what moved shows in the snapshot, a refusal in the
-        // journal.
+        // Goods between containers (#472): what moved shows in the snapshot, a refusal in the
+        // journal. The older pair is the same move.
+        if (c.moveType >= 0 && c.moveAmount > 0)
+            sim.MoveGoods(s, c.moveFrom, c.moveTo, c.moveType, c.moveAmount);
         if (c.storeType >= 0 && c.storeAmount > 0)
             sim.StoreCargo(s, c.storeType, c.storeAmount);
         if (c.takeType >= 0 && c.takeAmount > 0)
