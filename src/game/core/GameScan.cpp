@@ -42,8 +42,8 @@ void Game::DrawScannerContent(const Ui::Frame& f)
                      if (L.Button("scan", "Scan the system", true, can))
                          cmd_.scan = true;
                      L.Text(can ? "A pass covers the whole system. What is hidden -- a wormhole, a "
-                                  "hidden base -- shows as a signature, and each pass resolves "
-                                  "more of it."
+                                  "hidden base, a rich belt -- shows as a signature, and each "
+                                  "pass resolves more of it."
                                 : "Undock to scan.",
                             TextStyle::Small().Tint(t.colors.dim).Wrap());
                  }

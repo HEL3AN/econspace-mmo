@@ -821,6 +821,7 @@ declaring the component, without the pass being edited.
 | `hazard` | `radius`, `hidesShips` | changes conditions inside it; `radius` 0 means the object's own radius |
 | `salvageable` | `range` | pays out once to whoever reaches it first |
 | `buildable` | — | a player can construct one; how is its blueprint's (`blueprints.json`, #39) |
+| `signature` | `strength` | hidden from a pilot until their scans resolve it (#346); each pass of the scanner adds `strength` times its power (above 0, at most 1). Its owner always sees it. Roaming holes 0.5, a hidden base and a rich belt (`field.rich`) 0.35 |
 | `shipyard` | `markup` | a docked ship can be refitted here: a module costs its ore at the system's prices times `markup` (at least 1; default 1.5), and one taken out refunds half its ore (#279) |
 
 Every `range` is added to the object's own radius, and every verb that reaches for

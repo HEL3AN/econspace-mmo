@@ -688,6 +688,9 @@ Simulation::PlayerMiningResult Simulation::StepPlayerMining(ClientSession& s, Sy
             e->GetKind() == EntityKind::Field ? static_cast<AsteroidField*>(e.get()) : nullptr;
         if (field == nullptr || !field->HasOre())
             continue;
+        // A belt nobody told them of is not theirs to mine (#346): it is scanned for first.
+        if (HiddenFrom(s, st, *e))
+            continue;
 
         float dx = field->GetPosition().x - sp.x;
         float dy = field->GetPosition().y - sp.y;

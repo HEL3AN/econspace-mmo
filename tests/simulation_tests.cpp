@@ -2914,7 +2914,9 @@ TEST_CASE("the macro layer reads a system's profile and the link index, not the 
         int                    belts = 0, wrecks = 0;
         std::vector<FactionId> defenders;
         for (const auto& e : kv.second.entities)
-            if (e->GetKind() == EntityKind::Field)
+            if (Simulation::SignatureOf(*e) > 0.0f)
+                continue;  // a hidden belt or wreck is no faction's to count (#346)
+            else if (e->GetKind() == EntityKind::Field)
                 belts++;
             else if (e->GetKind() == EntityKind::Derelict)
                 wrecks++;

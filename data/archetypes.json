@@ -437,6 +437,36 @@
                 "mineable": { "extractRate": 1.5, "range": 80 }
             }
         },
+        {
+            "id": "field.rich",
+            "style": "region",
+            "name": "Rich Belt",
+            "kind": "Field",
+            "glyph": "%",
+            "sprite": "asteroids",
+            "color": [150, 175, 210, 255],
+            "layer": 2,
+            "size": 3500,
+            "material": "hull",
+            "shape": { "vars": { "r1": [0.62, 0.9], "a1": [0, 50], "r2": [0.62, 0.9], "a2": [90, 140], "r3": [0.62, 0.9], "a3": [180, 230], "r4": [0.62, 0.9], "a4": [270, 320], "r5": [0.3, 0.55], "a5": [30, 100], "r6": [0.3, 0.55], "a6": [150, 220], "r7": [0.3, 0.55], "a7": [260, 330], "r8": [0.1, 0.28], "a8": [0, 360] }, "parts": [
+                {"module": "nature.rock", "at": ["$r1", 0], "pivot": ["-$r1", 0], "angle": "$a1", "scale": [0.12, 0.16], "spin": 0.9},
+                {"module": "nature.rock", "at": ["$r2", 0], "pivot": ["-$r2", 0], "angle": "$a2", "scale": [0.09, 0.12], "spin": 0.9},
+                {"module": "nature.rock", "at": ["$r3", 0], "pivot": ["-$r3", 0], "angle": "$a3", "scale": [0.12, 0.16], "spin": 0.9},
+                {"module": "nature.rock", "at": ["$r4", 0], "pivot": ["-$r4", 0], "angle": "$a4", "scale": [0.09, 0.12], "spin": 0.9},
+                {"module": "nature.rock", "at": ["$r5", 0], "pivot": ["-$r5", 0], "angle": "$a5", "scale": [0.1, 0.14], "spin": 1.5},
+                {"module": "nature.rock", "at": ["$r6", 0], "pivot": ["-$r6", 0], "angle": "$a6", "scale": [0.075, 0.1], "spin": 1.5},
+                {"module": "nature.rock", "at": ["$r7", 0], "pivot": ["-$r7", 0], "angle": "$a7", "scale": [0.1, 0.14], "spin": 1.5},
+                {"module": "nature.rock", "at": ["$r8", 0], "pivot": ["-$r8", 0], "angle": "$a8", "scale": [0.06, 0.08], "spin": 2.4, "minPixels": 60},
+                {"module": "nature.ore-vein", "at": ["$r1", 0], "pivot": ["-$r1", 0], "angle": "$a1", "scale": [0.08, 0.1], "spin": 0.9},
+                {"module": "nature.ore-vein", "at": ["$r3", 0], "pivot": ["-$r3", 0], "angle": "$a3", "scale": [0.08, 0.1], "spin": 0.9},
+                {"module": "nature.ore-vein", "at": ["$r5", 0], "pivot": ["-$r5", 0], "angle": "$a5", "scale": [0.07, 0.09], "spin": 1.5},
+                {"module": "nature.ore-vein", "at": ["$r7", 0], "pivot": ["-$r7", 0], "angle": "$a7", "scale": [0.07, 0.09], "spin": 1.5}
+            ] },
+            "components": {
+                "mineable": { "extractRate": 2.0, "range": 60 },
+                "signature": { "strength": 0.35 }
+            }
+        },
 
         {
             "id": "nebula.cloud",

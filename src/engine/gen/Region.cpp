@@ -1098,16 +1098,19 @@ const Node* PickHost(Rng& rng, const std::vector<Node>& nodes, const Region& reg
     return nullptr;
 }
 
+// The finds' streams, each its own: one more never moves another.
+enum Find : uint64_t
+{
+    LEVIATHAN = 1,
+    MOTHERLODE,
+    HULK,
+    ROGUE,
+    ANCIENT_GATE,
+    RICH_BELT,  // PlaceHidden's
+};
+
 void PlaceFinds(const RegionParams& params, const std::vector<Node>& nodes, Region& region)
 {
-    enum Find : uint64_t
-    {
-        LEVIATHAN = 1,
-        MOTHERLODE,
-        HULK,
-        ROGUE,
-        ANCIENT_GATE,
-    };
     auto stream = [&](Find f) { return Rng(Key(params.seed, FINDS, (uint64_t)f)); };
     // Further from a centre, likelier (#342 S2): fewer have been out there before you.
     const int more = 8 * Richness(params);
@@ -1762,6 +1765,34 @@ FactionId RegisterNatives(const nlohmann::json& natives)
     return f;
 }
 
+// What nobody has found yet (#346): placed after the natives, who have not found it either --
+// their stations go where they know of ore, and these are placed around them. Hidden until a
+// pilot's scan resolves it, by the archetype's `signature`.
+void PlaceHidden(const RegionParams& params, const std::vector<Node>& nodes, Region& region)
+{
+    auto      stream = [&](Find f) { return Rng(Key(params.seed, FINDS, (uint64_t)f)); };
+    const int more = 8 * Richness(params);
+    // Rich belts: one in most regions, two or three in some, deep rather than near the
+    // wormhole -- crystal, given up twice as fast.
+    {
+        Rng       rng = stream(RICH_BELT);
+        const int count = 1 + (rng.Chance(45 + more) ? 1 : 0) + (rng.Chance(15 + more) ? 1 : 0);
+        std::set<std::string> hosts;
+        for (int i = 0; i < count; i++)
+            if (const Node* n = PickHost(rng, nodes, region, 2))
+            {
+                if (!hosts.insert(n->id).second)
+                    continue;  // one to a system: a second roll there is a miss
+                PlaceFind(rng, region.documents[n->id], "asteroidFields", 260000.0, 840000.0,
+                          { { "name", n->designation + " Seam" },
+                            { "size", 3500 },
+                            { "resource", "Crystal" },
+                            { "ore", 1200 + 150 * n->depth },
+                            { "archetype", "field.rich" } });
+            }
+    }
+}
+
 Region GenerateRegion(const RegionParams& worldParams)
 {
     // Every stream below starts from the slot's own key (#342): two slots of one world are as
@@ -1833,6 +1864,7 @@ Region GenerateRegion(const RegionParams& worldParams)
         return region;  // settled long ago: whatever was rare here is in a museum
     PlaceFinds(params, nodes, region);
     PlaceNatives(params, nodes, region);
+    PlaceHidden(params, nodes, region);
 
     // The wormhole's mouth in the home system: at the edge, facing the region, out of the
     // path of the home system's own planets.

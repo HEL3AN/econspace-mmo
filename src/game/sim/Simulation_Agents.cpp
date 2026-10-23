@@ -1134,8 +1134,8 @@ Simulation::SpawnNodes Simulation::GatherNodes(const SystemState& st) const
                     nd.dangerGates.push_back(p);  // border with low-sec — ambush spot
             }
         }
-        else if (e->GetKind() == EntityKind::Field)
-        {
+        else if (e->GetKind() == EntityKind::Field && SignatureOf(*e) <= 0.0f)
+        {  // nobody works a belt nobody has found (#346)
             Vector2 p = e->GetPosition();
             nd.fields.push_back(p);
             if (sqrtf(p.x * p.x + p.y * p.y) > World::MID_RADIUS)
@@ -1457,20 +1457,21 @@ void Simulation::StepMarket(SystemState& st, float seconds)
     const bool   trades = st.profile.markets > 0;
     if (trades)
         st.market.SetMarkets(st.profile.markets);
-    if (st.profile.belts > 0)
-        for (auto& e : st.entities)
+    // A hidden belt (#346) grows back like any other, but no crew works one nobody has found:
+    // it is not in the profile, so it is looked at whether or not the profile has belts.
+    for (auto& e : st.entities)
+    {
+        if (e->GetKind() != EntityKind::Field)
+            continue;
+        AsteroidField& belt = static_cast<AsteroidField&>(*e);
+        if (trades && SignatureOf(belt) <= 0.0f)
         {
-            if (e->GetKind() != EntityKind::Field)
-                continue;
-            AsteroidField& belt = static_cast<AsteroidField&>(*e);
-            if (trades)
-            {
-                const double mined =
-                    belt.Take(belt.GetOre() * std::min(1.0, k.beltMined * crew * hours));
-                st.market.SetStock(belt.GetResource(), st.market.Stock(belt.GetResource()) + mined);
-            }
-            belt.Regrow(k.beltRegrow, hours);
+            const double mined =
+                belt.Take(belt.GetOre() * std::min(1.0, k.beltMined * crew * hours));
+            st.market.SetStock(belt.GetResource(), st.market.Stock(belt.GetResource()) + mined);
         }
+        belt.Regrow(k.beltRegrow, hours);
+    }
     // Nowhere to trade: nothing is kept. A system that gains a market starts at its targets.
     if (!trades)
         return;

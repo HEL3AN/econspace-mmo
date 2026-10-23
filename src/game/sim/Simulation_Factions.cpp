@@ -136,8 +136,10 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
     for (const auto& e : st.entities)
         switch (e->GetKind())
         {
-            case EntityKind::Field: p.belts++; break;
-            case EntityKind::Derelict: p.wrecks++; break;
+            // A hidden belt or wreck (#346) is in nobody's picture of the system: a faction
+            // learns of it when a pilot who found it sells it the chart.
+            case EntityKind::Field: p.belts += SignatureOf(*e) <= 0.0f ? 1 : 0; break;
+            case EntityKind::Derelict: p.wrecks += SignatureOf(*e) <= 0.0f ? 1 : 0; break;
             case EntityKind::Planet:
                 p.planets++;
                 AddToMarket(p.rates, *e);

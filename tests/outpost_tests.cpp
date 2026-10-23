@@ -213,6 +213,8 @@ TEST_CASE("each purpose leads to its place, every place is legal, and the same w
                         for (const Entity* e : Of(st, EntityKind::Field))
                         {
                             const auto* b = static_cast<const AsteroidField*>(e);
+                            if (Simulation::SignatureOf(*e) > 0.0f)
+                                continue;  // nobody builds at a belt nobody found (#346)
                             if (best == nullptr || b->GetOreMax() > best->GetOreMax())
                                 best = b;
                         }
