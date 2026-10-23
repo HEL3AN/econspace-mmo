@@ -13,16 +13,19 @@
 #include "sim/ClientSession.h"
 #include "sim/Corporation.h"
 #include "sim/FactionMind.h"
+#include "sim/HostRules.h"
 #include "sim/Protocol.h"
 #include "sim/Simulation.h"
 #include "sim/WorldRules.h"
 
 #include "factions_named.h"
+#include "temp_dir.h"
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -64,7 +67,9 @@ struct RulesGuard
 
 Corps::Outcome SetPatrol(Simulation& sim, const std::string& who, const std::string& value,
                          const std::string& where, const std::string& design = std::string(),
-                         const std::string& engage = std::string())
+                         const std::string& engage = std::string(),
+                         const std::string& threshold = std::string(),
+                         const std::string& allow = std::string())
 {
     Corps::Act act;
     act.verb = "patrol";
@@ -72,6 +77,8 @@ Corps::Outcome SetPatrol(Simulation& sim, const std::string& who, const std::str
     act.system = where;
     act.design = design;
     act.engage = engage;
+    act.threshold = threshold;
+    act.allow = allow;
     return sim.ApplyCorpAct(who, act, {}, NOW);
 }
 
@@ -227,15 +234,18 @@ TEST_CASE("a patrol is paid for from the treasury, makes good its losses and sta
     r.shipHour = 100.0;
     r.regrowHours = 0.5;
     WorldRules::SetPatrolRules(r);
-    REQUIRE(h.sim.Corporations().Credit(h.Corp(), 450.0));
     REQUIRE(SetPatrol(h.sim, "anna", "3", "verge").Ok());
+    // Each ship it makes good is bought, at what a pilot pays for that hull so fitted.
+    const double price = Simulation::PatrolShipPrice(*h.sim.PatrolOf(h.Corp(), "verge"), h.St());
+    CHECK(price > 0.0);
+    REQUIRE(h.sim.Corporations().Credit(h.Corp(), 450.0 + 3.0 * price));
     const float before = h.sim.InfluenceIn(h.St()).corp.at(h.Corp());
 
     h.sim.StepPatrols(1800.0);  // half an hour: 150 cr, and the first ship
-    CHECK(h.Treasury() == doctest::Approx(300.0));
+    CHECK(h.Treasury() == doctest::Approx(300.0 + 2.0 * price));
     CHECK(h.There() == doctest::Approx(1.0f));
     h.sim.StepPatrols(3600.0);  // an hour: 300 cr, and the other two
-    CHECK(h.Treasury() == doctest::Approx(0.0));
+    CHECK(h.Treasury() == doctest::Approx(0.0).epsilon(1e-6));
     CHECK(h.There() == doctest::Approx(3.0f));
     // They are presence: influence, at a faction ship's weight.
     CHECK(h.sim.InfluenceIn(h.St()).corp.at(h.Corp()) ==
@@ -252,7 +262,7 @@ TEST_CASE("a patrol is paid for from the treasury, makes good its losses and sta
     CHECK(told == 1);
 
     // Paid again, it comes back a ship at a time; the setting was kept.
-    REQUIRE(h.sim.Corporations().Credit(h.Corp(), 1000.0));
+    REQUIRE(h.sim.Corporations().Credit(h.Corp(), 1000.0 + price));
     h.sim.StepPatrols(1800.0);
     CHECK(h.There() == doctest::Approx(1.0f));
 
@@ -266,6 +276,133 @@ TEST_CASE("a patrol is paid for from the treasury, makes good its losses and sta
     h.sim.StepPatrols(1800.0);
     CHECK(h.Agg().patrols.count(h.Corp()) == 0);
     CHECK(h.Treasury() == doctest::Approx(money));
+}
+
+TEST_CASE("a patrol the treasury can keep but not replace waits, said once (#431 slice 12)")
+{
+    RulesGuard          guard;
+    Held                h;
+    WorldRules::Patrols r;
+    r.shipHour = 100.0;
+    r.regrowHours = 0.5;
+    WorldRules::SetPatrolRules(r);
+    REQUIRE(SetPatrol(h.sim, "anna", "3", "verge").Ok());
+    const double price = Simulation::PatrolShipPrice(*h.sim.PatrolOf(h.Corp(), "verge"), h.St());
+    REQUIRE(price > 0.0);
+    REQUIRE(h.sim.Corporations().Credit(h.Corp(), 300.0));  // the upkeep, and no more
+    auto told = [&]()
+    {
+        int n = 0;
+        for (const Ev::Event& e : h.sim.Corporations().Find(h.Corp())->journal)
+            n += e.text.find("cannot pay to replace") != std::string::npos ? 1 : 0;
+        return n;
+    };
+    h.sim.StepPatrols(1800.0);
+    h.sim.StepPatrols(1800.0);
+    CHECK(h.There() == doctest::Approx(0.0f));
+    CHECK(h.Treasury() == doctest::Approx(0.0).epsilon(1e-6));
+    CHECK(h.Agg().patrols.count(h.Corp()) == 1);  // kept, and paid: it just cannot grow
+    CHECK(told() == 1);
+    // A ship's price, and it buys one.
+    REQUIRE(h.sim.Corporations().Credit(h.Corp(), 150.0 + price));
+    h.sim.StepPatrols(1800.0);
+    CHECK(h.There() == doctest::Approx(1.0f));
+    CHECK(h.Treasury() == doctest::Approx(0.0).epsilon(1e-6));
+}
+
+TEST_CASE("a patrol's threshold and allow-list are set by the verb, kept in corps.json and "
+          "honoured by its guards (#431 slice 12)")
+{
+    RulesGuard guard;
+    Held       h;
+    CHECK_FALSE(SetPatrol(h.sim, "anna", "2", "verge", "", "", "-500").Ok());
+    CHECK_FALSE(SetPatrol(h.sim, "anna", "2", "verge", "", "", "low").Ok());
+    REQUIRE(SetPatrol(h.sim, "anna", "2", "verge", "", "strangers", "-30", "dima").Ok());
+    const Corps::Patrol* p = h.sim.PatrolOf(h.Corp(), "verge");
+    REQUIRE(p != nullptr);
+    CHECK(p->rules.threshold == doctest::Approx(-30.0f));
+    REQUIRE(p->rules.players.size() == 1);
+    CHECK(p->rules.players[0] == "dima");
+    Corps::Registry back;
+    std::string     why;
+    REQUIRE(back.FromJson(h.sim.Corporations().ToJson(), why));
+    const Corps::Patrol& kept = back.Find(h.Corp())->patrols.at("verge");
+    CHECK(kept.rules == p->rules);
+
+    h.Agg().patrols[h.Corp()] = 2.0f;
+    const Vector2  near{ h.outpost.x + 700.0f, h.outpost.y };
+    ClientSession& anna = h.Pilot("anna", near);
+    ClientSession& dima = h.Pilot("dima", { near.x, near.y - 150.0f });
+    ClientSession& ewa = h.Pilot("ewa", { near.x, near.y + 150.0f });
+    h.sim.Warm(h.St());
+    const std::vector<const NpcShip*> guards = h.Guards();
+    REQUIRE_FALSE(guards.empty());
+    const NpcShip& g = *guards.front();
+    CHECK_FALSE(h.sim.NpcHunts(h.St(), dima, g));  // on the allow-list
+    CHECK(h.sim.NpcHunts(h.St(), ewa, g));
+    // Only the number: the rules stay as they were; "none" clears the list.
+    REQUIRE(SetPatrol(h.sim, "anna", "2", "verge").Ok());
+    CHECK(h.sim.PatrolOf(h.Corp(), "verge")->rules.players.size() == 1);
+    REQUIRE(SetPatrol(h.sim, "anna", "2", "verge", "", "", "", "none").Ok());
+    CHECK(h.sim.PatrolOf(h.Corp(), "verge")->rules.players.empty());
+    CHECK(h.sim.NpcHunts(h.St(), dima, g));
+
+    // Enemies: a faction the corporation stands below the threshold with.
+    const FactionId guild = Fac::TradersGuild();
+    anna.account.SetReputation(guild, -20.0f);
+    const NpcShip trader({ near.x + 300.0f, near.y }, guild, NpcRole::Trader, {});
+    REQUIRE(SetPatrol(h.sim, "anna", "2", "verge", "", "enemies", "-10").Ok());
+    CHECK(h.sim.GuardEngages(h.St(), g, trader));
+    REQUIRE(SetPatrol(h.sim, "anna", "2", "verge", "", "", "-30").Ok());
+    CHECK_FALSE(h.sim.GuardEngages(h.St(), g, trader));
+}
+
+TEST_CASE("a member the world never saw online counts by their account file, read at load "
+          "(#431 slice 12)")
+{
+    RulesGuard        guard;
+    Held              h;
+    TempDir           dir;
+    const std::string accounts = dir.MakeDir("accounts");
+    const FactionId   guild = Fac::TradersGuild();
+    h.sim.SetWorldId("world-a");
+    // Boris was last on before this world kept books of its owners: only his file knows him.
+    {
+        ClientSession& boris = h.Pilot("boris", h.outpost);
+        boris.account.SetReputation(guild, 25.0f);
+        REQUIRE(h.sim.SaveAccount(boris, Host::AccountFile(accounts, "boris")));
+        h.sim.DestroySession(boris.id);
+    }
+    CHECK_FALSE(h.sim.OwnerSeen("boris"));
+    CHECK(h.sim.PartyStanding(h.Corp(), guild) == doctest::Approx(0.0f));
+    std::vector<std::string> skipped;
+    CHECK(Host::NoteUnseenMembers(h.sim, accounts, skipped) == 1);
+    CHECK(skipped.empty());
+    CHECK(h.sim.OwnerSeen("boris"));
+    CHECK(h.sim.PartyStanding(h.Corp(), guild) == doctest::Approx(25.0f));
+    CHECK(Host::NoteUnseenMembers(h.sim, accounts, skipped) == 0);  // once
+
+    // Another world's file, and a damaged one, are skipped and named -- and left as they are.
+    Held other;
+    other.sim.SetWorldId("world-b");
+    {
+        ClientSession& boris = other.Pilot("boris", other.outpost);
+        boris.account.SetReputation(guild, 25.0f);
+        REQUIRE(h.sim.SaveAccount(boris, Host::AccountFile(accounts, "boris")));  // stamped a
+        other.sim.DestroySession(boris.id);
+    }
+    {
+        std::ofstream bad(Host::AccountFile(accounts, "anna"));
+        bad << "{ not json";
+    }
+    std::vector<std::string> skippedB;
+    CHECK(Host::NoteUnseenMembers(other.sim, accounts, skippedB) == 0);
+    REQUIRE(skippedB.size() == 2);
+    CHECK_FALSE(other.sim.OwnerSeen("boris"));
+    CHECK_FALSE(other.sim.OwnerSeen("anna"));
+    std::ifstream still(Host::AccountFile(accounts, "anna"));
+    std::string   text((std::istreambuf_iterator<char>(still)), std::istreambuf_iterator<char>());
+    CHECK(text == "{ not json");
 }
 
 TEST_CASE("guards never fire on the corporation's members, and engage as its rules say "
@@ -424,6 +561,77 @@ Eviction Evict(bool hot, int patrol, int passes)
     return out;
 }
 }  // namespace
+
+namespace
+{
+// Whether the Guild sets out to evict Boris's outpost in Helios Core within `passes` periods of
+// thought, with `patrol` ships of DH's standing by it (#431 slice 12).
+bool EvictionPlanned(float patrol, int passes)
+{
+    WorldRules::Licences lr = WorldRules::LicenceRules();
+    lr.evict = 50.0;
+    WorldRules::SetLicenceRules(lr);
+    Simulation sim;
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+    sim.Seed(1234u);
+    sim.InitGalaxy();
+    sim.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
+    Corps::Registry& r = sim.Corporations();
+    REQUIRE(r.Create("anna", "Deep Haul", "DH", NOW).Ok());
+    REQUIRE(r.InviteTo("anna", "boris", { "boris" }, NOW).Ok());
+    REQUIRE(r.Join("boris", "DH", NOW).Ok());
+    const std::string corp = r.IdOf("anna");
+    SystemState&      core = *sim.SystemById("core");
+    BuildIn(sim, "core", "outpost", "boris", { 90000.0f, 250000.0f });
+    sim.StepLicences();
+    sim.SetTime(sim.Time() + DAY + 1.0);
+    sim.StepLicences();
+    REQUIRE(core.trespass.size() == 1);
+    if (patrol > 0.0f)
+    {
+        REQUIRE(SetPatrol(sim, "anna", "1", "core").Ok());
+        core.agg.patrols[corp] = patrol;
+    }
+    const float cap = Factions::TemperamentOf(Fac::TradersGuild()).capacity;
+    for (int pass = 0; pass < passes; pass++)
+    {
+        core.agg.presence[Fac::TradersGuild()] = cap * 2.0f;
+        core.agg.patrols[corp] = patrol;
+        sim.MindOf(Fac::TradersGuild()).stock = Simulation::OutpostCost() * 20.0f;
+        sim.StepFactions();
+        for (const auto& kv : sim.Plans())
+            if (kv.second.kind == Plan::Kind::Siege && kv.second.evicting == "boris")
+                return true;
+    }
+    return false;
+}
+}  // namespace
+
+TEST_CASE("the siege planner counts a corporation's patrol as defence (#431 slice 12)")
+{
+    RulesGuard guard;
+    LoadRegistries();
+    CHECK(EvictionPlanned(0.0f, 200));
+    // As many warships as it is a match for: a patrol the Guild's force cannot outfire is a
+    // siege it does not start.
+    CHECK_FALSE(EvictionPlanned(1000.0f, 200));
+    // ...and what a patrol is worth is its design against the besieger's, in warships.
+    Simulation sim;
+    sim.LoadUniverse(std::string(TEST_WORLD_DIR) + "universe.json");
+    sim.Seed(1234u);
+    sim.InitGalaxy();
+    sim.MaterializeAllSystems(std::string(TEST_WORLD_DIR) + "systems/");
+    REQUIRE(sim.Corporations().Create("anna", "Deep Haul", "DH", NOW).Ok());
+    BuildIn(sim, "core", "outpost", "anna", { 90000.0f, 250000.0f });
+    REQUIRE(SetPatrol(sim, "anna", "2", "core").Ok());
+    SystemState& core = *sim.SystemById("core");
+    core.agg.patrols[sim.Corporations().IdOf("anna")] = 2.0f;
+    const float two = sim.PatrolAsWarships(core, "anna", Fac::TradersGuild());
+    CHECK(two > 0.0f);
+    core.agg.patrols[sim.Corporations().IdOf("anna")] = 4.0f;
+    CHECK(sim.PatrolAsWarships(core, "anna", Fac::TradersGuild()) == doctest::Approx(2.0f * two));
+    CHECK(sim.PatrolAsWarships(core, "nobody", Fac::TradersGuild()) == 0.0f);
+}
 
 TEST_CASE("a patrol guards its members' structure while they are offline, hot and cold alike "
           "(#431 slice 12)")

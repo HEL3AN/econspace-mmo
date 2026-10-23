@@ -127,10 +127,15 @@ std::string PatrolText(const Proto::CorpView& v)
         char line[200];
         std::snprintf(line, sizeof(line),
                       "Patrol in %s (%s): keeps %d of %s, %.1f there now, engaging %s, %.0f cr "
-                      "an hour\n",
+                      "an hour",
                       p.systemName.c_str(), p.system.c_str(), p.ships, p.design.c_str(), p.present,
                       p.engage.c_str(), p.upkeep);
         out += line;
+        if (p.engage == "enemies")
+            out += " (threshold " + std::to_string((int)std::lround(p.threshold)) + ")";
+        if (!p.allow.empty())
+            out += ", allows " + p.allow;
+        out += "\n";
     }
     return out;
 }
@@ -827,7 +832,11 @@ std::vector<Tool> BuildTools()
                 { "design", Str("patrol: a name in your design library, or a stock design id; "
                                 "left out, as it was (else the default guard)") },
                 { "engage", Str("patrol: hold, return, enemies or strangers; left out, as it "
-                                "was (else enemies)") } },
+                                "was (else enemies)") },
+                { "threshold", Str("patrol: on enemies, the standing (-100 to 100) below which "
+                                   "a faction is fired on; left out, as it was (else -10)") },
+                { "allow", Str("patrol: on strangers, whom it lets be -- pilots and factions, "
+                               "comma separated, or none; left out, as it was") } },
               { "action" }),
           [](const Rpc::Json& args)
           {
@@ -843,6 +852,12 @@ std::vector<Tool> BuildTools()
               act.system = args.value("system", std::string());
               act.design = args.value("design", std::string());
               act.engage = args.value("engage", std::string());
+              const auto th = args.find("threshold");
+              if (th != args.end() && th->is_number())
+                  act.threshold = std::to_string(th->get<double>());
+              else
+                  act.threshold = args.value("threshold", std::string());
+              act.allow = args.value("allow", std::string());
               if (act.verb.empty())
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "action is required" };
               const int before = g_session.LastChatSeq();

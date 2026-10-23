@@ -50,12 +50,14 @@ Do something about corporations. action: 'create' (name, ticker -- you become it
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
 | `action` | string | yes | create, invite, join, decline, leave, kick, role, tax, docking, police or patrol |
+| `allow` | string |  | patrol: on strangers, whom it lets be -- pilots and factions, comma separated, or none; left out, as it was |
 | `design` | string |  | patrol: a name in your design library, or a stock design id; left out, as it was (else the default guard) |
 | `engage` | string |  | patrol: hold, return, enemies or strangers; left out, as it was (else enemies) |
 | `name` | string |  | create: the corporation's name, 3 to 24 characters |
 | `pilot` | string |  | invite, kick, role: the pilot's name |
 | `role` | string |  | role: ceo, director or member |
 | `system` | string |  | police, patrol: the system, by id or name |
+| `threshold` | string |  | patrol: on enemies, the standing (-100 to 100) below which a faction is fired on; left out, as it was (else -10) |
 | `ticker` | string |  | create: 2 to 5 letters or digits; join/decline: whose invite |
 | `value` | string |  | tax: a percentage such as 5, or standard; docking: own, allies or all; police: credits an hour, or none; patrol: ships, or none |
 

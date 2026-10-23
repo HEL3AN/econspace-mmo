@@ -765,6 +765,14 @@ public:
     // upkeep, credits an hour for the whole patrol (WorldRules::Patrols).
     static Ships::Fighter PatrolFighter(const Corps::Patrol& p);
     static double         PatrolUpkeep(const Corps::Patrol& p);
+    // What a patrol pays to replace one ship it lost: its design's price as a player would
+    // pay for that hull so fitted (DesignPrice), at the ore prices of `st`'s market.
+    static double PatrolShipPrice(const Corps::Patrol& p, const SystemState& st);
+    // What the patrol guarding `owner`'s structures in `st` -- their corporation's -- is worth
+    // against faction `f`'s warships, in warships: its ships times its design's guns and hull
+    // over a warship's (Ships::Fighter both), the strength a siege's attrition reads. 0 when
+    // there is none.
+    float PatrolAsWarships(const SystemState& st, const std::string& owner, FactionId f) const;
     // The patrol `corpId` keeps in `systemId`, as set; null for none.
     const Corps::Patrol* PatrolOf(const std::string& corpId, const std::string& systemId) const;
     // Whether guard `g` fires first at pilot `p`, or at NPC `n` (#431 slice 12), by its
@@ -1130,6 +1138,15 @@ public:
     // The owner's standing with `f` as far as the world knows it: live while the owner is
     // here, else as of when they last were (OwnerBook). False when it has never been seen.
     bool OwnerStanding(const std::string& account, FactionId f, float& out) const;
+    // ...and for one it has never seen, what their account file at `path` says (#431 slice 12):
+    // read by the account loader into a session that is never played or saved, and noted as a
+    // login would note it -- their standings and money -- so their corporation's standing
+    // counts them. False when nothing was noted: they were seen already, or there is no file;
+    // and with `why` set, a file from a newer build or a damaged one, which is left alone. The
+    // caller has checked the file is of this world (#392).
+    bool NoteUnseenOwner(const std::string& account, const std::string& path, std::string& why);
+    // Whether the world knows `account`'s standings: on now, or noted since.
+    bool OwnerSeen(const std::string& account) const;
     // A crime an owner's structure committed (#41's table, ChargeAttack): charged at once
     // while the owner is connected, and on their return otherwise.
     void ChargeOwner(const std::string& account, FactionId victim, bool killed);
@@ -2071,7 +2088,11 @@ private:
     // FighterOf by faction id and role, for the catalogue load it was derived from. Not saved.
     mutable std::map<std::pair<std::string, int>, Ships::Fighter> fighters_;
     mutable unsigned                                              fightersFrom_ = 0;
-    int                                                           nextPlanId_ = 1;
+    // Patrols that could not pay to replace a lost ship (#431 slice 12), (corporation, system):
+    // told once in the corporation's journal, and again only after a replacement is paid.
+    // Not saved -- a restart may say it once more.
+    std::set<std::pair<std::string, std::string>> patrolShort_;
+    int                                           nextPlanId_ = 1;
     // Delivery contracts (#343, #407), by id. Saved. When markets last looked at what they are
     // short of, as a stretch of the contracts rules' `every`: transient, so a restart looks.
     std::map<int, Contract>     contracts_;

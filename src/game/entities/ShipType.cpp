@@ -135,6 +135,24 @@ double ShipValue(const Ships::Catalogue& c, double hullPrice, const Ships::Desig
     return std::max(0.0, hullPrice + std::max(0.0, fit));
 }
 
+double DesignPrice(const Ships::Catalogue& c, const std::string& id,
+                   const std::vector<float>& orePrices)
+{
+    const Ships::Design* d = c.FindDesign(id);
+    if (d == nullptr)
+        return 0.0;
+    for (const Ships::HangarEntry& h : c.hangar)
+    {
+        const Ships::Design* stock = c.FindDesign(h.design);
+        if (stock != nullptr && stock->frame == d->frame && stock->bow == d->bow &&
+            stock->mids == d->mids && stock->stern == d->stern)
+            return ShipValue(c, h.price, *stock, *d, orePrices);
+    }
+    Ships::Design bare = *d;
+    bare.fit.clear();
+    return ShipValue(c, 0.0, bare, *d, orePrices);
+}
+
 double InsurancePremium(double value, double cover)
 {
     return value > cover ? (value - cover) * INSURANCE_PREMIUM : 0.0;

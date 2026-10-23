@@ -1050,14 +1050,18 @@ void Simulation::Think(FactionId f)
             float sent = 0.0f;
             for (const Plan::Lent& l : pool->second.first)
                 sent += l.force;
-            const float rate = sent * dps;
-            if (pool->second.first.empty() || sent < 1.5f || rate <= 0.0f ||
+            // ...and the owner's corporation's patrol there (#431 slice 12), if it keeps one: a
+            // garrison by its own design's guns and hull, as many warships as it is a match for.
+            const float guard = PatrolAsWarships(st, target->GetOwner(), f);
+            const float firing = sent - siege.defence * guard;
+            const float rate = firing * dps;
+            if (pool->second.first.empty() || sent < 1.5f || firing <= 0.0f || rate <= 0.0f ||
                 hull / rate > siege.seconds)
                 continue;
             const Archetype* a = target->GetArchetype();
             const float      guns = a != nullptr && a->Has(Component::Defensive) ? 0.5f : 0.0f;
-            const float      risk = guns + hull / rate / siege.seconds;
-            const float      score = (float)WorldRules::LicenceRules().evict - risk / t.appetite;
+            const float risk = guns + siege.defence * guard / sent + hull / rate / siege.seconds;
+            const float score = (float)WorldRules::LicenceRules().evict - risk / t.appetite;
             if (score > bestScore)
             {
                 bestScore = score;

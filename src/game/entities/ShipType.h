@@ -80,6 +80,12 @@ float MissionRewardMultiplier(RepTier standing);
 // by it, the hangar window quotes it and an agent reads it (#109).
 double ShipValue(const Ships::Catalogue& c, double hullPrice, const Ships::Design& stock,
                  const Ships::Design& flown, const std::vector<float>& orePrices);
+// What a new ship of design `id` costs as it is fitted: ShipValue of the hangar hull it is built
+// on -- the hull's list price and its fit beyond the stock one -- or, for a design that is no
+// hangar hull's (an NPC doctrine's), its whole fit at what a refit would charge for it. What a
+// corporation's patrol pays to make good a ship it lost (#431 slice 12). 0 for an unknown id.
+double DesignPrice(const Ships::Catalogue& c, const std::string& id,
+                   const std::vector<float>& orePrices);
 
 // A policy covers a hull for a value fixed when it is bought. Its premium is a share of the
 // value covered, and only of what is not covered already: insuring again after a refit pays

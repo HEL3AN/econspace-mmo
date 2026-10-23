@@ -19,6 +19,7 @@
 #include "core/Fitting.h"
 #include "core/ShipDesign.h"
 #include "entities/NpcShip.h"
+#include "entities/ShipType.h"
 #include "entities/Structure.h"
 #include "gen/Rng.h"
 #include "sim/ClientSession.h"
@@ -93,6 +94,27 @@ double Simulation::PatrolUpkeep(const Corps::Patrol& p)
     return WorldRules::PatrolRules().shipHour * (double)std::max(0, p.ships) * weight;
 }
 
+double Simulation::PatrolShipPrice(const Corps::Patrol& p, const SystemState& st)
+{
+    std::vector<float> ore;
+    for (ResourceType rt : AllResourceTypes())
+        ore.push_back((float)st.market.GetPrice(rt));
+    return DesignPrice(Archetypes::ShipCatalogue(), PatrolDesign(p), ore);
+}
+
+float Simulation::PatrolAsWarships(const SystemState& st, const std::string& owner,
+                                   FactionId f) const
+{
+    const std::string    corp = owner.empty() ? std::string() : corps_.IdOf(owner);
+    const auto           here = corp.empty() ? st.agg.patrols.end() : st.agg.patrols.find(corp);
+    const Corps::Patrol* set = here == st.agg.patrols.end() ? nullptr : PatrolOf(corp, st.id);
+    if (set == nullptr || here->second <= 0.0f)
+        return 0.0f;
+    const double warship = Strength(FighterOf(f, NpcRole::Warship));
+    return warship > 0.0 ? (float)((double)here->second * Strength(PatrolFighter(*set)) / warship)
+                         : 0.0f;
+}
+
 bool Simulation::PatrolAllowed(const SystemState& st, const std::string& corpId) const
 {
     if (corpId.empty() || corps_.Find(corpId) == nullptr)
@@ -131,7 +153,9 @@ void Simulation::StepPatrols(double seconds)
                 broke.insert({ p.first, id });
         }
     }
-    // A paid patrol makes good what it lost, a ship every `regrowHours`; the rest stand down.
+    // A paid patrol makes good what it lost, a ship every `regrowHours`, and pays for each as
+    // a pilot would for that hull so fitted; one the treasury cannot replace waits, said once.
+    // The rest stand down.
     const float regrow = (float)(seconds / (r.regrowHours * 3600.0));
     for (auto& kv : systems_)
     {
@@ -140,8 +164,30 @@ void Simulation::StepPatrols(double seconds)
         if (paid != kept.end())
             for (const auto& pk : paid->second)
             {
-                float& n = here[pk.first];
-                n = std::min((float)pk.second, n + regrow);
+                float&      n = here[pk.first];
+                const float gain = std::min((float)pk.second, n + regrow) - n;
+                if (gain <= 0.0f)
+                    continue;
+                const Corps::Patrol* set = PatrolOf(pk.first, kv.first);
+                const double price = set != nullptr ? PatrolShipPrice(*set, kv.second) : 0.0;
+                const std::pair<std::string, std::string> key(pk.first, kv.first);
+                if (corps_.Debit(pk.first, price * (double)gain))
+                {
+                    n += gain;
+                    patrolShort_.erase(key);
+                    continue;
+                }
+                const Corps::Corp* c = corps_.Find(pk.first);
+                if (!patrolShort_.insert(key).second || c == nullptr || c->Ceo() == nullptr)
+                    continue;
+                const int seq = corps_.Record(
+                    c->Ceo()->account, Ev::Kind::Notice,
+                    Tag(*c) + " cannot pay to replace the patrol ships it lost in " +
+                        SystemName(kv.first) + " (" + std::to_string((long long)(price + 0.5)) +
+                        " cr each): it keeps what it has until the treasury can");
+                for (auto& sv : sessions_)
+                    if (seq != 0 && corps_.IdOf(sv.second.accountName) == c->id)
+                        ReadCorpJournal(sv.second);
             }
         for (auto it = here.begin(); it != here.end();)
         {
@@ -418,5 +464,6 @@ Corps::Outcome Simulation::ApplyPatrolAct(const std::string& account, const Corp
     }
     return corps_.SetPatrol(account, systemId.empty() ? act.system : systemId,
                             systemId.empty() ? act.system : SystemName(systemId), act.value, design,
-                            designName, act.engage, r.systemMax, r.shipsMax, allowed);
+                            designName, act.engage, act.threshold, act.allow, r.systemMax,
+                            r.shipsMax, allowed);
 }

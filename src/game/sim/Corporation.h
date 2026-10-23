@@ -173,6 +173,10 @@ struct Act
     std::string system{};  // "police", "patrol": the system, by id
     std::string design{};  // "patrol": the design, a name in the setter's library or a stock id
     std::string engage{};  // "patrol": hold, return, enemies or strangers; empty -- as it was
+    // "patrol": the rules' threshold (a standing, -100 to 100) and allow-list (names, comma
+    // separated; "none" clears it), as a structure's (#340); empty -- as they were.
+    std::string threshold{};
+    std::string allow{};
 };
 
 // What came of an act. `error` empty: done. `told` is the actor's answer either way;
@@ -220,12 +224,14 @@ public:
     // The patrol `by`'s corporation keeps in `system` (#431 slice 12), called `where`: `value`
     // ships (0 or "none" stands it down) of `design` (resolved by the world; empty -- the
     // default doctrine's), `designName` what the officer called it, engaging as `engage` says
-    // (empty: as it was). `allowed` is whether the corporation holds the system or has a
+    // (empty: as it was), with the rules' `threshold` and `allow`-list (each empty: as it was;
+    // `allow` "none" clears it). `allowed` is whether the corporation holds the system or has a
     // structure there -- the world's to say; a patrol is set only there. At most `systemMax`
     // ships in a system and `corpMax` in all.
     Outcome SetPatrol(const std::string& by, const std::string& system, const std::string& where,
                       const std::string& value, const std::string& design,
-                      const std::string& designName, const std::string& engage, int systemMax,
+                      const std::string& designName, const std::string& engage,
+                      const std::string& threshold, const std::string& allow, int systemMax,
                       int corpMax, bool allowed);
 
     // Money into a corporation's treasury (#431 T4); false for one that does not exist. Not a

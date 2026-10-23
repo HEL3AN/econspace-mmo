@@ -2240,6 +2240,10 @@ std::string EncodeCorpAct(const CorpAct& a)
         j["design"] = a.design;
     if (!a.engage.empty())
         j["engage"] = a.engage;
+    if (!a.threshold.empty())
+        j["threshold"] = a.threshold;
+    if (!a.allow.empty())
+        j["allow"] = a.allow;
     return j.dump();
 }
 
@@ -2258,6 +2262,8 @@ bool DecodeCorpAct(const std::string& s, CorpAct& out)
     out.system = TextOf(j, "system");
     out.design = TextOf(j, "design");
     out.engage = TextOf(j, "engage");
+    out.threshold = TextOf(j, "threshold");
+    out.allow = TextOf(j, "allow");
     return !out.verb.empty();
 }
 
@@ -2299,6 +2305,8 @@ std::string EncodeCorpView(const CorpView& v)
                                     { "present", p.present },
                                     { "design", p.design },
                                     { "engage", p.engage },
+                                    { "threshold", p.threshold },
+                                    { "allow", p.allow },
                                     { "upkeep", p.upkeep } });
             j["patrols"] = std::move(patrols);
         }
@@ -2373,6 +2381,8 @@ bool DecodeCorpView(const std::string& s, CorpView& out)
                 p.present = pj.value("present", 0.0f);
                 p.design = TextOf(pj, "design");
                 p.engage = TextOf(pj, "engage");
+                p.threshold = pj.value("threshold", 0.0f);
+                p.allow = TextOf(pj, "allow");
                 p.upkeep = pj.value("upkeep", 0.0);
                 if (!p.system.empty())
                     out.patrols.push_back(std::move(p));
