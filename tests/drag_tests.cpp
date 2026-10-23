@@ -21,10 +21,8 @@ namespace
 {
 void Monospaced(Layout& l)
 {
-    l.SetMeasure(
-        [](Ui::Face, float px, std::string_view text) {
-            return Vector2{ 0.5f * px * (float)text.size(), px };
-        });
+    l.SetMeasure([](Ui::Face, float px, std::string_view text)
+                 { return Vector2{ 0.5f * px * (float)text.size(), px }; });
 }
 
 Layout::Pointer At(Vector2 p, bool owned, bool down, bool pressed = false)
@@ -93,7 +91,8 @@ struct Windows
         target.Begin(RIGHT, 1.0f,
                      At(mouse, Drag::Active() ? overTarget : overTarget && !down, down));
         target.Column(Box().Grow(),
-                      [&] {
+                      [&]
+                      {
                           target.Row(
                               Box().Id("bin").Width(Size::Fixed(200.0f)).Height(Size::Fixed(80.0f)),
                               [] {});

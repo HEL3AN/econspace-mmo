@@ -284,7 +284,7 @@ void Game::DrawMissionsContent(const Ui::Frame& f)
                       {
                           const std::string id = "act" + std::to_string(k);
                           const bool        mission = acts[k].verb == Actions::Verb::Accept ||
-                                               acts[k].verb == Actions::Verb::HandIn;
+                                                      acts[k].verb == Actions::Verb::HandIn;
                           if (L.Button(id, acts[k].label, mission))
                               Perform(acts[k], mission ? 0 : stationId, { 0.0f, 0.0f });
                       }
@@ -399,12 +399,10 @@ void Game::DrawRadarContent(const Ui::Frame& f)
 
     const Vector2 c{ r.x + r.width / 2.0f, r.y + r.height / 2.0f };
     const float   scale = scaleOf(r);
-    auto          toRadar = [&](Vector2 w) -> Vector2 {
-        return { c.x + (w.x - radarCenter_.x) * scale, c.y + (w.y - radarCenter_.y) * scale };
-    };
-    auto toWorld = [&](Vector2 s) -> Vector2 {
-        return { radarCenter_.x + (s.x - c.x) / scale, radarCenter_.y + (s.y - c.y) / scale };
-    };
+    auto          toRadar = [&](Vector2 w) -> Vector2
+    { return { c.x + (w.x - radarCenter_.x) * scale, c.y + (w.y - radarCenter_.y) * scale }; };
+    auto toWorld = [&](Vector2 s) -> Vector2
+    { return { radarCenter_.x + (s.x - c.x) / scale, radarCenter_.y + (s.y - c.y) / scale }; };
 
     // Over it only when the radar's window owns the mouse (#297).
     const Vector2 m = f.Mouse();
@@ -657,9 +655,8 @@ void Game::DrawSettingsContent(const Ui::Frame& f)
                 table.columns = { { "key", Size::Fixed(wide ? 140.0f : 112.0f) },
                                   { "does", Size::Grow() } };
                 table.rows = (int)(sizeof(keys) / sizeof(keys[0]));
-                table.cell = [&](int r, int c) {
-                    return Ui::Cell{ keys[r][c], c == 0 ? t.colors.accent : t.colors.text };
-                };
+                table.cell = [&](int r, int c)
+                { return Ui::Cell{ keys[r][c], c == 0 ? t.colors.accent : t.colors.text }; };
                 table.tooltip = [&](int r)
                 { return std::string(keys[r][0]) + "  -  " + keys[r][1]; };
                 L.Table(table);

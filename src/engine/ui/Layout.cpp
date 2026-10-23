@@ -839,7 +839,7 @@ void DrawTooltip()
     const Vector2 size = MeasureString(Face::Regular, px, g_tip);
     const float   pad = Px(t.metrics.gap * 0.75f);
     Rectangle     box{ g_tipAt.x + Px(12.0f), g_tipAt.y + Px(18.0f), size.x + 2.0f * pad,
-                   size.y + 2.0f * pad };
+                       size.y + 2.0f * pad };
     // On the screen, whichever corner of the cursor that takes.
     if (box.x + box.width > (float)GetScreenWidth())
         box.x = std::max(0.0f, g_tipAt.x - box.width - Px(4.0f));
@@ -962,7 +962,7 @@ void Layout::ScrollBegin(const Box& box)
     const Theme&      t = CurrentTheme();
     const std::string bar = box.id + "~bar";
     float             sc[3] = { 0.0f, 0.0f, 0.0f };
-    const bool        have = open_ && !box.id.empty() &&
+    const bool have = open_ && !box.id.empty() &&
                       uiclay_scroll(clay_, box.id.data(), (int32_t)box.id.size(), box.index, sc);
     if (have && sc[2] > sc[1] + 0.5f)
     {
@@ -1175,8 +1175,7 @@ TableEvents Layout::Table(const TableSpec& s)
                            const float room =
                                BoxOf(head, (uint32_t)c).width - 2.0f * U(pad) - chipRoom(col);
                            if (BoxOf(head, (uint32_t)c).width > 0.0f)
-                               label = Ellipsize(label, room,
-                                                 [&](std::string_view x)
+                               label = Ellipsize(label, room, [&](std::string_view x)
                                                  { return TextWidthPx(hs, x); });
                            Row(Box()
                                    .Id(head, (uint32_t)c)
@@ -1220,8 +1219,8 @@ TableEvents Layout::Table(const TableSpec& s)
                    uiclay_scroll(clay_, body.data(), (int32_t)body.size(), 0, sc))
                {
                    const float most = std::max(0.0f, sc[2] - sc[1]);
-                   float       to = sc[0] > fit.scrolled ? std::ceil(sc[0] / rowPx - 0.01f) * rowPx
-                                                         : std::floor(sc[0] / rowPx + 0.01f) * rowPx;
+                   float to = sc[0] > fit.scrolled ? std::ceil(sc[0] / rowPx - 0.01f) * rowPx
+                                                   : std::floor(sc[0] / rowPx + 0.01f) * rowPx;
                    to = std::clamp(to, 0.0f, most);
                    if (std::fabs(to - sc[0]) > 0.5f)
                        uiclay_set_scroll(clay_, body.data(), (int32_t)body.size(), 0, to);
@@ -1277,10 +1276,9 @@ TableEvents Layout::Table(const TableSpec& s)
                                                      const float room =
                                                          BoxOf(head, (uint32_t)c).width -
                                                          2.0f * U(pad) - chipRoom(col);
-                                                     const std::string text =
-                                                         Ellipsize(cell.text, room,
-                                                                   [&](std::string_view x)
-                                                                   { return TextWidthPx(st, x); });
+                                                     const std::string text = Ellipsize(
+                                                         cell.text, room, [&](std::string_view x)
+                                                         { return TextWidthPx(st, x); });
                                                      Row(Box()
                                                              .Width(widths[c])
                                                              .Height(Size::Grow())

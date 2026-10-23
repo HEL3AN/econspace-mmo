@@ -276,9 +276,8 @@ void Game::DrawMarketContent(const Ui::Frame& f)
             default: return Ui::Cell{ row.hold > 0 ? std::to_string(row.hold) : "-", tone };
         }
     };
-    table.rowFill = [&](int r) {
-        return r == marketSel_ ? t.colors.selected : Color{ 0, 0, 0, 0 };
-    };
+    table.rowFill = [&](int r)
+    { return r == marketSel_ ? t.colors.selected : Color{ 0, 0, 0, 0 }; };
 
     static const char* const TIERS[] = { "raw", "refined", "component" };
     auto                     details = [&]
@@ -506,9 +505,8 @@ void Game::DrawHangarContent(const Ui::Frame& f)
                                                               : t.colors.dim };
         }
     };
-    table.rowFill = [&](int r) {
-        return r == hangarSel_ ? t.colors.selected : Color{ 0, 0, 0, 0 };
-    };
+    table.rowFill = [&](int r)
+    { return r == hangarSel_ ? t.colors.selected : Color{ 0, 0, 0, 0 }; };
 
     auto details = [&]
     {
@@ -682,7 +680,7 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
         if (c == 0)
             return Ui::Cell{ g.in + " " + g.on, t.colors.text };
         return Ui::Cell{ TextFormat("%d/%d", g.used, g.capacity), g.used > g.capacity ? t.colors.bad
-                                                                  : g.used == 0       ? t.colors.dim
+                                                                  : g.used == 0 ? t.colors.dim
                                                                                 : t.colors.text };
     };
     table.rowFill = [&](int r) { return r == fitSel_ ? t.colors.selected : Color{ 0, 0, 0, 0 }; };
@@ -733,7 +731,8 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
                       {
                           // The name in a column of its own, so the buttons line up row to row.
                           L.Row(Box().Width(Size::Percent(0.45f)),
-                                [&] {
+                                [&]
+                                {
                                     L.Text(m, TextStyle::Body().Tint(n > 0 ? t.colors.text
                                                                            : t.colors.dim));
                                 });
@@ -880,9 +879,8 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
                 return Ui::Cell{ row.known ? TextFormat("%.0f", row.stats.maxSpeed) : "", ink };
         }
     };
-    library.rowFill = [&](int r) {
-        return saved[r].name == designSel_ ? t.colors.selected : Color{ 0, 0, 0, 0 };
-    };
+    library.rowFill = [&](int r)
+    { return saved[r].name == designSel_ ? t.colors.selected : Color{ 0, 0, 0, 0 }; };
 
     auto list = [&]
     {

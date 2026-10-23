@@ -347,7 +347,7 @@ private:
     // from the galaxy snapshot, or the standard fee.
     double MarketFeeHere() const;
     bool   HostileToPlayerFaction(
-          FactionId f) const;  // is the faction hostile to the player (reputation/wanted)
+        FactionId f) const;  // is the faction hostile to the player (reputation/wanted)
 
     // M4c: the client renders from the snapshot. The snapshot is built every frame
     // (world from the server + player state); windows/rendering read it, not the live objects

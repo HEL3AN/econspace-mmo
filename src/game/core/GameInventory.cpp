@@ -104,8 +104,8 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
             const Container& c = all[i];
             const bool       isSel = c.id == inventorySel_;
             const bool       lit = dragged != nullptr && dragged->source != c.id &&
-                             L.DropHover("cont", (uint32_t)i, "goods");
-            const float frac = c.capacity > 0 ? (float)c.Used() / (float)c.capacity : 0.0f;
+                                   L.DropHover("cont", (uint32_t)i, "goods");
+            const float      frac = c.capacity > 0 ? (float)c.Used() / (float)c.capacity : 0.0f;
             L.Column(Box()
                          .Id("cont", (uint32_t)i)
                          .GrowX()

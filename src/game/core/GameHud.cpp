@@ -221,9 +221,8 @@ void Game::SetupWindows()
     // Where the station's stack of tabs stands (#364): beside the station window, under the
     // location plate and the goal line.
     constexpr Rectangle DOCKED_STACK{ 344.0f, 96.0f, 520.0f, 500.0f };
-    auto                fullScreen = [this]() {
-        return Rectangle{ 0.0f, 0.0f, (float)screenWidth_, (float)screenHeight_ };
-    };
+    auto                fullScreen = [this]()
+    { return Rectangle{ 0.0f, 0.0f, (float)screenWidth_, (float)screenHeight_ }; };
 
     // Registered in the menu bar's order. The places are the ones the windows have always
     // had at 1280 x 720; anchored, they now keep to their side at any other size.
@@ -329,9 +328,8 @@ void Game::SetupWindows()
     map.draw = [this]() { DrawGalaxyMap(); };
     desk_.AddSurface(screen(WIN_MAP, "Map", "Galaxy map  (G)", Ui::EscRule::Close), false, map);
     Ui::Desk::Surface sensor;
-    sensor.bounds = [this]() {
-        return Rectangle{ MenuBarW(), 0.0f, screenWidth_ - MenuBarW(), (float)screenHeight_ };
-    };
+    sensor.bounds = [this]()
+    { return Rectangle{ MenuBarW(), 0.0f, screenWidth_ - MenuBarW(), (float)screenHeight_ }; };
     sensor.draw = [this]() { DrawSensorScreen(); };
     WindowSpec sensorSpec = screen(WIN_SENSOR, "Sensor", "Sensor screen  (V)", Ui::EscRule::Close);
     sensorSpec.context = CTX_SPACE;  // a readout of the space around the ship
@@ -450,8 +448,7 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
                                                  Overview::Sort::Distance };
     const std::vector<Overview::Row> rows = Overview::Build(
         snapshot_.entities, snapshot_.player.pos, filters[overviewTab_],
-        SORTS[std::clamp(overviewSort_.column, 0, 2)],
-        [this](const Proto::EntitySnapshot& e)
+        SORTS[std::clamp(overviewSort_.column, 0, 2)], [this](const Proto::EntitySnapshot& e)
         { return e.kind == Proto::EntityKind::Npc && HostileToPlayerFaction(e.faction); });
 
     const int  selId = selected_ != nullptr ? selected_->GetId() : 0;
@@ -856,7 +853,7 @@ void Game::DrawDefenceControls(Ui::Layout& L, const Proto::EntityLayout& el)
         "Never fires, not even back",
         "Fires back at whoever shot at it in the last minute",
         ("Also fires first at factions you stand below the threshold with, and at players "
-          "wanted by a lawful faction"),
+         "wanted by a lawful faction"),
         "Fires at everyone but you and the names on the allow-list",
     };
     for (int row = 0; row < 2; row++)
@@ -1349,7 +1346,7 @@ void Game::DrawSpaceBrackets()
         const float nearFade = 1.0f - 0.55f * LogRamp(dist, 2000.0f, 30000.0f);
         float       alpha =
             hostile ? 0.95f * std::max(0.7f, std::min(nearFade, 1.0f)) * std::max(0.7f, zoomFade)
-                          : 0.6f * nearFade * zoomFade;
+                    : 0.6f * nearFade * zoomFade;
         if (alpha < 0.03f)
             continue;
         CornerBracket(sp, r, Ui::Px(hostile ? 4.0f : 3.0f), hostile ? 2.0f * thin : thin,
@@ -1462,8 +1459,8 @@ void Game::DrawHud()
         const float       range = playerShip_->GetHoldRange();
         std::string       line =
             hm == HoldMode::Orbit  ? TextFormat("ORBITING %s  at %.0f", name.c_str(), range)
-                  : hm == HoldMode::Keep ? TextFormat("HOLDING %.0f FROM %s", range, name.c_str())
-                                         : TextFormat("FOLLOWING %s  at %.0f", name.c_str(), range);
+            : hm == HoldMode::Keep ? TextFormat("HOLDING %.0f FROM %s", range, name.c_str())
+                                   : TextFormat("FOLLOWING %s  at %.0f", name.c_str(), range);
         if (t != nullptr)
             line += TextFormat("  (now %.0f)",
                                Vector2Distance(t->GetPosition(), playerShip_->GetPosition()));
@@ -1640,7 +1637,8 @@ void Game::DrawSensorScreen()
                                                 [&]
                                                 {
                                                     L.Row(Box().Width(Size::Fixed(t.fontSize.body)),
-                                                          [&] {
+                                                          [&]
+                                                          {
                                                               L.Text(std::string(1, l.glyph),
                                                                      TextStyle::Strong());
                                                           });

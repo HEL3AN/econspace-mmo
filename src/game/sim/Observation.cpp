@@ -772,7 +772,7 @@ std::string DescribeInventory(const View& view)
     const auto                      all = InventoryList::Reachable(p);
     std::string                     out =
         p.docked ? Fmt("INVENTORY docked at %s\n", StationName(view, p.dockedStationId).c_str())
-                                     : std::string("INVENTORY in space\n");
+                 : std::string("INVENTORY in space\n");
     for (const InventoryList::Container& c : all)
     {
         out += Fmt("%s (%s) %d / %d", c.name.c_str(), c.id.c_str(), c.Used(), c.capacity);
