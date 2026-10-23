@@ -1,7 +1,9 @@
 #include "render/Material.h"
 
 #include "core/Archetype.h"
+#include "render/Modules.h"
 #include "render/Scene.h"
+#include "render/Silhouette.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 
@@ -26,12 +28,16 @@ const NamedSource SOURCES[] = {
     { Source::ItemScreenPos, "item.screenPos" },
     { Source::ItemScreenSize, "item.screenSize" },
     { Source::ItemAxis, "item.axis" },
+    { Source::ItemSeed, "item.seed" },
+    { Source::ItemPartSeed, "item.partSeed" },
+    { Source::ItemAngle, "item.angle" },
     { Source::LightDir, "light.dir" },
     { Source::LightTint, "light.tint" },
     { Source::LightSurface, "light.surface" },
     { Source::LightStrength, "light.strength" },
     { Source::LightAmbient, "light.ambient" },
     { Source::ClockTime, "clock.time" },
+    { Source::TextureNoise, "texture.noise" },
 };
 
 std::vector<Material> g_materials;
@@ -117,6 +123,14 @@ bool SourceFromName(const std::string& s, Source& out)
     return false;
 }
 
+float SeedOf(int id)
+{
+    // Knuth's multiplier, then the top 24 bits: what a float holds exactly, so a seed is the
+    // same number on every machine.
+    const unsigned h = (unsigned)id * 2654435761u;
+    return (float)(h >> 8) / 16777216.0f;
+}
+
 UniformValue Resolve(const Binding& b, const MaterialInputs& in)
 {
     // A material asked for something about an object it was not given. Zero rather than a
@@ -135,6 +149,9 @@ UniformValue Resolve(const Binding& b, const MaterialInputs& in)
         case Source::ItemScreenPos: return Two(in.screenPos.x, in.screenPos.y);
         case Source::ItemScreenSize: return One(in.screenSize);
         case Source::ItemAxis: return Two(in.axis.x, in.axis.y);
+        case Source::ItemSeed: return One(haveItem ? SeedOf(in.item->id) : 0.0f);
+        case Source::ItemPartSeed: return One(in.partSeed);
+        case Source::ItemAngle: return One(in.angle);
 
         case Source::LightDir: return Two(in.light.dir.x, in.light.dir.y);
         case Source::LightTint: return Four(in.light.tint);
@@ -143,6 +160,8 @@ UniformValue Resolve(const Binding& b, const MaterialInputs& in)
         case Source::LightAmbient: return One(in.ambient);
 
         case Source::ClockTime: return One(in.time);
+
+        case Source::TextureNoise: return UniformValue{ 0, {} };  // bound by the library
     }
     return UniformValue{};
 }
@@ -173,6 +192,17 @@ bool Load(const std::string& path)
         Material mat;
         mat.id = m.value("id", std::string());
         mat.shader = m.value("shader", mat.id);
+        if (m.contains("reach"))
+        {
+            if (!m["reach"].is_number() || m["reach"].get<float>() < 1.0f ||
+                m["reach"].get<float>() > 8.0f)
+            {
+                g_error = "material '" + m.value("id", std::string()) +
+                          "': reach is how far past the part it draws, 1 to 8 of its radii";
+                return false;
+            }
+            mat.reach = m["reach"].get<float>();
+        }
         if (mat.id.empty())
         {
             g_error = "a material has no id";
@@ -241,9 +271,32 @@ std::vector<std::string> UnknownInArchetypes()
 {
     std::vector<std::string> out;
     for (const Archetype& a : Archetypes::All())
+    {
         if (!a.visual.material.empty() && Find(a.visual.material) == nullptr)
             out.push_back("archetype '" + a.id + "' names material '" + a.visual.material +
                           "', which is not defined -- drawing it plain");
+        // A part's own (#426), written in the archetype or in a module it places.
+        std::vector<std::string> named;
+        for (const Part& p : a.visual.shape.parts)
+        {
+            if (!p.material.empty())
+                named.push_back(p.material);
+            if (const Module* m = p.module.empty() ? nullptr : Modules::Find(p.module))
+                for (const ModuleVariant& v : m->variants)
+                    for (const Part& q : v.shape.parts)
+                        if (!q.material.empty())
+                            named.push_back(q.material);
+        }
+        for (size_t i = 0; i < named.size(); i++)
+        {
+            bool said = false;
+            for (size_t k = 0; k < i; k++)
+                said = said || named[k] == named[i];
+            if (!said && Find(named[i]) == nullptr)
+                out.push_back("archetype '" + a.id + "' has a part on material '" + named[i] +
+                              "', which is not defined -- drawing it as the object");
+        }
+    }
     return out;
 }
 

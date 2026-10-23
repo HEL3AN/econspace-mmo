@@ -1,5 +1,6 @@
 #include "render/GlyphBackend.h"
 
+#include "render/GlState.h"
 #include "render/Perf.h"
 #include "render/Textures.h"
 #include "rlgl.h"
@@ -209,11 +210,12 @@ bool ShapeBackend::BeginMaterial(const Item& item, const Lighting::Sample& light
 }
 
 bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& light, Vector2 at,
-                                   float size, Vector2 axis)
+                                   float size, Vector2 axis, const Material* own, float partSeed,
+                                   float angle)
 {
-    if (materials_ == nullptr || item.material.empty())
+    if (materials_ == nullptr || (own == nullptr && item.material.empty()))
         return false;
-    const Material* m = Materials::Find(item.material);
+    const Material* m = own != nullptr ? own : Materials::Find(item.material);
     if (m == nullptr)
         return false;
 
@@ -234,7 +236,15 @@ bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& lig
     // is exactly what it did the first time this ran.
     in.screenPos.y = (float)GetScreenHeight() - in.screenPos.y;
     in.light.dir.y = -in.light.dir.y;
+    // Painting at reduced resolution: the fragments are fewer, and where they are scales.
+    in.screenPos.x *= paintScale_;
+    in.screenPos.y *= paintScale_;
+    in.screenSize *= paintScale_;
     in.axis = { axis.x, -axis.y };
+    in.partSeed = partSeed;
+    // A piece's angle is measured the way raylib's y runs, downward; turned into OpenGL's
+    // sense with the rest, so a pattern turns the same way as the outline it is drawn in.
+    in.angle = -angle * DEG2RAD;
 
     // Already bound with exactly these inputs: keep it (#296). Every mark on a planet is
     // shaded as the planet -- the body's centre, radius and light -- so a crater field was
@@ -243,9 +253,9 @@ bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& lig
     const bool same =
         bound_ && boundMaterial_ == m && boundItem_ == &item && boundAt_.x == in.screenPos.x &&
         boundAt_.y == in.screenPos.y && boundSize_ == in.screenSize && boundAxis_.x == in.axis.x &&
-        boundAxis_.y == in.axis.y && boundLight_.dir.x == in.light.dir.x &&
-        boundLight_.dir.y == in.light.dir.y && boundLight_.strength == in.light.strength &&
-        ColorIsEqual(boundLight_.tint, in.light.tint);
+        boundAxis_.y == in.axis.y && boundSeed_ == in.partSeed && boundAngle_ == in.angle &&
+        boundLight_.dir.x == in.light.dir.x && boundLight_.dir.y == in.light.dir.y &&
+        boundLight_.strength == in.light.strength && ColorIsEqual(boundLight_.tint, in.light.tint);
     if (same)
         return true;
     EndMaterial();
@@ -259,6 +269,8 @@ bool ShapeBackend::BeginMaterialAt(const Item& item, const Lighting::Sample& lig
     boundAt_ = in.screenPos;
     boundSize_ = in.screenSize;
     boundAxis_ = in.axis;
+    boundSeed_ = in.partSeed;
+    boundAngle_ = in.angle;
     boundLight_ = in.light;
     return true;
 }
@@ -616,6 +628,145 @@ void ShapeBackend::DrawSoftOnSurface(const Item& item, const Piece& p, bool emis
     // and whoever draws something else ends it (see BeginMaterialAt).
 }
 
+const Material* ShapeBackend::OwnMaterial(const Piece& p) const
+{
+    if (p.material.empty() || materials_ == nullptr || !materials_->Has(p.material))
+        return nullptr;
+    // Below a few pixels there is no surface to paint, and the plain colour of the part is a
+    // truer picture of a dot than a shader working on nine fragments.
+    const float r = p.surface ? p.bodyRadius : ShadeRadius(p);
+    if (r * view_.zoom < MIN_SHADED_PIXELS)
+        return nullptr;
+    return Materials::Find(p.material);
+}
+
+bool ShapeBackend::DrawOwnMaterial(const Item& item, const Piece& p, const Material& m)
+{
+    // How much of the target the body covers, and so whether it can be painted at full
+    // resolution. Only a round body is painted scaled: it is the one that grows past the
+    // screen -- a planet flown over, a nebula flown into.
+    if (p.form == Form::Disc && !p.surface && paintScale_ == 1.0f)
+    {
+        const float     w = (float)rlGetFramebufferWidth(), h = (float)rlGetFramebufferHeight();
+        const Vector2   c = GetWorldToScreen2D(p.pos, view_);
+        const float     reach = p.radius * m.reach * view_.zoom + 2.0f;
+        const Rectangle box{ std::fmax(0.0f, c.x - reach), std::fmax(0.0f, c.y - reach), 0.0f,
+                             0.0f };
+        const float     x1 = std::fmin(w, c.x + reach), y1 = std::fmin(h, c.y + reach);
+        const Rectangle clip{ box.x, box.y, std::fmax(0.0f, x1 - box.x),
+                              std::fmax(0.0f, y1 - box.y) };
+        const float     area = clip.width * clip.height;
+        const float     budget = materials_ != nullptr ? materials_->PaintBudget() : area;
+        if (area > budget)
+        {
+            // In eighths, so the target is not resized every frame as a planet grows.
+            const float scale =
+                std::fmax(PAINT_MIN_SCALE, std::floor(std::sqrt(budget / area) * 8.0f) / 8.0f);
+            if (scale < 1.0f && PaintScaled(item, p, m, scale, clip))
+                return true;
+        }
+    }
+
+    const Vector2          at = p.surface ? p.bodyPos : p.pos;
+    const float            r = p.surface ? p.bodyRadius : ShadeRadius(p);
+    const Lighting::Sample l = LightAt(at);
+    if (!BeginMaterialAt(item, l, at, r, p.surface ? Vector2{ 0.0f, 0.0f } : Axis(p), &m, p.seed,
+                         p.angle))
+        return false;
+    Perf::Count(Perf::Counter::Painted);
+    DrawPainted(item, p, m);
+    return true;
+}
+
+void ShapeBackend::DrawPainted(const Item& item, const Piece& p, const Material& m)
+{
+    // What the shader starts from: the part's colour after its role, and its solidity -- a
+    // moon dims on the far half of its lap. The shading, all of it, is the shader's.
+    const Color own = p.tint.a > 0 ? p.tint : item.color;
+    const Color col = Fade(ForRole(p.role, own), p.brightness);
+    if (p.form == Form::Disc && !p.surface)
+    {
+        // Over the material's whole reach, and a little more: raylib's circle is a polygon
+        // inscribed in the true one, and the shader -- not the polygon -- is what decides
+        // where the limb is, smoothly, to the pixel.
+        const float reach = p.radius * m.reach / 0.995f + 2.0f / view_.zoom;
+        DrawCircleV(p.pos, reach, col);
+        return;
+    }
+    DrawPiece(p, col);
+}
+
+bool ShapeBackend::PaintScaled(const Item& item, const Piece& p, const Material& m, float scale,
+                               Rectangle box)
+{
+    if (materials_ == nullptr)
+        return false;
+    const int        w = rlGetFramebufferWidth(), h = rlGetFramebufferHeight();
+    RenderTexture2D* rt = materials_->PaintTarget(w, h);
+    if (rt == nullptr)
+        return false;
+
+    // Everything drawn so far goes to the target it was meant for before the target changes.
+    EndMaterial();
+    rlDrawRenderBatchActive();
+    const unsigned int previous = rlGetActiveFramebuffer();
+    const Matrix       projection = rlGetMatrixProjection();
+
+    // The same projection into a corner of the offscreen target `scale` of the size: the
+    // body lands where it would on screen, only smaller, and the shader is told so.
+    const int sw = std::max(1, (int)std::ceil((float)w * scale));
+    const int sh = std::max(1, (int)std::ceil((float)h * scale));
+    // The caller's scissor is in its own target's pixels and means nothing in this one.
+    const GlState::Scissor scissor = GlState::Current();
+    rlDisableScissorTest();
+    rlEnableFramebuffer(rt->id);
+    rlViewport(0, 0, sw, sh);
+    rlClearColor(0, 0, 0, 0);
+    rlClearScreenBuffers();
+    // Kept premultiplied, so the filtering when it is scaled back up has no dark fringe at
+    // the limb where the shader left nothing.
+    rlSetBlendFactorsSeparate(RL_SRC_ALPHA, RL_ONE_MINUS_SRC_ALPHA, RL_ONE, RL_ONE_MINUS_SRC_ALPHA,
+                              RL_FUNC_ADD, RL_FUNC_ADD);
+    BeginBlendMode(BLEND_CUSTOM_SEPARATE);
+    paintScale_ = (float)sw / (float)w;
+    const Vector2          at = p.pos;
+    const Lighting::Sample l = LightAt(at);
+    const bool begun = BeginMaterialAt(item, l, at, ShadeRadius(p), Axis(p), &m, p.seed, p.angle);
+    if (begun)
+    {
+        Perf::Count(Perf::Counter::Painted);
+        DrawPainted(item, p, m);
+    }
+    EndMaterial();
+    rlDrawRenderBatchActive();
+    EndBlendMode();
+    paintScale_ = 1.0f;
+
+    // Back to the target, as it was.
+    if (previous != 0)
+        rlEnableFramebuffer(previous);
+    else
+        rlDisableFramebuffer();
+    rlViewport(0, 0, w, h);
+    rlSetMatrixProjection(projection);
+    GlState::Restore(scissor);
+    if (!begun)
+        return false;
+
+    // The painted box, scaled back up over where the body is. Rows of a render target count
+    // from the bottom, which is what the negative height says.
+    const float     s = (float)sw / (float)w;
+    const Rectangle source{ box.x * s, ((float)h - box.y - box.height) * s, box.width * s,
+                            -box.height * s };
+    const Vector2   tl = GetScreenToWorld2D({ box.x, box.y }, view_);
+    const Vector2   br = GetScreenToWorld2D({ box.x + box.width, box.y + box.height }, view_);
+    BeginBlendMode(BLEND_ALPHA_PREMULTIPLY);
+    DrawTexturePro(rt->texture, source, { tl.x, tl.y, br.x - tl.x, br.y - tl.y }, { 0.0f, 0.0f },
+                   0.0f, WHITE);
+    EndBlendMode();
+    return true;
+}
+
 bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sample& light)
 {
     if (item.shape == nullptr || item.shape->Empty())
@@ -645,12 +796,27 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
     // which is how a sun ends up looking like a moon (#119).
     const bool emissive = Emissive(item);
 
+    // Whether the body is painted by a material of its own (#426). If it is, its stand-ins --
+    // the continents of discs, the bands, the sunspots -- are not drawn: the shader already
+    // drew the real thing, and on a driver that would not compile it they are the picture.
+    // A moon is not the body, so a moon's material says nothing about its planet.
+    bool painted = false;
+    for (const Piece& p : pieces)
+        if (!p.fallback && !p.orbits && OwnMaterial(p) != nullptr)
+        {
+            painted = true;
+            break;
+        }
+
     for (const Piece& p0 : pieces)
     {
+        if (p0.fallback && painted)
+            continue;
+        const Material* ownMat = OwnMaterial(p0);
         // A piece that misses the target is skipped like an object that does (#296). A star
         // three hundred thousand units away still reaches the screen with its corona, and
         // its prominences, flares and sunspots on the far side of it were all being drawn.
-        if (OffScreen(p0.pos, PieceReach(p0)))
+        if (OffScreen(p0.pos, PieceReach(p0) * (ownMat != nullptr ? ownMat->reach : 1.0f)))
         {
             Perf::Count(Perf::Counter::Skipped);
             continue;
@@ -673,6 +839,10 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
                 continue;
             p.brightness *= night;
         }
+        // Painted by a material of its own, even on something that is itself a light: a
+        // star's photosphere is exactly that, and its shader does its own glowing.
+        if (ownMat != nullptr && DrawOwnMaterial(item, p, *ownMat))
+            continue;
         if (p.soft && p.surface && p.form == Form::Disc)
         {
             DrawSoftOnSurface(item, p, emissive);

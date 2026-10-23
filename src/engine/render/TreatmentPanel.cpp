@@ -132,9 +132,11 @@ bool TreatmentPanel::Draw(const Ui::Frame& f, Treatment& t, const MaterialLibrar
             L.Divider();
             if (L.Button("reset", "Reset to default"))
             {
-                const bool hud = cfg.treatHud;
+                const bool  hud = cfg.treatHud;
+                const float budget = cfg.paintBudget;
                 cfg = TreatmentConfig::Default();
-                cfg.treatHud = hud;  // a preference about the HUD, not part of the look
+                cfg.treatHud = hud;        // a preference about the HUD, not part of the look
+                cfg.paintBudget = budget;  // a matter of the machine, not of the look
                 changed = true;
             }
         });

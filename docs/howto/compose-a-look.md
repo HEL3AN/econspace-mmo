@@ -236,8 +236,8 @@ What is different:
   of equal discs reads as a `6`. Give weather `"soft": true` — thick at its middle, nothing at its
   rim — and let puffs of different sizes overlap. Land keeps a hard coast, but never one ellipse:
   lobes of different sizes (`planet.continent`), and a disc with role `hull` and no `tint` is the
-  sea itself, so placed on a coast it bites out a bay. A polar cap is a band with a ragged edge:
-  a fainter band below it and a `repeat` of soft discs along its rim, turning with the planet.
+  sea itself, so placed on a coast it bites out a bay. Never a ring or a row of small circles
+  for an island chain or a cap's edge: from any distance that reads as a ring of circles.
 - **An orbiting part** — `orbitRadius` above zero — leaves the surface for the space around it:
   a moon ([#165](https://github.com/HEL3AN/econspace-mmo/issues/165)). It travels an ellipse
   squashed by `orbitTilt` (0 edge-on, 1 seen from above), passing behind the body on the far half
@@ -246,6 +246,14 @@ What is different:
 That this is a `Planet` changes nothing about how it is drawn; the shape does all of it. To see
 it in the game it needs a planet type, by the same route as [a station
 role](add-an-archetype.md#making-the-game-build-one).
+
+**The planets that ship are painted, and this is their stand-in.** A coast, a cloud deck or a
+gas giant's roiling belts are beyond what a few primitives can say, so each shipped planet's
+disc carries a material of its own whose shader draws the whole surface, and the parts above
+are marked `"fallback": true`: drawn only when that shader is not -- on a driver that will not
+compile it. How that works, and how to write one, is in [Give it a
+material](give-it-a-material.md#paint-a-whole-body). A planet a player designs in this grammar
+is drawn exactly as written here.
 
 ---
 

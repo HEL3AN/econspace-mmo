@@ -197,6 +197,7 @@ add_library(engine STATIC
     src/engine/render/CameraRig.cpp        # the player's camera, not the ship's (#158)
     src/engine/render/Material.cpp         # a shader plus what feeds it -- the data half (#121)
     src/engine/render/MaterialLibrary.cpp  # ...and the half that compiles and binds
+    src/engine/render/GlState.cpp          # the GL state raylib sets and cannot report (#426)
     src/engine/render/TreatmentConfig.cpp  # the pass chain as data -- the testable half (#120)
     src/engine/render/Treatment.cpp        # ...and the half that talks to the GPU
     src/engine/render/Backdrop.cpp         # the world blurred once, for glass windows (#297)

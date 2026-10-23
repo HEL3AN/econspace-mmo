@@ -39,6 +39,9 @@ enum class Source
     ItemScreenPos,   // vec2, pixels -- where the object's centre landed
     ItemScreenSize,  // float, pixels -- its radius after the camera
     ItemAxis,        // vec2 -- which way an elongated part runs; zero means it is round
+    ItemSeed,        // float, 0..1 -- the object's own, from its id: two planets of a kind differ
+    ItemPartSeed,    // float, 0..1 -- this part's own: one rock in a field from the next
+    ItemAngle,       // float, radians -- this part's own turn, its spin included (#136)
 
     LightDir,       // vec2, unit vector toward the strongest light (#119)
     LightTint,      // vec4, 0..1 -- the colour of the light arriving: a rim, a glow
@@ -46,13 +49,19 @@ enum class Source
     LightStrength,  // float, 0..1
     LightAmbient,   // float -- the floor nothing goes below
 
-    ClockTime  // float, seconds
+    ClockTime,  // float, seconds
+
+    // sampler2D -- a fixed table of random values, the same on every machine, that noise is
+    // read from instead of hashed (#426): one lookup in place of eight hashes, which is the
+    // difference between a planet a laptop can draw filling the screen and one it cannot.
+    TextureNoise
 };
 
 const char* SourceName(Source s);
 bool        SourceFromName(const std::string& s, Source& out);
 
-// A uniform's value, as up to four floats. Wider than most bindings need, and the same
+// A uniform's value, as up to four floats. A texture's is none: `count` 0, and the library
+// binds the texture itself. Wider than most bindings need, and the same
 // shape for all of them, because the alternative is a variant per width and a switch at
 // every use.
 struct UniformValue
@@ -73,6 +82,12 @@ struct Material
     std::string          id;      // "hull" -- how an archetype refers to this
     std::string          shader;  // file stem under data/shaders/materials/
     std::vector<Binding> bindings;
+
+    // How far past the part the shader draws, in the part's own radii (#426). A planet's air
+    // is a haze beyond its limb and a star's corona reaches several radii out; neither is
+    // there to draw on unless the primitive under the shader is that much larger. The shader
+    // is still told the part's own radius, so a limb stays at 1. A round part only.
+    float reach = 1.0f;
 };
 
 // Everything a binding can be resolved from. Gathered by the backend once per item, so
@@ -86,7 +101,12 @@ struct MaterialInputs
     float            screenSize = 0.0f;
     Vector2          axis = { 0.0f, 0.0f };
     float            time = 0.0f;
+    float            partSeed = 0.0f;  // 0..1
+    float            angle = 0.0f;     // radians, already in OpenGL's sense (counter-clockwise)
 };
+
+// An object's seed as a material sees it: its id spread over 0..1, the same on every client.
+float SeedOf(int id);
 
 // What this binding is worth right now. A binding whose source needs an item it was not
 // given resolves to zero rather than reading through a null pointer: a material on an

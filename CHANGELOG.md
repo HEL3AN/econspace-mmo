@@ -52,6 +52,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 - Ships are never drawn smaller than you can find them, at the zoom a station is flown at (#426).
 - Asteroid fields and motherlodes show their rocks on a gallery card and from far away (#426).
 - UI polish (#427): the docking prompt sits under the windows; the map opens centred on your neighbourhood and keeps "you are here" off other systems; mission rows say where they go and no longer show internal ids; every distance is formatted one way; one buy button per amount; the window layout is kept per pilot and server, missions and corporation do not reopen at login, and scripted screenshots leave it alone; the chat shows whole lines, the status window fits its content, the map legend scrolls. `econserver admin --world DIR` (the bare directory still works, with a deprecation note).
+- Planets, moons, stars, asteroids and nebulae are painted by shaders: coasts, cloud, ice caps, banded gas with storms, cratered rock, molten crust, granulated suns with a corona, gas lit from inside -- seeded, so two of a kind differ; the old compositions stand in where a shader will not compile (#426).
 
 ### CI, tooling and docs
 - CI: two clients no longer share one output pipe (#451).

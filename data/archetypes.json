@@ -11,13 +11,13 @@
             "size": 150000,
             "light": { "radius": 2480000, "intensity": 1.00, "self": true },
             "shape": { "vars": { "pa": [0, 360] }, "parts": [
-                {"form": "disc", "radius": 2.6, "role": "hull", "soft": true, "alpha": 0.32},
-                {"form": "disc", "radius": 1.6, "role": "hull", "soft": true, "alpha": 0.4},
-                {"module": "nature.prominence", "variant": "loop", "at": [1.0, 0], "pivot": [-1.0, 0], "angle": "$pa", "scale": [0.3, 0.36], "tint": [255, 150, 60], "minPixels": 50},
-                {"module": "nature.flare", "at": [1.06, 0], "pivot": [-1.06, 0], "angle": "$pa+150", "scale": [0.2, 0.26], "tint": [255, 235, 150], "minPixels": 50, "chance": 0.45},
-                {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"module": "nature.sunspot", "at": [[-0.45, 0.45], [-0.4, 0.4]], "scale": [0.16, 0.24], "minPixels": 40},
-                {"module": "nature.sunspot", "at": [[-0.5, 0.5], [-0.45, 0.45]], "scale": [0.1, 0.15], "minPixels": 60, "chance": 0.5}
+                {"form": "disc", "radius": 2.6, "role": "hull", "soft": true, "alpha": 0.32, "fallback": true},
+                {"form": "disc", "radius": 1.6, "role": "hull", "soft": true, "alpha": 0.4, "fallback": true},
+                {"module": "nature.prominence", "variant": "loop", "at": [1.0, 0], "pivot": [-1.0, 0], "angle": "$pa", "scale": [0.3, 0.36], "tint": [255, 150, 60], "minPixels": 50, "fallback": true},
+                {"module": "nature.flare", "at": [1.06, 0], "pivot": [-1.06, 0], "angle": "$pa+150", "scale": [0.2, 0.26], "tint": [255, 235, 150], "minPixels": 50, "chance": 0.45, "fallback": true},
+                {"form": "disc", "radius": 1.0, "role": "hull", "spin": 1.5, "material": "star.yellow"},
+                {"module": "nature.sunspot", "at": [[-0.45, 0.45], [-0.4, 0.4]], "scale": [0.16, 0.24], "minPixels": 40, "fallback": true},
+                {"module": "nature.sunspot", "at": [[-0.5, 0.5], [-0.45, 0.45]], "scale": [0.1, 0.15], "minPixels": 60, "chance": 0.5, "fallback": true}
             ] },
             "components": {}
         },
@@ -32,13 +32,13 @@
             "size": 175000,
             "light": { "radius": 1920000, "intensity": 0.90, "self": true },
             "shape": { "vars": { "pa": [0, 360] }, "parts": [
-                {"form": "disc", "radius": 2.80, "role": "hull", "soft": true, "alpha": 0.32},
-                {"form": "disc", "radius": 1.72, "role": "hull", "soft": true, "alpha": 0.4},
-                {"module": "nature.flare", "at": [1.07, 0], "pivot": [-1.07, 0], "angle": "$pa", "scale": [0.26, 0.34], "tint": [255, 200, 140], "minPixels": 50, "chance": 0.75},
-                {"module": "nature.prominence", "variant": "loop", "at": [1.0, 0], "pivot": [-1.0, 0], "angle": "$pa+170", "scale": [0.26, 0.32], "tint": [255, 120, 80], "minPixels": 50, "chance": 0.6},
-                {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"module": "nature.sunspot", "at": [[-0.4, 0.4], [-0.35, 0.35]], "scale": [0.24, 0.32], "minPixels": 40},
-                {"module": "nature.sunspot", "at": [[-0.55, 0.55], [-0.5, 0.5]], "scale": [0.14, 0.2], "minPixels": 50, "chance": 0.7}
+                {"form": "disc", "radius": 2.80, "role": "hull", "soft": true, "alpha": 0.32, "fallback": true},
+                {"form": "disc", "radius": 1.72, "role": "hull", "soft": true, "alpha": 0.4, "fallback": true},
+                {"module": "nature.flare", "at": [1.07, 0], "pivot": [-1.07, 0], "angle": "$pa", "scale": [0.26, 0.34], "tint": [255, 200, 140], "minPixels": 50, "chance": 0.75, "fallback": true},
+                {"module": "nature.prominence", "variant": "loop", "at": [1.0, 0], "pivot": [-1.0, 0], "angle": "$pa+170", "scale": [0.26, 0.32], "tint": [255, 120, 80], "minPixels": 50, "chance": 0.6, "fallback": true},
+                {"form": "disc", "radius": 1.0, "role": "hull", "spin": 1.0, "material": "star.red"},
+                {"module": "nature.sunspot", "at": [[-0.4, 0.4], [-0.35, 0.35]], "scale": [0.24, 0.32], "minPixels": 40, "fallback": true},
+                {"module": "nature.sunspot", "at": [[-0.55, 0.55], [-0.5, 0.5]], "scale": [0.14, 0.2], "minPixels": 50, "chance": 0.7, "fallback": true}
             ] },
             "components": {}
         },
@@ -53,12 +53,12 @@
             "size": 137500,
             "light": { "radius": 3120000, "intensity": 1.10, "self": true },
             "shape": { "vars": { "eq": [0, 360] }, "parts": [
-                {"form": "disc", "radius": 2.0, "role": "hull", "soft": true, "alpha": 0.34},
-                {"form": "disc", "radius": 1.5, "role": "trim", "soft": true, "tint": [170, 210, 255], "alpha": 0.6},
-                {"form": "disc", "radius": 1.18, "role": "light", "soft": true, "tint": [225, 240, 255], "alpha": 0.85},
-                {"module": "nature.corona-streamer", "except": ["fan"], "at": [1.3, 0], "pivot": [-1.3, 0], "angle": "$eq+90", "repeat": 2, "scale": [0.55, 0.7], "tint": [110, 175, 255], "minPixels": 50},
-                {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"form": "disc", "radius": 0.9, "role": "light", "soft": true, "tint": [245, 250, 255], "alpha": 0.95}
+                {"form": "disc", "radius": 2.0, "role": "hull", "soft": true, "alpha": 0.34, "fallback": true},
+                {"form": "disc", "radius": 1.5, "role": "trim", "soft": true, "tint": [170, 210, 255], "alpha": 0.6, "fallback": true},
+                {"form": "disc", "radius": 1.18, "role": "light", "soft": true, "tint": [225, 240, 255], "alpha": 0.85, "fallback": true},
+                {"module": "nature.corona-streamer", "except": ["fan"], "at": [1.3, 0], "pivot": [-1.3, 0], "angle": "$eq+90", "repeat": 2, "scale": [0.55, 0.7], "tint": [110, 175, 255], "minPixels": 50, "fallback": true},
+                {"form": "disc", "radius": 1.0, "role": "hull", "spin": 2.0, "material": "star.blue"},
+                {"form": "disc", "radius": 0.9, "role": "light", "soft": true, "tint": [245, 250, 255], "alpha": 0.95, "fallback": true}
             ] },
             "components": {}
         },
@@ -75,16 +75,16 @@
             "size": 15000,
             "material": "hull",
             "shape": { "tilt": 16, "parts": [
-                {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"form": "disc", "lat": [10, 30], "lon": [0, 40], "radius": [0.28, 0.36], "role": "panel", "alpha": 0.45, "spin": 5.0, "minPixels": 30},
-                {"form": "disc", "lat": [-40, -20], "lon": [160, 210], "radius": [0.22, 0.3], "role": "panel", "alpha": 0.45, "spin": 5.0, "minPixels": 30},
-                {"form": "disc", "lat": [-10, 15], "lon": [270, 310], "radius": [0.2, 0.26], "role": "panel", "alpha": 0.4, "spin": 5.0, "minPixels": 30},
-                {"module": "planet.impact", "lat": [-30, 30], "lon": [70, 110], "scale": [0.24, 0.32], "spin": 5.0},
-                {"module": "planet.impact", "lat": [-45, 45], "lon": [240, 280], "scale": [0.12, 0.18], "spin": 5.0},
-                {"module": "planet.impact", "lat": [-50, 50], "lon": [310, 340], "scale": [0.08, 0.12], "spin": 5.0, "chance": 0.7},
-                {"module": "planet.mountains", "lat": [20, 45], "lon": [190, 240], "angle": [-30, 30], "scale": [0.24, 0.32], "spin": 5.0},
-                {"module": "planet.mine", "lat": [-25, 25], "lon": [120, 160], "scale": [0.06, 0.09], "spin": 5.0, "chance": 0.35},
-                {"form": "disc", "radius": 0.11, "role": "trim", "orbitRadius": 1.5, "orbitPeriod": 2400.0, "orbitTilt": 0.3, "minPixels": 60}
+                {"form": "disc", "radius": 1.0, "role": "hull", "spin": 5.0, "material": "planet.rocky"},
+                {"form": "disc", "lat": [10, 30], "lon": [0, 40], "radius": [0.28, 0.36], "role": "panel", "alpha": 0.45, "spin": 5.0, "minPixels": 30, "fallback": true},
+                {"form": "disc", "lat": [-40, -20], "lon": [160, 210], "radius": [0.22, 0.3], "role": "panel", "alpha": 0.45, "spin": 5.0, "minPixels": 30, "fallback": true},
+                {"form": "disc", "lat": [-10, 15], "lon": [270, 310], "radius": [0.2, 0.26], "role": "panel", "alpha": 0.4, "spin": 5.0, "minPixels": 30, "fallback": true},
+                {"module": "planet.impact", "lat": [-30, 30], "lon": [70, 110], "scale": [0.24, 0.32], "spin": 5.0, "fallback": true},
+                {"module": "planet.impact", "lat": [-45, 45], "lon": [240, 280], "scale": [0.12, 0.18], "spin": 5.0, "fallback": true},
+                {"module": "planet.impact", "lat": [-50, 50], "lon": [310, 340], "scale": [0.08, 0.12], "spin": 5.0, "chance": 0.7, "fallback": true},
+                {"module": "planet.mountains", "lat": [20, 45], "lon": [190, 240], "angle": [-30, 30], "scale": [0.24, 0.32], "spin": 5.0, "fallback": true},
+                {"module": "planet.mine", "lat": [-25, 25], "lon": [120, 160], "scale": [0.06, 0.09], "spin": 5.0, "chance": 0.35, "fallback": true},
+                {"form": "disc", "radius": 0.11, "role": "trim", "orbitRadius": 1.5, "orbitPeriod": 2400.0, "orbitTilt": 0.3, "minPixels": 60, "material": "moon"}
             ] },
             "components": {}
         },
@@ -100,21 +100,21 @@
             "size": 36000,
             "material": "hull",
             "shape": { "tilt": 20, "vars": { "s": [0, 360], "g": [-22, -15] }, "parts": [
-                {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"form": "band", "lat": 52, "width": 10, "role": "panel", "minPixels": 30},
-                {"form": "band", "lat": 30, "width": 12, "role": "panel", "minPixels": 30},
-                {"form": "band", "lat": 14, "width": 8, "role": "trim", "minPixels": 40},
-                {"form": "band", "lat": -6, "width": 14, "role": "panel", "minPixels": 30},
-                {"form": "band", "lat": -26, "width": 9, "role": "trim", "minPixels": 40},
-                {"form": "band", "lat": -46, "width": 12, "role": "panel", "minPixels": 30},
-                {"form": "disc", "lat": "$g", "lon": "$s-6", "radius": 0.15, "role": "trim", "tint": [238, 222, 192], "alpha": 0.45, "spin": 9.0, "minPixels": 30},
-                {"form": "disc", "lat": "$g", "lon": "$s+6", "radius": 0.15, "role": "trim", "tint": [238, 222, 192], "alpha": 0.45, "spin": 9.0, "minPixels": 30},
-                {"module": "planet.storm", "variant": "vortex", "lat": "$g", "lon": "$s", "angle": [-8, 8], "scale": [0.32, 0.36], "spin": 9.0, "minPixels": 30},
-                {"module": "planet.storm", "variant": "vortex", "lat": [28, 34], "lon": "$s+180", "angle": [-8, 8], "scale": [0.24, 0.28], "spin": 9.0, "minPixels": 40},
-                {"module": "planet.storm", "variant": "cyclone", "lat": [38, 44], "lon": "$s+95", "angle": [-8, 8], "scale": [0.14, 0.17], "spin": 9.0, "minPixels": 50},
-                {"module": "planet.storm", "variant": "vortex", "lat": [-42, -36], "lon": "$s+270", "angle": [-8, 8], "scale": [0.18, 0.22], "spin": 9.0, "minPixels": 50},
-                {"module": "planet.storm", "variant": "thunderhead", "lat": [6, 12], "lon": "$s+320", "scale": [0.1, 0.13], "spin": 9.0, "minPixels": 80, "chance": 0.6},
-                {"form": "disc", "radius": 0.075, "role": "trim", "repeat": 3, "orbitRadius": 1.45, "orbitPeriod": 3000.0, "orbitTilt": 0.28, "jitterScale": 0.3, "minPixels": 50}
+                {"form": "disc", "radius": 1.0, "role": "hull", "spin": 9.0, "material": "planet.gas"},
+                {"form": "band", "lat": 52, "width": 10, "role": "panel", "minPixels": 30, "fallback": true},
+                {"form": "band", "lat": 30, "width": 12, "role": "panel", "minPixels": 30, "fallback": true},
+                {"form": "band", "lat": 14, "width": 8, "role": "trim", "minPixels": 40, "fallback": true},
+                {"form": "band", "lat": -6, "width": 14, "role": "panel", "minPixels": 30, "fallback": true},
+                {"form": "band", "lat": -26, "width": 9, "role": "trim", "minPixels": 40, "fallback": true},
+                {"form": "band", "lat": -46, "width": 12, "role": "panel", "minPixels": 30, "fallback": true},
+                {"form": "disc", "lat": "$g", "lon": "$s-6", "radius": 0.15, "role": "trim", "tint": [238, 222, 192], "alpha": 0.45, "spin": 9.0, "minPixels": 30, "fallback": true},
+                {"form": "disc", "lat": "$g", "lon": "$s+6", "radius": 0.15, "role": "trim", "tint": [238, 222, 192], "alpha": 0.45, "spin": 9.0, "minPixels": 30, "fallback": true},
+                {"module": "planet.storm", "variant": "vortex", "lat": "$g", "lon": "$s", "angle": [-8, 8], "scale": [0.32, 0.36], "spin": 9.0, "minPixels": 30, "fallback": true},
+                {"module": "planet.storm", "variant": "vortex", "lat": [28, 34], "lon": "$s+180", "angle": [-8, 8], "scale": [0.24, 0.28], "spin": 9.0, "minPixels": 40, "fallback": true},
+                {"module": "planet.storm", "variant": "cyclone", "lat": [38, 44], "lon": "$s+95", "angle": [-8, 8], "scale": [0.14, 0.17], "spin": 9.0, "minPixels": 50, "fallback": true},
+                {"module": "planet.storm", "variant": "vortex", "lat": [-42, -36], "lon": "$s+270", "angle": [-8, 8], "scale": [0.18, 0.22], "spin": 9.0, "minPixels": 50, "fallback": true},
+                {"module": "planet.storm", "variant": "thunderhead", "lat": [6, 12], "lon": "$s+320", "scale": [0.1, 0.13], "spin": 9.0, "minPixels": 80, "chance": 0.6, "fallback": true},
+                {"form": "disc", "radius": 0.075, "role": "trim", "repeat": 3, "orbitRadius": 1.45, "orbitPeriod": 3000.0, "orbitTilt": 0.28, "jitterScale": 0.3, "minPixels": 50, "material": "moon"}
             ] },
             "components": {}
         },
@@ -130,17 +130,14 @@
             "size": 18000,
             "material": "hull",
             "shape": { "tilt": 22, "parts": [
-                {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"form": "band", "lat": 81, "width": 18, "role": "trim", "minPixels": 30},
-                {"form": "band", "lat": 70.5, "width": 3, "role": "trim", "alpha": 0.5, "minPixels": 30},
-                {"form": "disc", "lat": [67, 71], "lon": [0, 360], "radius": [0.07, 0.12], "role": "trim", "alpha": 0.9, "soft": true, "repeat": 13, "jitterScale": 0.35, "spin": 3.0, "minPixels": 50},
-                {"form": "band", "lat": -83, "width": 14, "role": "trim", "minPixels": 30},
-                {"form": "band", "lat": -74.5, "width": 3, "role": "trim", "alpha": 0.5, "minPixels": 30},
-                {"form": "disc", "lat": [-75, -71], "lon": [0, 360], "radius": [0.06, 0.1], "role": "trim", "alpha": 0.85, "soft": true, "repeat": 11, "jitterScale": 0.35, "spin": 3.0, "minPixels": 50},
-                {"form": "band", "lat": 30, "width": 6, "role": "panel", "alpha": 0.5, "minPixels": 60},
-                {"module": "planet.ice", "variant": "glacier", "lat": [52, 58], "lon": [0, 360], "angle": [-120, -60], "scale": [0.26, 0.32], "spin": 3.0, "minPixels": 40, "chance": 0.7},
-                {"module": "planet.impact", "lat": [-40, 40], "lon": [280, 340], "scale": [0.12, 0.18], "alpha": 0.8, "spin": 3.0, "chance": 0.6},
-                {"form": "disc", "radius": 0.09, "role": "trim", "repeat": 2, "orbitRadius": 1.7, "orbitPeriod": 3800.0, "orbitTilt": 0.22, "minPixels": 60}
+                {"form": "disc", "radius": 1.0, "role": "hull", "spin": 3.0, "material": "planet.ice"},
+                {"form": "band", "lat": 81, "width": 18, "role": "trim", "minPixels": 30, "fallback": true},
+                {"form": "band", "lat": 70.5, "width": 3, "role": "trim", "alpha": 0.5, "minPixels": 30, "fallback": true},
+                {"form": "band", "lat": -83, "width": 14, "role": "trim", "minPixels": 30, "fallback": true},
+                {"form": "band", "lat": -74.5, "width": 3, "role": "trim", "alpha": 0.5, "minPixels": 30, "fallback": true},
+                {"form": "band", "lat": 30, "width": 6, "role": "panel", "alpha": 0.5, "minPixels": 60, "fallback": true},
+                {"module": "planet.ice", "variant": "glacier", "lat": [52, 58], "lon": [0, 360], "angle": [-120, -60], "scale": [0.26, 0.32], "spin": 3.0, "minPixels": 40, "chance": 0.7, "fallback": true},
+                {"form": "disc", "radius": 0.09, "role": "trim", "repeat": 2, "orbitRadius": 1.7, "orbitPeriod": 3800.0, "orbitTilt": 0.22, "minPixels": 60, "material": "moon"}
             ] },
             "components": {}
         },
@@ -156,15 +153,15 @@
             "size": 16500,
             "material": "hull",
             "shape": { "tilt": 12, "parts": [
-                {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"form": "disc", "lat": [15, 35], "lon": [20, 60], "radius": [0.34, 0.42], "role": "panel", "alpha": 0.45, "spin": 4.0, "minPixels": 30},
-                {"form": "disc", "lat": [-35, -15], "lon": [200, 250], "radius": [0.3, 0.38], "role": "panel", "alpha": 0.45, "spin": 4.0, "minPixels": 30},
-                {"module": "planet.lava", "variant": "fissure", "lat": [-15, 15], "lon": [70, 110], "angle": [-60, 60], "scale": [0.42, 0.52], "spin": 4.0},
-                {"module": "planet.lava", "variant": "fissure", "lat": [20, 40], "lon": [250, 290], "angle": [-60, 60], "scale": [0.34, 0.44], "spin": 4.0},
-                {"module": "planet.lava", "variant": "fissure", "lat": [-45, -25], "lon": [140, 180], "angle": [-60, 60], "scale": [0.3, 0.38], "spin": 4.0},
-                {"module": "planet.lava", "lat": [-35, -10], "lon": [320, 360], "angle": [0, 360], "scale": [0.22, 0.3], "spin": 4.0},
-                {"module": "planet.volcano", "variant": "active", "lat": [-10, 20], "lon": [170, 210], "scale": [0.18, 0.24], "spin": 4.0},
-                {"form": "band", "lat": -60, "width": 14, "role": "panel", "minPixels": 40}
+                {"form": "disc", "radius": 1.0, "role": "hull", "spin": 4.0, "material": "planet.lava"},
+                {"form": "disc", "lat": [15, 35], "lon": [20, 60], "radius": [0.34, 0.42], "role": "panel", "alpha": 0.45, "spin": 4.0, "minPixels": 30, "fallback": true},
+                {"form": "disc", "lat": [-35, -15], "lon": [200, 250], "radius": [0.3, 0.38], "role": "panel", "alpha": 0.45, "spin": 4.0, "minPixels": 30, "fallback": true},
+                {"module": "planet.lava", "variant": "fissure", "lat": [-15, 15], "lon": [70, 110], "angle": [-60, 60], "scale": [0.42, 0.52], "spin": 4.0, "fallback": true},
+                {"module": "planet.lava", "variant": "fissure", "lat": [20, 40], "lon": [250, 290], "angle": [-60, 60], "scale": [0.34, 0.44], "spin": 4.0, "fallback": true},
+                {"module": "planet.lava", "variant": "fissure", "lat": [-45, -25], "lon": [140, 180], "angle": [-60, 60], "scale": [0.3, 0.38], "spin": 4.0, "fallback": true},
+                {"module": "planet.lava", "lat": [-35, -10], "lon": [320, 360], "angle": [0, 360], "scale": [0.22, 0.3], "spin": 4.0, "fallback": true},
+                {"module": "planet.volcano", "variant": "active", "lat": [-10, 20], "lon": [170, 210], "scale": [0.18, 0.24], "spin": 4.0, "fallback": true},
+                {"form": "band", "lat": -60, "width": 14, "role": "panel", "minPixels": 40, "fallback": true}
             ] },
             "components": {}
         },
@@ -180,24 +177,18 @@
             "size": 15000,
             "material": "hull",
             "shape": { "tilt": 20, "vars": { "c": [0, 360] }, "parts": [
-                {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"module": "planet.continent", "variant": "sprawl", "lat": [20, 28], "lon": "$c+8", "angle": [0, 360], "scale": [0.38, 0.44], "spin": 4.0, "minPixels": 30},
-                {"module": "planet.continent", "lat": [-32, -22], "lon": "$c+170", "angle": [0, 360], "scale": [0.3, 0.36], "spin": 4.0, "minPixels": 30},
-                {"module": "planet.continent", "variant": "long", "lat": [0, 10], "lon": "$c+300", "angle": [-40, 40], "scale": [0.16, 0.2], "spin": 4.0, "minPixels": 40, "chance": 0.6},
-                {"module": "planet.islands", "lat": [-20, 5], "lon": "$c+90", "scale": [0.16, 0.22], "spin": 4.0, "minPixels": 50},
-                {"module": "planet.islands", "lat": [10, 35], "lon": "$c+260", "scale": [0.14, 0.2], "spin": 4.0, "minPixels": 50, "chance": 0.7},
-                {"module": "planet.city", "lat": 20, "lon": "$c+6", "scale": [0.1, 0.13], "spin": 4.0},
-                {"module": "planet.city", "lat": -24, "lon": "$c+170", "scale": [0.08, 0.11], "spin": 4.0, "chance": 0.6},
-                {"form": "band", "lat": 85, "width": 10, "role": "trim", "minPixels": 30},
-                {"form": "band", "lat": 78.5, "width": 3, "role": "trim", "alpha": 0.5, "minPixels": 30},
-                {"form": "disc", "lat": [75, 79], "lon": "$c", "radius": [0.06, 0.1], "role": "trim", "alpha": 0.9, "soft": true, "repeat": 11, "jitterScale": 0.35, "spin": 4.0, "minPixels": 50},
-                {"form": "band", "lat": -87, "width": 6, "role": "trim", "minPixels": 30},
-                {"form": "band", "lat": -82, "width": 4, "role": "trim", "alpha": 0.5, "minPixels": 30},
-                {"form": "disc", "lat": [-82, -79], "lon": "$c+15", "radius": [0.05, 0.08], "role": "trim", "alpha": 0.85, "soft": true, "repeat": 9, "jitterScale": 0.35, "spin": 4.0, "minPixels": 50},
-                {"module": "planet.cloud", "lat": [-45, -20], "lon": "$c+60", "scale": [0.26, 0.34], "spin": 5.0, "minPixels": 40},
-                {"module": "planet.cloud", "lat": [25, 50], "lon": "$c+200", "scale": [0.24, 0.32], "spin": 5.0, "minPixels": 40},
-                {"module": "planet.cloud", "lat": [-10, 10], "lon": "$c+310", "scale": [0.2, 0.28], "spin": 5.0, "minPixels": 40, "chance": 0.7},
-                {"form": "disc", "radius": 0.14, "role": "trim", "orbitRadius": 1.65, "orbitPeriod": 4600.0, "orbitTilt": 0.34, "minPixels": 60}
+                {"form": "disc", "radius": 1.0, "role": "hull", "spin": 4.0, "material": "planet.oceanic"},
+                {"module": "planet.continent", "variant": "sprawl", "lat": [20, 28], "lon": "$c+8", "angle": [0, 360], "scale": [0.38, 0.44], "spin": 4.0, "minPixels": 30, "fallback": true},
+                {"module": "planet.continent", "lat": [-32, -22], "lon": "$c+170", "angle": [0, 360], "scale": [0.3, 0.36], "spin": 4.0, "minPixels": 30, "fallback": true},
+                {"module": "planet.continent", "variant": "long", "lat": [0, 10], "lon": "$c+300", "angle": [-40, 40], "scale": [0.16, 0.2], "spin": 4.0, "minPixels": 40, "chance": 0.6, "fallback": true},
+                {"form": "band", "lat": 85, "width": 10, "role": "trim", "minPixels": 30, "fallback": true},
+                {"form": "band", "lat": 78.5, "width": 3, "role": "trim", "alpha": 0.5, "minPixels": 30, "fallback": true},
+                {"form": "band", "lat": -87, "width": 6, "role": "trim", "minPixels": 30, "fallback": true},
+                {"form": "band", "lat": -82, "width": 4, "role": "trim", "alpha": 0.5, "minPixels": 30, "fallback": true},
+                {"module": "planet.cloud", "lat": [-45, -20], "lon": "$c+60", "scale": [0.26, 0.34], "spin": 5.0, "minPixels": 40, "fallback": true},
+                {"module": "planet.cloud", "lat": [25, 50], "lon": "$c+200", "scale": [0.24, 0.32], "spin": 5.0, "minPixels": 40, "fallback": true},
+                {"module": "planet.cloud", "lat": [-10, 10], "lon": "$c+310", "scale": [0.2, 0.28], "spin": 5.0, "minPixels": 40, "chance": 0.7, "fallback": true},
+                {"form": "disc", "radius": 0.14, "role": "trim", "orbitRadius": 1.65, "orbitPeriod": 4600.0, "orbitTilt": 0.34, "minPixels": 60, "material": "moon"}
             ] },
             "components": {}
         },
@@ -212,11 +203,11 @@
             "size": 14000,
             "material": "hull",
             "shape": { "tilt": 34, "parts": [
-                {"form": "disc", "radius": 1.0, "role": "hull"},
-                {"form": "band", "lat": 80, "width": 20, "role": "trim", "alpha": 0.4, "minPixels": 30},
-                {"form": "band", "lat": -82, "width": 16, "role": "trim", "alpha": 0.35, "minPixels": 30},
-                {"module": "planet.impact", "variant": "basin", "lat": [-25, 25], "lon": [0, 60], "scale": [0.3, 0.38], "alpha": 0.8, "spin": 1.5},
-                {"module": "planet.impact", "lat": [-45, 45], "lon": [140, 220], "scale": [0.14, 0.2], "alpha": 0.8, "spin": 1.5}
+                {"form": "disc", "radius": 1.0, "role": "hull", "spin": 1.5, "material": "planet.rogue"},
+                {"form": "band", "lat": 80, "width": 20, "role": "trim", "alpha": 0.4, "minPixels": 30, "fallback": true},
+                {"form": "band", "lat": -82, "width": 16, "role": "trim", "alpha": 0.35, "minPixels": 30, "fallback": true},
+                {"module": "planet.impact", "variant": "basin", "lat": [-25, 25], "lon": [0, 60], "scale": [0.3, 0.38], "alpha": 0.8, "spin": 1.5, "fallback": true},
+                {"module": "planet.impact", "lat": [-45, 45], "lon": [140, 220], "scale": [0.14, 0.2], "alpha": 0.8, "spin": 1.5, "fallback": true}
             ] },
             "components": {}
         },
@@ -399,8 +390,8 @@
                 {"module": "nature.rock", "at": ["$rb", 0], "pivot": ["-$rb", 0], "angle": "$ab", "scale": [0.075, 0.1], "spin": 2.4},
                 {"module": "nature.rock", "at": ["$rc", 0], "pivot": ["-$rc", 0], "angle": "$ac", "scale": [0.045, 0.06], "spin": 0.9, "minPixels": 80},
                 {"module": "nature.rock", "at": ["$rd", 0], "pivot": ["-$rd", 0], "angle": "$ad", "scale": [0.045, 0.06], "spin": 1.5, "minPixels": 80},
-                {"module": "nature.ore-vein", "at": ["$r3", 0], "pivot": ["-$r3", 0], "angle": "$a3", "scale": [0.06, 0.08], "spin": 0.9, "chance": 0.6},
-                {"module": "nature.ore-vein", "at": ["$r7", 0], "pivot": ["-$r7", 0], "angle": "$a7", "scale": [0.06, 0.08], "spin": 1.5, "chance": 0.4}
+                {"module": "nature.ore-vein", "except": ["geode"], "at": ["$r3", 0], "pivot": ["-$r3", 0], "angle": "$a3", "scale": [0.06, 0.08], "spin": 0.9, "chance": 0.6},
+                {"module": "nature.ore-vein", "except": ["geode"], "at": ["$r7", 0], "pivot": ["-$r7", 0], "angle": "$a7", "scale": [0.06, 0.08], "spin": 1.5, "chance": 0.4}
             ] },
             "components": {
                 "mineable": { "extractRate": 1.0, "range": 40 }
@@ -433,10 +424,10 @@
                 {"module": "nature.rock", "at": ["$rd", 0], "pivot": ["-$rd", 0], "angle": "$ad", "scale": [0.045, 0.06], "spin": 1.5, "minPixels": 60},
                 {"module": "nature.rock", "at": ["$re", 0], "pivot": ["-$re", 0], "angle": "$ae", "scale": [0.075, 0.1], "spin": 2.4},
                 {"module": "nature.ice-chunk", "at": ["$rf", 0], "pivot": ["-$rf", 0], "angle": "$af", "scale": [0.045, 0.06], "spin": 2.4, "minPixels": 60},
-                {"module": "nature.ore-vein", "at": ["$r1", 0], "pivot": ["-$r1", 0], "angle": "$a1", "scale": [0.065, 0.085], "spin": 0.9},
-                {"module": "nature.ore-vein", "at": ["$r5", 0], "pivot": ["-$r5", 0], "angle": "$a5", "scale": [0.065, 0.085], "spin": 0.9},
-                {"module": "nature.ore-vein", "at": ["$r9", 0], "pivot": ["-$r9", 0], "angle": "$a9", "scale": [0.065, 0.085], "spin": 1.5},
-                {"module": "nature.ore-vein", "at": ["$rc", 0], "pivot": ["-$rc", 0], "angle": "$ac", "scale": [0.065, 0.085], "spin": 1.5, "chance": 0.6},
+                {"module": "nature.ore-vein", "except": ["geode"], "at": ["$r1", 0], "pivot": ["-$r1", 0], "angle": "$a1", "scale": [0.065, 0.085], "spin": 0.9},
+                {"module": "nature.ore-vein", "except": ["geode"], "at": ["$r5", 0], "pivot": ["-$r5", 0], "angle": "$a5", "scale": [0.065, 0.085], "spin": 0.9},
+                {"module": "nature.ore-vein", "except": ["geode"], "at": ["$r9", 0], "pivot": ["-$r9", 0], "angle": "$a9", "scale": [0.065, 0.085], "spin": 1.5},
+                {"module": "nature.ore-vein", "except": ["geode"], "at": ["$rc", 0], "pivot": ["-$rc", 0], "angle": "$ac", "scale": [0.065, 0.085], "spin": 1.5, "chance": 0.6},
                 {"module": "nature.mining-scar", "at": ["$r7", 0], "pivot": ["-$r7", 0], "angle": "$a7", "scale": [0.07, 0.09], "spin": 0.9, "chance": 0.5}
             ] },
             "components": {
@@ -485,12 +476,12 @@
             "layer": 0,
             "size": 36000,
             "shape": { "parts": [
-                {"form": "disc", "radius": 1.45, "role": "panel", "soft": true, "alpha": 0.42, "spin": 0.15, "blink": 23.0},
-                {"form": "disc", "at": [[0.15, 0.3], [0.0, 0.2]], "radius": [0.62, 0.75], "role": "hull", "soft": true, "alpha": 0.36, "spin": -0.22, "blink": 17.0},
-                {"form": "disc", "at": [[-0.35, -0.2], [-0.3, -0.1]], "radius": [0.45, 0.55], "role": "trim", "soft": true, "tint": [[200, 120, 200], [150, 110, 230]], "alpha": 0.3, "spin": 0.31, "blink": 13.0, "minPixels": 40},
-                {"form": "disc", "at": [[0.2, 0.4], [-0.45, -0.25]], "radius": [0.3, 0.4], "role": "trim", "soft": true, "tint": [[120, 140, 235], [210, 120, 180]], "alpha": 0.3, "spin": -0.22, "blink": 11.0, "minPixels": 40},
-                {"form": "disc", "at": [[-0.3, -0.1], [0.25, 0.45]], "radius": [0.28, 0.36], "role": "trim", "soft": true, "alpha": 0.28, "spin": 0.31, "blink": 9.0, "minPixels": 60},
-                {"form": "disc", "at": [[0.0, 0.2], [-0.25, -0.05]], "radius": [0.18, 0.22], "role": "trim", "soft": true, "tint": [[170, 120, 230], [210, 130, 210]], "alpha": 0.1, "spin": -0.22, "minPixels": 50,
+                {"form": "disc", "radius": 1.45, "role": "panel", "soft": true, "alpha": 0.42, "spin": 0.15, "blink": 23.0, "material": "nebula"},
+                {"form": "disc", "at": [[0.15, 0.3], [0.0, 0.2]], "radius": [0.62, 0.75], "role": "hull", "soft": true, "alpha": 0.36, "spin": -0.22, "blink": 17.0, "fallback": true},
+                {"form": "disc", "at": [[-0.35, -0.2], [-0.3, -0.1]], "radius": [0.45, 0.55], "role": "trim", "soft": true, "tint": [[200, 120, 200], [150, 110, 230]], "alpha": 0.3, "spin": 0.31, "blink": 13.0, "minPixels": 40, "fallback": true},
+                {"form": "disc", "at": [[0.2, 0.4], [-0.45, -0.25]], "radius": [0.3, 0.4], "role": "trim", "soft": true, "tint": [[120, 140, 235], [210, 120, 180]], "alpha": 0.3, "spin": -0.22, "blink": 11.0, "minPixels": 40, "fallback": true},
+                {"form": "disc", "at": [[-0.3, -0.1], [0.25, 0.45]], "radius": [0.28, 0.36], "role": "trim", "soft": true, "alpha": 0.28, "spin": 0.31, "blink": 9.0, "minPixels": 60, "fallback": true},
+                {"form": "disc", "at": [[0.0, 0.2], [-0.25, -0.05]], "radius": [0.18, 0.22], "role": "trim", "soft": true, "tint": [[170, 120, 230], [210, 130, 210]], "alpha": 0.1, "spin": -0.22, "minPixels": 50, "fallback": true,
                  "row": {"count": [8, 10], "step": [[0.05, 0.09], [-0.08, 0.08]], "turn": [3, 6], "taper": [0.9, 0.93], "centred": true}}
             ] },
             "components": {

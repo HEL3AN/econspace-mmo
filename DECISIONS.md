@@ -875,3 +875,23 @@ building's rules adds no new gate to learn.
 
 **Cost.** `PROTO_VERSION` 61: the layout carries `ownerName`, the owner as a player reads it,
 since a client cannot name another corporation from its id.
+
+## 2026-10-23 — A natural body is painted by a shader; its composition stands in (#426)
+
+**Decision.** The bar for planets, moons, stars, asteroids and nebulae is *close to real*, in
+the game's top-down view (owner, on #501). Each is painted by a material of its own, bound to
+one part -- its disc -- whose shader draws the whole surface: noise-built coasts and cloud, gas
+bands bent round their storms, craters lit as dents, granulation and a corona. Parameters come
+from the archetype's material and the object's seed, so two of a kind differ. The composition
+that drew them before stays, marked as the stand-in (`"fallback": true`), and is drawn only
+when the shader is not.
+
+**Why.** A narrow grammar of primitives makes built things look intentional; it made natural
+ones look like programmer art -- rings of circles for islands, stripes for belts -- however
+the data was tuned. A shader is still data-driven: the material is data, the seed is the
+object's, and a world players build can name the same materials.
+
+**Cost.** A shader per kind of body, and the rule that every one keeps a stand-in that reads,
+because whether a shader compiles is the player's driver's business (#120). Noise is read
+from a fixed table rather than hashed, and a body covering more of the screen than an
+integrated GPU can paint each frame is painted at reduced resolution and scaled up.

@@ -31,15 +31,47 @@ public:
 
     bool Available() const { return !shaders_.empty(); }
 
+    // Whether this material has a shader here, which decides whether a body is painted by
+    // it or drawn as its stand-in composition (#426).
+    bool Has(const std::string& id) const { return shaders_.count(id) > 0; }
+
+    // Compile nothing: every material draws plain, exactly as on a driver that refused them
+    // all. How the stand-ins are judged without a broken driver to hand (#426). Takes effect
+    // at the next Load.
+    void SetDisabled(bool off) { disabled_ = off; }
+
+    // Compile only the materials an archetype wears as a whole -- `hull` -- and none of those
+    // that paint a body: what a driver that refuses the painting shaders draws, which is the
+    // likelier failure than refusing them all (#426). Takes effect at the next Load.
+    void SetPaintingDisabled(bool off) { paintingOff_ = off; }
+
     // Why a material has no shader, for a settings or gallery panel to show rather than
     // bury in a log.
     const std::vector<std::string>& Problems() const { return problems_; }
+
+    // The table noise is read from (Source::TextureNoise): 256 x 256, red a random byte and
+    // green the red of the texel 37 across and 17 down -- the next layer of a 3D lattice, so
+    // a 3D value noise is four fetches. From a fixed seed: every client has the same one.
+    static constexpr int NOISE_SIZE = 256;
+    // The unit it is bound to: past the four rlgl's batch hands out to SetShaderValueTexture
+    // and resets after every batch, so it stays put however often the batch is drawn.
+    static constexpr int NOISE_UNIT = 7;
 
     // Turns the material on for the draw calls that follow, with every binding resolved
     // from `in`. Returns false when there is no shader for it, in which case the caller
     // draws exactly as it would have with no material at all -- and must not call End.
     bool Begin(const Material& m, const MaterialInputs& in);
     void End();
+
+    // An offscreen target of this size, kept and reused, for painting a body larger than the
+    // screen can afford at full resolution (ShapeBackend::DrawOwnMaterial). Null if one cannot
+    // be made, and the caller paints at full resolution instead.
+    RenderTexture2D* PaintTarget(int width, int height);
+
+    // What a painted body may cover, in pixels, before it is painted at reduced resolution:
+    // the player's setting (TreatmentConfig::paintBudget), handed over by whoever owns both.
+    void  SetPaintBudget(float pixels) { paintBudget_ = pixels; }
+    float PaintBudget() const { return paintBudget_; }
 
 private:
     struct Compiled
@@ -51,6 +83,11 @@ private:
     std::map<std::string, Compiled> shaders_;  // keyed by material id
     std::vector<std::string>        problems_;
     bool                            active_ = false;
+    bool                            disabled_ = false;
+    bool                            paintingOff_ = false;
+    float                           paintBudget_ = 1000000.0f;
+    Texture2D                       noise_{};
+    RenderTexture2D                 paint_{};
 };
 
 }  // namespace Render

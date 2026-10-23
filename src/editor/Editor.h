@@ -68,6 +68,20 @@ public:
     // the screen is off or covered -- a desktop capture then comes back white.
     // `perf [notreat]`: run N frames uncapped and print what they cost (#296).
     void MeasurePerf(int frames, bool treated);
+    // `noshaders`: no material compiled, so every object is drawn as it is on a driver that
+    // refused them all -- how a stand-in composition is judged (#426).
+    void DisableMaterials()
+    {
+        materials_.SetDisabled(true);
+        materials_.Load(dataDir_);
+    }
+    // `nopaint`: only the painting materials off, `hull` kept -- a driver that refuses the
+    // shaders that paint a body and nothing else, the likelier failure (#426).
+    void DisablePainting()
+    {
+        materials_.SetPaintingDisabled(true);
+        materials_.Load(dataDir_);
+    }
     void TakeShot(const std::string& path, int frames, bool treated = false)
     {
         shotPath_ = path;
