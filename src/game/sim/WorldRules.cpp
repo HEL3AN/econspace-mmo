@@ -20,6 +20,7 @@ WorldRules::Scan        g_scan;
 WorldRules::Law         g_law;
 WorldRules::Influence   g_influence;
 WorldRules::Licences    g_licences;
+WorldRules::Hangars     g_hangars;
 WorldRules::Security    g_security;
 WorldRules::Patrols     g_patrols;
 WorldRules::Charts      g_charts;
@@ -88,7 +89,8 @@ bool Load(const std::string& path)
             it.key() != "convoys" && it.key() != "jobs" && it.key() != "holes" &&
             it.key() != "scan" && it.key() != "contracts" && it.key() != "law" &&
             it.key() != "influence" && it.key() != "licences" && it.key() != "security" &&
-            it.key() != "patrols" && it.key() != "charts" && it.key() != "styles")
+            it.key() != "patrols" && it.key() != "charts" && it.key() != "styles" &&
+            it.key() != "hangars")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -380,6 +382,18 @@ bool Load(const std::string& path)
         g_error = path + ": licences: periodDays must be more than zero";
         return false;
     }
+    // Personal hangars at NPC stations (#472).
+    Hangars hg;
+    if (j.contains("hangars") &&
+        !ReadSection(j["hangars"], path + ": hangars",
+                     { { "rentPerUnit", &hg.rentPerUnit }, { "periodDays", &hg.periodDays } },
+                     { { "freeUnits", &hg.freeUnits } }, {}, g_error))
+        return false;
+    if (hg.periodDays <= 0.0)
+    {
+        g_error = path + ": hangars: periodDays must be more than zero";
+        return false;
+    }
     // Slice 11's (#431): what security does, and how a holder buys it.
     Security sec;
     if (j.contains("security") && !ReadSection(j["security"], path + ": security",
@@ -486,6 +500,7 @@ bool Load(const std::string& path)
     g_law = lw;
     g_influence = inf;
     g_licences = lc;
+    g_hangars = hg;
     g_security = sec;
     g_patrols = pat;
     g_charts = ch;
@@ -621,6 +636,16 @@ void SetInfluenceRules(const Influence& i)
 const Licences& LicenceRules()
 {
     return g_licences;
+}
+
+const Hangars& HangarRules()
+{
+    return g_hangars;
+}
+
+void SetHangarRules(const Hangars& h)
+{
+    g_hangars = h;
 }
 
 void SetLicenceRules(const Licences& l)

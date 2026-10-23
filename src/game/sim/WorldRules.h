@@ -364,6 +364,18 @@ struct Licences
     double evict = 1.0;
 };
 
+// Personal hangars at NPC stations (#472): every station whose archetype keeps `storage`
+// gives each pilot `freeUnits` free; beyond that a pilot rents units, up to the archetype's
+// `storage`, at `rentPerUnit` credits a unit every `periodDays` days of world time, paid to the
+// station's faction. Unpaid, the hangar closes until the debt is paid
+// (documents/holds_and_storage.md).
+struct Hangars
+{
+    int    freeUnits = 100;
+    double rentPerUnit = 2.0;
+    double periodDays = 30.0;
+};
+
 // What security does, and how it is bought (#431 L5, slice 11). A system's security settles
 // at its base, moved by the balance of police and pirates (Simulation::SecurityTarget), plus
 // what its holder pays for police: a corporation sets a budget in credits an hour for each
@@ -486,6 +498,7 @@ const Scan&        ScanRules();
 const Law&         LawRules();
 const Influence&   InfluenceRules();
 const Licences&    LicenceRules();
+const Hangars&     HangarRules();
 const Security&    SecurityRules();
 const Patrols&     PatrolRules();
 const Charts&      ChartRules();
@@ -504,6 +517,7 @@ void SetScanRules(const Scan& s);
 void SetLawRules(const Law& l);
 void SetInfluenceRules(const Influence& i);
 void SetLicenceRules(const Licences& l);
+void SetHangarRules(const Hangars& h);
 void SetSecurityRules(const Security& s);
 void SetPatrolRules(const Patrols& p);
 void SetChartRules(const Charts& c);

@@ -1256,6 +1256,10 @@ bool Simulation::SaveWorld(const std::string& path) const
     // What the world remembers of structures' owners while they are away (#340).
     if (!owners_.empty())
         j["owners"] = OwnersJson();
+    // Pilots' hangars at the stations (#472): an addition an older build ignores.
+    const json hangars = HangarsJson();
+    if (!hangars.empty())
+        j["hangars"] = hangars;
     // Attacks under way on players' structures (#431 C2): one a restart interrupts is still
     // told when it is over. An addition an older build ignores.
     if (!attacks_.empty())
@@ -1298,7 +1302,8 @@ Save::Result Simulation::LoadWorld(const std::string& path)
     // A world from before #392 has none; the host gives it one.
     worldId_ = j.contains("worldId") && j["worldId"].is_string() ? j["worldId"].get<std::string>()
                                                                  : std::string();
-    OwnersFrom(j.value("owners", json()));  // (#340)
+    OwnersFrom(j.value("owners", json()));    // (#340)
+    HangarsFrom(j.value("hangars", json()));  // (#472)
     const json attacks = j.value("attacks", json());
     if (attacks.is_object())
         for (auto it = attacks.begin(); it != attacks.end(); ++it)

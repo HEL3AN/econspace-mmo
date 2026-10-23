@@ -230,14 +230,16 @@ private:
     // Docked (#297): the station's hall where the world would be, and its windows on the desk
     // -- the station itself, its market and its hangar -- with the missions window beside
     // them. GameStation.cpp.
-    void    DrawStationHall();
-    void    DrawStationContent(const Ui::Frame& f);  // who runs it, the account, undock
-    void    DrawMarketContent(const Ui::Frame& f);   // what it pays for what is in the hold
-    void    DrawHangarContent(const Ui::Frame& f);   // the hulls: fly, switch, buy
-    void    DrawLossContent(const Ui::Frame& f);     // a ship was lost: what, and what paid (#344)
-    void    DrawFitTab(Ui::Layout& L, bool wide);    // ...and the Fit tab: refit (#279)
-    void    SellCargo(ResourceType type, int amount);
-    void    BuyCargo(ResourceType type, int amount);  // an order to the server (#343)
+    void DrawStationHall();
+    void DrawStationContent(const Ui::Frame& f);  // who runs it, the account, undock
+    void DrawMarketContent(const Ui::Frame& f);   // what it pays for what is in the hold
+    void DrawHangarContent(const Ui::Frame& f);   // the hulls: fly, switch, buy
+    void DrawLossContent(const Ui::Frame& f);     // a ship was lost: what, and what paid (#344)
+    void DrawFitTab(Ui::Layout& L, bool wide);    // ...and the Fit tab: refit (#279)
+    // Orders to the server (#343); `where` is the container sold from or bought into, empty for
+    // the hold (#472).
+    void    SellCargo(ResourceType type, int amount, const std::string& where = std::string());
+    void    BuyCargo(ResourceType type, int amount, const std::string& where = std::string());
     RepTier DockedTier() const;  // what the docked station's owner thinks of this pilot
     // Docked at a player's structure rather than a station (#433, #438): it, found by the
     // snapshot's id each time it is asked -- never kept -- or null.
@@ -252,6 +254,8 @@ private:
     // A good dragged from the inventory onto the market (#472): chosen there, with the amount
     // dragged ready to sell. Selling stays a click.
     void TakeMarketDrop(Ui::Layout& L);
+    // The hangar's rent at a station (#472): free and rented units, and the field to change it.
+    void DrawHangarRent(Ui::Layout& L);
 
     void SetupWindows();   // puts every window, screen and popup on the desk
     void HandleMenuBar();  // menu bar input: a button toggles its window
@@ -616,6 +620,8 @@ private:
     float       inventoryAmount_ = 0.0f;
     std::string inventoryAmountFor_;  // the container and good the amount was chosen for
     std::string inventoryFilter_;
+    float       rentUnits_ = 0.0f;  // the rent field (#472), and the rent it was last set from
+    int         rentFor_ = -1;
     int         marketSel_ = 0;
     float       sellAmount_ = 0.0f;   // how much of the chosen commodity to sell
     int         sellAmountFor_ = -1;  // ...chosen for this row; another row starts at its hold

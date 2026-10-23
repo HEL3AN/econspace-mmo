@@ -47,7 +47,7 @@ RepTier Game::DockedTier() const
     return Factions::TierOf(player_.GetReputation(dockedStation_->GetFaction()));
 }
 
-void Game::SellCargo(ResourceType type, int amount)
+void Game::SellCargo(ResourceType type, int amount, const std::string& where)
 {
     if (amount <= 0)
         return;
@@ -56,10 +56,11 @@ void Game::SellCargo(ResourceType type, int amount)
     Proto::Command c;
     c.sellType = type.Index();
     c.sellAmount = amount;
+    c.sellFrom = where;
     clientLink_->Send(Proto::EncodeCommand(c));
 }
 
-void Game::BuyCargo(ResourceType type, int amount)
+void Game::BuyCargo(ResourceType type, int amount, const std::string& where)
 {
     if (amount <= 0)
         return;
@@ -68,6 +69,7 @@ void Game::BuyCargo(ResourceType type, int amount)
     Proto::Command c;
     c.buyType = type.Index();
     c.buyAmount = amount;
+    c.buyTo = where;
     clientLink_->Send(Proto::EncodeCommand(c));
 }
 
@@ -351,6 +353,31 @@ void Game::DrawMarketContent(const Ui::Frame& f)
                         L.Button("buymax", TextFormat("Buy most: %d", m.canBuy), true))
                         BuyCargo(m.type, m.canBuy);
                 });
+        }
+        // The hangar here (#472): sold from and bought into as the hold is.
+        const Proto::HangarView& hg = snapshot_.player.hangar;
+        if (hg.capacity > 0 && hg.owed <= 0.0)
+        {
+            const size_t gi = (size_t)m.type.Index();
+            const int    kept = gi < hg.goods.size() ? hg.goods[gi] : 0;
+            int          used = 0;
+            for (int n : hg.goods)
+                used += n;
+            const int room = std::max(0, hg.capacity - used);
+            L.Divider();
+            L.Field("In your hangar", TextFormat("%d   (room for %d)", kept, room), t.colors.text);
+            L.Row(Box().GrowX().Gap(t.metrics.rowGap),
+                  [&]
+                  {
+                      if (L.Button("sellhangar", TextFormat("Sell %d from hangar", kept), false,
+                                   kept > 0))
+                          SellCargo(m.type, kept, "hangar");
+                      const int n =
+                          std::clamp((int)buyAmount_, 1, std::max(1, std::min(room, m.stock)));
+                      if (L.Button("buyhangar", TextFormat("Buy %d to hangar", n), false,
+                                   room > 0 && m.stock > 0))
+                          BuyCargo(m.type, n, "hangar");
+                  });
         }
         L.Text(TextFormat("Every unit traded moves the price of the next. A fee of %.1f%% is "
                           "paid on every trade.",

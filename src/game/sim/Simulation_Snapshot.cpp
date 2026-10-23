@@ -184,6 +184,8 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
                 p.storedByType.push_back(store->GetStoredAmount(rt));
         }
 
+        p.hangar = HangarViewFor(s);  // the pilot's hangar at a station (#472)
+
         // Player account (server-authoritative, M4f): the client shows it as a mirror.
         p.money = s.account.GetMoney();
         for (FactionId f : Factions::All())

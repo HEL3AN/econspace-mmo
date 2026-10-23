@@ -194,8 +194,8 @@ void Simulation::StepOwners()
     // standing with a faction is theirs together, on or off (#431 slice 6).
     for (auto& kv : sessions_)
         if (!kv.second.accountName.empty() && owners_.count(kv.second.accountName) == 0 &&
-            !corps_.IdOf(kv.second.accountName).empty())
-            owners_[kv.second.accountName];
+            (!corps_.IdOf(kv.second.accountName).empty() || RentsHangar(kv.second.accountName)))
+            owners_[kv.second.accountName];  // a renter's too: rent is taken while away (#472)
     if (owners_.empty())
         return;
     for (auto& kv : sessions_)
