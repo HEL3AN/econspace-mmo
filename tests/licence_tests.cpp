@@ -569,3 +569,61 @@ TEST_CASE("the terms of building are in the galaxy statistics, and where it is s
     CHECK(vb.licences[0].where == "Helios Hub");
     CHECK(vb.licences[0].atHolder);
 }
+
+// --- The rent follows the world (#509) ---
+
+TEST_CASE("the rent is a share of what the system's economy makes, by its security, between a "
+          "floor and a ceiling (#509)")
+{
+    Core               c;
+    const SystemState& core = c.St();
+    const SystemState& reach = *c.sim.SystemById("reach");
+
+    // The default rules are the flat price, whatever the system.
+    CHECK(c.sim.LicenceRent(core) == doctest::Approx(2000.0));
+    CHECK(c.sim.LicenceRent(reach) == doctest::Approx(2000.0));
+
+    WorldRules::Licences rules;
+    rules.rent = 3000.0;  // the floor
+    rules.share = 0.01;
+    rules.ceiling = 30000.0;
+    rules.securityBase = 0.5;
+    rules.securitySlope = 1.0;
+    WorldRules::SetLicenceRules(rules);
+
+    // The formula, on the two licensed systems of the fixture world.
+    for (const SystemState* st : { &core, &reach })
+    {
+        const double output = c.sim.SystemOutput(*st, 7.0 * 24.0);
+        const double want =
+            std::min(30000.0, std::max(3000.0, 0.01 * output * (0.5 + (double)st->agg.security)));
+        CHECK(c.sim.LicenceRent(*st) == doctest::Approx(std::round(want / 50.0) * 50.0));
+    }
+    // ...a richer, safer system pays more than a poorer one.
+    CHECK(c.sim.SystemOutput(core, 168.0) > c.sim.SystemOutput(reach, 168.0));
+    CHECK(c.sim.LicenceRent(core) > c.sim.LicenceRent(reach));
+    // ...and a poor one pays the floor.
+    CHECK(c.sim.LicenceRent(reach) == doctest::Approx(3000.0));
+
+    // The ceiling caps the rent.
+    rules.ceiling = 3500.0;
+    WorldRules::SetLicenceRules(rules);
+    CHECK(c.sim.LicenceRent(core) == doctest::Approx(3500.0));
+
+    // What a pilot pays, sees and the galaxy says is that one number.
+    rules.ceiling = 30000.0;
+    WorldRules::SetLicenceRules(rules);
+    const double   rent = c.sim.LicenceRent(core);
+    ClientSession& cara = c.Pilot("cara");
+    cara.account.SetMoney(100000.0);
+    cara.account.AddReputation(Fac::TradersGuild(), 15.0f);
+    cara.dockedStationId = c.Hub();
+    CHECK(c.sim.LicenceViewFor(cara).rent == doctest::Approx(rent));
+    REQUIRE(c.sim.BuyLicence(cara));
+    CHECK(cara.account.GetMoney() == doctest::Approx(100000.0 - rent));
+    for (const Proto::GalaxySystemStat& g : c.sim.GalaxyStats().systems)
+        if (g.id == "core")
+            CHECK(g.licenceRent == doctest::Approx(rent));
+
+    WorldRules::SetLicenceRules(WorldRules::Licences{});
+}

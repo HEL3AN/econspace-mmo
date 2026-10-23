@@ -43,6 +43,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 - Players build outposts and grow them along the chain (#437); outposts keep goods, come apart for every tier and dock corporation mates (#461).
 - Factions and players build shipyards by need (#441).
 - Jettison goods into a can (1000 units, an hour, only you may add to it), or drag them out into space; a wreck holds every good of the lost ship (#472).
+- Licence rent follows the system: a share of what its economy makes in a week (planets, stations, belts), more where it is safe, from 3000 to 30000 cr a week instead of a flat 2000 (#509).
 - A licence to build is bought where it is granted -- docked at the holder's station or structure -- and a refused build says who grants it, the price and where to buy. The corporation window lists only the licences held, with Renew; the map shows each system's terms (#509).
 - Every NPC station gives a pilot a personal hangar: 100 units free, more rented by the unit at 2 cr per 30 days, with unpaid rent closing it, not emptying it (#472).
 

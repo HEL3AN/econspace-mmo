@@ -853,6 +853,10 @@ public:
     // What a licence to build in `st` costs for a period (#509): the system's rent, set by the
     // rules (world_rules.json -> licences) and what the system is worth.
     double LicenceRent(const SystemState& st) const;
+    // What the economy of `st` makes in `hours`, in credits at its base prices (#509): the
+    // planets' and stations' output (the profile's rates) and what its belts regrow. The
+    // measure rent is a share of.
+    double SystemOutput(const SystemState& st, double hours) const;
     // Where the holder sells a licence in `st` (#509): a faction's station, or a structure of
     // the holding corporation -- where a licence is bought, as it is granted. With `dockedId`,
     // only that entity, and only when it is one; without, the first there is (to name it).
