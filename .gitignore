@@ -15,8 +15,17 @@ account.json
 account_*.json
 accounts/
 world.json
+# The rest of a world folder: sealed regions and the archive (#342), corporations (#347),
+# player designs (#279), who may come in (#400), and the copies a save keeps (#341).
+regions/
+corps.json
+designs.json
+allowlist.txt
+bans.txt
+*.bak[0-9]*
 # The client's window layout, per account on this machine (#297): a preference, not data.
 ui_layout.json
+ui_navigation.json
 
 # clangd index cache (IDE) — local, generated, not needed in the repo.
 .cache/
@@ -30,5 +39,7 @@ documents/private/
 
 # Parallel agents work in worktrees here; never part of the repository.
 .claude/worktrees/
+# One machine's Claude Code settings for this project (e.g. where its memory lives).
+.claude/settings.local.json
 __pycache__/
 build-release/
