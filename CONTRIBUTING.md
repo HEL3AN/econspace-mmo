@@ -54,6 +54,16 @@ See [README.md](README.md) for run instructions and networked play.
 - The agent seam is tested end to end against a live server: `econagent selftest <host> <port> <name> <secret>`, and the example bot in `examples/agents/`. If you change a tool, regenerate [docs/agents/reference.md](docs/agents/reference.md) with `python tools/gen_agent_reference.py ./build/bin/agent/econagent.exe`; CI fails on a stale copy.
 - The generator is pinned by golden hashes in `tests/gen_tests.cpp`. A change to what a seed generates bumps `Gen::GENERATOR_VERSION` (or `Gen::SKELETON_VERSION`) and updates the hashes.
 - Admin packs are checked with `econserver validate`.
+- **Fuzzing** (#518). What the server reads from strangers -- TCP frames, every `Proto::Decode*`, the login -- is fuzzed with libFuzzer, by [ClusterFuzzLite](https://google.github.io/clusterfuzzlite/): a five-minute run on pull requests that touch the protocol, the transport or `tests/fuzz/`, and a longer weekly batch that keeps its corpus. To run a target yourself you need clang with libFuzzer on Linux (`apt install clang libclang-rt-dev`, and the raylib packages from the Linux CI job; WSL will do):
+
+  ```sh
+  CC=clang CXX=clang++ cmake -S . -B build-fuzz -DECON_FUZZ=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  cmake --build build-fuzz -j --target fuzz_frames fuzz_decode fuzz_login fuzz_seeds
+  build-fuzz/bin/fuzz/fuzz_seeds seeds                     # a seed corpus from the real encoders
+  build-fuzz/bin/fuzz/fuzz_decode -dict=tests/fuzz/econ.dict -max_total_time=60 corpus seeds/decode
+  ```
+
+  A crash is written as `crash-<hash>` in the working directory; run the target with that file as its only argument to reproduce. Fix the code, never the fuzzer, and add a regression test to the normal suite. `ECON_FUZZ` is off by default and the normal build never sees it. If a protocol key is added, `sh tests/fuzz/gen_dict.sh` refreshes the dictionary.
 - **Anything visual has to be looked at.** No test can see a picture. Open `worldeditor gallery shapes`, or the game, and put a screenshot in the pull request. Every rendering bug in the look so far was found that way.
 
 ## Pull requests

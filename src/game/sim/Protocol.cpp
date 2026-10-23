@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <type_traits>
 
 namespace
 {
@@ -28,10 +30,72 @@ double Round2(float v)
     return std::round((double)v * 100.0) / 100.0;
 }
 
+// A number read as the type asked for, clamped to its range: casting a double that does not
+// fit is undefined, and a peer chooses the double.
+template <class T> T Clamped(const json& v)
+{
+    static_assert(std::is_arithmetic_v<T> && !std::is_same_v<T, bool>);
+    if constexpr (std::is_integral_v<T>)
+    {
+        if (v.is_number_integer())
+        {
+            // Through long long, which holds anything the wire carries for a 32-bit field;
+            // an unsigned past it is as far out of range as any other.
+            if (v.is_number_unsigned() &&
+                v.get<unsigned long long>() >
+                    (unsigned long long)std::numeric_limits<long long>::max())
+                return std::numeric_limits<T>::max();
+            const long long n = v.get<long long>();
+            if (n < (long long)std::numeric_limits<T>::lowest())
+                return std::numeric_limits<T>::lowest();
+            if (n > (long long)std::numeric_limits<T>::max())
+                return std::numeric_limits<T>::max();
+            return (T)n;
+        }
+        const double d = v.get<double>();
+        if (!(d > (double)std::numeric_limits<T>::lowest()))
+            return std::numeric_limits<T>::lowest();
+        if (!(d < (double)std::numeric_limits<T>::max()))
+            return std::numeric_limits<T>::max();
+        return (T)d;
+    }
+    else
+    {
+        const double top = (double)std::numeric_limits<T>::max();
+        return (T)std::clamp(v.get<double>(), -top, top);
+    }
+}
+
+// A field read as what it must be, or `def` when it is missing or something else. nlohmann's
+// `value()` does the first and throws on the second, and an exception out of a decoder is a
+// peer ending the process for everyone with one line of JSON (#341, found again by the
+// fuzzers, #518).
+template <class T> T Val(const json& j, const char* key, T def)
+{
+    const auto it = j.find(key);  // an end() for anything that is not an object
+    if (it == j.end())
+        return def;
+    if constexpr (std::is_same_v<T, bool>)
+        return it->is_boolean() ? it->template get<bool>() : def;
+    else if constexpr (std::is_arithmetic_v<T>)
+        return it->is_number() ? Clamped<T>(*it) : def;
+    else
+    {
+        try
+        {
+            return it->template get<T>();
+        }
+        catch (const json::exception&)
+        {
+            return def;
+        }
+    }
+}
+
 Vector2 ToV2(const json& j, Vector2 def = { 0.0f, 0.0f })
 {
-    if (j.is_array() && j.size() >= 2)
-        return { (float)j[0], (float)j[1] };
+    if (j.is_array() && j.size() >= 2 && j[0].is_number() && j[1].is_number())
+        return { Clamped<float>(j[0]), Clamped<float>(j[1]) };
     return def;
 }
 
@@ -213,38 +277,38 @@ std::vector<Proto::EntityLayout> ToEntityLayouts(const json& j, const char* key)
         if (!ej.is_object())
             continue;
         Proto::EntityLayout e;
-        e.id = ej.value("id", 0);
-        e.kind = (Proto::EntityKind)ej.value("kind", 0);
-        e.pos = ToV2(ej.value("pos", json::array()));
-        e.size = ej.value("size", 0.0f);
-        e.color = ToCol(ej.value("col", json::array()));
-        e.name = ej.value("name", std::string());
-        e.faction = ToFac(ej.value("fac", json()));
-        e.subType = ej.value("sub", 0);
-        e.orbitRadius = ej.value("orbit", 0.0f);
-        e.resource = ej.value("res", -1);
-        e.reward = ej.value("reward", 0.0);
-        e.dest = ej.value("dest", std::string());
-        e.archetype = ej.value("arch", std::string());
-        e.owner = ej.value("own", std::string());
-        e.ownerName = ej.value("ownn", e.owner);
-        e.looted = ej.value("looted", false);
+        e.id = Val(ej, "id", 0);
+        e.kind = (Proto::EntityKind)Val(ej, "kind", 0);
+        e.pos = ToV2(Val(ej, "pos", json::array()));
+        e.size = Val(ej, "size", 0.0f);
+        e.color = ToCol(Val(ej, "col", json::array()));
+        e.name = Val(ej, "name", std::string());
+        e.faction = ToFac(Val(ej, "fac", json()));
+        e.subType = Val(ej, "sub", 0);
+        e.orbitRadius = Val(ej, "orbit", 0.0f);
+        e.resource = Val(ej, "res", -1);
+        e.reward = Val(ej, "reward", 0.0);
+        e.dest = Val(ej, "dest", std::string());
+        e.archetype = Val(ej, "arch", std::string());
+        e.owner = Val(ej, "own", std::string());
+        e.ownerName = Val(ej, "ownn", e.owner);
+        e.looted = Val(ej, "looted", false);
         const auto holds = ej.find("holds");
         if (holds != ej.end() && holds->is_array() && holds->size() <= (size_t)Goods::Count())
             for (const json& n : *holds)
                 e.holds.push_back(n.is_number_integer() ? std::max(0, n.get<int>()) : 0);
-        e.startedAt = ej.value("start", 0.0);
-        e.completesAt = ej.value("done", 0.0);
-        e.expiresAt = ej.value("exp", 0.0);
-        e.blueprint = ej.value("bp", std::string());
+        e.startedAt = Val(ej, "start", 0.0);
+        e.completesAt = Val(ej, "done", 0.0);
+        e.expiresAt = Val(ej, "exp", 0.0);
+        e.blueprint = Val(ej, "bp", std::string());
         const auto from = ej.find("bpFrom");
         if (from != ej.end() && from->is_array())
             for (const json& id : *from)
                 if (id.is_string())
                     e.grewFrom.push_back(id.get<std::string>());
-        e.damage = ej.value("dmg", 0.0f);
-        e.damagedAt = ej.value("dmgAt", 0.0);
-        e.mends = !ej.value("nomend", false);
+        e.damage = Val(ej, "dmg", 0.0f);
+        e.damagedAt = Val(ej, "dmgAt", 0.0);
+        e.mends = !Val(ej, "nomend", false);
         if (ej.contains("def"))
             DefenceFrom(ej["def"], e.defence);  // what it cannot read leaves the default
         const auto lic = ej.find("lic");
@@ -275,16 +339,16 @@ json LicenceJson(const Proto::LicenceView& l)
 Proto::LicenceView LicenceFrom(const json& j)
 {
     Proto::LicenceView l;
-    l.system = j.value("sys", std::string());
-    l.holder = j.value("holder", std::string());
-    l.party = j.value("party", std::string());
-    l.admitted = j.value("ok", false);
-    l.why = j.value("why", std::string());
-    l.rent = j.value("rent", 0.0);
-    l.periodDays = j.value("days", 7.0);
-    l.state = j.value("state", std::string("none"));
-    l.until = j.value("until", 0.0);
-    l.canPay = j.value("pay", false);
+    l.system = Val(j, "sys", std::string());
+    l.holder = Val(j, "holder", std::string());
+    l.party = Val(j, "party", std::string());
+    l.admitted = Val(j, "ok", false);
+    l.why = Val(j, "why", std::string());
+    l.rent = Val(j, "rent", 0.0);
+    l.periodDays = Val(j, "days", 7.0);
+    l.state = Val(j, "state", std::string("none"));
+    l.until = Val(j, "until", 0.0);
+    l.canPay = Val(j, "pay", false);
     return l;
 }
 
@@ -324,40 +388,40 @@ json MissionJson(const Proto::MissionView& m)
 Proto::MissionView ToMission(const json& mj)
 {
     Proto::MissionView m;
-    m.type = mj.value("type", 0);
-    m.faction = ToFac(mj.value("fac", json()));
-    m.title = mj.value("title", std::string());
-    m.description = mj.value("desc", std::string());
-    m.giverStationId = mj.value("giver", 0);
-    m.destStationId = mj.value("dest", 0);
-    m.offerId = mj.value("oid", 0);
-    m.resource = mj.value("res", 0);
-    m.targetCount = mj.value("tc", 0);
-    m.progress = mj.value("prog", 0);
-    m.rewardMoney = mj.value("rm", 0.0);
-    m.rewardRep = mj.value("rr", 0.0f);
-    m.completable = mj.value("done", false);
-    m.planId = mj.value("plan", 0);
-    m.systemId = mj.value("sys", std::string());
-    m.systemName = mj.value("where", std::string());
-    m.deadline = mj.value("dl", 0.0);
-    m.siteId = mj.value("site", 0);
-    m.siteName = mj.value("siteName", std::string());
+    m.type = Val(mj, "type", 0);
+    m.faction = ToFac(Val(mj, "fac", json()));
+    m.title = Val(mj, "title", std::string());
+    m.description = Val(mj, "desc", std::string());
+    m.giverStationId = Val(mj, "giver", 0);
+    m.destStationId = Val(mj, "dest", 0);
+    m.offerId = Val(mj, "oid", 0);
+    m.resource = Val(mj, "res", 0);
+    m.targetCount = Val(mj, "tc", 0);
+    m.progress = Val(mj, "prog", 0);
+    m.rewardMoney = Val(mj, "rm", 0.0);
+    m.rewardRep = Val(mj, "rr", 0.0f);
+    m.completable = Val(mj, "done", false);
+    m.planId = Val(mj, "plan", 0);
+    m.systemId = Val(mj, "sys", std::string());
+    m.systemName = Val(mj, "where", std::string());
+    m.deadline = Val(mj, "dl", 0.0);
+    m.siteId = Val(mj, "site", 0);
+    m.siteName = Val(mj, "siteName", std::string());
     if (mj.contains("vs"))
         m.against = ToFac(mj["vs"]);
     if (mj.contains("cv") && mj["cv"].is_object())
     {
         const json& cv = mj["cv"];
-        m.convoySystemId = cv.value("sys", std::string());
-        m.convoySystemName = cv.value("where", std::string());
-        m.convoyNextName = cv.value("next", std::string());
-        m.convoyMoving = cv.value("go", false);
-        m.haulerId = cv.value("h", 0);
+        m.convoySystemId = Val(cv, "sys", std::string());
+        m.convoySystemName = Val(cv, "where", std::string());
+        m.convoyNextName = Val(cv, "next", std::string());
+        m.convoyMoving = Val(cv, "go", false);
+        m.haulerId = Val(cv, "h", 0);
         if (cv.contains("esc") && cv["esc"].is_array())
             for (const json& id : cv["esc"])
                 if (id.is_number_integer())
                     m.convoyEscortIds.push_back(id.get<int>());
-        m.rode = cv.value("rode", false);
+        m.rode = Val(cv, "rode", false);
     }
     return m;
 }
@@ -1003,7 +1067,7 @@ Proto::EntitySnapshot EntityOf(int id, const json& j)
                   (float)((double)(*p)[1].get<long long>() / POS_UNIT) };
     e.heading = (float)((double)IntOf(j, "h", 0) / ANGLE_UNIT);
     e.size = (float)((double)IntOf(j, "s", 0) / SIZE_UNIT);
-    e.faction = ToFac(j.value("f", json()));
+    e.faction = ToFac(Val(j, "f", json()));
     e.role = (int)IntOf(j, "r", -1);
     e.hullFrac = (float)((double)IntOf(j, "hp", (long long)HULL_UNIT) / HULL_UNIT);
     e.ore = (int)IntOf(j, "o", -1);
@@ -1124,49 +1188,49 @@ json PlayerJson(const Proto::PlayerView& p)
 
 void ReadPlayer(const json& pj, Proto::PlayerView& p)
 {
-    p.pos = ToV2(pj.value("pos", json::array()));
-    p.vel = ToV2(pj.value("vel", json::array()));
-    p.heading = pj.value("hdg", 0.0f);
-    p.hull = pj.value("hull", 0.0f);
-    p.maxHull = pj.value("maxHull", 0.0f);
-    p.shields = pj.value("sh", 0.0f);
-    p.maxShields = pj.value("maxSh", 0.0f);
-    p.cargoUsed = pj.value("cargo", 0);
-    p.cargoCap = pj.value("cargoCap", 0);
-    p.warpPhase = pj.value("warp", 0);
-    p.warpAlign = pj.value("warpAlign", 0.0f);
+    p.pos = ToV2(Val(pj, "pos", json::array()));
+    p.vel = ToV2(Val(pj, "vel", json::array()));
+    p.heading = Val(pj, "hdg", 0.0f);
+    p.hull = Val(pj, "hull", 0.0f);
+    p.maxHull = Val(pj, "maxHull", 0.0f);
+    p.shields = Val(pj, "sh", 0.0f);
+    p.maxShields = Val(pj, "maxSh", 0.0f);
+    p.cargoUsed = Val(pj, "cargo", 0);
+    p.cargoCap = Val(pj, "cargoCap", 0);
+    p.warpPhase = Val(pj, "warp", 0);
+    p.warpAlign = Val(pj, "warpAlign", 0.0f);
     p.warpTarget = pj.contains("warpTgt") ? ToV2(pj["warpTgt"]) : Vector2{ 0.0f, 0.0f };
-    p.warpDrop = pj.value("warpDrop", 0.0f);
+    p.warpDrop = Val(pj, "warpDrop", 0.0f);
     p.warpViaSet = pj.contains("warpVia");
     p.warpVia = p.warpViaSet ? ToV2(pj["warpVia"]) : Vector2{ 0.0f, 0.0f };
-    p.autopilot = pj.value("ap", false);
+    p.autopilot = Val(pj, "ap", false);
     p.apTarget = pj.contains("apTgt") ? ToV2(pj["apTgt"]) : Vector2{ 0.0f, 0.0f };
-    p.apStop = pj.value("apStop", 0.0f);
-    p.holdMode = pj.value("hold", 0);
-    p.holdTargetId = pj.value("holdId", 0);
-    p.holdRange = pj.value("holdR", 0.0f);
-    p.stabilizer = pj.value("stab", true);
-    p.mining = pj.value("mine", false);
-    p.weaponOn = pj.value("weap", false);
-    p.docked = pj.value("docked", false);
-    p.dockedStationId = pj.value("dockId", 0);
-    p.nearbyStationId = pj.value("nearStation", 0);
-    p.lastInput = pj.value("lastInput", 0);
-    p.cargoByType = pj.value("cargoT", std::vector<int>{});
-    p.money = pj.value("money", 0.0);
-    p.reputation = ToPerFaction<float>(pj.value("rep", json()));
-    p.bounty = ToPerFaction<double>(pj.value("bounty", json()));
-    p.skillXp = pj.value("skillXp", std::vector<float>{});
-    p.securityStatus = pj.value("secSt", 0.0f);
-    p.criminalLeft = pj.value("crimLeft", 0.0);
-    p.orderKind = pj.value("ordKind", 0);
-    p.orderStatus = pj.value("ordStatus", 0);
-    p.orderId = pj.value("ordId", 0);
-    p.orderDetail = pj.value("ordDetail", std::string());
-    p.ownedShips = pj.value("ships", std::vector<int>{});
-    p.shipDesigns = pj.value("shipDesigns", std::vector<std::string>{});
-    p.shipIndex = pj.value("ship", 0);
-    p.insured = pj.value("insured", std::vector<double>{});
+    p.apStop = Val(pj, "apStop", 0.0f);
+    p.holdMode = Val(pj, "hold", 0);
+    p.holdTargetId = Val(pj, "holdId", 0);
+    p.holdRange = Val(pj, "holdR", 0.0f);
+    p.stabilizer = Val(pj, "stab", true);
+    p.mining = Val(pj, "mine", false);
+    p.weaponOn = Val(pj, "weap", false);
+    p.docked = Val(pj, "docked", false);
+    p.dockedStationId = Val(pj, "dockId", 0);
+    p.nearbyStationId = Val(pj, "nearStation", 0);
+    p.lastInput = Val(pj, "lastInput", 0);
+    p.cargoByType = Val(pj, "cargoT", std::vector<int>{});
+    p.money = Val(pj, "money", 0.0);
+    p.reputation = ToPerFaction<float>(Val(pj, "rep", json()));
+    p.bounty = ToPerFaction<double>(Val(pj, "bounty", json()));
+    p.skillXp = Val(pj, "skillXp", std::vector<float>{});
+    p.securityStatus = Val(pj, "secSt", 0.0f);
+    p.criminalLeft = Val(pj, "crimLeft", 0.0);
+    p.orderKind = Val(pj, "ordKind", 0);
+    p.orderStatus = Val(pj, "ordStatus", 0);
+    p.orderId = Val(pj, "ordId", 0);
+    p.orderDetail = Val(pj, "ordDetail", std::string());
+    p.ownedShips = Val(pj, "ships", std::vector<int>{});
+    p.shipDesigns = Val(pj, "shipDesigns", std::vector<std::string>{});
+    p.shipIndex = Val(pj, "ship", 0);
+    p.insured = Val(pj, "insured", std::vector<double>{});
     p.loss = Proto::LossView{};
     const auto loss = pj.find("loss");
     if (loss != pj.end() && loss->is_object())
@@ -1193,11 +1257,11 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
                 if (!gj.is_object())
                     continue;
                 Proto::SignatureView g;
-                g.code = gj.value("code", std::string());
-                g.progress = gj.value("p", 0.0f);
-                g.kind = gj.value("kind", std::string());
-                g.id = gj.value("id", 0);
-                g.dest = gj.value("dest", std::string());
+                g.code = Val(gj, "code", std::string());
+                g.progress = Val(gj, "p", 0.0f);
+                g.kind = Val(gj, "kind", std::string());
+                g.id = Val(gj, "id", 0);
+                g.dest = Val(gj, "dest", std::string());
                 p.scan.sigs.push_back(std::move(g));
             }
     }
@@ -1495,7 +1559,7 @@ void ReadSnapshot(const SnapshotState& st, const json& j, Proto::Snapshot& out)
 {
     out = Proto::Snapshot{};
     out.systemId = st.sys;
-    out.time = j.value("time", 0.0);
+    out.time = Val(j, "time", 0.0);
     ReadPlayer(st.player, out.player);
     for (const auto& kv : st.ents)
         out.entities.push_back(EntityOf(kv.first, kv.second->j));
@@ -1510,33 +1574,33 @@ void ReadSnapshot(const SnapshotState& st, const json& j, Proto::Snapshot& out)
         for (const json& fj : j["fires"])
         {
             FireEvent f;
-            f.from = ToV2(fj.value("from", json::array()));
-            f.to = ToV2(fj.value("to", json::array()));
-            f.shooterFaction = ToFac(fj.value("fac", json()));
-            f.targetIsPlayer = fj.value("pl", false);
-            f.fromPlayer = fj.value("mine", false);
+            f.from = ToV2(Val(fj, "from", json::array()));
+            f.to = ToV2(Val(fj, "to", json::array()));
+            f.shooterFaction = ToFac(Val(fj, "fac", json()));
+            f.targetIsPlayer = Val(fj, "pl", false);
+            f.fromPlayer = Val(fj, "mine", false);
             out.fires.push_back(f);
         }
     if (j.contains("events") && j["events"].is_array())
         for (const json& ej : j["events"])
         {
             Ev::Event e;
-            e.seq = ej.value("seq", 0);
-            e.kind = (Ev::Kind)ej.value("kind", 0);
-            e.text = ej.value("text", std::string());
+            e.seq = Val(ej, "seq", 0);
+            e.kind = (Ev::Kind)Val(ej, "kind", 0);
+            e.text = Val(ej, "text", std::string());
             out.events.push_back(std::move(e));
         }
     if (j.contains("trade") && j["trade"].is_array())
         for (const json& aj : j["trade"])
         {
             Proto::TradeAck a;
-            a.type = aj.value("type", 0);
-            a.sold = aj.value("sold", 0);
-            a.gross = aj.value("gross", 0.0);
-            a.revenue = aj.value("rev", 0.0);
-            a.bought = aj.value("bought", 0);
-            a.cost = aj.value("cost", 0.0);
-            a.fee = aj.value("fee", 0.0);
+            a.type = Val(aj, "type", 0);
+            a.sold = Val(aj, "sold", 0);
+            a.gross = Val(aj, "gross", 0.0);
+            a.revenue = Val(aj, "rev", 0.0);
+            a.bought = Val(aj, "bought", 0);
+            a.cost = Val(aj, "cost", 0.0);
+            a.fee = Val(aj, "fee", 0.0);
             out.tradeAcks.push_back(a);
         }
 }
@@ -1754,8 +1818,8 @@ bool DecodeLayout(const std::string& s, SystemLayout& out)
     if (!OpenEnvelope(s, j))
         return false;
 
-    out.systemId = j.value("sys", std::string());
-    out.rev = j.value("rev", 0);
+    out.systemId = Val(j, "sys", std::string());
+    out.rev = Val(j, "rev", 0);
     out.entities = ToEntityLayouts(j, "ents");
     return true;
 }
@@ -1775,12 +1839,12 @@ std::string EncodeLayoutDelta(const LayoutDelta& d)
 bool DecodeLayoutDelta(const std::string& s, LayoutDelta& out)
 {
     json j;
-    if (!OpenEnvelope(s, j) || j.value("t", std::string()) != "ldelta")
+    if (!OpenEnvelope(s, j) || Val(j, "t", std::string()) != "ldelta")
         return false;
 
     out = LayoutDelta{};
-    out.systemId = j.value("sys", std::string());
-    out.rev = j.value("rev", 0);
+    out.systemId = Val(j, "sys", std::string());
+    out.rev = Val(j, "rev", 0);
     out.added = ToEntityLayouts(j, "add");
     out.changed = ToEntityLayouts(j, "chg");
     if (j.contains("rem") && j["rem"].is_array())
@@ -1801,7 +1865,7 @@ std::string EncodeDesignDef(const DesignDef& d)
 bool DecodeDesignDef(const std::string& s, DesignDef& out)
 {
     json j;
-    if (!OpenEnvelope(s, j) || j.value("t", std::string()) != "design" || !j.contains("design"))
+    if (!OpenEnvelope(s, j) || Val(j, "t", std::string()) != "design" || !j.contains("design"))
         return false;
     Ships::Design d;
     std::string   why;
@@ -2041,12 +2105,12 @@ bool DecodeGalaxy(const std::string& s, GalaxyState& out)
         for (const json& gj : j["sys"])
         {
             GalaxySystemStat g;
-            g.id = gj.value("id", std::string());
-            g.security = gj.value("sec", 0.5f);
-            g.pirates = gj.value("pir", 0);
-            g.prosperity = gj.value("prosp", 0.5f);
-            g.controller = ToFac(gj.value("ctrl", json()));
-            g.claimed = gj.value("claim", false);
+            g.id = Val(gj, "id", std::string());
+            g.security = Val(gj, "sec", 0.5f);
+            g.pirates = Val(gj, "pir", 0);
+            g.prosperity = Val(gj, "prosp", 0.5f);
+            g.controller = ToFac(Val(gj, "ctrl", json()));
+            g.claimed = Val(gj, "claim", false);
             const auto hold = gj.find("hold");
             if (hold != gj.end() && hold->is_array() && hold->size() == 3 &&
                 (*hold)[0].is_string() && (*hold)[1].is_string() && (*hold)[2].is_string())
@@ -2059,7 +2123,7 @@ bool DecodeGalaxy(const std::string& s, GalaxyState& out)
             if (fee != gj.end() && fee->is_number() && fee->get<double>() >= 0.0 &&
                 fee->get<double>() <= 1.0)
                 g.fee = fee->get<float>();
-            g.front = gj.value("front", false);
+            g.front = Val(gj, "front", false);
             const auto chart = gj.find("chart");
             if (chart != gj.end() && chart->is_array() && chart->size() == 2 &&
                 (*chart)[0].is_number_integer() && (*chart)[0].get<long long>() > 0 &&
@@ -2070,7 +2134,7 @@ bool DecodeGalaxy(const std::string& s, GalaxyState& out)
             }
             out.systems.push_back(g);
         }
-    out.events = j.value("news", std::vector<std::string>{});
+    out.events = Val(j, "news", std::vector<std::string>{});
     out.chartBuyer = false;
     const auto buyer = j.find("buyer");
     if (buyer != j.end() && buyer->is_object())
@@ -2126,7 +2190,7 @@ std::string EncodeUniverse(const WorldLoader::Universe& u)
 bool DecodeUniverse(const std::string& s, WorldLoader::Universe& out)
 {
     json j;
-    if (!OpenEnvelope(s, j) || j.value("t", std::string()) != "universe")
+    if (!OpenEnvelope(s, j) || Val(j, "t", std::string()) != "universe")
         return false;
 
     out = WorldLoader::Universe{};
@@ -2136,20 +2200,20 @@ bool DecodeUniverse(const std::string& s, WorldLoader::Universe& out)
             if (!sj.is_object())
                 continue;
             WorldLoader::SystemInfo si;
-            si.id = sj.value("id", std::string());
-            si.name = sj.value("name", std::string());
-            si.mapPos = ToV2(sj.value("pos", json::array()));
-            si.security = sj.value("sec", 0.5f);
-            si.owner = sj.value("owner", std::string());
-            si.charted = sj.value("charted", true);
-            si.designation = sj.value("desig", std::string());
-            si.discoverer = sj.value("found", std::string());
-            si.knownBy = sj.value("known", std::string());
-            si.chartedBy = sj.value("chartedBy", std::string());
-            si.observed = WorldLoader::SightingFrom(sj.value("seen", json()));
-            si.observedLive = sj.value("live", false);
-            si.drifted = sj.value("drifted", false);
-            si.nativeNamed = sj.value("nat", false);
+            si.id = Val(sj, "id", std::string());
+            si.name = Val(sj, "name", std::string());
+            si.mapPos = ToV2(Val(sj, "pos", json::array()));
+            si.security = Val(sj, "sec", 0.5f);
+            si.owner = Val(sj, "owner", std::string());
+            si.charted = Val(sj, "charted", true);
+            si.designation = Val(sj, "desig", std::string());
+            si.discoverer = Val(sj, "found", std::string());
+            si.knownBy = Val(sj, "known", std::string());
+            si.chartedBy = Val(sj, "chartedBy", std::string());
+            si.observed = WorldLoader::SightingFrom(Val(sj, "seen", json()));
+            si.observedLive = Val(sj, "live", false);
+            si.drifted = Val(sj, "drifted", false);
+            si.nativeNamed = Val(sj, "nat", false);
             out.systems.push_back(si);
         }
     if (j.contains("links") && j["links"].is_array())
@@ -2165,7 +2229,7 @@ bool DecodeUniverse(const std::string& s, WorldLoader::Universe& out)
                 }
                 out.links.push_back(std::move(l));
             }
-    out.startId = j.value("start", std::string());
+    out.startId = Val(j, "start", std::string());
     return true;
 }
 
@@ -2454,13 +2518,13 @@ bool DecodeCorpView(const std::string& s, CorpView& out)
                 PatrolView p;
                 p.system = TextOf(pj, "system");
                 p.systemName = TextOf(pj, "systemName");
-                p.ships = pj.value("ships", 0);
-                p.present = pj.value("present", 0.0f);
+                p.ships = Val(pj, "ships", 0);
+                p.present = Val(pj, "present", 0.0f);
                 p.design = TextOf(pj, "design");
                 p.engage = TextOf(pj, "engage");
-                p.threshold = pj.value("threshold", 0.0f);
+                p.threshold = Val(pj, "threshold", 0.0f);
                 p.allow = TextOf(pj, "allow");
-                p.upkeep = pj.value("upkeep", 0.0);
+                p.upkeep = Val(pj, "upkeep", 0.0);
                 if (!p.system.empty())
                     out.patrols.push_back(std::move(p));
             }
