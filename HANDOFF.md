@@ -79,8 +79,9 @@ cmake --build build-release -j 8
   `Gen::GENERATOR_VERSION` 10, `Gen::SKELETON_VERSION` 1. Clients of 0.1 cannot join, and so
   much of the world has changed that **the next playtest starts on a fresh world**.
 - **World generation v2** (#342) slices S1-S9 are built; S10 (scale to 10,000) is not.
-- **Knowledge, territory and law** (#431) slices 1-15 are built, including the slice 12
-  follow-ups (patrols weighed by sieges, replacements bought, offline members counted).
+- **Knowledge, territory and law** (#431) slices 1-16 are built, including the slice 12
+  follow-ups (patrols weighed by sieges, replacements bought, offline members counted) and
+  chart sales to factions (slice 16, with #346).
 - **One combat model** for NPCs and players (#463); siege damage from the warship designs
   (#458).
 - Structure ownership the EVE way (#468): what a member builds is the corporation's, one verb
@@ -92,11 +93,10 @@ cmake --build build-release -j 8
 
 In order; the details are in [ROADMAP.md](ROADMAP.md#next).
 
-1. #431 slice 16, trading charts: a design talk with the owner first.
-2. #464, NPC fits from the living world: design first.
-3. #466, a corporation's enemy list, with war declarations.
-4. #425-#427, the 0.1 playtest polish.
-5. A playtest on a fresh world, then 0.2 if the owner decides to tag it.
+1. #464, NPC fits from the living world: design first.
+2. #466, a corporation's enemy list, with war declarations.
+3. #425-#427, the 0.1 playtest polish.
+4. A playtest on a fresh world, then 0.2 if the owner decides to tag it.
 
 ## Things to know before touching this code
 

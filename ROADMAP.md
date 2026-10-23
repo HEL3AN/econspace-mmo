@@ -25,6 +25,7 @@ An honest snapshot of where EconSpace is and where it is going. The project inve
 - The tide opens new regions while the server runs; an opened region is sealed into the save. A mouth stays only if an Anchor is built on it; otherwise the region drifts, and at the cap it may go into an archive and come back decayed.
 - New regions are alive from the first minute: native factions with stations, markets and names in their own culture; expeditions from neighbours grow outposts into stations.
 - Roaming wormholes and a scanner that resolves hidden things (#346).
+- Charts sold to factions from the map (#346, #431 slice 16): a faction pays by what its own picture lacks -- a system it never saw, what was built since its last look, a pilot's scanner finds -- fresh and rare worth most, and decides on what it bought.
 - Admin packs, validated and woven into a new world, and pins (#147); `econserver validate`.
 - Factions are a data registry, not a compiled enum (#355).
 
@@ -62,11 +63,10 @@ An honest snapshot of where EconSpace is and where it is going. The project inve
 
 In order. Releases are the owner's call.
 
-1. **#431 slice 16 — trading charts.** A design talk with the owner first, then slices built into the map interface.
-2. **#464 — NPC fits from the living world.** Gang, faction, wealth and location decide an NPC's fit; design first.
-3. **#466 — a corporation's enemy list**, with the war declarations #431 deferred.
-4. **#425-#427 — playtest polish** from 0.1: docking, reconnect, the job board, planet surfaces, UI overlaps and raw numbers.
-5. **A playtest on a fresh world** (so much has changed since 0.1 that an old world would not show it), then **0.2** if the owner decides to tag it.
+1. **#464 — NPC fits from the living world.** Gang, faction, wealth and location decide an NPC's fit; design first.
+2. **#466 — a corporation's enemy list**, with the war declarations #431 deferred.
+3. **#425-#427 — playtest polish** from 0.1: docking, reconnect, the job board, planet surfaces, UI overlaps and raw numbers.
+4. **A playtest on a fresh world** (so much has changed since 0.1 that an old world would not show it), then **0.2** if the owner decides to tag it.
 
 Also open and not scheduled: #342 S10 (scale to 10,000 systems), #407 (work near the starts), the review issues #350-#360 (code structure, saves, transport security), #179 (high-DPI), #333 (industry, a proposal).
 

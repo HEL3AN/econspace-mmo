@@ -310,6 +310,14 @@ Buy, or renew a week ahead, the licence to build in the system you are in (#431)
 
 No arguments.
 
+### `sell_charts`
+
+Sell charts to the faction whose station you are docked at (#346, #431). What is sold is your own record of a system you went to yourself -- not your corporation's: that it exists and how to get there, what you saw standing there and when, and what your scans found there (hidden bases, wormholes). The faction pays from its treasury by how much it changes its own picture: a system it never saw pays most, an update (a station built since its last look) pays only for what is new, and what it already knows pays nothing and is refused. A fresh look is worth more than an old one, and a system few other factions know more than one many do. Once sold, the system is on the faction's charts, and so on everybody's; the faction plans on what it bought. The galaxy resource lists, docked, what it would pay for each system. Pass a system's id or name, or 'all' for every one it would buy.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `system` | string | yes | a system's id or name, or 'all' |
+
 ### `name_system`
 
 Name the system you are in. Beyond the wormhole a system has only a designation (W-3.2) until whoever got there first names it -- once, for everyone who has it on their charts. Only the discoverer may name it -- never a later owner or corporation. A system its people live in keeps their name, and one a faction charted before any pilot came keeps the faction's name or its designation. The rules: 3 to 24 characters, starting with a letter; letters, digits, spaces, ' and -; no word the server's filter refuses; not a name another system has or its natives use, whatever the case. A refusal says which rule failed. The server's admin may rename or clear a name; you are told in your journal.

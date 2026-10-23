@@ -320,6 +320,8 @@ private:
     // The map's routes (#432), in GameMap.cpp: the sidebar's tabs, the right-click menu on a
     // star, and the itinerary (Navigation) -- planned here, flown by the server's route order.
     void        DrawMapSidebar(Ui::Layout& L);
+    void        DrawMapCharts(Ui::Layout& L);          // the sidebar's Charts tab (#431 slice 16)
+    void        SellChart(const std::string& system);  // to the faction docked at; "*": all
     void        OpenMapMenu(const std::string& system, Vector2 at);
     bool        PlotMapRoute(const std::string& system);
     bool        AddMapWaypoint(const std::string& system);
@@ -357,7 +359,7 @@ private:
     // from the galaxy snapshot, or the standard fee.
     double MarketFeeHere() const;
     bool   HostileToPlayerFaction(
-        FactionId f) const;  // is the faction hostile to the player (reputation/wanted)
+          FactionId f) const;  // is the faction hostile to the player (reputation/wanted)
 
     // M4c: the client renders from the snapshot. The snapshot is built every frame
     // (world from the server + player state); windows/rendering read it, not the live objects
@@ -729,7 +731,7 @@ private:
     // The itinerary (#432), and where it is kept: ui_navigation.json beside the executable,
     // under "server/pilot". A file this build cannot read is left alone, never overwritten.
     Navigation          navigation_;
-    int                 mapTab_ = 0;  // the sidebar: route, favourites, legend
+    int                 mapTab_ = 0;  // the sidebar: route, favourites, legend, charts
     std::string         navigationKey_;
     bool                navigationWritable_ = true;
     std::string         mapNotice_;      // why the last thing asked of the map could not be done

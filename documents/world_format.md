@@ -7,7 +7,8 @@ files.
 Status (revised 2026-10-23): **a current reference.** Every format below is read by the
 code on main. Not covered here: `data/world_rules.json`, the server's tuning numbers by
 section (`tide`, `mouths`, `archive`, `expeditions`, `growth`, `convoys`, `jobs`,
-`contracts`, `holes`, `scan`, `law`, `influence`, `licences`, `security`, `patrols`),
+`contracts`, `holes`, `scan`, `law`, `influence`, `licences`, `security`, `patrols`,
+`charts`),
 whose reader and defaults are `src/game/sim/WorldRules.h`; and the save files (`world.json`,
 accounts, `corps.json`), which are the server's, not content.
 

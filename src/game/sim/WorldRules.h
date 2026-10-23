@@ -435,6 +435,26 @@ struct Patrols
     double regrowHours = 0.5;
 };
 
+// Charts sold to a faction (#346, #431 slice 16). A faction docked at buys what a pilot has of
+// a system by how much its own picture of it changes (Simulation::ChartOfferFor): `system`
+// for one it has no intel on at all -- that it exists and how to reach it, worth nothing in
+// the centres everyone has charted -- plus, when the pilot looked more recently than it did,
+// `station` for each station and `structure` for each structure more or fewer than it
+// believes stands there, halved for every `halfLifeHours` since the pilot looked; plus `find`
+// for each hidden thing their scans resolved there (a hidden base, a wormhole) it was never
+// told of. All of it is divided by 1 + `rarity` times the number of other factions that
+// have intel on the system: fresh and rare is worth most. What the faction already knows
+// changes nothing and pays nothing.
+struct Charts
+{
+    double system = 300.0;
+    double station = 150.0;
+    double structure = 60.0;
+    double find = 400.0;
+    double halfLifeHours = 24.0;
+    double rarity = 0.25;
+};
+
 // Reads `path`. False, with Error() saying why, and the rules as they were, when it does
 // not read.
 bool               Load(const std::string& path);
@@ -454,6 +474,7 @@ const Influence&   InfluenceRules();
 const Licences&    LicenceRules();
 const Security&    SecurityRules();
 const Patrols&     PatrolRules();
+const Charts&      ChartRules();
 // For a test: rules of its own, without a file.
 void SetTideRules(const Tide& t);
 void SetMouthRules(const Mouths& m);
@@ -470,5 +491,6 @@ void SetInfluenceRules(const Influence& i);
 void SetLicenceRules(const Licences& l);
 void SetSecurityRules(const Security& s);
 void SetPatrolRules(const Patrols& p);
+void SetChartRules(const Charts& c);
 
 }  // namespace WorldRules

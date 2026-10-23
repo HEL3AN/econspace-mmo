@@ -244,6 +244,11 @@ void Game::OpenMapMenu(const std::string& system, Vector2 at)
         if (!navigation_.Destination().empty() && navigation_.Destination() != system)
             items.push_back({ "Add waypoint", [this, system] { AddMapWaypoint(system); } });
     }
+    // Docked at a faction's station that would pay for what you have of it (#431 slice 16).
+    for (const Proto::GalaxySystemStat& g : galaxyState_.systems)
+        if (galaxyState_.chartBuyer && g.id == system && g.chartPrice > 0)
+            items.push_back({ TextFormat("Sell charts  %d cr", g.chartPrice),
+                              [this, system] { SellChart(system); } });
     items.push_back({ navigation_.Favorite(system) ? "Remove from favourites" : "Add to favourites",
                       [this, system]
                       {
@@ -260,7 +265,7 @@ void Game::DrawMapSidebar(Ui::Layout& L)
     using Ui::TextStyle;
     const Ui::Theme& t = Ui::CurrentTheme();
     const TextStyle  note = TextStyle::Small().Wrap();
-    L.Tabs("mapTabs", { "Route", "Favourites", "Legend" }, mapTab_);
+    L.Tabs("mapTabs", { "Route", "Favourites", "Legend", "Charts" }, mapTab_);
     if (!mapNotice_.empty())
         L.Text(mapNotice_, TextStyle::Small().Tint(t.colors.warn).Wrap());
 
@@ -327,8 +332,7 @@ void Game::DrawMapSidebar(Ui::Layout& L)
                     [&]
                     {
                         L.Column(Box().GrowX(),
-                                 [&]
-                                 {
+                                 [&] {
                                      L.Text(std::to_string(i + 1) + ".  " +
                                                 MapSystemName(waypoints[i]),
                                             TextStyle::Body().Wrap());
@@ -381,9 +385,10 @@ void Game::DrawMapSidebar(Ui::Layout& L)
                                    .Align(Ui::Align::Start, Ui::Align::Center),
                                [&]
                                {
-                                   L.Column(
-                                       Box().GrowX(), [&]
-                                       { L.Text(MapSystemName(id), TextStyle::Body().Wrap()); });
+                                   L.Column(Box().GrowX(),
+                                            [&] {
+                                                L.Text(MapSystemName(id), TextStyle::Body().Wrap());
+                                            });
                                    if (L.Button("showFav" + std::to_string(i), "Show"))
                                        FocusMapSystem(id);
                                    if (L.Button("plotFav" + std::to_string(i), "Plot", false,
@@ -393,6 +398,8 @@ void Game::DrawMapSidebar(Ui::Layout& L)
                      }
                  });
     }
+    else if (mapTab_ == 3)
+        DrawMapCharts(L);
     else
     {
         L.Text("LEGEND", TextStyle::Label());
@@ -437,6 +444,87 @@ void Game::DrawMapSidebar(Ui::Layout& L)
                          L.Text(news[i], TextStyle::Small().Wrap());
                  });
     }
+}
+
+void Game::SellChart(const std::string& system)
+{
+    Proto::Command c;
+    c.sellChart = system;
+    clientLink_->Send(Proto::EncodeCommand(c));
+}
+
+// Charts sold to a faction (#346, #431 slice 16): docked at its station, what it would pay for
+// each system on your own charts -- by what it lacks, so what it knows is not on the list.
+void Game::DrawMapCharts(Ui::Layout& L)
+{
+    using Ui::Box;
+    using Ui::TextStyle;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    const TextStyle  note = TextStyle::Small().Tint(t.colors.dim).Wrap();
+    if (!galaxyState_.chartBuyer)
+    {
+        L.Text("Charts", TextStyle::Title());
+        L.Text("Dock at a faction's station to sell it what you have charted: the systems you "
+               "went to yourself, what you saw standing there, and what your scans found.",
+               TextStyle::Body().Wrap());
+        L.Text("A faction pays by what it lacks. What it knows already is worth nothing to it; "
+               "a system it never saw, a station built since its last look, a hidden base or a "
+               "wormhole is worth something -- most when fresh, and when few others know it.",
+               note);
+        return;
+    }
+    L.Text(FactionName(galaxyState_.chartFaction) + " buys charts", TextStyle::Title().Wrap());
+    L.Field("Treasury", TextFormat("%.0f cr", galaxyState_.chartTreasury), t.colors.text);
+    std::vector<const Proto::GalaxySystemStat*> offers;
+    int                                         total = 0;
+    for (const Proto::GalaxySystemStat& g : galaxyState_.systems)
+        if (g.chartPrice > 0)
+        {
+            offers.push_back(&g);
+            total += g.chartPrice;
+        }
+    std::stable_sort(offers.begin(), offers.end(),
+                     [](const Proto::GalaxySystemStat* a, const Proto::GalaxySystemStat* b)
+                     { return a->chartPrice > b->chartPrice; });
+    if (offers.empty())
+    {
+        L.Text("It knows everything you have charted. Go and look again -- or further.",
+               TextStyle::Body().Wrap());
+        return;
+    }
+    if (L.Button("sellAllCharts", TextFormat("Sell all  %d cr", total)))
+        SellChart("*");
+    L.Tooltip("sellAllCharts", "Every system below, the dearest first, while its treasury pays. "
+                               "Once sold, it is on its charts -- and on everybody's.");
+    L.Divider();
+    L.Scroll(
+        Box().Grow().Id("chartOffers").Gap(t.metrics.rowGap),
+        [&]
+        {
+            for (size_t i = 0; i < offers.size(); ++i)
+            {
+                const Proto::GalaxySystemStat& g = *offers[i];
+                L.Row(
+                    Box().GrowX().Gap(t.metrics.rowGap).Align(Ui::Align::Start, Ui::Align::Center),
+                    [&]
+                    {
+                        L.Column(Box().GrowX(),
+                                 [&]
+                                 {
+                                     L.Text(MapSystemName(g.id), TextStyle::Body().Wrap());
+                                     L.Text(g.chartWhat, note);
+                                 });
+                        if (L.Button("showChart" + std::to_string(i), "Show"))
+                            FocusMapSystem(g.id);
+                        if (L.Button("sellChart" + std::to_string(i),
+                                     TextFormat("%d cr", g.chartPrice)))
+                            SellChart(g.id);
+                    });
+            }
+        });
+    L.Text("Fresh and rare is worth most: an old look pays less, and so does a system other "
+           "factions know.",
+           note);
 }
 
 // Full-screen galaxy star map (EVE-style): dimmed background, systems as nodes by mapPos,
@@ -608,8 +696,9 @@ void Game::DrawGalaxyMap()
     }
 
     Vector2 c{ area.x + area.width / 2.0f, area.y + area.height / 2.0f };
-    auto    toScreen = [&](Vector2 mp) -> Vector2
-    { return { c.x + (mp.x - galaxyCenter_.x) * scale, c.y + (mp.y - galaxyCenter_.y) * scale }; };
+    auto    toScreen = [&](Vector2 mp) -> Vector2 {
+        return { c.x + (mp.x - galaxyCenter_.x) * scale, c.y + (mp.y - galaxyCenter_.y) * scale };
+    };
     auto posById = [&](const std::string& id, Vector2& out) -> bool
     {
         for (const auto& s : systems)

@@ -4,11 +4,11 @@ Status: **decided by the owner in four rounds, 2026-10-21 and 2026-10-22**, reco
 comments on #431. This file gathers those decisions as rules, maps each one onto the code, and
 cuts the work into slices.
 
-**Built (as of 2026-10-23):** slices 1-15 are on main -- 1 #443, 2 #453, 3 #448, 4 #459,
+**Built (as of 2026-10-23):** slices 1-16 are on main -- 1 #443, 2 #453, 3 #448, 4 #459,
 5 #449, 6 #456, 7 #450, 8 #454, 9 #447, 10 #452, 11 #460, 12 #465 with its follow-ups in
-#467, 13 #445, 14 #457, 15 #462 (`PROTO_VERSION` 60, `WORLD_VERSION` 17). **Still planned:**
-slice 16 (chart trading), which is a design talk with the owner, not code yet; war
-declarations; and the questions under **Open design questions** at the end. The sections
+#467, 13 #445, 14 #457, 15 #462, 16 (chart sales to factions, with #346)
+(`PROTO_VERSION` 61, `WORLD_VERSION` 17). **Still planned:** selling charts to players
+(#473); war declarations; and the questions under **Open design questions** at the end. The sections
 headed "The code before the slices" record the starting point each slice changed; each
 slice's *Built* note in the slice plan says what is there now. Related: #342 (the growing world, `world_generation_v2.md`), #347 (corporations),
 #432 (the playtester fork: routes, faction shipyards), #433 / #437 (players build outposts),
@@ -360,8 +360,39 @@ journal on login. A Discord hook is a later slice.
 | Live | Owner and security, on the public charts | Always current for every system on the pilot's charts |
 | Observed | Structures, stations, markets | As last observed, with the date; live only where the pilot, their corporation or their structures are present |
 
-**M2. Chart trading is built into the map, not an item.** It is its own task and needs
-careful design (slice 16).
+**M2. Chart trading is built into the map, not an item** (slice 16). Docked at a faction's
+station, the map's Charts tab lists what that faction would pay for each system on the
+pilot's own charts, and sells one or all. Factions buy; selling to players is its own
+mechanic (#473).
+
+*Decided by the owner (2026-10-23, #346):* what is sold is the system (that it exists, how to
+reach it) and what the pilot observed there; stations and structures raise the price, scanner
+finds (wormholes, hidden bases) more. Fresh and rare is worth most; what the buyer knows is
+worth almost nothing and cannot be sold to it again; an update sells cheaply, for what is new
+only. A sale writes into the faction's intel and pays by how much its picture changes.
+
+*As built:* `Simulation::ChartOfferFor` prices it and `SellCharts` sells it
+(`Command::sellChart`, a system or `*`). With `world_rules.json` -> `charts` as the numbers:
+- `system` (300) when the faction has no intel on the system, unless it is public by place (a
+  centre);
+- when the pilot looked more recently than the faction did: `station` (150) for each station
+  and `structure` (60) for each structure more or fewer than its intel says, halved every
+  `halfLifeHours` (24) since the pilot looked;
+- `find` (400) for each of the pilot's resolved signatures standing there that the faction was
+  never told of (`FactionMind::finds`, saved; a hole closed is dropped from it);
+- all of it over 1 + `rarity` (0.25) x the number of other factions with intel on it.
+
+The sale writes the pilot's look into `Intel` (counts, its date, the outposts they saw, the
+live owner and security; the geography on a first sale) and the finds into the mind, takes
+the price from the faction's treasury -- a faction that cannot pay buys nothing, and says so
+-- and charts the system for the buyer (`ChartBy`, K3). What it bought, it plans on: a fresh
+picture is not worth surveying (`SurveyValue`), and outposts seen there are what a siege is
+weighed for. The faction docked at is the buyer; where it holds the system or has ships it
+sees for itself and buys nothing. Only the pilot's own record sells: a system they went to
+themselves (a `system:` key of their own charts), not their corporation's charts. The galaxy
+statistics carry, docked, each system's price and what it is (`GalaxySystemStat::chartPrice`,
+`chartWhat`) and the buyer with its treasury; econagent's galaxy resource lists them and
+`sell_charts` sells.
 
 **M3. A drifting region.** Its charts stay, marked "drifted". When it returns, they are
 marked outdated: the geography holds, the rest must be re-checked.
@@ -439,7 +470,7 @@ The owner settled these on 2026-10-22, taking the recommendations put to them.
    pilot is back.
 7. **War declarations** are a later slice. Until then, players attack each other without a
    crime only where there is no law (security 0).
-8. **Chart trading** waits for slice 16's design, built into the map interface.
+8. **Chart trading** is slice 16, built into the map interface (M2).
 
 ---
 
@@ -629,9 +660,14 @@ are marked; slices without one may go in any order.
       renamed at once, and an account saves how many it has seen (`chartRenames`) and is read
       through the rest. The map draws such a system faint, and the map and econagent's galaxy
       resource say "drifted away" and "before it drifted: outdated".
-16. **Chart trading in the map UI (design only).** *Depends on 1, 14.*
-    - *Scope:* a design document and an owner discussion; no code. What is sold (systems,
-      layers, a region), to whom (factions, players), at what price and with what proof.
+16. **Chart trading in the map UI.** *Depends on 1, 14.*
+    - *Scope:* factions buy (players: #473) what a pilot has of a system, by how much it
+      changes their intel; the map's Charts tab, a command, the agent's tool.
+    - *Tests:* an unknown system sells; the same again pays nothing and is refused; an update
+      pays only for what is new; scanner finds raise the price; another faction still pays;
+      the faction's intel sees what it bought.
+    - *Built:* see M2. `PROTO_VERSION` 61; `world.json` gains `finds` per faction mind and
+      `structures` per intel, which an older reader ignores, so `WORLD_VERSION` stays.
 
 Related work outside this plan: faction shipyards by need and the player shipyard upgrade
 (#432 part D, with #433); the remaining #438 items (station perks; storage, refunds over
@@ -678,9 +714,8 @@ Not built and not yet designed in full. Each waits for a talk with the owner.
   members' summed standing. An EVE-style contact list set by the CEO and directors, read by
   patrols and structures in "enemies" mode, comes with the war declarations that this plan
   deferred (Decided after the rounds, 7).
-- **Slice 16, chart trading.** What is sold (systems, layers, a region), to whom (factions,
-  players), at what price and with what proof, built into the map interface rather than as an
-  item (M2). A design document and an owner discussion come before any code.
+- **Selling charts to players (#473).** A player-to-player exchange of charts; slice 16 sells
+  to factions only.
 
 ---
 

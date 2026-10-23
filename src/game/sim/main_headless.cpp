@@ -338,6 +338,10 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     // corporation's system anywhere -- so not a docked verb either; a refusal says why.
     if (c.buyLicence)
         sim.BuyLicence(s);
+    // Charts sold to the faction docked at (#346, #431 slice 16): asked for in flight, it is
+    // refused with a reason, so not under the docked verbs either.
+    if (!c.sellChart.empty())
+        sim.SellCharts(s, c.sellChart);
 
     // A refit (#279 fitting). Not under the docked verbs below: asked for in flight, it is
     // refused with a reason rather than dropped without a word.
@@ -1064,6 +1068,11 @@ static void SendGalaxies(std::vector<HostClient>& clients, const Simulation& sim
         auto                   own = s->known.lower_bound(Simulation::ChartKey(""));
         if (own == s->known.end() || Simulation::ChartedSystemOf(*own).empty())
             key[2] = 0;
+        // Docked at a faction's station, what it would pay is this pilot's alone (#431 slice
+        // 16): shared with nobody.
+        FactionId buyer;
+        if (sim.ChartBuyer(*s, buyer))
+            key.push_back(-1 - (long long)hc.sessionId);
         const Corps::Corp* corp = sim.Corporations().Of(s->accountName);
         auto               whose = std::make_pair(std::move(key), corp != nullptr ? corp->id : "");
         auto               it = made.find(whose);
@@ -2134,8 +2143,8 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
         const bool      listExists = std::filesystem::exists(worldDir + "allowlist.txt", ec);
         const bool      listRequired =
             cfg.registration == Host::Registration::Auto
-                ? Host::AccessList::ListRequired(cfg.isPublic, false, listExists)
-                : cfg.registration == Host::Registration::Allowlist;
+                     ? Host::AccessList::ListRequired(cfg.isPublic, false, listExists)
+                     : cfg.registration == Host::Registration::Allowlist;
         access.Open(worldDir, listRequired);
         PrintAccess(access);
         if (access.ListChecked() && access.Allowed().empty())
@@ -3455,8 +3464,8 @@ static int WorldSelftest()
     uint64_t   savedSeed = 0;
     int        savedRules = 0, savedCentres = 0;
     bool       loaded = Simulation::ReadWorldSeed(path, savedSeed, savedRules, &savedCentres) &&
-                        savedSeed == 1 && savedRules == Gen::GENERATOR_VERSION &&
-                        savedCentres == a.CentreCount();
+                  savedSeed == 1 && savedRules == Gen::GENERATOR_VERSION &&
+                  savedCentres == a.CentreCount();
     SetupHostSim(b, dataDir, path);
     bool haveSys = b.HasSystem(sid);
     bool time = approx(b.Time(), 2.0);
@@ -3545,8 +3554,8 @@ static int OrderSelftest()
     float dx = s.ship->GetPosition().x - move.point.x;
     float dy = s.ship->GetPosition().y - move.point.y;
     bool  arrived = moveFinished && s.orderStatus == Orders::Status::Done &&
-                    std::sqrt(dx * dx + dy * dy) <= move.stopDist * 1.5f;
-    bool  idOk = id > 0;
+                   std::sqrt(dx * dx + dy * dy) <= move.stopDist * 1.5f;
+    bool idOk = id > 0;
 
     // 2) An order naming something that is not here must fail, not hang.
     Orders::Order bogus;

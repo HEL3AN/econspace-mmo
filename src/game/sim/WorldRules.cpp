@@ -22,6 +22,7 @@ WorldRules::Influence   g_influence;
 WorldRules::Licences    g_licences;
 WorldRules::Security    g_security;
 WorldRules::Patrols     g_patrols;
+WorldRules::Charts      g_charts;
 std::string             g_error;
 
 // Reads one section's values into their places: every field known, every number zero or
@@ -86,7 +87,7 @@ bool Load(const std::string& path)
             it.key() != "convoys" && it.key() != "jobs" && it.key() != "holes" &&
             it.key() != "scan" && it.key() != "contracts" && it.key() != "law" &&
             it.key() != "influence" && it.key() != "licences" && it.key() != "security" &&
-            it.key() != "patrols")
+            it.key() != "patrols" && it.key() != "charts")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -412,6 +413,22 @@ bool Load(const std::string& path)
                          "shipsMax";
         return false;
     }
+    // Slice 16's (#431, #346): what a faction pays for charts.
+    Charts ch;
+    if (j.contains("charts") && !ReadSection(j["charts"], path + ": charts",
+                                             { { "system", &ch.system },
+                                               { "station", &ch.station },
+                                               { "structure", &ch.structure },
+                                               { "find", &ch.find },
+                                               { "halfLifeHours", &ch.halfLifeHours },
+                                               { "rarity", &ch.rarity } },
+                                             {}, {}, g_error))
+        return false;
+    if (ch.halfLifeHours <= 0.0)
+    {
+        g_error = path + ": charts: halfLifeHours must be more than zero";
+        return false;
+    }
     g_tide = t;
     g_mouths = m;
     g_archive = a;
@@ -427,6 +444,7 @@ bool Load(const std::string& path)
     g_licences = lc;
     g_security = sec;
     g_patrols = pat;
+    g_charts = ch;
     return true;
 }
 
@@ -583,6 +601,16 @@ const Patrols& PatrolRules()
 void SetPatrolRules(const Patrols& p)
 {
     g_patrols = p;
+}
+
+const Charts& ChartRules()
+{
+    return g_charts;
+}
+
+void SetChartRules(const Charts& c)
+{
+    g_charts = c;
 }
 
 }  // namespace WorldRules

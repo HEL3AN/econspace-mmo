@@ -16,10 +16,15 @@
 #include "gen/Names.h"
 #include "gen/Region.h"
 
+#include "core/Archetype.h"
 #include "entities/Station.h"
 #include "entities/Structure.h"
 
 #include <nlohmann/json.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
 
 bool Simulation::PublicByPlace(const std::string& systemId) const
 {
@@ -453,6 +458,21 @@ Proto::GalaxyState Simulation::GalaxyStateFor(const ClientSession&      s,
                     !holder.empty() && holder != corp->id && FrontOpen(g.id, corp->id);
             }
         }
+    // Docked at a faction's station: what it would pay for each of their charts (slice 16).
+    FactionId buyer;
+    if (ChartBuyer(s, buyer))
+    {
+        out.chartBuyer = true;
+        out.chartFaction = buyer;
+        out.chartTreasury = std::floor(minds_[buyer].treasury);
+        for (const ChartOffer& o : ChartOffers(s, buyer))
+            for (Proto::GalaxySystemStat& g : out.systems)
+                if (g.id == o.system)
+                {
+                    g.chartPrice = o.price;
+                    g.chartWhat = o.What();
+                }
+    }
     return out;
 }
 
@@ -493,4 +513,272 @@ void Simulation::LoadLegacyKnown(const nlohmann::json& j)
             for (const nlohmann::json& id : it.value())
                 if (id.is_string() && HasSystem(id.get<std::string>()))
                     legacyKnown_[it.key()].insert(id.get<std::string>());
+}
+
+// --- Charts sold to factions (#346, #431 K5 and slice 16) -------------------------------------
+//
+// A faction pays for what changes its picture. What a pilot sells is written into the
+// faction's intel -- the same record a survey of its own writes -- so what it already knows is
+// worth nothing and cannot be sold to it again, an update pays only for what is new, and the
+// faction decides on what it bought (where to survey, settle or besiege) like on anything else
+// it saw. Another faction's picture is its own: it may still pay.
+
+std::string Simulation::ChartOffer::What() const
+{
+    std::string text;
+    auto        add = [&](const std::string& part) { text += (text.empty() ? "" : ", ") + part; };
+    if (news)
+        add("new system");
+    if (changed > 0)
+        add(changed == 1 ? std::string("1 change") : std::to_string(changed) + " changes");
+    if (finds > 0)
+        add(finds == 1 ? std::string("1 hidden find") : std::to_string(finds) + " hidden finds");
+    return text.empty() ? std::string("nothing it lacks") : text;
+}
+
+bool Simulation::ChartBuyer(const ClientSession& s, FactionId& f) const
+{
+    const SystemState* st = SystemOf(s);
+    if (st == nullptr || !s.IsDocked() || s.accountName.empty())
+        return false;
+    for (const auto& e : st->entities)
+        if (e->GetId() == s.dockedStationId)
+        {
+            if (e->GetKind() != EntityKind::Station)
+                return false;  // a structure's dock is a player's, not a faction's desk
+            f = static_cast<const Station&>(*e).GetFaction();
+            return f != Factions::Unaffiliated();
+        }
+    return false;
+}
+
+Simulation::ChartReport Simulation::ReportOf(const ClientSession& s,
+                                             const std::string&   systemId) const
+{
+    ChartReport        r;
+    const SystemState* st = SystemById(systemId);
+    if (st == nullptr)
+        return r;
+    // Only a system they went to themselves: a key of their own charts, which nothing but their
+    // own arrival writes -- not their corporation's charts, nor the public ones.
+    r.charted = s.known.count(ChartKey(systemId)) != 0;
+    if (!r.charted)
+        return r;
+    const auto seen = s.sightings.find(systemId);
+    const bool looked = seen != s.sightings.end() && seen->second.Observed();
+    // What they saw, unless it is from before the region drifted (#431 M3): its geography
+    // holds, and what stood there is for looking at again.
+    if (looked && !seen->second.outdated)
+    {
+        r.observed = true;
+        r.at = seen->second.at;
+        for (const WorldLoader::SeenObject& o : seen->second.seen)
+        {
+            if (o.kind == "station")
+            {
+                r.stations++;
+                continue;
+            }
+            // A hidden base they found is a find, below, not one more structure: a faction
+            // that never scanned counts none.
+            const Archetype* a = Archetypes::Find(o.kind);
+            if (a == nullptr || !a->Has(Component::Signature))
+                r.structures++;
+            FactionId by;
+            if (!o.building && Outposts::IsOutpost(o.kind) && Outposts::FactionOf(o.owner, by))
+                r.outposts.push_back(by);
+        }
+        r.structures += seen->second.more;
+    }
+    // Their finds that still stand there: what their scans resolved, not their own.
+    for (const auto& e : st->entities)
+    {
+        if (SignatureOf(*e) <= 0.0f || (!e->GetOwner().empty() && e->GetOwner() == s.accountName))
+            continue;
+        const std::string key = SignatureKey(*st, *e);
+        if (s.known.count(key) != 0)
+            r.finds.push_back(key);
+    }
+    return r;
+}
+
+Simulation::ChartOffer Simulation::ChartOfferFor(const ClientSession& s, FactionId f,
+                                                 const std::string& systemId) const
+{
+    ChartOffer o;
+    o.system = systemId;
+    const SystemState* st = SystemById(systemId);
+    const ChartReport  r = ReportOf(s, systemId);
+    if (st == nullptr || !r.charted)
+    {
+        o.why = "it is not on your own charts";
+        return o;
+    }
+    o.seenAt = r.at;
+    // Where it holds or has ships, a faction sees for itself (as its saved intel has it).
+    if ((st->agg.claimed && st->agg.controller == f) || st->agg.presence[f] >= 1.0f)
+    {
+        o.why = FactionName(f) + " sees " + SystemName(systemId) + " for itself";
+        return o;
+    }
+    const WorldRules::Charts& rules = WorldRules::ChartRules();
+    const FactionMind&        mind = minds_[f];
+    const auto                k = mind.intel.find(systemId);
+    const Intel*              known = k == mind.intel.end() ? nullptr : &k->second;
+    double                    value = 0.0;
+    // That it is there and how to get there: news to a faction that never saw it, unless
+    // everybody's charts have it by its place (a centre).
+    if (known == nullptr)
+    {
+        o.news = true;
+        if (!PublicByPlace(systemId))
+            value += rules.system;
+    }
+    // What stood there, if they looked after it did: whatever differs from what it believes,
+    // and the older the look the less it is worth.
+    if (r.observed && (known == nullptr || r.at > known->seenAt))
+    {
+        const int stations = std::abs(r.stations - (known != nullptr ? known->stations : 0));
+        const int structures = std::abs(r.structures - (known != nullptr ? known->structures : 0));
+        o.changed = stations + structures;
+        const double age = std::max(0.0, time_ - r.at) / 3600.0;
+        value += (stations * rules.station + structures * rules.structure) *
+                 std::pow(0.5, age / rules.halfLifeHours);
+    }
+    // What their scans found there that it was never told of.
+    for (const std::string& key : r.finds)
+        if (mind.finds.count(key) == 0)
+        {
+            o.finds++;
+            value += rules.find;
+        }
+    // Rare is worth more: every other faction with a picture of it makes it less so.
+    int others = 0;
+    for (FactionId g : Factions::All())
+        if (g != f && minds_[g].intel.count(systemId) != 0)
+            others++;
+    value /= 1.0 + rules.rarity * others;
+    o.price = (int)std::min(1.0e9, std::floor(value));
+    if (o.price <= 0)
+    {
+        o.price = 0;
+        o.why = FactionName(f) + " knows all you have of " + SystemName(systemId);
+    }
+    return o;
+}
+
+std::vector<Simulation::ChartOffer> Simulation::ChartOffers(const ClientSession& s,
+                                                            FactionId            f) const
+{
+    std::set<std::string> systems;
+    for (const std::string& key : s.known)
+    {
+        const std::string id = ChartedSystemOf(key);
+        if (!id.empty())
+            systems.insert(id);
+    }
+    std::vector<ChartOffer> out;
+    for (const std::string& id : systems)
+    {
+        ChartOffer o = ChartOfferFor(s, f, id);
+        if (o.price > 0)
+            out.push_back(std::move(o));
+    }
+    std::stable_sort(out.begin(), out.end(),
+                     [](const ChartOffer& a, const ChartOffer& b) { return a.price > b.price; });
+    return out;
+}
+
+bool Simulation::SellCharts(ClientSession& s, const std::string& which)
+{
+    auto refuse = [&](const std::string& why)
+    {
+        s.RecordEvent(Ev::Kind::Notice, "No sale: " + why);
+        return false;
+    };
+    FactionId f;
+    if (!ChartBuyer(s, f))
+        return refuse("dock at a faction's station to sell it your charts");
+    std::vector<ChartOffer> offers;
+    if (which == "*")
+    {
+        offers = ChartOffers(s, f);
+        if (offers.empty())
+            return refuse(FactionName(f) + " knows everything you have charted");
+    }
+    else
+    {
+        const std::string id = SystemNamed(which);
+        if (id.empty())
+            return refuse("no system is called " + which);
+        ChartOffer o = ChartOfferFor(s, f, id);
+        if (o.price <= 0)
+            return refuse(o.why);
+        offers.push_back(std::move(o));
+    }
+
+    FactionMind& mind = minds_[f];
+    int          sold = 0;
+    double       paid = 0.0;
+    std::string  last, shortOf;
+    for (const ChartOffer& o : offers)
+    {
+        if ((double)o.price > mind.treasury)
+        {
+            shortOf = SystemName(o.system);
+            continue;  // a cheaper one may still be bought
+        }
+        const SystemState& st = *SystemById(o.system);
+        const ChartReport  r = ReportOf(s, o.system);
+        const bool         had = mind.intel.count(o.system) != 0;
+        Intel&             i = mind.intel[o.system];
+        if (!had)
+        {
+            // Geography, known for good once known (K6): what the pilot's charts show.
+            i.belts = st.profile.belts;
+            i.planets = st.profile.planets;
+            i.gates = st.profile.gates;
+        }
+        // Who holds it and how safe it is travel live on everybody's charts.
+        i.traffic = st.agg.prosperity;
+        i.security = st.agg.security;
+        i.controller = st.agg.controller;
+        i.claimed = st.agg.claimed;
+        if (r.observed && (!had || r.at > i.seenAt))
+        {
+            i.seenAt = r.at;
+            i.stations = r.stations;
+            i.structures = r.structures;
+            i.outposts = r.outposts;
+            i.defenders = st.profile.defenders;  // a station's, which does not move
+        }
+        for (const std::string& key : r.finds)
+            mind.finds.insert(key);
+        mind.treasury -= o.price;
+        s.account.AddMoney(o.price);
+        paid += o.price;
+        sold++;
+        last = SystemName(o.system) + " (" + o.What() + ")";
+        // It charts what it bought (K3: a find is the pilot's until a faction reaches it or
+        // they sell the charts).
+        ChartBy(o.system, f);
+    }
+    if (sold == 0)
+        return refuse(FactionName(f) + "'s treasury holds " +
+                      std::to_string((long long)std::floor(mind.treasury)) +
+                      " cr, not enough for the charts of " + shortOf);
+    // Its old word of hidden things that are gone: a wormhole that closed is no find to keep.
+    for (auto it = mind.finds.begin(); it != mind.finds.end();)
+    {
+        const std::string hole = it->rfind("hole:", 0) == 0 ? it->substr(5) : std::string();
+        it = !hole.empty() && HoleById(hole) == nullptr ? mind.finds.erase(it) : std::next(it);
+    }
+    s.RecordEvent(
+        Ev::Kind::Notice,
+        "Sold " +
+            (sold == 1 ? "the charts of " + last
+                       : "charts of " + std::to_string(sold) + " systems") +
+            " to " + FactionName(f) + " for " + std::to_string((long long)paid) + " cr" +
+            (shortOf.empty() ? std::string() : "; its treasury could not pay for " + shortOf));
+    return true;
 }

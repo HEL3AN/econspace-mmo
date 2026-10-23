@@ -41,7 +41,9 @@ inline constexpr int PROTO_VERSION =
          // layout object's owner may be a corporation, "corp:<id>", and carries `ownerName`,
          // the owner as a player reads it; a CorpAct "transfer" (value: a structure's id,
          // system, pilot or ticker) hands one over and "take" (value, system) takes an
-         // abandoned one;
+         // abandoned one; and charts sold to a faction (#346, #431 slice 16) -- a command sells
+         // what the pilot has of a system, and the galaxy statistics carry, docked at a
+         // faction's station, what it would pay for each;
          // 60: a patrol's threshold and allow-list (#431 slice 12, #186) -- a CorpAct "patrol"
          // may carry them, and a CorpView's patrols show them;
          // 59: a corporation's own patrols (#431 slice 12) -- a CorpAct "patrol" names a
@@ -314,6 +316,12 @@ struct Command
     // their own money; at a station of the holding faction, or anywhere in a corporation's
     // system. A refusal is a Notice saying why.
     bool buyLicence = false;
+    // Sell the faction whose station the ship is docked at what the pilot has of a system, by
+    // id (#346, #431 slice 16): that it exists, what they saw standing there, and what their
+    // scans found. "*" sells everything it would pay for. Empty -- not this command. The price
+    // is what the faction's picture of it changes (Simulation::ChartOfferFor); a refusal is a
+    // Notice saying why.
+    std::string sellChart;
 };
 
 // Entity kind. The wire uses the engine's enum rather than a parallel copy, so there is
@@ -727,6 +735,11 @@ struct GalaxySystemStat
     // besiege or lay a claim there -- it holds a system next door, or one next door is nobody's.
     // False for a pilot in no corporation, and wherever nobody else holds.
     bool front = false;
+    // Charts (#346, #431 slice 16): docked at a faction's station, what it would pay the
+    // recipient for what they have of this system, in whole credits -- 0 when it would pay
+    // nothing -- and what that is, in a few words ("new system, 2 changes, 1 hidden find").
+    int         chartPrice = 0;
+    std::string chartWhat{};
 };
 
 // Galaxy snapshot: statistics for the systems on the recipient's charts + a news feed (#431:
@@ -736,6 +749,11 @@ struct GalaxyState
 {
     std::vector<GalaxySystemStat> systems;
     std::vector<std::string>      events;
+    // The faction whose station the recipient is docked at, which buys charts (#431 slice 16),
+    // and what its treasury holds to pay with; `chartBuyer` false: not docked at one.
+    bool      chartBuyer = false;
+    FactionId chartFaction = Factions::Unaffiliated();
+    double    chartTreasury = 0.0;
 };
 
 // What a design a player made is (#279 fitting), sent once per connection the first time a
