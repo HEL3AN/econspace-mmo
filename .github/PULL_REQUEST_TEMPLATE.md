@@ -25,6 +25,7 @@
 - [ ] No saves or accounts are committed (`world.json`, `regions/`, `accounts/`, `corps.json`, `designs.json`).
 - [ ] If anything visual changed: it was **looked at** (`worldeditor gallery shapes` or the game), and a screenshot is below. No test can see a picture.
 - [ ] If `data/` changed: `documents/world_format.md` describes it.
+- [ ] If a player, a host or a bot author would notice the change: a line under **Unreleased** in `CHANGELOG.md`.
 - [ ] Follows [CONVENTIONS.md](../CONVENTIONS.md); comments and docs are in English.
 - [ ] `engine` still doesn't depend on any other target.
 

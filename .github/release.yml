@@ -1,6 +1,6 @@
-# How GitHub groups merged pull requests into release notes, by label. This is the
-# changelog: rather than a CHANGELOG.md that has to be kept in step by hand, a release
-# drafts its own notes from what was merged since the last one.
+# How GitHub groups merged pull requests into release notes, by label. A release drafts
+# its full notes from what was merged since the last one; CHANGELOG.md is the short,
+# hand-written summary a player reads, kept under its Unreleased heading as PRs land.
 changelog:
   exclude:
     labels: [duplicate, invalid, wontfix]
