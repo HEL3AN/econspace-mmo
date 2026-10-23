@@ -562,12 +562,30 @@ are marked; slices without one may go in any order.
      window (a pilot in none: the same view) lists what the party holds with Renew, and the
      galaxy statistics carry the terms of every system (`licenceBy`, `licenceRent`) for the
      map. Rent (`licences` in
-     `world_rules.json`: 2000 cr a week, a day's grace, standing 10) is taken in the coarse
+     `world_rules.json`: a day's grace, standing 10, the rent by the system, below) is taken in the coarse
      pass; a corporation holder admits by its docking policy. A player structure already
      standing when licences arrived, or whose system changed hands, is asked rent from then,
      so it has the grace day before trespassing. Trespass is weighed by `Think` as a siege of
-     the structure (`Plan::evicting`), worth `licences.evict`. A corporation holder's own rent
-     price is a later choice; for now the rules' price serves every holder.
+     the structure (`Plan::evicting`), worth `licences.evict`.
+   - *Rent in proportion to the world (#509):* `Simulation::LicenceRent(system)` is `share`
+     (0.01) of what the system's economy makes in a period -- `SystemOutput`: its planets' and
+     stations' hourly output (the profile's rates) and what its belts regrow
+     (`beltRegrow` x ore size), at base prices, times a week -- times `securityBase +
+     securitySlope x security` (0.5 + security: a safe harbour is worth more), never below
+     `rent` (3000, the floor) nor above `ceiling` (30000), to the nearest 50 cr. The numbers
+     are in `world_rules.json` -> `licences`; `share` 0 is the old flat rent, which is what a
+     test's default is. Measured against (base prices, a hold of Crystal 50 u = 1678 cr, 120 u
+     = 3521): a hauler 3000, a miner 4200, a courier 2500, a cutter 1110, a cruiser 1420, an
+     outpost 800, a market outpost 960, a station 1280; loot of a destroyed trader, its cargo,
+     30 u of a good = 280 (Iron) to 3200 (Circuits); station missions 320-900, a bounty 250 a
+     pirate, jobs 400-1000 (escort), 750 (siege), chart sales 60-400 a system; the economy of a
+     system, 200-1400 cr an hour of planets' and stations' output, and 40 u an hour of regrowth
+     a belt (400-1600 cr an hour), so 30-300k a week. A system's market fee, which is what a
+     holder's structures earn from a licensee's neighbours, is 2% of the player trades there
+     (10% at most) -- 0.7-3.5k a week for a busy system -- and a patrol of six costs 900 cr an
+     hour, 151k a week. 2000 cr was 13 hours of one patrol ship, one wreck, 0.7% of a
+     system's weekly output; the rent now is 1-3% of it (3000-19000 on a generated world,
+     median about 5500).
 
 **Defence**
 

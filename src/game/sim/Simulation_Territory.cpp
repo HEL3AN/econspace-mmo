@@ -20,6 +20,7 @@
 
 #include "core/Blueprint.h"
 #include "economy/Resource.h"
+#include "entities/AsteroidField.h"
 #include "entities/Station.h"
 #include "entities/Structure.h"
 
@@ -635,9 +636,39 @@ std::string Simulation::LicenceProblem(const std::string& account, const SystemS
            (dock != nullptr ? dock->GetName() : std::string("its station here"));
 }
 
-double Simulation::LicenceRent(const SystemState&) const
+double Simulation::SystemOutput(const SystemState& st, double hours) const
 {
-    return WorldRules::LicenceRules().rent;
+    const Market& market = st.market;
+    double        perHour = 0.0;
+    for (ResourceType rt : AllResourceTypes())
+    {
+        const size_t i = (size_t)rt.Index();
+        if (i < st.profile.rates.source.size())
+            perHour += st.profile.rates.source[i] * market.GetBasePrice(rt);
+    }
+    // A belt gives back a share of its full size an hour (Goods::Rules().beltRegrow).
+    for (const auto& e : st.entities)
+        if (e->GetKind() == EntityKind::Field)
+        {
+            const AsteroidField& f = static_cast<const AsteroidField&>(*e);
+            perHour += Goods::Rules().beltRegrow * (double)f.GetOreMax() *
+                       market.GetBasePrice(f.GetResource());
+        }
+    return perHour * hours;
+}
+
+double Simulation::LicenceRent(const SystemState& st) const
+{
+    const WorldRules::Licences& r = WorldRules::LicenceRules();
+    double                      rent = r.rent;
+    if (r.share > 0.0)
+    {
+        const double safety = r.securityBase + r.securitySlope * (double)st.agg.security;
+        rent = std::max(rent, r.share * SystemOutput(st, r.periodDays * 24.0) * safety);
+    }
+    if (r.ceiling > 0.0)
+        rent = std::min(rent, r.ceiling);
+    return std::round(rent / 50.0) * 50.0;  // to the 50 cr, so a player reads a plain number
 }
 
 const Entity* Simulation::LicenceDock(const SystemState& st, const std::string& holder,

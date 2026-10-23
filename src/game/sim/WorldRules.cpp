@@ -374,9 +374,18 @@ bool Load(const std::string& path)
                                                  { "periodDays", &lc.periodDays },
                                                  { "graceHours", &lc.graceHours },
                                                  { "standing", &lc.standing },
-                                                 { "evict", &lc.evict } },
+                                                 { "evict", &lc.evict },
+                                                 { "share", &lc.share },
+                                                 { "ceiling", &lc.ceiling },
+                                                 { "securityBase", &lc.securityBase },
+                                                 { "securitySlope", &lc.securitySlope } },
                                                {}, {}, g_error))
         return false;
+    if (lc.ceiling > 0.0 && lc.ceiling < lc.rent)
+    {
+        g_error = path + ": licences: the ceiling is below the rent it caps";
+        return false;
+    }
     if (lc.periodDays <= 0.0)
     {
         g_error = path + ": licences: periodDays must be more than zero";

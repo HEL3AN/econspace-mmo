@@ -355,8 +355,18 @@ struct Influence
 // it holds `graceHours` more, then lapses: what the party has there is trespassing, lawless
 // to shoot, and the holding faction weighs evicting it -- worth `evict` to it, against the
 // risk like any siege. Nobody's systems, the lawless' and the frontier need none.
+//
+// The rent follows the system (#509): `share` of what its economy makes in a period -- its
+// planets', stations' and belts' output at base prices (Simulation::SystemOutput) -- times
+// `securityBase + securitySlope x security`, because a safe harbour is worth more; never below
+// `rent` (the floor) nor above `ceiling` (0: no ceiling). `share` 0 leaves the flat `rent`,
+// which is what a test's default is.
 struct Licences
 {
+    double share = 0.0;
+    double ceiling = 0.0;
+    double securityBase = 1.0;
+    double securitySlope = 0.0;
     double rent = 2000.0;
     double periodDays = 7.0;
     double graceHours = 24.0;

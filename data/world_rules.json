@@ -158,7 +158,11 @@
         "taxMax": 0.1
     },
     "licences": {
-        "rent": 2000,
+        "rent": 3000,
+        "share": 0.01,
+        "ceiling": 30000,
+        "securityBase": 0.5,
+        "securitySlope": 1.0,
         "periodDays": 7,
         "graceHours": 24,
         "standing": 10,
