@@ -297,3 +297,15 @@ Each slice is one PR with before/after contact sheets; cheap agents can take the
 6. **Damage**: scorch with embers now — too much fire for a hull at 40%?
 7. **The paint budget** now also softens a station seen close on the shipped 0.5 MP (the
    contact sheet shows both). Keep one budget for planets and built things, or a separate one?
+
+### Decided (owner, 2026-10-23)
+
+The owner approved the prototype ("really cool") and the orchestrator's recommendations on the questions above. The rollout follows them:
+
+1. **Register:** clean industrial, with wear and grime set by culture: pirates and colonists worn, the Guild clean. This is mostly how the liveries are tuned already.
+2. **The player's own ship:** a palette picked from a small set of liveries. It is art, never allegiance.
+3. **NPC ships wear their faction's livery,** readable from the window. Allegiance colour stays on the instruments (#117).
+4. **Lit windows:** stations, large structures and capital ships. Small ships have none.
+5. **Night side:** keep the 0.75 ambient floor so shadows read.
+6. **Damage:** scorch only below 40% hull loss; embers and fire from 60%.
+7. **Two paint budgets:** one for natural bodies and one for built things, so a station seen close up is not softened by the planets' budget. Both live in `look.json`.
