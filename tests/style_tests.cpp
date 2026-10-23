@@ -191,4 +191,21 @@ TEST_CASE("a world reckons each region's style from its markets, and a market fu
     const Ships::Style after = sim->RegionStyle(0);
     CHECK(ShareOf(after.families, "laser") > ShareOf(before.families, "laser"));
     CHECK(after.LeadingFamily() == "laser");
+
+    // Supply is weighed in credits, not units: the same count of a cheap good (Crystal, 40) leans
+    // the style less than of a dear one (Circuits, 130), though both are laser goods.
+    const ResourceType crystal = Good::Named("Crystal");
+    auto               Flood = [&](ResourceType g, double delta)
+    {
+        for (auto& kv : sim->Systems())
+            if (Gen::SlotOf(kv.first) == 0 && kv.second.profile.markets > 0)
+                kv.second.market.SetStock(g, kv.second.market.Stock(g) + delta);
+    };
+    Flood(circuits, -5000.0);  // back to the baseline
+    Flood(crystal, 5000.0);
+    const float crystalLean = ShareOf(sim->RegionStyle(0).families, "laser");
+    Flood(crystal, -5000.0);
+    Flood(circuits, 5000.0);
+    const float circuitsLean = ShareOf(sim->RegionStyle(0).families, "laser");
+    CHECK(circuitsLean > crystalLean);
 }

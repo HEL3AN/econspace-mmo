@@ -267,7 +267,8 @@ void Simulation::RecountFleets(SystemState& st) const
 
 namespace
 {
-// What one system's market holds and makes, by good, onto `supply`.
+// What one system's market holds and makes, by good, onto `supply` -- in credits at the good's
+// base price, not in units: a region's heaps of a cheap good must not outvote its dear one.
 void AddSupply(const SystemState& st, double hours, std::vector<double>& supply)
 {
     if (st.profile.markets <= 0)
@@ -283,7 +284,7 @@ void AddSupply(const SystemState& st, double hours, std::vector<double>& supply)
             for (const auto& out : rec.out)
                 if ((size_t)out.first.Index() == i)
                     made += out.second * rec.rate;
-        supply[i] += st.market.Stock(g) + hours * made;
+        supply[i] += (st.market.Stock(g) + hours * made) * st.market.GetBasePrice(g);
     }
 }
 }  // namespace

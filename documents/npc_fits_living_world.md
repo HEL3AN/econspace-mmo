@@ -117,7 +117,7 @@ Each weight is a share, the shares sum to 1.
 ### Where it comes from (decided, owner 2026-10-23, Q3)
 
 **Proportional, like the real world, not a fixed exponent.** A region whose markets and
-industry hold 100 units' worth of laser goods against 25 of railgun goods flies about 80/20;
+industry hold 100 credits' worth of laser goods against 25 of railgun goods flies about 80/20;
 one that holds as much of each flies 50/50. The difference between regions comes from their
 economies differing.
 
@@ -128,7 +128,9 @@ economies differing.
   the same way (heavy `Steel`, `Iron`; light `Crystal`, `Fuel`; brawler `Iron`, `Ammunition`
   -- tuning). Over the region's systems with a market, `supply_i` is the stock of those goods
   plus what the region makes of them in `styles.hours` hours (raw sources and recipe outputs,
-  `MarketRates`; 24 hours, tuning). It is a function of the markets, which are saved, so the
+  `MarketRates`; 24 hours, tuning), **weighed in credits at each good's base price, not in
+  units** (owner, 2026-10-23: Crystal stock is large and cheap, and by units most regions
+  leaned 65-85% to lasers). It is a function of the markets, which are saved, so the
   style is **derived, never stored**.
 - **culture** -- the region's people, a modest prior from data: `world_rules.json`
   `styles.cultures` maps a culture id to weights (clan railgun 3 / laser 1 and brawler; sect
