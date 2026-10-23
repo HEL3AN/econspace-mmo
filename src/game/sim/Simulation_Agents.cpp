@@ -317,7 +317,8 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
         else if (e->GetKind() == EntityKind::Structure)
         {
             const Structure& t = static_cast<const Structure&>(*e);
-            if (t.IsBuilding())
+            // ...and an abandoned one (#468) has nobody to fire for.
+            if (t.IsBuilding() || Abandoned(e->GetOwner()))
                 continue;
             sided = Outposts::FactionOf(e->GetOwner(), owner);
             if (!sided)
@@ -377,6 +378,10 @@ void Simulation::StepStationDefence(SystemState& st, const std::vector<PlayerPre
         {
             if (f == Factions::Pirates())
                 return true;  // everyone's enemy, as they are to every player
+            // A corporation's (#468): its standing is its members' together, as its patrol's.
+            std::string corp;
+            if (Corps::CorpOwner(account, corp))
+                return PartyStanding(corp, f) < rules->threshold;
             float standing = 0.0f;
             return OwnerStanding(account, f, standing) && standing < rules->threshold;
         };
@@ -498,7 +503,17 @@ void Simulation::ChargeFirstStrike(SystemState& st, const Entity& structure,
     }
     else
         return;
-    const std::string& account = structure.GetOwner();
+    // A corporation's structure's crime is its CEO's to answer for (#468): the one who could
+    // have set its rules otherwise. An abandoned one's is nobody's.
+    std::string account = structure.GetOwner();
+    std::string corp;
+    if (Corps::CorpOwner(account, corp))
+    {
+        const Corps::Corp* c = corps_.Find(corp);
+        if (c == nullptr || c->Ceo() == nullptr)
+            return;
+        account = c->Ceo()->account;
+    }
     ChargeOwner(account, victim, false);
     if (killed)
         ChargeOwner(account, victim, true);

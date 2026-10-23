@@ -639,17 +639,37 @@ every tier and client docking at a corp mate's outpost are done).
 
 ---
 
+## Structure ownership (#468) -- built
+
+Decided by the owner on 2026-10-23 and built: a structure a corporation member builds belongs
+to the **corporation** (owner `corp:<id>`, beside a faction's `faction:<id>`) and stays with it
+when the member leaves; one built before joining stays the pilot's until they hand it over.
+`Simulation::StructureParty` is the party it pays its licence as -- the corporation, or the
+pilot's own book -- no longer the owner's current corporation.
+
+- **Transfer** (`CorpAct` "transfer": a structure's id, its system, and a pilot or a ticker):
+  a pilot hands over their own, a corporation's CEO or a director the corporation's; one verb
+  for pilot or corporation to pilot or corporation. A pilot receiving one must be online.
+- **The licence moves with it**, paid-to and owed alike, unless the new party has one there
+  already; the old party keeps its own only while something else of its stands there. The
+  holder is asked again (`Admits`): a transfer to a party it would refuse is refused.
+- **What stays with the structure**: its storage (#438), its rules of engagement (#340), and
+  an attack under way, whose end is told to the new owner (slice 13).
+- **A disbanded corporation** leaves its structures *abandoned*: no licence or rent, no
+  patrol, no law over them (`LawOver`), no fire from them, no fee from their markets. Anyone
+  may shoot one down, or **take** it (`CorpAct` "take"): from a ship in space within its
+  blueprint's reach, by the holder's leave and licence as building there is, for the taker's
+  corporation if they are in one.
+- **An older world** (`Save::WORLD_VERSION` 17 or less): a structure whose owner was a
+  corporation member is the corporation's on load, which is what it was in effect.
+
+The details the decisions left free are in [DECISIONS.md](../DECISIONS.md) (2026-10-23, "Whose
+a structure is").
+
 ## Open design questions
 
 Not built and not yet designed in full. Each waits for a talk with the owner.
 
-- **Structure ownership like EVE (#468).** Decided by the owner on 2026-10-23: a structure a
-  corporation member builds belongs to the **corporation**. Today it is owned by the pilot's
-  account and reaches the corporation through `PartyOf` (licence rent from the treasury, trust,
-  patrols). Still to design: transferring a structure's rights (pilot to corporation, between
-  corporations, to another pilot, and who may do it), the licence rent moving with it, and what
-  becomes of its goods, rules of engagement and attack notices on transfer or when a member
-  leaves.
 - **NPC fits from the living world (#464).** Since #463 NPCs fight by the player combat model
   with one doctrine design per role. Their fits should come from the world instead: a gang's
   wealth and losses, its faction's doctrine, the region, its security and its market. No balance

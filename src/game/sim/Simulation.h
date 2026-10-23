@@ -703,6 +703,37 @@ public:
     std::string HolderName(const std::string& holder) const;
     // The party `account` builds for: their corporation's id, or InfluenceMap::PILOT + account.
     std::string PartyOf(const std::string& account) const;
+    // Structure ownership (#468, Simulation_Owners.cpp). A structure's owner is an account, a
+    // corporation ("corp:<id>", Corps::OwnerOf) or a faction ("faction:<id>"). What a member
+    // builds is the corporation's; what a pilot built before joining stays theirs until they
+    // hand it over. The party a structure pays its licence as: its corporation's id, or
+    // InfluenceMap::PILOT + account; empty for a faction's, the world's or an abandoned one.
+    std::string StructureParty(const std::string& owner) const;
+    // The owner `account` builds as: their corporation's, or their own.
+    std::string BuildOwner(const std::string& account) const;
+    // Whether a structure's corporation no longer exists (#468): disbanded, it left its
+    // structures abandoned -- no rent, no patrols, nobody's law, and anyone may take them.
+    bool Abandoned(const std::string& owner) const;
+    // An owner as a player reads it: the pilot, "Name [TICK]", a faction's name, "abandoned".
+    std::string OwnerName(const std::string& owner) const;
+    // Whether `party` builds in `holder`'s space as its own: the holder itself, or a member's
+    // own structure in their corporation's system. Needs no licence.
+    bool OwnSpace(const std::string& party, const std::string& holder) const;
+    // `t` in `st` is `to`'s from now on: the licence moves with it, the layout and the
+    // influence say so, and an attack under way is told to the new owner.
+    void HandOver(SystemState& st, Structure& t, const std::string& to);
+    // The "transfer" verb (#468): structure `id` in `system` to a pilot (`pilot`, who must be
+    // online, as an invite's) or a corporation (`ticker`). A pilot hands over their own; a
+    // corporation's is handed over by its CEO or a director. Its licence and what is owed on it
+    // go with it, the new party's leave is asked again, and its goods, rules of engagement and
+    // attack notices stay with the structure.
+    Corps::Outcome TransferStructure(const std::string& account, const std::string& system, int id,
+                                     const std::string& pilot, const std::string& ticker,
+                                     const std::set<std::string>& online);
+    // The "take" verb (#468): an abandoned structure becomes the taker's -- their
+    // corporation's if they are in one, as if they had built it -- from a ship in space within
+    // its blueprint's reach, by the holder's leave where a licence is needed.
+    Corps::Outcome TakeStructure(const std::string& account, const std::string& system, int id);
     // A party's licence in a system; null for none.
     const Corps::Licence* LicenceOf(const std::string& party, const std::string& system) const;
     // A party's standing with a faction: a pilot's own, a corporation's the sum of its members'
@@ -1774,6 +1805,9 @@ private:
     // change their keys, then replay what the save said had changed (#38).
     void KeyWorldObjects(SystemState& st);
     void ReplayChanges(SystemState& st);
+    // The version of the world file loaded (LoadWorld), for what ReplayChanges translates: a
+    // structure of a corporation member's in a file before 18 is the corporation's (#468).
+    int worldVersionRead_ = Save::WORLD_VERSION;
     // Rebuilds neighbors_ from universe_.links; called wherever the links change.
     void IndexLinks();
     // Every market's base prices from its system's remoteness (#342 S5), counted afresh along
@@ -1909,8 +1943,6 @@ private:
     // and the stock goes back, when the mouth is not one to anchor any more.
     bool LayAnchorSite(Plan& p);
     void ResolveAnchor(const Plan& p);
-    // Who, by an owner string: a faction's name, or the pilot's.
-    std::string OwnerName(const std::string& owner) const;
 
     // The archive (#342 S4; Simulation_Drift.cpp).
     std::map<int, ArchivedRegion> archives_;

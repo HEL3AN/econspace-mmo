@@ -82,7 +82,12 @@ namespace Save
 //    a player's. In a version 16 file a held system with no `chartedBy` was simply never
 //    charted -- the playtest's bug; read now, it is charted by its holder, and a system
 //    somebody reached shows its natives' name.
-inline constexpr int WORLD_VERSION = 17;
+// 18: a structure's owner may be a corporation, "corp:<id>" (#468): what a member builds is
+//    the corporation's, and stays with it when the member leaves. In a version 17 file a
+//    member's structure names the member and was the corporation's through them; read now, it
+//    is the corporation's outright. A version 17 build would read "corp:<id>" as an account
+//    nobody has and leave the structure to nobody.
+inline constexpr int WORLD_VERSION = 18;
 
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.

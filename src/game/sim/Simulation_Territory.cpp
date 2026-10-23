@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <set>
 #include <string>
@@ -74,6 +75,8 @@ InfluenceMap Simulation::InfluenceIn(const SystemState& st) const
     // A pilot's structures count for their corporation (T1), as it is now.
     for (const auto& kv : st.profile.playerWeight)
     {
+        if (Abandoned(kv.first))
+            continue;  // a disbanded corporation's weighs for nobody (#468)
         const std::string id = corps_.IdOf(kv.first);
         m.corp[id.empty() ? InfluenceMap::PILOT + kv.first : id] += kv.second;
         if (!id.empty() && st.profile.playerClaims.count(kv.first) != 0)
@@ -319,7 +322,7 @@ Corps::Outcome Simulation::ApplyCorpAct(const std::string& account, const Corps:
     std::string verb = act.verb;
     for (char& ch : verb)
         ch = (char)std::tolower((unsigned char)ch);
-    if (verb != "police" && verb != "patrol")
+    if (verb != "police" && verb != "patrol" && verb != "transfer" && verb != "take")
         return corps_.Apply(account, act, online, now);
     // The system by its id, or by the name a player reads.
     std::string id = SystemById(act.system) != nullptr ? act.system : std::string();
@@ -339,6 +342,25 @@ Corps::Outcome Simulation::ApplyCorpAct(const std::string& account, const Corps:
     }
     if (verb == "patrol")  // a corporation's own patrol (slice 12)
         return ApplyPatrolAct(account, act, id);
+    if (verb == "transfer" || verb == "take")  // a structure handed over, or taken (#468)
+    {
+        // The structure by its id; the system it is in, or where the pilot is.
+        if (id.empty() && act.system.empty())
+            for (const auto& kv : sessions_)
+                if (!account.empty() && kv.second.accountName == account)
+                    id = kv.second.systemId;
+        char*      end = nullptr;
+        const long n = std::strtol(act.value.c_str(), &end, 10);
+        if (act.value.empty() || end == nullptr || *end != '\0' || n <= 0)
+        {
+            Corps::Outcome o;
+            o.error = o.told = "name the structure by its id";
+            return o;
+        }
+        if (verb == "take")
+            return TakeStructure(account, id, (int)n);
+        return TransferStructure(account, id, (int)n, act.pilot, act.ticker, online);
+    }
     const Corps::Corp* c = corps_.Of(account);
     const SystemState* st = id.empty() ? nullptr : SystemById(id);
     const bool         held = c != nullptr && st != nullptr && st->agg.holderCorp == c->id;
@@ -382,9 +404,10 @@ Simulation::FeeTo Simulation::FeeAt(const SystemState& st, const Entity& market)
     }
     else if (Outposts::FactionOf(market.GetOwner(), to.faction))
         to.toFaction = true;
-    else if (!market.GetOwner().empty())
+    else if (!market.GetOwner().empty() && !Abandoned(market.GetOwner()))
     {
-        // A player's market (#438): its owner's corporation's, or the owner's own.
+        // A player's market (#438): its corporation's -- the one that owns it, or its owner's
+        // (#468) -- or the owner's own. An abandoned one's fee goes to nobody.
         to.corp = corps_.IdOf(market.GetOwner());
         if (to.corp.empty())
             to.account = market.GetOwner();
@@ -828,10 +851,12 @@ void Simulation::RefreshLicences(SystemState& st)
         FactionId  owner;
         if (Outposts::FactionOf(t.GetOwner(), owner))
             continue;  // a faction's own builds where it likes
-        LicenceState      state = LicenceState::None;
-        double            until = 0.0;
-        const std::string party = PartyOf(t.GetOwner());
-        if (!holder.empty() && party != holder)
+        LicenceState state = LicenceState::None;
+        double       until = 0.0;
+        // Its party (#468): the corporation it is, or the pilot's own -- or nobody's, abandoned,
+        // which pays nothing and stands by nobody's leave.
+        const std::string party = StructureParty(t.GetOwner());
+        if (!holder.empty() && !party.empty() && !OwnSpace(party, holder))
         {
             const Corps::Licence* l = LicenceOf(party, st.id);
             if (l == nullptr || l->holder != holder)
@@ -902,16 +927,17 @@ void Simulation::StepLicences()
         bool              stands = false;
         if (st != nullptr)
             for (const auto& e : st->entities)
-                stands = stands || (e->GetKind() == EntityKind::Structure &&
-                                    !e->GetOwner().empty() && PartyOf(e->GetOwner()) == party);
+                stands =
+                    stands || (e->GetKind() == EntityKind::Structure && !e->GetOwner().empty() &&
+                               StructureParty(e->GetOwner()) == party);
         // Nobody to pay any more, or nothing of the party's there once what it paid for runs
         // out: the licence ends.
-        if (holder.empty() || holder == party || (!stands && time_ >= l.until))
+        if (holder.empty() || OwnSpace(party, holder) || (!stands && time_ >= l.until))
         {
             DropLicence(party, sys);
             touched.insert(sys);
             TellParty(party, "The licence to build in " + where + " has ended: " +
-                                 (holder.empty() || holder == party
+                                 (holder.empty() || OwnSpace(party, holder)
                                       ? std::string("it needs none now")
                                       : std::string("nothing of yours stands there")));
             continue;

@@ -293,6 +293,9 @@ private:
     // What building in this system takes (#431 slice 6), and the button that buys or renews
     // the licence: in the station window and the corporation window alike.
     void DrawLicenceHere(Ui::Layout& L);
+    // Handing the docked structure over (#468): to a pilot or a corporation's [TICKER], for its
+    // owner -- or its corporation's CEO or a director. Nothing for anyone else.
+    void DrawTransfer(Ui::Layout& L, const Entity& structure);
     bool CorpCommand(const std::string& rest);  // "/corp <verb> ...", as typed in chat
     // A pilot's ticker, as far as this client knows: its own corporation's members, and the
     // pilots in local. Empty for none, or not known.
@@ -303,10 +306,17 @@ private:
     // Whether this pilot manages `owner`'s structures: theirs, or a member's when this pilot
     // is the CEO or a director -- the server's rule (Corps::Registry::Manages), as a mirror.
     bool ManagesFor(const std::string& owner) const;
-    void SendChat(const std::string& typed);  // a line as typed: local, or /w <pilot> ...
-    void AddChatLine(const Proto::ChatLine& line);
-    void ChatNotice(const std::string& text);  // a line from this client, to this pilot
-    void DrawGalaxyMap();                      // full-screen star map
+    // Structure ownership (#468), as the layout says it: whether `owner` is this pilot or their
+    // corporation ("corp:<id>"), and whether this pilot may hand it over -- their own, or their
+    // corporation's when they are its CEO or a director (Corps::Registry::Commands).
+    bool OursOwner(const std::string& owner) const;
+    bool CommandsFor(const std::string& owner) const;
+    // Who owns a layout object, as a player reads it: the server's name for it, or the pilot.
+    std::string OwnerLabel(const Proto::EntityLayout& el) const;
+    void        SendChat(const std::string& typed);  // a line as typed: local, or /w <pilot> ...
+    void        AddChatLine(const Proto::ChatLine& line);
+    void        ChatNotice(const std::string& text);  // a line from this client, to this pilot
+    void        DrawGalaxyMap();                      // full-screen star map
     // The map's routes (#432), in GameMap.cpp: the sidebar's tabs, the right-click menu on a
     // star, and the itinerary (Navigation) -- planned here, flown by the server's route order.
     void        DrawMapSidebar(Ui::Layout& L);
@@ -657,6 +667,7 @@ private:
     Ui::Layout                  chatLayout_{ 4096 };
     // The police budget fields of the corporation window, by system (#431 slice 11).
     std::map<std::string, std::string> corpPolice_;
+    std::string structureTransfer_;  // the docked structure's window: to whom (#468)
     std::map<std::string, std::string> corpPatrolThreshold_;  // by system (#431 slice 12)
     std::map<std::string, std::string> corpPatrolAllow_;
     // The corporation (#347): this pilot's, as the server last said; the window's fields; the

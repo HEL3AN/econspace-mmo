@@ -305,7 +305,8 @@ TEST_CASE("Actions: every button an agent could want is an econagent tool, and t
                     Verb::Mine,       Verb::Attack,      Verb::Investigate,  Verb::Jump,
                     Verb::FlyHere,    Verb::WarpHere,    Verb::Build,        Verb::Accept,
                     Verb::HandIn,     Verb::Dismantle,   Verb::Refit,        Verb::Defence,
-                    Verb::SaveDesign, Verb::ApplyDesign, Verb::RenameDesign, Verb::DeleteDesign })
+                    Verb::SaveDesign, Verb::ApplyDesign, Verb::RenameDesign, Verb::DeleteDesign,
+                    Verb::Take })
     {
         const std::string tool = Actions::ToolFor(v);
         INFO("verb " << (int)v << " tool '" << tool << "'");

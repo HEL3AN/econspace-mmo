@@ -381,7 +381,10 @@ Proto::SystemLayout Simulation::BuildLayout(const std::string& systemId) const
     {
         Proto::EntityLayout el;
         if (DescribeStatic(*e, el))
+        {
+            el.ownerName = OwnerName(el.owner);
             lay.entities.push_back(std::move(el));
+        }
     }
     return lay;
 }
@@ -441,7 +444,10 @@ std::vector<std::pair<int, Proto::LayoutDelta>> Simulation::TakeRevealDeltas()
             {
                 Proto::EntityLayout el;
                 if (DescribeStatic(*e, el))
+                {
+                    el.ownerName = OwnerName(el.owner);
                     d.added.push_back(std::move(el));
+                }
             }
         if (d.added.empty())
             continue;  // gone, or another system's: a layout sent since has it right
@@ -476,7 +482,10 @@ std::vector<Proto::LayoutDelta> Simulation::TakeLayoutDeltas()
                 continue;
             Proto::EntityLayout el;
             if (DescribeStatic(*e, el))
+            {
+                el.ownerName = OwnerName(el.owner);
                 (added ? d.added : d.changed).push_back(std::move(el));
+            }
         }
         d.removed.assign(st.pendingRemoved.begin(), st.pendingRemoved.end());
 

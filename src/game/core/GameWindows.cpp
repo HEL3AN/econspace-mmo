@@ -504,7 +504,7 @@ void Game::DrawRadarContent(const Ui::Frame& f)
             case Proto::EntityKind::Structure:
             {
                 const auto l = layout_.byId.find(e.id);
-                const bool mine = l != layout_.byId.end() && l->second.owner == pilotName_;
+                const bool mine = l != layout_.byId.end() && OursOwner(l->second.owner);
                 col = mine ? t.standing.own : t.standing.neutral;
                 DrawRectangleLinesEx({ p.x - 3.0f * u, p.y - 3.0f * u, 6.0f * u, 6.0f * u }, u,
                                      col);

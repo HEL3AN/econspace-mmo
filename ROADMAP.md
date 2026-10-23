@@ -39,7 +39,7 @@ An honest snapshot of where EconSpace is and where it is going. The project inve
 **Players together**
 - Many players on one server, each with their own session, ship, account and missions (#3); accounts proved by challenge and answer (#106); one account, one session (#105).
 - Local chat, private lines and a corporation channel; corporations with members, roles, a treasury and their own AI patrols (#347, #431 slice 12).
-- Players build: structures from blueprints (#39), armed batteries with rules of engagement (#340), outposts that grow along a chain, keep goods, dock corporation mates and pay their owner's market fee (#433, #438), and shipyards built by need (#432).
+- Players build: structures from blueprints (#39), armed batteries with rules of engagement (#340), outposts that grow along a chain, keep goods, dock corporation mates and pay their owner's market fee (#433, #438), and shipyards built by need (#432). What a corporation member builds is the corporation's; a structure changes hands with its licence, and a disbanded corporation's are abandoned for anyone to take (#468).
 
 **The server**
 - An authoritative `Simulation` on a fixed `1/60` tick, headless in `econserver`; every world and account survives a restart and refuses a save from a newer build (#20).
@@ -64,10 +64,9 @@ In order. Releases are the owner's call.
 
 1. **#431 slice 16 — trading charts.** A design talk with the owner first, then slices built into the map interface.
 2. **#464 — NPC fits from the living world.** Gang, faction, wealth and location decide an NPC's fit; design first.
-3. **Structure ownership and transfer.** Ownership follows EVE; transfer of a structure and its rights, and rent, are to be designed.
-4. **#466 — a corporation's enemy list**, with the war declarations #431 deferred.
-5. **#425-#427 — playtest polish** from 0.1: docking, reconnect, the job board, planet surfaces, UI overlaps and raw numbers.
-6. **A playtest on a fresh world** (so much has changed since 0.1 that an old world would not show it), then **0.2** if the owner decides to tag it.
+3. **#466 — a corporation's enemy list**, with the war declarations #431 deferred.
+4. **#425-#427 — playtest polish** from 0.1: docking, reconnect, the job board, planet surfaces, UI overlaps and raw numbers.
+5. **A playtest on a fresh world** (so much has changed since 0.1 that an old world would not show it), then **0.2** if the owner decides to tag it.
 
 Also open and not scheduled: #342 S10 (scale to 10,000 systems), #407 (work near the starts), the review issues #350-#360 (code structure, saves, transport security), #179 (high-DPI), #333 (industry, a proposal).
 

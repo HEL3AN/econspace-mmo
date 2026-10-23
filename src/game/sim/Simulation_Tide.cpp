@@ -827,12 +827,6 @@ bool Simulation::IsAnchor(const std::string& archetype)
     return bp != nullptr && bp->archetype == archetype;
 }
 
-std::string Simulation::OwnerName(const std::string& owner) const
-{
-    FactionId f;
-    return Outposts::FactionOf(owner, f) ? FactionName(f) : owner;
-}
-
 std::string Simulation::MouthProblem(const ClientSession& s, const Entity& g) const
 {
     if (g.GetKind() != EntityKind::Gate || !static_cast<const JumpGate&>(g).IsUnstable() || !s.ship)
@@ -1200,6 +1194,12 @@ void Simulation::AnchorMouth(RegionOpening& o, const std::string& owner)
                  ": the way beyond holds, through the " + o.anchoredBy + " Gate");
     if (who)
         ChartBy(o.mouth, *who);  // a faction's Anchor: it is there (#431 K2)
+    std::string corp;
+    if (Corps::CorpOwner(owner, corp))  // a corporation's (#468): its journal says so
+        TellOwner(owner, "",
+                  o.anchoredBy + "'s Anchor holds the mouth in " + SystemName(o.mouth) + ": the " +
+                      o.anchoredBy + " Gate is permanent",
+                  false, Ev::Kind::Notice);
     for (auto& kv : sessions_)
         if (!owner.empty() && kv.second.accountName == owner)
             kv.second.RecordEvent(Ev::Kind::Notice, "Your Anchor holds the mouth in " +

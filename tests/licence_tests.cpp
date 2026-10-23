@@ -198,7 +198,8 @@ TEST_CASE("a corporation's standing is its members' together, and its rent comes
     CHECK(r.Find(c.Corp())->treasury == doctest::Approx(3000.0));
     CHECK(c.sim.LicenceProblem("boris", c.St()).empty());
 
-    const int  depot = c.Build("outpost", "boris");
+    // What a member builds is the corporation's (#468).
+    const int  depot = c.Build("outpost", Corps::OwnerOf(c.Corp()));
     Structure* t = c.ById(depot);
     REQUIRE(t != nullptr);
     c.sim.StepLicences();
@@ -270,7 +271,7 @@ TEST_CASE("a corporation's standing is its members' together, and its rent comes
         }
         REQUIRE(siege != nullptr);
         CHECK(siege->target == "core");
-        CHECK(siege->evicting == "boris");
+        CHECK(siege->evicting == "Deep Haul [DH]");
 
         // Buying a licence again makes it lawful.
         REQUIRE(c.sim.BuyLicence(anna));

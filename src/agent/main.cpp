@@ -30,6 +30,7 @@
 #include "entities/ShipType.h"
 #include "missions/MissionSystem.h"
 #include "sim/Chat.h"
+#include "sim/Corporation.h"
 #include "sim/Names.h"
 #include "sim/Orders.h"
 
@@ -239,6 +240,15 @@ void RequireShip()
 double NumberOr(const Rpc::Json& args, const char* key, double fallback)
 {
     return args.contains(key) && args[key].is_number() ? args[key].get<double>() : fallback;
+}
+
+// Whether a layout object's owner is this pilot or their corporation (#468): what a member
+// builds is the corporation's. Whether they may do a thing with it is the server's to say.
+bool Ours(const std::string& owner)
+{
+    const std::string corp = g_session.Corp().id;
+    return !owner.empty() &&
+           (owner == g_session.Account() || (!corp.empty() && owner == Corps::OwnerOf(corp)));
 }
 
 // The last journal entry handed to the model. Separate from the session's own cursor,
@@ -817,18 +827,29 @@ std::vector<Tool> BuildTools()
           "every pass, by the design's strength; unpaid, they stand down. The server limits "
           "ships per system and in all. A "
           "corporation holds a system with the most influence there -- its members' structures, "
-          "weighed by tier -- and a claim: a finished outpost or above of a member's. The "
-          "answer is the server's.",
+          "weighed by tier -- and a claim: a finished outpost or above of a member's. "
+          "Structures (#468): what a member builds is the corporation's and stays with it; what "
+          "a pilot built before joining stays theirs. 'transfer' (structure_id, system -- left "
+          "out, where you are -- and pilot, online, or ticker) hands one over: your own, or "
+          "your corporation's as its CEO or a director; its licence and what is owed on it, its "
+          "storage and its rules of engagement go with it, and the system's holder must license "
+          "the new owner. 'take' (structure_id) makes an abandoned one -- a disbanded "
+          "corporation's -- yours (your corporation's if you are in one), from your ship within "
+          "its reach, by the same licence as building there. The answer is the server's.",
           Obj({ { "action", Str("create, invite, join, decline, leave, kick, role, tax, docking, "
-                                "police or patrol") },
+                                "police, patrol, transfer or take") },
                 { "name", Str("create: the corporation's name, 3 to 24 characters") },
-                { "ticker", Str("create: 2 to 5 letters or digits; join/decline: whose invite") },
-                { "pilot", Str("invite, kick, role: the pilot's name") },
+                { "ticker", Str("create: 2 to 5 letters or digits; join/decline: whose invite; "
+                                "transfer: the corporation it goes to") },
+                { "pilot", Str("invite, kick, role: the pilot's name; transfer: the pilot it "
+                               "goes to, online") },
+                { "structure_id", Num("transfer, take: the structure's id, from observe") },
                 { "role", Str("role: ceo, director or member") },
                 { "value", Str("tax: a percentage such as 5, or standard; docking: own, allies "
                                "or all; police: credits an hour, or none; patrol: ships, or "
                                "none") },
-                { "system", Str("police, patrol: the system, by id or name") },
+                { "system", Str("police, patrol: the system, by id or name; transfer, take: "
+                                "where the structure is (left out: where you are)") },
                 { "design", Str("patrol: a name in your design library, or a stock design id; "
                                 "left out, as it was (else the default guard)") },
                 { "engage", Str("patrol: hold, return, enemies or strangers; left out, as it "
@@ -858,6 +879,8 @@ std::vector<Tool> BuildTools()
               else
                   act.threshold = args.value("threshold", std::string());
               act.allow = args.value("allow", std::string());
+              if (args.contains("structure_id"))  // transfer, take (#468)
+                  act.value = std::to_string((long long)NumberOr(args, "structure_id", 0));
               if (act.verb.empty())
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, "action is required" };
               const int before = g_session.LastChatSeq();
@@ -1964,8 +1987,8 @@ std::vector<Tool> BuildTools()
               auto laid = [&]() -> const Proto::EntityLayout*
               {
                   for (const auto& kv : g_session.Layout())
-                      if (kv.second.kind == Proto::EntityKind::Structure &&
-                          kv.second.owner == g_session.Account() && before.count(kv.first) == 0)
+                      if (kv.second.kind == Proto::EntityKind::Structure && Ours(kv.second.owner) &&
+                          before.count(kv.first) == 0)
                           return &kv.second;
                   return nullptr;
               };
@@ -2018,7 +2041,7 @@ std::vector<Tool> BuildTools()
               if (it == g_session.Layout().end() || it->second.kind != Proto::EntityKind::Structure)
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                     "no structure #" + std::to_string(id) + " in this system" };
-              if (it->second.owner != g_session.Account())
+              if (!Ours(it->second.owner))
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                     it->second.name +
                                         " is not yours; attack takes down another's" };
@@ -2070,7 +2093,7 @@ std::vector<Tool> BuildTools()
               if (it == g_session.Layout().end() || it->second.kind != Proto::EntityKind::Structure)
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                     "no structure #" + std::to_string(id) + " in this system" };
-              if (it->second.owner != g_session.Account())
+              if (!Ours(it->second.owner))
                   throw Rpc::Error{ Rpc::INVALID_PARAMS, it->second.name + " is not yours" };
               Defence           d;
               const std::string mode = args.contains("mode") && args["mode"].is_string()
@@ -2136,8 +2159,7 @@ std::vector<Tool> BuildTools()
               const int  id = (int)NumberOr(args, "target_id", 0);
               const auto it = g_session.Layout().find(id);
               if (it != g_session.Layout().end() &&
-                  it->second.kind == Proto::EntityKind::Structure &&
-                  it->second.owner == g_session.Account())
+                  it->second.kind == Proto::EntityKind::Structure && Ours(it->second.owner))
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                     it->second.name + " is yours; dismantle it instead" };
               Proto::Command c = OrderCommand(Orders::Kind::Attack);

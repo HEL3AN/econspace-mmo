@@ -1277,6 +1277,7 @@ Save::Result Simulation::LoadWorld(const std::string& path)
 
     Reset();
     InitGalaxy();  // skeletons with default aggregates for all systems
+    worldVersionRead_ = j.value("version", Save::UNVERSIONED);
     time_ = j.value("simTime", 0.0);
     // A world from before #392 has none; the host gives it one.
     worldId_ = j.contains("worldId") && j["worldId"].is_string() ? j["worldId"].get<std::string>()
@@ -1967,5 +1968,20 @@ void Simulation::ReplayChanges(SystemState& st)
             ApplyState(*e, a, time_);
             st.keys[e->GetId()] = key;
             st.entities.push_back(std::move(e));
+        }
+
+    // A world from before #468 named only accounts, and a member's structure was the
+    // corporation's through its owner's membership: it paid its licence from the treasury and
+    // its patrols guarded it. It is the corporation's outright now, as it was in effect --
+    // read with the corporations (corps.json), which the host loads before the systems.
+    if (worldVersionRead_ < 18)
+        for (const auto& e : st.entities)
+        {
+            if (e->GetKind() != EntityKind::Structure ||
+                e->GetOwner().find(':') != std::string::npos)
+                continue;
+            const std::string corp = corps_.IdOf(e->GetOwner());
+            if (!corp.empty())
+                e->SetOwner(Corps::OwnerOf(corp));
         }
 }

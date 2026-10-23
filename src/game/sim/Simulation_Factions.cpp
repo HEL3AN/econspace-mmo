@@ -1074,7 +1074,7 @@ void Simulation::Think(FactionId f)
                 lend = pool->second.first;
                 via = pool->second.second;
                 evictSite = StaticKey(kv.first, target->GetId());
-                evictOwner = target->GetOwner();
+                evictOwner = OwnerName(target->GetOwner());  // as a player reads it (#468)
             }
         }
 

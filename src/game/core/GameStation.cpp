@@ -101,7 +101,10 @@ void Game::DrawStationHall()
                  if (dockedStation_ == nullptr)  // a player's structure (#433)
                  {
                      L.Text(structure->GetName(), Ui::TextStyle::Heading().Tint(t.colors.dim));
-                     L.Text(structure->GetOwner(), Ui::TextStyle::Label());
+                     const auto el = layout_.byId.find(structure->GetId());
+                     L.Text(el != layout_.byId.end() ? OwnerLabel(el->second)
+                                                     : structure->GetOwner(),
+                            Ui::TextStyle::Label());
                      return;
                  }
                  L.Text(dockedStation_->GetName(), Ui::TextStyle::Heading().Tint(t.colors.dim));
@@ -140,7 +143,11 @@ void Game::DrawStationContent(const Ui::Frame& f)
                          [&]
                          {
                              L.Text(structure->GetName(), TextStyle::Title());
-                             L.Field("Owner", structure->GetOwner(), t.colors.text);
+                             const auto el = layout_.byId.find(structure->GetId());
+                             L.Field("Owner",
+                                     el != layout_.byId.end() ? OwnerLabel(el->second)
+                                                              : structure->GetOwner(),
+                                     t.colors.text);
                              L.Field("Money", TextFormat("%.0f cr", player_.GetMoney()),
                                      t.colors.money);
                              // Its storage (#438) is a container of the inventory window
@@ -157,6 +164,7 @@ void Game::DrawStationContent(const Ui::Frame& f)
                                      desk_.SetOpen(WIN_INVENTORY, true);
                              }
                              DrawLicenceHere(L);
+                             DrawTransfer(L, *structure);
                          });
                 if (L.Button("undock", "Undock", true))
                     Undock();

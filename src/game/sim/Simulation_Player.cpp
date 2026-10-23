@@ -1525,7 +1525,8 @@ std::string Simulation::DockRefusal(const ClientSession& s, const Entity& e) con
         if (!faction && static_cast<const Structure&>(e).DocksPilot(
                             s.accountName, corps_.SameCorp(owner, s.accountName)))
             return std::string();
-        return e.GetName() + (faction ? " is " + FactionName(f) + "'s" : " is " + owner + "'s") +
+        return e.GetName() +
+               (faction ? " is " + FactionName(f) + "'s" : " is " + OwnerName(owner) + "'s") +
                ", and docks only its owner's ships";
     }
     // In a system a corporation holds, its own structures dock whom it says (#431 T3): its

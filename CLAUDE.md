@@ -479,6 +479,12 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
   library (`ClientSession::designLibrary`, name -> id) is a reference like a ship's: it is
   in the account save and the snapshot, gets its `DesignDef` first, and keeps the design in
   `designs.json` through pruning. Applying a saved design *is* `RefitShip` with its fit.
+- **A structure's owner is not always an account** (#468). It may be a corporation,
+  `corp:<id>` -- what a member builds is the corporation's -- or a faction, `faction:<id>`,
+  and a `corp:` whose corporation is gone is abandoned. Ask the registry
+  (`Corps::Registry::Commands`, `SameCorp`, `IdOf`, which all read `corp:<id>`) or
+  `Simulation::StructureParty`, never `GetOwner() == account`: that silently denies every
+  corporation its own structures.
 - **Load `Archetypes` before building a world.** Entity constructors look themselves up
   in the registry, so an entity built before the load has no components and no glyph —
   it would silently be undockable and invisible rather than fail.

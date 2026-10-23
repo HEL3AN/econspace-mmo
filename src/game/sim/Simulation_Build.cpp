@@ -119,7 +119,11 @@ std::string Simulation::PlacementProblem(const ClientSession& s, const Blueprint
         if (onto == nullptr)
             return "a " + bp.name + " is built onto your own " + OntoNames(bp) +
                    ", and there is none there";
-        if (onto->GetOwner() != s.accountName)
+        // A pilot's own, or their corporation's (#468): any member adds to what it has.
+        std::string corp;
+        if (onto->GetOwner() != s.accountName &&
+            !(Corps::CorpOwner(onto->GetOwner(), corp) &&
+              corps_.SameCorp(onto->GetOwner(), s.accountName)))
             return onto->GetName() + " is not yours: a " + bp.name +
                    " is built only onto your own " + OntoNames(bp);
         const Blueprint* was = onto->GetBlueprint();
@@ -151,9 +155,14 @@ std::string Simulation::PlacementProblem(const ClientSession& s, const Blueprint
                     IsOutpostChain(static_cast<const Structure&>(*e)))
                     return "this system has an outpost already: " + e->GetName();
 
-        const int cap = Blueprints::PerAccount();
-        if (cap > 0 && StructuresOwnedBy(s.accountName) >= cap)
-            return "you already have " + std::to_string(cap) + " structures standing";
+        // Per account (#468): a corporation, which owns what its members build, may have as
+        // many as its members could alone.
+        const int          cap = Blueprints::PerAccount();
+        const Corps::Corp* corp = corps_.Of(s.accountName);
+        const int          most = corp != nullptr ? cap * (int)corp->members.size() : cap;
+        if (cap > 0 && StructuresOwnedBy(BuildOwner(s.accountName)) >= most)
+            return (corp != nullptr ? "your corporation already has " : "you already have ") +
+                   std::to_string(most) + " structures standing";
     }
     // In somebody's space, by their leave and a licence (#431 slice 6) -- an upgrade too.
     const std::string licence = LicenceProblem(s.accountName, *st);
@@ -286,7 +295,8 @@ int Simulation::Deploy(ClientSession& s, const std::string& blueprint, Vector2 a
     site->StartBuilding(time_, time_ + bp->buildSeconds);
     if (bp->lifetime > 0.0f)
         site->SetExpiresAt(time_ + bp->buildSeconds + bp->lifetime);
-    const int id = AddStatic(s.systemId, std::move(site), s.accountName);
+    // A member builds for their corporation (#468); a pilot in none, for themself.
+    const int id = AddStatic(s.systemId, std::move(site), BuildOwner(s.accountName));
     if (id == 0)
         return refuse("the system would not take it");
     s.RecordEvent(Ev::Kind::Notice,
@@ -346,8 +356,8 @@ std::string Simulation::DismantleProblem(const ClientSession& s, int id) const
     if (t == nullptr)
         return "there is no structure #" + std::to_string(id) + " in this system";
     // Only its owner, and an account has to be one: a faction's outpost is not a player's to
-    // take apart, and the world's own is nobody's.
-    if (s.accountName.empty() || t->GetOwner() != s.accountName)
+    // take apart, and the world's own is nobody's. A corporation's, its CEO or a director (#468).
+    if (!corps_.Commands(s.accountName, t->GetOwner()))
         return t->GetName() + " is not yours";
     if (s.IsDocked())
         return "undock first: a structure is taken apart from space";
@@ -476,8 +486,10 @@ int Simulation::TakeCargo(ClientSession& s, int type, int amount)
 bool Simulation::LawOver(const SystemState& st, const Structure& t, const std::string& attacker,
                          FactionId& law) const
 {
-    if (!attacker.empty() && t.GetOwner() == attacker)
+    if (corps_.Commands(attacker, t.GetOwner()))
         return false;  // your own is yours to wreck
+    if (Abandoned(t.GetOwner()))
+        return false;  // a disbanded corporation's is nobody's to guard (#468)
     FactionId owner;
     if (Outposts::FactionOf(t.GetOwner(), owner))
     {
@@ -513,7 +525,7 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
         CallPolice(st, *by, law);  // ...and the law comes, as it does for a ship
     }
     // An armed structure fires back at whoever shot it (StepStationDefence), for a while.
-    if (by != nullptr && by->accountName != t->GetOwner())
+    if (by != nullptr && !corps_.Commands(by->accountName, t->GetOwner()))
         st.provokedBy[id][by->id] = time_ + PROVOKED_SECONDS;
 
     t->TakeDamage(damage, time_);
@@ -522,8 +534,8 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
     FactionId   ownerFaction;
     std::string attackedBy;
     if (cause != Loss::Decay && !t->GetOwner().empty() &&
-        !Outposts::FactionOf(t->GetOwner(), ownerFaction) &&
-        (by == nullptr || by->accountName != t->GetOwner()))
+        !Outposts::FactionOf(t->GetOwner(), ownerFaction) && !Abandoned(t->GetOwner()) &&
+        (by == nullptr || !corps_.Commands(by->accountName, t->GetOwner())))
         attackedBy = by != nullptr ? (by->accountName.empty() ? "a pilot" : by->accountName)
                      : cause == Loss::Siege ? FactionName(attacker)
                                             : "unknown attackers";
@@ -667,6 +679,13 @@ void Simulation::StepStructures()
 {
     auto tell = [&](const std::string& owner, Ev::Kind kind, const std::string& text)
     {
+        // A corporation's (#468): its journal, which its members read.
+        std::string corp;
+        if (Corps::CorpOwner(owner, corp))
+        {
+            TellOwner(owner, text, text, false, kind);
+            return;
+        }
         for (auto& kv : sessions_)
             if (kv.second.accountName == owner)
                 kv.second.RecordEvent(kind, text);
