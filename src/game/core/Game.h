@@ -629,6 +629,8 @@ private:
     Ui::Layout                  chatLayout_{ 4096 };
     // The police budget fields of the corporation window, by system (#431 slice 11).
     std::map<std::string, std::string> corpPolice_;
+    std::map<std::string, std::string> corpPatrolThreshold_;  // by system (#431 slice 12)
+    std::map<std::string, std::string> corpPatrolAllow_;
     // The corporation (#347): this pilot's, as the server last said; the window's fields; the
     // member chosen in its list.
     Proto::CorpView corpView_;

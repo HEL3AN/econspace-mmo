@@ -238,6 +238,37 @@ void Simulation::StepOwners()
     }
 }
 
+bool Simulation::OwnerSeen(const std::string& account) const
+{
+    for (const auto& kv : sessions_)
+        if (kv.second.accountName == account)
+            return true;
+    const auto it = owners_.find(account);
+    return it != owners_.end() && it->second.seen;
+}
+
+bool Simulation::NoteUnseenOwner(const std::string& account, const std::string& path,
+                                 std::string& why)
+{
+    why.clear();
+    if (account.empty() || OwnerSeen(account))
+        return false;
+    ClientSession      s;  // a reading, never in sessions_ and never saved
+    const Save::Result r = LoadAccount(s, path);
+    if (r == Save::Result::TooNew)
+        why = path + " is from a newer build";
+    else if (r == Save::Result::Corrupt)
+        why = path + " is damaged";
+    if (r != Save::Result::Ok)
+        return false;
+    OwnerBook& b = owners_[account];
+    b.seen = true;
+    b.money = s.account.GetMoney();
+    for (FactionId f : Factions::All())
+        b.standing[f] = s.account.GetReputation(f);
+    return true;
+}
+
 void Simulation::NoteAttack(const std::string& owner, const std::string& key,
                             const std::string& name, const std::string& system,
                             const std::string& by, float hull, bool destroyed)

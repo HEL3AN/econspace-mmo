@@ -156,6 +156,10 @@ bool Game::CorpCommand(const std::string& text)
                 act.design = word.substr(7);
             else if (Lower(word).rfind("engage=", 0) == 0)
                 act.engage = word.substr(7);
+            else if (Lower(word).rfind("threshold=", 0) == 0)
+                act.threshold = word.substr(10);
+            else if (Lower(word).rfind("allow=", 0) == 0)
+                act.allow = word.substr(6);  // comma separated, no spaces; "none" clears it
             else
                 where += (where.empty() ? "" : " ") + word;
         }
@@ -163,7 +167,8 @@ bool Game::CorpCommand(const std::string& text)
         if (cut == std::string::npos)
         {
             ChatNotice("To keep a patrol: /corp patrol <system> <ships>|none [design=<name>] "
-                       "[engage=hold|return|enemies|strangers]");
+                       "[engage=hold|return|enemies|strangers] [threshold=<standing>] "
+                       "[allow=<name,name>|none]");
             return true;
         }
         act.value = Trim(where.substr(cut + 1));
@@ -270,18 +275,61 @@ void Game::DrawCorpContent(const Ui::Frame& f)
                 // Set with /corp patrol; an officer can stand one down from here.
                 for (const Proto::PatrolView& p : corpView_.patrols)
                 {
-                    L.Field("Patrol, " + MapSystemName(p.system),
-                            TextFormat("%d of %s, %.1f there, %s, %.0f cr an hour", p.ships,
-                                       p.design.c_str(), p.present, p.engage.c_str(), p.upkeep),
+                    std::string text =
+                        TextFormat("%d of %s, %.1f there, %s, %.0f cr an hour", p.ships,
+                                   p.design.c_str(), p.present, p.engage.c_str(), p.upkeep);
+                    if (p.engage == "enemies")
+                        text += TextFormat(", below %.0f", p.threshold);
+                    if (!p.allow.empty())
+                        text += ", allows " + p.allow;
+                    L.Field("Patrol, " + MapSystemName(p.system), text,
                             p.present > 0.0f ? t.colors.text : t.colors.dim);
-                    if (leads && L.Button("nopatrol_" + p.system, "Stand down"))
-                    {
-                        Proto::CorpAct a;
-                        a.verb = "patrol";
-                        a.value = "none";
-                        a.system = p.system;
-                        acts.push_back(a);
-                    }
+                    if (!leads)
+                        continue;
+                    // Its threshold and allow-list (#431 slice 12), the rules a structure keeps.
+                    L.Row(
+                        Box().GrowX().Gap(t.metrics.gap).Align(Ui::Align::Start, Ui::Align::Center),
+                        [&]
+                        {
+                            std::string&         th = corpPatrolThreshold_[p.system];
+                            std::string&         allow = corpPatrolAllow_[p.system];
+                            Ui::TextFieldOptions opt;
+                            opt.placeholder = TextFormat("%.0f", p.threshold);
+                            opt.maxLength = 6;
+                            const Ui::EditResult r1 = L.TextField("patrolth_" + p.system, th, opt);
+                            Ui::TextFieldOptions wide;
+                            wide.placeholder = p.allow.empty() ? "allow: names" : p.allow;
+                            wide.maxLength = 120;
+                            const Ui::EditResult r2 =
+                                L.TextField("patrolallow_" + p.system, allow, wide);
+                            const bool any = !Trim(th).empty() || !Trim(allow).empty();
+                            if ((L.Button("setpatrol_" + p.system, "Set", false, any) ||
+                                 r1.submitted || r2.submitted) &&
+                                any)
+                            {
+                                Proto::CorpAct a;
+                                a.verb = "patrol";
+                                a.value = std::to_string(p.ships);
+                                a.system = p.system;
+                                a.threshold = Trim(th);
+                                a.allow = Trim(allow);
+                                acts.push_back(a);
+                                th.clear();
+                                allow.clear();
+                            }
+                            if (L.Button("nopatrol_" + p.system, "Stand down"))
+                            {
+                                Proto::CorpAct a;
+                                a.verb = "patrol";
+                                a.value = "none";
+                                a.system = p.system;
+                                acts.push_back(a);
+                            }
+                        });
+                    L.Tooltip("setpatrol_" + p.system,
+                              "The standing below which it fires on a faction (on enemies), and "
+                              "whom it lets be on strangers: pilots and factions, comma "
+                              "separated, or none");
                 }
                 if (leads)
                     L.Text("/corp patrol <system> <ships> [design=<name>] [engage=<mode>] keeps "

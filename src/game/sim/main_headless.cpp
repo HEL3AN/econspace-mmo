@@ -854,6 +854,8 @@ static Proto::CorpView CorpViewFor(const Simulation& sim, const std::string& acc
             }
             p.design = Simulation::PatrolDesign(kv.second);
             p.engage = EngageName(kv.second.rules.engage);
+            p.threshold = kv.second.rules.threshold;
+            p.allow = AllowListText(kv.second.rules);
             p.upkeep = Simulation::PatrolUpkeep(kv.second);
             v.patrols.push_back(std::move(p));
         }
@@ -2112,6 +2114,18 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
         }
     }
 
+    // A corporation's standing is its members' summed, as last seen online (#431 slice 12): a
+    // member this world never saw is read from their account file, never written.
+    {
+        std::vector<std::string> skipped;
+        const int                noted = Host::NoteUnseenMembers(sim, accountsDir, skipped);
+        if (noted > 0)
+            Log::Printf("Corporations: %d member(s) never seen online noted from their accounts.\n",
+                        noted);
+        for (const std::string& why : skipped)
+            Log::Printf("Corporations: a member's standing was not read: %s.\n", why.c_str());
+    }
+
     // Who may come in (#400): allowlist.txt and bans.txt beside world.json. server.json says
     // whether the list is checked; without one, a public server or a list that exists does.
     Host::AccessList access;
@@ -2583,11 +2597,11 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                     for (const Chat::Pilot& p : online)
                         names.insert(p.name);
                     const double         now = ChatClock();
-                    const Corps::Outcome o =
-                        sim.ApplyCorpAct(hc.account,
-                                         { act.verb, act.name, act.ticker, act.pilot, act.role,
-                                           act.value, act.system, act.design, act.engage },
-                                         names, now);
+                    const Corps::Outcome o = sim.ApplyCorpAct(
+                        hc.account,
+                        { act.verb, act.name, act.ticker, act.pilot, act.role, act.value,
+                          act.system, act.design, act.engage, act.threshold, act.allow },
+                        names, now);
                     std::vector<Chat::Delivery> out;
                     Chat::Delivery              told;
                     told.to = hc.sessionId;

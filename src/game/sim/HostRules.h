@@ -84,6 +84,13 @@ struct AccountMove
     std::string              error;
 };
 AccountMove MoveAccounts(const std::string& fromDir, const std::string& toDir);
+// The corporation members this world has never seen online (#431 slice 12): their standings
+// read from their account files in `accountsDir` (NoteUnseenOwner), so a corporation's
+// standing -- its members' summed -- counts them from the start. Read only; a file stamped
+// for another world (#392), from a newer build or damaged is skipped and named in `skipped`.
+// The number noted.
+int NoteUnseenMembers(Simulation& sim, const std::string& accountsDir,
+                      std::vector<std::string>& skipped);
 // A new world's identity (#392): sixteen hex digits, from the clock and random_device.
 std::string NewWorldId();
 

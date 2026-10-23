@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <set>
@@ -649,7 +650,8 @@ Outcome Registry::SetPolice(const std::string& by, const std::string& system,
 Outcome Registry::SetPatrol(const std::string& by, const std::string& system,
                             const std::string& where, const std::string& value,
                             const std::string& design, const std::string& designName,
-                            const std::string& engage, int systemMax, int corpMax, bool allowed)
+                            const std::string& engage, const std::string& threshold,
+                            const std::string& allow, int systemMax, int corpMax, bool allowed)
 {
     const Corp* in = Of(by);
     if (in == nullptr)
@@ -673,6 +675,22 @@ Outcome Registry::SetPatrol(const std::string& by, const std::string& system,
     Defence    rules = was != in->patrols.end() ? was->second.rules : Patrol::DefaultRules();
     if (!engage.empty() && !EngageFrom(Lower(engage), rules.engage))
         return Refuse("a patrol engages as hold, return, enemies or strangers");
+    // The rest of the rules a structure keeps (#340): the standing below which a faction is
+    // an enemy, and whom a patrol on strangers lets be.
+    if (!threshold.empty())
+    {
+        char*       end = nullptr;
+        const float th = std::strtof(threshold.c_str(), &end);
+        if (end == nullptr || *end != '\0' || !(th >= Defence::THRESHOLD_MIN) ||
+            !(th <= Defence::THRESHOLD_MAX))
+            return Refuse("a patrol's threshold is a standing from -100 to 100, such as -10");
+        rules.threshold = th;
+    }
+    if (!allow.empty())
+        ReadAllowList(Lower(allow) == "none" ? std::string() : allow, rules);
+    const std::string problem = DefenceProblem(rules);
+    if (!problem.empty())
+        return Refuse(problem);
     // Standing one down is always allowed -- the system may have been lost since -- but
     // keeping one only where the corporation has something to guard.
     if (ships > 0 && !allowed)
@@ -701,6 +719,11 @@ Outcome Registry::SetPatrol(const std::string& by, const std::string& system,
         o.told = Tag(c) + " keeps " + std::to_string(ships) + " patrol ship" +
                  (ships == 1 ? "" : "s") + flies + " in " + where + ", engaging " +
                  EngageLabel(rules.engage);
+        if (rules.engage == Engage::Enemies)
+            o.told += " (below " + std::to_string((int)std::lround(rules.threshold)) + ")";
+        const std::string allows = AllowListText(rules);
+        if (!allows.empty())
+            o.told += ", letting be " + allows;
     }
     else
     {

@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    59;  // 59: a corporation's own patrols (#431 slice 12) -- a CorpAct "patrol" names a
+    60;  // 60: a patrol's threshold and allow-list (#431 slice 12, #186) -- a CorpAct "patrol"
+         // may carry them, and a CorpView's patrols show them;
+         // 59: a corporation's own patrols (#431 slice 12) -- a CorpAct "patrol" names a
          // system, ships, a design and an engagement mode, a CorpView carries the patrols, and
          // an NPC's role may be a corporation's guard (NpcRole 5);
          // 58: drift marks (#431 slice 15) -- a system of the index says whether its region
@@ -822,10 +824,12 @@ struct CorpAct
     std::string ticker;
     std::string pilot;
     std::string role;
-    std::string value{};   // braced: the verbs without one leave it out
-    std::string system{};  // "police", "patrol": the system, by id or by name
-    std::string design{};  // "patrol": a name in the sender's design library, or a stock id
-    std::string engage{};  // "patrol": "hold", "return", "enemies", "strangers"; empty: as was
+    std::string value{};      // braced: the verbs without one leave it out
+    std::string system{};     // "police", "patrol": the system, by id or by name
+    std::string design{};     // "patrol": a name in the sender's design library, or a stock id
+    std::string engage{};     // "patrol": "hold", "return", "enemies", "strangers"; empty: as was
+    std::string threshold{};  // "patrol": the rules' standing threshold; empty: as was
+    std::string allow{};      // "patrol": the allow-list, comma separated, "none"; empty: as was
 };
 
 // A patrol a corporation keeps (#431 slice 12): where, how many it keeps and how many stand
@@ -837,7 +841,9 @@ struct PatrolView
     int         ships = 0;
     float       present = 0.0f;
     std::string design;
-    std::string engage;  // EngageName
+    std::string engage;            // EngageName
+    float       threshold = 0.0f;  // ...below which a faction is an enemy
+    std::string allow;             // AllowListText: whom it lets be on strangers
     double      upkeep = 0.0;
 };
 

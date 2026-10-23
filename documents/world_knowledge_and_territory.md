@@ -330,6 +330,14 @@ journal on login. A Discord hook is a later slice.
   there is presence, `SystemAggregate::patrols` by corporation in `world.json`. Where somebody
   is, it flies as `NpcRole::Guard` ships: no faction's, its corporation's (`NpcShip::GetCorp`),
   picking fights by `GuardHunts`/`GuardEngages` from the same rules a structure keeps.
+  Follow-ups (owner, 2026-10-23, #186): the verb, the corporation window and `corp_act` set the
+  rules' threshold and allow-list too; a ship it makes good is bought from the treasury at
+  `DesignPrice` (what a pilot pays for that hull so fitted), and with no money for it the patrol
+  waits, said once; a faction weighing an eviction counts the owner's patrol as a garrison of as
+  many warships as its design is a match for (`PatrolAsWarships`); and at start a member the
+  world never saw online is noted from their account file (`Host::NoteUnseenMembers`, read
+  only, another world's or a damaged file skipped), so a corporation's summed standing counts
+  them.
 
 ---
 

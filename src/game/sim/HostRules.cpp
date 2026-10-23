@@ -189,6 +189,33 @@ WorldStart OpenWorld(Simulation& sim, const std::string& path, std::string& why)
     return WorldStart::Refused;
 }
 
+int NoteUnseenMembers(Simulation& sim, const std::string& accountsDir,
+                      std::vector<std::string>& skipped)
+{
+    std::vector<std::string> members;  // a copy: noting touches nothing of the registry
+    for (const auto& kv : sim.Corporations().All())
+        for (const Corps::Member& m : kv.second.members)
+            members.push_back(m.account);
+    int noted = 0;
+    for (const std::string& account : members)
+    {
+        if (sim.OwnerSeen(account))
+            continue;  // seen, or on now
+        const std::string path = AccountFile(accountsDir, account);
+        if (sim.ForeignWorld(AccountWorld(path)))
+        {
+            skipped.push_back(path + " belongs to another world");
+            continue;
+        }
+        std::string why;
+        if (sim.NoteUnseenOwner(account, path, why))
+            noted++;
+        else if (!why.empty())
+            skipped.push_back(why);
+    }
+    return noted;
+}
+
 std::string AccountsDir(const std::string& worldPath)
 {
     const size_t slash = worldPath.find_last_of("/\\");
