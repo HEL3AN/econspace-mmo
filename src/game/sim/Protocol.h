@@ -414,6 +414,7 @@ struct ScanView
 {
     double                     until = 0.0;
     double                     seconds = 0.0;  // what a pass takes
+    double                     power = 1.0;    // what a pass adds: the rule times the probes
     std::vector<SignatureView> sigs;
 };
 

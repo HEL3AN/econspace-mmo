@@ -161,3 +161,55 @@ TEST_CASE("a rich belt is hidden until scanned, then mined like any belt and sol
     const Simulation::ChartOffer o = w.sim.ChartOfferFor(ann, Fac::TradersGuild(), at);
     CHECK(o.finds >= 1);
 }
+
+TEST_CASE("a probe module adds to a design's scan stat, and a pass multiplies by it (#346)")
+{
+    World                   w;
+    const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+    REQUIRE(c.FindModule("gate.probe") != nullptr);
+
+    // The stock scout has none; a probe in place of its tractor gives half again.
+    Ships::Design d = *c.FindDesign("scout");
+    Ships::Stats  before, after;
+    std::string   error;
+    REQUIRE(Ships::Derive(c, d, before, error));
+    CHECK(before.scan == doctest::Approx(0.0f));
+    for (Ships::FitLine& l : d.fit)
+        if (l.module == "weapons.tractor")
+            l.module = "gate.probe";
+    REQUIRE_MESSAGE(Ships::Validate(c, d, error), error);
+    REQUIRE(Ships::Derive(c, d, after, error));
+    CHECK(after.scan == doctest::Approx(0.5f));
+    ShipStats flown;
+    REQUIRE(PlayerStats(d, flown, error));
+    CHECK(flown.scan == doctest::Approx(0.5f));
+
+    // The price follows from its parts: a priced module has a cost.
+    CHECK(c.FindModule("gate.probe")->cost.size() >= 1);
+
+    // A signature of 0.35 (a rich belt, as a hidden base) takes three passes bare-handed and two
+    // with one probe.
+    std::string   at;
+    const Entity* base = w.Find("field.rich", at);
+    REQUIRE(base != nullptr);
+    const std::string key = w.sim.SignatureKey(*w.sim.SystemById(at), *base);
+
+    ClientSession& bare = w.Pilot("bare");
+    w.sim.ServerEnterSystem(bare, at, bare.systemId);
+    CHECK(w.sim.ScanViewOf(bare).power == doctest::Approx(1.0));
+    w.Pass(bare);
+    w.Pass(bare);
+    CHECK(bare.known.count(key) == 0);
+    w.Pass(bare);
+    CHECK(bare.known.count(key) == 1);
+
+    ClientSession& probed = w.sim.CreateSession(w.home, Vector2{ 0.0f, 0.0f }, flown);
+    probed.accountName = "probed";
+    probed.ship->SetPilotName("probed");
+    w.sim.ServerEnterSystem(probed, at, probed.systemId);
+    CHECK(w.sim.ScanViewOf(probed).power == doctest::Approx(1.5));
+    w.Pass(probed);
+    CHECK(probed.known.count(key) == 0);
+    w.Pass(probed);
+    CHECK(probed.known.count(key) == 1);
+}

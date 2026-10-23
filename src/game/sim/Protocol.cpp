@@ -1102,7 +1102,10 @@ json PlayerJson(const Proto::PlayerView& p)
                 gj["dest"] = g.dest;
             sigs.push_back(std::move(gj));
         }
-        j["scan"] = { { "until", p.scan.until }, { "secs", p.scan.seconds }, { "sigs", sigs } };
+        j["scan"] = { { "until", p.scan.until },
+                      { "secs", p.scan.seconds },
+                      { "pow", Round2(p.scan.power) },
+                      { "sigs", sigs } };
     }
     // Only where building takes a licence (#431 slice 6).
     if (!p.licence.holder.empty())
@@ -1182,6 +1185,7 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
     {
         p.scan.until = scan->value("until", 0.0);
         p.scan.seconds = scan->value("secs", 0.0);
+        p.scan.power = scan->value("pow", 1.0);
         const auto sigs = scan->find("sigs");
         if (sigs != scan->end() && sigs->is_array())
             for (const json& gj : *sigs)

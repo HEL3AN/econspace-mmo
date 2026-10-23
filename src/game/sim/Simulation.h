@@ -332,7 +332,10 @@ public:
     void                ForSession(const ClientSession& s, Proto::LayoutDelta& d) const;
     // Starts a pass of the ship's scanner. False, and why in the journal, when it cannot:
     // docked, warping, or a pass already under way.
-    bool StartScan(ClientSession& s);
+    // What one pass adds per unit of a signature's strength: the rule's power times
+    // (1 + the ship's probes) -- two probes of 0.5 double it (#346).
+    double ScanPower(const ClientSession& s) const;
+    bool   StartScan(ClientSession& s);
     // Every tick: a pass interrupted, or finished -- what it resolved is the pilot's.
     void StepPlayerScan(ClientSession& s);
     // What the scanner shows this pilot in the system they are in, for the snapshot.

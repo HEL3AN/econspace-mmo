@@ -793,6 +793,7 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
         line("Turn", q.before.turnSpeed, q.after.turnSpeed, "%.2f");
         line("Hold", (float)q.before.cargoCapacity, (float)q.after.cargoCapacity, "%.0f");
         line("Mining", q.before.miningRate, q.after.miningRate, "%.1f");
+        line("Scanner", 1.0f + q.before.scan, 1.0f + q.after.scan, "%.1fx");
         line("Hull", q.before.hull, q.after.hull, "%.0f");
         line("Guns", q.before.damage, q.after.damage, "%.0f");
         if (q.changed && !q.design.id.empty())

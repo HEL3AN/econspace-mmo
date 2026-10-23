@@ -299,7 +299,8 @@ TEST_CASE("a ship's look never decides what it can do: its function is in fixed 
         const Ships::ModulePart* m = c.FindModule(id);
         return m != nullptr &&
                (m->provides.thrust > 0.0f || m->provides.rcs > 0.0f || m->provides.cargo > 0.0f ||
-                m->provides.mining > 0.0f || m->provides.hull > 0.0f || m->provides.damage > 0.0f);
+                m->provides.mining > 0.0f || m->provides.scan > 0.0f || m->provides.hull > 0.0f ||
+                m->provides.damage > 0.0f);
     };
     int ships = 0;
     for (const Archetype& a : Archetypes::All())
