@@ -122,6 +122,8 @@ int main(int argc, char** argv)
             editor.ShowGallerySockets();
         else if (arg == "thrusting")
             editor.SetGalleryThrusting();  // engines lit, for a shot of a ship under way
+        else if (arg == "truescale")
+            editor.SetGalleryTrueScale();  // every card at one scale (#426)
         else if (arg == "pack" && i + 1 < argc)
             pack = argv[++i];
         else if (arg == "seeds" && i + 1 < argc)

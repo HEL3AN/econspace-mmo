@@ -508,17 +508,25 @@ float PieceReach(const Piece& p);
 // which is what a truss looked like the first time parts were shaded individually.
 Vector2 Axis(const Piece& p);
 
-// The sides of the polygon a body's disc is drawn as: raylib's own circle, corners at every
-// tenth of a turn from the +x axis. A surface piece is cut to that polygon rather than to
-// the true circle, so it never shows past the outline actually on screen.
-constexpr int BODY_SIDES = 36;
+// The sides of the polygon a round body `radiusPixels` in radius on screen is drawn as,
+// corners from the +x axis (#426). As many as keep every chord within a third of a pixel of
+// the true circle, so an outline is round at any zoom: raylib's own circle has thirty-six,
+// and a planet filling the screen was a polygon with sides two hundred pixels long. Always a
+// multiple of four, which raylib's sector needs to draw them all. A surface piece is cut to
+// this polygon rather than to the true circle, so it never shows past the outline actually
+// on screen -- which is why the backend and the cut ask the same function.
+int           BodySides(float radiusPixels);
+constexpr int BODY_SIDES_MIN = 36;
+constexpr int BODY_SIDES_MAX = 1024;
 
 // What a round piece on a planet covers on screen (#166): its ellipse, foreshortened toward
 // the body's centre, cut to the body's disc. Near the limb the ellipse is still a whole
 // ellipse and would bulge past the planet's edge; a mark on a surface ends where the
-// surface does. A convex polygon in world coordinates, `segments` corners before the cut.
-// Empty for anything that is not a round surface piece.
-std::vector<Vector2> SurfaceOutline(const Piece& p, int segments = 36);
+// surface does. A convex polygon in world coordinates, `segments` corners before the cut,
+// cut to the body drawn with `bodySides` (BodySides). Empty for anything that is not a round
+// surface piece.
+std::vector<Vector2> SurfaceOutline(const Piece& p, int segments = 36,
+                                    int bodySides = BODY_SIDES_MIN);
 
 // Where to fan a surface outline from: the piece's own centre, which is where a glow is
 // brightest -- unless the piece sits in the sliver between the true limb and the body's

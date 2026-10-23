@@ -26,20 +26,20 @@ void main()
     float r2 = dot(centred, centred);
 
     // Barrel first, so the separation below is measured on the bowed image and the two
-    // agree at the edges instead of fighting.
-    vec2 bowed = 0.5 + centred * (1.0 + 0.12 * scale * r2);
+    // agree at the edges instead of fighting. Normalised so that a corner (r2 = 0.5) lands
+    // on the corner: the bow pulls the middle of each edge inward and never reaches outside
+    // the frame. Unnormalised, every edge sampled past the picture and the screen wore a
+    // black curved border fifteen to forty pixels wide (#426).
+    const float k = 0.12;
+    vec2 bowed = 0.5 + centred * (1.0 + k * scale * r2) / (1.0 + k * scale * 0.5);
 
-    // Outside the frame there is nothing to sample; black is honest and a clamped smear is
-    // not, because a smear looks like part of the picture.
-    if (bowed.x < 0.0 || bowed.x > 1.0 || bowed.y < 0.0 || bowed.y > 1.0)
-    {
-        finalColor = vec4(0.0, 0.0, 0.0, 1.0);
-        return;
-    }
-
+    // The channels are pulled apart along the radius, and at the edge one of them points
+    // outside the frame. Clamped, so it repeats the edge pixel rather than reading the far
+    // side of the texture: wrapped, the top row of the screen took its red from the bottom
+    // one and the picture had a thin red and cyan line along the top (#426).
     vec2 shift = centred * amount * 0.006 * (0.4 + r2 * 3.0);
-    float r = texture(texture0, bowed + shift).r;
-    float g = texture(texture0, bowed).g;
-    float b = texture(texture0, bowed - shift).b;
+    float r = texture(texture0, clamp(bowed + shift, 0.0, 1.0)).r;
+    float g = texture(texture0, clamp(bowed, 0.0, 1.0)).g;
+    float b = texture(texture0, clamp(bowed - shift, 0.0, 1.0)).b;
     finalColor = vec4(r, g, b, 1.0) * fragColor;
 }

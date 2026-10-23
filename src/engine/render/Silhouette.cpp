@@ -103,49 +103,107 @@ void BandQuads(float latLo, float latHi, float tiltDeg, int columns, std::vector
         bool  on = false;
         float y0 = 0.0f, y1 = 0.0f;
     };
-    // Two runs per column: [0] the rising branch, [1] the falling one.
-    std::vector<Run> prev(2), cur(2);
-    float            prevX = 0.0f;
+    // The runs of the column at angle t (x = sin t): [0] the rising branch, [1] the falling one.
+    auto runsAt = [&](float t, Run(&r)[2])
+    {
+        const float rho = std::cos(t);
+        r[0] = r[1] = Run{};
+        if (rho <= 1e-4f)
+            return;
+        const float a1 = std::fmax(-1.0f, std::fmin(1.0f, s1 / rho));
+        const float a2 = std::fmax(-1.0f, std::fmin(1.0f, s2 / rho));
+        const float uLo = i - 0.5f * PI, uHi = i + 0.5f * PI;  // u = theta + tilt
+        const float rise0 = std::asin(a1), rise1 = std::asin(a2);
+        const float fall0 = PI - std::asin(a2), fall1 = PI - std::asin(a1);
+        const float spans[2][2] = { { rise0, rise1 }, { fall0, fall1 } };
+        for (int b = 0; b < 2; b++)
+        {
+            const float u0 = std::fmax(spans[b][0], uLo);
+            const float u1 = std::fmin(spans[b][1], uHi);
+            if (u1 - u0 <= 1e-5f)
+                continue;
+            // y = -rho * sin(theta), theta = u - tilt.
+            r[b] = { true, -rho * std::sin(u0 - i), -rho * std::sin(u1 - i) };
+        }
+    };
+    auto quad = [&](float ta, const Run& a, float tb, const Run& b)
+    {
+        const float xa = std::sin(ta), xb = std::sin(tb);
+        out.push_back({ xa, a.y0 });
+        out.push_back({ xa, a.y1 });
+        out.push_back({ xb, b.y1 });
+        out.push_back({ xb, b.y0 });
+    };
 
+    // Between two columns where a run begins or ends, the band's end is not at either column:
+    // a band of latitude 30 meets the limb as a point, a little before the first column that
+    // has it. Joined column to column, it began with a vertical edge as tall as its first
+    // run -- seventy pixels on a planet filling the screen (#426). So that stretch is walked
+    // in finer steps, and where a run starts or stops the place is found by halving, and the
+    // band is closed there.
+    auto refine = [&](float ta, const Run(&ra)[2], float tb, const Run(&rb)[2])
+    {
+        constexpr int SUB = 8;
+        Run           a[2] = { ra[0], ra[1] };
+        float         t0 = ta;
+        for (int s = 1; s <= SUB; s++)
+        {
+            const float t1 = s == SUB ? tb : ta + (tb - ta) * (float)s / (float)SUB;
+            Run         c[2];
+            if (s == SUB)
+                c[0] = rb[0], c[1] = rb[1];
+            else
+                runsAt(t1, c);
+            for (int b = 0; b < 2; b++)
+            {
+                if (a[b].on && c[b].on)
+                    quad(t0, a[b], t1, c[b]);
+                else if (a[b].on != c[b].on)
+                {
+                    float lo = t0, hi = t1;  // lo has a[b]'s state, hi has c[b]'s
+                    for (int n = 0; n < 12; n++)
+                    {
+                        const float mid = 0.5f * (lo + hi);
+                        Run         m[2];
+                        runsAt(mid, m);
+                        (m[b].on == a[b].on ? lo : hi) = mid;
+                    }
+                    const float edge = a[b].on ? lo : hi;
+                    Run         e[2];
+                    runsAt(edge, e);
+                    if (e[b].on)
+                    {
+                        if (a[b].on)
+                            quad(t0, a[b], edge, e[b]);
+                        else
+                            quad(edge, e[b], t1, c[b]);
+                    }
+                }
+            }
+            a[0] = c[0], a[1] = c[1];
+            t0 = t1;
+        }
+    };
+
+    Run   prev[2], cur[2];
+    float prevT = 0.0f;
     for (int k = 0; k <= columns; k++)
     {
         // Spaced by angle rather than evenly in x, so the columns crowd toward the limb,
         // which is exactly where a band's ends curve hardest.
         const float t = -0.5f * PI + PI * (float)k / (float)columns;
-        const float x = std::sin(t);
-        const float rho = std::cos(t);
-
-        cur[0] = cur[1] = Run{};
-        if (rho > 1e-4f)
-        {
-            const float a1 = std::fmax(-1.0f, std::fmin(1.0f, s1 / rho));
-            const float a2 = std::fmax(-1.0f, std::fmin(1.0f, s2 / rho));
-            const float uLo = i - 0.5f * PI, uHi = i + 0.5f * PI;  // u = theta + tilt
-            const float rise0 = std::asin(a1), rise1 = std::asin(a2);
-            const float fall0 = PI - std::asin(a2), fall1 = PI - std::asin(a1);
-            const float spans[2][2] = { { rise0, rise1 }, { fall0, fall1 } };
-            for (int b = 0; b < 2; b++)
-            {
-                const float u0 = std::fmax(spans[b][0], uLo);
-                const float u1 = std::fmin(spans[b][1], uHi);
-                if (u1 - u0 <= 1e-5f)
-                    continue;
-                // y = -rho * sin(theta), theta = u - tilt.
-                cur[b] = { true, -rho * std::sin(u0 - i), -rho * std::sin(u1 - i) };
-            }
-        }
-
+        runsAt(t, cur);
         if (k > 0)
-            for (int b = 0; b < 2; b++)
-                if (prev[b].on && cur[b].on)
-                {
-                    out.push_back({ prevX, prev[b].y0 });
-                    out.push_back({ prevX, prev[b].y1 });
-                    out.push_back({ x, cur[b].y1 });
-                    out.push_back({ x, cur[b].y0 });
-                }
-        prev = cur;
-        prevX = x;
+        {
+            if (prev[0].on != cur[0].on || prev[1].on != cur[1].on)
+                refine(prevT, prev, t, cur);
+            else
+                for (int b = 0; b < 2; b++)
+                    if (prev[b].on && cur[b].on)
+                        quad(prevT, prev[b], t, cur[b]);
+        }
+        prev[0] = cur[0], prev[1] = cur[1];
+        prevT = t;
     }
 }
 
@@ -253,7 +311,18 @@ Vector2 Axis(const Piece& p)
     return { 0.0f, 0.0f };
 }
 
-std::vector<Vector2> SurfaceOutline(const Piece& p, int segments)
+int BodySides(float radiusPixels)
+{
+    // A chord of a circle of r pixels, n to the turn, falls short of the arc by about
+    // r * (pi / n)^2 / 2; kept under a third of a pixel.
+    if (radiusPixels <= 0.0f)
+        return BODY_SIDES_MIN;
+    const float n = PI / std::sqrt(2.0f * 0.33f / radiusPixels);
+    const int   sides = 4 * (int)std::ceil(n / 4.0f);
+    return std::max(BODY_SIDES_MIN, std::min(BODY_SIDES_MAX, sides));
+}
+
+std::vector<Vector2> SurfaceOutline(const Piece& p, int segments, int bodySides)
 {
     std::vector<Vector2> poly;
     if (!p.surface || p.form != Form::Disc || p.radius <= 0.0f || p.bodyRadius <= 0.0f)
@@ -261,29 +330,74 @@ std::vector<Vector2> SurfaceOutline(const Piece& p, int segments)
 
     // The ellipse: its short axis along `angle`, shortened by how obliquely it is seen.
     const int   n = segments < 8 ? 8 : segments;
+    const int   sides = bodySides < 8 ? 8 : bodySides;
     const float shortR = p.radius * std::fmax(0.02f, std::fmin(1.0f, p.squash));
     const float a = p.angle * DEG2RAD, cs = std::cos(a), sn = std::sin(a);
     poly.reserve((size_t)n + 8);
-    bool        outside = false;
-    const float inner = p.bodyRadius * std::cos(PI / (float)BODY_SIDES);  // the polygon's flats
+    const float       inner = p.bodyRadius * std::cos(PI / (float)sides);  // the polygon's flats
+    std::vector<bool> beyond((size_t)n, false);
+    bool              outside = false;
     for (int k = 0; k < n; k++)
     {
         const float   t = 2.0f * PI * (float)k / (float)n;
         const float   u = std::cos(t) * shortR, v = std::sin(t) * p.radius;
         const Vector2 pt{ p.pos.x + u * cs - v * sn, p.pos.y + u * sn + v * cs };
         const float   dx = pt.x - p.bodyPos.x, dy = pt.y - p.bodyPos.y;
-        outside = outside || dx * dx + dy * dy > inner * inner;
+        beyond[(size_t)k] = dx * dx + dy * dy > inner * inner;
+        outside = outside || beyond[(size_t)k];
         poly.push_back(pt);
     }
     if (!outside)
         return poly;
 
+    // Which sides can cut it. Inside the polygon's inscribed circle nothing is cut, and a
+    // segment between two points inside that circle stays inside it, so only the sides
+    // facing a corner that is beyond it -- and the sides an edge to that corner sweeps
+    // across -- need to be tried. A body drawn with a thousand sides would otherwise be a
+    // thousand passes over every mark on it, every frame.
+    const float       stepA = 2.0f * PI / (float)sides;
+    std::vector<bool> tryIt((size_t)sides, false);
+    auto              sideOf = [&](Vector2 q)
+    {
+        float t = std::atan2(q.y - p.bodyPos.y, q.x - p.bodyPos.x);
+        if (t < 0.0f)
+            t += 2.0f * PI;
+        return std::min(sides - 1, (int)(t / stepA));
+    };
+    bool all = false;
+    for (int k = 0; k < n && !all; k++)
+    {
+        if (!beyond[(size_t)k])
+            continue;
+        const int here = sideOf(poly[(size_t)k]);
+        for (int nb : { (k + n - 1) % n, (k + 1) % n })
+        {
+            const int there = sideOf(poly[(size_t)nb]);
+            int       gap = (there - here + sides) % sides;  // walk the shorter way round
+            int       from = here;
+            if (gap > sides / 2)
+            {
+                gap = sides - gap;
+                from = there;
+            }
+            if (gap > sides / 4)
+            {
+                all = true;  // an edge sweeping a quarter of the body: try every side
+                break;
+            }
+            for (int j = -1; j <= gap + 1; j++)
+                tryIt[(size_t)((from + j + sides) % sides)] = true;
+        }
+    }
+
     // Cut by each side of the body's polygon in turn (Sutherland-Hodgman). Both are convex,
     // so the result is too, and a side the ellipse does not reach leaves it as it was.
     std::vector<Vector2> next;
-    for (int k = 0; k < BODY_SIDES && !poly.empty(); k++)
+    for (int k = 0; k < sides && !poly.empty(); k++)
     {
-        const float   mid = 2.0f * PI * ((float)k + 0.5f) / (float)BODY_SIDES;
+        if (!all && !tryIt[(size_t)k])
+            continue;
+        const float   mid = 2.0f * PI * ((float)k + 0.5f) / (float)sides;
         const Vector2 normal{ std::cos(mid), std::sin(mid) };
         auto          over = [&](Vector2 q)
         { return (q.x - p.bodyPos.x) * normal.x + (q.y - p.bodyPos.y) * normal.y - inner; };
@@ -1788,7 +1902,10 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
                         // *storms* go round and its belts do not.
                         const float          half = 0.5f * std::fabs(p.width);
                         std::vector<Vector2> unit;
-                        const int            columns = pixels > 200.0f ? 64 : 36;
+                        // Spaced by angle over half a turn, so a column is two of the body's
+                        // sides: the band's ends follow the limb as closely as the body's
+                        // outline does at this size (#426).
+                        const int columns = std::max(36, BodySides(size * pose.pixelsPerUnit) / 2);
                         BandQuads(std::fmax(-90.0f, lat - half), std::fmin(90.0f, lat + half),
                                   s.axisTilt, columns, unit);
                         if (unit.empty())

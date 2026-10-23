@@ -270,8 +270,19 @@ void ShapeBackend::EndMaterial()
         materials_->End();
 }
 
-void ShapeBackend::Draw(const Item& item)
+void ShapeBackend::Draw(const Item& described)
 {
+    // A ship is never drawn smaller than it can be found (#426); everything below, its
+    // composition and its culling, works on the size it is shown at.
+    const float shown = ShownSize(described.kind, described.size, view_.zoom);
+    Item        enlarged;
+    if (shown != described.size)
+    {
+        enlarged = described;
+        enlarged.size = shown;
+    }
+    const Item& item = shown != described.size ? enlarged : described;
+
     Perf::Count(Perf::Counter::Items);
     // What the light does to this object, asked once. An object is small next to the
     // distance to its star, so one sample at its centre is the whole of the difference.
@@ -285,7 +296,7 @@ void ShapeBackend::Draw(const Item& item)
     if (item.shape != nullptr && !item.shape->Empty())
     {
         if (item.ring > 0.0f)
-            DrawCircleLines(0.0f, 0.0f, item.ring, DARKGRAY);
+            DrawOrbitGuide(item);
         // Wholly off screen, it is neither composed nor drawn (#296). Most of a system is
         // outside the window at any zoom worth flying at, and every one of those objects was
         // being assembled piece by piece to be clipped by the GPU.
@@ -311,7 +322,7 @@ void ShapeBackend::Draw(const Item& item)
         // The orbit guide is a property of where a thing is, not of the thing, so it is
         // never part of what a material shades.
         EndMaterial();
-        DrawCircleLines(0.0f, 0.0f, item.ring, DARKGRAY);
+        DrawOrbitGuide(item);
         BeginMaterial(item, light);
     }
 
@@ -326,12 +337,34 @@ int ShapeBackend::OutlineSegments(const Piece& p) const
 {
     // A chord of a circle of r pixels, n to the turn, falls short of the arc by about
     // r * (pi / n)^2 / 2. Kept under a third of a pixel, which no one can see: a crater ten
-    // pixels across needs ten corners, not the thirty-six a planet-sized one does (#296).
+    // pixels across needs ten corners, and a storm three hundred across needs a hundred --
+    // capped at thirty-six it was a polygon with sides you could count (#296, #426).
     const float r = std::fabs(p.radius) * view_.zoom;
     if (r <= 0.0f)
         return 8;
     const float n = PI / std::sqrt(2.0f * OUTLINE_SAG_PIXELS / r);
-    return (int)std::fmin(36.0f, std::fmax(8.0f, std::ceil(n)));
+    return (int)std::fmin(256.0f, std::fmax(8.0f, std::ceil(n)));
+}
+
+int ShapeBackend::SidesOnScreen(float radius) const
+{
+    return BodySides(std::fabs(radius) * view_.zoom);
+}
+
+void ShapeBackend::DrawOrbitGuide(const Item& item) const
+{
+    // Where a planet is on the map, not part of the planet: it says so while the planet is
+    // a mark on a system and is gone by the time the planet is what you are looking at. An
+    // orbit runs through the middle of its planet, and zoomed in on one it was a thin line
+    // across the screen and across the planet that read as a route nobody had set (#426).
+    const float shown = item.size * view_.zoom;
+    const float t =
+        std::fmin(1.0f, std::fmax(0.0f, (shown - ORBIT_GUIDE_FULL_PIXELS) /
+                                            (ORBIT_GUIDE_GONE_PIXELS - ORBIT_GUIDE_FULL_PIXELS)));
+    const float keep = 1.0f - t * t * (3.0f - 2.0f * t);
+    if (keep <= 0.01f)
+        return;
+    DrawGuideCircle({ 0.0f, 0.0f }, item.ring, view_, Fade(DARKGRAY, keep));
 }
 
 bool ShapeBackend::OffScreen(Vector2 pos, float reach) const
@@ -397,13 +430,16 @@ void ShapeBackend::DrawPiece(const Piece& p, Color c)
                 Perf::Count(Perf::Counter::Surface);
                 // Cut to the body's disc, so a feature at the limb ends at the limb rather
                 // than bulging past it; the piece's centre is always inside what is left.
-                const std::vector<Vector2> outline = SurfaceOutline(p, OutlineSegments(p));
-                const Vector2              from = SurfaceFanCentre(p, outline);
+                const std::vector<Vector2> outline =
+                    SurfaceOutline(p, OutlineSegments(p), SidesOnScreen(p.bodyRadius));
+                const Vector2 from = SurfaceFanCentre(p, outline);
                 for (size_t k = 0; k < outline.size(); k++)
                     DrawTriangleAnyWay(from, outline[k], outline[(k + 1) % outline.size()], c);
                 return;
             }
-            DrawCircleV(p.pos, p.radius, c);
+            // As many sides as its size on screen needs, and the same number the marks on
+            // it are cut to (#426).
+            DrawCircleSector(p.pos, p.radius, 0.0f, 360.0f, SidesOnScreen(p.radius), c);
             return;
 
         case Form::Band:
@@ -415,14 +451,16 @@ void ShapeBackend::DrawPiece(const Piece& p, Color c)
             }
             return;
 
-        case Form::Ring: DrawRing(p.pos, p.radius - p.width, p.radius, 0.0f, 360.0f, 48, c); return;
+        case Form::Ring:
+            DrawRing(p.pos, p.radius - p.width, p.radius, 0.0f, 360.0f, SidesOnScreen(p.radius), c);
+            return;
 
         case Form::Arc:
         {
             // Segments by how much of the circle it covers, so a sliver is not drawn with
             // as many as a whole ring.
             const float span = std::fabs(p.arcTo - p.arcFrom);
-            const int   segments = std::max(4, (int)(48.0f * span / 360.0f));
+            const int segments = std::max(4, (int)((float)SidesOnScreen(p.radius) * span / 360.0f));
             DrawRing(p.pos, p.radius - p.width, p.radius, p.arcFrom, p.arcTo, segments, c);
             return;
         }
@@ -525,7 +563,8 @@ void ShapeBackend::DrawSoftOnSurface(const Item& item, const Piece& p, bool emis
     Perf::Scope timed(Perf::Section::Soft);
     Perf::Count(Perf::Counter::Soft);
     Perf::Count(Perf::Counter::Surface);
-    const std::vector<Vector2> outline = SurfaceOutline(p, OutlineSegments(p));
+    const std::vector<Vector2> outline =
+        SurfaceOutline(p, OutlineSegments(p), SidesOnScreen(p.bodyRadius));
     if (outline.empty())
         return;
 
@@ -648,7 +687,22 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
             Perf::Scope timed(Perf::Section::Soft);
             Perf::Count(Perf::Counter::Soft);
             EndMaterial();
-            DrawCircleGradient((int)p.pos.x, (int)p.pos.y, p.radius, mid, Fade(mid, 0.0f));
+            // A fan of its own rather than raylib's gradient, which has thirty-six sides and
+            // rounds its centre to a whole unit -- a glow that steps across the screen by a
+            // pixel at a time when zoomed in, with corners (#426).
+            const int sides = SidesOnScreen(p.radius);
+            rlBegin(RL_TRIANGLES);
+            for (int k = 0; k < sides; k++)
+            {
+                const float t0 = 2.0f * PI * (float)k / (float)sides;
+                const float t1 = 2.0f * PI * (float)(k + 1) / (float)sides;
+                rlColor4ub(mid.r, mid.g, mid.b, mid.a);
+                rlVertex2f(p.pos.x, p.pos.y);
+                rlColor4ub(mid.r, mid.g, mid.b, 0);
+                rlVertex2f(p.pos.x + std::cos(t1) * p.radius, p.pos.y + std::sin(t1) * p.radius);
+                rlVertex2f(p.pos.x + std::cos(t0) * p.radius, p.pos.y + std::sin(t0) * p.radius);
+            }
+            rlEnd();
             continue;
         }
         // A light dims with damage and with its own blink, and is never shaded: a lamp is

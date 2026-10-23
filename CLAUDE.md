@@ -113,6 +113,7 @@ cmake --build build-release
 ./build/bin/editor/worldeditor.exe galaxy 7 slot 6 export ithath packs /tmp/packs   # that region as a pack (E on the region map), then opened; validate it with econserver validate
 ./build/bin/editor/worldeditor.exe newpack outpost           # a region pack begun from one system (editpack ID opens one); each save is read back as the server reads it
 ./build/bin/editor/worldeditor.exe gallery shapes card ship.player thrusting shot s.png  # ...with its engines lit
+./build/bin/editor/worldeditor.exe gallery shapes truescale shot t.png  # every card at one scale, as the panel's True scale
 
 ./build/bin/agent/econagent.exe connect 127.0.0.1 50800 agent hunter2  # MCP for an agent
 

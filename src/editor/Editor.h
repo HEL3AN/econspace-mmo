@@ -129,6 +129,8 @@ public:
     void SetGallerySeed(int seed) { gallerySeed_ = seed; }
     void ShowGallerySockets() { gallerySockets_ = true; }
     void SetGalleryThrusting() { galleryThrusting_ = true; }
+    // Every card at one scale, so sizes compare -- the panel's toggle, from the command line.
+    void SetGalleryTrueScale() { galleryTrueScale_ = true; }
 
 private:
     // Reference to a JSON element: array category and index (star uses index=-1).

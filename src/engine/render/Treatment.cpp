@@ -187,6 +187,12 @@ void Treatment::EnsureTargets(int width, int height)
     SetTextureFilter(scene_.texture, TEXTURE_FILTER_BILINEAR);
     SetTextureFilter(ping_.texture, TEXTURE_FILTER_BILINEAR);
     SetTextureFilter(pong_.texture, TEXTURE_FILTER_BILINEAR);
+    // Clamped at the edges. raylib's textures repeat, so every pass that reads a little
+    // past the frame -- a blur's taps, the fringe's shifted channels, a pixel block on the
+    // last row -- read the opposite edge of the picture instead: the top of the screen
+    // carried a thin red and cyan line taken from the bottom (#426).
+    for (RenderTexture2D* t : { &scene_, &ping_, &pong_, &glowA_, &glowB_ })
+        SetTextureWrap(t->texture, TEXTURE_WRAP_CLAMP);
     width_ = width;
     height_ = height;
     targetsReady_ = true;

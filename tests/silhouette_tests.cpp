@@ -2,6 +2,7 @@
 
 #include "core/Archetype.h"
 #include "render/Modules.h"
+#include "render/Scene.h"
 #include "render/Silhouette.h"
 #include "temp_dir.h"
 #include <algorithm>
@@ -641,6 +642,62 @@ TEST_CASE("a latitude band is projected, so it narrows to the poles and never le
             bandOf(R"({ "tilt": 25, "parts": [{ "form": "band", "lat": -80, "width": 20 }] })");
         CHECK(north.strip.size() > south.strip.size());
     }
+
+    SUBCASE("a band ends at the limb in a point, not in a wall (#426)")
+    {
+        // A latitude of 24 degrees reaches cos(24) of the radius out, and there it is a point
+        // on the limb. Joined column to column, the band began at the first column that had
+        // it -- three and a half radii-percent short -- with an edge eighteen percent tall.
+        const Render::Piece band =
+            bandOf(R"({ "tilt": 20, "parts": [{ "form": "band", "lat": 30, "width": 12 }] })");
+        REQUIRE_FALSE(band.strip.empty());
+        float minX = 1e9f;
+        for (const Vector2& v : band.strip)
+            minX = std::fmin(minX, v.x);
+        CHECK(minX == doctest::Approx(-100.0f * std::cos(24.0f * DEG2RAD)).epsilon(0.005));
+        float lo = 1e9f, hi = -1e9f;
+        for (const Vector2& v : band.strip)
+            if (v.x < minX + 0.01f)
+            {
+                lo = std::fmin(lo, v.y);
+                hi = std::fmax(hi, v.y);
+            }
+        CHECK(hi - lo < 1.0f);  // it narrows to its end, rather than standing there
+    }
+}
+
+TEST_CASE("a round body is drawn with as many sides as its size on screen needs (#426)")
+{
+    // Thirty-six, raylib's own, was a planet with straight sides two hundred pixels long.
+    int last = 0;
+    for (float r : { 1.0f, 10.0f, 100.0f, 400.0f, 1500.0f, 4000.0f })
+    {
+        INFO("radius in pixels: ", r);
+        const int n = Render::BodySides(r);
+        CHECK(n % 4 == 0);
+        CHECK(n >= Render::BODY_SIDES_MIN);
+        CHECK(n <= Render::BODY_SIDES_MAX);
+        CHECK(n >= last);  // never fewer for a larger body
+        last = n;
+        if (n < Render::BODY_SIDES_MAX)
+            CHECK(r * (1.0f - std::cos(PI / (float)n)) <= 0.34f);  // no chord a third of a pixel in
+    }
+}
+
+TEST_CASE("a ship is never drawn too small to find, and nothing else is enlarged (#426)")
+{
+    // At the zoom a station is flown at, a sixteen-unit ship was five pixels across.
+    const float zoom = 0.35f;
+    CHECK(Render::ShownSize(EntityKind::PlayerShip, 16.0f, zoom) * zoom >=
+          Render::MIN_SHIP_PIXELS - 0.001f);
+    CHECK(Render::ShownSize(EntityKind::Npc, 13.0f, zoom) * zoom >=
+          Render::MIN_SHIP_PIXELS - 0.001f);
+    CHECK(Render::ShownSize(EntityKind::Station, 16.0f, zoom) == 16.0f);
+    CHECK(Render::ShownSize(EntityKind::Planet, 15000.0f, 0.001f) == 15000.0f);
+    // Large enough on screen already, a ship is its own size.
+    CHECK(Render::ShownSize(EntityKind::PlayerShip, 16.0f, 2.0f) == 16.0f);
+    // Zoomed out to a system, a ship goes back to being a speck under its bracket.
+    CHECK(Render::ShownSize(EntityKind::Npc, 16.0f, 0.001f) <= 16.0f * 3.0f + 0.001f);
 }
 
 TEST_CASE("a shape may carry properties of the body, and a bare list still works")
