@@ -1279,7 +1279,7 @@ chain of full-screen passes, each with two knobs.
 |------|-----|----------|
 | `enabled` | bool | the whole treatment; false draws the raw picture |
 | `treatHud` | bool | whether the interface goes through the chain with the world |
-| `paintBudget` | number | millions of pixels a painted body (#426) may cover before it is painted at reduced resolution and scaled up; default 1, never below 0.25. Lower it on an integrated GPU |
+| `paintBudget` | number | millions of pixels a painted body (#426) may cover before it is painted at reduced resolution and scaled up; 1 if absent; the shipped look.json sets 0.5 for integrated GPUs such as the UHD 620 (owner, 2026-10-23); never below 0.25. Raise it on a strong GPU for sharper close-ups |
 | `chain` | array | the passes, **in the order they run** |
 
 | Pass field | Type | Description |
