@@ -135,6 +135,9 @@ A part in an archetype's shape uses one instead of a form:
 parts may use `row` but not `repeat`, `mirror`, orbits or the sphere (those place things
 about the object's centre). A module is drawn once it is about 10 px across on screen
 (its parts' own `minPixels` count in the module's pixels), so it fills in as you approach.
+A part that is the whole of what a module is -- the body of a rock, which a field is made of --
+says `"minPixels": 2`, so a field reads as a field of rocks from about twenty pixels across
+rather than as one (#426).
 `tags` and `sockets` are for the automatic placement of phase 3 of #240. `handed` marks one of a left/right pair (see Handed modules below).
 
 `variants` and `except` narrow the seed's choice without taking it away: an engine that may

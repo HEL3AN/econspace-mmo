@@ -119,6 +119,25 @@ void Present(std::vector<Item> items, const Lighting& lighting, IBackend& backen
 void Present(std::vector<Item> items, const Lighting& lighting, const Camera2D& view,
              IBackend& backend, double clock = -1.0);
 
+// How large an object is drawn, in world units, when the view is `zoom` pixels to the unit
+// (#426). Its own size -- except a ship, which is never drawn smaller than MIN_SHIP_PIXELS in
+// radius. At the zoom a station is flown at, 0.3 to 0.4, a sixteen-unit ship is five pixels
+// across and its silhouette a two-pixel dash, and a ship is the one thing on that screen a
+// player has to find. A readability floor, the way a map symbol has one: nothing about what
+// the ship hits or reaches changes, and it is the same for every ship whoever looks, so it
+// says nothing about allegiance (#117). The instruments that frame a ship (#361) frame what is
+// drawn, so they ask this too.
+constexpr float MIN_SHIP_PIXELS = 10.0f;
+float           ShownSize(EntityKind kind, float size, float zoom);
+
+// A guide circle -- an orbit, the edge of a system -- as a one-pixel line, drawn into the
+// current 2D mode (#426). Only the part of it on the target is traced, with as many corners
+// as its size on screen needs. raylib's circle has thirty-six whatever the size, and an orbit
+// half a million units across drawn that way is a set of straight chords thousands of units
+// inside the true circle: at the zoom a planet is looked at, a straight line across the
+// screen that has nothing to do with where the planet is.
+void DrawGuideCircle(Vector2 centre, float radius, const Camera2D& view, Color c);
+
 // The clock anything with no world animates by -- the gallery, the treatment's grain: the
 // time since the window opened, unless frozen. A frozen clock is for pictures that have to
 // come out the same twice, so that a before and an after differ only by the change (#296).

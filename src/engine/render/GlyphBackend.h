@@ -91,11 +91,21 @@ public:
     // decides how many corners it is drawn with.
     static constexpr float OUTLINE_SAG_PIXELS = 0.35f;
 
+    // A planet's orbit guide is drawn in full while the planet is at most this many pixels in
+    // radius on screen, and is gone by the second: past that the planet is what is being
+    // looked at, and its orbit is a line through it (#426).
+    static constexpr float ORBIT_GUIDE_FULL_PIXELS = 12.0f;
+    static constexpr float ORBIT_GUIDE_GONE_PIXELS = 40.0f;
+
 private:
     // Whether a circle of `reach` world units about `pos` misses the target being drawn into.
     bool OffScreen(Vector2 pos, float reach) const;
     // How many corners a surface mark's outline needs at the size it is on screen.
     int OutlineSegments(const Piece& p) const;
+    // How many sides a round body of `radius` world units is drawn with at this zoom.
+    int SidesOnScreen(float radius) const;
+    // A planet's orbit, while the planet is small enough on screen for it to mean anything.
+    void DrawOrbitGuide(const Item& item) const;
 
     double clock_ = 0.0;  // seconds; set before every scene (Present)
     // True when a material took the object over. It then draws one plain primitive and the

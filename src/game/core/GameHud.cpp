@@ -95,8 +95,13 @@ void Game::DrawWorld()
 
     BeginMode2D(camera_);
 
-    // System boundary — a faint ring at the radius limit.
-    DrawCircleLines(0, 0, World::SYSTEM_RADIUS, Fade(Ui::PANEL_BORDER, 0.5f));
+    // System boundary — a faint ring at the radius limit. An instrument, so not on a picture
+    // of the place (--nohud), and traced at its size on screen: as raylib's thirty-six-sided
+    // circle a million units across, it was straight chords thousands of units inside the
+    // true edge, crossing the screen wherever one happened to fall (#426).
+    if (!hudHidden_)
+        Render::DrawGuideCircle({ 0.0f, 0.0f }, World::SYSTEM_RADIUS, camera_,
+                                Fade(Ui::PANEL_BORDER, 0.5f));
 
     // The world is drawn from the client proxies (reconciled from the snapshot), not from
     // the server's live objects (M4c). Each proxy describes itself and the active backend
@@ -143,8 +148,10 @@ void Game::DrawWorld()
     // the body is drawn by interpolation "in the past", and a ring from the fresh snapshot
     // would run ahead of it. selected_ is a proxy, so its position is what was drawn.
     if (selected_ != nullptr)
-        DrawCircleLines(selected_->GetPosition().x, selected_->GetPosition().y,
-                        selected_->GetSize() + 10.0f, WHITE);
+        DrawCircleLines(
+            selected_->GetPosition().x, selected_->GetPosition().y,
+            Render::ShownSize(selected_->GetKind(), selected_->GetSize(), camera_.zoom) + 10.0f,
+            WHITE);
 
     // Where a plain move-to is heading is worth a marker. An orbit or keep-at-range steers
     // the autopilot at a point that runs ahead of the ship all the way round (#157); drawn,
@@ -1328,7 +1335,9 @@ void Game::DrawSpaceBrackets()
         if (kind != EntityKind::Npc && kind != EntityKind::PlayerShip)
             continue;
         const Vector2 sp = GetWorldToScreen2D(e->GetPosition(), camera_);
-        const float   r = std::max(e->GetSize() * zoom + Ui::Px(3.0f), Ui::Px(7.0f));
+        // Round what is drawn, which for a small ship is larger than the ship (#426).
+        const float shown = Render::ShownSize(kind, e->GetSize(), zoom);
+        const float r = std::max(shown * zoom + Ui::Px(3.0f), Ui::Px(7.0f));
         if (sp.x < -r || sp.y < -r || sp.x > screenWidth_ + r || sp.y > screenHeight_ + r)
             continue;
 
@@ -1360,7 +1369,8 @@ void Game::DrawSpaceBrackets()
     // way the nose points, and the way the ship is actually going -- not the same thing in
     // a ship that turns faster than it changes course.
     const Vector2 sp = GetWorldToScreen2D(shipDrawPos_, camera_);
-    const float   r = std::max(playerShip_->GetSize() * zoom + Ui::Px(5.0f), Ui::Px(11.0f));
+    const float   shown = Render::ShownSize(EntityKind::PlayerShip, playerShip_->GetSize(), zoom);
+    const float   r = std::max(shown * zoom + Ui::Px(5.0f), Ui::Px(11.0f));
     const Color   col = t.standing.own;
     CornerBracket(sp, r, Ui::Px(4.0f), thin, Fade(col, 0.85f));
     const Vector2 nose{ std::cos(shipDrawHeading_), std::sin(shipDrawHeading_) };

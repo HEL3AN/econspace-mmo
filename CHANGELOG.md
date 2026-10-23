@@ -42,6 +42,13 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 - Supply job cargo is delivered on arrival, and the job says where it goes (#435).
 - Escort jobs show their convoy: where it is, where it goes, its ships (#436).
 
+### The look
+- The screen treatment no longer leaves a black curved frame or a red and cyan line at the screen's edge (#426).
+- Planets are round at any zoom, and their bands end at the limb rather than in a straight edge (#426).
+- A planet's orbit line fades out as you close in on the planet, and the system's edge is a HUD line again (#426).
+- Ships are never drawn smaller than you can find them, at the zoom a station is flown at (#426).
+- Asteroid fields and motherlodes show their rocks on a gallery card and from far away (#426).
+
 ### CI, tooling and docs
 - CI: two clients no longer share one output pipe (#451).
 - `.gitignore` covers per-machine settings and the rest of a world folder (#470).
