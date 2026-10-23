@@ -395,27 +395,19 @@ TEST_CASE("a mistake in the ship catalogue is a load error, not a default")
     CHECK_FALSE(ErrorAfter([](nlohmann::json& j) { j["shipz"] = 1; }).empty());
 
     // What a part provides is only what a stat reads; a shield nothing reads is a typo now.
-    CHECK(ErrorAfter(
-              [](nlohmann::json& j) {
-                  j["modules"][0]["provides"] = { { "shield", 5 } };
-              })
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["modules"][0]["provides"] = { { "shield", 5 } }; })
               .find("shield") != std::string::npos);
     // A cost in a resource that does not exist, or of nothing.
-    CHECK_FALSE(ErrorAfter(
-                    [](nlohmann::json& j) {
-                        j["modules"][0]["cost"] = { { "Gold", 5 } };
-                    })
-                    .empty());
+    CHECK_FALSE(
+        ErrorAfter([](nlohmann::json& j) { j["modules"][0]["cost"] = { { "Gold", 5 } }; }).empty());
     CHECK_FALSE(ErrorAfter([](nlohmann::json& j) { j["modules"][0].erase("cost"); }).empty());
     // A part with no mass, a socket kind that does not exist, a count drawn from a range.
     CHECK_FALSE(ErrorAfter([](nlohmann::json& j) { j["modules"][0]["mass"] = 0; }).empty());
     CHECK_FALSE(
         ErrorAfter([](nlohmann::json& j) { j["sections"][0]["sockets"]["wingtip"] = 1; }).empty());
-    CHECK_FALSE(ErrorAfter(
-                    [](nlohmann::json& j) {
-                        DesignJson(j, "scout")["fit"][0]["count"] = { 0, 2 };
-                    })
-                    .empty());
+    CHECK_FALSE(
+        ErrorAfter([](nlohmann::json& j) { DesignJson(j, "scout")["fit"][0]["count"] = { 0, 2 }; })
+            .empty());
     // A section at the wrong position, and a part defined twice.
     CHECK_FALSE(ErrorAfter([](nlohmann::json& j) { DesignJson(j, "scout")["stern"] = "mid.spine"; })
                     .empty());
@@ -493,9 +485,8 @@ TEST_CASE("a hull that breaks its class rule is a load error, not a ship that lo
               .find("repeat") != std::string::npos);
     // The hull is the same for every ship of a design: the seed rolls the trim, not the hull.
     CHECK(ErrorAfter(
-              [](nlohmann::json& j) {
-                  SectionJson(j, "mid.spine")["shape"]["sections"][0]["length"] = { 0.6, 0.8 };
-              })
+              [](nlohmann::json& j)
+              { SectionJson(j, "mid.spine")["shape"]["sections"][0]["length"] = { 0.6, 0.8 }; })
               .find("fixed") != std::string::npos);
     // A section is drawn as something; a class says how long it is.
     CHECK_FALSE(

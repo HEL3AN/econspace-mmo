@@ -232,7 +232,7 @@ TEST_CASE("the fee is the market owner's, and its treasury is kept (#343)")
         ClientSession& s = sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f },
                                              GetShipCatalog()[0].stats);
         SystemState&   st = *sim.SystemOf(s);
-        auto           station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
+        auto station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
                                                  Fac::TradersGuild(), StationRole::TradeHub);
         station->SetId(990001);
         st.entities.push_back(std::move(station));

@@ -219,7 +219,7 @@ TEST_CASE("buying at a station: the stock, the hold and the money decide, and th
         sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
     SystemState& st = *sim.SystemOf(s);
     auto         station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
-                                             Fac::TradersGuild(), StationRole::TradeHub);
+                                                     Fac::TradersGuild(), StationRole::TradeHub);
     station->SetId(990001);
     st.entities.push_back(std::move(station));
     REQUIRE(sim.StepPlayerDock(s, st) == 990001);

@@ -219,8 +219,8 @@ bool ParseSectionShape(const json& j, Ships::Section& s, std::string& err)
             // capsule, a lattice, anything round), across it too.
             const std::string form = e.value("form", std::string("disc"));
             const bool        both = form == "bar" || form == "capsule" || form == "lattice" ||
-                              form == "disc" || form == "ring";
-            const json angle = e.value("angle", json(0.0));
+                                     form == "disc" || form == "ring";
+            const json        angle = e.value("angle", json(0.0));
             const bool square = angle.is_number() && std::fmod(std::fabs(angle.get<double>()),
                                                                both ? 90.0 : 180.0) == 0.0;
             if (!onAxis || !square)
