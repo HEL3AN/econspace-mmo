@@ -1191,11 +1191,11 @@ bool ReadLines(const json& j, Catalogue& c, std::string& error)
             error = "line '" + l.id + "': an id has no '~'";
             return false;
         }
-        for (const auto& [position, list] :
-             { std::make_pair("bow", &l.bow), std::make_pair("mid", &l.mid),
-               std::make_pair("stern", &l.stern) })
-            for (const std::string& s : *list)
+        const std::vector<std::string>* const lists[] = { &l.bow, &l.mid, &l.stern };
+        for (size_t at = 0; at < 3; ++at)
+            for (const std::string& s : *lists[at])
             {
+                const char*    position = POSITIONS[at];
                 const Section* sec = c.FindSection(s);
                 if (sec == nullptr || sec->position != position)
                 {
