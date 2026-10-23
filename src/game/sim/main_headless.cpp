@@ -338,6 +338,10 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     // corporation's system anywhere -- so not a docked verb either; a refusal says why.
     if (c.buyLicence)
         sim.BuyLicence(s);
+    // Charts sold to the faction docked at (#346, #431 slice 16): asked for in flight, it is
+    // refused with a reason, so not under the docked verbs either.
+    if (!c.sellChart.empty())
+        sim.SellCharts(s, c.sellChart);
 
     // A refit (#279 fitting). Not under the docked verbs below: asked for in flight, it is
     // refused with a reason rather than dropped without a word.
@@ -1064,6 +1068,11 @@ static void SendGalaxies(std::vector<HostClient>& clients, const Simulation& sim
         auto                   own = s->known.lower_bound(Simulation::ChartKey(""));
         if (own == s->known.end() || Simulation::ChartedSystemOf(*own).empty())
             key[2] = 0;
+        // Docked at a faction's station, what it would pay is this pilot's alone (#431 slice
+        // 16): shared with nobody.
+        FactionId buyer;
+        if (sim.ChartBuyer(*s, buyer))
+            key.push_back(-1 - (long long)hc.sessionId);
         const Corps::Corp* corp = sim.Corporations().Of(s->accountName);
         auto               whose = std::make_pair(std::move(key), corp != nullptr ? corp->id : "");
         auto               it = made.find(whose);

@@ -321,6 +321,12 @@ std::string DescribeGalaxy()
                 // The front line (#431 D3): your corporation may lay a claim or besiege here.
                 if (g.front)
                     line += "   front open to your corporation";
+                // Docked at a faction's station: what it would pay for your charts (#431
+                // slice 16).
+                if (g.chartPrice > 0)
+                    line += "   " + FactionName(g_session.Galaxy().chartFaction) +
+                            " buys your charts for " + std::to_string(g.chartPrice) + " cr (" +
+                            g.chartWhat + ")";
                 break;
             }
         // What stands there, as of when you or your corporation last saw it (#431 slice 14).
@@ -332,6 +338,16 @@ std::string DescribeGalaxy()
         out += line + "\n";
     }
 
+    if (g_session.Galaxy().chartBuyer)
+    {
+        char buf[200];
+        std::snprintf(buf, sizeof(buf),
+                      "CHARTS\n  docked at a %s station: it buys what it lacks of the systems "
+                      "on your own charts (sell_charts); its treasury holds %.0f cr\n",
+                      FactionName(g_session.Galaxy().chartFaction).c_str(),
+                      g_session.Galaxy().chartTreasury);
+        out += buf;
+    }
     out += "GATES\n";
     for (const WorldLoader::SystemLink& l : g_session.Universe().links)
         out += "  " + l.a + " <-> " + l.b + "\n";
@@ -1789,6 +1805,52 @@ std::vector<Tool> BuildTools()
                             after.periodDays,
                             after.party == "you" ? "your money" : "the corporation's treasury");
               return std::string(buf);
+          } });
+
+    tools.push_back(
+        { "sell_charts",
+          "Sell charts to the faction whose station you are docked at (#346, #431). What is "
+          "sold is your own record of a system you went to yourself -- not your corporation's: "
+          "that it exists and how to get there, what you saw standing there and when, and what "
+          "your scans found there (hidden bases, wormholes). The faction pays from its treasury "
+          "by how much it changes its own picture: a system it never saw pays most, an update "
+          "(a station built since its last look) pays only for what is new, and what it already "
+          "knows pays nothing and is refused. A fresh look is worth more than an old one, and a "
+          "system few other factions know more than one many do. Once sold, the system is on "
+          "the faction's charts, and so on everybody's; the faction plans on what it bought. "
+          "The galaxy resource lists, docked, what it would pay for each system. Pass a "
+          "system's id or name, or 'all' for every one it would buy.",
+          Obj({ { "system", Str("a system's id or name, or 'all'") } }, { "system" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              std::string which = args.contains("system") && args["system"].is_string()
+                                      ? args["system"].get<std::string>()
+                                      : std::string();
+              if (which.empty())
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "name a system, or 'all'" };
+              if (!g_session.Galaxy().chartBuyer)
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                    "dock at a faction's station first: only a faction buys "
+                                    "charts, at its own desk" };
+              if (which == "all")
+                  which = "*";
+              const double   before = g_session.Snapshot().player.money;
+              const int      seq = g_session.LastEventSeq();
+              Proto::Command c;
+              c.sellChart = which;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "sell_charts: " + why;
+              const double after = g_session.Snapshot().player.money;
+              if (after <= before)
+                  return Refused("sell_charts", seq, "the server bought nothing");
+              std::string said;
+              for (const Ev::Event& e : g_session.EventsSince(seq))
+                  if (e.kind == Ev::Kind::Notice && e.text.rfind("Sold", 0) == 0)
+                      said = e.text;
+              return "sell_charts: " + (said.empty() ? "sold for " + Money(after - before) : said) +
+                     ". Money now " + Money(after);
           } });
 
     tools.push_back(

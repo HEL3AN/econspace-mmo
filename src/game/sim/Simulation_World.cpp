@@ -920,6 +920,7 @@ nlohmann::json IntelJson(const Intel& i)
              { "belts", i.belts },
              { "wrecks", i.wrecks },
              { "stations", i.stations },
+             { "structures", i.structures },
              { "planets", i.planets },
              { "gates", i.gates },
              { "defenders", defenders },
@@ -938,6 +939,7 @@ Intel IntelFrom(const nlohmann::json& j)
     i.belts = j.value("belts", 0);
     i.wrecks = j.value("wrecks", 0);
     i.stations = j.value("stations", 0);
+    i.structures = j.value("structures", 0);
     i.planets = j.value("planets", 0);
     i.gates = j.value("gates", 0);
     if (j.contains("defenders") && j["defenders"].is_array())
@@ -1099,6 +1101,9 @@ bool Simulation::SaveWorld(const std::string& path) const
                     heard[std::to_string(e.first)] = e.second;
                 minds[Factions::Id(f)]["expeditions"] = std::move(heard);
             }
+            // What pilots sold it of hidden things (#431 slice 16).
+            if (!minds_[f].finds.empty())
+                minds[Factions::Id(f)]["finds"] = minds_[f].finds;
         }
         j["factions"] = std::move(minds);
     }
@@ -1396,6 +1401,10 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             for (auto l = lost.begin(); lost.is_object() && l != lost.end(); ++l)
                 if (HasSystem(l.key()) && l.value().is_number())
                     minds_[f].lostAt[l.key()] = l.value().get<double>();
+            const json& sold = it.value().value("finds", json::array());
+            for (const json& k : sold)
+                if (k.is_string())
+                    minds_[f].finds.insert(k.get<std::string>());
             const json& heard = it.value().value("expeditions", json::object());
             for (auto e = heard.begin(); heard.is_object() && e != heard.end(); ++e)
                 if (e.value().is_number())

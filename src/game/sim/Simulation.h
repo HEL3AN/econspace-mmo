@@ -121,6 +121,40 @@ public:
     // what stands there is observed -- into the pilot's record and their corporation's -- and
     // their map is live there. Elsewhere it stays as last seen.
     void StepObservations();
+
+    // --- Charts sold to factions (#346, #431 K5 and slice 16; Simulation_Knowledge.cpp) ---
+    // A pilot docked at a faction's station sells it what they have of a system: that it
+    // exists and how to reach it, what they saw standing there and when, and what their scans
+    // found there. Only their own record -- their charts, their sightings, their finds -- never
+    // what their corporation shares with them. A sale writes into the faction's intel (Intel,
+    // FactionMind::finds), which it then decides on like any survey's, and the faction pays,
+    // from its treasury, by how much that changed its picture (WorldRules::Charts): what it
+    // already knows changes nothing, so it is worth nothing, and the intel itself is the guard
+    // against selling the same thing twice. The buyer charts the system (ChartBy).
+    struct ChartOffer
+    {
+        std::string system;
+        int         price = 0;      // whole credits; 0 -- it would pay nothing
+        bool        news = false;   // the faction has no intel on the system at all
+        int         changed = 0;    // stations and structures more or fewer than it believes
+        int         finds = 0;      // hidden things it was never told of
+        double      seenAt = -1.0;  // when the pilot looked, below zero: never
+        std::string why;            // with no price, why not ("it holds Tau Verge")
+        // "new system, 2 changes, 1 hidden find": what is sold, as a player reads it.
+        std::string What() const;
+    };
+    // The faction `s` is docked at a station of, which buys charts; false when not docked at a
+    // faction's station.
+    bool ChartBuyer(const ClientSession& s, FactionId& f) const;
+    // What `f` would pay `s` for what they have of `systemId` now.
+    ChartOffer ChartOfferFor(const ClientSession& s, FactionId f,
+                             const std::string& systemId) const;
+    // Every system of `s`'s own record `f` would pay something for, the dearest first.
+    std::vector<ChartOffer> ChartOffers(const ClientSession& s, FactionId f) const;
+    // The verb (Command::sellChart): sells `which` -- a system's id or name, or "*" for every
+    // offer -- to the faction docked at. False, with a Notice saying why, when nothing sold.
+    bool SellCharts(ClientSession& s, const std::string& which);
+
     // What decides `s`'s map, as a key: equal keys, the same map. The host sends the index
     // when it differs from the one it last sent.
     std::vector<long long> KnowledgeKey(const ClientSession& s) const;
@@ -2111,6 +2145,19 @@ private:
         s.routesChanged = true;
         TouchKnown(s);
     }
+    // What `s` has of a system to sell (#431 slice 16): their own record of it, never their
+    // corporation's. `charted`: they went there themselves (a "system:" key of their own,
+    // which nothing else writes); `observed`: what their record says stood there counts --
+    // looked at, and not from before its region drifted.
+    struct ChartReport
+    {
+        bool                     charted = false, observed = false;
+        double                   at = -1.0;
+        int                      stations = 0, structures = 0;
+        std::vector<FactionId>   outposts;  // factions' finished outposts they saw
+        std::vector<std::string> finds;     // their resolved signatures there, by key
+    };
+    ChartReport ReportOf(const ClientSession& s, const std::string& systemId) const;
     // Whether a system is public by where it is: hand-written space and the centres.
     bool                 PublicByPlace(const std::string& systemId) const;
     static constexpr int SETTLE_STEPS = 3;

@@ -640,6 +640,8 @@ std::string EncodeCommand(const Command& c)
     }
     flag("scan", c.scan);
     flag("buyLic", c.buyLicence);
+    if (!c.sellChart.empty())
+        j["sellChart"] = c.sellChart;
     return j.dump();
 }
 
@@ -848,6 +850,7 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadInt(j, "defId", 0, 0, ID_MAX, out.defenceId);
     ok = ok && ReadBool(j, "scan", out.scan);
     ok = ok && ReadBool(j, "buyLic", out.buyLicence);
+    ok = ok && ReadText(j, "sellChart", out.sellChart);
     if (ok && j.contains("def"))
         ok = DefenceFrom(j["def"], out.defence);
     return ok;
@@ -1973,10 +1976,14 @@ std::string EncodeGalaxy(const GalaxyState& s)
             gj["fee"] = g.fee;
         if (g.front)
             gj["front"] = true;
+        if (g.chartPrice > 0)
+            gj["chart"] = { g.chartPrice, g.chartWhat };
         sys.push_back(std::move(gj));
     }
     j["sys"] = sys;
     j["news"] = s.events;
+    if (s.chartBuyer)
+        j["buyer"] = { { "fac", FacJ(s.chartFaction) }, { "treasury", s.chartTreasury } };
     return j.dump();
 }
 
@@ -2010,9 +2017,27 @@ bool DecodeGalaxy(const std::string& s, GalaxyState& out)
                 fee->get<double>() <= 1.0)
                 g.fee = fee->get<float>();
             g.front = gj.value("front", false);
+            const auto chart = gj.find("chart");
+            if (chart != gj.end() && chart->is_array() && chart->size() == 2 &&
+                (*chart)[0].is_number_integer() && (*chart)[0].get<long long>() > 0 &&
+                (*chart)[0].get<long long>() < 1000000000LL && (*chart)[1].is_string())
+            {
+                g.chartPrice = (*chart)[0].get<int>();
+                g.chartWhat = (*chart)[1].get<std::string>();
+            }
             out.systems.push_back(g);
         }
     out.events = j.value("news", std::vector<std::string>{});
+    out.chartBuyer = false;
+    const auto buyer = j.find("buyer");
+    if (buyer != j.end() && buyer->is_object())
+    {
+        out.chartBuyer = true;
+        out.chartFaction = ToFac(buyer->value("fac", json()));
+        const auto t = buyer->find("treasury");
+        out.chartTreasury =
+            t != buyer->end() && t->is_number() ? std::max(0.0, t->get<double>()) : 0.0;
+    }
     return true;
 }
 

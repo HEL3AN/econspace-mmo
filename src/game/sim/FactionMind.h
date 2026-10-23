@@ -27,6 +27,7 @@ struct Intel
     float                  traffic = 0.0f;  // prosperity, 0..1
     float                  security = 0.5f;
     int                    belts = 0, wrecks = 0, stations = 0;
+    int                    structures = 0;  // anyone's, not hidden (SystemProfile::structures)
     int                    planets = 0, gates = 0;  // what an outpost is for (#318)
     std::vector<FactionId> defenders;               // owners of defensive stations
     std::vector<FactionId> outposts;    // owners of finished outposts: what a siege is for
@@ -160,6 +161,11 @@ struct FactionMind
     // Word of a mouth (#342 S6): the regions beyond mouths that opened near its space, by slot,
     // and until when going that way is worth its expedition curiosity. Saved.
     std::map<int, double> expeditions;
+    // The hidden things pilots sold it (#346, #431 slice 16), by the key a pilot's find has
+    // (Simulation::SignatureKey): a hidden base "<system>/<key>", a wormhole "hole:<id>". A
+    // faction never scans, so what is here it was told -- and is not paid for twice. Kept
+    // beside the intel rather than in it, which a survey replaces whole. Saved.
+    std::set<std::string> finds;
 };
 
 // Outposts (#295, slice 3): a faction's claim on a system nobody held is a structure (#39)

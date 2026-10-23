@@ -160,6 +160,8 @@ SystemProfile Simulation::ProfileOf(const SystemState& st)
             case EntityKind::Structure:
             {
                 const Structure& t = static_cast<const Structure&>(*e);
+                if (SignatureOf(t) <= 0.0f)
+                    p.structures++;
                 // What it weighs toward its owner's influence, and whether it is a claim
                 // (#431 T1, T2): a faction's counts for the faction, a player's for the
                 // account, which InfluenceIn reads as their corporation's.
@@ -262,6 +264,7 @@ Intel Simulation::Observe(const SystemState& st) const
     i.belts = st.profile.belts;
     i.wrecks = st.profile.wrecks;
     i.stations = st.profile.stations;
+    i.structures = st.profile.structures;
     i.planets = st.profile.planets;
     i.gates = st.profile.gates;
     i.defenders = st.profile.defenders;

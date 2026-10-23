@@ -560,6 +560,7 @@ add_executable(tests
     tests/territory_tests.cpp      # influence, claims, a holder's tax and docking (#431 slice 5)
     tests/licence_tests.cpp        # licences: leave and rent to build in a holder's space (#431 slice 6)
     tests/ownership_tests.cpp      # whose a structure is, and handing it over (#468)
+    tests/chart_sales_tests.cpp    # charts sold to factions, priced by what they lack (#431 slice 16)
     src/game/sim/Observation.cpp   # shared with econagent (#42)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/MissionList.cpp   # the missions window's rows, tested without one (#297)
