@@ -124,11 +124,12 @@ TEST_CASE("the style rules are data, every culture leans by a family or a line, 
     {
         CAPTURE(culture);
         REQUIRE(r.cultures.count(culture) == 1);
-        for (const auto& [id, w] : r.cultures.at(culture))
+        for (const auto& kv : r.cultures.at(culture))
         {
+            const std::string& id = kv.first;  // not a structured binding: CAPTURE is a lambda
             CAPTURE(id);
             CHECK((c.FindFamily(id) != nullptr || c.FindLine(id) != nullptr));
-            CHECK(w >= 0.0);
+            CHECK(kv.second >= 0.0);
         }
     }
 
