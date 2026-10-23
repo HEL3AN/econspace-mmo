@@ -15,8 +15,7 @@
 
 namespace
 {
-template <typename T>
-void Try(bool (*decode)(const std::string&, T&), const std::string& s)
+template <typename T> void Try(bool (*decode)(const std::string&, T&), const std::string& s)
 {
     T out;
     (void)decode(s, out);
