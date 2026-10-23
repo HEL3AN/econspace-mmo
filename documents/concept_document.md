@@ -1,11 +1,15 @@
 # EconSpace — Concept Document
 
-> **Partly superseded.** Two of its decisions were later reversed, and this document has
-> not been rewritten around them: the look is **generated art, not glyphs** (2026-09-03),
-> and the **world is generated** with hand-written content on top (2026-09-04). See
-> [DECISIONS.md](../DECISIONS.md). Its description of the code's modules also predates the
-> current CMake targets; [ARCHITECTURE.md](../ARCHITECTURE.md) is current. The rest — the
-> genre, the MMO, agents as players — stands.
+> **Status (revised 2026-10-23): the genre and the pillars stand; several details are
+> superseded.** Built and current: the MMO with an authoritative server, agents as players
+> through `econagent` (#42), the trade loop with goods and a chain (#343), ship designs and
+> fitting (#279), ship loss and insurance (#408), corporations and local chat (#347), PvP
+> under the law (#452), per-pilot charts and territory (#431). Superseded, and marked where
+> they appear below: the **glyph/ASCII look** (replaced by generated art, M6; glyphs are now
+> the sensor screen, #123); the **hand-written world** (replaced by a generated world that
+> grows, #342, `world_generation_v2.md`); and the old **three-module code layout** (the CMake
+> targets are in [ARCHITECTURE.md](../ARCHITECTURE.md)). Decisions and their reasons are in
+> [DECISIONS.md](../DECISIONS.md).
 >
 > Status: working draft (v0.5). This is a living document — updated as the project evolves.
 > v0.4 — genre change: from a management strategy game to a space simulator (EVE-like).
@@ -107,13 +111,17 @@ the server disagrees.
   belts, contracts, and markets.
 - **Agent access.** An MCP server shipped with the game exposes the same command set
   to AI agents, so an agent is a client like any other rather than a scripted NPC.
-  Planned, not yet built.
+  Built: `econagent` (#42).
 
 ## 5. World
 
 The building block is a **star system**: a star, planets (backdrop/landmarks),
 stations, asteroid belts. Systems are connected by jump gates into a galaxy, and the
 world is populated gradually.
+
+*Superseded in part:* the galaxy is generated from a seed per server and grows by regions
+as wormholes open (#342, `world_generation_v2.md`); a system is a million units across and
+is crossed by warp from the overview (M9); and each pilot has a map of their own (#431).
 
 The world is **persistent and server-side**. It is not a level loaded per session: the
 server simulates every system, including the ones nobody is currently flying in, and
@@ -125,6 +133,10 @@ that moved on without them.
 2D, with a primarily black-and-white palette. Color is used sparingly: to highlight
 objects, for effects (glow, engine exhaust), and to distinguish types (factions,
 resource kinds, link types).
+
+> *Superseded (2026-09-03, #123):* the look is generated art -- objects composed in data,
+> lit by their stars and shaded by materials, under a switchable screen treatment (M6).
+> Glyphs survive only as the sensor screen. The paragraph below is the v0.5 decision.
 
 The **primary look is glyph/ASCII rendering**: the world is drawn as characters on a
 grid rather than as pixel-art sprites. This is a deliberate design decision, not a
@@ -144,6 +156,10 @@ anyone who wants that backend. Art is no longer on the project's critical path.
 - nlohmann/json 3.11.3 — world data and saves.
 - TCP (winsock) for the client–server transport.
 
+*Superseded:* the CMake targets are now `engine`, `netproto`, `econspace`, `econserver`,
+`econagent` and `worldeditor` (see [ARCHITECTURE.md](../ARCHITECTURE.md)); Linux/GCC is
+built too, and the transport picks winsock or Berkeley sockets. As first written:
+
 The code is split into three modules: **engine** (a shared static library — world,
 entities, factions, UI, render), **game** (the client, the authoritative simulation,
 and the headless server), and **editor** (the world editor). `game` and `editor` link
@@ -155,8 +171,8 @@ an input source over a command/snapshot protocol. Rendering is being restructure
 the glyph backend is the default and the sprite backend is one of the options behind
 the same drawing calls.
 
-The MCP server that lets AI agents play is intended to sit on the same protocol as
-the human client, not beside it. It is not implemented yet.
+The MCP server that lets AI agents play sits on the same protocol as the human client,
+not beside it: `econagent`, in C++, linking `netproto`.
 
 The technical foundation (game loop, entity classes, rendering, camera, JSON loading,
 save/load) was carried over from the previous version of the game.
@@ -179,7 +195,9 @@ save/load) was carried over from the previous version of the game.
 > them moved to the client–server track: the authoritative simulation, the headless
 > server, and networked play.
 
-Later: multiple clients on one server and interest management, server-side ownership
+Later (most of it since built: many clients and an area of interest, #389; agents, #42;
+fitting, #279; jobs from faction plans, #345; the glyph renderer was dropped as the default,
+#123): multiple clients on one server and interest management, server-side ownership
 of ships and stations, the glyph renderer as the default presentation, the MCP server
 for agent players, hiring NPCs, a developed mission system, and modular ship fitting.
 
@@ -197,7 +215,7 @@ from scratch along the R1–R9 roadmap.
 In version v0.5 the concept changed again: the game became an MMO. The single-player,
 offline framing was dropped — the world belongs to an authoritative server, and the
 client is a view onto it. The single-player code path that remains in the repository is
-residue from the v0.4 stage and is scheduled for deletion (issue #23); it is not part
+residue from the v0.4 stage and was later deleted (issue #23); it is not part
 of the target design. Two further decisions were settled at the same time: glyph/ASCII
 rendering becomes the game's primary look rather than a debug view (issue #36), with
 sprites demoted to an optional backend; and AI agents are treated as first-class

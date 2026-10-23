@@ -31,6 +31,7 @@ What actually happened. Include any console output or messages.
 - Version (`econspace --version`), or the commit / branch if built from source:
 - Build type (Debug / Release / downloaded release):
 - Compiler (g++ version), if built from source:
+- Server log lines around the problem (stderr, with their UTC times), if you host:
 
 **Additional context**
 Screenshots, logs, or anything else that helps.

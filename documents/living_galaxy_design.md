@@ -4,6 +4,20 @@
 > the reasoning in it. Parts of it describe plans that were since built differently or
 > reversed — [ARCHITECTURE.md](../ARCHITECTURE.md) describes what exists, and
 > [DECISIONS.md](../DECISIONS.md) records what changed and why.
+>
+> **Status (revised 2026-10-23).** Track L is built: L0 (`Simulation` owns the world, PRs of
+> the L track), L1 (agents and galaxy persistence in `world.json`), L2 (cheap cold systems),
+> L3 (macrodynamics) and L4 (the headless `econserver`). Superseded in shape:
+> - **L2's cold degradation** became the hot/cold split of #295: a system nobody is in has no
+>   NPC ships at all, keeps them as numbers advanced by the coarse pass, and is warmed from
+>   them when a player enters (`Simulation::COOL_AFTER`, `Warm`, `StepMigration`).
+> - **L3's combat arithmetic** is no longer its own: since #463 a cold fight's and a siege's
+>   losses come from the two sides' ship designs (`Simulation::FighterOf`), the same model a
+>   player's ship fights by.
+> - **The galaxy** is no longer the hand-written one this was planned on: it is generated per
+>   server and grows by regions (#342, `world_generation_v2.md`).
+> - **Factions** are a data registry, not the enum named in section 3 (#355).
+> - **F6** (the editor for factions and relations) is not built (#9).
 
 > A transition from "the player = the center of the logic" to "the player = one of the
 > agents of an authoritative world simulation". We are preparing the server

@@ -6,6 +6,17 @@ issue: #342. The owner-facing proposal (in Russian) is at
 https://claude.ai/artifact/TVLGJWjF2kk4i3m88dG6Sx; this file is its English record and
 the reference for the slices below.
 
+**Built (as of 2026-10-23):** S1 the skeleton and slot key (#374), S2 centres and starts
+(#376), S3 the opening log, tide and sealing (#382), S4 mouths, Anchors, drift and the
+archive (#387), S5 native factions (#390), S6 expeditions and growing stations (#394), S7
+admin packs (#401), S8 the world in the editor (#404), S9 roaming holes, slice 1, with the
+scanner (#414); the faction registry it needed is #355 (#375). The old shape -- three
+hand-written systems plus one region -- is gone: no `data/universe.json` ships, and the
+server generates every world. **Still planned:** the rest of S9 (pockets; probes beyond the
+scanner) and S10 (scale to 10,000: cold systems without a static layer, a two-level
+`PlanRoute`, background saves, which is #350). The map of what a pilot knows, listed under
+S10, was built by #431 slices 1 and 14 (#443, #457).
+
 ## What the owner asked for
 
 - **No required base systems.** Each server generates a whole world of its own.
@@ -26,6 +37,10 @@ the reference for the slices below.
   - edits to anything after generation.
 
 ## What exists today and what carries over
+
+*Written on 2026-10-11, before S1. Three of the "limits to lift" below are gone: factions are a
+registry (#355), `AttachRegion` takes any slot, and keys are per slot. Routes have one planner
+with EVE's preferences (#440); a two-level planner for scale is still S10.*
 
 - **Today's world:** three hand-written systems (`core`, `reach`, `verge` in
   `data/universe.json`) plus one generated region of 18 systems behind one wormhole. The

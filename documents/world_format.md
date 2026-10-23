@@ -1,8 +1,15 @@
 # EconSpace — World Data Format
 
 Specification for the game world's JSON data. This is the contract between the game
-and the future **visual world editor**: the editor reads and writes exactly these
+and the **world editor** (`worldeditor`): the editor reads and writes exactly these
 files.
+
+Status (revised 2026-10-23): **a current reference.** Every format below is read by the
+code on main. Not covered here: `data/world_rules.json`, the server's tuning numbers by
+section (`tide`, `mouths`, `archive`, `expeditions`, `growth`, `convoys`, `jobs`,
+`contracts`, `holes`, `scan`, `law`, `influence`, `licences`, `security`, `patrols`),
+whose reader and defaults are `src/game/sim/WorldRules.h`; and the save files (`world.json`,
+accounts, `corps.json`), which are the server's, not content.
 
 Parsing — `src/engine/core/WorldLoader.cpp`. Entities — `src/engine/entities/`.
 
@@ -18,7 +25,16 @@ data/
   goods.json           what markets trade, and what stations make and use (#343)
   ships.json           ship designs and what their parts do (#279; see ship_design.md)
   pins.json            hand-written exceptions to generated systems (#147)
+  factions.json        the faction registry, relations, roles and cultures (#355)
+  modules.json         the module library parts are built from (#240); modules/*.json more
+  materials.json       materials: a shader and its bindings (#121)
+  look.json            the screen treatment's passes (#120)
+  shaders/             the shaders materials and the treatment name
+  world_rules.json     the server's rule numbers (WorldRules.h)
+  ui_themes/           the client's interface themes (see ui.md)
+  fonts/               the interface's typefaces, with their licences
   textures/            sprites (PNG), optional
+  packs/               admin packs, woven into a new world (#342 S7); absent by default
 ```
 
 **Nothing hand-written is needed** (#342 S2). The server generates the whole galaxy from the
@@ -36,8 +52,9 @@ Its gates name the pack's own system ids. A new world weaves them in; `econserve
 checks them. The full format and its rules: `src/engine/gen/Pack.h` and
 `documents/world_generation_v2.md` (S7); a worked example: `tests/fixtures/packs/`.
 
-After a build, `data/` is copied next to `econspace.exe` by the `copy_data` target
-(on every build). Clients and `econagent` read no galaxy at all: the server sends them the
+After a build, `data/` is copied next to each executable by the `copy_data` target
+(on every build), and every binary finds it at runtime (#399, `core/DataDir.h`): `--data`,
+`ECONSPACE_DATA`, the source tree for a non-Release build, or beside the executable. Clients and `econagent` read no galaxy at all: the server sends them the
 index at login as a `universe` message (#206), without the `file` names, so a system that
 exists only on the server is on their map too.
 
