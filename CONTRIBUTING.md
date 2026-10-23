@@ -2,6 +2,14 @@
 
 Thanks for your interest! EconSpace is an open-source, engineering-driven space-sim prototype, and contributions of all kinds are welcome — code, world content, bots, docs, art and bug reports. Contributions from AI agents are welcome too; [CLAUDE.md](CLAUDE.md) is the operating context written for them.
 
+## Where to start
+
+- **A first change:** issues labelled [`good first issue`](https://github.com/HEL3AN/econspace-mmo/issues?q=is%3Aopen+label%3A%22good+first+issue%22) are small and each says which files to open and how to test. [`help wanted`](https://github.com/HEL3AN/econspace-mmo/issues?q=is%3Aopen+label%3A%22help+wanted%22) are larger but well scoped. Say in the issue that you are taking one.
+- **A question or an idea:** [Discussions](https://github.com/HEL3AN/econspace-mmo/discussions) — Q&A for how-to, Ideas for something you want to talk over before it becomes an issue.
+- **Content without C++:** the how-tos in [docs/howto/](docs/howto/README.md) add a kind of object from data, step by step.
+- **A bot:** [docs/agents/](docs/agents/README.md) and the example in [examples/agents/](examples/agents/README.md).
+- **Before proposing a big change:** the settled premises in [CLAUDE.md](CLAUDE.md#settled-premises--do-not-re-litigate-these) and the reasons in [DECISIONS.md](DECISIONS.md) are not re-opened; build on top of them.
+
 ## Ways to help
 
 - **Bots** — build one on the game's MCP server and tell us what it could not do. Start with [docs/agents/](docs/agents/README.md).
@@ -9,7 +17,7 @@ Thanks for your interest! EconSpace is an open-source, engineering-driven space-
 - **Art** — welcome, though no longer what the project is blocked on: an object's look is generated from its archetype, and a hand-made sprite wins wherever one exists. See [`documents/texture_assets.md`](documents/texture_assets.md).
 - **Gameplay & code** — see the [issue tracker](../../issues) and [ROADMAP.md](ROADMAP.md).
 - **Docs** — improvements to the design docs in [`documents/`](documents/) and the top-level guides.
-- **Bug reports** — open an issue with clear repro steps.
+- **Bug reports and playtest feedback** — open an issue; the forms ask for what is needed.
 
 ## Building
 
@@ -54,7 +62,8 @@ See [README.md](README.md) for run instructions and networked play.
 2. Keep changes focused; make sure the build is green and `-Wall -Wextra` is clean.
 3. Run `ctest` and the relevant smoke tests.
 4. Write a clear PR description of *what* and *why*. A PR that adds a new type, store, window or message says why no existing one could carry it: a feature extends what is already built ([CLAUDE.md](CLAUDE.md#structure-and-rules)).
-5. Never commit saves: `world.json`, `regions/`, `accounts/`, `corps.json`, `designs.json`, `allowlist.txt`, `bans.txt`.
+5. If a player, a host or a bot author would notice the change, add one line under **Unreleased** in [CHANGELOG.md](CHANGELOG.md), with the issue or PR number.
+6. Never commit saves: `world.json`, `regions/`, `accounts/`, `corps.json`, `designs.json`, `allowlist.txt`, `bans.txt`.
 
 Ideas from agents are filed with the `proposal` label and wait for the owner before anything is built.
 

@@ -1,0 +1,51 @@
+name: Feature request
+description: Something the game could do, or do better.
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you write: [ROADMAP.md](https://github.com/HEL3AN/econspace-mmo/blob/main/ROADMAP.md) says what is built and what is planned, and an idea still taking shape is welcome in [Discussions › Ideas](https://github.com/HEL3AN/econspace-mmo/discussions/categories/ideas) first.
+
+        Some things are **settled** and are not re-opened here: EconSpace is an MMO with no single-player mode, the look is generated rather than drawn, the world is generated from a seed, AI agents are ordinary players, and the rest of the list in [CLAUDE.md](https://github.com/HEL3AN/econspace-mmo/blob/main/CLAUDE.md#settled-premises--do-not-re-litigate-these). The reasoning is in [DECISIONS.md](https://github.com/HEL3AN/econspace-mmo/blob/main/DECISIONS.md). A request that builds on top of them is very welcome.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you were trying to do, and what got in the way. Why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: What would happen instead. If it extends something that already exists — a window, the journal, a registry in data/ — say which.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other ways you thought of, and how other games do it.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Gameplay
+        - Economy and trade
+        - Factions, territory and law
+        - Corporations and building
+        - Networking and the server
+        - The look
+        - Interface
+        - Agents and econagent
+        - The editor and tooling
+        - Documentation
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: Sketches, references, related issues.

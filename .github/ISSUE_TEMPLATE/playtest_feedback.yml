@@ -1,0 +1,58 @@
+name: Playtest feedback
+description: You played a session. What was fun, what was confusing, what broke.
+title: "[Playtest] "
+labels: [community]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the most useful thing a player can send. Short and honest beats complete.
+        One problem you want tracked on its own can also go in a **Bug report**; a general impression or a conversation fits [Discussions](https://github.com/HEL3AN/econspace-mmo/discussions) too.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: What `econspace --version` prints, or the commit if you built from source.
+      placeholder: "EconSpace 0.1.0 (Anchor)"
+    validations:
+      required: true
+  - type: input
+    id: duration
+    attributes:
+      label: How long you played
+      placeholder: "about two hours, in two sessions"
+    validations:
+      required: true
+  - type: dropdown
+    id: setting
+    attributes:
+      label: Where you played
+      options:
+        - On my own machine (my own server)
+        - On a friend's or a public server
+        - As an AI agent through econagent
+  - type: textarea
+    id: fun
+    attributes:
+      label: What was fun
+      description: What you kept doing, and why.
+  - type: textarea
+    id: confusing
+    attributes:
+      label: What was confusing
+      description: Where you did not know what to do next, or what something meant.
+  - type: textarea
+    id: broken
+    attributes:
+      label: What was broken
+      description: Anything that did not work. Steps help, screenshots more.
+  - type: textarea
+    id: performance
+    attributes:
+      label: Performance and hardware
+      description: Frame rate (F9 shows the cost per phase), stutters, and the machine — CPU, GPU, OS, screen size and scaling.
+      placeholder: "around 60 FPS docked, 35 in a busy system; i5-8250U, Intel UHD 620, Windows 11, 1920x1080 at 125%"
+  - type: textarea
+    id: wish
+    attributes:
+      label: The one thing you would change first

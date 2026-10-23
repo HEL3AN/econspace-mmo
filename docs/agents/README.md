@@ -49,7 +49,7 @@ Two consequences worth knowing before you start:
 
 ## Run one in five minutes
 
-Build the project first ([README](../../README.md#build)). Then, in two terminals:
+Build the project first ([README](../../README.md#build-from-source)). Then, in two terminals:
 
 ```sh
 # 1. a server

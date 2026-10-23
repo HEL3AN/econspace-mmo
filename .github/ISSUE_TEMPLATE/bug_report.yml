@@ -1,0 +1,92 @@
+name: Bug report
+description: Something in the game, the server, the editor or econagent does not work as it should.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. A bug that can be reproduced gets fixed first, so the steps matter most.
+        For a problem with a bot or an MCP client, the **Agent / MCP problem** form asks the right questions.
+        A security problem goes privately, not here: see [SECURITY.md](https://github.com/HEL3AN/econspace-mmo/blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: What `econspace --version` (or `econserver --version`) prints, or the commit or branch if you built from source.
+      placeholder: "EconSpace 0.1.0 (Anchor), or main at abc1234"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: binary
+    attributes:
+      label: Which program
+      description: Where the problem shows. Choose every one that applies.
+      multiple: true
+      options:
+        - econspace (the game client)
+        - econserver (the server)
+        - econagent (the MCP server)
+        - worldeditor (the editor)
+    validations:
+      required: true
+  - type: dropdown
+    id: build
+    attributes:
+      label: Build
+      options:
+        - A downloaded release
+        - Built from source, Release
+        - Built from source, Debug
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: From starting the server to the problem. Include the command lines you ran.
+      placeholder: |
+        1. econserver host 50800
+        2. econspace connect 127.0.0.1 50800 pilot hunter2
+        3. Dock at the trade hub, open the market...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The lines around the problem from the server's and the client's terminal (stderr), with their times. Leave out secrets.
+      render: text
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: Anything you can see is easier to fix with a picture. Drag it in here.
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: Hardware for a rendering or performance problem, whether it happens every time, related issues.

@@ -1,0 +1,56 @@
+name: Agent / MCP problem
+description: A bot or an MCP client cannot do something through econagent, or econagent misbehaves.
+title: "[Agent] "
+labels: [agent]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `econagent` is the game's MCP server; an agent plays by the same rules as a person. The guide is [docs/agents](https://github.com/HEL3AN/econspace-mmo/blob/main/docs/agents/README.md) and every tool is listed in its [reference](https://github.com/HEL3AN/econspace-mmo/blob/main/docs/agents/reference.md).
+        "My bot could not do X that a human player can" is a welcome report: say what it tried.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: What `econagent --version` prints, or the commit if you built from source. The server must be the same release.
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client and model
+      description: What drives econagent.
+      placeholder: "Claude Code with Claude, a Python script over stdio, ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of problem
+      options:
+        - A tool returns an error or a wrong answer
+        - A tool, resource or field is missing for something a player can do
+        - The MCP connection breaks (parse errors, hangs, disconnects)
+        - The guide or the reference is wrong or unclear
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What the agent tried, in order, and what it got back.
+    validations:
+      required: true
+  - type: textarea
+    id: transcript
+    attributes:
+      label: Requests and responses
+      description: The JSON-RPC lines around the problem, if you have them. Leave out secrets.
+      render: json
+  - type: textarea
+    id: stderr
+    attributes:
+      label: econagent's stderr
+      description: econagent writes every diagnostic to stderr (its stdout is the JSON-RPC channel).
+      render: text

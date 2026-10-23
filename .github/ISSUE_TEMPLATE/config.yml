@@ -1,8 +1,17 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
-  - name: Roadmap & project status
+  - name: A question
+    url: https://github.com/HEL3AN/econspace-mmo/discussions/categories/q-a
+    about: How to play, host or build something. Ask in Discussions › Q&A.
+  - name: An idea to talk over
+    url: https://github.com/HEL3AN/econspace-mmo/discussions/categories/ideas
+    about: An idea still taking shape belongs in Discussions › Ideas before it becomes an issue.
+  - name: Roadmap
     url: https://github.com/HEL3AN/econspace-mmo/blob/main/ROADMAP.md
-    about: See what's done and what's planned before opening a feature request.
-  - name: Architecture overview
+    about: What is built and what is planned, before opening a feature request.
+  - name: Architecture
     url: https://github.com/HEL3AN/econspace-mmo/blob/main/ARCHITECTURE.md
-    about: How the client–server core, protocol, and netcode fit together.
+    about: How the client, the server, the protocol and the simulation fit together.
+  - name: Building a bot
+    url: https://github.com/HEL3AN/econspace-mmo/blob/main/docs/agents/README.md
+    about: The guide to playing through econagent, the game's MCP server.

@@ -14,6 +14,22 @@ You fly a ship in a persistent galaxy: mine, trade, run missions, fight, build r
 
 > **Status — the honest version.** EconSpace is a working **prototype**, not a finished game. The client–server core, the netcode, multiplayer, accounts and the agent interface are real and tested. The look is new and moving fast. Content is thin and there is no audio. The direction is set — see [Where it is going](#where-it-is-going) — and contributions are welcome, from people and from agents.
 
+## Play
+
+1. Download the latest build from [GitHub Releases](https://github.com/HEL3AN/econspace-mmo/releases/latest) or [itch.io](https://hel3an.itch.io/econspace): a zip for Windows, a tarball for Linux. Unpack it anywhere; it runs from its own folder.
+2. Start a server, then connect a client to it under an account name and a secret of your choice (the first login creates the account):
+
+```sh
+./econserver host 50800                                # the world lives here
+./econspace connect 127.0.0.1 50800 pilot hunter2      # in a second terminal
+```
+
+On Windows, `start-server.bat` and `connect-example.bat` in the zip do the same with a double-click. To play with friends over a network, one of you hosts: [docs/hosting.md](docs/hosting.md) is the whole guide.
+
+A client plays only on a server of the **same release**; a mismatch is refused with the version to get. `econspace --version` says which one you have. `main` has moved well past the last release, so a server built from source does not take a downloaded client.
+
+**Community:** questions, ideas and playtest feedback go to [Discussions](https://github.com/HEL3AN/econspace-mmo/discussions); bugs go to [Issues](https://github.com/HEL3AN/econspace-mmo/issues). What changed between releases is in [CHANGELOG.md](CHANGELOG.md).
+
 ---
 
 ## Screenshots
@@ -37,7 +53,8 @@ The repository has several documents at the top. Each owns one thing:
 
 | Read | When you want |
 |---|---|
-| **this README** | what EconSpace is, what works today, how to build and play |
+| **this README** | what EconSpace is, what works today, how to play and how to build |
+| [CHANGELOG.md](CHANGELOG.md) | what changed in each release, and what has landed since the last one |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | how the code fits together |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | how to work here — build on each platform, tests, style, pull requests |
 | [docs/agents/](docs/agents/) | **how to build your own bot** on the game's MCP server |
@@ -88,7 +105,9 @@ The repository has several documents at the top. Each owns one thing:
 
 ---
 
-## Build
+## Build from source
+
+You need this only to work on the game, or to run what is on `main` rather than the last release.
 
 **Requirements**
 - A C++17 compiler: **MinGW-w64 g++** on Windows (from [MSYS2](https://www.msys2.org/)), **GCC** on Linux, **Apple Clang** (Xcode command-line tools) on macOS.
@@ -102,13 +121,13 @@ cmake --build build                          # every target; the first build is 
 ctest --test-dir build --output-on-failure   # the unit suite
 ```
 
-`build/` (Debug) is for development and tests. To play, or to measure anything, build Release in a second directory: `cmake -S . -B build-release -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release` and `cmake --build build-release`; an unoptimized build is several times slower. `cmake --build build-release --target dist` makes the portable package. Or download a built release from [GitHub Releases](https://github.com/HEL3AN/econspace-mmo/releases) or [itch.io](https://hel3an.itch.io/econspace).
+`build/` (Debug) is for development and tests. To play, or to measure anything, build Release in a second directory: `cmake -S . -B build-release -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release` and `cmake --build build-release`; an unoptimized build is several times slower. `cmake --build build-release --target dist` makes the portable package.
 
 On Windows, close a running executable before rebuilding — Windows will not let it be overwritten. On Linux the binaries have no `.exe` suffix.
 
 **macOS** builds and passes the tests in CI on every change, but nobody on the team plays on a Mac, so what the game *looks* like there has not been seen. Use the default generator (`cmake -S . -B build`, no `-G`). If you run it, a screenshot in an issue is the most useful thing you can send — Retina displays in particular are expected to misplace the screen treatment until #179.
 
-## Play
+## Run what you built
 
 Two halves, both required: a server, and a client connected to it.
 
@@ -217,7 +236,7 @@ CMake targets: **`engine`** (static library), **`netproto`** (the wire protocol 
 
 ## Contributing
 
-Contributions are welcome — code, world content, documentation, bug reports, and bots. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Issues labelled [`good first issue`](../../issues?q=is%3Aopen+label%3A%22good+first+issue%22) and [`community`](../../issues?q=is%3Aopen+label%3Acommunity) are good places to begin.
+Contributions are welcome — code, world content, documentation, bug reports, and bots. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Issues labelled [`good first issue`](https://github.com/HEL3AN/econspace-mmo/issues?q=is%3Aopen+label%3A%22good+first+issue%22) are small and come with a note on where to start; [`help wanted`](https://github.com/HEL3AN/econspace-mmo/issues?q=is%3Aopen+label%3A%22help+wanted%22) are larger pieces that are well scoped. Questions and ideas are welcome in [Discussions](https://github.com/HEL3AN/econspace-mmo/discussions).
 
 Found a security problem? Please report it privately — see [SECURITY.md](SECURITY.md).
 
