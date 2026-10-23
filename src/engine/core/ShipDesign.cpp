@@ -219,8 +219,8 @@ bool ParseSectionShape(const json& j, Ships::Section& s, std::string& err)
             // capsule, a lattice, anything round), across it too.
             const std::string form = e.value("form", std::string("disc"));
             const bool        both = form == "bar" || form == "capsule" || form == "lattice" ||
-                                     form == "disc" || form == "ring";
-            const json        angle = e.value("angle", json(0.0));
+                              form == "disc" || form == "ring";
+            const json angle = e.value("angle", json(0.0));
             const bool square = angle.is_number() && std::fmod(std::fabs(angle.get<double>()),
                                                                both ? 90.0 : 180.0) == 0.0;
             if (!onAxis || !square)
@@ -463,7 +463,128 @@ const Frame* Catalogue::FindFrame(const std::string& id) const
 }
 const Design* Catalogue::FindDesign(const std::string& id) const
 {
-    return FindIn(designs, id);
+    if (const Design* d = FindIn(designs, id))
+        return d;
+    const Variant* v = FindVariant(id);
+    return v != nullptr ? &v->design : nullptr;
+}
+const Family* Catalogue::FindFamily(const std::string& id) const
+{
+    return FindIn(families, id);
+}
+const Line* Catalogue::FindLine(const std::string& id) const
+{
+    return FindIn(lines, id);
+}
+const Variant* Catalogue::FindVariant(const std::string& id) const
+{
+    // A variant's id always has the separator; a stock design's or a player's never does.
+    if (id.find('~') == std::string::npos)
+        return nullptr;
+    for (const Variant& v : variants)
+        if (v.design.id == id)
+            return &v;
+    return nullptr;
+}
+
+namespace
+{
+const Family* FamilyOfModule(const Catalogue& c, const std::string& module)
+{
+    for (const Family& f : c.families)
+        for (const std::string& m : f.modules)
+            if (m == module)
+                return &f;
+    return nullptr;
+}
+}  // namespace
+
+const Family* Catalogue::FamilyOf(const Design& d) const
+{
+    for (const FitLine& l : d.fit)
+        if (const Family* f = FamilyOfModule(*this, l.module))
+            return f;
+    return nullptr;
+}
+
+std::string Catalogue::VariantOf(const std::string& base, const std::string& family,
+                                 const std::string& line) const
+{
+    const Design* d = FindIn(designs, base);
+    const Family* own = d != nullptr ? FamilyOf(*d) : nullptr;
+    if (own == nullptr || FindFamily(family) == nullptr ||
+        (!line.empty() && FindLine(line) == nullptr))
+        return std::string();
+    if (own->id == family && line.empty())
+        return base;
+    return base + "~" + family + (line.empty() ? std::string() : "~" + line);
+}
+
+bool MakeVariant(const Catalogue& c, const Design& base, const Family& family, const Line* line,
+                 Design& out, std::string& error)
+{
+    const Family* own = c.FamilyOf(base);
+    if (own == nullptr || family.modules.empty())
+    {
+        error = "design '" + base.id + "' carries no family's guns";
+        return false;
+    }
+    Design v = base;
+    v.id = base.id + "~" + family.id + (line != nullptr ? "~" + line->id : std::string());
+    v.name = base.name + " (" + family.name + (line != nullptr ? ", " + line->name : "") + ")";
+    // Every gun of any family becomes the family's, as many as there were, at the size the
+    // module's own look gives it: a scale was chosen for the gun the design had.
+    if (own != &family)
+        for (FitLine& l : v.fit)
+            if (FamilyOfModule(c, l.module) != nullptr)
+            {
+                l.module = family.modules.front();
+                l.scale = 0.0f;
+            }
+    // The hull, position by position: the first of the line's sections that keeps the ship a
+    // ship. Every mid is the same section, so a line that has one turns them all.
+    if (line != nullptr)
+    {
+        std::string why;
+        for (const std::string& s : line->bow)
+        {
+            Design trial = v;
+            trial.bow = s;
+            if (Validate(c, trial, why))
+            {
+                v = trial;
+                break;
+            }
+        }
+        for (const std::string& s : line->mid)
+        {
+            Design trial = v;
+            for (std::string& m : trial.mids)
+                m = s;
+            if (Validate(c, trial, why))
+            {
+                v = trial;
+                break;
+            }
+        }
+        for (const std::string& s : line->stern)
+        {
+            Design trial = v;
+            trial.stern = s;
+            if (Validate(c, trial, why))
+            {
+                v = trial;
+                break;
+            }
+        }
+    }
+    if (!Validate(c, v, error))
+    {
+        error = "variant " + error;
+        return false;
+    }
+    out = std::move(v);
+    return true;
 }
 
 bool ArmedRole(const std::string& role)
@@ -945,6 +1066,174 @@ bool ReadDoctrines(const json& j, Catalogue& c, std::string& error)
     return true;
 }
 
+// The goods a family or a line is made of: a list of good names, each one the registry has.
+bool ReadGoods(const json& j, std::vector<ResourceType>& out, std::string& err)
+{
+    if (!j.contains("goods") || !j["goods"].is_array() || j["goods"].empty())
+    {
+        err = "'goods' is missing: a list of the goods it is made of";
+        return false;
+    }
+    for (const json& g : j["goods"])
+    {
+        ResourceType r;
+        if (!g.is_string() || !Goods::Find(g.get<std::string>(), r))
+        {
+            err = "goods: '" + (g.is_string() ? g.get<std::string>() : std::string("?")) +
+                  "' is not a good";
+            return false;
+        }
+        out.push_back(r);
+    }
+    return true;
+}
+
+bool ReadNames(const json& j, const char* key, std::vector<std::string>& out, std::string& err)
+{
+    if (!j.contains(key))
+        return true;
+    if (!j[key].is_array())
+    {
+        err = std::string("'") + key + "' is not a list of names";
+        return false;
+    }
+    for (const json& n : j[key])
+    {
+        if (!n.is_string() || n.get<std::string>().empty())
+        {
+            err = std::string("'") + key + "' holds something that is not a name";
+            return false;
+        }
+        out.push_back(n.get<std::string>());
+    }
+    return true;
+}
+
+// Weapon families (#464): { id: { "name", "modules": [...], "goods": [...] } }. A module is
+// in at most one family and is a gun: a family of things that do not shoot would refit a
+// patrol into a trader in a uniform.
+bool ReadFamilies(const json& j, Catalogue& c, std::string& error)
+{
+    if (!j.contains("families"))
+        return true;
+    if (!j["families"].is_object())
+    {
+        error = "'families' is not an object of id -> family";
+        return false;
+    }
+    for (auto it = j["families"].begin(); it != j["families"].end(); ++it)
+    {
+        Family      f;
+        std::string err;
+        f.id = it.key();
+        const json& e = it.value();
+        if (!e.is_object() || !OnlyKnownKeys(e, { "name", "modules", "goods" }, err) ||
+            !ReadString(e, "name", f.name, err) || !ReadNames(e, "modules", f.modules, err) ||
+            !ReadGoods(e, f.goods, err))
+        {
+            error = "family '" + f.id + "': " + (err.empty() ? "not an object" : err);
+            return false;
+        }
+        if (f.id.find('~') != std::string::npos || f.modules.empty())
+        {
+            error = "family '" + f.id + "': needs modules, and an id without '~'";
+            return false;
+        }
+        for (const std::string& m : f.modules)
+        {
+            const ModulePart* part = c.FindModule(m);
+            if (part == nullptr || part->provides.damage <= 0.0f)
+            {
+                error = "family '" + f.id + "': '" + m + "' is not a gun";
+                return false;
+            }
+            for (const Family& other : c.families)
+                for (const std::string& om : other.modules)
+                    if (om == m)
+                    {
+                        error =
+                            "family '" + f.id + "': '" + m + "' is already in '" + other.id + "'";
+                        return false;
+                    }
+        }
+        c.families.push_back(std::move(f));
+    }
+    return true;
+}
+
+// Hull lines (#464): { id: { "name", "bow", "mid", "stern": [sections, best first],
+// "goods" } }. Each section must stand at the position it is listed under.
+bool ReadLines(const json& j, Catalogue& c, std::string& error)
+{
+    if (!j.contains("lines"))
+        return true;
+    if (!j["lines"].is_object())
+    {
+        error = "'lines' is not an object of id -> line";
+        return false;
+    }
+    for (auto it = j["lines"].begin(); it != j["lines"].end(); ++it)
+    {
+        Line        l;
+        std::string err;
+        l.id = it.key();
+        const json& e = it.value();
+        if (!e.is_object() || !OnlyKnownKeys(e, { "name", "bow", "mid", "stern", "goods" }, err) ||
+            !ReadString(e, "name", l.name, err) || !ReadNames(e, "bow", l.bow, err) ||
+            !ReadNames(e, "mid", l.mid, err) || !ReadNames(e, "stern", l.stern, err) ||
+            !ReadGoods(e, l.goods, err))
+        {
+            error = "line '" + l.id + "': " + (err.empty() ? "not an object" : err);
+            return false;
+        }
+        if (l.id.find('~') != std::string::npos)
+        {
+            error = "line '" + l.id + "': an id has no '~'";
+            return false;
+        }
+        for (const auto& [position, list] :
+             { std::make_pair("bow", &l.bow), std::make_pair("mid", &l.mid),
+               std::make_pair("stern", &l.stern) })
+            for (const std::string& s : *list)
+            {
+                const Section* sec = c.FindSection(s);
+                if (sec == nullptr || sec->position != position)
+                {
+                    error = "line '" + l.id + "': '" + s + "' is not a " + position + " section";
+                    return false;
+                }
+            }
+        c.lines.push_back(std::move(l));
+    }
+    return true;
+}
+
+// Every variant of every armed stock design: each family, on its own hull and on each line.
+bool MakeVariants(Catalogue& c, std::string& error)
+{
+    for (const Design& d : c.designs)
+    {
+        const Family* own = c.FamilyOf(d);
+        if (own == nullptr)
+            continue;
+        for (const Family& f : c.families)
+            for (size_t l = 0; l <= c.lines.size(); ++l)
+            {
+                const Line* line = l == 0 ? nullptr : &c.lines[l - 1];
+                if (&f == own && line == nullptr)
+                    continue;  // the stock design itself
+                Variant v;
+                if (!MakeVariant(c, d, f, line, v.design, error))
+                    return false;
+                v.base = d.id;
+                v.family = f.id;
+                v.line = line != nullptr ? line->id : std::string();
+                c.variants.push_back(std::move(v));
+            }
+    }
+    return true;
+}
+
 // What players fly (#279 step 5): [{ "design", "price" }], the starter first. An account owns
 // hulls by their place here, so a list that is empty, names a design twice or one that is not
 // a design is an error -- it would hand a pilot a ship that is not one, or two that are.
@@ -1000,9 +1289,10 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
         error = "not a ship catalogue (not an object)";
         return false;
     }
-    if (!OnlyKnownKeys(
-            j, { "rules", "modules", "sections", "frames", "designs", "doctrines", "hangar" },
-            error))
+    if (!OnlyKnownKeys(j,
+                       { "rules", "modules", "sections", "frames", "designs", "doctrines", "hangar",
+                         "families", "lines" },
+                       error))
         return false;
 
     Catalogue c;
@@ -1075,7 +1365,8 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
     for (const Design& d : c.designs)
         if (!Validate(c, d, error))
             return false;
-    if (!ReadDoctrines(j, c, error) || !ReadHangar(j, c, error))
+    if (!ReadFamilies(j, c, error) || !ReadLines(j, c, error) || !MakeVariants(c, error) ||
+        !ReadDoctrines(j, c, error) || !ReadHangar(j, c, error))
         return false;
 
     out = std::move(c);

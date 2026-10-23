@@ -395,19 +395,27 @@ TEST_CASE("a mistake in the ship catalogue is a load error, not a default")
     CHECK_FALSE(ErrorAfter([](nlohmann::json& j) { j["shipz"] = 1; }).empty());
 
     // What a part provides is only what a stat reads; a shield nothing reads is a typo now.
-    CHECK(ErrorAfter([](nlohmann::json& j) { j["modules"][0]["provides"] = { { "shield", 5 } }; })
+    CHECK(ErrorAfter(
+              [](nlohmann::json& j) {
+                  j["modules"][0]["provides"] = { { "shield", 5 } };
+              })
               .find("shield") != std::string::npos);
     // A cost in a resource that does not exist, or of nothing.
-    CHECK_FALSE(
-        ErrorAfter([](nlohmann::json& j) { j["modules"][0]["cost"] = { { "Gold", 5 } }; }).empty());
+    CHECK_FALSE(ErrorAfter(
+                    [](nlohmann::json& j) {
+                        j["modules"][0]["cost"] = { { "Gold", 5 } };
+                    })
+                    .empty());
     CHECK_FALSE(ErrorAfter([](nlohmann::json& j) { j["modules"][0].erase("cost"); }).empty());
     // A part with no mass, a socket kind that does not exist, a count drawn from a range.
     CHECK_FALSE(ErrorAfter([](nlohmann::json& j) { j["modules"][0]["mass"] = 0; }).empty());
     CHECK_FALSE(
         ErrorAfter([](nlohmann::json& j) { j["sections"][0]["sockets"]["wingtip"] = 1; }).empty());
-    CHECK_FALSE(
-        ErrorAfter([](nlohmann::json& j) { DesignJson(j, "scout")["fit"][0]["count"] = { 0, 2 }; })
-            .empty());
+    CHECK_FALSE(ErrorAfter(
+                    [](nlohmann::json& j) {
+                        DesignJson(j, "scout")["fit"][0]["count"] = { 0, 2 };
+                    })
+                    .empty());
     // A section at the wrong position, and a part defined twice.
     CHECK_FALSE(ErrorAfter([](nlohmann::json& j) { DesignJson(j, "scout")["stern"] = "mid.spine"; })
                     .empty());
@@ -485,8 +493,9 @@ TEST_CASE("a hull that breaks its class rule is a load error, not a ship that lo
               .find("repeat") != std::string::npos);
     // The hull is the same for every ship of a design: the seed rolls the trim, not the hull.
     CHECK(ErrorAfter(
-              [](nlohmann::json& j)
-              { SectionJson(j, "mid.spine")["shape"]["sections"][0]["length"] = { 0.6, 0.8 }; })
+              [](nlohmann::json& j) {
+                  SectionJson(j, "mid.spine")["shape"]["sections"][0]["length"] = { 0.6, 0.8 };
+              })
               .find("fixed") != std::string::npos);
     // A section is drawn as something; a class says how long it is.
     CHECK_FALSE(
@@ -800,4 +809,155 @@ TEST_CASE("an NPC is drawn as the design it flies and is as fast, tough and arme
     for (NpcRole r : { NpcRole::Trader, NpcRole::Miner, NpcRole::Police, NpcRole::Pirate,
                        NpcRole::Warship, NpcRole::Guard })
         CHECK(c.DesignsFor("default", NpcRoleId(r)) != nullptr);
+}
+
+// Variants (#464): every armed stock design comes with every family's guns on its own hull and
+// on every hull line, made from data on both sides of the wire.
+TEST_CASE("every armed stock design has a variant per family and line, and each one derives")
+{
+    const Ships::Catalogue c = Shipped();
+    REQUIRE(c.families.size() >= 2);
+    REQUIRE(c.lines.size() >= 3);
+    int armed = 0;
+    for (const Ships::Design& d : c.designs)
+    {
+        const Ships::Family* own = c.FamilyOf(d);
+        if (own == nullptr)
+        {
+            for (const Ships::Family& f : c.families)
+                CHECK(c.VariantOf(d.id, f.id, "").empty());
+            continue;
+        }
+        armed++;
+        CAPTURE(d.id);
+        for (const Ships::Family& f : c.families)
+            for (size_t l = 0; l <= c.lines.size(); ++l)
+            {
+                const std::string line = l == 0 ? std::string() : c.lines[l - 1].id;
+                const std::string id = c.VariantOf(d.id, f.id, line);
+                CAPTURE(id);
+                if (&f == own && line.empty())
+                {
+                    CHECK(id == d.id);
+                    continue;
+                }
+                const Ships::Variant* v = c.FindVariant(id);
+                REQUIRE(v != nullptr);
+                CHECK(v->base == d.id);
+                CHECK(v->family == f.id);
+                CHECK(v->line == line);
+                CHECK(c.FindDesign(id) == &v->design);
+                CHECK(c.FamilyOf(v->design) == &f);
+                Ships::Stats s;
+                std::string  error;
+                CHECK_MESSAGE(Ships::Derive(c, v->design, s, error), error);
+                CHECK(s.damage > 0.0f);
+            }
+    }
+    CHECK(armed >= 3);  // the cutter, the raider and the cruiser
+    CHECK(c.variants.size() == (size_t)armed * (c.families.size() * (c.lines.size() + 1) - 1));
+    // A stock design keeps its id, and no player's design is taken for a variant.
+    CHECK(c.FindVariant("cutter") == nullptr);
+    CHECK(c.FindVariant("u:0000abcd") == nullptr);
+}
+
+TEST_CASE("a variant's guns are its family's, as many as before; its line changes its hull")
+{
+    const Ships::Catalogue c = Shipped();
+    const Ships::Design*   cutter = c.FindDesign("cutter");
+    const Ships::Design*   rail = c.FindDesign("cutter~railgun");
+    REQUIRE(cutter != nullptr);
+    REQUIRE(rail != nullptr);
+    auto guns = [](const Ships::Design& d, const char* module)
+    {
+        int n = 0;
+        for (const Ships::FitLine& l : d.fit)
+            if (l.module == module)
+                n += l.count;
+        return n;
+    };
+    CHECK(guns(*cutter, "weapons.laser") == 2);
+    CHECK(guns(*rail, "weapons.laser") == 0);
+    CHECK(guns(*rail, "weapons.railgun") == 2);
+    // ...on the stock hull, and nothing else changed.
+    CHECK(rail->bow == cutter->bow);
+    CHECK(rail->mids == cutter->mids);
+    CHECK(rail->stern == cutter->stern);
+    CHECK(rail->fit.size() == cutter->fit.size());
+    CHECK(rail->name == "Cutter (railguns)");
+    Ships::Stats a, b;
+    std::string  error;
+    REQUIRE(Ships::Derive(c, *cutter, a, error));
+    REQUIRE(Ships::Derive(c, *rail, b, error));
+    CHECK(b.damage == doctest::Approx(2 * c.FindModule("weapons.railgun")->provides.damage));
+    CHECK(b.mass > a.mass);
+
+    // Each line turns at least one design's hull, so a line is never a name for nothing.
+    for (const Ships::Line& line : c.lines)
+    {
+        CAPTURE(line.id);
+        bool turned = false;
+        for (const Ships::Variant& v : c.variants)
+            if (v.line == line.id)
+            {
+                const Ships::Design* base = c.FindDesign(v.base);
+                turned = turned || v.design.bow != base->bow || v.design.mids != base->mids ||
+                         v.design.stern != base->stern;
+            }
+        CHECK(turned);
+    }
+    // The same catalogue makes the same variants, every time and on every side.
+    const Ships::Catalogue again = Shipped();
+    REQUIRE(again.variants.size() == c.variants.size());
+    for (size_t i = 0; i < c.variants.size(); ++i)
+        CHECK(Ships::ToJson(again.variants[i].design) == Ships::ToJson(c.variants[i].design));
+}
+
+TEST_CASE("a family or a line that cannot be one is a load error")
+{
+    CHECK(
+        ErrorAfter([](nlohmann::json& j) { j["families"]["laser"]["modules"] = { "hull.armour" }; })
+            .find("is not a gun") != std::string::npos);
+    CHECK(ErrorAfter([](nlohmann::json& j)
+                     { j["families"]["railgun"]["modules"] = { "weapons.laser" }; })
+              .find("already in") != std::string::npos);
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["families"]["laser"]["goods"] = { "Unobtainium" }; })
+              .find("is not a good") != std::string::npos);
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["families"]["laser"]["colour"] = "red"; }) != "");
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["lines"]["heavy"]["bow"] = { "mid.belt" }; })
+              .find("is not a bow section") != std::string::npos);
+    CHECK(ErrorAfter([](nlohmann::json& j) { j["lines"]["heavy"].erase("goods"); }) != "");
+    // A catalogue may have none: then nothing has variants.
+    nlohmann::json j = ShippedJson();
+    j.erase("families");
+    j.erase("lines");
+    Ships::Catalogue c;
+    std::string      error;
+    REQUIRE_MESSAGE(Ships::Parse(j, c, error), error);
+    CHECK(c.variants.empty());
+}
+
+TEST_CASE("a variant is drawn and flown as its stock design is, with its own shape and numbers")
+{
+    REQUIRE(Archetypes::Load(DataFile("archetypes.json")));
+    const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+    REQUIRE(!c.variants.empty());
+    for (const Ships::Variant& v : c.variants)
+    {
+        CAPTURE(v.design.id);
+        const Archetype* look = Archetypes::ForDesign(v.design.id);
+        const Archetype* base = Archetypes::ForDesign(v.base);
+        REQUIRE(look != nullptr);
+        REQUIRE(base != nullptr);
+        CHECK(look->design == v.design.id);
+        CHECK(look->visual.glyph == base->visual.glyph);
+        CHECK(Archetypes::FindDesign(v.design.id) == &v.design);
+        Ships::Stats s;
+        std::string  error;
+        REQUIRE(Ships::Derive(c, v.design, s, error));
+        CHECK(look->ship.volley == doctest::Approx(s.volley));
+        CHECK(look->ship.combatHull == doctest::Approx(s.combatHull));
+    }
+    NpcShip pirate({ 0.0f, 0.0f }, Fac::Pirates(), NpcRole::Pirate, {}, "raider~laser~light");
+    CHECK(pirate.GetDesign() == "raider~laser~light");
 }

@@ -191,6 +191,15 @@
         { "id": "raider", "class": "raider", "mass": 17, "mids": [1, 1], "minAspect": 1.6, "provides": { "mining": 2, "hull": 48 }, "cost": { "Iron": 50 } },
         { "id": "cruiser", "class": "cruiser", "mass": 24, "mids": [1, 2], "minAspect": 2.0, "provides": { "mining": 2, "hull": 42 }, "cost": { "Iron": 90, "Crystal": 10 } }
     ],
+    "families": {
+        "laser": { "name": "lasers", "modules": ["weapons.laser"], "goods": ["Crystal", "Circuits"] },
+        "railgun": { "name": "railguns", "modules": ["weapons.railgun"], "goods": ["Steel", "Ammunition"] }
+    },
+    "lines": {
+        "light": { "name": "light", "bow": ["bow.needle"], "mid": ["mid.slim"], "stern": ["stern.twin"], "goods": ["Crystal", "Fuel"] },
+        "heavy": { "name": "heavy", "bow": ["bow.wedge", "bow.blunt"], "mid": ["mid.belt"], "stern": ["stern.row"], "goods": ["Steel", "Iron"] },
+        "brawler": { "name": "brawler", "bow": ["bow.fang"], "mid": ["mid.spine"], "stern": ["stern.cluster"], "goods": ["Iron", "Ammunition"] }
+    },
     "designs": [
         {
             "id": "scout", "name": "Scout", "frame": "frigate",

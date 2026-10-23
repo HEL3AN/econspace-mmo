@@ -33,7 +33,7 @@ const std::string DATA = TEST_DATA_DIR;
 struct GoodsFile
 {
     GoodsFile() { REQUIRE(Goods::Load(DATA + "goods.json")); }
-    ~GoodsFile() { Goods::ResetToBuiltin(); }
+    ~GoodsFile() { Goods::Load(DATA + "goods.json"); }
 };
 
 void LoadRegistries()
@@ -73,7 +73,10 @@ bool Writes(const std::string& path, const std::string& text)
 
 TEST_CASE("goods are data: a chain of tiers, and a mistake in the file changes nothing (#343)")
 {
-    CHECK(Goods::Count() == 3);  // before any load: the three ores of the original game
+    const int n0 = Goods::Count();
+    Goods::ResetToBuiltin();
+    CHECK(Goods::Count() ==
+          3);  // the registry before any load: the three ores of the original game
     {
         GoodsFile file;
         const int n = Goods::Count();
@@ -139,7 +142,7 @@ TEST_CASE("goods are data: a chain of tiers, and a mistake in the file changes n
             CHECK(Goods::Count() == n);
         }
     }
-    CHECK(Goods::Count() == 3);
+    CHECK(Goods::Count() == n0);  // and the file again once it is done: what every test runs on
 }
 
 TEST_CASE("a market's price follows its stock, and its recipes run on what is in stock (#343)")
@@ -216,7 +219,7 @@ TEST_CASE("buying at a station: the stock, the hold and the money decide, and th
         sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
     SystemState& st = *sim.SystemOf(s);
     auto         station = std::make_unique<Station>(Vector2{ 0.0f, 0.0f }, 60.0f, "Depot",
-                                                     Fac::TradersGuild(), StationRole::TradeHub);
+                                             Fac::TradersGuild(), StationRole::TradeHub);
     station->SetId(990001);
     st.entities.push_back(std::move(station));
     REQUIRE(sim.StepPlayerDock(s, st) == 990001);

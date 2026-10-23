@@ -225,7 +225,7 @@ TEST_CASE("cold systems still progress: stock, presence, prices and outposts (#2
     struct GoodsFile
     {
         GoodsFile() { REQUIRE(Goods::Load(DATA + "goods.json")); }
-        ~GoodsFile() { Goods::ResetToBuiltin(); }
+        ~GoodsFile() { Goods::Load(DATA + "goods.json"); }
     } goods;
     auto sim = ColdWorld();
     REQUIRE(HotCount(*sim) == 0);
@@ -422,8 +422,8 @@ TEST_CASE("an NPC of a design hits as hard as a player's ship of that design (#1
         pilot.weaponOn = true;
         NpcShip&    pilotTarget = PutNpc(st, { at.x + 100.0f, at.y + 20000.0f }, Fac::Pirates(),
                                          NpcRole::Pirate, "cruiser", 900003);
-        const float byPilot = HullLost(pilotTarget, ticks, [&]()
-                                       { sim->StepPlayerFire(pilot, st, 900003, dt, nullptr); });
+        const float byPilot = HullLost(
+            pilotTarget, ticks, [&]() { sim->StepPlayerFire(pilot, st, 900003, dt, nullptr); });
 
         Ships::Stats d;
         std::string  why;
