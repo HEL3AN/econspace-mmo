@@ -125,11 +125,17 @@ int main(int argc, char** argv)
         std::string text;
         int         frame;
     };
-    std::vector<Say> says;            // --say TEXT FRAME (#347)
-    std::vector<int> scans;           // --scan FRAME (#346)
-    float            uiScale = 0.0f;  // 0: the player's setting times the display's
-    std::string      openWindows;     // --open radar,missions,settings
-    std::string      startAt;         // --start ID|random (#342 S2)
+    std::vector<Say> says;   // --say TEXT FRAME (#347)
+    std::vector<int> scans;  // --scan FRAME (#346)
+    struct DragArg
+    {
+        Vector2 from, to;
+        int     frame, release;
+    };
+    std::vector<DragArg> drags;           // --drag X1 Y1 X2 Y2 FRAME RELEASE (#472)
+    float                uiScale = 0.0f;  // 0: the player's setting times the display's
+    std::string          openWindows;     // --open radar,missions,settings
+    std::string          startAt;         // --start ID|random (#342 S2)
     for (int i = 6; i < argc; i++)
         if (std::strcmp(argv[i], "--zoom") == 0 && i + 1 < argc)
             startZoom = (float)std::atof(argv[++i]);
@@ -194,6 +200,14 @@ int main(int argc, char** argv)
             clicks.push_back({ (float)std::atof(argv[i + 1]), (float)std::atof(argv[i + 2]),
                                std::atoi(argv[i + 3]), button });
             i += 3;
+        }
+        else if (std::strcmp(argv[i], "--drag") == 0 && i + 6 < argc)
+        {
+            drags.push_back({ { (float)std::atof(argv[i + 1]), (float)std::atof(argv[i + 2]) },
+                              { (float)std::atof(argv[i + 3]), (float)std::atof(argv[i + 4]) },
+                              std::atoi(argv[i + 5]),
+                              std::atoi(argv[i + 6]) });
+            i += 6;
         }
         else if (std::strcmp(argv[i], "--scan") == 0 && i + 1 < argc)
             scans.push_back(std::atoi(argv[++i]));
@@ -289,6 +303,8 @@ int main(int argc, char** argv)
             game.AddScriptedClick(c.x, c.y, c.frame, c.button);
         for (const Say& s : says)
             game.AddScriptedSay(s.text, s.frame);
+        for (const DragArg& d : drags)
+            game.AddScriptedDrag(d.from, d.to, d.frame, d.release);
         for (int f : scans)
             game.AddScriptedScan(f);
         if (fit)

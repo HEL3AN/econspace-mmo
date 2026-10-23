@@ -555,6 +555,27 @@ bool Layout::Clicked(std::string_view id, uint32_t index) const
     return pointer_.pressed && Hovered(id, index);
 }
 
+void Layout::DragSource(std::string_view id, uint32_t index, const DragPayload& payload)
+{
+    if (pointer_.pressed && Hovered(id, index))
+        Drag::Arm(payload, pointer_.pos);
+}
+
+bool Layout::DropHover(std::string_view id, uint32_t index, std::string_view accepts) const
+{
+    const DragPayload* p = Drag::Current();
+    return p != nullptr && Drag::Active() && Drag::Accepts(accepts, p->kind) && pointer_.owned &&
+           CheckCollisionPointRec(pointer_.pos, BoxOf(id, index));
+}
+
+const DragPayload* Layout::Dropped(std::string_view id, uint32_t index, std::string_view accepts)
+{
+    if (!Drag::Dropping() || !pointer_.owned ||
+        !CheckCollisionPointRec(pointer_.pos, BoxOf(id, index)))
+        return nullptr;
+    return Drag::Take(accepts);
+}
+
 Rectangle Layout::BoxOf(std::string_view id, uint32_t index) const
 {
     float b[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -1220,7 +1241,12 @@ TableEvents Layout::Table(const TableSpec& s)
                                                  Tooltip(row, s.tooltip(r), (uint32_t)r);
                                              ev.hovered = r;
                                              if (pointer_.pressed)
+                                             {
                                                  ev.clicked = r;
+                                                 DragPayload p;
+                                                 if (s.drag && s.drag(r, p))
+                                                     Drag::Arm(p, pointer_.pos);
+                                             }
                                              if (pointer_.rightPressed)
                                                  ev.rightClicked = r;
                                          }

@@ -79,61 +79,6 @@ const Entity* Game::DockedStructure() const
     return e != nullptr && e->GetKind() == EntityKind::Structure ? e : nullptr;
 }
 
-void Game::MoveStorage(ResourceType type, int amount, bool store)
-{
-    if (amount <= 0)
-        return;
-    // The server moves what the hold, the storage and the room allow; the snapshot shows it,
-    // and a refusal comes back in the journal.
-    Proto::Command c;
-    (store ? c.storeType : c.takeType) = type.Index();
-    (store ? c.storeAmount : c.takeAmount) = amount;
-    clientLink_->Send(Proto::EncodeCommand(c));
-}
-
-void Game::DrawStorage(Ui::Layout& L)
-{
-    using Ui::Box;
-    using Ui::TextStyle;
-    const Ui::Theme&         t = Ui::CurrentTheme();
-    const Proto::PlayerView& p = snapshot_.player;
-    if (p.storageCap <= 0)
-        return;  // none here, or not this pilot's side's
-    int used = 0;
-    for (int n : p.storedByType)
-        used += n;
-    L.Divider();
-    L.Text("STORAGE", TextStyle::Label());
-    L.Field("Kept", TextFormat("%d / %d", used, p.storageCap), t.colors.text);
-    L.Field("Hold", TextFormat("%d / %d", p.cargoUsed, p.cargoCap), t.colors.text);
-    const std::vector<ResourceType> types = AllResourceTypes();
-    bool                            any = false;
-    for (size_t i = 0; i < types.size(); i++)
-    {
-        const int hold = i < p.cargoByType.size() ? p.cargoByType[i] : 0;
-        const int kept = i < p.storedByType.size() ? p.storedByType[i] : 0;
-        if (hold <= 0 && kept <= 0)
-            continue;
-        any = true;
-        const std::string id = Goods::Id(types[i]);
-        L.Row(Box().GrowX().Gap(t.metrics.rowGap).Align(Ui::Align::Start, Ui::Align::Center),
-              [&]
-              {
-                  L.Text(TextFormat("%s  %d held, %d kept", ResourceName(types[i]).c_str(), hold,
-                                    kept),
-                         TextStyle::Body());
-                  if (hold > 0 && used < p.storageCap &&
-                      L.Button("store_" + id, TextFormat("Store %d", hold)))
-                      MoveStorage(types[i], hold, true);
-                  if (kept > 0 && p.cargoUsed < p.cargoCap &&
-                      L.Button("take_" + id, TextFormat("Take %d", kept)))
-                      MoveStorage(types[i], kept, false);
-              });
-    }
-    if (!any)
-        L.Text("Nothing in the hold or kept here.", TextStyle::Small().Tint(t.colors.dim));
-}
-
 // Where the world would be: the hall the windows stand in. A picture, not a window -- the
 // station's name, large and quiet, under whatever the player has open.
 void Game::DrawStationHall()
@@ -198,7 +143,19 @@ void Game::DrawStationContent(const Ui::Frame& f)
                              L.Field("Owner", structure->GetOwner(), t.colors.text);
                              L.Field("Money", TextFormat("%.0f cr", player_.GetMoney()),
                                      t.colors.money);
-                             DrawStorage(L);
+                             // Its storage (#438) is a container of the inventory window
+                             // (#472), where goods are moved; here, how full it is.
+                             const Proto::PlayerView& p = snapshot_.player;
+                             if (p.storageCap > 0)
+                             {
+                                 int used = 0;
+                                 for (int n : p.storedByType)
+                                     used += n;
+                                 L.Field("Storage", TextFormat("%d / %d", used, p.storageCap),
+                                         t.colors.text);
+                                 if (L.Button("inventory", "Inventory  (I)"))
+                                     desk_.SetOpen(WIN_INVENTORY, true);
+                             }
                              DrawLicenceHere(L);
                          });
                 if (L.Button("undock", "Undock", true))
@@ -392,8 +349,15 @@ void Game::DrawMarketContent(const Ui::Frame& f)
 
     const bool wide = f.Area().width >= Ui::Px(480.0f);
     L.Begin(f);
+    TakeMarketDrop(L);
+    // A good dragged over the market (#472) lights the whole window: it is the target.
+    const bool lit = L.DropHover("marketdrop", 0, "goods");
     L.Column(
-        Box().Grow().Gap(t.metrics.gap),
+        Box()
+            .Grow()
+            .Gap(t.metrics.gap)
+            .Id("marketdrop")
+            .Border(lit ? t.colors.accent : Color{}, lit ? 1.0f : 0.0f),
         [&]
         {
             L.Row(Box().GrowX().Gap(t.metrics.padding),

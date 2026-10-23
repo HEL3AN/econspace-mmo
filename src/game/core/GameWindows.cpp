@@ -623,6 +623,7 @@ void Game::DrawSettingsContent(const Ui::Frame& f)
         { "O", "Overview" },
         { "R", "Radar" },
         { "J", "Missions" },
+        { "I", "Inventory" },
         { "G", "Galaxy map" },
         { "N", "Name this system, on the map" },
         { "V", "Sensor screen" },

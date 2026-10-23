@@ -55,7 +55,8 @@ public:
     // window of its own. Every window placed on the desk behaves so; none asks to.
     void HandleMouse();
     // Closes the top thing Esc closes; true if something was. A text field that holds the
-    // keyboard takes the Esc instead: it lets go, and nothing closes.
+    // keyboard takes the Esc instead: it lets go, and nothing closes; so does an item being
+    // dragged (#472), which is dropped nowhere.
     bool Escape();
     // Draws the open windows and surfaces of one layer that the desk draws, bottom to top.
     // What a screen covers is not drawn (WindowSpec::covers).

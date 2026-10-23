@@ -1,6 +1,7 @@
 #pragma once
 
 #include "raylib.h"
+#include "ui/Drag.h"
 #include "ui/Focus.h"
 #include "ui/Fonts.h"
 #include "ui/Input.h"
@@ -269,6 +270,10 @@ struct TableSpec
     std::string empty;  // said instead of rows when there are none
     // Optional: what a row says when the cursor rests on it -- the whole of a name cut short.
     std::function<std::string(int row)> tooltip;
+    // Optional: rows that can be dragged (#472). Asked on the frame a row is pressed; it fills
+    // in what a drag from that row would carry and returns true, or false for a row that does
+    // not drag. The press is still a click (TableEvents::clicked).
+    std::function<bool(int row, DragPayload& out)> drag;
 };
 
 // What happened to a table this frame; -1 for nothing.
@@ -460,6 +465,18 @@ public:
     // in place of the real keyboard's.
     void UseFocus(Focus* focus, std::string_view owner);
     void FeedKeys(const KeyInput& keys);
+
+    // --- Drag and drop (#472, Drag.h) --------------------------------------------------
+    // The element `id` is a source: pressed, it arms a drag carrying `payload`. Call it where
+    // the element is declared, every frame, as with Clicked.
+    void DragSource(std::string_view id, uint32_t index, const DragPayload& payload);
+    // Something of a kind `accepts` takes (empty: any) is being dragged over the element:
+    // the place to draw it as a target.
+    bool DropHover(std::string_view id, uint32_t index = 0, std::string_view accepts = {}) const;
+    // It was let go over the element, in a window that owns the mouse: the payload, taken so
+    // nothing else sees it; null otherwise.
+    const DragPayload* Dropped(std::string_view id, uint32_t index = 0,
+                               std::string_view accepts = {});
 
     // --- Asking about it -----------------------------------------------------------
     bool      Hovered(std::string_view id, uint32_t index = 0) const;

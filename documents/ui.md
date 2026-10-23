@@ -219,6 +219,29 @@ popup, or the world (#297, slice 1). Inside a window's content:
   `Ui::Slider`/`Toggle`/`Button` read `Ui::MouseScope`, which the window sets.
 - Nothing reads `IsMouseButtonPressed` directly: that is how a click went through a window.
 
+## Drag and drop
+
+Moving something from one window to another is a mechanic of the framework (`ui/Drag.h`,
+#472), not of a window. A drag carries a `Ui::DragPayload` -- a value: its `kind` (`"goods"`
+today), the `source` as the source names it, the `item`, the `amount` and a `label` for the
+cursor -- because the window it came from may not be drawn on the frame it lands.
+
+- **A source** declares itself where it is drawn: `Layout::DragSource(id, index, payload)` for
+  any element, or `TableSpec::drag` for a table's rows. A press *arms* the drag; it starts
+  only once the cursor has moved `Drag::THRESHOLD` pixels with the button held, so the press
+  is still a click.
+- **While dragging** the desk lifts its capture: the mouse belongs to whatever is under the
+  cursor, so a target can light up (`Layout::DropHover(id, index, kind)`). The label follows
+  the cursor, drawn last (`Ui::Drag::Draw`). Esc cancels.
+- **On release** the drop is offered for that one frame. `Layout::Dropped(id, index, kind)`
+  takes it if the element is under the cursor, its window owns the mouse and it accepts the
+  kind; nothing else sees it then. Over no window, the game may take it as a drop on the
+  world (`Drag::Take`). Not taken, it is gone.
+- A drop never does something expensive by itself: the inventory moves goods on a drop
+  (moving them back undoes it), the market only selects the good with the amount ready.
+- `--drag X1 Y1 X2 Y2 FRAME RELEASE` plays one into raylib's input for a screenshot; a
+  `RELEASE` of 0 holds it, so the frame shows the drag under way.
+
 ## Where a window opens
 
 A spec's `place` is chosen for 1280 x 720 at a scale of 1, and at another size or scale two

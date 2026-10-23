@@ -1321,6 +1321,17 @@ std::vector<Tool> BuildTools()
                      Money(after.player.money);
           } });
 
+    tools.push_back({ "inventory",
+                      "Every place that holds goods for you where you are: your hold, and docked "
+                      "at your own structure (or a corporation mate's) its storage -- how full "
+                      "each is and what it holds, priced at the market here. The same lists as "
+                      "the inventory window.",
+                      Obj({}), [](const Rpc::Json&)
+                      {
+                          RequireLive();
+                          return Obs::DescribeInventory(CurrentView());
+                      } });
+
     tools.push_back({ "hangar",
                       "The ships you own, the one you are flying, and what every other hull "
                       "costs at this station -- at the price you would actually pay, which "

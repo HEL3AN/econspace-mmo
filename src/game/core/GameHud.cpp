@@ -301,6 +301,17 @@ void Game::SetupWindows()
     corp.resizable = true;
     corp.minSize = { 280.0f, 220.0f };
     desk_.AddWindow(corp, "CORPORATION", false, [this](Ui::Frame& f) { DrawCorpContent(f); });
+    // The inventory (#472): the hold and whatever else holds goods here. In space and docked
+    // alike, in the bottom right corner, which nothing else takes in either: beside the
+    // station's stack docked, so a good can be dragged from it onto the market. It is opened
+    // from the cargo line too.
+    WindowSpec inventory =
+        panel(WIN_INVENTORY, "Cargo", "Inventory: the hold, and storage where you are  (I)",
+              Anchor::BottomRight, { 8.0f, 8.0f, 520.0f, 340.0f });
+    inventory.resizable = true;
+    inventory.minSize = { 300.0f, 220.0f };
+    desk_.AddWindow(inventory, "INVENTORY", false,
+                    [this](Ui::Frame& f) { DrawInventoryContent(f); });
 
     // The two screens cover the world view and the windows; whichever opened last is on top.
     // Covering means the windows are not drawn at all while one is open: the map is drawn
@@ -1022,10 +1033,18 @@ void Game::DrawStatusContent(const Ui::Frame& f)
                      L.Field("Speed", TextFormat("%.0f", playerShip_->GetSpeed()), t.colors.text);
                      L.Field("Money", TextFormat("%.0f", player_.GetMoney()), t.colors.money);
                      // From the snapshot: the server collects ore into its own ship.
-                     L.Field("Cargo",
-                             TextFormat("%d / %d", snapshot_.player.cargoUsed,
-                                        snapshot_.player.cargoCap),
-                             t.colors.text);
+                     // The cargo line opens the inventory (#472).
+                     L.Row(Box().Id("cargo").GrowX(),
+                           [&]
+                           {
+                               L.Field("Cargo",
+                                       TextFormat("%d / %d", snapshot_.player.cargoUsed,
+                                                  snapshot_.player.cargoCap),
+                                       L.Hovered("cargo") ? t.colors.accent : t.colors.text);
+                           });
+                     L.Tooltip("cargo", "Inventory  (I)");
+                     if (L.Clicked("cargo"))
+                         desk_.Toggle(WIN_INVENTORY);
                  });
     };
     auto systems = [&]

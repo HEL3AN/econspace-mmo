@@ -1,4 +1,5 @@
 #include "ui/Desk.h"
+#include "ui/Drag.h"
 #include "ui/Theme.h"
 
 #include <fstream>
@@ -63,7 +64,10 @@ void Desk::BeginFrame()
     const bool down = IsMouseButtonDown(MOUSE_BUTTON_LEFT) ||
                       IsMouseButtonDown(MOUSE_BUTTON_RIGHT) ||
                       IsMouseButtonDown(MOUSE_BUTTON_MIDDLE);
-    layout_.UpdateOwner(GetMousePosition(), down);
+    // An item being dragged (#472) lifts the capture: the mouse belongs to whatever is under
+    // the cursor, so a target can light up, and the drop goes to the window it lands on.
+    Drag::Update(GetMousePosition(), IsMouseButtonDown(MOUSE_BUTTON_LEFT));
+    layout_.UpdateOwner(GetMousePosition(), down && !Drag::Active());
 }
 
 void Desk::HandleMouse()
@@ -204,6 +208,11 @@ bool Desk::Escape()
     if (focus_.Taken())
     {
         focus_.Release(Focus::Blur::Cancel);
+        return true;
+    }
+    if (Drag::Active())  // a drag let go of, rather than the window under it closed
+    {
+        Drag::Cancel();
         return true;
     }
     const int h = layout_.Escape();

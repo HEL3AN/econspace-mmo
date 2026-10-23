@@ -5,6 +5,7 @@
 // so that finding "how does a click become an order" does not mean scrolling past the
 // station screen. See GameNet.cpp and GameHud.cpp.
 #include "core/Game.h"
+#include "ui/Drag.h"
 #include "render/Perf.h"
 #include "sim/PlayerStep.h"
 #include "sim/WarpPath.h"
@@ -398,6 +399,7 @@ void Game::Run()
         // Above everything, and never treated: a settings screen seen through the effect
         // it is adjusting is a settings screen you cannot read while adjusting it.
         desk_.Draw(Ui::Layer::Overlay);
+        Ui::Drag::Draw();  // what is being dragged, over everything (#472)
         // Not a window: it is read, never clicked, so it takes no part in who owns the mouse.
         if (perfOverlay_)
             DrawPerfOverlay();
@@ -542,6 +544,33 @@ void Game::PlayScriptedClicks()
             PlayAutomationEvent(e);
         }
     }
+    for (const ScriptedDrag& d : drags_)  // --drag (#472)
+    {
+        // Over the first point two frames early, down on the frame, then pulled across in
+        // eight steps, and held at the second point until it is let go.
+        constexpr int STEPS = 8;
+        const int     k = frameIndex_ - d.frame;
+        if (k < -2 || (d.release > 0 && frameIndex_ > d.release))
+            continue;
+        const float     u = std::clamp((float)k / STEPS, 0.0f, 1.0f);
+        AutomationEvent e{};
+        e.type = MOUSE_AT;
+        e.params[0] = (int)(d.from.x + (d.to.x - d.from.x) * u);
+        e.params[1] = (int)(d.from.y + (d.to.y - d.from.y) * u);
+        PlayAutomationEvent(e);
+        e = AutomationEvent{};
+        e.params[0] = MOUSE_BUTTON_LEFT;
+        if (k == 0)
+        {
+            e.type = MOUSE_DOWN;
+            PlayAutomationEvent(e);
+        }
+        else if (frameIndex_ == d.release)
+        {
+            e.type = MOUSE_UP;
+            PlayAutomationEvent(e);
+        }
+    }
     for (const ScriptedSay& s : says_)  // --say (#347)
         if (frameIndex_ == s.frame)
             SendChat(s.text);
@@ -664,6 +693,9 @@ void Game::HandleInput(float dt)
 
     if (key(KEY_J))
         desk_.Toggle(WIN_MISSIONS);
+
+    if (key(KEY_I))  // the inventory (#472)
+        desk_.Toggle(WIN_INVENTORY);
 
     if (key(KEY_P))  // the scanner (#346)
         desk_.Toggle(WIN_SCANNER);
@@ -856,6 +888,8 @@ void Game::HandleDockedInput()
         return;
     if (IsKeyPressed(KEY_J))
         desk_.Toggle(WIN_MISSIONS);
+    if (IsKeyPressed(KEY_I))
+        desk_.Toggle(WIN_INVENTORY);
     if (IsKeyPressed(KEY_G))
         desk_.Toggle(WIN_MAP);
 }
