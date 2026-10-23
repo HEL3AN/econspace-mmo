@@ -557,6 +557,7 @@ add_executable(tests
     tests/warp_tests.cpp
     tests/warp_path_tests.cpp
     tests/clock_tests.cpp
+    tests/events_tests.cpp         # the journal's kinds come back from their names (#487)
     tests/build_tests.cpp          # construction: blueprints, sites, the clock (#39)
     tests/defence_tests.cpp        # rules of engagement for a structure (#340)
     tests/ship_design_tests.cpp    # ship designs and the stats derived from them (#279)

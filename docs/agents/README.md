@@ -260,6 +260,9 @@ the last time it returned. If something already has, it returns at once. Each ev
 | `cargo_full` | the hold filled up |
 | `under_attack` | something is shooting at you |
 | `ship_destroyed` | your ship was lost, with its fit and cargo; you wake docked at your home station in the free starter, and observe's `LAST LOSS` line says what insurance paid (`insure_ship`) |
+| `built` | a structure of yours was finished |
+| `scanned` | a pass of the scanner finished; the text says what it found |
+| `structure_attacked` | a structure of yours or your corporation's was attacked; kept for you while you are away |
 | `notice` | anything else worth saying |
 
 Decide on the **kind**. The text is for people and may be reworded.
