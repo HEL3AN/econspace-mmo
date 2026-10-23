@@ -1694,6 +1694,82 @@ TEST_CASE("an outpost keeps goods for its owner's side, through an upgrade and a
     CHECK(back->GetGrewFrom() == std::vector<std::string>{ "outpost" });
 }
 
+TEST_CASE("one verb moves goods between any two containers here, as far as there is room (#472)")
+{
+    LoadRegistries();
+    Simulation sim;
+    StartServer(sim, "");
+    ClientSession&     s = Founder(sim, "hunter");
+    const std::string  sys = s.systemId;
+    const ResourceType iron = Good::Iron();
+    Pay(s, "outpost");
+    const Vector2 at = FreeSpot(sim, s, *Blueprints::Find("outpost"));
+    const int     id = sim.Deploy(s, "outpost", at, "Hearth");
+    REQUIRE(id != 0);
+    Finish(sim, sys, id);
+    const Structure& t = *StructureById(sim, sys, id);
+    s.ship->ClearCargo();
+    REQUIRE(s.ship->AddCargo(iron, 30));
+
+    // In space only the hold is here.
+    Simulation::Container c;
+    std::string           why;
+    CHECK(sim.ContainerOf(s, "hold", c, why));
+    CHECK(c.capacity == s.ship->GetCargoCapacity());
+    CHECK_FALSE(sim.ContainerOf(s, "storage", c, why));
+    int seq = s.LastEventSeq();
+    CHECK(sim.MoveGoods(s, "hold", "storage", iron.Index(), 5) == 0);
+    CHECK(Told(s, seq, "Cannot move: dock"));
+
+    Beside(s, t);
+    REQUIRE(sim.StepPlayerDock(s, *sim.SystemOf(s)) == id);
+    REQUIRE(sim.ContainerOf(s, "storage", c, why));
+    CHECK(c.capacity == t.GetStorageCapacity());
+    CHECK(c.goods == &const_cast<Structure&>(t).Storage());  // the structure's own, not a copy
+
+    seq = s.LastEventSeq();
+    CHECK(sim.MoveGoods(s, "hold", "storage", iron.Index(), 12) == 12);
+    CHECK(Told(s, seq, "Moved 12 Iron from the hold to Hearth's storage"));
+    CHECK(t.GetStoredAmount(iron) == 12);
+    CHECK(s.ship->GetCargoAmount(iron) == 18);
+    CHECK(sim.MoveGoods(s, "storage", "hold", iron.Index(), 1000) == 12);  // what there is
+    CHECK(s.ship->GetCargoAmount(iron) == 30);
+
+    // The ways it is refused, each saying why.
+    seq = s.LastEventSeq();
+    CHECK(sim.MoveGoods(s, "hold", "hold", iron.Index(), 1) == 0);
+    CHECK(Told(s, seq, "already there"));
+    CHECK(sim.MoveGoods(s, "hold", "vault", iron.Index(), 1) == 0);
+    CHECK(Told(s, seq, "no container called 'vault'"));
+    CHECK(sim.MoveGoods(s, "storage", "hold", iron.Index(), 1) == 0);
+    CHECK(Told(s, seq, "Hearth's storage has no Iron"));
+    CHECK(sim.MoveGoods(s, "hold", "storage", Goods::Count(), 1) == 0);
+    CHECK(Told(s, seq, "no such good"));
+
+    // A full container takes nothing.
+    const_cast<Structure&>(t).AddStored(Good::Ice(), t.GetStorageCapacity());
+    seq = s.LastEventSeq();
+    CHECK(sim.MoveGoods(s, "hold", "storage", iron.Index(), 1) == 0);
+    CHECK(Told(s, seq, "storage is full"));
+
+    // The command carries it, and the older pair is the same move.
+    Proto::Command cmd, back;
+    cmd.moveFrom = "storage";
+    cmd.moveTo = "hold";
+    cmd.moveType = Good::Ice().Index();
+    cmd.moveAmount = 3;
+    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(cmd), back));
+    CHECK(back.moveFrom == "storage");
+    CHECK(back.moveTo == "hold");
+    CHECK(back.moveType == Good::Ice().Index());
+    CHECK(back.moveAmount == 3);
+    Proto::Command none;
+    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(Proto::Command()), none));
+    CHECK(none.moveType == -1);
+    CHECK(sim.TakeCargo(s, Good::Ice().Index(), 3) == 3);
+    CHECK(s.ship->GetCargoAmount(Good::Ice()) == 3);
+}
+
 TEST_CASE("an emptied, upgraded outpost comes apart for every tier it was built through (#438)")
 {
     LoadRegistries();

@@ -150,39 +150,9 @@ bool Structure::DocksPilot(const std::string& pilot, bool corpMate) const
     return Has(Component::Market) || OwnersSide(pilot, corpMate);
 }
 
-int Structure::GetStoredAmount(ResourceType type) const
-{
-    const auto it = stored_.find(type);
-    return it == stored_.end() ? 0 : it->second;
-}
-
-int Structure::GetStoredUsed() const
-{
-    int n = 0;
-    for (const auto& kv : stored_)
-        n += kv.second;
-    return n;
-}
-
 int Structure::GetStorageCapacity() const
 {
     if (IsBuilding() || !Has(Component::Storage))
         return 0;
     return (int)archetype_->storageCapacity;
-}
-
-void Structure::AddStored(ResourceType type, int amount)
-{
-    if (amount > 0)
-        stored_[type] += amount;
-}
-
-void Structure::RemoveStored(ResourceType type, int amount)
-{
-    const auto it = stored_.find(type);
-    if (it == stored_.end() || amount <= 0)
-        return;
-    it->second -= amount;
-    if (it->second <= 0)
-        stored_.erase(it);
 }

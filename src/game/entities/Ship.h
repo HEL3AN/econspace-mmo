@@ -3,6 +3,7 @@
 #include "entities/Entity.h"
 #include "entities/Combatant.h"
 #include "entities/ShipType.h"
+#include "economy/Inventory.h"
 #include "economy/Resource.h"
 #include <map>
 #include <string>
@@ -130,7 +131,7 @@ public:
         pos_ = pos;
         velocity_ = { 0.0f, 0.0f };
     }
-    void  ClearCargo() { cargo_.clear(); }
+    void  ClearCargo() { cargo_.Clear(); }
     float GetHull() const override { return hull_; }
     // For a proxy of another player's ship: the hull comes from the snapshot, and it is
     // what the glyph dims by (#4). NpcShip has the same setter for the same reason.
@@ -151,9 +152,13 @@ public:
 
     bool AddCargo(ResourceType type, int amount);  // false if it doesn't fit
     void RemoveCargo(ResourceType type, int amount);
-    int  GetCargoAmount(ResourceType type) const;
-    int  GetCargoUsed() const;
+    int  GetCargoAmount(ResourceType type) const { return cargo_.Amount(type); }
+    int  GetCargoUsed() const { return cargo_.Used(); }
     int  GetCargoCapacity() const { return stats_.cargoCapacity; }
+    // The hold as a container (#472): what a move between containers takes from and adds to.
+    // Its room is GetCargoCapacity.
+    Inventory&       Hold() { return cargo_; }
+    const Inventory& Hold() const { return cargo_; }
 
     void         Update(float dt) override;
     Render::Item Describe() const override;
@@ -221,8 +226,8 @@ private:
     bool    engineActive_ = false;
 
     // Mining and cargo.
-    bool                        miningOn_ = false;
-    std::map<ResourceType, int> cargo_;
+    bool      miningOn_ = false;
+    Inventory cargo_;
 
     // Autopilot state.
     bool     apActive_ = false;

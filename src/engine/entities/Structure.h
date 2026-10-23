@@ -1,5 +1,6 @@
 #pragma once
 
+#include "economy/Inventory.h"
 #include "economy/Resource.h"
 #include "entities/Defence.h"
 #include "entities/Entity.h"
@@ -120,12 +121,15 @@ public:
 
     // Its storage (#438): goods kept aboard it rather than in a ship, by its owner's side, up to
     // its archetype's `storage` capacity. State, saved with it; it survives an upgrade.
-    const std::map<ResourceType, int>& GetStored() const { return stored_; }
-    int                                GetStoredAmount(ResourceType type) const;
-    int                                GetStoredUsed() const;
-    int  GetStorageCapacity() const;  // 0: none, or a site, which can hold nothing yet
-    void AddStored(ResourceType type, int amount);
-    void RemoveStored(ResourceType type, int amount);
+    // A container like any other (#472): what a move takes from and adds to.
+    const std::map<ResourceType, int>& GetStored() const { return stored_.All(); }
+    int              GetStoredAmount(ResourceType type) const { return stored_.Amount(type); }
+    int              GetStoredUsed() const { return stored_.Used(); }
+    int              GetStorageCapacity() const;  // 0: none, or a site, which can hold nothing yet
+    void             AddStored(ResourceType type, int amount) { stored_.Add(type, amount); }
+    void             RemoveStored(ResourceType type, int amount) { stored_.Remove(type, amount); }
+    Inventory&       Storage() { return stored_; }
+    const Inventory& Storage() const { return stored_; }
 
     // Its owner's rules of engagement (#340). Meaningful for a player's armed structure; a
     // faction's keeps its doctrine whatever this says.
@@ -143,12 +147,12 @@ public:
     }
 
 private:
-    std::string                 name_;
-    std::string                 builds_;
-    std::string                 blueprint_;
-    std::vector<std::string>    grewFrom_;
-    std::map<ResourceType, int> stored_;
-    float                       damage_ = 0.0f;
+    std::string              name_;
+    std::string              builds_;
+    std::string              blueprint_;
+    std::vector<std::string> grewFrom_;
+    Inventory                stored_;
+    float                    damage_ = 0.0f;
     double       damagedAt_ = 0.0;  // the instant `damage_` was set; mending counts from here
     bool         mends_ = true;
     double       startedAt_ = 0.0;
