@@ -52,7 +52,9 @@ cmake --build build-release -j 8
 - **One pull request per issue, branched off `main`.** The author merges it with a squash
   once CI is green (`gh pr merge --squash --delete-branch`). Poll CI with
   `gh pr checks <n>` once in a while; never `gh run watch` or anything else that blocks.
-  CodeQL runs once a day on `main`, not on pull requests.
+  CodeQL runs once a day on `main`, not on pull requests. A change that touches only
+  documentation (`*.md`, `documents/`, `media/`) skips the build and test jobs; they report
+  as skipped, which branch protection accepts (#475).
 - **Do not stack pull requests.** Merging a base with `--delete-branch` closes the one
   stacked on it, and GitHub will neither reopen nor retarget it. Do not branch off `main`
   for work that depends on an unmerged PR, either.

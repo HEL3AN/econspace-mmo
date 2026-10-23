@@ -7,6 +7,50 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Whether anything but documentation changed (#475). Every other job needs it and is
+  # skipped when the answer is no. A skipped job counts as passed for branch protection,
+  # which `paths-ignore` on the trigger would not: it leaves a required check pending
+  # forever. docs/agents/reference.md is generated from econagent and checked by the Linux
+  # job, so it counts as code.
+  changes:
+    name: Changed files
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Classify the diff
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          case "$EVENT" in
+            pull_request) range="$BASE...$HEAD_SHA" ;;
+            push) range="$BEFORE..$HEAD_SHA" ;;
+            *) echo "code=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+          esac
+          # A diff that cannot be taken (a new branch, a rewritten history) or comes back
+          # empty builds everything rather than guessing.
+          if ! files=$(git diff --name-only "$range") || [ -z "$files" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          code=false
+          while IFS= read -r f; do
+            case "$f" in
+              docs/agents/reference.md) code=true ;;
+              *.md|documents/*|media/*|LICENSE) ;;
+              *) code=true ;;
+            esac
+          done <<< "$files"
+          echo "$files"
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+
   # Style gate, in its own job so it reports independently of the build.
   #
   # It runs under MSYS2 rather than on a cheaper Ubuntu runner on purpose: clang-format
@@ -15,6 +59,8 @@ jobs:
   # toolchain here as in CONTRIBUTING.
   lint:
     name: Formatting
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-latest
     defaults:
       run:
@@ -36,6 +82,8 @@ jobs:
 
   build:
     name: Windows (MinGW / MSYS2)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-latest
     defaults:
       run:
@@ -199,6 +247,8 @@ jobs:
   # and the winsock calls it replaced were invisible from Windows.
   linux:
     name: Linux (GCC)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -386,6 +436,8 @@ jobs:
   # player does. Warnings are the Linux job's business, so they are not errors here.
   sanitizers:
     name: Linux (ASan + UBSan)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     env:
       ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
@@ -427,6 +479,8 @@ jobs:
 
   macos:
     name: macOS (Apple Clang)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
