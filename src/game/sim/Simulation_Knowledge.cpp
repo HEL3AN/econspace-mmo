@@ -25,6 +25,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <iterator>
+#include <set>
 
 bool Simulation::PublicByPlace(const std::string& systemId) const
 {
