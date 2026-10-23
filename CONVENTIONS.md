@@ -8,14 +8,16 @@ though a single person wrote it.
 ```
 src/
   engine/      shared core (static library `engine`)
-    core/      world loading, factions
+    core/      world loading, archetypes, factions, blueprints, ship designs and fitting,
+               routes, finding data/
     entities/  game objects (Entity and its subclasses)
-    economy/   resources
-    render/    texture store and drawing helpers
-    ui/        interface elements
+    economy/   resources and goods
+    gen/       the world generator: galaxy skeleton, regions, packs, pins
+    render/    the presentation seam, backends, silhouettes, materials, the screen treatment
+    ui/        the window desk, layout, themes, widgets
   game/        the client, the authoritative Simulation, and the headless server
     core/      the client game loop
-    sim/       Simulation, wire protocol, headless server entry point
+    sim/       Simulation, wire protocol, sessions, corporations, saves, headless server
     net/       transports (loopback, TCP)
     entities/  ships
     player/    the player account, skills
@@ -99,6 +101,7 @@ In VS Code — format the document with `Shift+Alt+F` or on save.
 
 ## Commits
 
-- The message is in English, in the imperative mood, capturing the gist of the change.
-- Roadmap milestones: prefix with the milestone id (e.g. `R3: docking with a station`,
-  `M4: TCP transport`).
+- The message is in English and says what the change does, as a plain sentence
+  (`Player outposts keep goods, come apart for every tier, and dock corp mates`).
+- Name the issue in brackets at the end (`(#438)`); a squash merge adds the PR number.
+  Milestone prefixes such as `M4:` are an older habit and are no longer used.

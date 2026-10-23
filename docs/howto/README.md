@@ -10,7 +10,7 @@ builds a single example from nothing and ends with you looking at it in the gall
 
 | | How-to | You touch | C++? |
 |---|---|---|---|
-| 1 | [Add an archetype](add-an-archetype.md) | `data/archetypes.json` | only to make the game build one, today |
+| 1 | [Add an archetype](add-an-archetype.md) | `data/archetypes.json` | only for a new station role or planet type |
 | 2 | [Compose its look](compose-a-look.md) | the archetype's `shape` | no |
 | 3 | [Give it a material](give-it-a-material.md) | `data/materials.json`, `data/shaders/materials/*.fs` | no |
 | 4 | [Add a screen pass](add-a-screen-pass.md) | `data/shaders/*.fs`, `data/look.json`, one enum | yes, three lines |
@@ -39,12 +39,14 @@ Things worth knowing before you start:
 
 - **There is no hot reload.** The editor reads `data/` once, when it starts. Edit the JSON,
   close the editor, launch it again.
-- **The editor reads the repository's own `data/`**, not the copy next to the executable, so
-  there is nothing to rebuild after a data change. (A shader is data too.)
+- **A Debug build reads the repository's own `data/`**, not the copy next to the executable,
+  so there is nothing to rebuild after a data change (a shader is data too). Every binary
+  says on stderr which `data/` it chose; `--data <dir>` or `ECONSPACE_DATA` picks another.
 - **Run it from a terminal and read what it prints.** Every load problem is a log line, and
   most of them are nowhere else: `Archetypes: ...`, `Materials: ...`, `Treatment: ...`.
 - **Keys:** **F2** switches shapes and glyphs, **F3** switches the gallery and the system view,
   **F4** opens the survey of generated systems ([tune the generator](tune-the-generator.md)),
+  **F5** steps out from a system to its region and the galaxy,
   **F10** opens the screen treatment's settings (and *saves* `data/look.json` when it closes),
   **Esc** leaves the gallery. Click a card to select it.
 - **The panel on the right edits the selected archetype's look** — colour, size, layer, light,
@@ -69,7 +71,8 @@ others. Knowing which is which saves the most time:
 | a material's shader is missing or does not compile | that one material is dropped; its objects are drawn plain |
 | a screen pass's shader is missing or does not compile | that one pass is dropped and marked *unavailable* in F10 |
 | unknown pass name in `look.json` | that entry is skipped |
-| a misspelled field name anywhere (`minPixel`, `matrial`) | **ignored without a word** — the default is used |
+| a misspelled field in an archetype, a part of its shape, a faction, a blueprint or a ship design (`minPixel`, `matrial`) | the **whole** file is refused, and the log names the field ([#191](https://github.com/HEL3AN/econspace-mmo/issues/191)) |
+| a misspelled field in `look.json` or `materials.json` | **ignored without a word** — the default is used |
 | an archetype names a material id that does not exist | **drawn plain without a word** |
 
 The last two are the ones that cost an afternoon. If a change "does nothing", check the

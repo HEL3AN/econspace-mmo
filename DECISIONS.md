@@ -674,3 +674,166 @@ a wormhole opens; that moment now repeats.
 once slice 1 bumps `GENERATOR_VERSION`. Only a dev server lives today, so a new world is
 cheaper than a converter. Open questions remain on behaviour at the cap, sealing opened
 regions into the save, and whether the old three systems ship as a default pack.
+
+## 2026-10-11 — The open questions of world generation v2, answered
+
+**Decision.** The owner answered what the entry above left open
+(`documents/world_generation_v2.md`):
+- **Helios goes.** The old three hand-written systems are not shipped as a default pack;
+  they survive only as the test fixture.
+- **Opened regions are sealed** into the save (`regions/<slot>.json`), so a change to the
+  region rules changes only regions opened later. The skeleton is never sealed and has its
+  own `SKELETON_VERSION`.
+- **At the cap,** the world adds roaming holes, and a region nobody visits drifts into an
+  archive, from which it may return, decayed, into another slot.
+
+**Why.** A world that outlives a rule change is worth more than a world that is always
+"current", and a cap that only stops growth would make an old server a dead one.
+
+**Cost.** Over its life a region has two sources of truth, the rules and the seal.
+`econserver regenerate` exists for an admin who wants today's rules back in a region nobody
+has built in.
+
+## 2026-10-16 — The production stage: a friends' server, then a public one
+
+**Decision.** The owner's calls for distribution and hosting (#399,
+`documents/distribution_and_hosting.md`):
+- The first public server is a **friends' server** on the owner's home machine, entry by
+  **allowlist**. A VPS and a public server list come later, at beta.
+- Builds go out on **GitHub Releases and itch.io**, unsigned for the friends' test.
+- Transport security, when it comes, is **libsodium with pinned server keys**, which works
+  for self-hosters without a domain.
+- **Release names.** Each release has an internal semver for compatibility (`v0.x.y` tags)
+  plus a codename per minor release, from an alphabetical list (Anchor, Beacon, Current,
+  Drift, ...). The first public build is **EconSpace 0.1 Anchor**. A patch release keeps
+  its codename. A release is the owner's call.
+
+**Why.** Friends first finds what breaks before strangers are in the world. A codename
+gives each release a face, and the semver does the compatibility check (#400).
+
+**Cost.** Until the transport is encrypted, only the login is protected.
+
+## 2026-10-16 — The living world pays, and it pays everyone alike
+
+**Decision.** Proposals #343-#348 are approved, in this order:
+1. trade and a goods chain;
+2. ship loss and insurance;
+3. jobs posted from faction plans;
+4. local chat;
+5. scanning, with roaming holes;
+6. corporations.
+
+Belt depletion and transaction fees apply to humans and agents alike. A convoy's survival
+is decided by its own strength and the dangers on its route. A player escort improves its
+odds but is never required (#407).
+
+**Why.** In a living world, stations do not die just because no player is online. An agent
+that traded for free would flatten every market.
+
+**Cost.** Convoys and sieges need arithmetic that works with no player watching, and its
+result has to agree with what happens in a watched fight.
+
+## 2026-10-22 — A new feature extends what is already built
+
+**Decision.** A new feature grows an existing component instead of standing beside it:
+- an attack notice is an entry in the pilot's journal and the corporation's record, not a
+  notices store;
+- a pilot's knowledge generalises the account's `scanned`;
+- a rule's number goes in `data/world_rules.json`;
+- a verb is a `Command` or a `CorpAct`.
+
+A design is weighed against how comparable games solve it, EVE first, and then fitted to
+this game's premises.
+
+**Why.** Every parallel store is one more thing that the save, the wire, the agent and the
+next feature have to know about, and parallel stores drift apart.
+
+**Cost.** A pull request that adds a new type, store, window or message has to say why no
+existing one could carry it.
+
+## 2026-10-22 — Numbers come from the world, not from tuning
+
+**Decision.** When the world already models something, any number for it is derived from
+the model. A siege's damage is the guns of the faction's warship design (#458), not a
+figure in a rules file. A pirate that is too strong for a new pilot is not fixed with a
+multiplier.
+
+**Why.** A tuned number is right only for the case it was tuned on. It goes silently wrong
+once the designs, the fits or the economy move.
+
+**Cost.** Balance problems become design problems. They are fixed in data the world reads,
+or by a rule, never by a patch.
+
+## 2026-10-22 — NPCs and players fight by one combat model
+
+**Decision.** An NPC ship fires the real guns of its design's fit, at the player cooldown.
+The damage goes through the same `Ships` and `core/Fitting` arithmetic a player's ship uses,
+and the NPC has a player's hull (#463). What differs between an NPC and a player is the fit
+in data, never a code path. Only shields are a player's alone.
+
+**Why.** An NPC cruiser fired about 7 damage a second, while the same design flown by a
+player fired about 44. Two models meant two balances, and a fight a player watched went
+differently from one nobody watched.
+
+**Cost.** Pirates hit harder than before, and they were not softened to compensate. The
+world protects new pilots instead: starter systems are high security and free of pirates.
+
+## 2026-10-22 — NPC fits come from the living world
+
+**Decision.** In the longer term, an NPC's fit comes from the world it lives in: its gang,
+its faction, its wealth and where it is. It is no longer one fixed design per role (#464).
+The design comes first, then the slices.
+
+**Why.** This follows from the two entries above. If a pirate's danger is its fit, then the
+fit should be the world's answer to where the pirate is and what it can afford.
+
+**Cost.** None yet; the design is still open.
+
+## 2026-10-22 — Knowledge, territory and law: a decided design, built in slices
+
+**Decision.** #431 is built as designed in `documents/world_knowledge_and_territory.md`:
+- **Maps.** Every pilot has their own map: the public charts, their own and their
+  corporation's.
+- **Charting.** Factions chart what they reach, and first contact reveals native names.
+- **Holding a system.** A corporation holds a system by influence and a claim, and can take
+  one only from next door.
+- **Building.** Building in held space takes a licence.
+- **Defence.** Defences mend by tier, with no vulnerability windows.
+- **Law.** PvP is a crime under the law, and police answer it from real forces.
+
+Slices 1-15 are built. Slice 16, trading charts, waits on a design talk with the owner.
+
+**Why.** Exploration is an activity only if what one pilot knows is not what everyone
+knows. Territory means something only if holding it costs something and losing it follows
+from the map.
+
+**Cost.** Every index and map is cut per session (`KnownUniverseFor`). Every place a
+faction reaches has to go through `ChartBy`.
+
+## 2026-10-23 — A corporation's patrol is weighed, paid for and declared
+
+**Decision.** The owner's answers on corporation patrols (#431 slice 12, #465):
+- the faction siege planner counts a patrol as risk;
+- a lost patrol ship is replaced at its design's price, from the treasury;
+- the threshold and the allow-list are set by the verb and in the corporation window;
+- a member who has not been online since the server started is counted from their account
+  file.
+
+An EVE-style **enemy list**, declared by the corporation's officers rather than summed from
+members' standings, comes later, with war declarations (#466).
+
+**Why.** A patrol that costs nothing to replace is free power. A standing summed only from
+members who happen to be online changes with who is logged in.
+
+**Cost.** The server reads every account file at start.
+
+## 2026-10-23 — Structure ownership follows EVE
+
+**Decision.** Who owns a structure, and what rights come with it, follow EVE's model. How a
+structure and its rights pass to another pilot or corporation, and how a structure is
+rented out, are still to be designed.
+
+**Why.** Player outposts now keep goods, dock corporation mates and pay their owner's
+market fee (#433, #438), so ownership is more than a label.
+
+**Cost.** Until that design lands, a structure stays with whoever built it.

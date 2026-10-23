@@ -51,9 +51,11 @@ These are decisions, not open questions. Plan on top of them.
     markets.
   - **Wormholes** play three roles: Anchor gates, roaming holes and admin links.
   - **Admin content** comes as validated packs, which are woven in, and as pins.
-  - **Factions** become a data registry, not an enum (#355).
-  - **Until the slices land,** today's world is the old shape: three hand-written systems
-    plus one generated region. Do not build new work on that shape.
+  - **Factions** are a data registry, not an enum (#355).
+  - **Built:** slices S1-S9 (skeleton, centres and starts, the tide and sealing, mouths,
+    Anchors, drift and the archive, natives, expeditions, packs, the editor, roaming holes).
+    S10, scale to 10,000 systems, is left. The old three hand-written systems survive only
+    as the test fixture (`tests/fixtures/world/`); never build on that shape.
 - **The game begins when a wormhole opens into an unexplored region.** Nothing beyond it
   has a name until somebody goes there and names it. This is why the generation is honest
   rather than a compromise, and why exploration is an activity rather than map-filling.
@@ -62,10 +64,15 @@ These are decisions, not open questions. Plan on top of them.
   macro simulation. Players design *types* in the same grammar the generator uses (M8), and
   a design's parts decide what it can do -- the rule that derives a shape from an object's
   components (#137), read in the other direction.
-- **Knowledge, territory and law have a decided design, being built in slices** (#431,
+- **Knowledge, territory and law have a decided design, built in slices** (#431,
   `documents/world_knowledge_and_territory.md`): per-pilot and public charts, native names,
-  claims, defence without windows, PvP as a crime. None of it is current behaviour until its
-  slice lands.
+  claims, defence without windows, PvP as a crime. Slices 1-15 are built; slice 16, trading
+  charts, waits on a design talk with the owner.
+- **One combat model for NPCs and players, and numbers come from the world** (owner,
+  2026-10-22, #463). What differs between an NPC and a player is the fit in data, never a code
+  path; a number that stands in for the world (a siege's damage, a pirate's strength) is
+  derived from the designs and the simulation, not tuned. NPC fits are to come from the
+  living world -- gang, wealth, location -- not one design per role (#464, design first).
 
 ## Build and run
 
@@ -112,6 +119,7 @@ cmake --build build-release
 ./build/bin/server/econserver.exe accttest          # account persistence smoke test
 ./build/bin/server/econserver.exe worldtest         # galaxy persistence + clock
 ./build/bin/server/econserver.exe ordertest         # standing orders, routes, journal
+./build/bin/server/econserver.exe opstest           # init, a live server, console commands through `admin` (#400)
 ./build/bin/server/econserver.exe host 50800 --max-regions 60 --max-systems 1500   # the cap (#342 S3); stdin: tide | open [region] | hole <system|pilot> [to] | holes | drift <region> | destroy <name> | pause | resume | allow/deny/ban/unban <name> | rename <system> <name|-> | access | reload | say <text> | mute <name> [min] | unmute <name>
 ./build/bin/server/econserver.exe regenerate 14     # with the server stopped: reseal region 14 by today's rules, if no player built there
 ./build/bin/server/econserver.exe validate          # admin packs in data/packs/ and data/pins.json, checked and trial-woven (#342 S7)
@@ -479,8 +487,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
 
 ## Planning
 
-Work is organized into milestones (M4–M10 are open; the order is in
+Work is organized into milestones (what is open and what comes next is in
 [ROADMAP.md](ROADMAP.md)) and three track epics: **#42** agents/MCP, **#43** the
-data-driven world and its generated presentation, **#44** the player-mutable world. Check
-the milestone an issue belongs to before proposing sequencing. Ideas proposed by an agent
-carry the `proposal` label and are not built until the owner says yes.
+data-driven world and its generated presentation, **#44** the player-mutable world. Since
+the 0.1 release most work is filed as issues without a milestone; the next steps are listed
+in ROADMAP.md. Check the milestone an issue belongs to before proposing sequencing. Ideas
+proposed by an agent carry the `proposal` label and are not built until the owner says yes.
+Owner decisions made while working are logged as comments on **#186**; a release or a tag
+is the owner's call.

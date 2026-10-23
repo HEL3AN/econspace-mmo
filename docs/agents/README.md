@@ -154,33 +154,44 @@ EVENTS
 | `NEARBY` | everything else, nearest first. Stations and gates are always listed; other objects are capped (`detail: "full"` raises the cap) |
 | `MARKET` | when docked: per good, what the market pays / what it asks, and how many it holds -- the names `buy` takes |
 | `STORAGE` | when docked at your own structure, or a corporation mate's: what its storage keeps of how much it holds -- what `store_cargo` and `take_cargo` move |
+| `LAW` | your security status, and a `CRIMINAL` flag while one is on you |
+| `SCAN`, `HOLE` | the scanner: a pass under way and the signatures found; every roaming wormhole you know of, with the mass it takes and when it closes |
+| `LAST LOSS` | the last ship you lost, and what insurance paid |
 | `OFFERS`, `MISSIONS` | mission work at this station, and what you have taken |
 | `EVENTS` | what happened recently |
 | `STANDING` | reputation with each faction |
 
 Each object line is `#<id>  <kind>  <name>  <distance>u <bearing>  <details>`, column-padded.
 **The id is what every order takes.** Kinds are `star`, `planet`, `station`, `field`, `gate`,
-`nebula`, `derelict`, another player as `pilot` (with `player` in its details — someone
-who decides things for themselves, not scenery), and NPCs by role — `trader`, `miner`,
-`police`, `pirate`, `warship`.
+`nebula`, `derelict`, `structure`, another player as `pilot` (with `player` in its details —
+someone who decides things for themselves, not scenery), and NPCs by role — `trader`, `miner`,
+`police`, `pirate`, `warship`, and a corporation's `guard`.
 
 ### Resources
 
 | URI | What |
 |---|---|
 | `econspace://system` | the same picture as `observe`, as a resource |
-| `econspace://galaxy` | every system, its links, security and controller — what a bot plans a journey with |
+| `econspace://galaxy` | every system on your charts (public, your own, your corporation's), its links, security and controller, and the news — what a bot plans a journey with |
 
 ---
 
 ## What a bot can do
 
-`observe`, `move_to`, `dock`, `undock`, `mine`, `travel_to_system`, `hold_station`, `sell_cargo`, `buy`,
-`abort_order` and `wait_for_event` to fly, trade and earn; `missions`, `accept_mission`, `complete_mission`, `hangar`,
-`buy_ship`, `switch_ship` and `pay_bounty` to spend it and to take work (#109). **Their exact
-arguments are in [reference.md](reference.md)**, which is
-generated from the server itself and checked by CI, so it cannot disagree with what the server
-actually accepts.
+Forty-four tools, in these groups. **Their exact arguments are in [reference.md](reference.md)**,
+which is generated from the server itself and checked by CI, so it cannot disagree with what the
+server actually accepts.
+
+| To | Tools |
+|---|---|
+| look and wait | `observe`, `wait_for_event`, `choose_start` |
+| fly | `move_to`, `dock`, `undock`, `hold_station`, `travel_to_system`, `abort_order` |
+| earn | `mine`, `salvage`, `sell_cargo`, `buy`, `store_cargo`, `take_cargo`, `missions`, `accept_mission`, `complete_mission` |
+| ships | `hangar`, `buy_ship`, `switch_ship`, `insure_ship`, `fitting`, `preview_fit`, `refit`, `designs`, `save_design`, `apply_design`, `rename_design`, `delete_design` |
+| fight and the law | `attack`, `pay_bounty` |
+| build | `blueprints`, `deploy`, `build`, `dismantle`, `set_defence`, `buy_licence` |
+| explore | `scan`, `name_system` |
+| talk and organise | `chat_send`, `chat`, `corp`, `corp_act` |
 
 A few that are worth knowing before reading the reference:
 
@@ -202,6 +213,11 @@ A few that are worth knowing before reading the reference:
   delivery speeds a build, an escort guards a convoy, a besieger shot down weakens a siege.
 - `hangar` quotes ships at the price *you* would pay here, which depends on your standing
   with the station's owner. `buy_ship` and `switch_ship` take a ship by name.
+- `attack` closes to weapon range and fires until the target is gone. Shooting what the law
+  protects is a crime, with the same flag, security status and police a human gets; the
+  tool's description in the reference says exactly when.
+- `corp_act` is every corporation verb -- invite, roles, rules of engagement, police budgets,
+  patrols -- the way the client's corporation window gives them.
 - `pay_bounty` pays the station owner's bounty unless you name another faction.
 - The station verbs are not orders: they need you docked, they say why when they cannot
   happen, and they report what the server actually did -- the money paid, the job taken.
@@ -269,14 +285,9 @@ Ideas for bots worth building are welcome as issues — and so are the bots.
 
 ## What a bot cannot do yet
 
-The agent surface is narrower than the game. These exist for human players and not yet for
-bots:
+The agent surface follows the game: what a player sees reaches `observe`, and a verb a player
+has is a tool. What neither has yet is not here either -- trading charts (#431 slice 16), and
+commanding a fleet of ships (#32). A bot also cannot steer by hand: it gives orders, and a
+fight is flown with `attack` and `hold_station` rather than with thrust.
 
-- **orbit** and **keep at range** a chosen object ([#157](https://github.com/HEL3AN/econspace-mmo/issues/157)), the two standing behaviours a fight
-  is flown with;
-- combat orders — engaging and disengaging. Deliberately separate: an agent that can shoot
-  needs to be told what shooting costs, and between players that is not settled yet
-  ([#94](https://github.com/HEL3AN/econspace-mmo/issues/94)).
-
-A bot can see all of it in `observe`; it cannot yet act on it. If one of these is what your bot
-needs, that issue is the place to say so.
+If your bot needs something it cannot do, open an issue and say what.

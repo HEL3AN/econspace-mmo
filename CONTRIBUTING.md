@@ -17,15 +17,17 @@ Requirements:
 - **Windows:** MinGW-w64 g++ from [MSYS2](https://www.msys2.org/), and CMake 3.16+.
 - **Linux:** GCC, CMake 3.16+, and raylib's build dependencies:
   `sudo apt install libasound2-dev libgl1-mesa-dev libglu1-mesa-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxkbcommon-dev libxrandr-dev`.
-- Internet on the first build: raylib, nlohmann/json, doctest and PicoSHA2 are fetched by CMake `FetchContent`.
+- Internet on the first build: raylib, nlohmann/json, doctest, PicoSHA2 and Clay are fetched by CMake `FetchContent`.
 
 ```sh
-cmake -S . -B build -G "MinGW Makefiles"   # on Linux: cmake -S . -B build
+cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Debug   # on Linux: no -G
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-CI builds with warnings as errors; to check that locally, configure a second build directory with `-DWARNINGS_AS_ERRORS=ON`.
+Always name a build type. `Debug` (`build/`) is for development and tests; `Release` (`build-release/`) is for playtests, published builds and any performance number, because an unoptimized build is several times slower and points at the wrong costs.
+
+CI builds with warnings as errors (`-DWARNINGS_AS_ERRORS=ON`) and checks formatting with `clang-format --dry-run --Werror`; run `clang-format -i` on the files you touched.
 
 See [README.md](README.md) for run instructions and networked play.
 
@@ -40,15 +42,20 @@ See [README.md](README.md) for run instructions and networked play.
 ## Tests
 
 - Unit tests use [doctest](https://github.com/doctest/doctest) (the `tests` target, run via `ctest`). The wire protocol is covered by round-trip tests — if you touch `Protocol.*`, run `ctest`.
-- The server has four smoke tests: `econserver hosttest` (the server loop), `accttest` (accounts), `worldtest` (galaxy persistence and the clock) and `ordertest` (standing orders, routes and the journal).
-- The agent seam is tested end to end against a live server: `econagent selftest <host> <port> <name> <secret>`, and the example bot in `examples/agents/`.
+- The server has five smoke tests: `econserver hosttest` (the server loop), `accttest` (accounts), `worldtest` (galaxy persistence and the clock), `ordertest` (standing orders, routes and the journal) and `opstest` (server operations: `init`, the console, the admin channel).
+- The agent seam is tested end to end against a live server: `econagent selftest <host> <port> <name> <secret>`, and the example bot in `examples/agents/`. If you change a tool, regenerate [docs/agents/reference.md](docs/agents/reference.md) with `python tools/gen_agent_reference.py ./build/bin/agent/econagent.exe`; CI fails on a stale copy.
+- The generator is pinned by golden hashes in `tests/gen_tests.cpp`. A change to what a seed generates bumps `Gen::GENERATOR_VERSION` (or `Gen::SKELETON_VERSION`) and updates the hashes.
+- Admin packs are checked with `econserver validate`.
 - **Anything visual has to be looked at.** No test can see a picture. Open `worldeditor gallery shapes`, or the game, and put a screenshot in the pull request. Every rendering bug in the look so far was found that way.
 
 ## Pull requests
 
-1. Fork and create a topic branch.
+1. Fork and create a topic branch off `main`, one per issue.
 2. Keep changes focused; make sure the build is green and `-Wall -Wextra` is clean.
 3. Run `ctest` and the relevant smoke tests.
-4. Write a clear PR description of *what* and *why*.
+4. Write a clear PR description of *what* and *why*. A PR that adds a new type, store, window or message says why no existing one could carry it: a feature extends what is already built ([CLAUDE.md](CLAUDE.md#structure-and-rules)).
+5. Never commit saves: `world.json`, `regions/`, `accounts/`, `corps.json`, `designs.json`, `allowlist.txt`, `bans.txt`.
+
+Ideas from agents are filed with the `proposal` label and wait for the owner before anything is built.
 
 By contributing, you agree that your contributions are licensed under the [MIT License](LICENSE).

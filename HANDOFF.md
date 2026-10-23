@@ -1,91 +1,105 @@
-# Session handoff — 2026-09-04
+# Start here — 2026-10-23
 
-Where the work stands and what to pick up. Keep this current; it is the first thing to read.
+The first thing to read on a new machine or in a new session. It says how to get a working
+build, how work is done here, where it stands and what comes next. Keep it current.
 
-## Direction, and read this before planning anything
+Read next, in this order: [CLAUDE.md](CLAUDE.md) (the settled premises and the rules that
+trip people up), [ROADMAP.md](ROADMAP.md) (done and next), [DECISIONS.md](DECISIONS.md)
+(why), [ARCHITECTURE.md](ARCHITECTURE.md) (how the code fits). Design documents for work in
+progress are in [documents/](documents/).
 
-Two premises were **inverted**, on 2026-09-03 and 2026-09-04. Both are in `DECISIONS.md` in
-full, and both contradict how the repository was originally built — so a plan made from the
-old assumptions will look reasonable and be wrong.
+## Toolchain (Windows)
 
-**The look is generated, not drawn** (2026-09-03). Glyphs are no longer the primary
-presentation. Objects are lit by their system's stars, shaded by a material, and built from
-compositions described in data.
+- **MSYS2 with mingw64**, installed at `C:/msys64`. `g++`, `mingw32-make`, `cmake` and
+  `clang-format` are all in `C:/msys64/mingw64/bin`, which is **not** on `PATH` by default.
+  Prepend it in the same call that needs it:
+  - bash: `export PATH=/c/msys64/mingw64/bin:$PATH`
+  - PowerShell: `$env:PATH = "C:\msys64\mingw64\bin;$env:PATH"`. Each PowerShell call is a
+    fresh shell; without the `PATH` a launched executable dies on a missing DLL.
+- **Python 3** (`python`), for `tools/gen_agent_reference.py` and the example bot.
+- **GitHub CLI** (`gh`), logged in to the repository `HEL3AN/econspace-mmo`. If it is not on
+  `PATH`, it is in `C:\Program Files\GitHub CLI`. Wrap calls in `timeout 90`; the network can
+  hang.
+- Linux works too (GCC; raylib's X11/OpenGL headers, see [CONTRIBUTING.md](CONTRIBUTING.md)).
+  CI builds Windows, Linux, Linux under ASan and UBSan, and macOS.
 
-**The world is generated, and hand-written content is the exception on top** (2026-09-04).
-`data/systems/*.json` becomes a set of pins rather than the source of truth. The game begins
-when a wormhole opens into an unexplored region; nothing beyond has a name until somebody
-goes there and names it. The architecture was already ready: the server sends a
-`SystemLayout` on entry, so where that layout came from is invisible on the wire.
+## Builds and tests
 
-**How that disagreement surfaced is worth remembering.** The owner and I worked from
-opposite premises for weeks without either of us noticing, because both produce the same
-immediate work — a shape grammar, lighting and materials are needed either way. They diverge
-on the step after. Agreement on the next task is not agreement on the direction.
+```sh
+cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Debug     # development, tests, screenshots
+cmake --build build -j 8
+ctest --test-dir build --output-on-failure
+./build/bin/server/econserver.exe hosttest   # and accttest, worldtest, ordertest, opstest
 
-## State
+cmake -S . -B build-release -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release   # playtests, releases, every FPS number
+cmake --build build-release -j 8
+```
 
-`main` is green on both platforms: warning-clean build, the unit suite (87 cases), all four
-`econserver` self-tests, `econagent selftest` against a live server, and a two-client step
-that also checks a wrong secret is refused.
+- The first configure fetches raylib, nlohmann/json, doctest, PicoSHA2 and Clay.
+- CI builds with `-DWARNINGS_AS_ERRORS=ON` and checks formatting with `clang-format`. Run
+  `clang-format -i` on what you touched.
+- After changing an econagent tool, regenerate the reference:
+  `python tools/gen_agent_reference.py ./build/bin/agent/econagent.exe` (CI runs it with
+  `--check`).
+- A change to the generator's output needs a `Gen::GENERATOR_VERSION` bump and new golden
+  hashes in `tests/gen_tests.cpp`.
+- Close `econserver`, `econspace`, `econagent` and `worldeditor` before rebuilding: Windows
+  will not let the linker overwrite a running executable. Kill a process only by its PID.
+- Every command-line mode and flag is listed in [CLAUDE.md](CLAUDE.md#build-and-run).
 
-**M3 "Multiplayer core" is closed** — 15 issues.
+## How work is done here
 
-**M6 "The look"** — everything in it is done except #123 (glyphs become a sensor screen) and
-#117 (colour stops meaning allegiance). Built: the gallery (#118), lighting (#119), the
-screen treatment (#120), materials (#121), silhouettes as compositions (#122), per-part
-lighting (#135), motion (#136).
+- **One pull request per issue, branched off `main`.** The author merges it with a squash
+  once CI is green (`gh pr merge --squash --delete-branch`). Poll CI with
+  `gh pr checks <n>` once in a while; never `gh run watch` or anything else that blocks.
+  CodeQL runs once a day on `main`, not on pull requests.
+- **Do not stack pull requests.** Merging a base with `--delete-branch` closes the one
+  stacked on it, and GitHub will neither reopen nor retarget it. Do not branch off `main`
+  for work that depends on an unmerged PR, either.
+- **Owner decisions are logged as comments on #186.** Read the latest ones before planning.
+  A call the agent makes where a design is silent goes there too, for review.
+- **The `proposal` label means: wait for the owner.** Nothing labelled `proposal` is built
+  until the owner says yes. Releases and tags are the owner's decision.
+- **Extend, never bolt on** (CLAUDE.md): a feature grows what exists, and a PR that adds a
+  new store, type, window or message says why nothing existing could carry it.
+- Several agents often work at once, each in its own worktree under `.claude/worktrees/`.
+  Do not clean up worktrees while agents are running.
+- **Never commit saves or accounts.** `world.json`, `regions/`, `accounts/`,
+  `account_*.json`, `corps.json`, `designs.json`, `allowlist.txt`, `bans.txt`, the `.bakN`
+  copies and `documents/private/` stay out of the repository. Only some of them are in
+  `.gitignore`, so check `git status` before every commit and add files by name.
+- Everything in the repository is in English.
 
-**M9 "The scale of a system"** is the live milestone, and it comes **before M7** because the
-generator will bake in whatever scale exists when it is written. Done in it: #157 the
-overview as the instrument (standing verbs, then tabs and sorting), #161 life for the things
-nobody built, #165 orbiting parts.
+## Where it stands
 
-## Next up
+- **0.1 Anchor** was tagged on 2026-10-17 (GitHub Releases and itch.io). `main` has moved far
+  past it: `PROTO_VERSION` 60, `Save::WORLD_VERSION` 17, `Save::ACCOUNT_VERSION` 9,
+  `Gen::GENERATOR_VERSION` 10, `Gen::SKELETON_VERSION` 1. Clients of 0.1 cannot join, and so
+  much of the world has changed that **the next playtest starts on a fresh world**.
+- **World generation v2** (#342) slices S1-S9 are built; S10 (scale to 10,000) is not.
+- **Knowledge, territory and law** (#431) slices 1-15 are built, including the slice 12
+  follow-ups (patrols weighed by sieges, replacements bought, offline members counted).
+- **One combat model** for NPCs and players (#463); siege damage from the warship designs
+  (#458).
+- Player outposts with storage, refunds and corporation docking (#433, #438); routes and
+  shipyards ported from the playtester fork (#432, ideas rebuilt rather than merged).
 
-1. ~~**#166 — a planet's surface**~~ — **done**. Surface parts carry latitude and
-   longitude and are projected onto the sphere; bands are computed per screen column; a
-   body has an axis tilt that makes its bands curve.
-2. ~~**#158 — the camera is the player's**~~ — **done**. `Render::CameraRig`: wheel zooms
-   (about the ship while following, about the cursor once free), middle-drag looks away,
-   **C** comes back, warp pulls back without touching the chosen zoom, and a scale bar sits
-   bottom right. Input arrives as arguments, so it is tested without a window.
-3. ~~**#157 — the overview you fly by**~~ — **done**. `Overview::Build` decides the rows
-   (tabs All/Go/Ships/Places/Hostile, sort by name/type/distance, hostiles first, ties by
-   id) and is tested without a window; the window only draws it and is open by default.
-4. ~~**#159 — the scale change itself**~~ — **done**. A million units; a station 30-45
-   times a ship. Distances were mapped outward from the star rather than multiplied, and
-   what a planet would sweep was moved out of its path (DECISIONS.md has the details).
-   Standing orders and NPCs warp any leg past 20 000; old account saves arrive beside a
-   station. `econspace ... --zoom Z --shapes` starts at a given view, for screenshots.
-5. ~~**#160 — warp for the new distances**~~ — **done**. Accelerates by a share of its
-   speed, slows in proportion to what is left, caps at 250 000: a hop is ~6 s, the whole
-   system ~13 s. Bends once around a star or planet in its way (`sim/WarpPath.h`). The sky
-   scrolls by screen motion and streaks in warp. `--warp X Y` orders one at start.
-6. ~~#117 colour is the archetype's~~ done; #179 (high-DPI) waits for a scaled display to
-   verify on; #123 (glyphs as a sensor screen) is the last M6 piece.
-7. **M7 has started.** #140 (done): the region beyond the wormhole comes from a seed
-   (`src/engine/gen/`), hangs off the start system by one wormhole gate, and is remade
-   from the seed in `world.json` on every start. `econserver host PORT --seed N` makes a
-   new galaxy reproducible. #141: `worldeditor survey 1 shapes` shows fifty generated
-   systems at once and flags empty and identical ones. #142: a system has a character
-   (ordinary, binary, belt cluster, shrouded, graveyard, giants, frozen, barren). #211:
-   rare finds -- a leviathan wreck, a motherlode, a station hulk, a rogue world, an ancient
-   gate -- at most one of each per region, as archetypes placed with the per-object
-   `archetype` field. Next: #210 (an object in a planet's path becomes its satellite),
-   #143 (the region's shape, and pirates taking all of it at once), #144-#147.
+## Next
 
-Also queued: **#137** shape derived from what an object does (it supersedes the closed
-#133), **#138** damage that removes parts, **#139** variation that changes a silhouette
-rather than nudging it.
+In order; the details are in [ROADMAP.md](ROADMAP.md#next).
 
-**M7** (#140–#147) generates the region; **M8** (#148–#153) is the in-game builder and waits
-on M4's construction track (#38).
+1. #431 slice 16, trading charts: a design talk with the owner first.
+2. #464, NPC fits from the living world: design first.
+3. Structure ownership and transfer, the EVE way: design first.
+4. #466, a corporation's enemy list, with war declarations.
+5. #425-#427, the 0.1 playtest polish.
+6. A playtest on a fresh world, then 0.2 if the owner decides to tag it.
 
 ## Things to know before touching this code
 
-- `Archetypes::Load()` must run **before** any entity is constructed. The client walked into
-  this for months (#127): its own player ship was the one object with no archetype.
+The rules that have bitten more than once are in CLAUDE.md under "Things that will trip you
+up". A few more, from the work on the look:
+
 - Numbers both sides need live in `sim/PlayerStep.h` — `SIM_DT`, `MAX_CATCHUP_SECONDS`,
   `PLAYER_WEAPON_RANGE`. Each was two copies once, and each time they drifted it looked like
   a gameplay bug (#115).
@@ -97,74 +111,28 @@ on M4's construction track (#38).
   second mapping is how a tool starts showing a picture the game does not.
 - **A backend outlives the scene it drew.** `Present` states the lighting *and* the view
   every time, including when there is none, or a preview drawn beside a system view is lit
-  by that system's star. Anything calling `IBackend::Draw` directly inherits the last ones.
-- **`Render::Compose` takes a `Pose`**, not positional arguments. The list grew three times
-  before it became a struct; add to the struct.
-- **Nothing in a composition may be measured in raw world units.** Truss rails were `1.5f`
-  and went sub-pixel the moment a card framed a larger object, so the trusses stopped being
-  drawn at all. Every measurement comes from the part's own size.
-- **Anything that moves is `f(time, seed)`**, never integrated per frame — a part whose
-  angle accumulated would drift between clients, and two players would see the same station
-  turned differently. The turn is wrapped, because a float counting degrees for a week of
-  uptime has no precision left.
+  by that system's star.
+- **`Render::Compose` takes a `Pose`**, not positional arguments. Add to the struct.
+- **Nothing in a composition may be measured in raw world units.** Every measurement comes
+  from the part's own size, or it goes sub-pixel the moment a card frames a larger object.
 - **A part belongs either to the body or to the space around it.** A surface feature turns
-  with the surface; an orbiting part goes round and passes behind. Rotating a *latitude*
-  feature — a band, a polar cap — turns it into a stripe sweeping across the planet.
-  Orbiting is draw order and not occlusion, so keep an orbit outside the body.
-- **A material is bound per part, not per object.** One sphere at the centre is the truth
-  about a planet and a lie about a station. An elongated part is lit as a cylinder from
-  `item.axis`; below a few pixels a part is drawn flat, because a rail two pixels wide is
-  *entirely* the part of a cylinder that turns away from the viewer.
+  with the surface; an orbiting part goes round and passes behind. Orbiting is draw order,
+  not occlusion, so keep an orbit outside the body.
 - **raylib culls a clockwise triangle.** `DrawTriangle` wants its vertices counter-clockwise
-  *in screen space*, where y points down. Wound the other way the part is simply not there.
-- **A rim highlight needs a round silhouette.** On a triangle it is a crescent floating in
-  empty space.
-- **A hold ends only when the ship is told to do something else** (#157). Orbit and
-  keep-at-range are standing; manual control, an autopilot order and a warp all release
-  them. Anything new that steers the ship must release the hold, or it will fight one.
-- **A standing hold is the one place prediction tolerates a difference.** The server
-  resolves the hold target from the live entity, the client from its interpolated proxy, so
-  they differ by the render delay. Deliberate, and only for a slow control loop aiming at a
-  ring hundreds of units across. Nothing that decides a hit is ever computed from an
-  interpolated position.
-- **A shader failing is a runtime fact, not a build error.** Whether one compiles depends on
-  the player's driver. The pass or the material is dropped, the reason is shown in the
-  settings screen as well as in the log, and the game keeps playing.
+  *in screen space*, where y points down.
+- **A hold ends only when the ship is told to do something else** (#157). Anything new that
+  steers the ship must release the hold, or it will fight one.
 - Two archetype switches are deliberately total, with no `default:` — the layout builder in
   `Simulation_Snapshot.cpp` and the context menu in `Game.cpp`.
 
-## How this milestone was actually worked
+## Seeing a frame
 
-**Every visual defect was found by looking at a screenshot, never by reading code.** raylib's
-scissor not nesting, a star shaded by its own light, a slider delivering a third of what it
-said, ships culled for clockwise winding, trusses gone sub-pixel, a rail coming out as the
-darkest thing on screen, a gas giant with a rod through it. Run it and look at it.
+**Every visual defect so far was found by looking at a screenshot, never by reading code.**
+Synthetic input (`SendKeys`, `mouse_event`) does not reach a raylib window, so the game and
+the editor take their view from arguments and save it themselves: `--shot f.png --frames N`
+on the client, `shot out.png` in the editor, `--click X Y FRAME` for a click (examples in
+CLAUDE.md). Screenshot runs open their window hidden. The owner works in VS Code, where file
+cards do not render — open a screenshot with `Start-Process` rather than only sending it.
 
-**Each piece split into a data half and a GPU half, and the data half is tested even though
-the picture cannot be.** `TreatmentConfig` apart from `Treatment`, `Material` apart from
-`MaterialLibrary`, composition geometry apart from drawing. Tests in that half caught real
-defects — an `Extent` that counted a `radius` a capsule never reads, among others.
-
-## Environment
-
-- `cmake` and `clang-format` are not on `PATH`. Prepend `C:\msys64\mingw64\bin`. **Each
-  PowerShell call is a fresh shell**: set `$env:PATH` in the same call that needs it, or a
-  launched executable dies on a missing DLL.
-- `gh` is not on `PATH`. Prepend `C:\Program Files\GitHub CLI`.
-- Close `econserver` / `econspace` / `econagent` / `worldeditor` before rebuilding — Windows
-  will not let the linker overwrite a running executable.
-- Never run `gh run watch` or anything else that blocks; poll once with `gh pr checks <n>`.
-  `Analyze C++` (CodeQL) takes about twelve minutes, so a PR is not mergeable before then.
-- Heredocs mangle `\n` and `\"` inside inline Python. Write scripts to the scratchpad with
-  the Write tool and run them by path.
-- **Do not stack pull requests.** Merging a base with `--delete-branch` closes the one
-  stacked on it, and GitHub will neither reopen nor retarget a closed PR (#85 → #86).
-  Parallel branches off `main` are fine. Watch for the quieter version: branching off `main`
-  for work that *depends* on an unmerged PR — it compiles against the wrong base and fails
-  confusingly.
-- **Screenshots are how the visual work is checked.** `worldeditor gallery shapes` opens
-  straight into the gallery on the shape backend; **F2** switches backends, **F3** opens the
-  gallery, **F10** opens the screen-treatment settings. Synthetic input (`SendKeys`,
-  `mouse_event`) does **not** reach a raylib window, which is why those command-line
-  arguments exist. The owner works in VS Code, where file cards do not render — open a
-  screenshot with `Start-Process` rather than only sending it.
+The owner plays on the same laptop the agents run on (Intel UHD 620): performance numbers
+measured there are real, and a playtest needs a Release build and no heavy agent work.

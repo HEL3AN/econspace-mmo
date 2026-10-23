@@ -10,7 +10,7 @@ A clear and concise description of what the bug is.
 
 **To reproduce**
 Steps to reproduce the behavior:
-1. Launch '...' (single-player / `econserver host` + `econspace connect`)
+1. Launch '...' (`econserver host` + `econspace connect`, the editor, or `econagent`)
 2. Do '...'
 3. See error
 
@@ -20,15 +20,17 @@ What you expected to happen.
 **Actual behavior**
 What actually happened. Include any console output or messages.
 
-**Mode**
-- [ ] Single-player
-- [ ] Networked (client + `econserver`)
-- [ ] World editor
+**Where**
+- [ ] The game (client + `econserver`)
+- [ ] A server for others (`--public`, `--world`)
+- [ ] The world editor
+- [ ] `econagent` / a bot
 
 **Environment**
 - OS:
-- Compiler (g++ version):
-- Commit / branch:
+- Version (`econspace --version`), or the commit / branch if built from source:
+- Build type (Debug / Release / downloaded release):
+- Compiler (g++ version), if built from source:
 
 **Additional context**
 Screenshots, logs, or anything else that helps.

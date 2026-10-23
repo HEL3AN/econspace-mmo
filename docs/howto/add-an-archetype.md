@@ -92,13 +92,11 @@ indistinguishable from an absence: the field would take its default and the edit
 do nothing. `econserver` refuses to start on a registry that will not load; the client and the
 editor log the reason and keep the previous one.
 
-**Colour in the game is the instance's, not the archetype's — today.** The gallery and the
-editor's previews draw the archetype's `color`. In the game, an object is drawn in the colour
-its C++ constructor gives it: a station in its faction's paint, a planet in its type's colour,
-every other kind in a constant. Faction paint is going away, because allegiance depends on who is
-looking and belongs to the instruments, not the object
-([#117](https://github.com/HEL3AN/econspace-mmo/issues/117)); until then, tune colour in the
-gallery knowing the game may not show it yet.
+**Colour is the archetype's.** The game, the gallery and the editor all draw the archetype's
+`color`: colour in the world view is an art decision about what a thing is. A station does not
+wear its faction's paint, because allegiance depends on who is looking; it belongs to the
+instruments -- radar, overview, target panel, sensor screen -- not to the object
+([#117](https://github.com/HEL3AN/econspace-mmo/issues/117)).
 
 **A light is never shaded by a light.** Give the relay a `light` and it will light its
 neighbours — and every part of it is drawn emissive, at full colour, with no material. That is
@@ -125,14 +123,15 @@ What each one does **today**:
 |---|---|---|
 | `dockable` | `range` | docking: a ship within radius + `range` can dock |
 | `market` | — | buying and selling while docked here |
-| `mineable` | `range`, `extractRate` | mining reaches radius + `range`. `extractRate` is loaded but nothing reads it yet |
+| `mineable` | `range`, `extractRate` | mining reaches radius + `range`; `extractRate` scales how fast it yields |
 | `jumpLink` | `range` | the jump: a ship within radius + `range` can use it |
 | `salvageable` | `range` | salvage: whoever reaches radius + `range` first is paid |
 | `hazard` | `radius`, `hidesShips` | the server hides a player inside it from NPCs; `radius` 0 means the object's own |
-| `defensive` | `range`, `damage` | loaded and listed, **not acted on yet** |
-| `storage` | `capacity` | loaded and listed, **not acted on yet** |
-| `buildable` | `cost`, `buildSeconds` | loaded and listed, **not acted on yet** — it is for the player-built world (#44) |
+| `defensive` | `range`, `damage` | a station's or a structure's guns: `damage` a second at hostiles within radius + `range`; a player's structure fires by its owner's rules of engagement (#340) |
+| `storage` | `capacity` | a finished structure keeps goods docked pilots may store and take (#438) |
+| `buildable` | — | a player can construct one; what it costs and takes is its blueprint's, in `data/blueprints.json` (#39) |
 | `shipyard` | `markup` (at least 1, default 1.5) | a docked ship can be refitted here; a module costs its ore at the system's prices times `markup` (#279) |
+| `signature` | `strength` (above 0, at most 1) | hidden from a pilot until their scanner resolves it; a lower strength takes more passes (#346) |
 
 The test suite insists that every `dockable`, `mineable`, `jumpLink` and `salvageable` archetype
 has a `range` above zero, and every `mineable` an `extractRate`: a capability with no reach is
@@ -153,11 +152,18 @@ one the pass compares against zero and never matches.
 
 ## Making the game build one
 
-This is the honest part. The registry is data, but **which archetype an entity uses is still
+This is the honest part. The registry is data, but **an entity's default archetype is still
 chosen in C++**, from its kind and a subtype: a station's `role`, a planet's `type`, a star's
-`type`. The generic path — a system file that names an archetype by id — is
-[#34](https://github.com/HEL3AN/econspace-mmo/issues/34), and until it lands a genuinely new kind
-needs a few lines of code.
+`type`.
+
+**An object in a system file may name its archetype instead**, with `"archetype": "station.relay"`
+beside its other fields. It must be an archetype of the same kind (a station for the `stations`
+list); one that does not exist, or is of another kind, is logged by name and the object is built
+as usual. This is how the generator places rare finds such as a leviathan wreck or a motherlode
+belt, and how a blueprint's structure names what it becomes. So a relay that behaves as a
+station of an existing role needs no C++ at all. A genuinely new *role*, with its own name in the
+editor's dropdown and its own job board, still needs a few lines of code
+([#34](https://github.com/HEL3AN/econspace-mmo/issues/34)).
 
 **The data half** is a `world` block, which says which array of a system file the object is
 written to and what that array calls its type:
