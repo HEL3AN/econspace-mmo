@@ -4,6 +4,24 @@
 > the reasoning in it. Parts of it describe plans that were since built differently or
 > reversed — [ARCHITECTURE.md](../ARCHITECTURE.md) describes what exists, and
 > [DECISIONS.md](../DECISIONS.md) records what changed and why.
+>
+> **Status (revised 2026-10-23).** Stages F1-F5 are built, mostly in a different shape;
+> F6 is not.
+> - **F1, factions as data:** built as a registry, not as planned here (#355, PR #375).
+>   `FactionId` is an index into `data/factions.json`, which a generated region (native
+>   factions, #390) or an admin pack extends at runtime. The code names no faction: who the
+>   pirates, police, traders and the unaffiliated are is `roles` in the file. Saves and the
+>   wire name a faction by its string id. The four starter factions below are the file's.
+> - **F2, reputation:** per-pilot standings and their effects are built. "Wanted" became a
+>   criminal flag plus a security status (#431 slice 10, #452), not a bounty on the player.
+> - **F3/F4, roles and spawn:** NPC roles and spawn by owner and security are built. Since
+>   #463, NPCs and players **fight by one model**: an NPC's guns and hull are its design's
+>   (`data/ships.json` doctrines), not per-role numbers. NPC fits from the living world are
+>   planned (#464).
+> - **F5, macrodynamics:** built as `FactionMind` plans, settling, sieges lent from holdings,
+>   convoys and the front line (#295, #431 slices 7-9). A system nobody is in has no NPC ships,
+>   only numbers (see `living_galaxy_design.md`).
+> - **F6, the faction and relation editor:** not built (#9).
 
 This document describes the target faction and AI system for EconSpace. It is a
 **design**, not an implementation. The code implementation is split into stages F1–F6

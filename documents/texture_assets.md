@@ -3,6 +3,11 @@
 A reference for generating sprites (Nano Banana and the like) and assembling them in
 Photoshop. The project's style is **pixel art**.
 
+Status (revised 2026-10-23): **the loading path is built; no sprites have been made.**
+`data/textures/` holds only its README, so every object is drawn by the generator. Sprites
+are optional and off the critical path: #1 ("replace placeholder shapes with real sprites")
+was closed as superseded by the generated look (M6, #123, #240).
+
 > **The look is generated from data; a sprite is an optional override.** An object's
 > appearance comes from its archetype — a composition of parts, lit and shaded (M6) — and
 > a hand-made sprite wins wherever one exists. Nothing below is obsolete, and none of it is

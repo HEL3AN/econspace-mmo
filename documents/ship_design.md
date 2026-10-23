@@ -4,6 +4,13 @@ A ship is a **design**, and what it can do is read off its parts (#279, M8 groun
 file holds the parts' function and the designs built from them; `Ships::Derive`
 (`src/engine/core/ShipDesign.h`) turns a design into stats, cost and build time.
 
+**Status (revised 2026-10-23): built.** Every step below is on main, fitting included (#334,
+#378, #393, #397), and since #463 NPCs and players fight by one model: an NPC's hull and
+volley are its design's (`combatHull`, `volley`), and cold fights and sieges are reckoned from
+the same designs (`Ships::RoleFighter`). **Still planned:** NPC fits that come from the living
+world rather than one doctrine design per role (#464); structure designs by players (M8).
+The original status of step 5 follows.
+
 **Status — step 5 of #279.** A design decides what its ship looks like (each section is
 drawn, a frame lays them end to end and holds the hull to its class's silhouette) and what it
 can do, for NPCs and players alike: a faction's **doctrine** names the designs each NPC role
@@ -315,7 +322,10 @@ split bow.
 4. **Player ships are designs** -- done (step 5). The hangar lists designs, `GetShipCatalog()`
    is derived from it, `ship.player` is drawn as the design it flies, and the client predicts
    its own ship with the same numbers the server flies it by.
-5. **Fitting** (next): a player changes the fit of a hull they own. The seam is `ShipStats`
+5. **Fitting** -- done (#334, #378, #393, #397): a ship flies a design filed under its
+   content (`Ships::ContentId`), refits happen at a `shipyard` station and are paid in
+   credits, and a player keeps a named library of designs. As planned:
+   a player changes the fit of a hull they own. The seam is `ShipStats`
    -- everything the game reads about a player's ship comes through it, from `Derive` -- so a
    refit is a design per ship rather than per hangar entry, and a fitted gun adds to
    `baseGun` the way it adds to an NPC's volley. A per-ship design has to travel with the

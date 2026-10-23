@@ -1,9 +1,16 @@
 # World knowledge, territory and law
 
 Status: **decided by the owner in four rounds, 2026-10-21 and 2026-10-22**, recorded in the
-comments on #431. This file gathers those decisions as rules, maps each one onto today's
-code, and cuts the work into slices. It is waiting for the owner's approval; nothing in it is
-built yet. Related: #342 (the growing world, `world_generation_v2.md`), #347 (corporations),
+comments on #431. This file gathers those decisions as rules, maps each one onto the code, and
+cuts the work into slices.
+
+**Built (as of 2026-10-23):** slices 1-15 are on main -- 1 #443, 2 #453, 3 #448, 4 #459,
+5 #449, 6 #456, 7 #450, 8 #454, 9 #447, 10 #452, 11 #460, 12 #465 with its follow-ups in
+#467, 13 #445, 14 #457, 15 #462 (`PROTO_VERSION` 60, `WORLD_VERSION` 17). **Still planned:**
+slice 16 (chart trading), which is a design talk with the owner, not code yet; war
+declarations; and the questions under **Open design questions** at the end. The sections
+headed "The code before the slices" record the starting point each slice changed; each
+slice's *Built* note in the slice plan says what is there now. Related: #342 (the growing world, `world_generation_v2.md`), #347 (corporations),
 #432 (the playtester fork: routes, faction shipyards), #433 / #437 (players build outposts),
 #438 (what player outposts still lack).
 
@@ -91,7 +98,7 @@ right to name the empty systems in it (section 2), and charts a faction will buy
 never loses its place, links, bodies or name. What changes is said by the live and observed
 layers (section 7).
 
-### Today's code
+### The code before the slices
 
 | Rule | Today | What changes |
 |---|---|---|
@@ -128,7 +135,7 @@ history.
 (today's `Names::ValidSystemName`), unique in the world regardless of case, through a word
 filter, and subject to admin moderation: an admin may rename or clear any player-given name.
 
-### Today's code
+### The code before the slices
 
 - `Simulation::NameSystem` already refuses everything but the discoverer of a generated,
   non-centre system, and refuses a second naming. It needs one more refusal: a system with
@@ -183,7 +190,7 @@ build adds to their own influence there, which is how a system changes hands slo
 never a world faction (#347 stands); it has its own treasury and runs its own AI-managed
 assets (C1) within limits the server sets.
 
-### Today's code
+### The code before the slices
 
 | Rule | Today | What changes |
 |---|---|---|
@@ -244,7 +251,7 @@ police guard it, and attacking it is a crime. Building without a licence is **tr
 the structure is free to shoot (L2), and the faction may besiege it like a rival's outpost.
 Corporation structures follow the same rules.
 
-### Today's code
+### The code before the slices
 
 | Rule | Today | What changes |
 |---|---|---|
@@ -287,7 +294,7 @@ police.
 drives the strength of the police response, pirate spawns and convoy safety, and lower
 security pays better (missions, bounties, ore). The details are to be refined later.
 
-### Today's code
+### The code before the slices
 
 | Rule | Today | What changes |
 |---|---|---|
@@ -316,7 +323,7 @@ count toward influence. They are cold arithmetic in a cold system like any NPC (
 not on, a notice is kept for them (and for their corporation's members) and shown in the
 journal on login. A Discord hook is a later slice.
 
-### Today's code
+### The code before the slices
 
 - `Simulation_Defence.cpp` keeps `OwnerBook`s in `world.json` (`owners`): standings and the
   crimes a structure committed while its owner was away, settled at login by `StepOwners`.
@@ -359,7 +366,7 @@ careful design (slice 16).
 **M3. A drifting region.** Its charts stay, marked "drifted". When it returns, they are
 marked outdated: the geography holds, the rest must be re-checked.
 
-### Today's code
+### The code before the slices
 
 - `GalaxyState` (`Protocol.h`) sends live security, pirates, prosperity, controller and
   `claimed` once a second for every visited system. It becomes per session, for the
@@ -591,8 +598,10 @@ are marked; slices without one may go in any order.
       CEO's crime, as a structure's is its owner's. Shooting a guard is a crime under the
       system's law, as shooting a member's structure is. The corporation window lists each
       patrol with a Stand down button, `/corp patrol` sets one; econagent's `corp`,
-      `corp_act` and full `observe` carry them. PROTO_VERSION 59. Not built: the faction
-      siege planner does not yet weigh a patrol when it decides to evict.
+      `corp_act` and full `observe` carry them. PROTO_VERSION 59. Follow-ups in #467
+      (PROTO_VERSION 60): the faction siege planner weighs a patrol when it decides to evict
+      (`PatrolAsWarships`), a ship made good is bought from the treasury at `DesignPrice`, the
+      verb sets the threshold and allow-list, and unseen members are counted at start.
 13. **Offline attack notices.** *Independent; small, may go early.*
     - *Scope:* journal entries, merged per structure per attack: the owner's pending journal
       in the account save, or the corporation's journal its members read; capped.
@@ -627,6 +636,31 @@ are marked; slices without one may go in any order.
 Related work outside this plan: faction shipyards by need and the player shipyard upgrade
 (#432 part D, with #433); the remaining #438 items (station perks; storage, refunds over
 every tier and client docking at a corp mate's outpost are done).
+
+---
+
+## Open design questions
+
+Not built and not yet designed in full. Each waits for a talk with the owner.
+
+- **Structure ownership like EVE (#468).** Decided by the owner on 2026-10-23: a structure a
+  corporation member builds belongs to the **corporation**. Today it is owned by the pilot's
+  account and reaches the corporation through `PartyOf` (licence rent from the treasury, trust,
+  patrols). Still to design: transferring a structure's rights (pilot to corporation, between
+  corporations, to another pilot, and who may do it), the licence rent moving with it, and what
+  becomes of its goods, rules of engagement and attack notices on transfer or when a member
+  leaves.
+- **NPC fits from the living world (#464).** Since #463 NPCs fight by the player combat model
+  with one doctrine design per role. Their fits should come from the world instead: a gang's
+  wealth and losses, its faction's doctrine, the region, its security and its market. No balance
+  patch in the meantime.
+- **The corporation enemy list (#466).** Today a corporation's hostility to a faction is its
+  members' summed standing. An EVE-style contact list set by the CEO and directors, read by
+  patrols and structures in "enemies" mode, comes with the war declarations that this plan
+  deferred (Decided after the rounds, 7).
+- **Slice 16, chart trading.** What is sold (systems, layers, a region), to whom (factions,
+  players), at what price and with what proof, built into the map interface rather than as an
+  item (M2). A design document and an owner discussion come before any code.
 
 ---
 

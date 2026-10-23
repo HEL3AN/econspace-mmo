@@ -1,7 +1,20 @@
 # Distribution and hosting: the production stage
 
-Status: **proposal, for the owner's decision** (2026-10-16). This is the design for the
-production stage. Nothing here is built yet. The open questions are at the end.
+Status: **P0 is built; P1 and P2 are still planned** (revised 2026-10-23). Written as a
+proposal on 2026-10-16. The owner took the P0 shape for the friends' test server, and it
+shipped as version 0.1 "Anchor" (#400, closed):
+- P0-1 data found at runtime and a portable package (#403); P0-2 the world directory and
+  accounts beside it (#392, #421); P0-3 `server.json` and `econserver init` (#421); P0-4
+  allowlist and bans (#402); P0-5 the console's `who`, `kick`, `save`, `backup`,
+  `shutdown`, `status` (#421); P0-6 timestamped logs and the metrics line (#402); P0-7 nonces
+  and salts from the OS (#402); P0-8 the version in every binary and in `Hello` (#422);
+  P0-9 the release workflow on a tag (#422); P0-10 `docs/hosting.md`.
+- From P1, only the local admin channel (`econserver admin <dir> "<cmd>"`, P1-10's first
+  half) is built. Encryption (P1-1/2, the rest of #351), invites, the connect screen,
+  SQLite, off-thread saves (#350), Docker, signing, itch.io, AppImage and IPv6 are not.
+
+The section "Where we are today" below describes the code on 2026-10-16, before P0. The
+questions at the end were put to the owner then; the P0 ones are answered by what was built.
 
 The goal has two parts. A player can **start their own server quickly** or **join the
 owner's server**. Before that, the owner wants to **run a test server at home for friends

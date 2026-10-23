@@ -4,6 +4,12 @@ How a window is declared, laid out, themed and given the mouse. The design and i
 reasons are in issue #297; this is the part a new screen needs. Everything named here
 lives in `src/engine/ui/`.
 
+Status (revised 2026-10-23): **a current reference for what is built.** The framework of
+#297 is complete and that issue is closed; what is left is polish from the 0.1 playtest
+(#427). Since this file was last rewritten (2026-10-11) the scanner (#414), chat (#410) and
+corporation (#416) windows were added the same way, `Game::SetupWindows`, and nothing about
+the framework changed.
+
 ## The pieces
 
 | Piece | File | What it is for |
@@ -526,7 +532,8 @@ no window is written against Clay itself.
 ## Still placed by hand
 
 On `Ui::Layout`: status, overview, the selected item, missions, radar (its toolbar; the
-scope is a picture in a box the layout gives), settings, F10's screen treatment, the
+scope is a picture in a box the layout gives), the scanner, chat, the corporation,
+settings, F10's screen treatment, the
 station, market and hangar, and the map's and the sensor screen's heading, legend and news.
 The pictures themselves -- the map's nodes and their labels, the sensor grid, the radar's
 scope -- are drawn by hand in the box their layout gives them. No window is placed with
