@@ -254,6 +254,8 @@ private:
     // A good dragged from the inventory onto the market (#472): chosen there, with the amount
     // dragged ready to sell. Selling stays a click.
     void TakeMarketDrop(Ui::Layout& L);
+    // ...and onto the world in space: jettisoned into a can (#472).
+    void TakeWorldDrop();
     // The hangar's rent at a station (#472): free and rented units, and the field to change it.
     void DrawHangarRent(Ui::Layout& L);
 

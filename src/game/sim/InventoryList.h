@@ -3,6 +3,7 @@
 #include "economy/Resource.h"
 #include "sim/Protocol.h"
 
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,6 +28,8 @@ struct Container
     int              capacity = 0;
     // Nothing goes in or out: a hangar whose rent is owed (#472).
     bool closed = false;
+    // Goods come out and never go in: a wreck, or another pilot's can.
+    bool takeOnly = false;
 
     int Amount(ResourceType type) const;
     int Used() const;
@@ -35,6 +38,18 @@ struct Container
 
 // The hold first, then what is reachable here.
 std::vector<Container> Reachable(const Proto::PlayerView& p);
+// ...and in space, the cans and wrecks within loot reach that hold anything (#472), from the
+// snapshot's entities and the layout's archetypes; `account` is who is asking, whose own cans
+// take more. Ids "can:<id>".
+std::vector<Container> Reachable(const Proto::Snapshot&                    snap,
+                                 const std::map<int, Proto::EntityLayout>& layout,
+                                 const std::string&                        account);
+// The units a can of one's own holds at most: Simulation::CAN_UNITS, which the server checks.
+constexpr int CAN_UNITS = 1000;
+
+// "5 Iron, 3 Ice": what a per-good list holds, for a line of text; empty for nothing.
+std::string Describe(const std::vector<int>& goods);
+int         Total(const std::vector<int>& goods);
 // The one with this id, or null.
 const Container* Find(const std::vector<Container>& all, std::string_view id);
 

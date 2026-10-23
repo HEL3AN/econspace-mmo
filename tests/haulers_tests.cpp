@@ -137,13 +137,13 @@ TEST_CASE("a hauler shot down leaves its cargo in its wreck, for whoever searche
             wreck = static_cast<const Derelict*>(e.get());
     }
     REQUIRE(wreck != nullptr);  // ...and what it carried is where it was
-    CHECK(wreck->GetCargo() == steel);
+    CHECK(wreck->Contents().Amount(steel) == room + 7);
     CHECK(wreck->GetCargoAmount() == room + 7);
     // The layout says so, for a client and an agent.
     bool told = false;
     for (const Proto::EntityLayout& l : sim.BuildLayout(st.id).entities)
-        told = told ||
-               (l.id == wreck->GetId() && l.cargo == steel.Index() && l.cargoAmount == room + 7);
+        told = told || (l.id == wreck->GetId() && (size_t)steel.Index() < l.holds.size() &&
+                        l.holds[(size_t)steel.Index()] == room + 7);
     CHECK(told);
 
     // The hold takes what it has room for; the rest waits for the next search.
@@ -281,13 +281,13 @@ TEST_CASE("the wire carries a hauler's cargo, a wreck's and what is left of a be
     belt.resource = Good::Iron().Index();
     wreck.id = 8;
     wreck.kind = Proto::EntityKind::Derelict;
-    wreck.cargo = npc.cargo;
-    wreck.cargoAmount = 12;
+    wreck.holds.assign((size_t)Goods::Count(), 0);
+    wreck.holds[(size_t)npc.cargo] = 12;
     l.entities = { belt, wreck };
     Proto::SystemLayout back;
     REQUIRE(Proto::DecodeLayout(Proto::EncodeLayout(l), back));
     REQUIRE(back.entities.size() == 2);
-    CHECK(back.entities[1].cargoAmount == 12);
+    CHECK(back.entities[1].holds == wreck.holds);
 
     // A client completes them: the belt's ore from the snapshot, the wreck's hold from the
     // layout.
@@ -303,6 +303,6 @@ TEST_CASE("the wire carries a hauler's cargo, a wreck's and what is left of a be
             CHECK(e.oreMax == 300);
         }
         if (e.id == 8)
-            CHECK(e.cargoAmount == 12);
+            CHECK(e.holds == wreck.holds);
     }
 }

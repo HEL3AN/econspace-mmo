@@ -70,7 +70,9 @@ std::string DescribeHangar(const View& view);
 // Every container reachable from where the pilot is -- the hold, and docked at one's own
 // structure its storage -- and what each holds, priced at the market here (#472). The same
 // lists as the inventory window (InventoryList).
-std::string DescribeInventory(const View& view);
+// In space, the cans and wrecks within reach too; `account` is who asks, whose own cans take
+// more (#472).
+std::string DescribeInventory(const View& view, const std::string& account = std::string());
 
 // --- Fitting (#279) ---------------------------------------------------------------------
 // The design the ship being flown has: its refit if it has one, else its hull's stock

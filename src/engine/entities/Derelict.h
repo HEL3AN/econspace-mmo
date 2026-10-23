@@ -1,6 +1,7 @@
 #pragma once
 
 #include "entities/Entity.h"
+#include "economy/Inventory.h"
 #include "economy/Resource.h"
 #include <string>
 
@@ -23,16 +24,13 @@ public:
     bool   IsLooted() const { return looted_; }
     void   SetLooted() { looted_ = true; }
     double GetReward() const { return reward_; }
-    // The cargo of the ship it was (#343): a hauler shot down leaves what it carried here, for
-    // whoever searches it first. A search takes what the hold has room for; the wreck is
-    // searched once nothing is left.
-    ResourceType GetCargo() const { return cargo_; }
-    int          GetCargoAmount() const { return cargoAmount_; }
-    void         SetCargo(ResourceType good, int amount)
-    {
-        cargo_ = good;
-        cargoAmount_ = amount > 0 ? amount : 0;
-    }
+    // What it holds (#343, #472): the cargo of the ship it was -- every good of it, so a lost
+    // ship leaves one wreck rather than a row of pods -- or what a pilot jettisoned into it. A
+    // container like a hold: a search takes what the hold has room for, `move` takes any of it,
+    // and it is searched once nothing is left.
+    Inventory&       Contents() { return goods_; }
+    const Inventory& Contents() const { return goods_; }
+    int              GetCargoAmount() const { return goods_.Used(); }
 
     // When it is gone by itself (#41): the wreck of a structure decays, so a world players
     // can shoot at does not fill up with ruins. An instant of the world clock, like a
@@ -42,10 +40,9 @@ public:
     void   SetExpiresAt(double t) { expiresAt_ = t; }
 
 private:
-    std::string  name_;
-    double       reward_;
-    bool         looted_ = false;
-    double       expiresAt_ = 0.0;
-    ResourceType cargo_;
-    int          cargoAmount_ = 0;
+    std::string name_;
+    double      reward_;
+    bool        looted_ = false;
+    double      expiresAt_ = 0.0;
+    Inventory   goods_;
 };

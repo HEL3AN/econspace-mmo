@@ -40,6 +40,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 - Attacks on your structures reach you offline, in your journal (#445).
 - Players build outposts and grow them along the chain (#437); outposts keep goods, come apart for every tier and dock corporation mates (#461).
 - Factions and players build shipyards by need (#441).
+- Jettison goods into a can (1000 units, an hour, only you may add to it), or drag them out into space; a wreck holds every good of the lost ship (#472).
 - Every NPC station gives a pilot a personal hangar: 100 units free, more rented by the unit at 2 cr per 30 days, with unpaid rent closing it, not emptying it (#472).
 
 ### Routes and jobs

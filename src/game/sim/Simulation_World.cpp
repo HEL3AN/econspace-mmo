@@ -759,11 +759,13 @@ nlohmann::json StateOf(const Entity& e)
         s["owner"] = e.GetOwner();
     if (e.GetKind() == EntityKind::Derelict && static_cast<const Derelict&>(e).IsLooted())
         s["looted"] = true;
-    // What a hauler's wreck still holds (#343), by good id.
+    // What a wreck or a can still holds (#343, #472), by good id: one key or several.
     if (e.GetKind() == EntityKind::Derelict && static_cast<const Derelict&>(e).GetCargoAmount() > 0)
     {
-        const Derelict& d = static_cast<const Derelict&>(e);
-        s["cargo"] = { { Goods::Id(d.GetCargo()), d.GetCargoAmount() } };
+        nlohmann::json cargo = nlohmann::json::object();
+        for (const auto& kv : static_cast<const Derelict&>(e).Contents().All())
+            cargo[Goods::Id(kv.first)] = kv.second;
+        s["cargo"] = std::move(cargo);
     }
     // A belt mined below full (#348): what is left. An older build reads it full.
     if (e.GetKind() == EntityKind::Field)
@@ -811,7 +813,7 @@ void ApplyState(Entity& e, const nlohmann::json& s, double now)
         {
             ResourceType good;  // a good this build does not have is let go
             if (c.value().is_number_integer() && Goods::Find(c.key(), good))
-                static_cast<Derelict&>(e).SetCargo(good, c.value().get<int>());
+                static_cast<Derelict&>(e).Contents().Add(good, c.value().get<int>());
         }
     if (e.GetKind() == EntityKind::Field && s.contains("ore") && s["ore"].is_number())
         static_cast<AsteroidField&>(e).SetOre(s["ore"].get<double>());

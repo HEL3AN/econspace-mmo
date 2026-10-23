@@ -144,19 +144,18 @@ TEST_CASE("a lost ship is gone with its fit and cargo; insurance pays; you wake 
     CHECK(s.systemId == start.systemId);
     CHECK(s.dockedStationId == hub->GetId());
     // A wreck where it fell, holding a share of the ship as credits and of the hold as the
-    // goods themselves (#343), for a while: the largest stack in the wreck, the rest beside it.
+    // goods themselves (#343), for a while: one wreck, holding every good (#472).
     const double    share = Blueprints::Rules().wreckShare;
     const Derelict* wreck = WreckAt(w.sim, there, fell);
     REQUIRE(wreck != nullptr);
     CHECK(wreck->GetReward() == doctest::Approx(std::floor(value * share)));
-    CHECK(wreck->GetCargo() == Good::Iron());
-    CHECK(wreck->GetCargoAmount() == (int)std::floor(20 * share));
-    int ice = 0;
+    CHECK(wreck->Contents().Amount(Good::Iron()) == (int)std::floor(20 * share));
+    CHECK(wreck->Contents().Amount(Good::Ice()) == (int)std::floor(8 * share));
+    int wrecks = 0;
     for (const auto& e : w.sim.SystemById(there)->entities)
-        if (e->GetKind() == EntityKind::Derelict &&
-            static_cast<const Derelict&>(*e).GetCargo() == Good::Ice())
-            ice += static_cast<const Derelict&>(*e).GetCargoAmount();
-    CHECK(ice == (int)std::floor(8 * share));
+        wrecks += e->GetKind() == EntityKind::Derelict &&
+                  static_cast<const Derelict&>(*e).GetCargoAmount() > 0;
+    CHECK(wrecks == 1);  // no pods beside it
     CHECK(wreck->GetExpiresAt() > 0.0);
     CHECK(wreck->GetBaseName() == "Wreck of pilot's Hauler");
     // And it is said: the journal, and the loss the snapshot carries.

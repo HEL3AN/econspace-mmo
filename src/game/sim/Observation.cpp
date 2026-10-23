@@ -124,7 +124,7 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
             if (e.kind == Proto::EntityKind::Gate && !it->second.dest.empty())
                 extra = "  to " + it->second.dest;
             else if (e.kind == Proto::EntityKind::Derelict && !it->second.looted &&
-                     (it->second.reward > 0.0 || e.cargoAmount > 0))
+                     (it->second.reward > 0.0 || InventoryList::Total(e.holds) > 0))
                 extra = "  lootable";  // a searched wreck says so once it is (#38)
             else if (e.kind == Proto::EntityKind::Structure)
             {
@@ -177,10 +177,9 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
         if (e.oreMax > 0)  // what is left of it (#348)
             extra += Fmt(" %d/%d left", e.oreLeft, e.oreMax);
     }
-    // What a wreck holds (#343).
-    if (e.kind == Proto::EntityKind::Derelict && e.cargo >= 0 && e.cargo < Goods::Count() &&
-        e.cargoAmount > 0)
-        extra += Fmt("  holds %d ", e.cargoAmount) + ResourceName(ResourceType::FromIndex(e.cargo));
+    // What a wreck or a can holds (#343, #472).
+    if (e.kind == Proto::EntityKind::Derelict && InventoryList::Total(e.holds) > 0)
+        extra += "  holds " + InventoryList::Describe(e.holds);
     // Dockable is a component, asked of the archetype the layout names (#195) -- the same
     // question the server's docking pass asks (#34), so a dock a player builds (#44) is one
     // here too. Without a layout to ask, a station is assumed to be one, as it always was.
@@ -780,7 +779,7 @@ std::string DescribeMissions(const View& view)
     return out;
 }
 
-std::string DescribeInventory(const View& view)
+std::string DescribeInventory(const View& view, const std::string& account)
 {
     if (view.snapshot == nullptr)
         return "No world state yet.\n";
@@ -788,8 +787,9 @@ std::string DescribeInventory(const View& view)
     const Proto::PlayerView&        p = snap.player;
     static const std::vector<float> NO_PRICES;
     const std::vector<float>&       prices = p.docked ? snap.marketPrices : NO_PRICES;
-    const auto                      all = InventoryList::Reachable(p);
-    std::string                     out =
+    const auto  all = view.layout != nullptr ? InventoryList::Reachable(snap, *view.layout, account)
+                                             : InventoryList::Reachable(p);
+    std::string out =
         p.docked ? Fmt("INVENTORY docked at %s\n", StationName(view, p.dockedStationId).c_str())
                  : std::string("INVENTORY in space\n");
     for (const InventoryList::Container& c : all)
@@ -817,6 +817,8 @@ std::string DescribeInventory(const View& view)
     }
     if (all.size() > 1)
         out += "Move goods between them with move_goods, naming each by the id in brackets.\n";
+    if (!p.docked)
+        out += "In space, jettison puts goods from the hold into a can beside the ship.\n";
     else if (p.docked)
         out += "Nothing here keeps goods for you but the hold.\n";
     return out;
