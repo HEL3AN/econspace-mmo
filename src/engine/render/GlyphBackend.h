@@ -114,8 +114,11 @@ private:
     // Turns the item's material on for what follows, positioned on `at` with radius
     // `size` in world units. A composition passes each piece's own centre and cross
     // section (#135); an uncomposed object passes its own.
+    // `own` is a part's own material (#426) in place of the object's, and `partSeed` and
+    // `angle` (degrees, as a piece has it) are that part's, for the sources that ask.
     bool BeginMaterialAt(const Item& item, const Lighting::Sample& light, Vector2 at, float size,
-                         Vector2 axis = { 0.0f, 0.0f });
+                         Vector2 axis = { 0.0f, 0.0f }, const Material* own = nullptr,
+                         float partSeed = 0.0f, float angle = 0.0f);
     bool BeginMaterial(const Item& item, const Lighting::Sample& light);
     void EndMaterial();
     // The shapes themselves, split off so that whichever of its ten returns is taken, the
@@ -131,6 +134,27 @@ private:
     // A glow on a planet's surface: projected and cut like any surface piece, lit as the
     // body, and still fading to nothing at its rim.
     void DrawSoftOnSurface(const Item& item, const Piece& p, bool emissive);
+    // A part's own material, if it has one that will draw at this size: compiled here, and
+    // the part big enough on screen to have a surface (#426). Null otherwise.
+    const Material* OwnMaterial(const Piece& p) const;
+    // A piece painted by its own material, drawn over its reach. False if it could not be,
+    // and the piece is then drawn as any other.
+    bool DrawOwnMaterial(const Item& item, const Piece& p, const Material& m);
+    // The same, painted into an offscreen target at `scale` of the target's resolution and
+    // drawn back over `box` (screen pixels), for a body too large on screen to paint at full
+    // resolution every frame (#426). False if it could not be.
+    bool PaintScaled(const Item& item, const Piece& p, const Material& m, float scale,
+                     Rectangle box);
+    // The primitive under a material of a piece's own, the material already begun.
+    void DrawPainted(const Item& item, const Piece& p, const Material& m);
+
+    // A body painted by a material of its own is painted at reduced resolution once what it
+    // covers on screen passes the material library's paint budget (a player setting,
+    // TreatmentConfig::paintBudget), so that what it costs stops growing with it: a planet
+    // filling a 1080p screen is two million fragments of noise, which an integrated GPU
+    // cannot shade every frame. Never below this of the target's resolution, where the
+    // softening starts to show.
+    static constexpr float PAINT_MIN_SCALE = 0.5f;
 
     // What reaches `p` on the object being drawn: every light but its own, unless it is
     // one that lights itself (#119). Every sample this backend takes goes through here, so
@@ -142,12 +166,17 @@ private:
 
     // What the material is bound with now, so a piece shaded with the same inputs as the
     // one before it shares the bind instead of being a draw call of its own (#296).
-    bool             bound_ = false;
-    const Material*  boundMaterial_ = nullptr;
-    const Item*      boundItem_ = nullptr;
-    Vector2          boundAt_{};
-    float            boundSize_ = 0.0f;
-    Vector2          boundAxis_{};
+    bool            bound_ = false;
+    const Material* boundMaterial_ = nullptr;
+    const Item*     boundItem_ = nullptr;
+    Vector2         boundAt_{};
+    float           boundSize_ = 0.0f;
+    Vector2         boundAxis_{};
+    float           boundSeed_ = 0.0f;
+    // What screen pixels are worth in the target being painted into: 1, or less while a body
+    // is painted at reduced resolution (PaintScaled).
+    float            paintScale_ = 1.0f;
+    float            boundAngle_ = 0.0f;
     Lighting::Sample boundLight_{};
     Camera2D         view_{};
     MaterialLibrary* materials_ = nullptr;  // borrowed; null draws everything plain

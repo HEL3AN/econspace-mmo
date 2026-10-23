@@ -803,51 +803,17 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         }
         // A misspelled field would be read as absent and draw the default (#191), which
         // for a part is the kind of wrong nobody notices until it is the only one left.
-        if (!OnlyKnownKeys(e,
-                           { "form",
-                             "role",
-                             "at",
-                             "sides",
-                             "angle",
-                             "radius",
-                             "width",
-                             "length",
-                             "count",
-                             "filled",
-                             "repeat",
-                             "mirror",
-                             "minPixels",
-                             "jitterAngle",
-                             "jitterScale",
-                             "alpha",
-                             "orbitRadius",
-                             "orbitPeriod",
-                             "orbitPhase",
-                             "orbitTilt",
-                             "lat",
-                             "lon",
-                             "spin",
-                             "blink",
-                             "onlyThrusting",
-                             "tint",
-                             "from",
-                             "to",
-                             "row",
-                             "module",
-                             "variant",
-                             "variants",
-                             "except",
-                             "scale",
-                             "chance",
-                             "group",
-                             "pivot",
-                             "onlyDark",
-                             "tip",
-                             "jagged",
-                             "soft",
-                             "pitch",
-                             "z" },
-                           error))
+        if (!OnlyKnownKeys(
+                e, { "form",    "role",        "at",          "sides",       "angle",
+                     "radius",  "width",       "length",      "count",       "filled",
+                     "repeat",  "mirror",      "minPixels",   "jitterAngle", "jitterScale",
+                     "alpha",   "orbitRadius", "orbitPeriod", "orbitPhase",  "orbitTilt",
+                     "lat",     "lon",         "spin",        "blink",       "onlyThrusting",
+                     "tint",    "from",        "to",          "row",         "module",
+                     "variant", "variants",    "except",      "scale",       "chance",
+                     "group",   "pivot",       "onlyDark",    "tip",         "jagged",
+                     "soft",    "pitch",       "z",           "material",    "fallback" },
+                error))
             return false;
         Part p;
         if (e.contains("module"))
@@ -1087,6 +1053,19 @@ static bool ParseShapeUnguarded(const json& j, Shape& out, std::string& error)
         p.onlyThrusting = e.value("onlyThrusting", p.onlyThrusting);
         p.onlyDark = e.value("onlyDark", p.onlyDark);
         p.soft = e.value("soft", p.soft);
+        p.fallback = e.value("fallback", p.fallback);
+        if (e.contains("material"))
+        {
+            // Only its spelling can be checked here: the server and the tests load no
+            // materials, so whether one by this name exists is said where they are loaded
+            // (Materials::UnknownInArchetypes), as for an archetype's own.
+            if (!e["material"].is_string() || e["material"].get<std::string>().empty())
+            {
+                error = "a part's material must be a material's id";
+                return false;
+            }
+            p.material = e["material"].get<std::string>();
+        }
         p.section = isSection;
         p.pitch = e.value("pitch", p.pitch);
         p.z = e.value("z", p.z);
@@ -1442,6 +1421,7 @@ void ExpandOnSphere(const Part& p, const ModuleVariant& v, int seed, int salt, S
                     q.mirror = p.mirror;
                     q.spin = p.spin;
                     q.z = mp.z + p.z;
+                    q.fallback = mp.fallback || p.fallback;
                     out.parts.push_back(q);
                 }
             }
@@ -1584,6 +1564,8 @@ Shape ExpandModules(const Shape& in, int seed)
                             // turns them all about the object's centre, in the composer.
                             q.spin = p.spin;
                             q.z = mp.z + p.z;  // the placement's layer, then the module's own order
+                            // A stand-in placed whole is a stand-in in every part.
+                            q.fallback = mp.fallback || p.fallback;
                             out.parts.push_back(q);
                         }
                     }
@@ -1665,6 +1647,7 @@ uint64_t Fingerprint(const Shape& s)
         f.F(p.alpha), f.F(p.orbitRadius), f.F(p.orbitPeriod), f.F(p.orbitPhase), f.F(p.orbitTilt);
         f.B(p.surface), f.F(p.lat), f.F(p.lon), f.F(p.spin), f.F(p.blink);
         f.B(p.onlyThrusting), f.B(p.onlyDark), f.F(p.tip), f.F(p.jagged), f.B(p.soft);
+        f.S(p.material), f.B(p.fallback);
         f.C(p.tint), f.F(p.arcFrom), f.F(p.arcTo), f.I(p.rowCount), f.V(p.rowStep);
         f.S(p.module), f.S(p.variant), f.L(p.variants), f.L(p.except), f.F(p.scale);
         f.I((int)p.vary.size());
@@ -1874,6 +1857,10 @@ std::vector<Piece> Compose(const Shape& shape, const Pose& pose)
                 piece.jagged = p.jagged;
                 piece.jagSeed = (int)(Hash01(seed, salt + 337 + m * 7) * 1000000.0f);
                 piece.soft = p.soft;
+                piece.material = p.material;
+                piece.fallback = p.fallback;
+                piece.orbits = p.orbitRadius > 0.0f;
+                piece.seed = Hash01(seed, salt + 401 + m * 7);
                 // An arc's ends turn with the part, and a mirrored arc runs the other way.
                 piece.arcFrom = flip > 0.0f ? piece.angle + p.arcFrom : piece.angle - p.arcTo;
                 piece.arcTo = flip > 0.0f ? piece.angle + p.arcTo : piece.angle - p.arcFrom;

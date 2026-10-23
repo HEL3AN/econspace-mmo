@@ -167,34 +167,34 @@
             "sockets": ["free"],
             "variants": [
                 { "id": "lumpy", "shape": [
-                    {"form": "polygon", "sides": [5, 8], "angle": [0, 360], "radius": [0.7, 0.85], "role": "hull", "minPixels": 2},
-                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [[0.2, 0.4], [-0.35, 0.35]], "radius": [0.45, 0.6], "role": "hull", "minPixels": 2},
-                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[-0.5, -0.3], [-0.3, 0.3]], "radius": [0.3, 0.45], "role": "hull", "minPixels": 2, "chance": 0.7},
-                    {"form": "disc", "at": [[-0.25, 0.15], [-0.25, 0.25]], "radius": [0.1, 0.18], "role": "panel", "alpha": 0.8, "chance": 0.7}
+                    {"form": "polygon", "sides": [5, 8], "angle": [0, 360], "radius": [0.7, 0.85], "role": "hull", "minPixels": 2, "jagged": [0.12, 0.28], "material": "asteroid"},
+                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [[0.2, 0.4], [-0.35, 0.35]], "radius": [0.45, 0.6], "role": "hull", "minPixels": 2, "jagged": [0.12, 0.28], "material": "asteroid"},
+                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[-0.5, -0.3], [-0.3, 0.3]], "radius": [0.3, 0.45], "role": "hull", "minPixels": 2, "chance": 0.7, "jagged": [0.12, 0.28], "material": "asteroid"},
+                    {"form": "disc", "at": [[-0.25, 0.15], [-0.25, 0.25]], "radius": [0.1, 0.18], "role": "panel", "alpha": 0.8, "chance": 0.7, "fallback": true}
                 ]},
                 { "id": "elongated", "shape": [
-                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [[-0.1, 0.1], [-0.08, 0.08]], "radius": [0.45, 0.55], "role": "hull", "minPixels": 2},
-                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [[-0.65, -0.45], [-0.15, 0.15]], "radius": [0.35, 0.5], "role": "hull", "minPixels": 2},
-                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[0.4, 0.65], [-0.15, 0.15]], "radius": [0.3, 0.45], "role": "hull", "minPixels": 2},
-                    {"form": "disc", "at": [[-0.3, 0.3], [-0.12, 0.12]], "radius": [0.08, 0.14], "role": "panel", "alpha": 0.8, "chance": 0.6}
+                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [[-0.1, 0.1], [-0.08, 0.08]], "radius": [0.45, 0.55], "role": "hull", "minPixels": 2, "jagged": [0.12, 0.28], "material": "asteroid"},
+                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [[-0.65, -0.45], [-0.15, 0.15]], "radius": [0.35, 0.5], "role": "hull", "minPixels": 2, "jagged": [0.12, 0.28], "material": "asteroid"},
+                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[0.4, 0.65], [-0.15, 0.15]], "radius": [0.3, 0.45], "role": "hull", "minPixels": 2, "jagged": [0.12, 0.28], "material": "asteroid"},
+                    {"form": "disc", "at": [[-0.3, 0.3], [-0.12, 0.12]], "radius": [0.08, 0.14], "role": "panel", "alpha": 0.8, "chance": 0.6, "fallback": true}
                 ]},
                 { "id": "cratered", "shape": { "vars": { "cx": [-0.35, -0.1], "cy": [-0.35, 0.0], "cr": [0.22, 0.32] }, "parts": [
-                    {"form": "polygon", "sides": [7, 10], "angle": [0, 360], "radius": [0.8, 0.95], "role": "hull", "minPixels": 2},
-                    {"form": "disc", "at": ["$cx", "$cy"], "radius": "$cr", "role": "panel"},
-                    {"form": "ring", "at": ["$cx", "$cy"], "radius": "$cr", "width": 0.06, "role": "trim", "alpha": 0.6},
-                    {"form": "disc", "at": [[0.2, 0.45], [0.1, 0.4]], "radius": [0.12, 0.2], "role": "panel", "alpha": 0.85},
-                    {"form": "disc", "at": [[0.1, 0.45], [-0.5, -0.3]], "radius": [0.06, 0.11], "role": "panel", "alpha": 0.8, "chance": 0.6}
+                    {"form": "polygon", "sides": [7, 10], "angle": [0, 360], "radius": [0.8, 0.95], "role": "hull", "minPixels": 2, "jagged": [0.12, 0.28], "material": "asteroid"},
+                    {"form": "disc", "at": ["$cx", "$cy"], "radius": "$cr", "role": "panel", "fallback": true},
+                    {"form": "ring", "at": ["$cx", "$cy"], "radius": "$cr", "width": 0.06, "role": "trim", "alpha": 0.6, "fallback": true},
+                    {"form": "disc", "at": [[0.2, 0.45], [0.1, 0.4]], "radius": [0.12, 0.2], "role": "panel", "alpha": 0.85, "fallback": true},
+                    {"form": "disc", "at": [[0.1, 0.45], [-0.5, -0.3]], "radius": [0.06, 0.11], "role": "panel", "alpha": 0.8, "chance": 0.6, "fallback": true}
                 ]}},
                 { "id": "shard", "shape": [
-                    {"form": "polygon", "sides": [3, 4], "angle": [0, 360], "radius": [0.75, 0.9], "role": "hull", "minPixels": 2},
-                    {"form": "polygon", "sides": [3, 5], "angle": [0, 360], "at": [[-0.25, 0.25], [-0.25, 0.25]], "radius": [0.45, 0.6], "role": "hull", "minPixels": 2},
-                    {"form": "polygon", "sides": 3, "angle": [0, 360], "at": [[-0.2, 0.2], [-0.2, 0.2]], "radius": [0.2, 0.3], "role": "trim", "alpha": [0.3, 0.5]}
+                    {"form": "polygon", "sides": [3, 4], "angle": [0, 360], "radius": [0.75, 0.9], "role": "hull", "minPixels": 2, "jagged": [0.12, 0.28], "material": "asteroid"},
+                    {"form": "polygon", "sides": [3, 5], "angle": [0, 360], "at": [[-0.25, 0.25], [-0.25, 0.25]], "radius": [0.45, 0.6], "role": "hull", "minPixels": 2, "jagged": [0.12, 0.28], "material": "asteroid"},
+                    {"form": "polygon", "sides": 3, "angle": [0, 360], "at": [[-0.2, 0.2], [-0.2, 0.2]], "radius": [0.2, 0.3], "role": "trim", "alpha": [0.3, 0.5], "fallback": true}
                 ]},
                 { "id": "rubble", "shape": [
-                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [0.0, 0.0], "radius": [0.42, 0.5], "role": "hull", "minPixels": 2,
+                    {"form": "polygon", "sides": [5, 7], "angle": [0, 360], "at": [0.0, 0.0], "radius": [0.42, 0.5], "role": "hull", "minPixels": 2, "jagged": [0.12, 0.28], "material": "asteroid",
                      "row": {"count": [4, 6], "step": [0.38, 0.0], "turn": [60, 85], "taper": [0.78, 0.9], "centred": true}},
-                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[-0.15, 0.15], [-0.15, 0.15]], "radius": [0.3, 0.38], "role": "hull", "minPixels": 2},
-                    {"form": "disc", "at": [[-0.2, 0.2], [-0.2, 0.2]], "radius": [0.07, 0.12], "role": "panel", "alpha": 0.8, "chance": 0.6}
+                    {"form": "polygon", "sides": [4, 6], "angle": [0, 360], "at": [[-0.15, 0.15], [-0.15, 0.15]], "radius": [0.3, 0.38], "role": "hull", "minPixels": 2, "jagged": [0.12, 0.28], "material": "asteroid"},
+                    {"form": "disc", "at": [[-0.2, 0.2], [-0.2, 0.2]], "radius": [0.07, 0.12], "role": "panel", "alpha": 0.8, "chance": 0.6, "fallback": true}
                 ]}
             ]
         },

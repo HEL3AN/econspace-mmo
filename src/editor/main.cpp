@@ -142,6 +142,10 @@ int main(int argc, char** argv)
             Render::FreezeLocalClock(std::atof(argv[++i]));  // every frame at this moment
         else if (arg == "notreat")
             notreat = true;
+        else if (arg == "noshaders")
+            editor.DisableMaterials();  // every object as a driver with no shaders draws it
+        else if (arg == "nopaint")
+            editor.DisablePainting();  // the painted bodies' stand-ins, under `hull`
     }
     if (!worldPath.empty() && editor.OpenWorldFile(worldPath))
         seed = editor.WorldSeed();

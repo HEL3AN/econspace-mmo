@@ -117,6 +117,8 @@ bool LoadTreatment(const std::string& path, TreatmentConfig& out, std::string& e
     TreatmentConfig cfg;
     cfg.enabled = j.value("enabled", true);
     cfg.treatHud = j.value("treatHud", false);
+    if (j.contains("paintBudget") && j["paintBudget"].is_number())
+        cfg.paintBudget = std::fmax(0.25f, j["paintBudget"].get<float>());
 
     if (j.contains("chain") && j["chain"].is_array())
     {
@@ -163,6 +165,7 @@ bool SaveTreatment(const std::string& path, const TreatmentConfig& cfg, std::str
     ordered_json j;
     j["enabled"] = cfg.enabled;
     j["treatHud"] = cfg.treatHud;
+    j["paintBudget"] = cfg.paintBudget;
     j["chain"] = ordered_json::array();
     for (const Pass& p : cfg.chain)
         j["chain"].push_back(ordered_json{ { "pass", PassName(p.kind) },

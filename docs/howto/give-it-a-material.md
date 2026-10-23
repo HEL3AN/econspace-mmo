@@ -5,14 +5,18 @@ value comes from on the other ([#121](https://github.com/HEL3AN/econspace-mmo/is
 archetype names a material and nothing else changes — an object knows no more about shaders than
 it knows about backends.
 
-Everything in the game that is shaded uses one material, `hull`. This page writes a second one,
-`glint`, for the relay station from [Compose its look](compose-a-look.md): the same lighting,
-plus a sheen that runs along its solar arrays.
+Everything built in the game is shaded by one material, `hull`. The natural bodies -- planets,
+moons, stars, belts, nebulae -- are each *painted* by a material of their own, which draws the
+whole surface rather than lighting a shape ([below](#paint-a-whole-body)). This page first
+writes a second material for a structure, `glint`, for the relay station from
+[Compose its look](compose-a-look.md): the same lighting, plus a sheen that runs along its
+solar arrays.
 
 - [Write the shader](#write-the-shader)
 - [Declare the material](#declare-the-material)
 - [Use it, and see it](#use-it-and-see-it)
 - [How a material knows where it is](#how-a-material-knows-where-it-is)
+- [Paint a whole body](#paint-a-whole-body)
 - [The sources](#the-sources)
 - [When it goes wrong](#when-it-goes-wrong)
 
@@ -161,9 +165,94 @@ Two things about those numbers:
   together before handing them over, so a shader uses them as they come. (Flipping the position
   without the light is how the first version lit everything from the mirror image of its star.)
 
-Some things are never drawn through a material at all: a part whose role is `light`, every part
-of an object that has a `light` of its own, and any part under about six pixels across, where
-there is no surface left to shade.
+Some things are never drawn through the object's material: a part whose role is `light`, every
+part of an object that has a `light` of its own, and any part under about six pixels across, where
+there is no surface left to shade. A part with a material of its own is the exception to the
+second -- a star's photosphere is exactly that ([next](#paint-a-whole-body)).
+
+---
+
+## Paint a whole body
+
+`hull` lights a shape someone drew. A planet has no shape worth drawing: what makes it read as a
+world is coastlines, cloud, ice and air, and a composition of discs can only gesture at those --
+rings of circles for islands, stripes for a gas giant's belts
+([#426](https://github.com/HEL3AN/econspace-mmo/issues/426)). So a natural body is **painted**: one
+part of it -- its disc -- carries a material of its own, and that shader draws the entire surface.
+
+```json
+"material": "hull",
+"shape": { "tilt": 20, "parts": [
+    {"form": "disc", "radius": 1.0, "role": "hull", "spin": 4.0, "material": "planet.oceanic"},
+    {"module": "planet.continent", "lat": [20, 28], "lon": 8, "scale": 0.4, "spin": 4.0, "fallback": true},
+    {"form": "band", "lat": 85, "width": 10, "role": "trim", "fallback": true},
+    {"form": "disc", "radius": 0.14, "role": "trim", "orbitRadius": 1.65, "orbitPeriod": 4600.0, "material": "moon"}
+] }
+```
+
+- **`material` on a part** paints that part with its own material instead of the object's. Its
+  inputs are the part's: its centre, its radius, its `spin` turned into `item.angle` -- which is
+  how a planet's surface turns -- and its own seed.
+- **`fallback: true`** marks a part as the stand-in for the painting. It is drawn only while the
+  body is *not* painted -- the shader would not compile on this driver, materials are switched off
+  (`worldeditor gallery shapes noshaders`), or the body is a few pixels across -- and skipped
+  while it is. **Every painted body must keep a stand-in that still reads**: whether a shader
+  compiles is the player's driver's business (#120). With no shader at all, the painted disc
+  itself falls back to the offset discs and rim the backend lit planets with before shaders.
+- **A moon is not the body.** An orbiting part's material says nothing about the planet's
+  stand-ins, so a moon of rock can circle a planet of sea.
+
+### The shader
+
+`data/shaders/materials/terran.fs` is the one to read first. The pieces every painted body
+needs are in a library, `body.glsl`, which a shader includes after its uniforms:
+
+```glsl
+uniform float seed;   // item.seed
+uniform float turn;   // item.angle
+...
+out vec4 finalColor;
+
+#include "body.glsl"
+```
+
+The material library pastes the file in -- GLSL has no include of its own. It provides noise
+(`bNoise`, `bFbm`, `bRidge`, `bCells`), the sphere under the disc (`bNormal`, `bToBody` -- the
+body's frame, tilted and turned), light with a soft terminator (`bDiffuse`), air on the limb
+inside and out (`bAirInside`, `bAirOutside`), craters that bend the normal (`bCraterCells`) and
+an antialiased limb (`bCoverage`). Its noise reads a table rather than hashing: bind it.
+
+```json
+{
+    "id": "planet.oceanic",
+    "shader": "terran",
+    "reach": 1.06,
+    "bindings": {
+        "centre": "item.screenPos", "radius": "item.screenSize",
+        "seed": "item.seed", "turn": "item.angle", "noiseTex": "texture.noise",
+        "sea": 0.56, "deep": [0.02, 0.07, 0.18], ...
+    }
+}
+```
+
+- **`reach`** is how far past its part the material draws, in the part's radii (1 to 8): a
+  planet's air is a haze beyond its limb, a star's corona a few radii out. The backend draws the
+  primitive that much larger; the shader is still told the part's own radius, so the limb stays
+  at 1 and the shader decides where it is, to the pixel.
+- **Seed, not paint.** Where the land is, how much cloud, how cold, which way a palette leans --
+  all from `seed`, so two ocean worlds are two places. The palette's ends are constants here.
+- **Cost follows size.** `bOctaves(radius, most)` gives a dot on the map two octaves and a planet
+  filling the screen seven. Work that only matters somewhere -- a cap's torn edge, a land's grain
+  -- is done only there. And a body covering more of the screen than the backend can afford to
+  paint each frame (`paintBudget` in `data/look.json`, millions of pixels, default 1) is painted into an offscreen target at
+  reduced resolution -- never below half -- and scaled back up.
+- **Motion is a loop.** Anything that churns -- cloud, granulation, gas -- goes round `bLoop(time,
+  period, ...)` with a period that divides the 16384 s the backend wraps the clock at, and a
+  body's turn comes from its part's `spin` through `item.angle`, which the composer wraps.
+  Nothing is accumulated, so two clients see the same planet (#136).
+- **A star lights itself.** `star.fs` reads no light: it is the light (#119).
+
+---
 
 ---
 
@@ -185,6 +274,10 @@ there is no surface left to shade.
 | `light.strength` | `float` | 0..1, how much of it arrives |
 | `light.ambient` | `float` | the floor — nothing is drawn darker |
 | `clock.time` | `float` | seconds |
+| `item.seed` | `float` | 0..1, the object's own, from its id: two planets of a kind differ |
+| `item.partSeed` | `float` | 0..1, this part's own: one rock in a belt from the next |
+| `item.angle` | `float` | radians, this part's own turn with its spin: how far a planet has turned |
+| `texture.noise` | `sampler2D` | a fixed 256 x 256 table of random values that `body.glsl` reads noise from |
 
 The gallery's **STATE** sliders feed the `item.*` values a static picture never shows:
 **intensity** for damage, **heading**, **thrusting**. Drag intensity down to see what `hull`

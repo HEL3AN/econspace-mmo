@@ -1,6 +1,7 @@
 {
     "enabled": true,
     "treatHud": false,
+    "paintBudget": 0.5,
     "chain": [
         {
             "pass": "bloom",

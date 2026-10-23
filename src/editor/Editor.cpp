@@ -263,6 +263,7 @@ void Editor::Run()
     while (!WindowShouldClose())
     {
         Render::Perf::BeginFrame();
+        materials_.SetPaintBudget(treatment_.Config().paintBudget * 1000000.0f);
         screenWidth_ = GetScreenWidth();
         screenHeight_ = GetScreenHeight();
         camera_.offset = { screenWidth_ / 2.0f, screenHeight_ / 2.0f };

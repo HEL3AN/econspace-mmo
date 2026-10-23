@@ -151,6 +151,7 @@ const char* CounterName(Counter c)
         case Counter::Pieces: return "pieces";
         case Counter::Skipped: return "skipped";
         case Counter::Binds: return "binds";
+        case Counter::Painted: return "painted";
         case Counter::Soft: return "soft";
         case Counter::Surface: return "surface";
         case Counter::Passes: return "passes";

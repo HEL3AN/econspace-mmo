@@ -219,6 +219,19 @@ on a `polygon` pulls each corner in by up to that fraction of the radius, by the
 rocks, torn edges, shards. `"soft": true` on a `disc` draws a glow fading to nothing at its rim,
 never shaded: gas, haze, a corona, a nebula wisp. `tip` and `jagged` take ranges.
 
+**Painted bodies (#426).** `"material": "planet.oceanic"` on a part paints that part with a
+material of its own instead of the object's: a planet's disc that a shader draws whole --
+continents, cloud, ice, the air on its limb -- a moon of rock round a planet of sea, the rocks
+of a belt, a star's photosphere and corona, a nebula's gas. `"fallback": true` marks a part
+as the **stand-in** for such a painting: it is drawn only while the body is *not* painted --
+on a driver that would not compile the shader, with materials switched off, or while the body
+is under a few pixels -- and skipped while it is, because the shader already drew the real
+thing. A module placed as a fallback is a fallback in every part. What counts as "the body"
+is any part with a material of its own that is neither a fallback nor orbiting, so a moon's
+material says nothing about its planet's stand-ins. The material's id is checked where
+materials are loaded, not here: one that does not exist is named at startup and the part is
+drawn as the object.
+
 **Groups.** Parts with the same `"group": "name"` share the roll their `chance` is compared
 with: a lamp and its housing come and go together. Equal chances agree exactly; a smaller
 chance in the same group is a detail that only ever appears with the larger one.
@@ -704,8 +717,9 @@ a lamp that goes out reads as a part that has fallen off.
 **A shape may reach past its radius**, and a docking ring at 1.55 is the point of a docking
 ring. Anything framing an object asks `Render::Extent` rather than assuming.
 
-Stars, nebulae and belts deliberately have no shape: a star is a light rather than a
-structure, and a region is not a surface. They keep the figure the backend draws for them.
+Stars, nebulae and belts have shapes like everything else, and the body of each -- a star's
+photosphere, a nebula's gas, a belt's rocks -- is a part painted by a material of its own
+(above). What they had before is kept as their stand-ins.
 
 ### `material` — a shader and what feeds it
 
@@ -747,6 +761,10 @@ bool, or one to four numbers). The sources:
 | `light.strength` | float | 0..1 |
 | `light.ambient` | float | the floor |
 | `clock.time` | float | seconds |
+| `item.seed` | float | 0..1, the object's own, from its id -- two planets of a kind differ |
+| `item.partSeed` | float | 0..1, this part's own -- one rock in a belt from the next |
+| `item.angle` | float | radians, the part's own turn with its spin -- how far a planet has turned |
+| `texture.noise` | sampler2D | a fixed table of random values noise is read from (#426) |
 
 **An unknown source is a load error**, unlike an unknown pass in `look.json`, which is
 skipped. Losing a pass makes the picture plainer; losing a uniform makes a material draw
@@ -764,6 +782,17 @@ on top of whatever primitive the backend drew, a disc or a hexagon or a triangle
 than needing geometry of its own. As with the screen treatment, a shader that will not
 compile costs that material and nothing else: the object is drawn the way it was drawn
 before materials existed.
+
+**Painting a whole body (#426).** A material may also say how far past its part it draws,
+`"reach": 1.06` (1 to 8, in the part's radii; default 1): a planet's air beyond its limb, a
+star's corona over a few radii. The shader is still told the part's own radius. Such shaders
+share a library, `data/shaders/materials/body.glsl` -- noise, the sphere under a disc, the
+light, the air -- pasted in by a line `#include "body.glsl"`; a missing include costs the
+material its shader like a compile error. Its noise reads `texture.noise`, so a material that
+includes it binds `"noiseTex": "texture.noise"`. A body that covers more of the screen than
+the backend can afford to paint every frame (`paintBudget` in `data/look.json`, millions of pixels, default 1) is painted
+at reduced resolution -- never below half -- and scaled back up. `worldeditor ... noshaders`
+compiles no materials at all, which is how the stand-ins are judged.
 
 ### `style` — the glyph grammar
 
@@ -1250,6 +1279,7 @@ chain of full-screen passes, each with two knobs.
 |------|-----|----------|
 | `enabled` | bool | the whole treatment; false draws the raw picture |
 | `treatHud` | bool | whether the interface goes through the chain with the world |
+| `paintBudget` | number | millions of pixels a painted body (#426) may cover before it is painted at reduced resolution and scaled up; 1 if absent; the shipped look.json sets 0.5 for integrated GPUs such as the UHD 620 (owner, 2026-10-23); never below 0.25. Raise it on a strong GPU for sharper close-ups |
 | `chain` | array | the passes, **in the order they run** |
 
 | Pass field | Type | Description |

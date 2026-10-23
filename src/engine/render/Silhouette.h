@@ -274,6 +274,17 @@ struct Part
     // Only the reflected copy of a mirrored part: how a kit places the twin of a module on a
     // bilateral object, so the module's own shape is reflected and not merely turned.
     bool mirrorOnly = false;
+
+    // A material of this part's own (#426), in place of the object's: a planet's disc that a
+    // shader paints whole -- continents, cloud, ice, the air on its limb -- or a moon that is
+    // rock while its planet is sea. Empty: the object's material, as every part had before.
+    std::string material;
+
+    // Drawn only while the body is *not* painted by a material of its own (#426): the
+    // composition that stands in for a shader on a driver that would not compile it. A
+    // planet's continents made of discs are a fair picture without a shader and a wrong one
+    // on top of a shader that already draws a coast.
+    bool fallback = false;
 };
 
 // A place on a section where a module can go: an `edge` along a long or slanted side, an
@@ -486,6 +497,11 @@ struct Piece
     float jagged = 0.0f;  // Polygon: how far corners are pulled in, 0..1
     int   jagSeed = 0;    // ...and which corners, the same every frame
     bool  soft = false;   // a glow fading to its rim, never shaded
+
+    std::string material;          // the part's own material; empty for the object's (#426)
+    bool        fallback = false;  // only while the body has no material of its own drawing
+    bool        orbits = false;    // travels round the body rather than being part of it
+    float       seed = 0.0f;       // 0..1, this piece's own, the same every frame
 };
 
 // How large a piece is *for shading*, which is not the same as how far it reaches.

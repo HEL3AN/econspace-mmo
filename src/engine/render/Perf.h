@@ -57,6 +57,7 @@ enum class Counter
     Pieces,       // composed pieces drawn
     Skipped,      // composed pieces too small to see, and not drawn
     Binds,        // a material bound: each one is a draw call of its own
+    Painted,      // pieces painted by a material of their own: planets, stars, rocks (#426)
     Soft,         // soft glows drawn
     Surface,      // surface pieces cut to their body
     Passes,       // treatment passes run (each one a full-screen fill)

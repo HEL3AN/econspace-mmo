@@ -1969,3 +1969,92 @@ TEST_CASE("a kit line on a ship's socket kinds, and one that carries function (#
         CHECK(hatch == 0);  // the trim gets what is left, and here nothing is
     }
 }
+
+TEST_CASE("a part may carry a material of its own and say it stands in for one (#426)")
+{
+    const Render::Shape s = Parse(R"([
+        { "form": "disc", "radius": 1.0, "spin": 4.0, "material": "planet.oceanic" },
+        { "form": "disc", "radius": 0.3, "at": [0.2, 0.1], "fallback": true },
+        { "form": "disc", "radius": 0.1, "orbitRadius": 1.6, "material": "moon" } ])");
+    const auto          pieces = Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 3, 10.0f));
+    REQUIRE(pieces.size() == 3);
+    int body = 0, standIn = 0, moon = 0;
+    for (const auto& p : pieces)
+    {
+        if (p.material == "planet.oceanic")
+        {
+            body++;
+            CHECK_FALSE(p.fallback);
+            CHECK_FALSE(p.orbits);
+        }
+        else if (p.material == "moon")
+        {
+            moon++;
+            // A moon is not the body: its material says nothing about the planet's stand-ins.
+            CHECK(p.orbits);
+        }
+        else
+        {
+            standIn++;
+            CHECK(p.fallback);
+        }
+        CHECK(p.seed >= 0.0f);
+        CHECK(p.seed < 1.0f);
+    }
+    CHECK(body == 1);
+    CHECK(standIn == 1);
+    CHECK(moon == 1);
+
+    // A piece's seed is its own and the same every frame: one rock differs from the next.
+    const auto again = Render::Compose(s, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 3, 10.0f));
+    REQUIRE(again.size() == pieces.size());
+    for (size_t i = 0; i < pieces.size(); i++)
+        CHECK(again[i].seed == pieces[i].seed);
+    CHECK(pieces[0].seed != pieces[1].seed);
+
+    SUBCASE("a material is a material's id, never a number or nothing")
+    {
+        Render::Shape out;
+        std::string   error;
+        CHECK_FALSE(Render::ParseShape(
+            nlohmann::json::parse(R"([ { "form": "disc", "material": 3 } ])"), out, error));
+        CHECK(error.find("material") != std::string::npos);
+        CHECK_FALSE(Render::ParseShape(
+            nlohmann::json::parse(R"([ { "form": "disc", "material": "" } ])"), out, error));
+    }
+}
+
+TEST_CASE("a stand-in placed as a module is a stand-in in every part of it (#426)")
+{
+    const TempDir tmp;
+    {
+        std::ofstream f(tmp.Path("modules.json"));
+        f << R"({ "modules": [ { "id": "isle", "variants": [ { "id": "a", "shape": [
+            { "form": "disc", "radius": 0.6 },
+            { "form": "disc", "radius": 0.2, "at": [0.5, 0] } ] } ] } ] })";
+    }
+    std::string error;
+    REQUIRE(Render::Modules::Load(tmp.Path("modules.json"), error));
+    const Render::Shape flat = Parse(R"([
+        { "module": "isle", "at": [0.5, 0], "scale": 0.4, "fallback": true },
+        { "module": "isle", "at": [-0.5, 0], "scale": 0.4 } ])");
+    int                 standIns = 0, kept = 0;
+    for (const auto& p : Render::Compose(flat, At({ 0.0f, 0.0f }, 100.0f, 0.0f, 1, 10.0f)))
+        (p.fallback ? standIns : kept)++;
+    CHECK(standIns == 2);
+    CHECK(kept == 2);
+
+    // On a sphere too: every part of a stand-in continent is a stand-in.
+    const Render::Shape planet =
+        Parse(R"([ { "module": "isle", "lat": 0, "lon": 0, "scale": 0.3, "fallback": true } ])");
+    bool any = false, all = true;
+    for (int seed = 1; seed <= 12; seed++)
+        for (const auto& p : Render::Compose(planet, At({ 0.0f, 0.0f }, 100.0f, 0.0f, seed, 10.0f)))
+        {
+            any = true;
+            all = all && p.fallback;
+        }
+    CHECK(any);
+    CHECK(all);
+    REQUIRE(Render::Modules::Load(std::string(TEST_DATA_DIR) + "modules.json", error));
+}

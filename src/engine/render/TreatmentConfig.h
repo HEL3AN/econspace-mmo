@@ -65,6 +65,12 @@ struct TreatmentConfig
     // and a pixelated fuel gauge is a worse game.
     bool treatHud = false;
 
+    // How many million pixels a body painted by a material of its own may cover before it is
+    // painted at reduced resolution and scaled up (#426). It bounds what a planet filling the
+    // screen costs: one is a 1280x720 screen at full resolution and 1080p at five eighths.
+    // Lower it on an integrated GPU; it is not part of the look, and never below a quarter.
+    float paintBudget = 1.0f;
+
     // In order. The order is a decision, not a detail: bloom before pixelation gives soft
     // fat pixels, after it gives hard pixel edges that glow. They are different games to
     // look at, so this is data and reorderable rather than a sequence of calls.
