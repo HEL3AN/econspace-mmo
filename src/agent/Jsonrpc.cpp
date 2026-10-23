@@ -69,6 +69,35 @@ std::string Server::HandleLine(const std::string& line)
     }
 }
 
+void CheckArguments(const Json& schema, const Json& args)
+{
+    if (!args.is_object())
+        throw Error{ INVALID_PARAMS, "arguments must be an object" };
+    if (schema.contains("required") && schema["required"].is_array())
+        for (const Json& key : schema["required"])
+        {
+            const std::string name = key.get<std::string>();
+            if (!args.contains(name) || args[name].is_null())
+                throw Error{ INVALID_PARAMS, name + " is required" };
+        }
+    if (!schema.contains("properties") || !schema["properties"].is_object())
+        return;
+    const Json& props = schema["properties"];
+    for (auto it = args.begin(); it != args.end(); ++it)
+    {
+        const auto p = props.find(it.key());
+        if (p == props.end() || !p->is_object() || it->is_null())
+            continue;
+        const std::string type = p->value("type", std::string());
+        if (type == "number" && !it->is_number())
+            throw Error{ INVALID_PARAMS, it.key() + " must be a number" };
+        if (type == "boolean" && !it->is_boolean())
+            throw Error{ INVALID_PARAMS, it.key() + " must be true or false" };
+        if (type == "array" && !it->is_array())
+            throw Error{ INVALID_PARAMS, it.key() + " must be a list" };
+    }
+}
+
 void Server::Run()
 {
     std::string line;

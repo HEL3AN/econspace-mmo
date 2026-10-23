@@ -207,7 +207,11 @@ A few that are worth knowing before reading the reference:
   the money allow, up to `amount`. Every unit moves the price of the next, and every trade --
   a human's or a bot's -- pays the market's fee (#348), so a small price difference loses money.
 - `missions` numbers the station's board and your active jobs; `accept_mission` and
-  `complete_mission` take those numbers. Each job says what it still needs and where it is
+  `complete_mission` take those numbers. An offer's number is its own and stays the same while
+  it is on the board -- a station keeps its work for a while (#425), so docking again does not
+  draw a new board -- and a number that has gone is refused, never read as another job. Each
+  tool refuses a call missing an argument it requires, rather than reading it as 0 (#425).
+  Each job says what it still needs and where it is
   handed in. Jobs posted by a faction's plans (`supply`, `escort`, `siege`) name the system
   they are about and a deadline. They are handed in anywhere, and they move the world: a
   delivery speeds a build, an escort guards a convoy, a besieger shot down weakens a siege.

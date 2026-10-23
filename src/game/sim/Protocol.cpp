@@ -296,6 +296,8 @@ json MissionJson(const Proto::MissionView& m)
         { "res", m.resource },     { "tc", m.targetCount },       { "prog", m.progress },
         { "rm", m.rewardMoney },   { "rr", m.rewardRep },         { "done", m.completable }
     };
+    if (m.offerId != 0)  // an offer's number (#425)
+        j["oid"] = m.offerId;
     if (m.planId != 0 || !m.systemId.empty())  // a plan's job (#345), a contract (#343)
     {
         j["plan"] = m.planId;
@@ -328,6 +330,7 @@ Proto::MissionView ToMission(const json& mj)
     m.description = mj.value("desc", std::string());
     m.giverStationId = mj.value("giver", 0);
     m.destStationId = mj.value("dest", 0);
+    m.offerId = mj.value("oid", 0);
     m.resource = mj.value("res", 0);
     m.targetCount = mj.value("tc", 0);
     m.progress = mj.value("prog", 0);

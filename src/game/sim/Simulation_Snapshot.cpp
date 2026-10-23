@@ -209,6 +209,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         v.description = m.description;
         v.giverStationId = m.giverStationId;
         v.destStationId = m.destStationId;
+        v.offerId = m.offerId;
         v.resource = m.resource.Index();
         v.targetCount = m.targetCount;
         v.progress = m.progress;

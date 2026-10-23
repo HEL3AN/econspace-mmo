@@ -522,6 +522,8 @@ add_executable(tests
     tests/widget_tests.cpp         # tables, tabs, fields, sliders and the keyboard focus (#297)
     tests/drag_tests.cpp           # drag and drop between windows (#472)
     tests/actions_tests.cpp        # one list of actions, each matched by an agent's tool (#297)
+    tests/agent_args_tests.cpp     # a tool's arguments held to its schema (#425)
+    src/agent/Jsonrpc.cpp          # ...which econagent's JSON-RPC layer checks
     tests/goal_tests.cpp           # what to do next, from the player's state (#364)
     tests/mission_list_tests.cpp   # what the missions window lists (#297)
     tests/inventory_tests.cpp      # what the inventory window lists, and what a move offers (#472)
@@ -620,6 +622,7 @@ target_compile_definitions(tests PRIVATE TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/data
                                          # Admin packs, one of each kind (#342 S7)
                                          TEST_PACKS_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/packs/")
 target_link_libraries(tests PRIVATE engine netproto doctest::doctest)
+target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/src)  # agent/Jsonrpc.h (#425)
 set_target_properties(tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/tests)
 add_test(NAME unit COMMAND tests)

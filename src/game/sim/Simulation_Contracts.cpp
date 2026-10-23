@@ -286,6 +286,7 @@ void Simulation::ContractsPostedAt(const ClientSession& s, const Station& giver,
         m.rewardMoney = c.reward;
         m.rewardRep = (float)r.rep * repMul;
         m.contractId = c.id;
+        m.offerId = Offers::ContractOffer(c.id);  // the same on every board (#425)
         m.systemId = c.system;
         m.systemName = SystemName(c.system);
         m.deadline = c.deadline;

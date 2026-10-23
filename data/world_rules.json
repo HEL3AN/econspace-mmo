@@ -75,7 +75,9 @@
         "siegeKills": 3,
         "siegePerKill": 250,
         "rep": 3,
-        "failRep": 1.5
+        "failRep": 1.5,
+        "offerLife": 1800,
+        "stationOffers": 4
     },
     "contracts": {
         "every": 600,

@@ -205,8 +205,10 @@ bool Load(const std::string& path)
                                              { "escortSlack", &jb.escortSlack },
                                              { "siegePerKill", &jb.siegePerKill },
                                              { "rep", &jb.rep },
-                                             { "failRep", &jb.failRep } },
+                                             { "failRep", &jb.failRep },
+                                             { "offerLife", &jb.offerLife } },
                                            { { "reach", &jb.reach },
+                                             { "stationOffers", &jb.stationOffers },
                                              { "perBoard", &jb.perBoard },
                                              { "supplyMax", &jb.supplyMax },
                                              { "siegeKills", &jb.siegeKills } },
@@ -218,6 +220,13 @@ bool Load(const std::string& path)
     {
         g_error = path + ": jobs.supplyShare and jobs.supplyCut must be at most 1, and "
                          "jobs.creditsPerStock more than zero";
+        return false;
+    }
+    // An offer that lives no time is a board drawn anew at every look (#425).
+    if (jb.offerLife <= 0.0 || jb.stationOffers < 0)
+    {
+        g_error = path + ": jobs.offerLife must be more than zero, and jobs.stationOffers "
+                         "not negative";
         return false;
     }
     // #343's and #407's: the contracts a short market posts.

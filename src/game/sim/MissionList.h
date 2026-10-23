@@ -23,8 +23,11 @@ enum class Board
 
 struct Row
 {
-    // Its number in the snapshot's list: what accept_mission and complete_mission take.
-    int         index = 0;
+    // Its place in the snapshot's list: what complete_mission takes for an active mission.
+    int index = 0;
+    // An offer's number (#425), which stays the same while the board changes around it: what
+    // accept_mission takes. 0 for an active mission.
+    int         offerId = 0;
     std::string title;
     std::string description;
     std::string kind;    // "bounty", "mining", "delivery", "supply", "escort", "siege",

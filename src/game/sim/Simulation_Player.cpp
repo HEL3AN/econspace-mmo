@@ -1276,33 +1276,68 @@ bool Simulation::AccountHostileToFaction(const ClientSession& s, FactionId f) co
     return t == RepTier::Hostile || t == RepTier::Hated;
 }
 
-void Simulation::GenerateDockOffers(ClientSession& s)
+std::vector<Mission> Simulation::StationWork(SystemState& st, int stationId)
 {
     Station*              giver = nullptr;
     std::vector<Station*> all;
-    for (auto& e : SystemOf(s)->entities)
+    for (auto& e : st.entities)
         if (Station* sta =
                 e->GetKind() == EntityKind::Station ? static_cast<Station*>(e.get()) : nullptr)
         {
             all.push_back(sta);
-            if (sta->GetId() == s.dockedStationId)
+            if (sta->GetId() == stationId)
                 giver = sta;
         }
+    if (giver == nullptr)
+        return {};
+
+    const WorldRules::Jobs&    r = WorldRules::JobRules();
+    std::vector<StationOffer>& board = stationOffers_[stationId];
+    // What has run out comes off; what is left keeps its number. Then the board is topped up,
+    // so a station always has work while it stays the same work for a while.
+    board.erase(std::remove_if(board.begin(), board.end(),
+                               [&](const StationOffer& o) { return o.until <= time_; }),
+                board.end());
+    while ((int)board.size() < r.stationOffers)
+    {
+        StationOffer o;
+        o.m = MissionSystem::MakeOffer(giver, all);
+        o.m.offerId = nextOfferId_++;
+        if (nextOfferId_ >= Offers::CONTRACT_BASE)
+            nextOfferId_ = 1;
+        o.until = time_ + r.offerLife;
+        board.push_back(std::move(o));
+    }
+    std::vector<Mission> out;
+    for (const StationOffer& o : board)
+        out.push_back(o.m);
+    return out;
+}
+
+void Simulation::GenerateDockOffers(ClientSession& s)
+{
+    SystemState* st = SystemOf(s);
+    if (st == nullptr)
+        return;
+    const Station* giver = nullptr;
+    for (const auto& e : st->entities)
+        if (e->GetId() == s.dockedStationId && e->GetKind() == EntityKind::Station)
+            giver = static_cast<const Station*>(e.get());
     if (giver == nullptr)
         return;
 
     // Reward multiplier by the station faction's reputation.
     const float repMul =
         MissionRewardMultiplier(Factions::TierOf(s.account.GetReputation(giver->GetFaction())));
-    s.missions.GenerateOffers(giver, all, repMul);
     // The work the faction's plans want done goes first (#345): it is what the world around
     // the station is actually doing.
     std::vector<Mission> board = JobsPostedAt(s, giver->GetId());
     // A station's own work pays the better the lower the security here (#431 L5, slice 11).
-    const double risk = WorldRules::SecurityRules().Pay(SystemOf(s)->agg.security);
-    for (Mission m : s.missions.Offers())
+    const double risk = WorldRules::SecurityRules().Pay(st->agg.security);
+    for (Mission m : StationWork(*st, giver->GetId()))
     {
-        m.rewardMoney *= risk;
+        m.rewardMoney *= risk * repMul;
+        m.rewardRep *= repMul;
         board.push_back(m);
     }
     s.missions.SetOffers(std::move(board));
@@ -1331,12 +1366,32 @@ bool Simulation::MissionCompletableNow(const ClientSession& s, const Mission& m)
     return false;
 }
 
-bool Simulation::AcceptMission(ClientSession& s, int offerIndex)
+bool Simulation::AcceptMission(ClientSession& s, int offerId)
 {
     const std::vector<Mission>& offers = s.missions.Offers();
-    if (offerIndex < 0 || offerIndex >= (int)offers.size())
+    int                         offerIndex = -1;
+    for (size_t i = 0; i < offers.size(); i++)
+        if (offers[i].offerId == offerId && offerId != 0)
+            offerIndex = (int)i;
+    // A station's own work is the station's (#425): taken by somebody else, or run out, since
+    // this pilot's board was drawn. Either way the pilot is shown the board as it is now.
+    if (offerIndex >= 0 && Offers::IsStationWork(offerId))
     {
-        s.RecordEvent(Ev::Kind::Notice, "Mission not taken: that offer is no longer on the board");
+        SystemState* st = SystemOf(s);
+        bool         there = false;
+        if (st != nullptr && s.IsDocked())
+            for (const Mission& m : StationWork(*st, s.dockedStationId))
+                there = there || m.offerId == offerId;
+        if (!there)
+            offerIndex = -1;
+    }
+    if (offerIndex < 0)
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Mission not taken: offer " + std::to_string(offerId) +
+                                            " is no longer on the board -- taken, or its time "
+                                            "is up");
+        if (s.IsDocked())
+            GenerateDockOffers(s);
         return false;
     }
     const std::string what = offers[offerIndex].title + ": " + offers[offerIndex].description;
@@ -1350,9 +1405,22 @@ bool Simulation::AcceptMission(ClientSession& s, int offerIndex)
     // A market's contract is one pilot's (#343): off every board once taken.
     if (offers[offerIndex].type == MissionType::Contract && !TakeContract(s, offers[offerIndex]))
         return false;
+    const int station = s.dockedStationId;
     if (!s.missions.Accept(offerIndex))
         return false;
     s.RecordEvent(Ev::Kind::Notice, "Mission taken -- " + what);
+    // ...and so is a station's own work (#425): off its board for everyone docked there, whose
+    // boards are shown again without it. Theirs keep every other number.
+    if (Offers::IsStationWork(offerId))
+    {
+        auto& board = stationOffers_[station];
+        board.erase(std::remove_if(board.begin(), board.end(),
+                                   [&](const StationOffer& o) { return o.m.offerId == offerId; }),
+                    board.end());
+        for (auto& kv : sessions_)
+            if (kv.second.dockedStationId == station && kv.second.systemId == s.systemId)
+                GenerateDockOffers(kv.second);
+    }
     return true;
 }
 
@@ -1777,6 +1845,29 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
                                        { "nth", nth },
                                        { "offset", json::array({ o.x, o.y }) } };
             }
+            // Docked, and at which dock (#425): a pilot who left docked comes back docked,
+            // rather than adrift beside the berth. Named the way `near` names a body -- an
+            // entity id is good for one run -- and with the side it is berthed on. A field an
+            // older build ignores, so no version bump (#20).
+            for (const auto& e : sys->entities)
+            {
+                if (e->GetId() != s.dockedStationId || s.dockedStationId == 0)
+                    continue;
+                int nth = 0;
+                for (const auto& o : sys->entities)
+                {
+                    if (o.get() == e.get())
+                        break;
+                    if (o->GetKind() == e->GetKind() && o->GetName() == e->GetName())
+                        nth++;
+                }
+                j["place"]["docked"] = { { "kind", (int)e->GetKind() },
+                                         { "name", e->GetName() },
+                                         { "nth", nth },
+                                         { "bearing",
+                                           json::array({ s.dockBearing.x, s.dockBearing.y }) } };
+                break;
+            }
         }
 
         json cargo = json::array();
@@ -2025,6 +2116,7 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
         if (there(system))
             s.sightings[system] = std::move(seen);
 
+    bool redock = false;  // docked where they left (#425): its board once the rest is read
     // Where they were (#49). A saved system that the galaxy no longer has -- an edited
     // universe, an older save -- leaves the player wherever the session was created
     // rather than in a system that does not exist.
@@ -2071,6 +2163,40 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
                     }
             }
             s.ship->SetHeading((float)pl.value("heading", 0.0));
+            // Docked where they left (#425), wherever that dock has got to on its orbit. One
+            // the system no longer has -- destroyed, dismantled -- leaves the ship in space
+            // where it was, and the pilot is told why they are not docked.
+            if (pl.contains("docked") && pl["docked"].is_object())
+            {
+                const json&   dk = pl["docked"];
+                const int     kind = dk.value("kind", -1);
+                const auto    name = dk.value("name", std::string());
+                int           nth = dk.value("nth", 0);
+                const Entity* dock = nullptr;
+                for (const auto& e : state.entities)
+                    if ((int)e->GetKind() == kind && e->GetName() == name && nth-- == 0)
+                    {
+                        dock = e->Has(Component::Dockable) ? e.get() : nullptr;
+                        break;
+                    }
+                if (dock != nullptr)
+                {
+                    Vector2    bearing = { 0.0f, 1.0f };
+                    const json b = dk.value("bearing", json());
+                    if (b.is_array() && b.size() >= 2 && b[0].is_number() && b[1].is_number())
+                        bearing = Sim::DockBearing({ 0.0f, 0.0f },
+                                                   { b[0].get<float>(), b[1].get<float>() });
+                    s.ship->Stop();
+                    s.dockedStationId = dock->GetId();
+                    s.dockBearing = bearing;
+                    s.ship->Teleport(
+                        Sim::DockBerth(dock->GetPosition(), dock->GetSize(), s.dockBearing));
+                    redock = true;
+                }
+                else
+                    s.RecordEvent(Ev::Kind::Notice, name + ", where you were docked, is no longer "
+                                                           "there; you are in space where it was");
+            }
         }
     }
 
@@ -2277,10 +2403,13 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
             }
             active.push_back(std::move(m));
         }
-        // The offer board is not restored: it belongs to the station the player was
-        // docked at and is regenerated on the next dock.
         s.missions.SetMirror({}, std::move(active));
     }
+    // The board of the station they are docked at again (#425): the station's own, which
+    // stays the same for a while (WorldRules::Jobs::offerLife), after what its faction posts --
+    // read once their missions are, so a job they hold already is not offered again.
+    if (redock)
+        GenerateDockOffers(s);
     // The systems on their own charts (#431), once their place is known.
     LoadKnown(s);
     return Save::Result::Ok;

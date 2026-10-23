@@ -187,7 +187,7 @@ Take a job from the board of the station you are docked at. It joins your active
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
-| `offer` | number | yes | offer number from missions |
+| `offer` | number | yes | the offer's number, as missions shows it; it stays the same while the offer is on the board |
 
 ### `complete_mission`
 

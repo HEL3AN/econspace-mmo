@@ -245,10 +245,10 @@ TEST_CASE("one pilot takes a contract and hands it in docked there: goods in, pr
     ClientSession& late = DockedAt(sim, sc);
     const int      lateOffer = OfferOf(late, id);
     REQUIRE(lateOffer >= 0);
-    REQUIRE(sim.AcceptMission(s, offer));
+    REQUIRE(sim.AcceptMission(s, s.missions.Offers()[(size_t)offer].offerId));
     CHECK(sim.Contracts().at(id).taken);
     // Off the board, and a stale offer of it is refused.
-    CHECK_FALSE(sim.AcceptMission(late, lateOffer));
+    CHECK_FALSE(sim.AcceptMission(late, late.missions.Offers()[(size_t)lateOffer].offerId));
     sim.GenerateDockOffers(late);
     CHECK(OfferOf(late, id) < 0);
 
@@ -303,7 +303,7 @@ TEST_CASE("a contract that ends gives its price back, and a pilot out of time fa
     ClientSession& s = DockedAt(sim, sc);
     const int      offer = OfferOf(s, taken);
     REQUIRE(offer >= 0);
-    REQUIRE(sim.AcceptMission(s, offer));
+    REQUIRE(sim.AcceptMission(s, s.missions.Offers()[(size_t)offer].offerId));
     const float standing = s.account.GetReputation(sc.owner);
     sim.SetTime(deadline + 10.0);
     sim.StepContracts();
@@ -336,7 +336,7 @@ TEST_CASE("contracts survive the save, and a pilot's with them (#343)")
         const Contract* c = ContractFor(sim, sc.system, food);
         REQUIRE(c != nullptr);
         ClientSession& s = DockedAt(sim, sc);
-        REQUIRE(sim.AcceptMission(s, OfferOf(s, c->id)));
+        REQUIRE(sim.AcceptMission(s, s.missions.Offers()[(size_t)OfferOf(s, c->id)].offerId));
         was = *c;
         treasury = sim.MindOf(sc.owner).treasury;
         REQUIRE(sim.SaveWorld(world));

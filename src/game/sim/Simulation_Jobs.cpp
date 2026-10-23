@@ -241,6 +241,8 @@ std::vector<Mission> Simulation::JobsPostedAt(const ClientSession& s, int statio
             continue;
         if (Holds(s, p.id, m.type))
             continue;  // one of each a plan's, a pilot
+        // Numbered the same on every board (#425).
+        m.offerId = Offers::PlanOffer(p.id, m.type);
         // Lower security pays better (#431 L5, slice 11): by where the work is.
         const SystemState* there = SystemById(p.target);
         if (there != nullptr)

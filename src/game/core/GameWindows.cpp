@@ -239,7 +239,7 @@ void Game::DrawMissionsContent(const Ui::Frame& f)
         // there. The rest of the station's menu -- orbit, keep -- is the selected-item
         // window's, one click away through Target.
         Actions::MissionTarget target;
-        target.index = m.index;
+        target.index = offers ? m.offerId : m.index;  // an offer by its number (#425)
         target.offer = offers;
         target.ready = m.ready;
         target.docked = snapshot_.player.docked;
