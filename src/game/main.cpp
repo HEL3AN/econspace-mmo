@@ -274,6 +274,8 @@ int main(int argc, char** argv)
         Game game(std::move(conn));
         if (width > 0 && height > 0)
             game.SetResolution(width, height);
+        if (!shot.empty() || perf)
+            game.UseNoLayoutFile();  // a script neither sees nor moves the player's windows
         game.SetPilotName(account, host + ":" + std::to_string(port));
         if (uiScale > 0.0f)
             game.SetUiScale(uiScale);

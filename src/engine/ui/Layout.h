@@ -483,6 +483,9 @@ public:
     bool      Clicked(std::string_view id, uint32_t index = 0) const;
     Rectangle BoxOf(std::string_view id, uint32_t index = 0) const;  // after End; screen
     float     U(float units) const;                                  // units to pixels
+    // How tall one line of text in style `s` is laid out, in pixels: what a list of lines
+    // sizes itself by to show whole ones (#427).
+    float     LinePx(const TextStyle& s) const;
     float     ScaleFactor() const { return scale_; }
     Rectangle Area() const { return area_; }
     // The last thing Clay complained about (a duplicate id, too many elements); empty if

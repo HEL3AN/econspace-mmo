@@ -221,6 +221,7 @@ void Game::FocusMapSystem(const std::string& id)
         {
             galaxyCenter_ = system.mapPos;
             galaxyInit_ = true;
+            galaxyFitSize_ = { 0.0f, 0.0f };
             galaxyDragging_ = false;
             return;
         }
@@ -396,32 +397,47 @@ void Game::DrawMapSidebar(Ui::Layout& L)
     else
     {
         L.Text("LEGEND", TextStyle::Label());
-        L.Text("Filled: charted. A ring alone: uncharted -- a gate leads there, and nothing "
-               "more is known.",
-               note);
-        L.Text("Charted: the public charts, and what you and your corporation have found. "
-               "Your finds are nobody else's.",
-               note);
-        L.Text("Who holds a system and how safe it is are live. What stands there is as you "
-               "or your corporation last saw it, dimmed, with how long ago -- live only where "
-               "you, a member or a structure of yours is.",
-               note);
-        L.Text("Faint: its region drifted away. You keep its charts, and there is no way there "
-               "until it comes back -- renamed, and what stood there to be seen again.",
-               note);
-        L.Text("The ring's colour is who holds the system; a triangle over it, that they "
-               "would shoot you.",
-               note);
-        L.Text("A second, outer ring: your corporation's front is open there -- another "
-               "side holds it, and you or nobody hold a system next door, so a claim may be "
-               "laid or a structure besieged. Behind the line nobody may, until a border falls. "
-               "Guns are never bound by it; a wormhole you found opens no front.",
-               note);
-        L.Text("sec, pir, econ: security, pirates, prosperity.", note);
-        L.Text("A dashed line: a wormhole your scans found. Only you see it, and it closes.", note);
-        L.Text("Your route: bright ahead, dim behind. A ring round the destination, a number "
-               "over each waypoint, a diamond on a favourite.",
-               note);
+        // Scrolled, as the news is (#427): laid out with the news under it in a column that
+        // could not hold both, the wrapped lines were squeezed onto each other.
+        L.Scroll(
+            Box().GrowX().Height(Ui::Size::Percent(0.6f)).Id("legend").Gap(t.metrics.gap),
+            [&]
+            {
+                L.Text(
+                    "Filled: charted. A ring alone: uncharted -- a gate leads there, and nothing "
+                    "more is known.",
+                    note);
+                L.Text("Charted: the public charts, and what you and your corporation have found. "
+                       "Your finds are nobody else's.",
+                       note);
+                L.Text(
+                    "Who holds a system and how safe it is are live. What stands there is as you "
+                    "or your corporation last saw it, dimmed, with how long ago -- live only where "
+                    "you, a member or a structure of yours is.",
+                    note);
+                L.Text("Faint: its region drifted away. You keep its charts, and there is no way "
+                       "there "
+                       "until it comes back -- renamed, and what stood there to be seen again.",
+                       note);
+                L.Text("The ring's colour is who holds the system; a triangle over it, that they "
+                       "would shoot you.",
+                       note);
+                L.Text(
+                    "A second, outer ring: your corporation's front is open there -- another "
+                    "side holds it, and you or nobody hold a system next door, so a claim may be "
+                    "laid or a structure besieged. Behind the line nobody may, until a border "
+                    "falls. "
+                    "Guns are never bound by it; a wormhole you found opens no front.",
+                    note);
+                L.Text("sec, pir, econ: security, pirates, prosperity.", note);
+                L.Text(
+                    "A dashed line: a wormhole your scans found. Only you see it, and it closes.",
+                    note);
+                L.Text(
+                    "Your route: bright ahead, dim behind. A ring round the destination, a number "
+                    "over each waypoint, a diamond on a favourite.",
+                    note);
+            });
         L.Divider();
         // Galactic news (system captures, reconquests) from the server's galaxy snapshot,
         // newest first, wrapped and scrolled.
@@ -529,8 +545,11 @@ void Game::DrawGalaxyMap()
     // frontier beside it (#342 S2). The whole galaxy -- several centres thousands of map
     // units apart -- is a wheel away.
     constexpr float NEAR_SPAN = 1800.0f, MAX_ZOOM = 40.0f;
-    if (!galaxyInit_)
+    const bool      resized = galaxyFitSize_.x > 0.0f &&
+                              (galaxyFitSize_.x != area.width || galaxyFitSize_.y != area.height);
+    if (!galaxyInit_ || resized)
     {
+        galaxyFitSize_ = { area.width, area.height };
         galaxyCenter_ = { (minX + maxX) / 2.0f, (minY + maxY) / 2.0f };
         galaxyZoom_ = 1.0f;
         for (const auto& s : systems)
@@ -556,15 +575,23 @@ void Game::DrawGalaxyMap()
                                 near.push_back(l.a);
                         }
                 }
-                float reachX = 0.0f, reachY = 0.0f;
+                // ...centred on the neighbourhood, not on the system you are in (#427): a
+                // neighbourhood that lies to one side of you filled that half of the picture
+                // to its edge and left the other half empty.
+                float nx0 = s.mapPos.x, ny0 = s.mapPos.y, nx1 = s.mapPos.x, ny1 = s.mapPos.y;
                 for (const auto& o : systems)
                     if (std::find(near.begin(), near.end(), o.id) != near.end())
                     {
-                        reachX = fmaxf(reachX, fabsf(o.mapPos.x - s.mapPos.x));
-                        reachY = fmaxf(reachY, fabsf(o.mapPos.y - s.mapPos.y));
+                        nx0 = fminf(nx0, o.mapPos.x);
+                        ny0 = fminf(ny0, o.mapPos.y);
+                        nx1 = fmaxf(nx1, o.mapPos.x);
+                        ny1 = fmaxf(ny1, o.mapPos.y);
                     }
-                const float roomX = area.width * 0.5f - u(150.0f);
-                const float roomY = area.height * 0.5f - u(40.0f);
+                galaxyCenter_ = { (nx0 + nx1) * 0.5f, (ny0 + ny1) * 0.5f };
+                // Room for a name beside the outermost nodes, and for the lines under one.
+                const float roomX = area.width - u(260.0f);
+                const float roomY = area.height - u(120.0f);
+                const float reachX = nx1 - nx0, reachY = ny1 - ny0;
                 if (reachX + reachY > 0.0f && roomX > 0.0f && roomY > 0.0f && baseScale > 0.0f)
                 {
                     const float fit = fminf(reachX > 0.0f ? roomX / reachX : 1e9f,
@@ -583,7 +610,10 @@ void Game::DrawGalaxyMap()
     {
         float wheel = Ui::MouseWheel();
         if (wheel != 0.0f)
+        {
             galaxyZoom_ = Clamp(galaxyZoom_ * (1.0f + wheel * 0.12f), 0.3f, MAX_ZOOM);
+            galaxyFitSize_ = { 0.0f, 0.0f };
+        }
     }
 
     float scale = baseScale * galaxyZoom_;
@@ -591,6 +621,7 @@ void Game::DrawGalaxyMap()
     if (over && Ui::MousePressed(MOUSE_BUTTON_LEFT))
     {
         galaxyDragging_ = true;
+        galaxyFitSize_ = { 0.0f, 0.0f };  // the player has the view now
         galaxyDragLast_ = m;
     }
     if (galaxyDragging_)
@@ -763,9 +794,9 @@ void Game::DrawGalaxyMap()
         const float gapX = u(14.0f);  // from the node to its labels
         float       lx = p.x + gapX;  // where its labels start
         // The name is centred on the node; line `i` of what is known sits under it.
-        const float nameY = p.y - (float)namePx * 0.5f;
-        auto        lineY = [&](int i)
-        { return (int)(p.y + (float)namePx * 0.5f + u(2.0f) + (float)(i - 1) * line); };
+        float nameY = p.y - (float)namePx * 0.5f;
+        auto  lineY = [&](int i)
+        { return (int)(nameY + (float)namePx + u(2.0f) + (float)(i - 1) * line); };
         {
             // What its labels would cover: the name line, and the lines under it.
             float nameW = (float)Ui::TextWidth(s.name.c_str(), namePx);
@@ -781,7 +812,55 @@ void Game::DrawGalaxyMap()
             const Rectangle detailBox{ p.x + gapX, nameY, detailW, bottom };
             // In order: everything to the right, the name to the right, the name to the left
             // of the node. A label that fits nowhere is left to the cursor.
-            if (!cur && !hovered)
+            if (cur || hovered)
+            {
+                // Always shown in full, so it chooses where instead (#427): "you are here"
+                // was written across a neighbour's disc. Beside the node to the right, then
+                // the left; then raised or lowered a line at a time, then a little further
+                // out -- the first place that covers no other system, or else the one that
+                // covers fewest. Off the picture counts as covering everything.
+                auto covered = [&](Rectangle r)
+                {
+                    // The width is a generous guess at the longest line, so the right edge
+                    // gives it some of that back.
+                    if (r.x < area.x || r.y < area.y ||
+                        r.x + r.width > area.x + area.width + u(60.0f) ||
+                        r.y + r.height > area.y + area.height)
+                        return 1000;
+                    int n = 0;
+                    for (const Rectangle& c : claimed)
+                        n += CheckCollisionRecs(r, c) ? 1 : 0;
+                    return n;
+                };
+                std::vector<Rectangle> places;
+                const float raise[] = { 0.0f, 1.0f, -1.0f, 2.0f, -2.0f, 3.0f, -3.0f, 4.0f };
+                for (float away : { 0.0f, u(24.0f), u(60.0f) })
+                    for (float step : raise)
+                        for (bool right : { true, false })
+                            places.push_back(
+                                { right ? p.x + gapX + away : p.x - gapX - away - detailW,
+                                  nameY - step * line, detailW, bottom });
+                Rectangle best = detailBox;
+                int       fewest = covered(best);
+                for (const Rectangle& r : places)
+                    if (fewest > 0 && covered(r) < fewest)
+                    {
+                        best = r;
+                        fewest = covered(r);
+                    }
+                lx = best.x;
+                nameY = best.y;
+                claimed.push_back(best);
+                // Moved off its node: a faint line says whose it is.
+                if (best.x != detailBox.x || best.y != detailBox.y)
+                {
+                    const bool    right = best.x > p.x;
+                    const Vector2 to{ right ? best.x - u(3.0f) : best.x + nameW + u(3.0f),
+                                      nameY + (float)namePx * 0.5f };
+                    DrawLineEx(p, to, 1.0f, Fade(Ui::ACCENT, 0.35f));
+                }
+            }
+            else
             {
                 if (detail && !unclaimed(detailBox))
                     detail = false;
@@ -792,11 +871,11 @@ void Game::DrawGalaxyMap()
                     else
                         named = false;
                 }
+                if (detail)
+                    claimed.push_back(detailBox);
+                else if (named)
+                    claimed.push_back(lx < p.x ? leftBox : nameBox);
             }
-            if (detail)
-                claimed.push_back(detailBox);
-            else if (named)
-                claimed.push_back(lx < p.x ? leftBox : nameBox);
         }
         // Uncharted (#144): a gate from somewhere known leads there, and that is all anyone
         // knows -- an empty ring and a designation, no numbers.

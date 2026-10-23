@@ -213,6 +213,17 @@ TEST_CASE("Desk: a moved window is where it was left after a restart at another 
     GameDesk other;
     REQUIRE(DeskLayout::ReadFile(reread, "someone_else", other.d, error));
     CHECK(Equal(other.d.Rect(other.radar), { 56, 344, 264, 288 }));
+
+    // Kept per server since #427: a key of the new shape with nothing saved starts from the
+    // bare name's, and one with a layout of its own reads only that.
+    GameDesk moved;
+    REQUIRE(DeskLayout::ReadFile(reread, "pilot@host:1", moved.d, error, "pilot"));
+    CHECK(Equal(moved.d.Rect(moved.radar), { 1000, 400, 264, 288 }));
+    nlohmann::json both = reread;
+    DeskLayout::WriteFile(both, "pilot@host:2", other.d);
+    GameDesk own;
+    REQUIRE(DeskLayout::ReadFile(both, "pilot@host:2", own.d, error, "pilot"));
+    CHECK(Equal(own.d.Rect(own.radar), { 56, 344, 264, 288 }));
 }
 
 TEST_CASE("Desk: a saved place that is off the screen comes back reachable")

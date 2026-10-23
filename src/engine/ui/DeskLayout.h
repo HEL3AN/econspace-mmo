@@ -250,9 +250,10 @@ public:
 
     // The file holds every account that played on this machine. Read refuses a file from
     // a newer build (and says so), and is otherwise content with nothing to read; Write
-    // replaces one account and keeps the rest.
+    // replaces one account and keeps the rest. With nothing under `account`, Read takes what
+    // is under `fallback`, if that is given: a key that has changed shape (#427).
     static bool ReadFile(const nlohmann::json& file, const std::string& account, DeskLayout& into,
-                         std::string& error);
+                         std::string& error, const std::string& fallback = std::string());
     static void WriteFile(nlohmann::json& file, const std::string& account, const DeskLayout& from);
 
     static const char* AnchorName(Anchor a);

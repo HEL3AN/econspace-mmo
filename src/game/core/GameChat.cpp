@@ -164,53 +164,71 @@ void Game::DrawChatContent(const Ui::Frame& f)
                 Box().Grow().Gap(t.metrics.gap),
                 [&]
                 {
-                    L.Scroll(Box().Id("log").Grow().Gap(2.0f),
+                    // The log is a whole number of lines tall, the room left over above it
+                    // (#427): following the newest line, a box of any other height shows the
+                    // oldest one cut in half under the title bar. The room is last frame's.
+                    const float gapPx = L.U(2.0f);
+                    const float step = L.LinePx(TextStyle::Small()) + gapPx;
+                    const float room = L.BoxOf("logroom").height;
+                    Box         log = Box().Id("log").GrowX().Height(Size::Grow()).Gap(2.0f);
+                    if (room > step && L.ScaleFactor() > 0.0f)
+                        log.Height(Size::Fixed((std::floor((room + gapPx) / step) * step - gapPx) /
+                                               L.ScaleFactor()));
+                    L.Column(Box().Id("logroom").Grow().Align(Ui::Align::Start, Ui::Align::End),
                              [&]
                              {
-                                 if (chatLines_.empty())
-                                     L.Text("Nothing said yet. Enter to talk.",
-                                            TextStyle::Small().Tint(t.colors.dim));
-                                 for (const Proto::ChatLine& l : chatLines_)
-                                 {
-                                     std::string s = Clock(l.at);
-                                     if (!s.empty())
-                                         s += "  ";
-                                     Color c = t.colors.text;
-                                     if (l.channel == Chat::LOCAL)
-                                     {
-                                         s += Tagged(l.from) + ": " + l.text;
-                                         if (l.history)
-                                             c = t.colors.dim;
-                                         else if (Lower(l.from) == me)
-                                             c = t.colors.titleText;
-                                     }
-                                     else if (l.channel == Chat::PRIVATE)
-                                     {
-                                         s += Lower(l.from) == me
-                                                  ? "to " + l.to + ": " + l.text
-                                                  : l.from + " (private): " + l.text;
-                                         c = t.colors.accent;
-                                     }
-                                     else if (l.channel == Chat::CORP)
-                                     {
-                                         // The corporation's channel (#347); the server's
-                                         // word on it -- who joined, who left -- has no name.
-                                         s += "[" + l.corp + "] " +
-                                              (l.from.empty() ? l.text : l.from + ": " + l.text);
-                                         c = l.from.empty() ? t.colors.dim : t.standing.friendly;
-                                     }
-                                     else if (l.channel == Chat::SERVER)
-                                     {
-                                         s += "SERVER: " + l.text;
-                                         c = t.colors.warn;
-                                     }
-                                     else
-                                     {
-                                         s += l.text;
-                                         c = t.colors.dim;
-                                     }
-                                     L.Text(s, TextStyle::Small().Tint(c).Wrap());
-                                 }
+                                 L.Scroll(log,
+                                          [&]
+                                          {
+                                              if (chatLines_.empty())
+                                                  L.Text("Nothing said yet. Enter to talk.",
+                                                         TextStyle::Small().Tint(t.colors.dim));
+                                              for (const Proto::ChatLine& l : chatLines_)
+                                              {
+                                                  std::string s = Clock(l.at);
+                                                  if (!s.empty())
+                                                      s += "  ";
+                                                  Color c = t.colors.text;
+                                                  if (l.channel == Chat::LOCAL)
+                                                  {
+                                                      s += Tagged(l.from) + ": " + l.text;
+                                                      if (l.history)
+                                                          c = t.colors.dim;
+                                                      else if (Lower(l.from) == me)
+                                                          c = t.colors.titleText;
+                                                  }
+                                                  else if (l.channel == Chat::PRIVATE)
+                                                  {
+                                                      s += Lower(l.from) == me
+                                                               ? "to " + l.to + ": " + l.text
+                                                               : l.from + " (private): " + l.text;
+                                                      c = t.colors.accent;
+                                                  }
+                                                  else if (l.channel == Chat::CORP)
+                                                  {
+                                                      // The corporation's channel (#347); the
+                                                      // server's word on it -- who joined, who left
+                                                      // -- has no name.
+                                                      s +=
+                                                          "[" + l.corp + "] " +
+                                                          (l.from.empty() ? l.text
+                                                                          : l.from + ": " + l.text);
+                                                      c = l.from.empty() ? t.colors.dim
+                                                                         : t.standing.friendly;
+                                                  }
+                                                  else if (l.channel == Chat::SERVER)
+                                                  {
+                                                      s += "SERVER: " + l.text;
+                                                      c = t.colors.warn;
+                                                  }
+                                                  else
+                                                  {
+                                                      s += l.text;
+                                                      c = t.colors.dim;
+                                                  }
+                                                  L.Text(s, TextStyle::Small().Tint(c).Wrap());
+                                              }
+                                          });
                              });
                     L.Row(
                         Box().GrowX().Gap(t.metrics.gap).Align(Ui::Align::Start, Ui::Align::Center),

@@ -4047,27 +4047,46 @@ int main(int argc, char** argv)
                "  %sallowlist.txt  who may play: one name per line\n"
                "The world itself is made the first time the server starts:\n"
                "  econserver host --world %s\n"
-               "While it runs, `econserver admin %s <command>` gives it console commands "
-               "(`help` lists them).\n",
+               "While it runs, `econserver admin --world %s <command>` gives it console "
+               "commands (`help` lists them).\n",
                dir.c_str(), dir.c_str(), cfg.port, cfg.isPublic ? "public" : "this machine only",
                cfg.registration == Host::Registration::Open ? "open" : "by allowlist", dir.c_str(),
                argv[2], argv[2]);
         return 0;
     }
-    // econserver admin <dir> <command...>: a console command for the server running on the
-    // world in <dir>, from the same machine (#400) -- what systemd leaves no console for.
+    // econserver admin [--world DIR] <command...>: a console command for the server running
+    // on the world in DIR -- the executable's folder without one, as for host -- from the same
+    // machine (#400), which is what systemd leaves no console for. The world used to be a
+    // bare first argument (#427): that still works when the argument is a directory, and says
+    // it is on its way out.
     if (argc > 1 && std::string(argv[1]) == "admin")
     {
-        if (argc < 3)
+        std::string              world;
+        std::vector<std::string> words;
+        for (int i = 2; i < argc; i++)
         {
-            fprintf(stderr, "usage: econserver admin <world dir> <command>  (`help` lists them)\n");
-            return 2;
+            const std::string a = argv[i];
+            if (a == "--world" && i + 1 < argc && world.empty())
+                world = argv[++i];
+            else
+                words.push_back(a);
         }
+        if (world.empty() && !words.empty() && DirectoryExists(words.front().c_str()))
+        {
+            fprintf(stderr,
+                    "admin: a bare world directory is deprecated; use `econserver admin --world "
+                    "%s ...`\n",
+                    words.front().c_str());
+            world = words.front();
+            words.erase(words.begin());
+        }
+        if (world.empty())
+            world = GetApplicationDirectory();
         std::string command;
-        for (int i = 3; i < argc; i++)
-            command += (command.empty() ? "" : " ") + std::string(argv[i]);
+        for (const std::string& w : words)
+            command += (command.empty() ? "" : " ") + w;
         std::string answer;
-        const bool  ok = Host::AdminRequest(argv[2], command.empty() ? "help" : command, answer);
+        const bool  ok = Host::AdminRequest(world, command.empty() ? "help" : command, answer);
         fputs(answer.c_str(), ok ? stdout : stderr);
         if (!answer.empty() && answer.back() != '\n')
             fputs("\n", ok ? stdout : stderr);

@@ -162,13 +162,13 @@ commands from the same machine: it puts the command in the world's `admin/` fold
 picks it up within a second and writes back what it said.
 
 ```sh
-sudo -u econspace /opt/econspace/econserver admin /var/lib/econspace/world status
+sudo -u econspace /opt/econspace/econserver admin --world /var/lib/econspace/world status
 ```
 
 A shorter name helps -- add to your `~/.bashrc`:
 
 ```sh
-alias econ='sudo -u econspace /opt/econspace/econserver admin /var/lib/econspace/world'
+alias econ='sudo -u econspace /opt/econspace/econserver admin --world /var/lib/econspace/world'
 ```
 
 and then `econ who`, `econ allow alice`, `econ backup`. Only someone who may write to the
@@ -219,7 +219,7 @@ while the files are copied, so the copy is one moment of the world. It keeps the
 ```sh
 sudo crontab -u econspace -e
 # then add:
-0 5 * * * /opt/econspace/econserver admin /var/lib/econspace/world backup >/dev/null
+0 5 * * * /opt/econspace/econserver admin --world /var/lib/econspace/world backup >/dev/null
 ```
 
 A copy on the same disk does not survive the disk. Copy `backups/` somewhere else now and then,

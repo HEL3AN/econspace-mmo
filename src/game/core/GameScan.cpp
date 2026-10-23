@@ -21,8 +21,9 @@ void Game::DrawScannerContent(const Ui::Frame& f)
     {
         for (const auto& si : universe_.systems)
             if (si.id == id)
-                return si.name;
-        return id;
+                return si.name;  // as the map names it: the designation until it is named
+        // Not on this pilot's charts: an id is the server's, never a name (#427).
+        return std::string("an uncharted system");
     };
 
     L.Begin(f);

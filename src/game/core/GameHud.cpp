@@ -234,9 +234,10 @@ void Game::SetupWindows()
     // Registered in the menu bar's order. The places are the ones the windows have always
     // had at 1280 x 720; anchored, they now keep to their side at any other size.
     // The status window is laid out by Ui::Layout (#297), so it can be any size: resizable,
-    // and no smaller than two gauges and a field.
+    // and no smaller than two gauges and a field. As tall as what it holds (#427): it was
+    // made taller than that once, and the rest was an empty panel over the world.
     WindowSpec status = panel(WIN_STATUS, "Status", "Status: the ship and its pilot",
-                              Anchor::TopLeft, { 72.0f, 8.0f, 264.0f, 312.0f });
+                              Anchor::TopLeft, { 72.0f, 8.0f, 264.0f, 252.0f });
     status.resizable = true;
     status.minSize = { 200.0f, 150.0f };
     desk_.AddWindow(status, "STATUS", true, [this](Ui::Frame& f) { DrawStatusContent(f); });
@@ -262,7 +263,7 @@ void Game::SetupWindows()
     // The radar is a picture drawn by hand inside a layout (#297): its toolbar is laid out,
     // the scope takes whatever room is left, so it can be any size.
     WindowSpec radar = panel(WIN_RADAR, "Radar", "Radar: the space around you  (R)",
-                             Anchor::TopLeft, { 72.0f, 328.0f, 264.0f, 288.0f });
+                             Anchor::TopLeft, { 72.0f, 268.0f, 264.0f, 288.0f });
     radar.resizable = true;
     radar.minSize = { 180.0f, 180.0f };
     radar.context = CTX_SPACE;
@@ -276,6 +277,10 @@ void Game::SetupWindows()
     missions.resizable = true;
     missions.minSize = { 240.0f, 220.0f };
     missions.tabOf = WIN_MARKET;
+    // Kept where it was put, never found open at the next login (#427): it is opened to do
+    // something -- take work, hand it in -- and an old one reopened over whatever the
+    // pilot opens first is in the way. The goal line says when it is wanted.
+    missions.reopen = false;
     desk_.AddWindow(missions, "MISSIONS", false, [this](Ui::Frame& f) { DrawMissionsContent(f); });
     // Chat (#347): the local channel and private lines. Open from the start in space: other
     // people are what makes this an MMO, and a channel nobody knows is there is a channel
@@ -307,6 +312,7 @@ void Game::SetupWindows()
                             Anchor::TopLeft, { 344.0f, 96.0f, 380.0f, 396.0f });
     corp.resizable = true;
     corp.minSize = { 280.0f, 220.0f };
+    corp.reopen = false;  // as the missions: opened for a task (#427)
     desk_.AddWindow(corp, "CORPORATION", false, [this](Ui::Frame& f) { DrawCorpContent(f); });
     // The inventory (#472): the hold and whatever else holds goods here. In space and docked
     // alike, in the bottom right corner, which nothing else takes in either: beside the
@@ -356,7 +362,7 @@ void Game::SetupWindows()
     // are in space, which are put away while docked.
     WindowSpec station =
         panel(WIN_STATION, "Station", "The station: its owner, your standing, undocking",
-              Anchor::TopLeft, { 72.0f, 328.0f, 264.0f, 300.0f });
+              Anchor::TopLeft, { 72.0f, 268.0f, 264.0f, 300.0f });
     station.resizable = true;
     station.minSize = { 220.0f, 200.0f };
     station.context = CTX_DOCKED;
@@ -628,7 +634,7 @@ void Game::DrawTargetContent(const Ui::Frame& f)
         [&]
         {
             L.Text(e->name.empty() ? Overview::KindWord(*e) : e->name, TextStyle::Title());
-            L.Field("Distance", TextFormat("%.0f", dist), t.colors.text);
+            L.Field("Distance", Ui::Distance(dist), t.colors.text);
 
             if (e->kind == Proto::EntityKind::Npc || e->kind == Proto::EntityKind::Station)
                 // Allegiance, in the instruments' colours (#117).
@@ -1413,6 +1419,14 @@ void Game::DrawHud()
     Ui::Text("[debug] F1: +money   F11: fullscreen", (int)(MenuBarW() + Ui::Px(8.0f)),
              screenHeight_ - (int)Ui::Px(24.0f), 12, Ui::TEXT_DIM);
 #endif
+    // Docking prompt: a line about the world view, so under the windows and never on the
+    // sensor screen or the map, which cover it (#427).
+    if (flying && nearbyStation_ != nullptr && !desk_.IsOpen(WIN_MAP) && !desk_.IsOpen(WIN_SENSOR))
+    {
+        const char* prompt = TextFormat("Press E to dock at %s", nearbyStation_->GetName().c_str());
+        int         tw = Ui::TextWidth(prompt, 20);
+        Ui::Text(prompt, (screenWidth_ - tw) / 2, screenHeight_ - 56, 20, Ui::ACCENT);
+    }
     desk_.Draw(Ui::Layer::Panels);
     if (goal.missionsWindow)
         DrawGoalPointer(goal);  // round a window, so after the windows
@@ -1423,14 +1437,6 @@ void Game::DrawHud()
     desk_.Draw(Ui::Layer::Screen);
 
     desk_.Draw(Ui::Layer::Modal);  // the menu bar
-
-    // Docking prompt.
-    if (flying && nearbyStation_ != nullptr && !desk_.IsOpen(WIN_MAP))
-    {
-        const char* prompt = TextFormat("Press E to dock at %s", nearbyStation_->GetName().c_str());
-        int         tw = Ui::TextWidth(prompt, 20);
-        Ui::Text(prompt, (screenWidth_ - tw) / 2, screenHeight_ - 56, 20, Ui::ACCENT);
-    }
 
     // Warp effect — simple and legible, in screen coordinates.
     WarpPhase wp = flying ? playerShip_->GetWarpPhase() : WarpPhase::None;
@@ -1467,13 +1473,16 @@ void Game::DrawHud()
         const Entity*     t = FindEntityById(playerShip_->GetHoldTargetId());
         const std::string name = t ? t->GetName() : std::string("?");
         const float       range = playerShip_->GetHoldRange();
+        // Every distance the HUD states is said one way (#427): Ui::Distance, as the overview.
+        const std::string at = Ui::Distance(range);
         std::string       line =
-            hm == HoldMode::Orbit  ? TextFormat("ORBITING %s  at %.0f", name.c_str(), range)
-            : hm == HoldMode::Keep ? TextFormat("HOLDING %.0f FROM %s", range, name.c_str())
-                                   : TextFormat("FOLLOWING %s  at %.0f", name.c_str(), range);
+            hm == HoldMode::Orbit  ? TextFormat("ORBITING %s  at %s", name.c_str(), at.c_str())
+            : hm == HoldMode::Keep ? TextFormat("HOLDING %s FROM %s", at.c_str(), name.c_str())
+                                   : TextFormat("FOLLOWING %s  at %s", name.c_str(), at.c_str());
         if (t != nullptr)
-            line += TextFormat("  (now %.0f)",
-                               Vector2Distance(t->GetPosition(), playerShip_->GetPosition()));
+            line += "  (now " +
+                    Ui::Distance(Vector2Distance(t->GetPosition(), playerShip_->GetPosition())) +
+                    ")";
         Ui::Text(line.c_str(), (screenWidth_ - Ui::TextWidth(line.c_str(), 16)) / 2,
                  screenHeight_ - 98, 16, Ui::ACCENT);
     }
@@ -1482,7 +1491,9 @@ void Game::DrawHud()
     if (flashTimer_ > 0.0f)
     {
         int tw = Ui::TextWidth(flashMsg_.c_str(), 18);
-        Ui::Text(flashMsg_.c_str(), (screenWidth_ - tw) / 2, screenHeight_ - 70, 18, LIME);
+        // Docked, the station's name plate is where it would go (#427): above it then.
+        const int y = screenHeight_ - (flying ? 70 : 100);
+        Ui::Text(flashMsg_.c_str(), (screenWidth_ - tw) / 2, y, 18, LIME);
     }
 }
 
@@ -1497,19 +1508,6 @@ void Game::DrawTreatmentContent(const Ui::Frame& f)
         SaveTreatment();
         lookDirty_ = false;
     }
-}
-
-// A world distance as the sensor screen says it: 2k, 250k, 1M.
-static std::string SensorUnits(float u)
-{
-    char buf[32];
-    if (u >= 1000000.0f)
-        std::snprintf(buf, sizeof(buf), "%gM", u / 1000000.0f);
-    else if (u >= 1000.0f)
-        std::snprintf(buf, sizeof(buf), "%gk", std::round(u / 100.0f) / 10.0f);
-    else
-        std::snprintf(buf, sizeof(buf), "%.0f", u);
-    return buf;
 }
 
 // The sensor screen (#123): the surroundings projected onto a fixed grid, centred on the
@@ -1581,8 +1579,8 @@ void Game::DrawSensorScreen()
 
     // The heading, and beside the grid the legend: what the colours mean, then what the
     // characters on the screen stand for (#297).
-    const std::string across = SensorUnits(sensorRange_);
-    const std::string cell = SensorUnits(sensorPicture_.UnitsPerCell());
+    const std::string across = Ui::Distance(sensorRange_);
+    const std::string cell = Ui::Distance(sensorPicture_.UnitsPerCell());
     Ui::Layout&       L = sensorLayout_;
     L.Begin(desk_.SurfaceFrame(WIN_SENSOR, screen));
     L.Column(
@@ -1710,7 +1708,7 @@ void Game::DrawSensorScreen()
             if (e.id == hoverId)
             {
                 const float       d = std::hypot(e.pos.x - own.pos.x, e.pos.y - own.pos.y);
-                const std::string dist = SensorUnits(d);
+                const std::string dist = Ui::Distance(d);
                 const std::string label =
                     (e.name.empty() ? std::string(Overview::KindWord(e)) : e.name) + "  " + dist;
                 const float px = (float)Ui::FontPx(Ui::Px(t.fontSize.body));
