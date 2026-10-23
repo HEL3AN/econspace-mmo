@@ -5,6 +5,7 @@
 #include "entities/Entity.h"
 #include "economy/Market.h"
 #include "core/Faction.h"
+#include "sim/SaveSchema.h"
 #include <map>
 #include <memory>
 #include <set>
@@ -255,4 +256,7 @@ struct SystemState
     // What a loaded save says to put back into this system, as JSON text (the header stays
     // free of the JSON library). Replayed once, when the static layer is built, then cleared.
     std::string restore;
+    // The world version `restore` was written in: the world file's, or for a region back from
+    // the archive, the world's that sealed it (#498). What ReplayChanges translates by.
+    int restoreVersion = Save::WORLD_VERSION;
 };

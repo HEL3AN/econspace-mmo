@@ -1571,6 +1571,7 @@ Save::Result Simulation::LoadWorld(const std::string& path)
                         st.removedKeys.insert(k.get<std::string>());
             st.nextAddedKey = std::max(1, c.value("nextAdded", 1));
             st.restore = c.dump();
+            st.restoreVersion = worldVersionRead_;
         }
     return Save::Result::Ok;
 }
@@ -1979,18 +1980,23 @@ void Simulation::ReplayChanges(SystemState& st)
             st.entities.push_back(std::move(e));
         }
 
-    // A world from before #468 named only accounts, and a member's structure was the
-    // corporation's through its owner's membership: it paid its licence from the treasury and
-    // its patrols guarded it. It is the corporation's outright now, as it was in effect --
-    // read with the corporations (corps.json), which the host loads before the systems.
-    if (worldVersionRead_ < 18)
-        for (const auto& e : st.entities)
-        {
-            if (e->GetKind() != EntityKind::Structure ||
-                e->GetOwner().find(':') != std::string::npos)
-                continue;
-            const std::string corp = corps_.IdOf(e->GetOwner());
-            if (!corp.empty())
-                e->SetOwner(Corps::OwnerOf(corp));
-        }
+    if (st.restoreVersion < 18)
+        MembersToCorps(st);
+}
+
+// A world from before #468 named only accounts, and a member's structure was the
+// corporation's through its owner's membership: it paid its licence from the treasury and
+// its patrols guarded it. It is the corporation's outright now, as it was in effect -- read
+// with the corporations (corps.json), which the host loads before the systems. The same holds
+// for a region an older build sealed in the archive, when it comes back (#498).
+void Simulation::MembersToCorps(SystemState& st)
+{
+    for (const auto& e : st.entities)
+    {
+        if (e->GetKind() != EntityKind::Structure || e->GetOwner().find(':') != std::string::npos)
+            continue;
+        const std::string corp = corps_.IdOf(e->GetOwner());
+        if (!corp.empty())
+            e->SetOwner(Corps::OwnerOf(corp));
+    }
 }

@@ -357,6 +357,9 @@ public:
         int         slot = 0;  // where it was
         double      archivedAt = 0.0;
         std::string text;  // the archive document, as JSON
+        // The world version of the build that sealed it, for what its changes mean when it
+        // comes back (#498): a member's structure before 18 is the corporation's.
+        int version = Save::WORLD_VERSION;
         // Its geography as charts keep it (#431 slice 15): each system located, named and
         // linked, under its archived id (ArchivedId) -- what a pilot who knew it still sees,
         // marked drifted. Made from `text`, never saved apart from it.
@@ -1839,8 +1842,11 @@ private:
     // change their keys, then replay what the save said had changed (#38).
     void KeyWorldObjects(SystemState& st);
     void ReplayChanges(SystemState& st);
-    // The version of the world file loaded (LoadWorld), for what ReplayChanges translates: a
-    // structure of a corporation member's in a file before 18 is the corporation's (#468).
+    // A structure of a corporation member's, in what a build before world version 18 wrote,
+    // is the corporation's (#468): from the world file, or from the archive (#498).
+    void MembersToCorps(SystemState& st);
+    // The version of the world file loaded (LoadWorld): what its systems' changes and the
+    // archives it lists were written in.
     int worldVersionRead_ = Save::WORLD_VERSION;
     // Rebuilds neighbors_ from universe_.links; called wherever the links change.
     void IndexLinks();

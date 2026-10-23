@@ -85,7 +85,9 @@ namespace Save
 // 18: a structure's owner may be a corporation, "corp:<id>" (#468): what a member builds is
 //    the corporation's, and stays with it when the member leaves. In a version 17 file a
 //    member's structure names the member and was the corporation's through them; read now, it
-//    is the corporation's outright. A version 17 build would read "corp:<id>" as an account
+//    is the corporation's outright -- and so in a region an older build sealed in the archive,
+//    when it comes back: the world lists each archive with the version that sealed it (#498).
+//    A version 17 build would read "corp:<id>" as an account
 //    nobody has and leave the structure to nobody.
 inline constexpr int WORLD_VERSION = 18;
 

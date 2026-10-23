@@ -641,6 +641,7 @@ void Simulation::MaterializeOpened(int slot)
                             st.removedKeys.insert(k.get<std::string>());
                     st.nextAddedKey = std::max(1, c.value("nextAdded", 1));
                     st.restore = c.dump();
+                    st.restoreVersion = r.value("version", Save::WORLD_VERSION);
                 }
             }
             fresh.push_back(&info);
