@@ -487,13 +487,14 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
 
 ## Planning
 
-Work is organized into milestones **M0-M10** and three open track epics: **#42**
-agents/MCP, **#43** the data-driven world and its generated presentation, **#44** the
-player-mutable world. A finished milestone is closed; as of 2026-10-23 the open ones are
-M4 (constructible galaxy), M5 (fleets and depth), M8 (the builder) and M9 (the scale of a
-system) -- the [milestones page](https://github.com/HEL3AN/econspace-mmo/milestones) is the
-live list. Since the 0.1 release most work is filed as issues without a milestone; the next
-steps are listed in ROADMAP.md. Check the milestone an issue belongs to before proposing sequencing. Ideas
+Milestones follow **releases** (owner, 2026-10-23): **Version 0.2 Beacon** is the next
+release and playtest, **Version 0.3 Current** the one after (codenames run alphabetically:
+Anchor, Beacon, Current, Drift, ...). An issue with no milestone is backlog. The thematic
+milestones M0-M10 are closed; the tracks live on as epics: **#42** agents/MCP, **#43** the
+data-driven world and its generated presentation, **#44** the player-mutable world (which
+lists the former M8 builder issues). The
+[milestones page](https://github.com/HEL3AN/econspace-mmo/milestones) is the live list and
+ROADMAP.md says what is next. Check the milestone an issue belongs to before proposing sequencing. Ideas
 proposed by an agent carry the `proposal` label and are not built until the owner says yes.
 Owner decisions made while working are logged as comments on **#186**; a release or a tag
 is the owner's call.
