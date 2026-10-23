@@ -158,6 +158,39 @@ struct Doctrine
     std::vector<std::pair<std::string, std::vector<std::string>>> roles;    // role -> designs
 };
 
+// A weapon family (#464): the weapon modules that are one kind of gun, and the goods they are
+// made of. A region's industry leans its NPCs toward a family by those goods; a design is
+// refitted to a family by putting the family's first module where its guns were.
+struct Family
+{
+    std::string               id;    // "laser"
+    std::string               name;  // what a pilot reads: "lasers"
+    std::vector<std::string>  modules;
+    std::vector<ResourceType> goods;
+};
+
+// A hull line (#464): a way of building a hull, as the sections it prefers at each position,
+// best first, and the goods it is made of. A design is rebuilt to a line by taking, position
+// by position, the first of the line's sections the design still validates with -- else its
+// own -- so a line changes what it can and never makes a ship that is not one.
+struct Line
+{
+    std::string               id;  // "heavy"
+    std::string               name;
+    std::vector<std::string>  bow, mid, stern;
+    std::vector<ResourceType> goods;
+};
+
+// A design derived from a stock one (#464): its guns those of `family`, its hull built to
+// `line` (empty: its own). Made when the catalogue loads, on every side of the wire, so a
+// client draws a variant an NPC flies without being sent it. The variant of a design's own
+// family and own hull is the stock design itself, and is not one of these.
+struct Variant
+{
+    Design      design;  // id "<base>~<family>" or "<base>~<family>~<line>"
+    std::string base, family, line;
+};
+
 struct Catalogue
 {
     Rules                    rules;
@@ -167,11 +200,27 @@ struct Catalogue
     std::vector<Design>      designs;
     std::vector<Doctrine>    doctrines;
     std::vector<HangarEntry> hangar;  // what players fly; the first is the starter
+    std::vector<Family>      families;
+    std::vector<Line>        lines;
+    // Every variant of every stock design that carries a family's guns, in design, family,
+    // line order (its own hull first).
+    std::vector<Variant> variants;
 
     const ModulePart* FindModule(const std::string& id) const;
     const Section*    FindSection(const std::string& id) const;
     const Frame*      FindFrame(const std::string& id) const;
-    const Design*     FindDesign(const std::string& id) const;
+    // A stock design or a variant of one.
+    const Design*  FindDesign(const std::string& id) const;
+    const Family*  FindFamily(const std::string& id) const;
+    const Line*    FindLine(const std::string& id) const;
+    const Variant* FindVariant(const std::string& id) const;
+    // The family whose module a design's first gun is; null for an unarmed design.
+    const Family* FamilyOf(const Design& d) const;
+    // The design `base` flies as with `family`'s guns on a hull of `line` (empty: its own):
+    // the variant's id, `base` itself where that is the stock design, and empty where there
+    // is no such variant -- an unarmed design, an unknown family or line.
+    std::string VariantOf(const std::string& base, const std::string& family,
+                          const std::string& line) const;
 
     // The designs `faction` flies in `role`: its own doctrine's, else the default's. Null for
     // a role nobody names, which a catalogue that loaded does not have.
@@ -215,6 +264,12 @@ bool Load(const std::string& path, Catalogue& out, std::string& error);
 // drives sit in the stern, what goes on a side or an edge comes in pairs, and the hull keeps
 // its frame's class rule (Measure).
 bool Validate(const Catalogue& c, const Design& d, std::string& error);
+
+// The variant of `base` with `family`'s guns and a hull of `line` (null: its own), by the
+// rules above. False, with the reason, where the result does not validate -- which, for a
+// catalogue, is a load error: a family whose module has no look for a socket its guns are on.
+bool MakeVariant(const Catalogue& c, const Design& base, const Family& family, const Line* line,
+                 Design& out, std::string& error);
 
 // The design's stats. False, with the reason, for a design that does not validate.
 bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error);

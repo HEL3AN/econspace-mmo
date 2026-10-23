@@ -389,6 +389,12 @@ const Ships::Catalogue& ShipCatalogue()
     return g_ships;
 }
 
+namespace
+{
+// Draws `d` as `base` wearing d's shape, with d's numbers, and keeps it.
+bool AddDrawn(const Ships::Design& d, const Archetype* base, std::string& error);
+}  // namespace
+
 bool Load(const std::string& path)
 {
     g_error.clear();
@@ -529,6 +535,26 @@ bool Load(const std::string& path)
     // Swapped in only once the whole file parsed: a half-applied registry would be
     // worse than the previous one.
     g_archetypes = std::move(loaded);
+
+    // Every variant of a stock design (#464) is drawn as its stock design's archetype wearing
+    // its own shape, on every side of the wire alike: an NPC flying one needs no design
+    // message, and a variant nothing can draw is a load error like a doctrine's.
+    for (const Ships::Variant& v : g_ships.variants)
+    {
+        const Archetype* base = nullptr;
+        for (const Archetype& a : g_archetypes)
+            if (base == nullptr && a.kind == EntityKind::Npc && a.design == v.base)
+                base = &a;
+        std::string why;
+        if (base == nullptr)
+            why = "no Npc archetype draws its stock design '" + v.base + "'";
+        if (base == nullptr || !AddDrawn(v.design, base, why))
+        {
+            g_error = path + ": variant '" + v.design.id + "': " + why;
+            g_added.clear();
+            return false;
+        }
+    }
     return true;
 }
 
@@ -555,6 +581,13 @@ bool AddDesign(const Ships::Design& d, std::string& error)
             if (const Ships::Design* sd = g_ships.FindDesign(a.design))
                 if (sd->frame == d.frame && base == nullptr)
                     base = &a;
+    return AddDrawn(d, base, error);
+}
+
+namespace
+{
+bool AddDrawn(const Ships::Design& d, const Archetype* base, std::string& error)
+{
     if (base == nullptr)
     {
         error = "design '" + d.id + "': no ship of frame '" + d.frame + "' is drawn";
@@ -578,6 +611,7 @@ bool AddDesign(const Ships::Design& d, std::string& error)
     g_added[d.id] = std::move(added);
     return true;
 }
+}  // namespace
 
 const Ships::Design* FindDesign(const std::string& id)
 {

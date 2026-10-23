@@ -286,6 +286,39 @@ every 0.9 s from 230 -- about 7 a second against 44 from the same design under a
 now fires at the player's cooldown and range, so every armed design above takes 44 a second
 off its target.
 
+## Families, lines and variants (#464)
+
+```json
+"families": {
+    "laser":   { "name": "lasers",   "modules": ["weapons.laser"],   "goods": ["Crystal", "Circuits"] },
+    "railgun": { "name": "railguns", "modules": ["weapons.railgun"], "goods": ["Steel", "Ammunition"] }
+},
+"lines": {
+    "heavy": { "name": "heavy", "bow": ["bow.wedge", "bow.blunt"], "mid": ["mid.belt"],
+               "stern": ["stern.row"], "goods": ["Steel", "Iron"] }
+}
+```
+
+A **family** is a kind of gun: its weapon modules, and the goods it is made of. A **line** is a
+way of building a hull: at each position, the sections it prefers, best first, and its goods.
+The goods are what a region's style weighs the family or line by
+([npc_fits_living_world.md](npc_fits_living_world.md)); both lists are optional.
+
+Every stock design that carries a family's gun comes in **variants**, made when the catalogue
+loads, on every side of the wire: each family on its own hull and on each line. A variant puts
+the family's first module wherever the design had any family's gun, as many as before, at the
+module's own drawing size; and takes, position by position, the first of the line's sections
+the design still validates with, else its own -- every mid alike. Its id is
+`<design>~<family>` or `<design>~<family>~<line>` (`cutter~railgun`, `raider~laser~light`), its
+name the design's with the family's and the line's ("Cutter (railguns, heavy)"); the variant of
+a design's own family on its own hull is the design itself. `FindDesign` finds a variant like
+a stock design, and it is drawn as its stock design's archetype wearing its own shape, so an
+NPC flying one needs no `design` message.
+
+Load errors: a family module that is not a gun or is in two families, a good that is not one,
+a line section that does not stand at the position it is listed under, an id with `~`, any
+other field, and a variant that does not validate.
+
 ## How it maps to the hull classes (Proposal A)
 
 | Ship | Frame (class, min. aspect) | Bow | Mid | Stern | What makes it its class |

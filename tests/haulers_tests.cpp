@@ -32,7 +32,7 @@ const std::string DATA = TEST_DATA_DIR;
 struct GoodsFile
 {
     GoodsFile() { REQUIRE(Goods::Load(DATA + "goods.json")); }
-    ~GoodsFile() { Goods::ResetToBuiltin(); }
+    ~GoodsFile() { Goods::Load(DATA + "goods.json"); }
 };
 
 void StartServer(Simulation& sim, const std::string& worldPath = std::string(), bool hot = false)

@@ -225,7 +225,7 @@ TEST_CASE("cold systems still progress: stock, presence, prices and outposts (#2
     struct GoodsFile
     {
         GoodsFile() { REQUIRE(Goods::Load(DATA + "goods.json")); }
-        ~GoodsFile() { Goods::ResetToBuiltin(); }
+        ~GoodsFile() { Goods::Load(DATA + "goods.json"); }
     } goods;
     auto sim = ColdWorld();
     REQUIRE(HotCount(*sim) == 0);

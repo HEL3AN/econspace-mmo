@@ -32,7 +32,7 @@ const std::string DATA = TEST_DATA_DIR;
 struct GoodsFile
 {
     GoodsFile() { REQUIRE(Goods::Load(DATA + "goods.json")); }
-    ~GoodsFile() { Goods::ResetToBuiltin(); }
+    ~GoodsFile() { Goods::Load(DATA + "goods.json"); }
 };
 
 // The design's contract rules for every test, small enough for a starter's hold.
