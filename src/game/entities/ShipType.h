@@ -18,6 +18,7 @@ struct ShipStats
     float       rcsAccel = 0.0f;     // stabilizer power
     int         cargoCapacity = 0;   // cargo hold capacity
     float       miningRate = 0.0f;   // mining rate, units/sec
+    float       scan = 0.0f;         // probes: a scanner pass is times (1 + scan)
     float       hull = 0.0f;         // structure: what a hit takes once the shields are down
     float       damage = 0.0f;       // what one shot of its guns takes off
     std::string design;              // what it is and what it looks like, in data/ships.json

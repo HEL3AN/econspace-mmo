@@ -92,10 +92,11 @@ bool ReadProvides(const json& j, Ships::Provides& p, std::string& err)
     // Only what a stat is derived from. Hull and damage arrived with the NPCs that read them
     // (#279 step 4); shields and sensors come with the stat that reads them -- accepted
     // before that, they would be numbers nothing uses.
-    if (!OnlyKnownKeys(pj, { "thrust", "rcs", "cargo", "mining", "hull", "damage" }, err) ||
+    if (!OnlyKnownKeys(pj, { "thrust", "rcs", "cargo", "mining", "hull", "damage", "scan" }, err) ||
         !ReadNumber(pj, "thrust", p.thrust, err) || !ReadNumber(pj, "rcs", p.rcs, err) ||
         !ReadNumber(pj, "cargo", p.cargo, err) || !ReadNumber(pj, "mining", p.mining, err) ||
-        !ReadNumber(pj, "hull", p.hull, err) || !ReadNumber(pj, "damage", p.damage, err))
+        !ReadNumber(pj, "hull", p.hull, err) || !ReadNumber(pj, "damage", p.damage, err) ||
+        !ReadNumber(pj, "scan", p.scan, err))
     {
         err = "provides: " + err;
         return false;
@@ -416,6 +417,7 @@ void Add(Ships::Provides& sum, const Ships::Provides& p, float times = 1.0f)
     sum.rcs += p.rcs * times;
     sum.cargo += p.cargo * times;
     sum.mining += p.mining * times;
+    sum.scan += p.scan * times;
     sum.hull += p.hull * times;
     sum.damage += p.damage * times;
 }
@@ -975,6 +977,7 @@ bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error)
     out.turnSpeed = out.rcsAccel / r.rcsPerTurn;
     out.cargoCapacity = (int)(sum.cargo + 0.5f);
     out.miningRate = sum.mining;
+    out.scan = sum.scan;
     out.hull = sum.hull;
     out.damage = sum.damage;
     out.cruise = out.maxSpeed * r.cruise;

@@ -101,6 +101,12 @@ bool Simulation::HiddenFrom(const ClientSession& s, const SystemState& st, const
     return s.known.count(SignatureKey(st, e)) == 0;
 }
 
+double Simulation::ScanPower(const ClientSession& s) const
+{
+    const double probes = s.ship ? (double)s.ship->GetStats().scan : 0.0;
+    return WorldRules::ScanRules().power * (1.0 + std::max(0.0, probes));
+}
+
 bool Simulation::StartScan(ClientSession& s)
 {
     auto refuse = [&](const std::string& why)
@@ -202,7 +208,7 @@ void Simulation::StepPlayerScan(ClientSession& s)
     SystemState* st = SystemOf(s);
     if (st == nullptr)
         return;
-    const double power = WorldRules::ScanRules().power;
+    const double power = ScanPower(s);
     int          resolved = 0, partial = 0;
     std::string  found;
     for (const auto& e : st->entities)
@@ -237,6 +243,7 @@ Proto::ScanView Simulation::ScanViewOf(const ClientSession& s) const
     Proto::ScanView v;
     v.until = s.scanUntil;
     v.seconds = WorldRules::ScanRules().seconds;
+    v.power = ScanPower(s);
     const SystemState* st = SystemById(s.systemId);
     if (st == nullptr)
         return v;

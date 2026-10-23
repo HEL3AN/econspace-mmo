@@ -494,6 +494,7 @@ std::string DescribeQuote(const FitQuote& q)
     row("turn", q.before.turnSpeed, q.after.turnSpeed, "%.2f");
     row("cargo", (float)q.before.cargoCapacity, (float)q.after.cargoCapacity, "%.0f");
     row("mining", q.before.miningRate, q.after.miningRate, "%.1f");
+    row("scanner", 1.0f + q.before.scan, 1.0f + q.after.scan, "%.1f");
     row("hull", q.before.hull, q.after.hull, "%.0f");
     row("guns", q.before.damage, q.after.damage, "%.0f");
     if (!q.design.id.empty())
@@ -947,6 +948,7 @@ std::string DescribeScan(const View& view)
         return id;
     };
     std::string out;
+    out += Fmt("SCANNER power %.2f a pass (a signature resolves at 1.0)\n", scan.power);
     if (scan.until > now)
         out += Fmt("SCAN   a pass is under way, %.0fs left\n", scan.until - now);
     if (!scan.sigs.empty())

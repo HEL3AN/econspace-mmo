@@ -34,6 +34,7 @@ struct Provides
     float rcs = 0.0f;     // attitude force; over mass it is the stabiliser's pull and the turn
     float cargo = 0.0f;   // hold, in units of cargo
     float mining = 0.0f;  // ore per second
+    float scan = 0.0f;    // what it adds to a scanner pass: power is times (1 + scan) (#346)
     float hull = 0.0f;    // structure points: what a hit takes away before the ship is lost
     float damage = 0.0f;  // what one volley of its guns takes off a ship
 };
@@ -242,6 +243,7 @@ struct Stats
     float turnSpeed = 0.0f;  // rad/s
     int   cargoCapacity = 0;
     float miningRate = 0.0f;
+    float scan = 0.0f;    // its probes' bonus; a scanner pass is times (1 + scan)
     float hull = 0.0f;    // what its parts give: frame, sections and armour
     float damage = 0.0f;  // what its fitted guns add to a volley; zero for an unarmed design
     float cruise = 0.0f;  // what an NPC flies its rounds at: maxSpeed * rules.cruise

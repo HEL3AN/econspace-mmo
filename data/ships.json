@@ -29,7 +29,9 @@
         { "id": "weapons.railgun", "mass": 5, "provides": { "damage": 6 }, "cost": { "Iron": 10, "Crystal": 5 },
           "look": { "top": { "scale": 0.2 } } },
         { "id": "weapons.tractor", "mass": 2, "provides": { "mining": 1 }, "cost": { "Iron": 4, "Crystal": 2 },
-          "look": { "top": { "scale": 0.1, "mount": "centre" }, "bow": { "scale": 0.1, "mount": "out" } } }
+          "look": { "top": { "scale": 0.1, "mount": "centre" }, "bow": { "scale": 0.1, "mount": "out" } } },
+        { "id": "gate.probe", "mass": 1.5, "provides": { "scan": 0.5 }, "cost": { "Iron": 5, "Crystal": 4 },
+          "look": { "top": { "scale": 0.1 } } }
     ],
     "sections": [
         { "id": "bow.blunt", "position": "bow", "mass": 3, "cost": { "Iron": 12 },
