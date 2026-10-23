@@ -4,6 +4,7 @@
 #include "raylib.h"
 #include <nlohmann/json_fwd.hpp>
 #include <map>
+#include <set>
 #include <vector>
 #include <memory>
 #include <string>
@@ -119,13 +120,48 @@ struct Universe
 // Reads the galaxy index from JSON at path. On error — an empty Universe.
 Universe LoadUniverse(const std::string& path);
 
-// Reads a star system from JSON at path and builds its entities.
-// On error (file not found / malformed JSON) returns an empty list.
+// Reads a hand-written star system from JSON at path and builds its entities. On error -- file
+// not found, malformed JSON, or a document CheckDocument refuses -- says why and returns an
+// empty list.
 std::vector<std::unique_ptr<Entity>> LoadSystem(const std::string& path);
 
 // Builds entities from already-parsed JSON (for the editor — rebuild after
-// in-memory edits). Entity order matches the order in the JSON.
+// in-memory edits). Entity order matches the order in the JSON. Permissive on purpose: it also
+// reads what the generator and the server wrote -- a region's seal, a save's added objects --
+// and a save from another build must load. A field it does not know is ignored, and a type,
+// role or faction it does not know is said and built as the default.
 std::vector<std::unique_ptr<Entity>> BuildSystem(const nlohmann::json& data);
+
+// ---- What a hand-written system document may say (#191, #357) ----
+//
+// A system file, a pin's document and an admin pack's systems are written by hand, and read
+// with `value(key, default)` a misspelt field is indistinguishable from an absent one. So
+// they are held to exactly what BuildSystem reads, and a mistake is a load error rather than
+// a plausible wrong system.
+
+// One list of a system document: the fields its objects may have, and the ones they must.
+struct DocumentList
+{
+    const char*              list;  // "planets", "stations", ...
+    std::vector<const char*> known;
+    std::vector<const char*> required;
+};
+// The lists, in the order BuildSystem builds them.
+const std::vector<DocumentList>& DocumentLists();
+// The keys of the document itself, of its "star", and of an object's "orbits".
+const std::vector<const char*>& DocumentKeys();
+const std::vector<const char*>& StarKeys();
+const std::vector<const char*>& OrbitKeys();
+
+// Every field of `doc` BuildSystem does not read -- at the top, in "star", in an object or its
+// orbit -- and every star type, planet type, station role, faction or archetype it would only
+// warn about and build as something else: one line each in `problems`, prefixed with
+// `where`. `objectExtra` are further keys an object may have (a pin's "replaces" and
+// "remove"); `moreFactions` are factions beyond the registry's (a pack's own).
+void CheckDocument(const nlohmann::json& doc, const std::string& where,
+                   std::vector<std::string>&       problems,
+                   const std::vector<const char*>& objectExtra = {},
+                   const std::set<std::string>&    moreFactions = {});
 
 // Names every planet after its system and its place from the star out: "Helios Core I" is the
 // innermost (#259). A rule rather than data: a generated system's planets are named the

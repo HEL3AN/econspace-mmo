@@ -374,6 +374,9 @@ quietly losing to the generator.
 - `"replaces": N` names the N-th object of the list (from 0) instead of a name: a generated planet has none.
 - Every `replaces` is read against the list as it stood **before this pin**, so the order of the entries does not matter: replaced objects keep their place, removed ones go, added ones come after.
 - Any other key (`star`, `stars`, `character`) is set to the pin's value.
+- `replaces` and `remove` are the only words a merge adds to an object; anything else in the
+  document is held to the system format like a file (#357), and a pin with a mistake in it is
+  refused whole.
 
 **`replace`** makes the document the whole system. Its gates are still kept from the generated system unless the document lists its own, because the gates are the region's topology.
 
@@ -925,6 +928,15 @@ does nothing. `econserver` refuses to start on a registry that will not load.
 Every section is optional (an entire array may be omitted). `pos` is `[x, y]` in units.
 `color` is `[r, g, b]` (0–255).
 
+**A document written by hand is read strictly** (#191, #357): a file here, a pin's
+`document` and a pack's systems. A field that is not in the tables below, a star type, planet
+type, station role or faction nobody knows, or an archetype that is not of the object's kind
+is a load error that names it and where it is. A file that fails does not load at all; a pin
+that fails is not applied, and the server log says why; `econserver validate` says the same
+for packs and pins without running a world. What the generator and the server write -- a
+region's seal, the objects a save added -- is read as it stands, so a world saved by another
+build still loads.
+
 A system beyond the wormhole is not a file: the server generates it from the world's seed
 (#140) in exactly this format, so everything below describes both. Each generated region
 fills one **slot** of the galaxy's skeleton and is made from (seed, slot) alone (#342); its
@@ -978,7 +990,7 @@ instead, each at its `pos`; each lights the system (#119). Planets orbit `(0,0)`
 
 | Field | Type | Meaning |
 |------|-----|----------|
-| `archetype` | string | Which archetype **of its kind** this object is, in place of its kind's ordinary one (#142): a derelict that is `derelict.leviathan`, a belt that is `field.motherlode`. A name that is not an archetype, or is one of another kind, is logged by name and ignored -- the object is built as usual. |
+| `archetype` | string | Which archetype **of its kind** this object is, in place of its kind's ordinary one (#142): a derelict that is `derelict.leviathan`, a belt that is `field.motherlode`. In a hand-written document a name that is not an archetype, or is one of another kind, is a load error; in what the server wrote it is logged by name and the object built as usual. |
 
 ### orbits — a planet's satellite
 
@@ -1018,6 +1030,7 @@ at runtime reads it; the survey screen (#141) and a reader of the document do.
 | `type` | string | `Rocky` (default), `Gas`, `Ice`, `Lava`, `Oceanic` |
 | `deposit` | string | subsurface resource: `Iron`, `Ice`, `Crystal` |
 | `color` | [r,g,b] | **optional** — if absent, the color from `type` is used |
+| `name` | string | written by the generator for a rogue world; not shown -- every planet is named after its system and its place from the star (#259) |
 
 ### stations[]
 | Field | Type | Values |
@@ -1025,7 +1038,7 @@ at runtime reads it; the survey screen (#141) and a reader of the document do.
 | `name` | string | name |
 | `pos` | [x,y] | position |
 | `size` | number | radius |
-| `faction` | string | a faction `id` from `factions.json`; default the `unaffiliated` one. An unknown id is logged by name and built as the unaffiliated |
+| `faction` | string | a faction `id` from `factions.json` (or a pack's own); default the `unaffiliated` one. An unknown id is a load error in a hand-written document |
 | `role` | string | `TradeHub` (default), `MiningOutpost`, `Shipyard`, `Military` |
 
 > `Pirates` as a station/object faction cannot be set in JSON — pirates are spawned by

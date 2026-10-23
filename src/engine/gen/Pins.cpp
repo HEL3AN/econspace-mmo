@@ -1,5 +1,7 @@
 #include "gen/Pins.h"
 
+#include "core/WorldLoader.h"
+
 #include <algorithm>
 #include <map>
 #include <set>
@@ -234,6 +236,22 @@ bool WellFormed(const json& pin, const std::string& where, std::vector<std::stri
             problems.push_back(where + ": unknown field \"" + it.key() + "\"");
             ok = false;
         }
+    if (ok && pin.contains("mode") && !pin["mode"].is_string())
+    {
+        problems.push_back(where + ": mode is \"merge\" or \"replace\"");
+        ok = false;
+    }
+    if (ok)
+    {
+        // The document is written by hand like a system file, and held to the same fields
+        // (#357); a merge may also say which object it "replaces", and "remove" it.
+        const size_t before = problems.size();
+        if (pin.value("mode", std::string("merge")) == "merge")
+            WorldLoader::CheckDocument(pin["document"], where, problems, { "replaces", "remove" });
+        else
+            WorldLoader::CheckDocument(pin["document"], where, problems);
+        ok = problems.size() == before;
+    }
     if (ok && pin.contains("seed") &&
         !(pin["seed"].is_number_integer() && pin["seed"].get<long long>() >= 0))
     {
