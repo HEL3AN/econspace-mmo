@@ -1,7 +1,7 @@
 # NPC fits from the living world
 
-Status: **decided, being built** (#464): slices 1 (variants), 2 (fleets) and 3 (region
-style) are built. The owner's direction of 2026-10-23 is the premise and
+Status: **decided, being built** (#464): slices 1 (variants), 2 (fleets), 3 (region style)
+and 4 (buying) are built. The owner's direction of 2026-10-23 is the premise and
 is not re-opened: NPC fits differ **strongly** between regions; a region's style, politics and
 economy decide what its NPCs fly; a region whose markets and industry are full of lasers flies
 mostly lasers and rarely railguns. The owner answered every open question the same day
@@ -158,8 +158,10 @@ culture lives in (decided, Q4). What a holding can actually buy is its **own** m
 
 - **At purchase, in the faction step.** When a holding's presence grows, the growth is ships
   bought (section 3). They are bought in the style's proportions, among the variants of the
-  faction's doctrine designs for that role, as far as the market and the treasury allow. The
-  fleet gains those designs.
+  faction's doctrine designs for that role, as far as the market and the treasury allow. A
+  ship is bought as the role it flies day to day (police, or a pirate) and joins that fleet;
+  it also joins the faction's warship fleet as the warship of the **same fit** (family and
+  line) -- what it would be lent to a siege as. It is paid for once, as the ship it flies.
 - **At refit, slowly.** Each period a holding refits a share of its fleet (proposed 5%,
   tuning) to the current style if the market has the parts and the treasury the money -- the
   price difference between the old and new fit. This is the drift.
@@ -210,36 +212,46 @@ form.
   and Crystal, so no market can favour one. Laser `Crystal 2, Circuits 1`; railgun `Steel 3,
   Ammunition 1` (tuning). This changes `DesignPrice` for players too, which is right: one
   economy, one price. It is a data change, made in slice 4.
-- **Who pays**: the faction's `treasury` (credits), at the holding market's **ask** for every
-  good the design's frame, sections and fit lines cost, and the goods leave that market's
-  stock (`Market::Buy`). `stock` (expansion money) is untouched.
+- **Who pays**: the faction's `treasury` (credits), at the **ask** of the holding's market --
+  its own, else the nearest within the growth rules' `marketReach` -- for every good the
+  design's frame, sections and fit lines cost. **Only the guns' goods leave the market** (a
+  family's module costs): the hull and its other parts are the faction's own yards' work from
+  bulk ore. Built and measured: every hull is mostly Iron, Iron runs short in every market
+  (recipes turn it into Steel), and drawing it stopped every faction alike instead of leaning
+  any -- the first bench left factions at half strength with full treasuries. `stock`
+  (expansion money) is untouched.
 - **Money limits the number of ships** (decided, owner 2026-10-23, Q2): a holding's growth is
   what it buys. `p += growth x (keep - p)` becomes "want that many ships, buy as many as the
   treasury and the market allow". The owner's reasoning: stepping away from the living world
   now and coming back later is harder than building it once. The failure to design against is
   **a poor faction quietly emptying half the map**, and the answer is the world's own
   feedback, never a balance patch or a free floor:
-  - **Income refills the treasury.** The trade fee and the contracts already flow; a holding
-    also pays its holder a tax on what its market makes and moves, `styles.holdingIncome`
-    credits per prosperity-hour (tuning) -- the counterpart of what a corporation's holding
-    pays it (#431 T4). Money comes from holding space, so a faction that holds space can always
-    rebuild some of it.
-  - **The stock design is the cheapest fallback.** A purchase falls back from the style's
-    variant to the doctrine's stock design before it gives up, so a poor holding thins and
-    flies plain ships rather than none.
+  - **Income refills the treasury.** The trade fee and the contracts already flow; every
+    holding also pays its holder `styles.holdingIncome` credits an hour at full prosperity,
+    half that at none (1500, tuning: about half a ship an hour) -- the counterpart of what a
+    corporation's holding pays it (#431 T4). Money comes from holding space, so a faction that
+    holds space can always rebuild some of it. A new world's factions begin with
+    `styles.foundingHours` (24) of it in the treasury, to man what they hold.
+  - **The stock design is the last fallback.** A purchase falls back from the style's fits to
+    the doctrine's stock design before it gives up.
+  - **The money goes to the thinnest holdings first**: a period's orders are bought in order of
+    how short each holding is of what it keeps.
   - **A weakened faction turns defensive.** A faction whose holdings stand below
-    `styles.defensiveBelow` of what they keep (0.6, tuning) plans no new outposts and no
-    sieges -- its `stock` waits -- and its purchases go to its weakest holdings first.
+    `styles.defensiveBelow` of what they keep (0.4, tuning) plans no new outposts, sieges or
+    Anchors -- its `stock` waits -- until they recover.
+  - **Pirates still breed** where they hold (unrest), as before, until slice 6 has them buy at
+    markets that deal with them.
   - **Losses raise local prices, which pull haulers in.** Every purchase is a real `Buy`; a
     holding that keeps losing ships keeps buying, its goods' prices rise, and haulers (#343)
     and the faction's own supply contracts answer.
   - **Tested over the long run**: a macro test and a bench run many simulated days on several
     seeds and assert that no faction's fleet collapses to zero absent a real defeat (losing
     its holdings), and the PR reports the curves.
-- **Shortage**: buy family by family in the style's order of weight. If the preferred
-  family's goods are out of stock or too dear (price over `styles.dearAt` x base, 2, tuning),
-  buy the next family; then a lighter line; then the doctrine's stock design at whatever is
-  available. If nothing can be bought, that period's growth waits for the next.
+- **Shortage**: the want is split over every fit (doctrine design x family x line) by the
+  style's shares; what one fit cannot have -- its guns' goods out of stock or dearer than
+  `styles.dearAt` x base (2, tuning), or no money -- falls to the next fit by share, and to the
+  doctrine's stock design last. If nothing can be bought, that period's growth waits for the
+  next.
 - **Losses** come off the fleet by design. Cold, losses are taken proportionally across the
   fleet's designs; hot, by the ship that died.
 - **Captured gear**: pirates who win a cold exchange add a share of what they destroyed to

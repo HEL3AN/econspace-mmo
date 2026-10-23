@@ -93,7 +93,8 @@ cmake --build build-release -j 8
 
 In order; the details are in [ROADMAP.md](ROADMAP.md#next).
 
-1. #464, NPC fits from the living world: design first.
+1. #464, NPC fits from the living world: slices 1-4 built (variants, fleets, region style,
+   buying); next slice 5, refit and drift ([the design](documents/npc_fits_living_world.md)).
 2. #466, a corporation's enemy list, with war declarations.
 3. #425-#427, the 0.1 playtest polish.
 4. A playtest on a fresh world, then 0.2 if the owner decides to tag it.

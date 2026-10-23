@@ -465,11 +465,18 @@ bool Load(const std::string& path)
             }
         }
         if (!ReadSection(rest, path + ": styles",
-                         { { "culture", &sty.culture }, { "hours", &sty.hours } }, {}, {}, g_error))
+                         { { "culture", &sty.culture },
+                           { "hours", &sty.hours },
+                           { "dearAt", &sty.dearAt },
+                           { "holdingIncome", &sty.holdingIncome },
+                           { "defensiveBelow", &sty.defensiveBelow },
+                           { "foundingHours", &sty.foundingHours } },
+                         {}, {}, g_error))
             return false;
-        if (sty.culture > 1.0)
+        if (sty.culture > 1.0 || sty.defensiveBelow > 1.0 || sty.dearAt < 1.0)
         {
-            g_error = path + ": styles: 'culture' is a share of the whole, at most 1";
+            g_error = path + ": styles: 'culture' and 'defensiveBelow' are shares, at most 1, "
+                             "and 'dearAt' is at least 1 (the base price is never dear)";
             return false;
         }
     }

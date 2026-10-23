@@ -670,6 +670,28 @@ public:
     Ships::Style RegionStyle(int slot) const;
     // Every open region's style, as the last faction period reckoned it. Not saved.
     const std::map<int, Ships::Style>& Styles() const { return styles_; }
+    // --- Buying (#464, slice 4) ---
+    // `f`'s holding `st` buys up to `want` ships: at its own market's ask, from f's treasury,
+    // the goods leaving the market. Fits in the region's style's proportions -- each of the
+    // doctrine's designs for the role its ships fly here, refitted to each family and line by
+    // their shares -- and what one fit cannot have (a good out of stock or dearer than the
+    // rules' `dearAt`, or no money) falls to the next by share, and to the doctrine's own
+    // design last. The ships join its fleets: as the role they fly here, and as the warships
+    // of the same fit they would be in a siege. What it bought, in ships; 0 where nothing
+    // could be. Money limits the count (owner, 2026-10-23).
+    float BuyShips(SystemState& st, FactionId f, float want);
+    // Where a holding buys: its own market, else the nearest system with one within the
+    // growth rules' `marketReach` jumps; null for none.
+    SystemState* BuyingMarket(const std::string& systemId);
+    // What a ship of `design` costs at `st`'s market's ask, in credits; 0 for one that does
+    // not derive.
+    double ShipPriceAt(const SystemState& st, const std::string& design) const;
+    // What a design's guns -- the modules of a weapon family -- are made of: what a purchase
+    // takes from the market (BuyShips).
+    static Ships::Cost GunCost(const std::string& design);
+    // Whether `f`'s holdings stand below the style rules' `defensiveBelow` of what they keep:
+    // a faction so weakened plans nothing new until it recovers.
+    bool Defensive(FactionId f) const;
     // Hull one of `f`'s besieging warships takes off a structure a second: its own warship
     // design's guns (Ships::WarshipDps). The planner and the siege pass both read it.
     float WarshipDps(FactionId f) const { return FighterOf(f, NpcRole::Warship).dps; }
@@ -2248,6 +2270,10 @@ private:
     // Each open region's style (#464), reckoned once a faction period (StepStyles). Not saved:
     // it follows from the markets and the documents.
     std::map<int, Ships::Style> styles_;
+    // What each design is made of (Ships::Stats::cost), by id, for the catalogue load named.
+    mutable std::map<std::string, Ships::Cost> designCosts_;
+    mutable unsigned                           designCostsFrom_ = 0;
+    const Ships::Cost&                         DesignCost(const std::string& design) const;
     // Reckons every open region's style, and logs where a region's leading family or line
     // changed -- and every region the first time.
     void StepStyles();

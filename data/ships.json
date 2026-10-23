@@ -24,9 +24,9 @@
           "look": { "spine": { "scale": 0.2 }, "side": { "mount": "out", "turn": 90, "scale": 0.2 } } },
         { "id": "hull.armour", "mass": 4, "provides": { "hull": 6 }, "cost": { "Iron": 10 },
           "look": { "edge": { "scale": 0.08, "turn": 90 }, "side": { "mount": "out", "turn": 90, "scale": 0.12 } } },
-        { "id": "weapons.laser", "mass": 2, "provides": { "damage": 3 }, "cost": { "Iron": 4, "Crystal": 3 },
+        { "id": "weapons.laser", "mass": 2, "provides": { "damage": 3 }, "cost": { "Crystal": 2, "Circuits": 1 },
           "look": { "top": { "scale": 0.11 } } },
-        { "id": "weapons.railgun", "mass": 5, "provides": { "damage": 6 }, "cost": { "Iron": 10, "Crystal": 5 },
+        { "id": "weapons.railgun", "mass": 5, "provides": { "damage": 6 }, "cost": { "Steel": 3, "Ammunition": 1 },
           "look": { "top": { "scale": 0.2 } } },
         { "id": "weapons.tractor", "mass": 2, "provides": { "mining": 1 }, "cost": { "Iron": 4, "Crystal": 2 },
           "look": { "top": { "scale": 0.1, "mount": "centre" }, "bow": { "scale": 0.1, "mount": "out" } } }

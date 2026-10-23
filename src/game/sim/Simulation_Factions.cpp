@@ -38,6 +38,8 @@ namespace
 {
 // How many macro passes make one faction period: a minute at the 2 s pass.
 constexpr int FACTION_PERIOD = 30;
+// ...and how long a pass is, in seconds of world time.
+constexpr double MAINT_STEP_SECONDS = 2.0;
 // The most one move takes out of a holding, as a share of the faction's capacity.
 constexpr float MOVE_SHARE = 0.25f;
 // Presence a faction has not kept up with fades by this share per period.
@@ -304,6 +306,10 @@ void Simulation::SeedMinds()
             continue;
         FactionMind& m = minds_[a.controller];
         m.intel[kv.first] = Observe(kv.second);
+        // A world begins with its factions able to man what they hold (#464): what a holding
+        // pays in `foundingHours`, in the treasury, since the ships are bought now.
+        const WorldRules::Styles& sr = WorldRules::StyleRules();
+        m.treasury += sr.holdingIncome * sr.foundingHours;
         for (const std::string& nid : Neighbors(kv.first))
         {
             const auto n = systems_.find(nid);
@@ -561,6 +567,11 @@ void Simulation::StepFactions()
             STOCK_OUTPOSTS * OutpostCost() + reserve * (n == kept.end() ? 0.0f : (float)n->second);
         float& stock = minds_[a.controller].stock;
         stock = std::min(storable, stock + INCOME_BASE * (1.0f + a.prosperity + ore));
+        // ...and money to its treasury (#464): holding space is what pays for the ships
+        // that hold it, so a faction that holds anything can always rebuild some of it.
+        minds_[a.controller].treasury += WorldRules::StyleRules().holdingIncome *
+                                         (0.5 + 0.5 * (double)a.prosperity) * FACTION_PERIOD *
+                                         MAINT_STEP_SECONDS / 3600.0;
     }
 
     // Once a period, holdings recover towards capacity -- less what they have lent a siege and
@@ -587,6 +598,15 @@ void Simulation::StepFactions()
         else if (kv.second.kind == Plan::Kind::Return)
             owes(kv.second.target, kv.second.faction, kv.second.force);
     }
+    // What holdings want to buy this period (#464), weakest first once all are known.
+    struct Order
+    {
+        float        held = 0.0f;  // what it has, as a share of what it keeps
+        SystemState* st = nullptr;
+        FactionId    f;
+        float        want = 0.0f;
+    };
+    std::vector<Order> orders;
     for (auto& kv : systems_)
     {
         SystemAggregate& a = kv.second.agg;
@@ -599,7 +619,17 @@ void Simulation::StepFactions()
                 const auto  away = lent.find(kv.first);
                 const float keep =
                     std::max(0.0f, t.capacity - (away != lent.end() ? away->second : 0.0f));
-                p += t.growth * (keep - p);
+                // What it grows by it buys (#464): at its own market, from its treasury, as
+                // far as both go -- money limits how many ships, not only how good (owner,
+                // 2026-10-23). What it has above what it keeps leaves as before. Pirates still
+                // breed where they hold, until they buy where markets deal with them (slice 6).
+                const float step = t.growth * (keep - p);
+                if (step > 0.0f && f != Factions::Pirates())
+                {
+                    orders.push_back({ keep > 0.0f ? p / keep : 1.0f, &kv.second, f, step });
+                    continue;  // a holding keeps what it bought, however little (below)
+                }
+                p += step;
             }
             else
             {
@@ -610,6 +640,12 @@ void Simulation::StepFactions()
                 p = 0.0f;
         }
     }
+    // The money goes where the ships are fewest first: a faction short of both rebuilds its
+    // thinnest holdings before topping up the full ones. Ties by system id, the map's order.
+    std::stable_sort(orders.begin(), orders.end(),
+                     [](const Order& x, const Order& y) { return x.held < y.held; });
+    for (const Order& o : orders)
+        o.st->agg.presence[o.f] += BuyShips(*o.st, o.f, o.want);
 }
 
 // One faction's turn (#231, #295). It sees what it holds and wherever its ships are; of
@@ -670,11 +706,15 @@ void Simulation::Think(FactionId f)
     // ...and over what a convoy that did not get through must be paid again (#407).
     const float reserve =
         UPKEEP_RESERVE * Blueprints::UpkeepRules().share * cost * (float)outposts + owed;
+    // A faction whose holdings are worn down below what they keep holds what it has and
+    // reaches for nothing new until they recover (#464): its ships are bought now, and a
+    // poor faction must not spend itself out of the map.
+    const bool weak = Defensive(f);
     const bool canSettle =
-        (int)settling.size() < works && cost > 0.0f && mind.stock >= cost + reserve;
+        !weak && (int)settling.size() < works && cost > 0.0f && mind.stock >= cost + reserve;
     // One siege at a time, paid for like a settlement (slice 5).
     const Blueprints::Siege& siege = Blueprints::SiegeRules();
-    const bool canSiege = !besieging && cost > 0.0f && mind.stock >= SiegeCost() + reserve;
+    const bool canSiege = !weak && !besieging && cost > 0.0f && mind.stock >= SiegeCost() + reserve;
     // ...and what each of its own warships would take off the wall a second.
     const float dps = WarshipDps(f);
     // What it believes an outpost takes to bring down: it cannot see which kind it is from
@@ -685,9 +725,9 @@ void Simulation::Think(FactionId f)
     const float mend = plain != nullptr ? plain->mend * wall : 0.0f;
     // One Anchor at a time, paid for like an outpost (#342 S4) -- and an Anchor's hull, for a
     // rival weighing whether it could bring one down.
-    const float anchorCost = AnchorCost();
-    const bool  canAnchor = WorldRules::MouthRules().anchors && !anchoring && anchorCost > 0.0f &&
-                            mind.stock >= anchorCost + reserve;
+    const float      anchorCost = AnchorCost();
+    const bool       canAnchor = !weak && WorldRules::MouthRules().anchors && !anchoring &&
+                                 anchorCost > 0.0f && mind.stock >= anchorCost + reserve;
     const Blueprint* anchorBp = Blueprints::Find(ANCHOR_BLUEPRINT);
     const float      anchorWall = anchorBp != nullptr ? anchorBp->hull : 0.0f;
     const float      anchorMend = anchorBp != nullptr ? anchorBp->mend * anchorWall : 0.0f;

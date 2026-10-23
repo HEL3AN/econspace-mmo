@@ -191,6 +191,10 @@
     "styles": {
         "culture": 0.25,
         "hours": 24,
+        "dearAt": 2,
+        "holdingIncome": 1500,
+        "defensiveBelow": 0.4,
+        "foundingHours": 24,
         "cultures": {
             "clan": { "railgun": 3, "laser": 1, "brawler": 1 },
             "sect": { "laser": 3, "railgun": 1, "heavy": 1 },

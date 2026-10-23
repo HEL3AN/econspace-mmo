@@ -217,6 +217,8 @@ struct Catalogue
     const Variant* FindVariant(const std::string& id) const;
     // The family whose module a design's first gun is; null for an unarmed design.
     const Family* FamilyOf(const Design& d) const;
+    // The family a module is a gun of; null for a module that is in none.
+    const Family* FamilyOfModule(const std::string& module) const;
     // The design `base` flies as with `family`'s guns on a hull of `line` (empty: its own):
     // the variant's id, `base` itself where that is the stock design, and empty where there
     // is no such variant -- an unarmed design, an unknown family or line.

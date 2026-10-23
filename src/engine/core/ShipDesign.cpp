@@ -490,7 +490,7 @@ const Variant* Catalogue::FindVariant(const std::string& id) const
 
 namespace
 {
-const Family* FamilyOfModule(const Catalogue& c, const std::string& module)
+const Family* ModuleFamily(const Catalogue& c, const std::string& module)
 {
     for (const Family& f : c.families)
         for (const std::string& m : f.modules)
@@ -500,10 +500,15 @@ const Family* FamilyOfModule(const Catalogue& c, const std::string& module)
 }
 }  // namespace
 
+const Family* Catalogue::FamilyOfModule(const std::string& module) const
+{
+    return ModuleFamily(*this, module);
+}
+
 const Family* Catalogue::FamilyOf(const Design& d) const
 {
     for (const FitLine& l : d.fit)
-        if (const Family* f = FamilyOfModule(*this, l.module))
+        if (const Family* f = ModuleFamily(*this, l.module))
             return f;
     return nullptr;
 }
@@ -537,7 +542,7 @@ bool MakeVariant(const Catalogue& c, const Design& base, const Family& family, c
     // module's own look gives it: a scale was chosen for the gun the design had.
     if (own != &family)
         for (FitLine& l : v.fit)
-            if (FamilyOfModule(c, l.module) != nullptr)
+            if (ModuleFamily(c, l.module) != nullptr)
             {
                 l.module = family.modules.front();
                 l.scale = 0.0f;

@@ -14,12 +14,15 @@
 #include "core/Blueprint.h"
 #include "core/DataDir.h"
 #include "core/Faction.h"
+#include "core/ShipDesign.h"
 #include "economy/Resource.h"
 #include "entities/Combatant.h"
+#include "entities/NpcShip.h"
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
 #include "sim/ProcessMemory.h"
 #include "sim/Simulation.h"
+#include "sim/WorldRules.h"
 #include "raylib.h"
 
 #include <algorithm>
@@ -255,4 +258,135 @@ int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t see
                r.saveBytes / 1024.0, mem);
     }
     return 0;
+}
+
+int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystems,
+               double everyHours, double shockHours)
+{
+    SetTraceLogLevel(LOG_WARNING);
+    const std::string dataDir = DataDir::Path();
+    if (!Factions::Load(dataDir + "factions.json") || !Goods::Load(dataDir + "goods.json") ||
+        !Archetypes::Load(dataDir + "archetypes.json") ||
+        !Blueprints::Load(dataDir + "blueprints.json") ||
+        !WorldRules::Load(dataDir + "world_rules.json"))
+    {
+        fprintf(stderr, "FATAL: the data did not load\n");
+        return 1;
+    }
+    bool collapsed = false;
+    for (uint64_t seed : seeds)
+    {
+        SetRandomSeed(0xC0FFEEu);
+        Simulation       sim;
+        Gen::WorldParams world;
+        world.seed = seed;
+        world.centres = 1;
+        world.owners = Factions::MajorIds();
+        world.pirates = Factions::Id(Factions::Pirates());
+        world.unaffiliated = Factions::Id(Factions::Unaffiliated());
+        sim.OpenGalaxy(world, dataDir);
+        const int centre = sim.Skeleton().centres.front();
+        for (int n : sim.Skeleton().slots[(size_t)centre].neighbours)
+            if (sim.OpenSlots().count(n) == 0)
+            {
+                sim.AttachRegion(seed, n, sim.Starts().front().systemId, dataDir + "systems/",
+                                 regionSystems);
+                break;
+            }
+        sim.Seed(0xC0FFEEu);
+        sim.InitGalaxy();
+        sim.MaterializeAllSystems(dataDir + "systems/");
+
+        printf("\nfleetbench: seed %llu, %d systems, %.1f days\n\n", (unsigned long long)seed,
+               (int)sim.Systems().size(), days);
+        printf("| hour | faction | ships | holdings | no market near | keep | treasury |\n"
+               "|---:|---|---:|---:|---:|---:|---:|\n");
+        const int passes = (int)(days * 86400.0 / 2.0);
+        const int every = std::max(1, (int)(everyHours * 1800.0));
+        const int shock = shockHours > 0.0 ? (int)(shockHours * 1800.0) : -1;
+        for (int pass = 0; pass <= passes; pass++)
+        {
+            if (pass > 0)
+                sim.MaintainWorld(2.0f);
+            // A war everywhere at once: every holding left with a third of its ships.
+            if (pass == shock)
+            {
+                for (auto& kv : sim.Systems())
+                    if (kv.second.agg.claimed)
+                        kv.second.agg.presence[kv.second.agg.controller] *= 0.3f;
+                printf("| %.0f | (every holding loses 70%% of its ships) | | | | | |\n",
+                       pass / 1800.0);
+            }
+            if (pass % every != 0)
+                continue;
+            for (FactionId f : Factions::All())
+            {
+                float ships = 0.0f;
+                int   held = 0, far = 0;
+                for (const auto& kv : sim.Systems())
+                {
+                    ships += kv.second.agg.presence[f];
+                    if (kv.second.agg.claimed && kv.second.agg.controller == f)
+                    {
+                        held++;
+                        far += sim.BuyingMarket(kv.first) == nullptr ? 1 : 0;
+                    }
+                }
+                if (held == 0)
+                    continue;
+                const float keep = Factions::TemperamentOf(f).capacity * (float)held;
+                printf("| %.0f | %s | %.1f | %d | %d | %.0f | %.0f |\n", pass / 1800.0,
+                       Factions::Id(f).c_str(), ships, held, far, keep, sim.MindOf(f).treasury);
+                // Holding systems with no ships in them: emptied, not beaten.
+                if (pass > 0 && ships < 0.05f * keep)
+                {
+                    printf("  COLLAPSE: %s holds %d systems with %.1f ships\n",
+                           Factions::Id(f).c_str(), held, ships);
+                    collapsed = true;
+                }
+            }
+        }
+        // What each side ended up flying, by weapon family and hull line, against the style of
+        // the regions it holds: the regional difference the slice is for.
+        printf("\nAt the end, what each faction's warships are, and each region's style:\n\n");
+        const Ships::Catalogue& cat = Archetypes::ShipCatalogue();
+        for (FactionId f : Factions::All())
+        {
+            std::map<std::string, float> by;
+            float                        all = 0.0f;
+            for (const auto& kv : sim.Systems())
+            {
+                const auto it =
+                    kv.second.agg.fleets.find(Simulation::FleetKey(f, NpcRole::Warship));
+                if (it == kv.second.agg.fleets.end())
+                    continue;
+                for (const auto& [design, n] : it->second)
+                {
+                    const Ships::Design*  d = cat.FindDesign(design);
+                    const Ships::Variant* v = cat.FindVariant(design);
+                    const Ships::Family*  fam = d != nullptr ? cat.FamilyOf(*d) : nullptr;
+                    by[(fam != nullptr ? fam->id : std::string("?")) + "/" +
+                       (v != nullptr && !v->line.empty() ? v->line : std::string("stock"))] += n;
+                    all += n;
+                }
+            }
+            if (all <= 0.0f)
+                continue;
+            printf("- %s:", Factions::Id(f).c_str());
+            for (const auto& [k, n] : by)
+                printf(" %s %.0f%%", k.c_str(), 100.0 * n / all);
+            printf("\n");
+        }
+        for (const auto& [slot, s] : sim.Styles())
+        {
+            printf("- region %d (%s):", slot, sim.RegionCulture(slot).c_str());
+            for (const auto& [id, share] : s.families)
+                printf(" %s %.0f%%", id.c_str(), 100.0 * share);
+            for (const auto& [id, share] : s.lines)
+                printf(" %s %.0f%%", id.c_str(), 100.0 * share);
+            printf("\n");
+        }
+    }
+    printf("\nfleetbench: %s\n", collapsed ? "a faction collapsed" : "no faction collapsed");
+    return collapsed ? 1 : 0;
 }

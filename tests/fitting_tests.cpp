@@ -9,6 +9,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "goods_named.h"
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
 #include "core/Faction.h"
@@ -435,15 +436,20 @@ TEST_CASE("a player's fit changes the fit and nothing else, within the rules")
 
 TEST_CASE("a refit is priced by the modules it adds and takes out")
 {
-    Fixture                  f;
-    const Ships::Catalogue&  c = Archetypes::ShipCatalogue();
-    const Ships::Design&     scout = *c.FindDesign("scout");
-    const std::vector<float> ore = { 10.0f, 20.0f, 30.0f };  // Iron, Ice, Crystal
-    Ships::Design            armed;
-    std::string              why;
+    Fixture                 f;
+    const Ships::Catalogue& c = Archetypes::ShipCatalogue();
+    const Ships::Design&    scout = *c.FindDesign("scout");
+    // Iron, Ice, Crystal -- and Circuits, which a laser is made of since #464.
+    std::vector<float> ore((size_t)Goods::Count(), 0.0f);
+    ore[0] = 10.0f;
+    ore[1] = 20.0f;
+    ore[2] = 30.0f;
+    ore[(size_t)Good::Named("Circuits").Index()] = 100.0f;
+    Ships::Design armed;
+    std::string   why;
     REQUIRE(Ships::PlayerFit(c, scout, Bare(ArmedScout()), armed, why));
-    // A laser is 4 Iron + 3 Crystal, a tractor 4 Iron + 2 Crystal.
-    const double laser = 4 * 10.0 + 3 * 30.0, tractor = 4 * 10.0 + 2 * 30.0;
+    // A laser is 2 Crystal + 1 Circuits (the family's goods, #464), a tractor 4 Iron + 2 Crystal.
+    const double laser = 2 * 30.0 + 1 * 100.0, tractor = 4 * 10.0 + 2 * 30.0;
     CHECK(Ships::RefitPrice(c, scout, armed, ore, 1.5f) ==
           doctest::Approx(laser * 1.5 - tractor * Ships::REFIT_REFUND));
     // And back: the laser comes out at half, the tractor goes in at the markup.
