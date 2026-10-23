@@ -1054,6 +1054,12 @@ bool Simulation::SaveWorld(const std::string& path) const
         // Corporations' patrols here (#431 slice 12): the same.
         if (!a.patrols.empty())
             galaxy[kv.first]["patrols"] = a.patrols;
+        // What each side here flies (#464): the same. A fleet that is its doctrine's mix is
+        // left out -- the first pass after a load seeds exactly that, as it does an older
+        // file's -- so a world whose sides fly their doctrines saves as it did before fleets.
+        for (const auto& [key, fleet] : a.fleets)
+            if (!DoctrineMix(key, fleet))
+                galaxy[kv.first]["fleets"][key] = fleet;
         // What its market holds, by good id (#343): only where there is one. A field an older
         // build ignores, and an older file's markets start at their targets.
         if (kv.second.profile.markets > 0)
@@ -1152,6 +1158,11 @@ bool Simulation::SaveWorld(const std::string& path) const
             for (const Plan::Lent& l : p.lent)
                 lent.push_back({ { "from", l.from }, { "force", l.force }, { "hops", l.hops } });
             pj["lent"] = std::move(lent);
+            if (p.dps > 0.0f)  // (#464): an addition an older build ignores
+            {
+                pj["dps"] = p.dps;
+                pj["hull"] = p.hull;
+            }
             pj["via"] = p.via;
             pj["arrivesAt"] = p.arrivesAt;
             pj["arrived"] = p.arrived;
@@ -1345,6 +1356,17 @@ Save::Result Simulation::LoadWorld(const std::string& path)
             for (auto pit = gj["patrols"].begin(); pit != gj["patrols"].end(); ++pit)
                 if (pit.value().is_number() && pit.value().get<float>() > 0.0f)
                     a.patrols[pit.key()] = pit.value().get<float>();
+        // ...and its fleets (#464). A count that is not one is let go; a design this build
+        // does not have is folded into the role's stock design by the first reconcile.
+        a.fleets.clear();
+        fleetsVerifiedFrom_ = 0;
+        if (gj.contains("fleets") && gj["fleets"].is_object())
+            for (auto fit = gj["fleets"].begin(); fit != gj["fleets"].end(); ++fit)
+                if (fit.value().is_object())
+                    for (auto dit = fit.value().begin(); dit != fit.value().end(); ++dit)
+                        if (dit.value().is_number() && std::isfinite(dit.value().get<float>()) &&
+                            dit.value().get<float>() > 0.0f)
+                            a.fleets[fit.key()][dit.key()] = dit.value().get<float>();
         // A world from before factions charted what they reached (#431 slice 2): what one
         // holds beyond the wormhole, it reached -- charted by it, as the playtest expected.
         // Contact was made then; it is not news now, and no name is given that was not.
@@ -1422,6 +1444,14 @@ Save::Result Simulation::LoadWorld(const std::string& path)
                 continue;
             p.force = std::max(0.0f, pj.value("force", 0.0f));
             p.evicting = pj.value("evicting", std::string());
+            // What its ships fight with (#464); a siege from before fleets has none, and
+            // fights as its faction's doctrine.
+            const float dps = pj.value("dps", 0.0f), hull = pj.value("hull", 0.0f);
+            if (std::isfinite(dps) && std::isfinite(hull) && dps > 0.0f && hull > 0.0f)
+            {
+                p.dps = dps;
+                p.hull = hull;
+            }
             // A siege from before pooling (version 7) is already at its outpost, and lent by
             // nobody: what is left of it stays where it is, as it did then.
             p.arrived = pj.value("arrived", true);

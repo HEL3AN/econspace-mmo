@@ -1,6 +1,6 @@
 # NPC fits from the living world
 
-Status: **decided, being built** (#464). The owner's direction of 2026-10-23 is the premise and
+Status: **decided, being built** (#464): slices 1 (variants) and 2 (fleets) are built. The owner's direction of 2026-10-23 is the premise and
 is not re-opened: NPC fits differ **strongly** between regions; a region's style, politics and
 economy decide what its NPCs fly; a region whose markets and industry are full of lasers flies
 mostly lasers and rarely railguns. The owner answered every open question the same day

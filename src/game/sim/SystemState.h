@@ -115,6 +115,14 @@ struct SystemAggregate
     // fights and is lost by the same arithmetic as any NPC's, hot or cold. Saved.
     std::map<std::string, float> patrols;
 
+    // What each side here flies (#464): by Simulation::FleetKey ("Syndicate/patrol"), design
+    // id -> ships. The floats above stay the truth for how many; a fleet says which, and is
+    // reconciled to its number every macro pass (Simulation::ReconcileFleets) -- scaled
+    // design by design, seeded from the doctrine where it is empty -- so every proportional
+    // change of a count leaves its mix alone, and only what knows which ship it was (a hot
+    // death, a purchase) edits a design's count. Saved.
+    std::map<std::string, std::map<std::string, float>> fleets;
+
     bool seeded = false;  // aggregate initialized with starting values
 };
 

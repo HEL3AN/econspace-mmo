@@ -258,6 +258,7 @@ void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
     float                   force = 0.0f;
     int                     hops = 1;
     std::string             whence;
+    Ships::Fighter          fighter;  // summed by force, then the mean
     for (const Plan::Lent& l : lent)
     {
         SystemState* home = SystemById(l.from);
@@ -268,6 +269,10 @@ void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
         took.force = std::min(l.force, there);
         if (took.force <= 0.0f)
             continue;
+        // What these ships are, from the holding's own warships (#464).
+        const Ships::Fighter its = FighterIn(*home, f, NpcRole::Warship);
+        fighter.dps += its.dps * took.force;
+        fighter.hull += its.hull * took.force;
         there -= took.force;
         force += took.force;
         hops = std::max(hops, took.hops);
@@ -297,6 +302,8 @@ void Simulation::BeginSiege(FactionId f, const std::vector<Plan::Lent>& lent,
     p.evicting = evicting;
     p.force = force;
     p.lent = sent;
+    p.dps = fighter.dps / force;
+    p.hull = fighter.hull / force;
     plans_[p.id] = p;
     due_.insert({ p.dueAt, p.id });
     char ships[32];
@@ -494,10 +501,13 @@ void Simulation::StepSieges()
         // What a ship loses is the other side's guns over its own hull, from the designs each
         // side flies (#186): the besiegers are the faction's warships, the garrison what the
         // director flies for it here -- its pirates, or its police.
-        const float          defenders = p.evicting.empty() ? a.presence[gi] : 0.0f;
-        const Ships::Fighter besieger = FighterOf(fi, NpcRole::Warship);
+        const float defenders = p.evicting.empty() ? a.presence[gi] : 0.0f;
+        // Both as their fleets are (#464): the besiegers what they set out as, the garrison
+        // what its side keeps here.
+        const Ships::Fighter besieger =
+            p.dps > 0.0f ? Ships::Fighter{ p.dps, p.hull } : FighterOf(fi, NpcRole::Warship);
         const Ships::Fighter garrison =
-            FighterOf(gi, gi == Factions::Pirates() ? NpcRole::Pirate : NpcRole::Police);
+            FighterIn(*st, gi, gi == Factions::Pirates() ? NpcRole::Pirate : NpcRole::Police);
         auto bite = [](const Ships::Fighter& by, const Ships::Fighter& on)
         { return on.hull > 0.0f ? by.dps / on.hull : 0.0f; };
         // A player's structure is guarded by its owner's corporation's patrol here, if it
@@ -540,9 +550,8 @@ void Simulation::StepSieges()
         }
         // What the garrison and the patrol do not tie up fires at the outpost.
         const float firing = std::max(0.0f, p.force - r.defence * standing);
-        if (firing > 0.0f &&
-            HitStructure(*st, t->GetId(), firing * WarshipDps(p.faction) * PASS_SECONDS, nullptr,
-                         Loss::Siege, p.faction))
+        if (firing > 0.0f && HitStructure(*st, t->GetId(), firing * besieger.dps * PASS_SECONDS,
+                                          nullptr, Loss::Siege, p.faction))
             over.push_back(p.id);
     }
     for (int id : over)
