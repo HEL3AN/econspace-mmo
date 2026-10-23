@@ -81,11 +81,22 @@ std::string Simulation::SignatureCode(const std::string& key)
     return code;
 }
 
+namespace
+{
+// A pilot's own, or their corporation's (#468): nothing to scan for.
+bool Ours(const Corps::Registry& corps, const std::string& owner, const std::string& account)
+{
+    std::string corp;
+    return !owner.empty() &&
+           (owner == account || (Corps::CorpOwner(owner, corp) && corps.SameCorp(owner, account)));
+}
+}  // namespace
+
 bool Simulation::HiddenFrom(const ClientSession& s, const SystemState& st, const Entity& e) const
 {
     if (SignatureOf(e) <= 0.0f)
         return false;
-    if (!e.GetOwner().empty() && e.GetOwner() == s.accountName)
+    if (Ours(corps_, e.GetOwner(), s.accountName))
         return false;  // nobody hides their own
     return s.known.count(SignatureKey(st, e)) == 0;
 }
@@ -231,7 +242,7 @@ Proto::ScanView Simulation::ScanViewOf(const ClientSession& s) const
         return v;
     for (const auto& e : st->entities)
     {
-        if (SignatureOf(*e) <= 0.0f || (!e->GetOwner().empty() && e->GetOwner() == s.accountName))
+        if (SignatureOf(*e) <= 0.0f || Ours(corps_, e->GetOwner(), s.accountName))
             continue;
         const std::string    key = SignatureKey(*st, *e);
         Proto::SignatureView g;

@@ -73,6 +73,7 @@ const char* Name(Verb verb)
         case Verb::Dismantle: return "Dismantle";
         case Verb::Refit: return "Refit";
         case Verb::Defence: return "Rules of engagement...";
+        case Verb::Take: return "Take";
         case Verb::SaveDesign: return "Save as";
         case Verb::ApplyDesign: return "Apply";
         case Verb::RenameDesign: return "Rename";
@@ -114,6 +115,7 @@ const char* ToolFor(Verb verb)
         case Verb::Dismantle: return "dismantle";
         case Verb::Refit: return "refit";
         case Verb::Defence: return "set_defence";
+        case Verb::Take: return "corp_act";
         case Verb::SaveDesign: return "save_design";
         case Verb::ApplyDesign: return "apply_design";
         case Verb::RenameDesign: return "rename_design";
@@ -262,7 +264,12 @@ std::vector<Action> For(const Target& t, Vector2 from)
                                    t.refund.empty() ? std::string() : "(back: " + t.refund + ")"));
             }
             else
+            {
+                // An abandoned one (#468) is anyone's to take, from beside it.
+                if (t.abandoned)
+                    out.push_back(Make(Verb::Take));
                 out.push_back(Make(Verb::Attack));
+            }
             break;
         // Another pilot's ship may be shot at (#431 slice 10); the server decides whether
         // that is a crime. One's own is scenery here.

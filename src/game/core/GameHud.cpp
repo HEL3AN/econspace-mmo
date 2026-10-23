@@ -465,7 +465,7 @@ void Game::DrawOverviewContent(const Ui::Frame& f)
         if (e.kind == Proto::EntityKind::Structure)
         {
             const auto l = layout_.byId.find(e.id);
-            const bool mine = l != layout_.byId.end() && l->second.owner == pilotName_;
+            const bool mine = l != layout_.byId.end() && OursOwner(l->second.owner);
             a = mine ? Sensor::Allegiance::Own : Sensor::Allegiance::Neutral;
             // A corp mate's is a friend's (#347): their batteries hold fire for this pilot.
             if (!mine && l != layout_.byId.end() && InMyCorp(l->second.owner))
@@ -661,8 +661,8 @@ void Game::DrawTargetContent(const Ui::Frame& f)
                 {
                     const Proto::EntityLayout& el = l->second;
                     const bool                 mine = el.owner == pilotName_;
-                    L.Field("Built by", mine ? "you" : Tagged(el.owner),
-                            mine                 ? t.standing.own
+                    L.Field("Owner", mine ? "you" : OwnerLabel(el),
+                            OursOwner(el.owner)  ? t.standing.own
                             : InMyCorp(el.owner) ? t.standing.friendly
                                                  : t.colors.text);
                     const double now = worldClock_.Now(GetTime());

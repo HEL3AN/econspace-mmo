@@ -75,7 +75,7 @@ cmake --build build-release -j 8
 ## Where it stands
 
 - **0.1 Anchor** was tagged on 2026-10-17 (GitHub Releases and itch.io). `main` has moved far
-  past it: `PROTO_VERSION` 60, `Save::WORLD_VERSION` 17, `Save::ACCOUNT_VERSION` 9,
+  past it: `PROTO_VERSION` 61, `Save::WORLD_VERSION` 18, `Save::ACCOUNT_VERSION` 9,
   `Gen::GENERATOR_VERSION` 10, `Gen::SKELETON_VERSION` 1. Clients of 0.1 cannot join, and so
   much of the world has changed that **the next playtest starts on a fresh world**.
 - **World generation v2** (#342) slices S1-S9 are built; S10 (scale to 10,000) is not.
@@ -83,6 +83,8 @@ cmake --build build-release -j 8
   follow-ups (patrols weighed by sieges, replacements bought, offline members counted).
 - **One combat model** for NPCs and players (#463); siege damage from the warship designs
   (#458).
+- Structure ownership the EVE way (#468): what a member builds is the corporation's, one verb
+  hands a structure over with its licence, and a disbanded corporation's are abandoned.
 - Player outposts with storage, refunds and corporation docking (#433, #438); routes and
   shipyards ported from the playtester fork (#432, ideas rebuilt rather than merged).
 
@@ -92,10 +94,9 @@ In order; the details are in [ROADMAP.md](ROADMAP.md#next).
 
 1. #431 slice 16, trading charts: a design talk with the owner first.
 2. #464, NPC fits from the living world: design first.
-3. Structure ownership and transfer, the EVE way: design first.
-4. #466, a corporation's enemy list, with war declarations.
-5. #425-#427, the 0.1 playtest polish.
-6. A playtest on a fresh world, then 0.2 if the owner decides to tag it.
+3. #466, a corporation's enemy list, with war declarations.
+4. #425-#427, the 0.1 playtest polish.
+5. A playtest on a fresh world, then 0.2 if the owner decides to tag it.
 
 ## Things to know before touching this code
 

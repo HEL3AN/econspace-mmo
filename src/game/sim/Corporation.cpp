@@ -183,8 +183,8 @@ void Registry::SortMembers(Corp& c)
 
 const Corp* Registry::Of(const std::string& account) const
 {
-    const auto it = byAccount_.find(account);
-    return it == byAccount_.end() ? nullptr : Find(it->second);
+    const std::string id = IdOf(account);
+    return id.empty() ? nullptr : Find(id);
 }
 
 const Corp* Registry::Find(const std::string& id) const
@@ -206,9 +206,8 @@ bool Registry::SameCorp(const std::string& a, const std::string& b) const
 {
     if (a.empty() || b.empty())
         return false;
-    const auto ia = byAccount_.find(a);
-    const auto ib = byAccount_.find(b);
-    return ia != byAccount_.end() && ib != byAccount_.end() && ia->second == ib->second;
+    const std::string ia = IdOf(a);
+    return !ia.empty() && ia == IdOf(b);
 }
 
 std::string Registry::TickerOf(const std::string& account) const
@@ -219,6 +218,9 @@ std::string Registry::TickerOf(const std::string& account) const
 
 std::string Registry::IdOf(const std::string& account) const
 {
+    std::string id;
+    if (CorpOwner(account, id))
+        return corps_.count(id) != 0 ? id : std::string();  // gone: abandoned (#468)
     const auto it = byAccount_.find(account);
     return it == byAccount_.end() ? std::string() : it->second;
 }
@@ -235,6 +237,18 @@ bool Registry::Manages(const std::string& account, const std::string& owner) con
     return m != nullptr && m->role != Role::Member;
 }
 
+bool Registry::Commands(const std::string& account, const std::string& owner) const
+{
+    if (account.empty() || owner.empty())
+        return false;
+    std::string id;
+    if (!CorpOwner(owner, id))
+        return account == owner;
+    const Corp*   c = Find(id);
+    const Member* m = c != nullptr ? c->Find(account) : nullptr;
+    return m != nullptr && m->role != Role::Member;
+}
+
 std::vector<const Corp*> Registry::InvitesFor(const std::string& account, double now) const
 {
     std::vector<const Corp*> out;
@@ -247,8 +261,8 @@ std::vector<const Corp*> Registry::InvitesFor(const std::string& account, double
 
 int Registry::Record(const std::string& account, Ev::Kind kind, const std::string& text)
 {
-    const auto it = byAccount_.find(account);
-    Corp*      c = it != byAccount_.end() ? Mutable(it->second) : nullptr;
+    const std::string id = IdOf(account);
+    Corp*             c = id.empty() ? nullptr : Mutable(id);
     if (c == nullptr)
         return 0;
     Ev::Event e;
@@ -307,6 +321,8 @@ Outcome Registry::Apply(const std::string& account, const Act& act,
         return Refuse("a police budget is set through the world, not the registry alone");
     if (verb == "patrol")  // ...and where it may keep a patrol, and what the design is
         return Refuse("a patrol is set through the world, not the registry alone");
+    if (verb == "transfer" || verb == "take")  // ...and whose a structure is (#468)
+        return Refuse("a structure is handed over through the world, not the registry alone");
     return Refuse("there is no corporation verb '" + act.verb.substr(0, 16) + "'");
 }
 

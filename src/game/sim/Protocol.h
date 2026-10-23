@@ -37,7 +37,11 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
     61;  // 61: a mission offer carries its number, and a Command's acceptOffer names that
-         // number rather than a place on the board (#425);
+         // number rather than a place on the board (#425); and structure ownership (#468) -- a
+         // layout object's owner may be a corporation, "corp:<id>", and carries `ownerName`,
+         // the owner as a player reads it; a CorpAct "transfer" (value: a structure's id,
+         // system, pilot or ticker) hands one over and "take" (value, system) takes an
+         // abandoned one;
          // 60: a patrol's threshold and allow-list (#431 slice 12, #186) -- a CorpAct "patrol"
          // may carry them, and a CorpView's patrols show them;
          // 59: a corporation's own patrols (#431 slice 12) -- a CorpAct "patrol" names a
@@ -589,7 +593,11 @@ struct EntityLayout
     // Who put it there (#38): an account name, or empty for the world itself -- everything
     // the region and the data files make. Carried so a client can tell a player's structure
     // from the world's without asking; what an owner may do with it is the server's call.
+    // A structure may be a corporation's, "corp:<id>" (#468), or a faction's, "faction:<id>".
     std::string owner;
+    // ...as a player reads it (#468): the pilot, "Name [TICK]", a faction's name, or
+    // "abandoned" for a disbanded corporation's. Empty for the world's.
+    std::string ownerName;
     bool        looted = false;  // derelict: already searched -- a wreck changes once (#38)
     // derelict: what a hauler's wreck holds (#343), ResourceType as int (-1 nothing), and how
     // many; a search that takes part of it is a change, and comes as a delta.
@@ -817,9 +825,11 @@ struct ChatMembers
 // (ticker), "leave", "kick" (pilot), "role" (pilot, role: "ceo", "director", "member"); a
 // holder's policies (#431 slice 5): "tax" (value: a percentage, or "standard") and "docking"
 // (value: "own", "allies", "all"); and "police" (system, value: credits an hour, or "none"),
-// what it pays for police in a system it holds (#431 slice 11). Not a tick of anything, like
-// a chat line. The answer is a chat notice to the sender, and a CorpView to everyone whose
-// picture of it changed.
+// what it pays for police in a system it holds (#431 slice 11); "transfer" (value: a
+// structure's id; system: where it is, or empty for where the pilot is; pilot or ticker: to
+// whom), a structure handed over, and "take" (value, system), an abandoned one taken (#468). Not a
+// tick of anything, like a chat line. The answer is a chat notice to the sender, and a CorpView to
+// everyone whose picture of it changed.
 struct CorpAct
 {
     std::string verb;

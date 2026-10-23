@@ -75,7 +75,11 @@ bool Simulation::SetDefence(ClientSession& s, int id, const Defence& d)
             t = static_cast<Structure*>(e.get());
     t->SetDefence(d);
     MarkStaticChanged(st, id);  // everyone in the system sees it, and the save keeps it
-    owners_[t->GetOwner()];     // its owner's standings are noted from now on (StepOwners)
+    // Its owner's standings are noted from now on (StepOwners); a corporation's are its
+    // members', noted already.
+    std::string corp;
+    if (!Corps::CorpOwner(t->GetOwner(), corp))
+        owners_[t->GetOwner()];
     StepOwners();
 
     // What the mode will cost here, said once, where the owner reads it.
@@ -299,7 +303,7 @@ void Simulation::NoteAttack(const std::string& owner, const std::string& key,
     if (fresh)
     {
         const std::string what = name + " in " + SystemName(system) + " is under attack by " + by;
-        TellOwner(owner, "Your " + what, owner + "'s " + what, true);
+        TellOwner(owner, "Your " + what, OwnerName(owner) + "'s " + what, true);
     }
 }
 
@@ -312,15 +316,17 @@ void Simulation::EndAttack(const AttackEpisode& a, bool destroyed)
     what += destroyed
                 ? "; it was destroyed"
                 : "; it stands at " + std::to_string((int)(a.hull * 100.0f + 0.5f)) + "% hull";
-    TellOwner(a.owner, "Your " + what, a.owner + "'s " + what, false);
+    TellOwner(a.owner, "Your " + what, OwnerName(a.owner) + "'s " + what, false);
 }
 
 void Simulation::TellOwner(const std::string& owner, const std::string& yours,
                            const std::string& theirs, bool onlyOn, Ev::Kind kind)
 {
+    if (owner.empty() || Abandoned(owner))
+        return;  // a disbanded corporation's: nobody to tell (#468)
     const Corps::Corp* corp = corps_.Of(owner);
     // The corporation's journal, which its members read (#347): whoever is on now, and the
-    // rest at login. The owner is a member like any other.
+    // rest at login. The owner is a member like any other -- or the corporation itself (#468).
     if (corp != nullptr && !onlyOn)
     {
         const int seq = corps_.Record(owner, kind, theirs);

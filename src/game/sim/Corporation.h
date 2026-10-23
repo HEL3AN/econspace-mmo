@@ -50,6 +50,26 @@ enum class Docking
 const char* DockingName(Docking d);  // "own", "allies", "all"
 bool        DockingFrom(const std::string& name, Docking& out);
 
+// The owner a structure a corporation owns carries (#468): "corp:<id>". An account name has no
+// colon in it, and a faction's outpost carries "faction:<id>", so the three never meet. A
+// structure a member builds is the corporation's; one built before joining stays the pilot's
+// until they hand it over. One whose corporation no longer exists is abandoned: nobody's.
+inline constexpr const char* OWNER_PREFIX = "corp:";
+inline std::string           OwnerOf(const std::string& corpId)
+{
+    return OWNER_PREFIX + corpId;
+}
+// The corporation an owner names, whether it still exists or not; false for an account's, a
+// faction's or the world's.
+inline bool CorpOwner(const std::string& owner, std::string& corpId)
+{
+    const std::string prefix = OWNER_PREFIX;
+    if (owner.size() <= prefix.size() || owner.compare(0, prefix.size(), prefix) != 0)
+        return false;
+    corpId = owner.substr(prefix.size());
+    return true;
+}
+
 inline constexpr int    MEMBERS_MAX = 200;
 inline constexpr int    INVITES_MAX = 50;  // pending, per corporation
 inline constexpr double INVITE_SECONDS = 7.0 * 86400.0;
@@ -161,7 +181,9 @@ bool ValidTicker(const std::string& ticker, std::string& why);
 // none), the police it pays for in a system it holds (slice 11) -- which only the world can
 // answer, so Simulation::ApplyCorpAct is the way in for every verb; and "patrol" (system,
 // value: ships, 0 or "none" to stand them down; design; engage), the patrol it keeps in a
-// system it holds or has structures in (slice 12), which the world answers too.
+// system it holds or has structures in (slice 12), which the world answers too; and
+// "transfer" (system, value: the structure's id; pilot or ticker: to whom) and "take" (system,
+// value), a structure handed over or an abandoned one taken (#468), which the world answers.
 struct Act
 {
     std::string verb;
@@ -247,7 +269,8 @@ public:
     void DropLicence(const std::string& id, const std::string& system);
     int  MoneyRev() const { return moneyRev_; }
 
-    // The corporation `account` is in; null for none.
+    // The corporation `account` is in; null for none. Every lookup by account also takes a
+    // structure's owner (#468): "corp:<id>" is that corporation, while it exists.
     const Corp* Of(const std::string& account) const;
     const Corp* Find(const std::string& id) const;
     const Corp* FindTicker(const std::string& ticker) const;  // in any case
@@ -255,9 +278,14 @@ public:
     bool        SameCorp(const std::string& a, const std::string& b) const;
     std::string TickerOf(const std::string& account) const;  // empty: in none
     std::string IdOf(const std::string& account) const;      // empty: in none
-    // Whether `account` may manage `owner`'s structures: the owner, or the CEO or a director
-    // of the owner's corporation.
+    // Whether `account` may manage `owner`'s structures' rules of engagement: the owner, or the
+    // CEO or a director of the owner's corporation -- a member's own structure's, and the
+    // corporation's own.
     bool Manages(const std::string& account, const std::string& owner) const;
+    // Whether `account` acts as the owner of what `owner` owns (#468) -- dismantles, upgrades,
+    // hands it over: the pilot themself for a pilot's, the CEO or a director for a
+    // corporation's. Never anyone for a faction's, the world's or an abandoned one.
+    bool Commands(const std::string& account, const std::string& owner) const;
     // The corporations that have invited `account` and whose invite has not run out.
     std::vector<const Corp*>           InvitesFor(const std::string& account, double now) const;
     const std::map<std::string, Corp>& All() const { return corps_; }

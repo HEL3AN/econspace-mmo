@@ -159,7 +159,7 @@ void Game::ApplyLayoutDelta(const Proto::LayoutDelta& d)
 
     for (const Proto::EntityLayout& el : d.added)
         if (!el.owner.empty())
-            FlashMessage(TextFormat("%s built %s", el.owner.c_str(), el.name.c_str()));
+            FlashMessage(TextFormat("%s built %s", OwnerLabel(el).c_str(), el.name.c_str()));
 }
 
 void Game::BuildClientSnapshot()

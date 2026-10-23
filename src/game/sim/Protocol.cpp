@@ -170,6 +170,8 @@ json EntityLayoutsJson(const std::vector<Proto::EntityLayout>& v)
         // almost no wreck has been searched.
         if (!e.owner.empty())
             ej["own"] = e.owner;
+        if (!e.ownerName.empty() && e.ownerName != e.owner)
+            ej["ownn"] = e.ownerName;
         if (e.looted)
             ej["looted"] = true;
         if (e.cargo >= 0 && e.cargoAmount > 0)
@@ -225,6 +227,7 @@ std::vector<Proto::EntityLayout> ToEntityLayouts(const json& j, const char* key)
         e.dest = ej.value("dest", std::string());
         e.archetype = ej.value("arch", std::string());
         e.owner = ej.value("own", std::string());
+        e.ownerName = ej.value("ownn", e.owner);
         e.looted = ej.value("looted", false);
         const auto cargo = ej.find("cargo");
         if (cargo != ej.end() && cargo->is_array() && cargo->size() == 2 &&

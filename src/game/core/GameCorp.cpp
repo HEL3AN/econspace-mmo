@@ -4,6 +4,7 @@
 // friend's. Presentation only: who may do what is the server's (sim/Corporation.h), and the
 // answer to every verb is a notice in chat. Part of the Game class; see Game.cpp.
 #include "core/Game.h"
+#include "sim/Corporation.h"
 
 #include "ui/Theme.h"
 
@@ -97,7 +98,34 @@ bool Game::ManagesFor(const std::string& owner) const
     if (Lower(owner) == me)
         return true;
     const std::string role = corpView_.RoleOf(me);
-    return (role == "ceo" || role == "director") && corpView_.Has(Lower(owner));
+    return (role == "ceo" || role == "director") &&
+           (corpView_.Has(Lower(owner)) || OursOwner(owner));
+}
+
+bool Game::OursOwner(const std::string& owner) const
+{
+    if (owner.empty() || pilotName_.empty())
+        return false;
+    return Lower(owner) == Lower(pilotName_) ||
+           (!corpView_.id.empty() && owner == Corps::OwnerOf(corpView_.id));
+}
+
+bool Game::CommandsFor(const std::string& owner) const
+{
+    if (owner.empty() || pilotName_.empty())
+        return false;
+    if (Lower(owner) == Lower(pilotName_))
+        return true;
+    const std::string role = corpView_.RoleOf(Lower(pilotName_));
+    return (role == "ceo" || role == "director") && !corpView_.id.empty() &&
+           owner == Corps::OwnerOf(corpView_.id);
+}
+
+std::string Game::OwnerLabel(const Proto::EntityLayout& el) const
+{
+    if (!el.ownerName.empty() && el.ownerName != el.owner)
+        return el.ownerName;
+    return Tagged(el.owner);
 }
 
 void Game::SendCorpAct(const Proto::CorpAct& act)
@@ -125,6 +153,24 @@ bool Game::CorpCommand(const std::string& text)
     }
     else if (verb == "invite" || verb == "kick")
         act.pilot = Word(rest);
+    else if (verb == "transfer" || verb == "take")
+    {
+        // A structure handed over (#468): its id, then a pilot or a corporation's [TICKER];
+        // where the pilot is, as an id is a system's.
+        std::string to;
+        act.value = Word(rest, &to);
+        to = Trim(to);
+        if (verb == "transfer" && to.size() > 2 && to.front() == '[' && to.back() == ']')
+            act.ticker = to.substr(1, to.size() - 2);
+        else if (verb == "transfer")
+            act.pilot = to;
+        if (act.value.empty() || (verb == "transfer" && to.empty()))
+        {
+            ChatNotice("To hand a structure over: /corp transfer <structure id> <pilot>|[TICKER]; "
+                       "to take an abandoned one beside you: /corp take <structure id>");
+            return true;
+        }
+    }
     else if (verb == "join" || verb == "decline")
         act.ticker = Word(rest);
     else if (verb == "role")
@@ -180,7 +226,8 @@ bool Game::CorpCommand(const std::string& text)
                    "<ticker> | leave | kick <pilot> | role <pilot> ceo|director|member | tax "
                    "<percent>|standard | docking own|allies|all | police <system> <cr an "
                    "hour>|none | patrol <system> <ships>|none [design=<name>] "
-                   "[engage=<mode>]; /c <text> talks to the corporation");
+                   "[engage=<mode>] | transfer <structure id> <pilot>|[TICKER] | take "
+                   "<structure id>; /c <text> talks to the corporation");
         return true;
     }
     SendCorpAct(act);
@@ -570,4 +617,40 @@ void Game::DrawLicenceHere(Ui::Layout& L)
     L.Tooltip("licence", "Building here takes the holder's licence, a rent taken each week. "
                          "Unpaid a day past due, what you have here trespasses: anyone may shoot "
                          "it, and the holder may evict it.");
+}
+
+void Game::DrawTransfer(Ui::Layout& L, const Entity& structure)
+{
+    using Ui::Box;
+    using Ui::TextStyle;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    if (!CommandsFor(structure.GetOwner()))
+        return;
+    L.Divider();
+    L.Text("HAND IT OVER", TextStyle::Label());
+    L.Row(Box().GrowX().Gap(t.metrics.gap).Align(Ui::Align::Start, Ui::Align::Center),
+          [&]
+          {
+              Ui::TextFieldOptions opt;
+              opt.placeholder = "pilot or ticker";
+              opt.maxLength = 32;
+              L.TextField("transfer_to", structureTransfer_, opt);
+              const std::string to = Trim(structureTransfer_);
+              Proto::CorpAct    act;
+              act.verb = "transfer";
+              act.value = std::to_string(structure.GetId());
+              if (L.Button("transfer_pilot", "To pilot", false, !to.empty()))
+                  act.pilot = to;
+              if (L.Button("transfer_corp", "To corporation", false, !to.empty()))
+                  act.ticker = to;
+              if (!act.pilot.empty() || !act.ticker.empty())
+              {
+                  SendCorpAct(act);
+                  structureTransfer_.clear();
+              }
+          });
+    L.Tooltip("transfer_pilot",
+              "Hand it to a pilot who is online now, or to a corporation by its ticker. Its "
+              "licence and what is owed on it, its storage and its rules of engagement go with "
+              "it; the holder of this system must license the new owner, or it stays yours.");
 }

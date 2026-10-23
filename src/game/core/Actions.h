@@ -45,6 +45,7 @@ enum class Verb
     Dismantle,  // take one's own structure apart for a refund (#39)
     Refit,      // fit the ship being flown differently, at a shipyard (#279)
     Defence,    // set one's own armed structure's rules of engagement (#340)
+    Take,       // make an abandoned structure one's own (#468)
     // The named design library (#279 fitting, step 3).
     SaveDesign,    // keep the fit drawn up under a name
     ApplyDesign,   // refit the ship being flown to a saved design, at a shipyard
@@ -90,7 +91,9 @@ struct Target
     // ("5 Iron, 1 Crystal"; empty when that is not known). A pilot's ship: the viewer's own.
     bool        mine = false;
     std::string refund;
-    bool        armed = false;  // it has guns, or will once built: it has rules of engagement
+    // A structure a disbanded corporation left (#468): anyone's to take, or to shoot down.
+    bool abandoned = false;
+    bool armed = false;  // it has guns, or will once built: it has rules of engagement
     // A structure that takes this pilot at its dock (#433): a market, or one's own outpost.
     bool dockable = false;
     // One's own finished structure: what it can be built into (#433), from UpgradesOnto.

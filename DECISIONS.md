@@ -837,3 +837,41 @@ rented out, are still to be designed.
 market fee (#433, #438), so ownership is more than a label.
 
 **Cost.** Until that design lands, a structure stays with whoever built it.
+
+## 2026-10-23 — Whose a structure is, and how it changes hands (#468)
+
+**Decision.** The owner's answers (comment on #468): what a member builds is the
+corporation's and stays with it when they leave; what a pilot built before joining stays
+theirs until they hand it over. One verb, a `CorpAct` "transfer", hands a structure from
+pilot or corporation to pilot or corporation; a pilot hands over their own, a corporation's
+is handed over by its CEO or a director. The licence and what is owed on it move to the new
+party, whose leave is asked again; goods, rules of engagement and attack notices stay with
+the structure. A disbanded corporation's structures are abandoned: no rent, no patrols,
+anyone may destroy or take them.
+
+Where the answers left a detail free, the build decided (for review):
+- **The owner string carries the corporation**: `corp:<id>`, beside a faction's
+  `faction:<id>`. Every corporation lookup by account reads it, so trust, patrols, docking
+  and the rules of engagement needed no change. An older world's member structures become
+  the corporation's on load (`Save::WORLD_VERSION` 18), which is what they were in effect.
+- **Taking an abandoned structure** is building's rules: from a ship in space within its
+  blueprint's reach, by the holder's leave and licence, for the taker's corporation if they
+  are in one. Its goods go with it.
+- **A transfer to a pilot** needs them online, as an invite does: a structure is not handed
+  to a name nobody answers to.
+- **A corporation's structure's crime** -- a battery firing first where that is a crime --
+  is charged to its CEO.
+- **The per-account cap** is per member for a corporation: it may have as many structures
+  standing as its members could alone.
+- **Building onto** a corporation's structure is any member's; **dismantling** it, the CEO's
+  or a director's, since what comes back goes to the dismantler's hold.
+- **A pilot's own structure** in their corporation's system needs no licence; its market fee
+  still goes to the treasury and its influence counts for the corporation, as before (T1, T4).
+- **An abandoned structure** holds fire, takes no market fee for anyone, and tells nobody of
+  an attack.
+
+**Why.** One owner field keeps the save, the wire and every reader of it whole. Taking by
+building's rules adds no new gate to learn.
+
+**Cost.** `PROTO_VERSION` 61: the layout carries `ownerName`, the owner as a player reads it,
+since a client cannot name another corporation from its id.

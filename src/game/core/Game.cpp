@@ -1009,15 +1009,18 @@ Actions::Target Game::ActionTarget(const Entity& e) const
     if (t.kind == EntityKind::Structure)
     {
         const Structure& s = static_cast<const Structure&>(e);
-        t.mine = !pilotName_.empty() && s.GetOwner() == pilotName_;
+        // One's own, or one's corporation's (#468): what the server lets a member build onto.
+        t.mine = OursOwner(s.GetOwner());
+        const auto el = layout_.byId.find(e.GetId());
+        t.abandoned = el != layout_.byId.end() && el->second.ownerName == "abandoned";
         const Archetype* built = Archetypes::Find(s.GetBuilds());
         t.armed =
             built != nullptr && built->Has(Component::Defensive) && built->weaponDamage > 0.0f;
         // A dock the server would take this pilot at (#433, #438), by the server's own rule: a
         // market's, or one of its owner's side's -- theirs, or a corporation mate's, which the
         // client knows from its corporation's view.
-        const bool corpMate =
-            !pilotName_.empty() && corpView_.Has(pilotName_) && corpView_.Has(s.GetOwner());
+        const bool corpMate = !pilotName_.empty() && corpView_.Has(pilotName_) &&
+                              (corpView_.Has(s.GetOwner()) || OursOwner(s.GetOwner()));
         t.dockable = s.DocksPilot(pilotName_, corpMate);
         if (const Blueprint* bp = s.GetBlueprint())
         {
@@ -1170,6 +1173,14 @@ void Game::Perform(const Actions::Action& a, int targetId, Vector2 point)
         case Verb::Dismantle:
             cmd_.dismantleId = target->GetId();  // the server checks reach and ownership
             break;
+        case Verb::Take:  // an abandoned structure (#468): the server checks reach and leave
+        {
+            Proto::CorpAct act;
+            act.verb = "take";
+            act.value = std::to_string(target->GetId());
+            SendCorpAct(act);
+            break;
+        }
         case Verb::Defence:  // the selected-item window holds the rules and their cost
             selected_ = target;
             desk_.SetOpen(WIN_TARGET, true);
