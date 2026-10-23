@@ -925,10 +925,35 @@ void Game::DrawGalaxyMap()
         claimed.push_back({ q.x - r, q.y - r, 2.0f * r, 2.0f * r });
     }
 
+    // What building in a system takes (#509), as its detail says it: whose leave and what it
+    // costs a week; `kind` 1 for one the recipient's corporation holds, 2 for one anyone builds
+    // in. Bought where it is granted, so the map only states the terms.
+    auto buildTerms = [&](const std::string& id, int& kind) -> std::string
+    {
+        kind = 0;
+        for (const Proto::GalaxySystemStat& g : galaxyState_.systems)
+            if (g.id == id)
+            {
+                if (!g.holder.empty() && g.holder == corpView_.id)
+                {
+                    kind = 1;
+                    return "Licence: none, your corporation's";
+                }
+                if (!g.licenceBy.empty())
+                    return TextFormat("Licence: %s, %.0f cr a week", g.licenceBy.c_str(),
+                                      g.licenceRent);
+                kind = 2;
+                return "Licence: none needed";
+            }
+        return std::string();
+    };
+
     // System nodes.
     for (const WorldLoader::SystemInfo* sp : order)
     {
         const WorldLoader::SystemInfo& s = *sp;
+        int                            termsKind = 0;
+        const std::string              terms = buildTerms(s.id, termsKind);
         Vector2                        p = toScreen(s.mapPos);
         bool                           cur = (s.id == activeSys);
         const bool                     hovered = CheckCollisionPointCircle(m, p, u(12.0f));
@@ -960,10 +985,11 @@ void Game::DrawGalaxyMap()
             float nameW = (float)Ui::TextWidth(s.name.c_str(), namePx);
             if (!s.designation.empty())
                 nameW += u(8.0f) + (float)Ui::TextWidth(s.designation.c_str(), notePx);
-            const float     detailW = fmaxf(nameW, u(s.charted ? 190.0f : 80.0f));
+            const float     termsW = s.charted ? (float)Ui::TextWidth(terms.c_str(), notePx) : 0.0f;
+            const float     detailW = fmaxf(fmaxf(nameW, termsW), u(s.charted ? 190.0f : 80.0f));
             const int       lines = !s.charted ? 1
-                                    : cur      ? 5
-                                               : (Obs::ChartsOf(s).empty() && !s.drifted ? 3 : 4);
+                                    : cur      ? 6
+                                               : (Obs::ChartsOf(s).empty() && !s.drifted ? 4 : 5);
             const float     bottom = (float)lineY(lines) + line - nameY;
             const Rectangle nameBox{ p.x + gapX, nameY, nameW, (float)namePx + u(2.0f) };
             const Rectangle leftBox{ p.x - gapX - nameW, nameY, nameW, (float)namePx + u(2.0f) };
@@ -979,10 +1005,10 @@ void Game::DrawGalaxyMap()
                 // covers fewest. Off the picture counts as covering everything.
                 auto covered = [&](Rectangle r)
                 {
-                    // The width is a generous guess at the longest line, so the right edge
-                    // gives it some of that back.
+                    // The width is a guess at the longest line (what building takes is
+                    // measured, #509), so the right edge gives it a little of that back.
                     if (r.x < area.x || r.y < area.y ||
-                        r.x + r.width > area.x + area.width + u(60.0f) ||
+                        r.x + r.width > area.x + area.width + u(12.0f) ||
                         r.y + r.height > area.y + area.height)
                         return 1000;
                     int n = 0;
@@ -1125,16 +1151,21 @@ void Game::DrawGalaxyMap()
             if (front)
                 Ui::Text("  front open", (int)lx + Ui::TextWidth(holder.c_str(), notePx), lineY(2),
                          notePx, t.colors.warn);
+            // What building here takes (#509).
+            Ui::Text(terms.c_str(), (int)lx, lineY(3), notePx,
+                     termsKind == 1   ? t.standing.friendly
+                     : termsKind == 2 ? Ui::TEXT_DIM
+                                      : Ui::TEXT);
             // The node ring is tinted with the controller's color.
             DrawCircleLines((int)p.x, (int)p.y, ring, Fade(FactionColor(controller), 0.7f));
         }
         // What stands there (#431 slice 14): live where this pilot, a corporation mate or a
         // structure of theirs is; elsewhere as last seen, dimmed, with how long ago.
         if (detail)
-            Ui::Text(Obs::DescribeObserved(s, snapshot_.time).c_str(), (int)lx, lineY(3), notePx,
+            Ui::Text(Obs::DescribeObserved(s, snapshot_.time).c_str(), (int)lx, lineY(4), notePx,
                      s.observedLive ? Ui::TEXT : Fade(Ui::TEXT_DIM, 0.75f));
         if (cur)
-            Ui::Text("you are here", (int)lx, lineY(4), notePx, Ui::TEXT_DIM);
+            Ui::Text("you are here", (int)lx, lineY(5), notePx, Ui::TEXT_DIM);
         // ...and whose charts it is on, when they are not the public ones (#431).
         const char* whose = s.knownBy == "own"    ? "  -- your charts only"
                             : s.knownBy == "corp" ? "  -- your corporation's charts"
@@ -1144,7 +1175,7 @@ void Game::DrawGalaxyMap()
         if (detail && s.drifted)  // ...and that its region drifted away (#431 slice 15)
             charts += (charts.empty() ? "" : ", ") + Obs::DriftOf(s);
         if (!charts.empty())
-            Ui::Text(TextFormat("%s%s", charts.c_str(), whose), (int)lx, lineY(cur ? 5 : 4), notePx,
+            Ui::Text(TextFormat("%s%s", charts.c_str(), whose), (int)lx, lineY(cur ? 6 : 5), notePx,
                      s.drifted ? t.colors.warn : Ui::TEXT_DIM);
     }
 

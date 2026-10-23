@@ -523,6 +523,12 @@ Proto::GalaxyState Simulation::GalaxyStats() const
             g.holderName = c->name;
             g.fee = (float)FeeRateIn(kv.second);
         }
+        // What building here takes (#509): whose leave, and the rent a week.
+        if (const std::string h = LicenceHolder(kv.second); !h.empty())
+        {
+            g.licenceBy = HolderName(h);
+            g.licenceRent = LicenceRent(kv.second);
+        }
         gs.systems.push_back(std::move(g));
     }
     gs.events = events_;

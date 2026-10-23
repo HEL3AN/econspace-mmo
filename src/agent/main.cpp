@@ -340,6 +340,13 @@ std::string DescribeGalaxy()
                                   std::round(g.FeeOr(0.0f) * 1000.0f) / 10.0f);
                     line += buf;
                 }
+                // What building here takes (#509), bought where it is granted.
+                if (!g.licenceBy.empty())
+                {
+                    std::snprintf(buf, sizeof(buf), "   building: licence from %s, %.0f cr a week",
+                                  g.licenceBy.c_str(), g.licenceRent);
+                    line += buf;
+                }
                 // The front line (#431 D3): your corporation may lay a claim or besiege here.
                 if (g.front)
                     line += "   front open to your corporation";
@@ -1939,8 +1946,9 @@ std::vector<Tool> BuildTools()
           "Buy, or renew a week ahead, the licence to build in the system you are in (#431). A "
           "system a faction or a corporation holds takes its leave and a weekly rent: a faction "
           "licenses those whose standing with it is high enough -- a corporation's is its "
-          "members' together -- and sells it docked at one of its stations there; a "
-          "corporation by its docking policy, anywhere in its system. Paid from your money, or "
+          "members' together -- and a corporation by its docking policy. It is bought where it "
+          "is granted (#509): docked at one of the holder's stations there, or at a structure "
+          "of the holding corporation; a refused build says where. Paid from your money, or "
           "for your corporation from its treasury by its CEO or a director, and taken each week "
           "from then on. Unpaid a day past due, what you have there trespasses: anyone may shoot "
           "it, and the faction may evict it. observe says what building here takes.",

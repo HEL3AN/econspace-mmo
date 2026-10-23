@@ -850,13 +850,22 @@ public:
                 std::string& why) const;
     // Why `account` may not build in `st` now for want of leave or a licence; empty: free to.
     std::string LicenceProblem(const std::string& account, const SystemState& st) const;
+    // What a licence to build in `st` costs for a period (#509): the system's rent, set by the
+    // rules (world_rules.json -> licences) and what the system is worth.
+    double LicenceRent(const SystemState& st) const;
+    // Where the holder sells a licence in `st` (#509): a faction's station, or a structure of
+    // the holding corporation -- where a licence is bought, as it is granted. With `dockedId`,
+    // only that entity, and only when it is one; without, the first there is (to name it).
+    const Entity* LicenceDock(const SystemState& st, const std::string& holder,
+                              int dockedId = 0) const;
     // The verb (Command::buyLicence): a period's rent, paid now, for the system the pilot is
     // in. A licence still paid for is extended a period from where it runs to.
     bool BuyLicence(ClientSession& s);
-    // What building in the pilot's system takes, for their snapshot; a corporation's licences
-    // for its members' view.
+    // What building in the pilot's system takes, for their snapshot; the licences a party
+    // holds -- a corporation's, or a pilot's in none (`party` as PartyOf says) -- for their
+    // corporation view (#509).
     Proto::LicenceView              LicenceViewFor(const ClientSession& s) const;
-    std::vector<Proto::LicenceView> CorpLicences(const std::string& corpId) const;
+    std::vector<Proto::LicenceView> PartyLicences(const std::string& party) const;
     // Once a pass: rent due is taken or goes unpaid, unpaid becomes lapsed after the grace, a
     // licence for a system the party has nothing in ends with its period, and every player
     // structure in a held system is told where it stands (Structure::SetLicence).

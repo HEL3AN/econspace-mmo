@@ -75,7 +75,7 @@ cmake --build build-release -j 8
 ## Where it stands
 
 - **0.1 Anchor** was tagged on 2026-10-17 (GitHub Releases and itch.io). `main` has moved far
-  past it: `PROTO_VERSION` 65, `Save::WORLD_VERSION` 18, `Save::ACCOUNT_VERSION` 9,
+  past it: `PROTO_VERSION` 67, `Save::WORLD_VERSION` 18, `Save::ACCOUNT_VERSION` 9,
   `Gen::GENERATOR_VERSION` 10, `Gen::SKELETON_VERSION` 1. Clients of 0.1 cannot join, and so
   much of the world has changed that **the next playtest starts on a fresh world**.
 - **World generation v2** (#342) slices S1-S9 are built; S10 (scale to 10,000) is not.

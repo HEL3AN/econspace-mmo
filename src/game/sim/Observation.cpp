@@ -1139,8 +1139,10 @@ std::string Describe(const View& view, Detail detail)
     {
         const Proto::LicenceView& l = p.licence;
         const std::string         whose = l.party == "you" ? "yours" : l.party + "'s";
-        out += Fmt("       building here takes a licence from %s, %.0f cr every %.0f days; %s: ",
-                   l.holder.c_str(), l.rent, l.periodDays, whose.c_str());
+        out += Fmt("       building here takes a licence from %s, %.0f cr every %.0f days (sold "
+                   "docked at %s); %s: ",
+                   l.holder.c_str(), l.rent, l.periodDays,
+                   l.where.empty() ? "its stations" : l.where.c_str(), whose.c_str());
         out += l.state == "licensed" ? Fmt("paid, %.0fh more", (l.until - snap.time) / 3600.0)
                : l.state == "unpaid"
                    ? Fmt("UNPAID, lapses in %.0fh", (l.until - snap.time) / 3600.0)
