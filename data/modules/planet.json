@@ -200,6 +200,36 @@
             ]
         },
         {
+            "id": "planet.continent",
+            "note": "On a planet: a landmass. Lobes of different sizes under a soft shelf of shallow water, with the sea biting bays out of its coast and forest and desert blurred across it -- never one ellipse, never a row of equal circles.",
+            "tags": ["surface", "terrain", "land"],
+            "sockets": ["sphere"],
+            "variants": [
+                { "id": "sprawl", "shape": { "vars": { "land": [[112, 128, 82], [122, 132, 86], [104, 122, 78]], "dry": [[168, 150, 104], [178, 158, 112]] }, "parts": [
+                    {"form": "disc", "radius": [1.05, 1.15], "role": "trim", "tint": [[120, 190, 205], [110, 180, 200]], "alpha": [0.35, 0.45], "soft": true},
+                    {"form": "disc", "radius": [0.5, 0.58], "role": "hull", "tint": "$land"},
+                    {"form": "disc", "at": [[0.32, 0.42], [0.12, 0.26]], "radius": [0.34, 0.42], "role": "hull", "tint": "$land"},
+                    {"form": "disc", "at": [[-0.48, -0.36], [-0.2, -0.04]], "radius": [0.3, 0.38], "role": "hull", "tint": "$land"},
+                    {"form": "disc", "at": [[0.0, 0.2], [-0.52, -0.4]], "radius": [0.2, 0.27], "role": "hull", "tint": "$land"},
+                    {"form": "disc", "at": [[-0.3, -0.1], [0.38, 0.52]], "radius": [0.16, 0.22], "role": "hull", "tint": "$land", "chance": 0.8},
+                    {"form": "disc", "at": [[0.58, 0.7], [-0.3, -0.15]], "radius": [0.1, 0.15], "role": "hull", "tint": "$land", "row": {"count": [2, 3], "step": [0.14, -0.12], "taper": 0.7}},
+                    {"form": "disc", "at": [[0.12, 0.3], [0.5, 0.62]], "radius": [0.16, 0.22], "role": "hull"},
+                    {"form": "disc", "at": [[-0.72, -0.6], [0.12, 0.3]], "radius": [0.12, 0.18], "role": "hull", "chance": 0.7},
+                    {"form": "disc", "at": [[-0.25, 0.05], [-0.15, 0.1]], "radius": [0.32, 0.42], "role": "hull", "tint": "$dry", "alpha": [0.5, 0.7], "soft": true},
+                    {"form": "disc", "at": [[0.2, 0.4], [0.05, 0.25]], "radius": [0.22, 0.3], "role": "hull", "tint": [[84, 112, 64], [76, 104, 60]], "alpha": [0.55, 0.7], "soft": true},
+                    {"form": "disc", "at": [[-0.1, 0.1], [-0.1, 0.1]], "radius": [0.1, 0.14], "role": "hull", "tint": [[150, 140, 130], [170, 165, 160]], "alpha": 0.6, "soft": true, "chance": 0.6}
+                ]}},
+                { "id": "long", "shape": { "vars": { "n": [5, 7], "s": [0.26, 0.32], "b": [-16, 16], "land": [[112, 128, 82], [122, 132, 86], [130, 126, 88]] }, "parts": [
+                    {"form": "disc", "radius": [0.42, 0.5], "role": "trim", "tint": [[120, 190, 205], [110, 180, 200]], "alpha": [0.3, 0.4], "soft": true, "row": {"count": "$n", "step": ["$s", 0.0], "turn": "$b", "centred": true}},
+                    {"form": "disc", "radius": [0.24, 0.3], "role": "hull", "tint": "$land", "row": {"count": "$n", "step": ["$s", 0.0], "turn": "$b", "taper": [0.82, 0.92], "centred": true}},
+                    {"form": "disc", "at": [0.12, 0.13], "radius": [0.16, 0.22], "role": "hull", "tint": "$land", "row": {"count": "$n", "step": ["$s", 0.0], "turn": "$b", "taper": [0.7, 0.85], "centred": true}},
+                    {"form": "disc", "at": [[-0.3, 0.3], [-0.32, -0.24]], "radius": [0.1, 0.14], "role": "hull", "row": {"count": [1, 2], "step": [0.5, 0.05]}},
+                    {"form": "disc", "at": [[-0.4, 0.0], [0.0, 0.1]], "radius": [0.3, 0.38], "role": "hull", "tint": [[84, 112, 64], [76, 104, 60]], "alpha": [0.5, 0.65], "soft": true},
+                    {"form": "disc", "at": [[0.2, 0.6], [-0.05, 0.1]], "radius": [0.26, 0.34], "role": "hull", "tint": [[168, 150, 104], [178, 158, 112]], "alpha": [0.45, 0.6], "soft": true}
+                ]}}
+            ]
+        },
+        {
             "id": "planet.sea",
             "note": "On a planet: open water with a coast. The shore is a lighter disc just larger than the water; a shelf is a paler blue between them.",
             "tags": ["surface", "water"],
@@ -270,19 +300,20 @@
             "tags": ["surface", "weather"],
             "sockets": ["sphere"],
             "variants": [
-                { "id": "cyclone", "shape": { "vars": { "n": [9, 11], "tw": [14, 17], "ex": [-0.03, 0.03] }, "parts": [
-                    {"form": "disc", "at": [0.04, 0.0], "radius": [0.48, 0.52], "role": "panel", "alpha": 0.14, "row": {"count": 2, "step": [0.0, 0.28], "centred": true}},
-                    {"form": "disc", "at": [0.15, 0.0], "radius": 0.17, "role": "trim", "alpha": 1.0, "row": {"count": "$n", "step": [0.05, 0.13], "turn": "$tw", "taper": 0.9, "taperStep": true}},
-                    {"form": "disc", "at": [-0.15, 0.0], "radius": 0.17, "role": "trim", "alpha": 1.0, "row": {"count": "$n", "step": [-0.05, -0.13], "turn": "$tw", "taper": 0.9, "taperStep": true}},
-                    {"form": "disc", "radius": [0.2, 0.22], "role": "trim", "alpha": 1.0},
-                    {"form": "disc", "at": ["$ex", "$ex"], "radius": [0.05, 0.065], "role": "panel", "alpha": 0.7}
+                { "id": "cyclone", "shape": { "vars": { "n": [12, 15], "tw": [20, 26], "ex": [-0.03, 0.03] }, "parts": [
+                    {"form": "disc", "radius": [0.95, 1.05], "role": "trim", "alpha": [0.25, 0.32], "soft": true},
+                    {"form": "disc", "at": [0.12, 0.0], "radius": 0.2, "role": "trim", "alpha": 0.55, "soft": true, "row": {"count": "$n", "step": [0.04, 0.1], "turn": "$tw", "taper": 0.93, "taperStep": true}},
+                    {"form": "disc", "at": [-0.12, 0.0], "radius": 0.2, "role": "trim", "alpha": 0.55, "soft": true, "row": {"count": "$n", "step": [-0.04, -0.1], "turn": "$tw", "taper": 0.93, "taperStep": true}},
+                    {"form": "disc", "radius": [0.3, 0.34], "role": "trim", "alpha": 0.8, "soft": true},
+                    {"form": "disc", "at": ["$ex", "$ex"], "radius": [0.06, 0.08], "role": "panel", "alpha": 0.75, "soft": true}
                 ]}},
-                { "id": "vortex", "shape": { "vars": { "cx": [0.06, 0.16], "cy": [-0.04, 0.04], "tw": [4, 7], "n": [10, 13], "core": [[196, 128, 92], [210, 160, 118], [226, 204, 168]] }, "parts": [
-                    {"form": "disc", "radius": [0.42, 0.46], "role": "panel", "alpha": 0.16, "row": {"count": 3, "step": [0.32, 0.0], "centred": true}},
-                    {"form": "disc", "at": [0.2, -0.2], "radius": 0.11, "role": "trim", "alpha": 0.6, "row": {"count": "$n", "step": [0.08, 0.0], "turn": "$tw", "taper": 0.92, "taperStep": true}},
-                    {"form": "disc", "at": [-0.2, 0.2], "radius": 0.11, "role": "trim", "alpha": 0.6, "row": {"count": "$n", "step": [-0.08, 0.0], "turn": "$tw", "taper": 0.92, "taperStep": true}},
-                    {"form": "disc", "at": [-0.02, 0.0], "radius": [0.26, 0.29], "role": "trim", "alpha": 1.0, "row": {"count": 3, "step": [0.2, 0.0], "centred": true}},
-                    {"form": "disc", "at": ["$cx", "$cy"], "radius": [0.15, 0.17], "role": "hull", "tint": "$core", "alpha": 1.0, "row": {"count": 3, "step": [0.08, 0.0], "centred": true}}
+                { "id": "vortex", "shape": { "vars": { "cy": [-0.03, 0.03], "core": [[196, 128, 92], [210, 160, 118], [226, 204, 168]] }, "parts": [
+                    {"form": "disc", "at": [[-0.05, 0.05], 0.0], "radius": [0.42, 0.48], "role": "trim", "alpha": [0.35, 0.45], "soft": true, "row": {"count": 5, "step": [0.26, 0.0], "taper": [0.9, 1.0], "centred": true}},
+                    {"form": "disc", "at": [-0.85, [-0.22, -0.16]], "radius": 0.2, "role": "trim", "alpha": 0.3, "soft": true, "row": {"count": [6, 8], "step": [-0.09, -0.02], "turn": [-6, -2], "taper": 0.88}},
+                    {"form": "disc", "at": [0.85, [0.16, 0.22]], "radius": 0.2, "role": "trim", "alpha": 0.3, "soft": true, "row": {"count": [6, 8], "step": [0.09, 0.02], "turn": [-6, -2], "taper": 0.88}},
+                    {"form": "disc", "at": [0.0, "$cy"], "radius": [0.3, 0.34], "role": "trim", "alpha": 0.85, "soft": true, "row": {"count": 3, "step": [0.2, 0.0], "centred": true}},
+                    {"form": "disc", "at": [0.0, "$cy"], "radius": [0.22, 0.26], "role": "hull", "tint": "$core", "alpha": 1.0, "soft": true, "row": {"count": 3, "step": [0.14, 0.0], "centred": true}},
+                    {"form": "disc", "at": [[-0.06, 0.06], "$cy"], "radius": [0.1, 0.13], "role": "hull", "tint": "$core", "alpha": 0.9, "row": {"count": 2, "step": [0.1, 0.0], "centred": true}}
                 ]}},
                 { "id": "thunderhead", "shape": [
                     {"form": "disc", "at": [-0.3, 0.0], "radius": [0.5, 0.6], "role": "trim", "tint": [225, 228, 235], "alpha": 0.55},
@@ -299,28 +330,29 @@
         },
         {
             "id": "planet.cloud",
-            "note": "On a planet: weather that drifts. White and translucent, so the ground shows through; a set of overlapping discs, never one.",
+            "note": "On a planet: weather that drifts. White and soft-edged, thick in the middle and thinning to nothing, so the ground shows through at the edges; puffs of different sizes, overlapping, never a row of equal discs.",
             "tags": ["surface", "weather"],
             "sockets": ["sphere"],
             "variants": [
                 { "id": "patch", "shape": [
-                    {"form": "disc", "at": [-0.45, 0.1], "radius": [0.38, 0.48], "role": "trim", "tint": [240, 242, 246], "alpha": [0.35, 0.5]},
-                    {"form": "disc", "at": [0.1, -0.1], "radius": [0.45, 0.55], "role": "trim", "tint": [245, 246, 250], "alpha": [0.4, 0.55]},
-                    {"form": "disc", "at": [0.6, 0.12], "radius": [0.3, 0.4], "role": "trim", "tint": [238, 240, 245], "alpha": [0.3, 0.45]},
-                    {"form": "disc", "at": [-0.05, 0.35], "radius": [0.25, 0.32], "role": "trim", "tint": [240, 242, 246], "alpha": 0.35, "chance": 0.6}
+                    {"form": "disc", "at": [[-0.55, -0.4], [0.0, 0.2]], "radius": [0.5, 0.62], "role": "trim", "tint": [240, 242, 246], "alpha": [0.6, 0.75], "soft": true},
+                    {"form": "disc", "at": [[0.0, 0.2], [-0.2, -0.05]], "radius": [0.6, 0.72], "role": "trim", "tint": [245, 246, 250], "alpha": [0.7, 0.85], "soft": true},
+                    {"form": "disc", "at": [[0.55, 0.7], [0.05, 0.25]], "radius": [0.38, 0.5], "role": "trim", "tint": [238, 240, 245], "alpha": [0.55, 0.7], "soft": true},
+                    {"form": "disc", "at": [[-0.15, 0.1], [0.3, 0.45]], "radius": [0.28, 0.36], "role": "trim", "tint": [248, 249, 252], "alpha": 0.6, "soft": true, "chance": 0.6},
+                    {"form": "disc", "at": [[-0.1, 0.15], [-0.15, 0.0]], "radius": [0.22, 0.3], "role": "trim", "tint": [252, 252, 254], "alpha": 0.55, "soft": true}
                 ]},
                 { "id": "streak", "shape": [
-                    {"form": "disc", "at": [-1.0, 0.1], "radius": [0.22, 0.26], "role": "trim", "tint": [240, 242, 246], "alpha": [0.04, 0.06], "row": {"count": [18, 22], "step": [0.1, -0.012], "turn": [-2, 2], "taper": [0.96, 0.98]}},
-                    {"form": "disc", "at": [-0.6, -0.22], "radius": [0.13, 0.16], "role": "trim", "tint": [240, 242, 246], "alpha": 0.06, "row": {"count": [10, 16], "step": [0.07, -0.01], "turn": [-2, 2], "taper": 0.97}, "chance": 0.7}
+                    {"form": "disc", "at": [-1.0, 0.1], "radius": [0.3, 0.36], "role": "trim", "tint": [240, 242, 246], "alpha": [0.22, 0.28], "soft": true, "row": {"count": [12, 15], "step": [0.15, -0.018], "turn": [-2, 2], "taper": [0.94, 0.97]}},
+                    {"form": "disc", "at": [-0.6, -0.26], "radius": [0.18, 0.22], "role": "trim", "tint": [245, 246, 250], "alpha": 0.25, "soft": true, "row": {"count": [7, 10], "step": [0.11, -0.014], "turn": [-2, 2], "taper": 0.95}, "chance": 0.7}
                 ]},
                 { "id": "cumulus", "shape": [
-                    {"form": "disc", "at": [-0.6, 0.0], "radius": [0.16, 0.22], "role": "trim", "tint": [245, 246, 250], "alpha": 0.6, "row": {"count": [3, 4], "step": [0.38, 0.12]}},
-                    {"form": "disc", "at": [-0.4, -0.5], "radius": [0.12, 0.18], "role": "trim", "tint": [245, 246, 250], "alpha": 0.55, "row": {"count": [2, 4], "step": [0.42, 0.06]}},
-                    {"form": "disc", "at": [-0.2, 0.55], "radius": [0.1, 0.16], "role": "trim", "tint": [245, 246, 250], "alpha": 0.5, "row": {"count": [2, 3], "step": [0.4, -0.08]}, "chance": 0.7}
+                    {"form": "disc", "at": [-0.6, 0.0], "radius": [0.26, 0.34], "role": "trim", "tint": [245, 246, 250], "alpha": 0.8, "soft": true, "row": {"count": [3, 4], "step": [0.36, 0.1], "taper": [0.75, 1.0]}},
+                    {"form": "disc", "at": [-0.4, -0.45], "radius": [0.18, 0.26], "role": "trim", "tint": [248, 249, 252], "alpha": 0.75, "soft": true, "row": {"count": [2, 4], "step": [0.4, 0.06], "taper": [0.7, 1.0]}},
+                    {"form": "disc", "at": [-0.2, 0.5], "radius": [0.14, 0.22], "role": "trim", "tint": [245, 246, 250], "alpha": 0.7, "soft": true, "row": {"count": [2, 3], "step": [0.38, -0.08], "taper": 0.8}, "chance": 0.7}
                 ]},
-                { "id": "swirl", "shape": { "vars": { "n": [8, 12], "s": [0.2, 0.24], "t": [14, 22], "tp": [0.9, 0.96] }, "parts": [
-                    {"form": "disc", "radius": 0.28, "role": "trim", "tint": [242, 244, 248], "alpha": [0.3, 0.4], "row": {"count": "$n", "step": ["$s", 0.0], "turn": "$t", "taper": "$tp", "centred": true}},
-                    {"form": "disc", "at": [-0.02, 0.1], "radius": 0.14, "role": "trim", "tint": [248, 249, 252], "alpha": 0.35, "row": {"count": "$n", "step": ["$s", 0.0], "turn": "$t", "taper": "$tp", "centred": true}, "chance": 0.7}
+                { "id": "swirl", "shape": { "vars": { "n": [7, 10], "s": [0.22, 0.26], "t": [16, 24], "tp": [0.84, 0.9] }, "parts": [
+                    {"form": "disc", "radius": 0.36, "role": "trim", "tint": [242, 244, 248], "alpha": [0.45, 0.55], "soft": true, "row": {"count": "$n", "step": ["$s", 0.0], "turn": "$t", "taper": "$tp", "centred": true}},
+                    {"form": "disc", "at": [-0.02, 0.1], "radius": 0.2, "role": "trim", "tint": [248, 249, 252], "alpha": 0.4, "soft": true, "row": {"count": "$n", "step": ["$s", 0.0], "turn": "$t", "taper": "$tp", "centred": true}, "chance": 0.7}
                 ]}}
             ]
         },

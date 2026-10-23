@@ -231,6 +231,13 @@ What is different:
 - **A surface feature is lit as the planet**, with the planet's centre and radius, so it falls
   into the planet's night side. Shaded as itself, a storm would carry a small lit side of its own
   into the dark.
+- **Weather is soft, ground is hard** ([#426](https://github.com/HEL3AN/econspace-mmo/issues/426)).
+  A cloud or a storm drawn as solid discs is a chain of circles, and a storm whose arms are rows
+  of equal discs reads as a `6`. Give weather `"soft": true` — thick at its middle, nothing at its
+  rim — and let puffs of different sizes overlap. Land keeps a hard coast, but never one ellipse:
+  lobes of different sizes (`planet.continent`), and a disc with role `hull` and no `tint` is the
+  sea itself, so placed on a coast it bites out a bay. A polar cap is a band with a ragged edge:
+  a fainter band below it and a `repeat` of soft discs along its rim, turning with the planet.
 - **An orbiting part** — `orbitRadius` above zero — leaves the surface for the space around it:
   a moon ([#165](https://github.com/HEL3AN/econspace-mmo/issues/165)). It travels an ellipse
   squashed by `orbitTilt` (0 edge-on, 1 seen from above), passing behind the body on the far half
