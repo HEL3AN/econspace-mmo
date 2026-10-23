@@ -605,6 +605,7 @@ add_executable(tests
     tests/contracts_tests.cpp      # contracts short markets post (#343, #407)
     tests/access_tests.cpp         # the allowlist, bans and the server's log (#400)
     tests/server_ops_tests.cpp     # server.json, backups, the admin channel, log files (#400)
+    tests/datadir_tests.cpp        # where data/ is: --data, ECONSPACE_DATA (#399, #486)
     tests/chat_tests.cpp           # local chat, private lines, limits and cleaning (#347)
     tests/corp_tests.cpp           # corporations: roles, the corp channel, trusted structures (#347)
     tests/territory_tests.cpp      # influence, claims, a holder's tax and docking (#431 slice 5)
