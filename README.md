@@ -16,7 +16,7 @@ You fly a ship in a persistent galaxy: mine, trade, run missions, fight, build r
 
 ## Play
 
-1. Download the latest build from [GitHub Releases](https://github.com/HEL3AN/econspace-mmo/releases/latest) or [itch.io](https://hel3an.itch.io/econspace): a zip for Windows, a tarball for Linux. Unpack it anywhere; it runs from its own folder.
+1. Download the latest build from [GitHub Releases](https://github.com/HEL3AN/econspace-mmo/releases/latest) or [itch.io](https://hel3an.itch.io/econspace): a zip for Windows, a tarball for Linux and one for macOS (universal: Apple silicon and Intel, macOS 11 or later). Unpack it anywhere; it runs from its own folder.
 2. Start a server, then connect a client to it under an account name and a secret of your choice (the first login creates the account):
 
 ```sh
@@ -24,7 +24,15 @@ You fly a ship in a persistent galaxy: mine, trade, run missions, fight, build r
 ./econspace connect 127.0.0.1 50800 pilot hunter2      # in a second terminal
 ```
 
-On Windows, `start-server.bat` and `connect-example.bat` in the zip do the same with a double-click. To play with friends over a network, one of you hosts: [docs/hosting.md](docs/hosting.md) is the whole guide.
+On Windows, `start-server.bat` and `connect-example.bat` in the zip do the same with a double-click.
+
+**On macOS** the build is not signed yet, so macOS refuses to open it with a double-click ("cannot be verified"). Either right-click (Control-click) a program in Finder, choose *Open* and confirm, once per program; or clear the quarantine on the whole folder in Terminal, then run it from there as above:
+
+```sh
+xattr -dr com.apple.quarantine econspace-<version>-<codename>-macos
+```
+
+Signing comes with the beta. Nobody on the team plays on a Mac yet, so a screenshot or a bug report from one is especially welcome. To play with friends over a network, one of you hosts: [docs/hosting.md](docs/hosting.md) is the whole guide.
 
 A client plays only on a server of the **same release**; a mismatch is refused with the version to get. `econspace --version` says which one you have. `main` has moved well past the last release, so a server built from source does not take a downloaded client.
 
@@ -122,14 +130,6 @@ ctest --test-dir build --output-on-failure   # the unit suite
 ```
 
 `build/` (Debug) is for development and tests. To play, or to measure anything, build Release in a second directory: `cmake -S . -B build-release -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release` and `cmake --build build-release`; an unoptimized build is several times slower. `cmake --build build-release --target dist` makes the portable package.
-
-**Downloading a release.** Each release has `econspace-<version>-<codename>-windows.zip`, `-linux.tar.gz` and `-macos.tar.gz`: one folder, no installer. Windows may call the program unrecognised: *More info* → *Run anyway*. The macOS build is universal (Apple silicon and Intel, macOS 11 or later) and **not signed** yet, so macOS refuses to open it with a double-click. Either right-click (Control-click) a program in Finder, choose *Open* and confirm, once per program; or clear the quarantine on the whole folder in Terminal:
-
-```sh
-xattr -dr com.apple.quarantine econspace-<version>-<codename>-macos
-```
-
-Signing comes with the beta (#186). The `README.txt` inside each folder says how to start a server and connect.
 
 On Windows, close a running executable before rebuilding — Windows will not let it be overwritten. On Linux the binaries have no `.exe` suffix.
 
