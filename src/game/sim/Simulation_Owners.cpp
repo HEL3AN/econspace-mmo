@@ -245,9 +245,9 @@ Corps::Outcome Simulation::TakeStructure(const std::string& account, const std::
     // From beside it, as it would be taken apart.
     const Blueprint* bp = t->GetBlueprint();
     const float      reach = bp != nullptr ? bp->reach : 1000.0f;
-    const float      d = std::hypot(t->GetPosition().x - s->ship->GetPosition().x,
-                                    t->GetPosition().y - s->ship->GetPosition().y) -
-                    t->GetSize();
+    const float      dx = t->GetPosition().x - s->ship->GetPosition().x;
+    const float      dy = t->GetPosition().y - s->ship->GetPosition().y;
+    const float      d = std::hypot(dx, dy) - t->GetSize();
     if (d > reach)
         return Refuse("too far from " + name + " (" + std::to_string((int)d) + " of at most " +
                       std::to_string((int)reach) + ")");
