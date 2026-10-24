@@ -25,6 +25,7 @@
 #include "ui/Layout.h"
 #include "ui/UiTheme.h"  // UseTheme, for --theme
 #include "core/Actions.h"
+#include "core/Interpolation.h"
 #include "core/Prediction.h"
 #include "core/Faction.h"
 #include "core/Goal.h"
@@ -560,14 +561,8 @@ private:
     // the deltas that follow it (#38).
     Proto::LayoutMirror layout_;
     Proto::GalaxyState  galaxyState_;  // net: per-system stats for the galaxy map (M4e-3c)
-    // Buffer of timestamped snapshots for interpolating non-own entities (M4e-2):
-    // we draw them "in the past" (render delay), interpolating between two snapshots.
-    struct InterpSnap
-    {
-        double                             t;
-        std::vector<Proto::EntitySnapshot> ents;
-    };
-    std::deque<InterpSnap> snapBuffer_;
+    // Everything but the own ship is drawn "in the past", between two snapshots (M4e-2, #358).
+    Interpolation interpolation_;
 
     // Combat (damage/cooldown are server-side; here only the weapon toggle and beam render).
     bool              weaponOn_ = false;

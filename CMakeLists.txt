@@ -321,6 +321,7 @@ add_executable(econspace
     src/game/core/StationList.cpp  # what the market and hangar windows list (#297)
     src/game/core/Goal.cpp         # what to do next, in one line (#364)
     src/game/core/Prediction.cpp   # the own ship predicted and reconciled, without a window (#358)
+    src/game/core/Interpolation.cpp # everything else drawn between two snapshots, likewise (#358)
     src/game/sim/Overview.cpp      # what the overview lists and in what order (#157)
     src/game/sim/MissionList.cpp   # what the missions window lists (#297)
     src/game/sim/InventoryList.cpp # what the inventory window lists (#472)
@@ -598,6 +599,7 @@ add_executable(tests
     tests/knowledge_tests.cpp      # who knows which systems: public, own, corporation (#431)
     tests/contact_tests.cpp        # factions chart what they reach; first contact (#431)
     tests/prediction_tests.cpp     # the client's prediction against the server, same commands (#358)
+    tests/interpolation_tests.cpp  # everything else drawn between snapshots, against the server (#358)
     tests/natives_tests.cpp        # natives, their stations and frontier prices (#342 S5)
     tests/pack_tests.cpp           # admin packs: checked, woven, sealed (#342 S7)
     tests/growth_tests.cpp         # expeditions, stations grown by need, convoys (#342 S6)
@@ -623,6 +625,7 @@ add_executable(tests
     src/game/core/StationList.cpp  # the market's and the hangar's rows, tested without them (#297)
     src/game/core/Goal.cpp         # the goal prompt, tested without a window (#364)
     src/game/core/Prediction.cpp   # the own ship's prediction, tested against the server (#358)
+    src/game/core/Interpolation.cpp # ...and everything else's interpolation (#358)
     src/game/sim/Sensor.cpp        # the sensor screen, tested without a window (#123)
     # The simulation itself is under test now, not only the wire (#10). That pulls in its
     # dependency tree -- ships, NPCs, the mission system -- which is the price of testing
