@@ -178,7 +178,7 @@ someone who decides things for themselves, not scenery), and NPCs by role — `t
 
 ## What a bot can do
 
-Forty-four tools, in these groups. **Their exact arguments are in [reference.md](reference.md)**,
+Forty-nine tools, in these groups. **Their exact arguments are in [reference.md](reference.md)**,
 which is generated from the server itself and checked by CI, so it cannot disagree with what the
 server actually accepts.
 
@@ -186,11 +186,12 @@ server actually accepts.
 |---|---|
 | look and wait | `observe`, `wait_for_event`, `choose_start` |
 | fly | `move_to`, `dock`, `undock`, `hold_station`, `travel_to_system`, `abort_order` |
-| earn | `mine`, `salvage`, `sell_cargo`, `buy`, `store_cargo`, `take_cargo`, `missions`, `accept_mission`, `complete_mission` |
+| earn | `mine`, `salvage`, `sell_cargo`, `buy`, `missions`, `accept_mission`, `complete_mission` |
+| hold and hangars | `inventory`, `move_goods`, `jettison`, `rent_hangar`, `store_cargo`, `take_cargo` |
 | ships | `hangar`, `buy_ship`, `switch_ship`, `insure_ship`, `fitting`, `preview_fit`, `refit`, `designs`, `save_design`, `apply_design`, `rename_design`, `delete_design` |
 | fight and the law | `attack`, `pay_bounty` |
 | build | `blueprints`, `deploy`, `build`, `dismantle`, `set_defence`, `buy_licence` |
-| explore | `scan`, `name_system` |
+| explore | `scan`, `name_system`, `sell_charts` |
 | talk and organise | `chat_send`, `chat`, `corp`, `corp_act` |
 
 A few that are worth knowing before reading the reference:

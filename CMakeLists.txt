@@ -341,9 +341,9 @@ target_link_libraries(econspace PRIVATE engine netproto)  # netproto brings src/
 set_target_properties(econspace PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/game)
 
-# --- Headless galaxy server (track M, M3) ----------------------------------
-# The same Simulation as in the game, but WITHOUT rendering/window/input: an
-# authoritative server running real agents in every system. No client (Game) over it yet.
+# --- The authoritative server (track M, M3) ---------------------------------
+# Simulation without rendering, window or input: the world every client (econspace) and
+# agent (econagent) connects to, plus the tools around a world (`econserver --help`).
 add_executable(econserver
     src/game/sim/main_headless.cpp
     src/game/sim/MacroBench.cpp           # econserver macrobench: the galaxy's cost by size (#295)

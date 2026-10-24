@@ -1,11 +1,12 @@
 // EconSpace — headless galaxy server (track M, M3).
 //
-// Runs the SAME simulation as the game, but without rendering/window/input: real
-// agents (NpcShip) move and fight, the spawn director holds the population, and
-// macrodynamics change security/economy/territory control. This is the authoritative
-// server — no client (Game) sits on top yet, but the logic is one (Simulation).
+// The authoritative server: it owns the world (Simulation) and every client renders its
+// snapshots and sends it commands. No window, no rendering, no input: real agents (NpcShip)
+// move and fight where a player is, the coarse pass runs the rest of the galaxy, and the
+// world grows while it runs. Beside `host` it has the tools around a world -- init, admin,
+// validate, regenerate, the dumps, the benches, the self-tests and a batch run.
 //
-// Run: econserver [ticks]   (default 3600 ticks = 60 s at SIM_DT=1/60).
+// Run: econserver --help.
 // Every mode takes --data <dir>; without it data/ is looked for beside the exe (DataDir.h).
 
 #include "sim/AccessList.h"
@@ -309,8 +310,7 @@ static ClientSession& SetupHostPlayer(Simulation& sim, std::string start = std::
 // prediction to match: the client predicts one StepPlayerShip per input, and the
 // server must step the same way (otherwise the ack numbers diverge from the step count
 // and the ship "jerks"). Applies movement/jump/loot/combat/mining for command c.
-// Returns true if the system changed. Account effects are not yet applied on the server
-// (M4f); NPCs do not target the player yet.
+// Returns true if the system changed.
 static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Command& c, float dt,
                            std::vector<Proto::TradeAck>&                  acks,
                            std::map<std::string, std::vector<FireEvent>>& fires)
@@ -468,8 +468,8 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     if (c.defenceId != 0)
         sim.SetDefence(s, c.defenceId, c.defence);
 
-    // Player fire: on a shot — a beam event into the snapshot (client draws it blue).
-    // Account effects (mission credit/reputation) are not yet applied on the server (3c-ii).
+    // Player fire: on a shot — a beam event into the snapshot (client draws it blue). What a
+    // shot or a kill costs or earns the account is applied in StepPlayerFire.
     Simulation::PlayerCombatEvents ev;
     s.selectedId = c.targetId;  // what it is told about in full, wherever it is (#349)
     if (sim.StepPlayerFire(s, *sim.SystemOf(s), c.targetId, dt, &ev))
@@ -4308,7 +4308,7 @@ int main(int argc, char** argv)
             escortPilots.sessions.push_back(s.id);
     }
 
-    const float dt = 1.0f / 60.0f;  // = SIM_DT: server tick as in the game
+    const float dt = 1.0f / 60.0f;  // = SIM_DT: the server's fixed tick
     long long   seen = 0;           // the history already printed, by seq
 
     printf("EconSpace headless server — %d systems, %d ticks (%s)\n",
