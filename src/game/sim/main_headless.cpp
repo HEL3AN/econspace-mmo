@@ -306,6 +306,33 @@ static ClientSession& SetupHostPlayer(Simulation& sim, std::string start = std::
     return sim.CreateSession(start, sim.SafeArrival(start), GetShipCatalog()[0].stats);
 }
 
+// A standing order arriving over the wire (#72). It is an intent like any other: the server
+// validates it and owns the execution. Docked, only an undock can run; anything else is refused
+// with the reason, so an agent learns to undock first rather than wait on an order that never
+// started.
+static void TakeOrder(Simulation& sim, ClientSession& s, const Proto::Command& c)
+{
+    if (c.abortOrder)
+        sim.AbortOrder(s, "aborted by client");
+    if (c.orderKind == 0)
+        return;
+    Orders::Order o;
+    o.kind = (Orders::Kind)c.orderKind;
+    o.targetId = c.orderTarget;
+    o.point = c.orderPoint;
+    o.stopDist = c.orderStopDist;
+    o.useWarp = c.orderWarp;
+    o.untilFull = c.orderUntilFull;
+    o.destSystem = c.orderDestSystem;
+    o.waypoints = c.orderWaypoints;
+    o.preference = c.orderPreference;
+    o.blueprint = c.orderBlueprint;
+    o.name = c.orderName;
+    sim.GiveOrder(s, o);
+    if (s.IsDocked() && o.kind != Orders::Kind::Undock)
+        sim.AbortOrder(s, "docked; undock first");
+}
+
 // One client input = ONE player tick. This is critical for client and server
 // prediction to match: the client predicts one StepPlayerShip per input, and the
 // server must step the same way (otherwise the ack numbers diverge from the step count
@@ -402,6 +429,9 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
             sim.AcceptMission(s, c.acceptOffer);  // accept a mission from the board
         if (c.completeMission >= 0)
             sim.CompleteMission(s, c.completeMission);  // hand in a mission (reward to account)
+        // An agent leaves a station by an order, and asks for its next one from there. Dropped
+        // with the rest of the flight path, its undock never ran: an agent that docked stayed.
+        TakeOrder(sim, s, c);
         return changed;  // at a station the ship neither moves nor fires
     }
 
@@ -410,26 +440,7 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     if (s.HasRunningOrder() && (c.thrust || c.brake || c.turn != 0.0f || c.navMode != 0))
         sim.AbortOrder(s, "manual control");
 
-    // A standing order arriving over the wire (#72). It is an intent like any other: the
-    // server validates it and owns the execution.
-    if (c.abortOrder)
-        sim.AbortOrder(s, "aborted by client");
-    if (c.orderKind != 0)
-    {
-        Orders::Order o;
-        o.kind = (Orders::Kind)c.orderKind;
-        o.targetId = c.orderTarget;
-        o.point = c.orderPoint;
-        o.stopDist = c.orderStopDist;
-        o.useWarp = c.orderWarp;
-        o.untilFull = c.orderUntilFull;
-        o.destSystem = c.orderDestSystem;
-        o.waypoints = c.orderWaypoints;
-        o.preference = c.orderPreference;
-        o.blueprint = c.orderBlueprint;
-        o.name = c.orderName;
-        sim.GiveOrder(s, o);
-    }
+    TakeOrder(sim, s, c);
 
     if (c.toggleWeapon)
         s.ToggleWeapon();
@@ -3655,14 +3666,41 @@ static int OrderSelftest()
     // And asking from zero must still return the whole history.
     bool journalHistory = s.EventsSince(0).size() >= fresh.size();
 
+    // 7) Docked, over the wire as an agent sends it: an undock order runs, and any other order
+    // is refused with the reason instead of being dropped (an agent that docked stayed).
+    bool dockedOrders = false;
+    for (const auto& e : sim.SystemOf(s)->entities)
+        if (e->GetKind() == EntityKind::Station && !dockedOrders)
+        {
+            s.ship->Teleport(e->GetPosition());
+            if (sim.StepPlayerDock(s, *sim.SystemOf(s)) == 0)
+                continue;
+            std::vector<Proto::TradeAck>                  acks;
+            std::map<std::string, std::vector<FireEvent>> fires;
+            Proto::Command                                go;
+            go.orderKind = (int)Orders::Kind::MoveTo;
+            go.orderPoint = { 0.0f, 0.0f };
+            HostStepPlayer(sim, s, go, dt, acks, fires);
+            const bool     refused = s.orderStatus == Orders::Status::Failed &&
+                                     s.orderDetail == "docked; undock first" && s.IsDocked();
+            Proto::Command leave;
+            leave.orderKind = (int)Orders::Kind::Undock;
+            HostStepPlayer(sim, s, leave, dt, acks, fires);
+            run(10);
+            dockedOrders = refused && !s.IsDocked() && s.orderStatus == Orders::Status::Done;
+        }
+
     bool ok = idOk && arrived && rejected && aborted && selfRoute && allReachable && noRoute &&
-              safeRouteOk && routeRejected && journalled && journalCursor && journalHistory;
+              safeRouteOk && routeRejected && journalled && journalCursor && journalHistory &&
+              dockedOrders;
     printf("Order selftest: id %s, move %s, bad-target %s, abort %s, route-self %s, "
-           "route-all %s, route-none %s, route-safe %s, route-reject %s, journal %s => %s\n",
+           "route-all %s, route-none %s, route-safe %s, route-reject %s, journal %s, "
+           "docked %s => %s\n",
            idOk ? "OK" : "FAIL", arrived ? "OK" : "FAIL", rejected ? "OK" : "FAIL",
            aborted ? "OK" : "FAIL", selfRoute ? "OK" : "FAIL", allReachable ? "OK" : "FAIL",
            noRoute ? "OK" : "FAIL", safeRouteOk ? "OK" : "FAIL", routeRejected ? "OK" : "FAIL",
-           (journalled && journalCursor && journalHistory) ? "OK" : "FAIL", ok ? "PASS" : "FAIL");
+           (journalled && journalCursor && journalHistory) ? "OK" : "FAIL",
+           dockedOrders ? "OK" : "FAIL", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
 
