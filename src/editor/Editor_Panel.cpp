@@ -77,12 +77,15 @@ void Editor::DrawHud()
         int pinned = 0;
         for (const ObjHandle& h : handles_)
             pinned += ProvenanceOf(h) != Provenance::Generated ? 1 : 0;
-        Ui::Text(TextFormat("Generated:  %s  (%s)   seed %llu", generated_.name.c_str(),
-                            generated_.id.c_str(), (unsigned long long)generated_.seed),
-                 16, 50, 16, Ui::TEXT);
+        Ui::Text(TextFormat("Generated:  %s  (%s)   seed %llu%s", generated_.name.c_str(),
+                            generated_.id.c_str(), (unsigned long long)generated_.seed,
+                            generated_.everySeed ? "   -- pins for EVERY seed" : ""),
+                 16, 50, 16, generated_.everySeed ? Ui::ACCENT : Ui::TEXT);
         Ui::Text(
-            TextFormat("Objects: %d   pinned: %d   a save writes the difference to pins.json%s",
+            TextFormat("Objects: %d   pinned: %d   a save writes the difference to pins.json, "
+                       "for %s (Ctrl+E switches)%s",
                        (int)entities_.size(), pinned,
+                       generated_.everySeed ? "every seed" : "this seed",
                        generated_.problems > 0 ? "   (some pins did not apply: see the log)" : ""),
             16, 72, 14, Ui::TEXT_DIM);
         if (!placeArchetype_.empty())

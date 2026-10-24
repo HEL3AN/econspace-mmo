@@ -100,6 +100,11 @@ Editor::Editor()
 Editor::~Editor()
 {
     Tex::Unload();
+    // Every shader and render target before the window: the members' own destructors run
+    // after this body, when the GL context is gone, and a driver that minds (Mesa) crashed
+    // on every exit there. Unloading twice is nothing.
+    treatment_.Unload();
+    materials_.Unload();
     Ui::UnloadAssets();
     CloseWindow();
 }
@@ -431,6 +436,10 @@ void Editor::HandleInput()
         else if (mode_ == Mode::System)
             SaveCurrentSystem();  // the survey writes nothing: a generated system has no file
     }
+    // Ctrl+E: a generated system's pins for this seed, or for every seed (#290).
+    if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_E) &&
+        mode_ == Mode::System)
+        ToggleEverySeed();
 
     if (mode_ == Mode::Galaxy)
     {

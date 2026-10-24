@@ -105,7 +105,8 @@ public:
     // difference, as a pin in data/pins.json -- a generated system has no file of its own.
     // An empty `systemId` opens the system through the wormhole. False if there is no such
     // system (and the log says which there are).
-    bool OpenGenerated(uint64_t seed, const std::string& systemId);
+    // `everySeed` edits the system's pins for every seed instead of this seed's (#290).
+    bool OpenGenerated(uint64_t seed, const std::string& systemId, bool everySeed = false);
 
     // Opens the map of the whole region `seed` makes (#237): its systems where the generator
     // put them, the gates between them, which ones a pin touches. A click opens a system for
@@ -311,6 +312,7 @@ private:
     {
         bool           open = false;
         uint64_t       seed = 0;
+        bool           everySeed = false;  // a save writes a pin with no seed (#290)
         std::string    id;
         std::string    name;
         nlohmann::json base;
@@ -322,7 +324,8 @@ private:
         std::map<std::string, std::string> names;
     };
     GeneratedEdit generated_;
-    void          SavePin();  // the difference from base, into data/pins.json
+    void          SavePin();          // the difference from base, into data/pins.json
+    void          ToggleEverySeed();  // Ctrl+E: this seed's pins, or every seed's (#290)
     // What an object of the open generated system is: as generated, or a pin's.
     enum class Provenance
     {

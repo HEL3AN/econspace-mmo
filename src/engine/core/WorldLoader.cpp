@@ -168,8 +168,200 @@ std::vector<std::unique_ptr<Entity>> WorldLoader::LoadSystem(const std::string& 
         TraceLog(LOG_WARNING, "WorldLoader: JSON parse error in %s", path.c_str());
         return {};
     }
+    // Written by hand: a mistake in it is a load error, as a parse error is (#357).
+    std::vector<std::string> problems;
+    CheckDocument(data, path, problems);
+    if (!problems.empty())
+    {
+        for (const std::string& p : problems)
+            TraceLog(LOG_ERROR, "WorldLoader: %s", p.c_str());
+        return {};
+    }
 
     return BuildSystem(data);
+}
+
+const std::vector<WorldLoader::DocumentList>& WorldLoader::DocumentLists()
+{
+    // What BuildSystem reads from each list, and what it reads without a default.
+    static const std::vector<DocumentList> LISTS = {
+        { "stars", { "type", "size", "pos", "archetype" }, {} },
+        // A planet's "name" is the generator's for a rogue world; what is shown is its system's
+        // name and its place (NamePlanets, #259), so BuildSystem does not read it.
+        { "planets",
+          { "type", "color", "orbitRadius", "orbitSpeed", "angle", "size", "deposit", "archetype",
+            "name" },
+          { "orbitRadius", "size" } },
+        { "stations",
+          { "name", "pos", "size", "faction", "role", "archetype", "orbits" },
+          { "name", "size" } },
+        { "asteroidFields",
+          { "name", "pos", "size", "resource", "ore", "archetype", "orbits" },
+          { "name", "size", "resource", "ore" } },
+        { "nebulae", { "name", "pos", "radius", "archetype", "orbits" }, { "radius" } },
+        { "derelicts",
+          { "name", "pos", "size", "reward", "expiresAt", "archetype", "orbits", "cargo" },
+          { "name" } },
+        { "gates",
+          { "name", "pos", "size", "destination", "archetype" },
+          { "name", "pos", "size", "destination" } },
+        { "structures",
+          { "archetype", "name", "pos", "size", "startedAt", "completesAt", "expiresAt",
+            "blueprint", "orbits", "grewFrom" },
+          { "archetype" } },
+    };
+    return LISTS;
+}
+
+const std::vector<const char*>& WorldLoader::DocumentKeys()
+{
+    // "character" is the generator's word for what a system is like, kept for the editor.
+    static const std::vector<const char*> KEYS = { "star",      "stars",          "planets",
+                                                   "stations",  "asteroidFields", "nebulae",
+                                                   "derelicts", "gates",          "structures",
+                                                   "character" };
+    return KEYS;
+}
+
+const std::vector<const char*>& WorldLoader::StarKeys()
+{
+    static const std::vector<const char*> KEYS = { "type", "size", "archetype" };
+    return KEYS;
+}
+
+const std::vector<const char*>& WorldLoader::OrbitKeys()
+{
+    static const std::vector<const char*> KEYS = { "planet", "radius", "speed", "phase" };
+    return KEYS;
+}
+
+static std::string Quoted(const std::string& s)
+{
+    return "\"" + s + "\"";
+}
+
+// Each key of `j` not in `known` or `extra`, said.
+static void UnknownKeys(const json& j, const std::vector<const char*>& known,
+                        const std::vector<const char*>& extra, const std::string& where,
+                        std::vector<std::string>& problems)
+{
+    if (!j.is_object())
+        return;
+    for (auto it = j.begin(); it != j.end(); ++it)
+    {
+        bool found = false;
+        for (const auto* list : { &known, &extra })
+            for (const char* k : *list)
+                found = found || it.key() == k;
+        if (!found)
+            problems.push_back(where + ": unknown field " + Quoted(it.key()));
+    }
+}
+
+// What kind of thing an object of each list is, for its "archetype" (#142). A structure may
+// also name a station's archetype, when it is an outpost growing into one (#342 S6).
+static bool ListKind(const std::string& list, EntityKind& kind)
+{
+    static const std::pair<const char*, EntityKind> KINDS[] = {
+        { "stars", EntityKind::Star },       { "planets", EntityKind::Planet },
+        { "stations", EntityKind::Station }, { "asteroidFields", EntityKind::Field },
+        { "nebulae", EntityKind::Nebula },   { "derelicts", EntityKind::Derelict },
+        { "gates", EntityKind::Gate },
+    };
+    for (const auto& k : KINDS)
+        if (list == k.first)
+        {
+            kind = k.second;
+            return true;
+        }
+    return false;
+}
+
+static void CheckArchetype(const json& o, const std::string& list, const std::string& at,
+                           std::vector<std::string>& problems)
+{
+    if (!o.contains("archetype") || !o["archetype"].is_string())
+        return;
+    const std::string id = o["archetype"].get<std::string>();
+    const Archetype*  a = Archetypes::Find(id);
+    EntityKind        kind;
+    if (a == nullptr)
+        problems.push_back(at + ": unknown archetype " + Quoted(id));
+    else if (ListKind(list, kind) && a->kind != kind)
+        problems.push_back(at + ": archetype " + Quoted(id) + " is not one of the " + list);
+}
+
+static void CheckStarType(const json& o, const std::string& at, std::vector<std::string>& problems)
+{
+    if (!o.contains("type") || !o["type"].is_string())
+        return;
+    const std::string type = o["type"].get<std::string>();
+    if (type != "Yellow" && type != "Red" && type != "Blue")
+        problems.push_back(at + ": a star's \"type\" is \"Yellow\", \"Red\" or \"Blue\", not " +
+                           Quoted(type));
+}
+
+void WorldLoader::CheckDocument(const json& doc, const std::string& where,
+                                std::vector<std::string>&       problems,
+                                const std::vector<const char*>& objectExtra,
+                                const std::set<std::string>&    moreFactions)
+{
+    if (!doc.is_object())
+    {
+        problems.push_back(where + ": a system document is a JSON object");
+        return;
+    }
+    UnknownKeys(doc, DocumentKeys(), {}, where, problems);
+    if (doc.contains("star") && doc["star"].is_object())
+    {
+        UnknownKeys(doc["star"], StarKeys(), {}, where + ": star", problems);
+        CheckStarType(doc["star"], where + ": star", problems);
+        CheckArchetype(doc["star"], "stars", where + ": star", problems);
+    }
+    for (const DocumentList& rule : DocumentLists())
+    {
+        if (!doc.contains(rule.list) || !doc[rule.list].is_array())
+            continue;
+        const json&       list = doc[rule.list];
+        const std::string name = rule.list;
+        for (size_t i = 0; i < list.size(); i++)
+        {
+            const json& o = list[i];
+            if (!o.is_object())
+                continue;
+            const std::string at = where + ": " + name + "[" + std::to_string(i) + "]" +
+                                   (o.contains("name") && o["name"].is_string()
+                                        ? " " + Quoted(o["name"].get<std::string>())
+                                        : "");
+            UnknownKeys(o, rule.known, objectExtra, at, problems);
+            if (o.contains("orbits"))
+                UnknownKeys(o["orbits"], OrbitKeys(), {}, at + ": orbits", problems);
+            CheckArchetype(o, name, at, problems);
+            if (name == "stars")
+                CheckStarType(o, at, problems);
+            if (name == "planets" && o.contains("type") && o["type"].is_string())
+            {
+                PlanetType type;
+                if (!ParsePlanetType(o["type"].get<std::string>(), type))
+                    problems.push_back(at + ": unknown planet type " +
+                                       Quoted(o["type"].get<std::string>()));
+            }
+            if (name == "stations" && o.contains("role") && o["role"].is_string())
+            {
+                StationRole role;
+                if (!ParseStationRole(o["role"].get<std::string>(), role))
+                    problems.push_back(at + ": unknown role " +
+                                       Quoted(o["role"].get<std::string>()));
+            }
+            if (name == "stations" && o.contains("faction") && o["faction"].is_string())
+            {
+                const std::string f = o["faction"].get<std::string>();
+                FactionId         known;
+                if (!Factions::Find(f, known) && moreFactions.count(f) == 0)
+                    problems.push_back(at + ": unknown faction " + Quoted(f));
+            }
+        }
+    }
 }
 
 // An object may say which archetype of its kind it is (#142): a derelict that is a leviathan,

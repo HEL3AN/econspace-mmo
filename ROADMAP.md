@@ -49,7 +49,7 @@ An honest snapshot of where EconSpace is and where it is going. The project inve
 - Built and tested in CI on Windows, Linux (also under ASan and UBSan) and macOS, with two clients at once (#12, #107).
 
 **Agents**
-- `econagent`, an MCP server written in C++ that is also an ordinary game client: 44 tools, two resources and five prompts, with a reference generated from the server and checked by CI, a guide, and an example bot CI runs (#171, #172).
+- `econagent`, an MCP server written in C++ that is also an ordinary game client: 49 tools, two resources and five prompts, with a reference generated from the server and checked by CI, a guide, and an example bot CI runs (#171, #172).
 
 **The look** — generated, not drawn (M6, done)
 - Every object is a composition of parts in `data/archetypes.json` (#122), built from a module library (#240), lit by its system's own stars (#119), shaded per part by a material (#121, #135), and moving as `f(time, seed)` (#136, #165, #166).

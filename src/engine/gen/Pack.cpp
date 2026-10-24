@@ -85,52 +85,11 @@ bool PackIdOk(const std::string& id)
     return true;
 }
 
-// The kinds of star and of ore the loader knows; anything else it would quietly make the
-// first of them.
-void StarKind(const std::string& type, const std::string& where, std::vector<std::string>& problems)
-{
-    if (type != "Yellow" && type != "Red" && type != "Blue")
-        problems.push_back(where + ": a star's \"type\" is \"Yellow\", \"Red\" or \"Blue\"");
-}
-
+// The kinds of ore the loader knows; anything else it would quietly make the first of them.
 bool IsResource(const std::string& r)
 {
     return r == "Iron" || r == "Ice" || r == "Crystal";
 }
-
-// What each list of a system document may hold, and what each object of it must say: the
-// fields WorldLoader::BuildSystem reads (#191 -- a misspelling read with a default is
-// indistinguishable from an absence).
-struct ListRule
-{
-    const char*              list;
-    std::vector<const char*> known;
-    std::vector<const char*> required;
-};
-
-const ListRule LISTS[] = {
-    { "stars", { "type", "size", "pos", "archetype" }, {} },
-    { "planets",
-      { "type", "color", "orbitRadius", "orbitSpeed", "angle", "size", "deposit", "archetype" },
-      { "orbitRadius", "size" } },
-    { "stations",
-      { "name", "pos", "size", "faction", "role", "archetype", "orbits" },
-      { "name", "size" } },
-    { "asteroidFields",
-      { "name", "pos", "size", "resource", "ore", "archetype", "orbits" },
-      { "name", "size", "resource", "ore" } },
-    { "nebulae", { "name", "pos", "radius", "archetype", "orbits" }, { "radius" } },
-    { "derelicts",
-      { "name", "pos", "size", "reward", "expiresAt", "archetype", "orbits", "cargo" },
-      { "name" } },
-    { "gates",
-      { "name", "pos", "size", "destination", "archetype" },
-      { "name", "pos", "size", "destination" } },
-    { "structures",
-      { "archetype", "name", "pos", "size", "startedAt", "completesAt", "expiresAt", "blueprint",
-        "orbits", "grewFrom" },
-      { "archetype" } },
-};
 
 // One system document, held to the format the loaders read. `gates` says what a gate may
 // lead to: null for a system pack, whose gates are those of the system it replaces.
@@ -143,29 +102,17 @@ void CheckDocument(const json& doc, const std::string& where,
         problems.push_back(where + ": a system document is a JSON object");
         return;
     }
-    Known(doc,
-          { "star", "stars", "planets", "stations", "asteroidFields", "nebulae", "derelicts",
-            "gates", "structures", "character" },
-          where, problems);
+    // Its fields, kinds, roles, factions and archetypes, as every hand-written system
+    // document is held to them (#357); what follows is what only a pack must also be.
+    WorldLoader::CheckDocument(doc, where, problems, {}, packFactions);
     if (doc.contains("character") && !doc["character"].is_string())
         problems.push_back(where + ": \"character\" is a string");
-    if (doc.contains("star"))
-    {
-        if (!doc["star"].is_object())
-            problems.push_back(where + ": \"star\" is an object");
-        else
-        {
-            Known(doc["star"], { "type", "size", "archetype" }, where + ": star", problems);
-            if (doc["star"].contains("type"))
-                StarKind(doc["star"]["type"].is_string() ? doc["star"]["type"].get<std::string>()
-                                                         : std::string(),
-                         where + ": star", problems);
-        }
-    }
+    if (doc.contains("star") && !doc["star"].is_object())
+        problems.push_back(where + ": \"star\" is an object");
     const size_t planets =
         doc.contains("planets") && doc["planets"].is_array() ? doc["planets"].size() : 0;
     const double reach = World::SYSTEM_RADIUS;
-    for (const ListRule& rule : LISTS)
+    for (const WorldLoader::DocumentList& rule : WorldLoader::DocumentLists())
     {
         if (!doc.contains(rule.list))
             continue;
@@ -190,7 +137,6 @@ void CheckDocument(const json& doc, const std::string& where,
                 problems.push_back(at + " is not an object");
                 continue;
             }
-            Known(o, rule.known, at, problems);
             for (const char* r : rule.required)
                 if (!o.contains(r))
                     problems.push_back(at + ": " + Quoted(r) + " is missing");
@@ -225,37 +171,12 @@ void CheckDocument(const json& doc, const std::string& where,
                                             "\"speed\": s, \"phase\": p }");
                 else
                 {
-                    Known(orb, { "planet", "radius", "speed", "phase" }, at + ": orbits", problems);
                     const int p = orb["planet"].get<int>();
                     if (p < 0 || (size_t)p >= planets)
                         problems.push_back(at + ": orbits planet " + std::to_string(p) +
                                            ", and the system has " + std::to_string(planets));
                 }
             }
-            if (o.contains("faction") && o["faction"].is_string())
-            {
-                const std::string f = o["faction"].get<std::string>();
-                FactionId         known;
-                if (!Factions::Find(f, known) && packFactions.count(f) == 0)
-                    problems.push_back(at + ": faction " + Quoted(f) +
-                                       " is neither in factions.json nor one of the pack's");
-            }
-            if (std::string(rule.list) == "stations" && o.contains("role") && o["role"].is_string())
-            {
-                StationRole role;
-                if (!ParseStationRole(o["role"].get<std::string>(), role))
-                    problems.push_back(at + ": unknown role " +
-                                       Quoted(o["role"].get<std::string>()));
-            }
-            if (std::string(rule.list) == "planets" && o.contains("type") && o["type"].is_string())
-            {
-                PlanetType type;
-                if (!ParsePlanetType(o["type"].get<std::string>(), type))
-                    problems.push_back(at + ": unknown planet type " +
-                                       Quoted(o["type"].get<std::string>()));
-            }
-            if (std::string(rule.list) == "stars" && o.contains("type") && o["type"].is_string())
-                StarKind(o["type"].get<std::string>(), at, problems);
             for (const char* res : { "resource", "deposit" })
                 if (o.contains(res) && o[res].is_string() && !IsResource(o[res].get<std::string>()))
                     problems.push_back(at + ": " + Quoted(res) +
@@ -277,10 +198,6 @@ void CheckDocument(const json& doc, const std::string& where,
                                                " is not a positive whole amount");
                     }
             }
-            if (o.contains("archetype") && o["archetype"].is_string() &&
-                Archetypes::Find(o["archetype"].get<std::string>()) == nullptr)
-                problems.push_back(at + ": unknown archetype " +
-                                   Quoted(o["archetype"].get<std::string>()));
             if (gates != nullptr && std::string(rule.list) == "gates" &&
                 o.contains("destination") && o["destination"].is_string() &&
                 gates->count(o["destination"].get<std::string>()) == 0)

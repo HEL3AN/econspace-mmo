@@ -35,6 +35,8 @@ static int Usage(const char* exe)
                  "      --select   select the nearest thing shortly after joining\n"
                  "      --menu     ...and open its right-click menu\n"
                  "      --dock     fly to the nearest station and dock, shortly after joining\n"
+                 "      --market GOOD\n"
+                 "                 ...and put its market in front, on GOOD\n"
                  "      --sensor [RANGE]\n"
                  "                 start with the sensor screen open (V/Esc closes it), RANGE\n"
                  "                 world units across\n"

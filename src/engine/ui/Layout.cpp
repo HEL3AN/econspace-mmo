@@ -473,7 +473,9 @@ void Layout::Field(std::string_view label, std::string_view value, Color valueCo
     Row(Box().GrowX().Gap(CurrentTheme().metrics.gap).Align(Align::Start, Align::Center),
         [&]
         {
-            Text(label, TextStyle::Label());
+            // In a narrow column the label wraps, rather than pushing the value out of its box
+            // and over whatever stands beside it (#529).
+            Text(label, TextStyle::Label().Wrap());
             Spacer();
             Text(value, TextStyle::Body().Tint(valueColor));
         });

@@ -1,5 +1,7 @@
 #include "gen/Pins.h"
 
+#include "core/WorldLoader.h"
+
 #include <algorithm>
 #include <map>
 #include <set>
@@ -234,6 +236,22 @@ bool WellFormed(const json& pin, const std::string& where, std::vector<std::stri
             problems.push_back(where + ": unknown field \"" + it.key() + "\"");
             ok = false;
         }
+    if (ok && pin.contains("mode") && !pin["mode"].is_string())
+    {
+        problems.push_back(where + ": mode is \"merge\" or \"replace\"");
+        ok = false;
+    }
+    if (ok)
+    {
+        // The document is written by hand like a system file, and held to the same fields
+        // (#357); a merge may also say which object it "replaces", and "remove" it.
+        const size_t before = problems.size();
+        if (pin.value("mode", std::string("merge")) == "merge")
+            WorldLoader::CheckDocument(pin["document"], where, problems, { "replaces", "remove" });
+        else
+            WorldLoader::CheckDocument(pin["document"], where, problems);
+        ok = problems.size() == before;
+    }
     if (ok && pin.contains("seed") &&
         !(pin["seed"].is_number_integer() && pin["seed"].get<long long>() >= 0))
     {
@@ -341,15 +359,30 @@ Origins IdentityOrigins(const json& doc)
     return out;
 }
 
-bool OwnedPin(const json& pin, const std::string& system, uint64_t seed)
+bool OwnedPin(const json& pin, const std::string& system, uint64_t seed, bool everySeed)
 {
-    return pin.is_object() && pin.value("system", std::string()) == system &&
-           pin.contains("seed") && pin["seed"].is_number_integer() &&
+    if (!pin.is_object() || pin.value("system", std::string()) != system)
+        return false;
+    if (everySeed)
+        return !pin.contains("seed");
+    return pin.contains("seed") && pin["seed"].is_number_integer() &&
            pin["seed"].get<uint64_t>() == seed;
 }
 
+bool ReplacesByIndex(const json& pin)
+{
+    if (!pin.is_object() || !pin.contains("document") || !pin["document"].is_object())
+        return false;
+    for (auto it = pin["document"].begin(); it != pin["document"].end(); ++it)
+        if (it.value().is_array())
+            for (const json& o : it.value())
+                if (o.is_object() && o.contains("replaces") && o["replaces"].is_number())
+                    return true;
+    return false;
+}
+
 bool OpenForEditing(const Region& generated, const json& pins, uint64_t seed,
-                    const std::string& system, EditedSystem& out)
+                    const std::string& system, EditedSystem& out, bool everySeed)
 {
     if (!generated.documents.count(system))
         return false;
@@ -363,7 +396,14 @@ bool OpenForEditing(const Region& generated, const json& pins, uint64_t seed,
     {
         json rest = { { "pins", json::array() } };
         for (const json& pin : pins["pins"])
-            (OwnedPin(pin, system, seed) ? owned : rest["pins"]).push_back(pin);
+        {
+            if (OwnedPin(pin, system, seed, everySeed))
+                owned.push_back(pin);
+            // Editing what every seed shares, this seed's own pin for the system is not part
+            // of it: it would be applied on top in this world only.
+            else if (!(everySeed && OwnedPin(pin, system, seed)))
+                rest["pins"].push_back(pin);
+        }
         ApplyPins(others, rest, seed, out.problems);
     }
     out.base = others.documents.at(system);
@@ -382,7 +422,7 @@ bool OpenForEditing(const Region& generated, const json& pins, uint64_t seed,
 }
 
 json PinFor(const std::string& system, uint64_t seed, const json& base, const json& edited,
-            const Origins& origins)
+            const Origins& origins, bool everySeed)
 {
     json doc = json::object();
     bool expressible = true;
@@ -465,9 +505,9 @@ json PinFor(const std::string& system, uint64_t seed, const json& base, const js
             doc[key] = entries;
     }
 
-    json pin = { { "system", system },
-                 { "seed", seed },
-                 { "note", "written by the world editor (#237)" } };
+    json pin = { { "system", system }, { "note", "written by the world editor (#237)" } };
+    if (!everySeed)
+        pin["seed"] = seed;
     if (SlotOf(system) >= 0)
         pin["slot"] = SlotOf(system);
     if (!expressible)
@@ -625,14 +665,15 @@ void CheckPinned(const json& before, const json& after, const std::set<std::stri
     }
 }
 
-void StorePin(json& pinsFile, const std::string& system, uint64_t seed, const json& pin)
+void StorePin(json& pinsFile, const std::string& system, uint64_t seed, const json& pin,
+              bool everySeed)
 {
     if (!pinsFile.is_object())
         pinsFile = json::object();
     json kept = json::array();
     if (pinsFile.contains("pins") && pinsFile["pins"].is_array())
         for (const json& p : pinsFile["pins"])
-            if (!OwnedPin(p, system, seed))
+            if (!OwnedPin(p, system, seed, everySeed))
                 kept.push_back(p);
     // Last, because the editor showed it on top of every other pin.
     if (!pin.is_null())

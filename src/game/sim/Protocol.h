@@ -1101,6 +1101,32 @@ bool        DecodeAck(const std::string& s, Ack& out);
 struct SnapshotState;
 struct EntityWire;
 
+// The wire form of one system's objects, shared by the encoders of everyone in it (#350).
+// What one recipient's snapshot says of an object, every other recipient's says too, so it is
+// turned into its wire form once and not once per player in the system -- the cost that grew
+// with the square of a crowd. An object unchanged since the last round keeps the very same
+// form, which a delta then skips without comparing it. The host keeps one per system with
+// anyone in it, and sweeps it once a sending round.
+class WireCache
+{
+public:
+    // The wire form of `e` at `grid` (0: exact; a far object's grid otherwise): the one held
+    // when it describes `e` as it is, a new one -- held from now on -- when it does not.
+    std::shared_ptr<const EntityWire> Of(const EntitySnapshot& e, float grid);
+    // Drops what was not asked for since the last sweep: objects that are gone or out of
+    // everyone's sight. False when nothing is held any more, so the cache itself can go.
+    bool Sweep();
+
+private:
+    struct Held
+    {
+        EntitySnapshot                    from;
+        std::shared_ptr<const EntityWire> wire;
+        bool                              used = false;
+    };
+    std::map<std::pair<int, float>, Held> held_;
+};
+
 // The server's half, one per connection.
 class SnapshotSender
 {
@@ -1109,8 +1135,10 @@ public:
 
     // `s` encoded for this client: a delta against the newest state it acknowledged if that is
     // still held, otherwise whole. `relevant` are ids sent in full wherever they are. Cover is
-    // not decided here: what `s` does not carry, the client is not told.
-    std::string Encode(const Snapshot& s, const std::set<int>& relevant);
+    // not decided here: what `s` does not carry, the client is not told. `wires`, when given,
+    // is the system's shared cache: the result is the same, made once for the whole system.
+    std::string Encode(const Snapshot& s, const std::set<int>& relevant,
+                       WireCache* wires = nullptr);
     // The client has rebuilt snapshot `n`. An older or unknown number is ignored.
     void Acknowledge(int n);
     // The base the last Encode used; 0 -- it was whole.
