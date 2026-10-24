@@ -408,12 +408,19 @@ is written nowhere.
 
 **Ctrl+S writes only the difference**, as one pin for that system **and that seed**, which
 replaces the editor's earlier pin for the pair and goes last in the file (the editor showed
-it on top of every other pin). Pins without a `seed`, or for another system, are written by
-hand and never touched. The difference is a `merge` -- changed objects as `replaces`,
+it on top of every other pin). Pins without a `seed`, or for another system, are left as they
+are. The difference is a `merge` -- changed objects as `replaces`,
 removed ones as `remove`, new ones appended, keys that differ set -- unless it cannot be
 said as one (a key taken away), and then it is a `replace` of the whole system. No
 difference left removes the pin. Opening the system again gives back exactly what was
 saved; a test holds the editor to that.
+
+**Ctrl+E** (or `region 7 system ID everyseed`) switches to the system's pin **for every seed**
+(#290): the editor shows the system as all seeds share it -- every pin but this seed's own for
+it -- and Ctrl+S writes the difference as a pin with no `seed`, beside the seed's own. Such a
+pin lands in a system that differs from seed to seed: an object named or placed finds its
+place in each, but a `"replaces": N` (a planet, which has no name) is the N-th planet of each,
+so the save says so when the pin has one. Switching with changes unsaved is refused.
 
 The editor keeps the same two rules. A generated system's gates can be moved but not
 deleted or added, and the property panel shows where one leads instead of offering a

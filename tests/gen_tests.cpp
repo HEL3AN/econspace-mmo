@@ -1334,3 +1334,71 @@ TEST_CASE("a pin's document is held to the format, and a misspelt field refuses 
         CHECK(problems.empty());
     }
 }
+
+TEST_CASE("the editor writes a pin for every seed, beside a seed's own (#290)")
+{
+    REQUIRE(Factions::Load(std::string(TEST_DATA_DIR) + "factions.json"));
+    REQUIRE(Archetypes::Load(std::string(TEST_DATA_DIR) + "archetypes.json"));
+    const Gen::Region generated = Gen::GenerateRegion(Params(7));
+    const std::string id = generated.documents.begin()->first;
+    const auto        derelict = [](const char* name, int x)
+    { return nlohmann::json{ { "name", name }, { "pos", { x, -300000 } }, { "size", 80 } }; };
+    const auto has = [](const nlohmann::json& doc, const char* name)
+    {
+        if (doc.contains("derelicts"))
+            for (const auto& d : doc["derelicts"])
+                if (d["name"] == name)
+                    return true;
+        return false;
+    };
+
+    // This seed's own pin for the system is already in the file.
+    nlohmann::json pins = { { "pins", nlohmann::json::array() } };
+    pins["pins"].push_back(
+        { { "system", id },
+          { "seed", 7 },
+          { "document",
+            { { "derelicts", nlohmann::json::array({ derelict("Seed Seven", 400000) }) } } } });
+
+    // Editing for every seed: the base is what all seeds share, without seed 7's own pin.
+    Gen::EditedSystem every;
+    REQUIRE(Gen::OpenForEditing(generated, pins, 7, id, every, true));
+    CHECK_FALSE(has(every.base, "Seed Seven"));
+    every.edited["derelicts"].push_back(derelict("Every Seed", 500000));
+    every.origins["derelicts"].push_back(-1);
+    const nlohmann::json pin = Gen::PinFor(id, 7, every.base, every.edited, every.origins, true);
+    REQUIRE(pin.is_object());
+    CHECK_FALSE(pin.contains("seed"));
+    CHECK_FALSE(Gen::ReplacesByIndex(pin));
+    Gen::StorePin(pins, id, 7, pin, true);
+    CHECK(pins["pins"].size() == 2);  // seed 7's own pin is kept
+
+    // Another world applies it; seed 7 applies both.
+    for (uint64_t seed : { 7, 8 })
+    {
+        Gen::Region              r = Gen::GenerateRegion(Params(seed));
+        std::vector<std::string> problems;
+        Gen::ApplyPins(r, pins, seed, problems);
+        CHECK(problems.empty());
+        if (r.documents.count(id) == 0)
+            continue;  // that seed's region has no such system: nothing to apply it to
+        CHECK(has(r.documents[id], "Every Seed"));
+        CHECK(has(r.documents[id], "Seed Seven") == (seed == 7));
+    }
+
+    // Reopened for every seed, the editor owns it; for seed 7, it is in the base.
+    Gen::EditedSystem again;
+    REQUIRE(Gen::OpenForEditing(generated, pins, 7, id, again, true));
+    CHECK(has(again.edited, "Every Seed"));
+    CHECK_FALSE(has(again.base, "Every Seed"));
+    Gen::EditedSystem seven;
+    REQUIRE(Gen::OpenForEditing(generated, pins, 7, id, seven));
+    CHECK(has(seven.base, "Every Seed"));
+    CHECK(has(seven.edited, "Seed Seven"));
+
+    // A pin that names a planet by its place is a different planet in another seed.
+    nlohmann::json byIndex = pin;
+    byIndex["document"]["planets"] =
+        nlohmann::json::array({ { { "replaces", 0 }, { "remove", true } } });
+    CHECK(Gen::ReplacesByIndex(byIndex));
+}

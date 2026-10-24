@@ -23,7 +23,7 @@ json Editor::ReadPins(const std::string& path)
     return pins.is_discarded() ? json() : pins;
 }
 
-bool Editor::OpenGenerated(uint64_t seed, const std::string& systemId)
+bool Editor::OpenGenerated(uint64_t seed, const std::string& systemId, bool everySeed)
 {
     std::string                        id = systemId;
     Gen::Region                        region;
@@ -47,13 +47,14 @@ bool Editor::OpenGenerated(uint64_t seed, const std::string& systemId)
     }
 
     Gen::EditedSystem es;
-    Gen::OpenForEditing(region, pins, seed, id, es);
+    Gen::OpenForEditing(region, pins, seed, id, es, everySeed);
     for (const std::string& p : es.problems)
         TraceLog(LOG_WARNING, "Pins: %s -- not applied", p.c_str());
 
     generated_ = GeneratedEdit();
     generated_.open = true;
     generated_.seed = seed;
+    generated_.everySeed = everySeed;
     generated_.id = id;
     generated_.name = id;
     for (const json& s : region.systems)
@@ -77,8 +78,9 @@ bool Editor::OpenGenerated(uint64_t seed, const std::string& systemId)
     camera_.target = { 0.0f, 0.0f };
     camera_.zoom = 0.00035f;  // the whole system
     RebuildEntities();
-    TraceLog(LOG_INFO, "Editor: opened generated system %s (%s) of seed %llu", id.c_str(),
-             generated_.name.c_str(), (unsigned long long)seed);
+    TraceLog(LOG_INFO, "Editor: opened generated system %s (%s) of seed %llu%s", id.c_str(),
+             generated_.name.c_str(), (unsigned long long)seed,
+             everySeed ? ", editing its pins for every seed" : "");
     return true;
 }
 
@@ -107,8 +109,8 @@ void Editor::SavePin()
         pins["note"] = "Hand-written exceptions to the generated region, applied after "
                        "generation (#147). See documents/world_format.md, pins.json.";
     const json pin = Gen::PinFor(generated_.id, generated_.seed, generated_.base, systemJson_,
-                                 generated_.origins);
-    Gen::StorePin(pins, generated_.id, generated_.seed, pin);
+                                 generated_.origins, generated_.everySeed);
+    Gen::StorePin(pins, generated_.id, generated_.seed, pin, generated_.everySeed);
 
     std::ofstream out(path);
     if (!out.is_open())
@@ -118,11 +120,40 @@ void Editor::SavePin()
     }
     out << pins.dump(4) << "\n";
     dirty_ = false;
-    TraceLog(LOG_INFO, "Editor: %s %s of seed %llu in %s",
+    TraceLog(LOG_INFO, "Editor: %s %s of %s in %s",
              pin.is_null()
                  ? "no difference left; removed the pin for"
                  : (pin["mode"] == "merge" ? "pinned the difference to" : "pinned the whole of"),
-             generated_.id.c_str(), (unsigned long long)generated_.seed, path.c_str());
+             generated_.id.c_str(),
+             generated_.everySeed ? "every seed"
+                                  : TextFormat("seed %llu", (unsigned long long)generated_.seed),
+             path.c_str());
+    // A pin for every seed lands in a system that differs from seed to seed: by name and
+    // position it finds what it means, by a place in a list it finds whatever is there.
+    if (generated_.everySeed && !pin.is_null())
+        Notice(Gen::ReplacesByIndex(pin)
+                   ? "Saved for every seed -- but it names objects by their place in a list "
+                     "(a planet), which is a different object in each seed's system"
+                   : "Saved for every seed: placed by name and position in a system that "
+                     "differs from seed to seed");
+}
+
+void Editor::ToggleEverySeed()
+{
+    if (!generated_.open)
+        return;
+    if (dirty_)
+    {
+        Notice("Save or undo the changes first: switching reopens the system");
+        return;
+    }
+    const uint64_t    seed = generated_.seed;
+    const std::string id = generated_.id;
+    const bool        every = !generated_.everySeed;
+    if (OpenGenerated(seed, id, every))
+        Notice(every ? "Editing this system's pins for EVERY seed (Ctrl+E: back to this seed)"
+                     : TextFormat("Editing this system's pins for seed %llu only",
+                                  (unsigned long long)seed));
 }
 
 Editor::Provenance Editor::ProvenanceOf(const ObjHandle& h) const

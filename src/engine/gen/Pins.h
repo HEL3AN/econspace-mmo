@@ -70,18 +70,30 @@ struct EditedSystem
     std::vector<std::string> problems;
 };
 
-// Whether the editor writes this pin: it names `system` and exactly `seed`.
-bool OwnedPin(const nlohmann::json& pin, const std::string& system, uint64_t seed);
+// The editor owns the pins of one system for one seed, or -- `everySeed` (#290) -- the
+// pins of that system with no seed, which every world applies: a set piece meant for every
+// seed. Such a pin is placed by name and position in a system that differs per seed, so a
+// "replaces": N in it means a different object in each.
+
+// Whether the editor writes this pin: it names `system` and exactly `seed`, or no seed.
+bool OwnedPin(const nlohmann::json& pin, const std::string& system, uint64_t seed,
+              bool everySeed = false);
 
 // Opens `system` of a freshly generated (unpinned) region. False if it has no such system.
+// For `everySeed`, the base is the system with every pin but this seed's own for it: what
+// all seeds share.
 bool OpenForEditing(const Region& generated, const nlohmann::json& pins, uint64_t seed,
-                    const std::string& system, EditedSystem& out);
+                    const std::string& system, EditedSystem& out, bool everySeed = false);
 
 // The pin that makes `base` into `edited`: a "merge" when the difference can be said as
 // one (objects added, removed or changed, keys set), a "replace" when it cannot (a key
-// taken away). Null when there is no difference -- nothing to pin.
+// taken away). Null when there is no difference -- nothing to pin. `everySeed`: no seed.
 nlohmann::json PinFor(const std::string& system, uint64_t seed, const nlohmann::json& base,
-                      const nlohmann::json& edited, const Origins& origins);
+                      const nlohmann::json& edited, const Origins& origins, bool everySeed = false);
+
+// Whether a pin names an object by its place in a list ("replaces": N): what a pin for
+// every seed should not do, since the N-th object differs from seed to seed.
+bool ReplacesByIndex(const nlohmann::json& pin);
 
 // ---- The rules both sides keep (#237) ----
 
@@ -111,5 +123,5 @@ void CheckPinned(const nlohmann::json& before, const nlohmann::json& after,
 // Puts `pin` into the pins file in place of every pin the editor owns for that system and
 // seed (or only removes those, for a null pin). Pins written by hand are left alone.
 void StorePin(nlohmann::json& pinsFile, const std::string& system, uint64_t seed,
-              const nlohmann::json& pin);
+              const nlohmann::json& pin, bool everySeed = false);
 }  // namespace Gen

@@ -436,6 +436,10 @@ void Editor::HandleInput()
         else if (mode_ == Mode::System)
             SaveCurrentSystem();  // the survey writes nothing: a generated system has no file
     }
+    // Ctrl+E: a generated system's pins for this seed, or for every seed (#290).
+    if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_E) &&
+        mode_ == Mode::System)
+        ToggleEverySeed();
 
     if (mode_ == Mode::Galaxy)
     {

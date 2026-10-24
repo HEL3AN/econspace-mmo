@@ -30,8 +30,9 @@ static void PrintUsage(FILE* to)
         "      the module library, every variant\n"
         "  worldeditor survey [SEED] [card N]\n"
         "      a centre and its frontier per seed, flagged empty, thin or twin\n"
-        "  worldeditor region [SEED] [system ID | map]\n"
-        "      edit a generated system (Ctrl+S saves the difference as a pin), or the map\n"
+        "  worldeditor region [SEED] [system ID [everyseed] | map]\n"
+        "      edit a generated system (Ctrl+S saves the difference as a pin), or the map;\n"
+        "      everyseed (or Ctrl+E) edits its pin for every seed instead of this one\n"
         "  worldeditor galaxy [SEED] [slot N | system ID] [export [ID]]\n"
         "      every slot of the seed's skeleton; `export` writes the region as a pack\n"
         "  worldeditor world PATH [slot N | system ID] [export [ID]]\n"
@@ -94,6 +95,7 @@ int main(int argc, char** argv)
     bool        gallery = false;
     bool        region = false;
     bool        regionMap = false;  // `region SEED map`
+    bool        everySeed = false;  // `region SEED system ID everyseed`
     std::string systemId;           // `region SEED system ID`
     uint64_t    seed = 1;
     std::string card;
@@ -139,6 +141,8 @@ int main(int argc, char** argv)
         }
         else if (arg == "map")
             regionMap = true;
+        else if (arg == "everyseed")
+            everySeed = true;  // the system's pins for every seed, not this one's (#290)
         else if (arg == "galaxy")
         {
             galaxy = true;
@@ -248,13 +252,13 @@ int main(int argc, char** argv)
     else if ((galaxy || region) && slot >= 0)
         editor.OpenRegionSlot(seed, slot);
     else if (galaxy && !systemId.empty())
-        editor.OpenGenerated(seed, systemId);
+        editor.OpenGenerated(seed, systemId, everySeed);
     else if (galaxy && !exporting)
         editor.OpenWorldMap(seed);
     else if ((region && regionMap) || exporting)
         editor.OpenRegionMap(seed, systemId);
     else if (region)
-        editor.OpenGenerated(seed, systemId);
+        editor.OpenGenerated(seed, systemId, everySeed);
     else if (modules)
         editor.OpenModules(zoom > 0.0f ? zoom : 1.0f, pack, seeds);
     else if (survey)
