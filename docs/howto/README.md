@@ -15,11 +15,13 @@ builds a single example from nothing and ends with you looking at it in the gall
 | 3 | [Give it a material](give-it-a-material.md) | `data/materials.json`, `data/shaders/materials/*.fs` | no |
 | 4 | [Add a screen pass](add-a-screen-pass.md) | `data/shaders/*.fs`, `data/look.json`, one enum | yes, three lines |
 | 5 | [Tune the generator](tune-the-generator.md) | the rules in `src/engine/gen/` | yes -- the rules are code |
+| 6 | [Add a good to the market](add-a-good.md) | `data/goods.json` | no |
 
 They are written in that order and build on each other: the example is a small **relay
 station**, first as a bare entry, then with a shape, then with its own material. The screen
 pass stands on its own, and so does the generator: it is about the rules that place things,
-judged on fifty systems at once.
+judged on fifty systems at once. So does the economy: a good is seen in a docked station's
+market rather than in the gallery.
 
 ---
 
