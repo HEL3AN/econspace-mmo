@@ -464,3 +464,43 @@ TEST_CASE("gates, mouths and Anchors are never on the far list")
     CHECK(Find(got, 90)->pos.x == doctest::Approx(900000.0f));
     CHECK(Find(got, 91)->name == "Anchor");
 }
+
+TEST_CASE("a system's shared wire cache changes nothing a recipient is sent (#350)")
+{
+    // Three pilots in one system, each with a sender of its own; one pair of each encodes
+    // through the shared cache, the other alone. Round by round -- objects moving, one taken
+    // hurt, one gone, one far off -- every message must be the same byte for byte.
+    Proto::Interest i;
+    i.nearRadius = 250.0f;
+    i.nearCap = 2;
+    Proto::WireCache                   wires;
+    std::vector<Proto::SnapshotSender> shared(3, Proto::SnapshotSender(i));
+    std::vector<Proto::SnapshotSender> alone(3, Proto::SnapshotSender(i));
+    const Vector2 at[3] = { { 0.0f, 0.0f }, { 180.0f, 40.0f }, { -250.0f, 0.0f } };
+
+    Proto::Snapshot s = Base();
+    s.entities.push_back(Npc(13, { 5000.0f, 5000.0f }));
+    for (int round = 0; round < 40; round++)
+    {
+        s.time = 100.0 + round * 0.05;
+        s.entities[0].pos.x += 3.0f;
+        if (round == 10)
+            s.entities[1].hullFrac = 0.5f;
+        if (round == 20)
+            s.entities.erase(s.entities.begin() + 2);
+        for (int k = 0; k < 3; k++)
+        {
+            s.player.pos = at[k];
+            const std::string a = shared[k].Encode(s, { 11 }, &wires);
+            const std::string b = alone[k].Encode(s, { 11 });
+            CHECK(a == b);
+            if (round % 3 != 2)  // now and then a lost acknowledgement
+            {
+                shared[k].Acknowledge(round + 1);
+                alone[k].Acknowledge(round + 1);
+            }
+        }
+        CHECK(wires.Sweep());
+    }
+    CHECK_FALSE(Proto::WireCache().Sweep());
+}

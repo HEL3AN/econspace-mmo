@@ -2240,12 +2240,14 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
     int        refusedConnections = 0;  // since the last line about them
     double     refusalLogAcc = 0.0;
 
-    NetStats      net;
-    double        snapshotAcc = 0.0;   // time since the last round of snapshots
-    double        worldSaveAcc = 0.0;  // world checkpoint timer
-    const float   dt = 1.0f / 60.0f;
-    auto          prev = clock::now();
-    double        acc = 0.0;
+    NetStats net;
+    double   snapshotAcc = 0.0;  // time since the last round of snapshots
+    // Each system's objects in their wire form, made once a round for everyone there (#350).
+    std::map<std::string, Proto::WireCache> wires;
+    double                                  worldSaveAcc = 0.0;  // world checkpoint timer
+    const float                             dt = 1.0f / 60.0f;
+    auto                                    prev = clock::now();
+    double                                  acc = 0.0;
     double        galaxyAcc = 0.0;  // galaxy-snapshot broadcast timer (map statistics)
     long long     knowledgeSeen = sim.KnowledgeStamp();  // what pilots' maps were built from
     long long     corpChartsSaved = sim.Corporations().ChartsSerial();  // in corps.json (#431)
@@ -2847,11 +2849,17 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
             // Only what changed since the snapshot this client last acknowledged, and only the
             // neighbourhood in full (#349). The mission board and log are part of it, so they
             // go out when they change rather than twenty times a second (#341).
-            const std::string enc = hc.snapOut.Encode(snap, sim.InterestOf(*s));
+            const std::string enc =
+                hc.snapOut.Encode(snap, sim.InterestOf(*s), &wires[s->systemId]);
             net.snapshots += (double)enc.size();
             net.snapCount++;
             hc.conn->Send(enc);
         }
+        // What no snapshot of this round asked for is gone or out of sight; a system nobody
+        // was sent anything about this round is let go.
+        if (sendSnapshots)
+            for (auto it = wires.begin(); it != wires.end();)
+                it = it->second.Sweep() ? std::next(it) : wires.erase(it);
         // Who is in each local channel, after the layouts above: a pilot is told who is in a
         // system once it has been told it is there (#347).
         SendPresence(clients, sim, chat, net);
@@ -3987,8 +3995,10 @@ static void PrintUsage(FILE* to)
             "  econserver regiondump <seed> [slot]\n"
             "      what a seed generates, as JSON (never saved)\n"
             "  econserver macrobench [N ...]\n"
+            "  econserver netbench [N ...] [--seconds S]\n"
             "  econserver fleetbench [--days D] [seed ...]\n"
-            "      what the world costs to run, and how factions' fleets fare over days\n"
+            "      what the world costs to run, a crowd in one system costs, and how factions'\n"
+            "      fleets fare over days\n"
             "  econserver hosttest | accttest | worldtest | ordertest | opstest\n"
             "      the self-tests\n"
             "\n"
@@ -4108,6 +4118,25 @@ int main(int argc, char** argv)
         if (sizes.empty())
             sizes = { 20, 100, 500, 1000 };
         return MacroBench(sizes, seconds, seed, allHot, players);
+    }
+    // econserver netbench [N ...] [--seconds S] [--seed X]: N pilots in one system, and what
+    // the host spends on them -- their steps, the world, a snapshot each (#350). Without N,
+    // 10 50 100 250.
+    if (argc > 1 && std::string(argv[1]) == "netbench")
+    {
+        std::vector<int> crowds;
+        double           seconds = 20.0;
+        uint64_t         seed = 1;
+        for (int i = 2; i < argc; i++)
+            if (std::string(argv[i]) == "--seconds" && i + 1 < argc)
+                seconds = atof(argv[++i]);
+            else if (std::string(argv[i]) == "--seed" && i + 1 < argc)
+                seed = std::strtoull(argv[++i], nullptr, 10);
+            else if (atoi(argv[i]) > 0)
+                crowds.push_back(atoi(argv[i]));
+        if (crowds.empty())
+            crowds = { 10, 50, 100, 250 };
+        return NetBench(crowds, seconds, seed);
     }
     // econserver fleetbench [--days D] [--systems N] [--every H] [seed ...]: the long run of
     // factions that buy their ships (#464), as a table every H world hours; exit 1 if a

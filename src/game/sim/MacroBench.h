@@ -13,6 +13,13 @@
 int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t seed, bool allHot,
                int players);
 
+// `econserver netbench` (#350): the per-player side. For each crowd size, that many pilots fly
+// circles in one system -- a start, with its NPCs -- and the host's work for them is timed as
+// the host does it: every pilot's step each tick, the world's step, and twenty times a second
+// a snapshot built and encoded for each of them against what they acknowledged. Prints a
+// table of where the time goes per tick, and the bytes a snapshot costs.
+int NetBench(const std::vector<int>& crowds, double seconds, uint64_t seed);
+
 // `econserver fleetbench` (#464, slice 4): the long run of a world whose factions buy their
 // ships. For each seed, a centre, its frontier and a region of `regionSystems` run cold for
 // `days` world days, one coarse pass at a time, and every `everyHours` the table prints, per

@@ -21,11 +21,13 @@
 #include "entities/Ship.h"
 #include "entities/ShipType.h"
 #include "sim/ProcessMemory.h"
+#include "sim/Protocol.h"
 #include "sim/Simulation.h"
 #include "sim/WorldRules.h"
 #include "raylib.h"
 
 #include <algorithm>
+#include <cmath>
 #include <chrono>
 #include <cstdio>
 #include <fstream>
@@ -195,31 +197,177 @@ BenchRow RunOne(int regionSystems, double seconds, uint64_t seed, bool allHot, i
 }
 }  // namespace
 
-int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t seed, bool allHot,
-               int players)
+namespace
+{
+// What every bench reads before it builds a world, as the host does.
+bool LoadRegistries()
 {
     SetTraceLogLevel(LOG_WARNING);
     const std::string dataDir = DataDir::Path();
     if (!Factions::Load(dataDir + "factions.json"))
     {
         fprintf(stderr, "FATAL: %s\n", Factions::Error().c_str());
-        return 1;
+        return false;
     }
     if (!Goods::Load(dataDir + "goods.json"))
     {
         fprintf(stderr, "FATAL: %s\n", Goods::Error().c_str());
-        return 1;
+        return false;
     }
     if (!Archetypes::Load(dataDir + "archetypes.json"))
     {
         fprintf(stderr, "FATAL: %s\n", Archetypes::Error().c_str());
-        return 1;
+        return false;
     }
     if (!Blueprints::Load(dataDir + "blueprints.json"))
     {
         fprintf(stderr, "FATAL: %s\n", Blueprints::Error().c_str());
-        return 1;
+        return false;
     }
+    return true;
+}
+
+struct NetRow
+{
+    int    pilots = 0, ticks = 0, snapshots = 0;
+    long   entities = 0;  // in the system at the end, NPCs and statics
+    double playersMs = 0.0, worldMs = 0.0, buildMs = 0.0, encodeMs = 0.0;  // per tick
+    double tickMs = 0.0, worstTickMs = 0.0;
+    double bytes = 0.0;  // per snapshot sent
+};
+
+NetRow RunCrowd(int pilots, double seconds, uint64_t seed)
+{
+    const std::string dataDir = DataDir::Path();
+    NetRow            row;
+    row.pilots = pilots;
+    SetRandomSeed(0xC0FFEEu);
+    Simulation       sim;
+    Gen::WorldParams world;
+    world.seed = seed;
+    world.centres = 1;
+    world.owners = Factions::MajorIds();
+    world.pirates = Factions::Id(Factions::Pirates());
+    world.unaffiliated = Factions::Id(Factions::Unaffiliated());
+    sim.OpenGalaxy(world, dataDir);
+    sim.Seed(0xC0FFEEu);
+    sim.InitGalaxy();
+    sim.MaterializeAllSystems(dataDir + "systems/");
+
+    // Everyone in the start's system, on a ring round where a ship arrives, each turning a
+    // circle of its own: a crowd at a trade hub, which is where one gathers.
+    const std::string                  at = sim.Starts().front().systemId;
+    const Vector2                      centre = sim.SafeArrival(at);
+    std::vector<ClientSession*>        crowd;
+    std::vector<Proto::SnapshotSender> senders((size_t)pilots);
+    Proto::WireCache                   wires;  // the system's, as the host keeps it (#350)
+    std::vector<int>                   sent((size_t)pilots, 0);
+    for (int i = 0; i < pilots; i++)
+    {
+        const float a = 6.2831853f * (float)i / (float)pilots;
+        const float r = 2000.0f + 40.0f * (float)i;
+        crowd.push_back(
+            &sim.CreateSession(at, { centre.x + r * std::cos(a), centre.y + r * std::sin(a) },
+                               GetShipCatalog()[0].stats));
+    }
+
+    const float dt = 1.0f / 60.0f;
+    double      players = 0.0, worldMs = 0.0, build = 0.0, encode = 0.0, total = 0.0;
+    row.ticks = (int)(seconds * 60.0 + 0.5);
+    for (int i = 0; i < row.ticks; i++)
+    {
+        const Clock::time_point tick = Clock::now();
+        Clock::time_point       t = tick;
+        for (ClientSession* s : crowd)
+        {
+            Proto::Command c;
+            c.seq = (unsigned int)i + 1;
+            c.thrust = true;
+            c.turn = (s->id % 2 == 0) ? 1.0f : -1.0f;
+            sim.StepPlayerShip(*s, c, 1.0f, dt);
+        }
+        players += Since(t);
+
+        // The host's world tick, as macrobench times it.
+        t = Clock::now();
+        std::map<std::string, std::vector<Simulation::PlayerPresence>> present;
+        for (auto& kv : sim.Sessions())
+            present[kv.second.systemId].push_back(
+                { &kv.second, (Combatant*)kv.second.ship.get(), false });
+        for (auto& kv : sim.Systems())
+            if (Simulation::IsHot(kv.second))
+                sim.StepSystemAgents(kv.second, present[kv.first], nullptr, dt);
+        sim.MaintainWorld(dt);
+        sim.TakeLayoutDeltas();
+        worldMs += Since(t);
+
+        // Twenty times a second, a snapshot for everyone, each a delta against the one they
+        // acknowledged -- here at once, as a client on a good link does.
+        if (i % 3 == 0)
+            for (size_t k = 0; k < crowd.size(); k++)
+            {
+                t = Clock::now();
+                const Proto::Snapshot snap = sim.BuildSnapshot(*crowd[k], at);
+                build += Since(t);
+                t = Clock::now();
+                const std::string enc = senders[k].Encode(snap, sim.InterestOf(*crowd[k]), &wires);
+                encode += Since(t);
+                senders[k].Acknowledge(++sent[k]);
+                row.bytes += (double)enc.size();
+                row.snapshots++;
+            }
+        if (i % 3 == 0)
+            wires.Sweep();
+        const double ms = Since(tick);
+        total += ms;
+        row.worstTickMs = std::max(row.worstTickMs, ms);
+    }
+    row.playersMs = players / row.ticks;
+    row.worldMs = worldMs / row.ticks;
+    row.buildMs = build / row.ticks;
+    row.encodeMs = encode / row.ticks;
+    row.tickMs = total / row.ticks;
+    row.bytes /= std::max(1, row.snapshots);
+    if (const SystemState* st = sim.SystemOf(*crowd.front()))
+        row.entities = (long)st->entities.size();
+    return row;
+}
+}  // namespace
+
+int NetBench(const std::vector<int>& crowds, double seconds, uint64_t seed)
+{
+    if (!LoadRegistries())
+        return 1;
+    printf("netbench: seed %llu, %.0f s simulated per crowd, every pilot in one system\n",
+           (unsigned long long)seed, seconds);
+    std::vector<NetRow> rows;
+    for (int n : crowds)
+    {
+        printf("  %d pilot(s) ...", n);
+        fflush(stdout);
+        rows.push_back(RunCrowd(n, seconds, seed));
+        printf(" %.2f ms/tick (worst %.1f)\n", rows.back().tickMs, rows.back().worstTickMs);
+    }
+    // Markdown, so the table can be pasted where it is discussed.
+    printf("\nPer tick (60 Hz, budget 16.7 ms); snapshots at 20 Hz, so a third of the ticks "
+           "carry them:\n\n");
+    printf("| pilots | entities | pilots' steps ms | world ms | snapshot build ms | encode ms | "
+           "tick ms (mean / worst) | bytes a snapshot |\n");
+    printf("|---:|---:|---:|---:|---:|---:|---:|---:|\n");
+    for (const NetRow& r : rows)
+        printf("| %d | %ld | %.3f | %.3f | %.3f | %.3f | %.2f / %.1f | %.0f |\n", r.pilots,
+               r.entities, r.playersMs, r.worldMs, r.buildMs, r.encodeMs, r.tickMs, r.worstTickMs,
+               r.bytes);
+    printf("\nA Debug build is two to five times slower than Release and points at the wrong "
+           "costs (#296): measure in build-release.\n");
+    return 0;
+}
+
+int MacroBench(const std::vector<int>& regionSizes, double seconds, uint64_t seed, bool allHot,
+               int players)
+{
+    if (!LoadRegistries())
+        return 1;
 
     printf("macrobench: seed %llu, %.0f s simulated per run, %d player(s) connected, %s\n",
            (unsigned long long)seed, seconds, players,

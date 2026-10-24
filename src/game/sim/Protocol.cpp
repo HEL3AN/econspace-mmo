@@ -1676,8 +1676,50 @@ bool DecodeAck(const std::string& s, Ack& out)
     return true;
 }
 
-std::string SnapshotSender::Encode(const Snapshot& s, const std::set<int>& relevant)
+// Whether two entities have the same wire form: every field WireOf reads.
+static bool SameWire(const EntitySnapshot& a, const EntitySnapshot& b)
 {
+    return a.kind == b.kind && a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.heading == b.heading &&
+           a.size == b.size && a.faction == b.faction && a.role == b.role &&
+           a.hullFrac == b.hullFrac && a.ore == b.ore && a.cargo == b.cargo &&
+           a.cargoAmount == b.cargoAmount && a.name == b.name && a.design == b.design &&
+           a.criminal == b.criminal && a.securityStatus == b.securityStatus;
+}
+
+std::shared_ptr<const EntityWire> WireCache::Of(const EntitySnapshot& e, float grid)
+{
+    Held& h = held_[{ e.id, grid }];
+    if (!h.wire || !SameWire(h.from, e))
+    {
+        h.from = e;
+        h.wire = std::make_shared<EntityWire>(WireOf(e, grid));
+    }
+    h.used = true;
+    return h.wire;
+}
+
+bool WireCache::Sweep()
+{
+    for (auto it = held_.begin(); it != held_.end();)
+        if (!it->second.used)
+            it = held_.erase(it);
+        else
+        {
+            it->second.used = false;
+            ++it;
+        }
+    return !held_.empty();
+}
+
+std::string SnapshotSender::Encode(const Snapshot& s, const std::set<int>& relevant,
+                                   WireCache* wires)
+{
+    const auto wireOf = [wires](const EntitySnapshot& e, float grid)
+    {
+        return wires != nullptr ? wires->Of(e, grid)
+                                : std::shared_ptr<const EntityWire>(
+                                      std::make_shared<EntityWire>(WireOf(e, grid)));
+    };
     auto cur = std::make_shared<SnapshotState>();
     cur->sys = s.systemId;
     cur->player = PlayerJson(s.player);
@@ -1711,7 +1753,7 @@ std::string SnapshotSender::Encode(const Snapshot& s, const std::set<int>& relev
     {
         if (nearIds.count(e.id) != 0)
         {
-            cur->ents[e.id] = std::make_shared<EntityWire>(WireOf(e, 0.0f));
+            cur->ents[e.id] = wireOf(e, 0.0f);
             continue;
         }
         const auto held = far_.find(e.id);
@@ -1723,7 +1765,7 @@ std::string SnapshotSender::Encode(const Snapshot& s, const std::set<int>& relev
             continue;
         }
         Far f;
-        f.wire = std::make_shared<EntityWire>(WireOf(e, interest_.farGrid));
+        f.wire = wireOf(e, interest_.farGrid);
         f.at = s.time;
         if (held == far_.end())
             f.at -= Stagger(e.id) * interest_.farRefresh;
