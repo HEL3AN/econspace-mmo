@@ -133,6 +133,7 @@ cmake --build build-release
 ./build/bin/server/econserver.exe regiondump 8     # ...one region of it, the first centre unless a slot is named
 ./build/bin/server/econserver.exe galaxydump 8 0 4 --cap 100  # its skeleton of slots, and the regions of slots 0 and 4 (#342)
 ./build/bin/server/econserver.exe macrobench 1000  # cost per tick/pass with a 1000-system region, nobody on (#295)
+./build/bin/server/econserver.exe netbench 50 250  # per-player cost: that many pilots in one system, snapshots encoded for each (#350)
 ```
 
 ```sh
