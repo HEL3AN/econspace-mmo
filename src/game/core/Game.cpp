@@ -149,6 +149,11 @@ Game::~Game()
     netConn_.reset();  // close the socket; main() unloads winsock after we're gone
     Tex::Unload();
     backdrop_.Unload();
+    // Every shader and render target before the window: the members' own destructors run
+    // after this body, when the GL context is gone, and a driver that minds (Mesa) crashed
+    // on every exit there. Unloading twice is nothing.
+    treatment_.Unload();
+    materials_.Unload();
     Ui::UnloadAssets();
     CloseWindow();
 }
