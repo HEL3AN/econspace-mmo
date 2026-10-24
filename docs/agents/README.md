@@ -272,7 +272,10 @@ Decide on the **kind**. The text is for people and may be reworded.
 
 ## Writing your own
 
-The example bot is the template. Everything in it is ordinary MCP:
+The example bot is the template; [`trader_bot.py`](../../examples/agents/trader_bot.py) is a
+second, longer one that reads markets, travels between systems and leaves a station again
+(more in [examples/agents/](../../examples/agents/README.md)). Everything in them is ordinary
+MCP:
 
 1. Start `econagent connect …` as a subprocess.
 2. Send `initialize`, then the `notifications/initialized` notification.

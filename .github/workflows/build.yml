@@ -425,6 +425,12 @@ jobs:
           sleep 5
           timeout 300 python3 examples/agents/mining_bot.py ./build/bin/agent/econagent 127.0.0.1 50802
           status=$?
+          # A fresh world's markets all start at their targets, so the trader is told to make
+          # the trip anyway: buy, travel, sell, on the same server.
+          if [ $status -eq 0 ]; then
+            timeout 300 python3 examples/agents/trader_bot.py ./build/bin/agent/econagent 127.0.0.1 50802 --trade-anyway
+            status=$?
+          fi
           kill $server_pid 2>/dev/null || true
           exit $status
 
@@ -530,5 +536,9 @@ jobs:
           sleep 5
           python3 examples/agents/mining_bot.py ./build/bin/agent/econagent 127.0.0.1 50802
           status=$?
+          if [ $status -eq 0 ]; then
+            python3 examples/agents/trader_bot.py ./build/bin/agent/econagent 127.0.0.1 50802 --trade-anyway
+            status=$?
+          fi
           kill $server_pid 2>/dev/null || true
           exit $status
