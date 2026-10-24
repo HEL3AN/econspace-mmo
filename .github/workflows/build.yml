@@ -94,6 +94,7 @@ jobs:
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
+      EXE: .exe  # what tools/ci/ appends to a binary's name
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -166,84 +167,18 @@ jobs:
         timeout-minutes: 10  # a hung socket fails the run instead of holding it for hours
         run: |
           ./build/bin/agent/econagent.exe || true   # usage, non-zero exit
-          ./build/bin/server/econserver.exe host 50800 &
-          server_pid=$!
-          sleep 5
-          ./build/bin/agent/econagent.exe selftest 127.0.0.1 50800
+          . tools/ci/server.sh
+          start_server agent-server.log
+          ./build/bin/agent/econagent.exe selftest 127.0.0.1 $SERVER_PORT
           status=$?
-          kill $server_pid 2>/dev/null || true
+          stop_server
           exit $status
 
-      # Two clients at once, which nothing checked until #107 -- and that is why one
-      # account being playable by two connections at the same time (#105) reached main.
-      # Deliberately over sockets rather than in-process: the hello handler, the per-name
-      # account files and the transport are exactly the parts that only exist there.
+      # Two clients at once (#107), over sockets: one script for both jobs (#359), which
+      # says what it checks and why.
       - name: Two clients at once
         timeout-minutes: 10  # a hung socket fails the run instead of holding it for hours
-        run: |
-          set -e
-          # Port 0: the system picks a free one and the server says which (#306). A fixed
-          # port in the dynamic range can already be some outbound connection's source port.
-          ./build/bin/server/econserver.exe host 0 > mc.log 2>&1 &
-          server_pid=$!
-          # However this ends -- a failed check under set -e included -- stop the server
-          # and show its log. A step that dies without the server's side of the story is
-          # the one nobody can diagnose afterwards.
-          trap 'kill $server_pid 2>/dev/null || true; echo "--- server log ---"; cat mc.log' EXIT
-          # Wait for what the server says, never for a fixed time: a sleep is a guess about
-          # how fast this runner is today, and a guess that is wrong once is a flaky step.
-          wait_for() {
-            for _ in $(seq 1 150); do grep -q "$1" mc.log && return 0; sleep 0.2; done
-            echo "timed out waiting for the server to log: $1"; return 1
-          }
-          # Every client is bounded twice: by its own watchdog (econagent selftest gives
-          # up and names what it was waiting for), and here, for a process that will not
-          # exit at all.
-          agent() { timeout -k 10 300 ./build/bin/agent/econagent.exe "$@"; }
-          wait_for "EconSpace server on port"
-          port=$(sed -n 's/.*EconSpace server on port \([0-9]*\).*/\1/p' mc.log)
-
-          # Two people sharing a galaxy. Each has to complete its own scripted run.
-          # Each client writes to its own file: two on one pipe mix their lines and the
-          # log no longer says which one failed (#419).
-          agent selftest 127.0.0.1 $port alice alice-secret > alice.log 2>&1 &
-          alice=$!
-          agent selftest 127.0.0.1 $port bob bob-secret > bob.log 2>&1 &
-          bob=$!
-          status=0
-          wait $alice || status=1
-          wait $bob || status=1
-          for c in alice bob; do echo "--- $c ---"; cat $c.log; done
-          [ $status -eq 0 ] || exit 1
-
-          # One account, one session: a second login for a name displaces the first, and
-          # the newcomer still plays normally afterwards. The second login waits until the
-          # first has actually joined -- after a fixed three seconds it sometimes had not,
-          # and then the "first" displaced the second and the check failed.
-          sleep 30 | agent connect 127.0.0.1 $port carol carol-secret --start random >/dev/null 2>&1 &
-          holder=$!
-          wait_for "carol joined"
-          agent selftest 127.0.0.1 $port carol carol-secret
-
-          # And the secret is not decoration: the wrong one is refused (#106).
-          if agent selftest 127.0.0.1 $port carol not-the-secret; then
-            echo "a wrong secret was accepted"
-            exit 1
-          fi
-          kill $holder 2>/dev/null || true
-          grep -q "displaced" mc.log
-
-          # A brand-new account has no file until its first save. While its first session
-          # is still playing, a login with another secret must be refused, not registered
-          # over it (#201).
-          sleep 30 | agent connect 127.0.0.1 $port dave dave-secret --start random >/dev/null 2>&1 &
-          dave=$!
-          wait_for "dave joined"
-          if agent selftest 127.0.0.1 $port dave someone-elses-secret; then
-            echo "a new account was taken over during its first session"
-            exit 1
-          fi
-          kill $dave 2>/dev/null || true
+        run: bash tools/ci/two_clients.sh
 
   # The second platform, and the reason the transport was portable at all (#12). Without
   # a runner that actually compiles it, "should work on Linux" is a claim nobody checks --
@@ -319,94 +254,18 @@ jobs:
       - name: Agent selftest against a live server
         timeout-minutes: 10  # a hung socket fails the run instead of holding it for hours
         run: |
-          ./build/bin/server/econserver host 50800 &
-          server_pid=$!
-          sleep 5
-          ./build/bin/agent/econagent selftest 127.0.0.1 50800
+          . tools/ci/server.sh
+          start_server agent-server.log
+          ./build/bin/agent/econagent selftest 127.0.0.1 $SERVER_PORT
           status=$?
-          kill $server_pid 2>/dev/null || true
+          stop_server
           exit $status
 
-      # Two clients at once, which nothing checked until #107 -- and that is why one
-      # account being playable by two connections at the same time (#105) reached main.
-      # Deliberately over sockets rather than in-process: the hello handler, the per-name
-      # account files and the transport are exactly the parts that only exist there.
+      # Two clients at once (#107), over sockets: one script for both jobs (#359), which
+      # says what it checks and why.
       - name: Two clients at once
         timeout-minutes: 10  # a hung socket fails the run instead of holding it for hours
-        run: |
-          set -e
-          # Port 0: the system picks a free one and the server says which (#306). A fixed
-          # port in the dynamic range can already be some outbound connection's source port.
-          ./build/bin/server/econserver host 0 > mc.log 2>&1 &
-          server_pid=$!
-          # However this ends -- a failed check under set -e included -- stop the server
-          # and show its log. A step that dies without the server's side of the story is
-          # the one nobody can diagnose afterwards.
-          trap 'kill $server_pid 2>/dev/null || true; echo "--- server log ---"; cat mc.log' EXIT
-          # Wait for what the server says, never for a fixed time: a sleep is a guess about
-          # how fast this runner is today, and a guess that is wrong once is a flaky step.
-          wait_for() {
-            for _ in $(seq 1 150); do grep -q "$1" mc.log && return 0; sleep 0.2; done
-            echo "timed out waiting for the server to log: $1"; return 1
-          }
-          # Every client is bounded twice: by its own watchdog (econagent selftest gives
-          # up and names what it was waiting for), and here, for a process that will not
-          # exit at all.
-          agent() { timeout -k 10 300 ./build/bin/agent/econagent "$@"; }
-          wait_for "EconSpace server on port"
-          port=$(sed -n 's/.*EconSpace server on port \([0-9]*\).*/\1/p' mc.log)
-
-          # Two people sharing a galaxy. Each has to complete its own scripted run.
-          # Each client writes to its own file: two on one pipe mix their lines and the
-          # log no longer says which one failed (#419).
-          agent selftest 127.0.0.1 $port alice alice-secret > alice.log 2>&1 &
-          alice=$!
-          agent selftest 127.0.0.1 $port bob bob-secret > bob.log 2>&1 &
-          bob=$!
-          status=0
-          wait $alice || status=1
-          wait $bob || status=1
-          for c in alice bob; do echo "--- $c ---"; cat $c.log; done
-          [ $status -eq 0 ] || exit 1
-
-          # One account, one session: a second login for a name displaces the first, and
-          # the newcomer still plays normally afterwards. The second login waits until the
-          # first has actually joined -- after a fixed three seconds it sometimes had not,
-          # and then the "first" displaced the second and the check failed.
-          sleep 30 | agent connect 127.0.0.1 $port carol carol-secret --start random >/dev/null 2>&1 &
-          holder=$!
-          wait_for "carol joined"
-          agent selftest 127.0.0.1 $port carol carol-secret
-
-          # And the secret is not decoration: the wrong one is refused (#106).
-          if agent selftest 127.0.0.1 $port carol not-the-secret; then
-            echo "a wrong secret was accepted"
-            exit 1
-          fi
-          kill $holder 2>/dev/null || true
-          grep -q "displaced" mc.log
-
-          # A brand-new account has no file until its first save. While its first session
-          # is still playing, a login with another secret must be refused, not registered
-          # over it (#201).
-          sleep 30 | agent connect 127.0.0.1 $port dave dave-secret --start random >/dev/null 2>&1 &
-          dave=$!
-          wait_for "dave joined"
-          if agent selftest 127.0.0.1 $port dave someone-elses-secret; then
-            echo "a new account was taken over during its first session"
-            exit 1
-          fi
-          kill $dave 2>/dev/null || true
-
-          # Other data is refused with a Bye that names the file (#400): a client whose
-          # goods.json is not the server's would price and list a market that is not there.
-          cp -r data "$RUNNER_TEMP/otherdata"
-          echo " " >> "$RUNNER_TEMP/otherdata/goods.json"
-          if agent selftest 127.0.0.1 $port erin erin-secret --data "$RUNNER_TEMP/otherdata"; then
-            echo "a client with other data was let in"
-            exit 1
-          fi
-          grep -q "erin: refused -- Your game data differs from this server's in goods.json" mc.log
+        run: bash tools/ci/two_clients.sh --other-data
 
       # The example in examples/agents is documentation that executes. It runs against a
       # real server here so that it cannot rot: if a tool changes and the example stops
@@ -420,18 +279,17 @@ jobs:
       - name: The example bot plays
         timeout-minutes: 10  # a hung socket fails the run instead of holding it for hours
         run: |
-          ./build/bin/server/econserver host 50802 > bot-server.log 2>&1 &
-          server_pid=$!
-          sleep 5
-          timeout 300 python3 examples/agents/mining_bot.py ./build/bin/agent/econagent 127.0.0.1 50802
+          . tools/ci/server.sh
+          start_server bot-server.log
+          timeout 300 python3 examples/agents/mining_bot.py ./build/bin/agent/econagent 127.0.0.1 $SERVER_PORT
           status=$?
           # A fresh world's markets all start at their targets, so the trader is told to make
           # the trip anyway: buy, travel, sell, on the same server.
           if [ $status -eq 0 ]; then
-            timeout 300 python3 examples/agents/trader_bot.py ./build/bin/agent/econagent 127.0.0.1 50802 --trade-anyway
+            timeout 300 python3 examples/agents/trader_bot.py ./build/bin/agent/econagent 127.0.0.1 $SERVER_PORT --trade-anyway
             status=$?
           fi
-          kill $server_pid 2>/dev/null || true
+          stop_server
           exit $status
 
   # macOS (#178). The transport has carried a macOS branch since #12 -- SO_NOSIGPIPE on the
@@ -521,24 +379,22 @@ jobs:
 
       - name: Agent selftest against a live server
         run: |
-          ./build/bin/server/econserver host 50800 &
-          server_pid=$!
-          sleep 5
-          ./build/bin/agent/econagent selftest 127.0.0.1 50800
+          . tools/ci/server.sh
+          start_server agent-server.log
+          ./build/bin/agent/econagent selftest 127.0.0.1 $SERVER_PORT
           status=$?
-          kill $server_pid 2>/dev/null || true
+          stop_server
           exit $status
 
       - name: The example bot plays
         run: |
-          ./build/bin/server/econserver host 50802 > bot-server.log 2>&1 &
-          server_pid=$!
-          sleep 5
-          python3 examples/agents/mining_bot.py ./build/bin/agent/econagent 127.0.0.1 50802
+          . tools/ci/server.sh
+          start_server bot-server.log
+          python3 examples/agents/mining_bot.py ./build/bin/agent/econagent 127.0.0.1 $SERVER_PORT
           status=$?
           if [ $status -eq 0 ]; then
-            python3 examples/agents/trader_bot.py ./build/bin/agent/econagent 127.0.0.1 50802 --trade-anyway
+            python3 examples/agents/trader_bot.py ./build/bin/agent/econagent 127.0.0.1 $SERVER_PORT --trade-anyway
             status=$?
           fi
-          kill $server_pid 2>/dev/null || true
+          stop_server
           exit $status

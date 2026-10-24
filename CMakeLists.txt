@@ -285,10 +285,11 @@ target_include_directories(netproto PUBLIC ${CMAKE_SOURCE_DIR}/src/game)
 # PicoSHA2 ships a header and no target; SYSTEM so its warnings are not ours.
 target_include_directories(netproto SYSTEM PRIVATE ${picosha2_SOURCE_DIR})
 # The login stretch is a hundred thousand SHA-256 rounds, and it is meant to cost a client a
-# fraction of a second. Unoptimized -- which is what a build with no CMAKE_BUILD_TYPE is,
-# CI's included -- it took seconds, two clients logging in at once took longer still, and a
-# server that drops a login after a limit then dropped one. Always optimized: nobody steps
-# through a hash in a debugger.
+# fraction of a second. Unoptimized -- a Debug build, which is what development and every CI
+# job build, or one with no CMAKE_BUILD_TYPE -- it took seconds, two clients logging in at
+# once took longer still, and a server that drops a login after a limit then dropped one.
+# Always optimized: nobody steps through a hash in a debugger. (#359 asked whether a named
+# build type made this unneeded; Debug is -O0 too, so it stays.)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set_source_files_properties(src/game/sim/Auth.cpp PROPERTIES COMPILE_OPTIONS -O2)
 endif()
@@ -299,59 +300,36 @@ if(WIN32)
     target_link_libraries(netproto PUBLIC ws2_32 bcrypt)  # bcrypt: BCryptGenRandom (#351)
 endif()
 
-# --- Game ------------------------------------------------------------------
-# The client does NOT link Simulation: the world lives on econserver. It shares only
-# the wire protocol and PlayerStep, which is the movement step it must run identically
-# to the server in order to predict its own ship.
-add_executable(econspace
-    src/game/main.cpp
-    src/game/core/Game.cpp
-    src/game/core/GameNet.cpp
-    src/game/core/GameHud.cpp
-    src/game/core/GameMap.cpp      # the galaxy map and its routes (#432)
-    src/game/core/Navigation.cpp   # the map's itinerary, planned as the server plans it (#432)
-    src/game/sim/SaveFile.cpp      # ui_navigation.json is renamed into place (#432)
-    src/game/core/GameWindows.cpp  # missions, radar and settings, on Ui::Layout (#297)
-    src/game/core/GameStation.cpp  # docked: the station, market and hangar windows (#297)
-    src/game/core/GameChat.cpp     # the chat window: local, private, the operator (#347)
-    src/game/core/GameScan.cpp     # the scanner window: a pass, and the signatures (#346)
-    src/game/core/ErrorScreen.cpp  # why it could not get in, until the player closes it (#400)
-    src/game/core/GameCorp.cpp     # the corporation window, tickers and corp mates (#347)
-    src/game/core/Actions.cpp      # what can be done about a thing: one list for every window (#297)
-    src/game/core/StationList.cpp  # what the market and hangar windows list (#297)
-    src/game/core/Goal.cpp         # what to do next, in one line (#364)
-    src/game/core/Prediction.cpp   # the own ship predicted and reconciled, without a window (#358)
-    src/game/core/Interpolation.cpp # everything else drawn between two snapshots, likewise (#358)
-    src/game/sim/Overview.cpp      # what the overview lists and in what order (#157)
-    src/game/sim/MissionList.cpp   # what the missions window lists (#297)
-    src/game/sim/InventoryList.cpp # what the inventory window lists (#472)
-    src/game/core/GameInventory.cpp # the inventory window: containers, moves, drag and drop (#472)
-    src/game/sim/Observation.cpp   # what a mission still needs, in the agent's words (#297)
-    src/game/sim/NamingRule.cpp    # who may name a system, and the reason when not (#513)
-    src/game/sim/Sensor.cpp        # the sensor screen's grid and allegiance colours (#123)
+# --- What more than one program runs (#359) ---------------------------------
+# Each file is compiled once and linked by whoever needs it: the client, the server,
+# econagent and the tests used to list these in up to four source lists, built four times.
+#
+# shipcore: what the client, the server and the agent all reason about -- a ship and its
+# step (PlayerStep, which the client must run exactly as the server does to predict its own
+# ship), orders, the account and missions as the snapshot mirrors them, and the world as
+# text. No Simulation in it: the client never links one.
+add_library(shipcore STATIC
     src/game/sim/PlayerStep.cpp
     src/game/sim/WarpPath.cpp
-    src/game/entities/Ship.cpp       # the predicted player ship + NPC proxies
-    src/game/entities/ShipType.cpp   # hangar catalog
+    src/game/sim/Orders.cpp            # order kinds, shared with the server
+    src/game/sim/Observation.cpp       # the world as text: what a model reads (#42), the windows too
+    src/game/sim/NamingRule.cpp        # who may name a system, and the reason when not (#513)
+    src/game/sim/InventoryList.cpp     # the containers reachable here, and what they hold (#472)
+    src/game/sim/SaveFile.cpp          # a file is renamed into place, never half-written (#341)
+    src/game/entities/Ship.cpp         # the player's ship: the server's, and the client's prediction
+    src/game/entities/ShipType.cpp     # the hull catalogue and what a station charges (#109)
     src/game/entities/NpcShip.cpp
-    src/game/player/Player.cpp       # account mirror from the snapshot
+    src/game/player/Player.cpp         # the account, kept by the server, mirrored by the client
     src/game/player/Skills.cpp
-    src/game/missions/MissionSystem.cpp  # mission mirror from the snapshot
+    src/game/missions/MissionSystem.cpp
 )
-target_link_libraries(econspace PRIVATE engine netproto)  # netproto brings src/game + winsock
-set_target_properties(econspace PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/game)
+target_link_libraries(shipcore PUBLIC engine netproto)
 
-# --- The authoritative server (track M, M3) ---------------------------------
-# Simulation without rendering, window or input: the world every client (econspace) and
-# agent (econagent) connects to, plus the tools around a world (`econserver --help`).
-add_executable(econserver
-    src/game/sim/main_headless.cpp
-    src/game/sim/MacroBench.cpp           # econserver macrobench: the galaxy's cost by size (#295)
-    src/game/sim/ProcessMemory.cpp        # resident memory, for the benchmark (#295)
+# simcore: the authoritative world, Simulation and everything it owns -- the server's, and
+# the tests', which test the rules where they live rather than through a socket (#10).
+add_library(simcore STATIC
     src/game/sim/Simulation.cpp
     src/game/sim/ClientSession.cpp        # one connected player, extracted from Simulation (#3)
-    src/game/sim/NamingRule.cpp    # who may name a system, and the reason when not (#513)
     src/game/sim/DesignStore.cpp          # the designs players fly, filed by content (#279)
     src/game/sim/Corporation.cpp          # players' corporations: members, roles, invites (#347)
     src/game/sim/Simulation_World.cpp     # galaxy, hydration, routes, persistence (#17)
@@ -381,24 +359,55 @@ add_executable(econserver
     src/game/sim/Simulation_Knowledge.cpp # who knows which systems: public, own, corporation (#431)
     src/game/sim/Simulation_Scan.cpp      # signatures and the ship's scanner (#346)
     src/game/sim/WorldRules.cpp           # data/world_rules.json: how the world grows (#342 S3)
-    src/game/sim/SaveFile.cpp             # a save is renamed into place, never half-written (#341)
     src/game/sim/HostRules.cpp            # who may log in and whether the world may start (#341)
     src/game/sim/AccessList.cpp           # the allowlist and the bans (#400)
     src/game/sim/ServerLog.cpp            # stamped log lines and the metrics line (#400)
     src/game/sim/ServerConfig.cpp         # server.json, init and the host's flags (#400)
     src/game/sim/ServerOps.cpp            # backups, the admin channel, a clean stop (#400)
-    src/game/sim/PlayerStep.cpp
-    src/game/sim/WarpPath.cpp
-    src/game/sim/Orders.cpp
     src/game/economy/Market.cpp
-    src/game/entities/NpcShip.cpp
-    src/game/entities/Ship.cpp       # Simulation owns the player's ship (M4d-2b)
-    src/game/entities/ShipType.cpp   # ShipStats catalog (for CreatePlayer)
-    src/game/player/Player.cpp       # player account in Simulation (M4f)
-    src/game/player/Skills.cpp       # account skills (M4f)
-    src/game/missions/MissionSystem.cpp  # player missions in Simulation (M4f-2)
 )
-target_link_libraries(econserver PRIVATE engine netproto)  # netproto brings src/game + winsock
+target_link_libraries(simcore PUBLIC shipcore engine netproto)
+
+# --- Game ------------------------------------------------------------------
+# The client does NOT link Simulation: the world lives on econserver. It shares only
+# the wire protocol and shipcore -- among it PlayerStep, the movement step it must run
+# identically to the server in order to predict its own ship.
+add_executable(econspace
+    src/game/main.cpp
+    src/game/core/Game.cpp
+    src/game/core/GameNet.cpp
+    src/game/core/GameHud.cpp
+    src/game/core/GameMap.cpp      # the galaxy map and its routes (#432)
+    src/game/core/Navigation.cpp   # the map's itinerary, planned as the server plans it (#432)
+    src/game/core/GameWindows.cpp  # missions, radar and settings, on Ui::Layout (#297)
+    src/game/core/GameStation.cpp  # docked: the station, market and hangar windows (#297)
+    src/game/core/GameChat.cpp     # the chat window: local, private, the operator (#347)
+    src/game/core/GameScan.cpp     # the scanner window: a pass, and the signatures (#346)
+    src/game/core/ErrorScreen.cpp  # why it could not get in, until the player closes it (#400)
+    src/game/core/GameCorp.cpp     # the corporation window, tickers and corp mates (#347)
+    src/game/core/Actions.cpp      # what can be done about a thing: one list for every window (#297)
+    src/game/core/StationList.cpp  # what the market and hangar windows list (#297)
+    src/game/core/Goal.cpp         # what to do next, in one line (#364)
+    src/game/core/Prediction.cpp   # the own ship predicted and reconciled, without a window (#358)
+    src/game/core/Interpolation.cpp # everything else drawn between two snapshots, likewise (#358)
+    src/game/sim/Overview.cpp      # what the overview lists and in what order (#157)
+    src/game/sim/MissionList.cpp   # what the missions window lists (#297)
+    src/game/core/GameInventory.cpp # the inventory window: containers, moves, drag and drop (#472)
+    src/game/sim/Sensor.cpp        # the sensor screen's grid and allegiance colours (#123)
+)
+target_link_libraries(econspace PRIVATE shipcore engine netproto)  # netproto brings src/game + winsock
+set_target_properties(econspace PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/game)
+
+# --- The authoritative server (track M, M3) ---------------------------------
+# Simulation without rendering, window or input: the world every client (econspace) and
+# agent (econagent) connects to, plus the tools around a world (`econserver --help`).
+add_executable(econserver
+    src/game/sim/main_headless.cpp
+    src/game/sim/MacroBench.cpp           # econserver macrobench: the galaxy's cost by size (#295)
+    src/game/sim/ProcessMemory.cpp        # resident memory, for the benchmark (#295)
+)
+target_link_libraries(econserver PRIVATE simcore engine netproto)  # netproto brings src/game + winsock
 set_target_properties(econserver PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/server)
 
@@ -410,16 +419,11 @@ add_executable(econagent
     src/agent/main.cpp
     src/agent/Jsonrpc.cpp
     src/agent/Session.cpp
-    src/game/sim/Observation.cpp   # the world as text, which is what a model reads
-    src/game/sim/NamingRule.cpp    # who may name a system, and the reason when not (#513)
-    src/game/sim/InventoryList.cpp # the containers reachable here, as the window lists them (#472)
-    src/game/sim/Orders.cpp        # order kinds, shared with the server
-    src/game/entities/ShipType.cpp # the hangar catalog and what a station charges (#109)
 )
 target_include_directories(econagent PRIVATE ${CMAKE_SOURCE_DIR}/src)
 # The selftest's watchdog is a thread: a self-test must not be able to hang.
 find_package(Threads REQUIRED)
-target_link_libraries(econagent PRIVATE engine netproto Threads::Threads)
+target_link_libraries(econagent PRIVATE shipcore engine netproto Threads::Threads)
 set_target_properties(econagent PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/agent)
 
@@ -616,67 +620,14 @@ add_executable(tests
     tests/ownership_tests.cpp      # whose a structure is, and handing it over (#468)
     tests/chart_sales_tests.cpp    # charts sold to factions, priced by what they lack (#431 slice 16)
     tests/finds_tests.cpp          # rich belts and other hidden finds (#346)
-    src/game/sim/Observation.cpp   # shared with econagent (#42)
-    src/game/sim/NamingRule.cpp    # who may name a system, and the reason when not (#513)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)
     src/game/sim/MissionList.cpp   # the missions window's rows, tested without one (#297)
-    src/game/sim/InventoryList.cpp # the inventory window's containers and rows (#472)
     src/game/core/Actions.cpp      # the actions every window offers, tested without one (#297)
     src/game/core/StationList.cpp  # the market's and the hangar's rows, tested without them (#297)
     src/game/core/Goal.cpp         # the goal prompt, tested without a window (#364)
     src/game/core/Prediction.cpp   # the own ship's prediction, tested against the server (#358)
     src/game/core/Interpolation.cpp # ...and everything else's interpolation (#358)
     src/game/sim/Sensor.cpp        # the sensor screen, tested without a window (#123)
-    # The simulation itself is under test now, not only the wire (#10). That pulls in its
-    # dependency tree -- ships, NPCs, the mission system -- which is the price of testing
-    # the rules where they actually live rather than through a socket.
-    src/game/sim/Simulation.cpp
-    src/game/sim/ClientSession.cpp        # one connected player, extracted from Simulation (#3)
-    src/game/sim/DesignStore.cpp          # the designs players fly, filed by content (#279)
-    src/game/sim/Corporation.cpp          # players' corporations: members, roles, invites (#347)
-    src/game/sim/Simulation_World.cpp     # galaxy, hydration, routes, persistence (#17)
-    src/game/sim/Simulation_Agents.cpp    # NPC AI, combat, spawn director, macro (#17)
-    src/game/sim/Simulation_Factions.cpp  # factions reach where value outweighs risk (#231)
-    src/game/sim/Simulation_Player.cpp    # the server-side player verbs and account (#17)
-    src/game/sim/Simulation_Build.cpp     # construction: sites, their rules and their end (#39)
-    src/game/sim/Simulation_Defence.cpp   # a structure's rules of engagement, and its owner (#340)
-    src/game/sim/Simulation_Outposts.cpp  # where a faction's outpost stands, by purpose (#318)
-    src/game/sim/Simulation_Sieges.cpp    # what keeping an outpost costs, and sieges (#295)
-    src/game/sim/Simulation_Migration.cpp # ships a system has too many of leave (#295)
-    src/game/sim/Simulation_Haulers.cpp   # NPC haulers carry goods between markets (#343)
-    src/game/sim/Simulation_Orders.cpp    # the standing-order executor (#17)
-    src/game/sim/Simulation_Snapshot.cpp  # state translated to wire messages (#17)
-    src/game/sim/Simulation_Tide.cpp      # the opening log, sealing and the tide (#342 S3)
-    src/game/sim/Simulation_Territory.cpp # influence, claims, a holder's tax and docking (#431)
-    src/game/sim/Simulation_Owners.cpp    # whose a structure is, handing it over (#468)
-    src/game/sim/Simulation_Patrols.cpp   # a corporation's own AI patrols (#431 slice 12)
-    src/game/sim/Simulation_Fleets.cpp    # what each side flies, design by design (#464)
-    src/game/sim/Simulation_Drift.cpp     # the archive of dead regions (#342 S4)
-    src/game/sim/Simulation_Packs.cpp     # admin packs woven into a new world (#342 S7)
-    src/game/sim/Simulation_Growth.cpp    # expeditions, growing stations, convoys (#342 S6)
-    src/game/sim/Simulation_Jobs.cpp      # jobs posted by faction plans (#345)
-    src/game/sim/Simulation_Contracts.cpp # contracts short markets post (#343, #407)
-    src/game/sim/Simulation_Holes.cpp     # roaming holes, on a schedule of epochs (#342 S9)
-    src/game/sim/Simulation_Hangars.cpp   # personal hangars at the stations, and their rent (#472)
-    src/game/sim/Simulation_Knowledge.cpp # who knows which systems: public, own, corporation (#431)
-    src/game/sim/Simulation_Scan.cpp      # signatures and the ship's scanner (#346)
-    src/game/sim/WorldRules.cpp           # data/world_rules.json: how the world grows (#342 S3)
-    src/game/sim/SaveFile.cpp             # a save is renamed into place, never half-written (#341)
-    src/game/sim/HostRules.cpp            # who may log in and whether the world may start (#341)
-    src/game/sim/AccessList.cpp           # the allowlist and the bans (#400)
-    src/game/sim/ServerLog.cpp            # stamped log lines and the metrics line (#400)
-    src/game/sim/ServerConfig.cpp         # server.json, init and the host's flags (#400)
-    src/game/sim/ServerOps.cpp            # backups, the admin channel, a clean stop (#400)
-    src/game/sim/PlayerStep.cpp
-    src/game/sim/WarpPath.cpp
-    src/game/sim/Orders.cpp
-    src/game/economy/Market.cpp
-    src/game/entities/Ship.cpp
-    src/game/entities/ShipType.cpp
-    src/game/entities/NpcShip.cpp
-    src/game/missions/MissionSystem.cpp
-    src/game/player/Player.cpp
-    src/game/player/Skills.cpp
 )
 target_compile_definitions(tests PRIVATE TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/data/"
                                          # A small hand-written world in the format the loaders
@@ -684,7 +635,8 @@ target_compile_definitions(tests PRIVATE TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/data
                                          TEST_WORLD_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/world/"
                                          # Admin packs, one of each kind (#342 S7)
                                          TEST_PACKS_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/packs/")
-target_link_libraries(tests PRIVATE engine netproto doctest::doctest)
+# The simulation itself is under test, not only the wire (#10): simcore, and shipcore with it.
+target_link_libraries(tests PRIVATE simcore engine netproto doctest::doctest)
 target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/src)  # agent/Jsonrpc.h (#425)
 set_target_properties(tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/tests)
