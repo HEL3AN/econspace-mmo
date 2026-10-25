@@ -1,11 +1,12 @@
 // EconSpace — headless galaxy server (track M, M3).
 //
-// Runs the SAME simulation as the game, but without rendering/window/input: real
-// agents (NpcShip) move and fight, the spawn director holds the population, and
-// macrodynamics change security/economy/territory control. This is the authoritative
-// server — no client (Game) sits on top yet, but the logic is one (Simulation).
+// The authoritative server: it owns the world (Simulation) and every client renders its
+// snapshots and sends it commands. No window, no rendering, no input: real agents (NpcShip)
+// move and fight where a player is, the coarse pass runs the rest of the galaxy, and the
+// world grows while it runs. Beside `host` it has the tools around a world -- init, admin,
+// validate, regenerate, the dumps, the benches, the self-tests and a batch run.
 //
-// Run: econserver [ticks]   (default 3600 ticks = 60 s at SIM_DT=1/60).
+// Run: econserver --help.
 // Every mode takes --data <dir>; without it data/ is looked for beside the exe (DataDir.h).
 
 #include "sim/AccessList.h"
@@ -305,12 +306,38 @@ static ClientSession& SetupHostPlayer(Simulation& sim, std::string start = std::
     return sim.CreateSession(start, sim.SafeArrival(start), GetShipCatalog()[0].stats);
 }
 
+// A standing order arriving over the wire (#72). It is an intent like any other: the server
+// validates it and owns the execution. Docked, only an undock can run; anything else is refused
+// with the reason, so an agent learns to undock first rather than wait on an order that never
+// started.
+static void TakeOrder(Simulation& sim, ClientSession& s, const Proto::Command& c)
+{
+    if (c.abortOrder)
+        sim.AbortOrder(s, "aborted by client");
+    if (c.orderKind == 0)
+        return;
+    Orders::Order o;
+    o.kind = (Orders::Kind)c.orderKind;
+    o.targetId = c.orderTarget;
+    o.point = c.orderPoint;
+    o.stopDist = c.orderStopDist;
+    o.useWarp = c.orderWarp;
+    o.untilFull = c.orderUntilFull;
+    o.destSystem = c.orderDestSystem;
+    o.waypoints = c.orderWaypoints;
+    o.preference = c.orderPreference;
+    o.blueprint = c.orderBlueprint;
+    o.name = c.orderName;
+    sim.GiveOrder(s, o);
+    if (s.IsDocked() && o.kind != Orders::Kind::Undock)
+        sim.AbortOrder(s, "docked; undock first");
+}
+
 // One client input = ONE player tick. This is critical for client and server
 // prediction to match: the client predicts one StepPlayerShip per input, and the
 // server must step the same way (otherwise the ack numbers diverge from the step count
 // and the ship "jerks"). Applies movement/jump/loot/combat/mining for command c.
-// Returns true if the system changed. Account effects are not yet applied on the server
-// (M4f); NPCs do not target the player yet.
+// Returns true if the system changed.
 static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Command& c, float dt,
                            std::vector<Proto::TradeAck>&                  acks,
                            std::map<std::string, std::vector<FireEvent>>& fires)
@@ -402,6 +429,9 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
             sim.AcceptMission(s, c.acceptOffer);  // accept a mission from the board
         if (c.completeMission >= 0)
             sim.CompleteMission(s, c.completeMission);  // hand in a mission (reward to account)
+        // An agent leaves a station by an order, and asks for its next one from there. Dropped
+        // with the rest of the flight path, its undock never ran: an agent that docked stayed.
+        TakeOrder(sim, s, c);
         return changed;  // at a station the ship neither moves nor fires
     }
 
@@ -410,26 +440,7 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     if (s.HasRunningOrder() && (c.thrust || c.brake || c.turn != 0.0f || c.navMode != 0))
         sim.AbortOrder(s, "manual control");
 
-    // A standing order arriving over the wire (#72). It is an intent like any other: the
-    // server validates it and owns the execution.
-    if (c.abortOrder)
-        sim.AbortOrder(s, "aborted by client");
-    if (c.orderKind != 0)
-    {
-        Orders::Order o;
-        o.kind = (Orders::Kind)c.orderKind;
-        o.targetId = c.orderTarget;
-        o.point = c.orderPoint;
-        o.stopDist = c.orderStopDist;
-        o.useWarp = c.orderWarp;
-        o.untilFull = c.orderUntilFull;
-        o.destSystem = c.orderDestSystem;
-        o.waypoints = c.orderWaypoints;
-        o.preference = c.orderPreference;
-        o.blueprint = c.orderBlueprint;
-        o.name = c.orderName;
-        sim.GiveOrder(s, o);
-    }
+    TakeOrder(sim, s, c);
 
     if (c.toggleWeapon)
         s.ToggleWeapon();
@@ -468,8 +479,8 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
     if (c.defenceId != 0)
         sim.SetDefence(s, c.defenceId, c.defence);
 
-    // Player fire: on a shot — a beam event into the snapshot (client draws it blue).
-    // Account effects (mission credit/reputation) are not yet applied on the server (3c-ii).
+    // Player fire: on a shot — a beam event into the snapshot (client draws it blue). What a
+    // shot or a kill costs or earns the account is applied in StepPlayerFire.
     Simulation::PlayerCombatEvents ev;
     s.selectedId = c.targetId;  // what it is told about in full, wherever it is (#349)
     if (sim.StepPlayerFire(s, *sim.SystemOf(s), c.targetId, dt, &ev))
@@ -2229,12 +2240,14 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
     int        refusedConnections = 0;  // since the last line about them
     double     refusalLogAcc = 0.0;
 
-    NetStats      net;
-    double        snapshotAcc = 0.0;   // time since the last round of snapshots
-    double        worldSaveAcc = 0.0;  // world checkpoint timer
-    const float   dt = 1.0f / 60.0f;
-    auto          prev = clock::now();
-    double        acc = 0.0;
+    NetStats net;
+    double   snapshotAcc = 0.0;  // time since the last round of snapshots
+    // Each system's objects in their wire form, made once a round for everyone there (#350).
+    std::map<std::string, Proto::WireCache> wires;
+    double                                  worldSaveAcc = 0.0;  // world checkpoint timer
+    const float                             dt = 1.0f / 60.0f;
+    auto                                    prev = clock::now();
+    double                                  acc = 0.0;
     double        galaxyAcc = 0.0;  // galaxy-snapshot broadcast timer (map statistics)
     long long     knowledgeSeen = sim.KnowledgeStamp();  // what pilots' maps were built from
     long long     corpChartsSaved = sim.Corporations().ChartsSerial();  // in corps.json (#431)
@@ -2836,11 +2849,17 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
             // Only what changed since the snapshot this client last acknowledged, and only the
             // neighbourhood in full (#349). The mission board and log are part of it, so they
             // go out when they change rather than twenty times a second (#341).
-            const std::string enc = hc.snapOut.Encode(snap, sim.InterestOf(*s));
+            const std::string enc =
+                hc.snapOut.Encode(snap, sim.InterestOf(*s), &wires[s->systemId]);
             net.snapshots += (double)enc.size();
             net.snapCount++;
             hc.conn->Send(enc);
         }
+        // What no snapshot of this round asked for is gone or out of sight; a system nobody
+        // was sent anything about this round is let go.
+        if (sendSnapshots)
+            for (auto it = wires.begin(); it != wires.end();)
+                it = it->second.Sweep() ? std::next(it) : wires.erase(it);
         // Who is in each local channel, after the layouts above: a pilot is told who is in a
         // system once it has been told it is there (#347).
         SendPresence(clients, sim, chat, net);
@@ -3655,14 +3674,41 @@ static int OrderSelftest()
     // And asking from zero must still return the whole history.
     bool journalHistory = s.EventsSince(0).size() >= fresh.size();
 
+    // 7) Docked, over the wire as an agent sends it: an undock order runs, and any other order
+    // is refused with the reason instead of being dropped (an agent that docked stayed).
+    bool dockedOrders = false;
+    for (const auto& e : sim.SystemOf(s)->entities)
+        if (e->GetKind() == EntityKind::Station && !dockedOrders)
+        {
+            s.ship->Teleport(e->GetPosition());
+            if (sim.StepPlayerDock(s, *sim.SystemOf(s)) == 0)
+                continue;
+            std::vector<Proto::TradeAck>                  acks;
+            std::map<std::string, std::vector<FireEvent>> fires;
+            Proto::Command                                go;
+            go.orderKind = (int)Orders::Kind::MoveTo;
+            go.orderPoint = { 0.0f, 0.0f };
+            HostStepPlayer(sim, s, go, dt, acks, fires);
+            const bool     refused = s.orderStatus == Orders::Status::Failed &&
+                                     s.orderDetail == "docked; undock first" && s.IsDocked();
+            Proto::Command leave;
+            leave.orderKind = (int)Orders::Kind::Undock;
+            HostStepPlayer(sim, s, leave, dt, acks, fires);
+            run(10);
+            dockedOrders = refused && !s.IsDocked() && s.orderStatus == Orders::Status::Done;
+        }
+
     bool ok = idOk && arrived && rejected && aborted && selfRoute && allReachable && noRoute &&
-              safeRouteOk && routeRejected && journalled && journalCursor && journalHistory;
+              safeRouteOk && routeRejected && journalled && journalCursor && journalHistory &&
+              dockedOrders;
     printf("Order selftest: id %s, move %s, bad-target %s, abort %s, route-self %s, "
-           "route-all %s, route-none %s, route-safe %s, route-reject %s, journal %s => %s\n",
+           "route-all %s, route-none %s, route-safe %s, route-reject %s, journal %s, "
+           "docked %s => %s\n",
            idOk ? "OK" : "FAIL", arrived ? "OK" : "FAIL", rejected ? "OK" : "FAIL",
            aborted ? "OK" : "FAIL", selfRoute ? "OK" : "FAIL", allReachable ? "OK" : "FAIL",
            noRoute ? "OK" : "FAIL", safeRouteOk ? "OK" : "FAIL", routeRejected ? "OK" : "FAIL",
-           (journalled && journalCursor && journalHistory) ? "OK" : "FAIL", ok ? "PASS" : "FAIL");
+           (journalled && journalCursor && journalHistory) ? "OK" : "FAIL",
+           dockedOrders ? "OK" : "FAIL", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
 
@@ -3920,6 +3966,58 @@ static int OpsSelftest()
     return ok ? 0 : 1;
 }
 
+// What `econserver --help` prints, and an unknown mode under its complaint (#484).
+static void PrintUsage(FILE* to)
+{
+    fprintf(to,
+            "%s (%s) -- the authoritative server, and the tools around a world\n"
+            "\n"
+            "  econserver host [port] [flags]\n"
+            "      run the server, on port 50800 unless given\n"
+            "      --world DIR      the world's folder (the executable's own by default)\n"
+            "      --public         reachable from other machines; only the allowlist gets in\n"
+            "      --open           ...and anyone may register\n"
+            "      --dev            honour debug commands such as F1's money\n"
+            "      --centres N      a new world's civilisations (1-6, 3 by default)\n"
+            "      --random-starts  deal a new pilot a start instead of offering the choice\n"
+            "      --max-regions N, --max-systems N, --seed N, --packs DIR\n"
+            "  econserver init <dir> [flags]\n"
+            "      a world folder with a server.json, for `host --world <dir>`\n"
+            "  econserver admin [--world DIR] <command...>\n"
+            "      a console command for the server running on that world (`help` lists them)\n"
+            "  econserver validate [path]\n"
+            "      check the admin packs and pins, without running a world\n"
+            "  econserver regenerate <region> [--world DIR]\n"
+            "      reseal a region by today's rules, with the server stopped\n"
+            "  econserver [ticks] [--news] [--seed N] [--players K] [--rules F] ...\n"
+            "      a batch run of a world nobody is in; 3600 ticks without a number\n"
+            "  econserver galaxydump <seed> [slot ...] [--cap N] [--centres N]\n"
+            "  econserver regiondump <seed> [slot]\n"
+            "      what a seed generates, as JSON (never saved)\n"
+            "  econserver macrobench [N ...]\n"
+            "  econserver netbench [N ...] [--seconds S]\n"
+            "  econserver fleetbench [--days D] [seed ...]\n"
+            "      what the world costs to run, a crowd in one system costs, and how factions'\n"
+            "      fleets fare over days\n"
+            "  econserver hosttest | accttest | worldtest | ordertest | opstest\n"
+            "      the self-tests\n"
+            "\n"
+            "Every mode takes --data <dir> for the data folder; --version prints the version.\n"
+            "Every mode and flag, with examples: CLAUDE.md, \"Build and run\".\n",
+            Version::NAME, Version::NUMBER);
+}
+
+// A batch run's tick count: digits only, so a typo is not read as zero ticks.
+static bool IsTickCount(const char* s)
+{
+    if (!*s)
+        return false;
+    for (; *s; s++)
+        if (!std::isdigit((unsigned char)*s))
+            return false;
+    return true;
+}
+
 int main(int argc, char** argv)
 {
     // Unbuffered stdout, set before anything writes to it. A long-running server is
@@ -3934,6 +4032,13 @@ int main(int argc, char** argv)
     if (argc > 1 && (std::string(argv[1]) == "--version" || std::string(argv[1]) == "version"))
     {
         printf("%s (%s)\n", Version::NAME, Version::NUMBER);
+        return 0;
+    }
+    // ...and so is the usage: a newcomer's first question, asked before there is a data/.
+    if (argc > 1 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h" ||
+                     std::string(argv[1]) == "help"))
+    {
+        PrintUsage(stdout);
         return 0;
     }
     // Every mode reads data/: found once, before any of them, so a copied build runs (#399).
@@ -4013,6 +4118,25 @@ int main(int argc, char** argv)
         if (sizes.empty())
             sizes = { 20, 100, 500, 1000 };
         return MacroBench(sizes, seconds, seed, allHot, players);
+    }
+    // econserver netbench [N ...] [--seconds S] [--seed X]: N pilots in one system, and what
+    // the host spends on them -- their steps, the world, a snapshot each (#350). Without N,
+    // 10 50 100 250.
+    if (argc > 1 && std::string(argv[1]) == "netbench")
+    {
+        std::vector<int> crowds;
+        double           seconds = 20.0;
+        uint64_t         seed = 1;
+        for (int i = 2; i < argc; i++)
+            if (std::string(argv[i]) == "--seconds" && i + 1 < argc)
+                seconds = atof(argv[++i]);
+            else if (std::string(argv[i]) == "--seed" && i + 1 < argc)
+                seed = std::strtoull(argv[++i], nullptr, 10);
+            else if (atoi(argv[i]) > 0)
+                crowds.push_back(atoi(argv[i]));
+        if (crowds.empty())
+            crowds = { 10, 50, 100, 250 };
+        return NetBench(crowds, seconds, seed);
     }
     // econserver fleetbench [--days D] [--systems N] [--every H] [seed ...]: the long run of
     // factions that buy their ships (#464), as a table every H world hours; exit 1 if a
@@ -4160,6 +4284,15 @@ int main(int argc, char** argv)
         return ok ? 0 : 1;
     }
 
+    // Every mode has returned by now; what is left is a batch run of <ticks>. Anything else
+    // in its place is a typo -- `hots 50800` -- that would quietly run zero ticks (#484).
+    if (argc > 1 && !IsTickCount(argv[1]))
+    {
+        fprintf(stderr, "econserver: unknown mode '%s'\n\n", argv[1]);
+        PrintUsage(stderr);
+        return 2;
+    }
+
     std::string dataDir = DataDir::Path();
 
     // Determinism: fix both the server RNG (Simulation) and the global raylib RNG
@@ -4242,7 +4375,7 @@ int main(int argc, char** argv)
             escortPilots.sessions.push_back(s.id);
     }
 
-    const float dt = 1.0f / 60.0f;  // = SIM_DT: server tick as in the game
+    const float dt = 1.0f / 60.0f;  // = SIM_DT: the server's fixed tick
     long long   seen = 0;           // the history already printed, by seq
 
     printf("EconSpace headless server — %d systems, %d ticks (%s)\n",

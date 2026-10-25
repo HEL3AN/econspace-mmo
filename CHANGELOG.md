@@ -72,6 +72,10 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 - The design for knowledge, territory and law (#439); the top-level documents and design notes brought up to date with `main` (#469, #471); README screenshots from the 0.1 build (#424).
 - Releases ship a macOS archive beside Windows and Linux: universal (Apple silicon and Intel), macOS 11 or later, unsigned; every package now carries the world editor (#478).
 - OpenSSF Scorecard runs weekly with a README badge; every workflow action is pinned by commit SHA (Dependabot keeps them current) and every workflow declares read-only token permissions (#519).
+- A second example bot, `examples/agents/trader_bot.py`: notes markets a gate or two apart and carries the good that pays, fees counted, or says none does; CI runs it beside the miner (#490).
+
+### Fixed
+- An agent can leave a station again: econagent's `undock`, and any order given while docked, used to be dropped by the server without a word, so a bot that docked stayed docked. Docked, `undock` runs and any other order is refused with "docked; undock first".
 
 ## [0.1.0] - 2026-10-17 "Anchor"
 

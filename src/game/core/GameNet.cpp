@@ -84,7 +84,7 @@ void Game::ApplyLayout(const Proto::SystemLayout& lay)
 {
     layout_.Reset(lay);
     clientWorld_.clear();
-    snapBuffer_.clear();  // another system's interpolation history isn't needed
+    interpolation_.Clear();  // another system's interpolation history isn't needed
 
     // Everything that pointed into the old system dies with clientWorld_. selected_ and
     // the station/field pointers must be dropped in the same breath, or they dangle and
@@ -323,7 +323,7 @@ void Game::BuildClientSnapshot()
             // not the time it happened to arrive: arrivals bunch and stretch with the
             // network, and interpolating by them made everything nearby speed up and slow
             // down -- a smoothed hitch every couple of seconds.
-            snapBuffer_.push_back({ s.time, s.entities });
+            interpolation_.Add(s.time, s.entities);
             incoming = std::move(s);
             gotSnap = true;
         }
@@ -338,20 +338,9 @@ void Game::BuildClientSnapshot()
         if (navigation_.Observe(snapshot_, universe_, NavigationMass()))
             SaveNavigation();
         worldClock_.Observe(snapshot_.time, GetTime());
-        // A buffer of snapshots with server timestamps — for interpolating non-own
-        // entities (entity interpolation, Gambetta). We draw them "in the past", smoothing
-        // out snapshot jitter. The own ship is NOT touched by interpolation (prediction).
-        // Kept in server time, half a second of it; an older snapshot arriving late is
-        // simply out of order and is dropped by the sort below.
-        std::stable_sort(snapBuffer_.begin(), snapBuffer_.end(),
-                         [](const InterpSnap& x, const InterpSnap& y) { return x.t < y.t; });
-        // A layout after the snapshot in the same frame empties the buffer, and the next
-        // snapshot starts it again: a back() on nothing used to end the client there.
-        const double cutoff = snapBuffer_.empty() ? 0.0 : snapBuffer_.back().t - 0.5;
-        while (snapBuffer_.size() > 2 && snapBuffer_.front().t < cutoff)
-            snapBuffer_.pop_front();
-        if (snapBuffer_.size() > 120)
-            snapBuffer_.pop_front();
+        // The snapshots for drawing everything but the own ship "in the past" (Interpolation):
+        // in server time order, half a second of them.
+        interpolation_.Settle();
     }
 
     Proto::PlayerView& p = snapshot_.player;
@@ -534,24 +523,13 @@ std::unique_ptr<Entity> Game::MakeProxyFromLayout(const Proto::EntityLayout& el)
     return e;
 }
 
-// Find a snapshot entity by id (for buffer-based interpolation).
+// Find a snapshot entity by id.
 static const Proto::EntitySnapshot* FindEnt(const std::vector<Proto::EntitySnapshot>& v, int id)
 {
     for (const Proto::EntitySnapshot& e : v)
         if (e.id == id)
             return &e;
     return nullptr;
-}
-
-// Angle interpolation along the shortest arc.
-static float LerpAngleShort(float a, float b, float t)
-{
-    float d = b - a;
-    while (d > PI)
-        d -= 2.0f * PI;
-    while (d < -PI)
-        d += 2.0f * PI;
-    return a + d * t;
 }
 
 // Reconciles the client's proxy world from the received data: statics are built from the layout
@@ -647,55 +625,25 @@ void Game::ReconcileClientWorld()
     {
         // Two snapshot intervals in the past, on the server's clock (#192), eased so it
         // never runs backwards or jumps with one late packet.
-        double            rt = worldClock_.Now(GetTime()) - 0.1;
-        const InterpSnap* a = nullptr;
-        const InterpSnap* b = nullptr;
-        for (const InterpSnap& s : snapBuffer_)
-        {
-            if (s.t <= rt)
-                a = &s;
-            else
-            {
-                b = &s;
-                break;
-            }
-        }
+        const Interpolation::Bracket around =
+            interpolation_.Around(worldClock_.Now(GetTime()) - 0.1);
         for (auto& e : clientWorld_)
         {
-            int                          id = e->GetId();
-            const Proto::EntitySnapshot* ea = a ? FindEnt(a->ents, id) : nullptr;
-            const Proto::EntitySnapshot* eb = b ? FindEnt(b->ents, id) : nullptr;
-            Vector2                      pos;
-            float                        heading;
-            if (ea && eb && b->t > a->t)
+            Interpolation::Pose pose;
+            if (!Interpolation::PoseOf(around, e->GetId(), pose))
             {
-                float al = (float)((rt - a->t) / (b->t - a->t));
-                pos = Vector2Lerp(ea->pos, eb->pos, al);
-                heading = LerpAngleShort(ea->heading, eb->heading, al);
-            }
-            else if (eb)
-            {
-                pos = eb->pos;
-                heading = eb->heading;
-            }
-            else if (ea)
-            {
-                pos = ea->pos;
-                heading = ea->heading;
-            }
-            else  // not in the buffer (just created) — take from the fresh snapshot
-            {
-                const Proto::EntitySnapshot* cur = FindEnt(snapshot_.entities, id);
+                // Not in the buffer (just created): take it from the fresh snapshot.
+                const Proto::EntitySnapshot* cur = FindEnt(snapshot_.entities, e->GetId());
                 if (cur == nullptr)
                     continue;
-                pos = cur->pos;
-                heading = cur->heading;
+                pose.pos = cur->pos;
+                pose.heading = cur->heading;
             }
-            e->SetPosition(pos);
+            e->SetPosition(pose.pos);
             if (e->GetKind() == EntityKind::Npc)
-                static_cast<NpcShip*>(e.get())->SetHeading(heading);
+                static_cast<NpcShip*>(e.get())->SetHeading(pose.heading);
             else if (e->GetKind() == EntityKind::PlayerShip)
-                static_cast<Ship*>(e.get())->SetHeading(heading);  // other players turn too
+                static_cast<Ship*>(e.get())->SetHeading(pose.heading);  // other players turn too
         }
     }
 
@@ -747,26 +695,7 @@ const Sim::HoldTarget* Game::HoldTarget() const
         if (e->GetId() == id)
         {
             holdTarget_.pos = e->GetPosition();
-            holdTarget_.vel = { 0.0f, 0.0f };
-            const Proto::EntitySnapshot* newer = nullptr;
-            double                       newerT = 0.0;
-            for (auto it = snapBuffer_.rbegin(); it != snapBuffer_.rend(); ++it)
-            {
-                const Proto::EntitySnapshot* es = FindEnt(it->ents, id);
-                if (es == nullptr)
-                    continue;
-                if (newer == nullptr)
-                {
-                    newer = es;
-                    newerT = it->t;
-                    continue;
-                }
-                const float span = (float)(newerT - it->t);
-                if (span > 0.0f)
-                    holdTarget_.vel = { (newer->pos.x - es->pos.x) / span,
-                                        (newer->pos.y - es->pos.y) / span };
-                break;
-            }
+            holdTarget_.vel = interpolation_.VelocityOf(id);
             return &holdTarget_;
         }
     return nullptr;

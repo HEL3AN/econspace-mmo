@@ -15,11 +15,13 @@ builds a single example from nothing and ends with you looking at it in the gall
 | 3 | [Give it a material](give-it-a-material.md) | `data/materials.json`, `data/shaders/materials/*.fs` | no |
 | 4 | [Add a screen pass](add-a-screen-pass.md) | `data/shaders/*.fs`, `data/look.json`, one enum | yes, three lines |
 | 5 | [Tune the generator](tune-the-generator.md) | the rules in `src/engine/gen/` | yes -- the rules are code |
+| 6 | [Add a good to the market](add-a-good.md) | `data/goods.json` | no |
 
 They are written in that order and build on each other: the example is a small **relay
 station**, first as a bare entry, then with a shape, then with its own material. The screen
 pass stands on its own, and so does the generator: it is about the rules that place things,
-judged on fifty systems at once.
+judged on fifty systems at once. So does the economy: a good is seen in a docked station's
+market rather than in the gallery.
 
 ---
 
@@ -72,6 +74,7 @@ others. Knowing which is which saves the most time:
 | a screen pass's shader is missing or does not compile | that one pass is dropped and marked *unavailable* in F10 |
 | unknown pass name in `look.json` | that entry is skipped |
 | a misspelled field in an archetype, a part of its shape, a faction, a blueprint or a ship design (`minPixel`, `matrial`) | the **whole** file is refused, and the log names the field ([#191](https://github.com/HEL3AN/econspace-mmo/issues/191)) |
+| a misspelled field, or an unknown planet type, station role or faction, in a hand-written system file, a pin's document or a pack's system | that system does not load, that pin is not applied, that pack is refused -- and the log names it ([#357](https://github.com/HEL3AN/econspace-mmo/issues/357)) |
 | a misspelled field in `look.json` or `materials.json` | **ignored without a word** — the default is used |
 | an archetype names a material id that does not exist | **drawn plain without a word** |
 

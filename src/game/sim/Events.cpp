@@ -19,13 +19,14 @@ const char* KindName(Kind k)
         case Kind::Built: return "built";
         case Kind::Scanned: return "scanned";
         case Kind::StructureAttacked: return "structure_attacked";
+        case Kind::Count: break;
     }
     return "notice";
 }
 
 bool KindFrom(const std::string& name, Kind& out)
 {
-    for (int k = 0; k <= (int)Kind::StructureAttacked; k++)
+    for (int k = 0; k < (int)Kind::Count; k++)
         if (name == KindName((Kind)k))
         {
             out = (Kind)k;
