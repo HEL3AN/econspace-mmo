@@ -494,12 +494,18 @@ bool Load(const std::string& path)
                            { "holdingIncome", &sty.holdingIncome },
                            { "defensiveBelow", &sty.defensiveBelow },
                            { "foundingHours", &sty.foundingHours },
-                           { "refitHalfLifeHours", &sty.refitHalfLifeHours } },
+                           { "refitHalfLifeHours", &sty.refitHalfLifeHours },
+                           { "captureShare", &sty.captureShare } },
                          {}, {}, g_error))
             return false;
         if (!(sty.refitHalfLifeHours > 0.0))
         {
             g_error = path + ": styles: 'refitHalfLifeHours' must be above zero";
+            return false;
+        }
+        if (sty.captureShare < 0.0 || sty.captureShare > 1.0)
+        {
+            g_error = path + ": styles: 'captureShare' is a share, 0 to 1";
             return false;
         }
         if (sty.culture > 1.0 || sty.defensiveBelow > 1.0 || sty.dearAt < 1.0)

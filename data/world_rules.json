@@ -205,6 +205,7 @@
         "defensiveBelow": 0.4,
         "foundingHours": 24,
         "refitHalfLifeHours": 48,
+        "captureShare": 0.25,
         "cultures": {
             "clan": { "railgun": 3, "laser": 1, "brawler": 1 },
             "sect": { "laser": 3, "railgun": 1, "heavy": 1 },

@@ -500,8 +500,13 @@ struct Charts
 // `refitHalfLifeHours` world hours -- a rate in time, not per period, so the period can change
 // without moving the history a region's ships show. A refit pays the guns' goods of the new
 // fit and the difference of the two ships' prices from the treasury.
+//
+// What the pirates beat they take from (slice 6): in a cold exchange `captureShare` of the
+// police ships they destroy are flown on as pirate ships, in the family of the guns they were
+// shot down with -- one ship in four by default (a proposal of the design, tuning).
 struct Styles
 {
+    double                                               captureShare = 0.25;
     double                                               refitHalfLifeHours = 48.0;
     double                                               culture = 0.25;
     double                                               hours = 24.0;

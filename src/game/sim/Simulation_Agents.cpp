@@ -1388,7 +1388,7 @@ void Simulation::ColdLosses(SystemState& st)
     { return on.hull > 0.0f ? by.dps / on.hull : 0.0f; };
     // Corporations' patrols (#431 slice 12) trade shots with the pirates as the police do, at
     // the same meeting rates, with their own design's guns and hull.
-    float byPatrols = 0.0f;
+    float byPatrols = 0.0f, guardsLost = 0.0f;
     for (auto& kv : a.patrols)
     {
         const Corps::Patrol* set = PatrolOf(kv.first, st.id);
@@ -1396,8 +1396,10 @@ void Simulation::ColdLosses(SystemState& st)
             continue;
         const Ships::Fighter guard = PatrolFighter(*set);
         byPatrols += COLD_PIRATE_FIRE * bite(guard, pirate) * pirates * kv.second;
-        kv.second -=
+        const float lost =
             std::min(kv.second, COLD_POLICE_FIRE * bite(pirate, guard) * pirates * kv.second);
+        kv.second -= lost;
+        guardsLost += lost;
     }
     const float lostPirates =
         std::min(pirates, COLD_PIRATE_FIRE * bite(cop, pirate) * pirates * police + byPatrols);
@@ -1417,6 +1419,10 @@ void Simulation::ColdLosses(SystemState& st)
     AccumSuppress(a.supPirates, lostPirates);
     a.lostPirates += lostPirates;
     a.lostPolice += lostPolice;
+    // What the pirates beat they take a share of (#464, slice 6). Only ships with guns and a
+    // price: the police the faction pays for and the patrols a corporation does -- the
+    // traders and miners are the economy's own, and an unarmed hull is no raider.
+    Capture(st, lostPolice + guardsLost);
 }
 
 void Simulation::ColdTopUp(SystemState& st, const Population& target)
