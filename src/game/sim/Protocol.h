@@ -36,8 +36,7 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    74;  // 74: the galaxy statistics carry what a known system's region's NPCs fly (#464);
-         // 73: the NPC delivery service brings goods from any hangar elsewhere (#472 slice 11) --
+    73;  // 73: the NPC delivery service brings goods from any hangar elsewhere (#472 slice 11) --
          // a LockedHangarView is every hangar elsewhere, with its quote, `hostile` when the
          // faction refuses the pilot;
          // 72: the assets view is sent on request (#472 slice 9) -- a Command's requestAssets and a
