@@ -186,6 +186,11 @@ that speaks it), the client **`econspace`**, the server **`econserver`**, the MC
 - Follow [CONVENTIONS.md](CONVENTIONS.md): types and methods `PascalCase`, class fields
   `camelCase_`, formatting per `.clang-format`.
 - Everything in the repository — code, comments, docs, commit messages — is in **English**.
+- **The repository is public: no local paths and nothing about the machine** in code, docs,
+  commit messages, PR or issue text (owner, 2026-11-21). A squash merge copies the PR body
+  into the commit on `main`, where it cannot be taken back. Describe what a screenshot shows
+  or upload the image; keep output files inside your own worktree, and never create folders
+  elsewhere on the disk, such as in the user's profile.
 - The build runs `-Wall -Wextra` and stays warning-clean for our code. Keep it that way.
 - Add new `.cpp` files to the correct CMake target.
 
