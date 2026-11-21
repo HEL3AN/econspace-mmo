@@ -52,7 +52,7 @@ uniform vec4  style;        // livery.style: panel aspect, patchwork, window war
 
 // The material's own constants (materials.json).
 uniform float surface;  // 0 plating, 1 recessed, 2 trim, 3 truss, 4 armour, 5 radiator,
-                        // 6 solar, 7 glass, 8 nozzle
+                        // 6 solar, 7 glass, 8 nozzle, 9 frame (torn structure)
 uniform float pitch;    // a panel's size, in the object's radii
 uniform float relief;   // how far neighbouring panels tilt against each other
 uniform float shine;    // 0 matt .. 1 glass
@@ -465,6 +465,22 @@ void main()
                 heat * (0.25 + 1.6 * thrusting);
     }
 
+    else if (kind == 9)
+    {
+        // Torn structure (#138): a part shot away, left as the frame inside it. Dark ribs
+        // across it, ragged holes through which the sky shows, and sparks at the broken
+        // edges -- the backend draws this in place of a part the hull has lost.
+        float rib = smoothstep(0.55, 0.75, abs(fract(q.x / (hw * 1.2) + partSeed * 7.0) * 2.0 - 1.0));
+        float tear = bNoise(vec3(oc * 8.0, partSeed * 13.0 + seed * 3.0));
+        if (R > 14.0 && tear > 0.5 && rib < 0.6)
+            discard;
+        alb = vec3(0.12, 0.11, 0.1) * (0.6 + 0.9 * rib) * (0.8 + 0.4 * ph.z);
+        float edgeGlow = smoothstep(0.42, 0.5, tear) * (1.0 - smoothstep(0.5, 0.54, tear));
+        float spark = step(0.97, bHash(vec3(floor(oc * 36.0), floor(time * 7.0) + partSeed * 5.0)));
+        emit += vec3(1.0, 0.5, 0.18) * (edgeGlow * 0.5 + spark) * (0.5 + 0.5 * sin(time * 11.0 + oc.x * 30.0));
+        gloss = 0.1;
+    }
+
     // --- Lit windows -------------------------------------------------------------------------
     // Stations have decks and decks have windows; a fighter has a cockpit and no more. One row
     // along the middle of each panel row, some lit and some not, by the panel's own roll.
@@ -536,20 +552,22 @@ void main()
     }
 
     // --- Damage --------------------------------------------------------------------------------
-    // Scorch where it was hit, in the object's frame so a burn crosses parts, with embers at
-    // its edge when the damage is heavy. Parts taken off are #138's; this only marks them.
-    if (damage < 1.0)
+    // Scorch where it was hit, in the object's frame so a burn crosses parts: nothing until
+    // the hull has lost 40%, soot from there, and embers at its edge from 60% (owner,
+    // 2026-10-23). Parts it has lost are drawn by the backend as `frame` (kind 9).
+    float hurt = 1.0 - damage;
+    if (hurt > 0.4 && kind != 9)
     {
-        float hurt = 1.0 - damage;
+        float amount = clamp((hurt - 0.4) / 0.6, 0.0, 1.0);
         float sc = bFbm(vec3(oc * 5.5, seed * 5.0 + 9.0), max(oct, 2));
-        float cut = 1.0 - hurt * 0.75;
+        float cut = 1.0 - amount * 0.75;
         float burn = smoothstep(cut - 0.05, cut + 0.05, sc);
         col = mix(col, SOOT * lit, burn * 0.9);
-        float ember = Band(sc, cut - 0.03, cut + 0.01, 0.015) * smoothstep(0.4, 0.8, hurt);
+        float ember = Band(sc, cut - 0.03, cut + 0.01, 0.015) * smoothstep(0.6, 0.9, hurt);
         float flicker = 0.7 + 0.3 * sin(time * 9.0 + oc.x * 40.0 + seed * 20.0);
         emit += vec3(1.0, 0.42, 0.12) * ember * flicker;
         emit *= 1.0 - burn * 0.8;
-        col *= mix(1.0, 0.85 + 0.15 * sin(time * (7.0 + 20.0 * hurt) + centre.x * 0.05), hurt);
+        col *= mix(1.0, 0.85 + 0.15 * sin(time * (7.0 + 20.0 * hurt) + centre.x * 0.05), amount);
     }
 
     finalColor = vec4(col + emit, texel.a);
