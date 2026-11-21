@@ -2636,7 +2636,7 @@ static int RunHost(const Host::ServerConfig& cfg, const std::string& worldDir)
                     const Corps::Outcome o = sim.ApplyCorpAct(
                         hc.account,
                         { act.verb, act.name, act.ticker, act.pilot, act.role, act.value,
-                          act.system, act.design, act.engage, act.threshold, act.allow },
+                          act.system, act.design, act.engage, act.threshold, act.allow, act.right },
                         names, now);
                     std::vector<Chat::Delivery> out;
                     Chat::Delivery              told;

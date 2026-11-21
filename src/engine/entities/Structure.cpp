@@ -156,3 +156,46 @@ int Structure::GetStorageCapacity() const
         return 0;
     return (int)archetype_->storageCapacity;
 }
+
+int Structure::GetStoredUsed() const
+{
+    int n = stored_.Used();
+    for (const auto& d : divisions_)
+        n += d.second.Used();
+    for (const auto& h : hangars_)
+        n += h.second.Used();
+    return n;
+}
+
+Inventory* Structure::Division(const std::string& id)
+{
+    if (id == "shared")
+        return &stored_;
+    if (id == "stock" || id == "command")
+        return &divisions_[id];
+    return nullptr;
+}
+
+const Inventory* Structure::Division(const std::string& id) const
+{
+    if (id == "shared")
+        return &stored_;
+    const auto it = divisions_.find(id);
+    return it != divisions_.end() ? &it->second : nullptr;
+}
+
+const Inventory* Structure::FindHangar(const std::string& account) const
+{
+    const auto it = hangars_.find(account);
+    return it != hangars_.end() ? &it->second : nullptr;
+}
+
+int Structure::GetStoredTotal(ResourceType type) const
+{
+    int n = stored_.Amount(type);
+    for (const auto& d : divisions_)
+        n += d.second.Amount(type);
+    for (const auto& h : hangars_)
+        n += h.second.Amount(type);
+    return n;
+}

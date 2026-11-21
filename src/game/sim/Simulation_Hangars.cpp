@@ -13,6 +13,7 @@
 
 #include "core/Archetype.h"
 #include "entities/Station.h"
+#include "entities/Structure.h"
 
 #include <algorithm>
 #include <cmath>
@@ -273,7 +274,19 @@ bool Simulation::RentsHangar(const std::string& account) const
 Proto::HangarView Simulation::HangarViewFor(const ClientSession& s) const
 {
     Proto::HangarView v;
-    const Entity*     station = DockedHangarStation(s);
+    if (const Structure* t = CorpHangarStructure(s))  // a member's own at a corporation's (#472)
+    {
+        const Inventory* mine = t->FindHangar(s.accountName);
+        const Inventory  none;
+        const Inventory& inv = mine != nullptr ? *mine : none;
+        v.free = std::min(WorldRules::HangarRules().freeUnits, t->GetStorageCapacity());
+        v.capacity = PooledCapacity(*t, inv, v.free);
+        v.most = v.free;
+        for (ResourceType rt : AllResourceTypes())
+            v.goods.push_back(inv.Amount(rt));
+        return v;
+    }
+    const Entity* station = DockedHangarStation(s);
     if (station == nullptr)
         return v;
     const WorldRules::Hangars& r = WorldRules::HangarRules();

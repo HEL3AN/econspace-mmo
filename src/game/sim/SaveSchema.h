@@ -89,7 +89,10 @@ namespace Save
 //    when it comes back: the world lists each archive with the version that sealed it (#498).
 //    A version 17 build would read "corp:<id>" as an account
 //    nobody has and leave the structure to nobody.
-inline constexpr int WORLD_VERSION = 18;
+// 19: a structure's storage has divisions and its members' hangars (#472 slice 5): what was
+//    `stored` is the Shared division, and `divisions` and `hangars` hold the rest. A version 18
+//    build would read only Shared and save the world without the others' goods.
+inline constexpr int WORLD_VERSION = 19;
 
 // 2: a ship's position is in a system a million units across (#159). An older one is
 //    read for everything else, and the ship is placed beside a station.

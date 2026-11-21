@@ -428,6 +428,19 @@ const Structure* Simulation::DockedStorage(const ClientSession& s, std::string* 
     return t;
 }
 
+int Simulation::PooledCapacity(const Structure& t, const Inventory& inv, int limit)
+{
+    const int pool = std::max(0, t.GetStorageCapacity() - t.GetStoredUsed());
+    const int own = inv.Used();
+    return own + std::max(0, std::min(limit - own, pool));
+}
+
+const Structure* Simulation::CorpHangarStructure(const ClientSession& s) const
+{
+    const Structure* t = DockedStorage(s);
+    return t != nullptr && corps_.Of(t->GetOwner()) != nullptr ? t : nullptr;
+}
+
 bool Simulation::ContainerOf(ClientSession& s, const std::string& id, Container& out,
                              std::string& why)
 {
@@ -443,15 +456,34 @@ bool Simulation::ContainerOf(ClientSession& s, const std::string& id, Container&
         out.name = "the hold";
         return true;
     }
-    if (id == "storage")
+    if (id == "storage" || id.rfind("storage:", 0) == 0)  // a division (#472 slice 5)
     {
         const Structure* t = DockedStorage(s, &why);
         if (t == nullptr)
             return false;
+        const std::string div = id == "storage" ? "shared" : id.substr(8);
+        if (!Corps::ValidDivisionId(div))
+        {
+            why = "a storage division is shared, stock or command";
+            return false;
+        }
+        if (!corps_.MayDivision(t->GetOwner(), s.accountName, div, "view"))
+        {
+            why = "your role does not see " + corps_.DivisionLabel(t->GetOwner(), div) + " in " +
+                  t->GetName();
+            return false;
+        }
         Structure& mine = const_cast<Structure&>(*t);
-        out.goods = &mine.Storage();
-        out.capacity = mine.GetStorageCapacity();
-        out.name = mine.GetName() + "'s storage";
+        out.goods = mine.Division(div);
+        out.capacity = PooledCapacity(mine, *out.goods, mine.GetStorageCapacity());
+        const bool corp = corps_.Of(t->GetOwner()) != nullptr;
+        out.name = corp ? corps_.DivisionLabel(t->GetOwner(), div) + " in " + mine.GetName()
+                        : mine.GetName() + "'s storage";
+        out.accepts = corps_.MayDivision(t->GetOwner(), s.accountName, div, "put");
+        out.gives = corps_.MayDivision(t->GetOwner(), s.accountName, div, "take");
+        // A corporation's takes are its journal's (a pilot's own structure keeps no ledger).
+        if (corp)
+            out.takeLog = out.name;
         return true;
     }
     if (id.rfind("can:", 0) == 0)  // a can or a wreck within reach, in space (#472)
@@ -492,6 +524,17 @@ bool Simulation::ContainerOf(ClientSession& s, const std::string& id, Container&
     }
     if (id == "hangar")  // (#472)
     {
+        // At a corporation's structure, each member has a hangar of their own (slice 5).
+        if (const Structure* t = CorpHangarStructure(s))
+        {
+            Structure& mine = const_cast<Structure&>(*t);
+            out.goods = &mine.HangarOf(s.accountName);
+            out.capacity = PooledCapacity(
+                mine, *out.goods,
+                std::min(WorldRules::HangarRules().freeUnits, mine.GetStorageCapacity()));
+            out.name = "your hangar in " + mine.GetName();
+            return true;
+        }
         const Entity* station = DockedHangarStation(s, &why);
         if (station == nullptr)
             return false;
@@ -541,6 +584,8 @@ int Simulation::MoveGoods(ClientSession& s, const std::string& from, const std::
         return refuse(why);
     if (!b.accepts)
         return refuse("nothing can be put into " + b.name);
+    if (!a.gives)
+        return refuse("your role may not take from " + a.name);
     const ResourceType good = ResourceType::FromIndex(type);
     const int          room = std::max(0, b.capacity - b.goods->Used());
     const int          n = std::min({ amount, a.goods->Amount(good), room });
@@ -548,6 +593,10 @@ int Simulation::MoveGoods(ClientSession& s, const std::string& from, const std::
         return refuse(room <= 0 ? b.name + " is full" : a.name + " has no " + ResourceName(good));
     a.goods->Remove(good, n);
     b.goods->Add(good, n);
+    if (!a.takeLog.empty())  // what leaves a corporation's division is the corporation's to read
+        corps_.Record(s.accountName, Ev::Kind::Notice,
+                      s.accountName + " took " + std::to_string(n) + " " + ResourceName(good) +
+                          " from " + a.takeLog);
     // A can or a wreck that changed is everyone's news (#38); one emptied is searched.
     for (const Container* c : { &a, &b })
         if (c->canId != 0)

@@ -49,12 +49,29 @@ std::vector<Container> Reachable(const Proto::PlayerView& p)
     }
     if (p.docked && p.storageCap > 0)
     {
-        Container store;
-        store.id = "storage";
-        store.name = "Storage";
-        store.goods = p.storedByType;
-        store.capacity = p.storageCap;
-        out.push_back(store);
+        if (!p.divisions.empty())  // a corporation's storage, by what the role sees (#472)
+        {
+            for (const Proto::DivisionView& d : p.divisions)
+            {
+                Container store;
+                store.id = d.id == "shared" ? "storage" : "storage:" + d.id;
+                store.name = d.name;
+                store.goods = d.goods;
+                store.capacity = d.capacity;
+                store.takeOnly = !d.canPut;
+                store.putOnly = !d.canTake;
+                out.push_back(store);
+            }
+        }
+        else if (!p.storedByType.empty())
+        {
+            Container store;
+            store.id = "storage";
+            store.name = "Storage";
+            store.goods = p.storedByType;
+            store.capacity = p.storageCap;
+            out.push_back(store);
+        }
     }
     return out;
 }
@@ -155,7 +172,7 @@ std::vector<Row> Rows(const Container& c, const std::vector<float>& prices, std:
 
 int Movable(const Container& from, const Container& to, ResourceType type, int wanted)
 {
-    if (from.id == to.id || from.closed || to.closed || to.takeOnly)
+    if (from.id == to.id || from.closed || to.closed || to.takeOnly || from.putOnly)
         return 0;
     return std::max(0, std::min({ wanted, from.Amount(type), to.Room() }));
 }

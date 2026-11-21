@@ -318,6 +318,8 @@ Outcome Registry::Apply(const std::string& account, const Act& act,
     }
     if (verb == "tax" || verb == "docking")
         return SetPolicy(account, verb, act.value, WorldRules::InfluenceRules().taxMax);
+    if (verb == "division")  // (#472 slice 5)
+        return SetDivision(account, act.name, act.value, act.right, act.role);
     if (verb == "police")  // whether it holds the system is the world's to say
         return Refuse("a police budget is set through the world, not the registry alone");
     if (verb == "patrol")  // ...and where it may keep a patrol, and what the design is
@@ -555,6 +557,110 @@ Outcome Registry::SetRole(const std::string& by, const std::string& pilot, Role 
     o.announce = role == Role::Ceo ? by + " handed the corporation to " + who + ", its CEO now"
                                    : by + " made " + who + " a " + Lower(RoleLabel(role));
     return o;
+}
+
+bool ValidDivisionId(const std::string& id)
+{
+    for (const char* d : DIVISION_IDS)
+        if (id == d)
+            return true;
+    return false;
+}
+
+Division DefaultDivision(const std::string& id)
+{
+    Division d;
+    if (id == "stock")
+    {
+        d.label = "Stock";
+        d.take = Role::Director;
+    }
+    else if (id == "command")
+    {
+        d.label = "Command";
+        d.view = d.put = d.take = Role::Director;
+    }
+    else
+        d.label = "Shared";
+    return d;
+}
+
+bool DivisionRightValid(const std::string& right)
+{
+    return right == "view" || right == "put" || right == "take";
+}
+
+Division Corp::DivisionOf(const std::string& id) const
+{
+    const auto it = divisions.find(id);
+    return it != divisions.end() ? it->second : DefaultDivision(id);
+}
+
+Outcome Registry::SetDivision(const std::string& by, const std::string& id,
+                              const std::string& label, const std::string& right,
+                              const std::string& role)
+{
+    const Corp* in = Of(by);
+    if (in == nullptr)
+        return Refuse("you are in no corporation");
+    if (in->Find(by)->role == Role::Member)
+        return Refuse("only the CEO or a director changes the storage's divisions");
+    const std::string div = Lower(id);
+    if (!ValidDivisionId(div))
+        return Refuse("a division is shared, stock or command");
+    Division d = in->DivisionOf(div);
+    if (label.size() > 24)
+        return Refuse("a division's name is at most 24 characters");
+    for (char ch : label)
+        if ((unsigned char)ch < 32)
+            return Refuse("a division's name has no control characters");
+    if (!label.empty())
+        d.label = label;
+    const std::string r = Lower(right);
+    if (!r.empty())
+    {
+        if (!DivisionRightValid(r))
+            return Refuse("a right is view, put or take");
+        Role want;
+        if (!RoleFrom(Lower(role), want))
+            return Refuse("a role is ceo, director or member");
+        Role& at = r == "view" ? d.view : r == "put" ? d.put : d.take;
+        at = want;
+    }
+    else if (label.empty())
+        return Refuse("name a new label, or a right and the lowest role that holds it");
+    Corp& c = *Mutable(in->id);
+    if (d == DefaultDivision(div))
+        c.divisions.erase(div);
+    else
+        c.divisions[div] = d;
+    rev_++;
+    Outcome o;
+    o.corp = c.id;
+    o.told = "Storage division " + d.label + ": view " + RoleLabel(d.view) + ", put " +
+             RoleLabel(d.put) + ", take " + RoleLabel(d.take);
+    o.announce = by + ": " + o.told;
+    return o;
+}
+
+bool Registry::MayDivision(const std::string& owner, const std::string& actor,
+                           const std::string& id, const std::string& right) const
+{
+    const Corp* c = Of(owner);
+    if (c == nullptr)  // a pilot's own structure: Shared, and theirs
+        return id == "shared" && !actor.empty() && actor == owner;
+    const Member* m = c->Find(actor);
+    if (m == nullptr || !ValidDivisionId(id))
+        return false;
+    const Division d = c->DivisionOf(id);
+    const Role     need = right == "view" ? d.view : right == "put" ? d.put : d.take;
+    return (int)m->role >= (int)need;
+}
+
+std::string Registry::DivisionLabel(const std::string& owner, const std::string& id) const
+{
+    const Corp* c = Of(owner);
+    return c != nullptr ? c->DivisionOf(id).label : DefaultDivision(id).label;
 }
 
 Outcome Registry::SetPolicy(const std::string& by, const std::string& verb,
@@ -969,6 +1075,17 @@ json Registry::ToJson() const
                                       { "told", l.second.told } };
             cj["licences"] = licences;
         }
+        // Its storage divisions (#472 slice 5): an addition an older build ignores.
+        if (!c.divisions.empty())
+        {
+            json divs = json::object();
+            for (const auto& d : c.divisions)
+                divs[d.first] = { { "label", d.second.label },
+                                  { "view", RoleName(d.second.view) },
+                                  { "put", RoleName(d.second.put) },
+                                  { "take", RoleName(d.second.take) } };
+            cj["divisions"] = divs;
+        }
         // Slice 11's addition, which an older build ignores: no CORPS_VERSION bump.
         if (!c.police.empty())
             cj["police"] = c.police;
@@ -1118,6 +1235,30 @@ bool Registry::FromJson(const json& j, std::string& why)
                 c.treasury = treasury->get<double>();
             if (tax != cj.end())
                 c.tax = tax->get<double>();
+            // Its divisions (#472 slice 5): one this build cannot read is the default's.
+            const auto divs = cj.find("divisions");
+            if (divs != cj.end() && divs->is_object())
+                for (auto d = divs->begin(); d != divs->end(); ++d)
+                {
+                    if (!ValidDivisionId(d.key()) || !d.value().is_object())
+                        continue;
+                    Division    v = DefaultDivision(d.key());
+                    const json& dj = d.value();
+                    if (dj.contains("label") && dj["label"].is_string() &&
+                        dj["label"].get<std::string>().size() <= 24)
+                        v.label = dj["label"].get<std::string>();
+                    auto role = [&](const char* k, Role& out)
+                    {
+                        Role r;
+                        if (dj.contains(k) && dj[k].is_string() &&
+                            RoleFrom(dj[k].get<std::string>(), r))
+                            out = r;
+                    };
+                    role("view", v.view);
+                    role("put", v.put);
+                    role("take", v.take);
+                    c.divisions[d.key()] = v;
+                }
             // The ledger (#509): a line this build cannot read is dropped, not the file.
             const auto ledger = cj.find("ledger");
             if (ledger != cj.end() && ledger->is_array())

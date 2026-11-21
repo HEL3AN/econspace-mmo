@@ -138,6 +138,27 @@ struct LedgerEntry
 inline constexpr size_t    LEDGER_CAP = 80;  // kept per corporation, oldest dropped
 inline constexpr long long LEDGER_MERGE_SECONDS = 3600;
 
+// A division of a corporation structure's storage (#472 slice 5): a name the CEO or a director
+// may change, and the lowest role that may see it, put into it and take from it. There are
+// three, by id -- shared, stock, command -- and a corporation that changed none has the
+// defaults: Shared is the members', Stock is put into by members and taken from by directors,
+// Command is the directors'.
+inline constexpr const char* DIVISION_IDS[3] = { "shared", "stock", "command" };
+struct Division
+{
+    std::string label;
+    Role        view = Role::Member;
+    Role        put = Role::Member;
+    Role        take = Role::Member;
+    bool        operator==(const Division& o) const
+    {
+        return label == o.label && view == o.view && put == o.put && take == o.take;
+    }
+};
+bool     ValidDivisionId(const std::string& id);
+Division DefaultDivision(const std::string& id);
+bool     DivisionRightValid(const std::string& right);  // "view", "put" or "take"
+
 struct Corp
 {
     std::string         id;  // "c<N>", stable for the corporation's life
@@ -180,6 +201,10 @@ struct Corp
     // Its licences to build in other holders' systems (#431 slice 6), by system id, the rent
     // paid from the treasury.
     std::map<std::string, Licence> licences;
+    // What it changed in its storage divisions (#472 slice 5), by id; an id not here is as
+    // DefaultDivision says.
+    std::map<std::string, Division> divisions;
+    Division                        DivisionOf(const std::string& id) const;
 
     const Member* Find(const std::string& account) const;
     const Member* Ceo() const;
@@ -220,6 +245,7 @@ struct Act
     // separated; "none" clears it), as a structure's (#340); empty -- as they were.
     std::string threshold{};
     std::string allow{};
+    std::string right{};  // "division": view, put or take
 };
 
 // What came of an act. `error` empty: done. `told` is the actor's answer either way;
@@ -276,6 +302,19 @@ public:
                       const std::string& designName, const std::string& engage,
                       const std::string& threshold, const std::string& allow, int systemMax,
                       int corpMax, bool allowed);
+
+    // A storage division renamed or its rights moved (#472 slice 5), by the CEO or a director:
+    // `label` (empty: as it was) and, when `right` is "view", "put" or "take", the lowest
+    // `role` that holds it.
+    Outcome SetDivision(const std::string& by, const std::string& id, const std::string& label,
+                        const std::string& right, const std::string& role);
+    // Whether `actor` holds `right` ("view", "put", "take") on division `id` of the storage
+    // of what `owner` owns: the owner's corporation's rules, by the actor's role in it. An
+    // owner in no corporation has only the Shared division, and only the owner holds it.
+    bool MayDivision(const std::string& owner, const std::string& actor, const std::string& id,
+                     const std::string& right) const;
+    // What `owner`'s corporation calls the division; the default's label for none.
+    std::string DivisionLabel(const std::string& owner, const std::string& id) const;
 
     // Money into a corporation's treasury (#431 T4); false for one that does not exist. Not a
     // change Rev() counts -- a fee comes with every trade, and Rev() is what writes corps.json

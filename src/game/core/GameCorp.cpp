@@ -214,6 +214,28 @@ bool Game::CorpCommand(const std::string& text)
         act.pilot = Word(rest, &act.role);
     else if (verb == "tax" || verb == "docking" || verb == "deposit" || verb == "withdraw")
         act.value = Word(rest);
+    else if (verb == "division")
+    {
+        // The storage's divisions (#472 slice 5): `/corp division stock take director` moves a
+        // right, `/corp division stock Vault` renames it.
+        std::string more;
+        act.name = Lower(Word(rest, &more));
+        std::string second = Word(more, &more);
+        if (act.name.empty() || second.empty())
+        {
+            ChatNotice("/corp division shared|stock|command view|put|take member|director|ceo, "
+                       "or /corp division <id> <new name>");
+            return true;
+        }
+        const std::string right = Lower(second);
+        if (right == "view" || right == "put" || right == "take")
+        {
+            act.right = right;
+            act.role = Lower(Word(more));
+        }
+        else
+            act.value = Trim(second + " " + more);
+    }
     else if (verb == "police")
     {
         // The budget last: a system's name may have spaces in it.
@@ -265,7 +287,9 @@ bool Game::CorpCommand(const std::string& text)
                    "police <system> <cr an "
                    "hour>|none | patrol <system> <ships>|none [design=<name>] "
                    "[engage=<mode>] | transfer <structure id> <pilot>|[TICKER] | take "
-                   "<structure id>; /c <text> talks to the corporation");
+                   "<structure id> | division <id> view|put|take <role>|<new name>; /c <text> "
+                   "talks to the "
+                   "corporation");
         return true;
     }
     SendCorpAct(act);

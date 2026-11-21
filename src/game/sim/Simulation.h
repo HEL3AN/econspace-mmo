@@ -1296,7 +1296,16 @@ public:
         std::string name;
         bool        accepts = true;  // false: goods come out and never go in -- a wreck
         int         canId = 0;       // a can or a wreck in space: told to everyone when it changes
+        bool        gives = true;    // false: goods go in and never out -- a division's role rights
+        // Non-empty: what leaves it is a line in the pilot's corporation's journal, naming this.
+        std::string takeLog;
     };
+    // What `inv` of a structure's storage may hold: its own goods and as much of what the
+    // storage has room for, never above `limit` (a division is limited by the pool alone).
+    static int PooledCapacity(const Structure& t, const Inventory& inv, int limit);
+    // The structure docked at when it is a corporation's and the pilot is on its side: where
+    // members have a hangar each (#472 slice 5); null elsewhere.
+    const Structure* CorpHangarStructure(const ClientSession& s) const;
     // A can a pilot jettisons into (#472): how much it holds, how big it is, and how long it
     // floats -- as long as a lost ship's wreck.
     static constexpr int   CAN_UNITS = 1000;

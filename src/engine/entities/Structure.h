@@ -123,13 +123,29 @@ public:
     // its archetype's `storage` capacity. State, saved with it; it survives an upgrade.
     // A container like any other (#472): what a move takes from and adds to.
     const std::map<ResourceType, int>& GetStored() const { return stored_.All(); }
-    int              GetStoredAmount(ResourceType type) const { return stored_.Amount(type); }
-    int              GetStoredUsed() const { return stored_.Used(); }
+    int GetStoredAmount(ResourceType type) const { return stored_.Amount(type); }
+    // Everything kept aboard, in every division and every personal hangar (#472): what the
+    // capacity is shared by.
+    int              GetStoredUsed() const;
     int              GetStorageCapacity() const;  // 0: none, or a site, which can hold nothing yet
     void             AddStored(ResourceType type, int amount) { stored_.Add(type, amount); }
     void             RemoveStored(ResourceType type, int amount) { stored_.Remove(type, amount); }
     Inventory&       Storage() { return stored_; }
     const Inventory& Storage() const { return stored_; }
+
+    // Divisions and personal hangars (#472 slice 5). `stored_` is the Shared division -- what
+    // the structure kept before there were divisions. Stock and Command hold the rest of a
+    // corporation's goods; a member's hangar is theirs alone. All share the one capacity.
+    // A division by its id ("shared", "stock", "command"); null for an id it does not know.
+    Inventory*       Division(const std::string& id);
+    const Inventory* Division(const std::string& id) const;
+    // A pilot's personal hangar here, created empty by the non-const one.
+    Inventory&       HangarOf(const std::string& account) { return hangars_[account]; }
+    const Inventory* FindHangar(const std::string& account) const;
+    const std::map<std::string, Inventory>& Hangars() const { return hangars_; }
+    const std::map<std::string, Inventory>& Divisions() const { return divisions_; }
+    // Every unit of a good kept aboard, wherever.
+    int GetStoredTotal(ResourceType type) const;
 
     // Its owner's rules of engagement (#340). Meaningful for a player's armed structure; a
     // faction's keeps its doctrine whatever this says.
@@ -147,12 +163,14 @@ public:
     }
 
 private:
-    std::string              name_;
-    std::string              builds_;
-    std::string              blueprint_;
-    std::vector<std::string> grewFrom_;
-    Inventory                stored_;
-    float                    damage_ = 0.0f;
+    std::string                      name_;
+    std::string                      builds_;
+    std::string                      blueprint_;
+    std::vector<std::string>         grewFrom_;
+    Inventory                        stored_;
+    std::map<std::string, Inventory> divisions_;  // "stock", "command"
+    std::map<std::string, Inventory> hangars_;    // by account
+    float                            damage_ = 0.0f;
     double       damagedAt_ = 0.0;  // the instant `damage_` was set; mending counts from here
     bool         mends_ = true;
     double       startedAt_ = 0.0;

@@ -1209,6 +1209,16 @@ std::string Describe(const View& view, Detail detail)
                             p.storedByType[i]);
             }
         out += Fmt("STORAGE %d/%d", used, p.storageCap) + (kept.empty() ? "" : "  " + kept) + "\n";
+        // A corporation's storage by division, as a role sees it (#472 slice 5).
+        for (const Proto::DivisionView& d : p.divisions)
+        {
+            int n = 0;
+            for (int g : d.goods)
+                n += g;
+            out += Fmt("  %s (%s) %d%s%s\n", d.name.c_str(),
+                       d.id == "shared" ? "storage" : ("storage:" + d.id).c_str(), n,
+                       d.canPut ? "" : ", no put", d.canTake ? "" : ", no take");
+        }
     }
     // The last ship lost (#344): an agent that wakes somewhere else in a smaller ship is told
     // why on every look, not only in the event that said it once.

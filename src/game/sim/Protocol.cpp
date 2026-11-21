@@ -1182,7 +1182,21 @@ json PlayerJson(const Proto::PlayerView& p)
         j["lic"] = LicenceJson(p.licence);
     // Only docked at a storage of the pilot's side (#438).
     if (p.storageCap > 0)
+    {
         j["store"] = { { "cap", p.storageCap }, { "t", p.storedByType } };
+        if (!p.divisions.empty())  // (#472 slice 5)
+        {
+            json divs = json::array();
+            for (const Proto::DivisionView& d : p.divisions)
+                divs.push_back({ { "id", d.id },
+                                 { "name", d.name },
+                                 { "t", d.goods },
+                                 { "cap", d.capacity },
+                                 { "put", d.canPut },
+                                 { "take", d.canTake } });
+            j["store"]["div"] = divs;
+        }
+    }
     if (p.hangar.capacity > 0)  // (#472)
         j["hgr"] = { { "cap", p.hangar.capacity },     { "free", p.hangar.free },
                      { "rent", p.hangar.rented },      { "most", p.hangar.most },
@@ -1273,11 +1287,27 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
     }
     p.storageCap = 0;
     p.storedByType.clear();
+    p.divisions.clear();
     const auto store = pj.find("store");
     if (store != pj.end() && store->is_object())
     {
         p.storageCap = store->value("cap", 0);
         p.storedByType = store->value("t", std::vector<int>{});
+        const auto divs = store->find("div");
+        if (divs != store->end() && divs->is_array())
+            for (const json& dj : *divs)
+            {
+                if (!dj.is_object())
+                    continue;
+                Proto::DivisionView d;
+                d.id = Val(dj, "id", std::string());
+                d.name = Val(dj, "name", std::string());
+                d.goods = Val(dj, "t", std::vector<int>{});
+                d.capacity = Val(dj, "cap", 0);
+                d.canPut = Val(dj, "put", true);
+                d.canTake = Val(dj, "take", true);
+                p.divisions.push_back(std::move(d));
+            }
     }
     p.hangar = Proto::HangarView{};
     const auto hgr = pj.find("hgr");
@@ -2442,6 +2472,8 @@ std::string EncodeCorpAct(const CorpAct& a)
         j["threshold"] = a.threshold;
     if (!a.allow.empty())
         j["allow"] = a.allow;
+    if (!a.right.empty())
+        j["right"] = a.right;
     return j.dump();
 }
 
@@ -2462,6 +2494,7 @@ bool DecodeCorpAct(const std::string& s, CorpAct& out)
     out.engage = TextOf(j, "engage");
     out.threshold = TextOf(j, "threshold");
     out.allow = TextOf(j, "allow");
+    out.right = TextOf(j, "right");
     return !out.verb.empty();
 }
 
