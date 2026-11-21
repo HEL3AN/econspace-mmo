@@ -921,6 +921,7 @@ TEST_CASE("station business answers in the journal, yes or no (#219)")
     SUBCASE("a ship the player cannot afford is refused with its price")
     {
         f.s.account.SetMoney(0.0);
+        f.s.dockedStationId = 1;  // ships are bought at a dock (#472)
         const int seq = f.s.LastEventSeq();
         CHECK_FALSE(f.sim.BuyShip(f.s, 1));
         CHECK(NoticeSince(f.s, seq).find("costs") != std::string::npos);
