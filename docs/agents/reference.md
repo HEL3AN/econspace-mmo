@@ -178,6 +178,16 @@ Set how many units of hangar you rent at the station you are docked at, on top o
 |---|---|---|---|
 | `units` | number | yes | units to rent on top of the free ones |
 
+### `request_delivery`
+
+Have goods you keep in a hangar at a station whose faction now refuses you (Hated) brought to your hangar where you are docked, by that faction's freight office: inventory lists each such hangar under OUT OF REACH with its key, the price (the route's quote times a hostility surcharge, paid up front to that faction) and the hours it takes. The goods are in transit until they arrive; inventory shows them. Without a resource it sends everything there.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `amount` | number |  | at most this many of it; left out, all |
+| `key` | string | yes | the hangar's key as inventory lists it |
+| `resource` | string |  | one good to send; left out, all of them |
+
 ### `move_goods`
 
 Move goods between two containers where you are, by the ids inventory lists them by: 'hold' (the ship you fly); docked at a station, 'hangar' (yours there); docked at your own structure or a corporation mate's, 'storage'; in space, 'can:<id>' for a can or wreck within reach (take from any, put into your own), and 'can' as a destination jettisons. Moves all of that good unless an amount is given, as far as the destination has room.
