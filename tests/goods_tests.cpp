@@ -254,7 +254,8 @@ TEST_CASE("buying at a station: the stock, the hold and the money decide, and th
     }
     SUBCASE("as many as the hold takes")
     {
-        s.ship->AddCargo(Good::Iron(), s.ship->GetCargoCapacity() - 4);
+        s.ship->AddCargo(Good::Iron(), (s.ship->GetCargoCapacity() - 4 * Goods::Volume(food)) /
+                                           Goods::Volume(Good::Iron()));
         CHECK(sim.StepPlayerBuy(s, st, food.Index(), 100).bought == 4);
         const int seq = s.LastEventSeq();
         CHECK(sim.StepPlayerBuy(s, st, food.Index(), 1).bought == 0);

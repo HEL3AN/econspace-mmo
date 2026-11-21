@@ -111,7 +111,7 @@ TEST_CASE("a corporation's storage has three divisions with a minimum role per r
     CHECK(w.Move(dina, "hold", "storage:command", 5) == 5);
     CHECK(w.Move(anna, "storage:command", "hold", 2) == 2);
     CHECK(w.Depot().Division("command")->Amount(Good::Iron()) == 3);
-    CHECK(w.Depot().GetStoredUsed() == 6 + 5 + 3);
+    CHECK(w.Depot().GetStoredUsed() == (6 + 5 + 3) * 10);
 
     // What each role sees is in its snapshot, and a container per division.
     const Proto::PlayerView mine = w.sim.BuildSnapshot(boris, w.sys).player;
@@ -196,9 +196,9 @@ TEST_CASE("a member has a hangar of their own at a corporation's structure (#472
     CHECK(w.Depot().FindHangar("boris")->Amount(Good::Iron()) == 7);
     // It is in the snapshot, and counts against the structure's one capacity.
     CHECK(w.sim.BuildSnapshot(boris, w.sys).player.hangar.goods[Good::Iron().Index()] == 7);
-    CHECK(w.Depot().GetStoredUsed() == 10);
+    CHECK(w.Depot().GetStoredUsed() == 100);
     Structure& d = w.Depot();
-    d.AddStored(Good::Ice(), d.GetStorageCapacity() - d.GetStoredUsed());
+    d.AddStored(Good::Ice(), (d.GetStorageCapacity() - d.GetStoredUsed()) / 10);
     CHECK(w.Move(boris, "hold", "hangar", 1) == 0);  // the room is shared
     CHECK(w.Move(boris, "hangar", "hold", 7) == 7);
 

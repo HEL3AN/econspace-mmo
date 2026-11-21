@@ -12,16 +12,16 @@
         "haulMargin": 0.1
     },
     "goods": [
-        { "id": "Iron",        "name": "Iron",         "tier": 0, "price": 10,  "stock": 400, "supply": "local", "mined": true },
-        { "id": "Ice",         "name": "Ice",          "tier": 0, "price": 15,  "stock": 300, "supply": "local", "mined": true },
-        { "id": "Crystal",     "name": "Crystal",      "tier": 0, "price": 40,  "stock": 120, "supply": "local", "mined": true },
-        { "id": "Food",        "name": "Food",         "tier": 0, "price": 22,  "stock": 250, "supply": "imported" },
-        { "id": "Steel",       "name": "Steel",        "tier": 1, "price": 38,  "stock": 160, "supply": "imported" },
-        { "id": "Fuel",        "name": "Fuel",         "tier": 1, "price": 34,  "stock": 160, "supply": "imported" },
-        { "id": "Circuits",    "name": "Circuits",     "tier": 2, "price": 130, "stock": 60,  "supply": "imported" },
-        { "id": "Ammunition",  "name": "Ammunition",   "tier": 2, "price": 80,  "stock": 90,  "supply": "imported" },
-        { "id": "RepairPaste", "name": "Repair Paste", "tier": 2, "price": 105, "stock": 60,  "supply": "imported" },
-        { "id": "Medicine",    "name": "Medicine",     "tier": 2, "price": 120, "stock": 50,  "supply": "imported" }
+        { "id": "Iron",        "name": "Iron",         "tier": 0, "price": 10,  "stock": 400, "supply": "local", "mined": true, "volume": 10 },
+        { "id": "Ice",         "name": "Ice",          "tier": 0, "price": 15,  "stock": 300, "supply": "local", "mined": true, "volume": 10 },
+        { "id": "Crystal",     "name": "Crystal",      "tier": 0, "price": 40,  "stock": 120, "supply": "local", "mined": true, "volume": 5 },
+        { "id": "Food",        "name": "Food",         "tier": 0, "price": 22,  "stock": 250, "supply": "imported", "volume": 5 },
+        { "id": "Steel",       "name": "Steel",        "tier": 1, "price": 38,  "stock": 160, "supply": "imported", "volume": 5 },
+        { "id": "Fuel",        "name": "Fuel",         "tier": 1, "price": 34,  "stock": 160, "supply": "imported", "volume": 5 },
+        { "id": "Circuits",    "name": "Circuits",     "tier": 2, "price": 130, "stock": 60,  "supply": "imported", "volume": 1 },
+        { "id": "Ammunition",  "name": "Ammunition",   "tier": 2, "price": 80,  "stock": 90,  "supply": "imported", "volume": 2 },
+        { "id": "RepairPaste", "name": "Repair Paste", "tier": 2, "price": 105, "stock": 60,  "supply": "imported", "volume": 2 },
+        { "id": "Medicine",    "name": "Medicine",     "tier": 2, "price": 120, "stock": 50,  "supply": "imported", "volume": 1 }
     ],
     "planets": {
         "planet.oceanic": { "Food": 40 },

@@ -150,7 +150,7 @@ TEST_CASE("mining fills the hold from a field in range")
         for (int i = 0; i < 600; i++)  // ten simulated seconds
             mined += f.sim.StepPlayerMining(f.s, f.World(), 1.0f, dt).minedUnits;
         CHECK(mined > 0);
-        CHECK(f.s.ship->GetCargoUsed() == mined);
+        CHECK(f.s.ship->Hold().Units() == mined);
     }
 
     SUBCASE("a full hold stops mining rather than losing the ore silently")
@@ -858,7 +858,7 @@ TEST_CASE("a hull too small for the cargo is refused, not overloaded (#219)")
 
     f.s.account.SetMoney(GetShipCatalog()[hauler].price + GetShipCatalog()[courier].price);
     REQUIRE(f.sim.BuyShip(f.s, hauler));
-    const int load = scout.stats.cargoCapacity * 3;
+    const int load = scout.stats.cargoCapacity * 3 / Goods::Volume(ore);
     REQUIRE(f.s.ship->AddCargo(ore, load));
 
     SUBCASE("switching to a smaller hold says why and changes nothing")
@@ -870,7 +870,7 @@ TEST_CASE("a hull too small for the cargo is refused, not overloaded (#219)")
         CHECK(f.s.ship->GetCargoAmount(ore) == load);
         const std::string why = NoticeSince(f.s, seq);
         CHECK(why.find("refused") != std::string::npos);
-        CHECK(why.find(std::to_string(load)) != std::string::npos);
+        CHECK(why.find(std::to_string(load * Goods::Volume(ore))) != std::string::npos);
     }
 
     SUBCASE("buying a smaller hold is refused before anything is charged")
@@ -886,7 +886,7 @@ TEST_CASE("a hull too small for the cargo is refused, not overloaded (#219)")
 
     SUBCASE("once the cargo fits, the switch goes through")
     {
-        f.s.ship->RemoveCargo(ore, load - scout.stats.cargoCapacity);
+        f.s.ship->RemoveCargo(ore, load - scout.stats.cargoCapacity / Goods::Volume(ore));
         const int seq = f.s.LastEventSeq();
         CHECK(f.sim.SwitchShip(f.s, 0));
         CHECK(f.s.currentShip == 0);

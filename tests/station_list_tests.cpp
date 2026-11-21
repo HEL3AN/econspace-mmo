@@ -18,7 +18,7 @@ TEST_CASE("StationList: the market lists every good, what selling pays and what 
     in.stock = { 400, 0, 30 };
     in.cargo = { 7, 0, 2 };
     in.money = 1000.0;
-    in.holdFree = 20;
+    in.holdFree = 200;  // of volume: Iron takes 10 a unit (#472)
     const double fee = Goods::Rules().fee;
 
     const std::vector<StationList::MarketRow> rows = StationList::Market(in);

@@ -117,7 +117,7 @@ TEST_CASE("a hauler shot down leaves its cargo in its wreck, for whoever searche
         sim.CreateSession(sim.Universe().startId, Vector2{ 0.0f, 0.0f }, GetShipCatalog()[0].stats);
     SystemState&       st = *sim.SystemOf(s);
     const ResourceType steel = Good::Named("Steel");
-    const int          room = s.ship->GetCargoCapacity() - s.ship->GetCargoUsed();
+    const int room = (s.ship->GetCargoCapacity() - s.ship->GetCargoUsed()) / Goods::Volume(steel);
     REQUIRE(room > 0);
 
     auto hauler = std::make_unique<NpcShip>(Vector2{ 20.0f, 0.0f }, Fac::TradersGuild(),
@@ -138,7 +138,7 @@ TEST_CASE("a hauler shot down leaves its cargo in its wreck, for whoever searche
     }
     REQUIRE(wreck != nullptr);  // ...and what it carried is where it was
     CHECK(wreck->Contents().Amount(steel) == room + 7);
-    CHECK(wreck->GetCargoAmount() == room + 7);
+    CHECK(wreck->Contents().Units() == room + 7);
     // The layout says so, for a client and an agent.
     bool told = false;
     for (const Proto::EntityLayout& l : sim.BuildLayout(st.id).entities)
@@ -150,7 +150,7 @@ TEST_CASE("a hauler shot down leaves its cargo in its wreck, for whoever searche
     s.ship->SetPosition(wreck->GetPosition());
     sim.StepPlayerLoot(s, st, wreck->GetId());
     CHECK(s.ship->GetCargoAmount(steel) == room);
-    CHECK(wreck->GetCargoAmount() == 7);
+    CHECK(wreck->Contents().Units() == 7);
     CHECK_FALSE(wreck->IsLooted());
     s.ship->RemoveCargo(steel, room);
     sim.StepPlayerLoot(s, st, wreck->GetId());

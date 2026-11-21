@@ -12,6 +12,14 @@ int Inventory::Used() const
 {
     int n = 0;
     for (const auto& kv : goods_)
+        n += kv.second * Goods::Volume(kv.first);
+    return n;
+}
+
+int Inventory::Units() const
+{
+    int n = 0;
+    for (const auto& kv : goods_)
         n += kv.second;
     return n;
 }

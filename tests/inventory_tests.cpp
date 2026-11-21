@@ -23,7 +23,7 @@ Proto::PlayerView Pilot()
     p.cargoByType[(size_t)Good::Iron().Index()] = 30;
     p.cargoByType[(size_t)Good::Crystal().Index()] = 4;
     p.cargoUsed = 34;
-    p.cargoCap = 50;
+    p.cargoCap = 500;
     return p;
 }
 }  // namespace
@@ -38,7 +38,7 @@ TEST_CASE("Inventory: goods by type, as every container holds them")
     inv.Add(Good::Ice(), -3);
     CHECK(inv.Amount(Good::Iron()) == 15);
     CHECK(inv.Amount(Good::Ice()) == 0);
-    CHECK(inv.Used() == 15);
+    CHECK(inv.Used() == 150);      // Iron takes 10 a unit (#472)
     CHECK(inv.All().size() == 1);  // none at zero
 
     CHECK(inv.Remove(Good::Iron(), 4) == 4);
@@ -52,8 +52,8 @@ TEST_CASE("Inventory: in space only the hold is reachable")
     const auto all = InventoryList::Reachable(Pilot());
     REQUIRE(all.size() == 1);
     CHECK(all[0].id == "hold");
-    CHECK(all[0].Used() == 34);
-    CHECK(all[0].Room() == 16);
+    CHECK(all[0].Used() == 320);
+    CHECK(all[0].Room() == 180);
     CHECK(InventoryList::Find(all, "storage") == nullptr);
 }
 
@@ -61,15 +61,15 @@ TEST_CASE("Inventory: docked at one's own structure, its storage is listed after
 {
     Proto::PlayerView p = Pilot();
     p.docked = true;
-    p.storageCap = 1000;
+    p.storageCap = 10000;
     p.storedByType.assign((size_t)Goods::Count(), 0);
     p.storedByType[(size_t)Good::Ice().Index()] = 200;
     const auto all = InventoryList::Reachable(p);
     REQUIRE(all.size() == 2);
     const Container* store = InventoryList::Find(all, "storage");
     REQUIRE(store != nullptr);
-    CHECK(store->Used() == 200);
-    CHECK(store->Room() == 800);
+    CHECK(store->Used() == 2000);
+    CHECK(store->Room() == 8000);
 
     // Docked somewhere whose storage is not the pilot's side's: the server sends none.
     p.storageCap = 0;
@@ -108,11 +108,11 @@ TEST_CASE("Inventory: a move carries no more than wanted, held, or there is room
     hold.id = "hold";
     hold.goods.assign((size_t)Goods::Count(), 0);
     hold.goods[(size_t)Good::Iron().Index()] = 30;
-    hold.capacity = 50;
+    hold.capacity = 500;
     Container store;
     store.id = "storage";
     store.goods.assign((size_t)Goods::Count(), 0);
-    store.capacity = 20;
+    store.capacity = 200;
 
     CHECK(InventoryList::Movable(hold, store, Good::Iron(), 10) == 10);
     CHECK(InventoryList::Movable(hold, store, Good::Iron(), 100) == 20);  // the room
@@ -139,7 +139,7 @@ TEST_CASE("Inventory: the agent's inventory tool reads the same containers as th
     v.snapshot = &snap;
     std::string text = Obs::DescribeInventory(v);
     CHECK(text.find("INVENTORY in space") != std::string::npos);
-    CHECK(text.find("Hold (hold) 34 / 50: Iron 30, Crystal 4") != std::string::npos);
+    CHECK(text.find("Hold (hold) 320 / 500: Iron 30, Crystal 4") != std::string::npos);
     CHECK(text.find("Storage") == std::string::npos);
 
     snap.player.docked = true;

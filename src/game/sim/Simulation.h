@@ -1316,7 +1316,7 @@ public:
     const Structure* CorpHangarStructure(const ClientSession& s) const;
     // A can a pilot jettisons into (#472): how much it holds, how big it is, and how long it
     // floats -- as long as a lost ship's wreck.
-    static constexpr int   CAN_UNITS = 1000;
+    static constexpr int   CAN_UNITS = 10000;  // of volume (#472)
     static constexpr float CAN_SIZE = 14.0f;
     // The pilot's own can within reach to add to, or a new one beside the ship; its id, or 0
     // with why.

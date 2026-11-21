@@ -27,7 +27,7 @@ std::vector<MarketRow> Market(const MarketInput& in)
         r.perUnit = paid * (1.0 - fee);
         r.worth = r.perUnit * r.hold;
         r.buyUnit = r.ask * markup * (1.0 + fee);
-        r.canBuy = std::min(r.stock, std::max(0, in.holdFree));
+        r.canBuy = std::min(r.stock, std::max(0, in.holdFree) / Goods::Volume(type));
         if (r.buyUnit > 0.0)
             r.canBuy = std::min(r.canBuy, (int)(in.money / r.buyUnit));
         rows.push_back(r);

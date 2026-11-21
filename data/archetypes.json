@@ -248,7 +248,7 @@
                 "buildable": {},
                 "dockable": { "range": 250 },
                 "market": {},
-                "storage": { "capacity": 5000 }
+                "storage": { "capacity": 50000 }
             }
         },
         {
@@ -285,7 +285,7 @@
                 "buildable": {},
                 "dockable": { "range": 250 },
                 "market": {},
-                "storage": { "capacity": 3000 }
+                "storage": { "capacity": 30000 }
             }
         },
         {
@@ -322,7 +322,7 @@
             "components": {
                 "dockable": { "range": 250 },
                 "market": {},
-                "storage": { "capacity": 4000 },
+                "storage": { "capacity": 40000 },
                 "shipyard": { "markup": 1.5 },
                 "buildable": {}
             }
@@ -359,7 +359,7 @@
             "components": {
                 "dockable": { "range": 250 },
                 "market": {},
-                "storage": { "capacity": 3000 },
+                "storage": { "capacity": 30000 },
                 "defensive": { "range": 2500, "damage": 12 }
             }
         },
@@ -860,7 +860,7 @@
                 "buildable": {},
                 "dockable": { "range": 200 },
                 "market": {},
-                "storage": { "capacity": 2000 },
+                "storage": { "capacity": 20000 },
                 "defensive": { "range": 2000, "damage": 8 }
             }
         },
@@ -1011,7 +1011,7 @@
             "components": {
                 "buildable": {},
                 "dockable": { "range": 200 },
-                "storage": { "capacity": 1000 },
+                "storage": { "capacity": 10000 },
                 "defensive": { "range": 2000, "damage": 8 }
             }
         },
@@ -1042,7 +1042,7 @@
             "components": {
                 "buildable": {},
                 "dockable": { "range": 200 },
-                "storage": { "capacity": 1000 },
+                "storage": { "capacity": 10000 },
                 "defensive": { "range": 2000, "damage": 8 }
             }
         },
@@ -1074,7 +1074,7 @@
             "components": {
                 "buildable": {},
                 "dockable": { "range": 200 },
-                "storage": { "capacity": 1000 },
+                "storage": { "capacity": 10000 },
                 "defensive": { "range": 2000, "damage": 8 }
             }
         },
@@ -1134,7 +1134,7 @@
             "components": {
                 "buildable": {},
                 "dockable": { "range": 200 },
-                "storage": { "capacity": 1000 },
+                "storage": { "capacity": 10000 },
                 "defensive": { "range": 2000, "damage": 8 }
             }
         },

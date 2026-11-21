@@ -556,7 +556,11 @@ TEST_CASE("the owner takes a site or a structure apart, and nobody else can (#39
         CHECK(sim.DismantleProblem(s, id).find("undock") == 0);
         s.dockedStationId = 0;
 
-        CHECK(s.ship->AddCargo(Good::Iron(), s.ship->GetCargoCapacity() - s.ship->GetCargoUsed()));
+        CHECK(s.ship->AddCargo(Good::Crystal(),
+                               (s.ship->GetCargoCapacity() - s.ship->GetCargoUsed()) /
+                                   Goods::Volume(Good::Crystal())));  // the rest, to the brim
+        CHECK(s.ship->AddCargo(Good::Iron(), (s.ship->GetCargoCapacity() - s.ship->GetCargoUsed()) /
+                                                 Goods::Volume(Good::Iron())));
         CHECK(sim.DismantleProblem(s, id).find("the hold has room for 0") == 0);
         CHECK(StructureById(sim, sys, id) != nullptr);  // nothing lost to a full hold
         CHECK(sim.DismantleProblem(s, 999999).find("there is no structure") == 0);
@@ -1655,7 +1659,7 @@ TEST_CASE("an outpost keeps goods for its owner's side, through an upgrade and a
     Beside(s, t);
     seq = s.LastEventSeq();
     CHECK_FALSE(sim.Dismantle(s, id));
-    CHECK(Told(s, seq, "still keeps 30 units"));
+    CHECK(Told(s, seq, "still keeps 300 of room"));
 
     // Grown into a market it keeps what it kept -- and its dock is open to anyone, its
     // storage still only to its owner's side.

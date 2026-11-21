@@ -114,7 +114,7 @@ std::vector<Proto::LockedHangarView> Simulation::LockedHangarsFor(const ClientSe
         {
             const int n = it->second.goods.Amount(rt);
             v.goods.push_back(n);
-            volume += n;
+            volume += n * Goods::Volume(rt);
             value += n * prices.GetBasePrice(rt);
         }
         const DeliveryQuote q =

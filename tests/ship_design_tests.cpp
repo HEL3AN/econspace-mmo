@@ -102,7 +102,8 @@ TEST_CASE("the player's hulls are designs, and fly within 10% of the numbers the
         CHECK(Within(t.stats.turnSpeed, was.turn, 0.10f));
         CHECK(Within(t.stats.maxSpeed, was.maxSpeed, 0.10f));
         CHECK(Within(t.stats.rcsAccel, was.rcs, 0.10f));
-        CHECK(Within((float)t.stats.cargoCapacity, (float)was.cargo, 0.10f));
+        CHECK(Within((float)t.stats.cargoCapacity, (float)was.cargo * 10.0f,
+                     0.10f));  // capacities are in volume (#472)
         CHECK(Within(t.stats.miningRate, was.mining, 0.10f));
         CHECK(Within(t.stats.hull, 100.0f, 0.10f));
         CHECK(Within(t.stats.damage, 16.0f, 0.10f));

@@ -17,10 +17,7 @@ int Container::Amount(ResourceType type) const
 
 int Container::Used() const
 {
-    int used = 0;
-    for (int n : goods)
-        used += std::max(0, n);
-    return used;
+    return Volume(goods);
 }
 
 int Container::Room() const
@@ -103,10 +100,18 @@ std::vector<Container> Reachable(const Proto::Snapshot&                    snap,
         c.goods = e.holds;
         const bool mine = !account.empty() && l->second.owner == account;
         c.takeOnly = !mine;
-        c.capacity = mine ? std::max(CAN_UNITS, Total(e.holds)) : Total(e.holds);
+        c.capacity = mine ? std::max(CAN_UNITS, Volume(e.holds)) : Volume(e.holds);
         out.push_back(c);
     }
     return out;
+}
+
+int Volume(const std::vector<int>& goods)
+{
+    int n = 0;
+    for (size_t i = 0; i < goods.size(); i++)
+        n += std::max(0, goods[i]) * Goods::Volume(ResourceType::FromIndex((int)i));
+    return n;
 }
 
 int Total(const std::vector<int>& goods)
@@ -165,6 +170,8 @@ std::vector<Row> Rows(const Container& c, const std::vector<float>& prices, std:
         const size_t i = (size_t)type.Index();
         r.price = i < prices.size() ? std::max(0.0f, prices[i]) : 0.0f;
         r.value = (double)r.price * n;
+        r.volume = Goods::Volume(type);
+        r.perVolume = (double)r.price / r.volume;
         rows.push_back(r);
     }
     return rows;
@@ -174,7 +181,7 @@ int Movable(const Container& from, const Container& to, ResourceType type, int w
 {
     if (from.id == to.id || from.closed || to.closed || to.takeOnly || from.putOnly)
         return 0;
-    return std::max(0, std::min({ wanted, from.Amount(type), to.Room() }));
+    return std::max(0, std::min({ wanted, from.Amount(type), to.Room() / Goods::Volume(type) }));
 }
 
 int PresetAmount(Preset preset, int available)

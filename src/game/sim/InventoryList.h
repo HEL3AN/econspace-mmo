@@ -48,11 +48,12 @@ std::vector<Container> Reachable(const Proto::Snapshot&                    snap,
                                  const std::map<int, Proto::EntityLayout>& layout,
                                  const std::string&                        account);
 // The units a can of one's own holds at most: Simulation::CAN_UNITS, which the server checks.
-constexpr int CAN_UNITS = 1000;
+constexpr int CAN_UNITS = 10000;
 
 // "5 Iron, 3 Ice": what a per-good list holds, for a line of text; empty for nothing.
 std::string Describe(const std::vector<int>& goods);
-int         Total(const std::vector<int>& goods);
+int         Total(const std::vector<int>& goods);   // units
+int         Volume(const std::vector<int>& goods);  // room (#472)
 // The one with this id, or null.
 const Container* Find(const std::vector<Container>& all, std::string_view id);
 
@@ -61,8 +62,10 @@ struct Row
     ResourceType type;
     std::string  name;
     int          amount = 0;
-    float        price = 0.0f;  // what the market here pays a unit; 0 where there is none
-    double       value = 0.0;   // amount times price
+    float        price = 0.0f;     // what the market here pays a unit; 0 where there is none
+    double       value = 0.0;      // amount times price
+    int          volume = 1;       // the room one unit takes (#472)
+    double       perVolume = 0.0;  // what a unit of room holds, at the market's price here
 };
 
 // What a container holds, in AllResourceTypes order, with nothing that is not there. `filter`

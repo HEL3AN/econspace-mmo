@@ -374,12 +374,12 @@ std::string Simulation::DismantleProblem(const ClientSession& s, int id) const
     // What it keeps goes nowhere by itself (#438): emptied first, as a hold would be.
     if (t->GetStoredUsed() > 0)
         return t->GetName() + " still keeps " + std::to_string(t->GetStoredUsed()) +
-               " units in its storage: dock and take them out first";
+               " of room in its storage: dock and take them out first";
     // What comes back has to fit: a refusal can be acted on, material lost to a full hold
     // cannot. Every tier it was built up through, not only the last (#438).
     int units = 0;
     for (const auto& c : t->Refund(time_))
-        units += c.second;
+        units += c.second * Goods::Volume(c.first);
     const int room = s.ship->GetCargoCapacity() - s.ship->GetCargoUsed();
     if (units > room)
         return "the hold has room for " + std::to_string(room) + " of the " +
@@ -588,7 +588,7 @@ int Simulation::MoveGoods(ClientSession& s, const std::string& from, const std::
         return refuse("your role may not take from " + a.name);
     const ResourceType good = ResourceType::FromIndex(type);
     const int          room = std::max(0, b.capacity - b.goods->Used());
-    const int          n = std::min({ amount, a.goods->Amount(good), room });
+    const int          n = std::min({ amount, a.goods->Amount(good), room / Goods::Volume(good) });
     if (n <= 0)
         return refuse(room <= 0 ? b.name + " is full" : a.name + " has no " + ResourceName(good));
     a.goods->Remove(good, n);
