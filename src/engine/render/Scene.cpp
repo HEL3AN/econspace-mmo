@@ -22,6 +22,7 @@ Item FromArchetype(const Archetype& a, Vector2 pos, float size)
     it.lightIntensity = a.visual.lightIntensity;
     it.lightSelf = a.visual.lightSelf;
     it.material = a.visual.material;
+    it.livery = a.visual.livery;
     it.shape = &a.visual.shape;
     it.label = a.name;
     return it;

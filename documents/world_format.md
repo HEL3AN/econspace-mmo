@@ -822,7 +822,9 @@ compiles no materials at all, which is how the stand-ins are judged.
   faction that owns the object (`factions.json`), or by the faction's id when it has none; the
   one called `default` for anything else. `base` multiplies the object's colour before it is
   drawn, shader or not; the rest reach a material through the `livery.*` sources. An unknown
-  field is a load error (`note` is allowed).
+  field is a load error (`note` is allowed). An archetype may name `"livery": "derelict"` for
+  what no faction owns (a wreck, a gate); whoever owns a thing paints it in their own
+  culture instead, and a name that is not in the file is reported at load.
 
 A built object whose surface reads its parts (`item.partShape`, `item.partSeed`, `item.angle`)
 is bound by `paintBudget` as a painted body is: covering more of the screen than the budget, it

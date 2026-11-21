@@ -448,11 +448,20 @@ const std::string& Error()
     return g_error;
 }
 
+static bool HasLivery(const std::string& id)
+{
+    const Livery* l = FindLivery(id);
+    return l != nullptr && l->id == id;
+}
+
 std::vector<std::string> UnknownInArchetypes()
 {
     std::vector<std::string> out;
     for (const Archetype& a : Archetypes::All())
     {
+        if (!a.visual.livery.empty() && !HasLivery(a.visual.livery))
+            out.push_back("archetype '" + a.id + "' names livery '" + a.visual.livery +
+                          "', which is not defined -- drawing it in the default");
         if (!a.visual.material.empty() && Find(a.visual.material) == nullptr)
             out.push_back("archetype '" + a.id + "' names material '" + a.visual.material +
                           "', which is not defined -- drawing it plain");
