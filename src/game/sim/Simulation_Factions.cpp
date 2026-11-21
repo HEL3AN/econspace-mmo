@@ -623,10 +623,11 @@ void Simulation::StepFactions()
                     std::max(0.0f, t.capacity - (away != lent.end() ? away->second : 0.0f));
                 // What it grows by it buys (#464): at its own market, from its treasury, as
                 // far as both go -- money limits how many ships, not only how good (owner,
-                // 2026-10-23). What it has above what it keeps leaves as before. Pirates still
-                // breed where they hold, until they buy where markets deal with them (slice 6).
+                // 2026-10-23). What it has above what it keeps leaves as before. Pirates buy
+                // too, at the markets that deal with them, and take what they beat (slice 6):
+                // a gang does not breed where it holds, so it cannot spread past its ships.
                 const float step = t.growth * (keep - p);
-                if (step > 0.0f && f != Factions::Pirates())
+                if (step > 0.0f)
                 {
                     orders.push_back({ keep > 0.0f ? p / keep : 1.0f, &kv.second, f, step });
                     continue;  // a holding keeps what it bought, however little (below)
@@ -658,7 +659,7 @@ void Simulation::StepFactions()
     for (auto& kv : systems_)
     {
         const SystemAggregate& a = kv.second.agg;
-        if (a.claimed && a.controller != Factions::Pirates())
+        if (a.claimed)
             RefitFleets(kv.second, a.controller, refit);
     }
 }

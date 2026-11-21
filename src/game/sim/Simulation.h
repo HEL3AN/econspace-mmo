@@ -696,8 +696,16 @@ public:
     // changes -- as far as both go. What it refitted, in ships.
     float RefitFleets(SystemState& st, FactionId f, double rate);
     // Where a holding buys: its own market, else the nearest system with one within the
-    // growth rules' `marketReach` jumps; null for none.
-    SystemState* BuyingMarket(const std::string& systemId);
+    // growth rules' `marketReach` jumps; null for none. With `pirates` only a market that deals
+    // with them counts -- one in a system no law is over (LawIn): a pirate holding, a lawless
+    // system (#464, slice 6) -- so a gang far from any such market buys nothing and grows
+    // only by what it takes.
+    SystemState* BuyingMarket(const std::string& systemId, bool pirates = false);
+    // What the pirates here take from the police they beat in a cold exchange (#464, slice 6):
+    // `captureShare` of the ships they destroyed, each flown on as a pirate ship in the
+    // family of the guns it was shot down with. The ships are the lawful faction's loss, paid
+    // for by it, so this is no free breeding. What was taken, in ships.
+    float Capture(SystemState& st, float destroyed);
     // What a ship of `design` costs at `st`'s market's ask, in credits; 0 for one that does
     // not derive.
     double ShipPriceAt(const SystemState& st, const std::string& design) const;

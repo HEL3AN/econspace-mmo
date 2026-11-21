@@ -485,12 +485,18 @@ bool Simulation::Defensive(FactionId f) const
     return want > 0.0f && have < (float)WorldRules::StyleRules().defensiveBelow * want;
 }
 
-SystemState* Simulation::BuyingMarket(const std::string& systemId)
+SystemState* Simulation::BuyingMarket(const std::string& systemId, bool pirates)
 {
     SystemState* here = SystemById(systemId);
     if (here == nullptr)
         return nullptr;
-    if (here->profile.markets > 0)
+    // A market that will sell a gang guns: one nobody's law is over.
+    auto deals = [&](const SystemState& s)
+    {
+        FactionId law;
+        return s.profile.markets > 0 && (!pirates || !LawIn(s, law));
+    };
+    if (deals(*here))
         return here;
     // Out a ring at a time, in the galaxy's own order of neighbours: the same one every time.
     std::set<std::string>    seen = { systemId };
@@ -505,7 +511,7 @@ SystemState* Simulation::BuyingMarket(const std::string& systemId)
                     SystemState* s = SystemById(n);
                     if (s == nullptr)
                         continue;
-                    if (s->profile.markets > 0)
+                    if (deals(*s))
                         return s;
                     next.push_back(n);
                 }
@@ -517,7 +523,7 @@ SystemState* Simulation::BuyingMarket(const std::string& systemId)
 float Simulation::BuyShips(SystemState& st, FactionId f, float want)
 {
     // Its own market, else the nearest within the growth rules' market reach (#464).
-    SystemState* shop = BuyingMarket(st.id);
+    SystemState* shop = BuyingMarket(st.id, f == Factions::Pirates());
     if (!(want > 0.0f) || shop == nullptr)
         return 0.0f;
     const WorldRules::Styles& rules = WorldRules::StyleRules();
@@ -605,7 +611,7 @@ float Simulation::RefitFleets(SystemState& st, FactionId f, double rate)
 {
     if (!(rate > 0.0))
         return 0.0f;
-    SystemState* shop = BuyingMarket(st.id);
+    SystemState* shop = BuyingMarket(st.id, f == Factions::Pirates());
     if (shop == nullptr)
         return 0.0f;
     const WorldRules::Styles& rules = WorldRules::StyleRules();
@@ -723,4 +729,63 @@ float Simulation::RefitFleets(SystemState& st, FactionId f, double rate)
             break;  // one fleet, not the same one twice
     }
     return refitted;
+}
+
+float Simulation::Capture(SystemState& st, float destroyed)
+{
+    SystemAggregate& a = st.agg;
+    const float      taken = (float)WorldRules::StyleRules().captureShare * destroyed;
+    if (!(taken > 1e-7f))
+        return 0.0f;
+    const Ships::Catalogue&         cat = Archetypes::ShipCatalogue();
+    const std::string               gang = Factions::Id(Factions::Pirates());
+    const std::vector<std::string>* raiders = cat.DesignsFor(gang, NpcRoleId(NpcRole::Pirate));
+    const std::string               warship = cat.Pick(gang, "warship", 0);
+    if (raiders == nullptr || raiders->empty())
+        return 0.0f;
+    // The guns the police here carry, by family: what the ships they lost were shot down with.
+    std::map<std::string, float> families;
+    float                        armed = 0.0f;
+    const auto                   cops = a.fleets.find(KeyFor(a.policeFaction, NpcRole::Police));
+    if (cops != a.fleets.end())
+        for (const auto& [id, n] : cops->second)
+        {
+            const Ships::Design* d = cat.FindDesign(id);
+            const Ships::Family* fam = d != nullptr ? cat.FamilyOf(*d) : nullptr;
+            if (fam != nullptr && n > 0.0f)
+            {
+                families[fam->id] += n;
+                armed += n;
+            }
+        }
+    // Their own stock design for what carried no family's guns, or where no fleet says.
+    if (armed <= 0.0f)
+    {
+        families[std::string()] = 1.0f;
+        armed = 1.0f;
+    }
+    const FactionId gangId = Factions::Pirates();
+    Fleet&          flying = a.fleets[KeyFor(gangId, NpcRole::Pirate)];
+    Fleet&          war = a.fleets[KeyFor(gangId, NpcRole::Warship)];
+    const float     before = a.pirates, warBefore = a.presence[gangId];
+    for (const auto& [family, n] : families)
+    {
+        const float share = taken * n / armed;
+        for (const std::string& base : *raiders)
+        {
+            const std::string v =
+                family.empty() ? base : cat.VariantOf(base, family, std::string());
+            Join(flying, gangId, NpcRole::Pirate, before, v.empty() ? base : v,
+                 share / (float)raiders->size());
+        }
+        if (!warship.empty())
+        {
+            const std::string v =
+                family.empty() ? warship : cat.VariantOf(warship, family, std::string());
+            Join(war, gangId, NpcRole::Warship, warBefore, v.empty() ? warship : v, share);
+        }
+    }
+    a.pirates += taken;
+    a.presence[gangId] += taken;
+    return taken;
 }

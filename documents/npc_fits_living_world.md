@@ -1,7 +1,7 @@
 # NPC fits from the living world
 
 Status: **decided, being built** (#464): slices 1 (variants), 2 (fleets), 3 (region style)
-4 (buying) and 5 (refit and drift) are built. The owner's direction of 2026-10-23 is the premise and
+4 (buying), 5 (refit and drift) and 6 (pirates and captures) are built. The owner's direction of 2026-10-23 is the premise and
 is not re-opened: NPC fits differ **strongly** between regions; a region's style, politics and
 economy decide what its NPCs fly; a region whose markets and industry are full of lasers flies
 mostly lasers and rarely railguns. The owner answered every open question the same day
@@ -247,8 +247,7 @@ form.
   - **A weakened faction turns defensive.** A faction whose holdings stand below
     `styles.defensiveBelow` of what they keep (0.4, tuning) plans no new outposts, sieges or
     Anchors -- its `stock` waits -- until they recover.
-  - **Pirates still breed** where they hold (unrest), as before, until slice 6 has them buy at
-    markets that deal with them.
+  - **Pirates buy too** (slice 6), at markets that deal with them -- one with no law over it (`LawIn`) within `marketReach`; a gang far from any such market buys nothing and grows only by captures. They no longer breed free where they hold; the unrest floor in systems they do not hold is unchanged (#511).
   - **Losses raise local prices, which pull haulers in.** Every purchase is a real `Buy`; a
     holding that keeps losing ships keeps buying, its goods' prices rise, and haulers (#343)
     and the faction's own supply contracts answer.

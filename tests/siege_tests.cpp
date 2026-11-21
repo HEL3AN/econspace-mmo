@@ -659,8 +659,13 @@ TEST_CASE("a siege fights with the warships its holdings keep, not with a doctri
     const auto  fleet = fleets.find(Simulation::FleetKey(Fac::Pirates(), NpcRole::Warship));
     if (fleet != fleets.end())
     {
-        CHECK(fleet->second.size() == 1);
-        CHECK(fleet->second.count("cruiser~laser") == 1);
+        // (A pirate den with a market to deal at refits towards its region's style, slowly:
+        // the mix is still the lasers it was.)
+        float all = 0.0f;
+        for (const auto& kv : fleet->second)
+            all += kv.second;
+        REQUIRE(fleet->second.count("cruiser~laser") == 1);
+        CHECK(fleet->second.at("cruiser~laser") > 0.95f * all);
     }
 }
 

@@ -307,3 +307,82 @@ TEST_CASE("the mix still wrong for the style halves in the rules' half-life of h
     CHECK(reached > 0.75 * halfLife);
     CHECK(reached < 1.25 * halfLife);
 }
+
+TEST_CASE("pirates buy at a market that deals with them, and nowhere the law is over")
+{
+    auto         sim = BuyingWorld();
+    SystemState* st = LawfulHoldingWithMarket(*sim);
+    REQUIRE(st != nullptr);
+    const FactionId pirates = Fac::Pirates();
+    sim->MindOf(pirates).treasury = 1e9;
+    st->agg.fleets.clear();
+    // A lawful system's market sells a gang nothing, however rich.
+    CHECK(sim->BuyingMarket(st->id, true) == nullptr);
+    CHECK(sim->BuyShips(*st, pirates, 1.0f) == doctest::Approx(0.0f));
+    // The same market with no law over it does -- and the ships join its pirates.
+    st->agg.controller = pirates;
+    st->agg.claimed = true;
+    st->agg.pirates = 3.0f;
+    REQUIRE(sim->BuyingMarket(st->id, true) == st);
+    const float bought = sim->BuyShips(*st, pirates, 1.0f);
+    CHECK(bought > 0.0f);
+    CHECK(sim->MindOf(pirates).treasury < 1e9);
+    const auto fleet = st->agg.fleets.find(Simulation::FleetKey(pirates, NpcRole::Pirate));
+    REQUIRE(fleet != st->agg.fleets.end());
+    float sum = 0.0f;
+    for (const auto& kv : fleet->second)
+        sum += kv.second;
+    CHECK(sum == doctest::Approx(3.0f + bought));
+}
+
+TEST_CASE("a gang does not breed where it holds: with no market it grows only by what it takes")
+{
+    auto         sim = BuyingWorld();
+    SystemState* st = LawfulHoldingWithMarket(*sim);
+    REQUIRE(st != nullptr);
+    const FactionId pirates = Fac::Pirates();
+    for (auto& kv : sim->Systems())
+        kv.second.profile.markets = 0;  // nobody sells anyone anything
+    st->agg.controller = pirates;
+    st->agg.claimed = true;
+    st->agg.presence.Clear();
+    st->agg.presence[pirates] = 1.0f;
+    sim->MindOf(pirates).treasury = 1e9;
+    for (int pass = 0; pass < 30 * 40; pass++)
+        sim->MaintainWorld(2.0f);
+    // It held what it had, or lost some of it: it never regrew by itself.
+    CHECK(st->agg.presence[pirates] <= 1.0f + 1e-3f);
+}
+
+TEST_CASE("what the pirates beat in a cold exchange they take a share of, in the victims' family")
+{
+    auto         sim = BuyingWorld();
+    SystemState* st = LawfulHoldingWithMarket(*sim);
+    REQUIRE(st != nullptr);
+    const Ships::Catalogue& cat = Archetypes::ShipCatalogue();
+    const FactionId         law = st->agg.policeFaction;
+    const FactionId         pirates = Fac::Pirates();
+    // Police that fly lasers.
+    const std::string cutter = cat.Pick(Factions::Id(law), "patrol", 0);
+    const std::string laser = cat.VariantOf(cutter, "laser", std::string());
+    REQUIRE_FALSE(laser.empty());
+    st->agg.police = 4.0f;
+    st->agg.fleets.clear();
+    st->agg.fleets[Simulation::FleetKey(law, NpcRole::Police)] = { { laser, 4.0f } };
+    st->agg.pirates = 2.0f;
+    st->agg.presence[pirates] = 2.0f;
+
+    const float share = (float)WorldRules::StyleRules().captureShare;
+    const float taken = sim->Capture(*st, 3.0f);
+    CHECK(taken == doctest::Approx(3.0f * share));
+    CHECK(st->agg.pirates == doctest::Approx(2.0f + taken));
+    CHECK(st->agg.presence[pirates] == doctest::Approx(2.0f + taken));
+    const auto& mine = st->agg.fleets.at(Simulation::FleetKey(pirates, NpcRole::Pirate));
+    float       sum = 0.0f;
+    for (const auto& kv : mine)
+        sum += kv.second;
+    CHECK(sum == doctest::Approx(2.0f + taken));
+    CHECK(GunsOf(mine, "laser") == doctest::Approx(taken));  // all of what was taken is lasers
+    // Nothing destroyed, nothing taken.
+    CHECK(sim->Capture(*st, 0.0f) == doctest::Approx(0.0f));
+}

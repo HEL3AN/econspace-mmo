@@ -477,7 +477,8 @@ int FleetBench(const std::vector<uint64_t>& seeds, double days, int regionSystem
                     if (kv.second.agg.claimed && kv.second.agg.controller == f)
                     {
                         held++;
-                        far += sim.BuyingMarket(kv.first) == nullptr ? 1 : 0;
+                        far +=
+                            sim.BuyingMarket(kv.first, f == Factions::Pirates()) == nullptr ? 1 : 0;
                     }
                 }
                 if (held == 0)
