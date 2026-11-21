@@ -1251,7 +1251,7 @@ void Game::OpenContextMenu(Entity* target, Vector2 at)
     if (name.empty())
         for (const Proto::EntitySnapshot& e : snapshot_.entities)
             if (e.id == id)
-                name = Overview::KindWord(e);
+                name = Overview::LabelOf(e);
     const float dist = Vector2Distance(target->GetPosition(), playerShip_->GetPosition());
     contextMenu_.Open(at, std::move(items), Actions::Heading(name, dist));
 }

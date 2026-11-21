@@ -36,7 +36,8 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    73;  // 73: the NPC delivery service brings goods from any hangar elsewhere (#472 slice 11) --
+    74;  // 74: the galaxy statistics carry what a known system's region's NPCs fly (#464);
+         // 73: the NPC delivery service brings goods from any hangar elsewhere (#472 slice 11) --
          // a LockedHangarView is every hangar elsewhere, with its quote, `hostile` when the
          // faction refuses the pilot;
          // 72: the assets view is sent on request (#472 slice 9) -- a Command's requestAssets and a
@@ -878,6 +879,10 @@ struct GalaxySystemStat
     // nothing -- and what that is, in a few words ("new system, 2 changes, 1 hidden find").
     int         chartPrice = 0;
     std::string chartWhat{};
+    // What the region's NPCs fly (#464, slice 7), as the pilot's charts know it: "lasers 68%,
+    // railguns 32%; heavy hulls 49%, ..." (Ships::StyleWords). Sent only for a system the
+    // recipient knows, so a region's fit is part of what a chart is worth; empty for none.
+    std::string fits{};
     // What building here takes (#509): the holder whose licence it needs, as a player reads
     // it, and its rent a week -- empty for a system anyone builds in (and for one the
     // recipient's own corporation holds, which the client sees from `holder`).

@@ -58,4 +58,9 @@ std::vector<Row> Build(const std::vector<Proto::EntitySnapshot>& entities, Vecto
 // player reads in a column, and it may say "pilot" where the agent's projection says it too.
 const char* KindWord(const Proto::EntitySnapshot& e);
 
+// What an object is called in an instrument: its own name, else -- for an NPC ship -- its
+// design's, which says how it is fitted ("Cutter (railguns, heavy)", #464 slice 7), else
+// what it is.
+std::string LabelOf(const Proto::EntitySnapshot& e);
+
 }  // namespace Overview

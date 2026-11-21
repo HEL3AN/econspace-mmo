@@ -530,8 +530,8 @@ void Game::DrawRadarContent(const Ui::Frame& f)
             if (e.id == hoverId)
             {
                 const Sensor::Allegiance a = Sensor::Classify(e, standing);
-                std::string label = (e.name.empty() ? std::string(Overview::KindWord(e)) : e.name) +
-                                    "  " + Ui::Distance(Vector2Distance(e.pos, sp));
+                std::string              label =
+                    Overview::LabelOf(e) + "  " + Ui::Distance(Vector2Distance(e.pos, sp));
                 if (a != Sensor::Allegiance::Unowned)
                     label += std::string("  ") + Sensor::Word(a);
                 switch (Obs::ConvoyPartOf(snapshot_, e.id))

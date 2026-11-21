@@ -1504,6 +1504,51 @@ Style StyleFrom(const Catalogue& c, const std::vector<double>& supply,
     return s;
 }
 
+std::string StyleWords(const Catalogue& c, const Style& s, bool brief)
+{
+    auto order = [](std::vector<std::pair<std::string, float>> v)
+    {
+        std::stable_sort(v.begin(), v.end(),
+                         [](const auto& a, const auto& b) { return a.second > b.second; });
+        return v;
+    };
+    auto percent = [](float share)
+    {
+        char buf[16];
+        std::snprintf(buf, sizeof buf, " %.0f%%", 100.0f * share);
+        return std::string(buf);
+    };
+    std::string families, lines;
+    for (const auto& [id, share] : order(s.families))
+    {
+        const Family* f = c.FindFamily(id);
+        if (f == nullptr || (brief && !families.empty()))
+            continue;
+        families += (families.empty() ? "" : ", ") + f->name + percent(share);
+    }
+    for (const auto& [id, share] : order(s.lines))
+    {
+        const Line* l = c.FindLine(id);
+        if (l == nullptr || (brief && !lines.empty()))
+            continue;
+        lines += (lines.empty() ? "" : ", ") + l->name + " hulls" + percent(share);
+    }
+    return families.empty() ? lines : lines.empty() ? families : families + "; " + lines;
+}
+
+std::string FitWords(const Catalogue& c, const std::string& design)
+{
+    const Variant* v = c.FindVariant(design);
+    if (v == nullptr)
+        return std::string();
+    const Family* f = c.FindFamily(v->family);
+    const Line*   l = v->line.empty() ? nullptr : c.FindLine(v->line);
+    std::string   out = f != nullptr ? f->name : v->family;
+    if (l != nullptr)
+        out += ", " + l->name;
+    return out;
+}
+
 bool IsPlayerDesign(const std::string& id)
 {
     return id.size() == 10 && id[0] == 'u' && id[1] == ':';

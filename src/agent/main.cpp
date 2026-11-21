@@ -350,6 +350,9 @@ std::string DescribeGalaxy()
                 // The front line (#431 D3): your corporation may lay a claim or besiege here.
                 if (g.front)
                     line += "   front open to your corporation";
+                // What its region's NPCs fly, as your charts know it (#464 slice 7).
+                if (!g.fits.empty())
+                    line += "   region flies: " + g.fits;
                 // Docked at a faction's station: what it would pay for your charts (#431
                 // slice 16).
                 if (g.chartPrice > 0)

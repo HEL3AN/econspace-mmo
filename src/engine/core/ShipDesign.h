@@ -295,6 +295,17 @@ struct Style
 Style StyleFrom(const Catalogue& c, const std::vector<double>& supply,
                 const std::map<std::string, double>* culture, double cultureWeight);
 
+// What a pilot reads of a style (#464, slice 7): "lasers 68%, railguns 32%; heavy hulls 49%,
+// light hulls 39%, brawler hulls 13%" -- every family and line by share, largest first -- or,
+// `brief`, only the leading one of each ("lasers 68%; heavy hulls 49%"). Empty for a style
+// with neither.
+std::string StyleWords(const Catalogue& c, const Style& s, bool brief);
+
+// What a variant is, as a pilot reads it: "railguns, heavy" for the railgun variant of a
+// stock design on a heavy line. Empty for a stock design, a design a player made, and an id
+// that is nobody's.
+std::string FitWords(const Catalogue& c, const std::string& design);
+
 // The design's stats. False, with the reason, for a design that does not validate.
 bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error);
 

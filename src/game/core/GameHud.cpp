@@ -634,7 +634,7 @@ void Game::DrawTargetContent(const Ui::Frame& f)
         Box().Grow().ScrollY().Id("target").Gap(t.metrics.gap),
         [&]
         {
-            L.Text(e->name.empty() ? Overview::KindWord(*e) : e->name, TextStyle::Title());
+            L.Text(Overview::LabelOf(*e), TextStyle::Title());
             L.Field("Distance", Ui::Distance(dist), t.colors.text);
 
             if (e->kind == Proto::EntityKind::Npc || e->kind == Proto::EntityKind::Station)
@@ -1716,9 +1716,8 @@ void Game::DrawSensorScreen()
             {
                 const float       d = std::hypot(e.pos.x - own.pos.x, e.pos.y - own.pos.y);
                 const std::string dist = Ui::Distance(d);
-                const std::string label =
-                    (e.name.empty() ? std::string(Overview::KindWord(e)) : e.name) + "  " + dist;
-                const float px = (float)Ui::FontPx(Ui::Px(t.fontSize.body));
+                const std::string label = Overview::LabelOf(e) + "  " + dist;
+                const float       px = (float)Ui::FontPx(Ui::Px(t.fontSize.body));
                 Ui::DrawString(Ui::Face::Regular, label,
                                { mouse.x + Ui::Px(14.0f), mouse.y - px * 0.5f }, px, t.colors.text);
                 break;

@@ -2269,6 +2269,8 @@ std::string EncodeGalaxy(const GalaxyState& s)
             gj["chart"] = { g.chartPrice, g.chartWhat };
         if (!g.licenceBy.empty())
             gj["lic"] = { g.licenceBy, g.licenceRent };
+        if (!g.fits.empty())
+            gj["fits"] = g.fits;
         sys.push_back(std::move(gj));
     }
     j["sys"] = sys;
@@ -2323,6 +2325,7 @@ bool DecodeGalaxy(const std::string& s, GalaxyState& out)
                 g.licenceBy = (*lic)[0].get<std::string>();
                 g.licenceRent = (*lic)[1].get<double>();
             }
+            g.fits = Val(gj, "fits", std::string());
             out.systems.push_back(g);
         }
     out.events = Val(j, "news", std::vector<std::string>{});

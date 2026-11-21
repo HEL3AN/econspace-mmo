@@ -1,5 +1,6 @@
 #include "sim/Overview.h"
 
+#include "core/Archetype.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -92,6 +93,16 @@ const char* KindWord(const Proto::EntitySnapshot& e)
     return "object";
 }
 
+std::string LabelOf(const Proto::EntitySnapshot& e)
+{
+    if (!e.name.empty())
+        return e.name;
+    if (e.kind == Proto::EntityKind::Npc && !e.design.empty())
+        if (const Ships::Design* d = Archetypes::FindDesign(e.design); d != nullptr)
+            return d->name;
+    return KindWord(e);
+}
+
 std::vector<Row> Build(const std::vector<Proto::EntitySnapshot>& entities, Vector2 from,
                        Filter filter, Sort sort, const IsHostile& hostile)
 {
@@ -107,7 +118,7 @@ std::vector<Row> Build(const std::vector<Proto::EntitySnapshot>& entities, Vecto
         r.distance = std::hypot(e.pos.x - from.x, e.pos.y - from.y);
         r.hostile = h;
         r.kind = KindWord(e);
-        r.name = e.name.empty() ? r.kind : e.name;
+        r.name = LabelOf(e);
         rows.push_back(r);
     }
 
