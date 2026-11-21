@@ -36,7 +36,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    67;  // 67: a licence is bought where it is granted (#509) -- a LicenceView says where and
+    68;  // 68: a corporation's storage has divisions and its members a hangar each (#472 slice 5)
+         // -- a PlayerView lists the divisions its role sees, a CorpAct "division" renames one
+         // or moves a right, and a move names "storage:stock" or "storage:command";
+         // 67: a licence is bought where it is granted (#509) -- a LicenceView says where and
          // whether the pilot is docked there, the galaxy statistics say whose licence building
          // in a system takes and its rent, and a CorpView lists the licences of a pilot in no
          // corporation too;
@@ -471,6 +474,19 @@ struct HangarView
     std::vector<int> goods;            // per good, AllResourceTypes order
 };
 
+// One division of the storage docked at that the pilot's role may see (#472 slice 5): what it
+// holds per good, how much more it takes (the structure's room is shared by every division and
+// hangar in it) and whether the role may put into it and take from it.
+struct DivisionView
+{
+    std::string      id;    // "shared", "stock", "command"
+    std::string      name;  // what the corporation calls it
+    std::vector<int> goods;
+    int              capacity = 0;
+    bool             canPut = true;
+    bool             canTake = true;
+};
+
 // Player ship state in the snapshot.
 struct PlayerView
 {
@@ -530,8 +546,9 @@ struct PlayerView
     std::vector<int> cargoByType;  // remaining cargo per resource (AllResourceTypes order)
     // The storage of the structure the ship is docked at (#438), when it is the pilot's side's:
     // its capacity (0 -- none here, or not theirs) and what it holds per good, in the same order.
-    int              storageCap = 0;
-    std::vector<int> storedByType;
+    int                       storageCap = 0;
+    std::vector<int>          storedByType;
+    std::vector<DivisionView> divisions;  // the divisions this pilot may see (#472 slice 5)
     // Player account (server-authoritative, M4f): the client shows it as a mirror.
     // reputation/bounty — per faction (index = FactionId in this process's registry; on the
     // wire, keyed by faction id), skillXp — Piloting/Mining/Trading.
@@ -920,6 +937,7 @@ struct CorpAct
     std::string engage{};     // "patrol": "hold", "return", "enemies", "strangers"; empty: as was
     std::string threshold{};  // "patrol": the rules' standing threshold; empty: as was
     std::string allow{};      // "patrol": the allow-list, comma separated, "none"; empty: as was
+    std::string right{};      // "division": "view", "put" or "take"; empty: only the label
 };
 
 // One line of a corporation's treasury ledger (#509), newest first in a CorpView: `kind` is

@@ -181,8 +181,28 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         if (const Structure* store = DockedStorage(s))
         {
             p.storageCap = store->GetStorageCapacity();
-            for (ResourceType rt : AllResourceTypes())
-                p.storedByType.push_back(store->GetStoredAmount(rt));
+            // Each division the pilot's role sees (#472 slice 5); Shared is also the plain
+            // `storedByType`.
+            for (const char* div : Corps::DIVISION_IDS)
+            {
+                if (!corps_.MayDivision(store->GetOwner(), s.accountName, div, "view"))
+                    continue;
+                const Inventory*    inv = store->Division(div);
+                Proto::DivisionView v;
+                v.id = div;
+                v.name = corps_.Of(store->GetOwner()) != nullptr
+                             ? corps_.DivisionLabel(store->GetOwner(), div)
+                             : std::string("Storage");
+                v.capacity = PooledCapacity(*store, inv != nullptr ? *inv : Inventory(),
+                                            store->GetStorageCapacity());
+                v.canPut = corps_.MayDivision(store->GetOwner(), s.accountName, div, "put");
+                v.canTake = corps_.MayDivision(store->GetOwner(), s.accountName, div, "take");
+                for (ResourceType rt : AllResourceTypes())
+                    v.goods.push_back(inv != nullptr ? inv->Amount(rt) : 0);
+                if (v.id == "shared")
+                    p.storedByType = v.goods;
+                p.divisions.push_back(std::move(v));
+            }
         }
 
         p.hangar = HangarViewFor(s);  // the pilot's hangar at a station (#472)

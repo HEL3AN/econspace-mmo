@@ -884,9 +884,15 @@ std::vector<Tool> BuildTools()
           "puts your own money into your corporation's treasury -- any member; 'withdraw' "
           "(value: credits) takes some out to you -- the CEO or a director, no cap. Both are "
           "refused, and say so, when the money is not there. The corp tool lists the treasury's "
-          "ledger. The answer is the server's.",
+          "ledger. 'division' (name: shared, stock or command; value: a new label, up to 24 "
+          "characters; right: view, put or take with role: the lowest role that holds it; CEO "
+          "or director) sets the divisions of your corporation's structures' storage (#472): "
+          "by default Shared is every member's, Stock is put into by members and taken from "
+          "by directors, Command is the directors'. Moves name them as inventory lists them -- "
+          "storage, storage:stock, storage:command -- and every take is a line in the "
+          "corporation's journal. The answer is the server's.",
           Obj({ { "action", Str("create, invite, join, decline, leave, kick, role, tax, docking, "
-                                "police, patrol, transfer, take, deposit or withdraw") },
+                                "police, patrol, transfer, take, deposit, withdraw or division") },
                 { "name", Str("create: the corporation's name, 3 to 24 characters") },
                 { "ticker", Str("create: 2 to 5 letters or digits; join/decline: whose invite; "
                                 "transfer: the corporation it goes to") },
@@ -903,6 +909,7 @@ std::vector<Tool> BuildTools()
                                 "left out, as it was (else the default guard)") },
                 { "engage", Str("patrol: hold, return, enemies or strangers; left out, as it "
                                 "was (else enemies)") },
+                { "right", Str("division: view, put or take; left out, only the label changes") },
                 { "threshold", Str("patrol: on enemies, the standing (-100 to 100) below which "
                                    "a faction is fired on; left out, as it was (else -10)") },
                 { "allow", Str("patrol: on strangers, whom it lets be -- pilots and factions, "
@@ -926,6 +933,7 @@ std::vector<Tool> BuildTools()
               act.system = args.value("system", std::string());
               act.design = args.value("design", std::string());
               act.engage = args.value("engage", std::string());
+              act.right = args.value("right", std::string());
               const auto th = args.find("threshold");
               if (th != args.end() && th->is_number())
                   act.threshold = std::to_string(th->get<double>());
@@ -1299,6 +1307,8 @@ std::vector<Tool> BuildTools()
         const std::string  name = ResourceName(good);
         if (a.Amount(good) <= 0)
             throw Rpc::Error{ Rpc::INVALID_PARAMS, a.name + " has no " + name };
+        if (a.putOnly)
+            throw Rpc::Error{ Rpc::INVALID_PARAMS, "your role may not take from " + a.name };
         if (b.takeOnly)
             throw Rpc::Error{ Rpc::INVALID_PARAMS, "nothing can be put into " + b.name };
         if (b.Room() <= 0)

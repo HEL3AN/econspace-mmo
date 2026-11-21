@@ -796,6 +796,30 @@ nlohmann::json StateOf(const Entity& e)
             stored[Goods::Id(kv.first)] = kv.second;
         s["stored"] = std::move(stored);
     }
+    // Its divisions beyond Shared, and its members' hangars (#472 slice 5).
+    if (e.GetKind() == EntityKind::Structure)
+    {
+        const Structure& t = static_cast<const Structure&>(e);
+        auto             goods = [](const Inventory& inv)
+        {
+            nlohmann::json g = nlohmann::json::object();
+            for (const auto& kv : inv.All())
+                g[Goods::Id(kv.first)] = kv.second;
+            return g;
+        };
+        nlohmann::json divs = nlohmann::json::object();
+        for (const auto& d : t.Divisions())
+            if (!d.second.Empty())
+                divs[d.first] = goods(d.second);
+        if (!divs.empty())
+            s["divisions"] = std::move(divs);
+        nlohmann::json hangars = nlohmann::json::object();
+        for (const auto& h : t.Hangars())
+            if (!h.second.Empty())
+                hangars[h.first] = goods(h.second);
+        if (!hangars.empty())
+            s["hangars"] = std::move(hangars);
+    }
     return s;
 }
 
@@ -826,13 +850,26 @@ void ApplyState(Entity& e, const nlohmann::json& s, double now)
         Structure& t = static_cast<Structure&>(e);
         t.SetMends(s.value("mends", true), now);  // before the damage, which it would settle
         t.SetDamage(s.value("damage", 0.0f), s.value("damagedAt", now));
-        if (s.contains("stored") && s["stored"].is_object())
-            for (auto g = s["stored"].begin(); g != s["stored"].end(); ++g)
+        auto fill = [](Inventory& inv, const nlohmann::json& goods)
+        {
+            if (!goods.is_object())
+                return;
+            for (auto g = goods.begin(); g != goods.end(); ++g)
             {
                 ResourceType good;  // a good this build does not have is let go
                 if (g.value().is_number_integer() && Goods::Find(g.key(), good))
-                    t.AddStored(good, g.value().get<int>());
+                    inv.Add(good, g.value().get<int>());
             }
+        };
+        if (s.contains("stored"))
+            fill(t.Storage(), s["stored"]);
+        if (s.contains("divisions") && s["divisions"].is_object())
+            for (auto d = s["divisions"].begin(); d != s["divisions"].end(); ++d)
+                if (Inventory* inv = t.Division(d.key()))
+                    fill(*inv, d.value());
+        if (s.contains("hangars") && s["hangars"].is_object())
+            for (auto h = s["hangars"].begin(); h != s["hangars"].end(); ++h)
+                fill(t.HangarOf(h.key()), h.value());
     }
     Defence d;  // rules it cannot read are the default: it fires back, as before #340
     if (e.GetKind() == EntityKind::Structure && s.contains("defence") &&

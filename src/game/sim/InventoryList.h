@@ -30,6 +30,9 @@ struct Container
     bool closed = false;
     // Goods come out and never go in: a wreck, or another pilot's can.
     bool takeOnly = false;
+    // Goods go in and never out: a division the pilot's role may put into but not take from
+    // (#472 slice 5).
+    bool putOnly = false;
 
     int Amount(ResourceType type) const;
     int Used() const;
