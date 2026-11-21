@@ -134,9 +134,11 @@ bool TreatmentPanel::Draw(const Ui::Frame& f, Treatment& t, const MaterialLibrar
             {
                 const bool  hud = cfg.treatHud;
                 const float budget = cfg.paintBudget;
+                const float built = cfg.builtBudget;
                 cfg = TreatmentConfig::Default();
                 cfg.treatHud = hud;        // a preference about the HUD, not part of the look
                 cfg.paintBudget = budget;  // a matter of the machine, not of the look
+                cfg.builtBudget = built;
                 changed = true;
             }
         });

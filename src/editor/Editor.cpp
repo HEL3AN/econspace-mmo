@@ -270,6 +270,8 @@ void Editor::Run()
         Render::Perf::BeginFrame();
         materials_.SetPaintBudget(
             (paintBudget_ > 0.0f ? paintBudget_ : treatment_.Config().paintBudget) * 1000000.0f);
+        materials_.SetBuiltBudget(
+            (paintBudget_ > 0.0f ? paintBudget_ : treatment_.Config().builtBudget) * 1000000.0f);
         screenWidth_ = GetScreenWidth();
         screenHeight_ = GetScreenHeight();
         camera_.offset = { screenWidth_ / 2.0f, screenHeight_ / 2.0f };

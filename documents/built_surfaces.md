@@ -4,10 +4,12 @@ How stations, outposts, structures and ships get a finished surface — plating,
 radiators, solar cells, glass, livery, wear, lit windows, engine heat, scorch — at the level
 the natural bodies reached in #501, without giving up a shape written in data.
 
-**Status (2026-10-23): design + prototype, on hold for the owner's eye.** The prototype is one
-station (`station.trade_hub`) and one ship design (`scout`: `ship.player`, `ship.scout`),
-plus the modules they carry. Everything else still wears `hull` and is drawn as before. The
-rollout is the slice plan at the end.
+**Status (2026-11-21): rolled out, in the owner's hands for tuning.** Stations, outposts and
+structures, ships, derelicts and gates all wear `plating` and a livery; damage reads as scorch
+and lost parts (slices 1-5 below), and built things have a paint budget of their own. The
+laptop pass (slice 6) is not done: it needs the Intel UHD 620, and the rollout was built on a
+desktop. What is left is the owner's eye on the contact sheets (slice 7): the liveries' and the
+shader's values are as prototyped, to be tuned by what looks wrong.
 
 ---
 
@@ -309,3 +311,20 @@ The owner approved the prototype ("really cool") and the orchestrator's recommen
 5. **Night side:** keep the 0.75 ambient floor so shadows read.
 6. **Damage:** scorch only below 40% hull loss; embers and fire from 60%.
 7. **Two paint budgets:** one for natural bodies and one for built things, so a station seen close up is not softened by the planets' budget. Both live in `look.json`.
+
+### Rollout notes (2026-11-21)
+
+- **Liveries.** `derelict`, `gate` and `ancient` join the cultures; an archetype names one with
+  `"livery"` for what no faction owns. A faction-owned station or structure and an NPC ship wear
+  `Factions::LiveryOf(faction)`: its culture, or its id. A player's or corporation's structure
+  wears the default until a corporation has a culture.
+- **The player's livery** is the pilot's: a `setLivery` Command, kept in the account, shown on
+  every ship they fly and sent to others in the entity snapshot (PROTO_VERSION 70). The palette is
+  the liveries marked `"palette": true` in `materials.json`; the server only keeps a well-formed
+  id (it does not read that file), and an unknown one draws as the default.
+- **Damage.** The shader scorches from 40% of the hull lost and shows embers from 60% (`hurt`
+  in `built.fs`); from 60% lost, the backend draws up to half the hull and panel parts as the
+  `frame` surface, chosen by each part's seed (`PART_LOSS_FROM` in `GlyphBackend.h`). None of this
+  is on the wire: it is `f(hull fraction, seeds)`. Per-part health stays #138's.
+- **Paint budgets.** `builtBudget` in `look.json` bounds a built thing, `paintBudget` a natural
+  body; both ship at 0.5, so nothing changes until the owner tunes one.

@@ -119,6 +119,10 @@ bool LoadTreatment(const std::string& path, TreatmentConfig& out, std::string& e
     cfg.treatHud = j.value("treatHud", false);
     if (j.contains("paintBudget") && j["paintBudget"].is_number())
         cfg.paintBudget = std::fmax(0.25f, j["paintBudget"].get<float>());
+    // A file from before the second budget meant the one for both.
+    cfg.builtBudget = cfg.paintBudget;
+    if (j.contains("builtBudget") && j["builtBudget"].is_number())
+        cfg.builtBudget = std::fmax(0.25f, j["builtBudget"].get<float>());
 
     if (j.contains("chain") && j["chain"].is_array())
     {
@@ -166,6 +170,7 @@ bool SaveTreatment(const std::string& path, const TreatmentConfig& cfg, std::str
     j["enabled"] = cfg.enabled;
     j["treatHud"] = cfg.treatHud;
     j["paintBudget"] = cfg.paintBudget;
+    j["builtBudget"] = cfg.builtBudget;
     j["chain"] = ordered_json::array();
     for (const Pass& p : cfg.chain)
         j["chain"].push_back(ordered_json{ { "pass", PassName(p.kind) },

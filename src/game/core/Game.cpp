@@ -376,6 +376,7 @@ void Game::Run()
         // off or unavailable, Begin and End do nothing and this is the old draw order.
         const bool treatHud = treatment_.Config().treatHud;
         materials_.SetPaintBudget(treatment_.Config().paintBudget * 1000000.0f);
+        materials_.SetBuiltBudget(treatment_.Config().builtBudget * 1000000.0f);
         const bool flying = (mode_ == GameMode::Flying);
         // Docked, the station's hall and its windows are interface, not world, so they go
         // through the chain only if the player asked for the interface to be treated.

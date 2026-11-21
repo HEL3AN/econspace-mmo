@@ -156,7 +156,7 @@ private:
     bool PaintInto(float scale, Rectangle box, const std::function<bool()>& draw);
     // The resolution to paint something `reach` world units round `centre` at, under the
     // paint budget: 1 when it fits, else down to PAINT_MIN_SCALE. `clip` is its box on screen.
-    float PaintScaleFor(Vector2 centre, float reach, Rectangle& clip) const;
+    float PaintScaleFor(Vector2 centre, float reach, Rectangle& clip, bool built = false) const;
     // Whether an object's surface is a built one, finished part by part (#516).
     bool BuiltSurface(const Item& item) const;
     // The primitive under a material of a piece's own, the material already begun.
