@@ -319,7 +319,7 @@ The owner approved the prototype ("really cool") and the orchestrator's recommen
   `Factions::LiveryOf(faction)`: its culture, or its id. A player's or corporation's structure
   wears the default until a corporation has a culture.
 - **The player's livery** is the pilot's: a `setLivery` Command, kept in the account, shown on
-  every ship they fly and sent to others in the entity snapshot (PROTO_VERSION 72). The palette is
+  every ship they fly and sent to others in the entity snapshot (additive fields: the wire version is not bumped, an older peer ignores them). The palette is
   the liveries marked `"palette": true` in `materials.json`; the server only keeps a well-formed
   id (it does not read that file), and an unknown one draws as the default.
 - **Damage.** The shader scorches from 40% of the hull lost and shows embers from 60% (`hurt`
