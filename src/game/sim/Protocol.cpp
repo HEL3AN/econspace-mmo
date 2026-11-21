@@ -634,6 +634,12 @@ std::string EncodeCommand(const Command& c)
     if (!c.buyTo.empty())
         j["buyTo"] = c.buyTo;
     number("rentHangar", c.rentHangar, -1);
+    if (!c.deliverFrom.empty())  // (#472 slice 6)
+    {
+        j["dvFrom"] = c.deliverFrom;
+        j["dvType"] = c.deliverType;
+        j["dvAmt"] = c.deliverAmount;
+    }
     number("buyType", c.buyType, -1);
     number("buyAmt", c.buyAmount, 0);
     if (c.moveType >= 0)  // (#472)
@@ -895,6 +901,9 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadText(j, "sellFrom", out.sellFrom);
     ok = ok && ReadText(j, "buyTo", out.buyTo);
     ok = ok && ReadInt(j, "rentHangar", -1, 0, ID_MAX, out.rentHangar);
+    ok = ok && ReadText(j, "dvFrom", out.deliverFrom);
+    ok = ok && ReadInt(j, "dvType", -1, 0, resources - 1, out.deliverType);
+    ok = ok && ReadInt(j, "dvAmt", 0, 0, ID_MAX, out.deliverAmount);
     ok = ok && ReadText(j, "mvFrom", out.moveFrom);
     ok = ok && ReadText(j, "mvTo", out.moveTo);
     ok = ok && ReadInt(j, "mvType", -1, 0, resources - 1, out.moveType);
@@ -1197,6 +1206,27 @@ json PlayerJson(const Proto::PlayerView& p)
             j["store"]["div"] = divs;
         }
     }
+    if (!p.locked.empty())  // (#472 slice 6)
+    {
+        json lk = json::array();
+        for (const Proto::LockedHangarView& l : p.locked)
+            lk.push_back({ { "key", l.key },
+                           { "name", l.name },
+                           { "sys", l.system },
+                           { "t", l.goods },
+                           { "fee", l.fee },
+                           { "h", l.hours },
+                           { "why", l.why } });
+        j["lock"] = lk;
+    }
+    if (!p.shipments.empty())
+    {
+        json sh = json::array();
+        for (const Proto::ShipmentView& s : p.shipments)
+            sh.push_back(
+                { { "from", s.from }, { "to", s.to }, { "h", s.hours }, { "t", s.goods } });
+        j["ship"] = sh;
+    }
     if (p.hangar.capacity > 0)  // (#472)
         j["hgr"] = { { "cap", p.hangar.capacity },     { "free", p.hangar.free },
                      { "rent", p.hangar.rented },      { "most", p.hangar.most },
@@ -1309,6 +1339,37 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
                 p.divisions.push_back(std::move(d));
             }
     }
+    p.locked.clear();
+    p.shipments.clear();
+    const auto lock = pj.find("lock");
+    if (lock != pj.end() && lock->is_array())
+        for (const json& lj : *lock)
+        {
+            if (!lj.is_object())
+                continue;
+            Proto::LockedHangarView l;
+            l.key = Val(lj, "key", std::string());
+            l.name = Val(lj, "name", std::string());
+            l.system = Val(lj, "sys", std::string());
+            l.goods = Val(lj, "t", std::vector<int>{});
+            l.fee = Val(lj, "fee", 0.0);
+            l.hours = Val(lj, "h", 0.0);
+            l.why = Val(lj, "why", std::string());
+            p.locked.push_back(std::move(l));
+        }
+    const auto shp = pj.find("ship");
+    if (shp != pj.end() && shp->is_array())
+        for (const json& sj : *shp)
+        {
+            if (!sj.is_object())
+                continue;
+            Proto::ShipmentView s;
+            s.from = Val(sj, "from", std::string());
+            s.to = Val(sj, "to", std::string());
+            s.hours = Val(sj, "h", 0.0);
+            s.goods = Val(sj, "t", std::vector<int>{});
+            p.shipments.push_back(std::move(s));
+        }
     p.hangar = Proto::HangarView{};
     const auto hgr = pj.find("hgr");
     if (hgr != pj.end() && hgr->is_object())

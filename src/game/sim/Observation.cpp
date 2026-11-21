@@ -815,6 +815,27 @@ std::string DescribeInventory(const View& view, const std::string& account)
         }
         out += "\n";
     }
+    // Hangars at stations that refuse the pilot now, and what fetching them costs (#472).
+    auto goodsText = [](const std::vector<int>& g)
+    {
+        std::string t;
+        const auto& types = AllResourceTypes();
+        for (size_t i = 0; i < types.size() && i < g.size(); i++)
+            if (g[i] > 0)
+                t += Fmt("%s%s %d", t.empty() ? "" : ", ", ResourceName(types[i]).c_str(), g[i]);
+        return t.empty() ? std::string("nothing") : t;
+    };
+    for (const Proto::LockedHangarView& l : p.locked)
+    {
+        out += Fmt("OUT OF REACH: your hangar at %s, %s (key %s) holds %s; ", l.name.c_str(),
+                   l.system.c_str(), l.key.c_str(), goodsText(l.goods).c_str());
+        out += l.why.empty()
+                   ? Fmt("request_delivery brings it here for %.0f cr in %.0f h\n", l.fee, l.hours)
+                   : "it cannot be fetched: " + l.why + "\n";
+    }
+    for (const Proto::ShipmentView& s : p.shipments)
+        out += Fmt("IN TRANSIT: %s from %s to %s, %.0f h to go\n", goodsText(s.goods).c_str(),
+                   s.from.c_str(), s.to.c_str(), s.hours);
     if (all.size() > 1)
         out += "Move goods between them with move_goods, naming each by the id in brackets.\n";
     if (!p.docked)

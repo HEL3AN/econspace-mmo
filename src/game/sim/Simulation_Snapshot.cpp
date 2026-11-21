@@ -206,6 +206,8 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         }
 
         p.hangar = HangarViewFor(s);  // the pilot's hangar at a station (#472)
+        p.locked = LockedHangarsFor(s);
+        p.shipments = ShipmentsFor(s.accountName);
 
         // Player account (server-authoritative, M4f): the client shows it as a mirror.
         p.money = s.account.GetMoney();

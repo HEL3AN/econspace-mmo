@@ -753,6 +753,23 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
     const std::optional<Orbit> orbit = t->GetOrbit();  // an orbital outpost's (#318)
     const std::string          builds = t->GetBuilds();
     const std::string          key = StaticKey(st.id, id);
+    // What was kept aboard (#472): a share of each stack, in every division and hangar, drops
+    // into the wreck; an abandoned structure's all of it. The rest is destroyed with it.
+    Inventory dropped;
+    {
+        const double share = Abandoned(owner) ? 1.0 : (double)Blueprints::Rules().storageShare;
+        auto         take = [&](const Inventory& inv)
+        {
+            for (const auto& g : inv.All())
+                dropped.Add(g.first, (int)std::floor(g.second * share));
+        };
+        take(t->Storage());
+        for (const auto& d : t->Divisions())
+            take(d.second);
+        for (const auto& h : t->Hangars())
+            take(h.second);
+    }
+    const int storedBefore = t->GetStoredUsed();
     if (crime)
         ChargeAttack(*by, law, true);
     if (!RemoveStatic(systemId, id))
@@ -769,10 +786,11 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
         for (const auto& c : bp->cost)
             worth += c.second * prices.GetBasePrice(c.first);
         worth = std::floor(worth * Blueprints::Rules().wreckShare);
-        if (worth > 0.0)
+        if (worth > 0.0 || !dropped.Empty())
         {
             auto wreck = std::make_unique<Derelict>(at, size, "Wreck of " + name, worth);
             wreck->SetArchetype(bp->wreck);
+            wreck->Contents() = dropped;
             // ...for a while (#41): ruins nobody clears would pile up for ever. An instant on
             // the clock, so it goes on time in a system nobody is in.
             if (Blueprints::Rules().wreckSeconds > 0.0f)
@@ -785,6 +803,14 @@ bool Simulation::HitStructure(SystemState& st, int id, float damage, ClientSessi
         }
     }
 
+    if (storedBefore > 0)
+        TellOwner(owner,
+                  "Of the " + std::to_string(storedBefore) + " units kept in " + name + ", " +
+                      std::to_string(dropped.Used()) + " lie in its wreck",
+                  OwnerName(owner) + "'s " + name + " was destroyed: of the " +
+                      std::to_string(storedBefore) + " units kept in it, " +
+                      std::to_string(dropped.Used()) + " lie in its wreck",
+                  false);
     // Its owner was told by NoteAttack -- but not of their own shot.
     if (by != nullptr && !owner.empty() && by->accountName == owner)
         by->RecordEvent(Ev::Kind::Notice, (wasSite ? "The site of " : "") + name + " in " +

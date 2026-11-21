@@ -47,6 +47,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 - A licence to build is bought where it is granted -- docked at the holder's station or structure -- and a refused build says who grants it, the price and where to buy. The corporation window lists only the licences held, with Renew; the map shows each system's terms (#509).
 - Every NPC station gives a pilot a personal hangar: 100 units free, more rented by the unit at 2 cr per 30 days, with unpaid rent closing it, not emptying it (#472).
 - A corporation structure's storage has three divisions (Shared, Stock, Command), each with the lowest role that may view, put and take, set by the CEO or a director (`/corp division`), every take a line in the corporation's journal; every member also has a free hangar there (#472).
+- Goods kept at a station whose faction now refuses you can be brought to where you are by its freight office (the route's quote at a hostility surcharge, paid to that faction; `request_delivery`, a button in the Inventory window); half of what a destroyed structure kept drops into its wreck (#472).
 
 ### Routes and jobs
 - One route planner, with EVE's preferences (shortest, safer, less secure) and waypoints (#440); on the galaxy map with a star menu and favourites (#446).

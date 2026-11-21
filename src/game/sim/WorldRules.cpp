@@ -21,6 +21,7 @@ WorldRules::Law         g_law;
 WorldRules::Influence   g_influence;
 WorldRules::Licences    g_licences;
 WorldRules::Hangars     g_hangars;
+WorldRules::Deliveries  g_deliveries;
 WorldRules::Security    g_security;
 WorldRules::Patrols     g_patrols;
 WorldRules::Charts      g_charts;
@@ -90,7 +91,7 @@ bool Load(const std::string& path)
             it.key() != "scan" && it.key() != "contracts" && it.key() != "law" &&
             it.key() != "influence" && it.key() != "licences" && it.key() != "security" &&
             it.key() != "patrols" && it.key() != "charts" && it.key() != "styles" &&
-            it.key() != "hangars")
+            it.key() != "hangars" && it.key() != "deliveries")
         {
             g_error = path + ": unknown field '" + it.key() + "'";
             return false;
@@ -403,6 +404,23 @@ bool Load(const std::string& path)
         g_error = path + ": hangars: periodDays must be more than zero";
         return false;
     }
+    // The NPC delivery service (#472).
+    Deliveries dl;
+    if (j.contains("deliveries") && !ReadSection(j["deliveries"], path + ": deliveries",
+                                                 { { "rate", &dl.rate },
+                                                   { "minFee", &dl.minFee },
+                                                   { "insure", &dl.insure },
+                                                   { "hoursPerJump", &dl.hoursPerJump },
+                                                   { "minHours", &dl.minHours },
+                                                   { "riskWeight", &dl.riskWeight },
+                                                   { "hostileSurcharge", &dl.hostileSurcharge } },
+                                                 {}, {}, g_error))
+        return false;
+    if (dl.hostileSurcharge < 1.0)
+    {
+        g_error = path + ": deliveries: hostileSurcharge is a multiple of the fee, one or more";
+        return false;
+    }
     // Slice 11's (#431): what security does, and how a holder buys it.
     Security sec;
     if (j.contains("security") && !ReadSection(j["security"], path + ": security",
@@ -529,6 +547,7 @@ bool Load(const std::string& path)
     g_influence = inf;
     g_licences = lc;
     g_hangars = hg;
+    g_deliveries = dl;
     g_security = sec;
     g_patrols = pat;
     g_charts = ch;
@@ -674,6 +693,16 @@ const Hangars& HangarRules()
 void SetHangarRules(const Hangars& h)
 {
     g_hangars = h;
+}
+
+const Deliveries& DeliveryRules()
+{
+    return g_deliveries;
+}
+
+void SetDeliveryRules(const Deliveries& d)
+{
+    g_deliveries = d;
 }
 
 void SetLicenceRules(const Licences& l)

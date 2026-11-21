@@ -202,6 +202,38 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
             if (L.Clicked("cont", (uint32_t)i))
                 inventorySel_ = c.id;
         }
+        // Hangars at stations that refuse the pilot, and goods on their way (#472 slice 6).
+        for (size_t i = 0; i < snapshot_.player.locked.size(); i++)
+        {
+            const Proto::LockedHangarView& lk = snapshot_.player.locked[i];
+            int                            n = 0;
+            for (int g : lk.goods)
+                n += g;
+            L.Text(
+                TextFormat("%s, %s: %d units out of reach", lk.name.c_str(), lk.system.c_str(), n),
+                TextStyle::Small().Tint(t.colors.bad).Wrap());
+            if (lk.why.empty())
+            {
+                if (L.Button("fetch_" + std::to_string(i),
+                             TextFormat("Bring here: %.0f cr, %.0f h", lk.fee, lk.hours)))
+                {
+                    Proto::Command c;
+                    c.deliverFrom = lk.key;
+                    clientLink_->Send(Proto::EncodeCommand(c));
+                }
+            }
+            else
+                L.Text(lk.why, TextStyle::Small().Tint(t.colors.dim).Wrap());
+        }
+        for (const Proto::ShipmentView& s : snapshot_.player.shipments)
+        {
+            int n = 0;
+            for (int g : s.goods)
+                n += g;
+            L.Text(TextFormat("On its way: %d units from %s, %.0f h to go", n, s.from.c_str(),
+                              s.hours),
+                   TextStyle::Small().Tint(t.colors.dim).Wrap());
+        }
         if (all.size() < 2)
             L.Text(docked ? "Nothing else here holds goods for you."
                           : "Docked at a structure of yours, its storage is listed here too.",
