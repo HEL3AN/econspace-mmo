@@ -74,8 +74,7 @@ Render::Item Station::Describe() const
     // Guild hub is friend or target is the overview's to say.
     if (faction_.Index() < Factions::Count())
     {
-        const FactionDef& f = Factions::Def(faction_);
-        it.livery = f.culture.empty() ? f.id : f.culture;
+        it.livery = Factions::LiveryOf(faction_);
     }
     return it;
 }

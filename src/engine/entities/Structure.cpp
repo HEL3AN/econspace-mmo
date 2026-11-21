@@ -2,6 +2,7 @@
 
 #include "core/Archetype.h"
 #include "core/Blueprint.h"
+#include "core/Faction.h"
 
 Structure::Structure(Vector2 pos, float size, std::string name, std::string builds)
     : Entity(pos, size, Color{ 200, 200, 210, 255 }, EntityKind::Structure), name_(std::move(name)),
@@ -11,6 +12,22 @@ Structure::Structure(Vector2 pos, float size, std::string name, std::string buil
     // The size the instance gives, else the archetype's: a beacon is as large as a beacon.
     if (size_ <= 0.0f && archetype_ != nullptr)
         size_ = archetype_->defaultSize;
+}
+
+Render::Item Structure::Describe() const
+{
+    Render::Item it = Entity::Describe();
+    // A faction's outpost is painted in that faction's culture (#516), art and not allegiance
+    // (#117). A player's or a corporation's has no culture of its own yet: the default
+    // livery, plain plating.
+    static const std::string PREFIX = "faction:";
+    if (GetOwner().compare(0, PREFIX.size(), PREFIX) == 0)
+    {
+        FactionId f;
+        if (Factions::Find(GetOwner().substr(PREFIX.size()), f))
+            it.livery = Factions::LiveryOf(f);
+    }
+    return it;
 }
 
 void Structure::StartBuilding(double startedAt, double completesAt)

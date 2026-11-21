@@ -650,6 +650,12 @@ const std::string& Id(FactionId f)
     return Def(f).id;
 }
 
+std::string LiveryOf(FactionId f)
+{
+    const FactionDef& d = Def(f);
+    return d.culture.empty() ? d.id : d.culture;
+}
+
 bool IsLawful(FactionId f)
 {
     return Def(f).lawful;

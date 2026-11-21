@@ -42,6 +42,8 @@ public:
 
     std::unique_ptr<Entity> Clone() const override { return std::make_unique<Structure>(*this); }
     std::string             GetName() const override { return name_; }
+    // As any entity, wearing its owner's livery (#516) when a faction built it.
+    Render::Item Describe() const override;
 
     // The archetype it is, or will be once built.
     const std::string& GetBuilds() const { return builds_; }
