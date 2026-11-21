@@ -494,8 +494,15 @@ struct Charts
 // whose holdings stand below `defensiveBelow` of what they keep plans no outposts, sieges
 // or Anchors until they recover. A new world's factions begin with `foundingHours` of their
 // holdings' income in the treasury, to man what they hold.
+//
+// What a holding already flies drifts to the style (slice 5): every faction period it refits
+// a share of its fleet, enough that the mix still wrong for the style halves in
+// `refitHalfLifeHours` world hours -- a rate in time, not per period, so the period can change
+// without moving the history a region's ships show. A refit pays the guns' goods of the new
+// fit and the difference of the two ships' prices from the treasury.
 struct Styles
 {
+    double                                               refitHalfLifeHours = 48.0;
     double                                               culture = 0.25;
     double                                               hours = 24.0;
     double                                               dearAt = 2.0;

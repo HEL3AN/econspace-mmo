@@ -648,6 +648,19 @@ void Simulation::StepFactions()
                      [](const Order& x, const Order& y) { return x.held < y.held; });
     for (const Order& o : orders)
         o.st->agg.presence[o.f] += BuyShips(*o.st, o.f, o.want);
+
+    // What it already flies drifts to the region's style (#464, slice 5): each holding refits
+    // so much of its fleets a period that the mix still wrong for the style halves in
+    // `refitHalfLifeHours` -- a rate in world time, whatever the period is.
+    const double periodHours = FACTION_PERIOD * MAINT_STEP_SECONDS / 3600.0;
+    const double refit =
+        1.0 - std::pow(0.5, periodHours / WorldRules::StyleRules().refitHalfLifeHours);
+    for (auto& kv : systems_)
+    {
+        const SystemAggregate& a = kv.second.agg;
+        if (a.claimed && a.controller != Factions::Pirates())
+            RefitFleets(kv.second, a.controller, refit);
+    }
 }
 
 // One faction's turn (#231, #295). It sees what it holds and wherever its ships are; of
