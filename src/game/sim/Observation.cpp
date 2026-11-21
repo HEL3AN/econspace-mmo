@@ -827,8 +827,9 @@ std::string DescribeInventory(const View& view, const std::string& account)
     };
     for (const Proto::LockedHangarView& l : p.locked)
     {
-        out += Fmt("OUT OF REACH: your hangar at %s, %s (key %s) holds %s; ", l.name.c_str(),
-                   l.system.c_str(), l.key.c_str(), goodsText(l.goods).c_str());
+        out += Fmt("%s: your hangar at %s, %s (key %s) holds %s; ",
+                   l.hostile ? "OUT OF REACH" : "ELSEWHERE", l.name.c_str(), l.system.c_str(),
+                   l.key.c_str(), goodsText(l.goods).c_str());
         out += l.why.empty()
                    ? Fmt("request_delivery brings it here for %.0f cr in %.0f h\n", l.fee, l.hours)
                    : "it cannot be fetched: " + l.why + "\n";

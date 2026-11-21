@@ -1234,7 +1234,8 @@ json PlayerJson(const Proto::PlayerView& p)
                            { "t", l.goods },
                            { "fee", l.fee },
                            { "h", l.hours },
-                           { "why", l.why } });
+                           { "why", l.why },
+                           { "hostile", l.hostile } });
         j["lock"] = lk;
     }
     if (!p.shipments.empty())
@@ -1396,6 +1397,7 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
             l.fee = Val(lj, "fee", 0.0);
             l.hours = Val(lj, "h", 0.0);
             l.why = Val(lj, "why", std::string());
+            l.hostile = Val(lj, "hostile", false);
             p.locked.push_back(std::move(l));
         }
     const auto shp = pj.find("ship");

@@ -102,7 +102,9 @@ std::vector<Proto::LockedHangarView> Simulation::LockedHangarsFor(const ClientSe
     for (const auto& at : hangars_)
     {
         const auto it = at.second.find(s.accountName);
-        if (it == at.second.end() || it->second.goods.Empty() || !HangarOutOfReach(s, at.first))
+        // Every hangar the pilot keeps elsewhere, hostile or not (slice 11): the one at the
+        // station they are docked at needs no freight.
+        if (it == at.second.end() || it->second.goods.Empty() || at.first == PlaceKeyHere(s))
             continue;
         const Entity*           station = HangarStation(at.first);
         Proto::LockedHangarView v;
@@ -119,9 +121,10 @@ std::vector<Proto::LockedHangarView> Simulation::LockedHangarsFor(const ClientSe
             volume += n * Goods::Volume(rt);
             value += n * prices.GetBasePrice(rt);
         }
+        v.hostile = HangarOutOfReach(s, at.first);
         const DeliveryQuote q =
             QuoteDelivery(at.first.substr(0, at.first.find('|')), s.systemId, volume, value,
-                          WorldRules::DeliveryRules().hostileSurcharge);
+                          v.hostile ? WorldRules::DeliveryRules().hostileSurcharge : 1.0);
         v.fee = q.ok ? q.fee : 0.0;
         v.hours = q.ok ? q.hours : 0.0;
         v.why = q.why;
@@ -130,6 +133,10 @@ std::vector<Proto::LockedHangarView> Simulation::LockedHangarsFor(const ClientSe
     return out;
 }
 
+// The NPC delivery service is the ceiling of the courier market (#473): its quote -- from the
+// route alone, never from what players charge -- is what a courier contract is shown beside,
+// when it is posted and when it is browsed, so an issuer knows what the alternative costs and a
+// courier knows what to beat. QuoteDelivery is that quote; nothing in it reads a player's price.
 bool Simulation::RequestDelivery(ClientSession& s, const std::string& key, int type, int amount)
 {
     auto refuse = [&](const std::string& why)
@@ -143,8 +150,12 @@ bool Simulation::RequestDelivery(ClientSession& s, const std::string& key, int t
     const Entity* station = HangarStation(key);
     if (h == nullptr || h->goods.Empty() || station == nullptr)
         return refuse("you keep nothing there");
-    if (!HangarOutOfReach(s, key))
-        return refuse(station->GetName() + " still lets you dock: go and get it yourself");
+    if (key == PlaceKeyHere(s))
+        return refuse("that hangar is here: move the goods yourself");
+    const bool hostile = HangarOutOfReach(s, key);
+    if (!hostile && h->owed > 0.0)
+        return refuse("your hangar at " + station->GetName() +
+                      " is closed until the rent owed is paid");
     // Where it goes: the pilot's hangar here, at a station or a corporation's structure.
     Container   dest;
     std::string why;
@@ -168,8 +179,9 @@ bool Simulation::RequestDelivery(ClientSession& s, const std::string& key, int t
     for (const auto& g : sh.goods.All())
         value += g.second * prices.GetBasePrice(g.first);
     const std::string   fromSystem = key.substr(0, key.find('|'));
-    const DeliveryQuote q = QuoteDelivery(fromSystem, s.systemId, sh.goods.Used(), value,
-                                          WorldRules::DeliveryRules().hostileSurcharge);
+    const DeliveryQuote q =
+        QuoteDelivery(fromSystem, s.systemId, sh.goods.Used(), value,
+                      hostile ? WorldRules::DeliveryRules().hostileSurcharge : 1.0);
     if (!q.ok)
         return refuse(q.why);
     sh.holder = h->holder;

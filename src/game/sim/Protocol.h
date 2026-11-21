@@ -36,7 +36,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    72;  // 72: the assets view is sent on request (#472 slice 9) -- a Command's requestAssets and a
+    73;  // 73: the NPC delivery service brings goods from any hangar elsewhere (#472 slice 11) --
+         // a LockedHangarView is every hangar elsewhere, with its quote, `hostile` when the
+         // faction refuses the pilot;
+         // 72: the assets view is sent on request (#472 slice 9) -- a Command's requestAssets and a
          // PlayerView's assets, once;
          // 71: ships have places (#472 slice 8) -- a PlayerView says where each owned hull is and
          // whether it can be switched to from here;
@@ -503,9 +506,9 @@ struct DivisionView
     bool             canTake = true;
 };
 
-// A hangar the pilot keeps at a station whose faction now refuses them (#472), with what it
-// would cost to have it brought to where they are docked: the NPC service's quote times the
-// hostility surcharge. `why` non-empty: it cannot be quoted.
+// A hangar the pilot keeps at another station (#472), with what it would cost to have it
+// brought to where they are docked by the NPC delivery service: the route's quote, times the
+// hostility surcharge when its faction refuses the pilot. `why` non-empty: it cannot be quoted.
 struct LockedHangarView
 {
     std::string      key;     // what a delivery request names it by
@@ -515,6 +518,7 @@ struct LockedHangarView
     double           fee = 0.0;
     double           hours = 0.0;
     std::string      why;
+    bool             hostile = false;  // its faction refuses the pilot: the fee carries a surcharge
 };
 // Goods on their way to one of the pilot's hangars.
 struct ShipmentView

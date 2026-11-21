@@ -1414,11 +1414,13 @@ std::vector<Tool> BuildTools()
 
     tools.push_back(
         { "request_delivery",
-          "Have goods you keep in a hangar at a station whose faction now refuses you (Hated) "
-          "brought to your hangar where you are docked, by that faction's freight office: "
-          "inventory lists each such hangar under OUT OF REACH with its key, the price (the "
-          "route's quote times a hostility surcharge, paid up front to that faction) and the "
-          "hours it takes. The goods are in transit until they arrive; inventory shows them. "
+          "Have goods you keep in a hangar at another station brought to your hangar where you "
+          "are docked, by that station's faction's freight office: inventory lists each such "
+          "hangar under ELSEWHERE (or OUT OF REACH when its faction refuses you, Hated, whose "
+          "price carries a surcharge) with its key, the price (the route's quote, from its "
+          "length and how safe it is and never from what players charge, paid up front to that "
+          "faction) and the hours it takes -- a player courier (#473) can beat both. The goods are "
+          "in transit until they arrive; inventory shows them. "
           "Without a resource it sends everything there.",
           Obj({ { "key", Str("the hangar's key as inventory lists it") },
                 { "resource", Str("one good to send; left out, all of them") },
