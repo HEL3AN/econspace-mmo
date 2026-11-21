@@ -187,6 +187,13 @@ Have goods you keep in a hangar at a station whose faction now refuses you (Hate
 | `amount` | number |  | at most this many of it; left out, all |
 | `key` | string | yes | the hangar's key as inventory lists it |
 | `resource` | string |  | one good to send; left out, all of them |
+### `set_livery`
+
+Paint your ships in a livery: a people's art palette named by culture, such as 'guild', 'syndicate' or 'clan', shown to everyone who sees your ship. 'default' is plain plating. It is looks only -- it says nothing about whose side you are on.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `livery` | string | yes | a livery id, or 'default' |
 
 ### `move_goods`
 

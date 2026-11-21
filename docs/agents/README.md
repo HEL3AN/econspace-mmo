@@ -188,7 +188,7 @@ server actually accepts.
 | fly | `move_to`, `dock`, `undock`, `hold_station`, `travel_to_system`, `abort_order` |
 | earn | `mine`, `salvage`, `sell_cargo`, `buy`, `missions`, `accept_mission`, `complete_mission` |
 | hold and hangars | `inventory`, `move_goods`, `jettison`, `rent_hangar`, `store_cargo`, `take_cargo` |
-| ships | `hangar`, `buy_ship`, `switch_ship`, `insure_ship`, `fitting`, `preview_fit`, `refit`, `designs`, `save_design`, `apply_design`, `rename_design`, `delete_design` |
+| ships | `hangar`, `buy_ship`, `switch_ship`, `insure_ship`, `fitting`, `preview_fit`, `refit`, `designs`, `save_design`, `apply_design`, `rename_design`, `delete_design`, `set_livery` |
 | fight and the law | `attack`, `pay_bounty` |
 | build | `blueprints`, `deploy`, `build`, `dismantle`, `set_defence`, `buy_licence` |
 | explore | `scan`, `name_system`, `sell_charts` |
