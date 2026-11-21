@@ -16,6 +16,7 @@
 #include "sim/WorldRules.h"
 #include "temp_dir.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 
@@ -232,4 +233,39 @@ TEST_CASE("Hangars: a hangar and its rent are saved with the world")
     CHECK(h.rented == 50);
     CHECK(h.paidUntil == doctest::Approx(v.paidUntil));
     CHECK(h.holder == "f:" + Factions::Id(Fac::TradersGuild()));
+}
+
+TEST_CASE(
+    "Livery: a pilot paints their ships from the palette, which the snapshot and the save keep")
+{
+    Docked d;
+    // The server keeps a well-formed id (which are the palette is the client's materials.json).
+    const int seq = d.s->LastEventSeq();
+    CHECK_FALSE(d.sim.SetLivery(*d.s, "Not A Livery!"));
+    CHECK(Told(*d.s, seq, "Unknown livery"));
+    CHECK(d.s->livery.empty());
+
+    CHECK(d.sim.SetLivery(*d.s, "guild"));
+    Proto::Snapshot snap = d.sim.BuildSnapshot(*d.s, d.s->systemId);
+    CHECK(snap.player.livery == "guild");
+    Proto::Snapshot back;
+    REQUIRE(Proto::DecodeSnapshot(Proto::EncodeSnapshot(snap), back));
+    CHECK(back.player.livery == "guild");
+
+    Proto::Command c;
+    c.setLivery = "guild";
+    Proto::Command c2;
+    REQUIRE(Proto::DecodeCommand(Proto::EncodeCommand(c), c2));
+    CHECK(c2.setLivery == "guild");
+
+    const TempDir     tmp;
+    const std::string path = tmp.Path("pilot.json");
+    d.sim.SaveAccount(*d.s, path);
+    ClientSession& t = d.sim.CreateSession(d.sim.Universe().startId, Vector2{ 0.0f, 0.0f },
+                                           GetShipCatalog()[0].stats);
+    REQUIRE(d.sim.LoadAccount(t, path) == Save::Result::Ok);
+    CHECK(t.livery == "guild");
+
+    CHECK(d.sim.SetLivery(*d.s, "default"));
+    CHECK(d.s->livery.empty());
 }

@@ -1743,6 +1743,9 @@ public:
     bool SaveDesign(ClientSession& s, const std::string& name,
                     const std::vector<Ships::FitLine>& fit);
     bool ApplyDesign(ClientSession& s, const std::string& name);
+    // Paints the pilot's ships in a livery of the palette (#516); "" or "default" clears it.
+    // Art, never allegiance. A refusal is a Notice.
+    bool SetLivery(ClientSession& s, const std::string& id);
     bool RenameDesign(ClientSession& s, const std::string& from, const std::string& to);
     bool DeleteDesign(ClientSession& s, const std::string& name);
     // A design was filed since the last call: the host writes designs.json now rather than

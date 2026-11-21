@@ -188,6 +188,14 @@ Have goods you keep in a hangar at another station brought to your hangar where 
 | `key` | string | yes | the hangar's key as inventory lists it |
 | `resource` | string |  | one good to send; left out, all of them |
 
+### `set_livery`
+
+Paint your ships in a livery: a people's art palette named by culture, such as 'guild', 'syndicate' or 'clan', shown to everyone who sees your ship. 'default' is plain plating. It is looks only -- it says nothing about whose side you are on.
+
+| Argument | Type | Required | Meaning |
+|---|---|---|---|
+| `livery` | string | yes | a livery id, or 'default' |
+
 ### `move_goods`
 
 Move goods between two containers where you are, by the ids inventory lists them by: 'hold' (the ship you fly); docked at a station, 'hangar' (yours there); docked at your own structure or a corporation mate's, 'storage'; in space, 'can:<id>' for a can or wreck within reach (take from any, put into your own), and 'can' as a destination jettisons. Moves all of that good unless an amount is given, as far as the destination has room.

@@ -7,6 +7,7 @@
 // gone, remembered, when it undocks. What they list comes from StationList and MissionList;
 // every button is an order to the server, which answers in the snapshot and the journal.
 // Part of the Game class; see Game.cpp.
+#include "render/Material.h"
 #include "core/Game.h"
 
 #include "core/Actions.h"
@@ -851,6 +852,37 @@ void Game::DrawFitTab(Ui::Layout& L, bool wide)
                   if (L.Button("reset", "Reset"))
                       fitDraftFor_.clear();
               });
+
+        // The paint (#516): a livery from the palette, art and never allegiance (#117). It is
+        // the pilot's, so every ship they fly wears it; the server keeps it with the account.
+        L.Divider();
+        {
+            const std::string& wearing = snapshot_.player.livery;
+            L.Text("Livery  " + (wearing.empty() ? std::string("plain") : wearing),
+                   TextStyle::Small().Tint(t.colors.dim));
+            std::vector<std::string> options = { "default" };
+            for (const Render::Livery& l : Render::Materials::Liveries())
+                if (l.palette)
+                    options.push_back(l.id);
+            // Three to a row: the tab is narrow at the default window size.
+            for (size_t first = 0; first < options.size(); first += 3)
+                L.Row(
+                    Box().GrowX().Gap(t.metrics.gap),
+                    [&]
+                    {
+                        for (size_t k = first; k < std::min(first + 3, options.size()); k++)
+                        {
+                            const std::string& id = options[k];
+                            const bool current = id == "default" ? wearing.empty() : id == wearing;
+                            if (L.Button("livery_" + id, id == "default" ? "plain" : id, !current))
+                            {
+                                Proto::Command c;
+                                c.setLivery = id;
+                                clientLink_->Send(Proto::EncodeCommand(c));
+                            }
+                        }
+                    });
+        }
 
         // The library: a name, and what can be done with it and with the design chosen.
         L.Divider();

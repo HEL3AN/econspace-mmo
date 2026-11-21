@@ -141,18 +141,18 @@
             "variants": [
                 { "id": "plates", "shape": { "vars": { "w": [0.45, 0.72], "n": [3, 5], "s": [0.4, 0.47] }, "parts": [
                     {"form": "bar", "length": 1.95, "width": "$w", "role": "panel"},
-                    {"form": "bar", "at": [0.0, 0.0], "length": [0.3, 0.36], "width": "$w", "role": "hull", "row": {"count": "$n", "step": ["$s", 0.0], "centred": true}},
+                    {"form": "bar", "at": [0.0, 0.0], "length": [0.3, 0.36], "width": "$w", "role": "hull", "material": "armour", "row": {"count": "$n", "step": ["$s", 0.0], "centred": true}},
                     {"form": "bar", "at": [0.0, 0.0], "length": 1.95, "width": 0.04, "role": "trim", "alpha": 0.7, "row": {"count": 2, "step": [0.0, "$w"], "centred": true}},
                     {"form": "disc", "at": [0.0, 0.0], "radius": 0.05, "role": "trim", "chance": 0.5, "row": {"count": "$n", "step": ["$s", 0.0], "centred": true}}
                 ]}},
                 { "id": "slab", "shape": { "vars": { "w": [0.6, 0.8] }, "parts": [
-                    {"form": "bar", "length": [1.7, 1.95], "width": "$w", "role": "hull"},
-                    {"form": "chevron", "at": [0.95, 0.0], "length": 0.3, "width": "$w", "role": "hull"},
+                    {"form": "bar", "length": [1.7, 1.95], "width": "$w", "role": "hull", "material": "armour"},
+                    {"form": "chevron", "at": [0.95, 0.0], "length": 0.3, "width": "$w", "role": "hull", "material": "armour"},
                     {"form": "bar", "at": [0.0, 0.0], "angle": 90, "length": 0.5, "width": 0.06, "role": "panel", "row": {"count": [2, 4], "step": [[0.5, 0.6], 0.0], "centred": true}},
                     {"form": "bar", "at": [0.0, 0.25], "length": 1.7, "width": 0.08, "role": "trim"}
                 ]}},
                 { "id": "hazard", "shape": [
-                    {"form": "bar", "length": 1.9, "width": [0.5, 0.6], "role": "hull"},
+                    {"form": "bar", "length": 1.9, "width": [0.5, 0.6], "role": "hull", "material": "armour"},
                     {"form": "bar", "length": 1.9, "width": 0.36, "role": "panel"},
                     {"form": "bar", "at": [0.0, 0.0], "angle": 60, "length": 0.4, "width": 0.1, "role": "trim", "tint": [[230, 170, 40], [210, 60, 40], [220, 220, 210]], "row": {"count": [4, 7], "step": [0.27, 0.0], "centred": true}}
                 ]}

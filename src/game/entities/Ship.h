@@ -44,7 +44,9 @@ public:
     // Whose ship this is. The server sets it from the account name when a player joins,
     // and it travels in the snapshot so other players see a name rather than a shape
     // (#4). Empty on the client's own ship: it does not need to be told who it is.
-    void               SetPilotName(const std::string& n) { pilotName_ = n; }
+    void SetPilotName(const std::string& n) { pilotName_ = n; }
+    // The livery from the palette it is painted in (#516); empty: plain plating.
+    void               SetLivery(const std::string& id) { livery_ = id; }
     const std::string& GetPilotName() const { return pilotName_; }
     std::string        GetName() const override { return pilotName_.empty() ? "Ship" : pilotName_; }
 
@@ -265,5 +267,6 @@ private:
     bool      warpHasVia_ = false;   // still on the first leg, heading for warpVia_
     Vector2   warpVia_ = { 0.0f, 0.0f };
 
+    std::string livery_;     // (#516)
     std::string pilotName_;  // account name, for other players' snapshots (#4)
 };

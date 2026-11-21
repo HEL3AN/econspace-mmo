@@ -1258,6 +1258,35 @@ bool Simulation::SaveDesign(ClientSession& s, const std::string& name,
     return true;
 }
 
+// A livery id is a short lower-case word. Which ones are the palette is the client's
+// materials.json (`palette`), which the server does not read: it keeps a well-formed id, and
+// one nobody knows is drawn as the default livery. Art only, so nothing hangs on it (#117).
+static bool ValidLiveryId(const std::string& id)
+{
+    if (id.empty() || id.size() > 24)
+        return false;
+    for (char c : id)
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'))
+            return false;
+    return true;
+}
+
+bool Simulation::SetLivery(ClientSession& s, const std::string& id)
+{
+    if (id.empty() || id == "default")
+    {
+        s.livery.clear();
+        return true;
+    }
+    if (!ValidLiveryId(id))
+    {
+        s.RecordEvent(Ev::Kind::Notice, "Unknown livery '" + id + "'");
+        return false;
+    }
+    s.livery = id;
+    return true;
+}
+
 bool Simulation::ApplyDesign(ClientSession& s, const std::string& name)
 {
     auto refuse = [&](const std::string& why)
@@ -1969,6 +1998,8 @@ bool Simulation::SaveAccount(const ClientSession& s, const std::string& path)
         if (s.Owns(hull))
             insurance.push_back({ { "hull", hull }, { "cover", cover } });
     j["insurance"] = insurance;
+    if (!s.livery.empty())  // (#516): a field an older build ignores
+        j["livery"] = s.livery;
     j["home"] = StationRefOf(systems_, s.homeStationId);
     // The library (#279 fitting, step 3): names of the account's, designs by id, kept in
     // designs.json for as long as a save names them. A field an older build ignores, so no
@@ -2358,6 +2389,14 @@ Save::Result Simulation::LoadAccount(ClientSession& s, const std::string& path)
             }
             s.designLibrary[name] = design;
         }
+
+    s.livery.clear();
+    if (j.contains("livery") && j["livery"].is_string())
+    {
+        const std::string id = j["livery"].get<std::string>();
+        if (ValidLiveryId(id))
+            s.livery = id;
+    }
 
     // Insurance and home (#344). A policy on a hull the account no longer has is dropped; a
     // home the galaxy no longer has leaves the one the session began with (CreateSession).

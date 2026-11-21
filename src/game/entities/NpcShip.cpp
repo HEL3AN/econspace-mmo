@@ -58,6 +58,9 @@ Render::Item NpcShip::Describe() const
     Render::Item it = Entity::Describe();
     it.heading = heading_;
     it.intensity = maxHull_ > 0.0f ? hull_ / maxHull_ : 1.0f;
+    // Painted in its faction's culture (#516): a Syndicate trader looks Syndicate from the
+    // window. Art, not allegiance (#117) -- the overview says who is a friend.
+    it.livery = Factions::LiveryOf(faction_);
     return it;
 }
 

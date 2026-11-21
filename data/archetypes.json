@@ -1205,7 +1205,7 @@
             "color": [200, 200, 200, 255],
             "layer": 5,
             "size": 10,
-            "material": "hull",
+            "material": "plating",
             "design": "courier",
             "components": {}
         },
@@ -1219,7 +1219,7 @@
             "color": [200, 200, 200, 255],
             "layer": 5,
             "size": 13,
-            "material": "hull",
+            "material": "plating",
             "design": "hauler",
             "components": {}
         },
@@ -1233,7 +1233,7 @@
             "color": [200, 200, 200, 255],
             "layer": 5,
             "size": 12,
-            "material": "hull",
+            "material": "plating",
             "design": "miner",
             "components": {}
         },
@@ -1247,7 +1247,7 @@
             "color": [200, 200, 200, 255],
             "layer": 5,
             "size": 11,
-            "material": "hull",
+            "material": "plating",
             "design": "cutter",
             "components": {}
         },
@@ -1261,7 +1261,7 @@
             "color": [200, 200, 200, 255],
             "layer": 5,
             "size": 10,
-            "material": "hull",
+            "material": "plating",
             "design": "raider",
             "components": {}
         },
@@ -1275,7 +1275,7 @@
             "color": [200, 200, 200, 255],
             "layer": 5,
             "size": 14,
-            "material": "hull",
+            "material": "plating",
             "design": "cruiser",
             "components": {}
         }

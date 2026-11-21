@@ -642,6 +642,8 @@ std::string EncodeCommand(const Command& c)
         j["dvType"] = c.deliverType;
         j["dvAmt"] = c.deliverAmount;
     }
+    if (!c.setLivery.empty())
+        j["setLivery"] = c.setLivery;
     number("buyType", c.buyType, -1);
     number("buyAmt", c.buyAmount, 0);
     if (c.moveType >= 0)  // (#472)
@@ -907,6 +909,7 @@ bool ReadCommand(const json& j, Proto::Command& out)
     ok = ok && ReadText(j, "dvFrom", out.deliverFrom);
     ok = ok && ReadInt(j, "dvType", -1, 0, resources - 1, out.deliverType);
     ok = ok && ReadInt(j, "dvAmt", 0, 0, ID_MAX, out.deliverAmount);
+    ok = ok && ReadText(j, "setLivery", out.setLivery);
     ok = ok && ReadText(j, "mvFrom", out.moveFrom);
     ok = ok && ReadText(j, "mvTo", out.moveTo);
     ok = ok && ReadInt(j, "mvType", -1, 0, resources - 1, out.moveType);
@@ -1058,6 +1061,8 @@ EntityWire WireOf(const Proto::EntitySnapshot& e, float grid)
         j["n"] = e.name;
     if (!e.design.empty())
         j["d"] = e.design;
+    if (!e.livery.empty())
+        j["lv"] = e.livery;
     if (e.criminal)
         j["cr"] = 1;
     const long long status = Quantise(e.securityStatus, STATUS_UNIT);
@@ -1098,6 +1103,7 @@ Proto::EntitySnapshot EntityOf(int id, const json& j)
     }
     e.name = TextOf(j, "n");
     e.design = TextOf(j, "d");
+    e.livery = TextOf(j, "lv");
     e.criminal = IntOf(j, "cr", 0) != 0;
     e.securityStatus = (float)((double)IntOf(j, "ss", 0) / STATUS_UNIT);
     return e;
@@ -1145,6 +1151,8 @@ json PlayerJson(const Proto::PlayerView& p)
                { "shipHere", p.shipHere },
                { "shipDesigns", p.shipDesigns },
                { "ship", p.shipIndex } };
+    if (!p.livery.empty())
+        j["livery"] = p.livery;
     if (p.warpViaSet)  // only during the first leg of a bent warp
         j["warpVia"] = V2(p.warpVia);
     // Under the law (#431 slice 10): only once there is something to say.
@@ -1301,6 +1309,7 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
     p.shipHere = Val(pj, "shipHere", std::vector<int>{});
     p.shipDesigns = Val(pj, "shipDesigns", std::vector<std::string>{});
     p.shipIndex = Val(pj, "ship", 0);
+    p.livery = TextOf(pj, "livery");
     p.insured = Val(pj, "insured", std::vector<double>{});
     p.loss = Proto::LossView{};
     const auto loss = pj.find("loss");
@@ -1817,7 +1826,7 @@ static bool SameWire(const EntitySnapshot& a, const EntitySnapshot& b)
            a.size == b.size && a.faction == b.faction && a.role == b.role &&
            a.hullFrac == b.hullFrac && a.ore == b.ore && a.cargo == b.cargo &&
            a.cargoAmount == b.cargoAmount && a.name == b.name && a.design == b.design &&
-           a.criminal == b.criminal && a.securityStatus == b.securityStatus;
+           a.livery == b.livery && a.criminal == b.criminal && a.securityStatus == b.securityStatus;
 }
 
 std::shared_ptr<const EntityWire> WireCache::Of(const EntitySnapshot& e, float grid)

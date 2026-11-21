@@ -133,6 +133,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         p.maxShields = s.ship->GetMaxShields();
         p.ownedShips = s.ownedShips;
         p.shipIndex = s.currentShip;
+        p.livery = s.livery;
         for (int hull : s.ownedShips)
         {
             p.shipDesigns.push_back(s.DesignOf(hull));
@@ -292,6 +293,7 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         es.size = other.ship->GetSize();
         es.name = other.ship->GetName();
         es.design = other.ship->GetStats().design;  // what it is drawn as (#279 step 5)
+        es.livery = other.livery;                   // and painted in (#516)
         es.hullFrac = other.ship->GetMaxHull() > 0.0f
                           ? other.ship->GetHull() / other.ship->GetMaxHull()
                           : 1.0f;
