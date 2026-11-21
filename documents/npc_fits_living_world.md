@@ -1,7 +1,7 @@
 # NPC fits from the living world
 
 Status: **decided, being built** (#464): slices 1 (variants), 2 (fleets), 3 (region style)
-and 4 (buying) are built. The owner's direction of 2026-10-23 is the premise and
+4 (buying) and 5 (refit and drift) are built. The owner's direction of 2026-10-23 is the premise and
 is not re-opened: NPC fits differ **strongly** between regions; a region's style, politics and
 economy decide what its NPCs fly; a region whose markets and industry are full of lasers flies
 mostly lasers and rarely railguns. The owner answered every open question the same day
@@ -164,9 +164,15 @@ culture lives in (decided, Q4). What a holding can actually buy is its **own** m
   ship is bought as the role it flies day to day (police, or a pirate) and joins that fleet;
   it also joins the faction's warship fleet as the warship of the **same fit** (family and
   line) -- what it would be lent to a siege as. It is paid for once, as the ship it flies.
-- **At refit, slowly.** Each period a holding refits a share of its fleet (proposed 5%,
-  tuning) to the current style if the market has the parts and the treasury the money -- the
-  price difference between the old and new fit. This is the drift.
+- **At refit, slowly.** Each faction period a holding refits a share of what is *wrong* with its
+  fleet for the style -- ships move from the designs it has too many of, against the style's
+  shares, to the ones it has too few of -- if the market has the new guns' goods and the
+  treasury the money: the guns' goods at the ask where the family changes, and whatever the rest
+  of the ship is dearer by. This is the drift. The share is not a fixed 5% of the fleet (a
+  period is a minute of world time, so that would be a half-life of a quarter of an hour) but a
+  **half-life in world hours**, `styles.refitHalfLifeHours` (48), and the rate a period is
+  derived from it: so the mix still wrong halves in two world days whatever the period is.
+  Measured (`tests/buying_tests.cpp`): 48.02 hours.
 - **At spawn, never.** The spawn director no longer chooses a design; it draws one **from the
   fleet**, weighted by count, keyed as today (the pick key), so the same sky comes back when a
   system warms. A hot ship that dies takes one off its own design's count.

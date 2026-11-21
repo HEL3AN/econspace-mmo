@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstdio>
 #include <set>
+#include <tuple>
 #include <nlohmann/json.hpp>
 
 namespace
@@ -55,6 +56,38 @@ void Join(Fleet& fleet, FactionId f, NpcRole role, float total, const std::strin
     if (sum <= FLEET_EPSILON && total > FLEET_EPSILON)
         SeedFromDoctrine(fleet, f, role, total);
     fleet[design] += n;
+}
+
+// One way to fit a design: the variant, the family and line it is in, and the share of the
+// style it takes.
+struct Fit
+{
+    std::string design, family, line;
+    float       share = 0.0f;
+};
+// Every fit of `base`'s designs in the style, by share, largest first: each design alike, each
+// family and line by the style's shares. Shares sum to one over the fits.
+std::vector<Fit> StyleFits(const Ships::Catalogue& cat, const std::vector<std::string>& base,
+                           const Ships::Style& style)
+{
+    std::vector<Fit> fits;
+    for (const std::string& d : base)
+        for (const auto& [family, fs] : style.families)
+            for (const auto& [line, ls] : style.lines)
+            {
+                const std::string v = cat.VariantOf(d, family, line);
+                if (!v.empty())
+                    fits.push_back({ v, family, line, fs * ls / (float)base.size() });
+            }
+    std::stable_sort(fits.begin(), fits.end(),
+                     [](const Fit& a, const Fit& b) { return a.share > b.share; });
+    float shares = 0.0f;
+    for (const Fit& x : fits)
+        shares += x.share;
+    if (shares > 0.0f)
+        for (Fit& x : fits)
+            x.share /= shares;
+    return fits;
 }
 
 // FleetKey, made once per faction and role: every macro pass asks for a few in every system,
@@ -502,27 +535,12 @@ float Simulation::BuyShips(SystemState& st, FactionId f, float want)
     const auto         known = styles_.find(slot);
     const Ships::Style style = known != styles_.end() ? known->second : RegionStyle(slot);
 
-    // Every fit, by its share: each doctrine design alike, each family and line by the style.
-    struct Fit
-    {
-        std::string design, family, line;
-        float       share = 0.0f;
-    };
-    std::vector<Fit> fits;
-    for (const std::string& d : *day)
-        for (const auto& [family, fs] : style.families)
-            for (const auto& [line, ls] : style.lines)
-            {
-                const std::string v = cat.VariantOf(d, family, line);
-                if (!v.empty())
-                    fits.push_back({ v, family, line, fs * ls / (float)day->size() });
-            }
-    std::stable_sort(fits.begin(), fits.end(),
-                     [](const Fit& a, const Fit& b) { return a.share > b.share; });
-    float shares = 0.0f;
+    // Every fit, by its share, then the doctrine's own designs last, for whatever no fit could
+    // be had for.
+    std::vector<Fit> fits = StyleFits(cat, *day, style);
+    float            shares = 0.0f;
     for (const Fit& x : fits)
         shares += x.share;
-    // ...and the doctrine's own designs last, for whatever no fit could be had for.
     for (const std::string& d : *day)
         fits.push_back({ d, std::string(), std::string(), 0.0f });
 
@@ -581,4 +599,128 @@ float Simulation::BuyShips(SystemState& st, FactionId f, float want)
              a.presence[f] + bought - got, war.empty() ? warship : war, got);
     }
     return bought;
+}
+
+float Simulation::RefitFleets(SystemState& st, FactionId f, double rate)
+{
+    if (!(rate > 0.0))
+        return 0.0f;
+    SystemState* shop = BuyingMarket(st.id);
+    if (shop == nullptr)
+        return 0.0f;
+    const WorldRules::Styles& rules = WorldRules::StyleRules();
+    const Ships::Catalogue&   cat = Archetypes::ShipCatalogue();
+    const std::string         faction = Factions::Id(f);
+    const int                 slot = Gen::SlotOf(st.id);
+    const auto                known = styles_.find(slot);
+    const Ships::Style        style = known != styles_.end() ? known->second : RegionStyle(slot);
+    double&                   treasury = minds_[f].treasury;
+
+    // The fleets of a holding that bought them: the role its ships fly day to day, and the
+    // warships it would lend a siege.
+    const NpcRole day = f == Factions::Pirates()    ? NpcRole::Pirate
+                        : st.agg.policeFaction == f ? NpcRole::Police
+                                                    : NpcRole::Warship;
+    float         refitted = 0.0f;
+    for (NpcRole role : { day, NpcRole::Warship })
+    {
+        const auto it = st.agg.fleets.find(KeyFor(f, role));
+        if (it == st.agg.fleets.end())
+            continue;
+        Fleet&                          fleet = it->second;
+        const std::vector<std::string>* base = cat.DesignsFor(faction, NpcRoleId(role));
+        if (base == nullptr || base->empty())
+            continue;
+        float total = 0.0f;
+        for (const auto& kv : fleet)
+            total += kv.second;
+        if (total <= FLEET_EPSILON)
+            continue;
+        // What the style would have of this many ships, and what is over and short of it.
+        const std::vector<Fit>       fits = StyleFits(cat, *base, style);
+        std::map<std::string, float> target;
+        for (const Fit& x : fits)
+            target[x.design] += total * x.share;
+        std::vector<std::pair<std::string, float>> over, under;
+        float                                      overSum = 0.0f, underSum = 0.0f;
+        for (const auto& [design, n] : fleet)
+        {
+            const auto  t = target.find(design);
+            const float d = n - (t == target.end() ? 0.0f : t->second);
+            if (d > 0.0f)
+            {
+                over.emplace_back(design, d);
+                overSum += d;
+            }
+        }
+        for (const auto& [design, want] : target)
+        {
+            const auto  n = fleet.find(design);
+            const float d = want - (n == fleet.end() ? 0.0f : n->second);
+            if (d > 0.0f)
+            {
+                under.emplace_back(design, d);
+                underSum += d;
+            }
+        }
+        const float moved = (float)rate * std::min(overSum, underSum);
+        if (moved <= 1e-7f)
+            continue;
+        // Each ship moved goes from a design that is over to one that is short, in proportion
+        // to both, and is paid for: the price the new fit is dearer by, and the goods of its
+        // guns when the family changes -- as far as the market has them and the treasury the
+        // money, a refit that cannot be had waiting for the next period.
+        std::vector<std::tuple<std::string, std::string, float>> done;
+        for (const auto& [from, overN] : over)
+            for (const auto& [to, underN] : under)
+            {
+                float                n = moved * (overN / overSum) * (underN / underSum);
+                const Ships::Design* a = cat.FindDesign(from);
+                const Ships::Design* b = cat.FindDesign(to);
+                if (a == nullptr || b == nullptr)
+                    continue;
+                const Ships::Family* fb = cat.FamilyOf(*b);
+                const Ships::Cost    guns =
+                    fb != nullptr && fb != cat.FamilyOf(*a) ? GunCost(to) : Ships::Cost();
+                // The new guns' goods at the ask where the family changes, and whatever the
+                // rest of the ship -- its hull, from the faction's own yards -- is dearer by.
+                auto gunPrice = [&](const std::string& design)
+                {
+                    double v = 0.0;
+                    for (const auto& [good, units] : GunCost(design))
+                        v += shop->market.Ask(good) * (double)units;
+                    return v;
+                };
+                const double pay = (guns.empty() ? 0.0 : gunPrice(to)) +
+                                   std::max(0.0, (ShipPriceAt(*shop, to) - gunPrice(to)) -
+                                                     (ShipPriceAt(*shop, from) - gunPrice(from)));
+                bool         dear = false;
+                for (const auto& [good, units] : guns)
+                {
+                    if (shop->market.Ask(good) > rules.dearAt * shop->market.GetBasePrice(good))
+                        dear = true;
+                    else
+                        n = std::min(n, (float)(shop->market.Stock(good) / (double)units));
+                }
+                if (dear)
+                    continue;
+                if (pay > 0.0)
+                    n = std::min(n, (float)(treasury / pay));
+                if (n <= 1e-7f)
+                    continue;
+                treasury -= pay * n;
+                for (const auto& [good, units] : guns)
+                    shop->market.SetStock(good, shop->market.Stock(good) - (double)units * n);
+                done.emplace_back(from, to, n);
+                refitted += n;
+            }
+        for (const auto& [from, to, n] : done)
+        {
+            fleet[from] -= n;
+            fleet[to] += n;
+        }
+        if (day == NpcRole::Warship)
+            break;  // one fleet, not the same one twice
+    }
+    return refitted;
 }

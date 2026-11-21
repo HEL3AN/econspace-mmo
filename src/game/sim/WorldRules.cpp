@@ -493,9 +493,15 @@ bool Load(const std::string& path)
                            { "dearAt", &sty.dearAt },
                            { "holdingIncome", &sty.holdingIncome },
                            { "defensiveBelow", &sty.defensiveBelow },
-                           { "foundingHours", &sty.foundingHours } },
+                           { "foundingHours", &sty.foundingHours },
+                           { "refitHalfLifeHours", &sty.refitHalfLifeHours } },
                          {}, {}, g_error))
             return false;
+        if (!(sty.refitHalfLifeHours > 0.0))
+        {
+            g_error = path + ": styles: 'refitHalfLifeHours' must be above zero";
+            return false;
+        }
         if (sty.culture > 1.0 || sty.defensiveBelow > 1.0 || sty.dearAt < 1.0)
         {
             g_error = path + ": styles: 'culture' and 'defensiveBelow' are shares, at most 1, "

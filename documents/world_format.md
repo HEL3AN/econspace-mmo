@@ -1591,6 +1591,7 @@ and `defensiveBelow` at most 1; `dearAt` at least 1.
 | `holdingIncome` | 1500 | credits an hour | what each holding pays its holder at full prosperity, half at none |
 | `defensiveBelow` | 0.4 | share | a faction whose holdings stand below this of what they keep plans no outposts, sieges or Anchors |
 | `foundingHours` | 24 | hours | a new world's factions begin with this much of their income in the treasury |
+| `refitHalfLifeHours` | 48 | hours | a holding refits a share of its fleets each period so that the mix still wrong for its region's style halves in this long; above 0 |
 | `cultures` | none | | culture id (a native theme, a major's `culture`) → weight by weapon family or hull line id; a weight is a number of 0 or more. The shipped file weighs seven cultures |
 
 ## Minimal System Example

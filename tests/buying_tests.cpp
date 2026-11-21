@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include <cmath>
 #include <memory>
 #include <string>
 
@@ -9,6 +10,7 @@
 #include "core/Faction.h"
 #include "core/ShipDesign.h"
 #include "entities/NpcShip.h"
+#include "gen/Region.h"
 #include "sim/FactionMind.h"
 #include "sim/Simulation.h"
 #include "sim/WorldRules.h"
@@ -195,4 +197,113 @@ TEST_CASE("over the long run no faction's ships fall to nothing without losing i
             CHECK(ships >= 0.05f * Factions::TemperamentOf(f).capacity * (float)held);
         }
     }
+}
+
+namespace
+{
+// Ships in `fleet` that carry the guns of `family`, of all of them.
+float ShareOf(const std::map<std::string, float>& fleet, const char* family)
+{
+    float all = 0.0f;
+    for (const auto& kv : fleet)
+        all += kv.second;
+    return all > 0.0f ? GunsOf(fleet, family) / all : 0.0f;
+}
+}  // namespace
+
+TEST_CASE("a holding refits what it flies to the style of its region, and pays for it")
+{
+    auto         sim = BuyingWorld();
+    SystemState* st = LawfulHoldingWithMarket(*sim);
+    REQUIRE(st != nullptr);
+    const FactionId         f = st->agg.controller;
+    const Ships::Catalogue& cat = Archetypes::ShipCatalogue();
+    // Lasers' goods in plenty and railguns' gone: the region leans laser.
+    for (const char* g : { "Steel", "Ammunition" })
+        st->market.SetStock(Good::Named(g), 0.0);
+    for (const char* g : { "Crystal", "Circuits" })
+        st->market.SetStock(Good::Named(g), 5000.0);
+    const Ships::Style style = sim->RegionStyle(Gen::SlotOf(st->id));
+    REQUIRE(style.LeadingFamily() == "laser");
+
+    // A fleet of railguns, though.
+    const std::string warship = cat.Pick(Factions::Id(f), "warship", 0);
+    const std::string rail = cat.VariantOf(warship, "railgun", std::string());
+    REQUIRE_FALSE(rail.empty());
+    const std::string key = Simulation::FleetKey(f, NpcRole::Warship);
+    st->agg.presence[f] = 4.0f;
+    st->agg.fleets[key] = { { rail, 4.0f } };
+    const float railBefore = ShareOf(st->agg.fleets[key], "railgun");
+    REQUIRE(railBefore == doctest::Approx(1.0f));
+
+    // No money, no new guns: a hull line that costs nothing may change, a family may not.
+    sim->MindOf(f).treasury = 0.0;
+    sim->RefitFleets(*st, f, 0.5);
+    CHECK(GunsOf(st->agg.fleets[key], "laser") == doctest::Approx(0.0f));
+
+    // Money: some of the fleet is lasers now, the number of ships the same, the treasury paid
+    // and the lasers' goods are gone from the market.
+    sim->MindOf(f).treasury = 1e9;
+    const double crystal = st->market.Stock(Good::Named("Crystal"));
+    const float  moved = sim->RefitFleets(*st, f, 0.5);
+    CHECK(moved > 0.0f);
+    const auto& fleet = st->agg.fleets[key];
+    float       total = 0.0f;
+    for (const auto& kv : fleet)
+        total += kv.second;
+    CHECK(total == doctest::Approx(4.0f));
+    CHECK(GunsOf(fleet, "laser") > 0.0f);
+    CHECK(ShareOf(fleet, "railgun") < 1.0f);
+    CHECK(sim->MindOf(f).treasury < 1e9);
+    CHECK(st->market.Stock(Good::Named("Crystal")) < crystal);
+}
+
+TEST_CASE("the mix still wrong for the style halves in the rules' half-life of hours")
+{
+    // The drift of a region's ships (#464, slice 5), measured in world time through the
+    // faction period's own rate: refitHalfLifeHours is what the data says and what fleets do.
+    auto         sim = BuyingWorld();
+    SystemState* st = LawfulHoldingWithMarket(*sim);
+    REQUIRE(st != nullptr);
+    const FactionId         f = st->agg.controller;
+    const Ships::Catalogue& cat = Archetypes::ShipCatalogue();
+    for (const char* g : { "Steel", "Ammunition" })
+        st->market.SetStock(Good::Named(g), 0.0);
+    for (const char* g : { "Crystal", "Circuits" })
+        st->market.SetStock(Good::Named(g), 1e9);
+    const Ships::Style style = sim->RegionStyle(Gen::SlotOf(st->id));
+    float              railTarget = 0.0f;
+    for (const auto& [family, share] : style.families)
+        if (family == "railgun")
+            railTarget = share;
+    REQUIRE(railTarget < 0.5f);
+
+    const std::string warship = cat.Pick(Factions::Id(f), "warship", 0);
+    const std::string key = Simulation::FleetKey(f, NpcRole::Warship);
+    st->agg.presence[f] = 5.0f;
+    st->agg.fleets[key] = { { cat.VariantOf(warship, "railgun", std::string()), 5.0f } };
+    sim->MindOf(f).treasury = 1e12;
+
+    const double halfLife = WorldRules::StyleRules().refitHalfLifeHours;
+    const double periodHours = 30 * 2.0 / 3600.0;
+    const double rate = 1.0 - std::pow(0.5, periodHours / halfLife);
+    const double start = 1.0 - railTarget;  // how far from the style it begins
+    double       at = 0.0;
+    double       reached = -1.0;
+    for (int period = 0; period < (int)(4 * halfLife / periodHours); period++)
+    {
+        sim->RefitFleets(*st, f, rate);
+        at += periodHours;
+        const double wrong = ShareOf(st->agg.fleets[key], "railgun") - railTarget;
+        if (reached < 0.0 && wrong <= 0.5 * start)
+            reached = at;
+        sim->MindOf(f).treasury = 1e12;
+        for (const char* g : { "Crystal", "Circuits" })
+            st->market.SetStock(Good::Named(g), 1e9);
+    }
+    MESSAGE("half-life measured: " << reached << " hours of " << halfLife);
+    CAPTURE(reached);
+    // About one half-life, within a quarter of it: the lines go by their own shares too.
+    CHECK(reached > 0.75 * halfLife);
+    CHECK(reached < 1.25 * halfLife);
 }

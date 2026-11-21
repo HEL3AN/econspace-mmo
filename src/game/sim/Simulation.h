@@ -689,6 +689,12 @@ public:
     // of the same fit they would be in a siege. What it bought, in ships; 0 where nothing
     // could be. Money limits the count (owner, 2026-10-23).
     float BuyShips(SystemState& st, FactionId f, float want);
+    // `f`'s holding `st` refits `rate` of its fleets (the role its ships fly here, and its
+    // warships) towards the region's style (#464, slice 5): ships move from the designs it
+    // has too many of to the ones it has too few of, each paid for out of the treasury at the
+    // price the new fit is dearer by, the goods of its guns leaving the market when the family
+    // changes -- as far as both go. What it refitted, in ships.
+    float RefitFleets(SystemState& st, FactionId f, double rate);
     // Where a holding buys: its own market, else the nearest system with one within the
     // growth rules' `marketReach` jumps; null for none.
     SystemState* BuyingMarket(const std::string& systemId);
