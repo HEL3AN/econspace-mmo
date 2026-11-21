@@ -928,6 +928,19 @@ void Game::DrawGalaxyMap()
     // What building in a system takes (#509), as its detail says it: whose leave and what it
     // costs a week; `kind` 1 for one the recipient's corporation holds, 2 for one anyone builds
     // in. Bought where it is granted, so the map only states the terms.
+    // What its region's NPCs fly, as this pilot's charts know it (#464 slice 7), in brief.
+    auto fitsOf = [&](const std::string& id) -> std::string
+    {
+        for (const Proto::GalaxySystemStat& g : galaxyState_.systems)
+            if (g.id == id && !g.fits.empty())
+            {
+                // The families, and the leading hull line: the rest is the observe's.
+                const size_t semi = g.fits.find(';');
+                const size_t cut = semi == std::string::npos ? semi : g.fits.find(',', semi);
+                return "  fits " + g.fits.substr(0, cut);
+            }
+        return std::string();
+    };
     auto buildTerms = [&](const std::string& id, int& kind) -> std::string
     {
         kind = 0;
@@ -954,6 +967,7 @@ void Game::DrawGalaxyMap()
         const WorldLoader::SystemInfo& s = *sp;
         int                            termsKind = 0;
         const std::string              terms = buildTerms(s.id, termsKind);
+        const std::string              fits = fitsOf(s.id);
         Vector2                        p = toScreen(s.mapPos);
         bool                           cur = (s.id == activeSys);
         const bool                     hovered = CheckCollisionPointCircle(m, p, u(12.0f));
@@ -985,7 +999,8 @@ void Game::DrawGalaxyMap()
             float nameW = (float)Ui::TextWidth(s.name.c_str(), namePx);
             if (!s.designation.empty())
                 nameW += u(8.0f) + (float)Ui::TextWidth(s.designation.c_str(), notePx);
-            const float     termsW = s.charted ? (float)Ui::TextWidth(terms.c_str(), notePx) : 0.0f;
+            const float termsW =
+                s.charted ? (float)Ui::TextWidth((terms + fits).c_str(), notePx) : 0.0f;
             const float     detailW = fmaxf(fmaxf(nameW, termsW), u(s.charted ? 190.0f : 80.0f));
             const int       lines = !s.charted ? 1
                                     : cur      ? 6
@@ -1156,6 +1171,9 @@ void Game::DrawGalaxyMap()
                      termsKind == 1   ? t.standing.friendly
                      : termsKind == 2 ? Ui::TEXT_DIM
                                       : Ui::TEXT);
+            if (!fits.empty())
+                Ui::Text(fits.c_str(), (int)lx + Ui::TextWidth(terms.c_str(), notePx), lineY(3),
+                         notePx, Ui::TEXT_DIM);
             // The node ring is tinted with the controller's color.
             DrawCircleLines((int)p.x, (int)p.y, ring, Fade(FactionColor(controller), 0.7f));
         }

@@ -225,6 +225,11 @@ std::string Line(const Seen& s, const Proto::PlayerView& p,
             extra += Fmt("  status %+.1f", e.securityStatus);
     }
 
+    // An NPC ship by its design, which says how it is fitted (#464 slice 7).
+    if (name.empty() && e.kind == Proto::EntityKind::Npc && !e.design.empty())
+        if (const Ships::Design* d = Archetypes::FindDesign(e.design); d != nullptr)
+            name = d->name;
+
     std::string line =
         Fmt("  #%-4d %-8s %-22s %7.0fu %-2s%s", e.id, kind, name.c_str(), s.dist,
             Obs::Compass(e.pos.x - p.pos.x, e.pos.y - p.pos.y).c_str(), extra.c_str());

@@ -1,7 +1,7 @@
 # NPC fits from the living world
 
 Status: **decided, being built** (#464): slices 1 (variants), 2 (fleets), 3 (region style)
-4 (buying), 5 (refit and drift) and 6 (pirates and captures) are built. The owner's direction of 2026-10-23 is the premise and
+4 (buying), 5 (refit and drift), 6 (pirates and captures) and 7 (what the player and agents see) are built. The owner's direction of 2026-10-23 is the premise and
 is not re-opened: NPC fits differ **strongly** between regions; a region's style, politics and
 economy decide what its NPCs fly; a region whose markets and industry are full of lasers flies
 mostly lasers and rarely railguns. The owner answered every open question the same day
@@ -453,3 +453,15 @@ next at the next layer's multiplier. Armour is repaired with the hull.
   `preview_fit` show the fit's damage profile and the hull's resistances; `observe` gives an
   NPC's design (from which its profile is known) and a target's three layers. `PROTO_VERSION`
   bump (the snapshot carries armour). No save change: a ship's layers are repaired to full.
+
+### As built, slice 7
+
+An NPC is labelled in every instrument (overview, target panel, sensor hover, context menu,
+`observe`) by its own name, else its design's name, which says its fit ("Cutter (railguns,
+heavy)"): `Overview::LabelOf`. `GalaxySystemStat::fits` (`Ships::StyleWords`) carries the
+region's style for each system a pilot knows (`GalaxyStateFor` already cuts the list per
+pilot, so an unknown system has none); the map shows the families and the leading hull line,
+econagent's galaxy listing the same line ("region flies: ..."). It is the style as of the
+last faction period, **not** frozen at the moment of charting: freezing it per pilot would
+need a per-system store of old styles in the account, so it stays live for a known system
+(recorded on #464 for the owner). No `PROTO_VERSION` bump: one optional string an older reader ignores.

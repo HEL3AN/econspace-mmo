@@ -447,11 +447,29 @@ Proto::GalaxyState Simulation::GalaxyStateFor(const ClientSession&      s,
     out.events = all.events;
     // ...and where their corporation's front is open (#431 D3): held by another side, and
     // theirs to besiege or claim from next door.
-    const Corps::Corp* corp = s.accountName.empty() ? nullptr : corps_.Of(s.accountName);
+    const Corps::Corp*         corp = s.accountName.empty() ? nullptr : corps_.Of(s.accountName);
+    std::map<int, std::string> fitsBySlot;
     for (const Proto::GalaxySystemStat& g : all.systems)
         if (Knows(s, g.id))
         {
             out.systems.push_back(g);
+            // What its region's NPCs fly (#464 slice 7): only a known system's region.
+            // As the last faction period reckoned it, or -- before the first -- now, once a
+            // region.
+            const int slot = Gen::SlotOf(g.id);
+            auto      words = fitsBySlot.find(slot);
+            if (words == fitsBySlot.end())
+            {
+                const auto known = styles_.find(slot);
+                words =
+                    fitsBySlot
+                        .emplace(slot, Ships::StyleWords(Archetypes::ShipCatalogue(),
+                                                         known != styles_.end() ? known->second
+                                                                                : RegionStyle(slot),
+                                                         false))
+                        .first;
+            }
+            out.systems.back().fits = words->second;
             const SystemState* st = corp != nullptr ? SystemById(g.id) : nullptr;
             if (st != nullptr)
             {

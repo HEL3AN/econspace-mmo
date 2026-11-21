@@ -11,7 +11,10 @@
 #include "core/ShipDesign.h"
 #include "entities/NpcShip.h"
 #include "gen/Region.h"
+#include "sim/ClientSession.h"
 #include "sim/FactionMind.h"
+#include "sim/Overview.h"
+#include "sim/Protocol.h"
 #include "sim/Simulation.h"
 #include "sim/WorldRules.h"
 #include "factions_named.h"
@@ -385,4 +388,53 @@ TEST_CASE("what the pirates beat in a cold exchange they take a share of, in the
     CHECK(GunsOf(mine, "laser") == doctest::Approx(taken));  // all of what was taken is lasers
     // Nothing destroyed, nothing taken.
     CHECK(sim->Capture(*st, 0.0f) == doctest::Approx(0.0f));
+}
+
+TEST_CASE("an instrument says how an NPC is fitted, and a known region says what its NPCs fly")
+{
+    const Ships::Catalogue& cat = Archetypes::ShipCatalogue();
+    REQUIRE(Archetypes::Load(DATA + "archetypes.json"));
+    // A stock design says nothing; a variant says its guns and its hull.
+    CHECK(Ships::FitWords(cat, "cutter").empty());
+    CHECK(Ships::FitWords(cat, "cutter~railgun~heavy") == "railguns, heavy");
+    CHECK(Ships::FitWords(cat, "cruiser~laser") == "lasers");
+    // An NPC with a design is labelled by it, and one with a name by that.
+    Proto::EntitySnapshot e;
+    e.kind = Proto::EntityKind::Npc;
+    e.role = 2;
+    CHECK(Overview::LabelOf(e) == "police");
+    e.design = "cutter~railgun~heavy";
+    CHECK(Overview::LabelOf(e) == Archetypes::FindDesign(e.design)->name);
+    CHECK(Overview::LabelOf(e).find("railguns") != std::string::npos);
+    e.name = "Ann";
+    CHECK(Overview::LabelOf(e) == "Ann");
+
+    // A style in words: every family and line, then only the leading ones.
+    Ships::Style style;
+    style.families = { { "laser", 0.8f }, { "railgun", 0.2f } };
+    style.lines = { { "light", 0.2f }, { "heavy", 0.5f }, { "brawler", 0.3f } };
+    CHECK(Ships::StyleWords(cat, style, false) ==
+          "lasers 80%, railguns 20%; heavy hulls 50%, brawler hulls 30%, light hulls 20%");
+    CHECK(Ships::StyleWords(cat, style, true) == "lasers 80%; heavy hulls 50%");
+
+    // A pilot is told it for the systems they know, and it travels.
+    auto sim = BuyingWorld();
+    for (int pass = 0; pass < 90; pass++)
+        sim->MaintainWorld(2.0f);
+    ClientSession      pilot;
+    Proto::GalaxyState state = sim->GalaxyStateFor(pilot, sim->GalaxyStats());
+    int                told = 0;
+    for (const auto& g : state.systems)
+        if (!g.fits.empty())
+            told++;
+    CHECK(told > 0);
+    const Proto::GalaxyState back = [&]
+    {
+        Proto::GalaxyState out;
+        REQUIRE(Proto::DecodeGalaxy(Proto::EncodeGalaxy(state), out));
+        return out;
+    }();
+    REQUIRE(back.systems.size() == state.systems.size());
+    for (size_t i = 0; i < state.systems.size(); i++)
+        CHECK(back.systems[i].fits == state.systems[i].fits);
 }
