@@ -1305,6 +1305,9 @@ bool Simulation::SaveWorld(const std::string& path) const
     const json hangars = HangarsJson();
     if (!hangars.empty())
         j["hangars"] = hangars;
+    // Goods in transit (#472): an addition an older build ignores.
+    if (!shipments_.empty())
+        j["shipments"] = ShipmentsJson();
     // Attacks under way on players' structures (#431 C2): one a restart interrupts is still
     // told when it is over. An addition an older build ignores.
     if (!attacks_.empty())
@@ -1349,6 +1352,7 @@ Save::Result Simulation::LoadWorld(const std::string& path)
                                                                  : std::string();
     OwnersFrom(j.value("owners", json()));    // (#340)
     HangarsFrom(j.value("hangars", json()));  // (#472)
+    ShipmentsFrom(j.value("shipments", json()));
     const json attacks = j.value("attacks", json());
     if (attacks.is_object())
         for (auto it = attacks.begin(); it != attacks.end(); ++it)

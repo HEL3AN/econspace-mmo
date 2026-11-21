@@ -36,7 +36,10 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    68;  // 68: a corporation's storage has divisions and its members a hangar each (#472 slice 5)
+    69;  // 69: goods can be had out of a hangar at a station that refuses the pilot, by NPC
+         // delivery (#472 slice 6) -- a Command's deliverFrom, a PlayerView's locked hangars and
+         // shipments in transit;
+         // 68: a corporation's storage has divisions and its members a hangar each (#472 slice 5)
          // -- a PlayerView lists the divisions its role sees, a CorpAct "division" renames one
          // or moves a right, and a move names "storage:stock" or "storage:command";
          // 67: a licence is bought where it is granted (#509) -- a LicenceView says where and
@@ -271,6 +274,12 @@ struct Command
     // as far as `moveFrom` has them and `moveTo` has room. A container is named as
     // InventoryList names it: "hold", "storage" (the structure docked at, its owner's side's).
     // A refusal is a Notice saying why.
+    // Have a hangar the pilot keeps at a station that now refuses them brought to where they
+    // are docked (#472 slice 6): `deliverFrom` is its key as a LockedHangarView gives it, of a
+    // good (`deliverType`, -1 all of it) up to `deliverAmount` (0 all).
+    std::string deliverFrom;
+    int         deliverType = -1;
+    int         deliverAmount = 0;
     std::string moveFrom;
     std::string moveTo;
     int         moveType = -1;  // ResourceType as int (-1 — nothing moved)
@@ -487,6 +496,28 @@ struct DivisionView
     bool             canTake = true;
 };
 
+// A hangar the pilot keeps at a station whose faction now refuses them (#472), with what it
+// would cost to have it brought to where they are docked: the NPC service's quote times the
+// hostility surcharge. `why` non-empty: it cannot be quoted.
+struct LockedHangarView
+{
+    std::string      key;     // what a delivery request names it by
+    std::string      name;    // the station
+    std::string      system;  // and where
+    std::vector<int> goods;
+    double           fee = 0.0;
+    double           hours = 0.0;
+    std::string      why;
+};
+// Goods on their way to one of the pilot's hangars.
+struct ShipmentView
+{
+    std::string      from;
+    std::string      to;
+    double           hours = 0.0;  // left to go
+    std::vector<int> goods;
+};
+
 // Player ship state in the snapshot.
 struct PlayerView
 {
@@ -546,9 +577,11 @@ struct PlayerView
     std::vector<int> cargoByType;  // remaining cargo per resource (AllResourceTypes order)
     // The storage of the structure the ship is docked at (#438), when it is the pilot's side's:
     // its capacity (0 -- none here, or not theirs) and what it holds per good, in the same order.
-    int                       storageCap = 0;
-    std::vector<int>          storedByType;
-    std::vector<DivisionView> divisions;  // the divisions this pilot may see (#472 slice 5)
+    int                           storageCap = 0;
+    std::vector<int>              storedByType;
+    std::vector<DivisionView>     divisions;  // the divisions this pilot may see (#472 slice 5)
+    std::vector<LockedHangarView> locked;     // hangars out of reach, with the price to fetch them
+    std::vector<ShipmentView>     shipments;  // goods on their way (#472 slice 6)
     // Player account (server-authoritative, M4f): the client shows it as a mirror.
     // reputation/bounty — per faction (index = FactionId in this process's registry; on the
     // wire, keyed by faction id), skillXp — Piloting/Mining/Trading.

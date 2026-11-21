@@ -386,6 +386,24 @@ struct Hangars
     double periodDays = 30.0;
 };
 
+// The NPC delivery service (#472, documents/holds_and_storage.md): every faction's freight
+// office carries goods between a pilot's containers for
+//   max(minFee, rate * volume * jumps * risk) + insure * value * (risk - 1)
+// credits, where risk is 1 + riskWeight * mean(1 - security) over the route's systems, and it
+// takes `hoursPerJump` hours of world time a jump, at least `minHours`. A hostile faction that
+// still holds a pilot's goods sells their release at `hostileSurcharge` times that. The price
+// comes from the route alone, never from the player market.
+struct Deliveries
+{
+    double rate = 1.0;
+    double minFee = 50.0;
+    double insure = 0.05;
+    double hoursPerJump = 2.0;
+    double minHours = 1.0;
+    double riskWeight = 2.0;
+    double hostileSurcharge = 1.5;
+};
+
 // What security does, and how it is bought (#431 L5, slice 11). A system's security settles
 // at its base, moved by the balance of police and pirates (Simulation::SecurityTarget), plus
 // what its holder pays for police: a corporation sets a budget in credits an hour for each
@@ -530,6 +548,7 @@ const Law&         LawRules();
 const Influence&   InfluenceRules();
 const Licences&    LicenceRules();
 const Hangars&     HangarRules();
+const Deliveries&  DeliveryRules();
 const Security&    SecurityRules();
 const Patrols&     PatrolRules();
 const Charts&      ChartRules();
@@ -549,6 +568,7 @@ void SetLawRules(const Law& l);
 void SetInfluenceRules(const Influence& i);
 void SetLicenceRules(const Licences& l);
 void SetHangarRules(const Hangars& h);
+void SetDeliveryRules(const Deliveries& d);
 void SetSecurityRules(const Security& s);
 void SetPatrolRules(const Patrols& p);
 void SetChartRules(const Charts& c);

@@ -1413,6 +1413,40 @@ std::vector<Tool> BuildTools()
           } });
 
     tools.push_back(
+        { "request_delivery",
+          "Have goods you keep in a hangar at a station whose faction now refuses you (Hated) "
+          "brought to your hangar where you are docked, by that faction's freight office: "
+          "inventory lists each such hangar under OUT OF REACH with its key, the price (the "
+          "route's quote times a hostility surcharge, paid up front to that faction) and the "
+          "hours it takes. The goods are in transit until they arrive; inventory shows them. "
+          "Without a resource it sends everything there.",
+          Obj({ { "key", Str("the hangar's key as inventory lists it") },
+                { "resource", Str("one good to send; left out, all of them") },
+                { "amount", Num("at most this many of it; left out, all") } },
+              { "key" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              RequireDocked("requesting a delivery");
+              Proto::Command c;
+              c.deliverFrom = args.value("key", std::string());
+              if (c.deliverFrom.empty())
+                  throw Rpc::Error{ Rpc::INVALID_PARAMS, "name the hangar by its key" };
+              if (args.contains("resource"))
+                  c.deliverType = ResourceArg(args);
+              c.deliverAmount = (int)NumberOr(args, "amount", 0.0);
+              const int   seq = g_session.LastEventSeq();
+              std::string why;
+              if (!Confirm(c, why))
+                  return "request_delivery: " + why;
+              const auto& ship = g_session.Snapshot().player.shipments;
+              if (ship.empty())
+                  return Refused("request_delivery", seq, "nothing was sent; call inventory");
+              return "request_delivery: goods are on their way to " + ship.back().to + ", " +
+                     std::to_string((int)ship.back().hours) + " h to go";
+          } });
+
+    tools.push_back(
         { "move_goods",
           "Move goods between two containers where you are, by the ids inventory lists them "
           "by: 'hold' (the ship you fly); docked at a station, 'hangar' (yours there); docked "

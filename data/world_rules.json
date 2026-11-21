@@ -173,6 +173,15 @@
         "rentPerUnit": 2,
         "periodDays": 30
     },
+    "deliveries": {
+        "rate": 1,
+        "minFee": 50,
+        "insure": 0.05,
+        "hoursPerJump": 2,
+        "minHours": 1,
+        "riskWeight": 2,
+        "hostileSurcharge": 1.5
+    },
     "security": {
         "policeSwing": 0.3,
         "policeHalf": 3000,

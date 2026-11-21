@@ -1357,6 +1357,49 @@ public:
     Proto::HangarView HangarViewFor(const ClientSession& s) const;
     const std::map<std::string, std::map<std::string, Hangar>>& Hangars() const { return hangars_; }
 
+    // --- The NPC delivery service (#472, Simulation_Delivery.cpp) ---
+    // What a freight office quotes for `volume` units worth `value` between two systems: from
+    // the route alone (WorldRules::DeliveryRules), `surcharge` times over. `ok` false: `why`.
+    struct DeliveryQuote
+    {
+        bool        ok = false;
+        std::string why;
+        double      fee = 0.0;
+        double      hours = 0.0;
+        int         jumps = 0;
+        double      risk = 1.0;
+    };
+    DeliveryQuote QuoteDelivery(const std::string& from, const std::string& to, int volume,
+                                double value, double surcharge = 1.0) const;
+    // Goods in transit: paid for and taken from where they were, arriving into a pilot's
+    // hangar when the world clock says. Saved with the world.
+    struct Shipment
+    {
+        int         id = 0;
+        std::string account;
+        Inventory   goods;
+        std::string from;      // what the pilot reads: "Haven Dock, Helios Core"
+        std::string toSystem;  // where it goes, and the hangar's name there
+        std::string toName;
+        double      due = 0.0;  // world time
+        double      fee = 0.0;
+        std::string holder;  // who was paid
+    };
+    // The station a hangar key names, or null; whether its faction now refuses this pilot.
+    const Entity* HangarStation(const std::string& key) const;
+    bool          HangarOutOfReach(const ClientSession& s, const std::string& key) const;
+    // The pilot's hangars out of reach, with the quote to bring each here.
+    std::vector<Proto::LockedHangarView> LockedHangarsFor(const ClientSession& s) const;
+    std::vector<Proto::ShipmentView>     ShipmentsFor(const std::string& account) const;
+    // Ask for a hangar's goods (a good, or all with `type` -1; up to `amount`, 0 for all) to
+    // be brought to the pilot's hangar here. False, with a Notice saying why.
+    bool           RequestDelivery(ClientSession& s, const std::string& key, int type, int amount);
+    int            ReservedFor(const std::string& account, const std::string& system,
+                               const std::string& toName) const;
+    void           StepShipments();
+    nlohmann::json ShipmentsJson() const;
+    void           ShipmentsFrom(const nlohmann::json& j);
+
     // --- Rules of engagement (#340) ---
     // Why this player may not set the rules of structure `id` to `d`, or empty when they may:
     // it is theirs -- or a member's of the corporation they are CEO or a director of (#347) --
@@ -2244,6 +2287,8 @@ private:
     void           OwnersFrom(const nlohmann::json& j);
     // Personal hangars by station key, then by account (#472); saved with the world.
     std::map<std::string, std::map<std::string, Hangar>> hangars_;
+    std::vector<Shipment>                                shipments_;  // (#472)
+    int                                                  nextShipment_ = 1;
     nlohmann::json                                       HangarsJson() const;
     void                                                 HangarsFrom(const nlohmann::json& j);
 
