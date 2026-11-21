@@ -740,7 +740,7 @@ TEST_CASE("NPCs fly within 15% of what every NPC flew before designs (#279 step 
                 REQUIRE(Ships::Derive(c, *c.FindDesign(id), s, error));
                 INFO(d.faction << " " << id);
                 CHECK(Within(s.cruise, 150.0f, 0.15f));
-                CHECK(Within(s.hull, 60.0f, 0.15f));
+                CHECK(Within(s.hull + s.armour, 60.0f, 0.15f));  // armour is part of what it has
                 if (Ships::ArmedRole(role))
                     CHECK(Within(s.damage, 6.0f, 0.15f));
                 else
@@ -766,7 +766,7 @@ TEST_CASE("a doctrine that cannot be flown is a load error")
               .find("miner") != std::string::npos);
     CHECK_FALSE(ErrorAfter([](nlohmann::json& j) { j.erase("doctrines"); }).empty());
     CHECK_FALSE(
-        ErrorAfter([](nlohmann::json& j) { j["modules"][0]["provides"]["armour"] = 1; }).empty());
+        ErrorAfter([](nlohmann::json& j) { j["modules"][0]["provides"]["shields"] = 1; }).empty());
 }
 
 TEST_CASE("an NPC is drawn as the design it flies and is as fast, tough and armed as it says")
@@ -786,7 +786,7 @@ TEST_CASE("an NPC is drawn as the design it flies and is as fast, tough and arme
     CHECK(raider.GetArchetype()->design == "raider");
     // In a fight it is what the design is under a player too (#186): its parts plus the
     // catalogue's baseHull and baseGun.
-    CHECK(raider.GetMaxHull() == doctest::Approx(s.combatHull));
+    CHECK(raider.GetMaxHull() + raider.GetMaxArmour() == doctest::Approx(s.combatHull));
     CHECK(raider.GetDamage() == doctest::Approx(s.volley));
     CHECK(raider.GetSpeed() == doctest::Approx(s.cruise));
     CHECK(raider.GetSize() == doctest::Approx(raider.GetArchetype()->defaultSize));

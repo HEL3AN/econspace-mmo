@@ -137,12 +137,24 @@ Ships::Fighter Simulation::FighterIn(const SystemState& st, FactionId f, NpcRole
         // A design that does not derive counts as nothing, as in the doctrine's average.
         mean.dps += d->second.dps * n;
         mean.hull += d->second.hull * n;
+        mean.armour += d->second.armour * n;
+        for (size_t t = 0; t < mean.mix.size(); ++t)
+            mean.mix[t] += d->second.mix[t] * d->second.dps * n;  // by the fire it brings
+        for (size_t l = 0; l < mean.resist.size(); ++l)
+            for (size_t t = 0; t < mean.resist[l].size(); ++t)
+                mean.resist[l][t] += d->second.resist[l][t] * n;
         ships += n;
     }
     if (ships <= 0.0f)
         return FighterOf(f, role);
+    for (float& m : mean.mix)
+        m = mean.dps > 0.0f ? m / mean.dps : 0.0f;
+    for (auto& row : mean.resist)
+        for (float& r : row)
+            r /= ships;
     mean.dps /= ships;
     mean.hull /= ships;
+    mean.armour /= ships;
     return mean;
 }
 

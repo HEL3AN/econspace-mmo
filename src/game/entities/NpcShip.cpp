@@ -48,7 +48,10 @@ NpcShip::NpcShip(Vector2 pos, FactionId faction, NpcRole role, std::vector<Vecto
         // the same volley at the same cooldown, the same structure. What makes a pirate
         // weaker or stronger than a pilot is the fit, in data.
         damage_ = a->ship.volley;
-        maxHull_ = hull_ = a->ship.combatHull;
+        mix_ = a->ship.mix;
+        resist_ = a->ship.resist;
+        maxArmour_ = armour_ = a->ship.armour;
+        maxHull_ = hull_ = a->ship.combatHull - a->ship.armour;
     }
     PickNewTarget();
 }
@@ -64,11 +67,13 @@ Render::Item NpcShip::Describe() const
     return it;
 }
 
-void NpcShip::TakeDamage(float amount)
+void NpcShip::TakeDamage(float amount, const Ships::TypeValues& mix)
 {
-    hull_ -= amount;
-    if (hull_ < 0.0f)
-        hull_ = 0.0f;
+    // Armour, then the hull (#464, slice 8): an NPC has no shields, only a player's ship does.
+    Ships::Pools pools{ 0.0f, armour_, hull_ };
+    Ships::Strike(Archetypes::ShipCatalogue(), mix, resist_, amount, pools);
+    armour_ = pools.armour;
+    hull_ = std::max(0.0f, pools.hull);
 }
 
 void NpcShip::Engage(Vector2 targetPos)

@@ -536,7 +536,7 @@ bool Simulation::StepPlayerFire(ClientSession& s, SystemState& st, int targetId,
     // first on the shooter is free to shoot back at); then the patrol answers it.
     FactionId  tf = target->GetFaction();
     const bool crime = IsCrime(st, s, *target, tf);
-    target->TakeDamage(s.ship->GetDamage());
+    target->TakeDamage(s.ship->GetDamage(), s.ship->GetMix());
     if (target->GetRole() == NpcRole::Guard && corps_.IdOf(s.accountName) != target->GetCorp())
         ProvokePatrol(st, target->GetCorp(), at, s.id, 0);
 
@@ -604,7 +604,7 @@ bool Simulation::FirePilot(ClientSession& s, SystemState& st, ClientSession& vic
 
     FactionId  law = Factions::Unaffiliated();
     const bool crime = IsCrime(st, s, target, law);
-    target.TakeDamage(s.ship->GetDamage());
+    target.TakeDamage(s.ship->GetDamage(), s.ship->GetMix());
     const bool killed = !target.IsAlive();
     // The victim's own guns nearby answer the shooter, as they would an NPC (#340).
     ProvokeGuards(st, victim, at, s.id, 0);

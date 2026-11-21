@@ -3,6 +3,7 @@
 #include "economy/Resource.h"
 #include "render/Silhouette.h"
 #include <nlohmann/json.hpp>
+#include <array>
 #include <map>
 #include <string>
 #include <utility>
@@ -36,7 +37,32 @@ struct Provides
     float mining = 0.0f;  // ore per second
     float scan = 0.0f;    // what it adds to a scanner pass: power is times (1 + scan) (#346)
     float hull = 0.0f;    // structure points: what a hit takes away before the ship is lost
+    float armour = 0.0f;  // a layer of its own over the hull (#464, slice 8)
     float damage = 0.0f;  // what one volley of its guns takes off a ship
+};
+
+// Damage types and layers (#464, slice 8; documents/npc_fits_living_world.md section 10). Every
+// weapon damages every layer, only better or worse: a volley has a mix of damage types (the
+// rest of it, the base gun's, is untyped and does 1.0 to everything), a ship has three layers
+// hit in order, and each layer takes each type at a multiplier. One function reads them all,
+// for a hit and for the cold pass alike.
+constexpr int MAX_DAMAGE_TYPES = 4;
+enum Layer
+{
+    LayerShield = 0,
+    LayerArmour = 1,
+    LayerHull = 2,
+    LayerCount = 3
+};
+// A share or a multiplier per damage type, in the catalogue's `damageTypes` order.
+using TypeValues = std::array<float, MAX_DAMAGE_TYPES>;
+// A multiplier per layer per damage type: a layer's, and a hull line's shift on top of them.
+using LayerTable = std::array<TypeValues, LayerCount>;
+LayerTable NeutralTable();  // every multiplier 1
+// The structure each layer has left; a hit takes them in order.
+struct Pools
+{
+    float shield = 0.0f, armour = 0.0f, hull = 0.0f;
 };
 
 using Cost = std::vector<std::pair<ResourceType, int>>;
@@ -169,6 +195,7 @@ struct Family
     std::string               name;  // what a pilot reads: "lasers"
     std::vector<std::string>  modules;
     std::vector<ResourceType> goods;
+    TypeValues                damage{};  // the share of each damage type its guns deal; sums to 1
 };
 
 // A hull line (#464): a way of building a hull, as the sections it prefers at each position,
@@ -181,6 +208,7 @@ struct Line
     std::string               name;
     std::vector<std::string>  bow, mid, stern;
     std::vector<ResourceType> goods;
+    LayerTable                resist = NeutralTable();  // a modest shift on the layers' tables
 };
 
 // A design derived from a stock one (#464): its guns those of `family`, its hull built to
@@ -204,6 +232,12 @@ struct Catalogue
     std::vector<HangarEntry> hangar;  // what players fly; the first is the starter
     std::vector<Family>      families;
     std::vector<Line>        lines;
+    // The damage types, and what each layer takes of each (shield, armour, hull), in type
+    // order; `minEffect` is the least any weapon does to any layer after every shift -- a gun
+    // is never pointless -- enforced at load. With no types, every multiplier is 1.
+    std::vector<std::string> damageTypes;
+    LayerTable               layers = NeutralTable();
+    float                    minEffect = 0.6f;
     // Every variant of every stock design that carries a family's guns, in design, family,
     // line order (its own hull first).
     std::vector<Variant> variants;
@@ -253,9 +287,15 @@ struct Stats
     // one volley takes off a target, damage + rules.baseGun (Ships::Dps for it a second).
     float combatHull = 0.0f;
     float volley = 0.0f;
-    Cost  cost;       // every part's, summed, in ResourceType order
-    int   parts = 0;  // frame, sections and every fitted module counted once each
-    float buildSeconds = 0.0f;
+    // Layers (#464, slice 8): what its parts give as armour -- part of combatHull, which stays
+    // the whole of what a ship has to lose -- the share of each damage type in its volley (the
+    // base gun's remainder untyped), and what its hull line shifts the layers' tables by.
+    float      armour = 0.0f;
+    TypeValues mix{};
+    LayerTable resist = NeutralTable();
+    Cost       cost;       // every part's, summed, in ResourceType order
+    int        parts = 0;  // frame, sections and every fitted module counted once each
+    float      buildSeconds = 0.0f;
 };
 
 // Reads a catalogue. Every design in it is validated, so a catalogue that loads holds only
@@ -294,6 +334,14 @@ struct Style
 // names no family (or no line) leans evenly across them.
 Style StyleFrom(const Catalogue& c, const std::vector<double>& supply,
                 const std::map<std::string, double>* culture, double cultureWeight);
+
+// The multiplier a volley of `mix` does to `layer` of a ship whose hull line shifts the tables
+// by `resist`: the untyped share at 1, each type's at the layer's multiplier times the line's.
+float Effect(const Catalogue& c, const TypeValues& mix, const LayerTable& resist, int layer);
+// A hit of `amount` raw damage on `pools`, shield first. A layer that holds takes amount times
+// the multiplier; one that breaks carries what is left, un-multiplied, to the next.
+void Strike(const Catalogue& c, const TypeValues& mix, const LayerTable& resist, float amount,
+            Pools& pools);
 
 // What a pilot reads of a style (#464, slice 7): "lasers 68%, railguns 32%; heavy hulls 49%,
 // light hulls 39%, brawler hulls 13%" -- every family and line by share, largest first -- or,

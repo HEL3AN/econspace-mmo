@@ -2084,7 +2084,9 @@ TEST_CASE("a defensive station fires on hostiles near it, and only on them (#193
         for (int i = 0; i < 60; i++)  // one second: exactly one shot
             f.sim.StepStationDefence(f.World(), nobody, &fires, dt);
         CHECK(fires.size() == 1);
-        CHECK(pirate->GetHull() == doctest::Approx(pirate->GetMaxHull() - mil->weaponDamage));
+        // (armour first, then the hull: what it has left of both)
+        CHECK(pirate->GetArmour() + pirate->GetHull() ==
+              doctest::Approx(pirate->GetMaxArmour() + pirate->GetMaxHull() - mil->weaponDamage));
         REQUIRE_FALSE(fires.empty());
         CHECK(fires[0].shooterFaction == Fac::Independent());
         CHECK(fires[0].targetSessionId == 0);

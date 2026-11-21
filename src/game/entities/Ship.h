@@ -121,11 +121,13 @@ public:
     void SetPilotBonus(float bonus) { pilotBonus_ = bonus; }
 
     // Combat system: shields absorb damage first, then the hull.
-    void TakeDamage(float amount) override;
+    void TakeDamage(float amount, const Ships::TypeValues& mix) override;
+    using Combatant::TakeDamage;
     bool IsAlive() const override { return hull_ > 0.0f; }
     void Repair()
     {
         hull_ = maxHull_;
+        armour_ = stats_.armour;
         shields_ = maxShields_;
     }
     void Teleport(Vector2 pos)
@@ -140,6 +142,10 @@ public:
     void  SetHull(float h) { hull_ = h; }
     float GetMaxHull() const override { return maxHull_; }
     float GetShields() const { return shields_; }
+    // The layer between the shields and the hull (#464, slice 8).
+    float GetArmour() const { return armour_; }
+    float GetMaxArmour() const { return stats_.armour; }
+    void  SetArmour(float a) { armour_ = a; }  // a proxy's, from the snapshot
     float GetMaxShields() const { return maxShields_; }
 
     void ToggleMining() { miningOn_ = !miningOn_; }
@@ -151,6 +157,8 @@ public:
     const ShipStats& GetStats() const { return stats_; }
     // What one shot of its guns takes off (#279 step 5): the design's, under a player.
     float GetDamage() const { return stats_.damage; }
+    // What a volley of it is made of, by damage type (#464, slice 8).
+    const Ships::TypeValues& GetMix() const { return stats_.mix; }
 
     bool AddCargo(ResourceType type, int amount);  // false if it doesn't fit
     void RemoveCargo(ResourceType type, int amount);
@@ -172,7 +180,8 @@ public:
     // Apply the authoritative ship view from the server, so the camera, the renderer and
     // the HUD reading this object reflect what the server says rather than what the client
     // predicted.
-    void ApplyView(Vector2 pos, float heading, Vector2 vel, float hull, float shields);
+    void ApplyView(Vector2 pos, float heading, Vector2 vel, float hull, float shields,
+                   float armour = 0.0f);
     // Network client (M4e): apply the authoritative navigation state (warp/
     // autopilot) from the server. Warp/AP are server-authoritative — the client has
     // no spin-up timer of its own, it mirrors the server's; this way "bar ready" and
@@ -211,6 +220,7 @@ private:
     // Combat stats. The hull is the design's (Refit); the shields are every ship's.
     float maxHull_ = 100.0f;
     float hull_ = 100.0f;
+    float armour_ = 0.0f;
     float maxShields_ = 60.0f;
     float shields_ = 60.0f;
     float shieldRegen_ = 8.0f;  // shield regen per second

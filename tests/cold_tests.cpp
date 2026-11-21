@@ -381,6 +381,15 @@ template <typename Shoot> float HullLost(const Combatant& target, int ticks, Sho
     return before - target.GetHull();
 }
 
+// What `target` loses of armour and hull together (#464 slice 8) over `ticks` calls of `shoot`.
+template <typename Shoot> float StructureLost(const NpcShip& target, int ticks, Shoot shoot)
+{
+    const float before = target.GetArmour() + target.GetHull();
+    for (int i = 0; i < ticks; i++)
+        shoot();
+    return before - target.GetArmour() - target.GetHull();
+}
+
 NpcShip& PutNpc(SystemState& st, Vector2 at, FactionId f, NpcRole role, const std::string& design,
                 int id)
 {
@@ -407,13 +416,13 @@ TEST_CASE("an NPC of a design hits as hard as a player's ship of that design (#1
         NpcShip& npc = PutNpc(st, at, Fac::TradersGuild(), NpcRole::Police, design, 900001);
         NpcShip& npcTarget =
             PutNpc(st, { at.x + 100.0f, at.y }, Fac::Pirates(), NpcRole::Pirate, "cruiser", 900002);
-        const float byNpc = HullLost(npcTarget, ticks,
-                                     [&]()
-                                     {
-                                         npc.Update(dt);
-                                         npcTarget.Update(dt);
-                                         sim->StepNpcCombat(st, {}, nullptr);
-                                     });
+        const float byNpc = StructureLost(npcTarget, ticks,
+                                          [&]()
+                                          {
+                                              npc.Update(dt);
+                                              npcTarget.Update(dt);
+                                              sim->StepNpcCombat(st, {}, nullptr);
+                                          });
 
         // A pilot in a ship of the same design, on another pirate like it.
         ShipStats stats;
@@ -422,8 +431,8 @@ TEST_CASE("an NPC of a design hits as hard as a player's ship of that design (#1
         pilot.weaponOn = true;
         NpcShip&    pilotTarget = PutNpc(st, { at.x + 100.0f, at.y + 20000.0f }, Fac::Pirates(),
                                          NpcRole::Pirate, "cruiser", 900003);
-        const float byPilot = HullLost(pilotTarget, ticks, [&]()
-                                       { sim->StepPlayerFire(pilot, st, 900003, dt, nullptr); });
+        const float byPilot = StructureLost(
+            pilotTarget, ticks, [&]() { sim->StepPlayerFire(pilot, st, 900003, dt, nullptr); });
 
         Ships::Stats d;
         std::string  why;
@@ -431,7 +440,15 @@ TEST_CASE("an NPC of a design hits as hard as a player's ship of that design (#1
             Ships::Derive(Archetypes::ShipCatalogue(), *Archetypes::FindDesign(design), d, why));
         CHECK(npc.GetDamage() == doctest::Approx(d.volley));
         CHECK(npc.GetMaxHull() == doctest::Approx(stats.hull));  // the same structure, too
-        CHECK(byPilot == doctest::Approx(4.0f * d.volley));
+        // Four volleys, through the target's layers at their multipliers for what the volleys
+        // are made of (#464, slice 8).
+        Ships::Pools pools{ 0.0f, npcTarget.GetMaxArmour(), npcTarget.GetMaxHull() };
+        for (int i = 0; i < 4; i++)
+            Ships::Strike(Archetypes::ShipCatalogue(), d.mix, Ships::NeutralTable(), d.volley,
+                          pools);
+        const float took =
+            npcTarget.GetMaxArmour() + npcTarget.GetMaxHull() - pools.armour - pools.hull;
+        CHECK(byPilot == doctest::Approx(took));
         CHECK(byNpc == doctest::Approx(byPilot));
 
         sim->DestroySession(pilot.id);
@@ -460,7 +477,7 @@ TEST_CASE("a warmed system's armed ships fight with the numbers its cold pass re
             continue;  // a mix is reckoned by its mean, which no one ship of it flies
         const Ships::Fighter f = sim->FighterOf(n->GetFaction(), n->GetRole());
         CHECK(n->GetDamage() / Ships::PLAYER_FIRE_INTERVAL == doctest::Approx(f.dps));
-        CHECK(n->GetMaxHull() == doctest::Approx(f.hull));
+        CHECK(n->GetMaxHull() + n->GetMaxArmour() == doctest::Approx(f.hull));
         armed++;
     }
     CHECK(armed > 0);
@@ -522,6 +539,7 @@ TEST_CASE("a lighter gun on the pirates' raider costs a cold system fewer trader
 
     REQUIRE(stock.second > 0.0f);
     CHECK(lighter.first < stock.first);  // a laser takes off less than a railgun
-    // ...and the traders the pass costs fall in the same proportion as the raider's guns.
-    CHECK(lighter.second / stock.second == doctest::Approx(lighter.first / stock.first));
+    // ...and the traders the pass costs fall with them (by the layers' multipliers now: a
+    // laser's energy does less to armour than a railgun's kinetic, #464 slice 8).
+    CHECK(lighter.second < stock.second);
 }

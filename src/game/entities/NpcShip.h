@@ -69,11 +69,16 @@ public:
     // The design it flies; empty only when no ship catalogue is loaded.
     const std::string& GetDesign() const { return design_; }
     float              GetDamage() const { return damage_; }  // per volley: the design's
-    float              GetSpeed() const { return speed_; }
-    AiState            GetState() const { return state_; }
-    bool               IsPirate() const { return faction_ == Factions::Pirates(); }
-    float              GetHeading() const { return heading_; }  // heading (for snapshots/render)
-    void               SetHeading(float h) { heading_ = h; }    // for proxy reconciliation
+    // What a volley of it is made of, by damage type (#464, slice 8).
+    const Ships::TypeValues& GetMix() const { return mix_; }
+    float                    GetArmour() const { return armour_; }
+    float                    GetMaxArmour() const { return maxArmour_; }
+    void                     SetArmour(float a) { armour_ = a; }  // a proxy's, from the snapshot
+    float                    GetSpeed() const { return speed_; }
+    AiState                  GetState() const { return state_; }
+    bool                     IsPirate() const { return faction_ == Factions::Pirates(); }
+    float GetHeading() const { return heading_; }  // heading (for snapshots/render)
+    void  SetHeading(float h) { heading_ = h; }    // for proxy reconciliation
 
     // Stable agent id lives in the base Entity (GetId/SetId).
 
@@ -87,7 +92,8 @@ public:
     }
 
     // Combat.
-    void  TakeDamage(float amount) override;
+    void TakeDamage(float amount, const Ships::TypeValues& mix) override;
+    using Combatant::TakeDamage;
     bool  IsAlive() const override { return hull_ > 0.0f; }
     float GetHull() const override { return hull_; }
     float GetMaxHull() const override { return maxHull_; }
@@ -169,16 +175,19 @@ private:
     AiState state_ = AiState::Patrol;
     Vector2 aiPoint_ = { 0.0f, 0.0f };  // pursuit target or threat point
 
-    std::string  design_;
-    float        damage_ = 0.0f;  // the design's; with no catalogue it has no guns
-    float        maxHull_ = 60.0f;
-    float        hull_ = 60.0f;
-    float        fireTimer_ = 0.0f;
-    bool         leaving_ = false;
-    int          task_ = 0;
-    std::string  corp_;
-    std::string  label_;
-    ResourceType cargo_;
-    int          cargoAmount_ = 0;
-    double       cargoDue_ = 0.0;
+    std::string       design_;
+    float             damage_ = 0.0f;  // the design's; with no catalogue it has no guns
+    Ships::TypeValues mix_{};          // what that volley is made of
+    Ships::LayerTable resist_ = Ships::NeutralTable();    // its hull line's shift on the layers
+    float             armour_ = 0.0f, maxArmour_ = 0.0f;  // a layer over the hull
+    float             maxHull_ = 60.0f;
+    float             hull_ = 60.0f;
+    float             fireTimer_ = 0.0f;
+    bool              leaving_ = false;
+    int               task_ = 0;
+    std::string       corp_;
+    std::string       label_;
+    ResourceType      cargo_;
+    int               cargoAmount_ = 0;
+    double            cargoDue_ = 0.0;
 };

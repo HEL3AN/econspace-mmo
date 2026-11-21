@@ -84,6 +84,8 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
                 es.design = n->GetDesign();
                 es.heading = n->GetHeading();
                 es.hullFrac = n->GetMaxHull() > 0.0f ? n->GetHull() / n->GetMaxHull() : 0.0f;
+                es.armourFrac =
+                    n->GetMaxArmour() > 0.0f ? n->GetArmour() / n->GetMaxArmour() : 1.0f;
                 if (n->GetCargoAmount() > 0)  // a hauler's hold (#343)
                 {
                     es.cargo = n->GetCargo().Index();
@@ -131,6 +133,8 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         p.maxHull = s.ship->GetMaxHull();
         p.shields = s.ship->GetShields();
         p.maxShields = s.ship->GetMaxShields();
+        p.armour = s.ship->GetArmour();
+        p.maxArmour = s.ship->GetMaxArmour();
         p.ownedShips = s.ownedShips;
         p.shipIndex = s.currentShip;
         p.livery = s.livery;
@@ -297,6 +301,9 @@ Proto::Snapshot Simulation::BuildSnapshot(const ClientSession& s, const std::str
         es.hullFrac = other.ship->GetMaxHull() > 0.0f
                           ? other.ship->GetHull() / other.ship->GetMaxHull()
                           : 1.0f;
+        es.armourFrac = other.ship->GetMaxArmour() > 0.0f
+                            ? other.ship->GetArmour() / other.ship->GetMaxArmour()
+                            : 1.0f;
         // What the law says of them, for every pilot's instruments (#431 slice 10, #117).
         es.criminal = other.account.IsCriminal();
         es.securityStatus = other.account.GetSecurityStatus();

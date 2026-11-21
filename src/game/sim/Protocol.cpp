@@ -1053,6 +1053,9 @@ EntityWire WireOf(const Proto::EntitySnapshot& e, float grid)
     const long long hp = Quantise(e.hullFrac, HULL_UNIT);
     if (hp != (long long)HULL_UNIT)
         j["hp"] = hp;
+    const long long ar = Quantise(e.armourFrac, HULL_UNIT);
+    if (ar != (long long)HULL_UNIT)
+        j["ar"] = ar;
     if (e.ore != -1)
         j["o"] = e.ore;
     if (e.cargo >= 0 && e.cargoAmount > 0)
@@ -1093,6 +1096,7 @@ Proto::EntitySnapshot EntityOf(int id, const json& j)
     e.faction = ToFac(Val(j, "f", json()));
     e.role = (int)IntOf(j, "r", -1);
     e.hullFrac = (float)((double)IntOf(j, "hp", (long long)HULL_UNIT) / HULL_UNIT);
+    e.armourFrac = (float)((double)IntOf(j, "ar", (long long)HULL_UNIT) / HULL_UNIT);
     e.ore = (int)IntOf(j, "o", -1);
     const auto cg = j.find("cg");
     if (cg != j.end() && cg->is_array() && cg->size() == 2 && (*cg)[0].is_number_integer() &&
@@ -1118,6 +1122,8 @@ json PlayerJson(const Proto::PlayerView& p)
                { "maxHull", p.maxHull },
                { "sh", p.shields },
                { "maxSh", p.maxShields },
+               { "ar", p.armour },
+               { "maxAr", p.maxArmour },
                { "cargo", p.cargoUsed },
                { "cargoCap", p.cargoCap },
                { "warp", p.warpPhase },
@@ -1272,6 +1278,8 @@ void ReadPlayer(const json& pj, Proto::PlayerView& p)
     p.maxHull = Val(pj, "maxHull", 0.0f);
     p.shields = Val(pj, "sh", 0.0f);
     p.maxShields = Val(pj, "maxSh", 0.0f);
+    p.armour = Val(pj, "ar", 0.0f);
+    p.maxArmour = Val(pj, "maxAr", 0.0f);
     p.cargoUsed = Val(pj, "cargo", 0);
     p.cargoCap = Val(pj, "cargoCap", 0);
     p.warpPhase = Val(pj, "warp", 0);
@@ -1824,9 +1832,10 @@ static bool SameWire(const EntitySnapshot& a, const EntitySnapshot& b)
 {
     return a.kind == b.kind && a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.heading == b.heading &&
            a.size == b.size && a.faction == b.faction && a.role == b.role &&
-           a.hullFrac == b.hullFrac && a.ore == b.ore && a.cargo == b.cargo &&
-           a.cargoAmount == b.cargoAmount && a.name == b.name && a.design == b.design &&
-           a.livery == b.livery && a.criminal == b.criminal && a.securityStatus == b.securityStatus;
+           a.hullFrac == b.hullFrac && a.armourFrac == b.armourFrac && a.ore == b.ore &&
+           a.cargo == b.cargo && a.cargoAmount == b.cargoAmount && a.name == b.name &&
+           a.design == b.design && a.livery == b.livery && a.criminal == b.criminal &&
+           a.securityStatus == b.securityStatus;
 }
 
 std::shared_ptr<const EntityWire> WireCache::Of(const EntitySnapshot& e, float grid)

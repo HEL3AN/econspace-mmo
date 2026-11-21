@@ -219,12 +219,26 @@ Fighter RoleFighter(const Catalogue& c, const std::string& faction, const std::s
         std::string   why;
         if (d != nullptr && Derive(c, *d, st, why))
         {
-            f.dps += Dps(st);
+            const float dps = Dps(st);
+            f.dps += dps;
             f.hull += st.combatHull;
+            f.armour += st.armour;
+            for (size_t t = 0; t < f.mix.size(); ++t)
+                f.mix[t] += st.mix[t] * dps;  // by the fire it brings
+            for (size_t l = 0; l < f.resist.size(); ++l)
+                for (size_t t = 0; t < f.resist[l].size(); ++t)
+                    f.resist[l][t] += st.resist[l][t];
         }
     }
-    f.dps /= (float)list->size();
-    f.hull /= (float)list->size();
+    const float n = (float)list->size();
+    for (float& m : f.mix)
+        m = f.dps > 0.0f ? m / f.dps : 0.0f;
+    for (auto& row : f.resist)
+        for (float& r : row)
+            r /= n;
+    f.dps /= n;
+    f.hull /= n;
+    f.armour /= n;
     return f;
 }
 
@@ -238,8 +252,28 @@ Fighter DesignFighter(const Catalogue& c, const std::string& id)
     {
         f.dps = Dps(st);
         f.hull = st.combatHull;
+        f.armour = st.armour;
+        f.mix = st.mix;
+        f.resist = st.resist;
     }
     return f;
+}
+
+float Bite(const Catalogue& c, const Fighter& by, const Fighter& on)
+{
+    if (by.dps <= 0.0f || on.hull <= 0.0f)
+        return 0.0f;
+    const float armour = std::min(on.armour, on.hull);
+    float       seconds = 0.0f;
+    const float pools[2] = { armour, on.hull - armour };
+    const int   layers[2] = { LayerArmour, LayerHull };
+    for (int i = 0; i < 2; ++i)
+    {
+        const float m = Effect(c, by.mix, on.resist, layers[i]);
+        if (pools[i] > 0.0f)
+            seconds += m > 0.0f ? pools[i] / (by.dps * m) : 1e9f;
+    }
+    return seconds > 0.0f ? 1.0f / seconds : 0.0f;
 }
 
 float WarshipDps(const Catalogue& c, const std::string& faction)

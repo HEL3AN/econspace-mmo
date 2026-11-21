@@ -658,6 +658,13 @@ void Game::DrawTargetContent(const Ui::Frame& f)
             }
             if (e->kind == Proto::EntityKind::Npc || e->kind == Proto::EntityKind::PlayerShip)
             {
+                // The layers, outermost first (#464, slice 8): armour where the ship has some.
+                ShipStats shipStats;
+                if (StatsOfDesign(e->design, shipStats) && shipStats.armour > 0.0f)
+                {
+                    L.Field("Armour", TextFormat("%.0f%%", e->armourFrac * 100.0f), t.colors.text);
+                    L.Bar(e->armourFrac, t.colors.warn);
+                }
                 L.Field("Hull", TextFormat("%.0f%%", e->hullFrac * 100.0f), t.colors.text);
                 L.Bar(e->hullFrac, e->hullFrac > 0.3f ? t.colors.good : t.colors.bad);
             }
@@ -1026,6 +1033,10 @@ void Game::DrawStatusContent(const Ui::Frame& f)
 
     const float   shFrac = playerShip_->GetShields() / playerShip_->GetMaxShields();
     const float   hFrac = playerShip_->GetHull() / playerShip_->GetMaxHull();
+    const float   aFrac = playerShip_->GetMaxArmour() > 0.0f
+                              ? playerShip_->GetArmour() / playerShip_->GetMaxArmour()
+                              : 0.0f;
+    const bool    armoured = playerShip_->GetMaxArmour() > 0.0f;
     const Skills& sk = player_.GetSkills();
     // Toggles from the snapshot (server-authoritative; the predicted playerShip_ would
     // flicker over the network due to replaying one-shot commands).
@@ -1048,6 +1059,8 @@ void Game::DrawStatusContent(const Ui::Frame& f)
                  [&]
                  {
                      gauge("Shields", shFrac, t.colors.accent);
+                     if (armoured)
+                         gauge("Armour", aFrac, t.colors.warn);
                      gauge("Hull", hFrac, hFrac > 0.3f ? t.colors.good : t.colors.bad);
                      L.Divider();
                      L.Field("Speed", TextFormat("%.0f", playerShip_->GetSpeed()), t.colors.text);

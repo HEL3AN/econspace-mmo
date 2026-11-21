@@ -272,7 +272,7 @@ void Simulation::StepNpcCombat(SystemState& st, const std::vector<PlayerPresence
         const bool firstStrike =
             npc->GetRole() == NpcRole::Guard &&
             !GuardProvoked(st, *npc, targetSession, targetNpc != nullptr ? targetNpc->GetId() : 0);
-        target->TakeDamage(npc->GetDamage());
+        target->TakeDamage(npc->GetDamage(), npc->GetMix());
         npc->ResetFireTimer();
         if (firstStrike)
             ChargeFirstStrike(st, *npc, targetPlayer, targetNpc, !target->IsAlive());
@@ -1384,8 +1384,10 @@ void Simulation::ColdLosses(SystemState& st)
     const Ships::Fighter trader = FighterIn(st, trade, NpcRole::Trader);
     const Ships::Fighter miner = FighterIn(st, Factions::Unaffiliated(), NpcRole::Miner);
     // The share of a ship's hull one second of the other's fire takes off.
+    // ...taking armour and then hull at the layers' multipliers for what the other fires:
+    // the arithmetic of a hit (#464, slice 8), so cold and hot agree.
     auto bite = [](const Ships::Fighter& by, const Ships::Fighter& on)
-    { return on.hull > 0.0f ? by.dps / on.hull : 0.0f; };
+    { return Ships::Bite(Archetypes::ShipCatalogue(), by, on); };
     // Corporations' patrols (#431 slice 12) trade shots with the pirates as the police do, at
     // the same meeting rates, with their own design's guns and hull.
     float byPatrols = 0.0f, guardsLost = 0.0f;
