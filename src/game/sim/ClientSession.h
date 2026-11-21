@@ -76,6 +76,9 @@ struct ClientSession
     // design id, at most Ships::LIBRARY_MAX. The account's names for shared, immutable
     // designs; every id here is kept in the server's store for as long as it is named.
     std::map<std::string, std::string> designLibrary;
+    // The livery from the palette this pilot paints their ships in (#516); empty: the plain
+    // default. Saved with the account.
+    std::string livery;
 
     // Insurance (#344): hull index -> the value its policy covers, fixed when it was bought.
     // A hull with no entry is not insured. Spent when the ship is lost.

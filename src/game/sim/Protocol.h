@@ -272,6 +272,9 @@ struct Command
     // Rent so many units of hangar on top of the free ones at the station docked at (#472);
     // -1: not this command. A refusal is a Notice saying why.
     int rentHangar = -1;
+    // Paint the pilot's ships in a livery of the palette (#516): a livery id from
+    // materials.json marked `palette`; empty -- not this command. Art, never allegiance (#117).
+    std::string setLivery;
     // A purchase (#343): as much of the good as the stock, the hold and the money allow, up
     // to the amount.
     int buyType = -1;  // ResourceType as int (-1 — no purchase)
@@ -409,6 +412,8 @@ struct EntitySnapshot
     // without a crime -- and their security status, -10..+10.
     bool  criminal = false;
     float securityStatus = 0.0f;
+    // The livery a player's ship wears (#516); empty for anything else.
+    std::string livery{};
 };
 
 // One entry of a player's design library: their name for it, and the design's id.
@@ -558,6 +563,8 @@ struct PlayerView
     // The account's saved designs, by name (#279 fitting, step 3); each id that is not a
     // stock one has had its DesignDef sent first, so the client can price and derive it.
     std::vector<SavedDesign> library;
+    // The livery the pilot paints their ships in (#516); empty -- the default plating.
+    std::string livery;
     // What each of those hulls is insured for, in the same order; 0 -- not insured (#344).
     std::vector<double> insured;
     LossView            loss;

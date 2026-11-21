@@ -385,6 +385,8 @@ static bool HostStepPlayer(Simulation& sim, ClientSession& s, const Proto::Comma
         sim.DeleteDesign(s, c.deleteDesign);
     if (!c.applyDesign.empty())
         sim.ApplyDesign(s, c.applyDesign);
+    if (!c.setLivery.empty())  // (#516)
+        sim.SetLivery(s, c.setLivery);
 
     // Goods between containers (#472), docked or in space -- a can is in space: what moved
     // shows in the snapshot, a refusal in the journal.

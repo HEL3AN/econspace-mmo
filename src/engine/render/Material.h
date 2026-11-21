@@ -138,6 +138,7 @@ struct Livery
     Color       accent = { 200, 160, 60, 255 };          // stripes and bands
     float       params[4] = { 0.3f, 0.3f, 1.0f, 1.0f };  // wear, grime, stripes, panel scale
     float       style[4] = { 2.0f, 0.1f, 0.5f, 0.3f };   // aspect, patchwork, warmth, windows
+    bool        palette = false;  // a player may paint their own ship in it (#516)
 };
 
 // Everything a binding can be resolved from. Gathered by the backend once per item, so

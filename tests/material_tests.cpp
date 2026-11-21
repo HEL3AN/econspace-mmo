@@ -428,3 +428,18 @@ TEST_CASE("a station wears its owner's culture as its livery (#516)")
     const Station den({ 0.0f, 0.0f }, 700.0f, "Den", pirates, StationRole::TradeHub);
     CHECK(den.Describe().livery == "Pirates");
 }
+
+TEST_CASE("the shipped liveries offer a palette, and never the pirates' or the default")
+{
+    REQUIRE(Render::Materials::Load(std::string(TEST_DATA_DIR) + "materials.json"));
+    int palette = 0;
+    for (const Render::Livery& l : Render::Materials::Liveries())
+    {
+        if (!l.palette)
+            continue;
+        palette++;
+        CHECK(l.id != "default");
+        CHECK(l.id != "Pirates");
+    }
+    CHECK(palette >= 5);
+}

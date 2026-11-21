@@ -38,6 +38,7 @@ Render::Item Ship::Describe() const
         it.shape = &look_->visual.shape;
         it.material = look_->visual.material;
     }
+    it.livery = livery_;
     it.heading = heading_;
     it.thrusting = engineActive_;
     it.intensity = maxHull_ > 0.0f ? hull_ / maxHull_ : 1.0f;

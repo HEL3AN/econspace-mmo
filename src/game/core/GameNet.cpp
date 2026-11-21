@@ -362,6 +362,7 @@ void Game::BuildClientSnapshot()
         // Weapon state is server-owned; the local flag is only an optimistic echo of the
         // toggle we sent, corrected here the same way the ship's position is.
         weaponOn_ = p.weaponOn;
+        playerShip_->SetLivery(p.livery);  // the palette's pick (#516)
 
         // The account is a MIRROR of the server (M4f): money/reputation/wanted/skills arrive in
         // the snapshot, the client only displays them (mutations moved to the server via
@@ -572,6 +573,7 @@ void Game::ReconcileClientWorld()
                 other->SetHeading(es.heading);
                 other->SetHull(es.hullFrac * other->GetMaxHull());
                 other->SetPilotName(es.name);
+                other->SetLivery(es.livery);
                 p = std::move(other);
             }
             else if (es.kind == Proto::EntityKind::Npc)
@@ -615,6 +617,7 @@ void Game::ReconcileClientWorld()
             if (sh->GetStats().design != es.design && StatsOfDesign(es.design, stats))
                 sh->Refit(stats);
             sh->SetHull(es.hullFrac * sh->GetMaxHull());
+            sh->SetLivery(es.livery);
         }
         // ...and a belt pales as it is worked out (#348), by what the server says is left.
         else if (proxy->GetKind() == EntityKind::Field && es.oreMax > 0)

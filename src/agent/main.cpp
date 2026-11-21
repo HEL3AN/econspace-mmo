@@ -1447,6 +1447,28 @@ std::vector<Tool> BuildTools()
           } });
 
     tools.push_back(
+        { "set_livery",
+          "Paint your ships in a livery: a people's art palette named by culture, such as "
+          "'guild', 'syndicate' or 'clan', shown to everyone who sees your ship. 'default' is "
+          "plain plating. It is "
+          "looks only -- it says nothing about whose side you are on.",
+          Obj({ { "livery", Str("a livery id, or 'default'") } }, { "livery" }),
+          [](const Rpc::Json& args)
+          {
+              RequireLive();
+              Proto::Command c;
+              c.setLivery = args["livery"].get<std::string>();
+              const int   seq = g_session.LastEventSeq();
+              std::string why;
+              if (!Confirm(c, why))
+                  return "set_livery: " + why;
+              const std::string now = g_session.Snapshot().player.livery;
+              if (now != (c.setLivery == "default" ? std::string() : c.setLivery))
+                  return Refused("set_livery", seq, "the livery did not change");
+              return "set_livery: now " + (now.empty() ? std::string("plain") : now);
+          } });
+
+    tools.push_back(
         { "move_goods",
           "Move goods between two containers where you are, by the ids inventory lists them "
           "by: 'hold' (the ship you fly); docked at a station, 'hangar' (yours there); docked "

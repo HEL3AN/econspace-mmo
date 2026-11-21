@@ -375,6 +375,11 @@ bool Load(const std::string& path)
                 const std::string& k = it.key();
                 if (k == "id" || k == "note")
                     continue;
+                if (k == "palette" && it.value().is_boolean())
+                {
+                    lv.palette = it.value().get<bool>();
+                    continue;
+                }
                 if (k == "base" || k == "accent")
                 {
                     if (!ReadColor(it.value(), k == "base" ? lv.base : lv.accent))
