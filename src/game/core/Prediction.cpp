@@ -41,7 +41,7 @@ void Prediction::Reconcile(Ship& ship, const Proto::PlayerView& p, const HoldFn&
         if (ship.GetStats().design != design && StatsOfDesign(design, stats))
             ship.Refit(stats);
     }
-    ship.ApplyView(p.pos, p.heading, p.vel, p.hull, p.shields);
+    ship.ApplyView(p.pos, p.heading, p.vel, p.hull, p.shields, p.armour);
     // Warp/AP are server-authoritative: we mirror the server's warp scale and don't keep our
     // own. Applied BEFORE replay so unacked orders (which the server hasn't seen yet)
     // correctly "carry through" via prediction over the authoritative state.

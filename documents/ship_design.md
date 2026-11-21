@@ -319,6 +319,31 @@ Load errors: a family module that is not a gun or is in two families, a good tha
 a line section that does not stand at the position it is listed under, an id with `~`, any
 other field, and a variant that does not validate.
 
+## Damage types and layers (#464, slice 8)
+
+```json
+"damageTypes": ["energy", "kinetic"],
+"layers": { "shield": { "energy": 1.25, "kinetic": 0.75 },
+            "armour": { "energy": 0.75, "kinetic": 1.25 },
+            "hull":   { "energy": 1,    "kinetic": 1 } },
+"families": { "laser": { "...": "...", "damage": { "energy": 1 } } },
+"lines":    { "heavy": { "...": "...", "resist": { "armour": { "kinetic": 0.9 } } } },
+"rules":    { "minEffect": 0.6 }
+```
+
+Every weapon damages every layer, only better or worse (owner, 2026-10-23): no gun is useless
+against anything. A ship has three layers hit in order -- **shield** (a player's ship only),
+**armour** (what a part's `provides.armour` gives; `hull.armour` gives it instead of hull, so
+`combatHull` is the same whole) and **hull**. A family's `damage` is shares over the types and
+sums to 1; a volley is its guns' shares of the design's volley, and the base gun's remainder
+is untyped, 1.0 against everything. A layer takes a type at its `layers` multiplier times the
+shift of the target's hull line (`resist`, a variant's own line; a design with none shifts
+nothing). A hit takes a layer's pool at `amount x multiplier`; a layer that breaks carries
+what it did not hold, raw, to the next. The cold pass reads the same arithmetic
+(`Ships::Bite`: 1 over the seconds to strip armour, then hull). `minEffect` is the least any
+family does to any layer of any line, and an entry that could fall below it is a load error.
+Without `damageTypes` every multiplier is 1.
+
 ## How it maps to the hull classes (Proposal A)
 
 | Ship | Frame (class, min. aspect) | Bow | Mid | Stern | What makes it its class |

@@ -572,6 +572,7 @@ void Game::ReconcileClientWorld()
                 auto other = std::make_unique<Ship>(es.pos, stats);
                 other->SetHeading(es.heading);
                 other->SetHull(es.hullFrac * other->GetMaxHull());
+                other->SetArmour(es.armourFrac * other->GetMaxArmour());
                 other->SetPilotName(es.name);
                 other->SetLivery(es.livery);
                 p = std::move(other);
@@ -584,6 +585,7 @@ void Game::ReconcileClientWorld()
                                                    std::vector<Vector2>{}, es.design);
                 n->SetHeading(es.heading);
                 n->SetHull(es.hullFrac * n->GetMaxHull());
+                n->SetArmour(es.armourFrac * n->GetMaxArmour());
                 p = std::move(n);
             }
             else
@@ -608,6 +610,7 @@ void Game::ReconcileClientWorld()
         {
             NpcShip* n = static_cast<NpcShip*>(proxy);
             n->SetHull(es.hullFrac * n->GetMaxHull());
+            n->SetArmour(es.armourFrac * n->GetMaxArmour());
         }
         else if (proxy->GetKind() == EntityKind::PlayerShip)
         {
@@ -618,6 +621,7 @@ void Game::ReconcileClientWorld()
                 sh->Refit(stats);
             sh->SetHull(es.hullFrac * sh->GetMaxHull());
             sh->SetLivery(es.livery);
+            sh->SetArmour(es.armourFrac * sh->GetMaxArmour());
         }
         // ...and a belt pales as it is worked out (#348), by what the server says is left.
         else if (proxy->GetKind() == EntityKind::Field && es.oreMax > 0)

@@ -17,9 +17,11 @@ Ship::Ship(Vector2 startPos, const ShipStats& stats)
 void Ship::Refit(const ShipStats& stats)
 {
     const float share = maxHull_ > 0.0f ? hull_ / maxHull_ : 1.0f;
+    const float armourShare = stats_.armour > 0.0f ? armour_ / stats_.armour : 1.0f;
     stats_ = stats;
     maxHull_ = stats.hull;
     hull_ = share * maxHull_;
+    armour_ = armourShare * stats.armour;
     look_ = Archetypes::ForDesign(stats.design);
     // And as big as it: drawn, picked and approached at the size an NPC flying the same
     // design is, so a Hauler is bigger than a Courier. Nothing the server decides about a
@@ -63,8 +65,10 @@ void Ship::RemoveCargo(ResourceType type, int amount)
     cargo_.Remove(type, amount);
 }
 
-void Ship::ApplyView(Vector2 pos, float heading, Vector2 vel, float hull, float shields)
+void Ship::ApplyView(Vector2 pos, float heading, Vector2 vel, float hull, float shields,
+                     float armour)
 {
+    armour_ = armour;
     pos_ = pos;
     heading_ = heading;
     velocity_ = vel;
@@ -98,22 +102,15 @@ void Ship::ApplyNavView(int warpPhase, float warpAlignTimer, Vector2 warpTarget,
     holdRange_ = holdRange;
 }
 
-void Ship::TakeDamage(float amount)
+void Ship::TakeDamage(float amount, const Ships::TypeValues& mix)
 {
-    // Shields absorb the damage first, the remainder hits the hull.
-    if (shields_ > 0.0f)
-    {
-        if (amount <= shields_)
-        {
-            shields_ -= amount;
-            return;
-        }
-        amount -= shields_;
-        shields_ = 0.0f;
-    }
-    hull_ -= amount;
-    if (hull_ < 0.0f)
-        hull_ = 0.0f;
+    // Shields first, then armour, then the hull, each at its own multiplier for what the
+    // volley is made of (#464, slice 8); what a broken layer did not hold carries on.
+    Ships::Pools pools{ shields_, armour_, hull_ };
+    Ships::Strike(Archetypes::ShipCatalogue(), mix, stats_.resist, amount, pools);
+    shields_ = pools.shield;
+    armour_ = pools.armour;
+    hull_ = std::max(0.0f, pools.hull);
 }
 
 void Ship::SetControls(bool thrust, float turn, bool brake)

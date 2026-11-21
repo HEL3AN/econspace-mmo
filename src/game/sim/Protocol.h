@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    73;  // 73: the NPC delivery service brings goods from any hangar elsewhere (#472 slice 11) --
+    74;  // 74: armour, a layer between shields and hull (#464, slice 8) -- a PlayerView's armour
+         // and maxArmour, an entity's armourFrac, and every hit is made of damage types;
+         // 73: the NPC delivery service brings goods from any hangar elsewhere (#472 slice 11) --
          // a LockedHangarView is every hangar elsewhere, with its quote, `hostile` when the
          // faction refuses the pilot;
          // 72: the assets view is sent on request (#472 slice 9) -- a Command's requestAssets and a
@@ -417,6 +419,8 @@ struct EntitySnapshot
     float securityStatus = 0.0f;
     // The livery a player's ship wears (#516); empty for anything else.
     std::string livery{};
+    // The armour left, 0..1: the layer over the hull (#464, slice 8); 1 for a ship with none.
+    float armourFrac = 1.0f;
 };
 
 // One entry of a player's design library: their name for it, and the design's id.
@@ -580,6 +584,7 @@ struct PlayerView
     Vector2 vel = { 0.0f, 0.0f };
     float   heading = 0.0f;
     float   hull = 0.0f, maxHull = 0.0f, shields = 0.0f, maxShields = 0.0f;
+    float   armour = 0.0f, maxArmour = 0.0f;  // the layer between them (#464, slice 8)
     int     cargoUsed = 0, cargoCap = 0;
     int     dockedStationId = 0;  // docked station id (0 — in flight); server-authoritative
     int     warpPhase = 0;        // 0 none, 1 aligning, 2 warp

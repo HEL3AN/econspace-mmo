@@ -499,8 +499,19 @@ std::string DescribeQuote(const FitQuote& q)
     row("cargo", (float)q.before.cargoCapacity, (float)q.after.cargoCapacity, "%.0f");
     row("mining", q.before.miningRate, q.after.miningRate, "%.1f");
     row("scanner", 1.0f + q.before.scan, 1.0f + q.after.scan, "%.1f");
+    row("armour", q.before.armour, q.after.armour, "%.0f");
     row("hull", q.before.hull, q.after.hull, "%.0f");
     row("guns", q.before.damage, q.after.damage, "%.0f");
+    // What the guns are made of (#464, slice 8): lasers' energy is better against shields,
+    // railguns' kinetic against armour, and nothing is useless anywhere.
+    const std::vector<std::string>& types = Archetypes::ShipCatalogue().damageTypes;
+    std::string                     makeup;
+    for (size_t t = 0; t < types.size() && t < q.after.mix.size(); ++t)
+        if (q.after.mix[t] > 0.005f)
+            makeup +=
+                (makeup.empty() ? "" : ", ") + types[t] + Fmt(" %.0f%%", q.after.mix[t] * 100.0f);
+    if (!makeup.empty())
+        out += "  damage   " + makeup + " (the base gun is untyped)\n";
     if (!q.design.id.empty())
         out += q.price >= 0.0 ? Fmt("  price %.0f cr\n", q.price)
                               : Fmt("  refund %.0f cr\n", -q.price);
@@ -1216,8 +1227,10 @@ std::string Describe(const View& view, Detail detail)
     // Docked is attached: the ship goes round with a station on an orbit (#298).
     const char* mode = p.docked ? "docked (attached, moves with the station)"
                                 : (p.warpPhase != 0 ? "in warp" : "flying");
-    out += Fmt("SHIP   hull %.0f/%.0f  shields %.0f/%.0f  cargo %d/%d  money %.0f cr\n", p.hull,
-               p.maxHull, p.shields, p.maxShields, p.cargoUsed, p.cargoCap, p.money);
+    out += Fmt("SHIP   hull %.0f/%.0f  armour %.0f/%.0f  shields %.0f/%.0f  cargo %d/%d  "
+               "money %.0f cr\n",
+               p.hull, p.maxHull, p.armour, p.maxArmour, p.shields, p.maxShields, p.cargoUsed,
+               p.cargoCap, p.money);
     out += Fmt("       %s  stabilizer %s  weapons %s  mining %s%s\n", mode,
                p.stabilizer ? "on" : "off", p.weaponOn ? "ARMED" : "off", p.mining ? "on" : "off",
                p.autopilot ? "  autopilot engaged" : "");

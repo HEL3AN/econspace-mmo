@@ -92,11 +92,12 @@ bool ReadProvides(const json& j, Ships::Provides& p, std::string& err)
     // Only what a stat is derived from. Hull and damage arrived with the NPCs that read them
     // (#279 step 4); shields and sensors come with the stat that reads them -- accepted
     // before that, they would be numbers nothing uses.
-    if (!OnlyKnownKeys(pj, { "thrust", "rcs", "cargo", "mining", "hull", "damage", "scan" }, err) ||
+    if (!OnlyKnownKeys(
+            pj, { "thrust", "rcs", "cargo", "mining", "hull", "armour", "damage", "scan" }, err) ||
         !ReadNumber(pj, "thrust", p.thrust, err) || !ReadNumber(pj, "rcs", p.rcs, err) ||
         !ReadNumber(pj, "cargo", p.cargo, err) || !ReadNumber(pj, "mining", p.mining, err) ||
-        !ReadNumber(pj, "hull", p.hull, err) || !ReadNumber(pj, "damage", p.damage, err) ||
-        !ReadNumber(pj, "scan", p.scan, err))
+        !ReadNumber(pj, "hull", p.hull, err) || !ReadNumber(pj, "armour", p.armour, err) ||
+        !ReadNumber(pj, "damage", p.damage, err) || !ReadNumber(pj, "scan", p.scan, err))
     {
         err = "provides: " + err;
         return false;
@@ -419,6 +420,7 @@ void Add(Ships::Provides& sum, const Ships::Provides& p, float times = 1.0f)
     sum.mining += p.mining * times;
     sum.scan += p.scan * times;
     sum.hull += p.hull * times;
+    sum.armour += p.armour * times;
     sum.damage += p.damage * times;
 }
 
@@ -984,10 +986,26 @@ bool Derive(const Catalogue& c, const Design& d, Stats& out, std::string& error)
     out.miningRate = sum.mining;
     out.scan = sum.scan;
     out.hull = sum.hull;
+    out.armour = sum.armour;
     out.damage = sum.damage;
     out.cruise = out.maxSpeed * r.cruise;
-    out.combatHull = out.hull + r.baseHull;
+    out.combatHull = out.hull + out.armour + r.baseHull;
     out.volley = out.damage + r.baseGun;
+    // What the volley is made of: each gun's damage in its family's types, the rest -- the
+    // base gun -- untyped. And the shift of the hull line this design is a variant of.
+    for (const FitLine& line : d.fit)
+    {
+        const ModulePart* m = c.FindModule(line.module);
+        const Family*     fam = c.FamilyOfModule(line.module);
+        if (m == nullptr || fam == nullptr || out.volley <= 0.0f)
+            continue;
+        for (int t = 0; t < MAX_DAMAGE_TYPES; ++t)
+            out.mix[(size_t)t] +=
+                m->provides.damage * (float)line.count * fam->damage[(size_t)t] / out.volley;
+    }
+    if (const Variant* v = c.FindVariant(d.id); v != nullptr && !v->line.empty())
+        if (const Line* l = c.FindLine(v->line); l != nullptr)
+            out.resist = l->resist;
     for (ResourceType t : AllResourceTypes())
         if (cost[(size_t)t.Index()] > 0)
             out.cost.emplace_back(t, cost[(size_t)t.Index()]);
@@ -1118,6 +1136,115 @@ bool ReadNames(const json& j, const char* key, std::vector<std::string>& out, st
     return true;
 }
 
+// { "energy": 1.25, ... } onto `out` by the catalogue's damage type order; a type left out
+// stays `fallback`. A name that is not a damage type, or a value below zero, is an error.
+bool ReadTypeValues(const json& j, const Catalogue& c, TypeValues& out, float fallback,
+                    std::string& err)
+{
+    if (!j.is_object())
+    {
+        err = "not an object of damage type -> number";
+        return false;
+    }
+    out.fill(fallback);
+    for (auto it = j.begin(); it != j.end(); ++it)
+    {
+        const auto at = std::find(c.damageTypes.begin(), c.damageTypes.end(), it.key());
+        if (at == c.damageTypes.end() || !it.value().is_number() || it.value().get<float>() < 0.0f)
+        {
+            err = "'" + it.key() + "' is not a damage type with a number of zero or more";
+            return false;
+        }
+        out[(size_t)(at - c.damageTypes.begin())] = it.value().get<float>();
+    }
+    return true;
+}
+
+// { "armour": { "kinetic": 0.9 } } onto a table of ones: layer name -> type -> multiplier.
+bool ReadLayerTable(const json& j, const Catalogue& c, LayerTable& out, std::string& err)
+{
+    static const char* const NAMES[LayerCount] = { "shield", "armour", "hull" };
+    if (!j.is_object())
+    {
+        err = "not an object of layer -> damage type -> number";
+        return false;
+    }
+    out = NeutralTable();
+    for (auto it = j.begin(); it != j.end(); ++it)
+    {
+        int layer = -1;
+        for (int i = 0; i < LayerCount; ++i)
+            if (it.key() == NAMES[i])
+                layer = i;
+        if (layer < 0)
+        {
+            err = "'" + it.key() + "' is not a layer (shield, armour, hull)";
+            return false;
+        }
+        if (!ReadTypeValues(it.value(), c, out[(size_t)layer], 1.0f, err))
+            return false;
+    }
+    return true;
+}
+
+// "damageTypes": ["energy", "kinetic"] and "layers": { "shield": { "energy": 1.25, ... }, ... }
+// (#464, slice 8). Neither: no damage types, every multiplier 1.
+bool ReadDamageTypes(const json& j, Catalogue& c, std::string& error)
+{
+    if (j.contains("damageTypes"))
+    {
+        std::vector<std::string> types;
+        std::string              err;
+        if (!ReadNames(j, "damageTypes", types, err) || types.empty() ||
+            (int)types.size() > MAX_DAMAGE_TYPES)
+        {
+            error = "'damageTypes': " + (err.empty() ? std::string("one to four names") : err);
+            return false;
+        }
+        c.damageTypes = std::move(types);
+    }
+    if (j.contains("layers"))
+    {
+        std::string err;
+        if (c.damageTypes.empty() || !ReadLayerTable(j["layers"], c, c.layers, err))
+        {
+            error = "'layers': " + (err.empty() ? std::string("needs 'damageTypes'") : err);
+            return false;
+        }
+    }
+    return true;
+}
+
+// Every weapon does at least `minEffect` to every layer of every ship (#464, slice 8): an
+// entry that could fall below it -- a family against a layer, with any line's shift -- is a
+// load error, not a clamp nobody sees.
+bool CheckEffects(const Catalogue& c, std::string& error)
+{
+    if (c.damageTypes.empty())
+        return true;
+    std::vector<const Line*> lines = { nullptr };
+    for (const Line& l : c.lines)
+        lines.push_back(&l);
+    for (const Family& f : c.families)
+        for (const Line* l : lines)
+            for (int layer = 0; layer < LayerCount; ++layer)
+            {
+                const float e =
+                    Effect(c, f.damage, l != nullptr ? l->resist : NeutralTable(), layer);
+                if (e < c.minEffect - 1e-5f)
+                {
+                    error = "family '" + f.id + "' does " + std::to_string(e) + " to the " +
+                            (layer == LayerShield   ? "shield"
+                             : layer == LayerArmour ? "armour"
+                                                    : "hull") +
+                            (l != nullptr ? " of line '" + l->id + "'" : std::string()) +
+                            ", below minEffect " + std::to_string(c.minEffect);
+                    return false;
+                }
+            }
+    return true;
+}
+
 // Weapon families (#464): { id: { "name", "modules": [...], "goods": [...] } }. A module is
 // in at most one family and is a gun: a family of things that do not shoot would refit a
 // patrol into a trader in a uniform.
@@ -1136,11 +1263,33 @@ bool ReadFamilies(const json& j, Catalogue& c, std::string& error)
         std::string err;
         f.id = it.key();
         const json& e = it.value();
-        if (!e.is_object() || !OnlyKnownKeys(e, { "name", "modules", "goods" }, err) ||
+        if (!e.is_object() || !OnlyKnownKeys(e, { "name", "modules", "goods", "damage" }, err) ||
             !ReadString(e, "name", f.name, err) || !ReadNames(e, "modules", f.modules, err) ||
             !ReadGoods(e, f.goods, err))
         {
             error = "family '" + f.id + "': " + (err.empty() ? "not an object" : err);
+            return false;
+        }
+        if (e.contains("damage"))
+        {
+            // Shares over damage types, summing to 1: a gun is made of something.
+            float sum = 0.0f;
+            if (!ReadTypeValues(e["damage"], c, f.damage, 0.0f, err))
+            {
+                error = "family '" + f.id + "': damage: " + err;
+                return false;
+            }
+            for (float v : f.damage)
+                sum += v;
+            if (std::fabs(sum - 1.0f) > 1e-3f)
+            {
+                error = "family '" + f.id + "': damage shares must sum to 1";
+                return false;
+            }
+        }
+        else if (!c.damageTypes.empty())
+        {
+            error = "family '" + f.id + "': 'damage' is missing (the catalogue has damage types)";
             return false;
         }
         if (f.id.find('~') != std::string::npos || f.modules.empty())
@@ -1187,7 +1336,8 @@ bool ReadLines(const json& j, Catalogue& c, std::string& error)
         std::string err;
         l.id = it.key();
         const json& e = it.value();
-        if (!e.is_object() || !OnlyKnownKeys(e, { "name", "bow", "mid", "stern", "goods" }, err) ||
+        if (!e.is_object() ||
+            !OnlyKnownKeys(e, { "name", "bow", "mid", "stern", "goods", "resist" }, err) ||
             !ReadString(e, "name", l.name, err) || !ReadNames(e, "bow", l.bow, err) ||
             !ReadNames(e, "mid", l.mid, err) || !ReadNames(e, "stern", l.stern, err) ||
             !ReadGoods(e, l.goods, err))
@@ -1198,6 +1348,11 @@ bool ReadLines(const json& j, Catalogue& c, std::string& error)
         if (l.id.find('~') != std::string::npos)
         {
             error = "line '" + l.id + "': an id has no '~'";
+            return false;
+        }
+        if (e.contains("resist") && !ReadLayerTable(e["resist"], c, l.resist, err))
+        {
+            error = "line '" + l.id + "': resist: " + err;
             return false;
         }
         const std::vector<std::string>* const lists[] = { &l.bow, &l.mid, &l.stern };
@@ -1300,7 +1455,7 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
     }
     if (!OnlyKnownKeys(j,
                        { "rules", "modules", "sections", "frames", "designs", "doctrines", "hangar",
-                         "families", "lines" },
+                         "families", "lines", "damageTypes", "layers" },
                        error))
         return false;
 
@@ -1313,7 +1468,8 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
     const json& rj = j["rules"];
     if (!OnlyKnownKeys(rj,
                        { "speedBase", "speedPerAccel", "rcsPerTurn", "buildSecondsPerMass",
-                         "buildSecondsPerPart", "plain", "cruise", "baseHull", "baseGun" },
+                         "buildSecondsPerPart", "plain", "cruise", "baseHull", "baseGun",
+                         "minEffect" },
                        error))
     {
         error = "rules: " + error;
@@ -1335,6 +1491,11 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
         !ReadNumber(rj, "cruise", c.rules.cruise, error) ||
         !ReadNumber(rj, "baseHull", c.rules.baseHull, error) ||
         !ReadNumber(rj, "baseGun", c.rules.baseGun, error))
+    {
+        error = "rules: " + error;
+        return false;
+    }
+    if (rj.contains("minEffect") && !ReadNumber(rj, "minEffect", c.minEffect, error))
     {
         error = "rules: " + error;
         return false;
@@ -1374,8 +1535,9 @@ bool Parse(const json& j, Catalogue& out, std::string& error)
     for (const Design& d : c.designs)
         if (!Validate(c, d, error))
             return false;
-    if (!ReadFamilies(j, c, error) || !ReadLines(j, c, error) || !MakeVariants(c, error) ||
-        !ReadDoctrines(j, c, error) || !ReadHangar(j, c, error))
+    if (!ReadDamageTypes(j, c, error) || !ReadFamilies(j, c, error) || !ReadLines(j, c, error) ||
+        !CheckEffects(c, error) || !MakeVariants(c, error) || !ReadDoctrines(j, c, error) ||
+        !ReadHangar(j, c, error))
         return false;
 
     out = std::move(c);
@@ -1502,6 +1664,48 @@ Style StyleFrom(const Catalogue& c, const std::vector<double>& supply,
     s.families = Shares(c.families, supply, culture, cultureWeight);
     s.lines = Shares(c.lines, supply, culture, cultureWeight);
     return s;
+}
+
+LayerTable NeutralTable()
+{
+    LayerTable t;
+    for (TypeValues& row : t)
+        row.fill(1.0f);
+    return t;
+}
+
+float Effect(const Catalogue& c, const TypeValues& mix, const LayerTable& resist, int layer)
+{
+    float typed = 0.0f, effect = 0.0f;
+    for (size_t t = 0; t < (size_t)MAX_DAMAGE_TYPES; ++t)
+    {
+        typed += mix[t];
+        effect += mix[t] * c.layers[(size_t)layer][t] * resist[(size_t)layer][t];
+    }
+    return std::max(0.0f, 1.0f - typed) + effect;
+}
+
+void Strike(const Catalogue& c, const TypeValues& mix, const LayerTable& resist, float amount,
+            Pools& pools)
+{
+    float* const pool[LayerCount] = { &pools.shield, &pools.armour, &pools.hull };
+    for (int layer = 0; layer < LayerCount && amount > 0.0f; ++layer)
+    {
+        float& left = *pool[layer];
+        if (left <= 0.0f)
+            continue;
+        const float m = Effect(c, mix, resist, layer);
+        if (m <= 0.0f)
+            continue;
+        const float need = amount * m;
+        if (left >= need)
+        {
+            left -= need;
+            return;
+        }
+        amount -= left / m;  // what the broken layer did not hold carries on, raw
+        left = 0.0f;
+    }
 }
 
 std::string StyleWords(const Catalogue& c, const Style& s, bool brief)

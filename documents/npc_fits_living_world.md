@@ -1,7 +1,7 @@
 # NPC fits from the living world
 
 Status: **decided, being built** (#464): slices 1 (variants), 2 (fleets), 3 (region style)
-4 (buying), 5 (refit and drift), 6 (pirates and captures) and 7 (what the player and agents see) are built. The owner's direction of 2026-10-23 is the premise and
+4 (buying), 5 (refit and drift), 6 (pirates and captures), 7 (what the player and agents see) and 8 (damage types and layers) are built. The owner's direction of 2026-10-23 is the premise and
 is not re-opened: NPC fits differ **strongly** between regions; a region's style, politics and
 economy decide what its NPCs fly; a region whose markets and industry are full of lasers flies
 mostly lasers and rarely railguns. The owner answered every open question the same day
@@ -465,3 +465,14 @@ econagent's galaxy listing the same line ("region flies: ..."). It is the style 
 last faction period, **not** frozen at the moment of charting: freezing it per pilot would
 need a per-system store of old styles in the account, so it stays live for a known system
 (recorded on #464 for the owner). No `PROTO_VERSION` bump: one optional string an older reader ignores.
+
+### As built, slice 8
+
+Data in `ships.json` (documented in `ship_design.md`): `damageTypes`, `layers`, a family's
+`damage`, a line's `resist`, `rules.minEffect`; `hull.armour` provides `armour`. The same
+function (`Ships::Strike`) takes every hit on a `Ship` and an `NpcShip`; `Ships::Bite` is the
+cold pass's version. `PROTO_VERSION` 74 (an entity's `armourFrac`, a PlayerView's armour). Left
+for the owner (on #464): a **structure's** layers (walls armour-heavy, from its blueprint) and a
+**siege's** attrition still fight untyped -- a plan stores two floats, and typing it needs
+the mix in the plan and in the save; and the Fit tab shows the armour row and the guns' make-up
+only through `preview_fit`'s text, not yet as bars.

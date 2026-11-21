@@ -72,8 +72,19 @@ inline float Dps(const Stats& s)
 struct Fighter
 {
     float dps = 0.0f;
-    float hull = 0.0f;
+    float hull = 0.0f;  // all of it: armour and hull together
+    // What the cold pass needs for damage types and layers (#464, slice 8): the armour that
+    // is part of `hull`, what the volley is made of, and the hull line's shift on the layers.
+    // A Fighter made of two numbers fights untyped.
+    float      armour = 0.0f;
+    TypeValues mix{};
+    LayerTable resist = NeutralTable();
 };
+// How much of `on` one second of `by`'s guns takes -- the share of it a ship in the cold
+// pass loses, as 1 over the seconds it takes to strip armour and then hull at the layers'
+// multipliers for what `by` fires (the same arithmetic as a hit: Ships::Strike). Zero for a
+// side with no guns or nothing to lose.
+float   Bite(const Catalogue& c, const Fighter& by, const Fighter& on);
 Fighter RoleFighter(const Catalogue& c, const std::string& faction, const std::string& role);
 // ...and what one ship of design `id` brings (a stock design or one filed into the catalogue):
 // what a corporation's patrol of it fights with (#431 slice 12). Zero both for a design that

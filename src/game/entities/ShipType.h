@@ -12,16 +12,19 @@
 // from anywhere else.
 struct ShipStats
 {
-    float       thrustPower = 0.0f;  // engine thrust (stabilizer-off mode)
-    float       turnSpeed = 0.0f;    // turn rate, rad/sec
-    float       maxSpeed = 0.0f;     // top speed
-    float       rcsAccel = 0.0f;     // stabilizer power
-    int         cargoCapacity = 0;   // cargo hold capacity
-    float       miningRate = 0.0f;   // mining rate, units/sec
-    float       scan = 0.0f;         // probes: a scanner pass is times (1 + scan)
-    float       hull = 0.0f;         // structure: what a hit takes once the shields are down
-    float       damage = 0.0f;       // what one shot of its guns takes off
-    std::string design;              // what it is and what it looks like, in data/ships.json
+    float             thrustPower = 0.0f;  // engine thrust (stabilizer-off mode)
+    float             turnSpeed = 0.0f;    // turn rate, rad/sec
+    float             maxSpeed = 0.0f;     // top speed
+    float             rcsAccel = 0.0f;     // stabilizer power
+    int               cargoCapacity = 0;   // cargo hold capacity
+    float             miningRate = 0.0f;   // mining rate, units/sec
+    float             scan = 0.0f;         // probes: a scanner pass is times (1 + scan)
+    float             hull = 0.0f;  // structure: what a hit takes once shields and armour are down
+    float             armour = 0.0f;  // a layer between the shields and the hull (#464, slice 8)
+    Ships::TypeValues mix{};          // what its volley is made of, by damage type
+    Ships::LayerTable resist = Ships::NeutralTable();  // its hull line's shift on the layers
+    float             damage = 0.0f;                   // what one shot of its guns takes off
+    std::string       design;  // what it is and what it looks like, in data/ships.json
 };
 
 // A ship type in the hangar: name, price, base stats.

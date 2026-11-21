@@ -8,7 +8,8 @@
         "plain": 0.5,
         "cruise": 0.47,
         "baseHull": 48,
-        "baseGun": 16
+        "baseGun": 16,
+        "minEffect": 0.6
     },
     "modules": [
         { "id": "hull.cockpit", "mass": 2, "cost": { "Iron": 4, "Ice": 2 },
@@ -22,7 +23,7 @@
           "look": { "edge": { "scale": 0.045, "turn": -90 } } },
         { "id": "hull.cargo", "mass": 3, "provides": { "cargo": 300 }, "cost": { "Iron": 6 },
           "look": { "spine": { "scale": 0.2 }, "side": { "mount": "out", "turn": 90, "scale": 0.2 } } },
-        { "id": "hull.armour", "mass": 4, "provides": { "hull": 6 }, "cost": { "Iron": 10 },
+        { "id": "hull.armour", "mass": 4, "provides": { "armour": 6 }, "cost": { "Iron": 10 },
           "look": { "edge": { "scale": 0.08, "turn": 90 }, "side": { "mount": "out", "turn": 90, "scale": 0.12 } } },
         { "id": "weapons.laser", "mass": 2, "provides": { "damage": 3 }, "cost": { "Crystal": 2, "Circuits": 1 },
           "look": { "top": { "scale": 0.11 } } },
@@ -193,13 +194,19 @@
         { "id": "raider", "class": "raider", "mass": 17, "mids": [1, 1], "minAspect": 1.6, "provides": { "mining": 2, "hull": 48 }, "cost": { "Iron": 50 } },
         { "id": "cruiser", "class": "cruiser", "mass": 24, "mids": [1, 2], "minAspect": 2.0, "provides": { "mining": 2, "hull": 42 }, "cost": { "Iron": 90, "Crystal": 10 } }
     ],
+    "damageTypes": ["energy", "kinetic"],
+    "layers": {
+        "shield": { "energy": 1.25, "kinetic": 0.75 },
+        "armour": { "energy": 0.75, "kinetic": 1.25 },
+        "hull": { "energy": 1, "kinetic": 1 }
+    },
     "families": {
-        "laser": { "name": "lasers", "modules": ["weapons.laser"], "goods": ["Crystal", "Circuits"] },
-        "railgun": { "name": "railguns", "modules": ["weapons.railgun"], "goods": ["Steel", "Ammunition"] }
+        "laser": { "name": "lasers", "modules": ["weapons.laser"], "goods": ["Crystal", "Circuits"], "damage": { "energy": 1 } },
+        "railgun": { "name": "railguns", "modules": ["weapons.railgun"], "goods": ["Steel", "Ammunition"], "damage": { "kinetic": 1 } }
     },
     "lines": {
-        "light": { "name": "light", "bow": ["bow.needle"], "mid": ["mid.slim"], "stern": ["stern.twin"], "goods": ["Crystal", "Fuel"] },
-        "heavy": { "name": "heavy", "bow": ["bow.wedge", "bow.blunt"], "mid": ["mid.belt"], "stern": ["stern.row"], "goods": ["Steel", "Iron"] },
+        "light": { "name": "light", "bow": ["bow.needle"], "mid": ["mid.slim"], "stern": ["stern.twin"], "goods": ["Crystal", "Fuel"], "resist": { "shield": { "energy": 0.9 } } },
+        "heavy": { "name": "heavy", "bow": ["bow.wedge", "bow.blunt"], "mid": ["mid.belt"], "stern": ["stern.row"], "goods": ["Steel", "Iron"], "resist": { "armour": { "kinetic": 0.9 } } },
         "brawler": { "name": "brawler", "bow": ["bow.fang"], "mid": ["mid.spine"], "stern": ["stern.cluster"], "goods": ["Iron", "Ammunition"] }
     },
     "designs": [
