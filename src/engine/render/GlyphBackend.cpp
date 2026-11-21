@@ -908,11 +908,42 @@ bool ShapeBackend::DrawComposition(const Item& item, Color c, const Lighting::Sa
             break;
         }
 
-    for (const Piece& p0 : pieces)
+    // Parts the hull has lost (#138, #516). Past 60% of the hull gone, a share of the hull and
+    // panel parts -- chosen by each part's own seed, so the same ones go on every client and
+    // every frame -- is drawn as the torn `frame` under it instead of its surface. Nothing is
+    // sent for it: it is a function of the hull fraction and the seeds, like the scorch. With
+    // no `frame` shader on this driver nothing is lost, and the scorch alone shows the damage.
+    const float     hurt = 1.0f - item.intensity;
+    const Material* frameMat = nullptr;
+    if (hurt > PART_LOSS_FROM && materials_ != nullptr && !item.material.empty())
     {
+        frameMat = Materials::Pick("frame", "", "",
+                                   [this](const std::string& id) { return Drawable(id); });
+        if (frameMat != nullptr && frameMat->id != "frame")
+            frameMat = nullptr;
+    }
+    const float lostShare = (hurt - PART_LOSS_FROM) / (1.0f - PART_LOSS_FROM) * 0.5f;
+
+    for (const Piece& original : pieces)
+    {
+        Piece      torn;
+        const bool gone = frameMat != nullptr &&
+                          (original.role == Role::Hull || original.role == Role::Panel) &&
+                          !original.soft && !original.surface && !original.orbits &&
+                          !original.fallback && original.seed < lostShare;
+        if (gone)
+        {
+            torn = original;
+            torn.material = "frame";
+            torn.tint = { 0, 0, 0, 0 };
+            torn.brightness = 1.0f;
+        }
+        const Piece& p0 = gone ? torn : original;
         if (p0.fallback && painted)
             continue;
         const Material* ownMat = OwnMaterial(p0);
+        if (gone && ownMat == nullptr)  // too small to show a frame: the part is simply gone
+            continue;
         // A piece that misses the target is skipped like an object that does (#296). A star
         // three hundred thousand units away still reaches the screen with its corona, and
         // its prominences, flares and sunspots on the far side of it were all being drawn.

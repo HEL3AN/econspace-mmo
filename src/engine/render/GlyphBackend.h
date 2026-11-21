@@ -83,6 +83,9 @@ public:
 
     // Narrower than this on screen and a part is drawn flat rather than shaded (#135).
     static constexpr float MIN_SHADED_PIXELS = 3.0f;
+    // The share of its hull a built thing has lost when parts start to go (#516): scorch from
+    // 40%, embers and lost parts from 60% (owner, 2026-10-23).
+    static constexpr float PART_LOSS_FROM = 0.6f;
 
     // How far outside the target an object may reach and still be culled: lines are drawn at
     // least a pixel wide, so a reach measured in world units can fall short by that much.
