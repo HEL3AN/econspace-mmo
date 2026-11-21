@@ -37,7 +37,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
     74;  // 74: armour, a layer between shields and hull (#464, slice 8) -- a PlayerView's armour
-         // and maxArmour, an entity's armourFrac, and every hit is made of damage types;
+         // and maxArmour, an entity's armourFrac, and every hit is made of damage types; also
+         // covers the liveries of #544 (an entity's and a player's `livery`) and the region style
+         // of #545 (a galaxy system's `fits`), which landed without a bump;
          // 73: the NPC delivery service brings goods from any hangar elsewhere (#472 slice 11) --
          // a LockedHangarView is every hangar elsewhere, with its quote, `hostile` when the
          // faction refuses the pilot;
