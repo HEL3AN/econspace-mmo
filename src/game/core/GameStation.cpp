@@ -490,9 +490,20 @@ void Game::DrawHangarContent(const Ui::Frame& f)
     const Ui::Theme& t = Ui::CurrentTheme();
     Ui::Layout&      L = hangarLayout_;
 
-    const std::vector<StationList::HangarRow> rows =
+    std::vector<StationList::HangarRow> rows =
         StationList::Hangar(GetShipCatalog(), snapshot_.player.ownedShips, CurrentShipIndex(),
                             player_.GetMoney(), snapshot_.player.cargoUsed, DockedTier());
+    {
+        // Where each owned hull is parked, from the snapshot (#472 slice 8).
+        const Proto::PlayerView& pv = snapshot_.player;
+        for (StationList::HangarRow& r : rows)
+            for (size_t k = 0; k < pv.ownedShips.size(); k++)
+                if (pv.ownedShips[k] == r.index)
+                {
+                    r.here = k >= pv.shipHere.size() || pv.shipHere[k] != 0;
+                    r.place = k < pv.shipPlaces.size() ? pv.shipPlaces[k] : std::string();
+                }
+    }
     if (hangarSel_ < 0)
         hangarSel_ = CurrentShipIndex();
     hangarSel_ = rows.empty() ? -1 : std::clamp(hangarSel_, 0, (int)rows.size() - 1);
@@ -516,6 +527,8 @@ void Game::DrawHangarContent(const Ui::Frame& f)
             case StationList::Berth::Current:
                 return std::string(insured(r.index) ? "flying, ins." : "flying");
             case StationList::Berth::Owned:
+                if (!r.here)
+                    return std::string("parked away");
                 return std::string(insured(r.index) ? "owned, ins." : "owned");
             case StationList::Berth::ForSale: break;
         }
@@ -615,7 +628,12 @@ void Game::DrawHangarContent(const Ui::Frame& f)
             return;
         }
         Proto::Command c;
-        if (h.berth == StationList::Berth::Owned)
+        if (h.berth == StationList::Berth::Owned && !h.here)
+        {
+            L.Text(TextFormat("Parked at %s. Dock there to switch to it.", h.place.c_str()),
+                   TextStyle::Small().Tint(t.colors.warn).Wrap());
+        }
+        else if (h.berth == StationList::Berth::Owned)
         {
             if (L.Button("switch", "Switch to it", true))
             {

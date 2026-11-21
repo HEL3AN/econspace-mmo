@@ -4,6 +4,7 @@
 #include "sim/Orders.h"
 
 #include "core/WorldLoader.h"
+#include "economy/Inventory.h"
 #include "player/Player.h"
 #include "missions/MissionSystem.h"
 
@@ -44,6 +45,17 @@ struct ClientSession
     // which is exactly what it could do before.
     std::vector<int> ownedShips;
     int              currentShip = 0;
+
+    // Ships have a place (#472 slice 8): every owned hull but the one flown is parked at a
+    // station or structure, with its own hold, and is switched to only from there. `place` is
+    // a Simulation::PlaceKeyOf; empty -- an account from before ships had places, whose parked
+    // ships are wherever the pilot docks, until they are first switched to or from.
+    struct Berth
+    {
+        std::string place;
+        Inventory   hold;
+    };
+    std::map<int, Berth> berths;  // by hull; the flown ship is not in it
 
     bool Owns(int catalogIndex) const
     {

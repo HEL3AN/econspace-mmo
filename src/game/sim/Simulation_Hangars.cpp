@@ -65,6 +65,46 @@ std::string Simulation::HangarKey(const SystemState& st, const Entity& station) 
     return st.id + SEP + station.GetName() + SEP + std::to_string(nth);
 }
 
+std::string Simulation::PlaceKeyOf(const SystemState& st, const Entity& e) const
+{
+    int nth = 0;
+    for (const auto& o : st.entities)
+    {
+        if (o.get() == &e)
+            break;
+        if (o->GetKind() == e.GetKind() && o->GetName() == e.GetName())
+            nth++;
+    }
+    return st.id + SEP + e.GetName() + SEP + std::to_string(nth);
+}
+
+std::string Simulation::PlaceKeyHere(const ClientSession& s) const
+{
+    const SystemState* st = SystemOf(s);
+    if (st == nullptr || !s.IsDocked())
+        return std::string();
+    for (const auto& e : st->entities)
+        if (e->GetId() == s.dockedStationId)
+            return PlaceKeyOf(*st, *e);
+    return std::string();
+}
+
+std::string Simulation::PlaceName(const std::string& key) const
+{
+    const size_t a = key.find(SEP);
+    if (a == std::string::npos)
+        return std::string();
+    return StationNameOf(key) + ", " + SystemName(key.substr(0, a));
+}
+
+bool Simulation::ShipIsHere(const ClientSession& s, int hull) const
+{
+    const auto it = s.berths.find(hull);
+    if (it == s.berths.end() || it->second.place.empty())
+        return true;
+    return it->second.place == PlaceKeyHere(s);
+}
+
 const Entity* Simulation::DockedHangarStation(const ClientSession& s, std::string* why) const
 {
     auto no = [why](const std::string& text) -> const Entity*

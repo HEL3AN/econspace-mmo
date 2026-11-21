@@ -1625,8 +1625,8 @@ std::vector<Tool> BuildTools()
     tools.push_back(
         { "buy_ship",
           "Buy a ship at the station you are docked at and fly it from now on. Your old ship "
-          "stays in the hangar; switch_ship goes back to it for free. Cargo capacity becomes "
-          "the new hull's, so a hull too small for what you carry is refused.",
+          "stays here, parked with its hold and what it carries; switch_ship goes back to it "
+          "for free, from here. The new ship's hold is empty.",
           Obj({ { "ship", Str("ship name as hangar lists it, e.g. 'Hauler'") } }, { "ship" }),
           [](const Rpc::Json& args)
           {
@@ -1668,8 +1668,9 @@ std::vector<Tool> BuildTools()
     tools.push_back(
         { "switch_ship",
           "Fly another ship you already own, at the station you are docked at. "
-          "Free; hangar lists what you own. Refused if what you carry would not fit "
-          "its hold.",
+          "Free; hangar lists what you own and where each ship is. A ship is where it was "
+          "left, with its own hold: switching leaves what you carry aboard the ship you "
+          "leave, and is refused for one parked somewhere else.",
           Obj({ { "ship", Str("ship name as hangar lists it, e.g. 'Scout'") } }, { "ship" }),
           [](const Rpc::Json& args)
           {
@@ -1682,6 +1683,17 @@ std::vector<Tool> BuildTools()
               if (!OwnsShip(i))
                   throw Rpc::Error{ Rpc::INVALID_PARAMS,
                                     "you do not own a " + t.name + "; buy_ship first" };
+              {
+                  const Proto::PlayerView& pv = g_session.Snapshot().player;
+                  for (size_t k = 0; k < pv.ownedShips.size(); k++)
+                      if (pv.ownedShips[k] == i && k < pv.shipHere.size() && !pv.shipHere[k])
+                          throw Rpc::Error{ Rpc::INVALID_PARAMS,
+                                            "the " + t.name + " is at " +
+                                                (k < pv.shipPlaces.size()
+                                                     ? pv.shipPlaces[k]
+                                                     : std::string("elsewhere")) +
+                                                "; dock there to switch to it" };
+              }
 
               const int      seq = g_session.LastEventSeq();
               Proto::Command c;

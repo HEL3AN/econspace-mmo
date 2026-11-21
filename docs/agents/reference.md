@@ -253,7 +253,7 @@ No arguments.
 
 ### `buy_ship`
 
-Buy a ship at the station you are docked at and fly it from now on. Your old ship stays in the hangar; switch_ship goes back to it for free. Cargo capacity becomes the new hull's, so a hull too small for what you carry is refused.
+Buy a ship at the station you are docked at and fly it from now on. Your old ship stays here, parked with its hold and what it carries; switch_ship goes back to it for free, from here. The new ship's hold is empty.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|
@@ -261,7 +261,7 @@ Buy a ship at the station you are docked at and fly it from now on. Your old shi
 
 ### `switch_ship`
 
-Fly another ship you already own, at the station you are docked at. Free; hangar lists what you own. Refused if what you carry would not fit its hold.
+Fly another ship you already own, at the station you are docked at. Free; hangar lists what you own and where each ship is. A ship is where it was left, with its own hold: switching leaves what you carry aboard the ship you leave, and is refused for one parked somewhere else.
 
 | Argument | Type | Required | Meaning |
 |---|---|---|---|

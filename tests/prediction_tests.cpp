@@ -326,6 +326,7 @@ TEST_CASE("prediction: another hull is predicted with its own numbers (#331)")
     const int other = 1;
     REQUIRE(GetShipCatalog()[other].stats.maxSpeed != GetShipCatalog()[0].stats.maxSpeed);
     l.s.account.SetMoney(GetShipCatalog()[other].price * 2.0);
+    l.s.dockedStationId = 1;  // ships are bought at a dock (#472)
     REQUIRE(l.sim.BuyShip(l.s, other));
     l.Snapshot();
     CHECK(l.client.GetStats().design == GetShipCatalog()[other].stats.design);
