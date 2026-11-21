@@ -624,13 +624,21 @@ private:
     float       inventoryAmount_ = 0.0f;
     std::string inventoryAmountFor_;  // the container and good the amount was chosen for
     std::string inventoryFilter_;
-    float       rentUnits_ = 0.0f;  // the rent field (#472), and the rent it was last set from
-    int         rentFor_ = -1;
-    int         marketSel_ = 0;
-    float       sellAmount_ = 0.0f;   // how much of the chosen commodity to sell
-    int         sellAmountFor_ = -1;  // ...chosen for this row; another row starts at its hold
-    float       buyAmount_ = 1.0f;    // how much of it to buy (#343)
-    int         hangarSel_ = -1;      // -1: the hull being flown
+    // Its Assets tab (#472 slice 9): everything the pilot keeps, as the server last sent it
+    // (on request), the place chosen, and when it was asked for.
+    int                           inventoryTab_ = 0;
+    std::vector<Proto::AssetView> assets_;
+    int                           assetSel_ = 0;
+    double                        assetsAsked_ = -1000.0;
+    bool                          assetsHeard_ = false;
+    void                          DrawAssetsTab(Ui::Layout& L);
+    float rentUnits_ = 0.0f;  // the rent field (#472), and the rent it was last set from
+    int   rentFor_ = -1;
+    int   marketSel_ = 0;
+    float sellAmount_ = 0.0f;   // how much of the chosen commodity to sell
+    int   sellAmountFor_ = -1;  // ...chosen for this row; another row starts at its hold
+    float buyAmount_ = 1.0f;    // how much of it to buy (#343)
+    int   hangarSel_ = -1;      // -1: the hull being flown
     // The hangar's Fit tab (#279): the fit being drawn up, the design it was drawn up from
     // (another one -- a refit landed, another hull -- starts it again), and the chosen socket.
     int                         hangarTab_ = 0;

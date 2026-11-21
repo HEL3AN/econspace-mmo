@@ -103,6 +103,11 @@ void Session::Pump()
                 }
             if (journal_.size() > 512)
                 journal_.erase(journal_.begin(), journal_.begin() + (journal_.size() - 512));
+            if (s.player.hasAssets)
+            {
+                assets_ = s.player.assets;
+                haveAssets_ = true;
+            }
             snapshot_ = std::move(s);
             haveSnapshot_ = true;
         }

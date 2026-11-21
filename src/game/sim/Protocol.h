@@ -36,7 +36,9 @@ inline constexpr size_t ROUTE_WAYPOINTS_MAX = 32;
 // instead of an error, and the failure would surface much later as a ship that does not
 // move or an account that reads zero.
 inline constexpr int PROTO_VERSION =
-    71;  // 71: ships have places (#472 slice 8) -- a PlayerView says where each owned hull is and
+    72;  // 72: the assets view is sent on request (#472 slice 9) -- a Command's requestAssets and a
+         // PlayerView's assets, once;
+         // 71: ships have places (#472 slice 8) -- a PlayerView says where each owned hull is and
          // whether it can be switched to from here;
          // 70: capacities and what is held are in volume (#472 slice 7) -- a hold, a storage, a
          // hangar and a can count the room goods take, not their units;
@@ -281,6 +283,7 @@ struct Command
     // Have a hangar the pilot keeps at a station that now refuses them brought to where they
     // are docked (#472 slice 6): `deliverFrom` is its key as a LockedHangarView gives it, of a
     // good (`deliverType`, -1 all of it) up to `deliverAmount` (0 all).
+    bool        requestAssets = false;  // send the assets view with the next snapshot (#472)
     std::string deliverFrom;
     int         deliverType = -1;
     int         deliverAmount = 0;
@@ -522,6 +525,20 @@ struct ShipmentView
     std::vector<int> goods;
 };
 
+// One place the pilot keeps something (#472 slice 9): a hangar, a structure's storage, a parked
+// ship's hold, or goods in transit. `kind` is "hangar", "storage", "ship" or "transit";
+// `system` is where it is by id (empty for goods in transit), for the route planner.
+struct AssetView
+{
+    std::string      kind;
+    std::string      name;
+    std::string      system;
+    std::string      systemName;
+    std::vector<int> goods;
+    std::string      note;  // "closed: rent owed", "out of reach: hated by ...", a hull's name
+    bool             locked = false;
+};
+
 // Player ship state in the snapshot.
 struct PlayerView
 {
@@ -591,6 +608,10 @@ struct PlayerView
     std::vector<DivisionView>     divisions;  // the divisions this pilot may see (#472 slice 5)
     std::vector<LockedHangarView> locked;     // hangars out of reach, with the price to fetch them
     std::vector<ShipmentView>     shipments;  // goods on their way (#472 slice 6)
+    // Everything the pilot owns, by place, in the one snapshot that follows a request for it
+    // (#472 slice 9): `hasAssets` says this is that one.
+    bool                   hasAssets = false;
+    std::vector<AssetView> assets;
     // Player account (server-authoritative, M4f): the client shows it as a mirror.
     // reputation/bounty — per faction (index = FactionId in this process's registry; on the
     // wire, keyed by faction id), skillXp — Piloting/Mining/Trading.

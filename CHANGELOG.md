@@ -50,6 +50,7 @@ under **Unreleased**. GitHub also drafts each release's notes from the merged pu
 - Goods kept at a station whose faction now refuses you can be brought to where you are by its freight office (the route's quote at a hostility surcharge, paid to that faction; `request_delivery`, a button in the Inventory window); half of what a destroyed structure kept drops into its wreck (#472).
 - Goods take room by volume: Iron and Ice 10 a unit, Crystal, Food, Steel and Fuel 5, Ammunition and Repair Paste 2, Circuits and Medicine 1. Holds, storages, hangars and cans are ten times larger, so ore loads are unchanged and refined goods take less room; the inventory window and the market show each good's volume (#472).
 - A ship stays where it was left, with a hold of its own: buying or switching ships leaves the one you were flying parked at that dock with what it carries, and you switch to a ship only from where it is parked; the hangar list says where each ship is (#472).
+- The inventory window has an Assets tab: everything you keep, place by place (hangars, storage, parked ships and what they carry, goods in transit), with a route button to each system; the agent has `assets` (#472).
 
 ### Routes and jobs
 - One route planner, with EVE's preferences (shortest, safer, less secure) and waypoints (#440); on the galaxy map with a star menu and favourites (#446).

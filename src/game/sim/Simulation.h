@@ -1409,6 +1409,10 @@ public:
     std::vector<Proto::ShipmentView>     ShipmentsFor(const std::string& account) const;
     // Ask for a hangar's goods (a good, or all with `type` -1; up to `amount`, 0 for all) to
     // be brought to the pilot's hangar here. False, with a Notice saying why.
+    // Everything the pilot keeps, place by place: NPC hangars (the ones whose faction now
+    // refuses them marked), a structure's storage and hangar they may use, parked ships and
+    // their holds, and goods in transit (#472 slice 9).
+    std::vector<Proto::AssetView> AssetsFor(const ClientSession& s) const;
     bool           RequestDelivery(ClientSession& s, const std::string& key, int type, int amount);
     int            ReservedFor(const std::string& account, const std::string& system,
                                const std::string& toName) const;

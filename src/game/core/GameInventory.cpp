@@ -122,6 +122,81 @@ void Game::DrawHangarRent(Ui::Layout& L)
           });
 }
 
+void Game::DrawAssetsTab(Ui::Layout& L)
+{
+    using Ui::Box;
+    using Ui::Size;
+    using Ui::TextStyle;
+    const Ui::Theme& t = Ui::CurrentTheme();
+    // Asked for when the tab is open and nothing was heard for a while: the server sends it
+    // once, with the next snapshot.
+    if (GetTime() - assetsAsked_ > 5.0 && !assetsHeard_)
+    {
+        Proto::Command c;
+        c.requestAssets = true;
+        clientLink_->Send(Proto::EncodeCommand(c));
+        assetsAsked_ = GetTime();
+    }
+    L.Row(Box().GrowX().Gap(t.metrics.rowGap).Align(Ui::Align::Start, Ui::Align::Center),
+          [&]
+          {
+              if (L.Button("assets_refresh", "Refresh"))
+              {
+                  Proto::Command c;
+                  c.requestAssets = true;
+                  clientLink_->Send(Proto::EncodeCommand(c));
+                  assetsAsked_ = GetTime();
+              }
+              L.Text(TextFormat("%d places", (int)assets_.size()),
+                     TextStyle::Small().Tint(t.colors.dim));
+          });
+    if (assets_.empty())
+    {
+        L.Text(assetsHeard_ ? "You keep nothing anywhere." : "Asking where your things are...",
+               TextStyle::Small().Tint(t.colors.dim).Wrap());
+        return;
+    }
+    assetSel_ = std::clamp(assetSel_, 0, (int)assets_.size() - 1);
+    auto units = [](const Proto::AssetView& a)
+    {
+        int n = 0;
+        for (int g : a.goods)
+            n += g;
+        return n;
+    };
+    Ui::TableSpec table;
+    table.id = "assets";
+    table.columns = { { "place", Size::Grow(), Ui::Align::Start, false },
+                      { "system", Size::Fit(90.0f), Ui::Align::Start, false },
+                      { "units", Size::Fit(40.0f), Ui::Align::End, false } };
+    table.rows = (int)assets_.size();
+    table.cell = [&](int r, int c)
+    {
+        const Proto::AssetView& a = assets_[(size_t)r];
+        const Color             tone = a.locked ? t.colors.bad : t.colors.text;
+        if (c == 0)
+            return Ui::Cell{ a.name, tone };
+        if (c == 1)
+            return Ui::Cell{ a.systemName.empty() ? "-" : a.systemName, t.colors.dim };
+        return Ui::Cell{ std::to_string(units(a)), tone };
+    };
+    table.rowFill = [&](int r) { return r == assetSel_ ? t.colors.selected : Color{ 0, 0, 0, 0 }; };
+    const Ui::TableEvents ev = L.Table(table);
+    if (ev.clicked >= 0)
+        assetSel_ = ev.clicked;
+    const Proto::AssetView& a = assets_[(size_t)assetSel_];
+    L.Text(a.name, TextStyle::Strong());
+    if (!a.note.empty())
+        L.Text(a.note, TextStyle::Small().Tint(a.locked ? t.colors.bad : t.colors.dim).Wrap());
+    const std::vector<ResourceType> types = AllResourceTypes();
+    for (size_t i = 0; i < a.goods.size() && i < types.size(); i++)
+        if (a.goods[i] > 0)
+            L.Field(ResourceName(types[i]), std::to_string(a.goods[i]), t.colors.text);
+    if (!a.system.empty() && a.system != snapshot_.systemId &&
+        L.Button("assets_route", TextFormat("Route to %s", a.systemName.c_str())))
+        PlotMapRoute(a.system);
+}
+
 void Game::DrawInventoryContent(const Ui::Frame& f)
 {
     using InventoryList::Container;
@@ -335,6 +410,12 @@ void Game::DrawInventoryContent(const Ui::Frame& f)
     L.Column(Box().Grow().Gap(t.metrics.gap),
              [&]
              {
+                 L.Tabs("itabs", { "Here", "Assets" }, inventoryTab_);
+                 if (inventoryTab_ == 1)
+                 {
+                     DrawAssetsTab(L);
+                     return;
+                 }
                  if (wide)
                      L.Row(Box().Grow().Gap(t.metrics.padding),
                            [&]

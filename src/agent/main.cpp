@@ -1612,6 +1612,32 @@ std::vector<Tool> BuildTools()
                           return Obs::DescribeInventory(CurrentView(), g_session.Account());
                       } });
 
+    tools.push_back(
+        { "assets",
+          "Everything you keep, place by place: your hangars at stations, the storage and hangar "
+          "of structures you may use, parked ships and what they carry, and goods in transit -- "
+          "each with the system to route there (the route tool takes the system id). Hangars "
+          "at stations that refuse you are marked, and request_delivery brings them where "
+          "you are docked.",
+          Obj({}), [](const Rpc::Json&)
+          {
+              RequireLive();
+              g_session.ForgetAssets();
+              Proto::Command c;
+              c.requestAssets = true;
+              std::string why;
+              if (!Confirm(c, why))
+                  return "assets: " + why;
+              for (int i = 0; i < 40 && !g_session.HasAssets(); i++)
+              {
+                  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                  g_session.Pump();
+              }
+              if (!g_session.HasAssets())
+                  return std::string("assets: the server has not answered yet; call it again");
+              return Obs::DescribeAssets(g_session.Assets());
+          } });
+
     tools.push_back({ "hangar",
                       "The ships you own, the one you are flying, and what every other hull "
                       "costs at this station -- at the price you would actually pay, which "

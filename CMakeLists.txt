@@ -622,6 +622,7 @@ add_executable(tests
     tests/division_tests.cpp       # a corporation storage in divisions, a hangar each (#472)
     tests/delivery_tests.cpp       # NPC delivery quotes and freight, what a destroyed structure drops (#472)
     tests/berth_tests.cpp          # ships have places and holds of their own (#472)
+    tests/assets_tests.cpp         # the assets view, place by place (#472)
     tests/chart_sales_tests.cpp    # charts sold to factions, priced by what they lack (#431 slice 16)
     tests/finds_tests.cpp          # rich belts and other hidden finds (#346)
     src/game/sim/Overview.cpp      # the overview's rows, tested without a window (#157)

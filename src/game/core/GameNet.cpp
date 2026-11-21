@@ -314,6 +314,11 @@ void Game::BuildClientSnapshot()
             // The static half of each entity is not on the wire; it is in the layout we
             // were sent on entry (#16).
             Proto::CompleteFromLayout(s, layout_.byId);
+            if (s.player.hasAssets)  // the answer to a request for the assets view (#472)
+            {
+                assets_ = s.player.assets;
+                assetsHeard_ = true;
+            }
             ApplyTradeAcks(s);                   // say what was sold; the money is the server's
             for (const Ev::Event& e : s.events)  // server journal (#29)
                 FlashMessage(e.text);

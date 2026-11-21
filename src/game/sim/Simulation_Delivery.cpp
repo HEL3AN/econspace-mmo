@@ -13,6 +13,8 @@
 
 #include "economy/Market.h"
 #include "entities/Station.h"
+#include "entities/ShipType.h"
+#include "entities/ShipType.h"
 #include "entities/Structure.h"
 
 #include <algorithm>
@@ -187,6 +189,112 @@ bool Simulation::RequestDelivery(ClientSession& s, const std::string& key, int t
                                         " h");
     shipments_.push_back(std::move(sh));
     return true;
+}
+
+std::vector<Proto::AssetView> Simulation::AssetsFor(const ClientSession& s) const
+{
+    std::vector<Proto::AssetView> out;
+    if (s.accountName.empty())
+        return out;
+    auto vectorOf = [](const Inventory& inv)
+    {
+        std::vector<int> v;
+        for (ResourceType rt : AllResourceTypes())
+            v.push_back(inv.Amount(rt));
+        return v;
+    };
+    // The hangars at the stations.
+    for (const auto& at : hangars_)
+    {
+        const auto it = at.second.find(s.accountName);
+        if (it == at.second.end() || it->second.goods.Empty())
+            continue;
+        const std::string sysId = at.first.substr(0, at.first.find('|'));
+        Proto::AssetView  a;
+        a.kind = "hangar";
+        a.name = "Hangar at " + PlaceName(at.first).substr(0, PlaceName(at.first).find(','));
+        a.system = sysId;
+        a.systemName = SystemName(sysId);
+        a.goods = vectorOf(it->second.goods);
+        if (it->second.owed > 0.0)
+            a.note = "closed until the rent owed is paid";
+        if (HangarOutOfReach(s, at.first))
+        {
+            a.locked = true;
+            a.note =
+                "out of reach: its faction refuses you; request a delivery where you are docked";
+        }
+        out.push_back(std::move(a));
+    }
+    // A structure's storage and a member's hangar, where the pilot's side may use them.
+    for (const auto& kv : systems_)
+        for (const auto& e : kv.second.entities)
+        {
+            if (e->GetKind() != EntityKind::Structure)
+                continue;
+            const Structure& t = static_cast<const Structure&>(*e);
+            if (t.GetStorageCapacity() <= 0 ||
+                !t.OwnersSide(s.accountName, corps_.SameCorp(t.GetOwner(), s.accountName)))
+                continue;
+            Inventory seen;  // what the pilot's role may look at
+            for (const char* div : Corps::DIVISION_IDS)
+                if (corps_.MayDivision(t.GetOwner(), s.accountName, div, "view"))
+                    if (const Inventory* inv = t.Division(div))
+                        for (const auto& g : inv->All())
+                            seen.Add(g.first, g.second);
+            if (!seen.Empty())
+            {
+                Proto::AssetView a;
+                a.kind = "storage";
+                a.name = t.GetName() + "'s storage";
+                a.system = kv.first;
+                a.systemName = SystemName(kv.first);
+                a.goods = vectorOf(seen);
+                out.push_back(std::move(a));
+            }
+            if (const Inventory* h = t.FindHangar(s.accountName); h != nullptr && !h->Empty())
+            {
+                Proto::AssetView a;
+                a.kind = "hangar";
+                a.name = "Your hangar in " + t.GetName();
+                a.system = kv.first;
+                a.systemName = SystemName(kv.first);
+                a.goods = vectorOf(*h);
+                out.push_back(std::move(a));
+            }
+        }
+    // Ships parked away from the flown one, with what they carry.
+    const std::vector<ShipType>& catalog = GetShipCatalog();
+    for (const auto& b : s.berths)
+    {
+        Proto::AssetView a;
+        a.kind = "ship";
+        a.name = b.first >= 0 && b.first < (int)catalog.size() ? catalog[(size_t)b.first].name
+                                                               : std::string("Ship");
+        const size_t cut = b.second.place.find('|');
+        if (cut != std::string::npos)
+        {
+            a.system = b.second.place.substr(0, cut);
+            a.systemName = SystemName(a.system);
+            a.note = "parked at " + PlaceName(b.second.place);
+        }
+        else
+            a.note = "parked wherever you dock";
+        a.goods = vectorOf(b.second.hold);
+        out.push_back(std::move(a));
+    }
+    // Goods on their way.
+    for (const Shipment& sh : shipments_)
+        if (sh.account == s.accountName)
+        {
+            Proto::AssetView a;
+            a.kind = "transit";
+            a.name = "On its way to " + sh.toName;
+            a.note = "from " + sh.from;
+            a.goods = vectorOf(sh.goods);
+            out.push_back(std::move(a));
+        }
+    return out;
 }
 
 int Simulation::ReservedFor(const std::string& account, const std::string& system,
